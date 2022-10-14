@@ -1,0 +1,146 @@
+{
+    "Shelly": [
+        {
+            "name": "GetStatus",
+            "method": "Shelly.GetStatus",
+            "params": {}
+        },
+        {
+            "name": "GetConfig",
+            "method": "Shelly.GetConfig",
+            "params": {}
+        },
+        {
+            "name": "ListMethods",
+            "method": "Shelly.ListMethods",
+            "params": {}
+        },
+        {
+            "name": "GetDeviceInfo",
+            "method": "Shelly.GetDeviceInfo",
+            "params": {
+                "ident": false
+            }
+        },
+        {
+            "name": "CheckForUpdate",
+            "method": "Shelly.CheckForUpdate",
+            "params": {}
+        },
+        {
+            "name": "FactoryReset",
+            "method": "Shelly.FactoryReset",
+            "params": {}
+        },
+        {
+            "name": "ListMethods",
+            "method": "Shelly.ListMethods",
+            "params": {}
+        },
+        {
+            "name": "Reboot",
+            "method": "Shelly.Reboot",
+            "params": {}
+        }
+    ],
+    "Switch": [
+        {
+            "name": "Toggle",
+            "method": "Switch.Toggle",
+            "params": {
+                "id": 0
+            }
+        },
+        {
+            "name": "SetConfig",
+            "method": "Switch.SetConfig",
+            "params": {
+                "id": 0,
+                "config": "{}"
+            }
+        },
+        {
+            "name": "GetConfig",
+            "method": "Switch.GetConfig",
+            "params": {
+                "id": 0
+            }
+        },
+        {
+            "name": "GetStatus",
+            "method": "Switch.GetStatus",
+            "params": {
+                "id": 0
+            }
+        },
+        {
+            "name": "Set",
+            "method": "Switch.Set",
+            "params": {
+                "id": 0,
+                "on": true,
+                "toggle_after": 0
+            }
+        }
+    ],
+    "Light": [
+        {
+            "name": "Toggle",
+            "method": "Light.Toggle",
+            "params": {
+                "id": 0
+            }
+        },
+        {
+            "name": "SetConfig",
+            "method": "Light.SetConfig",
+            "params": {
+                "id": 0,
+                "config": "{}"
+            }
+        },
+        {
+            "name": "GetConfig",
+            "method": "Light.GetConfig",
+            "params": {
+                "id": 0
+            }
+        },
+        {
+            "name": "GetStatus",
+            "method": "Light.GetStatus",
+            "params": {
+                "id": 0
+            }
+        },
+        {
+            "name": "Set",
+            "method": "Light.Set",
+            "params": {
+                "id": 0,
+                "on": true,
+                "toggle_after": 0,
+                "brightness": 100
+            }
+        }
+    ],
+    "BLE": [
+        {
+            "name": "SetConfig",
+            "method": "BLE.SetConfig",
+            "params": {
+                "config": "{\"enable\": true}"
+            }
+        },
+        {
+            "name": "GetConfig",
+            "method": "BLE.GetConfig",
+            "params": {}
+        },
+        {
+            "name": "GetStatus",
+            "method": "BLE.GetStatus",
+            "params": {}
+        }
+    ]
+}

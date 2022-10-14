@@ -1,0 +1,8 @@
+{
+    "name": "fleet-management",
+    "workspaces": [
+        "packages/backend",
+        "packages/frontend",
+        "packages/ble"
+    ]
+}

@@ -1,0 +1,9 @@
+/node_modules
+/dist
+tsconfig.tsbuildinfo
+sqlite.db
+.env
+/logs
+/fe/dist
+/fe/tests
+database.sqlite

@@ -1,0 +1,5 @@
+node_modules/
+dist/
+database.sqlite
+*.log
+logs

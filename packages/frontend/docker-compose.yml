@@ -1,0 +1,9 @@
+version: '3.0'
+services:
+  fleet-management-frontend:
+    build: .
+    ports:
+      - 7010:80
+    environment:
+      - VUE_APP_BACKEND_URI=http://localhost:7011
+      - VUE_APP_BASE_URL=/

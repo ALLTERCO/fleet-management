@@ -1,0 +1,11 @@
+version: '3'
+services:
+  fleet-management:
+    build: .
+    environment:
+      - WEB_PORT_HTTP=7011
+    ports:
+      - 80:7011
+  ble:
+    build: ./packages/ble
+    network_mode: "host"

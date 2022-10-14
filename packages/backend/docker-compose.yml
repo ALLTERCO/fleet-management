@@ -1,0 +1,8 @@
+version: '3'
+services:
+  fleet-management-backend:
+    build: .
+    environment:
+      - WEB_PORT_HTTP=7011
+    ports:
+      - 80:7011

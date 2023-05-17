@@ -1,15 +1,21 @@
 #!/bin/bash
+
+# openssl-legacy-provider: for Node v17+
+# max_old_space_size: prevent CPU exhaustion.
+export NODE_OPTIONS="--openssl-legacy-provider --max_old_space_size=200"
+
+. /home/ubuntu/.nvm/nvm.sh
+
 echo "installing dependencies..."
 npm install
-echo "building backend..."
-cd ./packages/backend
-npm build
+
 echo "building frontend..."
-cd ../frontend/
+cd ./packages/frontend
 npm run build
-echo "building ble..."
-cd ../ble
+
+echo "building backend..."
+cd ../backend
 npm run build
-cd ../..
+
 echo "starting backend..."
-exec ./start_backend.sh
+WEB_PORT_HTTP=7011 npm start

@@ -1,4 +1,6 @@
 #!/bin/bash
+echo "working on backend"
+cd ./backend
 echo "installing dependencies..."
 npm install
 echo "building backend..."
@@ -7,9 +9,6 @@ npm build
 echo "building frontend..."
 cd ../frontend/
 npm run build
-echo "building ble..."
-cd ../ble
-npm run build
-cd ../..
+cd ..
 echo "starting backend..."
 exec ./start_backend.sh

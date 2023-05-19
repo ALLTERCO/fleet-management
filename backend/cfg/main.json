@@ -1,0 +1,7 @@
+{
+    "port": 7011,
+    "port_ssl": -1,
+    "https_crt": "/path/to/cert.crt",
+    "https_key": "/path/to/cert.key",
+    "jwt_token": "shelly-secret-token"
+}

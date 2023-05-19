@@ -1,11 +1,41 @@
-version: '3'
+version: '3.9'
 services:
   fleet-management:
     build: .
     environment:
-      - WEB_PORT_HTTP=7011
+      - FLEET_MANAGER_PORT=7011
     ports:
-      - 80:7011
-  ble:
-    build: ./packages/ble
-    network_mode: "host"
+      - 7011:7011
+    networks:
+      - fleet-net
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:7011/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    volumes:
+      - logs:/app/backend/logs
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+          pids: 200
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+networks:
+  fleet-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.16.1.0/24
+volumes:
+  logs:

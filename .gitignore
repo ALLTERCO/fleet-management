@@ -3,3 +3,7 @@ dist/
 database.sqlite
 *.log
 logs
+tsconfig.tsbuildinfo
+!/backend/plugins/.gitkeep
+/backend/plugins/
+/backend/cfg/components/*.json

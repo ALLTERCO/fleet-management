@@ -1,0 +1,54 @@
+@charset "utf-8";
+@import "bulma/sass/utilities/_all.sass";
+
+$scheme-main: $black-ter;
+$scheme-main-bis: $grey-darker;
+$body-background-color: $black-bis;
+$input-shadow: none;
+$message-background-color: $grey-darker;
+$navbar-divider-background-color: $white;
+$text: $grey-lightest;
+$link-active: $grey-lightest;
+
+$input-color: $grey-lighter;
+$input-background-color: $grey-darker;
+$input-border-color: $grey;
+$input-focus-border-color: $white-ter;
+$label-color: $grey-lighter;
+$input-hover-color: $white;
+
+.has-background-shelly {
+    background-color: $scheme-main !important;
+}
+
+body {
+    min-height: 100vh;
+}
+
+.card-header-title-shelly {
+    padding: 0;
+}
+
+.card-header-title-shelly>* {
+    padding: 0.75rem 1rem;
+}
+
+.slidedown-enter-active,
+.slidedown-leave-active {
+    transition: max-height 0.2s linear 0ms;
+}
+
+.slidedown-enter-to,
+.slidedown-leave-from {
+    overflow: hidden;
+    max-height: 1000px;
+}
+
+.slidedown-enter-from,
+.slidedown-leave-to {
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.1s linear 0ms;
+}
+
+@import "bulma/bulma.sass";

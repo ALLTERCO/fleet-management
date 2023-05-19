@@ -25,7 +25,7 @@ The codebase is split into modules - backend and frontend. They are described in
 
 ### Using docker:
 ```bash
-docker compose up
+docker compose up --build -d 
 ```
 
 ### Other ways

@@ -43,20 +43,26 @@ DOCKER_INTERNAL_HOST="${DOCKER_INTERNAL_HOST:-zitadel}"
 # with unique names and isolated state. When unset, use default single-instance names.
 CLIENT_ID="${CLIENT_ID:-}"
 
+# Bootstrap config — set in env file (public.env, office-test.env, etc.)
+ZITADEL_PROJECT_NAME="${ZITADEL_PROJECT_NAME:?ZITADEL_PROJECT_NAME is required}"
+FM_ADMIN_USER="${FM_ADMIN_USER:?FM_ADMIN_USER is required}"
+FM_ADMIN_PASSWORD="${FM_ADMIN_PASSWORD:?FM_ADMIN_PASSWORD is required}"
+FM_ADMIN_EMAIL="${FM_ADMIN_EMAIL:?FM_ADMIN_EMAIL is required}"
+
 if [ -n "$CLIENT_ID" ]; then
-    PROJECT_NAME="fleet-management-${CLIENT_ID}"
-    API_APP_NAME="fleet-management-${CLIENT_ID}-api"
-    SPA_APP_NAME="fleet-management-${CLIENT_ID}-spa"
-    TEST_USER_NAME="fm-admin-${CLIENT_ID}"
-    SERVICE_USER_NAME_OVERRIDE="fleet-management-${CLIENT_ID}-service"
+    PROJECT_NAME="${ZITADEL_PROJECT_NAME}-${CLIENT_ID}"
+    API_APP_NAME="${ZITADEL_PROJECT_NAME}-${CLIENT_ID}-api"
+    SPA_APP_NAME="${ZITADEL_PROJECT_NAME}-${CLIENT_ID}-spa"
+    TEST_USER_NAME="${FM_ADMIN_USER}-${CLIENT_ID}"
+    SERVICE_USER_NAME_OVERRIDE="${ZITADEL_PROJECT_NAME}-${CLIENT_ID}-service"
     STATE_FILE="${STATE_FILE:-$DEPLOY_DIR/state/clients/${CLIENT_ID}/zitadel.env}"
 else
-    PROJECT_NAME="fleet-management"
-    API_APP_NAME="fleet-management-api"
-    SPA_APP_NAME="fleet-management-spa"
-    TEST_USER_NAME="fm-admin"
+    PROJECT_NAME="$ZITADEL_PROJECT_NAME"
+    API_APP_NAME="${ZITADEL_PROJECT_NAME}-api"
+    SPA_APP_NAME="${ZITADEL_PROJECT_NAME}-spa"
+    TEST_USER_NAME="$FM_ADMIN_USER"
 fi
-TEST_USER_PASSWORD="Admin123!"
+TEST_USER_PASSWORD="$FM_ADMIN_PASSWORD"
 
 # Resolve redirect URIs from env (set by deploy.sh's resolve_hostname)
 FM_HOSTNAME="${ZITADEL_HOSTNAME:-localhost}"
@@ -252,7 +258,7 @@ else
     # Use v2 API: properly initializes user with verified email and password set
     # v1 API leaves user in "not initialized" state requiring email verification on first login
     user_response=$(zitadel_api "POST" "/v2/users/human" \
-        "{\"username\":\"${TEST_USER_NAME}\",\"profile\":{\"givenName\":\"FM\",\"familyName\":\"Admin\",\"displayName\":\"FM Admin\"},\"email\":{\"email\":\"admin@fleet.local\",\"isVerified\":true},\"password\":{\"password\":\"${TEST_USER_PASSWORD}\",\"changeRequired\":false}}" \
+        "{\"username\":\"${TEST_USER_NAME}\",\"profile\":{\"givenName\":\"FM\",\"familyName\":\"Admin\",\"displayName\":\"FM Admin\"},\"email\":{\"email\":\"${FM_ADMIN_EMAIL}\",\"isVerified\":true},\"password\":{\"password\":\"${TEST_USER_PASSWORD}\",\"changeRequired\":false}}" \
         "$TOKEN" "$ZITADEL_URL")
     TEST_USER_ID=$(echo "$user_response" | jq -r '.userId // .id')
     echo "  Created FM admin user: $TEST_USER_ID"
@@ -269,7 +275,7 @@ fi
 # The backend needs to call Zitadel Management API to read user metadata
 # (fm_permissions). API apps can only do token introspection, not obtain
 # their own tokens. A service user (machine user) with a PAT solves this.
-SERVICE_USER_NAME="${SERVICE_USER_NAME_OVERRIDE:-fleet-management-service}"
+SERVICE_USER_NAME="${SERVICE_USER_NAME_OVERRIDE:-${ZITADEL_PROJECT_NAME}-service}"
 echo ""
 echo "--- Service User: $SERVICE_USER_NAME ---"
 

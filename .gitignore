@@ -20,9 +20,6 @@ backend/tsc
 /frontend/src/pages/plugin/**/*
 !/frontend/src/pages/plugin/.gitkeep
 .vscode/
-vscode-profile-*
-npmrc/
-.fleet-managerrc*
 .env
 !machinekey/.gitignore
 machinekey/**/*
@@ -33,17 +30,9 @@ plugins/**/*.zip
 frontend/.env.development
 frontend/.env.production
 backend/uploads/*
-**/.claude
-claude-batch
-docs/plans
-docs/internal
-docs/*.docx
+*.timestamp-*
 
 # Deploy state files (generated secrets, credentials)
 deploy/state/*
 !deploy/state/.gitignore
 !deploy/state/.gitkeep
-docs/plans/*.md
-CLAUDE.md
-*.timestamp-*
-*.DS_Store

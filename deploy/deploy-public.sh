@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# deploy-public.sh — Fleet Management Community Edition Installer
+# deploy-public.sh — Fleet Management Installer
 #
 # Fully self-contained installer for the open-source Fleet Management system.
 # Downloads and runs Fleet Manager, TimescaleDB, and Zitadel (OIDC auth).
@@ -778,7 +778,7 @@ cmd_up() {
         esac
     done
 
-    step "Starting Fleet Management Community Edition"
+    step "Starting Fleet Management"
 
     # Preflight
     if ! check_docker || ! check_compose; then
@@ -1139,8 +1139,8 @@ print_summary() {
     echo "  ${BOLD}Zitadel Console:${RESET} ${CYAN}${zitadel_url}${RESET}"
     echo ""
     echo "  ${BOLD}Default Login:${RESET}"
-    echo "    Username: ${CYAN}fm-admin${RESET}"
-    echo "    Password: ${CYAN}Admin123!${RESET}"
+    echo "    Username: ${CYAN}${FM_ADMIN_USER}${RESET}"
+    echo "    Password: ${CYAN}${FM_ADMIN_PASSWORD}${RESET}"
     echo ""
     echo "  ${BOLD}Zitadel Admin:${RESET}"
     echo "    Username: ${CYAN}root${RESET}"
@@ -1305,7 +1305,7 @@ cmd_doctor() {
 # ── Help ──────────────────────────────────────────────────────
 cmd_help() {
     echo ""
-    echo "${BOLD}Fleet Management Community Edition${RESET} v${FM_SCRIPT_VERSION}"
+    echo "${BOLD}Fleet Management${RESET} v${FM_SCRIPT_VERSION}"
     echo ""
     echo "${BOLD}Usage:${RESET} ./deploy-public.sh <command>"
     echo ""

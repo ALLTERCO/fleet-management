@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Fleet Manager — Public/Community Edition
+# Fleet Manager — Public Edition
 #
 # Same multi-stage build as the private Dockerfile, but:
 #   - No Node-RED nodes injection (private registry package)

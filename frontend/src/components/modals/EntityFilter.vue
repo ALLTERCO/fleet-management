@@ -1,9 +1,9 @@
 <template>
-  <Modal :visible="visible" @close="visible = false">
+  <Modal :visible="visible" compact @close="visible = false">
     <template #title>Filters</template>
     <div class="space-y-4">
       <div>
-        <h1 class="text-lg font-semibold">Online state</h1>
+        <h3 class="heading-card">Online state</h3>
         <Dropdown
           :options="['All', 'Online', 'Offline']"
           :icons="['', 'fa-wifi', 'fa-wifi-slash']"
@@ -16,7 +16,7 @@
       <hr class="my-4" />
 
       <div>
-        <h1 class="text-lg font-semibold">Type</h1>
+        <h3 class="heading-card">Type</h3>
         <Dropdown
           :options="entityTypes"
           :icons="entityTypeIcons"
@@ -43,92 +43,107 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import Modal from '@/components/modals/Modal.vue';
-import Dropdown from '@/components/core/Dropdown.vue';
+import {computed, ref, watch} from 'vue';
 import Button from '@/components/core/Button.vue';
-import type { entity_t } from '@/types';
-import { useEntityFiltering } from '@/composables/useEntityFiltering';
-import { useEntityStore } from '@/stores/entities';
+import Dropdown from '@/components/core/Dropdown.vue';
+import Modal from '@/components/modals/Modal.vue';
+import {useEntityFiltering} from '@/composables/useEntityFiltering';
+import {useEntityStore} from '@/stores/entities';
+import type {entity_t} from '@/types';
 
-const props = withDefaults(defineProps<{
-  filters?: { online: boolean | null; type: string }
-}>(), {
-  filters: () => ({ online: null, type: 'All entities' })
-});
+const props = withDefaults(
+    defineProps<{
+        filters?: {online: boolean | null; type: string};
+    }>(),
+    {
+        filters: () => ({online: null, type: 'All entities'})
+    }
+);
 
 const emit = defineEmits<{
-  (e: 'entities', entities: entity_t[]): void;
-  (e: 'setFilters', filters: { online: boolean | null; type: string }): void;
+    (e: 'entities', entities: entity_t[]): void;
+    (e: 'setFilters', filters: {online: boolean | null; type: string}): void;
 }>();
 
-const visible = defineModel<boolean>({ required: true });
+const visible = defineModel<boolean>({required: true});
 
 const onlineFilter = ref<boolean | null>(props.filters.online);
 const typeFilter = ref<string>(props.filters.type);
 
 const entityTypes = [
-  'All entities',
-  'Switch',
-  'Light',
-  'Input',
-  'Temperature',
-  'Energy Meter',
-  'BLU Sensor',
-  'Virtual Component'
+    'All entities',
+    'Switch',
+    'Light',
+    'Input',
+    'Temperature',
+    'Energy Meter',
+    'BLU Sensor',
+    'Virtual Component'
 ];
 
 const entityTypeIcons = [
-  '',
-  'fa-microchip',
-  'fa-power-off',
-  'fa-power-off',
-  'fa-arrow-right',
-  'fa-thermometer-half',
-  'fa-bolt',
-  'fa-vr-cardboard'
+    '',
+    'fa-microchip',
+    'fa-power-off',
+    'fa-power-off',
+    'fa-arrow-right',
+    'fa-thermometer-half',
+    'fa-bolt',
+    'fa-vr-cardboard'
 ];
 
 const defaultOnlineLabel = computed<string>(() =>
-  onlineFilter.value === true ? 'Online' :
-  onlineFilter.value === false ? 'Offline' :
-  'All'
+    onlineFilter.value === true
+        ? 'Online'
+        : onlineFilter.value === false
+          ? 'Offline'
+          : 'All'
 );
 
-watch(() => props.filters, f => {
-  onlineFilter.value = f.online;
-  typeFilter.value = f.type;
-}, { deep: true });
+watch(
+    () => props.filters,
+    (f) => {
+        onlineFilter.value = f.online;
+        typeFilter.value = f.type;
+    },
+    {deep: true}
+);
 
 function onlineFilterSelected(val: string) {
-  if (val === 'Online') onlineFilter.value = true;
-  else if (val === 'Offline') onlineFilter.value = false;
-  else onlineFilter.value = null;
+    if (val === 'Online') onlineFilter.value = true;
+    else if (val === 'Offline') onlineFilter.value = false;
+    else onlineFilter.value = null;
 }
 
 function applyClicked() {
-  const entityStore = useEntityStore();
-  const { filtered } = useEntityFiltering(
-    Object.values(entityStore.entities),
-    { online: onlineFilter.value, type: typeFilter.value }
-  );
-  emit('entities', filtered.value);
-  emit('setFilters', {
-    online: onlineFilter.value,
-    type: typeFilter.value
-  });
-  visible.value = false;
+    const entityStore = useEntityStore();
+    const {filtered} = useEntityFiltering(Object.values(entityStore.entities), {
+        online: onlineFilter.value,
+        type: typeFilter.value
+    });
+    emit('entities', filtered.value);
+    emit('setFilters', {
+        online: onlineFilter.value,
+        type: typeFilter.value
+    });
+    visible.value = false;
 }
 
 function clearFilters() {
-  onlineFilter.value = null;
-  typeFilter.value = 'All entities';
-  const entityStore = useEntityStore();
-  emit('entities', Object.values(entityStore.entities));
-  emit('setFilters', {
-    online: onlineFilter.value,
-    type: typeFilter.value
-  });
-  visible.value = false;
+    onlineFilter.value = null;
+    typeFilter.value = 'All entities';
+    const entityStore = useEntityStore();
+    emit('entities', Object.values(entityStore.entities));
+    emit('setFilters', {
+        online: onlineFilter.value,
+        type: typeFilter.value
+    });
+    visible.value = false;
 }
 </script>
+
+<style scoped>
+:deep(.relative.inline-block) {
+    width: 100%;
+}
+</style>

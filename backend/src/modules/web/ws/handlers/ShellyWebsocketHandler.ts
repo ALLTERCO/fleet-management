@@ -3,12 +3,44 @@ import type WebSocket from 'ws';
 import ShellyDeviceFactory from '../../../../model/ShellyDeviceFactory';
 import WebSocketTransport from '../../../../model/transport/WebsocketTransport';
 import * as DeviceCollector from '../../../../modules/DeviceCollector';
+import * as Observability from '../../../../modules/Observability';
 import {statusSelectivePush} from '../../../../modules/ShellyMessageHandler';
 import * as WaitingRoom from '../../../../modules/WaitingRoom';
 import {execInternal} from '../../../Commander';
 import AbstractWebsocketHandler from './AbstractWebsocketHandler';
 
 const logger = log4js.getLogger('shelly-ws');
+
+// Concurrency limiter — prevents event loop saturation when 1k+ devices
+// connect simultaneously (each init does 3 RPC calls + DB + entity generation).
+const MAX_CONCURRENT_INITS = 100;
+let activeInits = 0;
+const initQueue: Array<() => void> = [];
+
+export function getInitStats() {
+    return {active: activeInits, queued: initQueue.length};
+}
+
+function acquireInitSlot(): Promise<void> {
+    if (activeInits < MAX_CONCURRENT_INITS) {
+        activeInits++;
+        Observability.incrementCounter('device_inits_started');
+        return Promise.resolve();
+    }
+    return new Promise((resolve) => initQueue.push(resolve));
+}
+
+function releaseInitSlot() {
+    Observability.incrementCounter('device_inits_completed');
+    activeInits--;
+    const next = initQueue.shift();
+    if (next) {
+        activeInits++;
+        Observability.incrementCounter('device_inits_started');
+        // Yield to event loop before starting next init
+        setImmediate(next);
+    }
+}
 
 const UNSET_WS_CONFIG = JSON.stringify({
     id: 998,
@@ -51,6 +83,8 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
                 return;
             }
 
+            Observability.recordWsMessage(`device:${message.method}`);
+
             if (message.method === 'NotifyFullStatus') {
                 const shellyID = message.src;
 
@@ -64,26 +98,48 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
                 }
 
                 const onApprove = async () => {
-                    // do not listen anymore
-                    ws.removeListener('message', messageListener);
-
-                    logger.info(
-                        'Registering new websocket client for shellyID:[%s]',
-                        shellyID
-                    );
-                    const transport = new WebSocketTransport(ws);
-                    const shelly =
-                        await ShellyDeviceFactory.fromWebsocket(transport);
-                    shelly.setStatus(message.params);
-                    DeviceCollector.register(shelly);
+                    await acquireInitSlot();
+                    const initStart = Date.now();
                     try {
-                        await statusSelectivePush(message, shelly);
-                    } catch (e) {
-                        logger.error('Status Selective push: ', e);
+                        // do not listen anymore
+                        ws.removeListener('message', messageListener);
+
+                        logger.info(
+                            'Registering new websocket client for shellyID:[%s]',
+                            shellyID
+                        );
+                        const transport = new WebSocketTransport(ws);
+                        const shelly =
+                            await ShellyDeviceFactory.fromWebsocket(transport);
+                        shelly.setStatus(message.params);
+                        DeviceCollector.register(shelly);
+                        Observability.recordInitDuration(
+                            shellyID,
+                            Date.now() - initStart
+                        );
+                        try {
+                            await statusSelectivePush(message, shelly);
+                        } catch (e) {
+                            logger.error('Status Selective push: ', e);
+                        }
+                    } catch (err) {
+                        Observability.incrementCounter('device_inits_failed');
+                        Observability.recordInitFailure(
+                            shellyID,
+                            err instanceof Error ? err.message : String(err)
+                        );
+                        logger.error(
+                            'Failed to register device shellyID:[%s]: %s',
+                            shellyID,
+                            err
+                        );
+                    } finally {
+                        releaseInitSlot();
                     }
                 };
 
                 const onDeny = () => {
+                    ws.removeListener('message', messageListener);
                     // Device is rejected, unset config & reboot
                     ws.send(UNSET_WS_CONFIG);
                     ws.send(REBOOT_SHELLY);

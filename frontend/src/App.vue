@@ -1,7 +1,13 @@
 <template>
     <main>
-        <DefaultLayout v-if="authStore.loggedIn">
-            <router-view />
+        <DefaultLayout v-if="authStore.permissionsLoaded">
+            <ErrorBoundary>
+                <router-view v-slot="{ Component }">
+                    <Transition name="page" mode="out-in" :duration="160">
+                        <component :is="Component" :key="$route.matched[0]?.path" />
+                    </Transition>
+                </router-view>
+            </ErrorBoundary>
         </DefaultLayout>
         <BasicLayout v-else>
             <router-view />
@@ -11,41 +17,56 @@
 </template>
 
 <script setup lang="ts">
-import { useAuthStore } from '@/stores/auth';
+import {watch} from 'vue';
+import ErrorBoundary from '@/components/core/ErrorBoundary.vue';
 import Toast from '@/components/Toast.vue';
+import {FLEET_MANAGER_HTTP} from '@/constants';
 import BasicLayout from '@/layouts/BasicLayout.vue';
 import DefaultLayout from '@/layouts/DefaultLayout.vue';
-import { useGeneralStore } from './stores/general';
-import { onMounted, watch } from 'vue';
+import {useAuthStore} from '@/stores/auth';
+import {useGeneralStore} from './stores/general';
+
 const generalStore = useGeneralStore();
 
 const authStore = useAuthStore();
-// Init
 
 watch(
     () => generalStore.background,
     (newValue) => {
         if (!newValue || newValue === 'undefined') {
-            // Set default background color
-            // document.documentElement.style.setProperty('--background-image', `url(${newValue})`);
-            // document.documentElement.style.removeProperty('--background-color');
-            console.log('nothing selected');
-        } else if (newValue.startsWith('http')) {
-            // Set background image
-            document.documentElement.style.setProperty('--background-image', `url(${newValue})`);
-            document.documentElement.style.removeProperty('--background-color');
+            return;
         } else if (newValue.startsWith('#')) {
-            // Set background color
-            document.documentElement.style.setProperty('--background-color', newValue);
+            document.documentElement.style.setProperty(
+                '--background-color',
+                newValue
+            );
             document.documentElement.style.removeProperty('--background-image');
+        } else {
+            // Image path — resolve relative paths to full URL using current host
+            const url = newValue.startsWith('/') ? FLEET_MANAGER_HTTP + newValue : newValue;
+            document.documentElement.style.setProperty(
+                '--background-image',
+                `url(${url})`
+            );
+            document.documentElement.style.removeProperty('--background-color');
         }
     },
-    { immediate: true } // Trigger immediately on mount
+    {immediate: true}
 );
 
-onMounted(() => {
-    generalStore.setup();
-});
+// Only fetch UI settings after WebSocket is connected and permissions are loaded.
+// authStore.permissionsLoaded becomes true AFTER handleLoginChanged() completes
+// (which awaits ws.connect() + fetchUserPermissions()), so the websocket is
+// guaranteed to be open by the time generalStore.setup() issues RPC calls.
+watch(
+    () => authStore.permissionsLoaded,
+    (loaded) => {
+        if (loaded) {
+            generalStore.setup();
+        }
+    },
+    {immediate: true}
+);
 </script>
 
 <style>

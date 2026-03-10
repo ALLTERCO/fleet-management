@@ -1,24 +1,54 @@
-import { createRouter, createWebHistory } from 'vue-router/auto';
-import { useAuthStore } from '@/stores/auth';
+import {createRouter, createWebHistory} from 'vue-router/auto';
+import {useAuthStore} from '@/stores/auth';
+import {trackInteraction} from '@/tools/observability';
 
 const router = createRouter({
-    history: createWebHistory(import.meta.env.PROD ? '#' : import.meta.env.BASE_URL),
+    history: createWebHistory(import.meta.env.BASE_URL),
+    scrollBehavior(_to, _from, savedPosition) {
+        if (savedPosition) return savedPosition;
+        return {top: 0};
+    }
 });
 
 router.beforeEach((to, from, next) => {
-    // allow zitadel auth to pass
-    if (to.path.startsWith('/auth/signinwin')) {
+    // allow OIDC callback routes to pass
+    if (to.path.startsWith('/auth/signinwin') || to.path === '/callback') {
         next();
         return;
     }
 
     const authStore = useAuthStore();
     if (authStore.loggedIn) {
+        // Check if user has no permissions (after permissions are loaded)
+        if (authStore.permissionsLoaded && authStore.hasNoPermissions) {
+            if (to.path === '/no-permissions') {
+                next();
+            } else {
+                next('/no-permissions');
+            }
+            return;
+        }
+
+        // Allow no-permissions page only if user actually has no permissions
+        if (to.path === '/no-permissions' && !authStore.hasNoPermissions) {
+            next('/');
+            return;
+        }
+
+        // Guard admin-only routes
+        if (to.path === '/settings/users' && !authStore.isAdmin) {
+            next('/settings');
+            return;
+        }
+
         if (to.path === '/login') {
             next('/');
             return;
         } else if (to.path == '/') {
-            next('/dash/1');
+            const canAccessDashboards =
+                authStore.canReadComponent('dashboards');
+            next(canAccessDashboards ? '/dash/1' : '/devices');
+            return;
         }
     } else {
         if (to.path === '/login') {
@@ -30,6 +60,10 @@ router.beforeEach((to, from, next) => {
     }
 
     next();
+});
+
+router.afterEach((to) => {
+    trackInteraction('navigation', 'pageview', to.path);
 });
 
 export default router;

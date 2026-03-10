@@ -1,0 +1,19 @@
+{
+    "name": "@fleet-management/demo-plugin-metadata",
+    "version": "1.0.0",
+    "description": "demo plugin, add metadata",
+    "main": "index.js",
+    "keywords": [],
+    "author": "Allterco Robotics",
+    "license": "ISC",
+    "config": {
+        "metadata": true
+    },
+    "devDependencies": {
+        "@types/node": "^20.5.1",
+        "typescript": "^5.0.0"
+    },
+    "dependencies": {
+        "sqlite3": "^5.1.6"
+    }
+}

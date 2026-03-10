@@ -1,14 +1,33 @@
 <template>
-    <div v-if="vertical"
-        class="flex flex-row gap-2 bg-slate-800 rounded-lg shadow-lg p-2 relative text-sm h-18 justify-start hover:cursor-pointer"
-        :class="{ 'border border-blue-500 shadow-sm shadow-blue-700': selected }" @click="onClick">
-        <figure class="w-14 h-14 aspect-square border border-gray-300 bg-gray-900/50 rounded-full">
+    <div
+        v-if="vertical"
+        class="widget-card flex flex-row items-center gap-3 rounded-lg shadow-lg p-3 relative text-sm min-h-[76px] justify-start hover:cursor-pointer"
+        :class="{
+            'widget-card--selected': selected,
+        }"
+        @click="onClick"
+    >
+        <!-- Upper-right corner for vertical cards -->
+        <div class="absolute top-2 right-2 z-[var(--z-raised)]" @click.stop>
+            <slot name="upper-right-corner"></slot>
+        </div>
+
+        <figure
+            class="widget-avatar w-12 h-12 aspect-square border rounded-full flex-shrink-0"
+        >
             <slot name="image">
-                <img class="rounded-full" src="/shelly_logo_black.jpg" alt="Shelly" />
+                <img
+                    class="rounded-full"
+                    src="/shelly_logo_black.jpg"
+                    alt="Shelly"
+                />
             </slot>
         </figure>
-        <div class="my-auto line-clamp-1 flex-grow text-left overflow-x-scroll no-scrollbar">
-            <div class="font-semibold">
+
+        <div
+            class="flex-grow text-left overflow-hidden min-w-0"
+        >
+            <div class="font-semibold leading-snug">
                 <slot name="name">
                     <span>Widget Name</span>
                 </slot>
@@ -18,30 +37,57 @@
                 <slot name="description" />
             </template>
         </div>
-        <div v-if="!stripped" class="min-w-[40px] min-h-[40px] my-auto">
-            <input v-if="selectMode" type="checkbox" class="w-4 h-4" :value="selected" :checked="selected" />
+
+        <div v-if="!stripped" class="min-w-[44px] min-h-[44px] flex items-center justify-center flex-shrink-0">
+            <input
+                v-if="selectMode"
+                type="checkbox"
+                class="w-4 h-4"
+                :value="selected"
+                :checked="selected"
+            />
             <slot v-else name="action" :vertical="true" />
         </div>
     </div>
 
-    <div v-else
-        class="min-w-[180px] h-[180px] no-scrollbar overflow-hidden text-ellipsis whitespace-pre-line text-center relative bg-slate-800 rounded-lg text-sm text-gray-200 border self-stretch leading-tight"
-        :class="[selected ? 'border-blue-500 shadow shadow-blue-700' : 'border-gray-700']" @click="onClick">
-        <span class="bg-black/60 text-xs rounded-br-lg py-[2px] px-[6px] absolute h-5 self-center top-0 left-0 z-[1]">
+    <div
+        v-else
+        class="widget-card min-w-[var(--grid-min-width)] h-[var(--grid-min-height)] no-scrollbar overflow-hidden text-ellipsis whitespace-pre-line text-center relative rounded-lg text-sm border self-stretch leading-tight"
+        :class="[
+            selected
+                ? 'widget-card--selected'
+                : 'widget-card--default',
+        ]"
+        @click="onClick"
+    >
+        <span
+            class="widget-badge text-xs rounded-br-lg py-[2px] px-[6px] absolute h-5 self-center top-0 left-0 z-[var(--z-raised)]"
+        >
             <slot name="upper-corner">
                 <i class="mr-1 fas fa-code"></i>
                 Widget
             </slot>
         </span>
-        <slot name="upper-right-corner">
-            
-        </slot>
+
+        <!-- Upper-right corner for non-vertical cards -->
+        <div class="absolute top-1 right-1 z-[var(--z-raised)]" @click.stop>
+            <slot name="upper-right-corner"></slot>
+        </div>
+
         <div
-            class="w-full h-[50%] absolute top-0 left-0 border bg-gradient-to-t from-slate-900 to-slate-800 border-none [&>img]:mx-auto [&>img]:h-full [&>img]:brightness-75">
+            class="widget-image-bg w-full h-[50%] absolute top-0 left-0 border-none [&>img]:mx-auto [&>img]:h-full [&>img]:brightness-75"
+        >
             <slot name="image">
-                <img class="rounded-full" src="/shelly_logo_black.jpg" alt="Shelly" />
+                <img
+                    class="rounded-full"
+                    src="/shelly_logo_black.jpg"
+                    alt="Shelly"
+                />
             </slot>
-            <div class="absolute text-center bottom-1 w-full drop-shadow-2xl" style="text-shadow: black 0px 0px 10px">
+            <div
+                class="absolute text-center bottom-1 w-full drop-shadow-2xl"
+                style="text-shadow: 0 1px 8px rgba(0,0,0,0.7)"
+            >
                 <slot name="name">
                     <span>Widget Name</span>
                 </slot>
@@ -53,9 +99,17 @@
                 <slot name="description" />
             </template>
 
-            <div v-if="!stripped"
-                class="min-w-[80%] [&>button]:min-w-[80%] [&>*]:mx-auto min-h-[40px] absolute self-center bottom-2.5">
-                <input v-if="selectMode" type="checkbox" class="w-4 h-4" :value="selected" :checked="selected" />
+            <div
+                v-if="!stripped"
+                class="min-w-[80%] [&>button]:min-w-[80%] [&>*]:mx-auto min-h-[40px] absolute self-center bottom-2.5"
+            >
+                <input
+                    v-if="selectMode"
+                    type="checkbox"
+                    class="w-4 h-4"
+                    :value="selected"
+                    :checked="selected"
+                />
                 <slot v-else name="action" :vertical="false" />
             </div>
         </div>
@@ -63,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { toRefs } from 'vue';
+import {toRefs} from 'vue';
 
 type props_t = {
     selected?: boolean;
@@ -72,16 +126,20 @@ type props_t = {
     stripped?: boolean;
 };
 const props = withDefaults(defineProps<props_t>(), {
-    stripped: false,
+    stripped: false
 });
 
 const emit = defineEmits<{
     select: [];
 }>();
 
-const { vertical, selected } = toRefs(props);
+const {vertical, selected} = toRefs(props);
 
 function onClick() {
     emit('select');
 }
 </script>
+
+<style>
+/* Card styles: global .widget-card system (design-tokens.css §16) — not scoped */
+</style>

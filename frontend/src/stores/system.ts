@@ -1,13 +1,13 @@
-import { defineStore, storeToRefs } from 'pinia';
+import {defineStore, storeToRefs} from 'pinia';
+import {ref, watch} from 'vue';
 import * as ws from '@/tools/websocket';
-import { ref, watch } from 'vue';
-import { useAuthStore } from './auth';
+import {useAuthStore} from './auth';
 
 export const useSystemStore = defineStore('system', () => {
     const config = ref({
         ble: false,
-        mdns: { enable: false },
-        grafana: {} as any,
+        mdns: {enable: false},
+        grafana: {} as any
     });
 
     const devMode = ref(false);
@@ -15,29 +15,31 @@ export const useSystemStore = defineStore('system', () => {
     async function updateConfig() {
         try {
             config.value = await ws.getServerConfig();
-            devMode.value = await ws.sendRPC('FLEET_MANAGER', 'FleetManager.GetVariables').then((variables) => {
-                return !!variables['dev-mode'];
-            });
+            devMode.value = await ws
+                .sendRPC('FLEET_MANAGER', 'FleetManager.GetVariables')
+                .then((variables) => {
+                    return !!variables['dev-mode'];
+                });
         } catch (error) {
             console.error('failed to get server config');
         }
     }
 
     const authStore = useAuthStore();
-    const { loggedIn } = storeToRefs(authStore);
+    const {permissionsLoaded} = storeToRefs(authStore);
     watch(
-        loggedIn,
-        (loggedIn) => {
-            if (loggedIn) {
+        permissionsLoaded,
+        (loaded) => {
+            if (loaded) {
                 updateConfig();
             }
         },
-        { immediate: true }
+        {immediate: true}
     );
 
     return {
         config,
         updateConfig,
-        devMode,
+        devMode
     };
 });

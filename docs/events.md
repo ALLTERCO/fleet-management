@@ -1,18 +1,23 @@
 # Events
+
 Fleet Manager sends events in the form of notifications using the [JSON-RPC 2.0 specification](https://www.jsonrpc.org/specification). There are two types of events:
+
 1. Related to Fleet Management
 2. Related to the connected Shelly devices
 
 ## Fleet Manager Events
 
 ### FleetManager.Config
-`FleetManager.Config` event is send once a change in the Fleet Management config has been made.
+
+`FleetManager.Config` event is sent once a change in the Fleet Management config has been made.
 
 ## Shelly Events
 
 ### Shelly.Connect
+
 Type definition:
-```javascript
+
+```typescript
 interface Connect extends Basic {
     method: "Shelly.Connect"
     params: {
@@ -31,9 +36,11 @@ interface Connect extends Basic {
 ```
 
 ### Shelly.Disconnect
+
 Type definition:
-```javascript
-interface Disonnect extends Basic {
+
+```typescript
+interface Disconnect extends Basic {
     method: "Shelly.Disconnect"
     params: { 
         shellyID: string
@@ -42,8 +49,10 @@ interface Disonnect extends Basic {
 ```
 
 ### Shelly.Info
+
 Type definition:
-```javascript
+
+```typescript
 interface Info extends Basic {
     method: "Shelly.Info",
     params: {
@@ -54,8 +63,10 @@ interface Info extends Basic {
 ```
 
 ### Shelly.Status
+
 Type definition:
-```javascript
+
+```typescript
 interface Status extends Basic {
     method: "Shelly.Status"
     params: {
@@ -66,8 +77,10 @@ interface Status extends Basic {
 ```
 
 ### Shelly.Settings
+
 Type definition:
-```javascript
+
+```typescript
 interface Settings extends Basic {
     method: "Shelly.Settings"
     params: {
@@ -78,8 +91,10 @@ interface Settings extends Basic {
 ```
 
 ### Shelly.Message
+
 Type definition:
-```javascript
+
+```typescript
 interface Message extends Basic {
     method: "Shelly.Message"
     params: {
@@ -89,10 +104,14 @@ interface Message extends Basic {
     }
 }
 ```
+
 `req` is the JSON-RPC request that was send to the device. If the `req` object is `undefined` this means the Shelly device is sending a notification. If `req` is present, the Shelly device is responding to a command that was been send over Fleet Manager.
+
 ### Shelly.KVS
+
 Type definition:
-```javascript
+
+```typescript
 interface KVS extends Basic {
     method: "Shelly.KVS"
     params: {

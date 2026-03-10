@@ -1,29 +1,40 @@
 <template>
-    <div class="space-y-2">
+    <h2 class="sr-only">Configurations</h2>
+    <div v-if="initialLoading" class="flex flex-col items-center justify-center py-16">
+        <Skeleton variant="rect" width="100%" height="3rem" class="mb-4" />
+        <Skeleton variant="rect" width="100%" height="12rem" />
+    </div>
+    <div v-else class="space-y-2">
         <!-- Profiles & Configurations -->
-        <div class="flex flex-row justify-center flex-wrap gap-5 pt-5">
+        <div class="config-grid">
             <!-- Profile selection -->
-            <div class="grow">
+            <div class="config-grid__card">
                 <BasicBlock darker title="Profiles">
                     <template #buttons>
                         <div class="flex flex-row justify-end">
                             <Button type="blue" narrow @click="createProfileModal = true">Add profile</Button>
                         </div>
                     </template>
-                    <ul v-for="(item, key) in allProfiles" :key="key" class="mt-6 space-y-1">
-                        <li class="bg-slate-800 rounded-xl hover:cursor-pointer shadow-md p-3"
-                            :class="key === profile ? 'p-0 border-2 border-blue-700' : ''" @click="profileChanged(key)">
+                    <div v-if="Object.keys(allProfiles).length === 0" class="mt-6">
+                        <EmptyBlock>
+                            <p class="text-lg font-semibold pb-2">No profiles</p>
+                            <p class="text-sm">Create a profile to start managing configurations.</p>
+                        </EmptyBlock>
+                    </div>
+                    <ul v-else v-for="(item, key) in allProfiles" :key="key" class="mt-6 space-y-1">
+                        <li class="bg-[var(--color-surface-2)] rounded-xl hover:cursor-pointer shadow-md p-3"
+                            :class="key === profile ? 'p-0 border-2 border-[var(--color-primary)]' : ''" @click="profileChanged(key)">
                             <div class="flex flex-row flex-wrap justify-between align-center">
                                 <div class="flex">
                                     <span class="px-3">{{ key }}</span>
                                 </div>
                                 <div class="flex gap-3">
                                     <span
-                                        class="whitespace-wrap text-center rounded-full bg-blue-200 px-2 py-1 text-sm text-blue-700">
+                                        class="whitespace-wrap text-center rounded-full bg-[var(--color-primary)] px-2 py-1 text-sm text-white">
                                         {{ Object.keys(item).length }} configs
                                     </span>
                                     <span
-                                        class="whitespace-wrap text-center rounded-lg bg-red-700 px-2 py-1 text-sm text-gray-200"
+                                        class="whitespace-wrap text-center rounded-lg bg-[var(--color-danger)] px-2 py-1 text-sm text-[var(--color-text-secondary)]"
                                         @click.stop="deleteProfile(key)">
                                         <span class="fas fa-trash-alt" />
                                     </span>
@@ -35,7 +46,7 @@
             </div>
 
             <!-- Configurations list and edit/delete buttons -->
-            <div class="grow">
+            <div class="config-grid__card">
                 <BasicBlock darker title="Configurations">
                     <template #buttons>
                         <div class="flex flex-row justify-end">
@@ -47,8 +58,8 @@
                     <div v-if="profile.length !== 0">
                         <ul v-if="Object.keys(configs).length" class="mt-6 space-y-1">
                             <li v-for="(config, key) in configs" :key="key"
-                                class="bg-slate-800 p-2 rounded-xl hover:cursor-pointer shadow-md"
-                                :class="key === selectedConfigKey ? 'p-0 border-2 border-blue-700' : ''"
+                                class="bg-[var(--color-surface-2)] p-2 rounded-xl hover:cursor-pointer shadow-md"
+                                :class="key === selectedConfigKey ? 'p-0 border-2 border-[var(--color-primary)]' : ''"
                                 @click="selectConfig(key, config)">
                                 <div class="flex flex-row flex-wrap justify-between align-center">
                                     <div class="flex">
@@ -67,17 +78,17 @@
                             </li>
                         </ul>
                         <div v-else
-                            class="flex flex-row justify-center content-center pt-10 border-blue-100 rounded-lg shadow">
+                            class="flex flex-row justify-center content-center pt-10 border-[var(--color-border-default)] rounded-lg shadow">
                             <h3 class="mt-0.5 text-lg text-white-900">Profile has no configurations</h3>
                         </div>
                     </div>
                     <div v-else
-                        class="flex flex-row justify-center content-center pt-10 border-blue-100 rounded-lg shadow">
+                        class="flex flex-row justify-center content-center pt-10 border-[var(--color-border-default)] rounded-lg shadow">
                         <h3 class="mt-0.5 text-lg text-white-900">Select profile to view its configurations</h3>
                     </div>
                 </BasicBlock>
             </div>
-            <div class="grow">
+            <div class="config-grid__card">
                 <BasicBlock darker title="Settings">
                     <template #buttons>
                         <div class="flex justify-end">
@@ -92,14 +103,14 @@
                             <div v-if="viewMode === 'json'">
                                 <JSONViewer :data="selectedConfig" />
                             </div>
-                            <div v-else class="mt-4 p-4 bg-gray-800 rounded-lg">
+                            <div v-else class="mt-4 p-4 bg-[var(--color-surface-2)] rounded-lg">
                                 <div v-for="section in settings" :key="section.title" class="mb-4">
-                                    <h3 class="text-xl font-bold text-white mb-2 border-b border-gray-600 pb-1">
+                                    <h3 class="text-xl font-bold text-white mb-2 border-b border-[var(--color-border-strong)] pb-1">
                                         {{ section.title }}
                                     </h3>
                                     <div class="grid grid-cols-2 gap-4">
                                         <div v-for="option in section.options" :key="option.key" class="flex flex-col">
-                                            <span class="text-sm text-gray-300">{{ option.label }}</span>
+                                            <span class="text-sm text-[var(--color-text-secondary)]">{{ option.label }}</span>
                                             <span class="text-base text-white">
                                                 {{ getNestedValue(selectedConfig, option.key) || '-' }}
                                             </span>
@@ -109,7 +120,7 @@
                             </div>
                         </div>
                         <div v-else
-                            class="flex flex-row justify-center content-center pt-10 border-blue-100 rounded-lg shadow">
+                            class="flex flex-row justify-center content-center pt-10 border-[var(--color-border-default)] rounded-lg shadow">
                             <h3 class="mt-0.5 text-lg text-white-900">No config selected</h3>
                         </div>
                     </div>
@@ -185,24 +196,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import JSONViewer from '@/components/JSONViewer.vue';
+import {useLocalStorage} from '@vueuse/core';
+import {onMounted, ref} from 'vue';
 import BasicBlock from '@/components/core/BasicBlock.vue';
 import Button from '@/components/core/Button.vue';
+import EmptyBlock from '@/components/core/EmptyBlock.vue';
 import Checkbox from '@/components/core/Checkbox.vue';
 import Collapse from '@/components/core/Collapse.vue';
 import Dropdown from '@/components/core/Dropdown.vue';
 import Input from '@/components/core/Input.vue';
-import Modal from '@/components/modals/Modal.vue';
-import { FLEET_MANAGER_WEBSOCKET } from '@/constants';
-import { useToastStore } from '@/stores/toast';
-import * as ws from '@/tools/websocket';
-import { useLocalStorage } from '@vueuse/core';
+import Skeleton from '@/components/core/Skeleton.vue';
+import JSONViewer from '@/components/JSONViewer.vue';
 import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
+import Modal from '@/components/modals/Modal.vue';
+import {FLEET_MANAGER_WEBSOCKET} from '@/constants';
+import {useToastStore} from '@/stores/toast';
+import * as ws from '@/tools/websocket';
 
 const toast = useToastStore();
 const configsRegistry = ws.getRegistry('configs');
 const loading = ref(false);
+const initialLoading = ref(true);
 
 // Reactive state declarations
 const allProfiles = ref<Record<string, object>>({});
@@ -222,7 +236,7 @@ const modalRef = ref<InstanceType<typeof ConfirmationModal>>();
 const settings = [
     {
         title: 'Name',
-        options: [{ label: 'Name', key: 'name', placeholder: '', type: 'input' }],
+        options: [{label: 'Name', key: 'name', placeholder: '', type: 'input'}]
     },
     {
         title: 'Timer',
@@ -231,17 +245,19 @@ const settings = [
                 label: 'Auto On',
                 key: 'switch.auto_on_delay',
                 type: 'input',
-                placeholder: 'Seconds to pass until the component is switched back on',
+                placeholder:
+                    'Seconds to pass until the component is switched back on'
             },
-            { label: 'Enable', key: 'switch.auto_on', type: 'checkbox' },
+            {label: 'Enable', key: 'switch.auto_on', type: 'checkbox'},
             {
                 label: 'Auto Off',
                 key: 'switch.auto_off_delay',
                 type: 'input',
-                placeholder: 'Seconds to pass until the component is switched back off',
+                placeholder:
+                    'Seconds to pass until the component is switched back off'
             },
-            { label: 'Enable', key: 'switch.auto_off', type: 'checkbox' },
-        ],
+            {label: 'Enable', key: 'switch.auto_off', type: 'checkbox'}
+        ]
     },
     {
         title: 'Power on default',
@@ -250,16 +266,21 @@ const settings = [
                 label: 'Power on option:',
                 key: 'switch.initial_state',
                 options: ['on', 'off', 'restore_last', 'match_input'],
-                type: 'dropdown',
-            },
-        ],
+                type: 'dropdown'
+            }
+        ]
     },
     {
         title: 'Websocket',
         options: [
-            { label: 'WS Address', key: 'ws.server', type: 'input', placeholder: 'Enter Fleet Manager address' },
-            { label: 'Enabled', key: 'ws.enable', type: 'checkbox' },
-        ],
+            {
+                label: 'WS Address',
+                key: 'ws.server',
+                type: 'input',
+                placeholder: 'Enter Fleet Manager address'
+            },
+            {label: 'Enabled', key: 'ws.enable', type: 'checkbox'}
+        ]
     },
     {
         title: 'Wi-Fi',
@@ -268,31 +289,71 @@ const settings = [
                 label: 'Access point password',
                 key: 'wifi.ap.pass',
                 type: 'input',
-                placeholder: 'Provide access point password',
+                placeholder: 'Provide access point password'
             },
-            { type: 'checkbox', label: 'Enable AP', key: 'wifi.ap.enable' },
-            { type: 'input', label: 'Network Name', key: 'wifi.sta.ssid', placeholder: 'Enter Wi-Fi name' },
-            { type: 'input', label: 'Password', key: 'wifi.sta.pass', placeholder: 'Enter Wi-Fi password' },
-            { type: 'checkbox', label: 'Enable', key: 'wifi.sta.enable' },
-            { type: 'input', label: 'Network Name 2', key: 'wifi.sta1.ssid', placeholder: 'Enter second Wi-Fi name' },
-            { type: 'input', label: 'Password', key: 'wifi.sta1.pass', placeholder: 'Enter Wi-Fi password' },
-            { type: 'checkbox', label: 'Enable', key: 'wifi.sta2.enable' },
-        ],
+            {type: 'checkbox', label: 'Enable AP', key: 'wifi.ap.enable'},
+            {
+                type: 'input',
+                label: 'Network Name',
+                key: 'wifi.sta.ssid',
+                placeholder: 'Enter Wi-Fi name'
+            },
+            {
+                type: 'input',
+                label: 'Password',
+                key: 'wifi.sta.pass',
+                placeholder: 'Enter Wi-Fi password'
+            },
+            {type: 'checkbox', label: 'Enable', key: 'wifi.sta.enable'},
+            {
+                type: 'input',
+                label: 'Network Name 2',
+                key: 'wifi.sta1.ssid',
+                placeholder: 'Enter second Wi-Fi name'
+            },
+            {
+                type: 'input',
+                label: 'Password',
+                key: 'wifi.sta1.pass',
+                placeholder: 'Enter Wi-Fi password'
+            },
+            {type: 'checkbox', label: 'Enable', key: 'wifi.sta2.enable'}
+        ]
     },
     {
         title: 'MQTT',
         options: [
-            { type: 'checkbox', label: 'Enable', key: 'mqtt.enable' },
-            { type: 'input', label: 'Server', key: 'mqtt.server', placeholder: 'Enter MQTT server' },
-            { type: 'input', label: 'Client ID', key: 'mqtt.client_id', placeholder: 'Enter Client ID' },
-            { type: 'input', label: 'User', key: 'mqtt.user', placeholder: 'Enter User' },
-            { type: 'input', label: 'Topic Prefix', key: 'mqtt.topic_prefix', placeholder: 'Enter Topic Prefix' },
-        ],
+            {type: 'checkbox', label: 'Enable', key: 'mqtt.enable'},
+            {
+                type: 'input',
+                label: 'Server',
+                key: 'mqtt.server',
+                placeholder: 'Enter MQTT server'
+            },
+            {
+                type: 'input',
+                label: 'Client ID',
+                key: 'mqtt.client_id',
+                placeholder: 'Enter Client ID'
+            },
+            {
+                type: 'input',
+                label: 'User',
+                key: 'mqtt.user',
+                placeholder: 'Enter User'
+            },
+            {
+                type: 'input',
+                label: 'Topic Prefix',
+                key: 'mqtt.topic_prefix',
+                placeholder: 'Enter Topic Prefix'
+            }
+        ]
     },
     {
         title: 'Bluetooth',
-        options: [{ type: 'checkbox', label: 'Enable', key: 'bluetooth.enable' }],
-    },
+        options: [{type: 'checkbox', label: 'Enable', key: 'bluetooth.enable'}]
+    }
 ];
 
 // Helper functions for nested values
@@ -318,42 +379,45 @@ function setNestedValue(obj: any, path: string, value: any) {
 const newConfig = ref({
     name: 'My configuration',
     ws: {
-        server: useLocalStorage('propose-ws', FLEET_MANAGER_WEBSOCKET + '/shelly'),
-        enable: false,
+        server: useLocalStorage(
+            'propose-ws',
+            FLEET_MANAGER_WEBSOCKET + '/shelly'
+        ),
+        enable: false
     },
     switch: {
         auto_on_delay: '',
         auto_on: false,
         auto_off_delay: '',
         auto_off: false,
-        initial_state: '',
+        initial_state: ''
     },
     wifi: {
         ap: {
             pass: '',
-            enable: false,
+            enable: false
         },
         sta: {
             enable: false,
             ssid: '',
-            pass: '',
+            pass: ''
         },
         sta1: {
             enable: false,
             ssid: '',
-            pass: '',
-        },
+            pass: ''
+        }
     },
     mqtt: {
         enable: false,
         server: '',
         user: '',
         client_id: '',
-        topic_prefix: '',
+        topic_prefix: ''
     },
     bluetooth: {
-        enable: false,
-    },
+        enable: false
+    }
 });
 const configs = ref<Record<string, any>>({});
 
@@ -387,15 +451,15 @@ function editConfig(key: string, config: any) {
 async function saveConfiguration() {
     loading.value = true;
     const nestedConfig = nestConfig(newConfig.value);
-    const key=editingConfigKey.value|| '-1';
-    if (key!=='-1') {
+    const key = editingConfigKey.value || '-1';
+    if (key !== '-1') {
         configs.value[key] = {
             ...nestedConfig,
             name: newConfig.value.name || 'My configuration',
             ws: {
                 server: newConfig.value.ws?.server || '',
-                enable: newConfig.value.ws?.enable || false,
-            },
+                enable: newConfig.value.ws?.enable || false
+            }
         };
     }
     try {
@@ -409,9 +473,7 @@ async function saveConfiguration() {
         await closeConfigModal();
         await refreshConfigs();
         selectConfig(key, configs.value[key]);
-
     }
-    
 }
 
 async function addNewConfiguration() {
@@ -423,8 +485,8 @@ async function addNewConfiguration() {
         name: newConfig.value.name || 'My configuration',
         ws: {
             server: newConfig.value.ws?.server || '',
-            enable: newConfig.value.ws?.enable || false,
-        },
+            enable: newConfig.value.ws?.enable || false
+        }
     };
     try {
         await configsRegistry.setItem(profile.value, configs.value);
@@ -451,7 +513,6 @@ async function createProfile() {
     } finally {
         createProfileModal.value = false;
         await getallProfiles();
-
     }
 }
 
@@ -467,6 +528,7 @@ async function getallProfiles() {
 
 async function refreshConfigs() {
     configs.value = {};
+    if (!profile.value) return;
     configs.value = (await configsRegistry.getItem(profile.value)) || {};
 }
 
@@ -474,42 +536,45 @@ function resetNewConfig() {
     newConfig.value = {
         name: 'My configuration',
         ws: {
-            server: useLocalStorage('propose-ws', FLEET_MANAGER_WEBSOCKET + '/shelly'),
-            enable: false,
+            server: useLocalStorage(
+                'propose-ws',
+                FLEET_MANAGER_WEBSOCKET + '/shelly'
+            ),
+            enable: false
         },
         switch: {
             auto_on_delay: '',
             auto_on: false,
             auto_off_delay: '',
             auto_off: false,
-            initial_state: '',
+            initial_state: ''
         },
         wifi: {
             ap: {
                 pass: '',
-                enable: false,
+                enable: false
             },
             sta: {
                 enable: false,
                 ssid: '',
-                pass: '',
+                pass: ''
             },
             sta1: {
                 enable: false,
                 ssid: '',
-                pass: '',
-            },
+                pass: ''
+            }
         },
         mqtt: {
             enable: false,
             server: '',
             user: '',
             client_id: '',
-            topic_prefix: '',
+            topic_prefix: ''
         },
         bluetooth: {
-            enable: false,
-        },
+            enable: false
+        }
     };
 }
 
@@ -525,7 +590,7 @@ async function deleteProfile(name: string) {
             } catch (error) {
                 toast.error(`Failed to delete profile '${name}'`);
             }
-        })
+        });
     }
 }
 async function deleteConfig(name: string) {
@@ -540,7 +605,7 @@ async function deleteConfig(name: string) {
             } catch (error) {
                 toast.error(`Failed to delete config '${name}'`);
             }
-        })
+        });
     }
 }
 
@@ -563,6 +628,7 @@ function nestConfig(obj: Record<string, any>) {
 
 async function refreshProfiles() {
     profiles.value = await configsRegistry.keys();
+    if (profiles.value.length === 0) return;
     if (!profiles.value.includes(profile.value)) {
         profileChanged(profiles.value[0]);
     }
@@ -581,6 +647,21 @@ onMounted(async () => {
     } catch (error) {
         toast.error('cannot refresh configs');
         console.error('cannot refresh configs', error);
+    } finally {
+        initialLoading.value = false;
     }
 });
 </script>
+
+<style scoped>
+.config-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--space-5);
+    padding-top: var(--space-5);
+    align-items: start;
+}
+.config-grid__card {
+    min-height: 240px;
+}
+</style>

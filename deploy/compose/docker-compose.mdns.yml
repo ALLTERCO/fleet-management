@@ -1,0 +1,12 @@
+# mDNS repeater — device discovery on the local network
+#
+# Used by: --with mdns (or --full which does NOT include mdns)
+
+services:
+  mdns-repeater:
+    image: shellygroup/mdns-repeater:${MDNS_REPEATER_VERSION}
+    restart: unless-stopped
+    environment:
+      LISTEN_ON: ${MDNS_ON}
+      REPEAT_TO: ${MDNS_TO}
+    network_mode: "host"

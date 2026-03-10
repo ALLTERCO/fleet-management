@@ -1,0 +1,66 @@
+# Fleet Manager application — pulled from Docker Hub
+#
+# Used by deploy-public.sh for community deployments.
+# Same as docker-compose.fleet.yml but uses a pre-built image instead of
+# building from source.
+
+services:
+  fleet-manager:
+    image: shellygroup/fleet-management:${FM_VERSION:-latest}
+    env_file:
+      - path: ../state/fm-oidc.env
+        required: false
+    environment:
+      NODE_OPTIONS: "--max-old-space-size=${FM_HEAP_SIZE}"
+      FLEET_MANAGER_PORT: ${FLEET_MANAGER_PORT}
+      PLUGINS_FOLDER: /app/plugins
+      fleet-manager_internalStorage__connection__host: fleet-db
+      fleet-manager_internalStorage__connection__user: postgres
+      fleet-manager_internalStorage__connection__password: ${POSTGRES_PASSWORD}
+      fleet-manager_internalStorage__connection__database: fleet
+      fleet-manager_observability: "${FM_OBSERVABILITY}"
+    volumes:
+      - fm-backend-cfg-v:/app/backend/cfg/
+      - fm-backend-plugins-v:/app/plugins
+      - fm-backend-uploads-v:/app/backend/uploads
+      - fm-backend-data-v:/app/backend/data
+    ports:
+      - "${FLEET_MANAGER_PORT}:7011"
+      - "8100-8104:8100-8104"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp:size=64M
+      - /app/backend/logs:size=32M
+    stop_grace_period: 30s
+    networks:
+      - fleet-net
+    depends_on:
+      fleet-db:
+        condition: "service_healthy"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7011/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  fleet-net:
+
+volumes:
+  fm-backend-cfg-v:
+  fm-backend-plugins-v:
+  fm-backend-uploads-v:
+  fm-backend-data-v:

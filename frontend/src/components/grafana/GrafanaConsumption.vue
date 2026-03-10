@@ -6,9 +6,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, toRef } from 'vue';
+import {computed, ref, toRef} from 'vue';
 import Dropdown from '@/components/core/Dropdown.vue';
-import { useSystemStore } from '@/stores/system';
+import {useSystemStore} from '@/stores/system';
 
 const ONE_HOUR_MS = 1000 * 60 * 60;
 const ONE_DAY_MS = 24 * ONE_HOUR_MS;
@@ -27,7 +27,9 @@ const from = ref(String(new Date(Date.now() - ONE_HOUR_MS)));
 const to = ref(String(Date.now()));
 
 const url = computed(() => {
-    const dashboard = system.config?.grafana?.dashboards?.find((dash: { slug: string }) => dash.slug === 'templates');
+    const dashboard = system.config?.grafana?.dashboards?.find(
+        (dash: {slug: string}) => dash.slug === 'templates'
+    );
     if (!dashboard) return;
 
     const url = dashboard.url.replace('/d/', '/d-solo/');

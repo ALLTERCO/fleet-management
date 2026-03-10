@@ -1,6 +1,6 @@
-import { Ref, ref } from 'vue';
+import {type Ref, ref} from 'vue';
+import {getPreloadedData, getRegistry, sendRPC} from '@/tools/websocket';
 import * as ws from '../tools/websocket';
-import { getRegistry, sendRPC } from '@/tools/websocket';
 
 function storeData(prefix: string, key: string, data: object) {
     localStorage.setItem(prefix + key, JSON.stringify(data));
@@ -16,10 +16,16 @@ function loadData<T>(prefix: string, key: string): T | null {
     }
 }
 
-export default function useRegistry<T extends {}>(registry: string, key: string) {
+export default function useRegistry<T extends {}>(
+    registry: string,
+    key: string
+) {
     const prefix = `${registry}-registry-cache:`;
-    const data = ref<T | null>(loadData<T>(prefix, key)) as Ref<T | null>;
-    const loading = ref(true);
+    // Priority: preloaded (fresh from server on connect) → localStorage cache → null
+    const preloaded = getPreloadedData<T>(registry, key);
+    const initial = preloaded ?? loadData<T>(prefix, key);
+    const data = ref<T | null>(initial) as Ref<T | null>;
+    const loading = ref(initial == null);
     const error = ref(false);
 
     const UIRegistry = ws.getRegistry(registry);
@@ -39,26 +45,30 @@ export default function useRegistry<T extends {}>(registry: string, key: string)
     }
 
     function refresh() {
-        data.value = null;
+        // Keep existing data visible while fetching — avoids spinner flash
         return execute();
     }
 
     async function upload() {
-        await getRegistry('ui').setItem('dashboards', {id:key,items:data.value});
+        await getRegistry('ui').setItem('dashboards', {
+            id: key,
+            items: data.value
+        });
         await UIRegistry.setItem(key, data.value);
         await refresh();
     }
 
-
-
-    // run once
-    execute();
+    // If data was preloaded (fresh from server), skip the initial RPC.
+    // Otherwise fetch: localStorage data is shown immediately while RPC refreshes in background.
+    if (!preloaded) {
+        execute();
+    }
 
     return {
         data,
         loading,
         error,
         refresh,
-        upload,
+        upload
     };
 }

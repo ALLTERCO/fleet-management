@@ -1,0 +1,923 @@
+/*
+ * ============================================================================
+ * FLEET MANAGEMENT — DESIGN SYSTEM TOKENS
+ * ============================================================================
+ *
+ * Single source of truth for all visual properties.
+ * Import this file BEFORE tailwindcss in style.css.
+ *
+ * Architecture:  Primitives → Semantics → Components
+ *
+ *   Primitives   – raw color/size values (--color-blue-600, --space-4)
+ *   Semantics    – meaning-based aliases  (--color-primary, --color-danger)
+ *   Components   – component-level tokens (--btn-bg, --input-border)
+ *
+ * Usage:
+ *   background-color: var(--color-surface-1);
+ *   color: var(--color-text-primary);
+ *   padding: var(--space-4);
+ *   border-radius: var(--radius-md);
+ *
+ * Dark theme only. All semantic tokens are defined in :root.
+ *
+ * Color Saturation Tiers
+ *   Tier 1 — Neutrals (0-10%): backgrounds, borders, structure
+ *   Tier 2 — UI Elements (50-90%): functional colors, status indicators
+ *   Tier 3 — Accents (70-100%): CTAs, brand, focus points
+ *
+ * Elevation Levels
+ *   Level 0: Flat (shadow-none, no motion) — page background
+ *   Level 1: Raised (shadow-sm, duration-fast) — buttons, cards
+ *   Level 2: Floating (shadow-md, duration-normal) — dropdowns, tooltips
+ *   Level 3: Overlay (shadow-lg, duration-moderate) — modals, drawers
+ *   Level 4: Supreme (shadow-xl, duration-slow) — dialogs, notifications
+ * ============================================================================
+ */
+
+/* ==========================================================================
+   1. PRIMITIVE TOKENS — Raw values, never used directly in components
+   ========================================================================== */
+
+:root {
+    /* --- Neutral Scale (standardized to slate — replaces gray/neutral/slate mix) --- */
+    --primitive-neutral-50: #f8fafc;
+    --primitive-neutral-100: #f1f5f9;
+    --primitive-neutral-200: #e2e8f0;
+    --primitive-neutral-300: #cbd5e1;
+    --primitive-neutral-400: #94a3b8;
+    --primitive-neutral-500: #64748b;
+    --primitive-neutral-600: #475569;
+    --primitive-neutral-700: #334155;
+    --primitive-neutral-800: #1e293b;
+    --primitive-neutral-900: #0f172a;
+    --primitive-neutral-950: #020617;
+
+    /* --- Brand / Primary (Blue) --- */
+    --primitive-blue-50: #eff6ff;
+    --primitive-blue-100: #dbeafe;
+    --primitive-blue-200: #bfdbfe;
+    --primitive-blue-300: #93c5fd;
+    --primitive-blue-400: #60a5fa;
+    --primitive-blue-500: #3b82f6;
+    --primitive-blue-600: #2563eb;
+    --primitive-blue-700: #1d4ed8;
+    --primitive-blue-800: #1e40af;
+    --primitive-blue-900: #1e3a8a;
+
+    /* --- Success (Green) --- */
+    --primitive-green-300: #86efac;
+    --primitive-green-400: #4ade80;
+    --primitive-green-500: #22c55e;
+    --primitive-green-600: #16a34a;
+    --primitive-green-700: #15803d;
+    --primitive-green-800: #166534;
+
+    /* --- Danger (Red) --- */
+    --primitive-red-300: #fca5a5;
+    --primitive-red-400: #f87171;
+    --primitive-red-500: #ef4444;
+    --primitive-red-600: #dc2626;
+    --primitive-red-700: #b91c1c;
+    --primitive-red-800: #991b1b;
+
+    /* --- Warning (Amber) --- */
+    --primitive-amber-300: #fcd34d;
+    --primitive-amber-400: #fbbf24;
+    --primitive-amber-500: #f59e0b;
+    --primitive-amber-600: #d97706;
+    --primitive-amber-700: #b45309;
+    --primitive-amber-800: #92400e;
+
+    /* --- Info (Cyan) --- */
+    --primitive-cyan-400: #22d3ee;
+    --primitive-cyan-500: #06b6d4;
+
+    /* --- Accent (Purple) --- */
+    --primitive-purple-400: #c084fc;
+    --primitive-purple-500: #a855f7;
+
+    /* --- Teal --- */
+    --primitive-teal-400: #2dd4bf;
+    --primitive-teal-500: #14b8a6;
+
+    /* --- Orange --- */
+    --primitive-orange-400: #fb923c;
+    --primitive-orange-500: #f97316;
+    --primitive-orange-600: #ea580c;
+    --primitive-orange-800: #9a3412;
+}
+
+/* ==========================================================================
+   2. SEMANTIC TOKENS — Meaning-based, theme-switchable
+   ========================================================================== */
+
+:root {
+    /* --- Surfaces (background layers, darkest → lightest) --- */
+    --color-surface-0: var(--primitive-neutral-950); /* deepest bg / overlays */
+    --color-surface-1: var(--primitive-neutral-900); /* page background */
+    --color-surface-2: var(--primitive-neutral-800); /* cards, panels */
+    --color-surface-3: var(
+        --primitive-neutral-700
+    ); /* hover states, secondary panels */
+    --color-surface-4: var(--primitive-neutral-600); /* disabled, tertiary */
+
+    /* --- Text --- */
+    --color-text-primary: var(
+        --primitive-neutral-50
+    ); /* headings, important text */
+    --color-text-secondary: var(--primitive-neutral-300); /* body text */
+    --color-text-tertiary: var(
+        --primitive-neutral-400
+    ); /* captions, labels, placeholders */
+    --color-text-disabled: var(--primitive-neutral-500); /* disabled text */
+    --color-text-inverse: var(
+        --primitive-neutral-900
+    ); /* text on light backgrounds */
+
+    /* --- Borders --- */
+    --color-border-default: var(--primitive-neutral-700); /* standard borders */
+    --color-border-subtle: var(--primitive-neutral-800); /* subtle separators */
+    --color-border-strong: var(
+        --primitive-neutral-600
+    ); /* emphasized borders */
+    --color-border-focus: var(--primitive-blue-500); /* focus rings */
+
+    /* --- Primary (actions, links, interactive) --- */
+    --color-primary: var(--primitive-blue-600);
+    --color-primary-hover: var(--primitive-blue-700);
+    --color-primary-active: var(--primitive-blue-800);
+    --color-primary-subtle: var(--primitive-blue-900);
+    --color-primary-text: var(--primitive-blue-400);
+
+    /* --- Status: Success --- */
+    --color-success: var(--primitive-green-700);
+    --color-success-hover: var(--primitive-green-800);
+    --color-success-subtle: var(--primitive-green-800);
+    --color-success-text: var(--primitive-green-500);
+
+    /* --- Status: Danger --- */
+    --color-danger: var(--primitive-red-700);
+    --color-danger-hover: var(--primitive-red-800);
+    --color-danger-subtle: var(--primitive-red-800);
+    --color-danger-text: var(--primitive-red-500);
+
+    /* --- Status: Warning --- */
+    --color-warning: var(--primitive-amber-600);
+    --color-warning-hover: var(--primitive-amber-700);
+    --color-warning-subtle: var(--primitive-amber-800); /* also usable as bg-warning-subtle */
+    --color-warning-text: var(--primitive-amber-400);
+
+    /* --- Status: Info --- */
+    --color-info: var(--primitive-cyan-500);
+    --color-info-hover: var(--primitive-cyan-400);
+    --color-info-subtle: rgba(6, 182, 212, 0.15);
+    --color-info-text: var(--primitive-cyan-400);
+
+    /* --- Accent --- */
+    --color-accent: var(--primitive-purple-500);
+    --color-accent-hover: var(--primitive-purple-400);
+    --color-accent-subtle: rgba(168, 85, 247, 0.15);
+    --color-accent-text: var(--primitive-purple-400);
+
+    /* --- Teal --- */
+    --color-teal: var(--primitive-teal-500);
+    --color-teal-text: var(--primitive-teal-400);
+
+    /* --- Orange (used by Button) --- */
+    --color-orange: var(--primitive-orange-600);
+    --color-orange-hover: var(--primitive-orange-500);
+    --color-orange-subtle: var(--primitive-orange-800);
+    --color-orange-text: var(--primitive-orange-400);
+
+    /* --- Links --- */
+    --color-link: var(--primitive-blue-400);
+    --color-link-hover: var(--primitive-blue-300);
+    --color-link-visited: var(--primitive-purple-400);
+
+    /* --- Disabled backgrounds --- */
+    --color-bg-disabled: var(--primitive-neutral-700);
+    --color-border-disabled: var(--primitive-neutral-600);
+
+    /* --- Code blocks --- */
+    --color-code-bg: var(--primitive-neutral-800);
+    --color-code-text: var(--primitive-green-300);
+
+    /* --- Badges / pills --- */
+    --color-badge-bg: var(--primitive-neutral-700);
+    --color-badge-text: var(--primitive-neutral-200);
+
+    /* --- Form validation --- */
+    --color-input-error: var(--primitive-red-500);
+    --color-input-success: var(--primitive-green-500);
+
+    /* --- Selection --- */
+    --color-selection-bg: var(--primitive-blue-800);
+    --color-selection-text: var(--primitive-neutral-50);
+
+    /* --- Scrollbar --- */
+    --color-scrollbar-track: rgba(0, 0, 0, 0.21);
+    --color-scrollbar-thumb: var(--primitive-blue-800);
+
+    /* --- Overlays --- */
+    --color-overlay: rgba(0, 0, 0, 0.6);
+    --color-overlay-heavy: rgba(0, 0, 0, 0.8);
+
+    /* --- Glass / Frosted surfaces --- */
+    --glass-bg: rgba(15, 23, 42, 0.65);
+    --glass-bg-heavy: rgba(15, 23, 42, 0.88);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-highlight: rgba(255, 255, 255, 0.04);
+    --glass-hover: rgba(255, 255, 255, 0.08);
+    --glass-input: rgba(255, 255, 255, 0.06);
+    --glass-blur: 12px;
+    --glass-shadow: 0 4px 24px -4px rgba(0, 0, 0, 0.3),
+        0 0 0 1px rgba(255, 255, 255, 0.05);
+
+    /* --- Device card --- */
+    --dcard-radius: 18px;
+    --dcard-bg: linear-gradient(165deg, #16243c 0%, #111e30 100%);
+    --dcard-bg-off: linear-gradient(165deg, #12192a 0%, #0e1520 100%);
+    --dcard-border: rgba(68, 149, 209, 0.14);
+    --dcard-border-off: rgba(240, 78, 94, 0.22);
+    --dcard-shadow-off: inset 0 0 40px rgba(240, 78, 94, 0.04);
+    --dcard-hover-shadow: 0 22px 50px rgba(0, 0, 0, 0.55),
+        0 0 0 1px rgba(68, 149, 209, 0.22);
+    --dcard-name-color: rgba(235, 245, 255, 0.92);
+    --dcard-name-color-off: rgba(235, 245, 255, 0.22);
+    --dcard-name-border: rgba(68, 149, 209, 0.08);
+    --dcard-name-border-off: rgba(240, 78, 94, 0.08);
+    --dcard-accent-off: #F04E5E;
+    --dcard-dot-color: #22D3A0;
+    --dcard-pill-color: #F04E5E;
+}
+
+/* ==========================================================================
+   3. TYPOGRAPHY TOKENS — Modular scale (Major Third 1.25)
+   ========================================================================== */
+
+:root {
+    /* --- Font Family --- */
+    --font-sans:
+        system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+        sans-serif;
+    --font-mono:
+        "JetBrains Mono", "Fira Code", ui-monospace, "Cascadia Code", monospace;
+
+    /* --- Font Size Scale (Major Third 1.25) --- */
+    --text-2xs: 0.625rem; /* 10px — micro labels */
+    --text-xs: 0.75rem; /* 12px — captions */
+    --text-sm: 0.875rem; /* 14px — body small / default */
+    --text-base: 1rem; /* 16px — body */
+    --text-lg: 1.25rem; /* 20px — subheadings */
+    --text-xl: 1.563rem; /* 25px — section titles */
+    --text-2xl: 1.953rem; /* 31px — page titles */
+    --text-3xl: 2.441rem; /* 39px — hero text */
+
+    /* --- Line Height --- */
+    --leading-none: 1;
+    --leading-tight: 1.25;
+    --leading-snug: 1.375;
+    --leading-normal: 1.5;
+    --leading-relaxed: 1.625;
+
+    /* --- Font Weight --- */
+    --font-normal: 400;
+    --font-medium: 500;
+    --font-semibold: 600;
+    --font-bold: 700;
+
+    /* --- Letter Spacing --- */
+    --tracking-tight: -0.025em;
+    --tracking-normal: 0;
+    --tracking-wide: 0.025em;
+    --tracking-wider: 0.05em;
+    --tracking-caps: 0.1em; /* for uppercase labels */
+}
+
+/* ==========================================================================
+   4. SPACING TOKENS — 4pt base, 8pt rhythm
+   ========================================================================== */
+
+:root {
+    --space-0: 0;
+    --space-px: 1px; /*  1px — hairline borders */
+    --space-0-5: 0.125rem; /*  2px */
+    --space-1: 0.25rem; /*  4px */
+    --space-1-5: 0.375rem; /*  6px */
+    --space-2: 0.5rem; /*  8px — base rhythm */
+    --space-3: 0.75rem; /* 12px */
+    --space-4: 1rem; /* 16px */
+    --space-5: 1.25rem; /* 20px */
+    --space-6: 1.5rem; /* 24px */
+    --space-8: 2rem; /* 32px */
+    --space-10: 2.5rem; /* 40px */
+    --space-12: 3rem; /* 48px */
+    --space-16: 4rem; /* 64px */
+    --space-20: 5rem; /* 80px */
+}
+
+/* ==========================================================================
+   5. BORDER RADIUS TOKENS
+   ========================================================================== */
+
+/* Border Radius Scale
+ * Base unit: 4px. Scale: 4 → 6 → 8 → 12 → 16 → 9999
+ * Rule: inner-radius = outer-radius - padding
+ * Example: Card with radius-lg (8px) and p-4 (16px) → inner elements use radius-sm (4px)
+ */
+:root {
+    --radius-none: 0;
+    --radius-sm: 0.25rem; /*  4px — subtle rounding */
+    --radius-md: 0.375rem; /*  6px — inputs, small cards */
+    --radius-lg: 0.5rem; /*  8px — cards, panels (PRIMARY) */
+    --radius-xl: 0.75rem; /* 12px — modals, buttons */
+    --radius-2xl: 1rem; /* 16px — large cards */
+    --radius-full: 9999px; /* pills, avatars, badges */
+}
+
+/* ==========================================================================
+   6. SHADOW TOKENS — Dual-layer (primary + ambient)
+   ========================================================================== */
+
+:root {
+    --shadow-none: none;
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+    --shadow-md:
+        0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+    --shadow-lg:
+        0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+    --shadow-xl:
+        0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+
+    /* Colored shadows for interactive elements */
+    --shadow-primary: 0 4px 14px 0 rgba(37, 99, 235, 0.3);
+    --shadow-danger: 0 4px 14px 0 rgba(220, 38, 38, 0.3);
+    --shadow-success: 0 4px 14px 0 rgba(22, 163, 74, 0.3);
+    --shadow-orange: 0 4px 14px 0 rgba(234, 88, 12, 0.3);
+}
+
+/* ==========================================================================
+   7. MOTION TOKENS — Standardized durations & easings
+   ========================================================================== */
+
+:root {
+    /* --- Durations --- */
+    --duration-instant: 0ms;
+    --duration-fast: 100ms; /* micro-interactions: button hover, toggle */
+    --duration-normal: 200ms; /* UI state changes: color, opacity */
+    --duration-moderate: 300ms; /* panels, progress bars */
+    --duration-slow: 400ms; /* modals, drawers */
+    --duration-slower: 600ms; /* complex reveals, page transitions */
+
+    /* --- Easings --- */
+    --ease-default: cubic-bezier(0.4, 0, 0.2, 1); /* general purpose */
+    --ease-in: cubic-bezier(0.4, 0, 1, 1); /* elements entering */
+    --ease-out: cubic-bezier(0, 0, 0.2, 1); /* elements exiting */
+    --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1); /* symmetric */
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* playful bounce */
+}
+
+/* ==========================================================================
+   8. Z-INDEX TOKENS — Layering system
+   ========================================================================== */
+
+:root {
+    --z-below: -1;
+    --z-base: 0;
+    --z-raised: 1;
+    --z-dropdown: 10;
+    --z-sticky: 20;
+    --z-overlay: 30;
+    --z-modal: 40;
+    --z-popover: 50;
+    --z-toast: 60;
+    --z-tooltip: 70;
+}
+
+/* ==========================================================================
+   9. COMPONENT TOKENS — Scoped to specific components
+   ========================================================================== */
+
+:root {
+    /* --- Buttons --- */
+    --btn-radius: var(--radius-xl);
+    --btn-font-weight: var(--font-semibold);
+    --btn-font-size: var(--text-xs);
+    --btn-font-size-xs: var(--text-sm);
+    --btn-font-size-lg: var(--text-lg);
+    --btn-padding-y: var(--space-2);
+    --btn-padding-x: var(--space-4);
+    --btn-padding-sm-y: var(--space-2);
+    --btn-padding-sm-x: var(--space-3);
+
+    /* --- Inputs --- */
+    --input-bg: var(--color-surface-1);
+    --input-border: var(--primitive-neutral-600);
+    --input-radius: var(--radius-lg);
+    --input-padding: var(--space-2);
+    --input-font-size: var(--text-sm);
+    --input-focus-ring: var(--color-border-focus);
+    --input-placeholder: var(--color-text-disabled);
+
+    /* --- Cards / Blocks --- */
+    --card-bg: var(--color-surface-2);
+    --card-border: var(--color-border-default);
+    --card-radius: var(--radius-lg);
+    --card-padding: var(--space-4);
+    --card-shadow: var(--shadow-md);
+
+    /* --- Modals --- */
+    --modal-bg: var(--color-surface-2);
+    --modal-border: var(--color-border-subtle);
+    --modal-radius: var(--radius-xl);
+    --modal-shadow: var(--shadow-xl);
+    --modal-overlay: var(--color-overlay-heavy);
+
+    /* --- Table --- */
+    --table-header-bg: var(--color-surface-1);
+    --table-row-bg: var(--color-surface-2);
+    --table-row-hover: var(--color-surface-3);
+    --table-border: var(--color-border-default);
+    --table-header-text: var(--color-text-tertiary);
+
+    /* --- Sidebar --- */
+    --sidebar-bg: var(--color-surface-1);
+    --sidebar-width: 16rem;
+    --sidebar-border: var(--color-border-subtle);
+
+    /* --- Dropdown --- */
+    --dropdown-bg: var(--color-surface-1);
+    --dropdown-border: var(--color-border-default);
+    --dropdown-radius: var(--radius-lg);
+    --dropdown-shadow: var(--shadow-lg);
+    --dropdown-item-hover: var(--color-surface-3);
+
+    /* --- Toast --- */
+    --toast-bg: var(--color-surface-3);
+    --toast-radius: var(--radius-md);
+    --toast-shadow: var(--shadow-md);
+
+    /* --- Tabs --- */
+    --tab-active-border: var(--color-border-focus);
+    --tab-inactive-text: var(--color-text-tertiary);
+    --tab-active-text: var(--color-text-primary);
+
+    /* --- Widget Grid --- */
+    --grid-gap: var(--space-3);
+    --grid-min-width: 180px;
+    --grid-min-height: 180px;
+
+    /* --- Touch targets (WCAG 2.5.8) --- */
+    --touch-target-min: 2.75rem; /* 44px */
+
+    /* --- Icon sizes --- */
+    --icon-size-xs: 0.75rem; /* 12px */
+    --icon-size-sm: 1rem; /* 16px */
+    --icon-size-md: 1.25rem; /* 20px */
+    --icon-size-lg: 1.5rem; /* 24px */
+    --icon-size-xl: 2rem; /* 32px */
+
+    /* --- Focus ring --- */
+    --focus-ring-width: 2px;
+    --focus-ring-offset: 2px;
+    --focus-ring-color: var(--color-border-focus);
+
+    /* --- Skeleton loading --- */
+    --skeleton-bg: var(--color-surface-3);
+    --skeleton-shimmer: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.04),
+        transparent
+    );
+    --skeleton-radius: var(--radius-md);
+
+    /* --- Icon optical alignment --- */
+    --icon-optical-offset: 0.05em;
+    --icon-btn-gap: var(--space-2);
+
+    /* --- Component sizing constraints --- */
+    --btn-min-width: 10rem;
+    --modal-max-height: 85vh;
+    --dropdown-max-height: 16rem;
+
+    /* --- Form validation backgrounds --- */
+    --input-error-bg: color-mix(
+        in srgb,
+        var(--color-input-error) 5%,
+        transparent
+    );
+    --input-success-bg: color-mix(
+        in srgb,
+        var(--color-input-success) 5%,
+        transparent
+    );
+}
+
+/* ==========================================================================
+   10. CHART / DATA VIZ TOKENS
+   ========================================================================== */
+
+:root {
+    --chart-grid: rgba(255, 255, 255, 0.08);
+    --chart-axis: var(--primitive-neutral-500);
+    --chart-tooltip-bg: var(--primitive-neutral-900);
+    --chart-tooltip-border: var(--primitive-neutral-700);
+
+    /* Categorical palette (8 distinct colors for data series) */
+    --chart-color-1: var(--primitive-blue-400); /* #60a5fa */
+    --chart-color-2: var(--primitive-green-400); /* #4ade80 */
+    --chart-color-3: var(--primitive-amber-400); /* #fbbf24 */
+    --chart-color-4: var(--primitive-red-400); /* #f87171 */
+    --chart-color-5: var(--primitive-purple-400); /* #c084fc */
+    --chart-color-6: var(--primitive-cyan-400); /* #22d3ee */
+    --chart-color-7: var(--primitive-orange-400); /* #fb923c */
+    --chart-color-8: #f472b6; /* pink-400 */
+}
+
+/* ==========================================================================
+   11. ACCESSIBILITY — Reduced motion
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* ==========================================================================
+   12. TRANSITION UTILITY CLASSES — Standardized motion presets
+   ========================================================================== */
+
+.transition-fast {
+    transition-property:
+        color, background-color, border-color, opacity, box-shadow, transform;
+    transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease-default);
+}
+.transition-normal {
+    transition-property:
+        color, background-color, border-color, opacity, box-shadow, transform;
+    transition-duration: var(--duration-normal);
+    transition-timing-function: var(--ease-default);
+}
+.transition-moderate {
+    transition-property:
+        color, background-color, border-color, opacity, box-shadow, transform;
+    transition-duration: var(--duration-moderate);
+    transition-timing-function: var(--ease-default);
+}
+.transition-slow {
+    transition-property:
+        color, background-color, border-color, opacity, box-shadow, transform;
+    transition-duration: var(--duration-slow);
+    transition-timing-function: var(--ease-out);
+}
+
+/* Widget card hover lift */
+.hover-lift {
+    transition:
+        transform var(--duration-fast) var(--ease-out),
+        box-shadow var(--duration-fast) var(--ease-out);
+}
+.hover-lift:hover {
+    transform: translateY(-2px);
+}
+
+/* Button press scale */
+.press-scale {
+    transition:
+        transform var(--duration-fast) var(--ease-default),
+        background-color var(--duration-fast) var(--ease-default);
+}
+.press-scale:active {
+    transform: scale(0.97);
+}
+
+/* Fade transition for Vue <Transition> */
+.fade-enter-active,
+.fade-leave-active {
+    transition: opacity var(--duration-normal) var(--ease-out);
+}
+.fade-enter-from,
+.fade-leave-to {
+    opacity: 0;
+}
+
+/* ==========================================================================
+   13. FOCUS-VISIBLE — Global keyboard focus indicator
+   ========================================================================== */
+
+:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+}
+
+/* ==========================================================================
+   14. HEADING UTILITY CLASSES — Semantic typography presets
+   ========================================================================== */
+
+.heading-page {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-tight);
+    color: var(--color-text-primary);
+}
+.heading-section {
+    font-size: var(--text-xl);
+    font-weight: var(--font-semibold);
+    line-height: var(--leading-tight);
+    color: var(--color-text-primary);
+}
+.heading-card {
+    font-size: var(--text-lg);
+    font-weight: var(--font-semibold);
+    line-height: var(--leading-snug);
+    color: var(--color-text-primary);
+}
+.heading-label {
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    line-height: var(--leading-normal);
+    letter-spacing: var(--tracking-caps);
+    text-transform: uppercase;
+    color: var(--color-text-tertiary);
+}
+
+/* ==========================================================================
+   15. ICON OPTICAL CENTERING — Corrects visual misalignment
+   ========================================================================== */
+
+/* Right-pointing icons (play, chevron-right, caret) appear left-heavy.
+   Nudge right by the optical offset to center visually. */
+.icon-optical-right {
+    transform: translateX(var(--icon-optical-offset));
+}
+
+/* Constrain icon to a fixed bounding box for consistent alignment in buttons/lists */
+.icon-bounded {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--icon-size-md);
+    height: var(--icon-size-md);
+    flex-shrink: 0;
+}
+
+/* ==========================================================================
+   16. WIDGET CARD SYSTEM — Shared card primitives for all widgets
+   ========================================================================== */
+
+/* Base card surface with hover lift + glow */
+.widget-card {
+    background-color: var(--color-surface-2);
+    color: var(--color-text-secondary);
+    transition: transform var(--duration-fast) var(--ease-out),
+                box-shadow var(--duration-fast) var(--ease-out),
+                background-color var(--duration-fast) var(--ease-out),
+                border-color var(--duration-fast) var(--ease-out);
+}
+.widget-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+    background-color: color-mix(in srgb, var(--color-surface-2) 85%, var(--color-surface-3));
+}
+
+/* Selected state — strong left accent + ring + glow */
+.widget-card--selected {
+    border-color: var(--color-primary);
+    border-left: 3px solid var(--color-primary);
+    box-shadow: 0 0 0 1px var(--color-primary),
+                var(--shadow-primary),
+                inset 0 0 20px -8px color-mix(in srgb, var(--color-primary) 15%, transparent);
+    background-color: color-mix(in srgb, var(--color-surface-2) 92%, var(--color-primary));
+}
+.widget-card--default {
+    border-color: var(--color-border-default);
+}
+
+/* Offline / not-found — danger border glow */
+.widget-card--offline {
+    border-color: color-mix(in srgb, var(--color-danger) 50%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-danger) 15%, transparent),
+                0 0 12px -4px color-mix(in srgb, var(--color-danger) 25%, transparent);
+}
+
+/* Red offline badge in upper-right corner */
+.widget-offline-badge {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--text-xs);
+    color: var(--color-danger-text);
+    font-weight: var(--font-semibold);
+}
+
+/* Circular avatar thumbnail */
+.widget-avatar {
+    border-color: var(--color-border-strong);
+    background-color: var(--color-surface-1);
+}
+
+/* Image area gradient overlay (fades to transparent for depth) */
+.widget-image-bg {
+    background: linear-gradient(to top, var(--color-surface-0), transparent 70%);
+}
+
+/* Frosted glass badge (replaces old bg-black/60) */
+.widget-badge {
+    background: var(--glass-bg);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--glass-border);
+}
+
+/* Hint text in bottom section */
+.widget-hint {
+    color: var(--color-text-disabled);
+}
+
+/* Entity measurement tag pills (voltage, current, power, etc.) */
+.entity-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 3px var(--space-2);
+    border-radius: var(--radius-md);
+    font-size: 11.5px;
+    font-weight: var(--font-medium);
+    line-height: 1.3;
+    color: var(--color-text-primary);
+    background: var(--color-surface-3);
+    border: 1px solid var(--color-border-default);
+    white-space: nowrap;
+}
+.entity-tag__icon {
+    font-size: 10px;
+    opacity: 0.7;
+}
+
+/* ── Device card (grid layout) ── */
+.device-card {
+    width: var(--grid-min-width);
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--dcard-radius);
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+    transition: transform 0.3s cubic-bezier(0.34, 1.3, 0.64, 1),
+                box-shadow 0.3s ease;
+}
+.device-card:hover {
+    transform: translateY(-5px) scale(1.013);
+    box-shadow: var(--dcard-hover-shadow);
+}
+.device-card--online {
+    background: var(--dcard-bg);
+    border: 1px solid var(--dcard-border);
+}
+.device-card--offline {
+    background: var(--dcard-bg-off);
+    border: 1px solid var(--dcard-border-off);
+    box-shadow: var(--dcard-shadow-off);
+}
+.device-card--selected {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px var(--color-primary),
+                var(--shadow-primary),
+                inset 0 0 24px -8px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+.device-card--selected .device-card__accent {
+    height: 2.5px;
+    background: linear-gradient(90deg, var(--color-primary) 0%, color-mix(in srgb, var(--color-primary) 40%, transparent) 60%, transparent 100%) !important;
+}
+.device-card--selected:hover {
+    box-shadow: var(--dcard-hover-shadow), 0 0 0 2px var(--color-primary);
+}
+.device-card__accent { height: 1.5px; }
+.device-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px 0;
+}
+.device-card__type {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.device-card__dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--dcard-dot-color);
+    flex-shrink: 0;
+    box-shadow: 0 0 0 2px rgba(34, 211, 160, 0.18), 0 0 10px rgba(34, 211, 160, 0.85);
+    animation: dcard-breathe 2.8s ease-in-out infinite;
+}
+@keyframes dcard-breathe {
+    0%, 100% { box-shadow: 0 0 0 2px rgba(34, 211, 160, 0.15), 0 0 8px rgba(34, 211, 160, 0.6); }
+    50%      { box-shadow: 0 0 0 4px rgba(34, 211, 160, 0.3), 0 0 18px rgba(34, 211, 160, 1); }
+}
+.device-card__pill-off {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 7px;
+    border-radius: 20px;
+    background: rgba(240, 78, 94, 0.12);
+    border: 1px solid rgba(240, 78, 94, 0.35);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--dcard-pill-color);
+}
+.device-card__pill-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--dcard-pill-color);
+    flex-shrink: 0;
+}
+.device-card__img {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 4px 16px 2px;
+    min-height: 100px;
+}
+.device-card__img img {
+    width: 100%;
+    height: auto;
+    display: block;
+    filter: drop-shadow(0 8px 22px rgba(0, 0, 0, 0.55));
+    transition: filter 0.3s, opacity 0.3s;
+}
+.device-card__img--off img {
+    opacity: 0.25;
+    filter: grayscale(1);
+}
+.device-card__name {
+    text-align: center;
+    padding: 6px 10px 8px;
+    border-top: 1px solid var(--dcard-name-border);
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+.device-card__name--off {
+    border-top-color: var(--dcard-name-border-off);
+}
+.device-card__subtitle {
+    font-size: 10.5px;
+    color: var(--color-text-tertiary);
+    margin-top: 2px;
+    line-height: 1.2;
+}
+.device-card__dev-name {
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+    line-height: 1.3;
+    word-break: break-word;
+    color: var(--dcard-name-color);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.device-card__name--off .device-card__dev-name {
+    color: var(--dcard-name-color-off);
+}
+
+/* ==========================================================================
+   §17 GLASS MENU — reusable frosted-glass popup / dropdown
+   ========================================================================== */
+.glass-menu {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+}
+.glass-menu__item:hover,
+.glass-menu__item--focused {
+    background-color: var(--glass-hover);
+    color: var(--color-text-primary);
+}
+.glass-menu__input {
+    background-color: var(--glass-input);
+    color: var(--color-text-secondary);
+    border: 1px solid var(--glass-border);
+}

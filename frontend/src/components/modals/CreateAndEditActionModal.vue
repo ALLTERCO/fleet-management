@@ -46,30 +46,40 @@
             </div>
 
             <div v-else-if="stage == STAGES.MAIN">
-                <Input v-model="name" label="Action name" />
+                <Input v-model="name" label="Action name" :error="nameError"
+                    aria-label="Action name" @blur="validateName" />
             </div>
         </template>
     </SteppedModal>
 </template>
 
 <script lang="ts" setup>
-import { ref, computed, watch } from 'vue';
-// @ts-expect-error module does not have declarations, use it unsafely
-import { Vue3JsonEditor } from 'vue3-json-editor/dist/vue3-json-editor.esm';
+import {computed, defineAsyncComponent, ref, watch} from 'vue';
+
+const Vue3JsonEditor = defineAsyncComponent(() =>
+    import('vue3-json-editor/dist/vue3-json-editor.esm').then(
+        (m) => m.Vue3JsonEditor
+    )
+);
+
 import Dropdown from '@/components/core/Dropdown.vue';
-import DeviceWidget from '../widgets/DeviceWidget.vue';
-import Input from '../core/Input.vue';
-import { getRegistry } from '@/tools/websocket';
-import { action_t } from '@/types';
-import SteppedModal from './SteppedModal.vue';
-import DeviceSelector from '../DeviceSelector.vue';
 import default_rpc from '@/data/default_rpc.json';
+import {getRegistry} from '@/tools/websocket';
+import type {action_t} from '@/types';
+import Input from '../core/Input.vue';
+import DeviceSelector from '../DeviceSelector.vue';
+import DeviceWidget from '../widgets/DeviceWidget.vue';
+import SteppedModal from './SteppedModal.vue';
 
 // Change type of default exported JSON
-const defaultRpc: Record<string, any> = { ...default_rpc };
+const defaultRpc: Record<string, any> = {...default_rpc};
 
-const props = defineProps<{ action?: action_t | null; visible: boolean, duplicate?: boolean }>();
-const emit = defineEmits<{ close: [] }>();
+const props = defineProps<{
+    action?: action_t | null;
+    visible: boolean;
+    duplicate?: boolean;
+}>();
+const emit = defineEmits<{close: []}>();
 
 const isEditMode = computed(() => !!props.action && !props.duplicate);
 
@@ -77,24 +87,43 @@ const STAGES = {
     SELECT_DEVICES: 1,
     BUILD: 2,
     PREVIEW: 3,
-    MAIN: 4,
+    MAIN: 4
 } as const;
 
 const stage = ref(STAGES.SELECT_DEVICES);
 
-const selectedDevices = ref<string[]>(props.action ? props.action.actions?.[0]?.dst : []);
+const selectedDevices = ref<string[]>(
+    props.action ? props.action.actions?.[0]?.dst : []
+);
 const name = ref(props.action ? props.action.name : '');
+const nameError = ref('');
 
-const component = ref<string>(props.action ? Object.keys(props.action.actions[0])[0] : 'Shelly');
-const method = ref<string>(props.action ? Object.keys(props.action.actions[0][component.value])[0] : 'GetStatus');
+function validateName() {
+    nameError.value = (!name.value || name.value.trim() === '') ? 'Action name is required' : '';
+}
+
+const component = ref<string>(
+    props.action ? Object.keys(props.action.actions[0])[0] : 'Shelly'
+);
+const method = ref<string>(
+    props.action
+        ? Object.keys(props.action.actions[0][component.value])[0]
+        : 'GetStatus'
+);
 
 const json = ref<Record<string, any>>(
-    props.action ? props.action.actions[0] : defaultRpc[component.value]?.[method.value]
+    props.action
+        ? props.action.actions[0]
+        : defaultRpc[component.value]?.[method.value]
 );
 
 const ALLOWED_COMPONENT_NAMES = Object.keys(defaultRpc);
-const componentMethods = computed<Record<string, any>>(() => defaultRpc[component.value as keyof typeof defaultRpc]);
-const componentMethodNames = computed(() => Object.keys(componentMethods.value || {}));
+const componentMethods = computed<Record<string, any>>(
+    () => defaultRpc[component.value as keyof typeof defaultRpc]
+);
+const componentMethodNames = computed(() =>
+    Object.keys(componentMethods.value || {})
+);
 
 watch(
     () => props.action,
@@ -106,7 +135,7 @@ watch(
             setComponent(Object.keys(newAction.actions[0])[0] || 'Shelly');
         }
     },
-    { immediate: true }
+    {immediate: true}
 );
 
 function setComponent(comp: string) {
@@ -146,20 +175,24 @@ function onClose() {
 }
 
 async function onSave() {
-    const dst = Array.isArray(json.value.dst) && json.value.dst.length
-        ? json.value.dst
-        : selectedDevices.value;
+    validateName();
+    if (nameError.value) return;
+
+    const dst =
+        Array.isArray(json.value.dst) && json.value.dst.length
+            ? json.value.dst
+            : selectedDevices.value;
 
     const rawActions = [
         {
             ...json.value,
-            dst,
-        },
+            dst
+        }
     ];
 
-    const payload: { id?: number; name: string; actions: string } = {
+    const payload: {id?: number; name: string; actions: string} = {
         name: name.value,
-        actions: JSON.stringify(rawActions),
+        actions: JSON.stringify(rawActions)
     };
 
     if (isEditMode.value && props.action?.id) {
@@ -170,9 +203,6 @@ async function onSave() {
     await ActionsController.setItem('rpc', payload);
     onClose();
 }
-
-
-
 </script>
 
 <style>

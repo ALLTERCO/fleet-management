@@ -83,17 +83,41 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
                 return null;
             }
 
+            // Admin sees everything
+            if (sender.isAdmin()) {
+                return registryContent;
+            }
+
+            // Actions registry: filter by device access
             if (
                 registry === 'actions' &&
                 params.key === 'rpc' &&
                 Array.isArray(registryContent)
             ) {
+                // Check if user can read actions at all
+                if (!sender.hasCrudPermission('actions', 'read')) {
+                    return [];
+                }
+
+                // Batch permission check — collect all unique device IDs,
+                // check once, then filter with O(1) Set lookups.
+                // (Replaces sequential await-per-device N+1 pattern.)
+                const allDeviceIds = new Set<string>();
+                for (const act of registryContent) {
+                    for (const step of act.actions) {
+                        for (const id of step.dst) allDeviceIds.add(id);
+                    }
+                }
+                const accessible = await sender.filterAccessibleDevices([
+                    ...allDeviceIds
+                ]);
+
                 const filtered: typeof registryContent = [];
                 for (const act of registryContent) {
                     let ok = true;
                     for (const step of act.actions) {
                         for (const shellyID of step.dst) {
-                            if (!(await sender.canAccessDevice(shellyID))) {
+                            if (!accessible.has(shellyID)) {
                                 ok = false;
                                 break;
                             }
@@ -105,16 +129,38 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
                 return filtered;
             }
 
-            for (const id of Object.keys(registryContent)) {
-                const permissionKey = `storagecomponent.getitem.${registry}.${params.key}.${id}`;
-                const fullPermissionKey = `storagecomponent.getitem.${registry}.${params.key}.*`;
-                if (sender.hasPermission(fullPermissionKey)) {
-                    return registryContent;
+            // Dashboards registry: use CRUD permission model
+            if (registry === 'dashboards') {
+                // Check if user can read dashboards at all
+                if (!sender.hasCrudPermission('dashboards', 'read')) {
+                    return {};
                 }
-                if (!sender.hasPermission(permissionKey)) {
-                    delete registryContent[id];
+
+                // Filter by scoped access if needed
+                const result: Record<string, any> = {};
+                for (const id of Object.keys(registryContent)) {
+                    if (
+                        sender.canPerformOnItem(
+                            'dashboards',
+                            'read',
+                            Number(id)
+                        )
+                    ) {
+                        result[id] = registryContent[id];
+                    }
                 }
+                return result;
             }
+
+            // Configs registry: use configurations CRUD permission
+            if (registry === 'configs') {
+                if (!sender.hasCrudPermission('configurations', 'read')) {
+                    return {};
+                }
+                return registryContent;
+            }
+
+            // Default: return content (for other registries)
             return registryContent;
         } catch (error) {
             this.logger.error(`Error accessing registry ${registry}:`, error);
@@ -136,12 +182,52 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
     @Component.Expose('GetAll')
     @Component.CheckParams(isGetAll)
     @Component.NoPermissions
-    getall(params: {registry: string}) {
+    async getall(params: {registry: string}, sender: CommandSender) {
         const registry = params.registry ?? 'memory';
 
-        return registry === 'memory'
-            ? this.config.items
-            : Registry.getAll(registry);
+        if (registry === 'memory') {
+            return this.config.items;
+        }
+
+        // Admin sees everything
+        if (sender.isAdmin()) {
+            return Registry.getAll(registry);
+        }
+
+        // Dashboards registry: check CRUD permission
+        if (registry === 'dashboards') {
+            if (!sender.hasCrudPermission('dashboards', 'read')) {
+                return {};
+            }
+            const all = await Registry.getAll(registry);
+            // Filter by scoped access
+            const result: Record<string, any> = {};
+            for (const id of Object.keys(all)) {
+                if (sender.canPerformOnItem('dashboards', 'read', Number(id))) {
+                    result[id] = all[id];
+                }
+            }
+            return result;
+        }
+
+        // Configs registry: check configurations CRUD permission
+        if (registry === 'configs') {
+            if (!sender.hasCrudPermission('configurations', 'read')) {
+                return {};
+            }
+            return Registry.getAll(registry);
+        }
+
+        // Actions registry: check actions CRUD permission
+        if (registry === 'actions') {
+            if (!sender.hasCrudPermission('actions', 'read')) {
+                return {};
+            }
+            return Registry.getAll(registry);
+        }
+
+        // Default: return all (for other registries)
+        return Registry.getAll(registry);
     }
 
     @Component.Expose('RemoveItem')

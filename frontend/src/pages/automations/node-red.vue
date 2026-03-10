@@ -5,20 +5,25 @@
 </template>
 
 <script setup lang="ts">
-import { useAuthStore } from '@/stores/auth';
-import { useCookies } from '@vueuse/integrations/useCookies.mjs';
-import { onMounted } from 'vue';
-import { NODE_RED_URL } from '@/constants';
+import {useCookies} from '@vueuse/integrations/useCookies.mjs';
+import {onMounted} from 'vue';
+import {NODE_RED_URL} from '@/constants';
+import zitadelAuth from '@/helpers/zitadelAuth';
 
-const authStore = useAuthStore();
+onMounted(async () => {
+    if (!zitadelAuth) return;
 
-onMounted(() => {
-    const cookies = useCookies(['token']);
-    cookies.set('token', authStore.accessToken, {
-        secure: false,
-        httpOnly: false,
-        sameSite: 'strict',
-        path: '/node-red',
-    });
+    const user = await zitadelAuth.oidcAuth.mgr.getUser();
+    const token = user?.access_token;
+
+    if (token) {
+        const cookies = useCookies(['token']);
+        cookies.set('token', token, {
+            secure: false,
+            httpOnly: false,
+            sameSite: 'strict',
+            path: '/node-red'
+        });
+    }
 });
 </script>

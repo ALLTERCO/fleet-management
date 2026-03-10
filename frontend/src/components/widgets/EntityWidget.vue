@@ -1,6 +1,6 @@
 <template>
     <Widget :vertical="vertical" board :selected="selected" :vc="checkIfVC(entity.type)"
-        :class="[(!device || device.loading || !device.online) && '!bg-red-900/60 backdrop-blur']">
+        :class="[(!device || device.loading || !device.online) && '!bg-[var(--color-danger-subtle)] backdrop-blur']">
 
         <template #upper-corner>
             Entity
@@ -14,28 +14,29 @@
         </template>
 
         <template #name>
-            <span class="text-[12px] text-wrap text-center truncate line-clamp-2"> {{ nameFitter }}</span>
+            <span class="text-xs text-wrap text-center truncate line-clamp-2"> {{ nameFitter }}</span>
         </template>
 
         <template #description>
-            <span v-if="!device" class="text-red-500 font-semibold"> Error </span>
+            <span v-if="!device" class="text-[var(--color-danger-text)] font-semibold"> Error </span>
             <div v-else-if="device.loading" class="mx-auto">
                 <Spinner />
             </div>
-            <span v-else-if="!device.online" class="text-red-500 font-semibold"> Offline </span>
-            <div v-else class="flex flex-nowrap overflow-x-scroll select-none gap-1 no-scrollbar flex-col">
-                <!-- Show the color of the RGBW and RGB lights -->
-                <div class="flex flex-wrap gap-2">
-                    <span v-if="/rgbw?/i.test(entity.type) && device.online"
-                        class="text-[11px] bg-gray-950 text-gray-50 px-1 rounded-md">
-                        <p class="border-2 rounded-full"
-                            :style="`width: 20px; height: 20px; background-color: rgb(${entity_status.rgb.join(',')});`">
+            <span v-else-if="!device.online" class="text-[var(--color-danger-text)] font-semibold"> Offline </span>
+            <div v-else class="flex select-none gap-1.5 flex-col mt-1">
+                <!-- Show the color of the RGBW, RGB, RGBCCT lights, and light entities with RGB support -->
+                <div class="flex flex-wrap gap-1.5">
+                    <span v-if="((/rgbw?|rgbcct/i.test(entity.type)) || (entity.type === 'light' && entity_status?.rgb)) && device.online && entity_status?.rgb"
+                        class="entity-tag"
+                        role="img" :aria-label="`Color: RGB(${entity_status.rgb.join(', ')})`">
+                        <p class="border-2 rounded-full" aria-hidden="true"
+                            :style="`width: 18px; height: 18px; background-color: rgb(${entity_status.rgb.join(',')});`">
                         </p>
                     </span>
 
                     <span v-for="[index, { icon, text }] of Object.entries(tags)" :key="index"
-                        class="text-[11px] bg-gray-950 text-gray-50 p-1 rounded-md">
-                        <i v-if="!!icon" :class="icon" /> {{ text }}
+                        class="entity-tag">
+                        <i v-if="!!icon" :class="icon" class="entity-tag__icon" /> {{ text }}
                     </span>
                 </div>
 
@@ -46,7 +47,7 @@
                     " :value="entity_status.value" :min="(entity as virtual_number_entity).properties.min"
                         :max="(entity as virtual_number_entity).properties.max"
                         :step="(entity as virtual_number_entity).properties.step"
-                        :disable="waitingForResponse || !device.online"
+                        :disable="waitingForResponse || !device.online || !canExecute"
                         @change="(value) => sendRpc(entity.id, 'Number.Set', { value })">
                         <template #title>
                             {{ entity_status.value }} {{ (entity as virtual_number_entity).properties.unit }}
@@ -66,15 +67,15 @@
                         v-if="entity.type === 'number' && (entity as virtual_number_entity).properties.view === 'field'"
                         class="flex flex-col items-center gap-1"
                         @submit.prevent="() => sendRpc(entity.id, 'Number.Set', { value: tempValue })">
-                        <Input v-model="tempValue" :type="'number'" :placeholder="'Value'" />
-                        <Button submit size="xs">Save</Button>
+                        <Input v-model="tempValue" :type="'number'" :placeholder="'Value'" :disabled="!canExecute" />
+                        <Button submit size="xs" :disabled="!canExecute">Save</Button>
                     </form>
                     <form v-if="entity.type === 'text' && (entity as virtual_text_entity).properties.view === 'field'"
                         class="flex flex-col items-center gap-1"
                         @submit.prevent="() => sendRpc(entity.id, 'Text.Set', { value: tempValue })">
                         <Input v-model="tempValue" :type="'text'" :placeholder="'Value'"
-                            :max="(entity as virtual_text_entity).properties.maxLength" />
-                        <Button submit size="xs">Save</Button>
+                            :max="(entity as virtual_text_entity).properties.maxLength" :disabled="!canExecute" />
+                        <Button submit size="xs" :disabled="!canExecute">Save</Button>
                     </form>
                 </div>
             </div>
@@ -138,10 +139,11 @@
                     entity.type === 'boolean' &&
                     (entity as virtual_boolean_entity).properties.view === 'toggle' &&
                     device.online
-                " class="w-10 h-10 rounded-full" :class="{
-                        'bg-red-500': !entity_status.value,
-                        'bg-emerald-500': entity_status.value,
-                    }" @click.stop="() => sendRpc(entity.id, 'Boolean.Set', { value: !entity_status.value })">
+                " class="w-11 h-11 rounded-full flex items-center justify-center" :class="{
+                        'bg-[var(--color-danger)]': !entity_status.value && canExecute,
+                        'bg-[var(--color-success)]': entity_status.value && canExecute,
+                        'bg-[var(--color-surface-3)] cursor-not-allowed opacity-50': !canExecute,
+                    }" :disabled="!canExecute" @click.stop="() => sendRpc(entity.id, 'Boolean.Set', { value: !entity_status.value })">
                     <Spinner v-if="waitingForResponse" />
                     <template v-else>
                         <span>
@@ -187,9 +189,11 @@
                     (entity as virtual_enum_entity).properties.view === 'dropdown' &&
                     device.online
                 " :default="(entity as virtual_enum_entity).properties.options[entity_status.value] || entity_status.value
-                        " :options="Object.values((entity as virtual_enum_entity).properties.options)" @click.stop
+                        " :options="Object.values((entity as virtual_enum_entity).properties.options)"
+                    :disabled="!canExecute" @click.stop
                     @selected="
                         (selectedValue: string) => {
+                            if (!canExecute) return;
                             const selectedKey = Object.entries(
                                 (entity as virtual_enum_entity)?.properties?.options || {}
                             ).find(([_, value]) => value === selectedValue)?.[0];
@@ -202,20 +206,20 @@
                         }
                     " />
 
-                <div v-else-if="entity.type === 'em1'" class="box">
-                    <p>{{ formatWatts(entity_status.act_power) }}</p>
+                <div v-else-if="entity.type === 'em1' || entity.type === 'pm1'" class="box">
+                    <p>{{ formatWatts(entity_status.act_power ?? entity_status.apower) }}</p>
                 </div>
 
                 <div v-else-if="entity.type === 'input' && (entity as input_entity).properties.type === 'switch'"
-                    class="w-10 h-10 p-2 rounded-md bg-gray-900 text-gray-100 box">
+                    class="w-10 h-10 p-2 rounded-md bg-[var(--color-surface-1)] text-[var(--color-text-primary)] box">
                     <p :key="String(entity_status.state)" class="my-auto text-base">
-                        <i v-if="entity_status.state" class="fas fa-toggle-on text-green-500" />
-                        <i v-else class="fas fa-toggle-off text-red-500" />
+                        <i v-if="entity_status.state" class="fas fa-toggle-on text-[var(--color-success-text)]" />
+                        <i v-else class="fas fa-toggle-off text-[var(--color-danger-text)]" />
                     </p>
                 </div>
 
                 <div v-else-if="entity.type === 'input' && (entity as input_entity).properties.type === 'analog'"
-                    class="w-10 h-10 p-2 rounded-md bg-gray-900 text-gray-100 box">
+                    class="w-10 h-10 p-2 rounded-md bg-[var(--color-surface-1)] text-[var(--color-text-primary)] box">
                     <p>
                         {{ entity_status?.xpercent || entity_status.percent }}
                         {{ (entity as input_entity).properties.unit ?? '%' }}
@@ -223,17 +227,18 @@
                 </div>
 
                 <div v-else-if="entity.type === 'input' && (entity as input_entity).properties.type === 'button'"
-                    class="w-10 h-10 p-2 rounded-md bg-gray-900 text-gray-100 box">
+                    class="w-10 h-10 p-2 rounded-md bg-[var(--color-surface-1)] text-[var(--color-text-primary)] box">
                     <p>{{ displayEvent }}</p>
                 </div>
 
                 <CoverControls v-if="entity.type === 'cover'" :state="entity_status.state"
-                    :request-in-progress="waitingForResponse" @direction="coverControl" />
+                    :request-in-progress="waitingForResponse" :disabled="!canExecute" @direction="coverControl" />
 
-                <button v-else-if="/(cct|switch|light|rgbw?)/.test(entity.type)" class="w-10 h-10 rounded-full" :class="{
-                    'bg-red-500': !entity_status.output,
-                    'bg-emerald-500': entity_status.output,
-                }" @click.stop="actionClicked">
+                <button v-else-if="/(cct|switch|light|rgbw?|rgbcct)/.test(entity.type)" class="w-11 h-11 rounded-full flex items-center justify-center" :class="{
+                    'bg-[var(--color-danger)]': !entity_status.output && canExecute,
+                    'bg-[var(--color-success)]': entity_status.output && canExecute,
+                    'bg-[var(--color-surface-3)] cursor-not-allowed opacity-50': !canExecute,
+                }" :disabled="!canExecute" @click.stop="actionClicked">
                     <Spinner v-if="waitingForResponse" />
                     <template v-else>
                         <span>
@@ -241,77 +246,145 @@
                         </span>
                     </template>
                 </button>
+
+                <!-- Cury (Scent Diffuser) controls - shows per-slot status -->
+                <div v-else-if="entity.type === 'cury'" class="flex items-center gap-2">
+                    <!-- Left slot indicator -->
+                    <div
+                        v-if="curySlotInfo.leftHasVial"
+                        class="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold"
+                        :class="{
+                            'bg-[var(--color-success)]': entity_status.slots?.left?.on,
+                            'bg-[var(--color-surface-3)]': !entity_status.slots?.left?.on
+                        }"
+                        :title="`Left: ${entity_status.slots?.left?.vial?.name || 'Vial'}`"
+                    >
+                        <span v-if="entity_status.slots?.left?.boost" class="text-[var(--color-warning-text)]">
+                            <i class="fas fa-rocket"></i>
+                        </span>
+                        <span v-else>L</span>
+                    </div>
+                    <!-- Right slot indicator -->
+                    <div
+                        v-if="curySlotInfo.rightHasVial"
+                        class="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold"
+                        :class="{
+                            'bg-[var(--color-success)]': entity_status.slots?.right?.on,
+                            'bg-[var(--color-surface-3)]': !entity_status.slots?.right?.on
+                        }"
+                        :title="`Right: ${entity_status.slots?.right?.vial?.name || 'Vial'}`"
+                    >
+                        <span v-if="entity_status.slots?.right?.boost" class="text-[var(--color-warning-text)]">
+                            <i class="fas fa-rocket"></i>
+                        </span>
+                        <span v-else>R</span>
+                    </div>
+                    <!-- Show message if no vials -->
+                    <span v-if="!curySlotInfo.leftHasVial && !curySlotInfo.rightHasVial" class="text-[var(--color-text-tertiary)] text-xs">
+                        No vials
+                    </span>
+                </div>
+
+                <!-- Humidity sensor display -->
+                <div v-else-if="entity.type === 'humidity'" class="box">
+                    <p v-if="entity_status.rh !== null && entity_status.rh !== undefined">{{ entity_status.rh }} %</p>
+                    <p v-else>N/A</p>
+                </div>
+
+                <!-- Voltmeter display -->
+                <div v-else-if="entity.type === 'voltmeter'" class="box">
+                    <p v-if="entity_status.voltage !== null && entity_status.voltage !== undefined">{{ entity_status.voltage }} V</p>
+                    <p v-else>N/A</p>
+                </div>
             </template>
         </template>
     </Widget>
 </template>
 
 <script lang="ts" setup>
-import Widget from './WidgetsTemplates/EntityWidget.vue';
-import { computed, ref, toRef, toRefs, watch, onMounted, onUnmounted } from 'vue';
-import { useEntityStore } from '@/stores/entities';
+import {computed, onMounted, onUnmounted, ref, toRef, toRefs, watch} from 'vue';
 import Button from '@/components/core/Button.vue';
-import { getPredefinedImageForEntity } from '@/helpers/device';
-import { formatWatts } from '@/helpers/numbers';
+import CoverControls from '@/components/core/Cover/CoverControls.vue';
+import {getPredefinedImageForEntity} from '@/helpers/device';
+import {formatWatts} from '@/helpers/numbers';
+import {useAuthStore} from '@/stores/auth';
+import {useDevicesStore} from '@/stores/devices';
+import {useEntityStore} from '@/stores/entities';
+import {debug} from '@/tools/debug';
 import {
-    entity_t,
+    type bthomesensor_entity,
+    type entity_t,
+    type input_entity,
     virtual_boolean_entity,
     virtual_enum_entity,
     virtual_number_entity,
-    input_entity,
-    bthomesensor_entity,
-    virtual_text_entity,
+    virtual_text_entity
 } from '@/types';
-import Spinner from '../core/Spinner.vue';
-import { useDevicesStore } from '@/stores/devices';
-import CoverControls from '@/components/core/Cover/CoverControls.vue';
-import HorizontalSlider from '../core/HorizontalSlider.vue';
-import HorizontalProgress from '../core/HorizontalProgress.vue';
-import Input from '../core/Input.vue';
 import Dropdown from '../core/Dropdown.vue';
+import HorizontalProgress from '../core/HorizontalProgress.vue';
+import HorizontalSlider from '../core/HorizontalSlider.vue';
+import Input from '../core/Input.vue';
+import Spinner from '../core/Spinner.vue';
+import Widget from './WidgetsTemplates/EntityWidget.vue';
 
-type props_t = { entity: entity_t; editMode?: boolean; selected?: boolean; vertical?: boolean };
+type props_t = {
+    entity: entity_t;
+    editMode?: boolean;
+    selected?: boolean;
+    vertical?: boolean;
+};
 
 const props = withDefaults(defineProps<props_t>(), {
     editMode: false,
     selected: false,
-    rightCorner: false,
+    rightCorner: false
 });
 const emit = defineEmits<{
     delete: [];
 }>();
 
-const { editMode, selected, vertical } = toRefs(props);
+const {editMode, selected, vertical} = toRefs(props);
 
 const entityStore = useEntityStore();
 const deviceStore = useDevicesStore();
+const authStore = useAuthStore();
 const entity = toRef(props, 'entity');
 
 const device = computed(() => deviceStore.devices[entity.value.source]);
 
+// Check if user can execute commands on this device
+const canExecute = computed(() =>
+    authStore.canExecuteDevice(entity.value.source)
+);
+
 const nameFitter = computed(() =>
-    entity.value.name.length > 30 ? entity.value.name.substring(0, 30) + '...' : entity.value.name
+    entity.value.name.length > 30
+        ? entity.value.name.substring(0, 30) + '...'
+        : entity.value.name
 );
 
 const checkIfVC = computed(() => {
-    return (type: string) => ['boolean', 'number', 'enum', 'text', 'group', 'button'].includes(type)
-})
+    return (type: string) =>
+        ['boolean', 'number', 'enum', 'text', 'group', 'button'].includes(type);
+});
 
 const entity_status = computed(() => {
     if (!device.value) {
         return {};
     }
 
-    return device.value.status?.[entity.value.type + ':' + entity.value.properties.id];
+    return device.value.status?.[
+        entity.value.type + ':' + entity.value.properties.id
+    ];
 });
 
 let eventListener: (() => void) | null = null;
 const event = ref(null);
 let clearEventTimeout: ReturnType<typeof setTimeout>;
-let tempValue: string | number | any = undefined;
+let tempValue: string | number | any;
 
 watch(device, (dev) => {
-    console.log('dev', dev);
+    debug('dev', dev);
 });
 
 watch(entity_status, (status) => {
@@ -328,8 +401,10 @@ onMounted(() => {
         !(
             entity.value.type === 'button' ||
             (entity.value.type === 'bthomesensor' &&
-                (entity.value as bthomesensor_entity).properties.sensorType === 'button') ||
-            (entity.value.type === 'input' && (entity.value as input_entity).properties.type === 'button')
+                (entity.value as bthomesensor_entity).properties.sensorType ===
+                    'button') ||
+            (entity.value.type === 'input' &&
+                (entity.value as input_entity).properties.type === 'button')
         )
     ) {
         return;
@@ -366,7 +441,7 @@ const displayEvent = computed(() => {
         single_push: 'Single Press',
         double_push: 'Double Press',
         triple_push: 'Triple Press',
-        long_push: 'Long Press',
+        long_push: 'Long Press'
     };
 
     return EVENT_TITLES[event.value] ?? 'None';
@@ -374,38 +449,136 @@ const displayEvent = computed(() => {
 
 const waitingForResponse = ref(false);
 let waitingForResponseTimeout: ReturnType<typeof setTimeout>;
+let lastActionTime = 0;
 
 const tags = computed(() => {
-    if (typeof entity_status.value !== 'object' || Object.keys(entity_status.value).length == 0) {
+    if (
+        typeof entity_status.value !== 'object' ||
+        Object.keys(entity_status.value).length == 0
+    ) {
         return [];
     }
 
-    const tags: { icon?: string; text: string }[] = [];
+    const tags: {icon?: string; text: string}[] = [];
+
+    // Handle Cury-specific tags
+    if (entity.value.type === 'cury') {
+        const status = entity_status.value;
+
+        // Show per-slot status
+        const leftSlot = status.slots?.left;
+        const rightSlot = status.slots?.right;
+        const leftHasVial =
+            leftSlot?.vial?.serial &&
+            leftSlot.vial.serial !== '0000000000000000';
+        const rightHasVial =
+            rightSlot?.vial?.serial &&
+            rightSlot.vial.serial !== '0000000000000000';
+
+        // Left slot status
+        if (leftHasVial) {
+            const leftName = leftSlot.vial.name || 'L';
+            if (leftSlot.on) {
+                tags.push({
+                    text: `${leftName}: ${leftSlot.intensity}%`,
+                    icon: 'fas fa-spray-can'
+                });
+            }
+            if (leftSlot.boost) {
+                tags.push({text: `${leftName} Boost`, icon: 'fas fa-rocket'});
+            }
+        }
+
+        // Right slot status
+        if (rightHasVial) {
+            const rightName = rightSlot.vial.name || 'R';
+            if (rightSlot.on) {
+                tags.push({
+                    text: `${rightName}: ${rightSlot.intensity}%`,
+                    icon: 'fas fa-spray-can'
+                });
+            }
+            if (rightSlot.boost) {
+                tags.push({text: `${rightName} Boost`, icon: 'fas fa-rocket'});
+            }
+        }
+
+        if (status.away_mode) {
+            tags.push({text: 'Away', icon: 'fas fa-plane-departure'});
+        }
+
+        // Show vial levels
+        if (
+            leftHasVial &&
+            typeof leftSlot.vial.level === 'number' &&
+            leftSlot.vial.level >= 0
+        ) {
+            tags.push({text: `L:${leftSlot.vial.level}%`, icon: 'fas fa-vial'});
+        }
+        if (
+            rightHasVial &&
+            typeof rightSlot.vial.level === 'number' &&
+            rightSlot.vial.level >= 0
+        ) {
+            tags.push({
+                text: `R:${rightSlot.vial.level}%`,
+                icon: 'fas fa-vial'
+            });
+        }
+
+        if (status.errors?.length > 0) {
+            tags.push({
+                text: `${status.errors.length} error${status.errors.length > 1 ? 's' : ''}`,
+                icon: 'fas fa-triangle-exclamation'
+            });
+        }
+        return tags;
+    }
+
     for (const [k, v] of Object.entries(entity_status.value)) {
         if (v == '0') continue;
         switch (k) {
             case 'apower':
-                tags.push({ text: `${v} W` });
+            case 'act_power':
+                tags.push({text: `${v} W`, icon: 'fas fa-bolt'});
+                break;
+
+            case 'aprt_power':
+                tags.push({text: `${v} VA`, icon: 'fas fa-bolt'});
                 break;
 
             case 'voltage':
-                tags.push({ text: `${v} V` });
+                tags.push({text: `${v} V`});
                 break;
 
             case 'total':
-                tags.push({ text: `${v} Wh` });
+            case 'total_act':
+                tags.push({text: `${v} Wh`});
                 break;
 
             case 'current':
-                tags.push({ text: `${v} A` });
+                tags.push({text: `${v} A`});
+                break;
+
+            case 'pf':
+                tags.push({text: `PF ${v}`});
+                break;
+
+            case 'freq':
+                tags.push({text: `${v} Hz`});
                 break;
 
             case 'white':
-                tags.push({ text: String(v), icon: 'fa-solid fa-circle' });
+                tags.push({text: String(v), icon: 'fa-solid fa-circle'});
                 break;
 
             case 'brightness':
-                tags.push({ text: String(v), icon: 'fas fa-sun' });
+                tags.push({text: String(v), icon: 'fas fa-sun'});
+                break;
+
+            case 'temp':
+                // Color temperature in Kelvin
+                tags.push({text: `${v}K`, icon: 'fas fa-temperature-half'});
                 break;
 
             case 'state': {
@@ -414,7 +587,7 @@ const tags = computed(() => {
                     break;
                 }
 
-                tags.push({ text: String(v) });
+                tags.push({text: String(v)});
                 break;
             }
         }
@@ -423,6 +596,12 @@ const tags = computed(() => {
 });
 
 async function sendRpc(entityId: string, method: string, params?: any) {
+    // Check if user has execute permission
+    if (!canExecute.value) {
+        console.warn('User does not have execute permission for this device');
+        return;
+    }
+
     waitingForResponse.value = true;
     waitingForResponseTimeout = setTimeout(() => {
         waitingForResponse.value = false;
@@ -437,13 +616,24 @@ async function sendRpc(entityId: string, method: string, params?: any) {
 }
 
 function actionClicked() {
-    if (!['switch', 'light', 'rgb', 'rgbw', 'cct'].includes(entity.value.type)) {
+    if (
+        !['switch', 'light', 'rgb', 'rgbw', 'cct', 'rgbcct'].includes(
+            entity.value.type
+        )
+    ) {
         return;
     }
 
     if (waitingForResponse.value) {
         return;
     }
+
+    // Debounce: prevent accidental double-toggles (e.g. trackpad double-tap)
+    const now = Date.now();
+    if (now - lastActionTime < 100) {
+        return;
+    }
+    lastActionTime = now;
 
     sendRpc(entity.value.id, `${entity.value.type}.toggle`);
 }
@@ -459,11 +649,26 @@ function coverControl(direction: 'stop' | 'open' | 'close') {
 
     sendRpc(entity.value.id, `${entity.value.type}.${direction}`);
 }
+
+// Cury slot info for widget display
+const curySlotInfo = computed(() => {
+    if (entity.value.type !== 'cury') {
+        return {leftHasVial: false, rightHasVial: false};
+    }
+    const status = entity_status.value;
+    const leftSerial = status?.slots?.left?.vial?.serial;
+    const rightSerial = status?.slots?.right?.vial?.serial;
+    return {
+        leftHasVial: leftSerial && leftSerial !== '0000000000000000',
+        rightHasVial: rightSerial && rightSerial !== '0000000000000000'
+    };
+});
 </script>
 
 <style scoped>
+@reference "tailwindcss";
 .box {
-    @apply p-1 md:p-2 w-max rounded-md bg-gray-900 text-gray-100 h-10 flex items-center;
+    @apply p-1 md:p-2 w-max rounded-md bg-[var(--color-surface-1)] text-[var(--color-text-primary)] h-10 flex items-center;
 }
 
 .box>p {

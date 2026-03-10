@@ -1,5 +1,5 @@
-import { defineStore } from 'pinia';
-import { DefineComponent, ref, shallowRef } from 'vue';
+import {defineStore} from 'pinia';
+import {type DefineComponent, ref, shallowRef} from 'vue';
 
 export const useRightSideMenuStore = defineStore('right-side-menu', () => {
     const component = shallowRef<DefineComponent>();
@@ -7,7 +7,10 @@ export const useRightSideMenuStore = defineStore('right-side-menu', () => {
     const mobileVisible = ref(false);
     const detached = ref(false);
 
-    async function setActiveComponent(pass_comp: DefineComponent, pass_props: Record<string, any> = {}) {
+    async function setActiveComponent(
+        pass_comp: DefineComponent,
+        pass_props: Record<string, any> = {}
+    ) {
         component.value = pass_comp;
         props.value = pass_props;
         mobileVisible.value = true;
@@ -26,6 +29,6 @@ export const useRightSideMenuStore = defineStore('right-side-menu', () => {
         setActiveComponent,
         clearActiveComponent,
         mobileVisible,
-        detached,
+        detached
     };
 });

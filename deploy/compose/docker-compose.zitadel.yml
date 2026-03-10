@@ -1,0 +1,100 @@
+# Zitadel identity provider stack
+#
+# Old file: /zitadel-docker-compose.yaml
+# Changes: all secrets externalized (masterkey, passwords), images pinned
+
+services:
+  zitadel-db:
+    image: postgres:${ZITADEL_POSTGRES_VERSION}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: >-
+      postgres
+      -c shared_buffers=${ZITADEL_PG_SHARED_BUFFERS}
+      -c effective_cache_size=${ZITADEL_PG_EFFECTIVE_CACHE}
+      -c work_mem=${ZITADEL_PG_WORK_MEM}
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${ZITADEL_POSTGRES_PASSWORD}
+      POSTGRES_DB: zitadel
+    volumes:
+      - zitadel-db-data:/var/lib/postgresql/data
+      - ../state/init-zitadel-db.sql:/docker-entrypoint-initdb.d/init-zitadel-db.sql:ro
+    networks:
+      - fleet-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:${ZITADEL_VERSION}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: 'start-from-init --masterkey "${ZITADEL_MASTERKEY}" --tlsMode disabled --config /system-api/system-api-config.yaml'
+    environment:
+      - GOMEMLIMIT=${ZITADEL_MEM_LIMIT}
+      - ZITADEL_EXTERNALPORT=${ZITADEL_EXTERNALPORT}
+      - ZITADEL_EXTERNALSECURE=${ZITADEL_EXTERNALSECURE:-false}
+      - ZITADEL_TLS_ENABLED=false
+      - ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED=false
+      - ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_TLS=false
+      - ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_SMTP_HOST=mailcatcher:1025
+      - ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_FROM=noreply@shelly.cloud
+      - ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_FROMNAME=noreply
+      - ZITADEL_EXTERNALDOMAIN=${ZITADEL_HOSTNAME}
+      - ZITADEL_LOGSTORE_ACCESS_STDOUT_ENABLED=true
+      - ZITADEL_DATABASE_POSTGRES_HOST=zitadel-db
+      - ZITADEL_DATABASE_POSTGRES_DATABASE=zitadel
+      - ZITADEL_DATABASE_POSTGRES_USER_USERNAME=zitadel
+      - ZITADEL_DATABASE_POSTGRES_USER_PASSWORD=${ZITADEL_DB_USER_PASSWORD}
+      - ZITADEL_DATABASE_POSTGRES_PORT=5432
+      - ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME=postgres
+      - ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD=${ZITADEL_POSTGRES_PASSWORD}
+      - ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE=disable
+      - ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE=disable
+      - ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME=root
+      - ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD=${ZITADEL_ADMIN_PASSWORD}
+      - ZITADEL_FIRSTINSTANCE_MACHINEKEYPATH=/machinekey/zitadel-admin-sa.json
+      - ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME=zitadel-admin-sa
+      - ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME=Admin
+      - ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINEKEY_TYPE=1
+    # Public port published by zitadel-ports.yml (direct) or routed via Traefik.
+    # Localhost-only binding for bootstrap/health scripts that run on the host
+    # before Traefik is up. Not accessible from external networks.
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ../state/machinekey:/machinekey
+      - ../state/system-api:/system-api:ro
+    networks:
+      - fleet-net
+    depends_on:
+      zitadel-db:
+        condition: "service_healthy"
+    healthcheck:
+      test: ["CMD", "/app/zitadel", "ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  fleet-net:
+
+volumes:
+  zitadel-db-data:

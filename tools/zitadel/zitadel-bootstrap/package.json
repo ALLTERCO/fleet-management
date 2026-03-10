@@ -1,9 +1,0 @@
-{
-    "dependencies": {
-        "jose": "^5.2.2",
-        "passport-zitadel": "^1.1.4"
-    },
-    "devDependencies": {
-        "@types/node": "^20.11.20"
-    }
-}

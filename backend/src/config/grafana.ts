@@ -118,15 +118,26 @@ async function grafana(
             }),
             {flag: 'w'}
         );
-    } catch (e) {
-        logger.error(e);
+    } catch (e: any) {
+        // fetch failures (DNS, connection refused) mean Grafana isn't reachable yet —
+        // this is expected when starting without Grafana or before it's healthy
+        if (
+            e?.cause?.code === 'EAI_AGAIN' ||
+            e?.cause?.code === 'ECONNREFUSED'
+        ) {
+            logger.warn(
+                'Grafana not reachable at %s — skipping dashboard setup',
+                config.endpoint
+            );
+        } else {
+            logger.error('Grafana setup failed:', e);
+        }
     }
 }
 
 export default async (config: config_rc_t) => {
     const grafanaConfig = config.graphs?.grafana;
     if (!grafanaConfig || !grafanaConfig.endpoint) {
-        logger.error('Missing Grafana config, skipping Grafana');
         return;
     }
     return await grafana(

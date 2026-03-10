@@ -2,6 +2,8 @@ import log4js from 'log4js';
 import CommandSender from '../model/CommandSender';
 import type Component from '../model/component/Component';
 import RpcError from '../rpc/RpcError';
+import * as AuditLogger from './AuditLogger';
+import * as Observability from './Observability';
 const logger = log4js.getLogger('Commander');
 
 const components: Map<string, Component> = new Map();
@@ -17,6 +19,8 @@ export async function exec(
     params?: any
 ): Promise<any> {
     method = method.toLowerCase();
+    const username = sender.getUser()?.username;
+    const t0 = Observability.isEnabled() ? performance.now() : 0;
 
     try {
         if (!method.includes('.')) {
@@ -29,8 +33,36 @@ export async function exec(
             throw RpcError.MethodNotFound();
         }
 
-        return await component.call(sender, submethod, params);
+        const result = await component.call(sender, submethod, params);
+
+        if (t0) Observability.recordRpcTiming(method, performance.now() - t0);
+        Observability.incrementCounter('rpc_success');
+
+        // Log successful RPC (skip high-frequency reads)
+        if (AuditLogger.shouldLogRpc(method)) {
+            AuditLogger.logRpc(username, method, params, true);
+        }
+
+        return result;
     } catch (error: any) {
+        if (t0) Observability.recordRpcTiming(method, performance.now() - t0);
+        Observability.incrementCounter('rpc_errors');
+        Observability.recordRpcError(
+            method,
+            error instanceof RpcError
+                ? error.message
+                : error?.message || String(error)
+        );
+
+        // Log failed RPC
+        if (AuditLogger.shouldLogRpc(method)) {
+            const errorMessage =
+                error instanceof RpcError
+                    ? error.message
+                    : error?.message || String(error);
+            AuditLogger.logRpc(username, method, params, false, errorMessage);
+        }
+
         if (error instanceof RpcError) {
             throw error.getErrorObject();
         }
@@ -93,3 +125,8 @@ export async function getStatus(name: string) {
     }
     return component.getStatus();
 }
+
+// Register observability module stats
+Observability.registerModule('commander', () => ({
+    registered: components.size
+}));

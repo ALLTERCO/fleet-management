@@ -1,5 +1,10 @@
 <template>
-    <div v-if="config">
+    <div v-if="!config" class="space-y-3 p-4">
+        <Skeleton variant="row" />
+        <Skeleton variant="row" />
+        <Skeleton variant="rect" height="4rem" />
+    </div>
+    <div v-else-if="config">
         <EmptyBlock v-if="!config.enable">
             <div class="space-y-2">
                 <p class="text-xl font-semibold pb-2">Mail is disabled</p>
@@ -10,11 +15,11 @@
         <BasicBlock v-else darker>
             <div class="space-y-2 relative">
                 <div>
-                    <div><span class="text-xl font-semibold">Mail Configuration</span><br /></div>
+                    <div><h2 class="heading-section">Mail Configuration</h2></div>
                     <div v-if="status" class="mt-2">
                         <span>Mail status: </span>
-                        <span v-if="mailVerified" class="text-green-500">Working</span>
-                        <span v-else class="text-red-500">Not Working</span>
+                        <span v-if="mailVerified" class="text-[var(--color-success-text)]">Working</span>
+                        <span v-else class="text-[var(--color-danger-text)]">Not Working</span>
                         <br />
                         <span v-if="status.verifyTs > 0">
                             Last checked on
@@ -31,7 +36,7 @@
                     </div>
                 </div>
                 <Collapse title="Configure">
-                    <div class="max-w-sm space-y-3">
+                    <form class="max-w-sm space-y-3" @submit.prevent="saveConfig">
                         <Input v-model="config.transport.host" label="SMTP Host" placeholder="SMTP Host" />
                         <Input
                             v-model="config.transport.port"
@@ -47,7 +52,7 @@
                             placeholder="*****"
                         />
                         <Button type="blue" :loading="configLoading" @click="saveConfig"> Apply </Button>
-                    </div>
+                    </form>
                 </Collapse>
                 <Collapse title="Test Mail">
                     <Notification> This will use your saved configuration to send a test email. </Notification>
@@ -60,16 +65,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import {computed, onMounted, ref} from 'vue';
 import BasicBlock from '@/components/core/BasicBlock.vue';
-import * as ws from '@/tools/websocket';
-import EmptyBlock from '@/components/core/EmptyBlock.vue';
 import Button from '@/components/core/Button.vue';
-import { useToastStore } from '@/stores/toast';
 import Collapse from '@/components/core/Collapse.vue';
+import EmptyBlock from '@/components/core/EmptyBlock.vue';
 import Input from '@/components/core/Input.vue';
-import { getTestEmail } from '@/helpers/texts';
 import Notification from '@/components/core/Notification.vue';
+import Skeleton from '@/components/core/Skeleton.vue';
+import {getTestEmail} from '@/helpers/texts';
+import {useToastStore} from '@/stores/toast';
+import * as ws from '@/tools/websocket';
 
 const config = ref<{
     enable: boolean;
@@ -100,8 +106,8 @@ async function enableMail() {
     try {
         await ws.sendRPC('FLEET_MANAGER', 'Mail.SetConfig', {
             config: {
-                enable: true,
-            },
+                enable: true
+            }
         });
         await refreshConfig();
         toast.success('Enabled mail');
@@ -119,7 +125,11 @@ async function sendTestMail() {
             toast.error('Not configgured');
             return;
         }
-        const info = await ws.sendRPC('FLEET_MANAGER', 'Mail.Send', getTestEmail(user, testMail.value));
+        const info = await ws.sendRPC(
+            'FLEET_MANAGER',
+            'Mail.Send',
+            getTestEmail(user, testMail.value)
+        );
         toast.success(`Test mail send with id '${info.messageId}'`);
         testMail.value = '';
     } catch (error) {
@@ -140,8 +150,8 @@ async function refreshConfig() {
                 port: 587,
                 auth: {
                     user: '',
-                    pass: '',
-                },
+                    pass: ''
+                }
             };
         }
     } catch (error) {
@@ -169,8 +179,8 @@ async function saveConfig() {
     try {
         await ws.sendRPC('FLEET_MANAGER', 'Mail.SetConfig', {
             config: {
-                transport: config.value?.transport,
-            },
+                transport: config.value?.transport
+            }
         });
         setTimeout(async () => {
             await refreshConfig();

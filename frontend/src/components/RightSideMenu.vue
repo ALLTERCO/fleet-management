@@ -1,7 +1,7 @@
 <template>
     <Transition name="slide-fade">
         <aside
-            class="border border-gray-600 bg-gray-800 rounded-tl-xl rounded-bl-xl overflow-y-scroll"
+            class="right-side-menu border rounded-tl-xl rounded-bl-xl overflow-y-scroll"
             :class="myClass"
         >
             <template v-if="rightSideStore.component">
@@ -14,9 +14,9 @@
 </template>
 
 <script setup lang="ts">
-import { useRightSideMenuStore } from '@/stores/right-side';
+import {computed} from 'vue';
+import {useRightSideMenuStore} from '@/stores/right-side';
 import DefaultBoard from './boards/DefaultBoard.vue';
-import { computed } from 'vue';
 
 const rightSideStore = useRightSideMenuStore();
 
@@ -29,18 +29,19 @@ const myClass = computed(() => {
 });
 </script>
 
-<style>
-.slide-fade-enter-active {
-    transition: all 150ms ease-in;
+<style scoped>
+.right-side-menu {
+    border-color: var(--color-border-strong);
+    background-color: var(--color-surface-2);
 }
 
+.slide-fade-enter-active,
 .slide-fade-leave-active {
-    transition: all 100ms ease-out;
+    transition: opacity var(--duration-fast) var(--ease-out);
 }
 
 .slide-fade-enter-from,
 .slide-fade-leave-to {
-    transform: translateX(400px);
-    opacity: 0.8;
+    opacity: 0;
 }
 </style>

@@ -1,42 +1,62 @@
-import { createApp } from 'vue';
+import {createApp} from 'vue';
 import './style.css';
 import '@/constants';
-import App from './App.vue';
-import router from './router';
-import { createPinia } from 'pinia';
-import { USE_LOGIN_ZITADEL } from './constants';
+import {createPinia} from 'pinia';
+import {initWebVitals} from '@/helpers/webVitals';
 import zitadelAuth from '@/helpers/zitadelAuth';
+import App from './App.vue';
+import {USE_LOGIN_ZITADEL} from './constants';
+import router from './router';
 
 function init() {
     const pinia = createPinia();
 
     const app = createApp(App);
-    app.config.performance = true;
+    const rtCfg = (window as any).__FM_RUNTIME_CONFIG__;
+    app.config.performance = rtCfg?.perfTracing ?? import.meta.env.DEV;
+
+    app.config.errorHandler = (err, instance, info) => {
+        console.error(`[Vue Error] ${info}:`, err);
+    };
+
     app.use(pinia);
     app.use(router);
     app.mount('#app');
 
-    // Custom directive (v-lazyload) for loading images
-    app.directive('lazyload', (el) => {
-        // Grab the data-url property
-        const imageURL = el.dataset.url;
+    initWebVitals();
 
-        // If Intersection Observer is supported
-        if ('IntersectionObserver' in window) {
-            // Create New Intersection Observer Instance
-            const observer = new IntersectionObserver((entries) => {
-                entries.forEach((entry) => {
-                    // Logic for each entry passed to the callback function
+    // Shared IntersectionObserver for v-lazyload (one observer for all images)
+    let lazyObserver: IntersectionObserver | null = null;
+    const lazyMap = new WeakMap<Element, string>();
+
+    function getLazyObserver(): IntersectionObserver {
+        if (!lazyObserver) {
+            lazyObserver = new IntersectionObserver((entries) => {
+                for (const entry of entries) {
                     if (entry.isIntersecting) {
-                        el.src = imageURL;
+                        const url = lazyMap.get(entry.target);
+                        if (url) {
+                            (entry.target as HTMLImageElement).src = url;
+                            lazyMap.delete(entry.target);
+                        }
+                        lazyObserver!.unobserve(entry.target);
                     }
-                });
+                }
             });
+        }
+        return lazyObserver;
+    }
 
-            observer.observe(el);
-        } else {
-            // Logic if Intersection Observer is not supported
-            el.src = imageURL;
+    app.directive('lazyload', {
+        mounted(el: HTMLImageElement) {
+            const url = el.dataset.url;
+            if (!url) return;
+            lazyMap.set(el, url);
+            getLazyObserver().observe(el);
+        },
+        unmounted(el: HTMLImageElement) {
+            lazyMap.delete(el);
+            getLazyObserver().unobserve(el);
         }
     });
 }

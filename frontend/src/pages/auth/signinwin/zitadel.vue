@@ -8,10 +8,10 @@
 </template>
 
 <script setup lang="ts">
+import {useRouter} from 'vue-router/auto';
 import EmptyBlock from '@/components/core/EmptyBlock.vue';
 import Spinner from '@/components/core/Spinner.vue';
 import zitadelAuth from '@/helpers/zitadelAuth';
-import { useRouter } from 'vue-router/auto';
 
 const router = useRouter();
 console.log('zitadel auth started');
@@ -22,7 +22,9 @@ if (zitadelAuth == undefined) {
     zitadelAuth.oidcAuth.mgr
         .signinRedirectCallback()
         .then((data) => {
-            console.log(`${zitadelAuth!.oidcAuth.authName} Window signin callback success`, data);
+            console.debug(
+                `${zitadelAuth!.oidcAuth.authName} Window signin callback success`
+            );
             // need to manually redirect for window type
             // goto original secure route or root
             const redirect = data.state ? data.state.to : null;
@@ -30,7 +32,10 @@ if (zitadelAuth == undefined) {
             else window.location.href = zitadelAuth!.oidcAuth.appUrl;
         })
         .catch((err) => {
-            console.error(`${zitadelAuth!.oidcAuth.authName} Window signin callback error`, err);
+            console.error(
+                `${zitadelAuth!.oidcAuth.authName} Window signin callback error`,
+                err
+            );
             if (router) router.replace('/');
             else window.location.href = zitadelAuth!.oidcAuth.appUrl;
         });

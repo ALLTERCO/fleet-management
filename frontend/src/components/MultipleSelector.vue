@@ -11,12 +11,12 @@
         <div class="grid grid-cols-2 gap-3">
             <div v-for="option in filteredOptions" :key="option.name">
                 <div
-                    class="p-3 flex flex-row gap-2 items-center rounded-lg bg-gray-950 border-blue-500 shadow-blue-500 hover:cursor-pointer"
+                    class="p-3 flex flex-row gap-2 items-center rounded-lg bg-[var(--color-surface-1)] border-[var(--color-primary)] shadow-[var(--color-primary)] hover:cursor-pointer"
                     :class="[selected.includes(option) && 'border shadow-md']"
                     @click="optionSelected(option)"
                 >
                     <input type="checkbox" class="" :checked="selected.includes(option)" />
-                    <img :src="option.pictureUrl" class="w-8 h-8 bg-slate-800 rounded-full" />
+                    <img :src="option.pictureUrl" class="w-8 h-8 bg-[var(--color-surface-2)] rounded-full" :alt="option.name || 'Device'" />
                     <span class="text-sm line-clamp-2">
                         {{ option.name }}
                     </span>
@@ -36,16 +36,16 @@
         }
     "
 >
-import { computed, ref, toRefs } from 'vue';
-import Input from './core/Input.vue';
+import {computed, ref, toRefs} from 'vue';
 import Button from './core/Button.vue';
+import Input from './core/Input.vue';
 
-const selected = defineModel<T[]>({ required: true });
+const selected = defineModel<T[]>({required: true});
 
 const props = defineProps<{
     options: T[];
 }>();
-const { options } = toRefs(props);
+const {options} = toRefs(props);
 
 const filter = ref('');
 const filteredOptions = computed(() => {

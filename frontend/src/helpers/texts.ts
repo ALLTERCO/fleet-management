@@ -7,6 +7,6 @@ export function getTestEmail(from: string, to: string) {
         to: to,
         subject: 'Hello from Fleet Manager ✔',
         text: text,
-        html: `<b>Mail Component Working</b><br><span>${text}</span>`,
+        html: `<b>Mail Component Working</b><br><span>${text}</span>`
     };
 }

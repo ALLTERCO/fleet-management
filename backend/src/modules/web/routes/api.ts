@@ -1,8 +1,10 @@
 import express from 'express';
-import {loginStrategy} from '../../../config';
+import log4js from 'log4js';
+import {DEV_MODE} from '../../../config';
 import * as DeviceCollector from '../../../modules/DeviceCollector';
 import {hasApiPermission} from '../../user';
 
+const logger = log4js.getLogger('api');
 const router = express.Router();
 
 const SWITCH_COMMANDS = ['on', 'off', 'toggle'];
@@ -12,6 +14,7 @@ router.use(async (req, res, next) => {
         return next();
     }
     if (!(await hasApiPermission(req.token, req.path))) {
+        logger.warn('API permission denied: %s %s', req.method, req.path);
         res.status(403);
         return;
     }
@@ -63,7 +66,8 @@ router.get('/switch', (req, res) => {
 router.get('/variables', (req, res) => {
     res.status(200)
         .json({
-            'login-strategy': loginStrategy
+            'login-strategy': DEV_MODE ? 'local' : 'zitadel-introspection',
+            'dev-mode': DEV_MODE
         })
         .end();
 });

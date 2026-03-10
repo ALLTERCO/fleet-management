@@ -9,5 +9,6 @@
 
 <script setup lang="ts">
 import Notification from '@/components/core/Notification.vue';
-const { MODE } = import.meta.env;
+
+const {MODE} = import.meta.env;
 </script>

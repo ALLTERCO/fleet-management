@@ -1,6 +1,7 @@
 import child_process from 'node:child_process';
 import * as fs from 'node:fs';
 import * as fsp from 'node:fs/promises';
+import path from 'node:path';
 import util from 'node:util';
 import * as log4js from 'log4js';
 import {PLUGINS_FOLDER, configRc} from '../../config';
@@ -8,9 +9,14 @@ import PluginComponent from '../../model/component/PluginComponent';
 import * as Commander from '../../modules/Commander';
 import type {PluginData} from '../../types';
 import {rebuild as rebuildFrontend} from '../Frontend';
+import * as Observability from '../Observability';
 import DirectoryScanner from './DirectoryScanner';
 import FrontendHandler from './FrontendHandler';
 import Workers from './Workers';
+
+const FRONTEND_SOURCE = path.join(__dirname, '../../../frontend');
+const HAS_NPM =
+    fs.existsSync('/usr/local/bin/npm') || fs.existsSync('/usr/bin/npm');
 
 const exec = util.promisify(child_process.exec);
 log4js.configure(configRc.logger);
@@ -65,16 +71,15 @@ export default class PluginLoader {
             Commander.registerComponent(component);
             const config = component.getConfig();
 
-            // Install plugin deps
-            const {stdout, stderr} = await exec('npm install', {
-                cwd: p.pluginFolder,
-                env: {
-                    ...process.env
-                }
-            });
-
-            logger.mark('plugin npm i stdout:', stdout);
-            logger.mark('plugin npm i stderr:', stderr);
+            // Install plugin deps (skip in Docker — deps are pre-installed at build time)
+            if (HAS_NPM) {
+                const {stdout, stderr} = await exec('npm install', {
+                    cwd: p.pluginFolder,
+                    env: {...process.env}
+                });
+                logger.mark('plugin npm i stdout:', stdout);
+                logger.mark('plugin npm i stderr:', stderr);
+            }
 
             if (config.enable === true) {
                 await PluginLoader.enablePlugin(name);
@@ -87,7 +92,17 @@ export default class PluginLoader {
             PluginLoader.disablePlugin(name);
         }
 
-        await rebuildFrontend();
+        // Only rebuild frontend when plugins changed and source tree is available
+        // (in Docker the frontend is pre-built — no source tree to rebuild from)
+        if (
+            (add.length > 0 || remove.length > 0) &&
+            fs.existsSync(FRONTEND_SOURCE)
+        ) {
+            // Rebuild in background — backend plugin functionality works immediately
+            rebuildFrontend().catch((err) => {
+                logger.error('Failed to rebuild frontend during sync', err);
+            });
+        }
     }
 
     // ----------------------------------------------------------------------------------
@@ -194,7 +209,6 @@ export default class PluginLoader {
         }
 
         await PluginLoader.sync();
-        console.log('AAAAAAAAAAAAAAAAAAAAAAAAA sinkna');
         fs.watch(PLUGINS_FOLDER, () => {
             PluginLoader.folderChanged();
         });
@@ -204,3 +218,7 @@ export default class PluginLoader {
         return PluginLoader.pluginDataMap;
     }
 }
+
+Observability.registerModule('plugins', () => ({
+    loadedPlugins: PluginLoader.getPluginData().size
+}));

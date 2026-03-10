@@ -4,18 +4,22 @@
         <HorizontalSlider v-if="calibrated" :value="position" :saved="saved" @change="setPosition">
             <template #title> Position ({{ position }}%) </template>
         </HorizontalSlider>
-        <p v-if="!calibrated" class="text-center font-semibold text-red-600">
+        <p v-if="!calibrated" class="text-center font-semibold text-[var(--color-danger-text)]">
             Calibrate the device to have position control
         </p>
     </div>
 </template>
 
 <script setup lang="ts">
-import { computed, toRefs } from 'vue';
+import {computed, toRefs} from 'vue';
 import HorizontalSlider from '@/components/core/HorizontalSlider.vue';
 
-const props = defineProps<{ position: number; calibrated: boolean; favorites: number[] }>();
-const { position, calibrated, favorites } = toRefs(props);
+const props = defineProps<{
+    position: number;
+    calibrated: boolean;
+    favorites: number[];
+}>();
+const {position, calibrated, favorites} = toRefs(props);
 const emit = defineEmits<{
     change: [value: number];
 }>();
@@ -25,7 +29,9 @@ const saved = computed(() => {
         return null;
     }
 
-    return Object.fromEntries(favorites.value.map((value) => [`${String(value)}%`, value]));
+    return Object.fromEntries(
+        favorites.value.map((value) => [`${String(value)}%`, value])
+    );
 });
 
 function setPosition(value: number) {

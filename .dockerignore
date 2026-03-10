@@ -3,13 +3,39 @@
 */.vscode
 logs
 */logs
-dev
 node_modules
 */node_modules
-*/package-lock.json
-*/**/package-lock.json
 dist
 */dist
+
+# Plugin pages are injected at build time from plugins/ — exclude frontend's stale copy
 /frontend/src/pages/plugin
+
+# Backend plugins dir is populated at runtime via volume — exclude from build context
 /backend/plugins
 
+# OS junk
+**/.DS_Store
+
+
+# Deploy artifacts — not needed in Docker build context
+# (deploy/docker/ is NOT excluded — Dockerfile and entrypoint.sh are needed)
+deploy/state
+deploy/.env
+deploy/tests
+deploy/scripts
+deploy/env
+deploy/compose
+deploy/clients
+
+# Documentation, tools, and non-application dirs
+docs
+tools
+fleet-traefik-compose
+npmrc
+
+# CI/CD and config files not needed in build
+.gitlab-ci.yml
+.releaserc.json
+.gitignore
+*.md

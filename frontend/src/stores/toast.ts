@@ -1,6 +1,6 @@
-import { defineStore } from 'pinia';
-import { notification_type_t } from '@/types';
-import { ref, Ref } from 'vue';
+import {defineStore} from 'pinia';
+import {type Ref, ref} from 'vue';
+import type {notification_type_t} from '@/types';
 
 export interface toast_t {
     visible: boolean;
@@ -15,7 +15,7 @@ export const useToastStore = defineStore('toast', () => {
         const toast: toast_t = {
             message,
             visible: true,
-            type: type || 'info',
+            type: type || 'info'
         };
         toasts.value.unshift(toast);
         if (toasts.value.length > 5) {
@@ -49,5 +49,5 @@ export const useToastStore = defineStore('toast', () => {
         return addToast(message, 'info');
     }
 
-    return { toasts, addToast, error, success, warning, info };
+    return {toasts, addToast, error, success, warning, info};
 });

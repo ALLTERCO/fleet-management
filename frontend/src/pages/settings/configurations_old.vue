@@ -91,16 +91,16 @@
 </template>
 
 <script setup lang="ts">
-import JSONViewer from '@/components/JSONViewer.vue';
+import {onMounted, ref} from 'vue';
 import BasicBlock from '@/components/core/BasicBlock.vue';
 import Button from '@/components/core/Button.vue';
 import Collapse from '@/components/core/Collapse.vue';
 import Dropdown from '@/components/core/Dropdown.vue';
 import Input from '@/components/core/Input.vue';
+import JSONViewer from '@/components/JSONViewer.vue';
 import Modal from '@/components/modals/Modal.vue';
-import { useToastStore } from '@/stores/toast';
+import {useToastStore} from '@/stores/toast';
 import * as ws from '@/tools/websocket';
-import { onMounted, ref } from 'vue';
 
 const toast = useToastStore();
 const configsRegistry = ws.getRegistry('configs');
@@ -113,28 +113,54 @@ const profile = ref('Default');
 const settings = [
     {
         title: 'Name',
-        options: [{ label: 'Name', key: 'name', placeholder: '' }],
+        options: [{label: 'Name', key: 'name', placeholder: ''}]
     },
     {
         title: 'Websocket',
-        options: [{ label: 'WS Address', key: 'ws', placeholder: 'Enter Fleet Manager address' }],
+        options: [
+            {
+                label: 'WS Address',
+                key: 'ws',
+                placeholder: 'Enter Fleet Manager address'
+            }
+        ]
     },
     {
         title: 'Wi-Fi',
         options: [
-            { label: 'Network Name', key: 'wifi.ssid', placeholder: 'Enter Wi-Fi name' },
-            { label: 'Password', key: 'wifi.pass', placeholder: 'Enter Wi-Fi password' },
-        ],
+            {
+                label: 'Network Name',
+                key: 'wifi.ssid',
+                placeholder: 'Enter Wi-Fi name'
+            },
+            {
+                label: 'Password',
+                key: 'wifi.pass',
+                placeholder: 'Enter Wi-Fi password'
+            }
+        ]
     },
     {
         title: 'MQTT',
         options: [
-            { label: 'Server', key: 'mqtt.server', placeholder: 'Enter MQTT server' },
-            { label: 'Client ID', key: 'mqtt.client_id', placeholder: 'Enter Client ID' },
-            { label: 'User', key: 'mqtt.user', placeholder: 'Enter User' },
-            { label: 'Topic Prefix', key: 'mqtt.topic_prefix', placeholder: 'Enter Topic Prefix' },
-        ],
-    },
+            {
+                label: 'Server',
+                key: 'mqtt.server',
+                placeholder: 'Enter MQTT server'
+            },
+            {
+                label: 'Client ID',
+                key: 'mqtt.client_id',
+                placeholder: 'Enter Client ID'
+            },
+            {label: 'User', key: 'mqtt.user', placeholder: 'Enter User'},
+            {
+                label: 'Topic Prefix',
+                key: 'mqtt.topic_prefix',
+                placeholder: 'Enter Topic Prefix'
+            }
+        ]
+    }
 ];
 
 const configs = ref<Record<string, unknown>>({});
@@ -143,14 +169,14 @@ const newConfig = ref<any>({
     ws: '',
     wifi: {
         ssid: '',
-        pass: '',
+        pass: ''
     },
     mqtt: {
         server: '',
         user: '',
         client_id: '',
-        topic_prefix: '',
-    },
+        topic_prefix: ''
+    }
 });
 
 // Modal
@@ -191,16 +217,16 @@ async function addNewConfiguration() {
     const myConfig = {
         ws: {
             enable: true,
-            server: newConfig.value.ws,
+            server: newConfig.value.ws
         },
         wifi: {
             sta: {
                 enable: true,
                 ssid: newConfig.value.wifi.ssid,
-                pass: newConfig.value.wifi.pass,
-            },
+                pass: newConfig.value.wifi.pass
+            }
         },
-        mqtt: newConfig.value.mqtt,
+        mqtt: newConfig.value.mqtt
     };
     try {
         configs.value[newConfig.value.name] = myConfig;
@@ -213,14 +239,14 @@ async function addNewConfiguration() {
                 ws: '',
                 wifi: {
                     ssid: '',
-                    pass: '',
+                    pass: ''
                 },
                 mqtt: {
                     server: '',
                     user: '',
                     client_id: '',
-                    topic_prefix: '',
-                },
+                    topic_prefix: ''
+                }
             };
         }, 100);
     } catch (error) {
@@ -257,8 +283,8 @@ function resetNewConfig() {
     newConfig.value = {
         name: 'My Configuration',
         ws: '',
-        wifi: { ssid: '', pass: '' },
-        mqtt: { server: '', user: '', client_id: '', topic_prefix: '' },
+        wifi: {ssid: '', pass: ''},
+        mqtt: {server: '', user: '', client_id: '', topic_prefix: ''}
     };
 }
 

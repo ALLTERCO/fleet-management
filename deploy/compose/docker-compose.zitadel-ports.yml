@@ -1,0 +1,9 @@
+# Zitadel — Port publication overlay
+#
+# Included when --routing direct (Zitadel accessible on its own port).
+# Excluded when --routing traefik (Traefik routes Zitadel paths on the FM port).
+
+services:
+  zitadel:
+    ports:
+      - "${ZITADEL_EXTERNALPORT}:8080"

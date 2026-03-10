@@ -1,46 +1,74 @@
-import { defineStore } from 'pinia';
+import {defineStore} from 'pinia';
+import {ref, shallowRef, triggerRef} from 'vue';
 import * as ws from '../tools/websocket';
-import { entity_t } from '../types';
-import { shallowRef, triggerRef } from 'vue';
+import type {entity_t} from '../types';
 
 export const useEntityStore = defineStore('entities', () => {
     const entities = shallowRef<Record<string, entity_t>>({});
+    // Version counter to force reactivity when entities change (shallowRef doesn't track deep changes)
+    const version = ref(0);
     const eventListeners: Map<string, Array<(event: string) => void>> = new Map<
         string,
         Array<(event: string) => void>
     >();
 
     async function fetchEntities() {
-        entities.value = await ws.listEntities();
+        // Collect all chunks into a single object, then assign once
+        const collected: Record<string, entity_t> = {};
+        await ws.listEntitiesChunked((chunk) => {
+            Object.assign(collected, chunk);
+        });
+        entities.value = collected;
+        version.value++;
     }
 
-    async function addEntity(id: string) {
-        const entity = await ws.getEntityInfo(id);
-        if (entity) {
-            entities.value[entity.id] = entity;
-            triggerRef(entities);
+    async function addEntity(id: string, force = false) {
+        // Skip if entity already loaded (e.g. by fetchEntities bulk load)
+        if (!force && entities.value[id]) return;
+        try {
+            const entity = await ws.getEntityInfo(id);
+            if (entity) {
+                entities.value[entity.id] = entity;
+                triggerRef(entities);
+                version.value++;
+            }
+        } catch (err) {
+            if (import.meta.env.DEV)
+                console.warn(
+                    `[addEntity] Failed to get entity info for ${id}:`,
+                    err
+                );
         }
     }
 
     async function removeEntities(oldEntities: string[]) {
         for (const id of oldEntities) {
             delete entities.value[id];
+            eventListeners.delete(id);
         }
         triggerRef(entities);
+        version.value++;
     }
 
     async function updateEntity(entityID: string) {
-        return await addEntity(entityID);
+        return await addEntity(entityID, true);
     }
 
     async function sendRPC(entityID: string, method: string, params?: any) {
         const entity = entities.value[entityID];
         if (entity == undefined) {
-            return Promise.reject('Entity not found');
+            return Promise.reject(new Error('Entity not found'));
         }
 
-        if (method.split('.')[0].toLocaleLowerCase() !== entity.type.toLocaleLowerCase()) {
-            return Promise.reject('Method not supported by entity');
+        if (!entity.type) {
+            return Promise.reject(new Error('Entity has no type'));
+        }
+
+        if (
+            method.split('.')[0].toLocaleLowerCase() !==
+            entity.type.toLocaleLowerCase()
+        ) {
+            return Promise.reject(new Error('Method not supported by entity'));
         }
 
         if (params == undefined) {
@@ -62,7 +90,10 @@ export const useEntityStore = defineStore('entities', () => {
         return () => removeListener(entityId, callback);
     }
 
-    function removeListener(entityId: string, callback: (event: string) => void) {
+    function removeListener(
+        entityId: string,
+        callback: (event: string) => void
+    ) {
         const listeners = eventListeners.get(entityId);
 
         if (!listeners) {
@@ -75,7 +106,10 @@ export const useEntityStore = defineStore('entities', () => {
         }
     }
 
-    function notifyEvent(entityId: string, event: 'single_push' | 'double_push' | 'long_push') {
+    function notifyEvent(
+        entityId: string,
+        event: 'single_push' | 'double_push' | 'long_push'
+    ) {
         const listeners = eventListeners.get(entityId);
 
         if (!listeners) {
@@ -89,12 +123,13 @@ export const useEntityStore = defineStore('entities', () => {
 
     return {
         entities,
+        version,
         fetchEntities,
         sendRPC,
         addEntity,
         removeEntities,
         updateEntity,
         notifyEvent,
-        addListener,
+        addListener
     } as const;
 });

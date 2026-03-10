@@ -1,137 +1,152 @@
-# Fleet Management
+# Fleet Management — Community Edition
 
-Fleet Manager is a standalone software service for controlling and monitoring a fleet of second generation Shelly devices. Fleet Manager exposes a websocket server endpoint on which Shelly Plus and Pro series devices can connect to using their outbound websockets. Once connected they can be fully managed by Fleet Manager. Fleet Manager also exposes a websocket endpoint for clients to connect to. Messages send to Fleet Manager must follow the [JSON-RPC 2.0 protocol](https://www.jsonrpc.org/specification). Communication protocols for Fleet Management are described in [RPC and Components](./docs/rpc_and_components.md)
+Fleet Manager is a self-hosted service for managing fleets of second-generation [Shelly](https://shelly.cloud) devices. Connect your Shelly Plus and Pro series devices via outbound WebSocket and manage them from a single dashboard.
 
-## Start the program
+## Quick Start
 
-### Using docker:
+### Prerequisites
 
-#### Requirements
+- Linux (Ubuntu/Debian, Raspberry Pi arm64, Arch) or macOS
+- 2 GB RAM minimum, 4 GB recommended
+- Docker and Docker Compose v2
 
-- Kernel version >=5.x.x (ask: `uname -a`)
-- docker version >=19.x (ask: `docker -v`)
-- docker compose version >=2.x.x (ask: `docker-compose version` OR `docker compose version`)
+### One-command install
 
 ```bash
-1. Open your terminal.
-2. Navigate to wherever you have cloned the Fleet Manager repository. Make sure that inside that folder there is a file named "docker-compose.yml".
-3. Paste this command:
-
-docker compose up -d
-
-You now have an instance of the Fleet Manager running on localhost:7011. You can log in to it using {"username": "admin", "password": "admin"}
+git clone https://github.com/ALLTERCO/fleet-management.git
+cd fleet-management
+./deploy/deploy-public.sh install   # installs Docker if needed
+./deploy/deploy-public.sh up        # starts everything
 ```
 
-####
+The installer will:
+1. Install Docker and dependencies (if not present)
+2. Pull Fleet Manager, TimescaleDB, and Zitadel images
+3. Generate secure credentials
+4. Bootstrap the OIDC identity provider
+5. Start all services
 
-##### Note, if db needs to be created manually, usually db name, user, password are the same, query is as follows:
+Once ready, you'll see:
 
-```sql
-CREATE USER "fleet" WITH ENCRYPTED PASSWORD 'fleet';
-CREATE DATABASE "fleet" OWNER "fleet";
-GRANT ALL PRIVILEGES ON DATABASE "fleet" TO "fleet";
+```
+  Fleet Manager:   http://<your-ip>:7011
+  Zitadel Console: http://<your-ip>:9090
+
+  Default Login:
+    Username: fm-admin
+    Password: Admin123!
 ```
 
-the switch to: `fleet` db and exec:
+### Connect a Shelly device
 
-```sql
-CREATE SCHEMA IF NOT EXISTS migration AUTHORIZATION "fleet";
-GRANT ALL ON SCHEMA _timescaledb_cache TO fleet;
-GRANT ALL ON SCHEMA _timescaledb_catalog TO fleet;
-GRANT ALL ON SCHEMA _timescaledb_config TO fleet;
-GRANT ALL ON SCHEMA _timescaledb_debug TO fleet;
-GRANT ALL ON SCHEMA _timescaledb_functions TO fleet;
-GRANT ALL ON SCHEMA _timescaledb_internal TO fleet;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA _timescaledb_cache TO fleet;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA _timescaledb_catalog TO fleet;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA _timescaledb_config TO fleet;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA _timescaledb_debug TO fleet;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA _timescaledb_functions TO fleet;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA _timescaledb_internal TO fleet;
+1. Open the Shelly device's local web page
+2. Navigate to **Networks > Outbound WebSocket**
+3. Enable it and enter: `ws://<your-ip>:7011/shelly`
+
+The device will appear in the Fleet Manager dashboard.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `./deploy/deploy-public.sh up` | Start Fleet Management |
+| `./deploy/deploy-public.sh down` | Stop all services |
+| `./deploy/deploy-public.sh down --volumes` | Stop and delete all data |
+| `./deploy/deploy-public.sh status` | Show service health |
+| `./deploy/deploy-public.sh logs [service]` | View logs |
+| `./deploy/deploy-public.sh update` | Pull latest images and restart |
+| `./deploy/deploy-public.sh ip` | Show IP and access URLs |
+| `./deploy/deploy-public.sh install` | Install Docker + dependencies |
+
+## Docker Hub
+
+Pre-built multi-arch images (amd64 + arm64) are available on Docker Hub:
+
+```bash
+docker pull shellygroup/fleet-management:latest
 ```
 
-##### Cleanup database for fresh migrations
+## SSL / HTTPS
 
-```sql
-DROP SCHEMA device CASCADE;
-DROP SCHEMA "device.em" CASCADE;
-DROP SCHEMA logging CASCADE;
-DROP TABLE migration."migration.list";
-DROP TABLE migration."migration.locks";
-DROP SCHEMA organization CASCADE;
-DROP SCHEMA ui CASCADE;
-DROP SCHEMA "user" CASCADE;
+Self-signed certificate for local networks:
+
+```bash
+./deploy/deploy-public.sh up --ssl selfsigned
 ```
 
-### Run with the goal of development
+Let's Encrypt certificate for public domains:
 
-Described in [Developing](./docs/developing.md).
-
-### 2 external non TS modules:
-
-#### `migration-collection` - makes migration, accepts db config and path where migration files are located
-
-example config
-
-```json
-{
-  "connection": {
-    // db connection config
-    "host": "localhost",
-    "user": "**********",
-    "max": 40,
-    "password": "**********",
-    "database": "fm"
-  },
-  "schema": "migration", // namespace name, where migration tables will be created
-  "cwd": [
-    // migration files paths
-    "./db/migration/postgresql"
-  ]
-}
+```bash
+./deploy/deploy-public.sh up --ssl --domain your.domain.com
 ```
 
-#### `expose-sql-methods` - exposes all sql functions for given database.schema.
+## Architecture
 
-accepts database connection info + where are functions that we need (where = namespace)
-returns object with the following fingerprint:
-
-```json
-{
-    "methods": {fn1, fn2 .....} // all functions found in configured namespace/s,
-    "stop": fn(){} // of called, db connection will be closed
-    "txBegin", "txEnd" // both are functions, it is usable if dev wants to use build in pg driver transaction helper, txBegin - starts
-    // tx and returns tx id, txEnd accepts tx id and closes the transaction
-}
+```
+Browser ──> Fleet Manager (:7011) ──> TimescaleDB (PostgreSQL)
+                │
+Shelly ─── ws ──┘        Zitadel (:9090) ── OIDC Auth
+devices                       │
+                         Zitadel DB (PostgreSQL)
 ```
 
-example config
+- **Fleet Manager** — Node.js backend + Vue 3 frontend
+- **TimescaleDB** — PostgreSQL with time-series extensions for device data
+- **Zitadel** — OIDC identity provider (authentication, user management)
 
-```json
-{
-  "connection": {
-    // db connection config
-    "host": "localhost",
-    "user": "*******",
-    "max": 40,
-    "password": "************",
-    "database": "fm"
-  },
-  "link": { "schemas": ["devices", "core"] } // namespaces that will be inspected for functions, all of those functions will be exposed
-}
+## Configuration
+
+Environment variables can be set before running `deploy-public.sh up`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FM_VERSION` | `latest` | Fleet Manager Docker image version |
+| `FLEET_MANAGER_PORT` | `7011` | Fleet Manager HTTP/WebSocket port |
+| `ZITADEL_EXTERNALPORT` | `9090` | Zitadel identity provider port |
+
+Credentials are auto-generated on first run and stored in `deploy/state/.env`.
+
+## Optional Features
+
+Enable optional services with `--with`:
+
+```bash
+./deploy/deploy-public.sh up --with mdns          # mDNS device discovery
+./deploy/deploy-public.sh up --with grafana        # Grafana dashboards
+./deploy/deploy-public.sh up --with mailcatcher    # Email testing (dev only)
 ```
 
-# Useful resources
+## Example Plugins
 
-1. [RPC and Components](./docs/rpc_and_components.md)
-2. [Events](./docs/events.md)
-3. [RPC Relay](./docs/rpc_relay.md)
-4. [Plugins](./docs/plugins.md)
-5. [Codebase](./docs/codebase.md)
-6. [Developing](./docs/developing.md)
-7. [API](./docs/api.md)
-8. [Node-RED](./docs/node-red.md)
+Two example plugins are included:
+
+- **greetings** — Simple hello-world plugin demonstrating the plugin API
+- **metadata-demo** — Shows how to store and query device metadata
+
+See `plugins/` for source code.
+
+## Documentation
+
+- [RPC and Components](./docs/rpc_and_components.md) — Communication protocols
+- [Events](./docs/events.md) — Event system
+- [RPC Relay](./docs/rpc_relay.md) — Device command relay
+- [Plugins](./docs/plugins.md) — Plugin development guide
+- [Developing](./docs/developing.md) — Development setup
+
+## Supported Platforms
+
+| Platform | Architecture | Status |
+|----------|-------------|--------|
+| Ubuntu 22.04+ | amd64 | Supported |
+| Debian 12+ | amd64 | Supported |
+| Raspberry Pi OS | arm64 | Supported |
+| Arch Linux | amd64 | Supported |
+| macOS | amd64/arm64 | Supported (Docker Desktop) |
+
+## License
+
+Apache License 2.0 — see [LICENSE](./LICENSE).
 
 ## Contributing
 
-Contributing can be done with pull requests in Github
+Contributions are welcome via pull requests on GitHub.

@@ -20,7 +20,7 @@
                 <Button v-if="stage !== maxSteps" type="blue" @click="next"
                     >Next <i class="fas fa-chevron-right"
                 /></Button>
-                <Button v-else type="blue" @click="save">Save <i class="fas fa-save" /></Button>
+                <Button v-else type="blue" :requires-write="requiresWrite" @click="save">Save <i class="fas fa-save" /></Button>
                 <Button v-if="stage > 1" type="blue-hollow" @click="prev">
                     <i class="fas fa-chevron-left" /> Back
                 </Button>
@@ -30,16 +30,18 @@
 </template>
 
 <script setup lang="ts">
+import {watch} from 'vue';
 import Button from '@/components/core/Button.vue';
 import Steps from '@/components/core/Steps.vue';
 import Modal from '@/components/modals/Modal.vue';
-import { watch } from 'vue';
 
-const stage = defineModel<number>('stage', { required: true });
-const visible = defineModel<boolean>('visible', { required: true });
+const stage = defineModel<number>('stage', {required: true});
+const visible = defineModel<boolean>('visible', {required: true});
 
 defineProps<{
     maxSteps: number;
+    /** If true, the Save button will be disabled for users without write permission */
+    requiresWrite?: boolean;
 }>();
 
 const emit = defineEmits<{

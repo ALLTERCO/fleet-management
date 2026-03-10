@@ -68,12 +68,17 @@ export interface json_rpc_event {
     params: Record<string, any>;
 }
 
+import type {FleetPermissionConfig} from './model/permissions';
+
 export interface user_t {
     username: string;
     password: string;
     permissions: string[];
     group: string;
     enabled: boolean;
+    role?: 'admin' | 'installer' | 'viewer' | 'none';
+    /** New CRUD permission config (when using new schema) */
+    permissionConfig?: FleetPermissionConfig;
 }
 
 export interface PluginInfo {
@@ -93,7 +98,8 @@ export interface PluginData {
 
 export type event_data_t = {
     device?: AbstractDevice;
-    reason?: string;
+    reason?: string | string[];
+    serialized?: string;
 };
 export type shelly_presence_t = 'online' | 'offline' | 'pending';
 
@@ -384,6 +390,30 @@ export interface pm1_entity extends entity {
     type: 'pm1';
 }
 
+export interface cury_entity extends entity {
+    type: 'cury';
+    properties: entity['properties'] & {
+        mode?: string;
+        awayMode?: boolean;
+    };
+}
+
+export interface humidity_entity extends entity {
+    type: 'humidity';
+}
+
+export interface voltmeter_entity extends entity {
+    type: 'voltmeter';
+}
+
+export interface cct_entity extends entity {
+    type: 'cct';
+}
+
+export interface rgbcct_entity extends entity {
+    type: 'rgbcct';
+}
+
 export type entity_t =
     | input_entity
     | switch_entity
@@ -396,7 +426,12 @@ export type entity_t =
     | rgb_entity
     | rgbw_entity
     | cover_entity
-    | pm1_entity;
+    | pm1_entity
+    | cury_entity
+    | humidity_entity
+    | voltmeter_entity
+    | cct_entity
+    | rgbcct_entity;
 
 // END: Entity
 

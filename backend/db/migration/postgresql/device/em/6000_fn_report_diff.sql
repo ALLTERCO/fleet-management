@@ -28,7 +28,7 @@ BEGIN
             MIN(s.ts) start_date,
             MAX(s.ts) end_date,
             CAST(to_char(CAST(s.ts AS DATE), _period) AS VARCHAR) record_date,
-            CAST(ROUND((SUM(s.val) / 1000)::numeric, 2) AS REAL) total_energy_kw,
+            CAST(ROUND((SUM(s.val) / 1000)::numeric, 3) AS REAL) total_energy_kw,
             ROW_NUMBER () OVER (ORDER BY s.device, to_char(CAST(s.ts AS DATE), _period)) rn
         FROM device_em.mv__total_energy_24_h s
         WHERE

@@ -1,0 +1,127 @@
+# syntax=docker/dockerfile:1
+# Fleet Manager — Public/Community Edition
+#
+# Same multi-stage build as the private Dockerfile, but:
+#   - No Node-RED nodes injection (private registry package)
+#   - Only community plugins included (not paid/proprietary ones)
+#
+# Build arg:
+#   NODE_VERSION  Pinned Node.js base image tag (default from VERSIONS.env)
+
+ARG NODE_VERSION=22-alpine3.23
+
+# ── Stage 1: Backend build ──────────────────────────────────
+FROM node:${NODE_VERSION} AS backend-build
+
+RUN apk add --no-cache git
+
+WORKDIR /build/backend
+COPY backend/package.json backend/package-lock.json* ./
+
+# Strip private @Shelly packages — not available in public builds
+RUN node -e " \
+  var p = JSON.parse(require('fs').readFileSync('package.json', 'utf8')); \
+  delete p.dependencies['@Shelly/fleet-management-node-red-nodes']; \
+  require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2))"
+
+RUN npm install
+
+COPY backend/ ./
+RUN npx tsc --build --force
+
+# Re-strip private dep (COPY restored original package.json) then prune dev deps
+RUN node -e " \
+  var p = JSON.parse(require('fs').readFileSync('package.json', 'utf8')); \
+  delete p.dependencies['@Shelly/fleet-management-node-red-nodes']; \
+  require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2))" \
+  && npm prune --omit=dev
+
+# ── Stage 2: Plugin build (community plugins only) ─────────
+FROM node:${NODE_VERSION} AS plugin-build
+
+RUN apk add --no-cache python3 make g++
+
+WORKDIR /build/plugins
+
+# Public edition: only include community/example plugins.
+# Paid and proprietary plugins are excluded from the public image.
+COPY plugins/greetings/ ./greetings/
+COPY plugins/metadata-demo/ ./metadata-demo/
+
+RUN for dir in */; do \
+      [ -f "${dir}package.json" ] || continue; \
+      name="${dir%/}"; \
+      echo "[plugins] Installing deps for $name"; \
+      (cd "$dir" && npm install --omit=dev 2>&1) || echo "[plugins] WARN: npm install failed for $name"; \
+      if [ -f "${dir}tsconfig.json" ]; then \
+        echo "[plugins] Compiling TypeScript for $name"; \
+        (cd "$dir" && npx tsc --build 2>&1) || echo "[plugins] WARN: tsc failed for $name"; \
+      fi; \
+    done
+
+# ── Stage 3: Frontend build ─────────────────────────────────
+FROM node:${NODE_VERSION} AS frontend-build
+
+WORKDIR /build/frontend
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm install --legacy-peer-deps
+
+COPY frontend/ ./
+
+# Inject plugin frontend pages before building
+COPY --from=plugin-build /build/plugins /tmp/plugins
+RUN for dir in /tmp/plugins/*/; do \
+      name=$(basename "$dir"); \
+      if [ -d "${dir}frontend" ]; then \
+        echo "[plugins] Injecting frontend for plugin: $name"; \
+        mkdir -p "src/pages/plugin/$name"; \
+        cp -r "${dir}frontend/"* "src/pages/plugin/$name/"; \
+      fi; \
+    done && rm -rf /tmp/plugins
+
+# Build WITHOUT baking OIDC config — injected at runtime via entrypoint.sh
+RUN npm run build
+
+# ── Stage 4: Runtime image ──────────────────────────────────
+FROM node:${NODE_VERSION}
+
+RUN apk add --no-cache tini
+
+# Remove npm, yarn, corepack from runtime
+RUN rm -rf /usr/local/lib/node_modules/npm \
+           /usr/local/lib/node_modules/corepack \
+           /usr/local/bin/npm /usr/local/bin/npx \
+           /usr/local/bin/corepack \
+           /opt/yarn* /usr/local/bin/yarn /usr/local/bin/yarnpkg
+
+RUN mkdir -p /app/backend /app/frontend/dist /app/plugins \
+             /app/backend/uploads /app/backend/data && \
+    chown -R node:node /app
+
+COPY --from=backend-build --chown=node:node /build/backend/dist /app/backend/dist
+COPY --from=backend-build --chown=node:node /build/backend/node_modules /app/backend/node_modules
+COPY --from=backend-build --chown=node:node /build/backend/package.json /app/backend/package.json
+COPY --from=backend-build --chown=node:node /build/backend/db /app/backend/db
+COPY --from=backend-build --chown=node:node /build/backend/cfg /app/backend/cfg
+COPY --from=backend-build --chown=node:node /build/backend/static /app/backend/static
+COPY --from=backend-build --chown=node:node /build/backend/validations /app/backend/validations
+COPY --from=frontend-build --chown=node:node /build/frontend/dist /app/frontend/dist
+
+# Community plugins only (no paid plugins, no Node-RED nodes)
+COPY --from=plugin-build --chown=node:node /build/plugins /app/plugins
+
+# Seed assets
+COPY --chown=node:node backend/uploads/ /app/backend/uploads-seed/
+
+# Symlink runtime-config.js to /tmp for read_only containers
+RUN ln -s /tmp/runtime-config.js /app/frontend/dist/runtime-config.js
+
+COPY deploy/docker/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+USER node
+WORKDIR /app/backend
+ENV NODE_PATH=/app/backend/
+
+ENTRYPOINT ["/sbin/tini", "--", "/app/entrypoint.sh"]
+CMD ["node", "dist/app.js"]

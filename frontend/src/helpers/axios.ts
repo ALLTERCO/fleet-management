@@ -1,8 +1,8 @@
-import { FLEET_MANAGER_HTTP } from '@/constants';
 import axios from 'axios';
+import {FLEET_MANAGER_HTTP} from '@/constants';
 
 const apiClient = axios.create({
-    baseURL: FLEET_MANAGER_HTTP,
+    baseURL: FLEET_MANAGER_HTTP
 });
 
 apiClient.interceptors.request.use(

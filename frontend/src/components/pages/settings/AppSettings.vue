@@ -8,12 +8,12 @@
                 <p class="mb-4 text-sm font-medium">Custom Picture</p>
                 <div class="flex items-center space-x-4">
                     <label for="file-upload"
-                        class="flex items-center px-4 py-2 space-x-2 text-white bg-blue-500 rounded cursor-pointer hover:bg-blue-600">
+                        class="flex items-center px-4 py-2 space-x-2 text-white bg-[var(--color-primary)] rounded cursor-pointer hover:bg-[var(--color-primary-hover)]">
                         <i class="fa-solid fa-upload"></i>
                         <span>Upload Picture</span>
                     </label>
                     <input id="file-upload" class="hidden-input" type="file" capture accept=".jpg, .jpeg, .png"
-                        @change="handleFileUpload" />
+                        aria-label="Upload app picture" @change="handleFileUpload" />
                 </div>
             </div>
 
@@ -24,16 +24,16 @@
                     <div v-for="(thumb, index) in thumbnails" :key="index">
                         <div class="relative w-20 h-20 bg-cover bg-center border-2 rounded-full group"
                             :style="{ backgroundImage: `url(${thumb})` }" :class="{
-                                'border-blue-500': isSelectedAsBackground(index),
-                                'border-gray-300': !isSelectedAsBackground(index),
+                                'border-[var(--color-primary)]': isSelectedAsBackground(index),
+                                'border-[var(--color-border-default)]': !isSelectedAsBackground(index),
                             }" @click="handleBackgroundChange(index, thumb)">
                             <span v-if="isSelectedAsBackground(index)"
-                                class="absolute top-1 left-1 text-white bg-blue-500 rounded-full p-1">
-                                <i class="fas fa-check"></i>
+                                class="absolute top-1 left-1 text-white bg-[var(--color-primary)] rounded-full w-6 h-6 flex items-center justify-center">
+                                <i class="fas fa-check text-xs"></i>
                             </span>
                             <button @click.stop="deleteBackground(index)"
-                                class="absolute top-0 right-0 text-white bg-red-500 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <i class="fas fa-remove"></i>
+                                class="absolute -top-1 -right-1 text-white bg-[var(--color-danger)] rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <i class="fas fa-remove text-xs"></i>
                             </button>
                         </div>
                     </div>
@@ -45,12 +45,12 @@
                     <div v-for="color in solidColors" :key="color">
                         <div class="relative w-20 h-20 bg-cover bg-center border-2 rounded-full group"
                             :style="{ backgroundColor: color }" :class="{
-                                'border-blue-500': selectedColor === color,
-                                'border-gray-300': selectedColor !== color,
+                                'border-[var(--color-primary)]': selectedColor === color,
+                                'border-[var(--color-border-default)]': selectedColor !== color,
                             }" @click="handleBackgroundChange(null, null, color)">
                             <span v-if="selectedColor === color"
-                                class="absolute top-1 left-1 text-white bg-blue-500 rounded-full p-1">
-                                <i class="fas fa-check"></i>
+                                class="absolute top-1 left-1 text-white bg-[var(--color-primary)] rounded-full w-6 h-6 flex items-center justify-center">
+                                <i class="fas fa-check text-xs"></i>
                             </span>
                         </div>
                     </div>
@@ -75,19 +75,19 @@
 </template>
 
 <script setup lang="ts">
-import apiClient from '@/helpers/axios';
+import {storeToRefs} from 'pinia';
+import {computed, onMounted, ref, watch} from 'vue';
 import BasicBlock from '@/components/core/BasicBlock.vue';
-import { onMounted, ref, computed, watch } from 'vue';
-import { storeToRefs } from 'pinia';
-import { useToastStore } from '@/stores/toast';
-import { useGeneralStore } from '@/stores/general';
-import { FLEET_MANAGER_HTTP } from '@/constants';
 import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
+import {FLEET_MANAGER_HTTP} from '@/constants';
+import apiClient from '@/helpers/axios';
+import {useGeneralStore} from '@/stores/general';
+import {useToastStore} from '@/stores/toast';
 
 const toast = useToastStore();
 const generalStore = useGeneralStore();
-const { setBackgroundImg, setBackgroundColor, solidColors } = generalStore;
-const { background } = storeToRefs(generalStore);
+const {setBackgroundImg, setBackgroundColor, solidColors} = generalStore;
+const {background} = storeToRefs(generalStore);
 
 // State variables
 const thumbnails = ref<string[]>([]);
@@ -101,23 +101,48 @@ const modalRefDelete = ref<InstanceType<typeof ConfirmationModal>>();
 
 const basePath = FLEET_MANAGER_HTTP + '/uploads/backgrounds';
 
+/** Resolve a stored background value (relative path or legacy absolute URL) to a full URL */
+function resolveBackgroundUrl(value: string): string {
+    if (value.startsWith('/')) {
+        return FLEET_MANAGER_HTTP + value;
+    }
+    // Legacy absolute URL — re-resolve with current host
+    if (value.startsWith('http')) {
+        try {
+            const path = new URL(value).pathname;
+            return FLEET_MANAGER_HTTP + path;
+        } catch { /* fall through */ }
+    }
+    return value;
+}
+
 const loadImages = async () => {
     try {
         const response = await apiClient.get('/media/getAllBackgrounds');
 
         // Map thumbnails and originals to backend URLs
-        thumbnails.value = response.data.thumbnails.map((file: string) => `${basePath}/${file}`);
-        originals.value = response.data.originals.map((file: string) => `${basePath}/${file}`);
+        thumbnails.value = response.data.thumbnails.map(
+            (file: string) => `${basePath}/${file}`
+        );
+        originals.value = response.data.originals.map(
+            (file: string) => `${basePath}/${file}`
+        );
 
         // Update the selected background based on the store value
-        if (!background.value || background.value === 'undefined' || background.value == null) {
-            selectBackground(0, "http://localhost:7011/uploads/backgrounds/app_bg_01_thumb.png");
+        if (
+            !background.value ||
+            background.value === 'undefined' ||
+            background.value == null
+        ) {
+            selectBackground(0, `${basePath}/app_bg_01_thumb.png`);
         } else if (background.value.includes('#')) {
             selectedColor.value = background.value;
             selectedIndex.value = null;
         } else if (background.value.includes('uploads')) {
-            selectedBackground.value = background.value;
-            selectedIndex.value = originals.value.indexOf(background.value);
+            // Resolve relative/absolute stored path to full URL for display
+            const resolvedUrl = resolveBackgroundUrl(background.value);
+            selectedBackground.value = resolvedUrl;
+            selectedIndex.value = originals.value.indexOf(resolvedUrl);
         }
     } catch (err) {
         console.error('Failed to load images', err);
@@ -134,12 +159,13 @@ watch(
                 selectedColor.value = bg;
                 selectedIndex.value = null;
             } else if (bg.includes('uploads')) {
-                selectedBackground.value = bg;
-                selectedIndex.value = orig.indexOf(bg);
+                const resolvedUrl = resolveBackgroundUrl(bg);
+                selectedBackground.value = resolvedUrl;
+                selectedIndex.value = orig.indexOf(resolvedUrl);
             }
         }
     },
-    { immediate: true }
+    {immediate: true}
 );
 
 const isSelectedAsBackground = computed(() => (index: number) => {
@@ -148,10 +174,12 @@ const isSelectedAsBackground = computed(() => (index: number) => {
 
 const selectBackground = async (index: number, thumb: string) => {
     selectedIndex.value = index;
-    // Replace the thumbnail URL to get the original image URL if needed
-    selectedBackground.value = new URL(`${thumb.replace('_thumb', '')}`, import.meta.url).href;
+    const originalUrl = thumb.replace('_thumb', '');
+    selectedBackground.value = originalUrl;
     selectedColor.value = null;
-    await setBackgroundImg(selectedBackground.value);
+    // Store relative path so the background works across different hosts
+    const filename = originalUrl.split('/').pop() || '';
+    await setBackgroundImg(`/uploads/backgrounds/${filename}`);
     await loadImages();
     toast.success('Background changed successfully');
 };
@@ -171,18 +199,24 @@ const handleFileUpload = async ($event: Event) => {
         const originalFile = input.files[0];
         const fileExtension = originalFile.name.split('.').pop();
         const newFileName = `app_bg_${originals.value.length}.${fileExtension}`;
-        const renamedFile = new File([originalFile], newFileName, { type: originalFile.type });
+        const renamedFile = new File([originalFile], newFileName, {
+            type: originalFile.type
+        });
         fileProfile.value = renamedFile;
 
         const formData = new FormData();
         formData.append('image', renamedFile);
 
         try {
-            const response = await apiClient.post('/media/uploadBackgroud', formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
-            });
+            const response = await apiClient.post(
+                '/media/uploadBackgroud',
+                formData,
+                {
+                    headers: {
+                        'Content-Type': 'multipart/form-data'
+                    }
+                }
+            );
             if (response.data.success) {
                 await loadImages();
             }
@@ -198,14 +232,19 @@ function deleteBackground(image: number) {
     if (modalRefDelete.value) {
         modalRefDelete.value.storeAction(async () => {
             const fileName = originals.value[image].split('/').pop();
-            apiClient.post(`/media/deleteBackground`, { fileName })
+            apiClient
+                .post(`/media/deleteBackground`, {fileName})
                 .then(() => loadImages())
                 .catch((err) => console.error('Failed to delete image', err));
         });
     }
 }
 
-function handleBackgroundChange(index?: number | null, thumb?: string | null, color?: string | null) {
+function handleBackgroundChange(
+    index?: number | null,
+    thumb?: string | null,
+    color?: string | null
+) {
     if (modalRefChange.value) {
         modalRefChange.value.storeAction(async () => {
             if (index !== null && index !== undefined && thumb) {

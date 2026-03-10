@@ -31,24 +31,24 @@
 </template>
 
 <script setup lang="ts">
-import Collapse from '@/components/core/Collapse.vue';
+import {reactive, ref} from 'vue';
 import BasicBlock from '@/components/core/BasicBlock.vue';
-import { reactive, ref } from 'vue';
-import { useSystemStore } from '@/stores/system';
-import * as ws from '@/tools/websocket';
-import { useToastStore } from '@/stores/toast';
-import Notification from '@/components/core/Notification.vue';
-import Input from '@/components/core/Input.vue';
 import Button from '@/components/core/Button.vue';
 import Checkbox from '@/components/core/Checkbox.vue';
-import { defaultWs } from '@/helpers/ui';
+import Collapse from '@/components/core/Collapse.vue';
+import Input from '@/components/core/Input.vue';
+import Notification from '@/components/core/Notification.vue';
+import {defaultWs} from '@/helpers/ui';
+import {useSystemStore} from '@/stores/system';
+import {useToastStore} from '@/stores/toast';
+import * as ws from '@/tools/websocket';
 
 const systemStore = useSystemStore();
 const toast = useToastStore();
 
 const mdns = reactive({
     loading: true,
-    enabled: Boolean(systemStore.config.mdns.enable),
+    enabled: Boolean(systemStore.config.mdns.enable)
 });
 
 async function mdnsOpenned() {
@@ -62,7 +62,7 @@ async function mdnsOpenned() {
 
 async function mdnsSaved() {
     await ws.sendRPC('FLEET_MANAGER', 'MDNS.SetConfig', {
-        config: { enable: mdns.enabled },
+        config: {enable: mdns.enabled}
     });
     toast.success('Updated mDNS config');
     systemStore.updateConfig();

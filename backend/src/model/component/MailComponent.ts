@@ -62,16 +62,18 @@ export default class MailComponent extends Component<MailComponentConfig> {
     protected override configChanged() {
         if (this.config.transport) {
             this.#transport = nodemailer.createTransport(this.config.transport);
-            this.#transport.verify((error) => {
-                this.#verifyTs = Date.now();
-                if (error) {
+            this.#transport
+                .verify()
+                .then(() => {
+                    this.#verifyTs = Date.now();
+                    this.#verifyError = null;
+                    this.#verifyResponse = true;
+                })
+                .catch((error: Error) => {
+                    this.#verifyTs = Date.now();
                     this.#verifyError = error;
                     this.#verifyResponse = false;
-                    return;
-                }
-                this.#verifyError = null;
-                this.#verifyResponse = true;
-            });
+                });
         }
     }
 

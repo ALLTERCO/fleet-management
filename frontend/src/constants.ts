@@ -1,21 +1,45 @@
-import type { UserManagerSettings } from 'oidc-client';
+import type {UserManagerSettings} from 'oidc-client';
 
-export const MODE = import.meta.env.MODE === "development" ? "development" : "production";
+export const MODE =
+    import.meta.env.MODE === 'development' ? 'development' : 'production';
 
-export const FLEET_MANAGER_BASE = getEnv("FLEET_BASE_URL", window.location.host);
-const FLEET_SECURE = getEnv("FLEET_SECURE", window.location.protocol === 'https:' ? "1" : "0");
+export const FLEET_MANAGER_BASE = getEnv(
+    'FLEET_BASE_URL',
+    window.location.host
+);
+const FLEET_SECURE = getEnv(
+    'FLEET_SECURE',
+    window.location.protocol === 'https:' ? '1' : '0'
+);
 export const SECURE = FLEET_SECURE === '1';
 
-export const FLEET_MANAGER_WEBSOCKET = (SECURE ? 'wss://' : 'ws://') + FLEET_MANAGER_BASE;
-export const FLEET_MANAGER_HTTP = (SECURE ? 'https://' : 'http://') + FLEET_MANAGER_BASE;
+export const FLEET_MANAGER_WEBSOCKET =
+    (SECURE ? 'wss://' : 'ws://') + FLEET_MANAGER_BASE;
+export const FLEET_MANAGER_HTTP =
+    (SECURE ? 'https://' : 'http://') + FLEET_MANAGER_BASE;
 
-export const NODE_RED_URL = getEnv("NODE_RED_URL", `${MODE === "development" ? FLEET_MANAGER_HTTP : ""}/node-red/red`);
+export const NODE_RED_URL = getEnv(
+    'NODE_RED_URL',
+    `${MODE === 'development' ? FLEET_MANAGER_HTTP : ''}/node-red/red`
+);
 
-export declare const OIDC_CONFIG: UserManagerSettings; // from vite.config.ts
+export declare const OIDC_CONFIG: UserManagerSettings; // from vite.config.ts (build-time, used in dev)
+
+// Runtime OIDC config: injected by entrypoint.sh via runtime-config.js → window.__FM_RUNTIME_CONFIG__
+// Falls back to build-time OIDC_CONFIG for local dev (vite dev server)
+function getOidcConfig(): UserManagerSettings {
+    const runtime = (window as any).__FM_RUNTIME_CONFIG__?.oidc;
+    if (runtime && typeof runtime.authority === 'string') {
+        return runtime as UserManagerSettings;
+    }
+    return OIDC_CONFIG;
+}
+
+export const RESOLVED_OIDC_CONFIG = getOidcConfig();
 
 function getEnv(name: string, orElse: string) {
     const envVar = import.meta.env[`VITE_${name}`];
-    return (typeof envVar === 'string' && envVar.length > 0) ? envVar : orElse;
+    return typeof envVar === 'string' && envVar.length > 0 ? envVar : orElse;
 }
 
 function isOidcValid(obj: any): boolean {
@@ -32,20 +56,17 @@ function isOidcValid(obj: any): boolean {
     );
 }
 
-function getLoginType() {
-    const VITE_FE_LOGIN_STRATEGY = import.meta.env.VITE_FE_LOGIN_STRATEGY;
-    if (typeof VITE_FE_LOGIN_STRATEGY === 'string' && VITE_FE_LOGIN_STRATEGY === 'backend-jwt') {
-        return 'backend-jwt';
-    }
-    if (isOidcValid(OIDC_CONFIG)) {
-        return 'zitadel';
-    }
+// Zitadel-only authentication - OIDC must be configured
+export const USE_LOGIN_ZITADEL = isOidcValid(RESOLVED_OIDC_CONFIG);
 
-    return 'backend-jwt';
+if (!USE_LOGIN_ZITADEL) {
+    console.error(
+        'OIDC configuration is required but not valid. Authentication will not work.'
+    );
+    console.error(
+        'Configure OIDC via environment variables (runtime) or .fleet-managerrc (dev)'
+    );
 }
-
-export const LOGIN_TYPE = getLoginType();
-export const USE_LOGIN_ZITADEL = LOGIN_TYPE === 'zitadel';
 
 // DEV print
 if (import.meta.env.DEV) {
@@ -61,6 +82,6 @@ if (import.meta.env.DEV) {
         NODE_RED_URL
     });
 
-    console.debug('login type ->', LOGIN_TYPE);
+    console.debug('Zitadel auth enabled ->', USE_LOGIN_ZITADEL);
     console.debug('parsed OIDC Config ->', OIDC_CONFIG);
 }

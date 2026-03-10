@@ -73,6 +73,10 @@ const floatsData = [
     .concat(x({prefix: 'pm1:', repeat: 5, suffix: '.aenergy.minute_ts'}))
     .concat(x({prefix: 'pm1:', repeat: 5, suffix: '.aenergy.total'}))
     .concat(x({prefix: 'pm1:', repeat: 5, suffix: '.aenergy.id'}))
+    .concat(x({prefix: 'pm1:', repeat: 5, suffix: '.voltage'}))
+    .concat(x({prefix: 'pm1:', repeat: 5, suffix: '.current'}))
+    .concat(x({prefix: 'pm1:', repeat: 5, suffix: '.apower'}))
+    .concat(x({prefix: 'pm1:', repeat: 5, suffix: '.freq'}))
     .concat(
         x({prefix: '', repeat: 5, suffix: ''}).reduce((a: string[], v) => {
             return a.concat(
@@ -98,7 +102,9 @@ const floatsData = [
         }, [])
     )
     .concat(x({prefix: 'switch:', repeat: 5, suffix: '.voltage'}))
+    .concat(x({prefix: 'switch:', repeat: 5, suffix: '.current'}))
     .concat(x({prefix: 'switch:', repeat: 5, suffix: '.apower'}))
+    .concat(x({prefix: 'switch:', repeat: 5, suffix: '.freq'}))
     .concat(x({prefix: 'switch:', repeat: 5, suffix: '.aenergy.minute_ts'}))
     .concat(x({prefix: 'switch:', repeat: 5, suffix: '.temperature.tC'}))
     .concat(x({prefix: 'switch:', repeat: 5, suffix: '.temperature.tF'}))

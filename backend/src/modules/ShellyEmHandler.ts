@@ -3,7 +3,8 @@ import * as log4js from 'log4js';
 import type ShellyDevice from '../model/ShellyDevice';
 import * as DeviceCollector from '../modules/DeviceCollector';
 import type {ShellyMessageIncoming} from '../types';
-import {callMethod, get} from './PostgresProvider';
+import * as Observability from './Observability';
+import {callMethod, get, rawCall} from './PostgresProvider';
 
 type EMModels =
     | 'SPEM-002CEBEU50'
@@ -80,7 +81,10 @@ const dataFields = [
     'total_act_energy',
     'total_act_ret_energy',
     'min_voltage',
-    'max_voltage'
+    'max_voltage',
+    'total_current',
+    'min_current',
+    'max_current'
 ];
 
 const day0 = (before = 90) => {
@@ -106,7 +110,26 @@ const timeThreshold = (threshold: number): ((check: number) => boolean) => {
         return Math.floor(Date.now() / 1000) - check > threshold;
     };
 };
-const inPast = timeThreshold(60 * 10);
+/**
+ * EM Sync scaling limits (monolith, in-memory, single postgres):
+ *
+ * Each sync does ~3-4 DB queries + 1 device RPC (~100-200ms total).
+ * At MAX_CONCURRENT_SYNCS=40, throughput is ~200-400 syncs/sec.
+ *
+ * Strict 10-minute window: base 9min + up to 60s jitter = max 10min.
+ * Devices needing sync per tick = total_devices / (9min * 60s + avg_jitter).
+ *
+ *   700 devices  → ~1.3 due/sec  → 40 concurrent handles easily
+ *   5k devices   → ~9 due/sec    → 40 concurrent handles easily
+ *   20k devices  → ~37 due/sec   → 40 concurrent handles it
+ *   50k devices  → ~93 due/sec   → may need MAX_CONCURRENT_SYNCS=60-80
+ *   160k+ devices → requires Redis + microservices (multiple workers)
+ */
+const SYNC_THRESHOLD_S = 60 * 9; // 9 minutes base — with max 60s jitter, total never exceeds 10 minutes
+const inPast = timeThreshold(SYNC_THRESHOLD_S);
+const EM_SYNC_GRACE_PERIOD_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_CONCURRENT_SYNCS = 40;
+const TICK_INTERVAL_MS = 1000; // scan queue every 1 second
 
 export const InitEm = (): {
     evaluate: (m: ShellyMessageIncoming, device: ShellyDevice) => void;
@@ -118,15 +141,68 @@ export const InitEm = (): {
             id: number;
             profile: 'monophase' | 'triphase';
             model: EMModels;
+            offlineSince?: number;
+            lastSyncedTs?: number; // in-memory cache of last sync timestamp (unix seconds)
+            syncJitter: number; // random offset (0-60s) to stagger syncs and prevent stampede
         }
     >();
-    setInterval(
-        () =>
-            Array.from(syncQueue, async ([id]) => {
-                return (await lock(id)) && (await sync(id));
-            }),
-        5000
-    );
+
+    // Track how many syncs are currently in-flight
+    let activeSyncs = 0;
+
+    Observability.registerModule('emSync', () => ({
+        queueSize: syncQueue.size,
+        activeSyncs,
+        maxConcurrent: MAX_CONCURRENT_SYNCS
+    }));
+
+    setInterval(() => {
+        if (syncQueue.size === 0) return;
+
+        const now = Math.floor(Date.now() / 1000);
+
+        // Scan all devices — the in-memory check is just a Map lookup, costs nothing
+        // Only dispatch up to MAX_CONCURRENT_SYNCS - activeSyncs new syncs
+        const available = MAX_CONCURRENT_SYNCS - activeSyncs;
+        if (available <= 0) return;
+
+        let dispatched = 0;
+        for (const [id, entry] of syncQueue) {
+            if (dispatched >= available) break;
+            if (entry.locked) continue;
+
+            // In-memory "is due" check with per-device jitter — no DB hit
+            if (entry.lastSyncedTs !== undefined) {
+                const elapsed = now - entry.lastSyncedTs;
+                if (elapsed < SYNC_THRESHOLD_S + entry.syncJitter) {
+                    continue;
+                }
+            }
+
+            dispatched++;
+            lockAndSync(id);
+        }
+    }, TICK_INTERVAL_MS);
+
+    const lockAndSync = async (id: string) => {
+        activeSyncs++;
+        try {
+            if (await lock(id)) {
+                await sync(id);
+            }
+        } catch (e) {
+            logger.warn(`EM sync error for ${id}: ${e}`);
+            Observability.incrementCounter('em_syncs_failed');
+            // Ensure unlock on unexpected errors
+            try {
+                unlock(id);
+            } catch (_) {
+                /* already unlocked or removed */
+            }
+        } finally {
+            activeSyncs--;
+        }
+    };
 
     const lock = async (id: string): Promise<boolean> => {
         const sd = syncQueue.get(id);
@@ -155,11 +231,26 @@ export const InitEm = (): {
     ) => {
         if (!syncQueue.get(device)) {
             const [r] = await get(device);
+            // Load last sync timestamp from DB so we don't re-query it every tick
+            let lastSyncedTs: number | undefined;
+            try {
+                const {rows} = await callMethod('device_em.fn_last_sync', {
+                    p_device: r.id,
+                    p_channel: -1
+                });
+                if (rows.length > 0) {
+                    lastSyncedTs = rows[0].created;
+                }
+            } catch (_) {
+                // First sync — no record yet, leave undefined
+            }
             syncQueue.set(device, {
                 locked: false,
                 id: r.id,
                 model,
-                profile
+                profile,
+                lastSyncedTs,
+                syncJitter: Math.floor(Math.random() * 60)
             });
         }
     };
@@ -227,6 +318,38 @@ export const InitEm = (): {
         if (!id) {
             return;
         }
+
+        // Check online FIRST — before any DB calls
+        const shellyDev = DeviceCollector.getDevice(shellyId);
+        if (!shellyDev) {
+            // Device fully deleted — remove immediately (no unlock needed, entry is gone)
+            syncQueue.delete(shellyId);
+            logger.info(
+                `EM Sync: removed deleted device ${id} from sync queue`
+            );
+            return;
+        }
+        if (!shellyDev.online) {
+            // Device offline — apply grace period
+            if (!device.offlineSince) {
+                device.offlineSince = Date.now();
+            }
+            if (Date.now() - device.offlineSince > EM_SYNC_GRACE_PERIOD_MS) {
+                // Grace period expired — remove (no unlock needed, entry is gone)
+                syncQueue.delete(shellyId);
+                logger.info(
+                    `EM Sync: removed device ${id} after ${EM_SYNC_GRACE_PERIOD_MS / 1000}s offline`
+                );
+            } else {
+                // Still within grace period — unlock so next cycle can check again
+                unlock(shellyId);
+            }
+            return;
+        }
+
+        // Device is online — reset offline timer
+        device.offlineSince = undefined;
+
         logger.info(`EM Sync started for device: ${id}`);
         try {
             const dProf = device.profile;
@@ -257,10 +380,14 @@ export const InitEm = (): {
                         });
                     })
                 );
+                // Cache the zero-day timestamp
+                if (device) device.lastSyncedTs = ts;
                 return;
             }
             const [{created}] = lastTx;
             if (!inPast(created)) {
+                // Cache the timestamp in memory so next tick skips the DB check
+                if (device) device.lastSyncedTs = created;
                 logger.info(
                     `Device: ${id} last record(${created}) is not in the past`
                 );
@@ -276,10 +403,6 @@ export const InitEm = (): {
                     })
                 );
             }, []);
-            const shellyDev = DeviceCollector.getDevice(shellyId);
-            if (!shellyDev) {
-                return;
-            }
             await channels?.reduce(async (a: any, channel: number) => {
                 await a;
                 const nextTsLoc = Math.floor(Date.now() / 1000) - 100;
@@ -320,15 +443,18 @@ export const InitEm = (): {
                     p_created: nextDate,
                     p_channel: channel
                 });
+                // Cache the new sync timestamp in memory
+                if (device) device.lastSyncedTs = nextDate;
                 logger.info(
                     `Query Finished device=${id} for channel=${channel} @ nextDate=${nextDate}`
                 );
             }, Promise.resolve());
         } catch (e) {
             logger.warn(e);
-            logger.warn(`Sync finished for device: ${id}`);
+            logger.warn(`Sync error for device: ${id}`);
         } finally {
             logger.info(`Sync finished for device: ${id}`);
+            Observability.incrementCounter('em_syncs_completed');
             unlock(shellyId);
         }
     };

@@ -1,3 +1,4 @@
+**/.DS_Store
 node_modules/
 dist/
 dev/**/*
@@ -18,8 +19,11 @@ backend/tsc
 /backend/plugins/
 /frontend/src/pages/plugin/**/*
 !/frontend/src/pages/plugin/.gitkeep
+.vscode/
 vscode-profile-*
-.fleet-managerrc
+npmrc/
+.fleet-managerrc*
+.env
 !machinekey/.gitignore
 machinekey/**/*
 .npmrc
@@ -29,3 +33,17 @@ plugins/**/*.zip
 frontend/.env.development
 frontend/.env.production
 backend/uploads/*
+**/.claude
+claude-batch
+docs/plans
+docs/internal
+docs/*.docx
+
+# Deploy state files (generated secrets, credentials)
+deploy/state/*
+!deploy/state/.gitignore
+!deploy/state/.gitkeep
+docs/plans/*.md
+CLAUDE.md
+*.timestamp-*
+*.DS_Store

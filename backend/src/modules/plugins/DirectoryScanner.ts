@@ -78,6 +78,10 @@ export default class DirectoryScanner {
         const zip = new AdmZip(fullpath);
         zip.extractAllTo(PLUGINS_FOLDER, true); // overwrite = true
 
+        // Clean up macOS metadata folder if present
+        const macosDir = path.join(PLUGINS_FOLDER, '__MACOSX');
+        await fs.rm(macosDir, {recursive: true, force: true}).catch(() => {});
+
         await fs.rm(fullpath);
         logger.debug('unzipped & deleted ', entry);
     }

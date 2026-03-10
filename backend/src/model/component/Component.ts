@@ -9,6 +9,8 @@ import RpcError from '../../rpc/RpcError';
 import type {Context} from '../../types';
 import {validator} from '../../validations';
 import type CommandSender from '../CommandSender';
+import type {ComponentName, CrudOperation} from '../permissions';
+import {mapLegacyComponentName, methodToCrudOperation} from '../permissions';
 
 interface ComponentProperties {
     auto_apply_config?: boolean;
@@ -172,12 +174,99 @@ export default abstract class Component<
         });
     }
 
+    /**
+     * Method names that indicate write operations.
+     * Viewers are blocked from these by default.
+     */
+    private static readonly WRITE_METHODS = new Set([
+        'create',
+        'add',
+        'update',
+        'delete',
+        'remove',
+        'set',
+        'call',
+        'send',
+        'execute',
+        'trigger',
+        'rename',
+        'enable',
+        'disable',
+        'accept',
+        'reject',
+        'upload',
+        'purge',
+        'start',
+        'stop'
+    ]);
+
+    /**
+     * Check if a method name indicates a write operation
+     */
+    protected static isWriteMethod(method: string): boolean {
+        const methodLower = method.toLowerCase();
+        for (const writeMethod of Component.WRITE_METHODS) {
+            if (
+                methodLower.startsWith(writeMethod) ||
+                methodLower.endsWith(writeMethod)
+            ) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Get the component name for CRUD permission checks.
+     * Can be overridden by subclasses for custom mapping.
+     */
+    protected getComponentName(): ComponentName | null {
+        return mapLegacyComponentName(this.name);
+    }
+
+    /**
+     * Extract item ID from params for scoped permission checks.
+     * Can be overridden by subclasses for custom extraction.
+     */
+    protected extractItemId(params?: any): string | number | undefined {
+        if (!params) return undefined;
+        return (
+            params.id ?? params.shellyID ?? params.shellyId ?? params.groupId
+        );
+    }
+
+    /**
+     * Check permissions using the new CRUD model.
+     * Falls back to legacy permission checks if CRUD mapping isn't available.
+     */
     protected checkPermissions(
         sender: CommandSender,
         method: string,
         params?: any
     ) {
-        return sender.hasPermission(`${this.name}.${method}`);
+        // Admin bypass
+        if (sender.isAdmin()) return true;
+
+        // Try new CRUD model first
+        const componentName = this.getComponentName();
+        const operation = methodToCrudOperation(method);
+
+        if (componentName && operation) {
+            const itemId = this.extractItemId(params);
+            return sender.canPerformOnItem(componentName, operation, itemId);
+        }
+
+        // Fall back to legacy permission check
+        const hasSpecificPermission = sender.hasPermission(
+            `${this.name}.${method}`
+        );
+
+        // For write operations, also require canWrite()
+        if (Component.isWriteMethod(method)) {
+            return hasSpecificPermission && sender.canWrite();
+        }
+
+        return hasSpecificPermission;
     }
 
     public checkParams(method: string, params?: any): boolean {
@@ -260,7 +349,9 @@ export default abstract class Component<
         this.emitEvent('config_changed');
     }
 
+    // ========================================================================
     // Decorators
+    // ========================================================================
 
     static Expose(name?: string) {
         return (_target: (...args: any) => any, context: Context) => {
@@ -289,10 +380,23 @@ export default abstract class Component<
         };
     }
 
+    /**
+     * Bypass permission checks but still enforce write restrictions for viewers.
+     * Use @Component.ReadOnly for read operations that should be accessible to viewers.
+     */
     static NoPermissions(_target: (...args: any) => any, context: Context) {
         context.metadata ??= {};
         context.metadata[context.name] ??= {};
-        context.metadata[context.name].checkPermissions = () => true;
+        const methodName = String(context.name);
+        context.metadata[context.name].checkPermissions = (
+            sender: CommandSender
+        ) => {
+            // If it's a write operation, still require canWrite()
+            if (Component.isWriteMethod(methodName)) {
+                return sender.canWrite();
+            }
+            return true;
+        };
     }
 
     static RequiredPermission(permission: string) {
@@ -303,6 +407,62 @@ export default abstract class Component<
                 sender: CommandSender
             ) => {
                 return sender.hasPermission(permission.toLowerCase());
+            };
+        };
+    }
+
+    /**
+     * Decorator to mark a method as a write operation.
+     * Only users with write permissions (admins) can execute this method.
+     * Viewers will receive a 403 Forbidden error.
+     */
+    static WriteOperation(_target: (...args: any) => any, context: Context) {
+        context.metadata ??= {};
+        context.metadata[context.name] ??= {};
+        context.metadata[context.name].checkPermissions = (
+            sender: CommandSender
+        ) => {
+            return sender.canWrite();
+        };
+    }
+
+    /**
+     * Decorator to mark a method as read-only (viewers can access).
+     * Both admins and viewers can execute this method.
+     */
+    static ReadOnly(_target: (...args: any) => any, context: Context) {
+        context.metadata ??= {};
+        context.metadata[context.name] ??= {};
+        context.metadata[context.name].checkPermissions = () => true;
+    }
+
+    /**
+     * Decorator for CRUD permission checking.
+     * Uses the new permission model with component and operation.
+     *
+     * @param component - The component name (e.g., 'devices', 'groups')
+     * @param operation - The CRUD operation (e.g., 'read', 'create', 'execute')
+     * @param extractItemId - Optional function to extract item ID from params
+     */
+    static CrudPermission(
+        component: ComponentName,
+        operation: CrudOperation,
+        extractItemId?: (params: any) => string | number | undefined
+    ) {
+        return (_target: (...args: any) => any, context: Context) => {
+            context.metadata ??= {};
+            context.metadata[context.name] ??= {};
+            context.metadata[context.name].checkPermissions = (
+                sender: CommandSender,
+                params?: any
+            ) => {
+                const itemId = extractItemId
+                    ? extractItemId(params)
+                    : (params?.id ??
+                      params?.shellyID ??
+                      params?.shellyId ??
+                      params?.groupId);
+                return sender.canPerformOnItem(component, operation, itemId);
             };
         };
     }

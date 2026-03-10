@@ -4,15 +4,15 @@
             :id="id"
             v-model="selected"
             type="checkbox"
-            class="w-4 h-4 text-blue-700 bg-gray-700 border-gray-600 rounded focus:ring-blue-600 ring-offset-gray-800 focus:ring-2 dark"
+            class="core-checkbox w-4 h-4 rounded focus:ring-2"
             @click="onClick"
         />
-        <label :for="id" class="ml-2 text-sm font-medium text-gray-300"><slot /></label>
+        <label :for="id" class="core-checkbox-label ml-2 text-sm font-medium"><slot /></label>
     </div>
 </template>
 
 <script setup lang="ts">
-import { ref, useId, watch } from 'vue';
+import {ref, useId, watch} from 'vue';
 
 const emit = defineEmits<{
     click: [];
@@ -23,7 +23,7 @@ const props = withDefaults(
     defineProps<{
         modelValue?: boolean;
     }>(),
-    { modelValue: false }
+    {modelValue: false}
 );
 
 const id = useId();
@@ -43,3 +43,29 @@ function onClick() {
     emit('update:modelValue', selected.value);
 }
 </script>
+
+<style scoped>
+.core-checkbox {
+    accent-color: var(--color-primary);
+    background-color: var(--color-surface-3);
+    border-color: var(--color-border-strong);
+    /* Ensure minimum 44x44 touch target via padding around the visual checkbox */
+    position: relative;
+    cursor: pointer;
+}
+.core-checkbox::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    min-width: 44px;
+    min-height: 44px;
+}
+.core-checkbox:focus {
+    box-shadow: 0 0 0 2px var(--color-border-focus);
+}
+.core-checkbox-label {
+    color: var(--color-text-secondary);
+}
+</style>

@@ -11,7 +11,7 @@
                     <span
                         class="font-semibold"
                         :class="{
-                            'text-gray-500': current != id + 1,
+                            'step-inactive': current != id + 1,
                         }"
                     >
                         Step {{ id + 1 }}
@@ -20,8 +20,8 @@
                 <div
                     class="w-full h-2 rounded-lg mt-1"
                     :class="{
-                        'bg-blue-500 shadow-2xl shadow-blue-500': current == id + 1,
-                        'bg-gray-600': current != id + 1,
+                        'step-bar--active': current == id + 1,
+                        'step-bar--inactive': current != id + 1,
                     }"
                 />
             </div>
@@ -30,7 +30,7 @@
 </template>
 
 <script setup lang="ts">
-import { toRef } from 'vue';
+import {toRef} from 'vue';
 
 const props = defineProps<{
     steps: number;
@@ -43,3 +43,16 @@ const emit = defineEmits<{
     click: [number];
 }>();
 </script>
+
+<style scoped>
+.step-inactive {
+    color: var(--color-text-disabled);
+}
+.step-bar--active {
+    background-color: var(--color-primary);
+    box-shadow: 0 0 20px var(--color-primary);
+}
+.step-bar--inactive {
+    background-color: var(--color-surface-4);
+}
+</style>

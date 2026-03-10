@@ -10,16 +10,31 @@ export default class FrontendHandler {
             (await FrontendHandler.getMenuItems()) ?? [];
 
         for (const item of items) {
-            const {name, link, icon} = item;
-            const already = existing.some(
-                (e) => e.name === name && e.link === link && e.icon === icon
-            );
-            if (already) continue;
+            const {name, link, icon, iconUrl} = item;
+            // Use iconUrl if provided, otherwise use icon
+            const iconValue = iconUrl || icon;
+
+            // Check if item with same link already exists
+            const existingItem = existing.find((e) => e.link === link);
+
+            // If exists with same properties, skip
+            if (
+                existingItem &&
+                existingItem.name === name &&
+                existingItem.icon === iconValue
+            ) {
+                continue;
+            }
+
+            // If exists but with different properties, remove old one first
+            if (existingItem) {
+                await FrontendHandler.removeMenuItem(link);
+            }
 
             await Commander.execInternal('Storage.SetItem', {
                 registry: 'ui',
                 key: 'menuItems',
-                value: {name, link, icon}
+                value: {name, link, icon: iconValue}
             });
         }
     }

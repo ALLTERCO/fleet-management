@@ -3,17 +3,22 @@ import {bthomeObjectInfos} from '../config/BTHomeData';
 import type ShellyDevice from '../model/ShellyDevice';
 import {
     type bthomesensor_entity,
+    type cct_entity,
     type cover_entity,
+    type cury_entity,
     type em1_entity,
     em_entity,
     type entity_t,
+    type humidity_entity,
     type light_entity,
+    type rgbcct_entity,
     type switch_entity,
     type temperature_entity,
     type virtual_boolean_entity,
     type virtual_button_entity,
     type virtual_number_entity,
-    type virtual_text_entity
+    type virtual_text_entity,
+    type voltmeter_entity
 } from '../types';
 const logger = Log4js.getLogger('ShellyComponents');
 
@@ -245,7 +250,7 @@ export function composeDynamicComponent(
             return composeBTHomeSensor(config, deviceName, deviceId);
 
         default:
-            console.error(`Unknown virtual component type: ${type}`);
+            logger.warn('Unknown virtual component type: %s', type);
             return null;
     }
 }
@@ -303,7 +308,7 @@ function composeComponents(
         const device_name = shelly.info.name;
 
         const name =
-            entity_config.name === 'string'
+            typeof entity_config?.name === 'string' && entity_config.name
                 ? entity_config.name
                 : `${
                       (keys.length > 1 ? `${entity_status.id}) ` : '') +
@@ -360,7 +365,7 @@ function proposeOutputs(shelly: ShellyDevice): switch_entity[] {
 
         return {
             name:
-                entity_config.name === 'string'
+                typeof entity_config?.name === 'string' && entity_config.name
                     ? entity_config.name
                     : (switch_keys.length > 1
                           ? `${entity_status.id}) Output `
@@ -432,7 +437,7 @@ function proposeLights(shelly: ShellyDevice): light_entity[] {
 
         return {
             name:
-                entity_config.name === 'string'
+                typeof entity_config?.name === 'string' && entity_config.name
                     ? entity_config.name
                     : (light_keys.length > 1
                           ? `${entity_status.id}) Light `
@@ -473,11 +478,164 @@ function composeCovers(shelly: ShellyDevice): cover_entity[] {
 }
 
 // ----------------------------------------------------------------------------------
+// Cury (Scent Diffuser) Component
+// ----------------------------------------------------------------------------------
+
+function composeCury(shelly: ShellyDevice): cury_entity[] {
+    const curyKeys = Object.keys(shelly.status).filter((key) =>
+        key.startsWith('cury:')
+    );
+    return curyKeys.map((key) => {
+        const entityStatus = shelly.status[key];
+        const entityConfig = shelly.config[key];
+        const deviceName = shelly.info.name;
+
+        return {
+            name:
+                entityConfig?.name ||
+                (curyKeys.length > 1
+                    ? `${entityStatus.id}) Cury `
+                    : 'Scent Diffuser ') + (deviceName || shelly.shellyID),
+            id: `${shelly.shellyID}_${entityStatus.id}:cury`,
+            type: 'cury' as const,
+            source: shelly.shellyID,
+            properties: {
+                id: entityStatus.id,
+                mode: entityStatus.mode,
+                awayMode: entityStatus.away_mode
+            }
+        };
+    });
+}
+
+// ----------------------------------------------------------------------------------
+// Humidity Component
+// ----------------------------------------------------------------------------------
+
+function composeHumidity(shelly: ShellyDevice): humidity_entity[] {
+    const humidityKeys = Object.keys(shelly.status).filter((key) =>
+        key.startsWith('humidity:')
+    );
+    return humidityKeys.map((key) => {
+        const entityStatus = shelly.status[key];
+        const deviceName = shelly.info.name;
+
+        return {
+            name:
+                (humidityKeys.length > 1
+                    ? `${entityStatus.id}) Humidity `
+                    : 'Humidity ') + (deviceName || shelly.shellyID),
+            id: `${shelly.shellyID}_${entityStatus.id}:humidity`,
+            type: 'humidity' as const,
+            source: shelly.shellyID,
+            properties: {
+                id: entityStatus.id
+            }
+        };
+    });
+}
+
+// ----------------------------------------------------------------------------------
+// Voltmeter Component
+// ----------------------------------------------------------------------------------
+
+function composeVoltmeter(shelly: ShellyDevice): voltmeter_entity[] {
+    const voltmeterKeys = Object.keys(shelly.status).filter((key) =>
+        key.startsWith('voltmeter:')
+    );
+    return voltmeterKeys.map((key) => {
+        const entityStatus = shelly.status[key];
+        const entityConfig = shelly.config[key];
+        const deviceName = shelly.info.name;
+
+        return {
+            name:
+                entityConfig?.name ||
+                (voltmeterKeys.length > 1
+                    ? `${entityStatus.id}) Voltmeter `
+                    : 'Voltmeter ') + (deviceName || shelly.shellyID),
+            id: `${shelly.shellyID}_${entityStatus.id}:voltmeter`,
+            type: 'voltmeter' as const,
+            source: shelly.shellyID,
+            properties: {
+                id: entityStatus.id
+            }
+        };
+    });
+}
+
+// ----------------------------------------------------------------------------------
+// CCT (Color Temperature) Component - for devices like ShellyDuoBulbG3
+// ----------------------------------------------------------------------------------
+
+function composeCCT(shelly: ShellyDevice): cct_entity[] {
+    const cctKeys = Object.keys(shelly.status).filter((key) =>
+        key.startsWith('cct:')
+    );
+    return cctKeys.map((key) => {
+        const entityStatus = shelly.status[key];
+        const entityConfig = shelly.config[key];
+        const deviceName = shelly.info.name;
+
+        return {
+            name:
+                entityConfig?.name ||
+                (cctKeys.length > 1
+                    ? `${entityStatus.id}) CCT Light `
+                    : 'CCT Light ') + (deviceName || shelly.shellyID),
+            id: `${shelly.shellyID}_${entityStatus.id}:cct`,
+            type: 'cct' as const,
+            source: shelly.shellyID,
+            properties: {
+                id: entityStatus.id
+            }
+        };
+    });
+}
+
+// ----------------------------------------------------------------------------------
+// RGBCCT Component - for devices like ShellyRGBCCTBulbG3 (RGB + Color Temperature)
+// ----------------------------------------------------------------------------------
+
+function composeRGBCCT(shelly: ShellyDevice): rgbcct_entity[] {
+    const rgbcctKeys = Object.keys(shelly.status).filter((key) =>
+        key.startsWith('rgbcct:')
+    );
+    return rgbcctKeys.map((key) => {
+        const entityStatus = shelly.status[key];
+        const entityConfig = shelly.config[key];
+        const deviceName = shelly.info.name;
+
+        return {
+            name:
+                entityConfig?.name ||
+                (rgbcctKeys.length > 1
+                    ? `${entityStatus.id}) RGBCCT Light `
+                    : 'RGBCCT Light ') + (deviceName || shelly.shellyID),
+            id: `${shelly.shellyID}_${entityStatus.id}:rgbcct`,
+            type: 'rgbcct' as const,
+            source: shelly.shellyID,
+            properties: {
+                id: entityStatus.id
+            }
+        };
+    });
+}
+
+// ----------------------------------------------------------------------------------
 // Collector function
 // ----------------------------------------------------------------------------------
 
 export function proposeEntities(shelly: ShellyDevice): entity_t[] {
     const entities: entity_t[] = [];
+
+    // Debug: log all status keys to help identify component types
+    logger.info(
+        'Composing entities for %s, status keys: %s',
+        shelly.shellyID,
+        Object.keys(shelly.status).join(', ')
+    );
+
     entities.push(...composeInputs(shelly));
     entities.push(...proposeOutputs(shelly));
     entities.push(...proposeTemperatures(shelly));
@@ -487,10 +645,30 @@ export function proposeEntities(shelly: ShellyDevice): entity_t[] {
 
     entities.push(...composeComponents(shelly, 'rgbw', 'RGBW'));
     entities.push(...composeComponents(shelly, 'rgb', 'RGB'));
+    entities.push(...composeCCT(shelly));
+    entities.push(...composeRGBCCT(shelly));
     entities.push(...composeComponents(shelly, 'pm1', 'Power Meter'));
 
     entities.push(...composeCovers(shelly));
 
+    // Cury (Scent Diffuser)
+    entities.push(...composeCury(shelly));
+
+    // Humidity sensors (for Pill DHT22 mode)
+    entities.push(...composeHumidity(shelly));
+
+    // Voltmeter (for Pill analog mode)
+    entities.push(...composeVoltmeter(shelly));
+
     entities.push(...composeVirtualComponents(shelly));
+
+    // Debug: log created entities
+    logger.info(
+        'Created %d entities for %s: %s',
+        entities.length,
+        shelly.shellyID,
+        entities.map((e) => `${e.type}:${e.properties.id}`).join(', ')
+    );
+
     return entities;
 }

@@ -113,9 +113,11 @@ export namespace User {
 export namespace WaitingRoom {
     export interface AcceptPendingById {
         ids: number[];
+        groupId?: number;
     }
     export interface AcceptPendingByExternalId {
         externalIds: string[];
+        groupId?: number;
     }
     export interface RejectPending {
         shellyIDs: string[];

@@ -1,6 +1,6 @@
 import {format} from 'node:util';
 import type {AppenderModule, LoggingEvent} from 'log4js';
-import {emitConsoleLog} from './modules/ShellyEvents';
+import {emitConsoleLogBatch} from './modules/ShellyEvents';
 
 function getLogColor(level: string): string {
     switch (level) {
@@ -21,20 +21,33 @@ function getLogColor(level: string): string {
     }
 }
 
+type LogEntry = {coloredPart: string; log: string; color: string};
+const logBuffer: LogEntry[] = [];
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let emitting = false;
+
+function flushLogs() {
+    flushTimer = null;
+    if (logBuffer.length === 0) return;
+    emitting = true;
+    try {
+        const batch = logBuffer.splice(0);
+        emitConsoleLogBatch(batch);
+    } finally {
+        emitting = false;
+    }
+}
 
 function websocketAppender(): (loggingEvent: LoggingEvent) => void {
     return (loggingEvent: LoggingEvent) => {
         if (emitting) return;
-        emitting = true;
-        try {
-            const coloredPart = `${loggingEvent.startTime.toISOString()} - ${loggingEvent.level.levelStr}`;
-            const message = format(...loggingEvent.data);
-            const logColor = getLogColor(loggingEvent.level.levelStr);
+        const coloredPart = `${loggingEvent.startTime.toISOString()} - ${loggingEvent.level.levelStr}`;
+        const message = format(...loggingEvent.data);
+        const logColor = getLogColor(loggingEvent.level.levelStr);
 
-            emitConsoleLog(coloredPart, message, logColor);
-        } finally {
-            emitting = false;
+        logBuffer.push({coloredPart, log: message, color: logColor});
+        if (!flushTimer) {
+            flushTimer = setTimeout(flushLogs, 250);
         }
     };
 }

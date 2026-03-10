@@ -53,6 +53,27 @@ export default class PluginNotifier {
         return event;
     }
 
+    private static _hasMetadataHandlers: boolean | null = null;
+
+    public static hasMetadataHandlers(): boolean {
+        if (PluginNotifier._hasMetadataHandlers !== null) {
+            return PluginNotifier._hasMetadataHandlers;
+        }
+        for (const [name] of Workers.getPluginWorkers().entries()) {
+            const config = PluginLoader.getPluginData().get(name);
+            if (config?.info.config?.metadata === true) {
+                PluginNotifier._hasMetadataHandlers = true;
+                return true;
+            }
+        }
+        PluginNotifier._hasMetadataHandlers = false;
+        return false;
+    }
+
+    public static invalidateMetadataHandlersCache() {
+        PluginNotifier._hasMetadataHandlers = null;
+    }
+
     public static notifyEvent(event: json_rpc_event, eventData?: event_data_t) {
         for (const pluginWorker of Workers.getPluginWorkers().values()) {
             pluginWorker.postMessage(['on', event, eventData]);

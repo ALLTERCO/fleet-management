@@ -1,5 +1,5 @@
 <template>
-    <div class="dropdown-box bg-slate-800 p-0 rounded-xl hover:cursor-pointer shadow-md" @click="expandedClicked">
+    <div class="collapse-box dropdown-box p-0 rounded-xl hover:cursor-pointer shadow-md" @click="expandedClicked">
         <div class="cursor-pointer:hover py-2 px-3 flex iflex-row align">
             <span :key="String(expanded)" class="icon pr-3">
                 <i
@@ -14,7 +14,7 @@
         </div>
         <transition mode="out-in">
             <div v-if="expanded" class="box-body px-3 pb-3" @click.stop>
-                <hr class="mb-4 mt-1 bg-white h-[1px]" />
+                <hr class="collapse-divider mb-4 mt-1 h-[1px]" />
                 <slot />
             </div>
         </transition>
@@ -22,7 +22,7 @@
 </template>
 
 <script lang="ts" setup>
-import { ref } from 'vue';
+import {ref} from 'vue';
 
 defineProps<{
     title: string;
@@ -45,11 +45,17 @@ function expandedClicked() {
 }
 </script>
 
-<style>
-.v-enter-active {
-    transition: opacity 600ms ease;
+<style scoped>
+.collapse-box {
+    background-color: var(--color-surface-2);
 }
-
+.collapse-divider {
+    background-color: var(--color-border-default);
+    border: none;
+}
+.v-enter-active {
+    transition: opacity var(--duration-slower) var(--ease-default);
+}
 .v-enter-from,
 .v-leave-to {
     opacity: 0;

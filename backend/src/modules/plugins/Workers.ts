@@ -4,6 +4,7 @@ import CommandSender from '../../model/CommandSender';
 import PluginGeneratedComponent from '../../model/component/PluginGeneratedComponent';
 import type {PluginData} from '../../types';
 import * as Commander from '../Commander';
+import * as Observability from '../Observability';
 import PluginNotifier from './PluginNotifier';
 
 export default class Workers {
@@ -15,8 +16,6 @@ export default class Workers {
             workerData: pluginData
         });
 
-        worker.postMessage(['load']);
-
         let commandId = 0;
         const waiting: Map<
             number,
@@ -27,9 +26,11 @@ export default class Workers {
             switch (method) {
                 case 'load':
                     Workers.pluginWorkers.set(pluginData.info.name, worker);
+                    PluginNotifier.invalidateMetadataHandlersCache();
                     break;
                 case 'unload':
                     Workers.pluginWorkers.delete(pluginData.info.name);
+                    PluginNotifier.invalidateMetadataHandlersCache();
                     break;
 
                 case 'register_component': {
@@ -74,7 +75,8 @@ export default class Workers {
 
                     const component = new PluginGeneratedComponent(
                         name,
-                        methodsMap
+                        methodsMap,
+                        pluginData.info.name
                     );
                     Commander.registerComponent(component);
                     break;
@@ -122,9 +124,26 @@ export default class Workers {
                 }
             }
         });
+
+        worker.on('error', () => {
+            Observability.incrementCounter('plugin_worker_errors');
+        });
+
+        worker.on('exit', (code) => {
+            if (code !== 0)
+                Observability.incrementCounter('plugin_worker_crashes');
+        });
+
+        // Send load signal AFTER message handler is registered
+        // to avoid race condition where worker responds before we're listening
+        worker.postMessage(['load']);
     }
 
     public static getPluginWorkers() {
         return Workers.pluginWorkers;
     }
 }
+
+Observability.registerModule('pluginWorkers', () => ({
+    activeWorkers: Workers.getPluginWorkers().size
+}));

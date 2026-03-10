@@ -17,14 +17,10 @@ import AbstractDevice from './AbstractDevice';
 
 const logger = log4js.getLogger('device');
 
+const PERSIST_DEBOUNCE_MS = 5000;
+
 export default class ShellyDevice extends AbstractDevice {
-    #bthomeScanningResultsCache: Map<
-        string,
-        {
-            local_name: string;
-            model_id?: number;
-        }
-    > = new Map();
+    #persistTimer?: ReturnType<typeof setTimeout>;
 
     protected override findMessageReason(key: string, message: any): string {
         return findMessageReason(key, message);
@@ -35,7 +31,11 @@ export default class ShellyDevice extends AbstractDevice {
     }
 
     protected override onStateChange(): void {
-        this.#persistState();
+        if (this.#persistTimer) return;
+        this.#persistTimer = setTimeout(() => {
+            this.#persistTimer = undefined;
+            this.#persistState();
+        }, PERSIST_DEBOUNCE_MS);
     }
 
     async #persistState() {
@@ -94,22 +94,7 @@ export default class ShellyDevice extends AbstractDevice {
                             }
                         }
                     }
-                    continue;
                 }
-
-                if (
-                    eventBody?.event !== 'device_discovered' ||
-                    eventBody?.component !== 'bthome' ||
-                    typeof eventBody?.device !== 'object'
-                ) {
-                    continue;
-                }
-
-                // cache discovered bthome sensor info
-                this.#bthomeScanningResultsCache.set(eventBody.device?.addr, {
-                    local_name: eventBody.device?.local_name,
-                    model_id: eventBody.device?.shelly_mfdata?.model_id
-                });
             }
         }
     }
@@ -189,21 +174,6 @@ export default class ShellyDevice extends AbstractDevice {
         ShellyEvents.emitEntityEvent(entity, event);
     }
 
-    public addBTHomeDevice(mac: string): Promise<void> {
-        if (!mac) return Promise.reject('Missing MAC address');
-
-        const body: Record<string, any> = {
-            config: {addr: mac}
-        };
-
-        const cached = this.#bthomeScanningResultsCache.get(mac);
-        if (cached?.model_id && cached.model_id > 0) {
-            body.attrs = {model_id: cached.model_id};
-        }
-
-        return this.sendRPC('BTHome.AddDevice', body);
-    }
-
     public async addBTHomeDeviceManual(
         mac: string,
         name?: string
@@ -238,15 +208,6 @@ export default class ShellyDevice extends AbstractDevice {
             return Promise.reject('Missing MAC address');
         }
         return this.sendRPC('BTHome.DeleteDevice', {id: id});
-    }
-
-    public startBTHomeScanner(duration?: number): Promise<void> {
-        this.#bthomeScanningResultsCache.clear();
-
-        return this.sendRPC(
-            'BTHome.StartDeviceDiscovery',
-            typeof duration === 'number' ? {duration} : {}
-        );
     }
 
     private findEntity(key: string): entity_t | undefined {
@@ -300,9 +261,16 @@ export default class ShellyDevice extends AbstractDevice {
         return this.sendRPC('BTHome.AddSensor', {config, id: sensorId});
     }
 
-    override destroy(): void {
-        ShellyEvents.emitShellyDeleted(this);
-        super.destroy();
+    override destroy(options?: {skipDeleteEvent?: boolean}): void {
+        if (this.#persistTimer) {
+            clearTimeout(this.#persistTimer);
+            this.#persistTimer = undefined;
+            this.#persistState();
+        }
+        if (!options?.skipDeleteEvent) {
+            ShellyEvents.emitShellyDeleted(this);
+        }
+        super.destroy(options);
     }
 }
 

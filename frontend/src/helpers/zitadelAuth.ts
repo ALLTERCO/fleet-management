@@ -1,55 +1,65 @@
-import { createZITADELAuth, ZITADELConfig } from '@zitadel/vue';
-import { User, UserManagerSettings, WebStorageStateStore } from 'oidc-client';
-import { USE_LOGIN_ZITADEL } from '@/constants';
+import {createZITADELAuth, type ZITADELConfig} from '@zitadel/vue';
+import {
+    type User,
+    UserManagerSettings,
+    WebStorageStateStore
+} from 'oidc-client';
+import {RESOLVED_OIDC_CONFIG, USE_LOGIN_ZITADEL} from '@/constants';
 
 let zitadelAuth: ReturnType<typeof createZITADELAuth> | undefined = undefined;
 
-declare const OIDC_CONFIG: UserManagerSettings; // from vite.config.ts
-
 if (USE_LOGIN_ZITADEL) {
     const zitadelConfig: ZITADELConfig = {
-        project_resource_id: OIDC_CONFIG.client_id!.split('@')[0],
-        client_id: OIDC_CONFIG.client_id!,
-        issuer: OIDC_CONFIG.metadata!.issuer!,
+        project_resource_id:
+            (RESOLVED_OIDC_CONFIG as any).project_resource_id ||
+            RESOLVED_OIDC_CONFIG.client_id!.split('@')[0],
+        client_id: RESOLVED_OIDC_CONFIG.client_id!,
+        issuer: RESOLVED_OIDC_CONFIG.metadata!.issuer!
     };
 
-    zitadelAuth = createZITADELAuth(zitadelConfig, undefined, undefined, undefined, {
-        ...OIDC_CONFIG,
-        userStore: new WebStorageStateStore({ store: localStorage }),
-    });
+    zitadelAuth = createZITADELAuth(
+        zitadelConfig,
+        undefined,
+        undefined,
+        undefined,
+        {
+            ...RESOLVED_OIDC_CONFIG,
+            userStore: new WebStorageStateStore({store: localStorage})
+        }
+    );
 
     // handle events
-    zitadelAuth.oidcAuth.events.addAccessTokenExpiring(function () {
+    zitadelAuth.oidcAuth.events.addAccessTokenExpiring(() => {
         // eslint-disable-next-line no-console
         console.log('access token expiring');
     });
 
-    zitadelAuth.oidcAuth.events.addAccessTokenExpired(function () {
+    zitadelAuth.oidcAuth.events.addAccessTokenExpired(() => {
         // eslint-disable-next-line no-console
         console.log('access token expired');
     });
 
-    zitadelAuth.oidcAuth.events.addSilentRenewError(function (err: Error) {
+    zitadelAuth.oidcAuth.events.addSilentRenewError((err: Error) => {
         // eslint-disable-next-line no-console
         console.error('silent renew error', err);
     });
 
-    zitadelAuth.oidcAuth.events.addUserLoaded(function (user: User) {
+    zitadelAuth.oidcAuth.events.addUserLoaded((_user: User) => {
         // eslint-disable-next-line no-console
-        console.log('user loaded', user);
+        console.debug('user loaded');
     });
 
-    zitadelAuth.oidcAuth.events.addUserUnloaded(function () {
+    zitadelAuth.oidcAuth.events.addUserUnloaded(() => {
         // eslint-disable-next-line no-console
         console.log('user unloaded');
     });
 
-    zitadelAuth.oidcAuth.events.addUserSignedOut(function () {
+    zitadelAuth.oidcAuth.events.addUserSignedOut(() => {
         // eslint-disable-next-line no-console
         console.log('user signed out');
     });
 
-    zitadelAuth.oidcAuth.events.addUserSessionChanged(function () {
+    zitadelAuth.oidcAuth.events.addUserSessionChanged(() => {
         // eslint-disable-next-line no-console
         console.log('user session changed');
     });

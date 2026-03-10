@@ -14,12 +14,12 @@
         <div class="grid grid-cols-2 gap-3">
             <div v-for="device in filteredDevices" :key="device.shellyID">
                 <div
-                    class="p-3 flex flex-row gap-2 items-center rounded-lg bg-gray-950 border-blue-500 shadow-blue-500 hover:cursor-pointer"
+                    class="p-3 flex flex-row gap-2 items-center rounded-lg bg-[var(--color-surface-1)] border-[var(--color-primary)] shadow-[var(--color-primary)] hover:cursor-pointer"
                     :class="[selected.includes(device.shellyID) && 'border shadow-md']"
                     @click="deviceClicked(device.shellyID)"
                 >
-                    <input type="checkbox" class="" :checked="selected.includes(device.shellyID)" />
-                    <img :src="device.picture_url" class="w-8 h-8 bg-slate-800 rounded-full" />
+                    <input type="checkbox" class="" :checked="selected.includes(device.shellyID)" :aria-label="`Select ${device.name}`" />
+                    <img :src="device.picture_url" class="w-8 h-8 bg-[var(--color-surface-2)] rounded-full" loading="lazy" decoding="async" :alt="device.name || 'Device'" />
                     <span class="text-sm line-clamp-2">
                         {{ device.name }}
                     </span>
@@ -37,21 +37,23 @@
 </template>
 
 <script setup lang="ts">
-import { getDeviceName, getLogo } from '@/helpers/device';
-import { useDevicesStore } from '@/stores/devices';
-import { computed, onMounted, reactive, ref, shallowRef } from 'vue';
-import Input from './core/Input.vue';
-import Button from './core/Button.vue';
+import {computed, onMounted, reactive, ref, shallowRef} from 'vue';
 import DeviceFilter from '@/components/pages/devices/DeviceFilterActions.vue';
-import { shelly_device_t } from '@/types';
+import {getDeviceName, getLogo} from '@/helpers/device';
+import {useDevicesStore} from '@/stores/devices';
+import type {shelly_device_t} from '@/types';
+import Button from './core/Button.vue';
+import Input from './core/Input.vue';
 
 const filterVisible = ref(false);
-const hasFiltersFromModal = computed(() => devices.value.length !== filteredDevices.value.length);
+const hasFiltersFromModal = computed(
+    () => devices.value.length !== filteredDevices.value.length
+);
 
-const defaultFilters = { type: 'All devices', group: 'All groups' };
-const activeFilterPills = reactive({ ...defaultFilters });
+const defaultFilters = {type: 'All devices', group: 'All groups'};
+const activeFilterPills = reactive({...defaultFilters});
 
-const selected = defineModel<string[]>({ required: true });
+const selected = defineModel<string[]>({required: true});
 const devicesStore = useDevicesStore();
 
 const devices = shallowRef<
@@ -95,15 +97,14 @@ onMounted(() => {
 });
 
 function setActiveFilters(filters: typeof activeFilterPills) {
-  Object.assign(activeFilterPills, filters);
+    Object.assign(activeFilterPills, filters);
 }
 
 function setDevices(filteredShellyDevices: shelly_device_t[]) {
-  devices.value = filteredShellyDevices.map((dev) => ({
-    shellyID: dev.shellyID,
-    name: getDeviceName(dev.info, dev.shellyID),
-    picture_url: getLogo(dev)
-  }));
+    devices.value = filteredShellyDevices.map((dev) => ({
+        shellyID: dev.shellyID,
+        name: getDeviceName(dev.info, dev.shellyID),
+        picture_url: getLogo(dev)
+    }));
 }
-
 </script>

@@ -1,6 +1,9 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "./design-tokens.css";
+@import "tailwindcss";
+
+@source "../index.html";
+
+@custom-variant dark (&.dark);
 
 :root {
     --background-color: black;
@@ -8,7 +11,8 @@
 }
 
 body {
-    @apply text-gray-200 bg-transparent;
+    color: var(--color-text-secondary);
+    background-color: transparent;
 }
 
 .background {
@@ -18,67 +22,94 @@ body {
     bottom: 0;
     left: 0;
     right: 0;
-    background-image: var(--background-image, url('https://control.shelly.cloud/images/home_def/app_bg_01.png'));
+    background-image: var(
+        --background-image,
+        url("https://control.shelly.cloud/images/home_def/app_bg_01.png")
+    );
     background-color: var(--background-color, rgba(0, 0, 0, 0.5));
     background-repeat: no-repeat;
     background-size: cover;
     background-position: center;
-    z-index: -10;
+    z-index: var(--z-below);
 }
 
 /* Others */
-.icon-text>.icon {
-    margin-right: 0.5rem;
+.icon-text > .icon {
+    margin-right: var(--space-2);
 }
 
 .dropdown-box:not(:last-child) {
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
 }
 
 .tag {
-    font-size: 0.75rem;
+    font-size: var(--text-xs);
 }
 
 .input {
-    @apply border bg-slate-800 p-1 rounded-sm mb-2 border-gray-300 text-gray-300
+    border: 1px solid var(--color-border-default);
+    background-color: var(--color-surface-2);
+    padding: var(--space-1);
+    border-radius: var(--radius-sm, 0.125rem);
+    margin-bottom: var(--space-2);
+    color: var(--color-text-secondary);
 }
 
 .search-bar-focused {
     max-width: 170px;
-    transition: width 0.3s ease-in-out;
+    transition: width var(--duration-moderate, 300ms)
+        var(--ease-in-out, ease-in-out);
 }
 
 .search-bar {
     max-width: 80px;
-    transition: width 0.3s ease-in-out;
+    transition: width var(--duration-moderate, 300ms)
+        var(--ease-in-out, ease-in-out);
 }
 
 .widget-grid {
     --min-grid-item-width: 180px;
     --min-grid-item-height: 180px;
     display: grid;
-    gap: 0.75rem;
-    grid-template-columns: repeat(auto-fill, minmax(var(--min-grid-item-width), 1fr));
+    gap: var(--space-3);
+    grid-template-columns: repeat(
+            auto-fill,
+            minmax(var(--min-grid-item-width), 1fr)
+        );
     grid-template-rows: minmax(var(--min-grid-item-height), auto);
     justify-items: stretch;
+    padding: 8px 4px;
 }
 .widget-grid-entities {
     display: grid;
-    gap: 0.75rem;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    grid-template-rows: minmax(80px, auto);
+    gap: var(--space-3);
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    grid-template-rows: auto;
     justify-items: stretch;
+    align-items: stretch;
+    padding: 6px 4px;
 }
 .widget-grid-devices {
     --min-grid-item-width: 180px;
     --min-grid-item-height: 180px;
     display: grid;
-    gap: 0.75rem;
-    grid-template-columns: repeat(auto-fill, minmax(var(--min-grid-item-width), 1fr));
+    gap: var(--space-3);
+    grid-template-columns: repeat(
+            auto-fill,
+            minmax(var(--min-grid-item-width), 1fr)
+        );
     grid-template-rows: minmax(var(--min-grid-item-height), auto);
     justify-items: stretch;
+    padding: 8px 4px;
 }
 
+/* Virtual scrolling: browser skips layout/paint for off-screen grid items */
+.widget-grid > *,
+.widget-grid-devices > *,
+.widget-grid-entities > * {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 120px;
+}
 
 ::-webkit-scrollbar:horizontal {
     height: 8px;
@@ -89,27 +120,21 @@ body {
 
 /* Default scrollbar for mobile devices (gray color) */
 ::-webkit-scrollbar {
-    width: 6px; 
+    width: 6px;
 }
 
 ::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.21);
-    border-radius: 10px;
+    background: var(--color-scrollbar-track);
+    border-radius: var(--radius-xl);
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgb(107, 114, 128);
-    border-radius: 10px;
-}
-
-@media (min-width: 768px) {
-    ::-webkit-scrollbar-thumb {
-        background: rgb(30, 64, 175); 
-    }
+    background: var(--color-scrollbar-thumb);
+    border-radius: var(--radius-xl);
 }
 
 ::-webkit-scrollbar-corner {
-    background: rgba(0, 0, 0, 0.21); 
+    background: var(--color-scrollbar-track);
 }
 
 /* Autofill fix */
@@ -121,17 +146,35 @@ input:-webkit-autofill:focus {
     -webkit-box-shadow: 0 0 0 30px rgb(33, 33, 33) inset !important;
 }
 
-/* Hide scrollbar */
-@layer utilities {
+/* Route page transitions — snappy crossfade */
+.page-enter-active {
+    transition: opacity 100ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.page-leave-active {
+    transition: opacity 60ms cubic-bezier(0.4, 0, 1, 1);
+}
+.page-enter-from {
+    opacity: 0;
+}
+.page-leave-to {
+    opacity: 0;
+}
 
+/* Focus-visible ring for all interactive elements */
+:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+}
+
+
+/* Hide scrollbar */
+@utility no-scrollbar {
     /* Hide scrollbar for Chrome, Safari, and Opera */
-    .no-scrollbar::-webkit-scrollbar {
+    &::-webkit-scrollbar {
         display: none;
     }
 
     /* Hide scrollbar for IE, Edge, and Firefox */
-    .no-scrollbar {
-        -ms-overflow-style: none; /* IE and Edge */
-        scrollbar-width: none;   /* Firefox */
-    }
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none;   /* Firefox */
 }

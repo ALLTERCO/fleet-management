@@ -6,7 +6,7 @@
         <template #default>
             <div class="flex flex-row flex-nowrap">
                 <figure class="w-16 h-16 rounded-full overflow-hidden">
-                    <img class="w-full h-full object-cover" @error="imageLoadError" :src="userImg" />
+                    <img class="w-full h-full object-cover" @error="imageLoadError" :src="userImg" alt="User profile picture" />
                 </figure>
                 <div class="flex flex-col justify-center ml-3">User: {{ localUser.fullName || "<unnamed>" }} ( {{
                     localUser.name }} )</div>
@@ -15,20 +15,24 @@
         <template #footer>
             <TabSelector :tabs="['General', 'Permissions', 'Device Groups', 'Devices']">
                 <template #General>
-                    <div class="flex flex-col flex-nowrap gap-2 pt-2 pb-2 h-[500px] overflow-y-scroll">
+                    <form class="flex flex-col flex-nowrap gap-2 pt-2 pb-2 h-[500px] overflow-y-scroll" @submit.prevent="saveGeneralSettings">
                         <BasicBlock title="User related" bordered padding="md" title-padding>
                             <Input id="username" v-model="localUser.name" :disabled="props.type !== 'add'" required
-                                label="Username" placeholder="Please, choose username..." :error="errors.name" />
+                                label="Username" placeholder="Please, choose username..." :error="errors.name"
+                                @focus="validateField('name')" />
                             <Input id="fullName" v-model="localUser.fullName" label="Full Name" required
-                                placeholder="Please, choose a name..." :error="errors.fullName" />
+                                placeholder="Please, choose a name..." :error="errors.fullName"
+                                @focus="validateField('fullName')" />
                             <Input id="email" v-model="localUser.email" label="Email" type="email" required
-                                placeholder="Please, enter email..." :error="errors.email" />
+                                placeholder="Please, enter email..." :error="errors.email"
+                                @focus="validateField('email')" />
                             <Input v-model="localUser.password" type="password" label="Password" :required="props.type === 'add'"
-                                placeholder="Please, enter password..." :error="errors.password" />
-                            <hr class="mb-4 mt-5 bg-white h-[1px]" />
+                                placeholder="Please, enter password..." :error="errors.password"
+                                @focus="validateField('password')" />
+                            <hr class="mb-4 mt-5 eu-divider h-[1px]" />
                             <div class="flex gap-5">
                                 <div class="flex flex-col gap-2">
-                                    <label for="" class="block text-sm font-semibold text-white pt-2 pb-2">User
+                                    <label for="" class="block text-sm font-semibold eu-label pt-2 pb-2">User
                                         active</label>
                                     <Checkbox v-model="localUser.enabled">Enabled</Checkbox>
                                 </div>
@@ -42,7 +46,7 @@
                                 </Button>
                             </div>
                         </BasicBlock>
-                    </div>
+                    </form>
                 </template>
                 <template #Permissions>
                     <div class="flex flex-col gap-2 h-[500px] overflow-y-scroll ">
@@ -53,7 +57,7 @@
                                     <h3>{{ group }}</h3>
                                     <label>
                                         <input
-                                            class="w-4 h-4 text-blue-700 bg-gray-700 border-gray-600 rounded focus:ring-blue-600 ring-offset-gray-800 focus:ring-2 dark"
+                                            class="w-4 h-4 eu-checkbox rounded"
                                             type="checkbox" :checked="isAllSelected(group)"
                                             @change="toggleAll(group)" />
                                         Select All (*)
@@ -62,7 +66,7 @@
                                         <label v-for="option in options.filter(o => o !== '*')" :key="option">
                                             <div class="flex flex-column gap-3 justify-left align-center">
                                                 <input
-                                                    class="w-4 h-4 text-blue-700 bg-gray-700 border-gray-600 rounded focus:ring-blue-600 ring-offset-gray-800 focus:ring-2 darks"
+                                                    class="w-4 h-4 eu-checkbox rounded"
                                                     type="checkbox" :checked="isOptionSelected(group, option)"
                                                     @change="toggleOption(group, option)" />
                                                 <span>{{ option }}</span>
@@ -105,11 +109,11 @@
                         <Input v-model="deviceNameFilter" class="max-w-sm mt-2 py-5" placeholder="Search" />
                         <div class="grid grid-cols-2 gap-3 max-h-[450px] overflow-auto">
                             <div v-for="device in filteredDevices" :key="device.shellyID">
-                                <div class="p-3 flex flex-row gap-2 items-center rounded-lg bg-gray-950 border-blue-500 shadow-blue-500 hover:cursor-pointer"
-                                    :class="[isDeviceSelected(device.shellyID) && 'border shadow-md']"
+                                <div class="p-3 flex flex-row gap-2 items-center rounded-lg eu-device-card hover:cursor-pointer"
+                                    :class="[isDeviceSelected(device.shellyID) && 'eu-device-selected']"
                                     @click="toggleDeviceId(device.shellyID)">
                                     <input type="checkbox" class="" :checked="isDeviceSelected(device.shellyID)" />
-                                    <img :src="device.picture_url" class="w-8 h-8 bg-slate-800 rounded-full" />
+                                    <img :src="device.picture_url" class="w-8 h-8 eu-device-img rounded-full" :alt="device.name || 'Device'" />
                                     <span class="text-sm line-clamp-2">
                                         {{ device.name }}
                                     </span>
@@ -132,23 +136,32 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, shallowRef, toRefs, watch } from 'vue';
-import Modal from './Modal.vue';
-import Input from '../core/Input.vue';
-import Button from '../core/Button.vue';
-import Dropdown from '../core/Dropdown.vue';
-import TabSelector from '../core/TabSelector.vue';
+import {
+    computed,
+    onMounted,
+    reactive,
+    ref,
+    shallowRef,
+    toRefs,
+    watch
+} from 'vue';
+import {FLEET_MANAGER_HTTP} from '@/constants';
+import {getDeviceName, getLogo} from '@/helpers/device';
+import {possiblePermissionsForUser} from '@/helpers/sharedInfo';
+import {useAuthStore} from '@/stores/auth';
+import {useDevicesStore} from '@/stores/devices';
+import {useGroupsStore} from '@/stores/groups';
+import {useToastStore} from '@/stores/toast';
+import {sendRPC} from '@/tools/websocket';
 import BasicBlock from '../core/BasicBlock.vue';
-import { sendRPC } from '@/tools/websocket';
-import { useToastStore } from '@/stores/toast';
-import { useGroupsStore } from '@/stores/groups';
-import GroupWidget from '../widgets/GroupWidget.vue';
-import { useDevicesStore } from '@/stores/devices';
-import { getDeviceName, getLogo } from '@/helpers/device';
+import Button from '../core/Button.vue';
 import Checkbox from '../core/Checkbox.vue';
-import { FLEET_MANAGER_HTTP } from '@/constants';
-import { useAuthStore } from '@/stores/auth';
-import { possiblePermissionsForUser } from '@/helpers/sharedInfo';
+import Dropdown from '../core/Dropdown.vue';
+import Input from '../core/Input.vue';
+import TabSelector from '../core/TabSelector.vue';
+import GroupWidget from '../widgets/GroupWidget.vue';
+import Modal from './Modal.vue';
+
 const authStore = useAuthStore();
 
 const props = withDefaults(
@@ -162,23 +175,27 @@ const props = withDefaults(
         fullName?: string;
         group?: string;
         enabled?: boolean;
-        email?: string
-    }>(), {
-    type: 'edit',
-    id: -1,
-    visible: false,
-    fullName: '',
-    permissions: () => [],
-    password: '',
-    name: '',
-    group: '',
-    enabled: true,
-    email: ''
-});
+        email?: string;
+    }>(),
+    {
+        type: 'edit',
+        id: -1,
+        visible: false,
+        fullName: '',
+        permissions: () => [],
+        password: '',
+        name: '',
+        group: '',
+        enabled: true,
+        email: ''
+    }
+);
 
 const emit = defineEmits(['close']);
 
-const userImg = ref<string>(`${FLEET_MANAGER_HTTP}/uploads/profilePics/${authStore.username}.png`);
+const userImg = ref<string>(
+    `${FLEET_MANAGER_HTTP}/uploads/profilePics/${authStore.username}.png`
+);
 
 function imageLoadError() {
     userImg.value = FLEET_MANAGER_HTTP + '/uploads/profilePics/default.png';
@@ -216,7 +233,6 @@ const selected = reactive<Record<string, Set<string>>>({});
 const groupIds = reactive(new Set<string>());
 const deviceIds = reactive(new Set<string>());
 
-
 // New reactive object for validation errors
 const errors = reactive({
     name: '',
@@ -230,26 +246,58 @@ onMounted(() => {
         return {
             shellyID: dev.shellyID,
             name: getDeviceName(dev.info, dev.shellyID),
-            picture_url: getLogo(dev),
+            picture_url: getLogo(dev)
         };
     });
 });
 
 // Watch props to sync when `visible` changes
-watch(() => props.visible, (newVal) => {
-    if (newVal) {
-        localUser.value = {
-            permissions: props.permissions,
-            password: props.password,
-            name: props.name,
-            group: props.group,
-            enabled: props.enabled,
-            email: props.email,
-            fullName: props.fullName,
-        };
+watch(
+    () => props.visible,
+    (newVal) => {
+        if (newVal) {
+            localUser.value = {
+                permissions: props.permissions,
+                password: props.password,
+                name: props.name,
+                group: props.group,
+                enabled: props.enabled,
+                email: props.email,
+                fullName: props.fullName
+            };
+        }
+        loadPermissions(localUser.value.permissions as string[]);
     }
-    loadPermissions(localUser.value.permissions as string[]);
-});
+);
+
+// Validate a single field on blur
+function validateField(field: keyof typeof errors) {
+    switch (field) {
+        case 'name':
+            errors.name = (!localUser.value.name || localUser.value.name.trim() === '')
+                ? 'Username is required' : '';
+            break;
+        case 'fullName':
+            errors.fullName = (!localUser.value.fullName || localUser.value.fullName.trim() === '')
+                ? 'Full Name is required' : '';
+            break;
+        case 'email':
+            if (!localUser.value.email || localUser.value.email.trim() === '') {
+                errors.email = 'Email is required';
+            } else {
+                const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+                errors.email = !emailRegex.test(localUser.value.email) ? 'Please enter a valid email' : '';
+            }
+            break;
+        case 'password':
+            if (props.type === 'add' && (!localUser.value.password || localUser.value.password.trim() === '')) {
+                errors.password = 'Password is required';
+            } else {
+                errors.password = '';
+            }
+            break;
+    }
+}
 
 // Save general settings
 async function saveGeneralSettings() {
@@ -281,7 +329,10 @@ async function saveGeneralSettings() {
             hasError = true;
         }
     }
-    if (props.type === 'add' && (!localUser.value.password || localUser.value.password.trim() === '')) {
+    if (
+        props.type === 'add' &&
+        (!localUser.value.password || localUser.value.password.trim() === '')
+    ) {
         errors.password = 'Password is required';
         hasError = true;
     }
@@ -291,18 +342,19 @@ async function saveGeneralSettings() {
 
     isLoading.value = true;
     try {
-        let user: Record<PropertyKey, unknown> = {   
+        let user: Record<PropertyKey, unknown> = {
             name: localUser.value.name,
             fullName: localUser.value.fullName,
             group: localUser.value.group || 'user',
             email: localUser.value.email,
             permissions: flatSelected.value
         };
-        if(localUser.value.password) {
+        if (localUser.value.password) {
             user.password = localUser.value.password;
         }
         if (props.type !== 'add') {
-            user.enabled = String(localUser.value.enabled) === "true" ? true : false;
+            user.enabled =
+                String(localUser.value.enabled) === 'true' ? true : false;
             user.id = props.id;
             await sendRPC('FLEET_MANAGER', 'User.Update', user);
         } else {
@@ -323,8 +375,8 @@ async function applyPermissions() {
     try {
         const user = {
             id: props.id,
-            permissions: flatSelected.value,
-        }
+            permissions: flatSelected.value
+        };
         await sendRPC('FLEET_MANAGER', 'User.Update', user);
         toastStore.success('Permissions updated.');
         isLoading.value = false;
@@ -342,23 +394,27 @@ const items: Record<string, string[]> = possiblePermissionsForUser;
 const flatSelected = computed(() => {
     const result: string[] = [];
     for (const [group, options] of Object.entries(selected)) {
-        if (options.has("*")) {
+        if (options.has('*')) {
             result.push(`${group}.*`);
         } else {
-            result.push(...Array.from(options).map((option) => `${group}.${option}`));
+            result.push(
+                ...Array.from(options).map((option) => `${group}.${option}`)
+            );
         }
     }
     for (const group of groupIds) {
-        result.push('Group.get.' + group)
+        result.push('Group.get.' + group);
     }
     for (const device of deviceIds) {
-        result.push('Device.get.' + device)
+        result.push('Device.get.' + device);
     }
     return result;
 });
 
 const filteredDevices = computed(() => {
-    return devices.value.filter((dev) => dev.name.includes(deviceNameFilter.value));
+    return devices.value.filter((dev) =>
+        dev.name.includes(deviceNameFilter.value)
+    );
 });
 
 // Check if all options (or `*`) are selected for a group
@@ -390,7 +446,7 @@ const toggleOption = (group: string, option: string): void => {
         selected[group] = new Set();
     }
 
-    if (option === "*") {
+    if (option === '*') {
         // If toggling `*`, add or clear all options
         if (selected[group].has(option)) {
             selected[group].clear();
@@ -401,15 +457,15 @@ const toggleOption = (group: string, option: string): void => {
         // Toggle individual option
         if (selected[group].has(option)) {
             selected[group].delete(option); // Remove the selected option
-            selected[group].delete("*"); // Ensure `*` is removed
+            selected[group].delete('*'); // Ensure `*` is removed
         } else {
             selected[group].add(option); // Add the selected option
             // Automatically add `*` if all individual options are now selected
             const allOptionsSelected = items[group]
-                .filter((item) => item !== "*")
+                .filter((item) => item !== '*')
                 .every((item) => selected[group].has(item));
             if (allOptionsSelected) {
-                selected[group].add("*");
+                selected[group].add('*');
             }
         }
     }
@@ -423,20 +479,20 @@ const loadPermissions = (permissions: string[] = []): void => {
     });
 
     permissions.forEach((permission) => {
-        const parts = permission.split(".");
+        const parts = permission.split('.');
         const group = parts[0];
         const option = parts[1];
         const id = parts[2] || null;
 
-        if (group === "Device" && option.toLowerCase() === "get" && id) {
+        if (group === 'Device' && option.toLowerCase() === 'get' && id) {
             deviceIds.add(id);
-        } else if (group === "Group" && option.toLowerCase() === "get" && id) {
+        } else if (group === 'Group' && option.toLowerCase() === 'get' && id) {
             groupIds.add(id);
         } else {
             if (!selected[group]) {
                 selected[group] = new Set();
             }
-            if (option === "*") {
+            if (option === '*') {
                 if (items[group]) {
                     items[group].forEach((item) => selected[group].add(item));
                 }
@@ -446,7 +502,6 @@ const loadPermissions = (permissions: string[] = []): void => {
         }
     });
 };
-
 
 const toggleDeviceId = (id: string): void => {
     if (deviceIds.has(String(id))) {
@@ -473,9 +528,10 @@ const isGroupSelected = (id: number): boolean => {
 };
 
 const filterGroup = (groupName: string): boolean => {
-    return groupName.toLowerCase().includes(groupNameFilter.value.toLowerCase());
+    return groupName
+        .toLowerCase()
+        .includes(groupNameFilter.value.toLowerCase());
 };
-
 </script>
 
 <style scoped>
@@ -496,12 +552,39 @@ const filterGroup = (groupName: string): boolean => {
 }
 
 .group {
-    border: 1px solid #ccc;
+    border: 1px solid var(--color-border-default);
     padding: 1rem;
-    border-radius: 8px;
+    border-radius: var(--radius-lg);
 }
 
 .options {
     margin-top: 1rem;
+}
+
+/* -- Labels & dividers -- */
+.eu-label { color: var(--color-text-primary); }
+.eu-divider { background-color: var(--color-text-primary); }
+
+/* -- Checkboxes -- */
+.eu-checkbox {
+    color: var(--color-primary-hover);
+    background-color: var(--color-surface-3);
+    border-color: var(--color-border-strong);
+}
+.eu-checkbox:focus {
+    --tw-ring-color: var(--color-primary);
+    --tw-ring-offset-color: var(--color-surface-2);
+}
+
+/* -- Device card -- */
+.eu-device-card {
+    background-color: var(--color-surface-0);
+}
+.eu-device-selected {
+    border: 1px solid var(--color-border-focus);
+    box-shadow: var(--shadow-primary);
+}
+.eu-device-img {
+    background-color: var(--color-surface-2);
 }
 </style>

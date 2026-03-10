@@ -1,5 +1,5 @@
 export const numberFormatter = new Intl.NumberFormat('en-US', {
-    maximumSignificantDigits: 2,
+    maximumSignificantDigits: 2
 });
 
 export function formatWatts(watts: number) {

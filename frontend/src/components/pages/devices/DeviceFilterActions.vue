@@ -1,10 +1,10 @@
 <template>
-  <Modal :visible="visible" @close="visible = false">
+  <Modal :visible="visible" compact @close="visible = false">
     <template #title>Filters</template>
     <div class="space-y-4">
       <hr class="my-4"/>
       <div>
-        <h1 class="text-lg font-semibold">Type</h1>
+        <h3 class="heading-card">Type</h3>
         <Dropdown
           :options="allDeviceTypes"
           :default="typeFilter"
@@ -14,7 +14,7 @@
       </div>
       <hr class="my-4"/>
       <div>
-        <h1 class="text-lg font-semibold">Group</h1>
+        <h3 class="heading-card">Group</h3>
         <Dropdown
           :options="allGroups"
           :default="groupFilter"
@@ -37,33 +37,36 @@
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, watch, computed } from 'vue';
-import Modal from '@/components/modals/Modal.vue';
-import Dropdown from '@/components/core/Dropdown.vue';
+import {storeToRefs} from 'pinia';
+import {computed, ref, shallowRef, watch} from 'vue';
 import Button from '@/components/core/Button.vue';
-import { useDevicesStore } from '@/stores/devices';
-import { storeToRefs } from 'pinia';
-import { useGroupsStore } from '@/stores/groups';
-import { useDeviceFiltering } from '@/composables/useDeviceFiltering';
-import type { shelly_device_t } from '@/types';
+import Dropdown from '@/components/core/Dropdown.vue';
+import Modal from '@/components/modals/Modal.vue';
+import {useDeviceFiltering} from '@/composables/useDeviceFiltering';
+import {useDevicesStore} from '@/stores/devices';
+import {useGroupsStore} from '@/stores/groups';
+import type {shelly_device_t} from '@/types';
 
-const props = withDefaults(defineProps<{
-  filters?: { type: string; group: string }
-}>(), {
-  filters: () => ({ type: 'All devices', group: 'All groups' })
-});
+const props = withDefaults(
+    defineProps<{
+        filters?: {type: string; group: string};
+    }>(),
+    {
+        filters: () => ({type: 'All devices', group: 'All groups'})
+    }
+);
 
 const emit = defineEmits<{
-  (e: 'devices', devices: shelly_device_t[]): void;
-  (e: 'setFilters', filters: { type: string; group: string }): void;
+    (e: 'devices', devices: shelly_device_t[]): void;
+    (e: 'setFilters', filters: {type: string; group: string}): void;
 }>();
 
-const visible = defineModel<boolean>({ required: true });
+const visible = defineModel<boolean>({required: true});
 
 const deviceStore = useDevicesStore();
-const { devices } = storeToRefs(deviceStore);
+const {devices} = storeToRefs(deviceStore);
 const groupStore = useGroupsStore();
-const { groups } = storeToRefs(groupStore);
+const {groups} = storeToRefs(groupStore);
 
 const allDeviceTypes = shallowRef<string[]>([]);
 const allGroups = shallowRef<string[]>([]);
@@ -71,48 +74,60 @@ const allGroups = shallowRef<string[]>([]);
 const typeFilter = ref<string>(props.filters.type);
 const groupFilter = ref<string>(props.filters.group);
 
-watch(() => props.filters, f => {
-  typeFilter.value = f.type;
-  groupFilter.value = f.group;
-}, { deep: true });
+watch(
+    () => props.filters,
+    (f) => {
+        typeFilter.value = f.type;
+        groupFilter.value = f.group;
+    },
+    {deep: true}
+);
 
 function gatherAllDeviceTypes() {
-  const set = new Set<string>(['All devices']);
-  Object.values(devices.value).forEach(d => {
-    if (d.info?.app) set.add(d.info.app);
-  });
-  return Array.from(set);
+    const set = new Set<string>(['All devices']);
+    Object.values(devices.value).forEach((d) => {
+        if (d.info?.app) set.add(d.info.app);
+    });
+    return Array.from(set);
 }
 
-watch(visible, v => {
-  if (!v) return;
-  allDeviceTypes.value = gatherAllDeviceTypes();
-  allGroups.value = ['All groups', ...Object.values(groups.value).map(g => g.name)];
+watch(visible, (v) => {
+    if (!v) return;
+    allDeviceTypes.value = gatherAllDeviceTypes();
+    allGroups.value = [
+        'All groups',
+        ...Object.values(groups.value).map((g) => g.name)
+    ];
 });
 
 function applyClicked() {
-  const { filtered } = useDeviceFiltering(
-    Object.values(devices.value),
-    { online: null, type: typeFilter.value, group: groupFilter.value }
-  );
-  emit('devices', filtered.value);
-  emit('setFilters', {
-    type: typeFilter.value,
-    group: groupFilter.value
-  });
-  visible.value = false;
+    const {filtered} = useDeviceFiltering(Object.values(devices.value), {
+        online: null,
+        type: typeFilter.value,
+        group: groupFilter.value
+    });
+    emit('devices', filtered.value);
+    emit('setFilters', {
+        type: typeFilter.value,
+        group: groupFilter.value
+    });
+    visible.value = false;
 }
 
 function clearFilters() {
-  typeFilter.value = 'All devices';
-  groupFilter.value = 'All groups';
-  emit('devices', Object.values(devices.value));
-  emit('setFilters', {
-    type: typeFilter.value,
-    group: groupFilter.value
-  });
-  visible.value = false;
+    typeFilter.value = 'All devices';
+    groupFilter.value = 'All groups';
+    emit('devices', Object.values(devices.value));
+    emit('setFilters', {
+        type: typeFilter.value,
+        group: groupFilter.value
+    });
+    visible.value = false;
 }
-
-watch(devices, () => applyClicked());
 </script>
+
+<style scoped>
+:deep(.relative.inline-block) {
+    width: 100%;
+}
+</style>

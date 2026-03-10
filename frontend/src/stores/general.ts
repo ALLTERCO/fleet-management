@@ -1,7 +1,6 @@
-import { FLEET_MANAGER_HTTP } from '@/constants';
-import { getRegistry } from '@/tools/websocket';
-import { defineStore } from 'pinia';
-import { onMounted, ref } from 'vue';
+import {defineStore} from 'pinia';
+import {ref} from 'vue';
+import {getRegistry} from '@/tools/websocket';
 
 export const useGeneralStore = defineStore('general', () => {
     const background = ref('');
@@ -17,7 +16,7 @@ export const useGeneralStore = defineStore('general', () => {
         '#000000',
         '#808080',
         '#FFFFFF'
-    ]
+    ];
 
     const setBackgroundImg = async (newImg: string) => {
         await getRegistry('ui').setItem('backgroundImg', newImg);
@@ -29,19 +28,26 @@ export const useGeneralStore = defineStore('general', () => {
         await getRegistry('ui').setItem('backgroundColor', newColor);
         await getRegistry('ui').setItem('backgroundImg', null);
         background.value = newColor;
-    }
+    };
 
     async function setup() {
         try {
             const res = await getRegistry('ui').getAll<any>();
-            background.value = res.backgroundColor || res.backgroundImg;
+            let bg = res.backgroundColor || res.backgroundImg;
+            // Normalize legacy absolute URLs to relative paths
+            if (bg && typeof bg === 'string' && bg.includes('/uploads/backgrounds/')) {
+                try {
+                    bg = new URL(bg).pathname;
+                } catch { /* already relative — keep as-is */ }
+            }
+            background.value = bg;
         } catch (e) {
-            console.log('error in setup', e);
+            console.error('error in setup', e);
         }
     }
-    onMounted(() => {
-        setup();
-    });
+    // setup() is called by App.vue after authentication is confirmed.
+    // It must NOT be called in onMounted — the store initializes before
+    // the OIDC callback completes, causing 401 "Not authenticated" errors.
 
     return {
         setup,

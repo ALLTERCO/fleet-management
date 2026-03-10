@@ -4,40 +4,43 @@
             <span class="text-lg font-semibold line-clamp-2">{{ action?.name || 'Action Details' }}</span>
         </template>
 
-        <template #default>
-            <div v-if="action" class="flex flex-col gap-2 h-full bg-slate-900">
-                <div class="flex-grow">
-                    <div v-for="item in action.actions" :key="JSON.stringify(item)">
-                        <template v-if="Object.keys(deviceResults).length">
+        <template #info>
+            <div v-if="action" class="flex flex-col gap-3 h-full">
+                <div class="flex-grow space-y-3">
+                    <div v-for="(item, index) in action.actions" :key="index">
+                        <template v-if="resultCount > 0">
                             <Notification type="success"> {{ fulfilledPromises }} fulfilled </Notification>
                             <Notification type="error">
-                                {{ Object.keys(deviceResults).length - fulfilledPromises }} errored
+                                {{ resultCount - fulfilledPromises }} errored
                             </Notification>
                         </template>
-                        <h2 class="text-lg font-bold">Command</h2>
-                        <pre class="bg-gray-800 p-3 rounded">{{
-                            JSON.stringify({ ...item, dst: undefined }, undefined, 2)
-                        }}</pre>
 
-                        <h2 class="text-lg font-bold mt-2">Devices</h2>
-                        <ul v-if="'dst' in item" class="space-y-2">
-                            <li v-for="shellyID in item.dst" :key="shellyID">
-                                <DeviceWidget v-memo="shellyID" :device-id="shellyID" vertical />
-                            </li>
-                        </ul>
+                        <div class="space-y-1">
+                            <h2 class="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-disabled)]">Command</h2>
+                            <pre class="action-code p-3 rounded-lg text-xs font-mono overflow-auto max-h-48">{{ JSON.stringify({ ...item, dst: undefined }, undefined, 2) }}</pre>
+                        </div>
+
+                        <div class="space-y-2 mt-3">
+                            <h2 class="text-xs font-semibold uppercase tracking-wider text-[var(--color-text-disabled)]">Target Devices</h2>
+                            <ul v-if="'dst' in item" class="space-y-1">
+                                <li v-for="shellyID in item.dst" :key="shellyID">
+                                    <DeviceWidget v-memo="shellyID" :device-id="shellyID" vertical />
+                                </li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
 
-                <div class="bg-gray-950 w-full p-4 relative h-20 rounded-lg">
-                    <div class="absolute -translate-x-1/2 left-1/2 top-1/2 -translate-y-1/2">
-                        <Button :loading="waitingForResponse" :disabled="waitingForResponse" @click="run"> Run </Button>
-                    </div>
+                <div class="action-footer sticky bottom-0 p-3 -mx-3 -mb-3 rounded-b-lg">
+                    <Button class="w-full" :loading="waitingForResponse" :disabled="waitingForResponse" @click="run">
+                        <i class="fas fa-play mr-2"></i> Run Action
+                    </Button>
                 </div>
             </div>
         </template>
 
         <template #debug>
-            <div v-if="deviceResults && Object.keys(deviceResults).length > 0">
+            <div v-if="resultCount > 0">
                 <div v-for="(device, shellyID) in deviceResults" :key="shellyID" class="mb-4">
                     <Collapse :title="shellyID">
                         <Spinner v-if="device.loading" />
@@ -45,40 +48,44 @@
                     </Collapse>
                 </div>
             </div>
-            <div v-else>
-                <p class="text-lg text-gray-300">No results available yet.</p>
+            <div v-else class="text-center py-8">
+                <i class="fas fa-terminal text-2xl text-[var(--color-text-disabled)] mb-2"></i>
+                <p class="text-sm text-[var(--color-text-tertiary)]">Run the action to see results here.</p>
             </div>
         </template>
     </BoardTabs>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, toRef, computed } from 'vue';
-import * as ws from '@/tools/websocket';
-import { action_t } from '@/types';
-import DeviceWidget from '@/components/widgets/DeviceWidget.vue';
-import Button from '@/components/core/Button.vue';
-import { useToastStore } from '@/stores/toast';
-import { useRightSideMenuStore } from '@/stores/right-side';
+import {computed, ref, toRef, watch} from 'vue';
 import BoardTabs from '@/components/boards/BoardTabs.vue';
+import Button from '@/components/core/Button.vue';
+import Collapse from '@/components/core/Collapse.vue';
 import Spinner from '@/components/core/Spinner.vue';
 import JSONViewer from '@/components/JSONViewer.vue';
-import Collapse from '@/components/core/Collapse.vue';
-import { runAction } from '@/helpers/commands';
+import DeviceWidget from '@/components/widgets/DeviceWidget.vue';
+import {runAction} from '@/helpers/commands';
+import {useRightSideMenuStore} from '@/stores/right-side';
+import {useToastStore} from '@/stores/toast';
+import * as ws from '@/tools/websocket';
+import type {action_t} from '@/types';
 import Notification from '../core/Notification.vue';
 
-const props = defineProps<{ actionID: string }>();
+const props = defineProps<{actionID: string}>();
 
 const toastStore = useToastStore();
 const rightSideMenu = useRightSideMenuStore();
 const actionID = toRef(props, 'actionID');
 const action = ref<action_t>();
-const deviceResults = ref<Record<string, { loading: boolean; result: any }>>({});
+const deviceResults = ref<Record<string, {loading: boolean; result: any}>>({});
 const waitingForResponse = ref(false);
+
+const resultCount = computed(() => Object.keys(deviceResults.value).length);
 
 const fulfilledPromises = computed(() =>
     Object.values(deviceResults.value).reduce(
-        (acc, curr) => acc + Number(curr?.result?.__promiseStatus === 'fulfilled'),
+        (acc, curr) =>
+            acc + Number(curr?.result?.__promiseStatus === 'fulfilled'),
         0
     )
 );
@@ -91,7 +98,7 @@ async function run() {
     action.value.actions.forEach((item) => {
         if (item.dst) {
             item.dst.forEach((shellyID: string) => {
-                deviceResults.value[shellyID] = { loading: true, result: null };
+                deviceResults.value[shellyID] = {loading: true, result: null};
             });
         }
     });
@@ -102,11 +109,13 @@ async function run() {
             const result = results[shellyID];
             deviceResults.value[shellyID] = {
                 result,
-                loading: false,
+                loading: false
             };
         }
     } catch (error) {
-        toastStore.error('Something went wrong with the action.' + String(error));
+        toastStore.error(
+            'Something went wrong with the action.' + String(error)
+        );
         console.error(error);
     } finally {
         waitingForResponse.value = false;
@@ -118,8 +127,24 @@ watch(
     async () => {
         const ActionsController = ws.getRegistry('actions');
         const allActions = await ActionsController.getItem<action_t[]>('rpc');
-        action.value = allActions.find((action) => action.id === actionID.value);
+        action.value = allActions.find(
+            (action) => action.id === actionID.value
+        );
     },
-    { immediate: true }
+    {immediate: true}
 );
 </script>
+
+<style scoped>
+.action-code {
+    background-color: var(--color-surface-0);
+    color: var(--color-code-text);
+    border: 1px solid var(--color-border-default);
+}
+.action-footer {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border-top: 1px solid var(--glass-border);
+}
+</style>

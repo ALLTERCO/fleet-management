@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
-import Modal from './Modal.vue';
+import {computed, ref, watch} from 'vue';
 import BasicBlock from '../core/BasicBlock.vue';
 import Button from '../core/Button.vue';
+import Modal from './Modal.vue';
 
 // Define props – if secured is true, additional confirmation is needed
-const { secured,footer } = defineProps<{ secured?: boolean, footer?:boolean }>();
+const {secured, footer} = defineProps<{secured?: boolean; footer?: boolean}>();
 
 const emit = defineEmits(['close', 'confirmAction']);
 
@@ -20,7 +20,7 @@ const deletionInput = ref('');
 
 // Computed property: if secured is enabled, ensure deletionInput is exactly 'DELETE'
 const isDeletionConfirmed = computed(() => {
-  return !secured || deletionInput.value === 'DELETE';
+    return !secured || deletionInput.value === 'DELETE';
 });
 
 /**
@@ -28,34 +28,34 @@ const isDeletionConfirmed = computed(() => {
  * Call this from your parent via the exposed ref.
  */
 function storeAction(action: () => void) {
-  pendingAction.value = action;
-  visible.value = true;
+    pendingAction.value = action;
+    visible.value = true;
 }
 
 /**
  * Executes the stored action (if confirmed) and closes the modal.
  */
 function handleConfirm() {
-  if (pendingAction.value && isDeletionConfirmed.value) {
-    pendingAction.value();
-  }
-  emit('confirmAction');
-  visible.value = false;
+    if (pendingAction.value && isDeletionConfirmed.value) {
+        pendingAction.value();
+    }
+    emit('confirmAction');
+    visible.value = false;
 }
 
 /**
  * Clear the stored action and reset the input when the modal is closed.
  */
 watch(visible, (newVal) => {
-  if (!newVal) {
-    pendingAction.value = null;
-    deletionInput.value = '';
-  }
+    if (!newVal) {
+        pendingAction.value = null;
+        deletionInput.value = '';
+    }
 });
 
 // Expose storeAction so that parent components can call it
 defineExpose({
-  storeAction,
+    storeAction
 });
 </script>
 
@@ -67,7 +67,7 @@ defineExpose({
     <div class="flex flex-col gap-3 justify-center items-center p-3 md:p-5">
       <div class="font-bold text-2xl p-3 text-center">
         <slot name="title">
-          <h1>Are you sure you want to do this action?</h1>
+          <span>Are you sure you want to do this action?</span>
         </slot>
       </div>
 
@@ -75,18 +75,18 @@ defineExpose({
         <div class="w-full flex justify-center items-center flex-col gap-3">
           <p class="text-sm mb-2">
             To confirm deletion, please type
-            <span class="font-bold text-red-600">DELETE</span>
+            <span class="font-bold confirm-danger-text">DELETE</span>
             in the field below.
           </p>
-          <input v-model="deletionInput" type="text " placeholder="Type DELETE to confirm"
-            class="border rounded p-2 w-full text-black font-bold text-center" />
+          <input v-model="deletionInput" type="text" placeholder="Type DELETE to confirm"
+            class="confirm-input border rounded p-2 w-full font-bold text-center" aria-label="Type DELETE to confirm" />
         </div>
 
       </BasicBlock>
 
       <div class="font-semibold text-sm text-center">
         <slot name="subText" v-if="footer">
-          <span class="font-bold">*This action is <span class="font-extrabold text-red-600">permanent</span> and we
+          <span class="font-bold">*This action is <span class="font-extrabold confirm-danger-text">permanent</span> and we
             need your consent!</span>
         </slot>
       </div>
@@ -102,3 +102,15 @@ defineExpose({
     </div>
   </Modal>
 </template>
+
+<style scoped>
+.confirm-danger-text {
+    color: var(--color-danger);
+}
+
+.confirm-input {
+    color: var(--color-text-primary);
+    background-color: var(--color-surface-1);
+    border-color: var(--color-border-strong);
+}
+</style>

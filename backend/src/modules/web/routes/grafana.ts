@@ -1,5 +1,8 @@
 import express from 'express';
+import log4js from 'log4js';
 import {configRc} from '../../../config';
+
+const logger = log4js.getLogger('grafana-proxy');
 const router = express.Router();
 const grafanaUrl = configRc.graphs?.grafana.endpoint;
 
@@ -44,14 +47,13 @@ router.all('/*', async (req, res) => {
                     res.write(chunk);
                 }
             } catch (e) {
-                console.error(e);
+                logger.error('Grafana stream read error: %s', e);
             }
             reader.releaseLock();
             res.end();
         }
     } catch (e) {
-        console.error(fUrl);
-        console.error(e);
+        logger.error('Grafana proxy error for %s: %s', fUrl, e);
         res.sendStatus(500);
         res.end();
     }

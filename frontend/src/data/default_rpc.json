@@ -133,7 +133,7 @@
             "params": {
                 "id": 0,
                 "on": true,
-                "rgb": [ 50, 50, 50 ],
+                "rgb": [50, 50, 50],
                 "brightness": 100,
                 "toggle_after": 0
             }
@@ -170,7 +170,7 @@
             "params": {
                 "id": 0,
                 "on": true,
-                "rgb": [ 50, 50, 50 ],
+                "rgb": [50, 50, 50],
                 "brightness": 100,
                 "white": 100,
                 "toggle_after": 0

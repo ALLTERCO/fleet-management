@@ -10,7 +10,7 @@ export interface shelly_device_t {
     loading: boolean;
     selected: boolean;
     entities: string[];
-    meta: any
+    meta: any;
 }
 
 interface ShellyMessageIncoming {
@@ -44,7 +44,7 @@ export interface ShellyDeviceExternal {
     selected: boolean;
     kvs: Record<string, string>;
     entities: string[];
-    meta: any
+    meta: any;
 }
 
 export interface json_rpc_event {
@@ -159,29 +159,6 @@ export namespace EntityEvent {
     }
 }
 
-export type shelly_bthome_type_t =
-    | 'unknown'
-    | 'SBBT-002C'
-    | 'SBDW-002C'
-    | 'SBMO-003Z'
-    | 'SBHT-003C'
-    | 'SBBT-004CUS'
-    | 'SBBT-004CEU'
-    | string;
-
-export type shelly_bthome_result_t = {
-    type: shelly_bthome_type_t;
-    mac: string;
-    shellyID: string;
-};
-
-export namespace BTHome {
-    export interface DiscoveryResult extends json_rpc_event {
-        method: 'BTHome.DiscoveryResult';
-        params: shelly_bthome_result_t;
-    }
-}
-
 export type build_t = 'discovered' | 'devices' | 'report';
 
 export interface discovered_t {
@@ -238,7 +215,7 @@ export interface response_t {
 export interface tag_t {
     [key: string]: {
         label: string;
-        addon?: { label: string; color: string };
+        addon?: {label: string; color: string};
         click_cb?: () => void;
     };
 }
@@ -248,7 +225,7 @@ interface entity {
     id: string;
     type: string;
     source: string;
-    properties: { id: number } & object;
+    properties: {id: number} & object;
 }
 
 export interface input_entity extends entity {
@@ -347,6 +324,30 @@ export interface pm1_entity extends entity {
     type: 'pm1';
 }
 
+export interface cury_entity extends entity {
+    type: 'cury';
+    properties: entity['properties'] & {
+        mode?: string;
+        awayMode?: boolean;
+    };
+}
+
+export interface humidity_entity extends entity {
+    type: 'humidity';
+}
+
+export interface voltmeter_entity extends entity {
+    type: 'voltmeter';
+}
+
+export interface cct_entity extends entity {
+    type: 'cct';
+}
+
+export interface rgbcct_entity extends entity {
+    type: 'rgbcct';
+}
+
 export type entity_t =
     | input_entity
     | switch_entity
@@ -357,7 +358,12 @@ export type entity_t =
     | bthomesensor_entity
     | virtual_component_t
     | cover_entity
-    | pm1_entity;
+    | pm1_entity
+    | cury_entity
+    | humidity_entity
+    | voltmeter_entity
+    | cct_entity
+    | rgbcct_entity;
 
 export interface dashboard_t {
     name: string;

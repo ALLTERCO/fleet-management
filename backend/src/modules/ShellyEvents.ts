@@ -1,5 +1,8 @@
+import {getLogger} from 'log4js';
 import type AbstractDevice from '../model/AbstractDevice';
+import * as AuditLogger from '../modules/AuditLogger';
 import * as EventDistributor from '../modules/EventDistributor';
+import * as Observability from '../modules/Observability';
 import {buildOutgoingEvent, buildOutgoingStatus} from '../rpc/builders';
 import type {
     BTHome,
@@ -11,8 +14,11 @@ import type {
     ShellyMessageIncoming,
     WaitingRoomEvent,
     entity_t,
+    json_rpc_event,
     shelly_bthome_type_t
 } from '../types';
+
+const logger = getLogger('shelly-events');
 
 export function notifyComponentEvent(component: string, event: string) {
     const outgoingEvent = buildOutgoingEvent('FM_CLIENT', component, event);
@@ -26,15 +32,33 @@ export function notifyComponentStatus(patch: object) {
     EventDistributor.notifyAll(outgoingEvent, {reason: key});
 }
 
+let connectCount = 0;
+let disconnectCount = 0;
+let eventCount = 0;
+
+Observability.registerModule('shellyEvents', () => ({
+    connects: connectCount,
+    disconnects: disconnectCount,
+    totalEvents: eventCount
+}));
+
 export function emitShellyConnected(device: AbstractDevice) {
+    connectCount++;
+    logger.info(
+        'emitShellyConnected shellyID:[%s] model:[%s]',
+        device.shellyID,
+        device.info?.model
+    );
+    const deviceJSON = device.toJSON();
     const event: ShellyEvent.Connect = {
         method: 'Shelly.Connect',
         params: {
             shellyID: device.shellyID,
-            device: device.toJSON()
+            device: deviceJSON
         }
     };
     EventDistributor.processAndNotifyAll(event, {device});
+    AuditLogger.logDeviceOnline(device.shellyID);
 }
 
 export function emitFleetManagerConfig(
@@ -49,21 +73,24 @@ export function emitFleetManagerConfig(
 }
 
 export function emitShellyDisconnected(device: AbstractDevice) {
+    disconnectCount++;
     const {shellyID} = device;
     const event: ShellyEvent.Disconnect = {
         method: 'Shelly.Disconnect',
         params: {shellyID}
     };
     EventDistributor.processAndNotifyAll(event, {device});
+    AuditLogger.logDeviceOffline(shellyID);
 }
 
-export function emitShellyDeleted(device: AbstractDevice) {
+export function emitShellyDeleted(device: AbstractDevice, username?: string) {
     const {shellyID} = device;
     const event: ShellyEvent.Delete = {
         method: 'Shelly.Delete',
         params: {shellyID}
     };
     EventDistributor.processAndNotifyAll(event, {device});
+    AuditLogger.logDeviceDelete(shellyID, username);
 }
 
 export function emitShellyDeviceInfo(device: AbstractDevice) {
@@ -75,7 +102,10 @@ export function emitShellyDeviceInfo(device: AbstractDevice) {
     EventDistributor.processAndNotifyAll(event, {device});
 }
 
-export function emitShellyStatus(device: AbstractDevice, reason: string) {
+export function emitShellyStatus(
+    device: AbstractDevice,
+    reason: string | string[]
+) {
     const {shellyID, status} = device;
     const event: ShellyEvent.Status = {
         method: 'Shelly.Status',
@@ -101,6 +131,7 @@ export function emitShellyMessage(
     res: ShellyMessageIncoming,
     req?: ShellyMessageData
 ) {
+    eventCount++;
     const event: ShellyEvent.Message = {
         method: 'Shelly.Message',
         params: {shellyID: device.shellyID, message: res, req}
@@ -188,10 +219,33 @@ export function emitConsoleLog(
     EventDistributor.notifyAll(event, {});
 }
 
+export function emitConsoleLogBatch(
+    logs: {coloredPart: string; log: string; color: string}[]
+) {
+    const event: json_rpc_event = {
+        method: 'Console.Log',
+        params: {batch: logs}
+    };
+    EventDistributor.notifyAll(event, {});
+}
+
 export function emitWaitingRoomAccepted(id: number) {
     const event: WaitingRoomEvent.Accepted = {
         method: 'WaitingRoomEvent.Accepted',
         params: {id}
+    };
+    EventDistributor.processAndNotifyAll(event);
+}
+
+/**
+ * Batch variant — one event with all IDs instead of N individual events.
+ * Used by accept-all to avoid saturating the event loop.
+ */
+export function emitWaitingRoomAcceptedBatch(ids: number[]) {
+    if (ids.length === 0) return;
+    const event: json_rpc_event = {
+        method: 'WaitingRoomEvent.Accepted',
+        params: {ids}
     };
     EventDistributor.processAndNotifyAll(event);
 }

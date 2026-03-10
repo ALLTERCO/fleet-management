@@ -1,35 +1,44 @@
-import { getRegistry } from '@/tools/websocket'
+import {getRegistry} from '@/tools/websocket';
 
-const registry = getRegistry('action-variables')
+const registry = getRegistry('action-variables');
 
-export async function substituteVariables(obj: any): Promise<any> {
-    let vars: Record<string, string> = {}
+export async function fetchActionVariables(): Promise<Record<string, string>> {
     try {
-        vars = (await registry.getAll<Record<string, string>>()) ?? {}
+        return (await registry.getAll<Record<string, string>>()) ?? {};
     } catch {
-        vars = {}
+        return {};
     }
+}
 
+export function substituteVariablesSync(
+    obj: any,
+    vars: Record<string, string>
+): any {
     if (typeof obj === 'string') {
         return obj.replace(/\$\{([A-Za-z0-9_]+)\}/g, (_, key) =>
             vars[key] != null ? vars[key] : `\${${key}}`
-        )
+        );
     }
 
     if (Array.isArray(obj)) {
-        const arr = await Promise.all(obj.map(substituteVariables))
-        return arr
+        return obj.map((item) => substituteVariablesSync(item, vars));
     }
 
     if (obj && typeof obj === 'object') {
-        const out: Record<string, any> = {}
+        const out: Record<string, any> = {};
         for (const k in obj) {
-            if (Object.prototype.hasOwnProperty.call(obj, k)) {
-                out[k] = await substituteVariables(obj[k])
+            if (Object.hasOwn(obj, k)) {
+                out[k] = substituteVariablesSync(obj[k], vars);
             }
         }
-        return out
+        return out;
     }
 
-    return obj
+    return obj;
+}
+
+// Legacy wrapper for backward compatibility
+export async function substituteVariables(obj: any): Promise<any> {
+    const vars = await fetchActionVariables();
+    return substituteVariablesSync(obj, vars);
 }

@@ -59,27 +59,55 @@ export default class EntityComponent extends Component<any> {
     @Component.Expose('List')
     @Component.NoPermissions
     async listEntities(
-        _params: any,
+        params: {limit?: number; offset?: number} | undefined,
         sender: CommandSender
-    ): Promise<Record<string, entity_t>> {
-        const allEntities = DeviceCollector.getAll().flatMap((device) =>
-            device.entities.map((entity) => ({
-                ...entity,
-                source: device.shellyID as string
-            }))
-        );
+    ): Promise<
+        | Record<string, entity_t>
+        | {items: Record<string, entity_t>; total: number}
+    > {
+        const allDevices = DeviceCollector.getAll();
+        const uniqueSources = [
+            ...new Set(allDevices.map((d) => d.shellyID as string))
+        ];
+        const accessible = await sender.filterAccessibleDevices(uniqueSources);
 
-        const printEntities: Array<entity_t & {source: string}> = [];
-        for (const entity of allEntities) {
-            if (await sender.canAccessDevice(entity.source)) {
-                printEntities.push(entity);
+        // Build flat array of entities (avoids double-iteration for paginated path)
+        const allEntities: Array<[string, entity_t]> = [];
+        for (const device of allDevices) {
+            if (!accessible.has(device.shellyID as string)) continue;
+            for (const entity of device.entities) {
+                allEntities.push([
+                    entity.id,
+                    {...entity, source: device.shellyID as string}
+                ]);
             }
         }
 
-        return printEntities.reduce<Record<string, entity_t>>((acc, curr) => {
-            acc[curr.id] = curr;
-            return acc;
-        }, {});
+        const total = allEntities.length;
+        const limit =
+            typeof params?.limit === 'number' && params.limit > 0
+                ? params.limit
+                : 0;
+        const offset =
+            typeof params?.offset === 'number' && params.offset >= 0
+                ? params.offset
+                : 0;
+
+        if (limit > 0) {
+            const items: Record<string, entity_t> = {};
+            const slice = allEntities.slice(offset, offset + limit);
+            for (const [id, entity] of slice) {
+                items[id] = entity;
+            }
+            return {items, total};
+        }
+
+        // No pagination — return all (backward compatible)
+        const result: Record<string, entity_t> = {};
+        for (const [id, entity] of allEntities) {
+            result[id] = entity;
+        }
+        return result;
     }
 
     protected override getDefaultConfig() {

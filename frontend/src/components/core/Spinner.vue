@@ -1,9 +1,9 @@
 <template>
-    <div role="status">
+    <div role="status" class="inline-flex items-center justify-center">
         <svg
             aria-hidden="true"
             :class="classSize"
-            class="animate-spin text-gray-600 fill-blue-600"
+            class="spinner animate-spin"
             viewBox="0 0 100 101"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
@@ -22,13 +22,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import {computed} from 'vue';
 
 type props_t = {
     size?: 'xs' | 'sm' | 'md' | 'lg';
 };
 
-const props = withDefaults(defineProps<props_t>(), { size: 'sm' });
+const props = withDefaults(defineProps<props_t>(), {size: 'sm'});
 
 const classSize = computed(() => {
     if (props.size == 'md') {
@@ -46,3 +46,10 @@ const classSize = computed(() => {
     return ['w-8 h-8'];
 });
 </script>
+
+<style scoped>
+.spinner {
+    color: var(--color-surface-4);
+    fill: var(--color-primary);
+}
+</style>

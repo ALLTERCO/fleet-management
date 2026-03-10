@@ -20,8 +20,11 @@ import * as log4js from 'log4js';
 import {DEV_MODE, bootstrapFs, configRc} from './config';
 import initGrafana from './config/grafana';
 import AlexaComponent from './model/component/AlexaComponent';
+import AuditLogComponent from './model/component/AuditLogComponent';
+import BackupComponent from './model/component/BackupComponent';
 import DeviceComponent from './model/component/DeviceComponent';
 import EntityComponent from './model/component/EntityComponent';
+import FirmwareComponent from './model/component/FirmwareComponent';
 import FleetManagerComponent from './model/component/FleetManagerComponent';
 import GrafanaComponent from './model/component/GrafanaComponent';
 import GroupComponent from './model/component/GroupComponent';
@@ -31,8 +34,11 @@ import MdnsComponent from './model/component/MdnsComponent';
 import StorageComponent from './model/component/StorageComponent';
 import WaitingRoomComponent from './model/component/WaitingRoomComponent';
 import WebComponent from './model/component/WebComponent';
+import * as AuditLogger from './modules/AuditLogger';
 import * as Commander from './modules/Commander';
 import * as DeviceCollector from './modules/DeviceCollector';
+import * as FirmwareScheduler from './modules/FirmwareScheduler';
+import * as Observability from './modules/Observability';
 import * as postgres from './modules/PostgresProvider';
 import * as Registry from './modules/Registry';
 import {PluginLoader} from './modules/plugins';
@@ -65,9 +71,18 @@ process.on('SIGTERM', onShutdown);
 process.on('SIGHUP', onShutdown);
 process.on('SIGABRT', onShutdown);
 
-function onShutdown() {
+async function onShutdown() {
     logger.fatal('Shutting down...');
-    DeviceCollector.getAll().forEach((shelly) => shelly.destroy());
+    // Flush pending audit logs before shutdown
+    try {
+        await AuditLogger.flush();
+    } catch (err) {
+        logger.error('Failed to flush audit logs on shutdown:', err);
+    }
+    // Skip delete events on shutdown - clients will be disconnected anyway
+    DeviceCollector.getAll().forEach((shelly) =>
+        shelly.destroy({skipDeleteEvent: true})
+    );
     process.exit(0);
 }
 
@@ -84,6 +99,9 @@ function registerDefaultComponents() {
     Commander.registerComponent(new MdnsComponent());
     Commander.registerComponent(new GrafanaComponent());
     Commander.registerComponent(new AlexaComponent());
+    Commander.registerComponent(new FirmwareComponent());
+    Commander.registerComponent(new BackupComponent());
+    Commander.registerComponent(new AuditLogComponent());
 }
 
 function registerDevComponents() {
@@ -107,6 +125,7 @@ async function main() {
     console.log(configRc);
     console.time('boot');
     await postgres.initDatabase();
+    await postgres.migrateGroupsFromJson();
     await postgres.loadSavedDevices();
     await bootstrapFs();
     await initGrafana(configRc);
@@ -116,6 +135,13 @@ async function main() {
     registerDevComponents();
     // Load plugins
     await setupPlugins();
+    // Pre-warm registry caches (actions, dashboards, menu items) so the
+    // first client request is a cache hit — no DB query latency.
+    await Registry.warmCache();
+    // Enable observability if configured (event loop lag, RPC timing, memory)
+    if (configRc.observability) Observability.setLevel(2);
+    // Start firmware auto-update scheduler
+    FirmwareScheduler.startScheduler();
     // Start web server
     startWeb();
     console.timeEnd('boot');

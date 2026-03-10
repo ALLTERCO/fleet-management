@@ -1,0 +1,49 @@
+# Base services: TimescaleDB
+# This is the foundation — always runs for all profiles.
+#
+# Old file: /docker-compose.yml
+# Changes: secrets externalized, images pinned via VERSIONS.env
+
+name: ${COMPOSE_PROJECT_NAME}
+
+services:
+  fleet-db:
+    restart: unless-stopped
+    image: timescale/timescaledb:${TIMESCALEDB_VERSION}
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - fleet-db-data:/var/lib/postgresql/data
+      - ../state/init-fleet-db.sql:/docker-entrypoint-initdb.d/init-fleet-db.sql:ro
+    ports:
+      - "5434:5432"
+    command: >-
+      postgres
+      -c shared_buffers=${PG_SHARED_BUFFERS}
+      -c effective_cache_size=${PG_EFFECTIVE_CACHE}
+      -c work_mem=${PG_WORK_MEM}
+      -c maintenance_work_mem=${PG_MAINT_WORK_MEM}
+      -c max_connections=${PG_MAX_CONNECTIONS}
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: fleet
+    networks:
+      fleet-net:
+    tty: true
+    stdin_open: true
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+networks:
+  fleet-net:
+
+volumes:
+  fleet-db-data:

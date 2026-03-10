@@ -3,6 +3,7 @@ import createMdns from 'multicast-dns';
 import ShellyDeviceFactory from '../model/ShellyDeviceFactory';
 import HttpTransport from '../model/transport/HttpTransport';
 import * as DeviceCollector from './DeviceCollector';
+import * as Observability from './Observability';
 
 const logger = log4js.getLogger('local-scanner');
 let mdns: ReturnType<typeof createMdns> | undefined;
@@ -64,6 +65,7 @@ export function start() {
         const transport = new HttpTransport(ip);
         const shellyDevice = await ShellyDeviceFactory.fromHttp(transport);
         DeviceCollector.register(shellyDevice);
+        Observability.incrementCounter('mdns_discovered');
     });
 }
 
@@ -80,3 +82,7 @@ export function stop() {
 export function started() {
     return mdns !== undefined;
 }
+
+Observability.registerModule('mdns', () => ({
+    running: mdns !== undefined ? 1 : 0
+}));

@@ -13,9 +13,9 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, toRef, watch } from 'vue';
+import {onMounted, ref, toRef, watch} from 'vue';
 
-const props = defineProps<{ rgb: [number, number, number] }>();
+const props = defineProps<{rgb: [number, number, number]}>();
 const emit = defineEmits<{
     change: [[number, number, number]];
 }>();
@@ -37,7 +37,7 @@ function draw() {
         return;
     }
 
-    context = canvas.getContext('2d', { willReadFrequently: true });
+    context = canvas.getContext('2d', {willReadFrequently: true});
 
     if (!context) {
         return;
@@ -61,7 +61,14 @@ function draw() {
         context.closePath();
     }
 
-    const gradient = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
+    const gradient = context.createRadialGradient(
+        centerX,
+        centerY,
+        0,
+        centerX,
+        centerY,
+        radius
+    );
     gradient.addColorStop(0, 'rgb(255, 255, 255)');
     gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
 
@@ -81,7 +88,7 @@ function onClick(event: MouseEvent) {
         return;
     }
 
-    const { left, top } = canvas.getBoundingClientRect();
+    const {left, top} = canvas.getBoundingClientRect();
 
     const x = event.clientX - left;
     const y = event.clientY - top;

@@ -1,6 +1,7 @@
 import log4js from 'log4js';
 import type WebSocket from 'ws';
 import * as Commander from '../../../modules/Commander';
+import * as Observability from '../../../modules/Observability';
 import RpcError from '../../../rpc/RpcError';
 import type {Sendable, user_t} from '../../../types';
 const logger = log4js.getLogger('message-handler');
@@ -10,6 +11,17 @@ import {buildOutgoingJsonRpc} from '../../../rpc/builders';
 import type {JsonRpcIncomming} from '../../../rpc/types';
 import {parseIncomingJsonRpc} from '../../../rpc/types';
 import {UNAUTHORIZED_USER} from '../../user';
+import {canExecuteOnDevice} from '../utils/devicePermissions';
+
+let internalCmdCount = 0;
+let relayCmdCount = 0;
+let parseErrors = 0;
+
+Observability.registerModule('wsCommands', () => ({
+    internalCommands: internalCmdCount,
+    relayCommands: relayCmdCount,
+    parseErrors
+}));
 
 export default class MessageHandler {
     /**
@@ -33,6 +45,7 @@ export default class MessageHandler {
             }
             this.handleIncomingMessage(socket, parsed, user);
         } catch (error) {
+            parseErrors++;
             logger.warn('error json parsing ws data', String(error));
             const rpcError = RpcError.InvalidRequest().getRpcError();
             socket.send(JSON.stringify(rpcError));
@@ -63,6 +76,7 @@ export default class MessageHandler {
             typeof data.dst === 'string' &&
             data.dst?.toUpperCase() === 'FLEET_MANAGER'
         ) {
+            internalCmdCount++;
             this.handleInternalCommands(socket, data, user);
             return;
         }
@@ -70,7 +84,8 @@ export default class MessageHandler {
         // relay commands to connected devices
 
         if (typeof data.dst !== 'undefined') {
-            this.#handleRelayCommands(socket, data);
+            relayCmdCount++;
+            this.#handleRelayCommands(socket, data, user);
             return;
         }
 
@@ -85,17 +100,17 @@ export default class MessageHandler {
      * @param socket Websocket sending the command
      * @param data parsed data
      */
-    // TODO: CHECK FOR DEVICE PERMISSION
     #handleRelayCommands(
         socket: Sendable | WebSocket.WebSocket,
-        data: JsonRpcIncomming
+        data: JsonRpcIncomming,
+        user?: user_t
     ) {
         if (typeof data.dst === 'string') {
-            this.#singleRelayCommand(socket, data.dst, data);
+            this.#singleRelayCommand(socket, data.dst, data, user);
         } else if (typeof data.dst === 'object' && Array.isArray(data.dst)) {
             for (const dst of data.dst)
                 if (typeof dst === 'string') {
-                    this.#singleRelayCommand(socket, dst, data);
+                    this.#singleRelayCommand(socket, dst, data, user);
                 }
         } else {
             const rpcError = RpcError.InvalidRequest('Bad dst argument');
@@ -112,7 +127,8 @@ export default class MessageHandler {
     #singleRelayCommand(
         socket: Sendable | WebSocket.WebSocket,
         shellyID: string,
-        data: JsonRpcIncomming
+        data: JsonRpcIncomming,
+        user?: user_t
     ) {
         logger.debug(
             'MessageHandler.singleRelayCommand',
@@ -126,11 +142,32 @@ export default class MessageHandler {
             return;
         }
 
+        if (user && !canExecuteOnDevice(user, shellyID)) {
+            const rpcError = RpcError.Server(
+                'Permission denied for device'
+            ).getRpcError(data.id);
+            socket.send(JSON.stringify(rpcError));
+            return;
+        }
+
         const {method, params, src, id} = data;
-        shelly.sendRPC(method, params, true).then((resp) => {
-            const result = buildOutgoingJsonRpc(id, src, resp);
-            socket.send(JSON.stringify(result));
-        });
+        shelly.sendRPC(method, params, true).then(
+            (resp) => {
+                const result = buildOutgoingJsonRpc(id, src, resp);
+                socket.send(JSON.stringify(result));
+            },
+            (err) => {
+                logger.error(
+                    'Relay RPC failed dst:[%s] method:[%s] err:[%s]',
+                    shellyID,
+                    method,
+                    String(err)
+                );
+                const rpcError =
+                    RpcError.Server('Device RPC failed').getRpcError(id);
+                socket.send(JSON.stringify(rpcError));
+            }
+        );
     }
 
     /**
@@ -149,7 +186,9 @@ export default class MessageHandler {
         user ??= UNAUTHORIZED_USER;
 
         const sender = new CommandSender(user.permissions, user.group, {
-            socket: socket as WebSocket.WebSocket
+            socket: socket as WebSocket.WebSocket,
+            permissionConfig: user.permissionConfig,
+            username: user.username
         });
 
         logger.debug(

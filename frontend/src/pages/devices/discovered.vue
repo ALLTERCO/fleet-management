@@ -37,27 +37,31 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import Input from '@/components/core/Input.vue';
-import { useDevicesStore } from '@/stores/devices';
-import { shelly_device_t } from '@/types';
+import {computed, ref} from 'vue';
+import {useRouter} from 'vue-router/auto';
 import BasicBlock from '@/components/core/BasicBlock.vue';
 import EmptyBlock from '@/components/core/EmptyBlock.vue';
-import { useRouter } from 'vue-router/auto';
+import Input from '@/components/core/Input.vue';
+import {useDevicesStore} from '@/stores/devices';
+import type {shelly_device_t} from '@/types';
+
 const router = useRouter();
-import { useSystemStore } from '@/stores/system';
+
 import Button from '@/components/core/Button.vue';
 import DeviceWidget from '@/components/widgets/DeviceWidget.vue';
-import { small } from '@/helpers/ui';
-import { useRightSideMenuStore } from '@/stores/right-side';
-import { DeviceBoard } from '@/helpers/components';
-import { isDiscovered } from '@/helpers/device';
+import {DeviceBoard} from '@/helpers/components';
+import {isDiscovered} from '@/helpers/device';
+import {small} from '@/helpers/ui';
+import {useRightSideMenuStore} from '@/stores/right-side';
+import {useSystemStore} from '@/stores/system';
 
 const deviceStore = useDevicesStore();
 const system = useSystemStore();
 const rightSideStore = useRightSideMenuStore();
 
-const devices = computed(() => Object.values(deviceStore.devices).filter((d) => filterDevice(d)));
+const devices = computed(() =>
+    Object.values(deviceStore.devices).filter((d) => filterDevice(d))
+);
 const nameFilter = ref('');
 const activeDevice = ref<string>();
 
@@ -67,7 +71,11 @@ function filterDevice(device: shelly_device_t) {
     }
 
     if (nameFilter.value.length > 1) {
-        if (!device.info.name.toLowerCase().includes(nameFilter.value.toLowerCase())) {
+        if (
+            !device.info.name
+                .toLowerCase()
+                .includes(nameFilter.value.toLowerCase())
+        ) {
             return false;
         }
     }
@@ -77,7 +85,7 @@ function filterDevice(device: shelly_device_t) {
 
 function clicked(device: shelly_device_t) {
     rightSideStore.setActiveComponent(DeviceBoard, {
-        shellyID: device.shellyID,
+        shellyID: device.shellyID
     });
     activeDevice.value = device.shellyID;
 }

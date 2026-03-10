@@ -3,15 +3,37 @@ import fsPromises from 'node:fs/promises';
 import path from 'node:path';
 import log4js from 'log4js';
 const logger = log4js.getLogger('registry');
+import * as Observability from './Observability';
 import {callMethod} from './PostgresProvider';
+
+// ── In-memory caches ──────────────────────────────────────────────────
+// File registry cache: avoids fsPromises.readFile on every call
+const fileCache = new Map<string, Record<string, any>>();
+// DB-backed result cache: avoids redundant PostgreSQL queries
+// Keyed by "registry:key" (e.g. "actions:rpc", "ui:dashboards")
+const dbResultCache = new Map<string, any>();
 
 const actions = {
     'ui.dashboards': {
-        async add({name, items}: {name: string; items: string[]}) {
+        async add({
+            name,
+            items,
+            groupId,
+            dashboardType = 'classic'
+        }: {
+            name: string;
+            items?: string[];
+            groupId?: number;
+            dashboardType?: 'classic' | 'analytics';
+        }) {
             const {
                 rows: [{fn_dashboard_add: dash}]
-            } = await callMethod('ui.fn_dashboard_add', {p_name: name});
-            if (items.length) {
+            } = await callMethod('ui.fn_dashboard_add', {
+                p_name: name,
+                p_group_id: groupId ?? null,
+                p_dashboard_type: dashboardType
+            });
+            if (items?.length) {
                 await callMethod('ui.fn_dashboard_item_add', {
                     p_dashboard: dash,
                     p_type: 0,
@@ -25,15 +47,21 @@ const actions = {
         async update({
             name,
             items,
-            id
+            id,
+            groupId,
+            dashboardType
         }: {
             name: string;
-            items: string[];
+            items?: string[];
             id: number;
+            groupId?: number;
+            dashboardType?: 'classic' | 'analytics';
         }) {
             await callMethod('ui.fn_dashboard_update', {
                 p_name: name,
-                p_id: id
+                p_id: id,
+                p_group_id: groupId ?? null,
+                p_dashboard_type: dashboardType ?? null
             });
             if (items?.length) {
                 await callMethod('ui.fn_dashboard_item_update', {
@@ -57,6 +85,8 @@ const actions = {
                     async (d: {
                         name: string;
                         id: number;
+                        group_id: number | null;
+                        dashboard_type: string;
                         items: {type: string; id: number}[];
                     }) => {
                         const {rows: items} = await callMethod(
@@ -139,6 +169,76 @@ const actions = {
         }
     },
 
+    'ui.dashboardSettings': {
+        async fetch({dashboardId}: {dashboardId: number}) {
+            const {rows} = await callMethod('ui.fn_dashboard_settings_fetch', {
+                p_dashboard_id: dashboardId
+            });
+            const settings = rows?.[0];
+            if (!settings) {
+                return {
+                    dashboardId,
+                    tariff: 0,
+                    currency: 'EUR',
+                    defaultRange: 'last_7_days',
+                    refreshInterval: 60000,
+                    enabledMetrics: [
+                        'voltage',
+                        'current',
+                        'power',
+                        'consumption',
+                        'temperature',
+                        'humidity',
+                        'luminance'
+                    ],
+                    chartSettings: {}
+                };
+            }
+            return {
+                dashboardId,
+                tariff: settings.tariff,
+                currency: settings.currency,
+                defaultRange: settings.default_range,
+                refreshInterval: settings.refresh_interval,
+                enabledMetrics: settings.enabled_metrics,
+                chartSettings: settings.chart_settings
+            };
+        },
+
+        async update({
+            dashboardId,
+            tariff,
+            currency,
+            defaultRange,
+            refreshInterval,
+            enabledMetrics,
+            chartSettings
+        }: {
+            dashboardId: number;
+            tariff?: number;
+            currency?: string;
+            defaultRange?: string;
+            refreshInterval?: number;
+            enabledMetrics?: string[];
+            chartSettings?: Record<string, any>;
+        }) {
+            await callMethod('ui.fn_dashboard_settings_update', {
+                p_dashboard_id: dashboardId,
+                p_tariff: tariff ?? null,
+                p_currency: currency ?? null,
+                p_default_range: defaultRange ?? null,
+                p_refresh_interval: refreshInterval ?? null,
+                p_enabled_metrics: enabledMetrics
+                    ? JSON.stringify(enabledMetrics)
+                    : null,
+                p_chart_settings: chartSettings
+                    ? JSON.stringify(chartSettings)
+                    : null
+            });
+            return this.fetch({dashboardId});
+        }
+    },
+
     'actions.rpc': {
         async fetch() {
             const {rows} = await callMethod(
@@ -199,15 +299,22 @@ function registryExists(path: string) {
 }
 
 async function loadRegistry(name: string): Promise<Record<string, any>> {
+    // Check in-memory cache first (avoids disk I/O)
+    const cached = fileCache.get(name);
+    if (cached) return cached;
+
     const registryPath = getRegistryPath(name);
     if (!registryExists(registryPath)) {
-        logger.warn('registry %s not found', name);
-        return {};
+        logger.debug('registry %s not found, returning empty', name);
+        const empty = {};
+        fileCache.set(name, empty);
+        return empty;
     }
     try {
         const contents = await fsPromises.readFile(registryPath, 'utf-8');
         const registry = JSON.parse(contents);
         if (typeof registry === 'object') {
+            fileCache.set(name, registry);
             return registry;
         }
     } catch (error) {
@@ -225,7 +332,11 @@ async function loadRegistry(name: string): Promise<Record<string, any>> {
 }
 
 async function saveRegistry(name: string, content: any, backupFirst = false) {
+    // Update file cache immediately (write-through)
+    fileCache.set(name, content);
+
     const registryPath = getRegistryPath(name);
+    await fsPromises.mkdir(REGISTRY_FOLDER, {recursive: true});
     if (backupFirst) {
         try {
             await fsPromises.rename(
@@ -251,10 +362,14 @@ export async function addToRegistry(
     const cc: string = `${name}.${key}`;
     if (actions[cc]) {
         const act = actions[cc];
-        if (!value.id) {
-            return await act.add(value);
-        }
-        return await act.update(value);
+        // Invalidate cache before DB write
+        dbResultCache.delete(cc);
+        const result = value.id
+            ? await act.update(value)
+            : await act.add(value);
+        // Cache the fresh result (add/update call fetch() internally)
+        dbResultCache.set(cc, result);
+        return result;
     }
     const data = await loadRegistry(name);
     data[key] = value;
@@ -271,7 +386,11 @@ export async function removeFromRegistry(
 
     if (actions[cc]) {
         if (!value) throw new Error('Missing arguments');
+        // Invalidate cache before DB write
+        dbResultCache.delete(cc);
         const rr = await actions[cc].remove(value);
+        // Cache the fresh result (remove calls fetch() internally)
+        dbResultCache.set(cc, rr);
         return rr;
     }
     const data = await loadRegistry(name);
@@ -284,7 +403,11 @@ export async function getFromRegistry(name: string, key: string) {
     const cc: string = `${name}.${key}`;
 
     if (actions[cc]) {
+        // DB-backed: check result cache first
+        const cached = dbResultCache.get(cc);
+        if (cached !== undefined) return cached;
         const rr = await actions[cc].fetch();
+        dbResultCache.set(cc, rr);
         return rr;
     }
     const data = await loadRegistry(name);
@@ -333,3 +456,33 @@ export async function getUIConfig(): Promise<any[]> {
     const config = await actions['ui.config'].fetch();
     return config;
 }
+
+/**
+ * Pre-warm all DB-backed registry caches on startup.
+ * Ensures the first client request is a cache hit (no DB query latency).
+ */
+export async function warmCache(): Promise<void> {
+    for (const key of Object.keys(actions)) {
+        // Skip actions whose fetch requires arguments (e.g. dashboardSettings
+        // needs a dashboardId) — they are per-record lookups, not global lists.
+        if (actions[key].fetch.length > 0) {
+            logger.debug(
+                'skipping cache warm for %s (fetch requires args)',
+                key
+            );
+            continue;
+        }
+        try {
+            const result = await actions[key].fetch();
+            dbResultCache.set(key, result);
+            logger.info('pre-warmed cache: %s', key);
+        } catch (e) {
+            logger.warn('failed to pre-warm cache for %s: %s', key, e);
+        }
+    }
+}
+
+Observability.registerModule('registry', () => ({
+    fileCacheSize: fileCache.size,
+    dbCacheSize: dbResultCache.size
+}));

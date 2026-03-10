@@ -22,63 +22,74 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
-import Modal from '@/components/modals/Modal.vue';
-import Button from '@/components/core/Button.vue';
+import {computed, onMounted, ref, watch} from 'vue';
 import BasicBlock from '@/components/core/BasicBlock.vue';
+import Button from '@/components/core/Button.vue';
 import MultipleSelector from '@/components/MultipleSelector.vue';
-import { useDevicesStore } from '@/stores/devices';
-import { getDeviceName, getLogo } from '@/helpers/device';
+import Modal from '@/components/modals/Modal.vue';
+import {getDeviceName, getLogo} from '@/helpers/device';
+import {useDevicesStore} from '@/stores/devices';
 
 interface EmDevice {
-  shellyID: string;
-  name: string;
-  pictureUrl: string;
+    shellyID: string;
+    name: string;
+    pictureUrl: string;
 }
 
 const emit = defineEmits<{
-  (e: 'update:selected', value: EmDevice[]): void;
-  (e: 'close'): void;
+    (e: 'update:selected', value: EmDevice[]): void;
+    (e: 'close'): void;
 }>();
 
-const props = defineProps<{ visible: boolean; modelValue?: EmDevice[]; defaultDevice: EmDevice }>();
+const props = defineProps<{
+    visible: boolean;
+    modelValue?: EmDevice[];
+    defaultDevice: EmDevice;
+}>();
 
 const devicesStore = useDevicesStore();
 
 const selected = ref<EmDevice[]>(props.modelValue ?? []);
 
 const emDevices = computed<EmDevice[]>(() => {
-  return Object.values(devicesStore.devices)
-    .filter(device => device.shellyID?.toLowerCase().includes('em'))
-    .map(device => ({
-      shellyID: device.shellyID,
-      name: getDeviceName(device.info),
-      pictureUrl: getLogo(device),
-    }));
+    return Object.values(devicesStore.devices)
+        .filter((device) => device.shellyID?.toLowerCase().includes('em'))
+        .map((device) => ({
+            shellyID: device.shellyID,
+            name: getDeviceName(device.info),
+            pictureUrl: getLogo(device)
+        }));
 });
 
 onMounted(() => {
-  const defaultOption = emDevices.value.find(dev => dev.shellyID === props.defaultDevice.shellyID);
-  if (defaultOption) {
-    selected.value = [defaultOption];
-  }
+    const defaultOption = emDevices.value.find(
+        (dev) => dev.shellyID === props.defaultDevice.shellyID
+    );
+    if (defaultOption) {
+        selected.value = [defaultOption];
+    }
 });
 
 watch(selected, (newVal: EmDevice[]) => {
-  const hasDefault = newVal.some((dev: EmDevice) => dev.shellyID === props.defaultDevice.shellyID);
-  if (!hasDefault) {
-    const defaultOption = emDevices.value.find(dev => dev.shellyID === props.defaultDevice.shellyID);
-    if (defaultOption) {
-      selected.value.push(defaultOption);
+    const hasDefault = newVal.some(
+        (dev: EmDevice) => dev.shellyID === props.defaultDevice.shellyID
+    );
+    if (!hasDefault) {
+        const defaultOption = emDevices.value.find(
+            (dev) => dev.shellyID === props.defaultDevice.shellyID
+        );
+        if (defaultOption) {
+            selected.value.push(defaultOption);
+        }
     }
-}});
-  
+});
+
 function save() {
-  emit('update:selected', selected.value);
-  close();
+    emit('update:selected', selected.value);
+    close();
 }
 
 function close() {
-  emit('close');
+    emit('close');
 }
 </script>

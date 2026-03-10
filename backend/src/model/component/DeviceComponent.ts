@@ -4,15 +4,21 @@ import * as PostgresProvider from '../../modules/PostgresProvider';
 import * as WaitingRoom from '../../modules/WaitingRoom';
 import RpcError from '../../rpc/RpcError';
 import {buildRpcRequest} from '../../rpc/builders';
-import type {
-    ShellyDeviceExternal,
-    shelly_bthome_result_t,
-    shelly_bthome_type_t
-} from '../../types';
+import type {ShellyDeviceExternal} from '../../types';
 import type {Device} from '../../validations/params';
+import type AbstractDevice from '../AbstractDevice';
 import type CommandSender from '../CommandSender';
 import type ShellyDevice from '../ShellyDevice';
+import {methodToCrudOperation} from '../permissions';
 import Component from './Component';
+
+// Short-TTL cache for filtered device lists — avoids repeating getAll() +
+// filterAccessibleDevices() for each page of a chunked device.list request.
+const filteredDeviceCache = new Map<
+    string,
+    {devices: AbstractDevice[]; ts: number}
+>();
+const CACHE_TTL_MS = 5_000;
 
 const REDIRECT_METHODS = [
     'getpending',
@@ -34,8 +40,17 @@ export default class DeviceComponent extends Component<any> {
         super('device');
 
         // Setup waiting room redirects
+        // Permission checks must be against 'waiting_room' component,
+        // not 'devices', since these methods redirect to WaitingRoomComponent
         for (const method of REDIRECT_METHODS) {
-            this.addMethod(method, redirectToWaitingRoom(method));
+            this.addMethod(method, redirectToWaitingRoom(method), {
+                checkPermissions: (sender: CommandSender) => {
+                    if (sender.isAdmin()) return true;
+                    const operation = methodToCrudOperation(method);
+                    if (!operation) return sender.canWrite();
+                    return sender.canPerformOnItem('waiting_room', operation);
+                }
+            });
         }
     }
 
@@ -71,40 +86,102 @@ export default class DeviceComponent extends Component<any> {
     @Component.Expose('List')
     @Component.NoPermissions
     async list(
-        params: {filters?: Record<string, any>} | undefined,
+        params:
+            | {
+                  filters?: Record<string, any>;
+                  limit?: number;
+                  offset?: number;
+              }
+            | undefined,
         sender: CommandSender
     ) {
-        let devices = DeviceCollector.getAll().map((device) => device.toJSON());
-        // filter by top level keys; could be expanded in the future?
         const filters = params?.filters;
-        if (
+        const hasFilters =
             filters &&
             typeof filters === 'object' &&
-            Object.keys(filters).length > 0
-        ) {
-            for (const key in filters) {
-                const value = filters[key];
-                if (['string', 'number', 'boolean'].includes(typeof value)) {
-                    devices = devices.filter(
-                        (device) =>
-                            key in device &&
-                            device[key as keyof ShellyDeviceExternal] === value
-                    );
-                }
-            }
-        }
-        const printDevices: ShellyDeviceExternal[] = [];
-        try {
-            for (const device of devices) {
-                if (await sender.canAccessDevice(device.shellyID)) {
-                    printDevices.push(device);
-                }
-            }
-        } catch (e) {
-            console.error(e);
+            Object.keys(filters).length > 0;
+
+        // Per-user cache: reuse filtered device list across paginated pages.
+        // Only applies when no custom filters are specified.
+        const cacheKey = sender.getUser()?.username ?? '__anon__';
+        const now = Date.now();
+        let devices: AbstractDevice[];
+
+        // Evict stale entries
+        for (const [k, v] of filteredDeviceCache) {
+            if (now - v.ts > CACHE_TTL_MS) filteredDeviceCache.delete(k);
         }
 
-        return printDevices;
+        const cached = !hasFilters
+            ? filteredDeviceCache.get(cacheKey)
+            : undefined;
+        if (cached && now - cached.ts < CACHE_TTL_MS) {
+            devices = cached.devices;
+        } else {
+            devices = DeviceCollector.getAll();
+
+            // filter by top level keys (on raw device properties)
+            if (hasFilters) {
+                for (const key in filters) {
+                    const value = filters[key];
+                    if (
+                        ['string', 'number', 'boolean'].includes(typeof value)
+                    ) {
+                        devices = devices.filter((device) => {
+                            const deviceValue =
+                                key === 'shellyID'
+                                    ? device.shellyID
+                                    : key === 'id'
+                                      ? device.id
+                                      : key === 'source'
+                                        ? (device.source ?? 'offline')
+                                        : key === 'presence'
+                                          ? device.presence
+                                          : undefined;
+                            return deviceValue === value;
+                        });
+                    }
+                }
+            }
+
+            try {
+                const accessibleSet = await sender.filterAccessibleDevices(
+                    devices.map((d) => d.shellyID)
+                );
+                devices = devices.filter((d) => accessibleSet.has(d.shellyID));
+            } catch (e) {
+                console.error(e);
+                return {items: [], total: 0};
+            }
+
+            if (!hasFilters) {
+                filteredDeviceCache.set(cacheKey, {devices, ts: now});
+            }
+        }
+
+        const total = devices.length;
+
+        // Pagination: if limit is provided, serialize only the page
+        const limit =
+            typeof params?.limit === 'number' && params.limit > 0
+                ? params.limit
+                : 0;
+        const offset =
+            typeof params?.offset === 'number' && params.offset >= 0
+                ? params.offset
+                : 0;
+
+        if (limit > 0) {
+            return {
+                items: devices
+                    .slice(offset, offset + limit)
+                    .map((d) => d.toListJSON()),
+                total
+            };
+        }
+
+        // No pagination — return all (backward compatible)
+        return devices.map((d) => d.toListJSON());
     }
 
     @Component.Expose('GetInfo')
@@ -165,7 +242,11 @@ export default class DeviceComponent extends Component<any> {
     }
 
     @Component.Expose('Call')
-    @Component.NoPermissions
+    @Component.CrudPermission(
+        'devices',
+        'execute',
+        (params) => params?.shellyID
+    )
     async directCall(params: Device.Call) {
         const device = DeviceCollector.getDevice(params.shellyID);
         if (!device) {
@@ -228,20 +309,8 @@ export default class DeviceComponent extends Component<any> {
             throw RpcError.InvalidParams('Missing shellyID, from, or to');
         }
 
-        const internalIds: number[] = [];
-        for (const shellyID of shellyIDs) {
-            const devices = await PostgresProvider.callMethod(
-                'device.fnFetch',
-                {
-                    pDevice: shellyID,
-                    pControlAccess: null
-                }
-            );
-            const internalId = devices?.rows?.[0]?.internalId;
-            if (internalId) {
-                internalIds.push(internalId);
-            }
-        }
+        const rows = await PostgresProvider.getBatch(shellyIDs);
+        const internalIds = rows.map((r) => r.id).filter(Boolean);
 
         if (internalIds.length === 0) {
             throw RpcError.DeviceNotFound();
@@ -265,32 +334,6 @@ export default class DeviceComponent extends Component<any> {
     }
 
     //-----------------------------|BTHOME|-----------------------------//
-
-    @Component.Expose('AddBTHomeDevices')
-    @Component.NoPermissions
-    addBTHomeDevice(params: {devices: shelly_bthome_result_t[]}) {
-        for (const {mac, shellyID} of params.devices) {
-            const device = DeviceCollector.getDevice(shellyID) as ShellyDevice;
-            if (!device) {
-                continue;
-            }
-
-            device.addBTHomeDevice(mac);
-        }
-    }
-
-    @Component.Expose('StartDeviceDiscovery')
-    @Component.NoPermissions
-    startDeviceDiscovery(params: {shellyIds: string[]; duration: number}) {
-        for (const shellyId of params.shellyIds) {
-            const device = DeviceCollector.getDevice(shellyId) as ShellyDevice;
-            if (!device) {
-                continue;
-            }
-
-            device.startBTHomeScanner(params.duration);
-        }
-    }
 
     @Component.Expose('RemoveBTHomeDevice')
     @Component.NoPermissions
@@ -393,7 +436,9 @@ export default class DeviceComponent extends Component<any> {
                 try {
                     known = await device.sendRPC(
                         'BTHomeDevice.GetKnownObjects',
-                        {id: idNum}
+                        {
+                            id: idNum
+                        }
                     );
                 } catch (innerErr: any) {
                     console.error(

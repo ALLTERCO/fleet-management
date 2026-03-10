@@ -1,48 +1,33 @@
 <template>
     <Widget
         :selected
-        :loading="device.loading"
-        v-if="device && device.info"
+        :loading="device?.loading"
+        :online="isOnline"
+        :accent-color="accentColor"
+        v-if="showNormalWidget"
         :editMode="editMode"
-        :class="[(device.loading || !device.online) && '!bg-red-900/60 backdrop-blur']"
     >
         <template #upper-corner>
-            <span class="text-[14px]">
-                <i class="mr-1 fas fa-microchip"></i>{{ getAppName(device.info) }}
-            </span>
-        </template>
-
-        <template #upper-right-corner>
-            <span v-if="battery != null" class="text-xs flex items-center gap-1">
-                <i class="fas fa-battery-half"></i>{{ battery }}%
-            </span>
-            <span v-else class="text-xs">
-                <i class="mr-1 fas fa-microchip"></i>{{ device.entities.length }} entities
-            </span>
+            {{ getAppName(device?.info) }}
         </template>
 
         <template #image>
             <img
                 v-lazyload
-                class="rounded-full hover:cursor-pointer"
                 :data-url="getLogo(device)"
+                :alt="getDeviceName(device?.info, device_id)"
                 @error="handleImgError"
             />
         </template>
 
         <template #name>
-            <span class="text-[13px] font-semibold text-ellipsis line-clamp-2">
-                {{ getDeviceName(device.info, device_id) }}
-            </span>
+            {{ getDeviceName(device?.info, device_id) }}
         </template>
 
         <template #description>
-            <div v-if="device.loading" class="mx-auto w-7 h-7">
+            <div v-if="device?.loading" class="mx-auto w-7 h-7">
                 <Spinner />
             </div>
-            <span v-else-if="!device.online" class="text-red-500 font-semibold">
-                Offline
-            </span>
         </template>
 
         <template #action>
@@ -54,52 +39,59 @@
         </template>
     </Widget>
 
-    <Widget :loading="device?.loading" :selected v-else class="!bg-red-900/60 backdrop-blur">
+    <Widget :loading="device?.loading" :selected :online="false" accent-color="#F04E5E" v-else>
         <template #upper-corner>
-            <i class="mr-1 fas fa-microchip"></i>
-            <span>Device</span>
+            Device
         </template>
         <template #name>
             {{ deviceId }}
-        </template>
-        <template #description>
-            <span class="text-red-500 font-semibold">Not found</span>
         </template>
     </Widget>
 </template>
 
 <script lang="ts" setup>
-import Widget from './WidgetsTemplates/DeviceWidget.vue';
-import { computed, toRefs } from 'vue';
+import {computed, toRefs} from 'vue';
 import Button from '@/components/core/Button.vue';
-import { getLogo, getAppName, getDeviceName } from '@/helpers/device';
+import {
+    getAppName,
+    getDeviceName,
+    getLogo
+} from '@/helpers/device';
+import {useDevicesStore} from '@/stores/devices';
 import Spinner from '../core/Spinner.vue';
-import { useDevicesStore } from '@/stores/devices';
+import Widget from './WidgetsTemplates/DeviceWidget.vue';
 
 type props_t = {
     deviceId: string;
     editMode?: boolean;
     selected?: boolean;
-    battery?: number;
 };
 
 const props = withDefaults(defineProps<props_t>(), {
     editMode: false,
-    selected: false,
-    battery: undefined,
+    selected: false
 });
 
 const emit = defineEmits<{
     delete: [];
 }>();
 
-const { deviceId: device_id, editMode, battery } = toRefs(props);
+const {deviceId: device_id, editMode} = toRefs(props);
 
 const deviceStore = useDevicesStore();
+
+const device = computed(() => deviceStore.devices[device_id.value]);
+const showNormalWidget = computed(() => !!device.value);
+const isOnline = computed(() => !!device.value?.online && !device.value?.loading);
+
+const ONLINE_ACCENT = '#22D3A0';
+const OFFLINE_ACCENT = '#F04E5E';
+
+const accentColor = computed(() => {
+    return isOnline.value ? ONLINE_ACCENT : OFFLINE_ACCENT;
+});
 
 function handleImgError(e: any) {
     e.target.src = getLogo();
 }
-
-const device = computed(() => deviceStore.devices[device_id.value]);
 </script>

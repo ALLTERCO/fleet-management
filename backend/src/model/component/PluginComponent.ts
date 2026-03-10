@@ -34,7 +34,7 @@ export default class PluginComponent extends Component<PluginComponentConfig> {
         if (init) return;
         switch (key) {
             case 'enable': {
-                const name = this.config.name;
+                const name = this.pluginName;
                 // do not build frontend on boot
                 if (value) {
                     await PluginLoader.enablePlugin(name);

@@ -1,164 +1,99 @@
 {
-    "Create": {
-        "type": "object",
-        "properties": {
-            "name": {
-                "type": "string"
-            },
-            "devices": {
-                "type": "array",
-                "items": {
-                    "type": "string"
-                }
-            }
-        },
-        "required": ["name"],
-        "additionalProperties": false
+  "Create": {
+    "type": "object",
+    "properties": {
+      "name": { "type": "string" },
+      "devices": { "type": "array", "items": { "type": "string" } },
+      "metadata": { "type": "object", "additionalProperties": true },
+      "parentId": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "null" }
+        ]
+      }
     },
-    "Add": {
-        "type": "object",
-        "properties": {
-            "id": {
-                "anyOf": [
-                    {
-                        "type": "string"
-                    },
-                    {
-                        "type": "number"
-                    }
-                ]
-            },
-            "shellyID": {
-                "type": "string"
-            }
-        },
-        "required": ["id", "shellyID"],
-        "additionalProperties": false
+    "required": ["name"],
+    "additionalProperties": false
+  },
+  "Add": {
+    "type": "object",
+    "properties": {
+      "id": { "anyOf": [{ "type": "string" }, { "type": "number" }] },
+      "shellyID": { "type": "string" }
     },
-    "Remove": {
-        "type": "object",
-        "properties": {
-            "id": {
-                "anyOf": [
-                    {
-                        "type": "string"
-                    },
-                    {
-                        "type": "number"
-                    }
-                ]
-            },
-            "shellyID": {
-                "type": "string"
-            }
-        },
-        "required": ["id", "shellyID"],
-        "additionalProperties": false
+    "required": ["id", "shellyID"],
+    "additionalProperties": false
+  },
+  "Remove": {
+    "type": "object",
+    "properties": {
+      "id": { "anyOf": [{ "type": "string" }, { "type": "number" }] },
+      "shellyID": { "type": "string" }
     },
-    "Delete": {
-        "type": "object",
-        "properties": {
-            "id": {
-                "anyOf": [
-                    {
-                        "type": "string"
-                    },
-                    {
-                        "type": "number"
-                    }
-                ]
-            }
-        },
-        "required": ["id"],
-        "additionalProperties": false
+    "required": ["id", "shellyID"],
+    "additionalProperties": false
+  },
+  "Delete": {
+    "type": "object",
+    "properties": {
+      "id": { "anyOf": [{ "type": "string" }, { "type": "number" }] }
     },
-    "List": {
-        "type": "object",
-        "properties": {
-            "id": {
-                "anyOf": [
-                    {
-                        "type": "string"
-                    },
-                    {
-                        "type": "number"
-                    }
-                ]
-            }
-        },
-        "additionalProperties": false
+    "required": ["id"],
+    "additionalProperties": false
+  },
+  "List": {
+    "type": "object",
+    "properties": {
+      "parentId": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "null" }
+        ]
+      }
     },
-    "Get": {
-        "type": "object",
-        "properties": {
-            "id": {
-                "anyOf": [
-                    {
-                        "type": "string"
-                    },
-                    {
-                        "type": "number"
-                    }
-                ]
-            }
-        },
-        "required": ["id"],
-        "additionalProperties": false
+    "additionalProperties": false
+  },
+  "Get": {
+    "type": "object",
+    "properties": {
+      "id": { "anyOf": [{ "type": "string" }, { "type": "number" }] }
     },
-    "Rename": {
-        "type": "object",
-        "properties": {
-            "id": {
-                "anyOf": [
-                    {
-                        "type": "string"
-                    },
-                    {
-                        "type": "number"
-                    }
-                ]
-            },
-            "newName": {
-                "type": "string"
-            }
-        },
-        "required": ["id", "newName"],
-        "additionalProperties": false
+    "required": ["id"],
+    "additionalProperties": false
+  },
+  "Rename": {
+    "type": "object",
+    "properties": {
+      "id": { "anyOf": [{ "type": "string" }, { "type": "number" }] },
+      "newName": { "type": "string" }
     },
-    "Find": {
-        "type": "object",
-        "properties": {
-            "shellyID": {
-                "type": "string"
-            }
-        },
-        "required": ["shellyID"],
-        "additionalProperties": false
+    "required": ["id", "newName"],
+    "additionalProperties": false
+  },
+  "Find": {
+    "type": "object",
+    "properties": { "shellyID": { "type": "string" } },
+    "required": ["shellyID"],
+    "additionalProperties": false
+  },
+  "Set": {
+    "type": "object",
+    "properties": {
+      "id": { "anyOf": [{ "type": "string" }, { "type": "number" }] },
+      "name": { "type": "string" },
+      "devices": { "type": "array", "items": { "type": "string" } },
+      "metadata": { "type": "object", "additionalProperties": true },
+      "parentId": {
+        "anyOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "null" }
+        ]
+      }
     },
-    "Set": {
-        "type": "object",
-        "properties": {
-            "id": {
-                "anyOf": [
-                    {
-                        "type": "string"
-                    },
-                    {
-                        "type": "number"
-                    }
-                ]
-            },
-            "name": {
-                "type": "string"
-            },
-            "devices": {
-                "type": "array",
-                "items": {
-                    "type": "string"
-                }
-            }
-        },
-        "required": ["id", "name", "devices"],
-        "additionalProperties": false
-    }
+    "required": ["id", "name", "devices"],
+    "additionalProperties": false
+  }
 }

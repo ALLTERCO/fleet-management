@@ -6,7 +6,7 @@
         </template>
 
         <template #image>
-            <img class="rounded-full hover:cursor-pointer" :src="imageSrc" alt="Shelly" />
+            <img class="rounded-full hover:cursor-pointer" :src="imageSrc" alt="Shelly" loading="lazy" decoding="async" />
         </template>
 
         <template #name>
@@ -14,7 +14,7 @@
         </template>
 
         <template #description>
-            <span class="text-gray-400">
+            <span class="text-[var(--color-text-tertiary)]">
                 {{ description }}
             </span>
         </template>
@@ -27,15 +27,21 @@
 </template>
 
 <script lang="ts" setup>
-import Widget from './WidgetsTemplates/VanilaWidget.vue';
-import { toRef } from 'vue';
+import {toRef} from 'vue';
 import Button from '../core/Button.vue';
+import Widget from './WidgetsTemplates/VanilaWidget.vue';
 
-type props_t = { title: string; name: string; description?: string; imageSrc?: string; editMode?: boolean };
+type props_t = {
+    title: string;
+    name: string;
+    description?: string;
+    imageSrc?: string;
+    editMode?: boolean;
+};
 const props = withDefaults(defineProps<props_t>(), {
     editMode: false,
     description: '',
-    imageSrc: '/shelly_logo_black.jpg',
+    imageSrc: '/shelly_logo_black.jpg'
 });
 
 const editMode = toRef(props, 'editMode');

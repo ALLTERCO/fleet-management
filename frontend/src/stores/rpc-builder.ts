@@ -1,6 +1,7 @@
-import { defineStore } from 'pinia';
+import {defineStore} from 'pinia';
+import {computed, ref} from 'vue';
 import default_rpc from '@/data/default_rpc.json';
-import { computed, ref } from 'vue';
+
 const ALLOWED_COMPONENT_NAMES = Object.keys(default_rpc);
 
 export const useRpcBuilderStore = defineStore('rpc-builder', () => {
@@ -8,9 +9,18 @@ export const useRpcBuilderStore = defineStore('rpc-builder', () => {
     const method = ref('GetStatus');
     const showModal = ref(false);
 
-    const componentMethods = computed(() => default_rpc[component.value as keyof typeof default_rpc]);
-    const componentMethodNames = computed(() => Object.keys(default_rpc[component.value as keyof typeof default_rpc]));
-    const template = computed(() => componentMethods.value?.[method.value as keyof typeof componentMethods.value]);
+    const componentMethods = computed(
+        () => default_rpc[component.value as keyof typeof default_rpc]
+    );
+    const componentMethodNames = computed(() =>
+        Object.keys(default_rpc[component.value as keyof typeof default_rpc])
+    );
+    const template = computed(
+        () =>
+            componentMethods.value?.[
+                method.value as keyof typeof componentMethods.value
+            ]
+    );
 
     function setComponent(comp: string) {
         if (!ALLOWED_COMPONENT_NAMES.includes(comp)) {
@@ -22,7 +32,11 @@ export const useRpcBuilderStore = defineStore('rpc-builder', () => {
     }
 
     function setMethod(pass_method: string) {
-        if (componentMethods.value[pass_method as keyof typeof componentMethods.value] == undefined) {
+        if (
+            componentMethods.value[
+                pass_method as keyof typeof componentMethods.value
+            ] == undefined
+        ) {
             console.warn('bad method selected', pass_method);
             return;
         }
@@ -38,6 +52,6 @@ export const useRpcBuilderStore = defineStore('rpc-builder', () => {
         componentMethods,
         ALLOWED_COMPONENT_NAMES,
         componentMethodNames,
-        showModal,
+        showModal
     };
 });

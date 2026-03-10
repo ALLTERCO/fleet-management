@@ -1,0 +1,102 @@
+# Traefik reverse proxy with automatic Let's Encrypt SSL
+#
+# Used by: deploy-public.sh up --ssl --domain example.com
+# Provisions HTTPS certificates automatically via ACME (Let's Encrypt).
+# Redirects HTTP to HTTPS. Routes all traffic to Fleet Manager and Zitadel.
+#
+# Requirements:
+#   - Domain pointing to this machine's public IP
+#   - Ports 80 and 443 open (firewall / security group)
+
+services:
+  traefik:
+    image: traefik:${TRAEFIK_VERSION:-v3.6.10}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    command:
+      # Docker provider: auto-discovers services via labels
+      - "--providers.docker=true"
+      - "--providers.docker.exposedByDefault=false"
+      - "--providers.docker.network=fleet-net"
+      # HTTP entrypoint: redirect to HTTPS
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      # HTTPS entrypoint
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.websecure.transport.lifecycle.graceTimeOut=300"
+      # Let's Encrypt ACME
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=${SSL_EMAIL:-admin@localhost}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      # Timeouts for WebSocket + long-lived connections
+      - "--entrypoints.websecure.transport.respondingTimeouts.writeTimeout=300"
+      - "--entrypoints.websecure.transport.respondingTimeouts.readTimeout=300"
+      - "--entrypoints.websecure.transport.respondingTimeouts.idleTimeout=300"
+      # Healthcheck ping endpoint
+      - "--ping=true"
+      - "--ping.entryPoint=websecure"
+      - "--log.level=WARN"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-certs:/letsencrypt
+    tmpfs:
+      - /tmp:size=16M
+    networks:
+      - fleet-net
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "1m"
+        max-file: "5"
+
+  # Override Fleet Manager with Traefik labels
+  fleet-manager:
+    labels:
+      - "traefik.enable=true"
+      # Fleet Manager routes (catch-all on the domain)
+      - "traefik.http.routers.fleet.rule=Host(`${SSL_DOMAIN}`)"
+      - "traefik.http.routers.fleet.entrypoints=websecure"
+      - "traefik.http.routers.fleet.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.fleet.priority=10"
+      - "traefik.http.routers.fleet.middlewares=strip-identity@docker"
+      - "traefik.http.services.fleet.loadbalancer.server.port=7011"
+      # Middleware: strip identity headers
+      - "traefik.http.middlewares.strip-identity.headers.customResponseHeaders.Server="
+      - "traefik.http.middlewares.strip-identity.headers.customResponseHeaders.X-Powered-By="
+
+  # Override Zitadel with Traefik labels
+  zitadel:
+    labels:
+      - "traefik.enable=true"
+      # Zitadel routes (OIDC paths on the same domain)
+      - "traefik.http.routers.zitadel.rule=Host(`${SSL_DOMAIN}`) && (PathPrefix(`/.well-known/`) || PathPrefix(`/oauth/`) || PathPrefix(`/oidc/`) || PathPrefix(`/ui/`) || PathPrefix(`/debug/`) || PathPrefix(`/v2beta/`) || PathPrefix(`/v2/`) || PathPrefix(`/management/`) || PathPrefix(`/admin/`) || PathPrefix(`/auth/`) || PathPrefix(`/assets/v1/`))"
+      - "traefik.http.routers.zitadel.entrypoints=websecure"
+      - "traefik.http.routers.zitadel.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.zitadel.priority=100"
+      - "traefik.http.routers.zitadel.middlewares=strip-feature-policy@docker"
+      - "traefik.http.services.zitadel.loadbalancer.server.port=8080"
+      # Middleware: strip deprecated Feature-Policy header (Zitadel sends it alongside Permissions-Policy)
+      - "traefik.http.middlewares.strip-feature-policy.headers.customResponseHeaders.Feature-Policy="
+
+networks:
+  fleet-net:
+
+volumes:
+  traefik-certs:

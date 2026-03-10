@@ -7,18 +7,19 @@
                 <a
                     v-if="active === tab"
                     :key="'active' + normalizeTabName(tab)"
-                    class="inline-block p-3 rounded-t-lg font-semibold select-none border-t border-x border-blue-500 max-w-xs"
+                    class="tab tab--active inline-block p-3 rounded-t-lg font-semibold select-none max-w-xs"
                     >{{ tab }}
                 </a>
                 <a
                     v-else
                     :key="normalizeTabName(tab)"
-                    class="inline-block p-3 rounded-t-lg text-gray-200 select-none border-b border-blue-500 hover:bg-gray-800 hover:text-gray-300 hover:cursor-pointer"
+                    class="tab tab--inactive inline-block p-3 rounded-t-lg select-none hover:cursor-pointer"
+                    :data-track="'tab_' + normalizeTabName(tab)"
                     @click="tabClicked(tab)"
                     >{{ tab }}
                 </a>
             </template>
-            <div class="w-full border-b border-blue-500" />
+            <div class="tab-border-fill w-full" />
         </div>
         <div class="overflow-y-scroll h-full md:px-4 pb-[8rem] lg:pb-[3rem]">
             <slot :name="active" />
@@ -27,7 +28,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, toRef } from 'vue';
+import {computed, ref, toRef} from 'vue';
 
 const props = defineProps<{
     tabs: string[];
@@ -46,7 +47,7 @@ const active = computed(() => {
 });
 
 function tabClicked(tab: string) {
-    internal.value = tab.replace(' ','');
+    internal.value = tab.replace(' ', '');
     emit('change', tab);
 }
 
@@ -54,3 +55,22 @@ function normalizeTabName(tab: string) {
     return tab.toLowerCase().replace(/\s+/g, '-');
 }
 </script>
+
+<style scoped>
+.tab--active {
+    border-top: 1px solid var(--color-border-focus);
+    border-left: 1px solid var(--color-border-focus);
+    border-right: 1px solid var(--color-border-focus);
+}
+.tab--inactive {
+    color: var(--color-text-secondary);
+    border-bottom: 1px solid var(--color-border-focus);
+}
+.tab--inactive:hover {
+    background-color: var(--color-surface-2);
+    color: var(--color-text-secondary);
+}
+.tab-border-fill {
+    border-bottom: 1px solid var(--color-border-focus);
+}
+</style>

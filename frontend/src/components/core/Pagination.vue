@@ -3,12 +3,12 @@
         <div v-if="items.length > 50" class="flex items-center justify-between px-4 py-3 sm:px-6">
             <div class="flex flex-1 justify-between sm:hidden">
                 <a
-                    class="relative inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-700"
+                    class="pagination-btn relative inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium"
                     @click="gotoPage(currentPage - 1)"
                     >Previous</a
                 >
                 <a
-                    class="relative ml-3 inline-flex items-center rounded-md border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-700"
+                    class="pagination-btn relative ml-3 inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium"
                     @click="gotoPage(currentPage + 1)"
                     >Next</a
                 >
@@ -35,7 +35,7 @@
                     <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
                         <!-- Prev -->
                         <a
-                            class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-400 hover:bg-gray-700 focus:z-20 focus:outline-offset-0"
+                            class="pagination-nav-btn relative inline-flex items-center rounded-l-md px-2 py-2 focus:z-20 focus:outline-offset-0"
                             @click="gotoPage(currentPage - 1)"
                         >
                             <span class="sr-only">Previous</span>
@@ -51,15 +51,16 @@
                         <a
                             v-for="page of pageNumbers"
                             :key="page"
-                            class="relative inline-flex items-center px-4 py-2 text-sm font-semibold ring-1 ring-inset ring-gray-400 hover:bg-gray-700 focus:z-20 focus:outline-offset-0 hover:cursor-pointer"
-                            :class="[currentPage == page - 1 && 'bg-indigo-800/80 hover:bg-indigo-800']"
+                            class="pagination-page relative inline-flex items-center px-4 py-2 text-sm font-semibold focus:z-20 focus:outline-offset-0 hover:cursor-pointer"
+                            :class="[currentPage == page - 1 && 'pagination-page--active']"
+                            :aria-current="currentPage == page - 1 ? 'page' : undefined"
                             @click="gotoPage(page - 1)"
                         >
                             {{ page }}
                         </a>
                         <!-- Next -->
                         <a
-                            class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-400 hover:bg-gray-700 focus:z-20 focus:outline-offset-0"
+                            class="pagination-nav-btn relative inline-flex items-center rounded-r-md px-2 py-2 focus:z-20 focus:outline-offset-0"
                             @click="gotoPage(currentPage + 1)"
                         >
                             <span class="sr-only">Next</span>
@@ -83,25 +84,29 @@
 </template>
 
 <script setup lang="ts" generic="T">
-import { computed, ref, toRefs, watch } from 'vue';
+import {useLocalStorage} from '@vueuse/core';
+import {computed, ref, toRefs, watch} from 'vue';
 import Dropdown from './Dropdown.vue';
-import { useLocalStorage } from '@vueuse/core';
 
 const props = defineProps<{
     items: T[];
     store: string;
 }>();
 
-const { items } = toRefs(props);
+const {items} = toRefs(props);
 
 // reset to first page if items change
 watch(items, () => (currentPage.value = 0));
 
 const perPage = useLocalStorage(`pagination:${props.store}`, 25);
 const currentPage = ref(0);
-const totalPages = computed(() => Math.ceil(items.value.length / perPage.value));
+const totalPages = computed(() =>
+    Math.ceil(items.value.length / perPage.value)
+);
 const pageNumbers = computed(() => {
-    const allPages = new Array<number>(totalPages.value).fill(0).map((_, index) => index + 1);
+    const allPages = new Array<number>(totalPages.value)
+        .fill(0)
+        .map((_, index) => index + 1);
 
     if (totalPages.value < 6) {
         return allPages;
@@ -120,11 +125,14 @@ const pageNumbers = computed(() => {
         currentPage.value,
         currentPage.value + 1,
         currentPage.value + 2,
-        currentPage.value + 3,
+        currentPage.value + 3
     ];
 });
 const pageItems = computed(() =>
-    items.value.slice(perPage.value * currentPage.value, perPage.value * (currentPage.value + 1))
+    items.value.slice(
+        perPage.value * currentPage.value,
+        perPage.value * (currentPage.value + 1)
+    )
 );
 
 function gotoPage(page: number) {
@@ -132,3 +140,42 @@ function gotoPage(page: number) {
     currentPage.value = page;
 }
 </script>
+
+<style scoped>
+.pagination-btn {
+    border-color: var(--color-border-strong);
+    color: var(--color-text-secondary);
+}
+.pagination-btn:hover {
+    background-color: var(--color-surface-3);
+}
+.pagination-nav-btn {
+    color: var(--color-text-tertiary);
+    box-shadow: inset 0 0 0 1px var(--color-border-strong);
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.pagination-nav-btn:hover {
+    background-color: var(--color-surface-3);
+}
+.pagination-page {
+    box-shadow: inset 0 0 0 1px var(--color-border-strong);
+    min-width: 44px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.pagination-page:hover {
+    background-color: var(--color-surface-3);
+}
+.pagination-page--active {
+    background-color: var(--color-primary);
+}
+.pagination-page--active:hover {
+    background-color: var(--color-primary-hover);
+}
+</style>

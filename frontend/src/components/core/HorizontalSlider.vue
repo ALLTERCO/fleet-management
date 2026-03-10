@@ -1,6 +1,6 @@
 <template>
-    <div class="bg-slate-800 rounded-lg shadow-lg py-2 px-3 w-full">
-        <div :class="`mb-1 text-base font-medium ${disabled ? 'text-gray-400' : ''}`">
+    <div class="slider-container rounded-lg shadow-lg py-2 px-3 w-full">
+        <div :class="`mb-1 text-base font-medium ${disabled ? 'slider-disabled' : ''}`">
             <slot name="title" />
         </div>
         <input
@@ -27,7 +27,7 @@
 </template>
 
 <script setup lang="ts">
-import { toRefs } from 'vue';
+import {toRefs} from 'vue';
 import Button from './Button.vue';
 
 const props = withDefaults(
@@ -43,14 +43,14 @@ const props = withDefaults(
         min: 0,
         max: 100,
         saved: null,
-        disabled: false,
+        disabled: false
     }
 );
 const emit = defineEmits<{
     change: [value: number];
 }>();
 
-const { value, min, max, saved, disabled } = toRefs(props);
+const {value, min, max, saved, disabled} = toRefs(props);
 
 function onChange(event: Event) {
     if (disabled.value) {
@@ -62,3 +62,12 @@ function onChange(event: Event) {
     emit('change', value);
 }
 </script>
+
+<style scoped>
+.slider-container {
+    background-color: var(--color-surface-2);
+}
+.slider-disabled {
+    color: var(--color-text-tertiary);
+}
+</style>

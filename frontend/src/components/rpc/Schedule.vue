@@ -28,7 +28,7 @@
         <div v-if="!useCustom" class="builder">
             <Input
                 v-model="builder.seconds"
-                class="max-w-[160px] my-1"
+                class="w-full max-w-[160px] my-1"
                 label="Seconds"
                 type="number"
                 placeholder="Seconds (0-59)"
@@ -38,7 +38,7 @@
 
             <Input
                 v-model="builder.minutes"
-                class="max-w-[160px] my-1"
+                class="w-full max-w-[160px] my-1"
                 label="Minutes"
                 type="number"
                 placeholder="Minutes (0-59)"
@@ -48,7 +48,7 @@
 
             <Input
                 v-model="builder.hours"
-                class="max-w-[160px] my-1"
+                class="w-full max-w-[160px] my-1"
                 label="Hours"
                 type="number"
                 placeholder="Hours (0-23)"
@@ -101,14 +101,12 @@
     </div>
 </template>
 <script setup lang="ts">
-import { reactive, ref } from 'vue';
+import {reactive, ref} from 'vue';
+import Button from '../core/Button.vue';
 import Input from '../core/Input.vue';
 import Notification from '../core/Notification.vue';
-import Button from '../core/Button.vue';
 
-const emit = defineEmits<{
-    (e: 'change', cron: string): void;
-}>();
+const emit = defineEmits<(e: 'change', cron: string) => void>();
 
 const useCustom = ref(false);
 
@@ -117,7 +115,7 @@ const builder = reactive({
     seconds: '0',
     minutes: '0',
     hours: '0',
-    day_of_week: [],
+    day_of_week: []
 });
 
 function resetClicked() {
@@ -133,7 +131,10 @@ function saveClicked() {
     if (useCustom.value) {
         emit('change', custom.value);
     } else {
-        emit('change', `${builder.seconds} ${builder.minutes} ${builder.hours} * * ${builder.day_of_week.join(',')}`);
+        emit(
+            'change',
+            `${builder.seconds} ${builder.minutes} ${builder.hours} * * ${builder.day_of_week.join(',')}`
+        );
     }
 }
 </script>
@@ -166,7 +167,7 @@ input:invalid {
 input:invalid::after {
     content: attr(title);
     color: red;
-    font-size: 0.8rem;
+    font-size: var(--text-xs);
     display: block;
 }
 </style>

@@ -18,7 +18,8 @@ interface StoredMessage {
     startedTs: number;
 }
 
-const RPC_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const RPC_TIMEOUT_MS = 60 * 1000; // 60 seconds
+const MAX_PENDING_RPCS = 10;
 
 export default abstract class RpcTransport {
     #shellyMessageMap = new Map<number, StoredMessage>();
@@ -33,7 +34,7 @@ export default abstract class RpcTransport {
         this._eventEmitter = new ShellyDeviceEmitter();
         this.#intervalId = setInterval(() => {
             this.#clearOldMessages();
-        }, 30 * 1000);
+        }, 10 * 1000);
     }
 
     #clearOldMessages() {
@@ -49,6 +50,15 @@ export default abstract class RpcTransport {
     protected abstract _sendRPC(data: string): void;
 
     public sendRPC(method: string, params: any = null, silent = false) {
+        if (this.#shellyMessageMap.size >= MAX_PENDING_RPCS) {
+            logger.warn(
+                'RPC queue full (%d pending), rejecting %s',
+                this.#shellyMessageMap.size,
+                method
+            );
+            return Promise.reject(RpcError.Timeout());
+        }
+
         this.#uniqueID += 1;
         const message: ShellyMessageData = {
             jsonrpc: '2.0',
@@ -108,7 +118,7 @@ export default abstract class RpcTransport {
         if (handler) {
             if (message.error) {
                 handler.reject(message.error);
-            } else if (message.result) {
+            } else if ('result' in message) {
                 handler.resolve(message.result);
             }
         }

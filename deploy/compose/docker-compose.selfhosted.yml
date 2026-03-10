@@ -1,0 +1,18 @@
+# Self-hosted tuning overlay
+#
+# Always included by deploy-public.sh.
+# Adds SSD-optimized Postgres flags on top of the base compose.
+# All memory values come from the env file (public.env).
+
+services:
+  fleet-db:
+    command: >-
+      postgres
+      -c shared_buffers=${PG_SHARED_BUFFERS}
+      -c effective_cache_size=${PG_EFFECTIVE_CACHE}
+      -c work_mem=${PG_WORK_MEM}
+      -c maintenance_work_mem=${PG_MAINT_WORK_MEM}
+      -c max_connections=${PG_MAX_CONNECTIONS}
+      -c wal_buffers=8MB
+      -c checkpoint_completion_target=0.9
+      -c random_page_cost=1.1

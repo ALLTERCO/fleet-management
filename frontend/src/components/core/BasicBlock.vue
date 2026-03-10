@@ -1,12 +1,12 @@
 <template>
     <div>
         <div
-            class="text-gray-200 rounded-lg shadow-md h-full"
+            class="basic-block rounded-lg h-full"
             :class="{
-                'bg-opacity-50 backdrop-blur': blurred,
-                'border border-gray-600': bordered,
-                'bg-slate-900': darker,
-                'bg-slate-800': !darker,
+                'basic-block--glass': blurred,
+                'basic-block--bordered': bordered,
+                'basic-block--darker': darker,
+                'basic-block--default': !blurred && !darker,
                 'p-4': padding === 'md',
                 'p-2': padding === 'sm',
                 'p-1': padding === 'xs',
@@ -23,7 +23,7 @@
             </div>
         </div>
         <div v-if="loading" class="relative pt-4">
-            <div class="absolute top-0 left-0 !p-0 !m-0 w-full h-full z-20 brightness-50 bg-gray-950/40"></div>
+            <div class="basic-block__overlay absolute top-0 left-0 !p-0 !m-0 w-full h-full z-20"></div>
             <div class="absolute top-1/2 left-1/2 !p-0 !m-0 -translate-x-1/2 -translate-y-1/2 z-50">
                 <Spinner size="sm" />
             </div>
@@ -47,6 +47,34 @@ type props_t = {
 withDefaults(defineProps<props_t>(), {
     title: '',
     bordered: false,
-    padding: 'md',
+    padding: 'md'
 });
 </script>
+
+<style scoped>
+.basic-block {
+    color: var(--color-text-secondary);
+}
+.basic-block--default {
+    background-color: var(--color-surface-2);
+    box-shadow: var(--shadow-md);
+}
+.basic-block--darker {
+    background-color: var(--color-surface-1);
+    box-shadow: var(--shadow-md);
+}
+.basic-block--glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+}
+.basic-block--bordered {
+    border: 1px solid var(--color-border-default);
+}
+.basic-block__overlay {
+    background-color: var(--color-overlay);
+    border-radius: inherit;
+}
+</style>

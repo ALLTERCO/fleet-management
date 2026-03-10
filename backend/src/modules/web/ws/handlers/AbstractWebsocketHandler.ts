@@ -50,19 +50,33 @@ export default abstract class AbstractWebsocketHandler {
      * @tutorial https://github.com/websockets/ws#how-to-detect-and-close-broken-connections
      */
     #createHeartbeat() {
+        const CHUNK_SIZE = 100;
         return setInterval(() => {
-            const clients = this._server.clients as Set<WebSocketExt>;
-            clients.forEach(function each(ws: WebSocketExt) {
-                if (ws.isAlive === false) {
-                    console.error('Closing socket bc of ping/pong timeout');
-                    ws.terminate();
-                    ws.emit('close', 'TIMEOUT');
-                    return;
-                }
+            const clients = Array.from(
+                this._server.clients as Set<WebSocketExt>
+            );
+            let offset = 0;
 
-                ws.isAlive = false;
-                ws.ping();
-            });
+            const processChunk = () => {
+                const end = Math.min(offset + CHUNK_SIZE, clients.length);
+                for (let i = offset; i < end; i++) {
+                    const ws = clients[i];
+                    if (ws.isAlive === false) {
+                        logger.error('Closing socket bc of ping/pong timeout');
+                        ws.terminate();
+                        ws.emit('close', 'TIMEOUT');
+                        continue;
+                    }
+                    ws.isAlive = false;
+                    ws.ping();
+                }
+                offset = end;
+                if (offset < clients.length) {
+                    setImmediate(processChunk);
+                }
+            };
+
+            processChunk();
         }, 30000);
     }
 

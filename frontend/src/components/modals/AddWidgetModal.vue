@@ -13,7 +13,7 @@
         </template>
 
         <template #default="{ stage }">
-            <div class="bg-gray-900 rounded-lg p-2 md:p-4">
+            <div class="bg-[var(--color-surface-1)] rounded-lg p-2 md:p-4">
                 <div v-if="stage === STAGES.TYPE">
                     <div :class="[small ? 'flex flex-col gap-2' : 'widget-grid']">
                         <Widget
@@ -133,25 +133,24 @@
 </template>
 
 <script lang="ts" setup>
-import { useEntityStore } from '@/stores/entities';
-import { useToastStore } from '@/stores/toast';
-import { ref } from 'vue';
-import { action_t, entity_t } from '@/types';
+import {ref} from 'vue';
+import {modals, small} from '@/helpers/ui';
+import {useEntityStore} from '@/stores/entities';
+import {useGroupsStore} from '@/stores/groups';
+import {useToastStore} from '@/stores/toast';
+import {getRegistry} from '@/tools/websocket';
+import type {action_t, entity_t} from '@/types';
 import Input from '../core/Input.vue';
-import { useGroupsStore } from '@/stores/groups';
-import { small } from '@/helpers/ui';
-import EntityWidget from '../widgets/EntityWidget.vue';
-import Widget from '../widgets/WidgetsTemplates/VanilaWidget.vue';
-import GroupWidget from '../widgets/GroupWidget.vue';
-import { modals } from '@/helpers/ui';
-import SteppedModal from './SteppedModal.vue';
-import { getRegistry } from '@/tools/websocket';
 import ActionWidget from '../widgets/ActionWidget.vue';
+import EntityWidget from '../widgets/EntityWidget.vue';
+import GroupWidget from '../widgets/GroupWidget.vue';
 import ClockWidget from '../widgets/IntegratedWidgets/ClockWidget.vue';
+import Widget from '../widgets/WidgetsTemplates/VanilaWidget.vue';
+import SteppedModal from './SteppedModal.vue';
 
 const STAGES = {
     TYPE: 1,
-    ITEMS: 2,
+    ITEMS: 2
 } as const;
 
 const entityStore = useEntityStore();
@@ -175,7 +174,7 @@ const emit = defineEmits<{
         item: {
             type: 'entities' | 'group' | 'action' | 'ui_widget';
             data: any;
-        },
+        }
     ];
 }>();
 
@@ -194,7 +193,11 @@ async function stateChanged(stage: number) {
 
 function filterEntity(entity: entity_t) {
     if (entityNameFilter.value.length > 1) {
-        if (!entity.name.toLowerCase().includes(entityNameFilter.value.toLowerCase())) {
+        if (
+            !entity.name
+                .toLowerCase()
+                .includes(entityNameFilter.value.toLowerCase())
+        ) {
             return false;
         }
     }
@@ -213,7 +216,9 @@ function filterGroup(name: string) {
 
 function filterAction(name: string) {
     if (actionNameFilter.value.length > 1) {
-        if (!name.toLowerCase().includes(actionNameFilter.value.toLowerCase())) {
+        if (
+            !name.toLowerCase().includes(actionNameFilter.value.toLowerCase())
+        ) {
             return false;
         }
     }
@@ -234,8 +239,8 @@ function onSave() {
                 emit('added', {
                     type: 'entities',
                     data: {
-                        ids: selectedEntities.value,
-                    },
+                        ids: selectedEntities.value
+                    }
                 });
             }
 
@@ -255,8 +260,8 @@ function onSave() {
                 type: 'group',
                 data: {
                     id: selectedGroup.value,
-                    name: groupStore.groups[selectedGroup.value].name,
-                },
+                    name: groupStore.groups[selectedGroup.value].name
+                }
             });
             break;
         }
@@ -270,8 +275,8 @@ function onSave() {
             emit('added', {
                 type: 'action',
                 data: {
-                    id: selectedAction.value,
-                },
+                    id: selectedAction.value
+                }
             });
             break;
         }
@@ -285,8 +290,8 @@ function onSave() {
             emit('added', {
                 type: 'ui_widget',
                 data: {
-                    id: selectUIElement.value,
-                },
+                    id: selectUIElement.value
+                }
             });
             break;
         }
@@ -298,7 +303,10 @@ function onSave() {
 
 function selectEntity(entityID: string) {
     if (selectedEntities.value.includes(entityID)) {
-        selectedEntities.value.splice(selectedEntities.value.indexOf(entityID), 1);
+        selectedEntities.value.splice(
+            selectedEntities.value.indexOf(entityID),
+            1
+        );
     } else {
         selectedEntities.value.push(entityID);
     }

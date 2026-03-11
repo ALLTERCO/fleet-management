@@ -23,13 +23,15 @@ services:
       # Docker provider: auto-discovers services via labels
       - "--providers.docker=true"
       - "--providers.docker.exposedByDefault=false"
-      - "--providers.docker.network=fleet-net"
+      - "--providers.docker.network=${COMPOSE_PROJECT_NAME}_fleet-net"
       # HTTP entrypoint: redirect to HTTPS
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
       # HTTPS entrypoint
       - "--entrypoints.websecure.address=:443"
+      # Internal ping entrypoint (container-only)
+      - "--entrypoints.ping.address=:8082"
       - "--entrypoints.websecure.transport.lifecycle.graceTimeOut=300"
       # Let's Encrypt ACME
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
@@ -42,7 +44,7 @@ services:
       - "--entrypoints.websecure.transport.respondingTimeouts.idleTimeout=300"
       # Healthcheck ping endpoint
       - "--ping=true"
-      - "--ping.entryPoint=websecure"
+      - "--ping.entryPoint=ping"
       - "--log.level=WARN"
     ports:
       - "80:80"

@@ -1,8 +1,9 @@
-# Traefik reverse proxy with self-signed TLS certificates
+# Traefik reverse proxy with locally managed TLS certificates
 #
 # Used by: deploy-public.sh up --ssl selfsigned
-# For LAN / internal deployments where no public domain is available.
-# Supports IP addresses (192.168.x.x) and internal domains (fleet.home.local).
+#          deploy-public.sh up --ssl custom --cert ... --key ...
+# For LAN / internal deployments where no public domain is available, or
+# for deployments that already have a certificate/key pair to mount into state.
 #
 # The deploy script generates a self-signed CA + server certificate
 # into deploy/state/tls/ before starting this compose overlay.
@@ -22,7 +23,7 @@ services:
       # Docker provider: auto-discovers services via labels
       - "--providers.docker=true"
       - "--providers.docker.exposedByDefault=false"
-      - "--providers.docker.network=fleet-net"
+      - "--providers.docker.network=${COMPOSE_PROJECT_NAME}_fleet-net"
       # File provider: loads TLS certificate config
       - "--providers.file.filename=/etc/traefik/dynamic/tls.yml"
       # HTTP entrypoint: redirect to HTTPS
@@ -31,6 +32,8 @@ services:
       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
       # HTTPS entrypoint
       - "--entrypoints.websecure.address=:443"
+      # Internal ping entrypoint (container-only)
+      - "--entrypoints.ping.address=:8082"
       - "--entrypoints.websecure.transport.lifecycle.graceTimeOut=300"
       # Timeouts for WebSocket + long-lived connections
       - "--entrypoints.websecure.transport.respondingTimeouts.writeTimeout=300"
@@ -38,7 +41,7 @@ services:
       - "--entrypoints.websecure.transport.respondingTimeouts.idleTimeout=300"
       # Healthcheck ping endpoint
       - "--ping=true"
-      - "--ping.entryPoint=websecure"
+      - "--ping.entryPoint=ping"
       - "--log.level=WARN"
     ports:
       - "80:80"

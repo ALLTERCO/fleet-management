@@ -24,9 +24,6 @@ services:
       - fm-backend-plugins-v:/app/plugins
       - fm-backend-uploads-v:/app/backend/uploads
       - fm-backend-data-v:/app/backend/data
-    ports:
-      - "${FLEET_MANAGER_PORT}:7011"
-      - "8100-8104:8100-8104"
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

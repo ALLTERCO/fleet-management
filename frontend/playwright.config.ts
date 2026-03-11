@@ -9,6 +9,7 @@ export default defineConfig({
     reporter: 'list',
     use: {
         baseURL: process.env.E2E_BASE_URL || 'http://localhost:7011',
+        ignoreHTTPSErrors: process.env.E2E_IGNORE_HTTPS_ERRORS === '1',
         trace: 'on-first-retry',
     },
     projects: [

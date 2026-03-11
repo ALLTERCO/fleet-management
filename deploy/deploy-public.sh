@@ -34,11 +34,12 @@ if [ -t 1 ] && command -v tput &>/dev/null && [ "$(tput colors 2>/dev/null)" -ge
     GREEN=$(tput setaf 2)
     YELLOW=$(tput setaf 3)
     BLUE=$(tput setaf 4)
+    MAGENTA=$(tput setaf 5)
     CYAN=$(tput setaf 6)
     BOLD=$(tput bold)
     RESET=$(tput sgr0)
 else
-    RED="" GREEN="" YELLOW="" BLUE="" CYAN="" BOLD="" RESET=""
+    RED="" GREEN="" YELLOW="" BLUE="" MAGENTA="" CYAN="" BOLD="" RESET=""
 fi
 
 # ── Logging ───────────────────────────────────────────────────
@@ -46,12 +47,63 @@ info()  { echo "${GREEN}[INFO]${RESET}  $*"; }
 warn()  { echo "${YELLOW}[WARN]${RESET}  $*"; }
 error() { echo "${RED}[ERROR]${RESET} $*" >&2; }
 step()  { echo ""; echo "${BOLD}${BLUE}==> $*${RESET}"; }
+phase() { echo ""; echo "${BOLD}${MAGENTA}=== $* ===${RESET}"; }
 ok()    { echo "${GREEN}  OK${RESET} $*"; }
+debug() { [ "${DEBUG_MODE:-false}" = "true" ] && echo "${CYAN}[DEBUG]${RESET} $*"; }
+
+AUTO_INSTALL_FROM_UP="${AUTO_INSTALL_FROM_UP:-false}"
+USE_SUDO_DOCKER="${USE_SUDO_DOCKER:-false}"
+DEBUG_MODE="${DEBUG_MODE:-false}"
+PARSED_GLOBAL_ARGS=()
+
+docker() {
+    if [ "$USE_SUDO_DOCKER" = "true" ]; then
+        command sudo docker "$@"
+    else
+        command docker "$@"
+    fi
+}
+
+enable_debug_mode() {
+    if [ "$DEBUG_MODE" != "true" ]; then
+        return 0
+    fi
+
+    export PS4='+ [deploy-public:${LINENO}] '
+    info "Debug mode enabled — shell commands will be traced."
+    set -x
+}
+
+run_quiet() {
+    local label="$1"
+    shift
+
+    if [ "$DEBUG_MODE" = "true" ]; then
+        "$@"
+        return $?
+    fi
+
+    local log_file
+    log_file=$(mktemp "${TMPDIR:-/tmp}/deploy-public.XXXXXX")
+
+    local status=0
+    "$@" >"$log_file" 2>&1 || status=$?
+
+    if [ "$status" -ne 0 ]; then
+        [ -n "$label" ] && error "$label failed"
+        if [ -s "$log_file" ]; then
+            sed 's/^/    /' "$log_file" >&2
+        fi
+    fi
+    rm -f "$log_file"
+    return "$status"
+}
 
 # ── Constants ─────────────────────────────────────────────────
 FM_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DEPLOY_DIR="$FM_DIR/deploy"
 STATE_DIR="$DEPLOY_DIR/state"
+DEPLOY_META_FILE="$STATE_DIR/deploy-meta.env"
 COMPOSE_DIR="$DEPLOY_DIR/compose"
 VERSIONS_FILE="$DEPLOY_DIR/VERSIONS.env"
 
@@ -79,6 +131,15 @@ fi
 : "${FLEET_MANAGER_PORT:=7011}"
 : "${ZITADEL_EXTERNALPORT:=9090}"
 : "${COMPOSE_PROJECT_NAME:=fm}"
+
+# ── Addon / SSL flags ────────────────────────────────────────
+WITH_MDNS="${WITH_MDNS:-false}"
+WITH_SSL="${WITH_SSL:-false}"
+SSL_MODE="${SSL_MODE:-}"  # "letsencrypt" | "selfsigned" | "custom"
+SSL_DOMAIN="${SSL_DOMAIN:-}"
+SSL_EMAIL="${SSL_EMAIL:-}"
+SSL_CERT_FILE="${SSL_CERT_FILE:-}"
+SSL_KEY_FILE="${SSL_KEY_FILE:-}"
 
 # ── OS Detection ──────────────────────────────────────────────
 detect_os() {
@@ -162,22 +223,433 @@ detect_ip() {
 }
 
 # ── Prerequisite Checks ──────────────────────────────────────
+docker_cli_exists() {
+    [ -n "$(type -P docker)" ]
+}
+
+run_privileged() {
+    if [ "$(id -u)" -eq 0 ]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
+require_install_privileges() {
+    if [ "$(id -u)" -eq 0 ]; then
+        info "Running as root — system packages can be installed directly."
+        return 0
+    fi
+
+    if ! command -v sudo &>/dev/null; then
+        error "Installing system dependencies requires root privileges, but 'sudo' is not available."
+        error "Run './deploy-public.sh install' as root or install sudo first."
+        return 1
+    fi
+
+    info "Administrator privileges are required to install system dependencies."
+    sudo -v
+    ok "Sudo access confirmed"
+}
+
+enable_sudo_docker_if_needed() {
+    if check_docker; then
+        return 0
+    fi
+
+    if [ "$(id -u)" -ne 0 ] && command -v sudo &>/dev/null && command sudo docker info >/dev/null 2>&1; then
+        USE_SUDO_DOCKER=true
+        warn "Using sudo for Docker commands in this run because docker group access is not active yet."
+        info "A new shell or re-login will restore normal docker-group access after installation."
+        return 0
+    fi
+
+    return 1
+}
+
+wait_for_docker_daemon() {
+    local timeout="${1:-120}"
+    local elapsed=0
+
+    while [ "$elapsed" -lt "$timeout" ]; do
+        if docker_cli_exists && docker info >/dev/null 2>&1; then
+            return 0
+        fi
+        sleep 3
+        elapsed=$((elapsed + 3))
+    done
+
+    return 1
+}
+
 check_docker() {
-    if ! command -v docker &>/dev/null; then
+    if ! docker_cli_exists; then
         return 1
     fi
     if ! docker info &>/dev/null 2>&1; then
         error "Docker is installed but not running or you lack permissions."
-        error "Try: sudo systemctl start docker && sudo usermod -aG docker \$USER"
+        error "Try: sudo systemctl start docker, open Docker Desktop, or run './deploy-public.sh install'"
         return 1
     fi
     return 0
 }
 
 check_compose() {
+    docker_cli_exists || return 1
     if docker compose version &>/dev/null 2>&1; then
         return 0
     fi
+    return 1
+}
+
+is_ip_address() {
+    local value="${1:-}"
+    [[ "$value" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || [[ "$value" == *:* ]]
+}
+
+is_valid_fqdn() {
+    local domain="${1%.}"
+    [ -n "$domain" ] || return 1
+    [ "${#domain}" -le 253 ] || return 1
+    [[ "$domain" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$ ]]
+}
+
+resolve_domain_ips() {
+    local domain="$1"
+
+    if command -v getent &>/dev/null; then
+        getent ahosts "$domain" 2>/dev/null | awk '{print $1}' | sort -u
+        return 0
+    fi
+
+    if command -v dscacheutil &>/dev/null; then
+        dscacheutil -q host -a name "$domain" 2>/dev/null | awk '/ip_address:/{print $2}' | sort -u
+        return 0
+    fi
+
+    if command -v host &>/dev/null; then
+        host "$domain" 2>/dev/null | awk '/has address/{print $4} /has IPv6 address/{print $5}' | sort -u
+        return 0
+    fi
+
+    if command -v nslookup &>/dev/null; then
+        nslookup "$domain" 2>/dev/null | awk '/^Address: /{print $2}' | sort -u
+        return 0
+    fi
+
+    return 1
+}
+
+write_traefik_tls_config() {
+    local dyn_dir="$STATE_DIR/tls/dynamic"
+    mkdir -p "$dyn_dir"
+
+    cat > "$dyn_dir/tls.yml" <<'EOF'
+tls:
+  certificates:
+    - certFile: /etc/traefik/certs/server.crt
+      keyFile: /etc/traefik/certs/server.key
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/traefik/certs/server.crt
+        keyFile: /etc/traefik/certs/server.key
+EOF
+
+    chmod 0644 "$dyn_dir/tls.yml"
+    ok "Traefik TLS config written"
+}
+
+install_custom_cert() {
+    local tls_dir="$STATE_DIR/tls"
+
+    mkdir -p "$tls_dir"
+    cp "$SSL_CERT_FILE" "$tls_dir/server.crt"
+    cp "$SSL_KEY_FILE" "$tls_dir/server.key"
+    chmod 0644 "$tls_dir/server.crt" "$tls_dir/server.key"
+
+    write_traefik_tls_config
+    ok "Custom TLS certificate installed"
+}
+
+parse_runtime_flags() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --debug)
+                DEBUG_MODE=true
+                shift ;;
+            --with)
+                case "${2:-}" in
+                    mdns) WITH_MDNS=true ;;
+                    *)    warn "Unknown addon: ${2:-}" ;;
+                esac
+                shift 2 ;;
+            --ssl)
+                WITH_SSL=true
+                case "${2:-}" in
+                    selfsigned|self-signed)
+                        SSL_MODE="selfsigned"
+                        shift 2
+                        ;;
+                    letsencrypt)
+                        SSL_MODE="letsencrypt"
+                        shift 2
+                        ;;
+                    custom)
+                        SSL_MODE="custom"
+                        shift 2
+                        ;;
+                    *)
+                        SSL_MODE="letsencrypt"
+                        shift
+                        ;;
+                esac
+                ;;
+            --domain)
+                SSL_DOMAIN="${2:-}"
+                shift 2 ;;
+            --email)
+                SSL_EMAIL="${2:-}"
+                shift 2 ;;
+            --cert)
+                SSL_CERT_FILE="${2:-}"
+                shift 2 ;;
+            --key)
+                SSL_KEY_FILE="${2:-}"
+                shift 2 ;;
+            *)
+                warn "Unknown flag: $1"
+                shift ;;
+        esac
+    done
+}
+
+parse_global_flags() {
+    PARSED_GLOBAL_ARGS=()
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --debug)
+                DEBUG_MODE=true
+                ;;
+            *)
+                PARSED_GLOBAL_ARGS+=("$1")
+                ;;
+        esac
+        shift
+    done
+}
+
+load_state_env() {
+    if [ -f "$STATE_DIR/.env" ]; then
+        # shellcheck source=/dev/null
+        source "$STATE_DIR/.env"
+        export POSTGRES_PASSWORD ZITADEL_POSTGRES_PASSWORD ZITADEL_DB_USER_PASSWORD
+        export ZITADEL_ADMIN_PASSWORD ZITADEL_MASTERKEY
+    fi
+}
+
+save_deploy_meta() {
+    local hostname="$1"
+    mkdir -p "$STATE_DIR"
+
+    cat > "$DEPLOY_META_FILE" <<EOF
+# Auto-generated by deploy-public.sh — do not edit manually
+DEPLOY_WITH_MDNS=${WITH_MDNS}
+DEPLOY_WITH_SSL=${WITH_SSL}
+DEPLOY_SSL_MODE=${SSL_MODE}
+DEPLOY_SSL_DOMAIN=${SSL_DOMAIN}
+DEPLOY_SSL_EMAIL=${SSL_EMAIL}
+DEPLOY_HOSTNAME=${hostname}
+DEPLOY_ZITADEL_HOSTNAME=${ZITADEL_HOSTNAME:-$hostname}
+DEPLOY_ZITADEL_EXTERNALPORT=${ZITADEL_EXTERNALPORT}
+DEPLOY_FLEET_MANAGER_PORT=${FLEET_MANAGER_PORT}
+DEPLOY_COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
+EOF
+
+    chmod 0600 "$DEPLOY_META_FILE"
+}
+
+load_deploy_meta() {
+    [ -f "$DEPLOY_META_FILE" ] || return 0
+
+    # shellcheck source=/dev/null
+    source "$DEPLOY_META_FILE"
+
+    if [ "$WITH_MDNS" != "true" ] && [ "${DEPLOY_WITH_MDNS:-false}" = "true" ]; then
+        WITH_MDNS="true"
+    fi
+    if [ "$WITH_SSL" != "true" ] && [ "${DEPLOY_WITH_SSL:-false}" = "true" ]; then
+        WITH_SSL="true"
+    fi
+    if [ -z "$SSL_MODE" ] && [ -n "${DEPLOY_SSL_MODE:-}" ]; then
+        SSL_MODE="$DEPLOY_SSL_MODE"
+    fi
+    if [ -z "$SSL_DOMAIN" ] && [ -n "${DEPLOY_SSL_DOMAIN:-}" ]; then
+        SSL_DOMAIN="$DEPLOY_SSL_DOMAIN"
+    fi
+    if [ -z "$SSL_EMAIL" ] && [ -n "${DEPLOY_SSL_EMAIL:-}" ]; then
+        SSL_EMAIL="$DEPLOY_SSL_EMAIL"
+    fi
+    if [ -n "${DEPLOY_ZITADEL_HOSTNAME:-}" ]; then
+        ZITADEL_HOSTNAME="$DEPLOY_ZITADEL_HOSTNAME"
+    elif [ -n "${DEPLOY_HOSTNAME:-}" ]; then
+        ZITADEL_HOSTNAME="$DEPLOY_HOSTNAME"
+    fi
+    [ -n "${DEPLOY_ZITADEL_EXTERNALPORT:-}" ] && ZITADEL_EXTERNALPORT="$DEPLOY_ZITADEL_EXTERNALPORT"
+    [ -n "${DEPLOY_FLEET_MANAGER_PORT:-}" ] && FLEET_MANAGER_PORT="$DEPLOY_FLEET_MANAGER_PORT"
+    [ -n "${DEPLOY_COMPOSE_PROJECT_NAME:-}" ] && COMPOSE_PROJECT_NAME="$DEPLOY_COMPOSE_PROJECT_NAME"
+    ZITADEL_EXTERNALSECURE="$WITH_SSL"
+    export ZITADEL_HOSTNAME ZITADEL_EXTERNALPORT FLEET_MANAGER_PORT COMPOSE_PROJECT_NAME ZITADEL_EXTERNALSECURE
+}
+
+validate_custom_cert() {
+    [ -n "$SSL_CERT_FILE" ] || {
+        error "Custom SSL requires --cert /path/to/fullchain.pem"
+        return 1
+    }
+    [ -n "$SSL_KEY_FILE" ] || {
+        error "Custom SSL requires --key /path/to/privkey.pem"
+        return 1
+    }
+    [ -f "$SSL_CERT_FILE" ] || {
+        error "Custom certificate file not found: $SSL_CERT_FILE"
+        return 1
+    }
+    [ -f "$SSL_KEY_FILE" ] || {
+        error "Custom key file not found: $SSL_KEY_FILE"
+        return 1
+    }
+
+    openssl x509 -in "$SSL_CERT_FILE" -noout >/dev/null 2>&1 || {
+        error "Invalid X.509 certificate: $SSL_CERT_FILE"
+        return 1
+    }
+    openssl pkey -in "$SSL_KEY_FILE" -noout >/dev/null 2>&1 || {
+        error "Invalid private key: $SSL_KEY_FILE"
+        return 1
+    }
+
+    local cert_pub key_pub
+    cert_pub=$(openssl x509 -in "$SSL_CERT_FILE" -pubkey -noout 2>/dev/null | openssl pkey -pubin -outform pem 2>/dev/null | openssl sha256 2>/dev/null)
+    key_pub=$(openssl pkey -in "$SSL_KEY_FILE" -pubout -outform pem 2>/dev/null | openssl sha256 2>/dev/null)
+    if [ -z "$cert_pub" ] || [ -z "$key_pub" ] || [ "$cert_pub" != "$key_pub" ]; then
+        error "Custom certificate and key do not match"
+        return 1
+    fi
+
+    if ! openssl x509 -in "$SSL_CERT_FILE" -checkhost "${SSL_DOMAIN%.}" -noout >/dev/null 2>&1; then
+        error "Custom certificate does not cover domain: ${SSL_DOMAIN%.}"
+        return 1
+    fi
+
+    return 0
+}
+
+validate_ssl_config() {
+    if [ "$WITH_SSL" != "true" ]; then
+        return 0
+    fi
+
+    # Public SSL always terminates on port 443. Reject host:port syntax early.
+    # Note: this also blocks bare IPv6 literals (which contain colons).
+    # IPv6 literal support is not currently needed; add mode-aware parsing if it is.
+    if [ -n "$SSL_DOMAIN" ] && [[ "$SSL_DOMAIN" == *:* ]]; then
+        error "--domain must be a plain hostname, FQDN, or IPv4 address where supported; host:port and IPv6 literals are not supported"
+        return 1
+    fi
+
+    if [ -z "$SSL_MODE" ]; then
+        SSL_MODE="letsencrypt"
+    fi
+
+    case "$SSL_MODE" in
+        letsencrypt)
+            [ -n "$SSL_DOMAIN" ] || {
+                error "Let's Encrypt SSL requires --domain example.com"
+                return 1
+            }
+            if is_ip_address "$SSL_DOMAIN"; then
+                error "Let's Encrypt SSL requires a real domain name, not an IP address"
+                return 1
+            fi
+            if [ "${SSL_DOMAIN%.}" = "localhost" ] || ! is_valid_fqdn "$SSL_DOMAIN"; then
+                error "Invalid Let's Encrypt domain: $SSL_DOMAIN"
+                return 1
+            fi
+            local resolved_ips
+            resolved_ips="$(resolve_domain_ips "${SSL_DOMAIN%.}" || true)"
+            if [ -z "$resolved_ips" ]; then
+                error "Domain does not resolve yet: ${SSL_DOMAIN%.}"
+                return 1
+            fi
+            ;;
+        custom)
+            [ -n "$SSL_DOMAIN" ] || {
+                error "Custom SSL requires --domain example.com"
+                return 1
+            }
+            if [ "${SSL_DOMAIN%.}" = "localhost" ] || ! is_valid_fqdn "$SSL_DOMAIN"; then
+                error "Invalid custom SSL domain: $SSL_DOMAIN"
+                return 1
+            fi
+            if [ -z "$SSL_CERT_FILE" ] && [ -f "$STATE_DIR/tls/server.crt" ]; then
+                SSL_CERT_FILE="$STATE_DIR/tls/server.crt"
+            fi
+            if [ -z "$SSL_KEY_FILE" ] && [ -f "$STATE_DIR/tls/server.key" ]; then
+                SSL_KEY_FILE="$STATE_DIR/tls/server.key"
+            fi
+            validate_custom_cert || return 1
+            ;;
+        selfsigned)
+            if [ -n "$SSL_DOMAIN" ] && ! is_valid_fqdn "$SSL_DOMAIN" && ! is_ip_address "$SSL_DOMAIN"; then
+                error "Self-signed SSL hostname must be an IP address or valid hostname"
+                return 1
+            fi
+            ;;
+        *)
+            error "Unknown SSL mode: $SSL_MODE"
+            return 1
+            ;;
+    esac
+
+    return 0
+}
+
+local_image_exists() {
+    docker image inspect "$1" >/dev/null 2>&1
+}
+
+container_name() {
+    printf '%s-%s-1' "$COMPOSE_PROJECT_NAME" "$1"
+}
+
+container_health_status() {
+    local container="$1"
+    docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || echo "missing"
+}
+
+wait_for_container_health() {
+    local service="$1"
+    local timeout="${2:-120}"
+    local container
+    container="$(container_name "$service")"
+
+    local elapsed=0
+    while [ "$elapsed" -lt "$timeout" ]; do
+        case "$(container_health_status "$container")" in
+            healthy|running)
+                ok "${service} is ready (${elapsed}s)"
+                return 0
+                ;;
+            unhealthy)
+                warn "${service} healthcheck is reporting unhealthy (${elapsed}s)"
+                ;;
+        esac
+        sleep 3
+        elapsed=$((elapsed + 3))
+    done
+
     return 1
 }
 
@@ -204,13 +676,48 @@ check_prereqs() {
     return $missing
 }
 
+ensure_prereqs_for_up() {
+    if check_prereqs; then
+        return 0
+    fi
+
+    detect_os
+    warn "Missing prerequisites detected. Running the install flow before deployment."
+    if [ "$OS" = "linux" ]; then
+        info "This may prompt for sudo so the script can install Docker, Docker Compose, curl, jq, and openssl."
+    else
+        info "On macOS this uses Homebrew and Docker Desktop and may trigger Homebrew or macOS permission prompts."
+    fi
+    AUTO_INSTALL_FROM_UP=true
+    cmd_install
+    AUTO_INSTALL_FROM_UP=false
+
+    enable_sudo_docker_if_needed || true
+
+    if check_prereqs; then
+        return 0
+    fi
+
+    error "Prerequisites are still not ready."
+    error "If Docker was just installed, you may need to start it or re-run './deploy-public.sh up' after your shell picks up new permissions."
+    return 1
+}
+
 # ── Install Docker + Dependencies ─────────────────────────────
 cmd_install() {
-    step "Installing Docker and dependencies"
+    enable_debug_mode
+
+    phase "Machine Setup"
+    step "Inspecting platform"
     detect_os
 
     info "OS: $OS | Distro: ${DISTRO:-n/a} | Arch: $ARCH"
 
+    if [ "$OS" = "linux" ]; then
+        require_install_privileges || exit 1
+    fi
+
+    step "Installing Docker and dependencies"
     case "$OS" in
         linux)
             case "$DISTRO" in
@@ -222,6 +729,8 @@ cmd_install() {
             install_macos
             ;;
     esac
+
+    enable_sudo_docker_if_needed || true
 
     # Verify installation
     step "Verifying installation"
@@ -243,56 +752,63 @@ install_debian() {
     info "Installing for Debian/Ubuntu..."
 
     # Dependencies
-    sudo apt-get update -qq
-    sudo apt-get install -y -qq ca-certificates curl gnupg jq openssl lsb-release >/dev/null
+    run_quiet "Updating apt package index" run_privileged apt-get update -qq
+    run_quiet "Installing required Debian packages" run_privileged apt-get install -y -qq ca-certificates curl gnupg jq openssl lsb-release
 
-    if ! check_docker; then
-        info "Installing Docker..."
+    if ! docker_cli_exists || ! check_compose; then
+        info "Installing Docker and Docker Compose..."
         # Add Docker GPG key
-        sudo install -m 0755 -d /etc/apt/keyrings
+        run_quiet "Preparing Docker apt keyring" run_privileged install -m 0755 -d /etc/apt/keyrings
         curl -fsSL https://download.docker.com/linux/$(. /etc/os-release && echo "$ID")/gpg \
-            | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
-        sudo chmod a+r /etc/apt/keyrings/docker.gpg
+            | run_privileged gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
+        run_privileged chmod a+r /etc/apt/keyrings/docker.gpg
 
         # Add Docker repo
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
             https://download.docker.com/linux/$(. /etc/os-release && echo "$ID") \
             $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
-            | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+            | run_privileged tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin >/dev/null
-
-        # Start Docker
-        sudo systemctl enable --now docker
-
-        # Add current user to docker group
-        if ! groups "$USER" | grep -q docker; then
-            sudo usermod -aG docker "$USER"
-            warn "Added $USER to docker group. You may need to log out and back in."
-        fi
+        run_quiet "Refreshing apt sources" run_privileged apt-get update -qq
+        run_quiet "Installing Docker engine and Compose plugin" run_privileged apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-compose-plugin
     else
-        ok "Docker already installed"
+        ok "Docker CLI and Compose plugin already installed"
+    fi
+
+    if command -v systemctl &>/dev/null; then
+        if ! run_privileged systemctl is-active --quiet docker; then
+            info "Starting Docker daemon..."
+            run_quiet "Starting Docker daemon" run_privileged systemctl enable --now docker
+        fi
+    fi
+
+    local target_user="${SUDO_USER:-$USER}"
+    if [ -n "$target_user" ] && [ "$target_user" != "root" ] && ! id -nG "$target_user" | grep -qw docker; then
+        run_privileged usermod -aG docker "$target_user"
+        warn "Added $target_user to docker group. A new shell may be needed for passwordless Docker access."
     fi
 }
 
 install_arch() {
     info "Installing for Arch Linux..."
 
-    sudo pacman -Sy --needed --noconfirm docker docker-compose curl jq openssl >/dev/null
+    run_quiet "Installing Arch packages" run_privileged pacman -Sy --needed --noconfirm docker docker-compose curl jq openssl
 
-    if ! systemctl is-active --quiet docker; then
-        sudo systemctl enable --now docker
+    if ! run_privileged systemctl is-active --quiet docker; then
+        run_quiet "Starting Docker daemon" run_privileged systemctl enable --now docker
     fi
 
-    if ! groups "$USER" | grep -q docker; then
-        sudo usermod -aG docker "$USER"
-        warn "Added $USER to docker group. You may need to log out and back in."
+    local target_user="${SUDO_USER:-$USER}"
+    if [ -n "$target_user" ] && [ "$target_user" != "root" ] && ! id -nG "$target_user" | grep -qw docker; then
+        run_privileged usermod -aG docker "$target_user"
+        warn "Added $target_user to docker group. A new shell may be needed for passwordless Docker access."
     fi
 }
 
 install_macos() {
     info "Installing for macOS..."
+    info "macOS package installation is handled by Homebrew and Docker Desktop."
+    info "You may see Homebrew or macOS permission prompts during the first run."
 
     if ! command -v brew &>/dev/null; then
         error "Homebrew not found. Install it first: https://brew.sh"
@@ -302,22 +818,36 @@ install_macos() {
     # Install deps
     for pkg in jq openssl curl; do
         if ! command -v "$pkg" &>/dev/null; then
-            brew install "$pkg"
+            run_quiet "Installing Homebrew package: $pkg" env HOMEBREW_NO_AUTO_UPDATE=1 brew install --quiet "$pkg"
         fi
     done
 
-    if ! check_docker; then
+    if ! docker_cli_exists; then
         info "Installing Docker Desktop..."
-        brew install --cask docker
-        echo ""
-        warn "Docker Desktop installed. Please:"
-        warn "  1. Open Docker Desktop from Applications"
-        warn "  2. Complete the setup wizard"
-        warn "  3. Wait for Docker to start (whale icon in menu bar)"
-        warn "  4. Then run: ./deploy-public.sh up"
-        exit 0
+        run_quiet "Installing Docker Desktop" env HOMEBREW_NO_AUTO_UPDATE=1 brew install --cask --quiet docker
     else
-        ok "Docker already installed"
+        ok "Docker CLI already installed"
+    fi
+
+    if ! check_docker; then
+        info "Opening Docker Desktop..."
+        open -a Docker >/dev/null 2>&1 || true
+        if wait_for_docker_daemon 120; then
+            ok "Docker Desktop is running"
+        else
+            echo ""
+            warn "Docker Desktop is installed but not running yet. Please:"
+            warn "  1. Open Docker Desktop from Applications"
+            warn "  2. Complete the setup wizard"
+            warn "  3. Wait for Docker to start (whale icon in menu bar)"
+            if [ "$AUTO_INSTALL_FROM_UP" = "true" ]; then
+                exit 1
+            fi
+            warn "  4. Then run: ./deploy-public.sh up"
+            exit 0
+        fi
+    else
+        ok "Docker already running"
     fi
 }
 
@@ -467,8 +997,8 @@ generate_system_api_keypair() {
     cat > "$sa_dir/system-api-config.yaml" <<'EOF'
 # Auto-generated by deploy-public.sh
 SystemAPIUsers:
-  system-user-1:
-    Path: /system-api/system-user.pub
+  - system-user-1:
+      Path: /system-api/system-user.pub
 EOF
     chmod 0644 "$sa_dir/system-api-config.yaml" "$sa_dir/system-user.pub"
 }
@@ -480,8 +1010,20 @@ generate_selfsigned_cert() {
     mkdir -p "$dyn_dir"
 
     if [ -f "$tls_dir/server.crt" ] && [ -f "$tls_dir/server.key" ]; then
-        ok "Self-signed TLS certificate exists"
-        return 0
+        if is_ip_address "$hostname"; then
+            if openssl x509 -in "$tls_dir/server.crt" -checkip "$hostname" -noout >/dev/null 2>&1; then
+                write_traefik_tls_config
+                ok "Self-signed TLS certificate exists"
+                return 0
+            fi
+        elif openssl x509 -in "$tls_dir/server.crt" -checkhost "$hostname" -noout >/dev/null 2>&1; then
+            write_traefik_tls_config
+            ok "Self-signed TLS certificate exists"
+            return 0
+        fi
+
+        warn "Existing self-signed certificate does not match $hostname, regenerating"
+        rm -f "$tls_dir/server.crt" "$tls_dir/server.key" "$tls_dir/ca.crt" "$tls_dir/ca.key" "$tls_dir/ca.srl"
     fi
 
     info "Generating self-signed TLS certificate for: $hostname"
@@ -520,25 +1062,12 @@ generate_selfsigned_cert() {
         -extfile <(echo "subjectAltName=${san}") 2>/dev/null
 
     rm -f "$tls_dir/server.csr"
-    chmod 0600 "$tls_dir/ca.key" "$tls_dir/server.key"
-    chmod 0644 "$tls_dir/ca.crt" "$tls_dir/server.crt"
+    chmod 0600 "$tls_dir/ca.key"
+    chmod 0644 "$tls_dir/server.key" "$tls_dir/ca.crt" "$tls_dir/server.crt"
 
     ok "Certificate generated (valid 10 years, SAN: ${san})"
 
-    # Generate Traefik dynamic TLS config
-    cat > "$dyn_dir/tls.yml" <<'EOF'
-tls:
-  certificates:
-    - certFile: /etc/traefik/certs/server.crt
-      keyFile: /etc/traefik/certs/server.key
-  stores:
-    default:
-      defaultCertificate:
-        certFile: /etc/traefik/certs/server.crt
-        keyFile: /etc/traefik/certs/server.key
-EOF
-    chmod 0644 "$dyn_dir/tls.yml"
-    ok "Traefik TLS config written"
+    write_traefik_tls_config
 
     echo ""
     info "To trust this certificate on clients, install the CA:"
@@ -547,9 +1076,10 @@ EOF
 
 # ── Pre-flight Image Verification ─────────────────────────────
 verify_images() {
-    # Check that pinned image versions actually exist before pulling.
-    # Catches typos / unreleased versions early with a clear message.
-    # Skip with FM_SKIP_IMAGE_VERIFY=true (e.g. CI testing with local images).
+    # Local-first verification:
+    #   1. Accept exact local tags without contacting the registry.
+    #   2. Only verify remotely when the local tag is missing.
+    # Skip remote verification with FM_SKIP_IMAGE_VERIFY=true.
     if [ "${FM_SKIP_IMAGE_VERIFY:-}" = "true" ]; then
         info "Skipping remote image verification (FM_SKIP_IMAGE_VERIFY=true)"
         return 0
@@ -577,8 +1107,10 @@ verify_images() {
 
     local failed=0
     for img in "${images[@]}"; do
-        if docker manifest inspect "$img" >/dev/null 2>&1; then
-            ok "$img"
+        if local_image_exists "$img"; then
+            ok "$img (local cache)"
+        elif docker manifest inspect "$img" >/dev/null 2>&1; then
+            ok "$img (remote tag verified)"
         else
             error "Image not found: $img"
             failed=1
@@ -592,13 +1124,6 @@ verify_images() {
         exit 1
     fi
 }
-
-# ── Addon flags (set by cmd_up, persisted in deploy-meta) ─────
-WITH_MDNS="${WITH_MDNS:-false}"
-WITH_SSL="${WITH_SSL:-false}"
-SSL_MODE=""  # "letsencrypt" or "selfsigned"
-SSL_DOMAIN=""
-SSL_EMAIL=""
 
 # ── Compose Command Builder ──────────────────────────────────
 compose_cmd() {
@@ -633,6 +1158,11 @@ compose_cmd() {
         -f "$COMPOSE_DIR/docker-compose.selfhosted.yml"
     )
 
+    # Direct public FM port publication: only when NOT behind Traefik (SSL)
+    if [ "$WITH_SSL" != "true" ] && [ -f "$COMPOSE_DIR/docker-compose.fleet-image-ports.yml" ]; then
+        compose_files+=(-f "$COMPOSE_DIR/docker-compose.fleet-image-ports.yml")
+    fi
+
     # Zitadel port publication: only when NOT behind Traefik (SSL)
     if [ "$WITH_SSL" != "true" ]; then
         compose_files+=(-f "$COMPOSE_DIR/docker-compose.zitadel-ports.yml")
@@ -644,23 +1174,30 @@ compose_cmd() {
         if [ -z "${MDNS_ON:-}" ] || [ "$MDNS_ON" = "eth0" ]; then
             MDNS_ON=$(ip route | grep default | awk '{print $5}' | head -1)
             export MDNS_ON
-            log "Auto-detected MDNS_ON=$MDNS_ON (default route interface)"
+            info "Auto-detected MDNS_ON=$MDNS_ON (default route interface)"
         fi
         if [ -z "${MDNS_TO:-}" ] || [ "$MDNS_TO" = "br-fleet-public" ]; then
             MDNS_TO="br-${COMPOSE_PROJECT_NAME:-fleet-public}"
             export MDNS_TO
-            log "Auto-detected MDNS_TO=$MDNS_TO (Docker bridge network)"
+            info "Auto-detected MDNS_TO=$MDNS_TO (Docker bridge network)"
         fi
         compose_files+=(-f "$COMPOSE_DIR/docker-compose.mdns.yml")
     fi
 
-    # Optional: Traefik with SSL
+    # Optional: Traefik with SSL — explicit mode selection
     if [ "$WITH_SSL" = "true" ]; then
-        if [ "$SSL_MODE" = "selfsigned" ] && [ -f "$COMPOSE_DIR/docker-compose.traefik-selfsigned.yml" ]; then
-            compose_files+=(-f "$COMPOSE_DIR/docker-compose.traefik-selfsigned.yml")
-        elif [ -f "$COMPOSE_DIR/docker-compose.traefik-public.yml" ]; then
-            compose_files+=(-f "$COMPOSE_DIR/docker-compose.traefik-public.yml")
-        fi
+        case "$SSL_MODE" in
+            selfsigned|custom)
+                compose_files+=(-f "$COMPOSE_DIR/docker-compose.traefik-selfsigned.yml")
+                ;;
+            letsencrypt)
+                compose_files+=(-f "$COMPOSE_DIR/docker-compose.traefik-public.yml")
+                ;;
+            *)
+                error "compose_cmd: unknown SSL_MODE '$SSL_MODE'"
+                return 1
+                ;;
+        esac
     fi
 
     # Log loaded compose files
@@ -710,7 +1247,15 @@ run_bootstrap() {
     step "Bootstrapping Zitadel (OIDC setup)"
 
     export ZITADEL_URL="http://localhost:8080"
-    export ZITADEL_HOST_HEADER="${hostname}:${ZITADEL_EXTERNALPORT}"
+    # Host header for NAT hairpin — strip default ports (443/HTTPS, 80/HTTP)
+    # because Zitadel uses exact Host match for instance lookup
+    local _host_header="${hostname}:${ZITADEL_EXTERNALPORT}"
+    if [ "${ZITADEL_EXTERNALSECURE:-false}" = "true" ]; then
+        _host_header="${_host_header%:443}"
+    else
+        _host_header="${_host_header%:80}"
+    fi
+    export ZITADEL_HOST_HEADER="$_host_header"
     export MACHINEKEY_PATH="$STATE_DIR/machinekey/zitadel-admin-sa.json"
     export STATE_FILE="$STATE_DIR/zitadel.env"
     export SYSTEM_API_KEY_PATH="$STATE_DIR/system-api/system-user.pem"
@@ -723,7 +1268,7 @@ run_bootstrap() {
     local max_attempts=5
     while [ $attempts -lt $max_attempts ]; do
         attempts=$((attempts + 1))
-        if bash "$DEPLOY_DIR/scripts/deploy/bootstrap-zitadel.sh"; then
+        if run_quiet "Zitadel bootstrap" bash "$DEPLOY_DIR/scripts/deploy/bootstrap-zitadel.sh"; then
             ok "Bootstrap complete"
             return 0
         fi
@@ -745,59 +1290,25 @@ generate_fm_config() {
     export ZITADEL_EXTERNALPORT
     export FLEET_MANAGER_PORT
 
-    bash "$DEPLOY_DIR/scripts/deploy/generate-fm-config.sh" --mode zitadel --target docker
+    if ! run_quiet "Generating Fleet Manager OIDC config" bash "$DEPLOY_DIR/scripts/deploy/generate-fm-config.sh" --mode zitadel --target docker; then
+        error "Fleet Manager OIDC config generation failed"
+        return 1
+    fi
     ok "Fleet Manager OIDC config generated"
 }
 
 # ── Commands ──────────────────────────────────────────────────
 
 cmd_up() {
-    # Parse flags
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --with)
-                case "$2" in
-                    mdns) WITH_MDNS=true ;;
-                    *)    warn "Unknown addon: $2" ;;
-                esac
-                shift 2 ;;
-            --ssl)
-                WITH_SSL=true
-                # Next arg can be "selfsigned" or "letsencrypt" (default)
-                if [ "${2:-}" = "selfsigned" ] || [ "${2:-}" = "self-signed" ]; then
-                    SSL_MODE="selfsigned"; shift 2
-                elif [ "${2:-}" = "letsencrypt" ]; then
-                    SSL_MODE="letsencrypt"; shift 2
-                else
-                    SSL_MODE="letsencrypt"; shift
-                fi
-                ;;
-            --domain)  SSL_DOMAIN="$2"; shift 2 ;;
-            --email)   SSL_EMAIL="$2"; shift 2 ;;
-            *)         warn "Unknown flag: $1"; shift ;;
-        esac
-    done
+    parse_runtime_flags "$@"
+    enable_debug_mode
 
+    phase "Bootstrap"
     step "Starting Fleet Management"
 
-    # Preflight
-    if ! check_docker || ! check_compose; then
-        error "Docker not available. Run: ./deploy-public.sh install"
-        exit 1
-    fi
-
-    for cmd in curl jq openssl; do
-        if ! command -v "$cmd" &>/dev/null; then
-            error "Missing required tool: $cmd. Run: ./deploy-public.sh install"
-            exit 1
-        fi
-    done
-
-    # SSL validation
-    if [ "$WITH_SSL" = "true" ] && [ "$SSL_MODE" = "letsencrypt" ] && [ -z "$SSL_DOMAIN" ]; then
-        error "Let's Encrypt SSL requires a domain: ./deploy-public.sh up --ssl --domain example.com"
-        exit 1
-    fi
+    phase "Phase 1/4 — Prerequisites"
+    step "Checking prerequisites"
+    ensure_prereqs_for_up || exit 1
 
     # Detect platform and hostname
     detect_os
@@ -812,6 +1323,8 @@ cmd_up() {
         info "Detected IP: $hostname"
     fi
 
+    validate_ssl_config || exit 1
+
     # Export for compose and scripts
     export ZITADEL_HOSTNAME="$hostname"
     export FLEET_MANAGER_PORT
@@ -819,48 +1332,56 @@ cmd_up() {
     export SSL_DOMAIN
     export SSL_EMAIL="${SSL_EMAIL:-admin@${SSL_DOMAIN:-localhost}}"
 
-    # When SSL is active, Zitadel is behind Traefik on port 443
+    # When SSL is active, public HTTPS is always on port 443 (no custom port support).
+    # Traefik terminates TLS; backends are plain HTTP on the Docker bridge.
     if [ "$WITH_SSL" = "true" ]; then
         export ZITADEL_EXTERNALPORT=443
         export ZITADEL_EXTERNALSECURE=true
+        export ZITADEL_TLS_MODE=external
         if [ "$SSL_MODE" = "selfsigned" ]; then
             info "SSL enabled — self-signed certificate for $hostname"
+        elif [ "$SSL_MODE" = "custom" ]; then
+            info "SSL enabled — using custom certificate for $hostname"
         else
             info "SSL enabled — Traefik will provision Let's Encrypt certificate for $SSL_DOMAIN"
         fi
     else
         export ZITADEL_EXTERNALPORT
         export ZITADEL_EXTERNALSECURE=false
+        export ZITADEL_TLS_MODE=disabled
     fi
 
-    # Generate passwords and state
+    phase "Phase 2/4 — Configuration"
     step "Preparing configuration"
     generate_passwords
     save_env
+    save_deploy_meta "$hostname"
     generate_init_sql
     generate_system_api_keypair
 
     # Generate self-signed TLS cert if needed
     if [ "$WITH_SSL" = "true" ] && [ "$SSL_MODE" = "selfsigned" ]; then
         generate_selfsigned_cert "$hostname"
+    elif [ "$WITH_SSL" = "true" ] && [ "$SSL_MODE" = "custom" ]; then
+        install_custom_cert
     fi
 
     # Create machinekey directory writable by Zitadel container (runs as UID 1000)
     mkdir -p "$STATE_DIR/machinekey"
     chmod 0777 "$STATE_DIR/machinekey"
 
-    # Pre-flight: verify critical images exist before pulling
+    phase "Phase 3/4 — Containers"
     step "Verifying Docker images"
     verify_images
 
     # Step 1: Start databases
     step "Starting databases"
-    compose_cmd up -d fleet-db zitadel-db
+    run_quiet "Starting database containers" compose_cmd up -d fleet-db zitadel-db
     ok "Databases starting"
 
     # Step 2: Start Zitadel
     step "Starting Zitadel"
-    compose_cmd up -d zitadel
+    run_quiet "Starting Zitadel container" compose_cmd up -d zitadel
     ok "Zitadel starting"
 
     # Step 3: Wait for Zitadel health
@@ -869,13 +1390,20 @@ cmd_up() {
     # Step 3b: Wait for token endpoint readiness
     # /debug/ready passes before OIDC endpoints are initialized.
     # Must use Host header — Zitadel routes by host.
-    info "Waiting for token endpoint readiness (Host: ${hostname}:${ZITADEL_EXTERNALPORT})..."
+    # Strip default ports (443/HTTPS, 80/HTTP) — Zitadel uses exact Host match.
+    local _probe_host="${hostname}:${ZITADEL_EXTERNALPORT}"
+    if [ "${ZITADEL_EXTERNALSECURE:-false}" = "true" ]; then
+        _probe_host="${_probe_host%:443}"
+    else
+        _probe_host="${_probe_host%:80}"
+    fi
+    info "Waiting for token endpoint readiness (Host: ${_probe_host})..."
     local token_elapsed=0
     while [ $token_elapsed -lt 60 ]; do
         local http_code
         http_code=$(curl -s --connect-timeout 10 --max-time 10 -o /dev/null -w '%{http_code}' \
             -X POST "http://localhost:8080/oauth/v2/token" \
-            -H "Host: ${hostname}:${ZITADEL_EXTERNALPORT}" \
+            -H "Host: ${_probe_host}" \
             -H "Content-Type: application/x-www-form-urlencoded" \
             -d "grant_type=client_credentials&client_id=probe&client_secret=probe" 2>/dev/null || echo "000")
         if [ "$http_code" != "000" ] && [ "${http_code:0:1}" != "5" ]; then
@@ -888,14 +1416,14 @@ cmd_up() {
 
     # Step 4: Bootstrap (idempotent)
     if [ ! -f "$STATE_DIR/zitadel.env" ]; then
-        run_bootstrap "$hostname"
+        run_bootstrap "$hostname" || return 1
     else
         # Only re-run if hostname changed (updates redirect URIs)
         local prev_hostname=""
         prev_hostname=$(sed -n 's|^ZITADEL_ISSUER_URL=https\{0,1\}://\([^:/]*\).*|\1|p' "$STATE_DIR/zitadel.env" 2>/dev/null || true)
         if [ "$prev_hostname" != "$hostname" ]; then
             info "Hostname changed ($prev_hostname -> $hostname), re-running bootstrap"
-            run_bootstrap "$hostname"
+            run_bootstrap "$hostname" || return 1
         else
             ok "Zitadel already bootstrapped (hostname unchanged)"
         fi
@@ -903,17 +1431,20 @@ cmd_up() {
 
     # Step 5: Generate FM config
     step "Configuring Fleet Manager"
-    generate_fm_config "$hostname"
+    generate_fm_config "$hostname" || return 1
 
     # Step 6: Start Fleet Manager + remaining services
     step "Starting Fleet Manager"
-    compose_cmd up -d
+    run_quiet "Starting Fleet Manager containers" compose_cmd up -d
     ok "All services starting"
 
-    # Verify port mapping (diagnostic — helps debug CI failures)
-    local actual_port
-    actual_port=$(docker port "${COMPOSE_PROJECT_NAME}-fleet-manager-1" 7011 2>/dev/null | head -1 || true)
-    info "FM port mapping: ${actual_port:-unknown} (expected 0.0.0.0:${FLEET_MANAGER_PORT})"
+    if [ "$WITH_SSL" != "true" ]; then
+        local actual_port
+        actual_port=$(docker port "$(container_name fleet-manager)" 7011 2>/dev/null | head -1 || true)
+        info "FM port mapping: ${actual_port:-unknown} (expected 0.0.0.0:${FLEET_MANAGER_PORT})"
+    else
+        info "FM public traffic is routed through Traefik only"
+    fi
 
     # Step 7: Wait for FM health (longer timeout for RPi / slow storage)
     # Stream FM logs in background so user sees what's happening
@@ -922,7 +1453,7 @@ cmd_up() {
     # Stream FM logs in background. Use a temp file so we can kill docker-logs
     # directly (killing only 'sed' leaves docker-logs alive if FM is idle,
     # which can keep CI process groups alive past the script's exit).
-    docker logs -f "${COMPOSE_PROJECT_NAME}-fleet-manager-1" 2>&1 \
+    docker logs -f "$(container_name fleet-manager)" 2>&1 \
         | sed 's/^/    /' &
     local sed_pid=$!
 
@@ -930,25 +1461,23 @@ cmd_up() {
         kill "$sed_pid" 2>/dev/null || true
         # Also kill docker-logs directly — sed death only triggers SIGPIPE
         # when docker-logs writes, which may never happen if FM is idle.
-        pkill -f "docker logs -f ${COMPOSE_PROJECT_NAME}-fleet-manager-1" 2>/dev/null || true
+        pkill -f "docker logs -f $(container_name fleet-manager)" 2>/dev/null || true
         wait "$sed_pid" 2>/dev/null || true
     }
 
     local elapsed=0
     local fm_timeout=120
-    local health_url="http://localhost:${FLEET_MANAGER_PORT}/health"
-    info "Health check target: ${health_url}"
+    local health_status=""
     while [ $elapsed -lt $fm_timeout ]; do
-        local curl_exit=0
-        curl -sf --connect-timeout 10 --max-time 10 "$health_url" >/dev/null 2>&1 || curl_exit=$?
-        if [ $curl_exit -eq 0 ]; then
+        health_status="$(container_health_status "$(container_name fleet-manager)")"
+        if [ "$health_status" = "healthy" ] || [ "$health_status" = "running" ]; then
             kill_log_tail
             ok "Fleet Manager is ready (${elapsed}s)"
             break
         fi
         # Log progress every 15s so CI shows the script is alive
         if [ $((elapsed % 15)) -eq 0 ] && [ $elapsed -gt 0 ]; then
-            info "  Still waiting... (${elapsed}s, curl exit=$curl_exit)"
+            info "  Still waiting... (${elapsed}s, health=${health_status:-unknown})"
         fi
         sleep 3
         elapsed=$((elapsed + 3))
@@ -958,13 +1487,15 @@ cmd_up() {
         warn "Fleet Manager did not become healthy within ${fm_timeout}s"
         # Dump diagnostics so CI logs show why
         warn "Diagnostics:"
-        warn "  Port mapping: $(docker port "${COMPOSE_PROJECT_NAME}-fleet-manager-1" 7011 2>/dev/null || echo 'none')"
-        warn "  Container status: $(docker inspect -f '{{.State.Status}}' "${COMPOSE_PROJECT_NAME}-fleet-manager-1" 2>/dev/null || echo 'unknown')"
-        warn "  Curl to health: $(curl -sv --connect-timeout 5 --max-time 5 "$health_url" 2>&1 | head -20)"
+        warn "  Health status: $(container_health_status "$(container_name fleet-manager)")"
+        warn "  Container state: $(docker inspect -f '{{.State.Status}}' "$(container_name fleet-manager)" 2>/dev/null || echo 'unknown')"
+        if [ "$WITH_SSL" != "true" ]; then
+            warn "  Port mapping: $(docker port "$(container_name fleet-manager)" 7011 2>/dev/null || echo 'none')"
+        fi
         warn "It may still be running migrations. Check: ./deploy-public.sh logs fleet-manager"
     fi
 
-    # Step 8: Apply retention policies (configurable via ENV)
+    phase "Phase 4/4 — Finalization"
     step "Configuring data retention"
     apply_retention_policies
 
@@ -973,6 +1504,8 @@ cmd_up() {
 }
 
 cmd_down() {
+    enable_debug_mode
+
     step "Stopping Fleet Management"
 
     local remove_volumes=false
@@ -982,12 +1515,8 @@ cmd_down() {
         esac
     done
 
-    if [ -f "$STATE_DIR/.env" ]; then
-        # shellcheck source=/dev/null
-        source "$STATE_DIR/.env"
-        export POSTGRES_PASSWORD ZITADEL_POSTGRES_PASSWORD ZITADEL_DB_USER_PASSWORD
-        export ZITADEL_ADMIN_PASSWORD ZITADEL_MASTERKEY
-    fi
+    load_state_env
+    load_deploy_meta
 
     export ZITADEL_HOSTNAME="${ZITADEL_HOSTNAME:-localhost}"
     export ZITADEL_EXTERNALPORT
@@ -996,26 +1525,23 @@ cmd_down() {
 
     if [ "$remove_volumes" = true ]; then
         warn "Removing containers AND volumes (all data will be lost)"
-        compose_cmd down -v
+        run_quiet "Stopping containers and removing volumes" compose_cmd down -v
         rm -rf "$STATE_DIR"
         ok "Stopped and removed all data"
     else
-        compose_cmd down
+        run_quiet "Stopping containers" compose_cmd down
         ok "Stopped (data preserved in Docker volumes)"
     fi
 }
 
 cmd_status() {
+    enable_debug_mode
     detect_os
     step "Fleet Management Status"
     info "Platform: ${OS}/${ARCH}${DISTRO:+ ($DISTRO)}"
 
-    if [ -f "$STATE_DIR/.env" ]; then
-        # shellcheck source=/dev/null
-        source "$STATE_DIR/.env"
-        export POSTGRES_PASSWORD ZITADEL_POSTGRES_PASSWORD ZITADEL_DB_USER_PASSWORD
-        export ZITADEL_ADMIN_PASSWORD ZITADEL_MASTERKEY
-    fi
+    load_state_env
+    load_deploy_meta
 
     export ZITADEL_HOSTNAME="${ZITADEL_HOSTNAME:-localhost}"
     export ZITADEL_EXTERNALPORT
@@ -1026,25 +1552,23 @@ cmd_status() {
 
     echo ""
     # Health checks
-    local ip
-    ip=$(detect_ip)
 
     printf "  %-20s " "Fleet Manager:"
-    if curl -sf "http://localhost:${FLEET_MANAGER_PORT}/health" >/dev/null 2>&1; then
+    if [ "$(container_health_status "$(container_name fleet-manager)")" = "healthy" ]; then
         echo "${GREEN}healthy${RESET}"
     else
         echo "${RED}unhealthy${RESET}"
     fi
 
     printf "  %-20s " "Zitadel:"
-    if curl -sf "http://localhost:8080/debug/ready" >/dev/null 2>&1; then
+    if [ "$(container_health_status "$(container_name zitadel)")" = "healthy" ]; then
         echo "${GREEN}healthy${RESET}"
     else
         echo "${RED}unhealthy${RESET}"
     fi
 
     printf "  %-20s " "TimescaleDB:"
-    if docker exec fm-fleet-db-1 pg_isready -U postgres >/dev/null 2>&1; then
+    if [ "$(container_health_status "$(container_name fleet-db)")" = "healthy" ]; then
         echo "${GREEN}healthy${RESET}"
     else
         echo "${RED}unhealthy${RESET}"
@@ -1052,12 +1576,9 @@ cmd_status() {
 }
 
 cmd_logs() {
-    if [ -f "$STATE_DIR/.env" ]; then
-        # shellcheck source=/dev/null
-        source "$STATE_DIR/.env"
-        export POSTGRES_PASSWORD ZITADEL_POSTGRES_PASSWORD ZITADEL_DB_USER_PASSWORD
-        export ZITADEL_ADMIN_PASSWORD ZITADEL_MASTERKEY
-    fi
+    enable_debug_mode
+    load_state_env
+    load_deploy_meta
 
     export ZITADEL_HOSTNAME="${ZITADEL_HOSTNAME:-localhost}"
     export ZITADEL_EXTERNALPORT
@@ -1068,14 +1589,11 @@ cmd_logs() {
 }
 
 cmd_update() {
+    enable_debug_mode
     step "Updating Fleet Management"
 
-    if [ -f "$STATE_DIR/.env" ]; then
-        # shellcheck source=/dev/null
-        source "$STATE_DIR/.env"
-        export POSTGRES_PASSWORD ZITADEL_POSTGRES_PASSWORD ZITADEL_DB_USER_PASSWORD
-        export ZITADEL_ADMIN_PASSWORD ZITADEL_MASTERKEY
-    fi
+    load_state_env
+    load_deploy_meta
 
     export ZITADEL_HOSTNAME="${ZITADEL_HOSTNAME:-localhost}"
     export ZITADEL_EXTERNALPORT
@@ -1083,17 +1601,19 @@ cmd_update() {
     export FM_VERSION
 
     info "Pulling latest images..."
-    compose_cmd pull
+    run_quiet "Pulling updated images" compose_cmd pull
 
     info "Restarting services..."
-    compose_cmd up -d
+    run_quiet "Restarting containers" compose_cmd up -d
 
     ok "Update complete"
     cmd_status
 }
 
 cmd_ip() {
+    enable_debug_mode
     detect_os
+    load_deploy_meta
     local ip
     ip=$(detect_ip)
 
@@ -1102,11 +1622,20 @@ cmd_ip() {
     echo "${BOLD}Machine IP:${RESET} $ip"
     echo ""
     echo "${BOLD}Access URLs:${RESET}"
-    echo "  Fleet Manager:  ${CYAN}http://${ip}:${FLEET_MANAGER_PORT}${RESET}"
-    echo "  Zitadel Console: ${CYAN}http://${ip}:${ZITADEL_EXTERNALPORT}${RESET}"
-    echo ""
-    echo "${BOLD}Device WebSocket:${RESET}"
-    echo "  ws://${ip}:${FLEET_MANAGER_PORT}/shelly"
+    if [ "$WITH_SSL" = "true" ]; then
+        local hostname="${SSL_DOMAIN:-${DEPLOY_HOSTNAME:-$ip}}"
+        echo "  Fleet Manager:  ${CYAN}https://${hostname}${RESET}"
+        echo "  Zitadel Console: ${CYAN}https://${hostname}${RESET}"
+        echo ""
+        echo "${BOLD}Device WebSocket:${RESET}"
+        echo "  wss://${hostname}/shelly"
+    else
+        echo "  Fleet Manager:  ${CYAN}http://${ip}:${FLEET_MANAGER_PORT}${RESET}"
+        echo "  Zitadel Console: ${CYAN}http://${ip}:${ZITADEL_EXTERNALPORT}${RESET}"
+        echo ""
+        echo "${BOLD}Device WebSocket:${RESET}"
+        echo "  ws://${ip}:${FLEET_MANAGER_PORT}/shelly"
+    fi
     echo ""
 }
 
@@ -1173,6 +1702,11 @@ print_summary() {
 
 # ── Doctor ─────────────────────────────────────────────────────
 cmd_doctor() {
+    parse_runtime_flags "$@"
+    enable_debug_mode
+    load_state_env
+    load_deploy_meta
+
     echo ""
     echo "${BOLD}Fleet Management — System Diagnostics${RESET}"
     echo ""
@@ -1181,7 +1715,7 @@ cmd_doctor() {
 
     # 1. Docker
     step "Docker"
-    if command -v docker &>/dev/null; then
+    if docker_cli_exists; then
         ok "Docker installed: $(docker --version 2>/dev/null | grep -o '[0-9][0-9.]*' | head -1)"
     else
         error "Docker not installed"; issues=$((issues + 1))
@@ -1196,6 +1730,11 @@ cmd_doctor() {
     else
         error "Docker Compose (v2) not found"; issues=$((issues + 1))
     fi
+    if [ -n "${BASH_VERSION:-}" ]; then
+        ok "Bash: ${BASH_VERSION%%(*}"
+    else
+        warn "Could not determine Bash version"
+    fi
 
     # 2. Required tools
     step "Required tools"
@@ -1208,7 +1747,7 @@ cmd_doctor() {
     done
 
     # 3. Docker images
-    step "Docker images (from VERSIONS.env)"
+    step "Docker images (local cache)"
     if [ -f "$VERSIONS_FILE" ]; then
         # shellcheck source=/dev/null
         source "$VERSIONS_FILE"
@@ -1218,19 +1757,27 @@ cmd_doctor() {
         "postgres:${ZITADEL_POSTGRES_VERSION:-?}"
         "ghcr.io/zitadel/zitadel:${ZITADEL_VERSION:-?}"
         "${DOCKER_HUB_IMAGE}:${FM_VERSION:-?}"
-        "traefik:${TRAEFIK_VERSION:-?}"
     )
+    if [ "$WITH_SSL" = "true" ]; then
+        images+=("traefik:${TRAEFIK_VERSION:-?}")
+    fi
     for img in "${images[@]}"; do
-        if docker manifest inspect "$img" >/dev/null 2>&1; then
+        if local_image_exists "$img"; then
             ok "$img"
         else
-            error "Not found: $img"; issues=$((issues + 1))
+            warn "Not cached locally: $img (will be pulled on up)"
         fi
     done
 
     # 4. Ports
     step "Port availability"
-    for port in "${FLEET_MANAGER_PORT:-7011}" "${ZITADEL_EXTERNALPORT:-9090}" 80 443; do
+    local ports=()
+    if [ "$WITH_SSL" = "true" ]; then
+        ports=(80 443)
+    else
+        ports=("${FLEET_MANAGER_PORT:-7011}" "${ZITADEL_EXTERNALPORT:-9090}" 8100 8101 8102 8103 8104)
+    fi
+    for port in "${ports[@]}"; do
         if ! ss -tlnp 2>/dev/null | grep -q ":${port} " && \
            ! lsof -i ":${port}" -sTCP:LISTEN &>/dev/null 2>&1; then
             ok "Port $port available"
@@ -1244,13 +1791,30 @@ cmd_doctor() {
     if [ -d "$STATE_DIR" ]; then
         ok "Exists: $STATE_DIR"
         [ -f "$STATE_DIR/.env" ]        && ok "Passwords: .env" || info "No .env (first run)"
+        [ -f "$DEPLOY_META_FILE" ]      && ok "Deploy meta: deploy-meta.env" || info "No deploy-meta.env (topology not saved yet)"
         [ -f "$STATE_DIR/zitadel.env" ] && ok "Bootstrap: zitadel.env" || info "No zitadel.env (not bootstrapped)"
         [ -f "$STATE_DIR/fm-oidc.env" ] && ok "OIDC config: fm-oidc.env" || info "No fm-oidc.env (not configured)"
     else
         info "State directory does not exist (will be created on first run)"
     fi
 
-    # 6. Network
+    # 6. SSL mode
+    step "SSL configuration"
+    if [ "$WITH_SSL" = "true" ]; then
+        if validate_ssl_config; then
+            ok "SSL configuration valid (${SSL_MODE})"
+            if [ "$SSL_MODE" = "selfsigned" ] || [ "$SSL_MODE" = "custom" ]; then
+                [ -f "$STATE_DIR/tls/server.crt" ] && ok "Traefik certificate: server.crt" || warn "No installed server.crt yet"
+                [ -f "$STATE_DIR/tls/server.key" ] && ok "Traefik key: server.key" || warn "No installed server.key yet"
+            fi
+        else
+            issues=$((issues + 1))
+        fi
+    else
+        info "SSL disabled (direct port mode)"
+    fi
+
+    # 7. Network
     step "Network"
     local ip
     ip=$(detect_ip)
@@ -1260,8 +1824,13 @@ cmd_doctor() {
     else
         warn "Cannot reach Docker Hub (images must be pre-pulled)"
     fi
+    if curl -sf --max-time 5 "https://ghcr.io" >/dev/null 2>&1; then
+        ok "GHCR reachable"
+    else
+        warn "Cannot reach GHCR"
+    fi
 
-    # 7. Disk space
+    # 8. Disk space
     step "Disk space"
     local avail_kb
     avail_kb=$(df -k "$DEPLOY_DIR" 2>/dev/null | awk 'NR==2{print $4}')
@@ -1276,7 +1845,7 @@ cmd_doctor() {
         fi
     fi
 
-    # 8. Running services
+    # 9. Running services
     step "Running services"
     if docker ps --filter "name=^${COMPOSE_PROJECT_NAME:-fm}-" --format '{{.Names}}: {{.Status}}' 2>/dev/null | head -10 | grep -q .; then
         docker ps --filter "name=^${COMPOSE_PROJECT_NAME:-fm}-" --format '{{.Names}}: {{.Status}}' 2>/dev/null | while read -r line; do
@@ -1310,19 +1879,39 @@ cmd_help() {
     echo "${BOLD}Usage:${RESET} ./deploy-public.sh <command>"
     echo ""
     echo "${BOLD}Commands:${RESET}"
-    echo "  ${CYAN}install${RESET}                          Install Docker and dependencies"
-    echo "  ${CYAN}up${RESET}                               Start Fleet Management"
+    echo "  ${CYAN}install${RESET}                          Install Docker and required system dependencies"
+    echo "  ${CYAN}up${RESET}                               Check prerequisites, install missing ones, and start Fleet Management"
     echo "  ${CYAN}up --with mdns${RESET}                   Start with mDNS device discovery"
     echo "  ${CYAN}up --ssl --domain fm.example.com${RESET} Start with HTTPS (Let's Encrypt)"
     echo "  ${CYAN}up --ssl selfsigned${RESET}              Start with HTTPS (self-signed cert)"
-    echo "  ${CYAN}down${RESET}                             Stop Fleet Management"
-    echo "  ${CYAN}down --volumes${RESET}                   Stop and remove all data"
+    echo "  ${CYAN}up --ssl custom --domain fm.example.com --cert /path/fullchain.pem --key /path/privkey.pem${RESET}"
+    echo "                                     Start with HTTPS (custom certificate)"
+    echo "  ${CYAN}down${RESET}                             Stop Fleet Management and keep data"
+    echo "  ${CYAN}down --volumes${RESET}                   Stop Fleet Management and delete all data"
     echo "  ${CYAN}status${RESET}                           Show service status and health"
     echo "  ${CYAN}logs${RESET} [service]                   Show logs (follow mode)"
     echo "  ${CYAN}update${RESET}                           Pull latest images and restart"
-    echo "  ${CYAN}ip${RESET}                               Show machine IP and access URLs"
-    echo "  ${CYAN}doctor${RESET}                           Check system readiness"
+    echo "  ${CYAN}ip${RESET}                               Show access URLs"
+    echo "  ${CYAN}doctor${RESET} [--ssl ...]               Troubleshoot readiness, dependencies, and SSL configuration"
     echo "  ${CYAN}help${RESET}                             Show this help"
+    echo ""
+    echo "${BOLD}Global Options:${RESET}"
+    echo "  ${CYAN}--debug${RESET}                           Print traced shell commands and extra diagnostics"
+    echo "                                    Normal mode keeps installers and Docker orchestration quiet unless something fails."
+    echo ""
+    echo "${BOLD}Public Quick Start:${RESET}"
+    echo "  ${CYAN}./deploy-public.sh up${RESET} installs missing prerequisites if needed and starts the stack."
+    echo "  On Linux this may prompt for sudo during the first run."
+    echo "  On macOS it may trigger Homebrew or Docker Desktop permission/setup prompts."
+    echo ""
+    echo "${BOLD}Which SSL Mode?${RESET}"
+    echo "  ${CYAN}selfsigned${RESET}  For anything not publicly issuable by Let's Encrypt:"
+    echo "               IPv4 addresses, .local names, split-DNS/internal hostnames, and local domains."
+    echo "  ${CYAN}letsencrypt${RESET} For a real public FQDN that resolves publicly to this server and can pass ACME on ports 80/443."
+    echo "  ${CYAN}custom${RESET}      For an existing certificate/key pair, including a corporate or internal CA."
+    echo ""
+    echo "  All SSL modes terminate TLS at Traefik on port 443. --domain accepts a plain hostname,"
+    echo "  FQDN, or IPv4 address where supported. host:port and IPv6 literals are not supported."
     echo ""
     echo "${BOLD}Supported platforms:${RESET}"
     echo "  Ubuntu/Debian, Raspberry Pi OS (arm64), Arch Linux, macOS"
@@ -1353,16 +1942,18 @@ cmd_help() {
 main() {
     local command="${1:-help}"
     shift || true
+    parse_global_flags "$@"
+    set -- "${PARSED_GLOBAL_ARGS[@]}"
 
     case "$command" in
-        install)  cmd_install ;;
+        install)  cmd_install "$@" ;;
         up)       cmd_up "$@" ;;
         down)     cmd_down "$@" ;;
-        status)   cmd_status ;;
+        status)   cmd_status "$@" ;;
         logs)     cmd_logs "$@" ;;
-        update)   cmd_update ;;
-        ip)       cmd_ip ;;
-        doctor)   cmd_doctor ;;
+        update)   cmd_update "$@" ;;
+        ip)       cmd_ip "$@" ;;
+        doctor)   cmd_doctor "$@" ;;
         help|-h|--help) cmd_help ;;
         *)
             error "Unknown command: $command"

@@ -398,6 +398,7 @@ async function loadGuiInfo() {
             fmHost.startsWith('10.') ||
             fmHost.startsWith('192.168.') ||
             /^172\.(1[6-9]|2\d|3[01])\./.test(fmHost);
+        const isHttps = window.location.protocol === 'https:';
 
         if (isLAN && data.deviceIp) {
             // LAN mode: load device GUI directly from its IP.
@@ -409,7 +410,7 @@ async function loadGuiInfo() {
                 '[DeviceWebGuiModal] Opening device GUI (direct LAN): %s',
                 guiUrl.value
             );
-        } else if (data.proxyPort && data.supportsNativeShellyAddr) {
+        } else if (!isHttps && data.proxyPort && data.supportsNativeShellyAddr) {
             // Content served from path-based proxy, RPC bridged via port proxy (WS transport)
             const rpcOrigin = `${window.location.protocol}//${window.location.hostname}:${data.proxyPort}`;
             const contentUrl = `/api/device-proxy/${props.shellyID}/gui/`;

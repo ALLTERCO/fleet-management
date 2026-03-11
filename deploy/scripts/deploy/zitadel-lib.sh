@@ -50,14 +50,30 @@ zitadel_jwt_sign() {
 # Usage: zitadel_get_token <machinekey_json_path> <zitadel_url>
 # Output: access_token string on stdout
 # Env: ZITADEL_HOST_HEADER — if set, passed as Host header (for NAT hairpin workaround)
+zitadel_host_header_scheme() {
+    if [ "${ZITADEL_EXTERNALSECURE:-false}" = "true" ]; then
+        printf 'https'
+    else
+        printf 'http'
+    fi
+}
+
 zitadel_get_token() {
     local machinekey_path="$1"
     local zitadel_url="$2"
 
-    # JWT audience must use the public hostname for Zitadel to accept it
+    # JWT audience must match the URL Zitadel considers canonical.
+    # With --tlsMode external, Zitadel expects https:// even though
+    # the internal transport is plain HTTP. Use ZITADEL_EXTERNALSECURE
+    # (via zitadel_host_header_scheme) to determine the correct scheme.
     local jwt_audience="$zitadel_url"
     if [ -n "${ZITADEL_HOST_HEADER:-}" ]; then
-        jwt_audience="http://${ZITADEL_HOST_HEADER}"
+        local _scheme
+        _scheme=$(zitadel_host_header_scheme)
+        local _host_part="${ZITADEL_HOST_HEADER}"
+        [ "$_scheme" = "https" ] && _host_part="${_host_part%:443}"
+        [ "$_scheme" = "http" ]  && _host_part="${_host_part%:80}"
+        jwt_audience="${_scheme}://${_host_part}"
     fi
 
     local jwt
@@ -246,24 +262,30 @@ system_jwt_sign() {
 # --- Add custom domain to a Zitadel instance via System API ---
 # Usage: system_api_add_instance_domain <zitadel_url> <system_key_path> <domain>
 # Returns 0 on success or if domain already exists
-# Env: ZITADEL_HOST_HEADER — if set, passed as Host header (for NAT hairpin workaround)
+# Env: ZITADEL_HOST_HEADER — if set, passed as Host header (required for instance resolution)
 system_api_add_instance_domain() {
     local zitadel_url="$1"
     local system_key_path="$2"
     local domain="$3"
     local system_user="system-user-1"
 
-    # JWT audience must use the public hostname for Zitadel to accept it
+    # System API JWT audience must match the URL Zitadel considers canonical.
+    # Same scheme logic as machinekey auth — use external scheme, not transport.
     local jwt_audience="$zitadel_url"
     if [ -n "${ZITADEL_HOST_HEADER:-}" ]; then
-        jwt_audience="http://${ZITADEL_HOST_HEADER}"
+        local _scheme
+        _scheme=$(zitadel_host_header_scheme)
+        local _host_part="${ZITADEL_HOST_HEADER}"
+        [ "$_scheme" = "https" ] && _host_part="${_host_part%:443}"
+        [ "$_scheme" = "http" ]  && _host_part="${_host_part%:80}"
+        jwt_audience="${_scheme}://${_host_part}"
     fi
 
     # Generate system API JWT
     local jwt
     jwt=$(system_jwt_sign "$system_key_path" "$system_user" "$jwt_audience")
 
-    # Build common curl args with optional Host header
+    # Build common curl args with Host header for instance resolution
     local common_args=(-sS)
     if [ -n "${ZITADEL_HOST_HEADER:-}" ]; then
         common_args+=(-H "Host: ${ZITADEL_HOST_HEADER}")

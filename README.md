@@ -8,19 +8,22 @@ Fleet Manager is a self-hosted service for managing fleets of Gen2+ [Shelly](htt
 
 - Linux (Ubuntu/Debian, Raspberry Pi arm64, Arch) or macOS
 - 4 GB RAM minimum, 8 GB recommended
-- Docker and Docker Compose (auto-installed by `deploy-public.sh install`)
+- Docker and Docker Compose (auto-installed by `deploy-public.sh up` if missing)
 - Bash 4.0+ (Linux ships this by default; macOS users need `brew install bash`)
 
-### One-command install
+### One-command bootstrap
 
 ```bash
 git clone https://github.com/ALLTERCO/fleet-management.git
 cd fleet-management
-./deploy/deploy-public.sh install   # installs Docker if needed
-./deploy/deploy-public.sh up        # starts everything
+./deploy/deploy-public.sh up        # installs prerequisites if needed and starts everything
 ```
 
-The installer will:
+On Linux, the first run may prompt for `sudo` so it can install Docker and required tools.
+On macOS, the install flow uses Homebrew and Docker Desktop and may trigger Homebrew or macOS permission/setup prompts.
+Normal mode prints high-level phases and steps only. Use `./deploy/deploy-public.sh up --debug` to print the full command trace and raw installer output.
+
+The public deploy flow will:
 
 1. Install Docker and dependencies (if not present)
 2. Pull Fleet Manager, TimescaleDB, and Zitadel images
@@ -51,14 +54,17 @@ The device will appear in the Fleet Manager dashboard.
 
 | Command                                    | Description                    |
 |--------------------------------------------|--------------------------------|
-| `./deploy/deploy-public.sh up`             | Start Fleet Management         |
-| `./deploy/deploy-public.sh down`           | Stop all services              |
-| `./deploy/deploy-public.sh down --volumes` | Stop and delete all data       |
-| `./deploy/deploy-public.sh status`         | Show service health            |
-| `./deploy/deploy-public.sh logs [service]` | View logs                      |
-| `./deploy/deploy-public.sh update`         | Pull latest images and restart |
-| `./deploy/deploy-public.sh ip`             | Show IP and access URLs        |
-| `./deploy/deploy-public.sh install`        | Install Docker + dependencies  |
+| `./deploy/deploy-public.sh up`             | Install missing prerequisites if needed, then start Fleet Management |
+| `./deploy/deploy-public.sh down`           | Stop the deployment and keep data |
+| `./deploy/deploy-public.sh down --volumes` | Stop the deployment and delete all data |
+| `./deploy/deploy-public.sh status`         | Show container and health status |
+| `./deploy/deploy-public.sh logs [service]` | Follow logs for all services or one named service |
+| `./deploy/deploy-public.sh update`         | Pull latest images and restart the deployment |
+| `./deploy/deploy-public.sh ip`             | Show access URLs and WebSocket endpoint |
+| `./deploy/deploy-public.sh doctor`         | Troubleshoot dependencies, readiness, and SSL configuration |
+| `./deploy/deploy-public.sh install`        | Manually install Docker and required system dependencies |
+
+`--debug` is available on the public commands when you want the raw shell trace and full package manager / Docker output.
 
 ## Docker Hub
 
@@ -81,6 +87,29 @@ Let's Encrypt certificate for public domains:
 ```bash
 ./deploy/deploy-public.sh up --ssl --domain your.domain.com
 ```
+
+Custom certificate for public domains:
+
+```bash
+./deploy/deploy-public.sh up --ssl custom --domain your.domain.com \
+  --cert /path/fullchain.pem --key /path/privkey.pem
+```
+
+All SSL modes terminate TLS at Traefik on port 443. `--domain` must be a plain hostname, FQDN, or IPv4 address where supported — `host:port` is not accepted, and IPv6 literals are not currently supported.
+
+### Which SSL mode should I use?
+
+- `selfsigned` is for anything that is not publicly issuable by Let’s Encrypt.
+- That includes IPv4 addresses, `.local`, split-DNS/internal hostnames, and local domains that only exist inside your network. IPv6 literals are not currently supported.
+- `letsencrypt` is only for a real public FQDN that resolves publicly to the server and can pass ACME on port `80/443`.
+- `custom` is for “I already have a cert/key I want to use”, including a corporate/internal CA for an internal domain.
+
+### Custom certificate requirements
+
+- `--cert` must be a PEM-encoded fullchain file (leaf certificate + any intermediate CA certificates, in order)
+- `--key` must be a PEM-encoded private key matching the certificate
+- The certificate must cover the `--domain` value (checked via SAN/CN)
+- Files are copied into `deploy/state/tls/` and loaded by Traefik at startup
 
 ## Architecture
 

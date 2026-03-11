@@ -13,7 +13,7 @@ This guide covers deploying Fleet Management using the `deploy-public.sh` script
 | `curl`           | any      | Zitadel bootstrap                           |
 | `openssl`        | any      | Zitadel bootstrap (JWT signing)             |
 
-All prerequisites are auto-installed by `deploy-public.sh install` on supported platforms.
+If prerequisites are missing, `deploy-public.sh up` will run the install flow automatically on supported platforms.
 
 ---
 
@@ -22,9 +22,12 @@ All prerequisites are auto-installed by `deploy-public.sh install` on supported 
 ```bash
 git clone https://github.com/ALLTERCO/fleet-management.git
 cd fleet-management
-./deploy/deploy-public.sh install   # installs Docker if needed
-./deploy/deploy-public.sh up        # starts everything
+./deploy/deploy-public.sh up        # installs prerequisites if needed and starts everything
 ```
+
+On Linux, the first run may prompt for `sudo` so it can install Docker and required tools.
+On macOS, the install flow uses Homebrew and Docker Desktop and may trigger Homebrew or macOS permission/setup prompts.
+Normal mode prints high-level phases and steps only. Use `./deploy/deploy-public.sh up --debug` to print the full command trace and raw installer output.
 
 Once ready, you'll see:
 
@@ -47,24 +50,39 @@ Once ready, you'll see:
 
 ### Commands
 
-| Command                  | Description                                    |
-|--------------------------|------------------------------------------------|
-| `install`                | Install Docker and dependencies                |
-| `up`                     | Start all services (first run bootstraps auth) |
-| `down`                   | Stop all services                              |
-| `down --volumes`         | Stop and delete all data                       |
-| `status`                 | Show service health                            |
-| `logs [service]`         | View logs (optionally for a single service)    |
-| `update`                 | Pull latest images and restart                 |
-| `ip`                     | Show IP and access URLs                        |
+| Command                  | Description                                                        |
+|--------------------------|--------------------------------------------------------------------|
+| `install`                | Install Docker and dependencies                                    |
+| `up`                     | Check prerequisites, install missing ones, then start all services |
+| `down`                   | Stop all services                                                  |
+| `down --volumes`         | Stop and delete all data                                           |
+| `status`                 | Show service health                                                |
+| `logs [service]`         | View logs (optionally for a single service)                        |
+| `update`                 | Pull latest images and restart                                     |
+| `ip`                     | Show IP and access URLs                                            |
+| `doctor`                 | Run diagnostics (see below)                                        |
 
 ### Options
 
-| Option                   | Description                                    |
-|--------------------------|------------------------------------------------|
-| `--ssl selfsigned`       | Enable HTTPS with a self-signed certificate    |
-| `--ssl --domain <name>`  | Enable HTTPS with Let's Encrypt                |
-| `--with mdns`            | Enable mDNS device discovery                   |
+| Option                                                     | Description                                                       |
+|------------------------------------------------------------|-------------------------------------------------------------------|
+| `--ssl selfsigned`                                         | Enable HTTPS with a self-signed certificate                       |
+| `--ssl --domain <name>`                                    | Enable HTTPS with Let's Encrypt                                   |
+| `--ssl custom --domain <name> --cert <path> --key <path>`  | Enable HTTPS with an existing certificate/key                     |
+| `--with mdns`                                              | Enable mDNS device discovery                                      |
+| `--debug`                                                  | Print traced shell commands and raw installer / Docker output     |
+
+`doctor` is optional. Use it to troubleshoot readiness before or after deployment. It checks:
+
+1. Docker daemon and Docker Compose availability
+2. Required tools (curl, jq, openssl)
+3. Docker image availability (checks local cache; warns if missing)
+4. Port availability (7011, 9090, and 80/443 if SSL)
+5. State directory and generated config files
+6. SSL certificate status (if SSL mode was used)
+7. Network reachability (IP detection and Docker Hub connectivity)
+8. Disk space (warns below 20 GB, errors below 10 GB)
+9. Running containers and their health status
 
 ---
 
@@ -88,6 +106,33 @@ Automatically obtains and renews a certificate from Let's Encrypt. Requires:
 
 - Port 80 and 443 accessible from the internet
 - DNS A record pointing to your server's public IP
+
+### Custom certificate (public domains)
+
+```bash
+./deploy/deploy-public.sh up --ssl custom --domain your.domain.com \
+  --cert /path/fullchain.pem --key /path/privkey.pem
+```
+
+Uses your existing certificate and private key instead of Let’s Encrypt.
+
+**Custom certificate requirements:**
+
+- `--cert` must be a PEM-encoded fullchain file (leaf certificate followed by any intermediate CA certificates)
+- `--key` must be a PEM-encoded private key that matches the certificate
+- The certificate must cover the `--domain` value (validated via SAN/CN at deploy time)
+- Files are copied into `deploy/state/tls/` — on subsequent `up` runs, previously installed certs are reused automatically if `--cert`/`--key` are omitted
+
+### Which SSL mode should I use?
+
+- `selfsigned` is for anything that is not publicly issuable by Let’s Encrypt.
+- That includes IPv4 addresses, `.local`, split-DNS/internal hostnames, and local domains that only exist inside your network. IPv6 literals are not currently supported.
+- `letsencrypt` is only for a real public FQDN that resolves publicly to the server and can pass ACME on port `80/443`.
+- `custom` is for “I already have a cert/key I want to use”, including a corporate/internal CA for an internal domain.
+
+### Port and TLS model
+
+All SSL modes terminate TLS at Traefik on port 443. The `--domain` flag accepts a plain hostname, FQDN, or IPv4 address where supported — `host:port` syntax is not supported, and IPv6 literals are not currently supported. Internal services communicate over plain HTTP on the Docker bridge network; TLS is external-facing only.
 
 ---
 
@@ -240,7 +285,12 @@ See [backups.md](./backups.md) for more details.
 ./deploy/deploy-public.sh down --volumes
 ```
 
-**Warning:** `--volumes` is destructive. It deletes all database data and authentication state.
+**Warning:** `--volumes` is destructive. It removes:
+
+- All Docker volumes (database data, ACME certificates)
+- The `deploy/state/` directory (generated passwords, OIDC credentials, TLS certificates, machinekey)
+
+After `down --volumes`, the next `up` performs a fresh bootstrap from scratch.
 
 ### Full reset
 
@@ -248,7 +298,6 @@ To start completely fresh:
 
 ```bash
 ./deploy/deploy-public.sh down --volumes
-rm -rf deploy/state/
 ./deploy/deploy-public.sh up
 ```
 

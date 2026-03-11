@@ -40,7 +40,7 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    command: 'start-from-init --masterkey "${ZITADEL_MASTERKEY}" --tlsMode disabled --config /system-api/system-api-config.yaml'
+    command: 'start-from-init --masterkey "${ZITADEL_MASTERKEY}" --tlsMode ${ZITADEL_TLS_MODE:-disabled} --config /system-api/system-api-config.yaml'
     environment:
       - GOMEMLIMIT=${ZITADEL_MEM_LIMIT}
       - ZITADEL_EXTERNALPORT=${ZITADEL_EXTERNALPORT}

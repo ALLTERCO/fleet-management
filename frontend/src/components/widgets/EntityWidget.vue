@@ -1,9 +1,18 @@
 <template>
     <Widget :vertical="vertical" board :selected="selected" :vc="checkIfVC(entity.type)"
-        :class="[(!device || device.loading || !device.online) && '!bg-[var(--color-danger-subtle)] backdrop-blur']">
+        :class="[(!device || device.loading || !device.online) && 'widget-card--offline']">
 
-        <template #upper-corner>
-            Entity
+        <template #upper-corner>Entity</template>
+
+        <template v-if="!device" #status>
+            <span class="device-card__pill-off">
+                <span class="device-card__pill-dot"></span> ERROR
+            </span>
+        </template>
+        <template v-else-if="!device.online && !device.loading" #status>
+            <span class="device-card__pill-off">
+                <span class="device-card__pill-dot"></span> OFFLINE
+            </span>
         </template>
 
         <template #image>
@@ -18,12 +27,10 @@
         </template>
 
         <template #description>
-            <span v-if="!device" class="text-[var(--color-danger-text)] font-semibold"> Error </span>
-            <div v-else-if="device.loading" class="mx-auto">
+            <div v-if="device?.loading" class="mx-auto">
                 <Spinner />
             </div>
-            <span v-else-if="!device.online" class="text-[var(--color-danger-text)] font-semibold"> Offline </span>
-            <div v-else class="flex select-none gap-1.5 flex-col mt-1">
+            <div v-else-if="device?.online" class="flex select-none gap-1.5 flex-col mt-1">
                 <!-- Show the color of the RGBW, RGB, RGBCCT lights, and light entities with RGB support -->
                 <div class="flex flex-wrap gap-1.5">
                     <span v-if="((/rgbw?|rgbcct/i.test(entity.type)) || (entity.type === 'light' && entity_status?.rgb)) && device.online && entity_status?.rgb"

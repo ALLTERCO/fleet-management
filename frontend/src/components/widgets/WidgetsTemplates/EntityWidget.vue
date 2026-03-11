@@ -36,9 +36,12 @@
         :class="[selected ? 'widget-card--selected' : 'widget-card--default']" @click="onClick">
         <span class="widget-badge text-xs rounded-br-lg py-[2px] px-[6px] absolute h-5 self-center top-0 left-0 z-[var(--z-raised)]">
             <slot name="upper-corner">
-              
+
             </slot>
         </span>
+        <div v-if="$slots.status" class="absolute top-1 right-1 z-[var(--z-raised)]">
+            <slot name="status" />
+        </div>
         <div
             class="widget-image-bg w-full h-[50%] absolute top-0 left-0 border-none [&>img]:mx-auto [&>img]:h-full [&>img]:brightness-75">
             <slot name="image">

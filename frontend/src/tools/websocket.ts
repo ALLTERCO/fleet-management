@@ -484,7 +484,6 @@ export async function connect(): Promise<void> {
         client!.onopen = () => {
             debug('[WS] connected');
             connected = true;
-            // send subscribe event
             client?.send(
                 JSON.stringify({
                     jsonrpc: '2.0',

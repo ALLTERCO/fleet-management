@@ -63,6 +63,10 @@
                 <slot name="description" />
             </div>
         </div>
+        <!-- Footer (e.g. action buttons) -->
+        <div v-if="$slots.footer && !loading" class="device-card__footer">
+            <slot name="footer" />
+        </div>
         <!-- Loading overlay -->
         <div v-if="loading" class="absolute inset-0 flex items-center justify-center z-10">
             <Spinner />

@@ -1,6 +1,6 @@
 <template>
     <div class="space-y-2 h-full flex flex-col">
-        <BasicBlock bordered blurred padding="sm" class="relative z-10">
+        <BasicBlock bordered blurred padding="sm" class="relative z-[var(--z-raised)]">
             <div class="flex flex-row gap-2 items-center justify-between">
                 <div class="flex flex-row gap-2 items-baseline">
                     <span class="font-bold">Waiting Room</span>
@@ -29,7 +29,7 @@
             <Notification v-if="error" type="error"> Something went wrong </Notification>
 
             <div v-else-if="loading" class="flex-1 overflow-auto">
-                <div :class="[small ? 'flex flex-col gap-2' : 'widget-grid']">
+                <div :class="[small ? 'flex flex-col gap-2' : 'widget-grid-devices']">
                     <Skeleton v-for="i in 6" :key="'skel-p-' + i" variant="card" />
                 </div>
             </div>
@@ -41,37 +41,29 @@
                     <Button type="blue" @click="refresh">Refresh</Button>
                 </EmptyBlock>
                 <div v-else class="flex-1 overflow-auto">
-                    <div :class="[small ? 'flex flex-col gap-2' : 'widget-grid']">
-                        <Widget
+                    <div :class="[small ? 'flex flex-col gap-2' : 'widget-grid-devices']">
+                        <DeviceCard
                             v-for="[internalId, device] in paginatedPending"
                             :key="internalId"
-                            :class="[selectedSet.has(internalId) && selectMode && 'shadow-md shadow-[var(--color-primary)]']"
-                            @click="deviceClicked(internalId)"
+                            :selected="selectedSet.has(internalId) && selectMode"
+                            accent-color="#F59E0B"
+                            class="device-card--pending"
+                            @select="deviceClicked(internalId)"
                         >
-                            <template #name>
-                                {{ device.shellyID }}
+                            <template #upper-corner>Pending</template>
+                            <template #image>
+                                <img :src="getLogoFromShellyID(device.shellyID)" alt="Device" @error="(e: any) => e.target.src = '/shelly_logo.png'" />
                             </template>
-                            <template #action>
-                                <div v-if="selectMode">
-                                    <label class="flex justify-center place-items-center mt-4 ml-2 min-w-[var(--touch-target-min)] min-h-[var(--touch-target-min)] cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            class="w-4 h-4 text-[var(--color-primary)] bg-[var(--color-surface-3)] border-[var(--color-border-strong)] rounded"
-                                            :checked="selectedSet.has(internalId)"
-                                            :value="selectedSet.has(internalId)"
-                                        />
-                                    </label>
-                                </div>
-                                <div v-else class="flex flex-row gap-1 items-center justify-around h-[40px]">
-                                    <Button type="red" size="md" narrow @click="rejectDevice(internalId)"
-                                        ><i class="fas fa-xmark" aria-hidden="true"
-                                    /><span class="sr-only">Reject</span></Button>
-                                    <Button type="green" size="md" narrow @click="acceptDevice(internalId)"
-                                        ><i class="fas fa-check" aria-hidden="true"
-                                    /><span class="sr-only">Accept</span></Button>
-                                </div>
+                            <template #name>{{ device.shellyID }}</template>
+                            <template #footer>
+                                <Button type="red" size="xs" narrow @click.stop="rejectDevice(internalId)">
+                                    <i class="fas fa-xmark" />
+                                </Button>
+                                <Button type="green" size="xs" narrow @click.stop="acceptDevice(internalId)">
+                                    <i class="fas fa-check" />
+                                </Button>
                             </template>
-                        </Widget>
+                        </DeviceCard>
                     </div>
                     <div v-if="pendingPage < pendingTotalPages" class="my-4 flex justify-center h-8 pb-2">
                         <Spinner />
@@ -85,7 +77,7 @@
             <Notification v-if="deniedError" type="error"> Something went wrong </Notification>
 
             <div v-else-if="deniedLoading" class="flex-1 overflow-auto">
-                <div :class="[small ? 'flex flex-col gap-2' : 'widget-grid']">
+                <div :class="[small ? 'flex flex-col gap-2' : 'widget-grid-devices']">
                     <Skeleton v-for="i in 6" :key="'skel-d-' + i" variant="card" />
                 </div>
             </div>
@@ -97,35 +89,26 @@
                     <Button type="blue" @click="deniedRefresh">Refresh</Button>
                 </EmptyBlock>
                 <div v-else class="flex-1 overflow-auto">
-                    <div :class="[small ? 'flex flex-col gap-2' : 'widget-grid']">
-                        <Widget
+                    <div :class="[small ? 'flex flex-col gap-2' : 'widget-grid-devices']">
+                        <DeviceCard
                             v-for="[internalId, device] in paginatedDenied"
-                            :class="[selectedSet.has(internalId) && selectMode && 'shadow-md shadow-[var(--color-primary)]']"
-                            @click="deviceClicked(internalId)"
                             :key="internalId"
+                            :selected="selectedSet.has(internalId) && selectMode"
+                            accent-color="#F04E5E"
+                            class="device-card--denied"
+                            @select="deviceClicked(internalId)"
                         >
-                            <template #upper-corner> denied </template>
-                            <template #name>
-                                {{ device.shellyID }}
+                            <template #upper-corner>Denied</template>
+                            <template #image>
+                                <img :src="getLogoFromShellyID(device.shellyID)" alt="Device" @error="(e: any) => e.target.src = '/shelly_logo.png'" />
                             </template>
-                            <template #action>
-                                <div v-if="selectMode">
-                                    <label class="flex justify-center place-items-center mt-4 ml-2 min-w-[var(--touch-target-min)] min-h-[var(--touch-target-min)] cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            class="w-4 h-4 text-[var(--color-primary)] bg-[var(--color-surface-3)] border-[var(--color-border-strong)] rounded"
-                                            :checked="selectedSet.has(internalId)"
-                                            :value="selectedSet.has(internalId)"
-                                        />
-                                    </label>
-                                </div>
-                                <div v-else class="flex flex-row gap-1 items-center justify-around h-[40px]">
-                                    <Button type="green" size="md" narrow @click="acceptDevice(internalId)"
-                                        >Accept</Button
-                                    >
-                                </div>
+                            <template #name>{{ device.shellyID }}</template>
+                            <template #footer>
+                                <Button type="green" size="xs" narrow @click.stop="acceptDevice(internalId)">
+                                    <i class="fas fa-check" />
+                                </Button>
                             </template>
-                        </Widget>
+                        </DeviceCard>
                     </div>
                     <div v-if="deniedPage < deniedTotalPages" class="my-4 flex justify-center h-8 pb-2">
                         <Spinner />
@@ -146,9 +129,10 @@ import EmptyBlock from '@/components/core/EmptyBlock.vue';
 import Notification from '@/components/core/Notification.vue';
 import Skeleton from '@/components/core/Skeleton.vue';
 import Spinner from '@/components/core/Spinner.vue';
-import Widget from '@/components/widgets/WidgetsTemplates/VanilaWidget.vue';
+import DeviceCard from '@/components/widgets/WidgetsTemplates/DeviceWidget.vue';
 import useInfiniteScroll from '@/composables/useInfiniteScroll';
 import useFleetManagerRpc from '@/composables/useWsRpc';
+import {getLogoFromShellyID} from '@/helpers/device';
 import {small} from '@/helpers/ui';
 import * as ws from '@/tools/websocket';
 import type {ShellyDeviceExternal} from '@/types';

@@ -1,0 +1,10 @@
+# Fleet Manager image — direct port publication overlay
+#
+# Included by deploy-public.sh when SSL is disabled.
+# Excluded when Traefik fronts the public deployment.
+
+services:
+  fleet-manager:
+    ports:
+      - "${FLEET_MANAGER_PORT}:7011"
+      - "8100-8104:8100-8104"

@@ -25,13 +25,40 @@ source "$SCRIPT_DIR/zitadel-lib.sh"
 
 # --- Configuration ---
 ZITADEL_URL="${ZITADEL_URL:?ZITADEL_URL is required}"
+PUBLIC_SCHEME="http"
+if [ "${ZITADEL_EXTERNALSECURE:-false}" = "true" ]; then
+    PUBLIC_SCHEME="https"
+fi
+
+build_public_url() {
+    local host="$1"
+    local port="$2"
+
+    if [ "$PUBLIC_SCHEME" = "https" ] && [ "$port" = "443" ]; then
+        printf 'https://%s' "$host"
+    elif [ "$PUBLIC_SCHEME" = "http" ] && [ "$port" = "80" ]; then
+        printf 'http://%s' "$host"
+    else
+        printf '%s://%s:%s' "$PUBLIC_SCHEME" "$host" "$port"
+    fi
+}
+
 # Public URL for OIDC endpoints (what browsers use). When ZITADEL_HOST_HEADER
-# is set (NAT hairpin workaround), the public URL uses the real hostname;
-# otherwise it's the same as ZITADEL_URL.
+# is set (NAT hairpin workaround), use its host:port but preserve the secure
+# vs non-secure public scheme.
 if [ -n "${ZITADEL_HOST_HEADER:-}" ]; then
-    ZITADEL_PUBLIC_URL="http://${ZITADEL_HOST_HEADER}"
+    PUBLIC_HOST="${ZITADEL_HOST_HEADER%%:*}"
+    # If header contains a port (host:port), use it; otherwise fall back to ZITADEL_EXTERNALPORT
+    if [[ "$ZITADEL_HOST_HEADER" == *:* ]]; then
+        PUBLIC_PORT="${ZITADEL_HOST_HEADER##*:}"
+    else
+        PUBLIC_PORT="${ZITADEL_EXTERNALPORT:-8080}"
+    fi
+    ZITADEL_PUBLIC_URL="$(build_public_url "$PUBLIC_HOST" "$PUBLIC_PORT")"
 else
-    ZITADEL_PUBLIC_URL="$ZITADEL_URL"
+    PUBLIC_HOST="${ZITADEL_HOSTNAME:-localhost}"
+    PUBLIC_PORT="${ZITADEL_EXTERNALPORT:-8080}"
+    ZITADEL_PUBLIC_URL="$(build_public_url "$PUBLIC_HOST" "$PUBLIC_PORT")"
 fi
 MACHINEKEY_PATH="${MACHINEKEY_PATH:?MACHINEKEY_PATH is required}"
 STATE_FILE="${STATE_FILE:-$DEPLOY_DIR/state/zitadel.env}"
@@ -70,7 +97,11 @@ FM_PORT="${FLEET_MANAGER_PORT:-7011}"
 
 # Per-client domain override (used in shared mode)
 if [ -n "${CLIENT_DOMAIN:-}" ]; then
-    FM_BASE_URL="http://${CLIENT_DOMAIN}:${FM_PORT}"
+    FM_HOSTNAME="${CLIENT_DOMAIN}"
+fi
+
+if [ "$PUBLIC_SCHEME" = "https" ]; then
+    FM_BASE_URL="https://${FM_HOSTNAME}"
 else
     FM_BASE_URL="http://${FM_HOSTNAME}:${FM_PORT}"
 fi
@@ -187,18 +218,22 @@ if [ -n "$existing_api_app" ]; then
             "{}" "$TOKEN" "$ZITADEL_URL")
         BACKEND_CLIENT_SECRET=$(echo "$secret_response" | jq -r '.clientSecret // empty')
         if [ -z "$BACKEND_CLIENT_SECRET" ]; then
-            echo "  WARNING: Could not regenerate secret. Check Zitadel API response." >&2
-            echo "  Response: $(echo "$secret_response" | jq 'del(.clientSecret, .token)' 2>/dev/null || echo '[redacted]')" >&2
+            echo "  WARNING: Secret regeneration failed — deleting stale app and recreating..." >&2
+            zitadel_api "DELETE" \
+                "/management/v1/projects/${PROJECT_ID}/apps/${BACKEND_APP_ID}" \
+                "" "$TOKEN" "$ZITADEL_URL" >/dev/null 2>&1 || true
+            existing_api_app=""
         else
             echo "  Secret regenerated"
         fi
     else
         echo "  Using saved secret from state file"
     fi
-else
+fi
+
+# If no valid API app (either never existed or was deleted above), create fresh
+if [ -z "$existing_api_app" ]; then
     echo "  Creating API app (auth method: BASIC)..."
-    # KEY FIX: Use API_AUTH_METHOD_TYPE_BASIC, not PRIVATE_KEY_JWT
-    # Backend ZitadelService.ts expects authorization.type: "basic"
     api_response=$(zitadel_api "POST" "/management/v1/projects/${PROJECT_ID}/apps/api" \
         "{\"name\":\"${API_APP_NAME}\",\"authMethodType\":\"API_AUTH_METHOD_TYPE_BASIC\"}" \
         "$TOKEN" "$ZITADEL_URL")
@@ -224,7 +259,7 @@ if [ -n "$existing_spa_app" ]; then
     FRONTEND_CLIENT_ID=$(echo "$existing_spa_app" | jq -r '.oidcConfig.clientId // empty')
     echo "  SPA app exists: $FRONTEND_APP_ID (clientId: $FRONTEND_CLIENT_ID)"
 else
-    echo "  Creating SPA app (PKCE, devMode=true for HTTP redirects)..."
+    echo "  Creating SPA app (PKCE, devMode=true)..."
     echo "  Redirect URI: ${FM_BASE_URL}/callback"
     spa_response=$(zitadel_api "POST" "/management/v1/projects/${PROJECT_ID}/apps/oidc" \
         "{\"name\":\"${SPA_APP_NAME}\",\"responseTypes\":[\"OIDC_RESPONSE_TYPE_CODE\"],\"grantTypes\":[\"OIDC_GRANT_TYPE_AUTHORIZATION_CODE\"],\"appType\":\"OIDC_APP_TYPE_USER_AGENT\",\"authMethodType\":\"OIDC_AUTH_METHOD_TYPE_NONE\",\"redirectUris\":[\"${FM_BASE_URL}/callback\"],\"postLogoutRedirectUris\":[\"${FM_BASE_URL}/\"],\"accessTokenType\":\"OIDC_TOKEN_TYPE_BEARER\",\"accessTokenRoleAssertion\":true,\"idTokenRoleAssertion\":true,\"idTokenUserinfoAssertion\":true,\"devMode\":true}" \
@@ -349,6 +384,16 @@ if [ -n "$SERVICE_USER_ID" ]; then
         "{\"userId\":\"${SERVICE_USER_ID}\",\"roles\":[\"ORG_USER_MANAGER\"]}" \
         "$TOKEN" "$ZITADEL_URL" 2>&1 | grep -v '"already exists"' || true
     echo "  Role granted"
+fi
+
+# Grant FM project admin role (enables service token for FM /rpc auth)
+# 409 "already exists" is expected on rerun — ignore it
+if [ -n "$SERVICE_USER_ID" ] && [ -n "$PROJECT_ID" ]; then
+    echo "  Granting FM project admin role..."
+    zitadel_api "POST" "/management/v1/users/${SERVICE_USER_ID}/grants" \
+        "{\"projectId\":\"${PROJECT_ID}\",\"roleKeys\":[\"admin\"]}" \
+        "$TOKEN" "$ZITADEL_URL" 2>&1 | grep -v '"already exists"' || true
+    echo "  FM project admin granted"
 fi
 
 # --- Step 10: Register Docker-internal hostname via System API ---

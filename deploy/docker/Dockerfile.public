@@ -2,7 +2,6 @@
 # Fleet Manager — Public Edition
 #
 # Same multi-stage build as the private Dockerfile, but:
-#   - No Node-RED nodes injection (private registry package)
 #   - Only community plugins included (not paid/proprietary ones)
 #
 # Build arg:
@@ -17,24 +16,11 @@ RUN apk add --no-cache git
 
 WORKDIR /build/backend
 COPY backend/package.json backend/package-lock.json* ./
-
-# Strip private @Shelly packages — not available in public builds
-RUN node -e " \
-  var p = JSON.parse(require('fs').readFileSync('package.json', 'utf8')); \
-  delete p.dependencies['@Shelly/fleet-management-node-red-nodes']; \
-  require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2))"
-
 RUN npm install
 
 COPY backend/ ./
 RUN npx tsc --build --force
-
-# Re-strip private dep (COPY restored original package.json) then prune dev deps
-RUN node -e " \
-  var p = JSON.parse(require('fs').readFileSync('package.json', 'utf8')); \
-  delete p.dependencies['@Shelly/fleet-management-node-red-nodes']; \
-  require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2))" \
-  && npm prune --omit=dev
+RUN npm prune --omit=dev
 
 # ── Stage 2: Plugin build (community plugins only) ─────────
 FROM node:${NODE_VERSION} AS plugin-build
@@ -103,11 +89,10 @@ COPY --from=backend-build --chown=node:node /build/backend/node_modules /app/bac
 COPY --from=backend-build --chown=node:node /build/backend/package.json /app/backend/package.json
 COPY --from=backend-build --chown=node:node /build/backend/db /app/backend/db
 COPY --from=backend-build --chown=node:node /build/backend/cfg /app/backend/cfg
-COPY --from=backend-build --chown=node:node /build/backend/static /app/backend/static
 COPY --from=backend-build --chown=node:node /build/backend/validations /app/backend/validations
 COPY --from=frontend-build --chown=node:node /build/frontend/dist /app/frontend/dist
 
-# Community plugins only (no paid plugins, no Node-RED nodes)
+# Community plugins only (no paid plugins)
 COPY --from=plugin-build --chown=node:node /build/plugins /app/plugins
 
 # Seed assets

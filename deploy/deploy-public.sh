@@ -1310,7 +1310,7 @@ compose_cmd() {
         [ "$arg" = "-f" ] && continue
         file_names="${file_names:+$file_names, }$(basename "$arg")"
     done
-    info "Compose files: ${file_names}"
+    debug "Compose files: ${file_names}"
 
     docker compose \
         -p "$COMPOSE_PROJECT_NAME" \
@@ -1473,11 +1473,19 @@ cmd_up() {
     phase "Phase 3/4 — Containers"
     verify_images
 
-    run_quiet "Starting database containers" compose_cmd up -d fleet-db zitadel-db
-    ok "Databases started"
+    if run_quiet "Starting database containers" compose_cmd up -d fleet-db zitadel-db; then
+        ok "Databases started"
+    else
+        error "Failed to start database containers"
+        return 1
+    fi
 
-    run_quiet "Starting Zitadel container" compose_cmd up -d zitadel
-    ok "Zitadel started"
+    if run_quiet "Starting Zitadel container" compose_cmd up -d zitadel; then
+        ok "Zitadel started"
+    else
+        error "Failed to start Zitadel container"
+        return 1
+    fi
 
     # Step 3: Wait for Zitadel health
     wait_for_zitadel "http://localhost:8080"
@@ -1509,6 +1517,11 @@ cmd_up() {
         token_elapsed=$((token_elapsed + 2))
         spinner_update "Waiting for token endpoint... (${token_elapsed}s)"
     done
+    if [ $token_elapsed -ge 60 ]; then
+        spinner_stop fail "Token endpoint did not become ready within 60s"
+        error "Check logs: ./deploy/deploy-public.sh logs zitadel"
+        return 1
+    fi
 
     # Step 4: Bootstrap (idempotent)
     if [ ! -f "$STATE_DIR/zitadel.env" ]; then
@@ -1527,8 +1540,12 @@ cmd_up() {
 
     generate_fm_config "$hostname" || return 1
 
-    run_quiet "Starting Fleet Manager containers" compose_cmd up -d
-    ok "All services started"
+    if run_quiet "Starting Fleet Manager containers" compose_cmd up -d; then
+        ok "All services started"
+    else
+        error "Failed to start Fleet Manager containers"
+        return 1
+    fi
 
     if [ "$WITH_SSL" != "true" ]; then
         local actual_port
@@ -1577,6 +1594,7 @@ cmd_up() {
             warn "Port: $(docker port "$(container_name fleet-manager)" 7011 2>/dev/null || echo 'none')"
         fi
         warn "Check: ./deploy/deploy-public.sh logs fleet-manager"
+        return 1
     fi
 
     phase "Phase 4/4 — Finalization"
@@ -1608,13 +1626,21 @@ cmd_down() {
     if [ "$remove_volumes" = true ]; then
         warn "Removing containers AND volumes (all data will be lost)"
         spinner_start "Stopping and removing data..."
-        run_quiet "Stopping containers and removing volumes" compose_cmd down -v
-        rm -rf "$STATE_DIR"
-        spinner_stop ok "Stopped and removed all data"
+        if run_quiet "Stopping containers and removing volumes" compose_cmd down -v; then
+            rm -rf "$STATE_DIR"
+            spinner_stop ok "Stopped and removed all data"
+        else
+            spinner_stop fail "Failed to stop containers and remove volumes"
+            return 1
+        fi
     else
         spinner_start "Stopping services..."
-        run_quiet "Stopping containers" compose_cmd down
-        spinner_stop ok "Stopped (data preserved in Docker volumes)"
+        if run_quiet "Stopping containers" compose_cmd down; then
+            spinner_stop ok "Stopped (data preserved in Docker volumes)"
+        else
+            spinner_stop fail "Failed to stop services"
+            return 1
+        fi
     fi
     echo ""
 }
@@ -1640,7 +1666,11 @@ cmd_status() {
 
     echo ""
     local svc_status
-    for svc in fleet-manager zitadel fleet-db; do
+    local services=(fleet-manager zitadel fleet-db)
+    if [ "$WITH_SSL" = "true" ]; then
+        services+=(traefik)
+    fi
+    for svc in "${services[@]}"; do
         svc_status="$(container_health_status "$(container_name "$svc")" 2>/dev/null || echo "unknown")"
         if [ "$svc_status" = "healthy" ]; then
             printf "  ${GREEN}✔${RESET}  %-18s %s\n" "$svc" "${GREEN}${svc_status}${RESET}"
@@ -1690,11 +1720,24 @@ cmd_update() {
 
     spinner_start "Restarting services..."
     if run_quiet "Restarting containers" compose_cmd up -d; then
-        spinner_stop ok "Services restarted"
+        spinner_stop ok "Containers restarted"
     else
         spinner_stop fail "Restart failed"
         return 1
     fi
+
+    spinner_start "Waiting for services to become healthy..."
+    if ! wait_for_container_health "fleet-manager" 120; then
+        spinner_stop fail "Fleet Manager failed to become healthy after update"
+        return 1
+    fi
+    if [ "$WITH_SSL" = "true" ]; then
+        if ! wait_for_container_health "traefik" 60; then
+            spinner_stop fail "Traefik failed to become healthy after update"
+            return 1
+        fi
+    fi
+    spinner_stop ok "Services healthy"
 
     echo ""
     ok "Update complete"

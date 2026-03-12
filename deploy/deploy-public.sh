@@ -13,7 +13,7 @@
 #   ./deploy-public.sh down           Stop Fleet Management
 #   ./deploy-public.sh status         Show service status
 #   ./deploy-public.sh logs [service] Show logs (fleet-manager, zitadel, fleet-db)
-#   ./deploy-public.sh update         Pull latest images and restart
+#   ./deploy-public.sh update         Pull configured image tags and restart
 #   ./deploy-public.sh ip             Show machine IP and access URLs
 #   ./deploy-public.sh help           Show this help
 #
@@ -1109,18 +1109,33 @@ verify_images() {
     for img in "${images[@]}"; do
         if local_image_exists "$img"; then
             ok "$img (local cache)"
-        elif docker manifest inspect "$img" >/dev/null 2>&1; then
-            ok "$img (remote tag verified)"
         else
-            error "Image not found: $img"
+            local manifest_err
+            manifest_err="$(docker manifest inspect "$img" 2>&1 >/dev/null)" && {
+                ok "$img (remote tag verified)"
+                continue
+            }
+            # Classify the remote failure
+            case "$manifest_err" in
+                *toomanyrequests*|*429*|*rate\ limit*)
+                    error "Could not verify configured image tag (rate limited): $img" ;;
+                *unauthorized*|*denied*|*authentication\ required*)
+                    error "Could not verify configured image tag (auth failed): $img" ;;
+                *"manifest unknown"*|*"not found"*|*"no such manifest"*)
+                    error "Configured image tag does not exist: $img" ;;
+                *)
+                    error "Could not verify configured image tag: $img" ;;
+            esac
             failed=1
         fi
     done
 
     if [ $failed -eq 1 ]; then
         echo ""
-        error "Some Docker images could not be found. Check deploy/VERSIONS.env for typos."
-        error "Run './deploy-public.sh doctor' for full diagnostics."
+        error "Some configured image tags could not be resolved. Possible fixes:"
+        error "  - Check deploy/VERSIONS.env for correct image:tag values"
+        error "  - docker login"
+        error "  - docker pull <image:tag>"
         exit 1
     fi
 }
@@ -1600,8 +1615,8 @@ cmd_update() {
     export FLEET_MANAGER_PORT
     export FM_VERSION
 
-    info "Pulling latest images..."
-    run_quiet "Pulling updated images" compose_cmd pull
+    info "Pulling configured image tags..."
+    run_quiet "Pulling configured image tags" compose_cmd pull
 
     info "Restarting services..."
     run_quiet "Restarting containers" compose_cmd up -d
@@ -1696,7 +1711,7 @@ print_summary() {
     echo "    ./deploy-public.sh status   Show service status"
     echo "    ./deploy-public.sh logs     Show logs"
     echo "    ./deploy-public.sh down     Stop services"
-    echo "    ./deploy-public.sh update   Pull latest & restart"
+    echo "    ./deploy-public.sh update   Pull configured tags & restart"
     echo ""
 }
 
@@ -1890,7 +1905,7 @@ cmd_help() {
     echo "  ${CYAN}down --volumes${RESET}                   Stop Fleet Management and delete all data"
     echo "  ${CYAN}status${RESET}                           Show service status and health"
     echo "  ${CYAN}logs${RESET} [service]                   Show logs (follow mode)"
-    echo "  ${CYAN}update${RESET}                           Pull latest images and restart"
+    echo "  ${CYAN}update${RESET}                           Pull configured image tags and restart"
     echo "  ${CYAN}ip${RESET}                               Show access URLs"
     echo "  ${CYAN}doctor${RESET} [--ssl ...]               Troubleshoot readiness, dependencies, and SSL configuration"
     echo "  ${CYAN}help${RESET}                             Show this help"

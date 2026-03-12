@@ -58,7 +58,7 @@ Once ready, you'll see:
 | `down --volumes`         | Stop and delete all data                                           |
 | `status`                 | Show service health                                                |
 | `logs [service]`         | View logs (optionally for a single service)                        |
-| `update`                 | Pull latest images and restart                                     |
+| `update`                 | Pull configured image tags and restart                             |
 | `ip`                     | Show IP and access URLs                                            |
 | `doctor`                 | Run diagnostics (see below)                                        |
 
@@ -238,8 +238,11 @@ The bootstrap is **idempotent** — safe to run multiple times.
 
 1. Open the Shelly device's local web page
 2. Navigate to **Networks > Outbound WebSocket**
-3. Enable it and enter: `ws://<your-ip>:7011/shelly`
-   - Use `wss://` if SSL is enabled
+3. Enable it and enter:
+   - without SSL: `ws://<your-ip>:7011/shelly`
+   - with SSL: `wss://<your-hostname-or-ip>/shelly`
+
+In SSL mode, device WebSocket traffic goes through Traefik on port 443, so do not append `:7011`.
 
 The device will appear in the Fleet Manager waiting room. An admin must approve it before it appears in the dashboard.
 
@@ -247,13 +250,14 @@ The device will appear in the Fleet Manager waiting room. An admin must approve 
 
 ## Updating
 
-Pull the latest images and restart:
+Pull configured image tags and restart:
 
 ```bash
 ./deploy/deploy-public.sh update
 ```
 
-This pulls the newest Fleet Manager image from Docker Hub and restarts the service. Database data is preserved.
+This pulls images for the tags configured in `deploy/VERSIONS.env` and restarts services. Database data is preserved.
+If a tag is set to `latest`, update will pull the newest image for that tag.
 
 ---
 

@@ -140,7 +140,7 @@ function composeVirtualNumber(
     const min = config.min;
     const max = config.max;
     const unit = config.meta?.ui?.unit;
-    const step = config?.meta.ui?.step ?? 1;
+    const step = config?.meta?.ui?.step ?? 1;
 
     return composeVirtualComponent(
         config,
@@ -272,15 +272,33 @@ function composeVirtualComponents(shelly: ShellyDevice): entity_t[] {
         for (const key of allVirtualComponentsKeys) {
             const config = deviceConfig[key];
 
-            const entity: entity_t | null = composeDynamicComponent(
-                type,
-                config,
-                deviceName,
-                deviceId
-            );
+            if (!config || typeof config !== 'object') {
+                logger.warn(
+                    'Skipping virtual component %s on %s: missing config',
+                    key,
+                    shelly.shellyID
+                );
+                continue;
+            }
 
-            if (entity) {
-                entities.push(entity);
+            try {
+                const entity: entity_t | null = composeDynamicComponent(
+                    type,
+                    config,
+                    deviceName,
+                    deviceId
+                );
+
+                if (entity) {
+                    entities.push(entity);
+                }
+            } catch (err) {
+                logger.warn(
+                    'Failed to compose virtual component %s on %s: %s',
+                    key,
+                    shelly.shellyID,
+                    err instanceof Error ? err.message : String(err)
+                );
             }
         }
     }

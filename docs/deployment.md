@@ -98,9 +98,9 @@ Generates a self-signed certificate. Browsers will show a security warning that 
 
 For Shelly outbound WebSocket with self-signed TLS:
 
-1. Set the server URL to `wss://<your-hostname-or-ip>/shelly`
-2. Upload the Fleet Manager CA certificate (`deploy/state/tls/ca.crt`) via Device Web UI > **Settings > User certificate**
-3. In **Outbound WebSocket > SSL Connectivity**, select `user_ca.pem`
+1. Upload the Fleet Manager CA certificate (`deploy/state/tls/ca.crt`) via Device Web UI > **Settings > TLS Configuration > Custom CA PEM bundle**
+2. In **Outbound WebSocket > Connection type**, select `User TLS`
+3. Set **Server** to `wss://<your-hostname-or-ip>/shelly`
 
 `Default TLS` (`ca.pem`) will not work with self-signed certificates — the device's built-in CA bundle only covers public CAs.
 

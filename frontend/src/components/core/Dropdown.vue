@@ -144,9 +144,11 @@ const focusedIndex = ref(-1);
 const dropdownWrapper = ref<HTMLElement | null>(null);
 const searchQuery = ref('');
 
-const dropdownMaxHeight = computed(() => {
-    return window.innerHeight * 0.6;
-});
+const cachedViewportHeight = ref(window.innerHeight);
+function onViewportResize() {
+    cachedViewportHeight.value = window.innerHeight;
+}
+const dropdownMaxHeight = computed(() => cachedViewportHeight.value * 0.6);
 
 const filteredOptions = computed(() => {
     if (!searchQuery.value) {
@@ -237,10 +239,12 @@ function resetDropdown() {
 
 onMounted(() => {
     document.addEventListener('click', closeDropdown);
+    window.addEventListener('resize', onViewportResize);
 });
 
 onBeforeUnmount(() => {
     document.removeEventListener('click', closeDropdown);
+    window.removeEventListener('resize', onViewportResize);
 });
 
 // Listen for resetFilters event to reset the dropdown

@@ -28,28 +28,101 @@ set -euo pipefail
 # ── Version ───────────────────────────────────────────────────
 FM_SCRIPT_VERSION="2.0.0"
 
-# ── Colors ────────────────────────────────────────────────────
+# ── Colors & terminal ─────────────────────────────────────────
+IS_TTY=false
 if [ -t 1 ] && command -v tput &>/dev/null && [ "$(tput colors 2>/dev/null)" -ge 8 ]; then
+    IS_TTY=true
     RED=$(tput setaf 1)
     GREEN=$(tput setaf 2)
     YELLOW=$(tput setaf 3)
     BLUE=$(tput setaf 4)
     MAGENTA=$(tput setaf 5)
     CYAN=$(tput setaf 6)
+    WHITE=$(tput setaf 7)
+    DIM=$(tput setaf 4)   # blue as dim
     BOLD=$(tput bold)
     RESET=$(tput sgr0)
+    CLR="\033[K"          # clear to end of line
 else
-    RED="" GREEN="" YELLOW="" BLUE="" MAGENTA="" CYAN="" BOLD="" RESET=""
+    IS_TTY=false
+    RED="" GREEN="" YELLOW="" BLUE="" MAGENTA="" CYAN="" WHITE="" DIM="" BOLD="" RESET=""
+    CLR=""
 fi
 
 # ── Logging ───────────────────────────────────────────────────
-info()  { echo "${GREEN}[INFO]${RESET}  $*"; }
-warn()  { echo "${YELLOW}[WARN]${RESET}  $*"; }
-error() { echo "${RED}[ERROR]${RESET} $*" >&2; }
-step()  { echo ""; echo "${BOLD}${BLUE}==> $*${RESET}"; }
-phase() { echo ""; echo "${BOLD}${MAGENTA}=== $* ===${RESET}"; }
-ok()    { echo "${GREEN}  OK${RESET} $*"; }
-debug() { [ "${DEBUG_MODE:-false}" = "true" ] && echo "${CYAN}[DEBUG]${RESET} $*"; }
+if [ "$IS_TTY" = "true" ]; then
+    info()  { echo "  ${DIM}→${RESET}  $*"; }
+    warn()  { echo "  ${YELLOW}!${RESET}  $*"; }
+    error() { echo "  ${RED}✘${RESET}  $*" >&2; }
+    ok()    { echo "  ${GREEN}✔${RESET}  $*"; }
+    debug() { [ "${DEBUG_MODE:-false}" = "true" ] && echo "  ${CYAN}…${RESET}  $*" || true; }
+else
+    info()  { echo "[INFO]  $*"; }
+    warn()  { echo "[WARN]  $*"; }
+    error() { echo "[ERROR] $*" >&2; }
+    ok()    { echo "[OK]    $*"; }
+    debug() { [ "${DEBUG_MODE:-false}" = "true" ] && echo "[DEBUG] $*" || true; }
+fi
+step()  { echo "  ${BOLD}$*${RESET}"; }
+phase() {
+    echo ""
+    echo "  ${DIM}────────────────────────────────────────────${RESET}"
+    echo "  ${BOLD}${WHITE}$*${RESET}"
+    echo ""
+}
+
+# ── Spinner ───────────────────────────────────────────────────
+# Usage: spinner_start "message" ; do_work ; spinner_stop
+# The message file allows the parent shell to update the spinner text
+# while the background subshell is running (subshells can't see parent vars).
+SPINNER_PID=""
+SPINNER_MSG=""
+SPINNER_MSG_FILE=""
+SPINNER_FRAMES=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+
+spinner_start() {
+    SPINNER_MSG="$1"
+    if [ "$IS_TTY" = "true" ] && [ "$DEBUG_MODE" != "true" ]; then
+        SPINNER_MSG_FILE=$(mktemp "${TMPDIR:-/tmp}/spinner.XXXXXX")
+        echo "$SPINNER_MSG" > "$SPINNER_MSG_FILE"
+        (
+            i=0
+            while true; do
+                msg=$(cat "$SPINNER_MSG_FILE" 2>/dev/null || echo "$SPINNER_MSG")
+                printf "\r  ${CYAN}%s${RESET}  %s${CLR}" "${SPINNER_FRAMES[$((i % 10))]}" "$msg" 2>/dev/null
+                i=$((i + 1))
+                sleep 0.1
+            done
+        ) &
+        SPINNER_PID=$!
+    else
+        echo "[....] $SPINNER_MSG"
+    fi
+}
+
+spinner_update() {
+    SPINNER_MSG="$1"
+    [ -n "$SPINNER_MSG_FILE" ] && echo "$1" > "$SPINNER_MSG_FILE" 2>/dev/null || true
+}
+
+spinner_stop() {
+    local result="${1:-ok}"  # ok, warn, fail
+    local msg="${2:-$SPINNER_MSG}"
+    if [ -n "$SPINNER_PID" ]; then
+        kill "$SPINNER_PID" 2>/dev/null
+        wait "$SPINNER_PID" 2>/dev/null
+        SPINNER_PID=""
+    fi
+    if [ -n "$SPINNER_MSG_FILE" ]; then rm -f "$SPINNER_MSG_FILE"; SPINNER_MSG_FILE=""; fi
+    if [ "$IS_TTY" = "true" ] && [ "$DEBUG_MODE" != "true" ]; then
+        printf "\r${CLR}"
+    fi
+    case "$result" in
+        ok)   ok "$msg" ;;
+        warn) warn "$msg" ;;
+        fail) error "$msg" ;;
+    esac
+}
 
 AUTO_INSTALL_FROM_UP="${AUTO_INSTALL_FROM_UP:-false}"
 USE_SUDO_DOCKER="${USE_SUDO_DOCKER:-false}"
@@ -496,9 +569,9 @@ load_deploy_meta() {
     elif [ -n "${DEPLOY_HOSTNAME:-}" ]; then
         ZITADEL_HOSTNAME="$DEPLOY_HOSTNAME"
     fi
-    [ -n "${DEPLOY_ZITADEL_EXTERNALPORT:-}" ] && ZITADEL_EXTERNALPORT="$DEPLOY_ZITADEL_EXTERNALPORT"
-    [ -n "${DEPLOY_FLEET_MANAGER_PORT:-}" ] && FLEET_MANAGER_PORT="$DEPLOY_FLEET_MANAGER_PORT"
-    [ -n "${DEPLOY_COMPOSE_PROJECT_NAME:-}" ] && COMPOSE_PROJECT_NAME="$DEPLOY_COMPOSE_PROJECT_NAME"
+    [ -n "${DEPLOY_ZITADEL_EXTERNALPORT:-}" ] && ZITADEL_EXTERNALPORT="$DEPLOY_ZITADEL_EXTERNALPORT" || true
+    [ -n "${DEPLOY_FLEET_MANAGER_PORT:-}" ] && FLEET_MANAGER_PORT="$DEPLOY_FLEET_MANAGER_PORT" || true
+    [ -n "${DEPLOY_COMPOSE_PROJECT_NAME:-}" ] && COMPOSE_PROJECT_NAME="$DEPLOY_COMPOSE_PROJECT_NAME" || true
     ZITADEL_EXTERNALSECURE="$WITH_SSL"
     export ZITADEL_HOSTNAME ZITADEL_EXTERNALPORT FLEET_MANAGER_PORT COMPOSE_PROJECT_NAME ZITADEL_EXTERNALSECURE
 }
@@ -1068,18 +1141,13 @@ generate_selfsigned_cert() {
     ok "Certificate generated (valid 10 years, SAN: ${san})"
 
     write_traefik_tls_config
-
-    echo ""
-    info "To trust this certificate on clients, install the CA:"
-    info "  ${CYAN}${tls_dir}/ca.crt${RESET}"
 }
 
 # ── Pre-flight Image Verification ─────────────────────────────
 verify_images() {
-    # Local-first verification:
-    #   1. Accept exact local tags without contacting the registry.
-    #   2. Only verify remotely when the local tag is missing.
-    # Skip remote verification with FM_SKIP_IMAGE_VERIFY=true.
+    # For pinned tags (e.g. v2.64.1): accept local cache, skip registry.
+    # For "latest" tags: compare local vs remote digest and pull if newer.
+    # Skip all remote checks with FM_SKIP_IMAGE_VERIFY=true.
     if [ "${FM_SKIP_IMAGE_VERIFY:-}" = "true" ]; then
         info "Skipping remote image verification (FM_SKIP_IMAGE_VERIFY=true)"
         return 0
@@ -1107,14 +1175,35 @@ verify_images() {
 
     local failed=0
     for img in "${images[@]}"; do
-        if local_image_exists "$img"; then
+        local tag="${img##*:}"
+
+        if [ "$tag" = "latest" ] && local_image_exists "$img"; then
+            # "latest" tag — compare local digest with remote to detect updates
+            local local_digest remote_digest
+            local_digest=$(docker image inspect "$img" --format '{{index .RepoDigests 0}}' 2>/dev/null | sed 's/.*@//' || echo "")
+            remote_digest=$(docker manifest inspect "$img" 2>/dev/null | jq -r '.config.digest // .manifests[0].digest // empty' 2>/dev/null || echo "")
+
+            if [ -z "$remote_digest" ]; then
+                # Can't reach registry — use local cache
+                ok "$img (local cache, registry unreachable)"
+            elif [ -n "$local_digest" ] && [ "$local_digest" = "$remote_digest" ]; then
+                ok "$img (up to date)"
+            else
+                info "Newer $img available, pulling..."
+                if docker pull "$img" >/dev/null 2>&1; then
+                    ok "$img (updated)"
+                else
+                    warn "$img (pull failed, using local cache)"
+                fi
+            fi
+        elif local_image_exists "$img"; then
             ok "$img (local cache)"
         else
             local manifest_err
-            manifest_err="$(docker manifest inspect "$img" 2>&1 >/dev/null)" && {
+            if manifest_err="$(docker manifest inspect "$img" 2>&1 >/dev/null)"; then
                 ok "$img (remote tag verified)"
                 continue
-            }
+            fi
             # Classify the remote failure
             case "$manifest_err" in
                 *toomanyrequests*|*429*|*rate\ limit*)
@@ -1236,21 +1325,18 @@ wait_for_zitadel() {
     local timeout="${2:-180}"
     local elapsed=0
 
-    info "Waiting for Zitadel to be ready (up to ${timeout}s)..."
+    spinner_start "Waiting for Zitadel... (up to ${timeout}s)"
     while [ $elapsed -lt "$timeout" ]; do
         if curl -sf --connect-timeout 10 --max-time 10 "${url}/debug/ready" >/dev/null 2>&1; then
-            ok "Zitadel is ready (${elapsed}s)"
+            spinner_stop ok "Zitadel ready (${elapsed}s)"
             return 0
         fi
         sleep 3
         elapsed=$((elapsed + 3))
-        # Progress indicator every 15s
-        if [ $((elapsed % 15)) -eq 0 ]; then
-            info "  Still waiting... (${elapsed}s)"
-        fi
+        spinner_update "Waiting for Zitadel... (${elapsed}s)"
     done
 
-    error "Zitadel did not become ready within ${timeout}s"
+    spinner_stop fail "Zitadel did not start within ${timeout}s"
     error "Check logs: ./deploy/deploy-public.sh logs zitadel"
     return 1
 }
@@ -1318,11 +1404,11 @@ cmd_up() {
     parse_runtime_flags "$@"
     enable_debug_mode
 
-    phase "Bootstrap"
-    step "Starting Fleet Management"
+    echo ""
+    echo "  ${BOLD}${WHITE}Fleet Manager${RESET}"
+    echo ""
 
     phase "Phase 1/4 — Prerequisites"
-    step "Checking prerequisites"
     ensure_prereqs_for_up || exit 1
 
     # Detect platform and hostname
@@ -1367,7 +1453,6 @@ cmd_up() {
     fi
 
     phase "Phase 2/4 — Configuration"
-    step "Preparing configuration"
     generate_passwords
     save_env
     save_deploy_meta "$hostname"
@@ -1386,18 +1471,13 @@ cmd_up() {
     chmod 0777 "$STATE_DIR/machinekey"
 
     phase "Phase 3/4 — Containers"
-    step "Verifying Docker images"
     verify_images
 
-    # Step 1: Start databases
-    step "Starting databases"
     run_quiet "Starting database containers" compose_cmd up -d fleet-db zitadel-db
-    ok "Databases starting"
+    ok "Databases started"
 
-    # Step 2: Start Zitadel
-    step "Starting Zitadel"
     run_quiet "Starting Zitadel container" compose_cmd up -d zitadel
-    ok "Zitadel starting"
+    ok "Zitadel started"
 
     # Step 3: Wait for Zitadel health
     wait_for_zitadel "http://localhost:8080"
@@ -1412,7 +1492,7 @@ cmd_up() {
     else
         _probe_host="${_probe_host%:80}"
     fi
-    info "Waiting for token endpoint readiness (Host: ${_probe_host})..."
+    spinner_start "Waiting for token endpoint... (up to 60s)"
     local token_elapsed=0
     while [ $token_elapsed -lt 60 ]; do
         local http_code
@@ -1422,11 +1502,12 @@ cmd_up() {
             -H "Content-Type: application/x-www-form-urlencoded" \
             -d "grant_type=client_credentials&client_id=probe&client_secret=probe" 2>/dev/null || echo "000")
         if [ "$http_code" != "000" ] && [ "${http_code:0:1}" != "5" ]; then
-            ok "Token endpoint ready (${token_elapsed}s)"
+            spinner_stop ok "Token endpoint ready (${token_elapsed}s)"
             break
         fi
         sleep 2
         token_elapsed=$((token_elapsed + 2))
+        spinner_update "Waiting for token endpoint... (${token_elapsed}s)"
     done
 
     # Step 4: Bootstrap (idempotent)
@@ -1444,29 +1525,20 @@ cmd_up() {
         fi
     fi
 
-    # Step 5: Generate FM config
-    step "Configuring Fleet Manager"
     generate_fm_config "$hostname" || return 1
 
-    # Step 6: Start Fleet Manager + remaining services
-    step "Starting Fleet Manager"
     run_quiet "Starting Fleet Manager containers" compose_cmd up -d
-    ok "All services starting"
+    ok "All services started"
 
     if [ "$WITH_SSL" != "true" ]; then
         local actual_port
         actual_port=$(docker port "$(container_name fleet-manager)" 7011 2>/dev/null | head -1 || true)
-        info "FM port mapping: ${actual_port:-unknown} (expected 0.0.0.0:${FLEET_MANAGER_PORT})"
-    else
-        info "FM public traffic is routed through Traefik only"
+        debug "FM port mapping: ${actual_port:-unknown} (expected 0.0.0.0:${FLEET_MANAGER_PORT})"
     fi
 
-    # Step 7: Wait for FM health (longer timeout for RPi / slow storage)
+    # Wait for FM health (longer timeout for RPi / slow storage)
     # Stream FM logs in background so user sees what's happening
-    info "Waiting for Fleet Manager (migrations + startup)..."
-
     # In debug mode, stream raw FM logs so the operator sees everything.
-    # In normal mode, stay quiet — the health-check loop prints progress.
     local sed_pid=""
     kill_log_tail() {
         if [ -n "$sed_pid" ]; then
@@ -1481,6 +1553,7 @@ cmd_up() {
         sed_pid=$!
     fi
 
+    spinner_start "Fleet Manager starting..."
     local elapsed=0
     local fm_timeout=120
     local health_status=""
@@ -1488,31 +1561,25 @@ cmd_up() {
         health_status="$(container_health_status "$(container_name fleet-manager)")"
         if [ "$health_status" = "healthy" ] || [ "$health_status" = "running" ]; then
             kill_log_tail
-            ok "Fleet Manager is ready (${elapsed}s)"
+            spinner_stop ok "Fleet Manager ready (${elapsed}s)"
             break
-        fi
-        # Log progress every 15s so CI shows the script is alive
-        if [ $((elapsed % 15)) -eq 0 ] && [ $elapsed -gt 0 ]; then
-            info "  Still waiting... (${elapsed}s, health=${health_status:-unknown})"
         fi
         sleep 3
         elapsed=$((elapsed + 3))
+        spinner_update "Fleet Manager starting... (${elapsed}s)"
     done
     if [ $elapsed -ge $fm_timeout ]; then
         kill_log_tail
-        warn "Fleet Manager did not become healthy within ${fm_timeout}s"
-        # Dump diagnostics so CI logs show why
-        warn "Diagnostics:"
-        warn "  Health status: $(container_health_status "$(container_name fleet-manager)")"
-        warn "  Container state: $(docker inspect -f '{{.State.Status}}' "$(container_name fleet-manager)" 2>/dev/null || echo 'unknown')"
+        spinner_stop fail "Fleet Manager did not start within ${fm_timeout}s"
+        warn "Health: $(container_health_status "$(container_name fleet-manager)")"
+        warn "State: $(docker inspect -f '{{.State.Status}}' "$(container_name fleet-manager)" 2>/dev/null || echo 'unknown')"
         if [ "$WITH_SSL" != "true" ]; then
-            warn "  Port mapping: $(docker port "$(container_name fleet-manager)" 7011 2>/dev/null || echo 'none')"
+            warn "Port: $(docker port "$(container_name fleet-manager)" 7011 2>/dev/null || echo 'none')"
         fi
-        warn "It may still be running migrations. Check: ./deploy/deploy-public.sh logs fleet-manager"
+        warn "Check: ./deploy/deploy-public.sh logs fleet-manager"
     fi
 
     phase "Phase 4/4 — Finalization"
-    step "Configuring data retention"
     apply_retention_policies
 
     # Print summary
@@ -1521,8 +1588,6 @@ cmd_up() {
 
 cmd_down() {
     enable_debug_mode
-
-    step "Stopping Fleet Management"
 
     local remove_volumes=false
     for arg in "$@"; do
@@ -1539,22 +1604,24 @@ cmd_down() {
     export FLEET_MANAGER_PORT
     export FM_VERSION
 
+    echo ""
     if [ "$remove_volumes" = true ]; then
         warn "Removing containers AND volumes (all data will be lost)"
+        spinner_start "Stopping and removing data..."
         run_quiet "Stopping containers and removing volumes" compose_cmd down -v
         rm -rf "$STATE_DIR"
-        ok "Stopped and removed all data"
+        spinner_stop ok "Stopped and removed all data"
     else
+        spinner_start "Stopping services..."
         run_quiet "Stopping containers" compose_cmd down
-        ok "Stopped (data preserved in Docker volumes)"
+        spinner_stop ok "Stopped (data preserved in Docker volumes)"
     fi
+    echo ""
 }
 
 cmd_status() {
     enable_debug_mode
     detect_os
-    step "Fleet Management Status"
-    info "Platform: ${OS}/${ARCH}${DISTRO:+ ($DISTRO)}"
 
     load_state_env
     load_deploy_meta
@@ -1564,31 +1631,26 @@ cmd_status() {
     export FLEET_MANAGER_PORT
     export FM_VERSION
 
+    echo ""
+    step "Fleet Management Status"
+    info "Platform: ${OS}/${ARCH}${DISTRO:+ ($DISTRO)}"
+    echo ""
+
     compose_cmd ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
     echo ""
-    # Health checks
-
-    printf "  %-20s " "Fleet Manager:"
-    if [ "$(container_health_status "$(container_name fleet-manager)")" = "healthy" ]; then
-        echo "${GREEN}healthy${RESET}"
-    else
-        echo "${RED}unhealthy${RESET}"
-    fi
-
-    printf "  %-20s " "Zitadel:"
-    if [ "$(container_health_status "$(container_name zitadel)")" = "healthy" ]; then
-        echo "${GREEN}healthy${RESET}"
-    else
-        echo "${RED}unhealthy${RESET}"
-    fi
-
-    printf "  %-20s " "TimescaleDB:"
-    if [ "$(container_health_status "$(container_name fleet-db)")" = "healthy" ]; then
-        echo "${GREEN}healthy${RESET}"
-    else
-        echo "${RED}unhealthy${RESET}"
-    fi
+    local svc_status
+    for svc in fleet-manager zitadel fleet-db; do
+        svc_status="$(container_health_status "$(container_name "$svc")" 2>/dev/null || echo "unknown")"
+        if [ "$svc_status" = "healthy" ]; then
+            printf "  ${GREEN}✔${RESET}  %-18s %s\n" "$svc" "${GREEN}${svc_status}${RESET}"
+        elif [ "$svc_status" = "running" ]; then
+            printf "  ${GREEN}✔${RESET}  %-18s %s\n" "$svc" "${svc_status}"
+        else
+            printf "  ${RED}✘${RESET}  %-18s %s\n" "$svc" "${RED}${svc_status}${RESET}"
+        fi
+    done
+    echo ""
 }
 
 cmd_logs() {
@@ -1606,6 +1668,8 @@ cmd_logs() {
 
 cmd_update() {
     enable_debug_mode
+
+    echo ""
     step "Updating Fleet Management"
 
     load_state_env
@@ -1616,13 +1680,25 @@ cmd_update() {
     export FLEET_MANAGER_PORT
     export FM_VERSION
 
-    info "Pulling configured image tags..."
-    run_quiet "Pulling configured image tags" compose_cmd pull
+    spinner_start "Pulling configured image tags..."
+    if run_quiet "Pulling configured image tags" compose_cmd pull; then
+        spinner_stop ok "Images pulled"
+    else
+        spinner_stop fail "Image pull failed"
+        return 1
+    fi
 
-    info "Restarting services..."
-    run_quiet "Restarting containers" compose_cmd up -d
+    spinner_start "Restarting services..."
+    if run_quiet "Restarting containers" compose_cmd up -d; then
+        spinner_stop ok "Services restarted"
+    else
+        spinner_stop fail "Restart failed"
+        return 1
+    fi
 
+    echo ""
     ok "Update complete"
+    echo ""
     cmd_status
 }
 
@@ -1674,47 +1750,46 @@ print_summary() {
         ws_url="${ws_scheme}://${hostname}:${FLEET_MANAGER_PORT}/shelly"
     fi
 
+    local DIM="${BLUE}"
+    local SEP="${DIM}──────────────────────────────────────────────${RESET}"
+
     echo ""
-    echo "${BOLD}${GREEN}=============================================${RESET}"
-    echo "${BOLD}${GREEN}  Fleet Management is running!${RESET}"
-    echo "${BOLD}${GREEN}=============================================${RESET}"
+    echo "${BOLD}${GREEN}  ✔  Fleet Management is running${RESET}"
+    echo "${SEP}"
     echo ""
-    echo "  ${BOLD}Platform:${RESET}        ${OS:-unknown}/${ARCH:-unknown}${DISTRO:+ ($DISTRO)}"
-    echo "  ${BOLD}Fleet Manager:${RESET}   ${CYAN}${fm_url}${RESET}"
-    echo "  ${BOLD}Zitadel Console:${RESET} ${CYAN}${zitadel_url}${RESET}"
+    echo "  ${DIM}Platform${RESET}         ${OS:-unknown}/${ARCH:-unknown}${DISTRO:+ ($DISTRO)}"
+    echo "  ${DIM}Fleet Manager${RESET}    ${CYAN}${fm_url}${RESET}"
+    echo "  ${DIM}Zitadel Console${RESET}  ${CYAN}${zitadel_url}${RESET}"
     echo ""
-    echo "  ${BOLD}Default Login:${RESET}"
-    echo "    Username: ${CYAN}${FM_ADMIN_USER}${RESET}"
-    echo "    Password: ${CYAN}${FM_ADMIN_PASSWORD}${RESET}"
+    echo "${SEP}"
+    echo "  ${BOLD}Login${RESET}"
+    echo "  ${DIM}Username${RESET}  ${CYAN}${FM_ADMIN_USER}${RESET}"
+    echo "  ${DIM}Password${RESET}  ${CYAN}${FM_ADMIN_PASSWORD}${RESET}"
     echo ""
-    echo "  ${BOLD}Zitadel Admin:${RESET}"
-    echo "    Username: ${CYAN}root${RESET}"
-    echo "    Password: ${CYAN}${ZITADEL_ADMIN_PASSWORD}${RESET}"
-    echo ""
+    echo "${SEP}"
+    echo "  ${BOLD}Connect a Shelly device${RESET}"
+    echo "  ${DIM}WebSocket${RESET}  ${CYAN}${ws_url}${RESET}"
     if [ "$SSL_MODE" = "selfsigned" ]; then
-        echo "  ${BOLD}${YELLOW}Self-signed certificate:${RESET}"
-        echo "    Browsers will show a security warning — this is expected."
-        echo "    CA certificate: ${CYAN}${STATE_DIR}/tls/ca.crt${RESET}"
-        echo "    For Shelly devices using wss://:"
-        echo "      1. Device Web UI > Settings > User certificate > upload ${CYAN}ca.crt${RESET}"
-        echo "      2. Outbound WebSocket > SSL Connectivity > select ${CYAN}user_ca.pem${RESET}"
         echo ""
+        echo "  ${YELLOW}Self-signed TLS — configure each device:${RESET}"
+        echo "  ${DIM}1.${RESET} Upload CA        Settings > TLS Configuration > Custom CA PEM bundle"
+        echo "                      File: ${CYAN}${STATE_DIR}/tls/ca.crt${RESET}"
+        echo "  ${DIM}2.${RESET} Connection type  Outbound WebSocket > ${CYAN}User TLS${RESET}"
+        echo "  ${DIM}3.${RESET} Server           ${CYAN}${ws_url}${RESET}"
     fi
-    echo "  ${BOLD}Connect a Shelly device:${RESET}"
-    echo "    Device Web UI > Networks > Outbound WebSocket"
-    echo "    URL: ${CYAN}${ws_url}${RESET}"
     echo ""
-    echo "  ${BOLD}Data Retention:${RESET}"
-    echo "    Telemetry:  ${CYAN}${STATUS_RETENTION:-7 days}${RESET}"
-    echo "    Energy:     ${CYAN}${EM_STATS_RETENTION:-1 year}${RESET}"
-    echo "    Audit logs: ${CYAN}${AUDIT_LOG_RETENTION:-90 days}${RESET}"
-    echo "    Edit ${CYAN}deploy/env/public.env${RESET} to change"
+    echo "${SEP}"
+    echo "  ${BOLD}Data retention${RESET}"
+    echo "  ${DIM}Telemetry${RESET}   ${STATUS_RETENTION:-7 days}"
+    echo "  ${DIM}Energy${RESET}      ${EM_STATS_RETENTION:-1 year}"
+    echo "  ${DIM}Audit logs${RESET}  ${AUDIT_LOG_RETENTION:-90 days}"
     echo ""
-    echo "  ${BOLD}Commands:${RESET}"
-    echo "    ./deploy/deploy-public.sh status   Show service status"
-    echo "    ./deploy/deploy-public.sh logs     Show logs"
-    echo "    ./deploy/deploy-public.sh down     Stop services"
-    echo "    ./deploy/deploy-public.sh update   Pull configured tags & restart"
+    echo "${SEP}"
+    echo "  ${BOLD}Commands${RESET}"
+    echo "  ${CYAN}./deploy/deploy-public.sh status${RESET}   Service health"
+    echo "  ${CYAN}./deploy/deploy-public.sh logs${RESET}     Follow logs"
+    echo "  ${CYAN}./deploy/deploy-public.sh down${RESET}     Stop services"
+    echo "  ${CYAN}./deploy/deploy-public.sh update${RESET}   Pull & restart"
     echo ""
 }
 
@@ -1793,7 +1868,7 @@ cmd_doctor() {
     if [ "$WITH_SSL" = "true" ]; then
         ports=(80 443)
     else
-        ports=("${FLEET_MANAGER_PORT:-7011}" "${ZITADEL_EXTERNALPORT:-9090}" 8100 8101 8102 8103 8104)
+        ports=("${FLEET_MANAGER_PORT:-7011}" "${ZITADEL_EXTERNALPORT:-9090}")
     fi
     for port in "${ports[@]}"; do
         if ! ss -tlnp 2>/dev/null | grep -q ":${port} " && \

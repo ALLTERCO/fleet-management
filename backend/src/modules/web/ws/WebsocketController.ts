@@ -5,8 +5,6 @@ import {getLogger} from 'log4js';
 const logger = getLogger('ws-upgrade');
 
 import type {Duplex} from 'node:stream';
-import {handleDeviceProxyWsUpgrade} from '../routes/device-proxy';
-import {handleWsTransportUpgrade} from '../ws-transport-proxy';
 import type ClientWebsocketHandler from './handlers/ClientWebsocketHandler';
 import type ShellyWebsocketHandler from './handlers/ShellyWebsocketHandler';
 
@@ -84,28 +82,6 @@ export default class WebsocketController {
             if (pathname === '/') {
                 request.headers.token = token;
                 this.#clientHandler.handleUpgrade(request, socket, head);
-                return;
-            }
-
-            // WS Transport Proxy: /api/device-proxy/{shellyID}/ws-transport
-            // Raw WS-to-WS relay — browser and device both connect here, FM pipes frames
-            if (
-                pathname.startsWith('/api/device-proxy/') &&
-                pathname.endsWith('/ws-transport')
-            ) {
-                logger.info('ws-transport WS upgrade: path=[%s]', pathname);
-                handleWsTransportUpgrade(request, socket, head);
-                return;
-            }
-
-            // Device proxy WebSocket: /api/device-proxy/{shellyID}/rpc
-            // Used by Shelly GUI (firmware 1.8.0+) to communicate with device via FM proxy
-            if (
-                pathname.startsWith('/api/device-proxy/') &&
-                pathname.endsWith('/rpc')
-            ) {
-                logger.info('device-proxy WS upgrade: path=[%s]', pathname);
-                handleDeviceProxyWsUpgrade(request, socket, head);
                 return;
             }
 

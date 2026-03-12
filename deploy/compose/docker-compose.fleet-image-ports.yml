@@ -7,4 +7,3 @@ services:
   fleet-manager:
     ports:
       - "${FLEET_MANAGER_PORT}:7011"
-      - "8100-8104:8100-8104"

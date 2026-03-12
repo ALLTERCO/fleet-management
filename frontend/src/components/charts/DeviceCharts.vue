@@ -230,16 +230,21 @@ watch(() => props.shellyId, loadData);
 .device-charts__toolbar {
     display: flex;
     gap: var(--space-1);
-    padding: 0 var(--space-1);
+    padding: var(--space-2);
+    background-color: var(--color-surface-2);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border-default);
 }
 
 .device-charts__range-btn {
+    flex: 1;
     font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-md);
     color: var(--color-text-tertiary);
-    background-color: var(--color-surface-2);
-    border: 1px solid var(--color-border-default);
+    background: transparent;
+    border: 1px solid transparent;
     cursor: pointer;
     transition: background-color var(--duration-fast) var(--ease-default),
                 color var(--duration-fast) var(--ease-default),
@@ -249,7 +254,6 @@ watch(() => props.shellyId, loadData);
 .device-charts__range-btn:hover {
     background-color: var(--color-surface-3);
     color: var(--color-text-primary);
-    border-color: var(--color-border-strong);
 }
 
 .device-charts__range-btn--active {

@@ -2,19 +2,24 @@
     <ChartCard
         :title="title"
         :icon="icon"
+        :color="color"
+        :height="180"
         :loading="loading"
         :empty="!data.length"
         :empty-text="`No ${title.toLowerCase()} data available`"
     >
+        <template v-if="data.length" #summary>
+            <span class="metric-stat">
+                <span class="metric-stat__value">{{ statsAvg.toFixed(precision) }}</span>
+                <span class="metric-stat__unit">{{ unit }} avg</span>
+            </span>
+        </template>
+
         <canvas ref="chartCanvas"></canvas>
 
         <template v-if="data.length" #stats>
-            <span>Avg: <strong>{{ statsAvg.toFixed(precision) }} {{ unit }}</strong></span>
-            <span>
-                Min: <strong>{{ statsMin.toFixed(precision) }} {{ unit }}</strong>
-                &nbsp;|&nbsp;
-                Max: <strong>{{ statsMax.toFixed(precision) }} {{ unit }}</strong>
-            </span>
+            <span>Min: <strong>{{ statsMin.toFixed(precision) }} {{ unit }}</strong></span>
+            <span>Max: <strong>{{ statsMax.toFixed(precision) }} {{ unit }}</strong></span>
         </template>
     </ChartCard>
 </template>
@@ -272,3 +277,21 @@ onUnmounted(() => {
     chart?.destroy();
 });
 </script>
+
+<style scoped>
+.metric-stat {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+}
+.metric-stat__value {
+    font-size: var(--text-lg);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+    line-height: 1;
+}
+.metric-stat__unit {
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+}
+</style>

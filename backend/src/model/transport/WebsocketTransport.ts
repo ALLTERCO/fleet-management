@@ -7,6 +7,8 @@ export default class WebSocketTransport extends RpcTransport {
     constructor(ws: WebSocket) {
         super();
         this.#ws = ws;
+        // Attach transport reference so the heartbeat can check pending RPCs
+        (ws as any).__rpcTransport = this;
         ws.on('close', () => {
             this._eventEmitter.emit('close');
         });

@@ -180,9 +180,14 @@ function onDocumentClick(e: MouseEvent) {
     }
 }
 
+let windowChangeRaf = 0;
 function onWindowChange() {
     if (!showPopover.value) return;
-    updatePopoverPosition();
+    if (windowChangeRaf) return;
+    windowChangeRaf = requestAnimationFrame(() => {
+        windowChangeRaf = 0;
+        if (showPopover.value) updatePopoverPosition();
+    });
 }
 
 watch(
@@ -202,6 +207,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+    if (windowChangeRaf) cancelAnimationFrame(windowChangeRaf);
     document.removeEventListener('click', onDocumentClick);
     window.removeEventListener('scroll', onWindowChange, true);
     window.removeEventListener('resize', onWindowChange);

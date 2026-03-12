@@ -1133,48 +1133,6 @@ export function getPrometheusMetrics(): string {
         );
     }
 
-    // Device GUI proxy (port exhaustion indicator)
-    const deviceProxy = mod('deviceProxy');
-    if (deviceProxy) {
-        lines.push(
-            promLine(
-                'fm_device_proxy_active',
-                'Active device GUI proxy instances',
-                'gauge',
-                deviceProxy.activeProxies as number
-            )
-        );
-        lines.push(
-            promLine(
-                'fm_device_proxy_ports_total',
-                'Total available proxy ports',
-                'gauge',
-                deviceProxy.portsTotal as number
-            )
-        );
-    }
-
-    // WS transport proxy (relay pairs)
-    const wsTransport = mod('wsTransport');
-    if (wsTransport) {
-        lines.push(
-            promLine(
-                'fm_ws_transport_pending',
-                'WS transport connections waiting to pair',
-                'gauge',
-                wsTransport.pendingConnections as number
-            )
-        );
-        lines.push(
-            promLine(
-                'fm_ws_transport_relays',
-                'Active WS transport relay pairs',
-                'gauge',
-                wsTransport.activeRelays as number
-            )
-        );
-    }
-
     // Auth / userinfo cache
     const authMod = mod('auth');
     if (authMod) {
@@ -1421,14 +1379,6 @@ export function getPrometheusMetrics(): string {
             },
             plugin_worker_crashes: {
                 help: 'Plugin worker non-zero exits',
-                type: 'counter'
-            },
-            device_proxy_rpc_calls: {
-                help: 'Device GUI proxy RPC calls',
-                type: 'counter'
-            },
-            device_proxy_rpc_errors: {
-                help: 'Device GUI proxy RPC errors',
                 type: 'counter'
             },
             device_persists: {

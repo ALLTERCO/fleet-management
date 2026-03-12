@@ -63,11 +63,15 @@
 
                 <!-- Production: Only SSO login -->
                 <template v-else>
-                    <Button type="blue" @click="signIn" :disabled="!zitadelAuth">
-                        Sign In with SSO
+                    <Button type="blue" @click="signIn" :disabled="!zitadelAuth || ssoLoading">
+                        <span v-if="ssoLoading">Redirecting...</span>
+                        <span v-else>Sign In with SSO</span>
                     </Button>
                     <p v-if="!zitadelAuth" class="text-center login-error text-xs">
                         Authentication is not configured. Please contact your administrator.
+                    </p>
+                    <p v-if="ssoError" class="text-center login-error text-xs">
+                        {{ ssoError }}
                     </p>
                 </template>
             </template>
@@ -89,10 +93,36 @@ const authStore = useAuthStore();
 const username = ref('');
 const password = ref('');
 const loading = ref(false);
+const ssoLoading = ref(false);
+const ssoError = ref<string | null>(null);
 
-function signIn() {
-    if (zitadelAuth) {
-        zitadelAuth.oidcAuth.signIn();
+async function signIn() {
+    ssoError.value = null;
+    if (!zitadelAuth) {
+        ssoError.value = 'Authentication is not configured. Please contact your administrator.';
+        return;
+    }
+
+    // Safari with an untrusted self-signed certificate can fail secure-context
+    // checks, which breaks WebCrypto and PKCE generation before redirect.
+    if (window.location.protocol === 'https:' &&
+        (!window.isSecureContext || !window.crypto?.subtle)) {
+        ssoError.value = 'This browser cannot start secure SSO on this certificate. If you are using Safari with a self-signed certificate, trust the Fleet Manager CA in Keychain and try again.';
+        return;
+    }
+
+    ssoLoading.value = true;
+    try {
+        await zitadelAuth.oidcAuth.signIn();
+    } catch (err: any) {
+        console.error('OIDC sign-in start failed:', err?.message || err, err);
+        const errorMessage = err?.message || 'unknown error';
+        if (/subtle|crypto|pkce|secure context/i.test(errorMessage)) {
+            ssoError.value = 'SSO login failed before redirect. Safari may require the Fleet Manager CA to be trusted in Keychain before PKCE can start.';
+        } else {
+            ssoError.value = `SSO login failed: ${errorMessage}.`;
+        }
+        ssoLoading.value = false;
     }
 }
 

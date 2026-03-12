@@ -8,10 +8,12 @@ describe('heartbeat chunking logic', () => {
         const pinged: number[] = [];
         const terminated: number[] = [];
 
-        // Simulate clients
+        // Simulate clients — stale clients have missedPongs >= 1 so grace is exhausted
         const clients = Array.from({length: clientCount}, (_, i) => ({
             id: i,
             isAlive: i % 50 !== 0, // every 50th client is stale
+            missedPongs: i % 50 !== 0 ? 0 : 1, // stale clients already had one grace cycle
+            __rpcTransport: undefined as {pendingRpcCount: number} | undefined,
             ping() {
                 pinged.push(this.id);
             },
@@ -30,10 +32,18 @@ describe('heartbeat chunking logic', () => {
             for (let i = offset; i < end; i++) {
                 const ws = clients[i];
                 if (ws.isAlive === false) {
+                    const missed = (ws.missedPongs ?? 0) + 1;
+                    ws.missedPongs = missed;
+                    const pending = ws.__rpcTransport?.pendingRpcCount ?? 0;
+                    if (missed <= 1 && pending > 0) {
+                        ws.ping();
+                        continue;
+                    }
                     ws.terminate();
                     ws.emit();
                     continue;
                 }
+                ws.missedPongs = 0;
                 ws.isAlive = false;
                 ws.ping();
             }
@@ -60,6 +70,68 @@ describe('heartbeat chunking logic', () => {
         }
     });
 
+    it('should defer close when socket has pending RPCs and missed only one cycle', () => {
+        const deferred: number[] = [];
+        const terminated: number[] = [];
+        const pinged: number[] = [];
+
+        const clients = [
+            {
+                id: 0,
+                isAlive: false as boolean,
+                missedPongs: 0, // first miss
+                __rpcTransport: {pendingRpcCount: 3}, // has pending RPCs
+                ping() { pinged.push(this.id); },
+                terminate() { terminated.push(this.id); },
+                emit() {}
+            },
+            {
+                id: 1,
+                isAlive: false as boolean,
+                missedPongs: 0, // first miss
+                __rpcTransport: {pendingRpcCount: 0}, // no pending RPCs
+                ping() { pinged.push(this.id); },
+                terminate() { terminated.push(this.id); },
+                emit() {}
+            },
+            {
+                id: 2,
+                isAlive: false as boolean,
+                missedPongs: 1, // second miss — exhausted grace
+                __rpcTransport: {pendingRpcCount: 5}, // has pending RPCs but grace used up
+                ping() { pinged.push(this.id); },
+                terminate() { terminated.push(this.id); },
+                emit() {}
+            }
+        ];
+
+        for (const ws of clients) {
+            if (ws.isAlive === false) {
+                const missed = (ws.missedPongs ?? 0) + 1;
+                ws.missedPongs = missed;
+                const pending = ws.__rpcTransport?.pendingRpcCount ?? 0;
+                if (missed <= 1 && pending > 0) {
+                    deferred.push(ws.id);
+                    ws.ping();
+                    continue;
+                }
+                ws.terminate();
+                ws.emit();
+                continue;
+            }
+            ws.missedPongs = 0;
+            ws.isAlive = false;
+            ws.ping();
+        }
+
+        // Client 0: deferred (first miss, has pending RPCs) — gets a retry ping
+        assert.deepEqual(deferred, [0]);
+        assert.deepEqual(pinged, [0]);
+        // Client 1: terminated (first miss, but no pending RPCs — no grace)
+        // Client 2: terminated (second miss, grace already used up)
+        assert.deepEqual(terminated, [1, 2]);
+    });
+
     it('should handle empty client list', () => {
         const CHUNK_SIZE = 100;
         const clients: any[] = [];
@@ -83,6 +155,8 @@ describe('heartbeat chunking logic', () => {
         const clients = Array.from({length: clientCount}, (_, i) => ({
             id: i,
             isAlive: true,
+            missedPongs: 0,
+            __rpcTransport: undefined as {pendingRpcCount: number} | undefined,
             ping() {
                 pinged.push(this.id);
             },
@@ -98,9 +172,17 @@ describe('heartbeat chunking logic', () => {
             for (let i = offset; i < end; i++) {
                 const ws = clients[i];
                 if (ws.isAlive === false) {
+                    const missed = (ws.missedPongs ?? 0) + 1;
+                    ws.missedPongs = missed;
+                    const pending = ws.__rpcTransport?.pendingRpcCount ?? 0;
+                    if (missed <= 1 && pending > 0) {
+                        ws.ping();
+                        continue;
+                    }
                     ws.terminate();
                     continue;
                 }
+                ws.missedPongs = 0;
                 ws.isAlive = false;
                 ws.ping();
             }

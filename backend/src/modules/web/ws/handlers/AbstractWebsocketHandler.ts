@@ -8,7 +8,13 @@ const logger = getLogger('ws-server');
 let wsMaxBufferedKB = 0;
 
 type Options = ConstructorParameters<typeof WebSocket.Server>[0];
-export type WebSocketExt = WebSocket.WebSocket & {isAlive: boolean};
+export type WebSocketExt = WebSocket.WebSocket & {
+    isAlive: boolean;
+    /** Consecutive heartbeat cycles where pong was not received */
+    missedPongs?: number;
+    /** Attached by WebSocketTransport for pending-RPC awareness */
+    __rpcTransport?: {pendingRpcCount: number};
+};
 
 export default abstract class AbstractWebsocketHandler {
     protected _server: WebSocket.Server;
@@ -30,6 +36,7 @@ export default abstract class AbstractWebsocketHandler {
                 this._handleWebsocket(ws, request);
                 ws.on('pong', () => {
                     ws.isAlive = true;
+                    ws.missedPongs = 0;
                 });
             }
         );
@@ -67,11 +74,30 @@ export default abstract class AbstractWebsocketHandler {
                     const ws = clients[i];
                     if (ws.bufferedAmount > maxBuf) maxBuf = ws.bufferedAmount;
                     if (ws.isAlive === false) {
-                        logger.error('Closing socket bc of ping/pong timeout');
+                        const missed = (ws.missedPongs ?? 0) + 1;
+                        ws.missedPongs = missed;
+                        const pending = ws.__rpcTransport?.pendingRpcCount ?? 0;
+                        // Grace: if the socket has pending RPCs and only missed one
+                        // cycle, give it one more interval before terminating.
+                        if (missed <= 1 && pending > 0) {
+                            logger.warn(
+                                'Deferring close for socket with %d pending RPCs (missed %d cycle)',
+                                pending,
+                                missed
+                            );
+                            ws.ping();
+                            continue;
+                        }
+                        logger.error(
+                            'Closing socket bc of ping/pong timeout (missed %d cycles, %d pending RPCs)',
+                            missed,
+                            pending
+                        );
                         ws.terminate();
                         ws.emit('close', 'TIMEOUT');
                         continue;
                     }
+                    ws.missedPongs = 0;
                     ws.isAlive = false;
                     ws.ping();
                 }

@@ -67,7 +67,6 @@ const KNOWN_LOG_CATEGORIES = [
     'ShellyComponents',
     'shelly-events',
     'event-model',
-    'device-gui-proxy',
     'frontend-builder',
     'plugin-loader'
 ];

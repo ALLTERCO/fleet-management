@@ -11,23 +11,10 @@
                 <!-- Mode badge -->
                 <span
                     v-if="proxyMethod"
-                    class="text-2xs px-1.5 py-0.5 rounded-full border cursor-help"
-                    :class="
-                        proxyMethod === 'direct'
-                            ? 'text-[var(--color-primary-text)] border-[var(--color-primary)] bg-[var(--color-primary-subtle)]'
-                            : proxyMethod === 'shelly_addr'
-                                ? 'text-[var(--color-success-text)] border-[var(--color-success)] bg-[var(--color-success-subtle)]'
-                                : 'text-[var(--color-warning-text)] border-[var(--color-warning)] bg-[var(--color-warning-subtle)]'
-                    "
-                    :title="
-                        proxyMethod === 'direct'
-                            ? 'Direct LAN access — browser connects to device IP'
-                            : proxyMethod === 'shelly_addr'
-                                ? 'SaaS proxy + native shelly_addr (FW 1.8.0+)'
-                                : 'SaaS proxy + compatibility mode (FW < 1.8.0)'
-                    "
+                    class="text-2xs px-1.5 py-0.5 rounded-full border cursor-help text-[var(--color-primary-text)] border-[var(--color-primary)] bg-[var(--color-primary-subtle)]"
+                    title="Direct LAN access — browser connects to device IP"
                 >
-                    {{ proxyMethod === 'direct' ? 'LAN' : proxyMethod === 'shelly_addr' ? 'SaaS' : 'SaaS (compat)' }}
+                    LAN
                 </span>
 
                 <span v-if="deviceIp" class="text-xs text-[var(--color-text-disabled)]">{{ deviceIp }}</span>
@@ -57,7 +44,7 @@
                         ? 'border-[var(--color-primary)] text-[var(--color-primary-text)] bg-[var(--color-primary-subtle)]'
                         : 'border-[var(--color-border-strong)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-3)]'"
                     :disabled="diagLoading"
-                    @click="diagResult && !diagLoading ? closeDiagnostics() : runDiagnostics()"
+                    @click="diagResult && !diagLoading ? closeDiagnostics() : runDiagnostics(false)"
                 >
                     {{ diagLoading ? 'Running...' : diagResult ? 'Hide Diagnostics' : 'Diagnostics' }}
                 </button>
@@ -139,7 +126,7 @@
                             <button
                                 class="text-xs px-2 py-1 rounded border border-[var(--color-border-strong)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-3)]"
                                 :disabled="diagLoading"
-                                @click="runDiagnostics"
+                                @click="runDiagnostics(false)"
                             >
                                 <i :class="diagLoading ? 'fas fa-spinner fa-spin' : 'fas fa-redo'" class="mr-1"></i>
                                 {{ diagLoading ? 'Running...' : 'Retry' }}
@@ -165,40 +152,189 @@
                             </button>
                         </div>
                     </div>
-                    <div class="text-xs font-mono text-[var(--color-text-tertiary)] mb-2">
-                        {{ diagResult.shellyID }} | IP: {{ diagResult.deviceIp }} |
-                        FW: {{ diagResult.fw }} | {{ diagResult.model }} ({{ diagResult.app }}) |
-                        Online: <span :class="diagResult.online ? 'text-[var(--color-success-text)]' : 'text-[var(--color-danger-text)]'">{{ diagResult.online }}</span>
+
+                    <!-- Device not in collector banner -->
+                    <div v-if="diagResult.deviceNotFound" class="mb-3 px-2 py-1.5 rounded bg-[var(--color-warning-subtle)] border border-[var(--color-warning)] text-xs text-[var(--color-warning-text)]">
+                        <i class="fas fa-triangle-exclamation mr-1"></i>
+                        Device not currently connected to Fleet Manager — diagnostics are limited
                     </div>
-                    <table class="w-full text-xs font-mono">
-                        <thead>
-                            <tr class="text-[var(--color-text-disabled)] border-b border-[var(--color-border-default)]">
-                                <th class="text-left py-1 pr-2">Test</th>
-                                <th class="text-left py-1 pr-2">Status</th>
-                                <th class="text-left py-1 pr-2">Time</th>
-                                <th class="text-left py-1">Details</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="(result, name) in diagResult.tests" :key="name" class="border-b border-[var(--color-border-default)]/50">
-                                <td class="py-1 pr-2 text-[var(--color-text-secondary)]">{{ name }}</td>
-                                <td class="py-1 pr-2">
-                                    <span :class="result.ok ? 'text-[var(--color-success-text)]' : 'text-[var(--color-danger-text)]'">{{ result.ok ? 'OK' : 'FAIL' }}</span>
-                                    <span v-if="result.code" class="text-[var(--color-text-disabled)] ml-1">({{ result.code }})</span>
-                                </td>
-                                <td class="py-1 pr-2 text-[var(--color-text-disabled)]">{{ result.elapsed ? result.elapsed + 'ms' : '-' }}</td>
-                                <td class="py-1 text-[var(--color-text-tertiary)]">
-                                    <span v-if="result.error" class="text-[var(--color-danger-text)]">{{ result.error }}</span>
-                                    <span v-else-if="result.bodyLength || result.bodyB64Length">
-                                        body={{ result.bodyLength }}B b64={{ result.bodyB64Length }}B
+
+                    <!-- ── 1. Reachability ── -->
+                    <div class="mb-3">
+                        <div class="text-2xs uppercase tracking-wider text-[var(--color-text-disabled)] mb-1">Reachability</div>
+                        <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs font-mono">
+                            <span class="text-[var(--color-text-disabled)]">Device IP</span>
+                            <span class="text-[var(--color-text-secondary)]">{{ diagResult.deviceIp || '—' }}</span>
+
+                            <!-- Browser → Device -->
+                            <span class="text-[var(--color-text-disabled)]">Browser → Device</span>
+                            <span v-if="browserProbe === null" class="text-[var(--color-text-disabled)]">—</span>
+                            <span v-else-if="browserProbe === 'probing'" class="text-[var(--color-text-disabled)]">probing...</span>
+                            <span v-else-if="browserProbe.elapsed === 0 && browserProbe.error?.startsWith('skipped')" class="text-[var(--color-warning-text)]">
+                                Skipped — mixed content (HTTPS → HTTP)
+                            </span>
+                            <span v-else :class="browserProbe.reachable ? 'text-[var(--color-success-text)]' : 'text-[var(--color-danger-text)]'">
+                                {{ browserProbe.reachable ? 'Reachable' : 'Unreachable' }}
+                                ({{ browserProbe.elapsed }}ms)
+                                <span v-if="browserProbe.error"> — {{ browserProbe.error }}</span>
+                            </span>
+
+                            <!-- FM → Device -->
+                            <span class="text-[var(--color-text-disabled)]">FM → Device</span>
+                            <template v-if="diagResult.fmReachability?.skipped">
+                                <span class="text-[var(--color-text-disabled)]">{{ diagResult.fmReachability.reason }}</span>
+                            </template>
+                            <template v-else-if="diagResult.fmReachability">
+                                <span :class="diagResult.fmReachability.reachable ? 'text-[var(--color-success-text)]' : 'text-[var(--color-danger-text)]'">
+                                    {{ diagResult.fmReachability.reachable ? 'Reachable' : 'Unreachable' }}
+                                    ({{ diagResult.fmReachability.elapsed }}ms)
+                                    <span v-if="diagResult.fmReachability.error"> — {{ diagResult.fmReachability.error }}</span>
+                                </span>
+                            </template>
+                            <span v-else class="text-[var(--color-text-disabled)]">—</span>
+
+                            <!-- HTTPS warning -->
+                            <template v-if="diagResult.guiContext?.httpsWarning">
+                                <span class="text-[var(--color-text-disabled)]">Warning</span>
+                                <span class="text-[var(--color-warning-text)]">{{ diagResult.guiContext.httpsWarning }}</span>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- ── 2. Device Health ── -->
+                    <div class="mb-3">
+                        <div class="text-2xs uppercase tracking-wider text-[var(--color-text-disabled)] mb-1">Device Health</div>
+                        <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs font-mono">
+                            <span class="text-[var(--color-text-disabled)]">Model</span>
+                            <span class="text-[var(--color-text-secondary)]">
+                                {{ diagResult.deviceHealth?.model || '—' }}
+                                <span v-if="diagResult.deviceHealth?.app" class="text-[var(--color-text-disabled)]">({{ diagResult.deviceHealth.app }})</span>
+                                <span v-if="diagResult.deviceHealth?.gen" class="text-[var(--color-text-disabled)]">Gen {{ diagResult.deviceHealth.gen }}</span>
+                            </span>
+
+                            <span class="text-[var(--color-text-disabled)]">Firmware</span>
+                            <span class="text-[var(--color-text-secondary)]">{{ diagResult.deviceHealth?.fw || '—' }}</span>
+
+                            <span class="text-[var(--color-text-disabled)]">Uptime</span>
+                            <span class="text-[var(--color-text-secondary)]">{{ formatUptime(diagResult.deviceHealth?.uptime) }}</span>
+
+                            <span class="text-[var(--color-text-disabled)]">RAM</span>
+                            <span class="text-[var(--color-text-secondary)]">
+                                {{ diagResult.deviceHealth?.ramFree != null ? Math.round(diagResult.deviceHealth.ramFree / 1024) + 'KB free' : '—' }}
+                                {{ diagResult.deviceHealth?.ramSize != null ? '/ ' + Math.round(diagResult.deviceHealth.ramSize / 1024) + 'KB' : '' }}
+                            </span>
+
+                            <span class="text-[var(--color-text-disabled)]">FS</span>
+                            <span class="text-[var(--color-text-secondary)]">
+                                {{ diagResult.deviceHealth?.fsFree != null ? Math.round(diagResult.deviceHealth.fsFree / 1024) + 'KB free' : '—' }}
+                                {{ diagResult.deviceHealth?.fsSize != null ? '/ ' + Math.round(diagResult.deviceHealth.fsSize / 1024) + 'KB' : '' }}
+                            </span>
+
+                            <template v-if="diagResult.deviceHealth?.temperatures?.length">
+                                <span class="text-[var(--color-text-disabled)]">Temperature</span>
+                                <span class="text-[var(--color-text-secondary)]">
+                                    {{ diagResult.deviceHealth.temperatures.map((t: any) => t.tC + '\u00B0C').join(', ') }}
+                                </span>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- ── 3. Transport Health ── -->
+                    <div class="mb-3">
+                        <div class="text-2xs uppercase tracking-wider text-[var(--color-text-disabled)] mb-1">Transport Health</div>
+                        <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs font-mono">
+                            <span class="text-[var(--color-text-disabled)]">Status</span>
+                            <span :class="diagResult.transportHealth?.online ? 'text-[var(--color-success-text)]' : 'text-[var(--color-danger-text)]'">
+                                {{ diagResult.transportHealth?.online ? 'Online' : 'Offline' }}
+                                <span v-if="diagResult.transportHealth?.presence === 'pending'" class="text-[var(--color-warning-text)]">(pending)</span>
+                            </span>
+
+                            <span class="text-[var(--color-text-disabled)]">Transport</span>
+                            <span class="text-[var(--color-text-secondary)]">{{ diagResult.transportHealth?.transport || '—' }}</span>
+
+                            <span class="text-[var(--color-text-disabled)]">Pending RPCs</span>
+                            <span :class="(diagResult.transportHealth?.pendingRpcs || 0) > 0 ? 'text-[var(--color-warning-text)]' : 'text-[var(--color-text-secondary)]'">
+                                {{ diagResult.transportHealth?.pendingRpcs ?? 0 }}
+                            </span>
+
+                            <span class="text-[var(--color-text-disabled)]">Last Report</span>
+                            <span class="text-[var(--color-text-secondary)]">
+                                {{ diagResult.transportHealth?.lastReportAge != null ? diagResult.transportHealth.lastReportAge + 's ago' : '—' }}
+                            </span>
+
+                            <template v-if="diagResult.transportHealth?.rpcCheck">
+                                <span class="text-[var(--color-text-disabled)]">RPC Check</span>
+                                <span :class="diagResult.transportHealth.rpcCheck.ok ? 'text-[var(--color-success-text)]' : 'text-[var(--color-danger-text)]'">
+                                    {{ diagResult.transportHealth.rpcCheck.ok ? 'OK' : 'FAIL' }}
+                                    ({{ diagResult.transportHealth.rpcCheck.elapsed }}ms)
+                                    <span v-if="diagResult.transportHealth.rpcCheck.error"> — {{ diagResult.transportHealth.rpcCheck.error }}</span>
+                                </span>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- ── 4. Network Quality ── -->
+                    <div v-if="diagResult.networkQuality" class="mb-3">
+                        <div class="text-2xs uppercase tracking-wider text-[var(--color-text-disabled)] mb-1">Network Quality</div>
+                        <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs font-mono">
+                            <template v-if="diagResult.networkQuality.wifi">
+                                <span class="text-[var(--color-text-disabled)]">WiFi</span>
+                                <span class="text-[var(--color-text-secondary)]">
+                                    {{ diagResult.networkQuality.wifi.ssid || '—' }}
+                                    — {{ diagResult.networkQuality.wifi.ip || 'no IP' }}
+                                </span>
+
+                                <span class="text-[var(--color-text-disabled)]">RSSI</span>
+                                <span v-if="diagResult.networkQuality.wifi.rssi != null"
+                                    :class="diagResult.networkQuality.wifi.rssi > -50 ? 'text-[var(--color-success-text)]'
+                                        : diagResult.networkQuality.wifi.rssi > -70 ? 'text-[var(--color-warning-text)]'
+                                        : 'text-[var(--color-danger-text)]'"
+                                >
+                                    {{ diagResult.networkQuality.wifi.rssi }} dBm
+                                    ({{ diagResult.networkQuality.wifi.rssi > -50 ? 'excellent' : diagResult.networkQuality.wifi.rssi > -60 ? 'good' : diagResult.networkQuality.wifi.rssi > -70 ? 'fair' : 'weak' }})
+                                </span>
+                                <span v-else class="text-[var(--color-text-disabled)]">—</span>
+                            </template>
+
+                            <template v-if="diagResult.networkQuality.eth">
+                                <span class="text-[var(--color-text-disabled)]">Ethernet</span>
+                                <span class="text-[var(--color-text-secondary)]">{{ diagResult.networkQuality.eth.ip || '—' }}</span>
+                            </template>
+
+                            <span class="text-[var(--color-text-disabled)]">Cloud</span>
+                            <span class="text-[var(--color-text-secondary)]">
+                                {{ diagResult.networkQuality.cloud != null ? (diagResult.networkQuality.cloud ? 'Connected' : 'Disconnected') : '—' }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- ── 5. Advanced (collapsed, loaded on demand) ── -->
+                    <div v-if="diagResult.advanced">
+                        <Collapse title="Advanced">
+                            <div v-if="diagResult.advanced.listMethods" class="text-xs font-mono">
+                                <div class="mb-1">
+                                    <span :class="diagResult.advanced.listMethods.ok ? 'text-[var(--color-success-text)]' : 'text-[var(--color-danger-text)]'">
+                                        ListMethods: {{ diagResult.advanced.listMethods.ok ? 'OK' : 'FAIL' }}
                                     </span>
-                                    <span v-if="result.headers && Object.keys(result.headers).length > 0" class="block text-[var(--color-text-disabled)] mt-0.5">
-                                        {{ Object.entries(result.headers).map(([k, v]) => `${k}: ${v}`).join(' | ') }}
-                                    </span>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                                    <span class="text-[var(--color-text-disabled)]"> ({{ diagResult.advanced.listMethods.elapsed }}ms)</span>
+                                    <span v-if="diagResult.advanced.listMethods.error" class="text-[var(--color-danger-text)]"> — {{ diagResult.advanced.listMethods.error }}</span>
+                                </div>
+                                <div v-if="diagResult.advanced.listMethods.methods" class="text-[var(--color-text-disabled)] max-h-32 overflow-auto">
+                                    {{ diagResult.advanced.listMethods.count }} methods:
+                                    {{ diagResult.advanced.listMethods.methods.join(', ') }}
+                                </div>
+                            </div>
+                        </Collapse>
+                    </div>
+                    <div v-else>
+                        <button
+                            class="text-xs text-[var(--color-text-disabled)] hover:text-[var(--color-text-secondary)] underline"
+                            :disabled="diagLoading"
+                            @click="runDiagnostics(true)"
+                        >
+                            Load advanced diagnostics...
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Diagnostics Error -->
@@ -207,7 +343,7 @@
                     <button
                         class="text-xs px-2 py-1 rounded border border-[var(--color-border-strong)] text-[var(--color-text-secondary)] hover:bg-[var(--color-surface-3)] shrink-0"
                         :disabled="diagLoading"
-                        @click="runDiagnostics"
+                        @click="runDiagnostics(false)"
                     >
                         <i class="fas fa-redo mr-1"></i>
                         Retry
@@ -266,15 +402,14 @@ const error = ref<string | null>(null);
 const guiUrl = ref<string | null>(null);
 const deviceIp = ref<string | null>(null);
 const fwVersion = ref<string | null>(null);
-const proxyMethod = ref<'direct' | 'shelly_addr' | 'compatibility' | null>(
-    null
-);
+const proxyMethod = ref<'direct' | null>(null);
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 const copyLabel = ref('Copy');
 const diagLoading = ref(false);
 const diagResult = ref<Record<string, any> | null>(null);
 const diagError = ref<string | null>(null);
 const copyLogsLabel = ref('Copy Logs');
+const browserProbe = ref<null | 'probing' | {reachable: boolean; elapsed: number; error?: string}>(null);
 
 const obsLevel = computed<ObsLevel>(() => getObsLevel());
 
@@ -378,6 +513,11 @@ async function loadGuiInfo() {
 
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));
+            if (response.status === 404) {
+                throw new Error(
+                    data.error || 'Device no longer connected to Fleet Manager'
+                );
+            }
             throw new Error(data.error || `HTTP ${response.status}`);
         }
 
@@ -387,51 +527,50 @@ async function loadGuiInfo() {
         deviceIp.value = data.deviceIp;
         fwVersion.value = data.fwVersion || null;
 
-        // Detect if the browser is likely on the same LAN as the device.
-        // If FM is accessed from a private IP, we can load the device GUI
-        // directly — no proxy needed, works for ALL firmware versions.
+        if (!data.deviceIp) {
+            error.value = 'Device IP not available. The device may be offline.';
+            return;
+        }
+
+        // Direct LAN access — browser connects to device IP.
+        // Works when FM and devices are on the same network (typical deployment).
+        // If accessed via domain name, verify the device is reachable first.
+        const deviceUrl = `http://${data.deviceIp}/`;
         const fmHost = window.location.hostname;
-        const isLAN =
+        const isPrivateIp =
             fmHost === 'localhost' ||
             fmHost === '127.0.0.1' ||
             fmHost === '::1' ||
             fmHost.startsWith('10.') ||
             fmHost.startsWith('192.168.') ||
             /^172\.(1[6-9]|2\d|3[01])\./.test(fmHost);
-        const isHttps = window.location.protocol === 'https:';
 
-        if (isLAN && data.deviceIp) {
-            // LAN mode: load device GUI directly from its IP.
-            // Browser can reach the device — no proxy overhead, works
-            // with all firmware versions (no shelly_addr needed).
-            guiUrl.value = `http://${data.deviceIp}/`;
-            proxyMethod.value = 'direct';
-            console.log(
-                '[DeviceWebGuiModal] Opening device GUI (direct LAN): %s',
-                guiUrl.value
-            );
-        } else if (!isHttps && data.proxyPort && data.supportsNativeShellyAddr) {
-            // Content served from path-based proxy, RPC bridged via port proxy (WS transport)
-            const rpcOrigin = `${window.location.protocol}//${window.location.hostname}:${data.proxyPort}`;
-            const contentUrl = `/api/device-proxy/${props.shellyID}/gui/`;
-            guiUrl.value = `${contentUrl}?shelly_addr=${encodeURIComponent(rpcOrigin + '/rpc')}`;
-            proxyMethod.value = 'shelly_addr';
-            console.log(
-                '[DeviceWebGuiModal] Opening device GUI (content via path proxy, RPC via port %d): %s',
-                data.proxyPort,
-                guiUrl.value
-            );
-        } else if (data.fullProxyUrl) {
-            // No port proxy available — path proxy fallback
-            guiUrl.value = `${data.fullProxyUrl}?token=${encodeURIComponent(token)}`;
-            proxyMethod.value = 'compatibility';
-            console.log(
-                '[DeviceWebGuiModal] Opening device GUI (path proxy fallback): %s',
-                guiUrl.value
-            );
-        } else {
-            error.value = 'Device IP not available';
+        if (!isPrivateIp) {
+            // Accessed via domain name — probe device to check LAN reachability.
+            // Uses a short fetch with timeout; if unreachable, show helpful error.
+            try {
+                const probe = new AbortController();
+                const timer = setTimeout(() => probe.abort(), 3000);
+                await fetch(deviceUrl, {
+                    mode: 'no-cors',
+                    signal: probe.signal
+                });
+                clearTimeout(timer);
+            } catch {
+                error.value =
+                    `Cannot reach device at ${data.deviceIp}. ` +
+                    'Make sure your browser is on the same network as the device. ' +
+                    'The device GUI requires direct LAN access.';
+                return;
+            }
         }
+
+        guiUrl.value = deviceUrl;
+        proxyMethod.value = 'direct';
+        console.log(
+            '[DeviceWebGuiModal] Opening device GUI (direct LAN): %s',
+            guiUrl.value
+        );
     } catch (e: any) {
         if (e instanceof DOMException && e.name === 'AbortError') return;
         console.error('[DeviceWebGuiModal] Failed to load device GUI info:', e);
@@ -449,9 +588,53 @@ function onIframeError() {
     error.value = 'Failed to load device GUI';
 }
 
-async function runDiagnostics() {
+function formatUptime(seconds: number | null): string {
+    if (seconds == null) return '—';
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (d > 0) return `${d}d ${h}h ${m}m`;
+    if (h > 0) return `${h}h ${m}m`;
+    return `${m}m`;
+}
+
+const isHttpsPage = window.location.protocol === 'https:';
+
+async function probeBrowserReachability(ip: string) {
+    // HTTPS pages block fetch to http:// as mixed content — probe would
+    // always fail, giving a misleading "Unreachable" result.
+    if (isHttpsPage) {
+        browserProbe.value = {
+            reachable: false,
+            elapsed: 0,
+            error: 'skipped — mixed content blocked by browser (HTTPS → HTTP)'
+        };
+        return;
+    }
+
+    browserProbe.value = 'probing';
+    const start = Date.now();
+    try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 4000);
+        await fetch(`http://${ip}/`, {mode: 'no-cors', signal: ctrl.signal});
+        clearTimeout(timer);
+        browserProbe.value = {reachable: true, elapsed: Date.now() - start};
+    } catch (e: any) {
+        browserProbe.value = {
+            reachable: false,
+            elapsed: Date.now() - start,
+            error: e.name === 'AbortError' ? 'timeout (4s)' : e.message
+        };
+    }
+}
+
+async function runDiagnostics(advanced = false) {
     diagLoading.value = true;
-    diagResult.value = null;
+    if (!advanced) {
+        diagResult.value = null;
+        browserProbe.value = null;
+    }
     diagError.value = null;
 
     try {
@@ -460,8 +643,9 @@ async function runDiagnostics() {
             throw new Error('Not authenticated');
         }
 
+        const query = advanced ? '?advanced=true' : '';
         const response = await fetch(
-            `/api/device-proxy/${props.shellyID}/gui-debug`,
+            `/api/device-proxy/${props.shellyID}/gui-debug${query}`,
             {
                 headers: {
                     Authorization: `Bearer ${token}`
@@ -472,10 +656,19 @@ async function runDiagnostics() {
 
         if (!response.ok) {
             const text = await response.text();
+            if (response.status === 404) {
+                throw new Error('Device no longer connected to Fleet Manager');
+            }
             throw new Error(`HTTP ${response.status}: ${text}`);
         }
 
-        diagResult.value = await response.json();
+        const data = await response.json();
+        diagResult.value = data;
+
+        // Run browser → device probe in parallel (non-blocking)
+        if (data.deviceIp && !advanced) {
+            probeBrowserReachability(data.deviceIp);
+        }
     } catch (e: any) {
         if (e instanceof DOMException && e.name === 'AbortError') return;
         diagError.value = e.message || 'Unknown error';

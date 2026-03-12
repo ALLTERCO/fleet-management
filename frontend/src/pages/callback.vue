@@ -8,6 +8,14 @@
                 <Spinner />
             </div>
             <p v-if="error" class="text-center text-[var(--color-danger-text)] text-sm">{{ error }}</p>
+            <button
+                v-if="error"
+                class="mt-2 text-sm underline text-[var(--color-primary)]"
+                type="button"
+                @click="router.replace('/login')"
+            >
+                Return to login
+            </button>
         </div>
     </div>
 </template>
@@ -53,14 +61,12 @@ onMounted(() => {
         })
         .catch((err) => {
             console.error('OIDC signin callback error:', err?.message || err, err);
-            error.value = `Login failed: ${err?.message || 'unknown error'}. Please try again.`;
-            setTimeout(() => {
-                if (router) {
-                    router.replace('/login');
-                } else {
-                    window.location.href = '/login';
-                }
-            }, 2000);
+            const errorMessage = err?.message || 'unknown error';
+            if (/network|fetch|load failed|certificate|ssl|tls/i.test(errorMessage)) {
+                error.value = 'Login failed during the secure callback request. If you are using Safari with a self-signed certificate, trust the Fleet Manager CA in Keychain and try again.';
+            } else {
+                error.value = `Login failed: ${errorMessage}. Please try again.`;
+            }
         });
 });
 </script>

@@ -43,8 +43,9 @@ Default login: `fm-admin` / `Admin123!`.
    - without SSL: `ws://<your-ip>:7011/shelly`
    - with SSL: `wss://<your-hostname-or-ip>/shelly`
 4. For self-signed deployments (`--ssl selfsigned`), configure device TLS:
-   1. Device Web UI > **Settings > User certificate** > upload `deploy/state/tls/ca.crt`
-   2. **Outbound WebSocket > SSL Connectivity** > select `user_ca.pem`
+   1. Device Web UI > **Settings > TLS Configuration > Custom CA PEM bundle** > upload `deploy/state/tls/ca.crt`
+   2. **Outbound WebSocket > Connection type** > select `User TLS`
+   3. **Server** > `wss://<your-hostname-or-ip>/shelly`
 
    For Let's Encrypt or other publicly trusted certificates, leave SSL Connectivity on `ca.pem` (the device's built-in CA bundle).
 

@@ -1,5 +1,6 @@
 <template>
     <EmDeviceOptionsModal
+        v-if="device"
         :visible="showOptionsModal"
         :model-value="selectedEMDevices"
         :default-device="defaultEmDevice"
@@ -241,8 +242,8 @@ interface EmDevice {
 }
 
 const defaultEmDevice = computed<EmDevice>(() => ({
-    shellyID: device.value.shellyID,
-    name: getDeviceName(device.value.info),
+    shellyID: device.value?.shellyID || shellyID.value,
+    name: getDeviceName(device.value?.info, shellyID.value) || shellyID.value,
     pictureUrl: getLogo(device.value)
 }));
 
@@ -252,7 +253,7 @@ const selectedEMDevices = ref<EmDevice[]>([]);
 
 const entities = computed(() => {
     const entities: Record<string, entity_t> = {};
-    for (const eid of device.value.entities)
+    for (const eid of device.value?.entities ?? [])
         if (entityStore.entities[eid]) {
             entities[eid] = entityStore.entities[eid];
         }
@@ -266,7 +267,7 @@ const sortedEntities = computed(() =>
 );
 
 const dateOfInclusionShort = computed(() => {
-    const ts = device.value.status?.ts;
+    const ts = device.value?.status?.ts;
     if (!ts) return '—';
     return new Date(ts * 1000).toLocaleDateString(undefined, {month: 'short', day: 'numeric', year: 'numeric'});
 });
@@ -380,6 +381,20 @@ watch(shellyID, async (newID, oldShellyID) => {
         .catch(() => {});
 });
 
+watch(
+    device,
+    (newDevice) => {
+        if (!newDevice) {
+            showOptionsModal.value = false;
+            showWebGuiModal.value = false;
+            return;
+        }
+        deviceNameField.value =
+            newDevice.info?.name || newDevice.info?.id || newDevice.shellyID;
+    },
+    {immediate: true}
+);
+
 onMounted(() => {
     ws.addTemporarySubscription([shellyID.value]);
 
@@ -407,8 +422,8 @@ onUnmounted(() => {
     padding: var(--space-1) var(--space-3) var(--space-3);
 }
 .device-hero__img {
-    width: 160px;
-    height: 160px;
+    width: 140px;
+    height: 140px;
     border-radius: var(--radius-lg);
     object-fit: contain;
 }

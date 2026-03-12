@@ -145,12 +145,13 @@ function toggleAutoScroll() {
 
 watch(
     () => logStore.filteredLogs.length,
-    async () => {
+    () => {
         if (!autoScroll.value) return;
-        await nextTick();
-        if (logContainer.value) {
-            logContainer.value.scrollTop = logContainer.value.scrollHeight;
-        }
+        requestAnimationFrame(() => {
+            if (logContainer.value) {
+                logContainer.value.scrollTop = logContainer.value.scrollHeight;
+            }
+        });
     }
 );
 

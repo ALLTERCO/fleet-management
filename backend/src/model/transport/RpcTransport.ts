@@ -139,6 +139,10 @@ export default abstract class RpcTransport {
         clearInterval(this.#intervalId);
     }
 
+    get pendingRpcCount() {
+        return this.#shellyMessageMap.size;
+    }
+
     get eventemitter() {
         return this._eventEmitter;
     }

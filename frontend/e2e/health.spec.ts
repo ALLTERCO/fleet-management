@@ -21,13 +21,9 @@ test.describe('Fleet Manager health checks', () => {
 });
 
 test.describe('Authentication flow', () => {
-    test('unauthenticated API returns 401 or redirect', async ({request}) => {
-        const response = await request.fetch('/api/device-proxy/test/rpc', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            data: {jsonrpc: '2.0', id: 1, src: 'e2e', method: 'Shelly.GetStatus'}
-        });
-        // Should not return 200 without auth
-        expect(response.status()).not.toBe(200);
+    test('unauthenticated API returns 401', async ({request}) => {
+        const response = await request.get('/api/device-proxy/test/info');
+        // Protected endpoint should reject unauthenticated requests
+        expect(response.status()).toBe(401);
     });
 });

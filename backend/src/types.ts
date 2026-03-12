@@ -459,6 +459,8 @@ import type AbstractDevice from './model/AbstractDevice';
 declare module 'ws' {
     export interface WebSocket extends ws {
         isAlive: boolean;
+        missedPongs?: number;
+        __rpcTransport?: {pendingRpcCount: number};
     }
 }
 

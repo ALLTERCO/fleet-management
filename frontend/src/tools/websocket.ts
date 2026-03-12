@@ -162,7 +162,7 @@ type PatchEntry =
 const pendingPatches = new Map<string, PatchEntry>();
 let rafScheduled = false;
 
-const FLUSH_CHUNK_SIZE = 200; // max patches per frame to avoid blocking main thread
+const FLUSH_CHUNK_SIZE = 80; // max patches per frame — keeps frames under 16ms budget
 
 function schedulePatchFlush(devicesStore: ReturnType<typeof useDevicesStore>) {
     if (rafScheduled) return;

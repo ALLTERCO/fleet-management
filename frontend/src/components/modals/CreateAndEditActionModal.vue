@@ -23,14 +23,14 @@
             <div v-else-if="stage === STAGES.BUILD" class="space-y-3">
                 <div class="flex flex-row items-center">
                     <span class="has-text-white mr-2">Preset methods:</span>
-                    <Dropdown class="mr-2" :options="ALLOWED_COMPONENT_NAMES" @selected="componentSelected" />
-                    <Dropdown v-if="componentMethodNames" :options="componentMethodNames" @selected="methodSelected" />
+                    <Dropdown class="mr-2" :options="ALLOWED_COMPONENT_NAMES" :searchable="true" @selected="componentSelected" />
+                    <Dropdown v-if="componentMethodNames" :options="componentMethodNames" :searchable="true" @selected="methodSelected" />
                 </div>
-                <Vue3JsonEditor
-                    v-model="json"
-                    :show-btns="false"
-                    :expanded-on-start="true"
-                    @json-change="onJsonChange"
+                <VueJsonPretty
+                    v-model:data="json"
+                    :deep="Infinity"
+                    :editable="true"
+                    :show-line="false"
                 />
             </div>
 
@@ -56,11 +56,8 @@
 <script lang="ts" setup>
 import {computed, defineAsyncComponent, ref, watch} from 'vue';
 
-const Vue3JsonEditor = defineAsyncComponent(() =>
-    import('vue3-json-editor/dist/vue3-json-editor.esm').then(
-        (m) => m.Vue3JsonEditor
-    )
-);
+const VueJsonPretty = defineAsyncComponent(() => import('vue-json-pretty'));
+import 'vue-json-pretty/lib/styles.css';
 
 import Dropdown from '@/components/core/Dropdown.vue';
 import default_rpc from '@/data/default_rpc.json';
@@ -165,10 +162,6 @@ function methodSelected(method: string) {
     setMethod(method);
 }
 
-function onJsonChange(val: any) {
-    json.value = val;
-}
-
 function onClose() {
     stage.value = STAGES.SELECT_DEVICES;
     emit('close');
@@ -206,11 +199,8 @@ async function onSave() {
 </script>
 
 <style>
-.jsoneditor-field {
-    color: white !important;
-}
-.jsoneditor-field:hover,
-.jsoneditor-field:focus {
-    background-color: rgb(30 41 59) !important;
+.vjs-tree {
+    color: #e2e8f0 !important;
+    background-color: transparent !important;
 }
 </style>

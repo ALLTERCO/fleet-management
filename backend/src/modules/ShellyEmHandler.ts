@@ -279,6 +279,10 @@ export const InitEm = (): {
         if (!payload) {
             return;
         }
+        if (Observability.isDbWritesDisabled()) {
+            Observability.incrementCounter('em_sync_writes_skipped');
+            return;
+        }
         const dataIndexes = fields
             .map((v) => ({...v, idx: payload.keys.indexOf(v.name)}))
             .filter((v) => v.idx > -1);
@@ -373,11 +377,17 @@ export const InitEm = (): {
                         logger.info(
                             `Pushing zero day! for id: ${id}, channel: ${ch}, ts: ${ts}`
                         );
-                        return await callMethod('device_em.fn_synced', {
-                            p_device: id,
-                            p_created: ts,
-                            p_channel: ch
-                        });
+                        if (Observability.isDbWritesDisabled()) {
+                            Observability.incrementCounter(
+                                'em_sync_writes_skipped'
+                            );
+                        } else {
+                            return await callMethod('device_em.fn_synced', {
+                                p_device: id,
+                                p_created: ts,
+                                p_channel: ch
+                            });
+                        }
                     })
                 );
                 // Cache the zero-day timestamp
@@ -438,11 +448,15 @@ export const InitEm = (): {
                     payload: {keys, data}
                 });
                 const nextDate = nextTs || nextTsLoc;
-                await callMethod('device_em.fn_synced', {
-                    p_device: id,
-                    p_created: nextDate,
-                    p_channel: channel
-                });
+                if (Observability.isDbWritesDisabled()) {
+                    Observability.incrementCounter('em_sync_writes_skipped');
+                } else {
+                    await callMethod('device_em.fn_synced', {
+                        p_device: id,
+                        p_created: nextDate,
+                        p_channel: channel
+                    });
+                }
                 // Cache the new sync timestamp in memory
                 if (device) device.lastSyncedTs = nextDate;
                 logger.info(

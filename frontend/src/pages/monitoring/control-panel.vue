@@ -160,12 +160,102 @@
                 </div>
             </div>
         </BasicBlock>
+
+        <!-- WS Patch Telemetry -->
+        <BasicBlock darker>
+            <div class="space-y-3">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-wave-square cp-icon-accent" />
+                    <h3 class="font-semibold text-sm cp-block-title">WS Patch Telemetry</h3>
+                </div>
+                <p class="text-xs cp-hint-text">
+                    Tracks peak patch buffer depth, deferred-frame count, and RAF apply time per frame.
+                    Adds minor overhead per WebSocket event. Persists via localStorage.
+                </p>
+                <div class="flex items-center gap-3">
+                    <button
+                        class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
+                        :class="store.wsTelemetryEnabled ? 'cp-toggle-on' : 'cp-toggle-off'"
+                        @click="store.toggleWsTelemetry(!store.wsTelemetryEnabled)"
+                    >
+                        <span
+                            class="inline-block h-4 w-4 rounded-full cp-toggle-knob transition-transform"
+                            :class="store.wsTelemetryEnabled ? 'translate-x-6' : 'translate-x-1'"
+                        />
+                    </button>
+                    <span class="text-sm font-mono" :class="store.wsTelemetryEnabled ? 'cp-debug-on-text' : 'cp-debug-off-text'">
+                        {{ store.wsTelemetryEnabled ? 'ON' : 'OFF' }}
+                    </span>
+                </div>
+                <div v-if="store.wsTelemetryEnabled" class="grid grid-cols-3 gap-3">
+                    <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
+                        <div class="text-xs text-[var(--color-text-disabled)] mb-1">Buffer Peak</div>
+                        <span class="text-sm font-mono font-semibold text-[var(--color-text-secondary)]">
+                            {{ store.wsTelemetryData.patchBufferMaxDepth }}
+                        </span>
+                    </div>
+                    <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
+                        <div class="text-xs text-[var(--color-text-disabled)] mb-1">Deferred Frames</div>
+                        <span class="text-sm font-mono font-semibold" :class="store.wsTelemetryData.droppedFrameCount > 0 ? 'text-[var(--color-warning-text)]' : 'text-[var(--color-text-secondary)]'">
+                            {{ store.wsTelemetryData.droppedFrameCount }}
+                        </span>
+                    </div>
+                    <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
+                        <div class="text-xs text-[var(--color-text-disabled)] mb-1">RAF Apply Max</div>
+                        <span class="text-sm font-mono font-semibold" :class="store.wsTelemetryData.rafFrameTimeMaxMs > 16 ? 'text-[var(--color-danger-text)]' : store.wsTelemetryData.rafFrameTimeMaxMs > 8 ? 'text-[var(--color-warning-text)]' : 'text-[var(--color-text-secondary)]'">
+                            {{ store.wsTelemetryData.rafFrameTimeMaxMs }}ms
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </BasicBlock>
+
+        <!-- Diagnostic: Disable DB Writes -->
+        <BasicBlock darker>
+            <div class="space-y-3">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-database cp-icon-danger" />
+                    <h3 class="font-semibold text-sm cp-block-title">Disable Hot-Path DB Writes</h3>
+                    <span class="text-xs font-mono px-1.5 py-0.5 rounded cp-badge-diagnostic">DIAGNOSTIC</span>
+                </div>
+                <p class="text-xs cp-hint-text">
+                    Suppresses status flushes, EM stats writes, device state persists, and audit log writes.
+                    WebSocket connections, event broadcasting, in-memory state, and RPC commands continue normally.
+                    Use for A/B testing whether DB writes are the performance bottleneck.
+                    <strong class="text-[var(--color-danger-text)]">Resets on restart.</strong>
+                </p>
+                <div class="flex items-center gap-3">
+                    <button
+                        class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none"
+                        :class="store.dbWritesDisabled ? 'cp-toggle-danger-on' : 'cp-toggle-off'"
+                        :disabled="dbWritesLoading"
+                        @click="toggleDbWrites"
+                    >
+                        <span
+                            class="inline-block h-4 w-4 rounded-full cp-toggle-knob transition-transform"
+                            :class="store.dbWritesDisabled ? 'translate-x-6' : 'translate-x-1'"
+                        />
+                    </button>
+                    <span class="text-sm font-mono" :class="store.dbWritesDisabled ? 'text-[var(--color-danger-text)]' : 'cp-debug-off-text'">
+                        {{ store.dbWritesDisabled ? 'WRITES DISABLED' : 'NORMAL' }}
+                    </span>
+                </div>
+                <div v-if="store.dbWritesDisabled" class="flex items-start gap-2 p-2 rounded border border-[var(--color-danger)] bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)]">
+                    <i class="fa-solid fa-triangle-exclamation text-[var(--color-danger-text)] text-xs mt-0.5" />
+                    <span class="text-xs text-[var(--color-danger-text)]">
+                        DB writes are disabled — status history, EM data, and audit logs are NOT being recorded.
+                        Queues are being drained to prevent memory growth.
+                    </span>
+                </div>
+            </div>
+        </BasicBlock>
     </div>
 </template>
 
 <script setup lang="ts">
-import {computed, reactive} from 'vue';
+import {computed, onMounted, reactive, ref} from 'vue';
 import BasicBlock from '@/components/core/BasicBlock.vue';
+import apiClient from '@/helpers/axios';
 import {useLogStore} from '@/stores/console';
 import {useMonitoringStore} from '@/stores/monitoring';
 import {
@@ -402,6 +492,27 @@ const sortedInteractionCounts = computed(() =>
     Object.entries(interactionCountsSnapshot.value).sort((a, b) => b[1] - a[1])
 );
 
+const dbWritesLoading = ref(false);
+
+onMounted(async () => {
+    try {
+        const {data} = await apiClient.get('/health/db-writes');
+        store.dbWritesDisabled = data.dbWritesDisabled ?? false;
+    } catch { /* endpoint may not exist yet */ }
+});
+
+async function toggleDbWrites() {
+    dbWritesLoading.value = true;
+    try {
+        const {data} = await apiClient.post('/health/db-writes', {
+            disabled: !store.dbWritesDisabled
+        });
+        store.dbWritesDisabled = data.dbWritesDisabled;
+    } finally {
+        dbWritesLoading.value = false;
+    }
+}
+
 // Load log levels on mount
 store.fetchLogLevels();
 </script>
@@ -415,6 +526,7 @@ store.fetchLogLevels();
 .cp-icon-primary { color: var(--color-primary-text); }
 .cp-icon-warning { color: var(--color-warning-text); }
 .cp-icon-success { color: var(--color-success-text); }
+.cp-icon-accent { color: var(--color-accent-text); }
 
 /* -- Secondary button (export, load) -- */
 .cp-secondary-btn {
@@ -491,4 +603,12 @@ store.fetchLogLevels();
 .cp-debug-on-text { color: var(--color-success-text); }
 .cp-debug-off-text { color: var(--color-text-disabled); }
 .cp-toggle-knob { background-color: var(--color-text-primary); }
+
+/* -- Danger / diagnostic toggle -- */
+.cp-icon-danger { color: var(--color-danger-text); }
+.cp-toggle-danger-on { background-color: var(--color-danger); }
+.cp-badge-diagnostic {
+    background-color: color-mix(in srgb, var(--color-danger) 30%, transparent);
+    color: var(--color-danger-text);
+}
 </style>

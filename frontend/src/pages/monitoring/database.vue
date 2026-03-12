@@ -101,6 +101,30 @@
                                 <div class="text-[var(--color-text-tertiary)]">audit: <span class="text-[var(--color-text-primary)]">{{ store.counterRates.audit_flushes ?? 0 }}/min</span></div>
                             </div>
                         </div>
+                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
+                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Last Flush Duration</div>
+                            <div class="flex items-end justify-between gap-2">
+                                <span class="text-sm font-mono font-semibold" :class="flushDurationColor(store.latestMetrics?.modules?.statusQueue?.lastFlushMs ?? 0)">
+                                    {{ store.latestMetrics?.modules?.statusQueue?.lastFlushMs ?? 0 }}ms
+                                </span>
+                                <SparkLine :data="cachedHistory.lastFlushMs" color="#fbbf24" :width="60" :height="20" />
+                            </div>
+                        </div>
+                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
+                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Last Flush Batch</div>
+                            <span class="text-sm font-mono font-semibold text-[var(--color-text-secondary)]">
+                                {{ store.latestMetrics?.modules?.statusQueue?.lastFlushBatchSize ?? 0 }} rows
+                            </span>
+                        </div>
+                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
+                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Status Cache</div>
+                            <span class="text-sm font-mono font-semibold text-[var(--color-text-secondary)]">
+                                {{ store.latestMetrics?.modules?.statusQueue?.statusCacheEntries ?? 0 }} entries
+                            </span>
+                            <div class="text-xs font-mono text-[var(--color-text-disabled)] mt-0.5">
+                                {{ store.latestMetrics?.modules?.statusQueue?.statusCacheDevices ?? 0 }} devices
+                            </div>
+                        </div>
                     </div>
                 </div>
             </BasicBlock>
@@ -188,7 +212,8 @@ const store = useMonitoringStore();
 // ── Cached history fields ────────────────────────────────────────
 const cachedHistory = computed(() => ({
     dbPoolWaiting: store.historyField('dbPoolWaiting'),
-    dbAvgMs: store.historyField('dbAvgMs')
+    dbAvgMs: store.historyField('dbAvgMs'),
+    lastFlushMs: store.historyField('lastFlushMs')
 }));
 
 // ── Pool visualization ─────────────────────────────────────────────
@@ -248,6 +273,12 @@ function durationColor(ms: number): string {
     if (ms > 1000) return 'text-[var(--color-danger-text)]';
     if (ms > 200) return 'text-[var(--color-warning-text)]';
     return 'text-[var(--color-success-text)]';
+}
+
+function flushDurationColor(ms: number): string {
+    if (ms > 500) return 'text-[var(--color-danger-text)]';
+    if (ms > 200) return 'text-[var(--color-warning-text)]';
+    return 'text-[var(--color-text-secondary)]';
 }
 
 const insights = computed<Insight[]>(() => {

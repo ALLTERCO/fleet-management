@@ -34,7 +34,45 @@ import ShellyWebsocketHandler, {
 
 const logger = log4js.getLogger('web');
 
-// Middleware helper
+const KNOWN_LOG_CATEGORIES = [
+    'default',
+    'web',
+    'shelly-ws',
+    'postgres',
+    'message-parser',
+    'DeviceCollector',
+    'Commander',
+    'audit',
+    'Observability',
+    'FirmwareScheduler',
+    'local-scanner',
+    'registry',
+    'Plugin Loader',
+    'device-proxy',
+    'message-handler',
+    'config',
+    'AbstractDevice',
+    'device',
+    'GroupComponent',
+    'BackupComponent',
+    'FirmwareComponent',
+    'user',
+    'WaitingRoom',
+    'client-ws',
+    'local-ws',
+    'ws-server',
+    'ws-upgrade',
+    'api',
+    'grafana-proxy',
+    'ShellyComponents',
+    'shelly-events',
+    'event-model',
+    'device-gui-proxy',
+    'frontend-builder',
+    'plugin-loader'
+];
+
+// Middleware helpers
 
 function isLoggedIn(
     req: express.Request,
@@ -60,6 +98,22 @@ function isNotDefaultUser(
     next: express.NextFunction
 ) {
     if (req.user && req.user.username === UNAUTHORIZED_USER.username) {
+        res.status(403).end();
+        return;
+    }
+    next();
+}
+
+function requiresAdmin(
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+) {
+    if (
+        !req.user ||
+        req.user.username === UNAUTHORIZED_USER.username ||
+        (req.user.group !== 'admin' && !req.user.permissions.includes('*'))
+    ) {
         res.status(403).end();
         return;
     }
@@ -255,35 +309,12 @@ function registerStaticRoutes(app: express.Express) {
         );
     });
 
-    // Runtime observability toggle (no auth — same as /health)
-    app.post('/health/observability', express.json(), (req, res) => {
-        const {level, enabled} = req.body ?? {};
-        if (level !== undefined) {
-            if (![0, 1, 2, 3].includes(level)) {
-                res.status(400).json({error: 'level must be 0, 1, 2, or 3'});
-                return;
-            }
-            Observability.setLevel(level);
-        } else if (typeof enabled === 'boolean') {
-            // Backward compat
-            if (enabled) Observability.setLevel(2);
-            else Observability.setLevel(0);
-        } else {
-            res.status(400).json({
-                error: 'Provide level (0-3) or enabled (boolean)'
-            });
-            return;
-        }
-        res.json({
-            observability: Observability.isEnabled(),
-            level: Observability.getLevel()
-        });
-    });
+    // NOTE: POST /health/observability, POST /health/observability/reset, and
+    // POST /health/log-level are registered in registerRouters() with admin auth.
 
-    // Reset observability timings & counters
-    app.post('/health/observability/reset', (req, res) => {
-        Observability.resetTimings();
-        res.json({reset: true});
+    // DB writes diagnostic toggle — GET is public (read-only), POST requires admin (in registerRouters)
+    app.get('/health/db-writes', (req, res) => {
+        res.json({dbWritesDisabled: Observability.isDbWritesDisabled()});
     });
 
     // Export debug report (full observability dump)
@@ -320,44 +351,7 @@ function registerStaticRoutes(app: express.Express) {
         res.send(Observability.getPrometheusMetrics());
     });
 
-    // Runtime log level control
-    const KNOWN_LOG_CATEGORIES = [
-        'default',
-        'web',
-        'shelly-ws',
-        'postgres',
-        'message-parser',
-        'DeviceCollector',
-        'Commander',
-        'audit',
-        'Observability',
-        'FirmwareScheduler',
-        'local-scanner',
-        'registry',
-        'Plugin Loader',
-        'device-proxy',
-        'message-handler',
-        'config',
-        'AbstractDevice',
-        'device',
-        'GroupComponent',
-        'BackupComponent',
-        'FirmwareComponent',
-        'user',
-        'WaitingRoom',
-        'client-ws',
-        'local-ws',
-        'ws-server',
-        'ws-upgrade',
-        'api',
-        'grafana-proxy',
-        'ShellyComponents',
-        'shelly-events',
-        'event-model',
-        'device-gui-proxy',
-        'frontend-builder',
-        'plugin-loader'
-    ];
+    // Runtime log level control — uses module-scoped KNOWN_LOG_CATEGORIES
 
     app.get('/health/log-levels', (req, res) => {
         const levels: Record<string, string> = {};
@@ -368,7 +362,84 @@ function registerStaticRoutes(app: express.Express) {
         res.json({levels});
     });
 
-    app.post('/health/log-level', express.json(), (req, res) => {
+    // POST /health/log-level is registered in registerRouters() with admin auth.
+
+    app.use('/uploads/reportImages', express.static(reportImagesPath));
+    app.use('/uploads/backgrounds', express.static(backgroundsPath));
+    app.use(
+        '/uploads/profilePics',
+        express.static(profilePicturesPath),
+        (req, res) => {
+            // Serve default profile picture for missing users
+            res.sendFile(path.join(profilePicturesPath, 'default.png'));
+        }
+    );
+
+    // Serve plugin static assets
+    const pluginsPath = path.join(__dirname, '../../../plugins');
+    app.use('/plugins', express.static(pluginsPath));
+}
+
+function registerRouters(app: express.Express) {
+    // app.use('/auth', auth);
+    app.use('/api', api);
+    if (configRc.graphs?.grafana) {
+        app.use('/grafana', grafana);
+    }
+
+    // --- Admin-only diagnostic controls (registered after auth middleware) ---
+
+    // DB writes toggle
+    app.post('/health/db-writes', requiresAdmin, express.json(), (req, res) => {
+        const {disabled} = req.body ?? {};
+        if (typeof disabled !== 'boolean') {
+            res.status(400).json({error: 'Provide disabled (boolean)'});
+            return;
+        }
+        Observability.setDbWritesDisabled(disabled);
+        res.json({dbWritesDisabled: Observability.isDbWritesDisabled()});
+    });
+
+    // Observability level toggle
+    app.post(
+        '/health/observability',
+        requiresAdmin,
+        express.json(),
+        (req, res) => {
+            const {level, enabled} = req.body ?? {};
+            if (level !== undefined) {
+                if (![0, 1, 2, 3].includes(level)) {
+                    res.status(400).json({
+                        error: 'level must be 0, 1, 2, or 3'
+                    });
+                    return;
+                }
+                Observability.setLevel(level);
+            } else if (typeof enabled === 'boolean') {
+                // Backward compat
+                if (enabled) Observability.setLevel(2);
+                else Observability.setLevel(0);
+            } else {
+                res.status(400).json({
+                    error: 'Provide level (0-3) or enabled (boolean)'
+                });
+                return;
+            }
+            res.json({
+                observability: Observability.isEnabled(),
+                level: Observability.getLevel()
+            });
+        }
+    );
+
+    // Reset observability timings & counters
+    app.post('/health/observability/reset', requiresAdmin, (req, res) => {
+        Observability.resetTimings();
+        res.json({reset: true});
+    });
+
+    // Runtime log level control
+    app.post('/health/log-level', requiresAdmin, express.json(), (req, res) => {
         const {category, level: lvl} = req.body ?? {};
         if (!category || !lvl) {
             res.status(400).json({error: 'Provide category and level'});
@@ -395,29 +466,6 @@ function registerStaticRoutes(app: express.Express) {
         catLogger.level = lvl;
         res.json({category, level: catLogger.level.toString()});
     });
-
-    app.use('/uploads/reportImages', express.static(reportImagesPath));
-    app.use('/uploads/backgrounds', express.static(backgroundsPath));
-    app.use(
-        '/uploads/profilePics',
-        express.static(profilePicturesPath),
-        (req, res) => {
-            // Serve default profile picture for missing users
-            res.sendFile(path.join(profilePicturesPath, 'default.png'));
-        }
-    );
-
-    // Serve plugin static assets
-    const pluginsPath = path.join(__dirname, '../../../plugins');
-    app.use('/plugins', express.static(pluginsPath));
-}
-
-function registerRouters(app: express.Express) {
-    // app.use('/auth', auth);
-    app.use('/api', api);
-    if (configRc.graphs?.grafana) {
-        app.use('/grafana', grafana);
-    }
 
     // Device proxy routes (for embedded web GUI)
     app.use('/api/device-proxy', deviceProxy);

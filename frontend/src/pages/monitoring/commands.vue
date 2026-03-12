@@ -185,6 +185,7 @@ import {computed, ref} from 'vue';
 import BasicBlock from '@/components/core/BasicBlock.vue';
 import EmptyBlock from '@/components/core/EmptyBlock.vue';
 import Spinner from '@/components/core/Spinner.vue';
+import apiClient from '@/helpers/axios';
 import HealthDot from '@/components/monitoring/HealthDot.vue';
 import type {Insight} from '@/components/monitoring/InsightPanel.vue';
 import InsightPanel from '@/components/monitoring/InsightPanel.vue';
@@ -245,9 +246,7 @@ const clientTimingsReversed = computed(() => [...store.rpcTimings].reverse());
 
 // ── Reset ──────────────────────────────────────────────────────────
 async function resetTimings() {
-    await fetch('/health/observability/reset', {method: 'POST'}).catch(
-        () => {}
-    );
+    await apiClient.post('/health/observability/reset').catch(() => {});
     store.fetchAndRecord();
 }
 

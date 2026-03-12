@@ -19,19 +19,21 @@
                             <Dropdown
                                 class="mr-2"
                                 :options="rpcBuilderStore.ALLOWED_COMPONENT_NAMES"
+                                :searchable="true"
                                 @selected="componentSelected"
                             />
                             <Dropdown
                                 v-if="rpcBuilderStore.componentMethodNames"
                                 :options="rpcBuilderStore.componentMethodNames"
+                                :searchable="true"
                                 @selected="methodSelected"
                             />
                         </div>
-                        <Vue3JsonEditor
-                            v-model="json"
-                            :show-btns="false"
-                            :expanded-on-start="true"
-                            @json-change="onJsonChange"
+                        <VueJsonPretty
+                            v-model:data="json"
+                            :deep="Infinity"
+                            :editable="true"
+                            :show-line="false"
                         />
                     </div>
                     <div v-if="stage == STAGES.PREVIEW" class="flex flex-col gap-3">
@@ -95,11 +97,8 @@ import {useRpcBuilderStore} from '@/stores/rpc-builder';
 import {useToastStore} from '@/stores/toast';
 
 const {isReadOnly} = usePermissions();
-const Vue3JsonEditor = defineAsyncComponent(() =>
-    import('vue3-json-editor/dist/vue3-json-editor.esm').then(
-        (m) => m.Vue3JsonEditor
-    )
-);
+const VueJsonPretty = defineAsyncComponent(() => import('vue-json-pretty'));
+import 'vue-json-pretty/lib/styles.css';
 
 import Button from '@/components/core/Button.vue';
 import Collapse from '@/components/core/Collapse.vue';
@@ -138,10 +137,6 @@ function validateSaveName() {
 }
 
 const json = ref<Record<string, any>>({});
-
-function onJsonChange(val: any) {
-    json.value = val;
-}
 
 function componentSelected(comp: string) {
     rpcBuilderStore.setComponent(comp);
@@ -230,21 +225,17 @@ function backClicked() {
 
 watch(
     () => rpcBuilderStore.template,
-    () => {
-        onJsonChange(rpcBuilderStore.template);
+    (tpl) => {
+        json.value = tpl;
     },
     {immediate: true}
 );
 </script>
 
 <style>
-.jsoneditor-field {
-    color: white !important;
-}
-
-.jsoneditor-field:hover,
-.jsoneditor-field:focus {
-    background-color: rgb(30 41 59) !important;
+.vjs-tree {
+    color: #e2e8f0 !important;
+    background-color: transparent !important;
 }
 </style>
 

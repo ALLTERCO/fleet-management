@@ -2,7 +2,10 @@ import type {IncomingMessage} from 'node:http';
 import type {Duplex} from 'node:stream';
 import {getLogger} from 'log4js';
 import WebSocket from 'ws';
+import * as Observability from '../../../Observability';
 const logger = getLogger('ws-server');
+
+let wsMaxBufferedKB = 0;
 
 type Options = ConstructorParameters<typeof WebSocket.Server>[0];
 export type WebSocketExt = WebSocket.WebSocket & {isAlive: boolean};
@@ -56,11 +59,13 @@ export default abstract class AbstractWebsocketHandler {
                 this._server.clients as Set<WebSocketExt>
             );
             let offset = 0;
+            let maxBuf = 0;
 
             const processChunk = () => {
                 const end = Math.min(offset + CHUNK_SIZE, clients.length);
                 for (let i = offset; i < end; i++) {
                     const ws = clients[i];
+                    if (ws.bufferedAmount > maxBuf) maxBuf = ws.bufferedAmount;
                     if (ws.isAlive === false) {
                         logger.error('Closing socket bc of ping/pong timeout');
                         ws.terminate();
@@ -73,6 +78,12 @@ export default abstract class AbstractWebsocketHandler {
                 offset = end;
                 if (offset < clients.length) {
                     setImmediate(processChunk);
+                } else {
+                    wsMaxBufferedKB = Math.round(maxBuf / 1024);
+                    Observability.setGauge(
+                        'ws_max_buffered_kb',
+                        wsMaxBufferedKB
+                    );
                 }
             };
 

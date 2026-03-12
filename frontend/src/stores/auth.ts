@@ -48,9 +48,8 @@ export const useAuthStore = defineStore('auth', () => {
         if (devMode.value) {
             return !!devModeToken.value;
         }
-        return !!(
-            zitadelUser.value?.auth_time && zitadelUser.value.auth_time > 0
-        );
+        if (!zitadelAuth) return false;
+        return zitadelAuth.oidcAuth.isAuthenticated;
     });
 
     // Get current Zitadel user profile

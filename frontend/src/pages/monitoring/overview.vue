@@ -22,6 +22,15 @@
             </div>
         </div>
 
+        <!-- DB Writes Disabled warning -->
+        <BasicBlock v-if="store.dbWritesDisabled" darker class="border border-[var(--color-danger)] bg-[color-mix(in_srgb,var(--color-danger)_10%,transparent)]">
+            <div class="flex items-center gap-2 text-[var(--color-danger-text)]">
+                <i class="fa-solid fa-database" />
+                <span class="text-sm font-semibold">DB Writes Disabled</span>
+                <span class="text-xs opacity-75">— Status history and audit logs are not being recorded</span>
+            </div>
+        </BasicBlock>
+
         <!-- Bottleneck Analysis (Tier 1+) -->
         <BottleneckPanel v-if="store.obsLevel > 0" />
 

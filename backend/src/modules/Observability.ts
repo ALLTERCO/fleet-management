@@ -40,6 +40,21 @@ let lagMs = 0;
 let wsClientCount = 0;
 let lagInterval: ReturnType<typeof setInterval> | undefined;
 
+// ── DB Writes Diagnostic Toggle ─────────────────────────────────────────
+let dbWritesDisabled = false;
+
+export function setDbWritesDisabled(v: boolean) {
+    dbWritesDisabled = v;
+    logger.warn(
+        'DB writes %s',
+        v ? 'DISABLED (diagnostic mode)' : 'RE-ENABLED'
+    );
+}
+
+export function isDbWritesDisabled(): boolean {
+    return dbWritesDisabled;
+}
+
 const rpcTimings = new Map<string, RpcMethodStats>();
 const dbTimings = new Map<string, RpcMethodStats>();
 const counters = new Map<string, number>();
@@ -437,7 +452,8 @@ export function getMetrics() {
         },
         activeHandles: (process as any)._getActiveHandles?.()?.length ?? 0,
         wsClients: wsClientCount,
-        modules
+        modules,
+        dbWritesDisabled
     };
 
     if (level < 2) return tier1;
@@ -517,6 +533,14 @@ export function getPrometheusMetrics(): string {
             'Current observability level (0-3)',
             'gauge',
             level
+        )
+    );
+    lines.push(
+        promLine(
+            'fm_db_writes_disabled',
+            'Whether hot-path DB writes are disabled (diagnostic mode)',
+            'gauge',
+            dbWritesDisabled ? 1 : 0
         )
     );
 
@@ -1405,6 +1429,38 @@ export function getPrometheusMetrics(): string {
             },
             device_proxy_rpc_errors: {
                 help: 'Device GUI proxy RPC errors',
+                type: 'counter'
+            },
+            device_persists: {
+                help: 'Device state persist operations (5s debounced)',
+                type: 'counter'
+            },
+            events_filtered: {
+                help: 'Events dropped by subscription deny/allow filters',
+                type: 'counter'
+            },
+            events_permission_denied: {
+                help: 'Events dropped due to device access denial',
+                type: 'counter'
+            },
+            status_flushes_skipped: {
+                help: 'Status flushes skipped (DB writes disabled)',
+                type: 'counter'
+            },
+            em_stats_flushes_skipped: {
+                help: 'EM stats flushes skipped (DB writes disabled)',
+                type: 'counter'
+            },
+            em_sync_writes_skipped: {
+                help: 'EM sync DB writes skipped (DB writes disabled)',
+                type: 'counter'
+            },
+            audit_flushes_skipped: {
+                help: 'Audit flushes skipped (DB writes disabled)',
+                type: 'counter'
+            },
+            device_persists_skipped: {
+                help: 'Device persists skipped (DB writes disabled)',
                 type: 'counter'
             }
         };

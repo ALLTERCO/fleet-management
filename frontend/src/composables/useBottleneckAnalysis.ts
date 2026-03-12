@@ -392,6 +392,28 @@ function checkInitFailures({s}: CheckContext): Bottleneck | null {
     };
 }
 
+function checkStatusFlushLatency({s}: CheckContext): Bottleneck | null {
+    const store = useMonitoringStore();
+    const flushTiming = store.latestMetrics?.dbTimings?.['status_flush'];
+    if (!flushTiming || flushTiming.avgMs <= 200) return null;
+    const critical = flushTiming.avgMs > 500;
+    return {
+        id: 'status-flush-latency',
+        name: 'Status Flush Latency',
+        severity: critical ? 'critical' : 'warning',
+        category: 'latency',
+        description: `Status flush avg is ${flushTiming.avgMs}ms (${flushTiming.count} flushes). DB writes can't keep up.`,
+        recommendation: 'Try disabling DB writes (Control Panel) to confirm DB is the bottleneck.',
+        score: critical ? 80 : 50,
+        affectedMetrics: [
+            {label: 'Flush Avg', value: flushTiming.avgMs, unit: 'ms'},
+            {label: 'Flush Max', value: flushTiming.maxMs, unit: 'ms'},
+            {label: 'Queue Size', value: s.statusQueueSize}
+        ],
+        trendingUp: false
+    };
+}
+
 /** All bottleneck checks — add new checks here */
 const CHECKS = [
     checkEventLoop,
@@ -408,7 +430,8 @@ const CHECKS = [
     checkOsMemory,
     checkGcPressure,
     checkHandleLeak,
-    checkInitFailures
+    checkInitFailures,
+    checkStatusFlushLatency
 ];
 
 export function useBottleneckAnalysis() {

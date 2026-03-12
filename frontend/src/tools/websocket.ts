@@ -15,6 +15,10 @@ import {sendRPC as httpSendRPC} from './http';
 import {
     getObsLevel,
     isObservabilityEnabled,
+    isWsTelemetryEnabled,
+    recordDroppedFrame,
+    recordPatchBufferDepth,
+    recordRafFrameTime,
     recordRpcTiming,
     recordWsMessage,
     setPendingRpcCount
@@ -163,24 +167,35 @@ const FLUSH_CHUNK_SIZE = 200; // max patches per frame to avoid blocking main th
 function schedulePatchFlush(devicesStore: ReturnType<typeof useDevicesStore>) {
     if (rafScheduled) return;
     rafScheduled = true;
+
     requestAnimationFrame(() => {
         rafScheduled = false;
+
+        // B1: record peak buffer depth right before draining — this is
+        // the true accumulated size since the last frame
+        if (isWsTelemetryEnabled()) {
+            recordPatchBufferDepth(pendingPatches.size);
+        }
+
         const entries = Array.from(pendingPatches.values());
         pendingPatches.clear();
 
         // If small batch, process all in this frame
         if (entries.length <= FLUSH_CHUNK_SIZE) {
-            applyPatchBatch(entries, devicesStore);
+            timedApplyPatchBatch(entries, devicesStore);
             return;
         }
 
+        // B2: chunk limit hit — patches deferred to next frames
+        if (isWsTelemetryEnabled()) recordDroppedFrame();
+
         // Large batch: process first chunk now, schedule rest for next frames
         // This prevents 2k connect events from blocking the main thread
-        applyPatchBatch(entries.splice(0, FLUSH_CHUNK_SIZE), devicesStore);
+        timedApplyPatchBatch(entries.splice(0, FLUSH_CHUNK_SIZE), devicesStore);
         function drainRemaining() {
             if (entries.length === 0) return;
             requestAnimationFrame(() => {
-                applyPatchBatch(
+                timedApplyPatchBatch(
                     entries.splice(0, FLUSH_CHUNK_SIZE),
                     devicesStore
                 );
@@ -189,6 +204,20 @@ function schedulePatchFlush(devicesStore: ReturnType<typeof useDevicesStore>) {
         }
         drainRemaining();
     });
+}
+
+/** B3: wraps applyPatchBatch with performance.now() timing when ws telemetry is on */
+function timedApplyPatchBatch(
+    entries: PatchEntry[],
+    devicesStore: ReturnType<typeof useDevicesStore>
+) {
+    if (isWsTelemetryEnabled()) {
+        const t0 = performance.now();
+        applyPatchBatch(entries, devicesStore);
+        recordRafFrameTime(performance.now() - t0);
+    } else {
+        applyPatchBatch(entries, devicesStore);
+    }
 }
 
 function applyPatchBatch(

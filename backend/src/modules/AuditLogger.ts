@@ -51,10 +51,17 @@ async function flushAuditLogQueue(): Promise<void> {
         return;
     }
 
+    if (Observability.isDbWritesDisabled()) {
+        Observability.incrementCounter('audit_flushes_skipped');
+        auditLogQueue.length = 0;
+        return;
+    }
+
     flushInProgress = true;
     Observability.incrementCounter('audit_flushes');
     const entriesToWrite = auditLogQueue.splice(0, auditLogQueue.length);
 
+    const auditFlushStart = performance.now();
     for (const entry of entriesToWrite) {
         try {
             await PostgresProvider.callMethod('logging.fn_audit_log_add', {
@@ -72,6 +79,10 @@ async function flushAuditLogQueue(): Promise<void> {
             Observability.incrementCounter('audit_write_errors');
         }
     }
+    Observability.recordDbTiming(
+        'audit_flush',
+        performance.now() - auditFlushStart
+    );
 
     flushInProgress = false;
 }

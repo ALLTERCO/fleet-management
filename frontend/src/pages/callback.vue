@@ -21,7 +21,7 @@ import zitadelAuth from '@/helpers/zitadelAuth';
 const router = useRouter();
 const error = ref<string | null>(null);
 
-onMounted(async () => {
+onMounted(() => {
     console.log('OIDC callback handler started');
 
     if (zitadelAuth == undefined) {
@@ -33,31 +33,8 @@ onMounted(async () => {
         return;
     }
 
-    // Check if the user was already loaded by zitadelAuth.oidcAuth.startup()
-    // in main.ts. If so, the OIDC state has already been consumed and calling
-    // signinRedirectCallback() again would fail with "No matching state found
-    // in storage". Just redirect to the target route.
-    try {
-        const existingUser = await zitadelAuth.oidcAuth.mgr.getUser();
-        if (existingUser && !existingUser.expired) {
-            console.log(
-                'OIDC callback: user already loaded by startup(), redirecting'
-            );
-            if (existingUser.access_token) {
-                localStorage.setItem('access_token', existingUser.access_token);
-            }
-            const redirect = existingUser.state?.to || '/dash/1';
-            if (router) {
-                router.replace(redirect);
-            } else {
-                window.location.href = redirect;
-            }
-            return;
-        }
-    } catch {
-        // No existing user, proceed with callback
-    }
-
+    // Always process the redirect callback — startup() does NOT consume it
+    // (it only handles popup/silent callbacks, not redirect).
     zitadelAuth.oidcAuth.mgr
         .signinRedirectCallback()
         .then((data) => {
@@ -75,8 +52,8 @@ onMounted(async () => {
             }
         })
         .catch((err) => {
-            console.error('OIDC signin callback error', err);
-            error.value = 'Login failed. Please try again.';
+            console.error('OIDC signin callback error:', err?.message || err, err);
+            error.value = `Login failed: ${err?.message || 'unknown error'}. Please try again.`;
             setTimeout(() => {
                 if (router) {
                     router.replace('/login');

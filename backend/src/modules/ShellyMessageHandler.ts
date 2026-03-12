@@ -35,6 +35,8 @@ let status_push_queue: t_intermid_1 = {
     p_prev_value: []
 };
 let statusFlushInProgress = false;
+let lastFlushMs = 0;
+let lastFlushBatchSize = 0;
 
 // Pending message buffer — hot path just pushes here
 type PendingMessage = {
@@ -53,12 +55,30 @@ setInterval(async () => {
     // 1. Process buffered messages into flush queue
     if (pendingMessages.length > 0) {
         const batch = pendingMessages.splice(0);
+        const processStart = performance.now();
         await processPendingMessages(batch);
+        Observability.recordDbTiming(
+            'status_process',
+            performance.now() - processStart
+        );
     }
 
     // 2. Flush queue to DB
     const sl = status_push_queue.p_ts.length;
     if (sl) {
+        lastFlushBatchSize = sl;
+        if (Observability.isDbWritesDisabled()) {
+            Observability.incrementCounter('status_flushes_skipped');
+            status_push_queue = {
+                p_ts: [],
+                p_id: [],
+                p_field: [],
+                p_field_group: [],
+                p_value: [],
+                p_prev_value: []
+            };
+            return;
+        }
         const toFlush = status_push_queue;
         status_push_queue = {
             p_ts: [],
@@ -74,10 +94,9 @@ setInterval(async () => {
         try {
             logger.info('---->>> Syncing status, length %d', sl);
             await rawCall('device.fn_status_push', toFlush);
-            Observability.recordDbTiming(
-                'status_flush',
-                performance.now() - flushStart
-            );
+            const flushElapsed = performance.now() - flushStart;
+            lastFlushMs = flushElapsed;
+            Observability.recordDbTiming('status_flush', flushElapsed);
         } catch (e) {
             logger.error('Failed to flush status queue:', e);
             Observability.incrementCounter('status_flush_errors');
@@ -109,13 +128,30 @@ let em_stats_queue: t_em_stats_queue = {
 setInterval(async () => {
     const sl = em_stats_queue.p_ts.length;
     if (sl) {
+        if (Observability.isDbWritesDisabled()) {
+            Observability.incrementCounter('em_stats_flushes_skipped');
+            em_stats_queue = {
+                p_device: [],
+                p_tag: [],
+                p_phase: [],
+                p_channel: [],
+                p_ts: [],
+                p_val: []
+            };
+            return;
+        }
         Observability.incrementCounter('em_stats_flushes');
         try {
             logger.info(
                 '---->>> Syncing em_stats (PM/Plug/Switch), length %d',
                 sl
             );
+            const emFlushStart = performance.now();
             await callMethod('device_em.fn_append_stats', em_stats_queue);
+            Observability.recordDbTiming(
+                'em_stats_flush',
+                performance.now() - emFlushStart
+            );
         } catch (e) {
             Observability.incrementCounter('em_stats_flush_errors');
             throw e;
@@ -382,5 +418,12 @@ Observability.registerModule('statusQueue', () => ({
     pending: pendingMessages.length,
     queueSize: status_push_queue.p_ts.length,
     flushing: statusFlushInProgress,
-    emStatsQueueSize: em_stats_queue.p_ts.length
+    emStatsQueueSize: em_stats_queue.p_ts.length,
+    lastFlushMs,
+    lastFlushBatchSize,
+    statusCacheDevices: lastDeviceStatusValue.size,
+    statusCacheEntries: [...lastDeviceStatusValue.values()].reduce(
+        (s, m) => s + m.size,
+        0
+    )
 }));

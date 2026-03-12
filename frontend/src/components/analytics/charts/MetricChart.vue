@@ -141,6 +141,10 @@ const statsMax = computed(() => {
     return max === -Infinity ? 0 : max;
 });
 
+function getCSSColor(varName: string, fallback: string): string {
+    return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || fallback;
+}
+
 function renderChart() {
     if (!chartCanvas.value || !props.data.length) {
         chart?.destroy();
@@ -150,6 +154,9 @@ function renderChart() {
 
     const ctx = chartCanvas.value.getContext('2d');
     if (!ctx) return;
+
+    const tickColor = getCSSColor('--color-text-disabled', '#9ca3af');
+    const gridColor = getCSSColor('--color-border-subtle', 'rgba(255,255,255,0.1)');
 
     const grouped = groupByBucket();
     const labels = Array.from(grouped.keys());
@@ -224,12 +231,12 @@ function renderChart() {
             scales: {
                 y: {
                     beginAtZero: props.unit === 'kWh' || props.unit === 'A',
-                    grid: {color: 'rgba(255,255,255,0.1)'},
-                    ticks: {color: '#9ca3af'}
+                    grid: {color: gridColor},
+                    ticks: {color: tickColor}
                 },
                 x: {
                     grid: {display: false},
-                    ticks: {color: '#9ca3af'}
+                    ticks: {color: tickColor}
                 }
             },
             plugins: {

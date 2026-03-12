@@ -92,13 +92,7 @@ const loading = ref(false);
 
 function signIn() {
     if (zitadelAuth) {
-        zitadelAuth.oidcAuth.signIn({
-            extraTokenParams: {
-                'Access-Control-Allow-Credentials': true,
-                'Access-Control-Allow-Methods': '*',
-                'Access-Control-Allow-Origin': '*'
-            }
-        });
+        zitadelAuth.oidcAuth.signIn();
     }
 }
 

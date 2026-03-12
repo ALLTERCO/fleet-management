@@ -5,6 +5,7 @@ import {
     composeDynamicComponent,
     proposeEntities
 } from '../modules/EntityComposer';
+import * as Observability from '../modules/Observability';
 import {store} from '../modules/PostgresProvider';
 import * as ShellyEvents from '../modules/ShellyEvents';
 import {handleMessage} from '../modules/ShellyMessageHandler';
@@ -39,7 +40,12 @@ export default class ShellyDevice extends AbstractDevice {
     }
 
     async #persistState() {
+        if (Observability.isDbWritesDisabled()) {
+            Observability.incrementCounter('device_persists_skipped');
+            return;
+        }
         try {
+            Observability.incrementCounter('device_persists');
             await store(this.shellyID, this.toJSON());
         } catch (error) {
             logger.warn(

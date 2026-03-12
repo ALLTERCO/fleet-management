@@ -25,31 +25,25 @@
         <template #info>
         <!-- Device hero card: centered layout -->
         <div class="device-hero">
-            <figure class="device-hero__avatar">
-                <img
-                    :src="getLogo(device)"
-                    alt="Shelly"
-                    class="device-hero__img"
-                    loading="lazy"
-                    decoding="async"
-                    @error="handleImgError"
-                />
-                <span class="device-status-dot" :class="[
-                    device.online && !device.loading && 'device-status-dot--online',
-                    !device.online && !device.loading && 'device-status-dot--offline',
-                    device.loading && 'device-status-dot--loading',
-                ]" />
-            </figure>
+            <img
+                :src="getLogo(device)"
+                alt="Shelly"
+                class="device-hero__img"
+                loading="lazy"
+                decoding="async"
+                @error="handleImgError"
+            />
 
-            <span class="device-status-badge" :class="[
-                device.online && !device.loading && 'device-status-badge--online',
-                !device.online && !device.loading && 'device-status-badge--offline',
-                device.loading && 'device-status-badge--loading',
-            ]">
-                {{ device.loading ? 'Connecting' : device.online ? 'Online' : 'Offline' }}
-            </span>
-
-            <span v-if="device?.info?.app" class="device-hero__app">{{ device.info.app }}</span>
+            <div class="device-hero__tags">
+                <span class="device-status-badge" :class="[
+                    device.online && !device.loading && 'device-status-badge--online',
+                    !device.online && !device.loading && 'device-status-badge--offline',
+                    device.loading && 'device-status-badge--loading',
+                ]">
+                    {{ device.loading ? 'Connecting' : device.online ? 'Online' : 'Offline' }}
+                </span>
+                <span v-if="device?.info?.ver" class="device-hero__firmware">v{{ device.info.ver }}</span>
+            </div>
 
             <div class="device-meta">
                 <div class="device-meta__item">
@@ -60,16 +54,11 @@
                     <span class="device-meta__label"><i class="fas fa-clock" /> Last seen</span>
                     <span class="device-meta__value">{{ lastReportShort }}</span>
                 </div>
-                <div class="device-meta__item">
-                    <span class="device-meta__label"><i class="fas fa-microchip" /> Firmware</span>
-                    <span class="device-meta__value font-mono">v{{ device?.info?.ver }}</span>
-                </div>
+                <button v-if="canExecute" class="device-action-btn" @click="showWebGuiModal = true">
+                    <span class="device-meta__label"><i class="fa-solid fa-arrow-up-right-from-square" /> Web GUI</span>
+                    <span class="device-meta__value">Open</span>
+                </button>
             </div>
-
-            <button v-if="canExecute" class="device-action-btn" @click="showWebGuiModal = true">
-                <i class="fa-solid fa-arrow-up-right-from-square" />
-                Web GUI
-            </button>
         </div>
 
         <div v-if="isDiscovered(device.shellyID)">
@@ -133,44 +122,58 @@
         </template>
         </template>
         <template #debug>
-            <div class="overflow-auto">
-                <Collapse title="Device">
-                    <Input
-                        v-model="deviceNameField"
-                        label="Device name"
-                        :disabled="!canExecute"
-                    />
-                    <Button
-                        type="blue"
-                        class="mt-2"
-                        :disabled="!canExecute"
-                        @click="saveDeviceName"
-                        >Submit</Button
-                    >
-                </Collapse>
+            <div class="debug-tab">
+                <div class="debug-tab__section">
+                    <span class="debug-tab__section-label">
+                        <i class="fas fa-sliders" /> Configuration
+                    </span>
+                    <div class="debug-tab__group">
+                        <Collapse title="Device name">
+                            <Input
+                                v-model="deviceNameField"
+                                label="Device name"
+                                :disabled="!canExecute"
+                            />
+                            <Button
+                                type="blue"
+                                class="mt-2"
+                                :disabled="!canExecute"
+                                @click="saveDeviceName"
+                                >Submit</Button
+                            >
+                        </Collapse>
 
-                <Collapse title="Deny device">
-                    <Notification type="warning">
-                        Unchecking this will <b>disconnect</b> the device from
-                        this instance and add it to the deny list.
-                    </Notification>
-                    <Checkbox v-model="accessControlChecked">
-                        Allow this device to connect to Fleet Manager
-                    </Checkbox>
-                    <Button @click="accessControlSaveClicked">Save</Button>
-                </Collapse>
+                        <Collapse title="Access control">
+                            <Notification type="warning">
+                                Unchecking this will <b>disconnect</b> the device from
+                                this instance and add it to the deny list.
+                            </Notification>
+                            <Checkbox v-model="accessControlChecked">
+                                Allow this device to connect to Fleet Manager
+                            </Checkbox>
+                            <Button @click="accessControlSaveClicked">Save</Button>
+                        </Collapse>
+                    </div>
+                </div>
 
-                <Collapse title="Info">
-                    <JSONViewer :data="device.info" />
-                </Collapse>
+                <div class="debug-tab__section">
+                    <span class="debug-tab__section-label">
+                        <i class="fas fa-code" /> Raw Data
+                    </span>
+                    <div class="debug-tab__group">
+                        <Collapse title="Info">
+                            <JSONViewer :data="device.info" />
+                        </Collapse>
 
-                <Collapse title="Status">
-                    <JSONViewer :data="device.status" />
-                </Collapse>
+                        <Collapse title="Status">
+                            <JSONViewer :data="device.status" />
+                        </Collapse>
 
-                <Collapse title="Settings">
-                    <JSONViewer :data="device.settings" />
-                </Collapse>
+                        <Collapse title="Settings">
+                            <JSONViewer :data="device.settings" />
+                        </Collapse>
+                    </div>
+                </div>
             </div>
         </template>
         <template #charts>
@@ -395,51 +398,40 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* ── Device hero card: centered layout ── */
+/* ── Device hero card ── */
 .device-hero {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-3) var(--space-3);
-}
-.device-hero__avatar {
-    position: relative;
-    width: 120px;
-    height: 120px;
-    flex-shrink: 0;
+    padding: var(--space-1) var(--space-3) var(--space-3);
 }
 .device-hero__img {
-    width: 100%;
-    height: 100%;
-    border-radius: 9999px;
-    border: 2px solid var(--color-border-strong);
-    padding: 4px;
+    width: 160px;
+    height: 160px;
+    border-radius: var(--radius-lg);
+    object-fit: contain;
 }
-.device-status-dot {
-    position: absolute;
-    bottom: 4px;
-    right: 4px;
-    width: 18px;
-    height: 18px;
-    border-radius: 9999px;
-    border: 3px solid var(--color-surface-1);
-}
-.device-status-dot--online { background-color: var(--color-success); }
-.device-status-dot--offline { background-color: var(--color-danger); }
-.device-status-dot--loading { background-color: var(--color-warning); }
 
-.device-hero__app {
+/* Tags row: status + firmware */
+.device-hero__tags {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+.device-hero__firmware {
     font-size: var(--text-xs);
-    color: var(--color-text-disabled);
+    color: var(--color-text-tertiary);
     font-family: monospace;
+    padding: 1px var(--space-2);
+    border-radius: var(--radius-full);
+    background-color: color-mix(in srgb, var(--color-text-tertiary) 10%, transparent);
 }
 
 /* Status badge */
 .device-status-badge {
     font-size: var(--text-xs);
     font-weight: var(--font-semibold);
-    width: fit-content;
     padding: 1px var(--space-2);
     border-radius: var(--radius-full);
 }
@@ -456,32 +448,9 @@ onUnmounted(() => {
     background-color: color-mix(in srgb, var(--color-warning) 15%, transparent);
 }
 
-/* Action button */
-.device-action-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-1);
-    font-size: var(--text-xs);
-    padding: var(--space-1) var(--space-3);
-    border-radius: var(--radius-md);
-    color: var(--color-text-tertiary);
-    background-color: var(--color-surface-2);
-    border: 1px solid var(--color-border-default);
-    cursor: pointer;
-    transition: background-color var(--duration-fast) var(--ease-default),
-                color var(--duration-fast) var(--ease-default);
-}
-.device-action-btn:hover {
-    background-color: var(--color-surface-3);
-    color: var(--color-text-primary);
-    border-color: var(--color-border-strong);
-}
-
-/* ── Metadata cards ── */
+/* ── Bottom row: meta cards + action button ── */
 .device-meta {
     display: flex;
-    justify-content: center;
     gap: var(--space-2);
     width: 100%;
 }
@@ -507,6 +476,29 @@ onUnmounted(() => {
     white-space: nowrap;
 }
 
+/* Action button — same visual weight as meta cards */
+.device-action-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    flex: 1;
+    padding: var(--space-2);
+    border-radius: var(--radius-md);
+    background-color: var(--color-surface-2);
+    border: none;
+    color: var(--color-text-tertiary);
+    font-size: var(--text-xs);
+    cursor: pointer;
+    transition: background-color var(--duration-fast) var(--ease-default),
+                color var(--duration-fast) var(--ease-default);
+}
+.device-action-btn:hover {
+    background-color: var(--color-surface-3);
+    color: var(--color-text-primary);
+}
+
 /* ── Loading state ── */
 .device-loading-state {
     display: flex;
@@ -530,5 +522,32 @@ onUnmounted(() => {
     text-transform: uppercase;
     letter-spacing: var(--tracking-wide);
     margin-bottom: var(--space-2);
+}
+
+/* ── Debug tab ── */
+.debug-tab {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+.debug-tab__section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+.debug-tab__section-label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-disabled);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+}
+.debug-tab__group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
 }
 </style>

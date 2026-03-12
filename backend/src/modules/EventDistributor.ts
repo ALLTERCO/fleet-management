@@ -33,6 +33,11 @@ type event_callback_t = <T extends json_rpc_event>(
 
 const logger = getLogger('event-model');
 
+let broadcastMaxMs = 0;
+let broadcastLastMs = 0;
+let lastSerializeMs = 0;
+let serializeMaxMs = 0;
+
 const GROUP_CACHE_TTL = 86_400_000; // 24 hours (safety fallback — primary invalidation is event-based)
 const groupMetadataCache = new Map<string, {groups: any; expiresAt: number}>();
 
@@ -217,6 +222,7 @@ export async function notifyAll(
     event: json_rpc_event,
     eventData: event_data_t
 ) {
+    const broadcastT0 = performance.now();
     Observability.incrementCounter('events_broadcast');
     const eventName = event.method;
     if (eventName !== 'Console.Log') {
@@ -224,10 +230,23 @@ export async function notifyAll(
     }
 
     if (!event_map.has(eventName)) {
+        const broadcastElapsed = performance.now() - broadcastT0;
+        broadcastLastMs = broadcastElapsed;
+        if (broadcastElapsed > broadcastMaxMs)
+            broadcastMaxMs = broadcastElapsed;
+        if (Observability.getLevel() >= 2) {
+            Observability.recordRpcTiming(
+                `event:${eventName}`,
+                broadcastElapsed
+            );
+        }
         return; // No listeners — skip debug log to avoid event loop pressure during connection storms
     }
     // Pre-serialize once — all listeners get the same string (avoids N×JSON.stringify)
+    const serT0 = performance.now();
     eventData.serialized = JSON.stringify(event);
+    lastSerializeMs = performance.now() - serT0;
+    if (lastSerializeMs > serializeMaxMs) serializeMaxMs = lastSerializeMs;
 
     // Pre-split reasons once before the listener loop
     const {reason, device} = eventData;
@@ -256,13 +275,21 @@ export async function notifyAll(
             // Check device permission for device events
             if (device) {
                 const syncResult = sender.canAccessDeviceSync(device.shellyID);
-                if (syncResult === false) continue;
+                if (syncResult === false) {
+                    Observability.incrementCounter('events_permission_denied');
+                    continue;
+                }
                 if (syncResult === undefined) {
                     try {
                         const hasAccess = await sender.canAccessDevice(
                             device.shellyID
                         );
-                        if (!hasAccess) continue;
+                        if (!hasAccess) {
+                            Observability.incrementCounter(
+                                'events_permission_denied'
+                            );
+                            continue;
+                        }
                     } catch (error) {
                         continue;
                     }
@@ -287,6 +314,7 @@ export async function notifyAll(
                                 )
                             )
                         ) {
+                            Observability.incrementCounter('events_filtered');
                             continue;
                         }
                     }
@@ -299,6 +327,7 @@ export async function notifyAll(
                                 )
                             )
                         ) {
+                            Observability.incrementCounter('events_filtered');
                             continue;
                         }
                     }
@@ -330,12 +359,27 @@ export async function notifyAll(
             event_map.set(eventName, active_listeners);
         }
     }
+    const broadcastElapsed = performance.now() - broadcastT0;
+    broadcastLastMs = broadcastElapsed;
+    if (broadcastElapsed > broadcastMaxMs) broadcastMaxMs = broadcastElapsed;
+    if (Observability.getLevel() >= 2) {
+        Observability.recordRpcTiming(`event:${eventName}`, broadcastElapsed);
+    }
 }
 
 // Register observability module stats
-Observability.registerModule('events', () => ({
-    listeners: callback_ids.size,
-    eventTypes: event_map.size,
-    groupCacheSize: groupMetadataCache.size,
-    groupVersion
-}));
+Observability.registerModule('events', () => {
+    const snap = {
+        listeners: callback_ids.size,
+        eventTypes: event_map.size,
+        groupCacheSize: groupMetadataCache.size,
+        groupVersion,
+        broadcastMaxMs,
+        broadcastLastMs,
+        lastSerializeMs,
+        serializeMaxMs
+    };
+    broadcastMaxMs = 0;
+    serializeMaxMs = 0;
+    return snap;
+});

@@ -50,6 +50,35 @@
                             </span>
                         </div>
                     </div>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
+                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Broadcast Max</div>
+                            <div class="flex items-end justify-between gap-2">
+                                <span class="text-sm font-mono font-semibold" :class="(store.latest.broadcastMaxMs ?? 0) > 10 ? 'text-[var(--color-danger-text)]' : (store.latest.broadcastMaxMs ?? 0) > 5 ? 'text-[var(--color-warning-text)]' : 'text-[var(--color-text-secondary)]'">
+                                    {{ store.latest.broadcastMaxMs ?? 0 }}ms
+                                </span>
+                                <SparkLine :data="cachedHistory.broadcastMaxMs" color="#f87171" :width="60" :height="20" />
+                            </div>
+                        </div>
+                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
+                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Serialize Max</div>
+                            <span class="text-sm font-mono font-semibold" :class="(store.latest.serializeMaxMs ?? 0) > 5 ? 'text-[var(--color-warning-text)]' : 'text-[var(--color-text-secondary)]'">
+                                {{ store.latest.serializeMaxMs ?? 0 }}ms
+                            </span>
+                        </div>
+                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
+                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Max WS Buffer</div>
+                            <span class="text-sm font-mono font-semibold" :class="(store.latest.wsMaxBufferedKB ?? 0) > 512 ? 'text-[var(--color-danger-text)]' : 'text-[var(--color-text-secondary)]'">
+                                {{ store.latest.wsMaxBufferedKB ?? 0 }}KB
+                            </span>
+                        </div>
+                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
+                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Events Filtered</div>
+                            <span class="text-sm font-mono font-semibold text-[var(--color-text-secondary)]">
+                                {{ store.counterRates.events_filtered ?? 0 }}/min
+                            </span>
+                        </div>
+                    </div>
                 </div>
             </BasicBlock>
 
@@ -138,7 +167,8 @@ const store = useMonitoringStore();
 
 const cachedHistory = computed(() => ({
     eventsListeners: store.historyField('eventsListeners'),
-    eventsBroadcastRate: store.historyField('eventsBroadcastRate')
+    eventsBroadcastRate: store.historyField('eventsBroadcastRate'),
+    broadcastMaxMs: store.historyField('broadcastMaxMs')
 }));
 
 const wsBreakdown = computed(

@@ -49,7 +49,8 @@ window.__FM_RUNTIME_CONFIG__ = {
       authorization_endpoint: "${OIDC_AUTH_ENDPOINT:-$OIDC_AUTHORITY/oauth/v2/authorize}",
       token_endpoint: "${OIDC_TOKEN_ENDPOINT:-$OIDC_AUTHORITY/oauth/v2/token}",
       userinfo_endpoint: "${OIDC_USERINFO_ENDPOINT:-$OIDC_AUTHORITY/oidc/v1/userinfo}",
-      end_session_endpoint: "${OIDC_END_SESSION_ENDPOINT:-$OIDC_AUTHORITY/oidc/v1/end_session}"
+      end_session_endpoint: "${OIDC_END_SESSION_ENDPOINT:-$OIDC_AUTHORITY/oidc/v1/end_session}",
+      jwks_uri: "${OIDC_JWKS_URI:-$OIDC_AUTHORITY/oauth/v2/keys}"
     }
   }
 };

@@ -300,5 +300,61 @@ function stopBatchSender() {
 // ── Boot: start batch sender if level warrants it ─────────────────────
 if (level >= 2) startBatchSender();
 
+// ── WS Patch Telemetry (opt-in toggle, independent of obs level) ──────
+
+let wsTelemetryEnabled =
+    localStorage.getItem('fm_ws_telemetry') === '1';
+
+export function isWsTelemetryEnabled(): boolean {
+    return wsTelemetryEnabled;
+}
+
+export function setWsTelemetry(v: boolean) {
+    wsTelemetryEnabled = v;
+    localStorage.setItem('fm_ws_telemetry', v ? '1' : '0');
+    if (!v) resetWsTelemetry();
+}
+
+// B1: peak pendingPatches size between RAF flushes
+let patchBufferMaxDepth = 0;
+// B2: count of frames where chunk limit kicked in (deferred patches)
+let droppedFrameCount = 0;
+// B3: max applyPatchBatch() duration per frame (ms)
+let rafFrameTimeMaxMs = 0;
+
+export function recordPatchBufferDepth(size: number) {
+    if (!wsTelemetryEnabled) return;
+    if (size > patchBufferMaxDepth) patchBufferMaxDepth = size;
+}
+
+export function recordDroppedFrame() {
+    if (!wsTelemetryEnabled) return;
+    droppedFrameCount++;
+}
+
+export function recordRafFrameTime(ms: number) {
+    if (!wsTelemetryEnabled) return;
+    if (ms > rafFrameTimeMaxMs) rafFrameTimeMaxMs = ms;
+}
+
+/** Snapshot-then-reset (same pattern as backend broadcastMaxMs) */
+export function getWsTelemetry() {
+    const snapshot = {
+        patchBufferMaxDepth,
+        droppedFrameCount,
+        rafFrameTimeMaxMs: Math.round(rafFrameTimeMaxMs * 100) / 100
+    };
+    patchBufferMaxDepth = 0;
+    rafFrameTimeMaxMs = 0;
+    // droppedFrameCount is cumulative — don't reset
+    return snapshot;
+}
+
+function resetWsTelemetry() {
+    patchBufferMaxDepth = 0;
+    droppedFrameCount = 0;
+    rafFrameTimeMaxMs = 0;
+}
+
 // ── Expose toggle on window for console access ────────────────────────
 (window as any).fmObservability = setObsLevel;

@@ -1,5 +1,6 @@
 import {defineStore} from 'pinia';
 import {computed, ref, watch} from 'vue';
+import apiClient from '@/helpers/axios';
 import {isDebugEnabled, setDebug} from '@/tools/debug';
 import {
     fetchBackendMetrics,
@@ -8,9 +9,12 @@ import {
     getPendingRpcCount,
     getRpcTimings,
     getWsMessagesPerSec,
+    getWsTelemetry,
+    isWsTelemetryEnabled,
     type ObsLevel,
     type RpcTimingEntry,
-    setObsLevel
+    setObsLevel,
+    setWsTelemetry
 } from '@/tools/observability';
 
 export type FlowStatus = 'healthy' | 'warning' | 'critical' | 'unknown';
@@ -63,6 +67,13 @@ export interface MetricSnapshot {
     externalM: number;
     arrayBuffersM: number;
     activeHandles: number;
+    // Bottleneck isolation gauges
+    lastFlushMs: number;
+    lastFlushBatchSize: number;
+    statusCacheEntries: number;
+    broadcastMaxMs: number;
+    serializeMaxMs: number;
+    wsMaxBufferedKB: number;
     // Tier 2+ (0 when unavailable)
     rpcSuccessRate: number;
     rpcErrorRate: number;
@@ -164,6 +175,12 @@ function extractSnapshot(
         firmwareRunning: firmware.running ?? 0,
         registryCacheSize:
             (registry.fileCacheSize ?? 0) + (registry.dbCacheSize ?? 0),
+        lastFlushMs: sq.lastFlushMs ?? 0,
+        lastFlushBatchSize: sq.lastFlushBatchSize ?? 0,
+        statusCacheEntries: sq.statusCacheEntries ?? 0,
+        broadcastMaxMs: events.broadcastMaxMs ?? 0,
+        serializeMaxMs: events.serializeMaxMs ?? 0,
+        wsMaxBufferedKB: metrics?.gauges?.ws_max_buffered_kb ?? 0,
         rpcSuccessRate: rates.rpc_success ?? 0,
         rpcErrorRate: rates.rpc_errors ?? 0,
         rpcAvgMs,
@@ -184,6 +201,9 @@ export const useMonitoringStore = defineStore('monitoring', () => {
     const polling = ref(false);
     const logLevels = ref<Record<string, string>>({});
     const frontendDebug = ref(isDebugEnabled());
+    const dbWritesDisabled = ref(false);
+    const wsTelemetryEnabled = ref(isWsTelemetryEnabled());
+    const wsTelemetryData = ref({ patchBufferMaxDepth: 0, droppedFrameCount: 0, rafFrameTimeMaxMs: 0 });
     let pollTimer: ReturnType<typeof setInterval> | undefined;
     let _historyGen = 0;
     const _historyFieldCache = new Map<string, {gen: number; data: number[]}>();
@@ -271,6 +291,7 @@ export const useMonitoringStore = defineStore('monitoring', () => {
         const metrics = await fetchBackendMetrics();
         if (!metrics) return;
         latestMetrics.value = metrics;
+        dbWritesDisabled.value = metrics.dbWritesDisabled ?? false;
         counterRates.value = getCounterRates();
         rpcTimings.value = [...getRpcTimings()];
         wsMessagesPerSec.value = getWsMessagesPerSec();
@@ -280,6 +301,11 @@ export const useMonitoringStore = defineStore('monitoring', () => {
         ringPush(history.value, snapshot, HISTORY_SIZE);
         _historyGen++;
         _historyFieldCache.clear();
+
+        // Snapshot WS telemetry (resets peak values on read)
+        if (wsTelemetryEnabled.value) {
+            wsTelemetryData.value = getWsTelemetry();
+        }
     }
 
     async function loadHistory() {
@@ -322,11 +348,7 @@ export const useMonitoringStore = defineStore('monitoring', () => {
     function changeLevel(l: ObsLevel) {
         obsLevel.value = l;
         setObsLevel(l);
-        fetch('/health/observability', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({level: l})
-        }).catch(() => {});
+        apiClient.post('/health/observability', {level: l}).catch(() => {});
 
         // Restart polling with new interval
         if (polling.value) {
@@ -350,8 +372,7 @@ export const useMonitoringStore = defineStore('monitoring', () => {
     // ── Log level management ─────────────────────────────────────────
     async function fetchLogLevels() {
         try {
-            const res = await fetch('/health/log-levels');
-            const data = await res.json();
+            const {data} = await apiClient.get('/health/log-levels');
             logLevels.value = data.levels ?? {};
         } catch {
             // Endpoint may not be available
@@ -359,11 +380,7 @@ export const useMonitoringStore = defineStore('monitoring', () => {
     }
 
     async function setLogLevel(category: string, level: string) {
-        await fetch('/health/log-level', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({category, level})
-        });
+        await apiClient.post('/health/log-level', {category, level});
         logLevels.value[category] = level;
     }
 
@@ -375,6 +392,14 @@ export const useMonitoringStore = defineStore('monitoring', () => {
     function toggleFrontendDebug(value: boolean) {
         setDebug(value);
         frontendDebug.value = value;
+    }
+
+    function toggleWsTelemetry(value: boolean) {
+        setWsTelemetry(value);
+        wsTelemetryEnabled.value = value;
+        if (!value) {
+            wsTelemetryData.value = { patchBufferMaxDepth: 0, droppedFrameCount: 0, rafFrameTimeMaxMs: 0 };
+        }
     }
 
     // Restart polling when level changes externally (e.g. from another tab)
@@ -393,6 +418,9 @@ export const useMonitoringStore = defineStore('monitoring', () => {
         polling,
         logLevels,
         frontendDebug,
+        dbWritesDisabled,
+        wsTelemetryEnabled,
+        wsTelemetryData,
         latest,
         deviceIngestStatus,
         statusPipelineStatus,
@@ -411,6 +439,7 @@ export const useMonitoringStore = defineStore('monitoring', () => {
         fetchLogLevels,
         setLogLevel,
         setAllLogLevels,
-        toggleFrontendDebug
+        toggleFrontendDebug,
+        toggleWsTelemetry
     };
 });

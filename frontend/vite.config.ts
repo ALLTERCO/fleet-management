@@ -128,6 +128,11 @@ export default defineConfig(({ mode }) => {
                     runtimeCaching: [
                         {
                             urlPattern: ({ url }) =>
+                                url.pathname === "/runtime-config.js",
+                            handler: "NetworkOnly",
+                        },
+                        {
+                            urlPattern: ({ url }) =>
                                 url.pathname.startsWith("/api"),
                             handler: "NetworkOnly",
                         },

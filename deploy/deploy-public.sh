@@ -1694,8 +1694,10 @@ print_summary() {
     if [ "$SSL_MODE" = "selfsigned" ]; then
         echo "  ${BOLD}${YELLOW}Self-signed certificate:${RESET}"
         echo "    Browsers will show a security warning — this is expected."
-        echo "    To trust it, install the CA cert on your devices:"
-        echo "    ${CYAN}${STATE_DIR}/tls/ca.crt${RESET}"
+        echo "    CA certificate: ${CYAN}${STATE_DIR}/tls/ca.crt${RESET}"
+        echo "    For Shelly devices using wss://:"
+        echo "      1. Device Web UI > Settings > User certificate > upload ${CYAN}ca.crt${RESET}"
+        echo "      2. Outbound WebSocket > SSL Connectivity > select ${CYAN}user_ca.pem${RESET}"
         echo ""
     fi
     echo "  ${BOLD}Connect a Shelly device:${RESET}"

@@ -67,4 +67,29 @@ JSEOF
   echo "[entrypoint] Runtime config written to $CONFIG_FILE (no OIDC)"
 fi
 
+# Inject runtime config inline into index.html.
+# Safari with self-signed certs blocks external <script src="/runtime-config.js">,
+# so we inline the JS directly into the HTML to avoid the separate request.
+INDEX_TMPL="/app/frontend/dist/index.html.tmpl"
+INDEX_OUT="/tmp/index.html"
+if [ -f "$INDEX_TMPL" ]; then
+  {
+    while IFS= read -r line; do
+      case "$line" in
+        *'<script src="/runtime-config.js"></script>'*)
+          printf '    <script>\n'
+          cat "$CONFIG_FILE"
+          printf '    </script>\n'
+          ;;
+        *)
+          printf '%s\n' "$line"
+          ;;
+      esac
+    done
+  } < "$INDEX_TMPL" > "$INDEX_OUT"
+  echo "[entrypoint] index.html generated with inline runtime config"
+else
+  echo "[entrypoint] WARNING: index.html.tmpl not found, skipping inline injection"
+fi
+
 exec "$@"

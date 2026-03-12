@@ -96,6 +96,14 @@ Once ready, you'll see:
 
 Generates a self-signed certificate. Browsers will show a security warning that you can accept. Devices connect via `wss://` instead of `ws://`.
 
+For Shelly outbound WebSocket with self-signed TLS:
+
+1. Set the server URL to `wss://<your-hostname-or-ip>/shelly`
+2. Upload the Fleet Manager CA certificate (`deploy/state/tls/ca.crt`) via Device Web UI > **Settings > User certificate**
+3. In **Outbound WebSocket > SSL Connectivity**, select `user_ca.pem`
+
+`Default TLS` (`ca.pem`) will not work with self-signed certificates — the device's built-in CA bundle only covers public CAs.
+
 ### Let's Encrypt (public domains)
 
 ```bash
@@ -241,6 +249,9 @@ The bootstrap is **idempotent** — safe to run multiple times.
 3. Enable it and enter:
    - without SSL: `ws://<your-ip>:7011/shelly`
    - with SSL: `wss://<your-hostname-or-ip>/shelly`
+4. Choose the TLS mode that matches your deployment:
+   - `Default TLS` for publicly trusted certificates
+   - `User TLS` for `--ssl selfsigned`, after uploading the Fleet Manager-generated CA certificate from `deploy/state/tls/ca.crt` as the device's custom CA (`user_ca.pem`)
 
 In SSL mode, device WebSocket traffic goes through Traefik on port 443, so do not append `:7011`.
 
@@ -333,7 +344,12 @@ To start completely fresh:
 
 **Zitadel bootstrap fails:** Ensure `jq`, `curl`, and `openssl` are installed. Run `deploy-public.sh install` to install missing dependencies.
 
-**Devices don't appear:** Verify the WebSocket URL is correct (`ws://<ip>:7011/shelly`) and the device can reach the server on port 7011.
+**Devices don't appear:** Verify the WebSocket URL matches the deployment mode:
+
+- without SSL: `ws://<ip>:7011/shelly`
+- with SSL: `wss://<host>/shelly`
+
+For `--ssl selfsigned`, also verify the device is using `User TLS` with the Fleet Manager-generated CA uploaded from `deploy/state/tls/ca.crt` (or the same certificate exported as `ca.pem`). `Default TLS` uses the built-in public CA bundle and will reject the self-signed Fleet Manager certificate.
 
 **Login fails after reset:** If you ran `down --volumes` without removing `deploy/state/`, stale credentials may conflict with the fresh database. Remove `deploy/state/` and run `up` again.
 

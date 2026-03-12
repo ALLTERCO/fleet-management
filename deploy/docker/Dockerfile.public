@@ -98,8 +98,11 @@ COPY --from=plugin-build --chown=node:node /build/plugins /app/plugins
 # Seed assets
 COPY --chown=node:node backend/uploads/ /app/backend/uploads-seed/
 
-# Symlink runtime-config.js to /tmp for read_only containers
-RUN ln -s /tmp/runtime-config.js /app/frontend/dist/runtime-config.js
+# Runtime config: entrypoint.sh injects OIDC config inline into index.html at startup.
+# Safari blocks external script loads with self-signed certs, so we inline it.
+RUN mv /app/frontend/dist/index.html /app/frontend/dist/index.html.tmpl \
+    && ln -s /tmp/index.html /app/frontend/dist/index.html \
+    && ln -s /tmp/runtime-config.js /app/frontend/dist/runtime-config.js
 
 COPY deploy/docker/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh

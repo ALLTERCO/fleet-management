@@ -109,8 +109,8 @@ spinner_stop() {
     local result="${1:-ok}"  # ok, warn, fail
     local msg="${2:-$SPINNER_MSG}"
     if [ -n "$SPINNER_PID" ]; then
-        kill "$SPINNER_PID" 2>/dev/null
-        wait "$SPINNER_PID" 2>/dev/null
+        kill "$SPINNER_PID" 2>/dev/null || true
+        wait "$SPINNER_PID" 2>/dev/null || true
         SPINNER_PID=""
     fi
     if [ -n "$SPINNER_MSG_FILE" ]; then rm -f "$SPINNER_MSG_FILE"; SPINNER_MSG_FILE=""; fi
@@ -709,14 +709,29 @@ wait_for_container_health() {
     container="$(container_name "$service")"
 
     local elapsed=0
+    local health_status=""
     while [ "$elapsed" -lt "$timeout" ]; do
-        case "$(container_health_status "$container")" in
+        health_status="$(container_health_status "$container")"
+        case "$health_status" in
             healthy|running)
-                ok "${service} is ready (${elapsed}s)"
+                if [ -n "$SPINNER_PID" ]; then
+                    spinner_update "Waiting for services to become healthy... (${service} ready ${elapsed}s)"
+                else
+                    ok "${service} is ready (${elapsed}s)"
+                fi
                 return 0
                 ;;
             unhealthy)
-                warn "${service} healthcheck is reporting unhealthy (${elapsed}s)"
+                if [ -n "$SPINNER_PID" ]; then
+                    spinner_update "Waiting for services to become healthy... (${service} unhealthy ${elapsed}s)"
+                else
+                    warn "${service} healthcheck is reporting unhealthy (${elapsed}s)"
+                fi
+                ;;
+            *)
+                if [ -n "$SPINNER_PID" ]; then
+                    spinner_update "Waiting for services to become healthy... (${service} ${health_status} ${elapsed}s)"
+                fi
                 ;;
         esac
         sleep 3
@@ -1597,6 +1612,16 @@ cmd_up() {
         return 1
     fi
 
+    if [ "$WITH_SSL" = "true" ]; then
+        spinner_start "Traefik starting..."
+        if ! wait_for_container_health "traefik" 60; then
+            spinner_stop fail "Traefik did not become healthy within 60s"
+            warn "Check: ./deploy/deploy-public.sh logs traefik"
+            return 1
+        fi
+        spinner_stop ok "Traefik ready"
+    fi
+
     phase "Phase 4/4 — Finalization"
     apply_retention_policies
 
@@ -1719,7 +1744,7 @@ cmd_update() {
     fi
 
     spinner_start "Restarting services..."
-    if run_quiet "Restarting containers" compose_cmd up -d; then
+    if run_quiet "Restarting containers" compose_cmd up -d --force-recreate; then
         spinner_stop ok "Containers restarted"
     else
         spinner_stop fail "Restart failed"

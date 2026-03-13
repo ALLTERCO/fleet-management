@@ -55,7 +55,7 @@ services:
     networks:
       - fleet-net
     healthcheck:
-      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8082/ping >/dev/null || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3

@@ -69,7 +69,7 @@ Once ready, you'll see:
 | `--ssl selfsigned`                                         | Enable HTTPS with a self-signed certificate                       |
 | `--ssl --domain <name>`                                    | Enable HTTPS with Let's Encrypt                                   |
 | `--ssl custom --domain <name> --cert <path> --key <path>`  | Enable HTTPS with an existing certificate/key                     |
-| `--with mdns`                                              | Enable mDNS device discovery                                      |
+| `--mdns`                                                   | Enable mDNS device discovery                                      |
 | `--debug`                                                  | Print traced shell commands and raw installer / Docker output     |
 
 `doctor` is optional. Use it to troubleshoot readiness before or after deployment. It checks:

@@ -451,12 +451,13 @@ parse_runtime_flags() {
             --debug)
                 DEBUG_MODE=true
                 shift ;;
+            --mdns)
+                WITH_MDNS=true
+                shift ;;
             --with)
-                case "${2:-}" in
-                    mdns) WITH_MDNS=true ;;
-                    *)    warn "Unknown addon: ${2:-}" ;;
-                esac
-                shift 2 ;;
+                error "Unknown flag: --with"
+                error "Use --mdns for mDNS device discovery"
+                return 1 ;;
             --ssl)
                 WITH_SSL=true
                 case "${2:-}" in
@@ -479,20 +480,37 @@ parse_runtime_flags() {
                 esac
                 ;;
             --domain)
+                [ $# -ge 2 ] || {
+                    error "--domain requires a value"
+                    return 1
+                }
                 SSL_DOMAIN="${2:-}"
                 shift 2 ;;
             --email)
+                [ $# -ge 2 ] || {
+                    error "--email requires a value"
+                    return 1
+                }
                 SSL_EMAIL="${2:-}"
                 shift 2 ;;
             --cert)
+                [ $# -ge 2 ] || {
+                    error "--cert requires a file path"
+                    return 1
+                }
                 SSL_CERT_FILE="${2:-}"
                 shift 2 ;;
             --key)
+                [ $# -ge 2 ] || {
+                    error "--key requires a file path"
+                    return 1
+                }
                 SSL_KEY_FILE="${2:-}"
                 shift 2 ;;
             *)
-                warn "Unknown flag: $1"
-                shift ;;
+                error "Unknown flag: $1"
+                return 1
+                ;;
         esac
     done
 }
@@ -700,6 +718,45 @@ container_name() {
 container_health_status() {
     local container="$1"
     docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container" 2>/dev/null || echo "missing"
+}
+
+container_exists() {
+    local container="$1"
+    docker ps -a --filter "name=^${container}$" --format '{{.Names}}' 2>/dev/null | grep -qx "$container"
+}
+
+cleanup_orphan_optional_containers() {
+    local orphans=()
+    local service
+    local container
+
+    for service in traefik mdns; do
+        container="$(container_name "$service")"
+        if ! container_exists "$container"; then
+            continue
+        fi
+
+        case "$service" in
+            traefik)
+                [ "$WITH_SSL" = "true" ] && continue
+                ;;
+            mdns)
+                [ "$WITH_MDNS" = "true" ] && continue
+                ;;
+        esac
+
+        orphans+=("$container")
+    done
+
+    [ ${#orphans[@]} -gt 0 ] || return 0
+
+    warn "Detected stack containers from an older topology: ${orphans[*]}"
+    info "Removing orphaned optional containers that are not part of the current configuration..."
+    if ! docker rm -f "${orphans[@]}" >/dev/null 2>&1; then
+        warn "Failed to remove one or more orphaned optional containers"
+        return 1
+    fi
+    ok "Removed orphaned optional containers: ${orphans[*]}"
 }
 
 wait_for_container_health() {
@@ -1161,7 +1218,8 @@ generate_selfsigned_cert() {
 # ── Pre-flight Image Verification ─────────────────────────────
 verify_images() {
     # For pinned tags (e.g. v2.64.1): accept local cache, skip registry.
-    # For "latest" tags: compare local vs remote digest and pull if newer.
+    # For "latest" tags during `up`: use local cache if present and leave refreshes
+    # to `update`, which already pulls configured tags explicitly.
     # Skip all remote checks with FM_SKIP_IMAGE_VERIFY=true.
     if [ "${FM_SKIP_IMAGE_VERIFY:-}" = "true" ]; then
         info "Skipping remote image verification (FM_SKIP_IMAGE_VERIFY=true)"
@@ -1187,30 +1245,16 @@ verify_images() {
     if [ "$WITH_SSL" = "true" ]; then
         images+=("traefik:${TRAEFIK_VERSION:-latest}")
     fi
+    if [ "$WITH_MDNS" = "true" ]; then
+        images+=("shellygroup/mdns-repeater:${MDNS_REPEATER_VERSION:-latest}")
+    fi
 
     local failed=0
     for img in "${images[@]}"; do
         local tag="${img##*:}"
 
         if [ "$tag" = "latest" ] && local_image_exists "$img"; then
-            # "latest" tag — compare local digest with remote to detect updates
-            local local_digest remote_digest
-            local_digest=$(docker image inspect "$img" --format '{{index .RepoDigests 0}}' 2>/dev/null | sed 's/.*@//' || echo "")
-            remote_digest=$(docker manifest inspect "$img" 2>/dev/null | jq -r '.config.digest // .manifests[0].digest // empty' 2>/dev/null || echo "")
-
-            if [ -z "$remote_digest" ]; then
-                # Can't reach registry — use local cache
-                ok "$img (local cache, registry unreachable)"
-            elif [ -n "$local_digest" ] && [ "$local_digest" = "$remote_digest" ]; then
-                ok "$img (up to date)"
-            else
-                info "Newer $img available, pulling..."
-                if docker pull "$img" >/dev/null 2>&1; then
-                    ok "$img (updated)"
-                else
-                    warn "$img (pull failed, using local cache)"
-                fi
-            fi
+            ok "$img (local cache)"
         elif local_image_exists "$img"; then
             ok "$img (local cache)"
         else
@@ -1416,7 +1460,7 @@ generate_fm_config() {
 # ── Commands ──────────────────────────────────────────────────
 
 cmd_up() {
-    parse_runtime_flags "$@"
+    parse_runtime_flags "$@" || return 1
     enable_debug_mode
 
     echo ""
@@ -1636,6 +1680,16 @@ cmd_down() {
     for arg in "$@"; do
         case "$arg" in
             --volumes|-v) remove_volumes=true ;;
+            --volume)
+                error "Unknown flag: --volume"
+                info "Did you mean --volumes?"
+                return 1
+                ;;
+            *)
+                error "Unknown flag for down: $arg"
+                info "Supported flags: --volumes"
+                return 1
+                ;;
         esac
     done
 
@@ -1652,6 +1706,7 @@ cmd_down() {
         warn "Removing containers AND volumes (all data will be lost)"
         spinner_start "Stopping and removing data..."
         if run_quiet "Stopping containers and removing volumes" compose_cmd down -v; then
+            cleanup_orphan_optional_containers || true
             rm -rf "$STATE_DIR"
             spinner_stop ok "Stopped and removed all data"
         else
@@ -1661,6 +1716,7 @@ cmd_down() {
     else
         spinner_start "Stopping services..."
         if run_quiet "Stopping containers" compose_cmd down; then
+            cleanup_orphan_optional_containers || true
             spinner_stop ok "Stopped (data preserved in Docker volumes)"
         else
             spinner_stop fail "Failed to stop services"
@@ -1863,7 +1919,7 @@ print_summary() {
 
 # ── Doctor ─────────────────────────────────────────────────────
 cmd_doctor() {
-    parse_runtime_flags "$@"
+    parse_runtime_flags "$@" || return 1
     enable_debug_mode
     load_state_env
     load_deploy_meta
@@ -2042,7 +2098,7 @@ cmd_help() {
     echo "${BOLD}Commands:${RESET}"
     echo "  ${CYAN}install${RESET}                          Install Docker and required system dependencies"
     echo "  ${CYAN}up${RESET}                               Check prerequisites, install missing ones, and start Fleet Management"
-    echo "  ${CYAN}up --with mdns${RESET}                   Start with mDNS device discovery"
+    echo "  ${CYAN}up --mdns${RESET}                        Start with mDNS device discovery"
     echo "  ${CYAN}up --ssl --domain fm.example.com${RESET} Start with HTTPS (Let's Encrypt)"
     echo "  ${CYAN}up --ssl selfsigned${RESET}              Start with HTTPS (self-signed cert)"
     echo "  ${CYAN}up --ssl custom --domain fm.example.com --cert /path/fullchain.pem --key /path/privkey.pem${RESET}"

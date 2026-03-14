@@ -60,7 +60,7 @@ import Input from '@/components/core/Input.vue';
 import Notification from '@/components/core/Notification.vue';
 import {FLEET_MANAGER_HTTP, USE_LOGIN_ZITADEL} from '@/constants';
 import apiClient from '@/helpers/axios';
-import zitadelAuth from '@/helpers/zitadelAuth';
+import {getZitadelAuth} from '@/helpers/zitadelAuth';
 import {useAuthStore} from '@/stores/auth';
 import {useToastStore} from '@/stores/toast';
 import * as ws from '@/tools/websocket';
@@ -109,6 +109,7 @@ function imageLoadError() {
 }
 
 async function logout() {
+    const zitadelAuth = getZitadelAuth();
     if (USE_LOGIN_ZITADEL && zitadelAuth) {
         await zitadelAuth.oidcAuth.signOut({
             post_logout_redirect_uri: window.location.origin

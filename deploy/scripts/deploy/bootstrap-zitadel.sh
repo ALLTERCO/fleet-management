@@ -314,9 +314,10 @@ SERVICE_USER_NAME="${SERVICE_USER_NAME_OVERRIDE:-${ZITADEL_PROJECT_NAME}-service
 echo ""
 echo "--- Service User: $SERVICE_USER_NAME ---"
 
-# PAT expiry: 1 year from now (works on GNU date and BSD date)
-PAT_EXPIRY=$(date -u -d "+365 days" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
-          || date -u -v+365d +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
+# PAT expiry: 10 years from now — effectively non-expiring for self-hosted deployments.
+# Re-running bootstrap regenerates the PAT if the state file is deleted.
+PAT_EXPIRY=$(date -u -d "+3650 days" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
+          || date -u -v+3650d +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
           || echo "")
 PAT_BODY="{}"
 if [ -n "$PAT_EXPIRY" ]; then

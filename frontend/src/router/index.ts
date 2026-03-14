@@ -19,8 +19,18 @@ router.beforeEach((to, from, next) => {
 
     const authStore = useAuthStore();
     if (authStore.loggedIn) {
+        // Permissions still loading — let navigation proceed without redirecting
+        if (!authStore.permissionsLoaded) {
+            if (to.path === '/login') {
+                next('/');
+                return;
+            }
+            next();
+            return;
+        }
+
         // Check if user has no permissions (after permissions are loaded)
-        if (authStore.permissionsLoaded && authStore.hasNoPermissions) {
+        if (authStore.hasNoPermissions) {
             if (to.path === '/no-permissions') {
                 next();
             } else {

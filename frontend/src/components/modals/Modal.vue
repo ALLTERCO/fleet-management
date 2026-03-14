@@ -8,16 +8,16 @@
 
         <div
             ref="panelRef"
-            class="modal-panel fixed sm:left-1/2 sm:-translate-x-1/2 sm:translate-y-1/2 sm:bottom-1/2 sm:max-w-[95%] sm:rounded-lg bottom-0 left-0 w-full rounded-t-sm border-2 z-50 modal-content"
+            class="modal-panel fixed sm:left-1/2 sm:-translate-x-1/2 sm:translate-y-1/2 sm:bottom-1/2 sm:max-w-[95%] sm:rounded-lg bottom-0 left-0 w-full rounded-t-sm border-2 z-50 modal-content flex flex-col"
             :class="[
                 compact
                     ? 'sm:w-[420px] overflow-visible'
                     : wide
-                      ? 'sm:w-[90vw] lg:w-[1400px] max-h-[85vh] lg:max-h-[95vh] overflow-hidden'
-                      : 'sm:w-[720px] lg:w-[960px] max-h-[85vh] lg:max-h-[95vh] overflow-hidden'
+                      ? 'sm:w-[94vw] lg:w-[1480px] max-h-[92vh] overflow-hidden'
+                      : 'sm:w-[800px] lg:w-[1100px] max-h-[90vh] overflow-hidden'
             ]"
         >
-            <BasicBlock padding="none">
+            <BasicBlock padding="none" class="h-full">
                 <!-- X button -->
                 <button
                     type="button"
@@ -42,17 +42,17 @@
                         />
                     </svg>
                 </button>
-                <div class="flex flex-col p-3 md:p-5 gap-3">
-                    <div v-if="$slots.title" class="h-18 w-full font-bold text-lg">
+                <div class="flex h-full min-h-0 flex-col p-3 md:p-5 gap-3">
+                    <div v-if="$slots.title" class="w-full pr-12 font-bold text-lg">
                         <slot name="title" />
                     </div>
                     <div
-                        class="modal-body flex-grow p-4 rounded-lg"
-                        :class="compact ? 'overflow-visible' : 'max-h-[75vh] lg:max-h-[85vh] overflow-y-auto z-40'"
+                        class="modal-body flex-1 min-h-0 p-4 rounded-lg"
+                        :class="compact ? 'overflow-visible' : 'overflow-y-auto z-40'"
                     >
                         <slot></slot>
                     </div>
-                    <div v-if="$slots.footer" class="w-full md:rounded-b">
+                    <div v-if="$slots.footer" class="modal-footer w-full shrink-0 md:rounded-b">
                         <slot name="footer" />
                     </div>
                 </div>
@@ -146,6 +146,22 @@ function bgClicked() {
 }
 .modal-body {
     background-color: var(--color-surface-1);
+}
+.modal-footer {
+    background-color: var(--color-surface-2);
+    border-top: 1px solid var(--color-border-default);
+    margin-left: -0.75rem;
+    margin-right: -0.75rem;
+    margin-bottom: -0.75rem;
+    padding: 0.75rem;
+}
+@media (min-width: 768px) {
+    .modal-footer {
+        margin-left: -1.25rem;
+        margin-right: -1.25rem;
+        margin-bottom: -1.25rem;
+        padding: 1rem 1.25rem;
+    }
 }
 .modal-enter-active,
 .modal-leave-active {

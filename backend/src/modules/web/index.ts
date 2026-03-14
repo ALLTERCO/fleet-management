@@ -5,6 +5,7 @@ import * as path from 'node:path';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
+import helmet from 'helmet';
 import log4js from 'log4js';
 import multer from 'multer';
 import RED from 'node-red';
@@ -148,26 +149,23 @@ function registerMiddleware(app: express.Express) {
         });
         next();
     });
-    app.use((req, res, next) => {
-        // Website you wish to allow to connect
-        res.setHeader('Access-Control-Allow-Origin', 'http://localhost:5173');
 
-        // Request methods you wish to allow
-        res.setHeader(
-            'Access-Control-Allow-Methods',
-            'GET, POST, OPTIONS, PUT, PATCH, DELETE'
-        );
+    // Trust the first reverse proxy (Traefik) so req.ip and req.protocol are correct
+    app.set('trust proxy', 1);
 
-        // Request headers you wish to allow
-        res.setHeader(
-            'Access-Control-Allow-Headers',
-            'X-Requested-With,content-type'
-        );
+    // Security headers (skip CSP and HSTS — FM may serve inline scripts and run over HTTP on LANs)
+    app.use(
+        helmet({
+            contentSecurityPolicy: false,
+            strictTransportSecurity: false
+        })
+    );
 
-        // Pass to next layer of middleware
-        next();
-    });
-    app.use(cors());
+    // CORS: only needed in dev mode (vite dev server on a different port)
+    if (DEV_MODE) {
+        app.use(cors());
+    }
+
     app.use([
         log4js.connectLogger(logger, {
             level: 'auto',
@@ -316,11 +314,7 @@ function registerStaticRoutes(app: express.Express) {
         res.json({dbWritesDisabled: Observability.isDbWritesDisabled()});
     });
 
-    // Export debug report (full observability dump)
-    app.get('/health/debug-report', (req, res) => {
-        const report = Observability.getDebugReport();
-        res.json(report);
-    });
+    // NOTE: /health/debug-report is registered in registerRouters() with auth.
 
     // Metric history for sparklines (returns last 1 hour of snapshots)
     app.get('/health/history', (req, res) => {
@@ -386,7 +380,13 @@ function registerRouters(app: express.Express) {
         app.use('/grafana', grafana);
     }
 
-    // --- Admin-only diagnostic controls (registered after auth middleware) ---
+    // --- Diagnostic controls (registered after auth middleware) ---
+
+    // Debug report — requires login since it may contain error details
+    app.get('/health/debug-report', isLoggedIn, (req, res) => {
+        const report = Observability.getDebugReport();
+        res.json(report);
+    });
 
     // DB writes toggle
     app.post('/health/db-writes', requiresAdmin, express.json(), (req, res) => {
@@ -469,7 +469,10 @@ function registerRouters(app: express.Express) {
     // Device proxy routes (for embedded web GUI)
     app.use('/api/device-proxy', deviceProxy);
 
-    const upload = multer({dest: 'uploads/'});
+    const upload = multer({
+        dest: 'uploads/',
+        limits: {fileSize: 10 * 1024 * 1024}
+    });
 
     // Audit log CSV download
     app.get('/api/audit-log/download/:filename', isLoggedIn, (req, res) => {
@@ -505,7 +508,7 @@ function registerRouters(app: express.Express) {
         });
     });
 
-    app.get('/media/getAllBackgrounds', (req, res) => {
+    app.get('/media/getAllBackgrounds', isLoggedIn, (req, res) => {
         fs.readdir(backgroundsPath, (err, files) => {
             if (err)
                 return res
@@ -521,16 +524,18 @@ function registerRouters(app: express.Express) {
 
     app.post(
         '/media/uploadBackgroud',
+        isLoggedIn,
         upload.single('image'),
         async (req, res) => {
             const file = req.file;
             if (!file) {
                 return res.status(400).json({error: 'No file uploaded'});
             }
-            const originalPath = path.join(backgroundsPath, file.originalname);
+            const safeName = path.basename(file.originalname);
+            const originalPath = path.join(backgroundsPath, safeName);
             const thumbPath = path.join(
                 backgroundsPath,
-                file.originalname.replace(/\.(jpg|jpeg|png)$/i, '_thumb.$1')
+                safeName.replace(/\.(jpg|jpeg|png)$/i, '_thumb.$1')
             );
 
             try {
@@ -554,6 +559,7 @@ function registerRouters(app: express.Express) {
     );
     app.post(
         '/media/uploadProfilePic',
+        isLoggedIn,
         upload.single('image'),
         async (req, res) => {
             const {username} = req.body;
@@ -563,8 +569,12 @@ function registerRouters(app: express.Express) {
                 return res.status(400).json({error: 'No file uploaded'});
             }
 
+            if (!username || !/^[a-zA-Z0-9@._\-]+$/.test(username)) {
+                return res.status(400).json({error: 'Invalid username'});
+            }
+
             // Set the target filenames
-            const baseFilename = `${username}.png`;
+            const baseFilename = `${path.basename(username)}.png`;
             const originalPath = path.join(profilePicturesPath, baseFilename);
 
             try {
@@ -581,12 +591,16 @@ function registerRouters(app: express.Express) {
             }
         }
     );
-    app.post('/media/deleteBackground', async (req, res) => {
+    app.post('/media/deleteBackground', isLoggedIn, async (req, res) => {
         const {fileName} = req.body;
-        const originalPath = path.join(backgroundsPath, fileName);
+        if (!fileName || typeof fileName !== 'string') {
+            return res.status(400).json({error: 'Missing fileName'});
+        }
+        const safeName = path.basename(fileName);
+        const originalPath = path.join(backgroundsPath, safeName);
         const thumbPath = path.join(
             backgroundsPath,
-            fileName.replace(/\.(jpg|jpeg|png)$/i, '_thumb.$1')
+            safeName.replace(/\.(jpg|jpeg|png)$/i, '_thumb.$1')
         );
 
         try {
@@ -611,6 +625,7 @@ function registerRouters(app: express.Express) {
 
     app.get(
         '/media/getAllReportImages',
+        isLoggedIn,
         (req: express.Request, res: express.Response): void => {
             fs.readdir(reportImagesPath, (err, files) => {
                 if (err) {
@@ -628,9 +643,13 @@ function registerRouters(app: express.Express) {
         }
     );
 
-    const uploadReportImage = multer({dest: 'uploads/temp/'});
+    const uploadReportImage = multer({
+        dest: 'uploads/temp/',
+        limits: {fileSize: 10 * 1024 * 1024}
+    });
     app.post(
         '/media/uploadReportImage',
+        isLoggedIn,
         uploadReportImage.single('image'),
         async (req: express.Request, res: express.Response): Promise<void> => {
             const file = req.file;
@@ -642,7 +661,12 @@ function registerRouters(app: express.Express) {
                 return;
             }
 
-            const ext = path.extname(file.originalname);
+            if (!/^[a-zA-Z0-9_\-]+$/.test(reportName)) {
+                res.status(400).json({error: 'Invalid reportName'});
+                return;
+            }
+
+            const ext = path.extname(path.basename(file.originalname));
             const timestamp = Date.now();
             const wrapped = `report_${reportName}_${timestamp}`;
             const originalName = `${wrapped}${ext}`;

@@ -1,68 +1,100 @@
-import {createZITADELAuth, type ZITADELConfig} from '@zitadel/vue';
-import {
-    type User,
-    UserManagerSettings,
-    WebStorageStateStore
-} from 'oidc-client';
+import type {createZITADELAuth} from '@zitadel/vue';
 import {RESOLVED_OIDC_CONFIG, USE_LOGIN_ZITADEL} from '@/constants';
 
-let zitadelAuth: ReturnType<typeof createZITADELAuth> | undefined = undefined;
+type ZitadelAuthInstance = ReturnType<typeof createZITADELAuth>;
 
-if (USE_LOGIN_ZITADEL) {
-    const zitadelConfig: ZITADELConfig = {
-        project_resource_id:
-            (RESOLVED_OIDC_CONFIG as any).project_resource_id ||
-            RESOLVED_OIDC_CONFIG.client_id!.split('@')[0],
-        client_id: RESOLVED_OIDC_CONFIG.client_id!,
-        issuer: RESOLVED_OIDC_CONFIG.metadata!.issuer!
-    };
+// Lazy-initialized to avoid TDZ errors caused by chunk evaluation order.
+// @zitadel/vue and oidc-client are loaded via dynamic import() so they
+// resolve after all static chunks are ready.
+let zitadelAuth: ZitadelAuthInstance | undefined;
+let initPromise: Promise<ZitadelAuthInstance | undefined> | undefined;
 
-    zitadelAuth = createZITADELAuth(
-        zitadelConfig,
-        undefined,
-        undefined,
-        undefined,
-        {
-            ...RESOLVED_OIDC_CONFIG,
-            userStore: new WebStorageStateStore({store: localStorage})
-        }
-    );
+/**
+ * Initialize the Zitadel auth instance (idempotent).
+ * Call this once at app startup (main.ts). All subsequent calls return
+ * the same promise / cached instance.
+ */
+export function initZitadelAuth(): Promise<ZitadelAuthInstance | undefined> {
+    if (initPromise) return initPromise;
 
-    // handle events
-    zitadelAuth.oidcAuth.events.addAccessTokenExpiring(() => {
-        // eslint-disable-next-line no-console
-        console.log('access token expiring');
-    });
+    if (!USE_LOGIN_ZITADEL) {
+        initPromise = Promise.resolve(undefined);
+        return initPromise;
+    }
 
-    zitadelAuth.oidcAuth.events.addAccessTokenExpired(() => {
-        // eslint-disable-next-line no-console
-        console.log('access token expired');
-    });
+    initPromise = (async () => {
+        const [{createZITADELAuth}, {WebStorageStateStore}] = await Promise.all([
+            import('@zitadel/vue'),
+            import('oidc-client')
+        ]);
 
-    zitadelAuth.oidcAuth.events.addSilentRenewError((err: Error) => {
-        // eslint-disable-next-line no-console
-        console.error('silent renew error', err);
-    });
+        const zitadelConfig = {
+            project_resource_id:
+                (RESOLVED_OIDC_CONFIG as any).project_resource_id ||
+                RESOLVED_OIDC_CONFIG.client_id!.split('@')[0],
+            client_id: RESOLVED_OIDC_CONFIG.client_id!,
+            issuer: RESOLVED_OIDC_CONFIG.metadata!.issuer!
+        };
 
-    zitadelAuth.oidcAuth.events.addUserLoaded((_user: User) => {
-        // eslint-disable-next-line no-console
-        console.debug('user loaded');
-    });
+        zitadelAuth = createZITADELAuth(
+            zitadelConfig,
+            undefined,
+            undefined,
+            undefined,
+            {
+                ...RESOLVED_OIDC_CONFIG,
+                userStore: new WebStorageStateStore({store: localStorage})
+            }
+        );
 
-    zitadelAuth.oidcAuth.events.addUserUnloaded(() => {
-        // eslint-disable-next-line no-console
-        console.log('user unloaded');
-    });
+        // handle events
+        zitadelAuth.oidcAuth.events.addAccessTokenExpiring(() => {
+            console.debug('access token expiring — silent renew should handle this');
+        });
 
-    zitadelAuth.oidcAuth.events.addUserSignedOut(() => {
-        // eslint-disable-next-line no-console
-        console.log('user signed out');
-    });
+        zitadelAuth.oidcAuth.events.addAccessTokenExpired(() => {
+            console.warn('access token expired — clearing session');
+            localStorage.removeItem('access_token');
+            window.location.href = '/login';
+        });
 
-    zitadelAuth.oidcAuth.events.addUserSessionChanged(() => {
-        // eslint-disable-next-line no-console
-        console.log('user session changed');
-    });
+        zitadelAuth.oidcAuth.events.addSilentRenewError((err: Error) => {
+            console.error('silent renew error — clearing session', err);
+            localStorage.removeItem('access_token');
+            window.location.href = '/login';
+        });
+
+        zitadelAuth.oidcAuth.events.addUserLoaded((user) => {
+            console.debug('user loaded — syncing access token');
+            if (user.access_token) {
+                localStorage.setItem('access_token', user.access_token);
+            }
+        });
+
+        zitadelAuth.oidcAuth.events.addUserUnloaded(() => {
+            console.debug('user unloaded');
+            localStorage.removeItem('access_token');
+        });
+
+        zitadelAuth.oidcAuth.events.addUserSignedOut(() => {
+            console.debug('user signed out');
+            localStorage.removeItem('access_token');
+        });
+
+        zitadelAuth.oidcAuth.events.addUserSessionChanged(() => {
+            console.debug('user session changed');
+        });
+
+        return zitadelAuth;
+    })();
+
+    return initPromise;
 }
 
-export default zitadelAuth;
+/**
+ * Get the current Zitadel auth instance (synchronous).
+ * Returns undefined until initZitadelAuth() has resolved.
+ */
+export function getZitadelAuth(): ZitadelAuthInstance | undefined {
+    return zitadelAuth;
+}

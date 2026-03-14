@@ -430,6 +430,9 @@ export async function addDashboardItem(
     order = 0,
     sub_item: string | null = null
 ): Promise<number> {
+    // Dashboard widgets are fetched through the cached ui.dashboards registry.
+    // Invalidate it before mutating DB state so subsequent reads reflect the new item.
+    dbResultCache.delete('ui.dashboards');
     const {
         rows: [{fn_dashboard_item_add: id}]
     } = await callMethod('ui.fn_dashboard_item_add', {
@@ -446,6 +449,8 @@ export async function removeDashboardWidget(
     dashboard: number,
     itemId: number
 ): Promise<void> {
+    // Keep dashboard reads coherent after widget removal.
+    dbResultCache.delete('ui.dashboards');
     await callMethod('ui.fn_dashboard_item_remove', {
         p_dashboard: dashboard,
         p_dashboard_item: itemId

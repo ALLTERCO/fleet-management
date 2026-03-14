@@ -1,5 +1,5 @@
 <template>
-    <Modal :visible="visible" @close="close">
+    <Modal :visible="visible" :wide="wide" :compact="compact" @close="close">
         <template #title>
             <span>
                 <slot name="title" />
@@ -30,10 +30,10 @@
 </template>
 
 <script setup lang="ts">
-import {watch} from 'vue';
 import Button from '@/components/core/Button.vue';
 import Steps from '@/components/core/Steps.vue';
 import Modal from '@/components/modals/Modal.vue';
+import {watch} from 'vue';
 
 const stage = defineModel<number>('stage', {required: true});
 const visible = defineModel<boolean>('visible', {required: true});
@@ -42,6 +42,8 @@ defineProps<{
     maxSteps: number;
     /** If true, the Save button will be disabled for users without write permission */
     requiresWrite?: boolean;
+    wide?: boolean;
+    compact?: boolean;
 }>();
 
 const emit = defineEmits<{

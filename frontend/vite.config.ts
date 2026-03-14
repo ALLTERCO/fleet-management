@@ -163,6 +163,7 @@ export default defineConfig(({ mode }) => {
             GIT_LAST_COMMIT_TIME: JSON.stringify(buildDate),
             OIDC_CONFIG: JSON.stringify(buildTimeOidcConfig),
         },
+        build: {},
         test: {
             environment: "happy-dom",
             globals: true,

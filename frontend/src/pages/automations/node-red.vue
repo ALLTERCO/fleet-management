@@ -8,9 +8,10 @@
 import {useCookies} from '@vueuse/integrations/useCookies.mjs';
 import {onMounted} from 'vue';
 import {NODE_RED_URL} from '@/constants';
-import zitadelAuth from '@/helpers/zitadelAuth';
+import {getZitadelAuth} from '@/helpers/zitadelAuth';
 
 onMounted(async () => {
+    const zitadelAuth = getZitadelAuth();
     if (!zitadelAuth) return;
 
     const user = await zitadelAuth.oidcAuth.mgr.getUser();

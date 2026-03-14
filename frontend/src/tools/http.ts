@@ -1,4 +1,4 @@
-import zitadelAuth from '@/helpers/zitadelAuth';
+import {getZitadelAuth} from '@/helpers/zitadelAuth';
 import {FLEET_MANAGER_HTTP} from '../constants';
 
 // Dev mode token storage key (same as in auth store)
@@ -22,6 +22,7 @@ async function getAccessToken(): Promise<string | null> {
     }
 
     // Fall back to Zitadel
+    const zitadelAuth = getZitadelAuth();
     if (!zitadelAuth) {
         console.error('Zitadel auth not initialized');
         return null;

@@ -95,12 +95,12 @@ export const configRc: config_rc_t = rc<config_rc_t>('fleet-manager', {
     },
     internalStorage: {
         connection: {
-            host: 'localhost',
+            host: process.env.DB_HOST || 'localhost',
             // port: 5434, // for my dev env
-            user: 'fleet',
+            user: process.env.DB_USER || 'fleet',
             max: 60,
-            password: 'fleet',
-            database: 'fleet',
+            password: process.env.DB_PASSWORD || '',
+            database: process.env.DB_NAME || 'fleet',
             connectionTimeoutMillis: 7000,
             idleTimeoutMillis: 15000,
             allowExitOnIdle: true
@@ -134,7 +134,7 @@ export const configRc: config_rc_t = rc<config_rc_t>('fleet-manager', {
             port_ssl: -1,
             https_crt: '/path/to/cert.crt',
             https_key: '/path/to/cert.key',
-            jwt_token: 'shelly-secret-token',
+            jwt_token: process.env.JWT_SECRET || '',
             relativeClientPath: '../../../../frontend/dist'
         }
     }

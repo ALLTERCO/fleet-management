@@ -80,15 +80,19 @@
 </template>
 
 <script setup lang="ts">
-import {onBeforeMount, ref} from 'vue';
+import {computed, onBeforeMount, ref} from 'vue';
 import {useRouter} from 'vue-router/auto';
 import Button from '@/components/core/Button.vue';
 import Skeleton from '@/components/core/Skeleton.vue';
-import zitadelAuth from '@/helpers/zitadelAuth';
+import {getZitadelAuth} from '@/helpers/zitadelAuth';
 import {useAuthStore} from '@/stores/auth';
 
 const router = useRouter();
 const authStore = useAuthStore();
+
+// Expose to template — re-evaluates on each render so it picks up
+// the instance once initZitadelAuth() has resolved.
+const zitadelAuth = computed(() => getZitadelAuth());
 
 const username = ref('');
 const password = ref('');
@@ -98,6 +102,7 @@ const ssoError = ref<string | null>(null);
 
 async function signIn() {
     ssoError.value = null;
+    const zitadelAuth = getZitadelAuth();
     if (!zitadelAuth) {
         ssoError.value = 'Authentication is not configured. Please contact your administrator.';
         return;

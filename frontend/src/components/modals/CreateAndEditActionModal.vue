@@ -3,6 +3,7 @@
         :stage="stage"
         :visible="visible"
         :max-steps="Object.keys(STAGES).length"
+        wide
         @save="onSave"
         @close="onClose"
     >
@@ -16,36 +17,38 @@
         </template>
 
         <template #default="{ stage }">
-            <div v-if="stage === STAGES.SELECT_DEVICES">
+            <div v-if="stage === STAGES.SELECT_DEVICES" class="flex min-h-[34rem] min-h-0 flex-col">
                 <DeviceSelector v-model="selectedDevices" />
             </div>
 
-            <div v-else-if="stage === STAGES.BUILD" class="space-y-3">
-                <div class="flex flex-row items-center">
-                    <span class="has-text-white mr-2">Preset methods:</span>
-                    <Dropdown class="mr-2" :options="ALLOWED_COMPONENT_NAMES" :searchable="true" @selected="componentSelected" />
+            <div v-else-if="stage === STAGES.BUILD" class="flex min-h-[34rem] min-h-0 flex-col gap-4">
+                <div class="flex flex-col gap-2 xl:flex-row xl:items-center">
+                    <span class="has-text-white shrink-0">Preset methods:</span>
+                    <Dropdown class="xl:min-w-[16rem]" :options="ALLOWED_COMPONENT_NAMES" :searchable="true" @selected="componentSelected" />
                     <Dropdown v-if="componentMethodNames" :options="componentMethodNames" :searchable="true" @selected="methodSelected" />
                 </div>
-                <VueJsonPretty
-                    v-model:data="json"
-                    :deep="Infinity"
-                    :editable="true"
-                    :show-line="false"
-                />
+                <div class="min-h-0 flex-1 overflow-auto rounded-lg border border-[var(--color-border-default)] p-3">
+                    <VueJsonPretty
+                        v-model:data="json"
+                        :deep="Infinity"
+                        :editable="true"
+                        :show-line="false"
+                    />
+                </div>
             </div>
 
-            <div v-else-if="stage === STAGES.PREVIEW" class="flex flex-col gap-3">
+            <div v-else-if="stage === STAGES.PREVIEW" class="flex min-h-[34rem] min-h-0 flex-col gap-3">
                 <span class="font-semibold">You are sending this command:</span>
-                <pre class="bg-black p-3 rounded">{{ JSON.stringify(json, undefined, 2) }}</pre>
+                <pre class="max-h-[18rem] overflow-auto rounded bg-black p-3">{{ JSON.stringify(json, undefined, 2) }}</pre>
                 <span class="font-semibold">To these {{ selectedDevices.length }} devices:</span>
-                <ul class="space-y-2">
+                <ul class="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                     <li v-for="deviceID in selectedDevices" :key="deviceID">
                         <DeviceWidget :device-id="deviceID" vertical />
                     </li>
                 </ul>
             </div>
 
-            <div v-else-if="stage == STAGES.MAIN">
+            <div v-else-if="stage == STAGES.MAIN" class="flex min-h-[18rem] flex-col">
                 <Input v-model="name" label="Action name" :error="nameError"
                     aria-label="Action name" @blur="validateName" />
             </div>
@@ -63,8 +66,8 @@ import Dropdown from '@/components/core/Dropdown.vue';
 import default_rpc from '@/data/default_rpc.json';
 import {getRegistry} from '@/tools/websocket';
 import type {action_t} from '@/types';
-import Input from '../core/Input.vue';
 import DeviceSelector from '../DeviceSelector.vue';
+import Input from '../core/Input.vue';
 import DeviceWidget from '../widgets/DeviceWidget.vue';
 import SteppedModal from './SteppedModal.vue';
 
@@ -96,7 +99,10 @@ const name = ref(props.action ? props.action.name : '');
 const nameError = ref('');
 
 function validateName() {
-    nameError.value = (!name.value || name.value.trim() === '') ? 'Action name is required' : '';
+    nameError.value =
+        !name.value || name.value.trim() === ''
+            ? 'Action name is required'
+            : '';
 }
 
 const component = ref<string>(
@@ -125,7 +131,7 @@ const componentMethodNames = computed(() =>
 watch(
     () => props.action,
     (newAction) => {
-        if (newAction && newAction.actions.length) {
+        if (newAction?.actions.length) {
             selectedDevices.value = newAction.actions[0].dst;
             json.value = newAction.actions[0];
             name.value = newAction.name;
@@ -189,7 +195,7 @@ async function onSave() {
     };
 
     if (isEditMode.value && props.action?.id) {
-        payload.id = parseInt(props.action.id, 10);
+        payload.id = Number.parseInt(props.action.id, 10);
     }
 
     const ActionsController = getRegistry('actions');

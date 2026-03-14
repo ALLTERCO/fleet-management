@@ -5,7 +5,7 @@ import type {
     CrudOperation,
     FleetPermissionConfig
 } from '@/helpers/sharedInfo';
-import zitadelAuth from '@/helpers/zitadelAuth';
+import {getZitadelAuth} from '@/helpers/zitadelAuth';
 import {sendRPC} from '@/tools/http';
 import * as ws from '@/tools/websocket';
 
@@ -48,15 +48,17 @@ export const useAuthStore = defineStore('auth', () => {
         if (devMode.value) {
             return !!devModeToken.value;
         }
-        if (!zitadelAuth) return false;
-        return zitadelAuth.oidcAuth.isAuthenticated;
+        const auth = getZitadelAuth();
+        if (!auth) return false;
+        return auth.oidcAuth.isAuthenticated;
     });
 
     // Get current Zitadel user profile
     const zitadelUser = computed(() => {
         try {
-            if (zitadelAuth) {
-                return zitadelAuth.oidcAuth.userProfile;
+            const auth = getZitadelAuth();
+            if (auth) {
+                return auth.oidcAuth.userProfile;
             }
             return undefined;
         } catch (error) {
@@ -148,7 +150,7 @@ export const useAuthStore = defineStore('auth', () => {
             return devModeToken.value;
         }
         // For Zitadel, the token is handled by the auth library
-        return zitadelAuth?.oidcAuth?.accessToken || null;
+        return getZitadelAuth()?.oidcAuth?.accessToken || null;
     }
 
     // Role and permission computed properties
@@ -311,10 +313,10 @@ export const useAuthStore = defineStore('auth', () => {
             localStorage.removeItem(DEV_MODE_TOKEN_KEY);
             localStorage.removeItem(DEV_MODE_USERNAME_KEY);
             localStorage.removeItem('dev_mode_refresh_token');
-        } else if (zitadelAuth) {
+        } else if (getZitadelAuth()) {
             // Zitadel logout
             try {
-                await zitadelAuth.oidcAuth.signOut();
+                await getZitadelAuth()!.oidcAuth.signOut();
             } catch (error) {
                 console.error('Error during logout:', error);
             }

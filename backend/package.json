@@ -20,7 +20,6 @@
   "dependencies": {
     "adm-zip": "^0.5.16",
     "ajv": "^8.18.0",
-    "fast-csv": "5.0.5",
     "body-parser": "^1.20.2",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
@@ -28,7 +27,9 @@
     "dotenv": "^16.0.1",
     "expose-sql-methods": "^1.1.11",
     "express": "^4.19.2",
+    "fast-csv": "5.0.5",
     "flattie": "^1.1.1",
+    "helmet": "^8.1.0",
     "json-schema-to-typescript": "14.1.0",
     "jsonwebtoken": "^9.0.2",
     "log4js": "^6.6.0",

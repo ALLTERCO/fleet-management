@@ -3,7 +3,7 @@ import './style.css';
 import '@/constants';
 import {createPinia} from 'pinia';
 import {initWebVitals} from '@/helpers/webVitals';
-import zitadelAuth from '@/helpers/zitadelAuth';
+import {initZitadelAuth} from '@/helpers/zitadelAuth';
 import App from './App.vue';
 import {USE_LOGIN_ZITADEL} from './constants';
 import router from './router';
@@ -61,14 +61,28 @@ function init() {
     });
 }
 
-if (USE_LOGIN_ZITADEL && zitadelAuth) {
+if (USE_LOGIN_ZITADEL) {
     console.debug('using zitadel login strategy');
-    zitadelAuth.oidcAuth.startup().then((ok) => {
-        if (ok) {
-            console.debug('Zitadel started OK');
+    initZitadelAuth()
+        .then((auth) => {
+            if (!auth) {
+                console.warn('Zitadel auth init returned undefined — app will mount without session');
+                return;
+            }
+            return auth.oidcAuth
+                .startup()
+                .then((ok) => {
+                    if (ok) {
+                        console.debug('Zitadel started OK');
+                    } else {
+                        console.warn('Zitadel OIDC startup returned false — app will mount without session');
+                    }
+                });
+        })
+        .catch((err) => {
+            console.error('Zitadel OIDC startup error:', err);
+        })
+        .finally(() => {
             init();
-        } else {
-            console.error('Startup was not ok');
-        }
-    });
+        });
 } else init();

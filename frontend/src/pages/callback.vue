@@ -24,7 +24,7 @@
 import {onMounted, ref} from 'vue';
 import {useRouter} from 'vue-router/auto';
 import Spinner from '@/components/core/Spinner.vue';
-import zitadelAuth from '@/helpers/zitadelAuth';
+import {getZitadelAuth} from '@/helpers/zitadelAuth';
 
 const router = useRouter();
 const error = ref<string | null>(null);
@@ -32,6 +32,7 @@ const error = ref<string | null>(null);
 onMounted(() => {
     console.log('OIDC callback handler started');
 
+    const zitadelAuth = getZitadelAuth();
     if (zitadelAuth == undefined) {
         console.error('Zitadel auth not configured');
         error.value = 'Authentication is not configured';

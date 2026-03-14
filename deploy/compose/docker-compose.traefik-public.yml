@@ -4,6 +4,9 @@
 # Provisions HTTPS certificates automatically via ACME (Let's Encrypt).
 # Redirects HTTP to HTTPS. Routes all traffic to Fleet Manager and Zitadel.
 #
+# Uses file provider only — no Docker socket mount needed.
+# Routes are generated into state/traefik-dynamic/ by the deploy script.
+#
 # Requirements:
 #   - Domain pointing to this machine's public IP
 #   - Ports 80 and 443 open (firewall / security group)
@@ -20,10 +23,9 @@ services:
       - NET_BIND_SERVICE
     read_only: true
     command:
-      # Docker provider: auto-discovers services via labels
-      - "--providers.docker=true"
-      - "--providers.docker.exposedByDefault=false"
-      - "--providers.docker.network=${COMPOSE_PROJECT_NAME}_fleet-net"
+      # File provider: loads routing config from dynamic directory
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
       # HTTP entrypoint: redirect to HTTPS
       - "--entrypoints.web.address=:80"
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
@@ -50,7 +52,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../state/traefik-dynamic:/etc/traefik/dynamic:ro
       - traefik-certs:/letsencrypt
     tmpfs:
       - /tmp:size=16M
@@ -67,35 +69,6 @@ services:
       options:
         max-size: "1m"
         max-file: "5"
-
-  # Override Fleet Manager with Traefik labels
-  fleet-manager:
-    labels:
-      - "traefik.enable=true"
-      # Fleet Manager routes (catch-all on the domain)
-      - "traefik.http.routers.fleet.rule=Host(`${SSL_DOMAIN}`)"
-      - "traefik.http.routers.fleet.entrypoints=websecure"
-      - "traefik.http.routers.fleet.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.fleet.priority=10"
-      - "traefik.http.routers.fleet.middlewares=strip-identity@docker"
-      - "traefik.http.services.fleet.loadbalancer.server.port=7011"
-      # Middleware: strip identity headers
-      - "traefik.http.middlewares.strip-identity.headers.customResponseHeaders.Server="
-      - "traefik.http.middlewares.strip-identity.headers.customResponseHeaders.X-Powered-By="
-
-  # Override Zitadel with Traefik labels
-  zitadel:
-    labels:
-      - "traefik.enable=true"
-      # Zitadel routes (OIDC paths on the same domain)
-      - "traefik.http.routers.zitadel.rule=Host(`${SSL_DOMAIN}`) && (PathPrefix(`/.well-known/`) || PathPrefix(`/oauth/`) || PathPrefix(`/oidc/`) || PathPrefix(`/ui/`) || PathPrefix(`/debug/`) || PathPrefix(`/v2beta/`) || PathPrefix(`/v2/`) || PathPrefix(`/management/`) || PathPrefix(`/admin/`) || PathPrefix(`/auth/`) || PathPrefix(`/assets/v1/`))"
-      - "traefik.http.routers.zitadel.entrypoints=websecure"
-      - "traefik.http.routers.zitadel.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.zitadel.priority=100"
-      - "traefik.http.routers.zitadel.middlewares=strip-feature-policy@docker"
-      - "traefik.http.services.zitadel.loadbalancer.server.port=8080"
-      # Middleware: strip deprecated Feature-Policy header (Zitadel sends it alongside Permissions-Policy)
-      - "traefik.http.middlewares.strip-feature-policy.headers.customResponseHeaders.Feature-Policy="
 
 networks:
   fleet-net:

@@ -11,11 +11,12 @@
 import {useRouter} from 'vue-router/auto';
 import EmptyBlock from '@/components/core/EmptyBlock.vue';
 import Spinner from '@/components/core/Spinner.vue';
-import zitadelAuth from '@/helpers/zitadelAuth';
+import {getZitadelAuth} from '@/helpers/zitadelAuth';
 
 const router = useRouter();
 console.log('zitadel auth started');
 
+const zitadelAuth = getZitadelAuth();
 if (zitadelAuth == undefined) {
     window.location.href = '/';
 } else {

@@ -1,0 +1,34 @@
+# Optional centralized log viewer with Dozzle
+#
+# Adds Dozzle — a lightweight real-time Docker log viewer with a web UI.
+# No database, no extra storage, no config. Just browse and search all
+# container logs from the browser.
+#
+# Enable: add --logging to deploy-public.sh up, or add
+#   -f docker-compose.logging.yml to your compose command.
+#
+# Access: http://<host>:9999
+
+services:
+  dozzle:
+    image: amir20/dozzle:${DOZZLE_VERSION:-v8.12.8}
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "${DOZZLE_PORT:-9999}:8080"
+    environment:
+      DOZZLE_FILTER: "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}"
+      DOZZLE_NO_ANALYTICS: "true"
+    networks:
+      fleet-net:
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "3"
+
+networks:
+  fleet-net:

@@ -15,8 +15,6 @@ services:
     volumes:
       - fleet-db-data:/var/lib/postgresql/data
       - ../state/init-fleet-db.sql:/docker-entrypoint-initdb.d/init-fleet-db.sql:ro
-    ports:
-      - "5434:5432"
     command: >-
       postgres
       -c shared_buffers=${PG_SHARED_BUFFERS}

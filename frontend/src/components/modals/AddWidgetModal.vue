@@ -3,6 +3,7 @@
         :stage="stage"
         :visible="modals.addWidget"
         :max-steps="Object.keys(STAGES).length"
+        wide
         @onchange="stateChanged"
         @save="onSave"
         @close="modals.addWidget = false"
@@ -13,10 +14,17 @@
         </template>
 
         <template #default="{ stage }">
-            <div class="bg-[var(--color-surface-1)] rounded-lg p-2 md:p-4">
+            <div class="flex min-h-[34rem] min-h-0 flex-col rounded-lg bg-[var(--color-surface-1)] p-3 md:p-5">
                 <div v-if="stage === STAGES.TYPE">
-                    <div :class="[small ? 'flex flex-col gap-2' : 'widget-grid']">
+                    <div
+                        :class="[
+                            small
+                                ? 'flex flex-col gap-2'
+                                : 'grid gap-3 items-start md:[grid-template-columns:repeat(auto-fill,minmax(260px,320px))]'
+                        ]"
+                    >
                         <Widget
+                            class="w-full max-w-[24rem]"
                             :selected="selectedType == 'Entity'"
                             :vertical="small"
                             :stripped="small"
@@ -31,6 +39,7 @@
                         </Widget>
 
                         <Widget
+                            class="w-full max-w-[24rem]"
                             :selected="selectedType == 'Group'"
                             :vertical="small"
                             :stripped="small"
@@ -43,6 +52,7 @@
                         </Widget>
 
                         <Widget
+                            class="w-full max-w-[24rem]"
                             :selected="selectedType == 'Action'"
                             :vertical="small"
                             :stripped="small"
@@ -55,6 +65,7 @@
                         </Widget>
 
                         <Widget
+                            class="w-full max-w-[24rem]"
                             :selected="selectedType == 'ui_widget'"
                             :vertical="small"
                             :stripped="small"
@@ -67,27 +78,32 @@
                     </div>
                 </div>
                 <template v-if="stage === STAGES.ITEMS">
-                    <div v-if="selectedType === 'Entity'" class="space-y-2">
-                        <Input v-model="entityNameFilter" class="max-w-sm" placeholder="Search" />
-                        <div class="max-h-[30rem] overflow-y-scroll grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div v-if="selectedType === 'Entity'" class="flex min-h-0 flex-1 flex-col space-y-2">
+                        <Input v-model="entityNameFilter" class="w-full md:max-w-md" placeholder="Search entities" />
+                        <div class="min-h-0 flex-1 overflow-y-auto pr-1">
+                            <div class="grid gap-3 items-start md:[grid-template-columns:repeat(auto-fill,minmax(260px,320px))]">
                             <EntityWidget
                                 v-for="entity in Object.values(entityStore.entities).filter(filterEntity)"
                                 :key="entity.id"
+                                class="w-full"
                                 stripped
                                 vertical
                                 :entity
                                 :selected="selectedEntities.includes(entity.id)"
                                 @select="selectEntity(entity.id)"
                             />
+                            </div>
                         </div>
                     </div>
-                    <div v-else-if="selectedType === 'Group'" class="space-y-2">
-                        <Input v-model="groupNameFilter" class="max-w-sm mt-2" placeholder="Search" />
-                        <div class="max-h-[30rem] overflow-y-scroll grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div v-else-if="selectedType === 'Group'" class="flex min-h-0 flex-1 flex-col space-y-2">
+                        <Input v-model="groupNameFilter" class="w-full md:max-w-md mt-2" placeholder="Search groups" />
+                        <div class="min-h-0 flex-1 overflow-y-auto pr-1">
+                            <div class="grid gap-3 items-start md:[grid-template-columns:repeat(auto-fill,minmax(260px,320px))]">
                             <template v-for="group of groupStore.groups">
                                 <template v-if="filterGroup(group.name)">
                                     <GroupWidget
                                         :key="group.id"
+                                        class="w-full"
                                         vertical
                                         :members="group.devices"
                                         :name="group.name"
@@ -96,15 +112,18 @@
                                     />
                                 </template>
                             </template>
+                            </div>
                         </div>
                     </div>
-                    <div v-else-if="selectedType === 'Action'" class="space-y-2">
-                        <Input v-model="groupNameFilter" class="max-w-sm mt-2" placeholder="Search" />
-                        <div class="max-h-[30rem] overflow-y-scroll grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div v-else-if="selectedType === 'Action'" class="flex min-h-0 flex-1 flex-col space-y-2">
+                        <Input v-model="actionNameFilter" class="w-full md:max-w-md mt-2" placeholder="Search actions" />
+                        <div class="min-h-0 flex-1 overflow-y-auto pr-1">
+                            <div class="grid gap-3 items-start md:[grid-template-columns:repeat(auto-fill,minmax(260px,320px))]">
                             <template v-for="action of actions">
                                 <template v-if="filterAction(action.name)">
                                     <ActionWidget
                                         :key="action.id"
+                                        class="w-full"
                                         vertical
                                         stripped
                                         :action="action"
@@ -113,17 +132,21 @@
                                     />
                                 </template>
                             </template>
+                            </div>
                         </div>
                     </div>
-                    <div v-else-if="selectedType === 'ui_widget'" class="space-y-2">
-                        <div class="max-h-[30rem] overflow-y-scroll grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div v-else-if="selectedType === 'ui_widget'" class="flex min-h-0 flex-1 flex-col space-y-2">
+                        <div class="min-h-0 flex-1 overflow-y-auto pr-1">
+                            <div class="grid gap-3 items-start md:[grid-template-columns:repeat(auto-fill,minmax(260px,320px))]">
                             <ClockWidget
+                                class="w-full"
                                 vertical
                                 stripped
                                 dummy
                                 :selected="'clock_widget' == selectUIElement"
                                 @select="selectUIElement = 'clock_widget'"
                             />
+                            </div>
                         </div>
                     </div>
                 </template>
@@ -133,13 +156,13 @@
 </template>
 
 <script lang="ts" setup>
-import {ref} from 'vue';
 import {modals, small} from '@/helpers/ui';
 import {useEntityStore} from '@/stores/entities';
 import {useGroupsStore} from '@/stores/groups';
 import {useToastStore} from '@/stores/toast';
 import {getRegistry} from '@/tools/websocket';
 import type {action_t, entity_t} from '@/types';
+import {ref} from 'vue';
 import Input from '../core/Input.vue';
 import ActionWidget from '../widgets/ActionWidget.vue';
 import EntityWidget from '../widgets/EntityWidget.vue';

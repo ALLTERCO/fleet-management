@@ -22,6 +22,17 @@ test.describe('OIDC browser login', () => {
     test.skip(!username || !password, 'E2E_USERNAME and E2E_PASSWORD required');
 
     test('fm-admin can log in through Zitadel and reach authenticated app', async ({page}) => {
+        // Forward browser console and errors to test output for debugging
+        page.on('console', (msg) => {
+            const type = msg.type();
+            if (type === 'error' || type === 'warning') {
+                console.log(`[browser:${type}] ${msg.text()}`);
+            }
+        });
+        page.on('pageerror', (err) => {
+            console.log(`[browser:pageerror] ${err.message}`);
+        });
+
         const loginNameInput = page.locator(
             '#loginName, input[name="loginName"], input[type="email"], input[autocomplete="username"]'
         );
@@ -44,13 +55,15 @@ test.describe('OIDC browser login', () => {
         // Total timeout — full OIDC flow with Zitadel loading screens
         test.setTimeout(120_000);
 
-        // 1. Navigate to FM — should land on /login
+        // 1. Navigate to FM — should land on /login (or / while the app boots)
         await page.goto(baseUrl, {waitUntil: 'networkidle', timeout: 30_000});
-        await expect(page).toHaveURL(/\/login/, {timeout: 15_000});
+
+        // The SSO button appears on /login. Wait for it directly — the router
+        // may still be redirecting from / to /login when networkidle fires.
+        const ssoButton = page.getByRole('button', {name: /sign in/i});
+        await expect(ssoButton).toBeVisible({timeout: 20_000});
 
         // 2. Click "Sign In with SSO" — redirects to Zitadel login
-        const ssoButton = page.getByRole('button', {name: /sign in/i});
-        await expect(ssoButton).toBeVisible({timeout: 15_000});
         await ssoButton.click();
 
         // 3. Zitadel login form — different Zitadel versions/routes use different

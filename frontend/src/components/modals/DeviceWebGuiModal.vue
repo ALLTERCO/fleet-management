@@ -380,7 +380,7 @@
 
 <script setup lang="ts">
 import {computed, ref, watch} from 'vue';
-import zitadelAuth from '@/helpers/zitadelAuth';
+import {getZitadelAuth} from '@/helpers/zitadelAuth';
 import {getObsLevel, getRpcTimings, type ObsLevel} from '@/tools/observability';
 import Button from '../core/Button.vue';
 import Collapse from '../core/Collapse.vue';
@@ -475,6 +475,7 @@ async function copyToClipboard(text: string): Promise<boolean> {
 }
 
 async function getAccessToken(): Promise<string | null> {
+    const zitadelAuth = getZitadelAuth();
     if (!zitadelAuth) {
         console.error('Zitadel auth not initialized');
         return null;

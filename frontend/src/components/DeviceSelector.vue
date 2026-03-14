@@ -1,29 +1,50 @@
 <template>
-    <div class="space-y-4">
-        <div class="flex flex-row items-center justify-between">
-            <span class="font-semibold"> Selected: {{ selected.length }}</span>
-            <Input v-model="filter" placeholder="search" />
+    <div class="flex h-full min-h-0 flex-col gap-4">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div class="flex items-center gap-2">
+                <span class="font-semibold">Selected</span>
+                <span class="inline-flex min-w-8 justify-center rounded-full bg-[var(--color-primary)] px-2 py-1 text-xs font-semibold text-white">
+                    {{ selected.length }}
+                </span>
+            </div>
+            <Input v-model="filter" placeholder="Search devices" class="w-full lg:max-w-md" />
         </div>
-        <div class="flex flex-row items-center justify-between">
-            <Button size="sm" @click="selectAll">Select All</Button>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="flex flex-wrap gap-2">
+                <Button size="sm" @click="selectAll">Select all visible</Button>
+                <Button size="sm" @click="selected.length = 0">Clear selection</Button>
+            </div>
             <Button :type="hasFiltersFromModal ? 'red' : 'blue'" size="sm" narrow @click="filterVisible = true">
-                <i class="fas fa-filter" />
+                <i class="fas fa-filter mr-2" />
+                Filters
             </Button>
-            <Button size="sm" @click="selected.length = 0">Unselect All</Button>
         </div>
-        <div class="grid grid-cols-2 gap-3">
-            <div v-for="device in filteredDevices" :key="device.shellyID">
-                <div
-                    class="p-3 flex flex-row gap-2 items-center rounded-lg bg-[var(--color-surface-1)] border-[var(--color-primary)] shadow-[var(--color-primary)] hover:cursor-pointer"
-                    :class="[selected.includes(device.shellyID) && 'border shadow-md']"
+        <div class="flex-1 min-h-0 overflow-y-auto pr-1">
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
+                <button
+                    v-for="device in filteredDevices"
+                    :key="device.shellyID"
+                    type="button"
+                    class="device-option w-full rounded-xl border p-3 text-left transition-all"
+                    :class="{ 'device-option--selected': selected.includes(device.shellyID) }"
+                    :aria-pressed="selected.includes(device.shellyID)"
+                    :aria-label="`Select ${device.name}`"
                     @click="deviceClicked(device.shellyID)"
                 >
-                    <input type="checkbox" class="" :checked="selected.includes(device.shellyID)" :aria-label="`Select ${device.name}`" />
-                    <img :src="device.picture_url" class="w-8 h-8 bg-[var(--color-surface-2)] rounded-full" loading="lazy" decoding="async" :alt="device.name || 'Device'" />
-                    <span class="text-sm line-clamp-2">
-                        {{ device.name }}
-                    </span>
-                </div>
+                    <div class="flex items-center gap-3">
+                        <img :src="device.picture_url" class="w-10 h-10 bg-[var(--color-surface-2)] rounded-full shrink-0" loading="lazy" decoding="async" :alt="device.name || 'Device'" />
+                        <div class="min-w-0 flex-1">
+                            <div class="font-semibold text-sm line-clamp-2">{{ device.name }}</div>
+                            <div class="text-xs text-[var(--color-text-tertiary)] truncate">{{ device.shellyID }}</div>
+                        </div>
+                        <div
+                            class="device-option__indicator shrink-0 flex h-7 w-7 items-center justify-center rounded-full border"
+                            :class="{ 'device-option__indicator--selected': selected.includes(device.shellyID) }"
+                        >
+                            <i v-if="selected.includes(device.shellyID)" class="fas fa-check text-xs" />
+                        </div>
+                    </div>
+                </button>
             </div>
         </div>
     </div>
@@ -108,3 +129,33 @@ function setDevices(filteredShellyDevices: shelly_device_t[]) {
     }));
 }
 </script>
+
+<style scoped>
+.device-option {
+    background-color: var(--color-surface-1);
+    border-color: var(--color-border-default);
+    min-height: 5.25rem;
+}
+
+.device-option:hover {
+    border-color: var(--color-primary);
+    box-shadow: var(--shadow-md);
+}
+
+.device-option--selected {
+    border-color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface-1));
+    box-shadow: 0 0 0 1px var(--color-primary), var(--shadow-primary);
+}
+
+.device-option__indicator {
+    border-color: var(--color-border-default);
+    color: var(--color-text-tertiary);
+}
+
+.device-option__indicator--selected {
+    border-color: var(--color-primary);
+    background-color: var(--color-primary);
+    color: white;
+}
+</style>

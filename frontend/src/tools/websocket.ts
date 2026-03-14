@@ -1,8 +1,10 @@
-import zitadelAuth from '@/helpers/zitadelAuth';
-import {useLogStore} from '@/stores/console';
-import {useDevicesStore} from '@/stores/devices';
-import {useEntityStore} from '@/stores/entities';
-import {useGroupsStore} from '@/stores/groups';
+import {getZitadelAuth} from '@/helpers/zitadelAuth';
+// Lazy-imported inside connect()/onConnect() to break circular dependency:
+// websocket → stores/devices → stores/entities → websocket
+import type {useDevicesStore} from '@/stores/devices';
+import type {useEntityStore} from '@/stores/entities';
+import type {useLogStore} from '@/stores/console';
+import type {useGroupsStore} from '@/stores/groups';
 import type {
     entity_t,
     json_rpc_event,
@@ -82,20 +84,48 @@ const waiting = new Map<
     {resolve: (value: unknown) => void; reject: (reason?: any) => void}
 >();
 
-export function sendRPC<T = any>(
+// Wait for WebSocket to become OPEN, with a short timeout.
+// Avoids premature HTTP fallback when WS is still connecting.
+const WS_WAIT_TIMEOUT_MS = 3000;
+
+function waitForConnection(): Promise<boolean> {
+    if (client?.readyState === WebSocket.OPEN) return Promise.resolve(true);
+    if (!client || client.readyState === WebSocket.CLOSED || client.readyState === WebSocket.CLOSING) {
+        return Promise.resolve(false);
+    }
+    // WS is CONNECTING — wait for open or give up on timeout/error
+    return new Promise<boolean>((resolve) => {
+        const onOpen = () => { cleanup(); resolve(true); };
+        const onErr = () => { cleanup(); resolve(false); };
+        const timer = setTimeout(() => { cleanup(); resolve(false); }, WS_WAIT_TIMEOUT_MS);
+        function cleanup() {
+            clearTimeout(timer);
+            client?.removeEventListener('open', onOpen);
+            client?.removeEventListener('error', onErr);
+            client?.removeEventListener('close', onErr);
+        }
+        client!.addEventListener('open', onOpen);
+        client!.addEventListener('error', onErr);
+        client!.addEventListener('close', onErr);
+    });
+}
+
+export async function sendRPC<T = any>(
     dst: string | string[],
     method: string,
     params?: any,
     options?: {timeoutMs?: number}
 ): Promise<T> {
-    if (client == undefined || client.readyState !== client.OPEN) {
-        console.warn('websocket not ready, using http fallback');
+    // Wait for WS to connect before falling back to HTTP
+    const wsReady = await waitForConnection();
+    if (!wsReady) {
+        console.warn('websocket not ready after wait, using http fallback');
         return httpSendRPC(method, params) as Promise<T>;
     }
     const rpcTimeout = options?.timeoutMs ?? RPC_TIMEOUT_MS;
     const t0 = isObservabilityEnabled() ? performance.now() : 0;
 
-    client.send(
+    client!.send(
         JSON.stringify({
             jsonrpc: '2.0',
             id,
@@ -477,6 +507,7 @@ export async function connect(): Promise<void> {
 
     // If no dev mode token, try Zitadel
     if (!token) {
+        const zitadelAuth = getZitadelAuth();
         if (!zitadelAuth) {
             console.error('No auth available (neither dev mode nor Zitadel)');
             return;
@@ -491,6 +522,11 @@ export async function connect(): Promise<void> {
         return;
     }
 
+    const [{useDevicesStore}, {useEntityStore}, {useLogStore}] = await Promise.all([
+        import('@/stores/devices'),
+        import('@/stores/entities'),
+        import('@/stores/console')
+    ]);
     const devicesStore = useDevicesStore();
     const entitiesStore = useEntityStore();
     const logStore = useLogStore();
@@ -854,6 +890,11 @@ function onConnect() {
     // is already loaded. Without this ordering, fetchDevices can fire thousands
     // of individual entity.getinfo RPCs (N+1 flood).
     setTimeout(async () => {
+        const [{useEntityStore}, {useDevicesStore}, {useGroupsStore}] = await Promise.all([
+            import('@/stores/entities'),
+            import('@/stores/devices'),
+            import('@/stores/groups')
+        ]);
         await useEntityStore().fetchEntities();
         useDevicesStore().fetchDevices();
         useGroupsStore().fetchGroups();
@@ -887,4 +928,22 @@ function onClose() {
         }
     }
     scheduleReconnect();
+}
+
+// Safari (and some mobile browsers) suspend/kill WebSocket connections when
+// the tab is backgrounded. Instead of waiting for the exponential backoff
+// timer, reconnect immediately when the user returns to the tab.
+if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && !connected) {
+            console.debug('[WS] tab visible, reconnecting immediately');
+            // Cancel any pending backoff timer — we're reconnecting now
+            if (reconnectTimer) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = undefined;
+            }
+            reconnectDelay = 2000; // reset backoff
+            connect();
+        }
+    });
 }

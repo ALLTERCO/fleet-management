@@ -22,9 +22,15 @@ router.use(async (req, res, next) => {
 });
 
 router.get('/switch', (req, res) => {
-    const {turn, shellyID, channel = 0} = req.query;
+    const {turn, shellyID} = req.query;
+    const channel = Number.parseInt(String(req.query.channel ?? '0'), 10);
     if (typeof shellyID !== 'string' || typeof turn !== 'string') {
         res.status(400).json({error: 'missing shellyID or turn query'}).end();
+        return;
+    }
+
+    if (!Number.isInteger(channel) || channel < 0) {
+        res.status(400).json({error: 'invalid channel'}).end();
         return;
     }
 

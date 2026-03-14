@@ -132,7 +132,7 @@ cmd_up() {
     phase "Phase 2/4 — Configuration"
     generate_passwords
     save_env
-    save_deploy_meta "$hostname"
+    save_deploy_meta "$hostname" "up"
     generate_init_sql
     generate_system_api_keypair
 
@@ -336,7 +336,7 @@ cmd_down() {
         if run_quiet "Stopping containers and removing volumes" compose_cmd down -v; then
             cleanup_orphan_optional_containers || true
             rm -rf "$STATE_DIR"
-            spinner_stop ok "Stopped and removed all data"
+            spinner_stop ok "Stopped and removed all data (run 'up' for fresh deploy)"
         else
             spinner_stop fail "Failed to stop containers and remove volumes"
             return 1
@@ -345,6 +345,7 @@ cmd_down() {
         spinner_start "Stopping services..."
         if run_quiet "Stopping containers" compose_cmd down; then
             cleanup_orphan_optional_containers || true
+            save_deploy_meta "" "down"
             spinner_stop ok "Stopped (data preserved in Docker volumes)"
         else
             spinner_stop fail "Failed to stop services"
@@ -409,6 +410,29 @@ cmd_update() {
     enable_debug_mode
 
     echo ""
+
+    # Guard: update requires a prior successful 'up'
+    if [ ! -f "$STATE_DIR/.env" ] || [ ! -f "$DEPLOY_META_FILE" ]; then
+        # Scan for signs of a previous deployment
+        local has_containers=false has_volumes=false
+        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${COMPOSE_PROJECT_NAME:-fleet-public}-"; then
+            has_containers=true
+        fi
+        if docker volume ls --format '{{.Name}}' 2>/dev/null | grep -q "^${COMPOSE_PROJECT_NAME:-fleet-public}_"; then
+            has_volumes=true
+        fi
+
+        if [ "$has_containers" = true ] || [ "$has_volumes" = true ]; then
+            warn "Found existing containers/volumes but no deploy state"
+            info "State was likely removed by 'down --volumes' or manual cleanup"
+            info "Run './deploy/deploy-public.sh up' to re-bootstrap with existing data"
+        else
+            error "No existing deployment found"
+            info "Run './deploy/deploy-public.sh up' for first-time setup"
+        fi
+        return 1
+    fi
+
     step "Updating Fleet Management"
 
     load_state_env
@@ -447,6 +471,8 @@ cmd_update() {
         fi
     fi
     spinner_stop ok "Services healthy"
+
+    save_deploy_meta "" "update"
 
     echo ""
     ok "Update complete"

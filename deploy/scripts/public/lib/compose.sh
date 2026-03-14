@@ -37,10 +37,32 @@ verify_images() {
     for img in "${images[@]}"; do
         local tag="${img##*:}"
 
-        if [ "$tag" = "latest" ] && local_image_exists "$img"; then
-            ok "$img (local cache)"
-        elif local_image_exists "$img"; then
-            ok "$img (local cache)"
+        if local_image_exists "$img"; then
+            if [ "$tag" = "latest" ]; then
+                # For :latest tags, compare local vs remote digest — pull only if newer
+                local remote_digest local_digest
+                remote_digest=$(docker manifest inspect "$img" 2>/dev/null \
+                    | grep -o '"digest":\s*"[^"]*"' | head -1 | cut -d'"' -f4) || true
+                if [ -n "$remote_digest" ]; then
+                    local_digest=$(docker image inspect "$img" 2>/dev/null \
+                        | grep -o '"sha256:[a-f0-9]*"' | head -1 | tr -d '"') || true
+                    if [ -n "$local_digest" ] && [ "$local_digest" != "$remote_digest" ]; then
+                        info "$img has a newer version — pulling..."
+                        if docker pull "$img" >/dev/null 2>&1; then
+                            ok "$img (updated)"
+                        else
+                            warn "$img (pull failed, using local cache)"
+                        fi
+                    else
+                        ok "$img (up to date)"
+                    fi
+                else
+                    # Can't reach registry — use local cache silently
+                    ok "$img (local cache)"
+                fi
+            else
+                ok "$img (local cache)"
+            fi
         else
             local manifest_err
             if manifest_err="$(docker manifest inspect "$img" 2>&1 >/dev/null)"; then

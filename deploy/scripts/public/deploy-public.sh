@@ -59,22 +59,41 @@ cmd_up() {
         info "Using domain: $hostname"
     else
         hostname=$(detect_ip)
-        info "Detected IP: $hostname"
 
-        # Warn if multiple real network interfaces detected
+        # Check for multiple real network interfaces
         local all_ips ip_count
         all_ips=$(detect_all_ips)
         ip_count=$(echo "$all_ips" | grep -c . || true)
-        if [ "$ip_count" -gt 1 ]; then
+
+        if [ "$ip_count" -gt 1 ] && [ -t 0 ]; then
+            # Interactive terminal — let the user choose
             warn "Multiple network interfaces detected:"
-            echo "$all_ips" | while read -r addr; do
+            local i=1
+            local ip_list=()
+            while read -r addr; do
+                [ -z "$addr" ] && continue
+                ip_list+=("$addr")
                 if [ "$addr" = "$hostname" ]; then
-                    info "  $addr  ← selected (default route)"
+                    info "  $i) $addr  ← default route"
                 else
-                    info "  $addr"
+                    info "  $i) $addr"
                 fi
-            done
-            info "If devices are on a different subnet, set ZITADEL_HOSTNAME to the correct IP"
+                i=$((i + 1))
+            done <<< "$all_ips"
+
+            printf "\n  Select IP [1-%d, or Enter for default]: " "${#ip_list[@]}"
+            read -r choice
+            if [ -n "$choice" ] && [ "$choice" -ge 1 ] 2>/dev/null && [ "$choice" -le "${#ip_list[@]}" ] 2>/dev/null; then
+                hostname="${ip_list[$((choice - 1))]}"
+            fi
+            info "Using IP: $hostname"
+        elif [ "$ip_count" -gt 1 ]; then
+            # Non-interactive (CI) — auto-select, print warning
+            info "Detected IP: $hostname"
+            warn "Multiple network interfaces detected (auto-selected default route)"
+            info "To override, set ZITADEL_HOSTNAME to the correct IP"
+        else
+            info "Detected IP: $hostname"
         fi
     fi
 

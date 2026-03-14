@@ -68,6 +68,7 @@ The device will appear in the Fleet Manager dashboard.
 All commands are run via `./deploy/deploy-public.sh <command>`.
 If a tag is set to `latest` in `deploy/VERSIONS.env`, `update` will pull the newest image for that tag.
 Add `--debug` for raw shell trace and full output.
+Add `--logging` to enable the Dozzle container log viewer on port 9999.
 
 ## SSL / HTTPS
 
@@ -115,6 +116,7 @@ See `plugins/` for source code.
 - [Zitadel Setup](./docs/ZITADEL_SETUP.md)
 - [Plugins](./docs/plugins.md)
 - [Backups](./docs/backups.md)
+- [Rollback](./docs/rollback.md)
 - [Observability](./docs/observability.md)
 - [Developing](./docs/developing.md)
 - [Codebase](./docs/codebase.md)

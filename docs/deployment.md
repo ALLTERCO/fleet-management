@@ -69,6 +69,7 @@ Once ready, you'll see:
 | `--ssl selfsigned`                                         | Enable HTTPS with a self-signed certificate                       |
 | `--ssl --domain <name>`                                    | Enable HTTPS with Let's Encrypt                                   |
 | `--ssl custom --domain <name> --cert <path> --key <path>`  | Enable HTTPS with an existing certificate/key                     |
+| `--logging`                                                | Enable Dozzle container log viewer (port 9999)                    |
 | `--mdns`                                                   | Enable mDNS device discovery                                      |
 | `--debug`                                                  | Print traced shell commands and raw installer / Docker output     |
 
@@ -77,7 +78,7 @@ Once ready, you'll see:
 1. Docker daemon and Docker Compose availability
 2. Required tools (curl, jq, openssl)
 3. Docker image availability (checks local cache; warns if missing)
-4. Port availability (7011, 9090, and 80/443 if SSL)
+4. Port availability (7011, 9090, 9999 if logging, and 80/443 if SSL)
 5. State directory and generated config files
 6. SSL certificate status (if SSL mode was used)
 7. Network reachability (IP detection and Docker Hub connectivity)
@@ -131,6 +132,18 @@ Uses your existing certificate and private key instead of Let’s Encrypt.
 - The certificate must cover the `--domain` value (validated via SAN/CN at deploy time)
 - Files are copied into `deploy/state/tls/` — on subsequent `up` runs, previously installed certs are reused automatically if `--cert`/`--key` are omitted
 
+### Container Log Viewer
+
+```bash
+./deploy/deploy-public.sh up --logging
+```
+
+Adds [Dozzle](https://dozzle.dev), a lightweight, zero-config container log viewer on port 9999. Access it at `http://<your-ip>:9999`. Dozzle is read-only and requires no configuration files — it reads logs directly from the Docker socket.
+
+Can be combined with any other option (e.g., `--ssl selfsigned --logging --mdns`).
+
+---
+
 ### Which SSL mode should I use?
 
 - `selfsigned` is for anything that is not publicly issuable by Let’s Encrypt.
@@ -140,7 +153,7 @@ Uses your existing certificate and private key instead of Let’s Encrypt.
 
 ### Port and TLS model
 
-All SSL modes terminate TLS at Traefik on port 443. The `--domain` flag accepts a plain hostname, FQDN, or IPv4 address where supported — `host:port` syntax is not supported, and IPv6 literals are not currently supported. Internal services communicate over plain HTTP on the Docker bridge network; TLS is external-facing only.
+All SSL modes terminate TLS at Traefik on port 443. Traefik uses a file-based routing provider (static YAML routes mounted read-only) — it does not require access to the Docker socket. The `--domain` flag accepts a plain hostname, FQDN, or IPv4 address where supported — `host:port` syntax is not supported, and IPv6 literals are not currently supported. Internal services communicate over plain HTTP on the Docker bridge network; TLS is external-facing only.
 
 ---
 
@@ -211,21 +224,30 @@ On first run, the deploy script generates credentials and OIDC config in `deploy
 ## Architecture
 
 ```text
-Browser ----> Fleet Manager (:7011) ----> TimescaleDB (PostgreSQL)
-                  |
-Shelly ---- ws ---+         Zitadel (:9090) --- OIDC Auth
-devices                          |
-                            Zitadel DB (PostgreSQL)
+                    ┌─── Traefik (:80/:443) ───┐  (when --ssl)
+                    │                           │
+Browser ──────────► Fleet Manager (:7011) ────► TimescaleDB
+                        │                         (internal)
+Shelly ──── ws ─────────┘
+devices                  Zitadel (:9090) ── OIDC Auth
+                              │
+                         Zitadel DB (internal)
+
+Optional:
+  Dozzle (:9999)  ── container log viewer (--logging)
+  mDNS repeater   ── device discovery (--mdns)
 ```
 
 ### Services
 
-| Service       | Purpose                                        | Port |
-|---------------|------------------------------------------------|------|
-| Fleet Manager | Web UI + API + WebSocket                       | 7011 |
-| TimescaleDB   | PostgreSQL with time-series extensions         | 5434 |
-| Zitadel       | OIDC identity provider                         | 9090 |
-| Zitadel DB    | PostgreSQL backend for Zitadel (internal only) | ---  |
+| Service       | Purpose                                        | Port          |
+|---------------|------------------------------------------------|---------------|
+| Fleet Manager | Web UI + API + WebSocket                       | 7011          |
+| TimescaleDB   | PostgreSQL with time-series extensions         | internal only |
+| Zitadel       | OIDC identity provider                         | 9090          |
+| Zitadel DB    | PostgreSQL backend for Zitadel (internal only) | internal only |
+| Dozzle        | Container log viewer (`--logging`)             | 9999          |
+| Traefik       | TLS termination and routing (`--ssl`)          | 80 / 443      |
 
 ### Zitadel Bootstrap
 

@@ -2,6 +2,24 @@
 
 The Fleet Management application includes a built-in observability system for monitoring, debugging, and identifying performance bottlenecks in production. The system uses **tiered debug levels** to control overhead, allowing safe use even on large instances with thousands of devices.
 
+## Container Log Viewer (Dozzle)
+
+For Docker container-level logs, the deploy script supports an optional [Dozzle](https://dozzle.dev) integration:
+
+```bash
+# Public deploy
+./deploy/deploy-public.sh up --logging
+
+# Internal deploy
+./deploy/deploy.sh up --env local --with logging
+```
+
+Dozzle runs on port 9999 and provides a browser-based, real-time view of all container logs. It is read-only and zero-config — no configuration files or persistent storage needed. It reads logs directly from the Docker socket.
+
+This complements the application-level observability system described below, which provides structured metrics, counters, and timings from inside Fleet Manager.
+
+---
+
 ## Debug Tiers
 
 | Level | Name | Overhead | What It Shows | Production Safe? |

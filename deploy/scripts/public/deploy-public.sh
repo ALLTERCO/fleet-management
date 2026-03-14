@@ -8,14 +8,19 @@
 # Supports: Ubuntu/Debian, Raspberry Pi (arm64), Arch Linux, macOS
 #
 # Usage:
-#   ./deploy/deploy-public.sh install        Install Docker + Docker Compose (if needed)
-#   ./deploy/deploy-public.sh up             Start Fleet Management (idempotent: bootstrap or restart)
-#   ./deploy/deploy-public.sh upgrade        Pull newer images and restart (runs 'up' flow)
-#   ./deploy/deploy-public.sh down           Stop Fleet Management
+#   ./deploy/deploy-public.sh up             Start (idempotent: installs deps, bootstraps or restarts)
+#   ./deploy/deploy-public.sh upgrade        Pull newer images, then restart
+#   ./deploy/deploy-public.sh down           Stop (keep data)
+#   ./deploy/deploy-public.sh down --volumes Stop and delete all data
 #   ./deploy/deploy-public.sh status         Show service status
-#   ./deploy/deploy-public.sh logs [service] Show logs (fleet-manager, zitadel, fleet-db)
-#   ./deploy/deploy-public.sh ip             Show machine IP and access URLs
-#   ./deploy/deploy-public.sh help           Show this help
+#   ./deploy/deploy-public.sh logs [service] Show logs
+#   ./deploy/deploy-public.sh ip             Show access URLs
+#   ./deploy/deploy-public.sh doctor         Troubleshoot configuration
+#   ./deploy/deploy-public.sh help           Show help
+#
+# Image pull behavior:
+#   'up'      — uses cached images; pulls only if missing (first run)
+#   'upgrade' — pulls all images from registry, then runs 'up'
 #
 # Environment overrides (set before running):
 #   FM_VERSION           Fleet Manager version (default: latest)
@@ -305,9 +310,11 @@ cmd_down() {
     enable_debug_mode
 
     local remove_volumes=false
+    local skip_confirm=false
     for arg in "$@"; do
         case "$arg" in
             --volumes|-v) remove_volumes=true ;;
+            --yes|-y) skip_confirm=true ;;
             --volume)
                 error "Unknown flag: --volume"
                 info "Did you mean --volumes?"
@@ -315,7 +322,7 @@ cmd_down() {
                 ;;
             *)
                 error "Unknown flag for down: $arg"
-                info "Supported flags: --volumes"
+                info "Supported flags: --volumes, --yes"
                 return 1
                 ;;
         esac
@@ -331,7 +338,22 @@ cmd_down() {
 
     echo ""
     if [ "$remove_volumes" = true ]; then
-        warn "Removing containers AND volumes (all data will be lost)"
+        # Destructive: confirm before deleting all data
+        if [ "$skip_confirm" != true ] && [ -t 0 ]; then
+            warn "This will permanently delete ALL data:"
+            warn "  - Database contents (devices, telemetry, energy data, audit logs)"
+            warn "  - OIDC configuration and credentials"
+            warn "  - TLS certificates"
+            warn "  - All Docker volumes"
+            echo ""
+            printf "  Type 'yes' to confirm: "
+            local confirm=""
+            read -r confirm
+            if [ "$confirm" != "yes" ]; then
+                info "Aborted."
+                return 0
+            fi
+        fi
         spinner_start "Stopping and removing data..."
         if run_quiet "Stopping containers and removing volumes" compose_cmd down -v; then
             cleanup_orphan_optional_containers || true
@@ -408,15 +430,20 @@ cmd_logs() {
 
 cmd_upgrade() {
     # upgrade = pull newer images, then run the full idempotent 'up' flow.
-    # Works regardless of current state: fresh machine → full bootstrap,
-    # existing deployment → pull + restart, after down --volumes → re-bootstrap.
+    #
+    # Image pull behavior (matches industry standard: docker compose pull && up):
+    #   - Existing deployment: pulls all configured images, Compose skips unchanged digests
+    #   - Fresh machine / after down --volumes: no state yet, skip pull — 'up' will
+    #     pull missing images automatically via Compose (pull_policy: missing)
+    #
+    # After pulling, delegates to cmd_up for the full bootstrap-or-restart flow.
     parse_runtime_flags "$@" || return 1
     enable_debug_mode
 
     echo ""
     step "Upgrading Fleet Management"
 
-    # Restore previous config if available (flags from last 'up')
+    # Need previous config to build the compose command (env files, compose overlays)
     load_state_env
     load_deploy_meta
 
@@ -425,19 +452,17 @@ cmd_upgrade() {
     export FLEET_MANAGER_PORT
     export FM_VERSION
 
-    # Pull newer images first (best-effort — compose_cmd needs state for env files)
     if [ -f "$STATE_DIR/.env" ]; then
-        spinner_start "Pulling configured image tags..."
+        spinner_start "Pulling newer images..."
         if run_quiet "Pulling configured image tags" compose_cmd pull; then
             spinner_stop ok "Images pulled"
         else
-            spinner_stop warn "Image pull failed (will use local cache)"
+            spinner_stop warn "Pull failed — will use local cache"
         fi
     else
-        info "No existing state — skipping pull (will be handled by 'up')"
+        info "No prior deployment — 'up' will pull images on first start"
     fi
 
-    # Delegate to the idempotent 'up' flow for everything else
     cmd_up "$@"
 }
 
@@ -721,7 +746,6 @@ cmd_help() {
     echo "${BOLD}Usage:${RESET} ./deploy/deploy-public.sh <command>"
     echo ""
     echo "${BOLD}Commands:${RESET}"
-    echo "  ${CYAN}install${RESET}                          Install Docker and required system dependencies"
     echo "  ${CYAN}up${RESET}                               Start Fleet Management (idempotent: bootstrap or restart)"
     echo "  ${CYAN}up --mdns${RESET}                        Start with mDNS device discovery"
     echo "  ${CYAN}up --logging${RESET}                     Start with Dozzle log viewer (port ${DOZZLE_PORT:-9999})"
@@ -731,7 +755,8 @@ cmd_help() {
     echo "                                     Start with HTTPS (custom certificate)"
     echo "  ${CYAN}upgrade${RESET}                          Pull newer images, then restart (same as: pull + up)"
     echo "  ${CYAN}down${RESET}                             Stop Fleet Management and keep data"
-    echo "  ${CYAN}down --volumes${RESET}                   Stop Fleet Management and delete all data"
+    echo "  ${CYAN}down --volumes${RESET}                   Stop Fleet Management and delete all data (asks for confirmation)"
+    echo "  ${CYAN}down --volumes --yes${RESET}             Same as above, skip confirmation (for scripting/CI)"
     echo "  ${CYAN}status${RESET}                           Show service status and health"
     echo "  ${CYAN}logs${RESET} [service]                   Show logs (follow mode)"
     echo "  ${CYAN}ip${RESET}                               Show access URLs"

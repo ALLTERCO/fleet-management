@@ -1,12 +1,20 @@
 # lib/compose.sh — Docker Compose file assembly and image verification
 
 verify_images() {
-    # For pinned tags (e.g. v2.64.1): accept local cache, skip registry.
-    # For "latest" tags during `up`: use local cache if present and leave refreshes
-    # to `update`, which already pulls configured tags explicitly.
-    # Skip all remote checks with FM_SKIP_IMAGE_VERIFY=true.
+    # Check that required Docker images exist locally.
+    #
+    # 'up' never pulls from a registry — it uses whatever is cached.
+    #   - First run: images are missing, so Compose pulls them automatically
+    #     (default pull_policy: missing). This is the only time 'up' triggers a pull.
+    #   - Subsequent runs: cached images are reused as-is, no registry contact.
+    #
+    # To get newer images, use 'upgrade' which runs 'docker compose pull'
+    # before delegating to 'up'.
+    #
+    # Skip checks entirely with FM_SKIP_IMAGE_VERIFY=true (used in CI where
+    # images are built locally and never come from a registry).
     if [ "${FM_SKIP_IMAGE_VERIFY:-}" = "true" ]; then
-        info "Skipping remote image verification (FM_SKIP_IMAGE_VERIFY=true)"
+        info "Skipping image verification (FM_SKIP_IMAGE_VERIFY=true)"
         return 0
     fi
 
@@ -25,7 +33,6 @@ verify_images() {
         "${DOCKER_HUB_IMAGE}:${FM_VERSION:-latest}"
     )
 
-    # Add Traefik if SSL enabled
     if [ "$WITH_SSL" = "true" ]; then
         images+=("traefik:${TRAEFIK_VERSION:-latest}")
     fi
@@ -33,64 +40,18 @@ verify_images() {
         images+=("shellygroup/mdns-repeater:${MDNS_REPEATER_VERSION:-latest}")
     fi
 
-    local failed=0
+    local missing=0
     for img in "${images[@]}"; do
-        local tag="${img##*:}"
-
         if local_image_exists "$img"; then
-            if [ "$tag" = "latest" ]; then
-                # For :latest tags, compare local vs remote digest — pull only if newer
-                local remote_digest local_digest
-                remote_digest=$(docker manifest inspect "$img" 2>/dev/null \
-                    | grep -o '"digest":\s*"[^"]*"' | head -1 | cut -d'"' -f4) || true
-                if [ -n "$remote_digest" ]; then
-                    local_digest=$(docker image inspect "$img" 2>/dev/null \
-                        | grep -o '"sha256:[a-f0-9]*"' | head -1 | tr -d '"') || true
-                    if [ -n "$local_digest" ] && [ "$local_digest" != "$remote_digest" ]; then
-                        info "$img has a newer version — pulling..."
-                        if docker pull "$img" >/dev/null 2>&1; then
-                            ok "$img (updated)"
-                        else
-                            warn "$img (pull failed, using local cache)"
-                        fi
-                    else
-                        ok "$img (up to date)"
-                    fi
-                else
-                    # Can't reach registry — use local cache silently
-                    ok "$img (local cache)"
-                fi
-            else
-                ok "$img (local cache)"
-            fi
+            ok "$img"
         else
-            local manifest_err
-            if manifest_err="$(docker manifest inspect "$img" 2>&1 >/dev/null)"; then
-                ok "$img (remote tag verified)"
-                continue
-            fi
-            # Classify the remote failure
-            case "$manifest_err" in
-                *toomanyrequests*|*429*|*rate\ limit*)
-                    error "Could not verify configured image tag (rate limited): $img" ;;
-                *unauthorized*|*denied*|*authentication\ required*)
-                    error "Could not verify configured image tag (auth failed): $img" ;;
-                *"manifest unknown"*|*"not found"*|*"no such manifest"*)
-                    error "Configured image tag does not exist: $img" ;;
-                *)
-                    error "Could not verify configured image tag: $img" ;;
-            esac
-            failed=1
+            info "$img (not cached — will be pulled)"
+            missing=$((missing + 1))
         fi
     done
 
-    if [ $failed -eq 1 ]; then
-        echo ""
-        error "Some configured image tags could not be resolved. Possible fixes:"
-        error "  - Check deploy/VERSIONS.env for correct image:tag values"
-        error "  - docker login"
-        error "  - docker pull <image:tag>"
-        exit 1
+    if [ $missing -gt 0 ]; then
+        info "Compose will pull $missing missing image(s) on startup"
     fi
 }
 

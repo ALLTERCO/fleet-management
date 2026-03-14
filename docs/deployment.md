@@ -52,15 +52,25 @@ Once ready, you'll see:
 
 | Command                  | Description                                                        |
 |--------------------------|--------------------------------------------------------------------|
-| `install`                | Install Docker and dependencies (without starting services)        |
-| `up`                     | Start Fleet Management (idempotent: bootstrap or restart)          |
-| `upgrade`                | Pull newer images, then restart (same as: pull + up)               |
-| `down`                   | Stop all services                                                  |
-| `down --volumes`         | Stop and delete all data                                           |
+| `up`                     | Start Fleet Management (installs Docker if needed, bootstraps or restarts) |
+| `upgrade`                | Pull newer images from registry, then restart                      |
+| `down`                   | Stop all services (data preserved)                                 |
+| `down --volumes`         | Stop and delete all data (asks for confirmation; `--yes` to skip)  |
 | `status`                 | Show service health                                                |
 | `logs [service]`         | View logs (optionally for a single service)                        |
 | `ip`                     | Show IP and access URLs                                            |
 | `doctor`                 | Run diagnostics (see below)                                        |
+| `help`                   | Show help (also: `-h`, `--help`)                                   |
+
+### Image pull behavior
+
+| Command     | Cached images | Missing images                         |
+|-------------|---------------|----------------------------------------|
+| `up`        | Uses as-is    | Compose pulls automatically on startup |
+| `upgrade`   | Pulls latest  | Pulls latest                           |
+
+`up` never contacts the Docker registry — it works offline once images are cached.
+Use `upgrade` when a new version is available or you want to refresh `:latest` tags.
 
 ### Options
 
@@ -289,8 +299,9 @@ Pull newer images and restart:
 ./deploy/deploy-public.sh upgrade
 ```
 
-This pulls images for the tags configured in `deploy/VERSIONS.env` and runs the full `up` flow. Database data is preserved. If no prior deployment exists, `upgrade` performs a fresh bootstrap automatically.
-If a tag is set to `latest`, `upgrade` compares the local image digest against the remote and only pulls when a newer version is available.
+This runs `docker compose pull` for all configured images, then runs the full `up` flow. Database data is preserved. If no prior deployment exists, `upgrade` performs a fresh bootstrap automatically.
+
+`up` alone never pulls from the registry — it uses cached images. Use `upgrade` when you want to get newer versions.
 
 ---
 
@@ -322,10 +333,12 @@ See [backups.md](./backups.md) for more details.
 ./deploy/deploy-public.sh down --volumes
 ```
 
-**Warning:** `--volumes` is destructive. It removes:
+`down --volumes` is destructive — it asks for confirmation in interactive terminals. It removes:
 
 - All Docker volumes (database data, ACME certificates)
 - The `deploy/state/` directory (generated passwords, OIDC credentials, TLS certificates, machinekey)
+
+Use `--yes` to skip the confirmation prompt (for scripting/CI).
 
 After `down --volumes`, the next `up` performs a fresh bootstrap from scratch.
 

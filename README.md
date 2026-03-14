@@ -55,18 +55,22 @@ The device will appear in the Fleet Manager dashboard.
 
 | Command | Description |
 | --- | --- |
-| `up` | Start Fleet Management (idempotent: bootstrap or restart) |
-| `upgrade` | Pull newer images, then restart (same as: pull + up) |
+| `up` | Start Fleet Management (installs Docker if needed, bootstraps or restarts) |
+| `upgrade` | Pull newer images from registry, then restart |
 | `down` | Stop and keep data |
-| `down --volumes` | Stop and delete all data |
+| `down --volumes` | Stop and delete all data (asks for confirmation; `--yes` to skip) |
 | `status` | Show container and health status |
 | `logs [service]` | Follow logs |
 | `ip` | Show access URLs |
 | `doctor` | Troubleshoot configuration |
-| `install` | Install Docker manually |
+| `help` | Show help |
 
 All commands are run via `./deploy/deploy-public.sh <command>`.
-If a tag is set to `latest` in `deploy/VERSIONS.env`, `upgrade` will pull the newest image for that tag.
+
+**Image pull behavior:** `up` never contacts the registry — it uses cached images
+(Compose pulls automatically on first run when no images exist).
+`upgrade` pulls all images, then runs `up`. Use `upgrade` when a new version is available.
+
 Add `--debug` for raw shell trace and full output.
 Add `--logging` to enable the Dozzle container log viewer on port 9999.
 

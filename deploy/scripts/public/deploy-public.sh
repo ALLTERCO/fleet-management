@@ -9,11 +9,11 @@
 #
 # Usage:
 #   ./deploy/deploy-public.sh install        Install Docker + Docker Compose (if needed)
-#   ./deploy/deploy-public.sh up             Start Fleet Management
+#   ./deploy/deploy-public.sh up             Start Fleet Management (idempotent: bootstrap or restart)
+#   ./deploy/deploy-public.sh upgrade        Pull newer images and restart (runs 'up' flow)
 #   ./deploy/deploy-public.sh down           Stop Fleet Management
 #   ./deploy/deploy-public.sh status         Show service status
 #   ./deploy/deploy-public.sh logs [service] Show logs (fleet-manager, zitadel, fleet-db)
-#   ./deploy/deploy-public.sh update         Pull configured image tags and restart
 #   ./deploy/deploy-public.sh ip             Show machine IP and access URLs
 #   ./deploy/deploy-public.sh help           Show this help
 #
@@ -406,35 +406,17 @@ cmd_logs() {
     compose_cmd logs --tail 100 -f "$@"
 }
 
-cmd_update() {
+cmd_upgrade() {
+    # upgrade = pull newer images, then run the full idempotent 'up' flow.
+    # Works regardless of current state: fresh machine → full bootstrap,
+    # existing deployment → pull + restart, after down --volumes → re-bootstrap.
+    parse_runtime_flags "$@" || return 1
     enable_debug_mode
 
     echo ""
+    step "Upgrading Fleet Management"
 
-    # Guard: update requires a prior successful 'up'
-    if [ ! -f "$STATE_DIR/.env" ] || [ ! -f "$DEPLOY_META_FILE" ]; then
-        # Scan for signs of a previous deployment
-        local has_containers=false has_volumes=false
-        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^${COMPOSE_PROJECT_NAME:-fleet-public}-"; then
-            has_containers=true
-        fi
-        if docker volume ls --format '{{.Name}}' 2>/dev/null | grep -q "^${COMPOSE_PROJECT_NAME:-fleet-public}_"; then
-            has_volumes=true
-        fi
-
-        if [ "$has_containers" = true ] || [ "$has_volumes" = true ]; then
-            warn "Found existing containers/volumes but no deploy state"
-            info "State was likely removed by 'down --volumes' or manual cleanup"
-            info "Run './deploy/deploy-public.sh up' to re-bootstrap with existing data"
-        else
-            error "No existing deployment found"
-            info "Run './deploy/deploy-public.sh up' for first-time setup"
-        fi
-        return 1
-    fi
-
-    step "Updating Fleet Management"
-
+    # Restore previous config if available (flags from last 'up')
     load_state_env
     load_deploy_meta
 
@@ -443,41 +425,20 @@ cmd_update() {
     export FLEET_MANAGER_PORT
     export FM_VERSION
 
-    spinner_start "Pulling configured image tags..."
-    if run_quiet "Pulling configured image tags" compose_cmd pull; then
-        spinner_stop ok "Images pulled"
-    else
-        spinner_stop fail "Image pull failed"
-        return 1
-    fi
-
-    spinner_start "Restarting services..."
-    if run_quiet "Restarting containers" compose_cmd up -d --force-recreate; then
-        spinner_stop ok "Containers restarted"
-    else
-        spinner_stop fail "Restart failed"
-        return 1
-    fi
-
-    spinner_start "Waiting for services to become healthy..."
-    if ! wait_for_container_health "fleet-manager" 120; then
-        spinner_stop fail "Fleet Manager failed to become healthy after update"
-        return 1
-    fi
-    if [ "$WITH_SSL" = "true" ]; then
-        if ! wait_for_container_health "traefik" 60; then
-            spinner_stop fail "Traefik failed to become healthy after update"
-            return 1
+    # Pull newer images first (best-effort — compose_cmd needs state for env files)
+    if [ -f "$STATE_DIR/.env" ]; then
+        spinner_start "Pulling configured image tags..."
+        if run_quiet "Pulling configured image tags" compose_cmd pull; then
+            spinner_stop ok "Images pulled"
+        else
+            spinner_stop warn "Image pull failed (will use local cache)"
         fi
+    else
+        info "No existing state — skipping pull (will be handled by 'up')"
     fi
-    spinner_stop ok "Services healthy"
 
-    save_deploy_meta "" "update"
-
-    echo ""
-    ok "Update complete"
-    echo ""
-    cmd_status
+    # Delegate to the idempotent 'up' flow for everything else
+    cmd_up "$@"
 }
 
 cmd_ip() {
@@ -567,10 +528,10 @@ print_summary() {
     echo ""
     echo "${SEP}"
     echo "  ${BOLD}Commands${RESET}"
-    echo "  ${CYAN}./deploy/deploy-public.sh status${RESET}   Service health"
-    echo "  ${CYAN}./deploy/deploy-public.sh logs${RESET}     Follow logs"
-    echo "  ${CYAN}./deploy/deploy-public.sh down${RESET}     Stop services"
-    echo "  ${CYAN}./deploy/deploy-public.sh update${RESET}   Pull & restart"
+    echo "  ${CYAN}./deploy/deploy-public.sh status${RESET}    Service health"
+    echo "  ${CYAN}./deploy/deploy-public.sh logs${RESET}      Follow logs"
+    echo "  ${CYAN}./deploy/deploy-public.sh down${RESET}      Stop services"
+    echo "  ${CYAN}./deploy/deploy-public.sh upgrade${RESET}   Pull newer images & restart"
     echo ""
 }
 
@@ -761,18 +722,18 @@ cmd_help() {
     echo ""
     echo "${BOLD}Commands:${RESET}"
     echo "  ${CYAN}install${RESET}                          Install Docker and required system dependencies"
-    echo "  ${CYAN}up${RESET}                               Check prerequisites, install missing ones, and start Fleet Management"
+    echo "  ${CYAN}up${RESET}                               Start Fleet Management (idempotent: bootstrap or restart)"
     echo "  ${CYAN}up --mdns${RESET}                        Start with mDNS device discovery"
     echo "  ${CYAN}up --logging${RESET}                     Start with Dozzle log viewer (port ${DOZZLE_PORT:-9999})"
     echo "  ${CYAN}up --ssl --domain fm.example.com${RESET} Start with HTTPS (Let's Encrypt)"
     echo "  ${CYAN}up --ssl selfsigned${RESET}              Start with HTTPS (self-signed cert)"
     echo "  ${CYAN}up --ssl custom --domain fm.example.com --cert /path/fullchain.pem --key /path/privkey.pem${RESET}"
     echo "                                     Start with HTTPS (custom certificate)"
+    echo "  ${CYAN}upgrade${RESET}                          Pull newer images, then restart (same as: pull + up)"
     echo "  ${CYAN}down${RESET}                             Stop Fleet Management and keep data"
     echo "  ${CYAN}down --volumes${RESET}                   Stop Fleet Management and delete all data"
     echo "  ${CYAN}status${RESET}                           Show service status and health"
     echo "  ${CYAN}logs${RESET} [service]                   Show logs (follow mode)"
-    echo "  ${CYAN}update${RESET}                           Pull configured image tags and restart"
     echo "  ${CYAN}ip${RESET}                               Show access URLs"
     echo "  ${CYAN}doctor${RESET} [--ssl ...]               Troubleshoot readiness, dependencies, and SSL configuration"
     echo "  ${CYAN}help${RESET}                             Show this help"
@@ -782,7 +743,7 @@ cmd_help() {
     echo "                                    Normal mode keeps installers and Docker orchestration quiet unless something fails."
     echo ""
     echo "${BOLD}Public Quick Start:${RESET}"
-    echo "  ${CYAN}./deploy/deploy-public.sh up${RESET} installs missing prerequisites if needed and starts the stack."
+    echo "  ${CYAN}./deploy/deploy-public.sh up${RESET} is idempotent — bootstraps on first run, restarts on subsequent runs."
     echo "  On Linux this may prompt for sudo during the first run."
     echo "  On macOS it may trigger Homebrew or Docker Desktop permission/setup prompts."
     echo ""
@@ -833,7 +794,8 @@ main() {
         down)     cmd_down "$@" ;;
         status)   cmd_status "$@" ;;
         logs)     cmd_logs "$@" ;;
-        update)   cmd_update "$@" ;;
+        upgrade)  cmd_upgrade "$@" ;;
+        update)   cmd_upgrade "$@" ;;  # backwards-compatible alias
         ip)       cmd_ip "$@" ;;
         doctor)   cmd_doctor "$@" ;;
         help|-h|--help) cmd_help ;;

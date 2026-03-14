@@ -52,13 +52,13 @@ Once ready, you'll see:
 
 | Command                  | Description                                                        |
 |--------------------------|--------------------------------------------------------------------|
-| `install`                | Install Docker and dependencies                                    |
-| `up`                     | Check prerequisites, install missing ones, then start all services |
+| `install`                | Install Docker and dependencies (without starting services)        |
+| `up`                     | Start Fleet Management (idempotent: bootstrap or restart)          |
+| `upgrade`                | Pull newer images, then restart (same as: pull + up)               |
 | `down`                   | Stop all services                                                  |
 | `down --volumes`         | Stop and delete all data                                           |
 | `status`                 | Show service health                                                |
 | `logs [service]`         | View logs (optionally for a single service)                        |
-| `update`                 | Pull configured image tags and restart                             |
 | `ip`                     | Show IP and access URLs                                            |
 | `doctor`                 | Run diagnostics (see below)                                        |
 
@@ -283,14 +283,14 @@ The device will appear in the Fleet Manager waiting room. An admin must approve 
 
 ## Updating
 
-Pull configured image tags and restart:
+Pull newer images and restart:
 
 ```bash
-./deploy/deploy-public.sh update
+./deploy/deploy-public.sh upgrade
 ```
 
-This pulls images for the tags configured in `deploy/VERSIONS.env` and restarts services. Database data is preserved.
-If a tag is set to `latest`, update will pull the newest image for that tag.
+This pulls images for the tags configured in `deploy/VERSIONS.env` and runs the full `up` flow. Database data is preserved. If no prior deployment exists, `upgrade` performs a fresh bootstrap automatically.
+If a tag is set to `latest`, `upgrade` compares the local image digest against the remote and only pulls when a newer version is available.
 
 ---
 

@@ -1,21 +1,46 @@
 <template>
     <BasicLayout>
-        <div class="flex flex-col items-center justify-center min-h-screen gap-4 text-center px-4">
-            <span class="text-6xl font-bold text-[var(--color-text-disabled)]">404</span>
-            <h1 class="text-xl font-semibold text-[var(--color-text-secondary)]">Page not found</h1>
-            <p class="text-[var(--color-text-tertiary)] max-w-md">
-                The page you're looking for doesn't exist or has been moved.
-            </p>
-            <router-link
-                to="/"
-                class="mt-4 px-4 py-2 bg-[var(--color-primary)] hover:bg-[var(--color-primary-hover)] text-white rounded-lg text-sm font-medium"
-            >
+        <div class="nf">
+            <span class="nf__code">404</span>
+            <h1 class="nf__title">Page not found</h1>
+            <p class="nf__desc">The page you're looking for doesn't exist or has been moved.</p>
+            <Button type="blue" size="sm" @click="$router.push('/')">
                 Go to Dashboard
-            </router-link>
+            </Button>
         </div>
     </BasicLayout>
 </template>
 
 <script setup lang="ts">
+import Button from '@/components/core/Button.vue';
 import BasicLayout from '@/layouts/BasicLayout.vue';
 </script>
+
+<style scoped>
+.nf {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    gap: var(--gap-sm);
+    text-align: center;
+    padding: var(--gap-md);
+}
+.nf__code {
+    font-size: var(--type-display);
+    font-weight: 700;
+    color: var(--color-text-tertiary);
+    line-height: 1;
+}
+.nf__title {
+    font-size: var(--type-heading);
+    font-weight: 700;
+    color: var(--color-text-primary);
+}
+.nf__desc {
+    font-size: var(--type-body);
+    color: var(--color-text-tertiary);
+    max-width: 28rem;
+}
+</style>

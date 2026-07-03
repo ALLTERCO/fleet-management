@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 500" width="980" height="500" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="The lifecycle states of one alert, from pending through firing to resolved">
+  <title>Alert lifecycle</title>
+  <desc>One alert per rule and target moves through states. It starts pending, then fires as active. Acknowledging moves it right to acknowledged; unacknowledging moves it back. When the condition clears it resolves, or for latched alarms it moves down to cleared (still needing an acknowledge). Cleared alerts are resolved manually. While firing it may drop to an interim state (recovering, no data, or evaluation error) and fire again. Resolved is terminal, but the same alert can re-fire within the dedupe window.</desc>
+  <defs>
+    <marker id="aA" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A97A8"/></marker>
+  </defs>
+  <rect x="0" y="0" width="980" height="500" fill="#ffffff"/>
+
+  <text x="30" y="30" font-size="15" font-weight="700" fill="#122A4F">The life of an alert</text>
+  <text x="30" y="49" font-size="11.5" fill="#6B7A90">One alert per rule and target. It moves through these states.</text>
+
+  <!-- ===== edges (drawn first, under boxes) ===== -->
+  <!-- entry -->
+  <circle cx="44" cy="125" r="7" fill="#122A4F"/>
+  <path d="M51,125 L64,125" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#aA)"/>
+
+  <!-- pending -> active -->
+  <path d="M234,125 L316,125" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#aA)"/>
+  <rect x="238" y="107" width="74" height="16" rx="8" fill="#ffffff"/>
+  <text x="275" y="119" text-anchor="middle" font-size="10.5" fill="#6B7A90">it fires</text>
+
+  <!-- active <-> acknowledged -->
+  <path d="M486,117 L576,117" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#aA)"/>
+  <path d="M576,133 L486,133" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#aA)"/>
+  <text x="531" y="110" text-anchor="middle" font-size="10.5" fill="#6B7A90">Ack</text>
+  <text x="531" y="147" text-anchor="middle" font-size="10.5" fill="#6B7A90">Unack</text>
+
+  <!-- active -> cleared_unack -->
+  <path d="M401,153 L401,247" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#aA)"/>
+  <rect x="345" y="192" width="112" height="16" rx="8" fill="#ffffff"/>
+  <text x="401" y="204" text-anchor="middle" font-size="10.5" fill="#6B7A90">clears · latched</text>
+
+  <!-- acknowledged -> cleared_ack -->
+  <path d="M661,153 L661,247" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#aA)"/>
+  <rect x="605" y="192" width="112" height="16" rx="8" fill="#ffffff"/>
+  <text x="661" y="204" text-anchor="middle" font-size="10.5" fill="#6B7A90">clears · latched</text>
+
+  <!-- cleared_unack <-> cleared_ack -->
+  <path d="M486,267 L576,267" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#aA)"/>
+  <path d="M576,283 L486,283" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#aA)"/>
+  <text x="531" y="260" text-anchor="middle" font-size="10.5" fill="#6B7A90">Ack</text>
+  <text x="531" y="297" text-anchor="middle" font-size="10.5" fill="#6B7A90">Unack</text>
+
+  <!-- active -> resolved (over the top) -->
+  <path d="M401,97 C 401,58 800,52 872,150" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#aA)"/>
+  <rect x="560" y="44" width="140" height="16" rx="8" fill="#ffffff"/>
+  <text x="630" y="56" text-anchor="middle" font-size="10.5" fill="#6B7A90">condition clears</text>
+
+  <!-- resolved -> active dashed (re-fire) -->
+  <path d="M886,150 C 900,28 432,24 403,97" stroke="#8A97A8" stroke-width="1.25" stroke-dasharray="4 3" fill="none" marker-end="url(#aA)"/>
+  <rect x="548" y="18" width="164" height="16" rx="8" fill="#ffffff"/>
+  <text x="630" y="30" text-anchor="middle" font-size="10" fill="#8A97A8">re-fires · dedupe window</text>
+
+  <!-- acknowledged -> resolved -->
+  <path d="M746,132 L818,180" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#aA)"/>
+
+  <!-- cleared_ack -> resolved -->
+  <path d="M746,268 L818,244" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#aA)"/>
+
+  <!-- cleared_unack -> resolved (under) -->
+  <path d="M486,288 C 590,332 740,326 818,272" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#aA)"/>
+  <rect x="566" y="330" width="128" height="16" rx="8" fill="#ffffff"/>
+  <text x="630" y="342" text-anchor="middle" font-size="10.5" fill="#6B7A90">resolved by hand</text>
+
+  <!-- active <-> interim (double-headed) -->
+  <path d="M348,155 L212,248" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-start="url(#aA)" marker-end="url(#aA)"/>
+  <rect x="214" y="188" width="118" height="16" rx="8" fill="#ffffff"/>
+  <text x="273" y="200" text-anchor="middle" font-size="10.5" fill="#6B7A90">not firing ⇄ fires</text>
+
+  <!-- ===== state boxes ===== -->
+  <!-- pending -->
+  <rect x="64" y="97" width="170" height="56" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="149" y="121" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Pending</text>
+  <text x="149" y="139" text-anchor="middle" font-size="10.5" font-family="ui-monospace,Menlo,monospace" fill="#6B7A90">pending</text>
+
+  <!-- active -->
+  <rect x="316" y="97" width="170" height="56" rx="6" fill="#FDE9EC" stroke="#DD344C" stroke-width="1.5"/>
+  <text x="401" y="121" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Firing</text>
+  <text x="401" y="139" text-anchor="middle" font-size="10.5" font-family="ui-monospace,Menlo,monospace" fill="#B42318">active</text>
+
+  <!-- acknowledged -->
+  <rect x="576" y="97" width="170" height="56" rx="6" fill="#FFF4E5" stroke="#D9930B" stroke-width="1.5"/>
+  <text x="661" y="121" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Firing · acknowledged</text>
+  <text x="661" y="139" text-anchor="middle" font-size="10.5" font-family="ui-monospace,Menlo,monospace" fill="#8A6100">acknowledged</text>
+
+  <!-- cleared_unack -->
+  <rect x="316" y="247" width="170" height="56" rx="6" fill="#EAF6FD" stroke="#4495D1" stroke-width="1.5"/>
+  <text x="401" y="271" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Cleared</text>
+  <text x="401" y="289" text-anchor="middle" font-size="10.5" font-family="ui-monospace,Menlo,monospace" fill="#2C6C99">cleared_unack</text>
+
+  <!-- cleared_ack -->
+  <rect x="576" y="247" width="170" height="56" rx="6" fill="#EAF7F0" stroke="#2E9E6B" stroke-width="1.5"/>
+  <text x="661" y="271" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Cleared · acknowledged</text>
+  <text x="661" y="289" text-anchor="middle" font-size="10.5" font-family="ui-monospace,Menlo,monospace" fill="#2E7D5B">cleared_ack</text>
+
+  <!-- interim cluster -->
+  <rect x="40" y="250" width="200" height="74" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.25" stroke-dasharray="4 3"/>
+  <text x="140" y="274" text-anchor="middle" font-size="12" font-weight="600" fill="#122A4F">Recovering · No data · Error</text>
+  <text x="140" y="292" text-anchor="middle" font-size="9.5" font-family="ui-monospace,Menlo,monospace" fill="#6B7A90">recovering · no_data ·</text>
+  <text x="140" y="306" text-anchor="middle" font-size="9.5" font-family="ui-monospace,Menlo,monospace" fill="#6B7A90">evaluation_error</text>
+
+  <!-- resolved -->
+  <rect x="820" y="150" width="140" height="150" rx="6" fill="#F1F4F8" stroke="#6B7A90" stroke-width="1.5"/>
+  <text x="890" y="219" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Resolved</text>
+  <text x="890" y="237" text-anchor="middle" font-size="10.5" font-family="ui-monospace,Menlo,monospace" fill="#6B7A90">resolved</text>
+
+  <text x="30" y="470" font-size="10" fill="#8A97A8">Ack / Unack move it left–right. A cleared condition moves down for latched alarms, or straight to resolved for the rest.</text>
+  <text x="30" y="486" font-size="10" fill="#8A97A8">Silence is a separate on/off overlay, not a state. The interim states can also resolve.</text>
+</svg>

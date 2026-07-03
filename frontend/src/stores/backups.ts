@@ -1,23 +1,35 @@
 import {defineStore} from 'pinia';
 import {computed, reactive, ref} from 'vue';
 import {useDeviceSelection} from '@/composables/useDeviceSelection';
+import {
+    createEmptyBackupContents,
+    filterEnabledBackupContents,
+    summarizeBackupContents
+} from '@/helpers/backupContents';
 import {getDeviceName} from '@/helpers/device';
 import {triggerDownload} from '@/helpers/download';
-import {clearObject, sleep} from '@/helpers/objects';
+import {clearObject} from '@/helpers/objects';
 import {trackInteraction} from '@/tools/observability';
 import * as ws from '../tools/websocket';
 import {useDevicesStore} from './devices';
+import {useJobsStore} from './jobs';
+import {createRefreshCoordinator} from './refreshCoordinator';
 
 export interface BackupMetadata {
     id: string;
     name: string;
     shellyID: string;
+    deviceName?: string;
     model: string;
     app: string;
     fwVersion: string;
     createdAt: number;
+    createdDateKey?: string;
     fileSize: number;
     contents: Record<string, boolean>;
+    contentsSummary?: string;
+    groupIds?: number[];
+    groupNames?: string[];
     metadata: Record<string, any>;
 }
 
@@ -37,10 +49,62 @@ export interface BackupDeviceInfo {
     error?: string;
 }
 
-// Polling configuration
-const REBOOT_POLL_INTERVAL = 5000; // 5 seconds
-const REBOOT_TIMEOUT = 120_000; // 2 minutes
-const BATCH_SIZE = 3;
+type BackupMutationResult = BackupMetadata & {
+    replacedBackupId?: string;
+};
+
+type BackupJobResponse = {
+    jobId: string;
+};
+
+function newBackupJobIdempotencyKey(): string {
+    return (
+        globalThis.crypto?.randomUUID?.() ??
+        `backup-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    );
+}
+
+function normalizeBackupMetadata(backup: BackupMetadata): BackupMetadata {
+    const createdAt =
+        typeof backup.createdAt === 'number' ? backup.createdAt : Date.now();
+    const metadata =
+        backup.metadata && typeof backup.metadata === 'object'
+            ? backup.metadata
+            : {};
+    const groupIds = Array.isArray(backup.groupIds)
+        ? backup.groupIds
+        : Array.isArray(metadata.group_ids)
+          ? metadata.group_ids
+                .map((value: unknown) => Number(value))
+                .filter((value: number) => Number.isFinite(value))
+          : [];
+    const groupNames = Array.isArray(backup.groupNames)
+        ? backup.groupNames
+        : Array.isArray(metadata.group_names)
+          ? metadata.group_names
+                .map((value: unknown) => String(value))
+                .filter(Boolean)
+          : [];
+
+    return {
+        ...backup,
+        deviceName:
+            backup.deviceName ||
+            (typeof metadata.device_name === 'string'
+                ? metadata.device_name
+                : backup.shellyID),
+        createdDateKey:
+            backup.createdDateKey ||
+            new Date(createdAt).toISOString().slice(0, 10),
+        contentsSummary:
+            backup.contentsSummary ||
+            (typeof metadata.actual_contents === 'string'
+                ? metadata.actual_contents
+                : summarizeBackupContents(backup.contents || {})),
+        groupIds,
+        groupNames
+    };
+}
 
 export const useBackupsStore = defineStore('backups', () => {
     const devicesStore = useDevicesStore();
@@ -52,12 +116,24 @@ export const useBackupsStore = defineStore('backups', () => {
     const backups = reactive<Record<string, BackupMetadata>>({});
     const loading = ref(false);
 
+    function applyBackupMutation(
+        result: BackupMutationResult | null | undefined
+    ) {
+        if (!result) return;
+        if (result.replacedBackupId) {
+            delete backups[result.replacedBackupId];
+        }
+        backups[result.id] = normalizeBackupMetadata(result);
+    }
+
     // ========================================================================
     // State — Backup creation wizard
     // ========================================================================
 
-    // Device selection via shared composable (Sys.CreateBackup available on all Gen2+ devices)
-    const selection = useDeviceSelection();
+    // Only show devices that support backup (have Sys.CreateBackup in ListMethods)
+    const selection = useDeviceSelection(
+        (device) => device.capabilities?.backup === true
+    );
     const {
         selectedDevices,
         executableDevices,
@@ -75,16 +151,80 @@ export const useBackupsStore = defineStore('backups', () => {
     const currentStep = ref<'list' | 'select' | 'progress' | 'naming'>('list');
     const isCreating = ref(false);
 
-    // ========================================================================
-    // State — Restore
-    // ========================================================================
+    let activeBackupJobId: string | null = null;
+    const jobsStore = useJobsStore();
 
-    const restoreInProgress = ref(false);
-    const restoreStatus = ref<{
-        shellyID: string;
-        status: string;
-        error?: string;
-    } | null>(null);
+    ws.onComponentStatus('backup', applyBackupStatusEvent);
+    ws.onJobEvent(applyBackupJobEvent);
+
+    // Content selection for backup creation (extras beyond base config)
+    const backupContents = reactive(createEmptyBackupContents());
+
+    function applyBackupStatusEvent(event: any): void {
+        const p = event?.backupProgress;
+        if (!p?.shellyID || !backupProgress[p.shellyID]) return;
+        const info = backupProgress[p.shellyID];
+        if (info.status === 'success' || info.status === 'failed') return;
+        if (
+            p.phase === 'creating' ||
+            p.phase === 'rebooting' ||
+            p.phase === 'downloading'
+        ) {
+            info.status = p.phase;
+        }
+    }
+
+    function applyBackupJobEvent(event: ws.NamespacedEvent): void {
+        if (event.method === 'Job.UnitUpdated') {
+            applyBackupUnitEvent(event.params);
+            return;
+        }
+        if (event.method === 'Job.Updated') {
+            applyBackupTerminalEvent(event.params);
+        }
+    }
+
+    function applyBackupUnitEvent(params: Record<string, unknown>): void {
+        if (params.kind !== 'backup') return;
+        if (params.jobId !== activeBackupJobId) return;
+        const shellyID =
+            typeof params.deviceId === 'string' ? params.deviceId : undefined;
+        if (!shellyID || !backupProgress[shellyID]) return;
+        if (params.status === 'done') {
+            backupProgress[shellyID].status = 'success';
+            applyBackupMutation(params.result as BackupMutationResult);
+            return;
+        }
+        if (params.status === 'failed') {
+            backupProgress[shellyID].status = 'failed';
+            backupProgress[shellyID].error =
+                typeof params.error === 'string'
+                    ? params.error
+                    : 'Backup failed';
+        }
+    }
+
+    function applyBackupTerminalEvent(params: Record<string, unknown>): void {
+        const job = params.job as
+            | {id?: string; kind?: string; status?: string}
+            | undefined;
+        if (
+            !job ||
+            job.kind !== 'backup' ||
+            job.id !== activeBackupJobId ||
+            (job.status !== 'done' && job.status !== 'failed')
+        ) {
+            return;
+        }
+        activeBackupJobId = null;
+        if (successDevices.value.length > 0) {
+            currentStep.value = 'naming';
+        }
+    }
+
+    // ========================================================================
+    // State — Restore (per-device progress tracked by BackupRestoreModal)
+    // ========================================================================
 
     // ========================================================================
     // Computed
@@ -115,21 +255,28 @@ export const useBackupsStore = defineStore('backups', () => {
     // Actions — Backup list management
     // ========================================================================
 
+    const backupsRefresh = createRefreshCoordinator(refreshBackups);
+
     async function fetchBackups() {
+        await backupsRefresh.request();
+    }
+
+    async function refreshBackups(): Promise<void> {
         loading.value = true;
         try {
-            const result = await ws.sendRPC<BackupMetadata[]>(
+            const result = await ws.sendRPC<{items: BackupMetadata[]}>(
                 'FLEET_MANAGER',
                 'Backup.List',
                 {}
             );
-            // Clear and repopulate
-            clearObject(backups);
-            if (Array.isArray(result)) {
-                for (const backup of result) {
-                    backups[backup.id] = backup;
-                }
+            const items =
+                result?.items ?? (Array.isArray(result) ? result : []);
+            const next: Record<string, BackupMetadata> = {};
+            for (const backup of items) {
+                next[backup.id] = normalizeBackupMetadata(backup);
             }
+            clearObject(backups);
+            for (const id of Object.keys(next)) backups[id] = next[id];
         } catch (error) {
             console.error('Failed to fetch backups:', error);
         } finally {
@@ -139,14 +286,12 @@ export const useBackupsStore = defineStore('backups', () => {
 
     async function renameBackup(id: string, name: string) {
         try {
-            const result = await ws.sendRPC<BackupMetadata>(
+            const result = await ws.sendRPC<BackupMutationResult>(
                 'FLEET_MANAGER',
                 'Backup.Rename',
                 {id, name}
             );
-            if (result) {
-                backups[id] = result;
-            }
+            applyBackupMutation(result);
         } catch (error) {
             console.error('Failed to rename backup:', error);
             throw error;
@@ -201,9 +346,11 @@ export const useBackupsStore = defineStore('backups', () => {
     // ========================================================================
 
     function resetWizardState() {
+        activeBackupJobId = null;
         clearSelection();
         clearObject(backupProgress);
         isCreating.value = false;
+        Object.assign(backupContents, createEmptyBackupContents());
     }
 
     function startCreateFlow() {
@@ -217,9 +364,14 @@ export const useBackupsStore = defineStore('backups', () => {
     }
 
     async function createBackups() {
-        trackInteraction('backups', 'create', `${selectedDevices.value.size} devices`);
+        trackInteraction(
+            'backups',
+            'create',
+            `${selectedDevices.value.size} devices`
+        );
         isCreating.value = true;
         currentStep.value = 'progress';
+        const shellyIDsForJob = Array.from(selectedDevices.value);
 
         // Initialize progress for each device
         for (const shellyID of selectedDevices.value) {
@@ -234,84 +386,51 @@ export const useBackupsStore = defineStore('backups', () => {
             };
         }
 
-        // Process devices in batches
-        const shellyIDs = Array.from(selectedDevices.value);
-
-        for (let i = 0; i < shellyIDs.length; i += BATCH_SIZE) {
-            const batch = shellyIDs.slice(i, i + BATCH_SIZE);
-            await Promise.all(
-                batch.map((shellyID) => createSingleBackup(shellyID))
-            );
-        }
-
-        // Auto-advance to naming step when all complete
-        if (successDevices.value.length > 0) {
-            currentStep.value = 'naming';
-        }
+        await startBackupJob(shellyIDsForJob, 'Backup');
     }
 
-    async function createSingleBackup(shellyID: string) {
-        if (!backupProgress[shellyID]) return;
-
-        try {
-            // Step 1: Trigger Sys.CreateBackup on device (causes reboot)
+    async function startBackupJob(shellyIDs: string[], labelPrefix: string) {
+        if (shellyIDs.length === 0) return;
+        for (const shellyID of shellyIDs) {
+            if (!backupProgress[shellyID]) continue;
             backupProgress[shellyID].status = 'creating';
-            try {
-                await devicesStore.sendRPC(shellyID, 'Sys.CreateBackup', {});
-            } catch {
-                // Device may disconnect during reboot — that's expected
-            }
-
-            // Step 2: Wait for device to come back online with backup ready
-            backupProgress[shellyID].status = 'rebooting';
-            await waitForDeviceOnline(shellyID);
-
-            // Step 3: Tell backend to download the backup from the device
-            backupProgress[shellyID].status = 'downloading';
-            const result = await ws.sendRPC<BackupMetadata>(
+            backupProgress[shellyID].error = undefined;
+        }
+        try {
+            const response = await ws.sendRPC<BackupJobResponse>(
                 'FLEET_MANAGER',
-                'Backup.DownloadFromDevice',
-                {shellyID}
-            );
-
-            // Store the new backup in our local state
-            if (result) {
-                backups[result.id] = result;
-            }
-
-            backupProgress[shellyID].status = 'success';
-        } catch (error: any) {
-            backupProgress[shellyID].status = 'failed';
-            backupProgress[shellyID].error = error?.message || String(error);
-        }
-    }
-
-    async function waitForDeviceOnline(shellyID: string): Promise<void> {
-        const startTime = Date.now();
-
-        while (Date.now() - startTime < REBOOT_TIMEOUT) {
-            await sleep(REBOOT_POLL_INTERVAL);
-
-            try {
-                const response = await devicesStore.sendRPC(
-                    shellyID,
-                    'Sys.GetStatus',
-                    {}
-                );
-
-                if (response?.backup?.created) {
-                    return; // Backup is ready
+                'Backup.StartDownloadJob',
+                {
+                    shellyIDs,
+                    contents: {...backupContents},
+                    idempotencyKey: newBackupJobIdempotencyKey()
                 }
-            } catch {
-                // Device still rebooting
+            );
+            activeBackupJobId = response.jobId;
+            jobsStore.track({
+                jobId: response.jobId,
+                kind: 'backup',
+                label: `${labelPrefix} — ${shellyIDs.length} device${shellyIDs.length === 1 ? '' : 's'}`,
+                total: shellyIDs.length,
+                status: 'queued',
+                metadata: {mode: 'create'}
+            });
+        } catch (error: any) {
+            const message = error?.message || String(error);
+            for (const shellyID of shellyIDs) {
+                if (!backupProgress[shellyID]) continue;
+                backupProgress[shellyID].status = 'failed';
+                backupProgress[shellyID].error = message;
             }
+            throw error;
         }
-
-        throw new Error('Timeout waiting for device to come back online');
     }
 
     async function retryFailed() {
         const devicesToRetry = failedDevices.value.map((d) => d.shellyID);
+
+        // Reset wizard state for retry: mark as active creation
+        isCreating.value = true;
 
         for (const shellyID of devicesToRetry) {
             if (backupProgress[shellyID]) {
@@ -321,17 +440,7 @@ export const useBackupsStore = defineStore('backups', () => {
         }
 
         currentStep.value = 'progress';
-
-        for (let i = 0; i < devicesToRetry.length; i += BATCH_SIZE) {
-            const batch = devicesToRetry.slice(i, i + BATCH_SIZE);
-            await Promise.all(
-                batch.map((shellyID) => createSingleBackup(shellyID))
-            );
-        }
-
-        if (successDevices.value.length > 0) {
-            currentStep.value = 'naming';
-        }
+        await startBackupJob(devicesToRetry, 'Backup retry');
     }
 
     // ========================================================================
@@ -339,20 +448,28 @@ export const useBackupsStore = defineStore('backups', () => {
     // ========================================================================
 
     async function renameNewBackups(nameMap: Record<string, string>) {
-        const promises: Promise<void>[] = [];
+        const entries = Object.entries(nameMap).filter(
+            ([backupId, newName]) =>
+                newName &&
+                backups[backupId] &&
+                backups[backupId].name !== newName
+        );
 
-        for (const [backupId, newName] of Object.entries(nameMap)) {
-            if (!newName || !backups[backupId]) continue;
-            if (backups[backupId].name === newName) continue;
-
-            promises.push(
-                renameBackup(backupId, newName).catch((e) => {
-                    console.error(`Failed to rename backup ${backupId}:`, e);
-                })
+        const RENAME_BATCH_SIZE = 5;
+        for (let i = 0; i < entries.length; i += RENAME_BATCH_SIZE) {
+            const batch = entries.slice(i, i + RENAME_BATCH_SIZE);
+            await Promise.all(
+                batch.map(([backupId, newName]) =>
+                    renameBackup(backupId, newName).catch((e) => {
+                        console.error(
+                            `Failed to rename backup ${backupId}:`,
+                            e
+                        );
+                    })
+                )
             );
         }
 
-        await Promise.all(promises);
         currentStep.value = 'list';
         isCreating.value = false;
     }
@@ -370,39 +487,32 @@ export const useBackupsStore = defineStore('backups', () => {
         backupId: string,
         targetShellyID: string,
         contentFilter?: Record<string, boolean>
-    ) {
+    ): Promise<BackupJobResponse> {
         trackInteraction('backups', 'restore', targetShellyID);
-        restoreInProgress.value = true;
-        restoreStatus.value = {
-            shellyID: targetShellyID,
-            status: 'restoring'
-        };
 
-        try {
-            await ws.sendRPC('FLEET_MANAGER', 'Backup.RestoreToDevice', {
+        const response = await ws.sendRPC<BackupJobResponse>(
+            'FLEET_MANAGER',
+            'Backup.StartRestoreJob',
+            {
                 id: backupId,
                 shellyID: targetShellyID,
-                restore: contentFilter
-            });
-
-            restoreStatus.value = {
-                shellyID: targetShellyID,
-                status: 'success'
-            };
-        } catch (error: any) {
-            restoreStatus.value = {
-                shellyID: targetShellyID,
-                status: 'failed',
-                error: error?.message || String(error)
-            };
-            throw error;
-        } finally {
-            restoreInProgress.value = false;
-        }
-    }
-
-    function clearRestoreStatus() {
-        restoreStatus.value = null;
+                restore: filterEnabledBackupContents(contentFilter),
+                idempotencyKey: newBackupJobIdempotencyKey()
+            }
+        );
+        jobsStore.track({
+            jobId: response.jobId,
+            kind: 'backup',
+            label: `Restore backup — ${targetShellyID}`,
+            total: 1,
+            status: 'queued',
+            metadata: {
+                mode: 'restore',
+                backupId,
+                deviceIds: [targetShellyID]
+            }
+        });
+        return response;
     }
 
     // ========================================================================
@@ -412,8 +522,6 @@ export const useBackupsStore = defineStore('backups', () => {
     function reset() {
         resetWizardState();
         currentStep.value = 'list';
-        restoreInProgress.value = false;
-        restoreStatus.value = null;
     }
 
     // Fetch backups on store creation
@@ -427,8 +535,7 @@ export const useBackupsStore = defineStore('backups', () => {
         backupProgress,
         currentStep,
         isCreating,
-        restoreInProgress,
-        restoreStatus,
+        backupContents,
 
         // Computed
         backupsList,
@@ -466,7 +573,6 @@ export const useBackupsStore = defineStore('backups', () => {
 
         // Actions — restore
         restoreBackup,
-        clearRestoreStatus,
 
         // Actions — general
         reset

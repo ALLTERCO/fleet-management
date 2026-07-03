@@ -1,5 +1,5 @@
 <template>
-    <div class="slider-container rounded-lg shadow-lg py-2 px-3 w-full">
+    <div class="slider-container rounded-lg shadow-none py-2 px-3 w-full">
         <div :class="`mb-1 text-base font-medium ${disabled ? 'slider-disabled' : ''}`">
             <slot name="title" />
         </div>
@@ -16,6 +16,7 @@
             <Button
                 v-for="(savedValue, savedTitle) of saved"
                 :key="savedValue"
+                type="blue-hollow"
                 narrow
                 class="!w-auto"
                 @click="emit('change', savedValue)"
@@ -58,7 +59,7 @@ function onChange(event: Event) {
     }
 
     const target = event.target as HTMLInputElement;
-    const value = parseInt(target.value);
+    const value = Number.parseInt(target.value, 10);
     emit('change', value);
 }
 </script>

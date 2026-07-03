@@ -1,133 +1,224 @@
 <template>
-  <InfiniteGridScrollPage
-    :page="page"
-    :total-pages="totalPages"
-    :items="items"
-    :loading="loading"
-    customClass="widget-grid-devices"
-    @load-items="loadItems"
-  >
-    <template #header>
-      <BasicBlock bordered blurred class="relative z-[var(--z-raised)] mb-2">
-        <div class="flex flex-col gap-3">
-          <div class="flex flex-col md:flex-row gap-2 items-center justify-between">
-            <div class="flex flex-1 flex-row flex-wrap gap-2 items-center">
-              <div class="flex items-center gap-2 min-w-[200px] flex-1 max-w-md">
-                <Input v-model="nameFilter" placeholder="Search" clear class="w-full" aria-label="Search devices" />
-                <Button :type="hasFiltersFromModal ? 'red' : 'blue'" size="sm" narrow data-track="devices_filter" @click="filterVisible = true">
-                  <i class="fas fa-filter" aria-hidden="true" /><span class="sr-only">Filter & sort</span>
-                </Button>
-              </div>
-              <div class="flex flex-wrap items-center gap-2">
-                <span v-if="sortMode !== 'online-az'" class="filter-pill sort-pill rounded-full px-2 py-1 text-xs flex items-center gap-1">
-                  <i class="fas fa-arrow-down-a-z" /> {{ sortLabel }}
-                </span>
-                <span
-                  v-for="([key, value]) in activeFilterPillsEntries"
-                  :key="key"
-                  class="filter-pill rounded-full px-2 py-1 text-xs flex items-center gap-1"
-                >
-                  {{ key === 'online' ? (value ? 'Online' : 'Offline') : value }}
-                  <button @click="clearPill(key as 'type' | 'group' | 'online')" class="filter-pill-remove focus:outline-none min-w-[var(--touch-target-min)] min-h-[var(--touch-target-min)] inline-flex items-center justify-center rounded-full" aria-label="Remove filter">×</button>
-                </span>
-                <button v-if="activeFilterPillsEntries.length" @click="clearAllFilters" class="filter-pill filter-pill-clear rounded-full px-2 py-1 text-xs" aria-label="Clear all filters">Clear all</button>
-              </div>
-            </div>
-            <div class="flex flex-row gap-2">
-              <Button v-if="selectMode && selectedDevices.length" type="blue" data-track="devices_send_rpc" @click="rpcBuilderStore.showModal = true">
-                Send RPC to {{ selectedDevices.length }} devices
-              </Button>
-              <Button narrow :type="selectMode ? 'red' : 'blue'" data-track="devices_create_action" @click="selectMode = !selectMode">
-                {{ selectMode ? 'Discard Action' : 'Create Action' }}
-              </Button>
-              <Button v-if="!editMode" type="blue" size="sm" narrow data-track="devices_edit_mode" @click="toggleEditMode">
-                <i class="fas fa-pencil" aria-hidden="true" /><span class="sr-only">Edit mode</span>
-              </Button>
-              <Button v-else type="red" size="sm" narrow data-track="devices_exit_edit" @click="toggleEditMode">
-                Exit edit mode
-              </Button>
-            </div>
-          </div>
-          <div class="flex flex-row gap-2 items-baseline justify-center">
-            <span class="w-full font-bold size-3">{{ devicesCalculation }}</span>
-          </div>
-        </div>
-      </BasicBlock>
-
-      <SendRpcModal @close="sendRpcClosed" />
-      <ConfirmationModal ref="modalRefDelete">
-        <template #title>
-          <h1>You are about to delete a device! <br />Proceed?</h1>
+    <PageTemplate
+        fill
+        v-model:search="nameFilter"
+        title="Devices"
+        :tabs="sectionTabs"
+        :stats="headerStats"
+        :searchable="true"
+        search-placeholder="Search devices…"
+        :filterable="true"
+        :has-active-filter="activeFilterCount > 0"
+        :filter-count="activeFilterCount"
+        :items="combinedItems"
+        :page-size="50"
+        pagination-mode="infinite"
+        url-key="devices"
+        :item-key="deviceItemKey"
+        :empty="rawDevices.length === 0"
+        empty-title="No devices found"
+        empty-sub="Connect Shelly devices via their outbound websocket."
+        @filter-click="filterVisible = true"
+    >
+        <template #actions>
+            <AddDeviceMenu @pick="onAddDeviceKind" />
+            <Button
+                v-if="rawDevices.length > 0"
+                :type="editMode ? 'red' : 'blue'"
+                size="sm"
+                @click="toggleEditMode"
+            >
+                {{ editMode ? 'Done' : 'Select' }}
+            </Button>
         </template>
-      </ConfirmationModal>
-      <DeviceFilter
-        v-model="filterVisible"
-        :filters="activeFilterPills"
-        :sort-mode="sortMode"
-        :key="JSON.stringify(activeFilterPills)"
-        @setFilters="setActiveFilters"
-        @updateSort="val => sortMode = val"
-        @devices="setDevices"
-      />
-    </template>
 
-    <template #default="{ item, small }">
-      <DeviceWidget
-        v-if="item.kind === 'device' && item.data.shellyID"
-        :key="item.data.shellyID"
-        :device-id="item.data.shellyID"
-        :vertical="small"
-        :select-mode="selectMode"
-        :edit-mode="editMode"
-        :selected="(selectMode && item.data.selected) || activeDevice === item.data.shellyID"
-        class="hover:cursor-pointer"
-        @click.stop="clicked(item.data)"
-        @delete="deleteDevice(item.data.shellyID, item.data.id)"
-      />
-      <BTHomeDeviceWidget
-        v-else-if="item.kind === 'sensor'"
-        :key="item.data.id"
-        :device="(item.data as SensorDevice)"
-        :vertical="small"
-        :selected="activeSensor === item.data.id"
-        class="hover:cursor-pointer"
-        @click="sensorClicked(item.data as SensorDevice)"
-      />
-    </template>
+        <div v-if="activeTagChips.length > 0" class="dv-active-chips">
+            <span class="dv-active-chips__label">
+                <i class="fas fa-filter" /> Filtering by:
+            </span>
+            <button
+                v-for="tag in activeTagChips"
+                :key="tag.id"
+                type="button"
+                class="dv-active-chip"
+                :title="`Remove ${tag.name} filter`"
+                @click="removeTagFilter(tag.id)"
+            >
+                <TagChip :tag="tag" />
+                <i class="fas fa-xmark dv-active-chip__x" />
+            </button>
+            <button
+                v-if="activeTagChips.length > 1"
+                type="button"
+                class="dv-active-chips__clear"
+                @click="tagFilter = []"
+            >
+                Clear all
+            </button>
+        </div>
 
-    <template #empty>
-      <EmptyBlock v-if="rawDevices.length === 0">
-        <p class="text-xl font-semibold pb-2">No devices found</p>
-        <p class="text-sm pb-2">Connect Shelly devices via their outbound websocket.</p>
-      </EmptyBlock>
-    </template>
-  </InfiniteGridScrollPage>
+        <template #item="{item}">
+            <div v-if="item.kind === 'section'" class="grid-section">
+                <div class="dc-section">
+                    <span
+                        class="dc-section-dot"
+                        :style="{background: item.color}"
+                    />
+                    {{ item.label }}
+                    <span class="sec-n">{{ item.count }}</span>
+                </div>
+            </div>
+            <DeviceFleetCard
+                v-else-if="item.kind === 'device' && item.data.shellyID"
+                :device="item.data"
+                :class="{
+                    'dc-selected':
+                        (editMode && item.data.selected) ||
+                        activeDevice === item.data.shellyID
+                }"
+                @click.stop="clicked(item.data)"
+            />
+            <BTHomeDeviceWidget
+                v-else-if="item.kind === 'sensor'"
+                :device="(item.data as SensorDevice)"
+                :selected="
+                    editMode
+                        ? selectedSensorIds.has(item.data.id)
+                        : activeSensor === item.data.id
+                "
+                @click.stop="sensorClicked(item.data as BTHomeCard)"
+            />
+        </template>
+
+        <template #modals>
+            <ConfirmationModal ref="modalRefDelete">
+                <template #title>
+                    <h3>You are about to delete a device! <br />Proceed?</h3>
+                </template>
+            </ConfirmationModal>
+            <FilterModal
+                :visible="filterVisible"
+                title="Filter Devices"
+                match-label="devices"
+                :match-count="deviceLikeMatchingCount"
+                :sections="filterSections"
+                :initial-state="activeFilterState"
+                @close="filterVisible = false"
+                @apply-generic="applyFilters"
+            />
+            <AddDeviceWizard
+                :visible="addDeviceWizardVisible"
+                :kind="pendingKind"
+                @close="addDeviceWizardVisible = false"
+                @created="onVirtualDeviceCreated"
+            />
+
+            <!-- Bulk action bar — a fixed-position overlay. Lives in the modals
+                 slot so the page keeps a single root element: a sibling block
+                 makes the root a fragment the route <Transition> can't animate. -->
+            <Transition name="bulk-slide">
+                <div
+                    v-if="editMode && selectedDevices.length === 0"
+                    class="dv__bulk-wrap"
+                >
+                    <div class="dv__bulk dv__bulk--hint">
+                        <i class="fas fa-hand-pointer" />
+                        <span class="dv__bulk-hint">Click devices to select them</span>
+                        <Button type="blue" size="sm" @click="selectAllDevices">Select All</Button>
+                        <Button
+                            type="blue-hollow"
+                            size="sm"
+                            @click="cancelSelection"
+                        >
+                            Cancel
+                        </Button>
+                    </div>
+                </div>
+                <div
+                    v-else-if="editMode && selectedDevices.length > 0"
+                    class="dv__bulk-wrap"
+                >
+                    <div class="dv__bulk">
+                        <span class="dv__bulk-count">{{ selectedDevices.length }} selected</span>
+                        <span class="dv__bulk-sep" />
+                        <Button v-if="editMode" type="red" size="sm" @click="deleteSelectedDevices">
+                            Delete
+                        </Button>
+                        <Button type="blue" size="sm" @click="selectAllDevices">
+                            {{ allDevicesSelected ? 'Deselect All' : 'Select All' }}
+                        </Button>
+                        <Button type="blue-hollow" size="sm" @click="cancelSelection">Cancel</Button>
+                    </div>
+                </div>
+            </Transition>
+        </template>
+    </PageTemplate>
 </template>
 
 <script setup lang="ts">
-import {storeToRefs} from 'pinia';
+import '@/styles/card-system.css';
+import '@/styles/device-page.css';
 import type {DefineComponent} from 'vue';
-import {computed, onMounted, onUnmounted, reactive, ref, watch} from 'vue';
-import SensorBoard from '@/components/boards/SensorBoard.vue';
-import BasicBlock from '@/components/core/BasicBlock.vue';
+import {computed, onMounted, onUnmounted, ref, watch} from 'vue';
+import {useRoute, useRouter} from 'vue-router';
+import DeviceFleetCard from '@/components/cards/DeviceFleetCard.vue';
 import Button from '@/components/core/Button.vue';
-import EmptyBlock from '@/components/core/EmptyBlock.vue';
-import Input from '@/components/core/Input.vue';
+import type {FilterSection} from '@/components/core/FilterModal.vue';
+import FilterModal from '@/components/core/FilterModal.vue';
+import PageTemplate from '@/components/core/PageTemplate.vue';
+import TagChip from '@/components/core/TagChip.vue';
+import AddDeviceMenu from '@/components/devices/add/AddDeviceMenu.vue';
+import AddDeviceWizard from '@/components/devices/add/AddDeviceWizard.vue';
 import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
-import SendRpcModal from '@/components/modals/SendRpcModal.vue';
-import DeviceFilter from '@/components/pages/devices/DeviceFilter.vue';
-import InfiniteGridScrollPage from '@/components/pages/InfiniteGridScrollPage.vue';
+import BTHomeDeviceInspector from '@/components/pages/devices/BTHomeDeviceInspector.vue';
 import BTHomeDeviceWidget from '@/components/widgets/BTHomeDeviceWidget.vue';
-import DeviceWidget from '@/components/widgets/DeviceWidget.vue';
-import {useDeviceFiltering} from '@/composables/useDeviceFiltering';
-import useInfiniteScroll from '@/composables/useInfiniteScroll';
+import {useDeviceSectionTabs} from '@/composables/useSectionTabs';
+import {useSubjectAssociations} from '@/composables/useSubjectAssociations';
+import {UI_CONFIG} from '@/config/ui';
+import {
+    buildPromotedBluByMac,
+    promotedForAddr
+} from '@/helpers/bluCardDedup';
 import {DeviceBoard} from '@/helpers/components';
+import {getDeviceName} from '@/helpers/device';
+import {deleteFleetDevice} from '@/helpers/deviceDeleteRpc';
+import {deviceTypeOf} from '@/helpers/deviceTypeFilter';
+import {
+    booleanSection,
+    countByKey,
+    deviceClassSection,
+    enumSection,
+    type KindedLocation,
+    locationIdsFromState,
+    locationSectionsByKind,
+    locationStateByKind,
+    namedSection
+} from '@/helpers/filter-sections';
 import {useDevicesStore} from '@/stores/devices';
+import {useGroupsStore} from '@/stores/groups';
+import {useLocationsStore} from '@/stores/locations';
 import {useRightSideMenuStore} from '@/stores/right-side';
-import {useRpcBuilderStore} from '@/stores/rpc-builder';
-import {type SensorDevice, useSensorsStore} from '@/stores/sensors';
-import {sendRPC} from '@/tools/websocket';
+import type {SensorDevice} from '@/stores/sensors';
+import {useTagsStore} from '@/stores/tags';
+import {useToastStore} from '@/stores/toast';
+import type {WizardKind} from '@/stores/virtualDeviceDraftStore';
 import type {shelly_device_t} from '@/types';
+import type {StatItem} from '@/types/page-template';
+
+interface BTHomeCard extends SensorDevice {
+    shellyID: string;
+    bthomeDeviceId: number;
+    addr: string;
+    // Gateway presence — BLE sensors go unreachable when their gateway drops.
+    online: boolean;
+    // Set when the sensor has a promoted first-class device: the card is keyed
+    // to it (its page + photo) while keeping the BTHome sensor look.
+    promoted?: boolean;
+}
+
+interface ConfirmationModalHandle {
+    storeAction(action: () => void | Promise<void>): void;
+}
 
 interface GridDevice {
     kind: 'device';
@@ -135,84 +226,292 @@ interface GridDevice {
 }
 interface GridSensor {
     kind: 'sensor';
-    data: SensorDevice;
+    data: BTHomeCard;
 }
-type GridItem = GridDevice | GridSensor;
+interface GridSection {
+    kind: 'section';
+    label: string;
+    count: number;
+    color: string;
+}
+type GridItem = GridDevice | GridSensor | GridSection;
 
-const deviceStore = useDevicesStore();
-const rawDevices = computed(() => Object.values(deviceStore.devices));
-const rpcBuilderStore = useRpcBuilderStore();
-const rightSideStore = useRightSideMenuStore();
-const modalRefDelete = ref<InstanceType<typeof ConfirmationModal>>();
-const filterVisible = ref(false);
-const selectMode = ref(false);
-const editMode = ref(false);
-const activeDevice = ref<string | null>(null);
-
-// ── Sort options ─────────────────────────────────────────────
 type SortMode = 'online-az' | 'az' | 'za' | 'offline-first';
 
-// ── LocalStorage persistence ─────────────────────────────────
+const deviceStore = useDevicesStore();
+const groupsStore = useGroupsStore();
+const tagsStore = useTagsStore();
+const locationsStore = useLocationsStore();
+const toast = useToastStore();
+const rightSideStore = useRightSideMenuStore();
+const {tagsByDevice, locationsByDevice} = useSubjectAssociations();
+const sectionTabs = useDeviceSectionTabs();
+
+const route = useRoute();
+const router = useRouter();
+
 const STORAGE_KEY = 'fm-device-filters';
 
 function loadSavedState() {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) return JSON.parse(raw);
-    } catch { /* ignore corrupt data */ }
+    } catch {
+        /* corrupt JSON — ignore */
+    }
     return null;
 }
-
 const saved = loadSavedState();
 
-const nameFilter = ref(saved?.nameFilter ?? '');
-const sortMode = ref<SortMode>(saved?.sortMode ?? 'online-az');
+const nameFilter = ref(String(route.query.search ?? saved?.nameFilter ?? ''));
+const addDeviceWizardVisible = ref(false);
+// The device kind picked in the add-device menu; seeds the wizard's first step.
+const pendingKind = ref<WizardKind>(null);
+const sortMode = ref<SortMode>(
+    (route.query.sort as SortMode) ?? saved?.sortMode ?? 'online-az'
+);
+const statusFilter = ref<string[]>(saved?.statusFilter ?? []);
+const typeFilter = ref<string[]>(saved?.typeFilter ?? []);
+const groupFilter = ref<string[]>(saved?.groupFilter ?? []);
+const tagFilter = ref<string[]>(saved?.tagFilter ?? []);
+const sourceFilter = ref<string[]>(saved?.sourceFilter ?? []);
+const locationFilter = ref<string[]>(saved?.locationFilter ?? []);
 
-const defaultFilters = {
-    type: 'All devices',
-    group: 'All groups',
-    online: null as boolean | null
-};
-const activeFilterPills = reactive({
-    type: saved?.type ?? defaultFilters.type,
-    group: saved?.group ?? defaultFilters.group,
-    online: saved?.online ?? defaultFilters.online
-});
-
-// Save filters to localStorage on any change
 watch(
-    [() => activeFilterPills.type, () => activeFilterPills.group, () => activeFilterPills.online, nameFilter, sortMode],
+    [
+        nameFilter,
+        sortMode,
+        statusFilter,
+        typeFilter,
+        groupFilter,
+        tagFilter,
+        sourceFilter,
+        locationFilter
+    ],
     () => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
-            type: activeFilterPills.type,
-            group: activeFilterPills.group,
-            online: activeFilterPills.online,
-            nameFilter: nameFilter.value,
-            sortMode: sortMode.value
-        }));
+        try {
+            localStorage.setItem(
+                STORAGE_KEY,
+                JSON.stringify({
+                    nameFilter: nameFilter.value,
+                    sortMode: sortMode.value,
+                    statusFilter: statusFilter.value,
+                    typeFilter: typeFilter.value,
+                    groupFilter: groupFilter.value,
+                    tagFilter: tagFilter.value,
+                    sourceFilter: sourceFilter.value,
+                    locationFilter: locationFilter.value
+                })
+            );
+        } catch {
+            /* quota exceeded — non-fatal */
+        }
     },
     {deep: true}
 );
 
-// Use reactive filtering - pass rawDevices (computed) so it updates when devices change
-const {filtered: pillFilteredComputed} = useDeviceFiltering(
-    rawDevices,
-    activeFilterPills
+let _urlTimer: ReturnType<typeof setTimeout> | undefined;
+watch([nameFilter, sortMode], ([search, sort]) => {
+    clearTimeout(_urlTimer);
+    _urlTimer = setTimeout(() => {
+        const query: Record<string, string> = {};
+        if (search) query.search = search;
+        if (sort !== 'online-az') query.sort = sort;
+        router.replace({query});
+    }, UI_CONFIG.urlSyncDebounceMs);
+});
+
+const rawDevices = computed(() => {
+    void deviceStore.devicesVersion;
+    return Object.values(deviceStore.devices);
+});
+const modalRefDelete = ref<ConfirmationModalHandle>();
+const filterVisible = ref(false);
+const editMode = ref(false);
+async function onVirtualDeviceCreated() {
+    await deviceStore.refreshDevicesInBackground('devices');
+}
+
+function onAddDeviceKind(kind: WizardKind) {
+    pendingKind.value = kind;
+    addDeviceWizardVisible.value = true;
+}
+const activeDevice = ref<string | null>(null);
+const activeSensor = ref<string | null>(null);
+// Visual multi-select for BLU sensors — sensor cards are rebuilt on every
+// recompute, so selection lives here by id, not as a flag on the object.
+const selectedSensorIds = ref<Set<string>>(new Set());
+
+const SORT_SECTION: FilterSection = {
+    key: 'sort',
+    label: 'Sort By',
+    icon: 'fa-arrow-down-a-z',
+    singleSelect: true,
+    options: [
+        {key: 'online-az', label: 'Online first (A-Z)'},
+        {key: 'az', label: 'Name (A-Z)'},
+        {key: 'za', label: 'Name (Z-A)'},
+        {key: 'offline-first', label: 'Offline first'}
+    ]
+};
+
+const filterSections = computed<FilterSection[]>(() => {
+    const devs = rawDevices.value;
+    const byType = countByKey(devs, (d) => d.info?.app ?? 'Unknown');
+    const bySource = countByKey(devs, (d) => deviceTypeOf(d.source));
+    const onlineCount = devs.filter((d) => d.online).length;
+
+    const groupItems = Object.values(groupsStore.groups).map((g) => ({
+        id: g.id,
+        name: g.name
+    }));
+    const groupCounts = countByKey(
+        devs.flatMap((d) => d.groupIds ?? []),
+        (id) => id
+    );
+
+    const tagItems = Object.values(tagsStore.tags).map((t) => ({
+        id: t.id,
+        name: t.name
+    }));
+    const tagCounts = countByKey(
+        Object.values(tagsByDevice.value).flat(),
+        (id) => id
+    );
+
+    const locationCounts = countByKey(
+        Object.values(locationsByDevice.value).flat(),
+        (id) => id
+    );
+
+    return [
+        SORT_SECTION,
+        booleanSection(
+            'status',
+            'Status',
+            'fa-wifi',
+            'Online',
+            'Offline',
+            onlineCount,
+            devs.length - onlineCount
+        ),
+        enumSection('type', 'Device Type', 'fa-microchip', byType),
+        deviceClassSection(bySource),
+        namedSection(
+            'group',
+            'Groups',
+            'fa-folder-tree',
+            groupItems,
+            groupCounts
+        ),
+        namedSection('tag', 'Tags', 'fa-tag', tagItems, tagCounts),
+        ...locationSectionsByKind(kindedLocations.value, locationCounts)
+    ];
+});
+
+const kindedLocations = computed<KindedLocation[]>(() =>
+    Object.values(locationsStore.locations).map((l) => ({
+        id: l.id,
+        name: l.name,
+        kind: l.kind
+    }))
 );
-// Maintain backward compatibility with existing code
-const pillFiltered = pillFilteredComputed;
+
+const activeFilterState = computed<Record<string, string[]>>(() => ({
+    sort: [sortMode.value],
+    status: statusFilter.value,
+    type: typeFilter.value,
+    group: groupFilter.value,
+    tag: tagFilter.value,
+    source: sourceFilter.value,
+    ...locationStateByKind(locationFilter.value, kindedLocations.value)
+}));
+
+const activeFilterCount = computed(
+    () =>
+        (sortMode.value !== 'online-az' ? 1 : 0) +
+        statusFilter.value.length +
+        typeFilter.value.length +
+        groupFilter.value.length +
+        tagFilter.value.length +
+        sourceFilter.value.length +
+        locationFilter.value.length
+);
+
+// Visible chips for active tag filters — clicking removes one in place
+// without opening the full filter modal.
+const activeTagChips = computed(() =>
+    tagFilter.value
+        .map((id) => tagsStore.tags[Number(id)])
+        .filter((t): t is NonNullable<typeof t> => !!t)
+);
+
+function removeTagFilter(tagId: number): void {
+    tagFilter.value = tagFilter.value.filter((id) => Number(id) !== tagId);
+}
+
+function applyFilters(next: Record<string, string[]>) {
+    const picked = next.sort?.[0];
+    if (
+        picked === 'online-az' ||
+        picked === 'az' ||
+        picked === 'za' ||
+        picked === 'offline-first'
+    ) {
+        sortMode.value = picked;
+    }
+    statusFilter.value = next.status ?? [];
+    typeFilter.value = next.type ?? [];
+    groupFilter.value = next.group ?? [];
+    tagFilter.value = next.tag ?? [];
+    sourceFilter.value = next.source ?? [];
+    locationFilter.value = Array.from(locationIdsFromState(next), String);
+    filterVisible.value = false;
+}
 
 const showDevices = computed(() => {
-    const filtered = pillFiltered.value.filter((dev) => {
-        if (!nameFilter.value) return true;
-        const needle = nameFilter.value.toLowerCase();
-        return [dev.info?.name, dev.info?.id].some(
-            (txt) =>
-                typeof txt === 'string' && txt.toLowerCase().includes(needle)
-        );
+    const typeSet = new Set(typeFilter.value);
+    const sourceSet = new Set(sourceFilter.value);
+    const groupSet = new Set(groupFilter.value.map(Number));
+    const tagSet = new Set(tagFilter.value.map(Number));
+    const locSet = new Set(locationFilter.value.map(Number));
+    const tagIx = tagsByDevice.value;
+    const locIx = locationsByDevice.value;
+
+    let onlineNeeded: boolean | null = null;
+    if (statusFilter.value[0] === 'true') onlineNeeded = true;
+    else if (statusFilter.value[0] === 'false') onlineNeeded = false;
+
+    const needle = nameFilter.value.toLowerCase();
+
+    const filtered = rawDevices.value.filter((d) => {
+        if (onlineNeeded !== null && d.online !== onlineNeeded) return false;
+        if (typeSet.size > 0 && !typeSet.has(d.info?.app ?? '')) return false;
+        if (sourceSet.size > 0 && !sourceSet.has(deviceTypeOf(d.source))) {
+            return false;
+        }
+        if (groupSet.size > 0) {
+            const gids = d.groupIds ?? [];
+            if (!gids.some((id) => groupSet.has(id))) return false;
+        }
+        if (tagSet.size > 0) {
+            const devTags = tagIx[d.shellyID] ?? [];
+            if (!devTags.some((id) => tagSet.has(id))) return false;
+        }
+        if (locSet.size > 0) {
+            const devLocs = locIx[d.shellyID] ?? [];
+            if (!devLocs.some((id) => locSet.has(id))) return false;
+        }
+        if (needle) {
+            const matches = [d.info?.name, d.info?.id].some(
+                (t) => typeof t === 'string' && t.toLowerCase().includes(needle)
+            );
+            if (!matches) return false;
+        }
+        return true;
     });
 
-    return [...filtered].sort((a, b) => {
+    return filtered.sort((a, b) => {
         const nameA = (a.info?.name || a.shellyID || '').toLowerCase();
         const nameB = (b.info?.name || b.shellyID || '').toLowerCase();
         switch (sortMode.value) {
@@ -232,187 +531,441 @@ const showDevices = computed(() => {
     });
 });
 
-const hasFiltersFromModal = computed(
-    () => rawDevices.value.length !== showDevices.value.length || sortMode.value !== 'online-az'
-);
-const sortLabel = computed(() => {
-    const labels: Record<SortMode, string> = {
-        'online-az': 'Online first',
-        'az': 'Name A-Z',
-        'za': 'Name Z-A',
-        'offline-first': 'Offline first'
+const selectedDevices = computed(() => deviceStore.selectedDevices);
+
+const BTHOME_CARD_KINDS = new Set([
+    'door_window',
+    'button',
+    'remote_controller',
+    'motion_sensor',
+    'climate_sensor',
+    'distance_sensor',
+    'weather_station',
+    'trv',
+    'sensor'
+]);
+
+function buildBTHomeCard(
+    device: shelly_device_t,
+    settingsKey: string
+): BTHomeCard | null {
+    const cfg = (device.settings as Record<string, any>)?.[settingsKey];
+    const componentId =
+        cfg?.id ?? Number.parseInt(settingsKey.split(':')[1] ?? '', 10);
+    if (!Number.isFinite(componentId)) return null;
+    const status =
+        componentId != null
+            ? (device.status?.[`bthomedevice:${componentId}`] as Record<
+                  string,
+                  any
+              > | null)
+            : null;
+    const overview = status?.overview as Record<string, any> | undefined;
+    const addr =
+        (typeof overview?.addr === 'string' && overview.addr) ||
+        (typeof cfg?.addr === 'string' && cfg.addr);
+    if (!addr) return null;
+
+    const kind = BTHOME_CARD_KINDS.has(String(overview?.kind))
+        ? (overview?.kind as SensorDevice['kind'])
+        : 'sensor';
+    const state =
+        overview?.state === 'open' || overview?.state === 'closed'
+            ? overview.state
+            : undefined;
+    const battery =
+        typeof overview?.battery === 'number'
+            ? overview.battery
+            : typeof status?.battery === 'number'
+              ? status.battery
+              : undefined;
+    const name =
+        (typeof overview?.displayName === 'string' && overview.displayName) ||
+        (typeof cfg?.name === 'string' && cfg.name.trim()) ||
+        (typeof cfg?.productName === 'string' && cfg.productName) ||
+        (typeof cfg?.meta?.productName === 'string' && cfg.meta.productName) ||
+        (typeof cfg?.localName === 'string' && cfg.localName.trim()) ||
+        (typeof cfg?.meta?.localName === 'string' && cfg.meta.localName.trim()) ||
+        addr;
+
+    const modelId =
+        (typeof overview?.modelId === 'string' && overview.modelId) ||
+        (typeof cfg?.modelId === 'string' && cfg.modelId) ||
+        (typeof cfg?.meta?.modelId === 'string' && cfg.meta.modelId) ||
+        '';
+    const productName =
+        (typeof overview?.productName === 'string' && overview.productName) ||
+        (typeof cfg?.productName === 'string' && cfg.productName) ||
+        (typeof cfg?.meta?.productName === 'string' && cfg.meta.productName) ||
+        '';
+
+    return {
+        id: addr,
+        shellyID: device.shellyID,
+        bthomeDeviceId: componentId,
+        addr,
+        online: device.online,
+        name,
+        kind,
+        ...(modelId ? {modelId} : {}),
+        ...(productName ? {productName} : {}),
+        ...(state ? {state} : {}),
+        ...(battery != null ? {battery} : {}),
+        ...(typeof overview?.activeChannelLabel === 'string' &&
+        overview.activeChannelLabel.trim()
+            ? {activeChannelLabel: overview.activeChannelLabel}
+            : {}),
+        ...(typeof overview?.summary === 'string' && overview.summary
+            ? {summary: overview.summary}
+            : {}),
+        ...(typeof overview?.lastEventSummary === 'string' &&
+        overview.lastEventSummary
+            ? {lastEvent: overview.lastEventSummary}
+            : typeof overview?.lastEvent === 'string' && overview.lastEvent
+              ? {lastEvent: overview.lastEvent}
+              : {})
     };
-    return labels[sortMode.value];
-});
-const devicesCalculation = computed(() => {
-    const total = rawDevices.value.length;
-    const online = deviceStore.onlineCount;
-    const filtered = showDevices.value.length;
-    return filtered !== total
-        ? `Showing ${filtered}/${total} devices.`
-        : `Total ${total} devices (${online} online)`;
-});
-const selectedDevices = computed(() =>
-    Object.values(deviceStore.devices).filter((d) => d.selected)
+}
+
+// One card per physical BLU sensor, classified once by BLE MAC:
+// - gatewayChildren: not promoted, shown grouped under their gateway.
+// - promotedByShellyID: promoted to a first-class device, keyed to that device
+//   so the grid renders it there (its page, name, online) — never twice.
+interface BTHomeCardSet {
+    gatewayChildren: BTHomeCard[];
+    promotedByShellyID: Map<string, BTHomeCard>;
+}
+
+function collectBTHomeCards(devices: shelly_device_t[]): BTHomeCardSet {
+    const byMac = buildPromotedBluByMac(Object.values(deviceStore.devices));
+    const seen = new Set<string>();
+    const gatewayChildren: BTHomeCard[] = [];
+    const promotedByShellyID = new Map<string, BTHomeCard>();
+    for (const dev of devices) {
+        const settings = dev.settings as Record<string, any>;
+        for (const key of Object.keys(settings)) {
+            if (!key.startsWith('bthomedevice:')) continue;
+            const card = buildBTHomeCard(dev, key);
+            if (!card || seen.has(card.id)) continue;
+            seen.add(card.id);
+            const promoted = promotedForAddr(card.addr, byMac);
+            if (promoted)
+                promotedByShellyID.set(
+                    promoted.shellyID,
+                    enrichPromotedCard(card, promoted)
+                );
+            else gatewayChildren.push(card);
+        }
+    }
+    return {gatewayChildren, promotedByShellyID};
+}
+
+// Keep the sensor's configured name and live state, but route clicks/status to
+// the promoted first-class device.
+function enrichPromotedCard(
+    card: BTHomeCard,
+    promoted: shelly_device_t
+): BTHomeCard {
+    const model = (promoted.info as {model?: string} | undefined)?.model;
+    return {
+        ...card,
+        shellyID: promoted.shellyID,
+        name: card.name || getDeviceName(promoted.info, promoted.shellyID),
+        online: promoted.online,
+        promoted: true,
+        ...(model ? {modelId: model} : {})
+    };
+}
+
+const allCards = computed(() => collectBTHomeCards(rawDevices.value));
+const visibleCards = computed(() => collectBTHomeCards(showDevices.value));
+const allBTHomeCards = computed(() => allCards.value.gatewayChildren);
+const visibleBTHomeCards = computed(() => visibleCards.value.gatewayChildren);
+const promotedSensorCards = computed(() => allCards.value.promotedByShellyID);
+const deviceLikeTotalCount = computed(
+    () => rawDevices.value.length + allBTHomeCards.value.length
+);
+const deviceLikeMatchingCount = computed(
+    () => showDevices.value.length + visibleBTHomeCards.value.length
+);
+const deviceLikeOnlineCount = computed(
+    () =>
+        deviceStore.onlineCount +
+        allBTHomeCards.value.filter((sensor) => sensor.online).length
 );
 
-const sensorsStore = useSensorsStore();
-const {sensors} = storeToRefs(sensorsStore);
+const headerStats = computed<StatItem[]>(() => {
+    const total = deviceLikeTotalCount.value;
+    const filtered = deviceLikeMatchingCount.value;
+    const stats: StatItem[] = [
+        {value: total, label: 'devices', status: 'on'},
+        {value: deviceLikeOnlineCount.value, label: 'online'}
+    ];
+    if (filtered !== total) {
+        stats.push({value: filtered, label: 'matching', highlight: true});
+    }
+    return stats;
+});
 
 const combinedItems = computed<GridItem[]>(() => {
-    const addedSensorIds = new Set<string>();
-    return showDevices.value.flatMap((dev) => {
-        const settings = dev.settings as Record<string, any>;
-        const macs = Object.keys(settings)
-            .filter((key) => key.startsWith('bthomedevice:'))
-            .map((key) => settings[key].addr as string);
-        const out: GridItem[] = [{kind: 'device', data: dev}];
-        sensors.value
-            .filter((s) => macs.includes(s.id) && !addedSensorIds.has(s.id))
-            .forEach((s) => {
-                addedSensorIds.add(s.id);
-                out.push({kind: 'sensor', data: s});
-            });
-        return out;
-    });
+    const result: GridItem[] = [];
+    const devices = showDevices.value;
+    const sensorsByGateway = new Map<string, BTHomeCard[]>();
+    for (const sensor of visibleBTHomeCards.value) {
+        const list = sensorsByGateway.get(sensor.shellyID) ?? [];
+        list.push(sensor);
+        sensorsByGateway.set(sensor.shellyID, list);
+    }
+    const grouped =
+        sortMode.value === 'online-az' || sortMode.value === 'offline-first';
+
+    let onlineCount = 0;
+    let offlineCount = 0;
+    if (grouped) {
+        for (const dev of devices) {
+            if (dev.online) onlineCount++;
+            else offlineCount++;
+        }
+    }
+
+    let lastOnline: boolean | null = null;
+    for (const dev of devices) {
+        if (grouped && dev.online !== lastOnline) {
+            if (dev.online)
+                result.push({
+                    kind: 'section',
+                    label: 'Online',
+                    count: onlineCount,
+                    color: 'var(--color-status-on)'
+                });
+            else
+                result.push({
+                    kind: 'section',
+                    label: 'Offline',
+                    count: offlineCount,
+                    color: 'var(--color-status-off)'
+                });
+            lastOnline = dev.online;
+        }
+        // A promoted BLU sensor renders as its sensor card (keeps the door/
+        // window + battery look), not a plain device card.
+        const promotedCard = promotedSensorCards.value.get(dev.shellyID);
+        if (promotedCard) {
+            result.push({kind: 'sensor', data: promotedCard});
+            continue;
+        }
+        result.push({kind: 'device', data: dev});
+        for (const sensor of sensorsByGateway.get(dev.shellyID) ?? []) {
+            result.push({kind: 'sensor', data: sensor});
+        }
+    }
+    return result;
 });
 
-const {items, page, totalPages, loading, loadItems} =
-    useInfiniteScroll<GridItem>(combinedItems);
-
-const activeFilterPillsEntries = computed(() =>
-    Object.entries(activeFilterPills).filter(([key, value]) =>
-        key === 'type'
-            ? value !== defaultFilters.type
-            : key === 'group'
-              ? value !== defaultFilters.group
-              : key === 'online'
-                ? value !== null
-                : false
-    )
-);
-
-function setActiveFilters(filters: typeof activeFilterPills) {
-    Object.assign(activeFilterPills, filters);
-}
-function clearPill(key: 'type' | 'group' | 'online') {
-    if (key === 'type') activeFilterPills.type = defaultFilters.type;
-    if (key === 'group') activeFilterPills.group = defaultFilters.group;
-    if (key === 'online') activeFilterPills.online = defaultFilters.online;
-}
-function clearAllFilters() {
-    Object.assign(activeFilterPills, defaultFilters);
-    nameFilter.value = '';
+function deviceItemKey(item: GridItem): string | number {
+    if (item.kind === 'section') return `section:${item.label}`;
+    if (item.kind === 'device') return item.data.shellyID;
+    return `sensor:${item.data.id}`;
 }
 
 function toggleEditMode() {
-    selectedDevices.value.forEach((d) => (d.selected = false));
-    deviceStore.selectedDevices.length = 0;
+    for (const d of selectedDevices.value) d.selected = false;
+    selectedSensorIds.value.clear();
     editMode.value = !editMode.value;
 }
 
-function deleteDevice(shellyID: string, id?: number) {
+const allDevicesSelected = computed(() => {
+    const devs = showDevices.value;
+    return devs.length > 0 && devs.every((d) => d.selected);
+});
+
+function selectAllDevices() {
+    const shouldSelect = !allDevicesSelected.value;
+    for (const d of showDevices.value) d.selected = shouldSelect;
+}
+
+function clearSelection() {
+    for (const d of selectedDevices.value) d.selected = false;
+}
+
+function cancelSelection() {
+    clearSelection();
+    selectedSensorIds.value.clear();
+    editMode.value = false;
+}
+
+function deleteSelectedDevices() {
+    const toDelete = selectedDevices.value.slice();
+    if (!toDelete.length) return;
     modalRefDelete.value?.storeAction(async () => {
-        await sendRPC(
-            'FLEET_MANAGER',
-            'device.Delete',
-            id != null ? {shellyID, id} : {shellyID}
-        );
-
-        deviceStore.deviceDeleted(shellyID);
-
-        if (activeDevice.value === shellyID) {
-            rightSideStore.clearActiveComponent();
-            activeDevice.value = null;
+        for (const dev of toDelete) {
+            try {
+                await deleteFleetDevice(dev);
+                deviceStore.deviceDeleted(dev.shellyID);
+            } catch {
+                toast.error(`Failed to delete ${dev.shellyID}`);
+            }
         }
-        // Filtering now happens automatically via reactive computed
+        rightSideStore.clearInspector();
+        activeDevice.value = null;
     });
 }
 
 function clicked(device: shelly_device_t) {
-    if (!selectMode.value) {
-        rightSideStore.setActiveComponent(DeviceBoard, {
-            shellyID: device.shellyID
-        });
-        activeDevice.value = device.shellyID;
-    } else {
+    if (editMode.value) {
         device.selected = !device.selected;
+    } else {
+        rightSideStore.showInspector(DeviceBoard, {shellyID: device.shellyID});
+        activeDevice.value = device.shellyID;
     }
 }
 
-function sendRpcClosed() {
-    selectedDevices.value.forEach((d) => (d.selected = false));
-    deviceStore.selectedDevices.length = 0;
-    deviceStore.rpcResponses = {};
-    activeDevice.value = '';
-    selectMode.value = false;
-}
-
-function setDevices(devs: shelly_device_t[]) {
-    // This function is called by DeviceFilter to set custom filters
-    // Since pillFiltered is now a computed, we handle this by updating the filter criteria
-    // The modal should update activeFilterPills instead of passing devices directly
-    console.log(
-        '[setDevices] Called with',
-        devs.length,
-        'devices - filters should be used instead'
+function sensorClicked(sensor: BTHomeCard) {
+    if (editMode.value) {
+        if (selectedSensorIds.value.has(sensor.id)) {
+            selectedSensorIds.value.delete(sensor.id);
+        } else {
+            selectedSensorIds.value.add(sensor.id);
+        }
+        return;
+    }
+    // A promoted sensor is a first-class device — open its device page.
+    if (sensor.promoted) {
+        rightSideStore.showInspector(DeviceBoard, {shellyID: sensor.shellyID});
+        activeDevice.value = sensor.shellyID;
+        return;
+    }
+    activeSensor.value = activeSensor.value === sensor.id ? null : sensor.id;
+    rightSideStore.showInspector(
+        BTHomeDeviceInspector as unknown as DefineComponent,
+        {
+            shellyID: sensor.shellyID,
+            bthomeDeviceId: sensor.bthomeDeviceId,
+            addr: sensor.addr,
+            displayName: sensor.name
+        }
     );
 }
-
-watch(selectMode, (v) => {
-    if (v) rawDevices.value.forEach((d) => (d.selected = false));
-    activeDevice.value = '';
-});
 
 onMounted(() => {
-    // Devices are already loaded on WS connect (websocket.ts onConnect).
-    // Only fetch if the store is still empty (e.g., direct URL navigation
-    // before WS connect completed).
-    if (!deviceStore.initialLoadComplete) {
-        deviceStore.fetchDevices();
+    deviceStore.refreshDevicesInBackground('devices');
+});
+
+onUnmounted(() => rightSideStore.clearInspector());
+
+watch(
+    () => rightSideStore.inspectorComponent,
+    (comp) => {
+        if (!comp) activeDevice.value = null;
     }
-});
-
-onUnmounted(() => rightSideStore.clearActiveComponent());
-
-watch(() => rightSideStore.component, (comp) => {
-    if (!comp) activeDevice.value = null;
-});
-
-const activeSensor = ref<string | null>(null);
-function sensorClicked(sensor: SensorDevice) {
-    activeSensor.value = activeSensor.value === sensor.id ? null : sensor.id;
-    rightSideStore.setActiveComponent(
-        SensorBoard as unknown as DefineComponent,
-        {sensorId: sensor.id, sensorName: sensor.name}
-    );
-}
+);
 </script>
 
 <style scoped>
-.filter-pill {
-    background-color: var(--color-badge-bg);
-    color: var(--color-badge-text);
+.dv-active-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background: var(--color-surface-2);
+    border-bottom: 1px solid var(--color-border-subtle);
+    font-size: var(--type-caption);
 }
-
-.filter-pill-remove:hover {
-    background-color: var(--color-surface-4);
+.dv-active-chips__label {
+    color: var(--color-text-tertiary);
+    font-weight: 600;
 }
-
-.sort-pill {
-    background-color: var(--color-primary-subtle);
-    color: var(--color-primary-text);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 40%, transparent);
-}
-
-.filter-pill-clear {
-    background-color: var(--color-danger-subtle);
-    color: var(--color-danger-text);
+.dv-active-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    background: transparent;
+    border: none;
+    padding: 0;
     cursor: pointer;
 }
-.filter-pill-clear:hover {
-    background-color: var(--color-danger);
+.dv-active-chip__x {
+    opacity: 0.5;
+    font-size: 0.7em;
+    color: var(--color-text-tertiary);
+}
+.dv-active-chip:hover .dv-active-chip__x {
+    opacity: 1;
+}
+.dv-active-chips__clear {
+    background: transparent;
+    border: 1px solid var(--color-border-medium);
+    color: var(--color-text-secondary);
+    padding: var(--space-0-5) var(--space-2);
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    font-size: var(--type-caption);
+}
+.dv-active-chips__clear:hover {
     color: var(--color-text-primary);
+    border-color: var(--color-border-strong);
 }
 
+.dv__btn--active {
+    box-shadow: 0 0 0 2px var(--color-primary);
+}
+
+.dv__bulk-wrap {
+    position: fixed;
+    bottom: var(--gap-md);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+}
+.dv__bulk {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-xs);
+    padding: var(--gap-xs) var(--gap-sm);
+    border-radius: var(--btn-radius);
+    background: var(--color-surface-3);
+    border: 1px solid var(--color-border-medium);
+    box-shadow: var(--shadow-lg);
+}
+.dv__bulk--hint {
+    color: var(--color-text-tertiary);
+}
+.dv__bulk--hint i { opacity: 0.5; }
+.dv__bulk-hint {
+    font-size: var(--type-body);
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+}
+.dv__bulk-count {
+    font-size: var(--type-body);
+    font-weight: 700;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+}
+.dv__bulk-sep {
+    width: 1px;
+    height: var(--gap-sm);
+    background: var(--color-border-medium);
+    flex-shrink: 0;
+}
+
+.bulk-slide-enter-active, .bulk-slide-leave-active {
+    transition: transform 0.25s ease, opacity 0.25s ease;
+}
+.bulk-slide-enter-from, .bulk-slide-leave-to {
+    transform: translateX(-50%) translateY(var(--gap-md));
+    opacity: 0;
+}
+
+.grid-section {
+    padding: 0;
+    margin-top: calc(-1 * var(--space-1));
+    margin-bottom: calc(-1 * var(--space-1-5));
+}
+:deep(.dc-section) {
+    margin-top: 0;
+    margin-bottom: 0;
+}
 </style>

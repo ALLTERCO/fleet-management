@@ -1,6 +1,5 @@
 <template>
-    <!-- Breadcrumbs hidden — re-enable by removing v-if="false" -->
-    <nav v-if="false" aria-label="Breadcrumb" class="breadcrumbs flex items-center gap-1 text-xs font-mono px-1 py-1.5">
+    <nav aria-label="Breadcrumb" class="breadcrumbs flex items-center gap-1 text-xs font-mono px-1 py-1.5">
         <template v-for="(crumb, i) in crumbs" :key="crumb.path">
             <span v-if="i > 0" class="breadcrumb-sep" aria-hidden="true">/</span>
             <RouterLink
@@ -15,7 +14,7 @@
 
 <script setup lang="ts">
 import {computed} from 'vue';
-import {RouterLink, useRoute} from 'vue-router/auto';
+import {RouterLink, useRoute} from 'vue-router';
 
 const route = useRoute();
 
@@ -35,8 +34,14 @@ const crumbs = computed(() => {
     let path = '';
     for (const seg of segments) {
         path += `/${seg}`;
-        const override = props.overrides[path] ?? props.overrides[seg];
-        // null override = skip this segment entirely
+        // `in` preserves explicit null (means: hide this segment).
+        // `??` would treat null as nullish and fall through.
+        const override =
+            path in props.overrides
+                ? props.overrides[path]
+                : seg in props.overrides
+                    ? props.overrides[seg]
+                    : undefined;
         if (override === null) continue;
         const label = override ?? formatSegment(seg);
         result.push({label, path});

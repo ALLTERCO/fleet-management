@@ -1,7 +1,8 @@
+import log4js from 'log4js';
+import {tuning} from '../../config/tuning';
 import RpcError from '../../rpc/RpcError';
 import RpcTransport from './RpcTransport';
 
-import log4js from 'log4js';
 const logger = log4js.getLogger();
 
 export default class HttpTransport extends RpcTransport {
@@ -20,7 +21,10 @@ export default class HttpTransport extends RpcTransport {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: params
+                body: params,
+                // Close the socket when the RPC sweep gives up; without
+                // this a silent device holds it until the OS timeout.
+                signal: AbortSignal.timeout(tuning.rpc.rpcTimeoutMs)
             });
             if (!res.ok) {
                 throw new Error(`StatusCode:${res.status}`);
@@ -35,7 +39,22 @@ export default class HttpTransport extends RpcTransport {
                 error.message
             );
             this._eventEmitter.emit('err', error);
-            this.parseMessage(RpcError.DeviceNotFound().getErrorObject());
+            // Tag with the request id so parseMessage rejects the waiting
+            // promise now, instead of hanging until the stale-sweep.
+            const reqId = requestId(params);
+            this.parseMessage(
+                JSON.stringify(RpcError.DeviceNotFound().getRpcError(reqId))
+            );
         }
+    }
+}
+
+// Read the JSON-RPC id back out of an outgoing request frame.
+function requestId(serialized: string): number | undefined {
+    try {
+        const id = JSON.parse(serialized)?.id;
+        return typeof id === 'number' ? id : undefined;
+    } catch {
+        return undefined;
     }
 }

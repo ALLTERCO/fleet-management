@@ -1,63 +1,113 @@
 <template>
     <BasicLayout>
         <a href="#main-content" class="skip-to-content">Skip to content</a>
-        <div class="flex flex-row">
+        <OfflineBanner />
+        <div class="layout-shell">
             <SideMenu />
-            <div id="main-content" class="pt-2 px-2 flex-grow max-h-screen overflow-y-auto overflow-x-hidden" tabindex="-1">
-                <slot />
+            <div class="layout-frame">
+                <main
+                    id="main-content"
+                    class="layout-main"
+                    :style="!smaller ? { marginLeft: sidebarWidth + 'px' } : undefined"
+                    data-scroll-owner="page"
+                    tabindex="-1"
+                >
+                    <slot />
+                </main>
+                <RightSideMenu class="layout-inspector" />
             </div>
-            <RightSideMenu
-                v-if="!rightSideStore.detached"
-                class="w-[500px] max-w-full mt-5 h-[calc(100vh-1.25rem)] z-20"
-            />
         </div>
-        <!-- Modal background -->
-        <div v-if="active" class="layout-overlay fixed top-0 left-0 w-screen h-screen z-10" @click="bgClicked" />
-        <!-- Expanded right side -->
-        <Modal
-            v-if="rightSideStore.detached"
-            :visible="!!rightSideStore.component"
-            @close="rightSideStore.clearActiveComponent()"
-        >
-            <template #title> Control device </template>
-            <template #default>
-                <component :is="rightSideStore.component" v-bind="rightSideStore.props" />
-            </template>
-        </Modal>
+        <!-- Mobile overlay -->
+        <div
+            v-if="showMobileInspectorOverlay"
+            class="layout-overlay fixed top-0 left-0 z-[var(--z-overlay)] h-screen w-screen lg:hidden"
+            @click="bgClicked"
+        />
+        <!-- Desktop dimming overlay (click outside to close inspector) -->
+        <div
+            v-if="rightSideStore.hasSelection && !smaller"
+            class="layout-dim"
+            :style="{ left: sidebarWidth + 'px' }"
+            @click="rightSideStore.clearInspector()"
+        />
+        <!-- Shared host for teleported dropdowns, popovers, and future inspector overlays. -->
+        <div id="fleet-floating-root" class="floating-ui-root" />
+        <!-- Keyboard shortcuts help overlay -->
+        <KeyboardShortcutsModal :visible="shortcutsVisible" @close="shortcutsVisible = false" />
     </BasicLayout>
 </template>
 
 <script setup lang="ts">
-import {computed, onMounted, onUnmounted} from 'vue';
-import Modal from '@/components/modals/Modal.vue';
-import RightSideMenu from '@/components/RightSideMenu.vue';
-import SideMenu from '@/components/SideMenu.vue';
+import {breakpointsTailwind, useBreakpoints} from '@vueuse/core';
+import {computed, onMounted, onUnmounted, ref, watch} from 'vue';
+import {useRoute} from 'vue-router';
+import KeyboardShortcutsModal from '@/components/core/KeyboardShortcutsModal.vue';
+import OfflineBanner from '@/components/core/OfflineBanner.vue';
+import RightSideMenu from '@/components/core/RightSideMenu.vue';
+import SideMenu from '@/components/core/SideMenu.vue';
+import {dispatchShortcut, registerShortcut} from '@/config/shortcuts';
+import {useSidebarState} from '@/helpers/ui';
 import BasicLayout from '@/layouts/BasicLayout.vue';
 import {useRightSideMenuStore} from '@/stores/right-side';
 
-const rightSideStore = useRightSideMenuStore();
+const breakpoints = useBreakpoints(breakpointsTailwind);
+const smaller = breakpoints.smaller('lg');
+const {sidebarWidth} = useSidebarState();
 
-const active = computed(() => {
-    return rightSideStore.mobileVisible;
+const rightSideStore = useRightSideMenuStore();
+const shortcutsVisible = ref(false);
+
+// An open inspector renders .layout-dim as a full-bleed overlay with
+// pointer-events: auto. Leaving the inspector mounted after route
+// navigation (the store doesn't auto-clear) shadows the new page's
+// scroll viewport and blocks every wheel/click. Clearing on path
+// change keeps the dim un-rendered (its v-if guard goes false).
+const route = useRoute();
+// Watch the path, not fullPath: a query-only change (e.g. the devices search
+// syncing ?search=, or a search hit opening the inspector then clearing the
+// query) stays on the same page and must not wipe the inspector.
+watch(
+    () => route.path,
+    () => rightSideStore.clearInspector()
+);
+
+const showMobileInspectorOverlay = computed(() => {
+    return rightSideStore.isInspectorDrawerOpen;
 });
 
-function handleEscape(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-        bgClicked();
-    }
-}
+const unregisterFns: Array<() => void> = [];
 
 onMounted(() => {
-    document.addEventListener('keydown', handleEscape);
+    document.addEventListener('keydown', dispatchShortcut);
+    unregisterFns.push(
+        registerShortcut({
+            id: 'shortcuts.help',
+            description: 'Show keyboard shortcuts',
+            section: 'Global',
+            handler: (e) => {
+                e.preventDefault();
+                shortcutsVisible.value = !shortcutsVisible.value;
+            }
+        }),
+        registerShortcut({
+            id: 'inspector.close',
+            description: 'Close inspector',
+            section: 'Global',
+            allowInInput: true,
+            when: () => rightSideStore.hasSelection,
+            handler: () => rightSideStore.clearInspector()
+        })
+    );
 });
 
 onUnmounted(() => {
-    document.removeEventListener('keydown', handleEscape);
+    document.removeEventListener('keydown', dispatchShortcut);
+    for (const u of unregisterFns) u();
 });
 
 function bgClicked() {
-    if (!active.value) return;
-    rightSideStore.clearActiveComponent();
+    if (!showMobileInspectorOverlay.value) return;
+    rightSideStore.clearInspector();
 }
 </script>
 
@@ -82,7 +132,79 @@ function bgClicked() {
 .skip-to-content:focus {
     left: 0;
 }
+.layout-shell {
+    display: flex;
+    min-height: 100vh;
+    max-height: 100vh;
+    overflow: hidden;
+}
+.layout-frame {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+.layout-main {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: var(--space-2) var(--space-3) 5.5rem;
+}
+/* Short screens (Wall Display, phone landscape): reduce padding, hide scrollbar */
+@media (max-height: 799px) {
+    .layout-main {
+        padding-bottom: var(--space-2);
+        scrollbar-width: none;
+    }
+    .layout-main::-webkit-scrollbar {
+        display: none;
+    }
+}
+.layout-inspector {
+    flex-shrink: 0;
+}
 .layout-overlay {
     background-color: var(--color-overlay);
+}
+.layout-dim {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    /* left is set dynamically via :style to respect sidebar width */
+    z-index: var(--z-dropdown);
+    background-color: color-mix(in srgb, var(--color-surface-0) 40%, transparent);
+    pointer-events: auto;
+    transition: left var(--duration-normal) ease;
+}
+.floating-ui-root {
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--z-modal) + 10);
+    pointer-events: none;
+    isolation: isolate;
+}
+@media (min-width: 1024px) {
+    .layout-main {
+        padding-bottom: var(--space-2);
+        transition: margin-left var(--duration-normal) ease;
+    }
+    .layout-inspector {
+        position: relative;
+        z-index: calc(var(--z-dropdown) + 1);
+        width: var(--inspector-desktop-width);
+        min-width: var(--inspector-desktop-min-width);
+        max-width: var(--inspector-desktop-max-width);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .layout-main,
+    .layout-dim {
+        transition-duration: 0ms;
+    }
 }
 </style>

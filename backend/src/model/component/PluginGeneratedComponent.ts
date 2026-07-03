@@ -21,7 +21,6 @@ export default class PluginGeneratedComponent extends Component {
         this.pluginId = pluginId ?? name.toLowerCase();
         // appends methods
         for (const [name, exec] of methods.entries()) {
-            console.warn('Nill problem! ', name);
             this.addMethod(name.toLowerCase(), exec);
         }
     }
@@ -45,14 +44,14 @@ export default class PluginGeneratedComponent extends Component {
         return this.pluginId;
     }
 
-    override async getConfig(params?: any) {
+    override async getConfig(_params?: any) {
         if (this.methods.has('getconfig')) {
             return this.call(CommandSender.INTERNAL, 'getconfig');
         }
         return {};
     }
 
-    override async getStatus(params?: any) {
+    override async getStatus(_params?: any) {
         if (this.methods.has('getstatus')) {
             return this.call(CommandSender.INTERNAL, 'getstatus');
         }

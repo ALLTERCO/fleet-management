@@ -1,6 +1,6 @@
 <template>
     <div v-if="vertical"
-        class="widget-card flex flex-row items-center gap-3 rounded-lg shadow-lg p-3 relative text-sm min-h-[76px] justify-start hover:cursor-pointer"
+        class="widget-card flex flex-row items-center gap-3 rounded-lg shadow-none p-3 relative text-sm min-h-[76px] justify-start hover:cursor-pointer"
         :class="{ 'widget-card--selected': selected }" @click="onClick">
         <div v-if="vc">
             <span class="widget-badge text-xs rounded-br-lg py-[2px] top-0 left-0 px-[6px] absolute h-5 z-[var(--z-raised)]">
@@ -12,7 +12,7 @@
         </div>
         <figure class="widget-avatar w-11 h-11 aspect-square border rounded-full flex-shrink-0" :class="{ 'mt-3': vc }">
             <slot name="image">
-                <img class="rounded-full w-11 h-11" src="/shelly_logo_black.jpg" alt="Shelly" />
+                <img class="rounded-full w-11 h-11" src="/images/branding/shelly_logo_black.jpg" alt="Shelly" />
             </slot>
         </figure>
         <div class="flex-grow text-left overflow-hidden min-w-0">
@@ -45,9 +45,9 @@
         <div
             class="widget-image-bg w-full h-[50%] absolute top-0 left-0 border-none [&>img]:mx-auto [&>img]:h-full [&>img]:brightness-75">
             <slot name="image">
-                <img class="rounded-full" src="/shelly_logo_black.jpg" alt="Shelly" />
+                <img class="rounded-full" src="/images/branding/shelly_logo_black.jpg" alt="Shelly" />
             </slot>
-            <div class="absolute text-center bottom-1 w-full drop-shadow-2xl" style="text-shadow: 0 1px 8px rgba(0,0,0,0.7)">
+            <div class="ew-name-shadow absolute text-center bottom-1 w-full">
                 <slot name="name">
                     <span>Widget Name</span>
                 </slot>
@@ -70,6 +70,9 @@
 
 <style>
 /* Card styles: global .widget-card system (design-tokens.css §16) — not scoped */
+.ew-name-shadow {
+    text-shadow: 0 1px 6px var(--color-overlay-heavy);
+}
 </style>
 
 <script setup lang="ts">

@@ -9,8 +9,15 @@ const TYPE_ENTITY_MAP: Record<string, string[]> = {
     input: ['input'],
     temperature: ['temperature'],
     'energy meter': ['em', 'em1'],
-    'blu sensor': ['bthomesensor', 'bthomedevice'],
-    'virtual component': ['boolean', 'number', 'enum', 'text', 'group', 'button']
+    'blu sensor': ['bthomesensor', 'bthomedevice', 'bthomecontrol'],
+    'virtual component': [
+        'boolean',
+        'number',
+        'enum',
+        'text',
+        'group',
+        'button'
+    ]
 };
 
 export function useEntityFiltering(

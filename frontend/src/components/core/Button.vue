@@ -1,3 +1,21 @@
+<!--
+  Button atom. Pick `type` by intent, never by color preference. Full spec:
+  docs/internal/design/DESIGN_SYSTEM.md -> "Button intent matrix".
+
+  type:  blue (default)  primary CTA, one per view
+         blue-hollow     control buttons (Select/Done/Cancel/Clear) — text, no icon
+         green           confirm / create
+         red             destructive
+         orange          warning / beta
+         orange-hollow   secondary beta / warning — outline, not a solid shout
+         white           high-emphasis on dark, rare
+
+  Icon rules:
+   - never pair a redundant icon with its own text (a "Delete" label + trash = twice)
+   - icon-only allowed only for unambiguous glyphs, with title + aria-label
+   - canonical glyphs: create fa-plus, edit fa-pen, destructive fa-trash
+   - primary create CTA = bare green fa-plus with title/aria-label (iOS pattern)
+-->
 <template>
     <button
         class="core-btn text-center shadow select-none bg-gradient-to-l hover:cursor-pointer hover:transition-all hover:duration-100"
@@ -23,7 +41,14 @@ const {canWrite} = usePermissions();
 
 const props = withDefaults(
     defineProps<{
-        type?: 'green' | 'red' | 'blue' | 'blue-hollow' | 'white' | 'orange';
+        type?:
+            | 'green'
+            | 'red'
+            | 'blue'
+            | 'blue-hollow'
+            | 'white'
+            | 'orange'
+            | 'orange-hollow';
         size?: 'xs' | 'sm' | 'md' | 'lg';
         narrow?: boolean;
         loading?: boolean;
@@ -62,20 +87,18 @@ const classColor = computed(() => {
     const classes = [
         props.type !== 'white' ? `btn-${props.type}` : 'btn-white'
     ];
-    if (props.size == 'xs') {
+    if (props.size === 'xs') {
         classes.push('core-btn--xs py-1 px-3 min-h-[var(--touch-target-min)]');
-    } else if (props.size == 'sm') {
+    } else if (props.size === 'sm') {
         classes.push('py-2 px-3 min-h-[var(--touch-target-min)]');
-    } else if (props.size == 'md') {
+    } else if (props.size === 'md') {
         classes.push('py-2.5', 'px-4');
-    } else if (props.size == 'lg') {
+    } else if (props.size === 'lg') {
         classes.push('core-btn--lg py-3 px-6');
     }
 
     if (props.narrow) {
         classes.push('min-w-[var(--touch-target-min)]');
-    } else {
-        classes.push('min-w-[var(--btn-min-width)]');
     }
 
     if (props.loading) {
@@ -83,12 +106,7 @@ const classColor = computed(() => {
     }
 
     if (isDisabled.value) {
-        classes.push(
-            '!bg-none !border-none',
-            '!bg-opacity-25',
-            '!shadow-none',
-            'hover:!cursor-not-allowed'
-        );
+        classes.push('opacity-40', '!shadow-none', 'hover:!cursor-not-allowed');
     }
 
     return classes;
@@ -97,17 +115,29 @@ const classColor = computed(() => {
 
 <style scoped>
 .core-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--icon-btn-gap);
     color: var(--color-text-primary);
     border-radius: var(--btn-radius);
     font-weight: var(--btn-font-weight);
     font-size: var(--btn-font-size);
-    transition: transform var(--duration-fast) var(--ease-default),
-                background-color var(--duration-fast) var(--ease-default);
+    transition:
+        transform var(--duration-quick) var(--ease-spring),
+        box-shadow var(--duration-quick) var(--ease-out),
+        background-color var(--duration-fast) var(--ease-default);
 }
-.core-btn--xs { font-size: var(--btn-font-size-xs); }
-.core-btn--lg { font-size: var(--btn-font-size-lg); }
+.core-btn--xs {
+    font-size: var(--btn-font-size-xs);
+}
+.core-btn--lg {
+    font-size: var(--btn-font-size-lg);
+}
+/* Press bounces via ease-spring on the transform transition — shrinks
+   on mousedown, the spring easing gives a tiny overshoot on release. */
 .core-btn:active:not(:disabled) {
-    transform: scale(0.97);
+    transform: scale(var(--press-scale));
 }
 .btn-white {
     background-color: var(--color-text-primary);
@@ -131,11 +161,24 @@ const classColor = computed(() => {
     background: linear-gradient(to left, var(--color-primary-active), var(--color-primary-hover));
 }
 .btn-red {
-    background: linear-gradient(to left, var(--color-danger-subtle), var(--color-danger));
+    background: linear-gradient(
+        to left,
+        var(--color-danger-subtle),
+        var(--color-danger)
+    );
     box-shadow: var(--shadow-danger);
 }
+/* Danger buttons glow stronger on hover — destructive actions deserve a
+   visible "are you sure" cue before the click. */
 .btn-red:hover {
-    background: linear-gradient(to left, var(--color-danger-subtle), var(--color-danger-hover));
+    background: linear-gradient(
+        to left,
+        var(--color-danger-subtle),
+        var(--color-danger-hover)
+    );
+    box-shadow:
+        0 0 0 2px rgba(var(--color-danger-rgb), 0.25),
+        0 8px 24px -6px rgba(var(--color-danger-rgb), 0.55);
 }
 .btn-green {
     background: linear-gradient(to left, var(--color-success-subtle), var(--color-success));
@@ -150,5 +193,13 @@ const classColor = computed(() => {
 }
 .btn-orange:hover {
     background: linear-gradient(to left, var(--color-orange-subtle), var(--color-orange-hover));
+}
+.btn-orange-hollow {
+    border: 2px solid var(--color-orange);
+    background: transparent;
+    color: var(--color-orange-text);
+}
+.btn-orange-hollow:hover {
+    background-color: var(--color-orange-subtle);
 }
 </style>

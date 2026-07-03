@@ -1,381 +1,340 @@
 <template>
-    <div class="relative overflow-hidden h-screen">
-        <h1 class="text-lg font-semibold mb-1">Dashboard</h1>
-        <TabPageSelector :tabs="tabs" />
+    <div class="relative flex min-h-0 flex-1 flex-col">
+        <DashPillBar
+            :dashboards="pillDashboards"
+            :active-id="activeDashId"
+            :loading="dashboardsStore.loading"
+            @select="onPillSelect"
+            @open-palette="openPalette"
+        />
 
-        <div class="absolute top-0 right-4">
-            <Button narrow size="sm" @click="modal.open = true">
-                <span>
-                    <i class="fas fa-pencil" />
-                </span>
-            </Button>
-        </div>
-        <Modal :visible="modal.open" @close="modal.open = false">
-            <template #title>Edit dashboards</template>
-            <template #default>
-                <div class="flex flex-col gap-4 p-2">
-                    <!-- Dashboard Name -->
-                    <Input
-                        id="dash-name"
-                        v-model="modal.name"
-                        label="Dashboard Name"
-                        type="text"
-                        placeholder="My Dashboard"
-                    />
+        <!-- Child route content (e.g. /dash/:id) -->
+        <RouterView v-slot="{ Component }">
+            <component :is="Component" :key="$route.path" />
+        </RouterView>
 
-                    <!-- Dashboard Type -->
-                    <div>
-                        <label class="block text-sm dash-label mb-2"
-                            >Dashboard Type</label
-                        >
-                        <div class="flex gap-2">
-                            <button
-                                class="flex-1 px-4 py-3 rounded-lg border transition-colors text-left"
-                                :class="
-                                    modal.type === 'classic'
-                                        ? 'dash-type-active'
-                                        : 'dash-type-inactive'
-                                "
-                                @click="modal.type = 'classic'"
-                            >
-                                <div class="font-semibold">
-                                    <i class="fas fa-th-large mr-2"></i>Classic
-                                </div>
-                                <div class="text-xs dash-label mt-1">
-                                    Widgets for quick access
-                                </div>
-                            </button>
-                            <button
-                                class="flex-1 px-4 py-3 rounded-lg border transition-colors text-left"
-                                :class="
-                                    modal.type === 'analytics'
-                                        ? 'dash-type-active'
-                                        : 'dash-type-inactive'
-                                "
-                                @click="modal.type = 'analytics'"
-                            >
-                                <div class="font-semibold">
-                                    <i class="fas fa-chart-line mr-2"></i
-                                    >Analytics
-                                </div>
-                                <div class="text-xs dash-label mt-1">
-                                    Metrics, charts &amp; reports for a group
-                                </div>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Group Selector (for analytics) -->
-                    <div v-if="modal.type === 'analytics'">
-                        <label class="block text-sm dash-label mb-2"
-                            >Select Device Group</label
-                        >
-                        <select
-                            v-model="modal.groupId"
-                            class="w-full dash-select px-3 py-2 rounded focus:outline-none"
-                        >
-                            <option :value="null" disabled>
-                                Choose a group...
-                            </option>
-                            <option
-                                v-for="group in groupsList"
-                                :key="group.id"
-                                :value="group.id"
-                            >
-                                {{ group.name }} ({{
-                                    group.devices.length
-                                }}
-                                devices)
-                            </option>
-                        </select>
-                        <p
-                            v-if="groupsList.length === 0"
-                            class="text-sm dash-warning-text mt-2"
-                        >
-                            <i class="fas fa-exclamation-triangle mr-1"></i>
-                            No groups available. Create a device group first.
-                        </p>
-                    </div>
-
-                    <!-- Add Button -->
-                    <div class="flex justify-end">
-                        <Button @click="createDash" :disabled="!canCreate">
-                            <i class="fas fa-plus mr-2"></i>Create Dashboard
-                        </Button>
-                    </div>
-                </div>
-            </template>
-            <template #footer>
-                <div class="flex flex-col gap-2">
-                    <h2 class="heading-section"
-                        >Current dashboards</h2
-                    >
-                    <div
-                        v-for="dashboard of sortedDashboards"
-                        :key="'dash-id-' + dashboard.id"
-                        class="flex flex-row gap-2 items-center"
-                    >
-                        <!-- Dashboard type icon -->
-                        <span
-                            class="w-8 text-center"
-                            :title="
-                                (dashboard as any).dashboard_type ===
-                                'analytics'
-                                    ? 'Analytics Dashboard'
-                                    : 'Classic Dashboard'
-                            "
-                        >
-                            <i
-                                :class="
-                                    (dashboard as any).dashboard_type ===
-                                    'analytics'
-                                        ? 'fas fa-chart-line dash-icon-analytics'
-                                        : 'fas fa-th-large dash-icon-classic'
-                                "
-                            />
-                        </span>
-                        <div class="flex-grow">
-                            <Input
-                                :id="'dash-' + dashboard.id"
-                                v-model="modal.renames[dashboard.id]"
-                                :placeholder="dashboard.name"
-                                :disabled="dashboard.id == 1"
-                            />
-                        </div>
-                        <Button
-                            narrow
-                            type="blue"
-                            :disabled="dashboard.id == 1"
-                            @click="
-                                renameDash(
-                                    Number(dashboard.id),
-                                    modal.renames[dashboard.id],
-                                )
-                            "
-                        >
-                            <i class="fas fa-save" />
-                        </Button>
-                        <Button
-                            narrow
-                            type="red"
-                            :disabled="dashboard.id == 1"
-                            @click="deleteDash(dashboard)"
-                        >
-                            <i class="fas fa-trash" />
-                        </Button>
-                    </div>
-                </div>
-            </template>
-        </Modal>
+        <DashboardPalette
+            :visible="paletteOpen"
+            :initial-mode="paletteInitialMode"
+            :rows="paletteRows"
+            :active-id="activeDashId || null"
+            :recent-ids="recentIds"
+            :can-create="canCreateDashboard"
+            :creating="creating"
+            :can-rename="canUpdateDashboard"
+            :can-delete="canDeleteDashboard"
+            @close="closePalette"
+            @open="onPaletteOpenDashboard"
+            @create="onPaletteCreate"
+            @rename="onPaletteRename"
+            @delete="onPaletteDelete"
+            @move="onPaletteMove"
+        />
     </div>
 </template>
 
 <script setup lang="ts">
-import {computed, reactive, ref, watch} from 'vue';
-import {useRouter} from 'vue-router/auto';
-import Button from '@/components/core/Button.vue';
-import Input from '@/components/core/Input.vue';
-import TabPageSelector from '@/components/core/TabPageSelector.vue';
-import Modal from '@/components/modals/Modal.vue';
-import useRegistry from '@/composables/useRegistry';
-import useUiRegistry from '@/composables/useUiRegistry';
-import {useGroupsStore} from '@/stores/groups';
+import {computed, onMounted, provide, ref, watch} from 'vue';
+import {useRoute, useRouter} from 'vue-router';
+import DashboardPalette from '@/components/dashboard/DashboardPalette.vue';
+import type {CreateSubmitPayload} from '@/components/dashboard/DashboardPaletteCreate.vue';
+import type {DashPillItem} from '@/components/dashboard/DashPillBar.vue';
+import DashPillBar from '@/components/dashboard/DashPillBar.vue';
+import {useDashboardOrder} from '@/composables/useDashboardOrder';
+import {useKeyboardShortcuts} from '@/composables/useKeyboardShortcuts';
+import {useRecentDashboards} from '@/composables/useRecentDashboards';
+import {DASHBOARDS_PATH} from '@/constants';
+import {
+    OPEN_DASHBOARD_PALETTE_KEY,
+    type OpenDashboardPaletteOptions
+} from '@/helpers/dashboardKeys';
+import {isDefaultDashboard} from '@/helpers/dashboardOrder';
+import type {PaletteRow} from '@/helpers/dashboardPalette';
+import {toastRpcError} from '@/helpers/domainErrors';
+import {useAnalyticsStore} from '@/stores/analytics';
+import {useAuthStore} from '@/stores/auth';
+import {type Dashboard, useDashboardsStore} from '@/stores/dashboards';
 import {useToastStore} from '@/stores/toast';
-import {getRegistry, sendRPC} from '@/tools/websocket';
-import type {dashboard_t} from '@/types';
+import {DOMAIN_TYPES} from '@/types/dashboard';
 
-const {data, upload, refresh} = useUiRegistry<dashboard_t>('dashboards');
+const route = useRoute();
+const router = useRouter();
+const dashboardsStore = useDashboardsStore();
+const analyticsStore = useAnalyticsStore();
+const authStore = useAuthStore();
 const toast = useToastStore();
-const groupsStore = useGroupsStore();
-
-const sortedDashboards = computed<dashboard_t[]>(() => {
-    if (!data.value) return [];
-    return Object.values(data.value);
+const recents = useRecentDashboards({
+    scopeKey: () => authStore.currentUserId
 });
 
-const groupsList = computed(() => {
-    return Object.values(groupsStore.groups);
+const ROUTED_TYPES = ['analytics', ...DOMAIN_TYPES] as const;
+
+const paletteOpen = ref(false);
+const paletteInitialMode = ref<'list' | 'create'>('list');
+// One symbol identifies the in-flight create. closePalette nulls it to
+// orphan side effects; the finally block only resets if the symbol still
+// matches its own token, so a stale RPC never unlocks a later create.
+const creatingToken = ref<symbol | null>(null);
+const creating = computed(() => creatingToken.value !== null);
+
+const order = useDashboardOrder();
+
+const sortedDashboards = computed<Dashboard[]>(() => {
+    const all = Object.values(dashboardsStore.dashboards);
+    const saved = order.ids.value;
+    if (saved.length === 0) {
+        return all.sort((a, b) => Number(a.id) - Number(b.id));
+    }
+    const byId = new Map(all.map((d) => [String(d.id), d]));
+    const seen = new Set<string>();
+    const ordered: Dashboard[] = [];
+    for (const id of saved) {
+        const dash = byId.get(String(id));
+        if (dash) {
+            ordered.push(dash);
+            seen.add(String(id));
+        }
+    }
+    for (const dash of all) {
+        if (!seen.has(String(dash.id))) ordered.push(dash);
+    }
+    return ordered;
 });
 
-const modal = reactive({
-    open: false,
-    name: '',
-    type: 'classic' as 'classic' | 'analytics',
-    groupId: null as number | null,
-    renames: {} as Record<number | string, string>
+const pillDashboards = computed<DashPillItem[]>(() =>
+    sortedDashboards.value.map((dash) => {
+        const {id, name, color} = dash as Dashboard & {color?: string};
+        return {id, name, color};
+    })
+);
+
+const paletteRows = computed<PaletteRow[]>(() =>
+    sortedDashboards.value.map((dash) => ({
+        id: dash.id,
+        name: dash.name,
+        type: (dash.dashboardType ?? 'classic') as PaletteRow['type'],
+        widgetCount: dash.items?.length ?? 0,
+        color: (dash as Dashboard & {color?: string}).color,
+        isPinned: Boolean(dash.isPinned),
+        isDefault: isDefaultDashboard(dash.id) || Boolean(dash.isDefault)
+    }))
+);
+
+const activeDashId = computed<number | string>(() => {
+    const prefixes = ROUTED_TYPES.map((t) => `${t}\\/`).join('|');
+    const re = new RegExp(`\\/dash\\/(?:${prefixes})?(\\d+)`);
+    const match = route.path.match(re);
+    return match?.[1] ? Number(match[1]) : '';
 });
 
-const canCreate = computed(() => {
-    if (modal.name.length < 1) return false;
-    if (modal.type === 'analytics' && !modal.groupId) return false;
-    return true;
+const recentIds = computed(() => recents.ids.value);
+
+const canCreateDashboard = computed(() =>
+    authStore.hasComponentPermission('dashboards', 'create')
+);
+
+function canUpdateDashboard(id: number | string): boolean {
+    const dashId = Number(id);
+    return (
+        Number.isFinite(dashId) &&
+        authStore.canPerformComponent('dashboards', 'update', dashId)
+    );
+}
+
+function canDeleteDashboard(id: number | string): boolean {
+    const dashId = Number(id);
+    return (
+        Number.isFinite(dashId) &&
+        authStore.canPerformComponent('dashboards', 'delete', dashId)
+    );
+}
+
+// 'classic' is the only non-routed type we recognise; anything else with
+// an unknown type is a server contract drift — fall back to classic but log
+// so we know to add the route mapping.
+function getDashboardRoute(dashboard: {
+    id: number | string;
+    dashboardType?: string;
+}): string {
+    const type = dashboard.dashboardType;
+    if (type && (ROUTED_TYPES as readonly string[]).includes(type)) {
+        return `/dash/${type}/${dashboard.id}`;
+    }
+    if (type && type !== 'classic') {
+        console.warn(
+            `[dashboards] unknown dashboardType "${type}" — routing to classic`
+        );
+    }
+    return `/dash/${dashboard.id}`;
+}
+
+function onPillSelect(id: number | string): void {
+    const dash = sortedDashboards.value.find(
+        (d) => String(d.id) === String(id)
+    );
+    if (!dash) return;
+    router.push(getDashboardRoute(dash));
+}
+
+function openPalette(options: OpenDashboardPaletteOptions = {}): void {
+    paletteInitialMode.value = options.mode ?? 'list';
+    paletteOpen.value = true;
+}
+
+function closePalette(): void {
+    paletteOpen.value = false;
+    paletteInitialMode.value = 'list';
+    creatingToken.value = null;
+}
+
+provide(OPEN_DASHBOARD_PALETTE_KEY, openPalette);
+
+function onPaletteOpenDashboard(id: number | string): void {
+    const dash = sortedDashboards.value.find(
+        (d) => String(d.id) === String(id)
+    );
+    if (!dash) return;
+    recents.touch(id);
+    router.push(getDashboardRoute(dash));
+}
+
+async function onPaletteCreate(payload: CreateSubmitPayload): Promise<void> {
+    if (creating.value) return;
+    const token = Symbol('create');
+    creatingToken.value = token;
+    try {
+        const created = await performCreate(payload);
+        // Either the user closed the palette (token nulled) or the store
+        // returned null after toasting its own error — leave the form open
+        // for retry.
+        if (creatingToken.value !== token || !created) return;
+        router.push(getDashboardRoute(created));
+        closePalette();
+    } catch (err) {
+        toastRpcError(toast, err, 'Failed to create dashboard');
+    } finally {
+        if (creatingToken.value === token) creatingToken.value = null;
+    }
+}
+
+type CreatedRouteable = {id: number | string; dashboardType?: string};
+
+async function performCreate(
+    payload: CreateSubmitPayload
+): Promise<CreatedRouteable | null> {
+    if (payload.type === 'classic') {
+        const created = await dashboardsStore.create({
+            name: payload.name,
+            dashboardType: 'classic'
+        });
+        return created ? {id: created.id, dashboardType: 'classic'} : null;
+    }
+    const result = await analyticsStore.createDomainDashboard(
+        payload.name,
+        payload.type
+    );
+    // Optimistic insert; the store reconciles via Dashboard.Updated WS event.
+    dashboardsStore.upsert({
+        id: result.id,
+        organizationId: result.organizationId,
+        name: result.name,
+        dashboardType: result.dashboardType,
+        scope: result.scope ?? {},
+        isDefault: result.isDefault ?? false,
+        isPinned: result.isPinned ?? false,
+        displayOrder: result.displayOrder ?? null,
+        settings: result.settings ?? ({} as unknown as Dashboard['settings']),
+        createdAt: result.createdAt ?? '',
+        updatedAt: result.updatedAt ?? null,
+        items: []
+    });
+    return {id: result.id, dashboardType: result.dashboardType};
+}
+
+async function onPaletteRename(
+    id: number | string,
+    nextName: string
+): Promise<void> {
+    const dashId = Number(id);
+    if (!Number.isFinite(dashId)) return;
+    const trimmed = nextName.trim();
+    if (trimmed.length === 0) return;
+    const current = dashboardsStore.dashboards[dashId]?.name ?? '';
+    if (trimmed === current) return;
+    try {
+        await dashboardsStore.update(dashId, {name: trimmed});
+    } catch (err) {
+        toastRpcError(toast, err, 'Failed to rename dashboard');
+    }
+}
+
+async function onPaletteDelete(id: number | string): Promise<void> {
+    const dashId = Number(id);
+    if (!Number.isFinite(dashId)) return;
+    const nameBeforeRemove = dashboardsStore.dashboards[dashId]?.name;
+    const ok = await dashboardsStore.remove(dashId);
+    if (!ok) return;
+    recents.forget(id);
+    order.purge([id]);
+    routeAfterDelete();
+    if (nameBeforeRemove) toast.success(`Deleted ${nameBeforeRemove}`);
+}
+
+function routeAfterDelete(): void {
+    const remaining = sortedDashboards.value;
+    if (remaining.length > 0) {
+        router.push({name: '/dash/[id]', params: {id: remaining[0].id}});
+    } else {
+        router.push({path: DASHBOARDS_PATH});
+    }
+}
+
+function onPaletteMove(id: number | string, direction: -1 | 1): void {
+    order.move(
+        sortedDashboards.value.map((d) => d.id),
+        id,
+        direction
+    );
+}
+
+// ⌘K / Ctrl+K opens the palette anywhere in the dashboards path. Editable
+// targets are allowed — the palette has its own focus management.
+useKeyboardShortcuts({
+    bindings: [
+        {
+            key: 'k',
+            ctrlOrMeta: true,
+            allowInEditable: true,
+            handler: () => openPalette()
+        }
+    ]
 });
 
-const tabs = ref<[string, string, string][]>([]);
-
+// Track recents on every dashboard route the user actually lands on.
 watch(
-    data,
-    (newData) => {
-        if (newData) {
-            for (const id in newData) {
-                modal.renames[id] = (newData as any)[id]?.name ?? '';
-            }
-        }
-        if (!newData || Object.values(newData).length === 0) {
-            tabs.value = [];
-        } else {
-            tabs.value = Object.values(newData)
-                .sort((a, b) => Number(a.id) - Number(b.id))
-                .map((dash) => {
-                    const {id, name, dashboard_type} = dash as any;
-                    // Route analytics dashboards to the analytics page
-                    const route =
-                        dashboard_type === 'analytics'
-                            ? `/dash/analytics/${id}`
-                            : `/dash/${id}`;
-                    const icon =
-                        dashboard_type === 'analytics'
-                            ? 'fas fa-chart-line'
-                            : 'fas fa-th-large';
-                    return [name, route, icon] as [string, string, string];
-                });
-        }
+    activeDashId,
+    (id) => {
+        if (typeof id === 'number' && Number.isFinite(id)) recents.touch(id);
     },
     {immediate: true}
 );
 
-const router = useRouter();
-
-async function createDash() {
-    if (!canCreate.value) {
-        return;
+onMounted(async () => {
+    if (Object.keys(dashboardsStore.dashboards).length === 0) {
+        await dashboardsStore.fetchAll();
     }
 
-    if (!data.value) {
-        return;
-    }
-
-    const newDash: any = {
-        name: modal.name,
-        items: [],
-        dashboardType: modal.type
-    };
-
-    // Add groupId for analytics dashboards
-    if (modal.type === 'analytics' && modal.groupId) {
-        newDash.groupId = modal.groupId;
-    }
-
-    try {
-        const previousIds = new Set(
-            Object.values(data.value).map((d) => d.id)
-        );
-        await getRegistry('ui').setItem('dashboards', newDash);
-        await getDashboards();
-        // Find the newly created dashboard (ID that didn't exist before)
-        const all = Object.values(data.value!);
-        const created = all.find((d) => !previousIds.has(d.id));
-        const nextId = created?.id ?? all[all.length - 1]?.id;
-
-        if (!nextId) {
-            toast.error('Dashboard created but could not determine ID');
+    // Auto-redirect /dash → default → first when no specific dashboard chosen.
+    if (route.path === DASHBOARDS_PATH) {
+        const defaultId = await dashboardsStore.getDefault();
+        if (defaultId && dashboardsStore.dashboards[defaultId]) {
+            router.replace({name: '/dash/[id]', params: {id: defaultId}});
             return;
         }
-
-        // Navigate to appropriate route based on type
-        if (modal.type === 'analytics') {
-            router.replace({
-                path: `/dash/analytics/${nextId}`
-            });
-        } else {
-            router.replace({
-                name: '/dash/[id]',
-                params: {id: nextId}
-            });
+        const first = sortedDashboards.value[0];
+        if (first) {
+            router.replace({name: '/dash/[id]', params: {id: first.id}});
         }
-    } catch (error) {
-        toast.error('Cannot create ' + modal.name);
     }
-
-    modal.open = false;
-    modal.name = '';
-    modal.type = 'classic';
-    modal.groupId = null;
-}
-
-async function deleteDash(dash: dashboard_t) {
-    if (!data.value) return;
-    try {
-        const result = await getRegistry('ui').removeItem('dashboards', {
-            id: dash.id
-        });
-        await getDashboards();
-        router.push({
-            name: '/dash/[id]',
-            params: {
-                id: 1
-            }
-        });
-        delete data.value[dash.id];
-        toast.success('Successfully deleted ' + dash.name);
-    } catch (error) {
-        toast.error('Cannot delete ' + dash.name);
-    }
-}
-
-async function renameDash(id: number, newName: string) {
-    if (!id || !newName) {
-        toast.error('Invalid name');
-        return;
-    }
-    await getRegistry('ui').setItem('dashboards', {
-        id,
-        name: newName,
-        item: []
-    });
-    await getDashboards();
-}
-
-async function getDashboards() {
-    return await getRegistry('ui')
-        .getItem('dashboards')
-        .then((response: any) => {
-            data.value = response;
-        })
-        .catch((error) => {
-            console.error('Error fetching dashboards:', error);
-            return {};
-        });
-}
+});
 </script>
-
-<style scoped>
-/* -- Labels -- */
-.dash-label { color: var(--color-text-tertiary); }
-.dash-warning-text { color: var(--color-warning-text); }
-
-/* -- Dashboard type selector -- */
-.dash-type-active {
-    border-color: var(--color-border-focus);
-    background-color: color-mix(in srgb, var(--color-border-focus) 20%, transparent);
-    color: var(--color-text-primary);
-}
-.dash-type-inactive {
-    border-color: var(--color-border-strong);
-    background-color: var(--color-surface-3);
-    color: var(--color-text-secondary);
-}
-.dash-type-inactive:hover { border-color: var(--color-text-disabled); }
-
-/* -- Group selector -- */
-.dash-select {
-    background-color: var(--color-surface-3);
-    color: var(--color-text-primary);
-    border: 1px solid var(--color-border-strong);
-}
-.dash-select:focus { border-color: var(--color-border-focus); }
-
-/* -- Dashboard list icons -- */
-.dash-icon-analytics { color: var(--color-success-text); }
-.dash-icon-classic { color: var(--color-primary-text); }
-</style>

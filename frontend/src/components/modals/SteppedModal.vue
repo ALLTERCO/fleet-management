@@ -1,10 +1,16 @@
 <template>
-    <Modal :visible="visible" :wide="wide" :compact="compact" @close="close">
+    <Modal
+        :visible="visible"
+        :wide="wide"
+        :huge="huge"
+        :compact="compact"
+        @close="close"
+    >
         <template #title>
             <span>
                 <slot name="title" />
             </span>
-            <div class="text-base font-semibold mt-4">
+            <div class="sm-steps">
                 <Steps :current="stage" :steps="maxSteps" @click="(selected) => fastforward(selected)">
                     <template #stepTitle="{ id }">
                         <slot name="stepTitle" :stage="id" />
@@ -16,13 +22,28 @@
             <slot :stage />
         </template>
         <template #footer>
-            <div class="flex flex-row-reverse gap-4">
-                <Button v-if="stage !== maxSteps" type="blue" @click="next"
-                    >Next <i class="fas fa-chevron-right"
-                /></Button>
-                <Button v-else type="blue" :requires-write="requiresWrite" @click="save">Save <i class="fas fa-save" /></Button>
+            <!-- Custom footer for flows needing conditional steps or extra
+                 actions; falls back to the standard Back/Next/Save. -->
+            <slot
+                v-if="$slots.footer"
+                name="footer"
+                :stage="stage"
+                :max-steps="maxSteps"
+                :next="next"
+                :prev="prev"
+                :save="save"
+                :close="close"
+            />
+            <div v-else class="sm-footer">
                 <Button v-if="stage > 1" type="blue-hollow" @click="prev">
-                    <i class="fas fa-chevron-left" /> Back
+                    Back
+                </Button>
+                <div class="sm-footer-spacer" />
+                <Button v-if="stage !== maxSteps" type="blue" @click="next">
+                    Next
+                </Button>
+                <Button v-else type="green" :requires-write="requiresWrite" @click="save">
+                    Save
                 </Button>
             </div>
         </template>
@@ -30,19 +51,19 @@
 </template>
 
 <script setup lang="ts">
+import {watch} from 'vue';
 import Button from '@/components/core/Button.vue';
 import Steps from '@/components/core/Steps.vue';
 import Modal from '@/components/modals/Modal.vue';
-import {watch} from 'vue';
 
 const stage = defineModel<number>('stage', {required: true});
 const visible = defineModel<boolean>('visible', {required: true});
 
 defineProps<{
     maxSteps: number;
-    /** If true, the Save button will be disabled for users without write permission */
     requiresWrite?: boolean;
     wide?: boolean;
+    huge?: boolean;
     compact?: boolean;
 }>();
 
@@ -56,7 +77,7 @@ const emit = defineEmits<{
 
 function fastforward(to: number) {
     stage.value = to;
-    emit('next');
+    emit('onchange', to);
 }
 
 function next() {
@@ -80,7 +101,21 @@ function close() {
     emit('close');
 }
 
-watch(stage, (stage) => {
-    emit('onchange', stage);
+watch(stage, (s) => {
+    emit('onchange', s);
 });
 </script>
+
+<style scoped>
+.sm-steps {
+    font-size: var(--type-body);
+    font-weight: 700;
+    margin-top: var(--gap-md);
+}
+.sm-footer {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-xs);
+}
+.sm-footer-spacer { flex: 1; }
+</style>

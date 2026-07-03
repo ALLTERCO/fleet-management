@@ -1,0 +1,1414 @@
+/*
+ * card-controls.css
+ * Interactive control styles for entity cards — Phase 17 design library port.
+ * Covers sliders, track bars, power buttons, color wheels, CCT, dimmer rings,
+ * filament visuals, shutter/cover controls, and bulb mode pills.
+ */
+
+/* ── 1. Unified Slider ── */
+
+.slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 8px;
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border-default);
+    touch-action: pan-y;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: none;
+    cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: none;
+    cursor: pointer;
+    border: none;
+}
+
+.slider--lg {
+    height: 12px;
+    border-radius: 6px;
+}
+
+.slider--lg::-webkit-slider-thumb {
+    width: 24px;
+    height: 24px;
+}
+
+.slider--lg::-moz-range-thumb {
+    width: 24px;
+    height: 24px;
+}
+
+.slider--sleek {
+    height: 6px;
+    border: none;
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: none;
+}
+
+.ec[data-type="dimmer"] .slider {
+    background: linear-gradient(
+        90deg,
+        var(--a-dimmer) var(--fill, 0%),
+        var(--color-surface-1) var(--fill, 0%)
+    );
+}
+
+.ec[data-type="cover"] .slider {
+    background: linear-gradient(
+        90deg,
+        var(--a-cover) var(--fill, 0%),
+        var(--color-surface-1) var(--fill, 0%)
+    );
+}
+
+.ec[data-type="audio"] .slider {
+    background: linear-gradient(
+        90deg,
+        var(--a-audio) var(--fill, 0%),
+        var(--color-surface-1) var(--fill, 0%)
+    );
+}
+
+.ec[data-type="rgbw"] .slider,
+.ec[data-type="bulb"] .slider {
+    background: linear-gradient(
+        90deg,
+        #ffd08a var(--fill, 0%),
+        var(--color-surface-1) var(--fill, 0%)
+    );
+}
+
+/* ── 2. Track Bar System (dimmer tracks) ── */
+
+.ec-dtrack--lg {
+    height: 20px;
+    border-radius: var(--radius-md);
+}
+
+.ec-dtrack--lg::before {
+    inset: -14px 0;
+}
+
+.ec-dtrack--lg .ec-dtrack-fill::after {
+    width: 24px;
+    height: 24px;
+    box-shadow: none;
+}
+
+.ec[data-type="dimmer"] .ec-dtrack--lg .ec-dtrack-fill {
+    box-shadow: none;
+}
+
+.ec[data-type="rgbw"] .ec-dtrack--lg .ec-dtrack-fill,
+.ec[data-type="bulb"] .ec-dtrack--lg .ec-dtrack-fill {
+    box-shadow: none;
+}
+
+.ec[data-type="audio"] .ec-dtrack--lg .ec-dtrack-fill {
+    box-shadow: none;
+}
+
+.ec[data-type="cover"] .ec-dtrack--lg .ec-dtrack-fill {
+    box-shadow: none;
+}
+
+.ec-dtrack--sleek {
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.05);
+    border: none;
+    box-shadow: none;
+}
+
+.ec-dtrack--sleek .ec-dtrack-fill {
+    border-radius: 3px;
+}
+
+.ec-dtrack--sleek .ec-dtrack-fill::after {
+    width: 22px;
+    height: 22px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: none;
+}
+
+.ec[data-type="dimmer"] .ec-dtrack--sleek .ec-dtrack-fill {
+    box-shadow: none;
+}
+
+.ec[data-type="rgbw"] .ec-dtrack--sleek .ec-dtrack-fill,
+.ec[data-type="bulb"] .ec-dtrack--sleek .ec-dtrack-fill {
+    box-shadow: none;
+}
+
+.ec[data-type="audio"] .ec-dtrack--sleek .ec-dtrack-fill {
+    box-shadow: none;
+}
+
+.ec[data-type="cover"] .ec-dtrack--sleek .ec-dtrack-fill {
+    box-shadow: none;
+}
+
+/* ── 3. Vertical Brightness Fill ── */
+
+.ec-vfill {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    border-radius: var(--radius-lg);
+    pointer-events: none;
+}
+
+.ec-vfill-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    transition: height var(--duration-moderate) ease-out;
+}
+
+.ec[data-type="dimmer"] .ec-vfill-bar {
+    background: linear-gradient(
+        0deg,
+        rgba(242, 199, 68, 0.16),
+        rgba(242, 199, 68, 0.03)
+    );
+}
+
+.ec[data-type="rgbw"] .ec-vfill-bar {
+    background: linear-gradient(
+        0deg,
+        rgba(242, 199, 68, 0.16),
+        rgba(242, 199, 68, 0.03)
+    );
+}
+
+.ec[data-type="bulb"] .ec-vfill-bar {
+    background: linear-gradient(
+        0deg,
+        rgba(242, 199, 68, 0.16),
+        rgba(242, 199, 68, 0.03)
+    );
+}
+
+.ec[data-type="audio"] .ec-vfill-bar {
+    background: linear-gradient(
+        0deg,
+        rgba(192, 132, 252, 0.16),
+        rgba(192, 132, 252, 0.03)
+    );
+}
+
+.ec:has(.ec-vfill) .ec-name,
+.ec:has(.ec-vfill) .ec-status,
+.ec:has(.ec-vfill) .ec-val,
+.ec:has(.ec-vfill) .ec-btn-zone {
+    z-index: 1;
+    position: relative;
+}
+
+/* ── 4. Power Button ── */
+
+.ec-pwrbtn {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: 1px solid var(--color-border-medium);
+    background: var(--color-surface-1);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+        background var(--duration-normal) ease,
+        border-color var(--duration-normal) ease,
+        transform var(--duration-fast);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.ec-pwrbtn svg {
+    width: 22px;
+    height: 22px;
+    stroke-width: 2.5;
+    stroke: var(--color-frost);
+    fill: none;
+    transition: stroke var(--duration-normal) ease;
+}
+
+.ec-pwrbtn:hover {
+    background: var(--color-surface-4);
+    border-color: var(--color-border-medium);
+}
+
+.ec-pwrbtn:active {
+    transform: scale(0.9);
+    filter: brightness(0.9);
+    transition:
+        transform 0.06s ease-out,
+        filter 0.06s ease-out;
+}
+
+.ec-pwrbtn.on {
+    background: rgba(26, 217, 178, 0.12);
+    border-color: rgba(26, 217, 178, 0.25);
+    box-shadow: none;
+}
+
+.ec-pwrbtn.on svg {
+    stroke: var(--color-status-on);
+    filter: none;
+}
+
+.ec-pwrbtn.off {
+    background: rgba(232, 64, 87, 0.08);
+    border-color: rgba(232, 64, 87, 0.15);
+}
+
+.ec-pwrbtn.off svg {
+    stroke: var(--color-status-off);
+}
+
+.ec-pwrbtn[disabled] {
+    opacity: 0.3;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.ec-pwrbtn--corner {
+    position: absolute;
+    bottom: 42px;
+    right: var(--space-4);
+    z-index: 2;
+}
+
+/* ── 5. Color Wheel (RGBW) ── */
+
+.ec-cw-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px 0 6px;
+    flex-shrink: 0;
+    gap: 2px;
+}
+
+.ec-cw-wrap--hero {
+    padding: 16px 0 8px;
+    flex: 1;
+    min-height: 0;
+}
+
+.ec-cw-hex {
+    font-size: var(--type-body);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-tertiary);
+    letter-spacing: 0.04em;
+}
+
+.ec-cw {
+    position: relative;
+    width: 130px;
+    height: 130px;
+    cursor: crosshair;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.ec-cw--lg {
+    width: 150px;
+    height: 150px;
+}
+
+.ec-cw--hero {
+    width: 170px;
+    height: 170px;
+}
+
+.ec-cw-ring {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: conic-gradient(#f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+    -webkit-mask: radial-gradient(circle, transparent 52%, #000 54%);
+    mask: radial-gradient(circle, transparent 52%, #000 54%);
+}
+
+.ec-cw-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    border: 2px solid var(--color-border-default);
+    box-shadow: none;
+    transition: background var(--duration-fast);
+}
+
+.ec-cw-center--lg {
+    width: 70px;
+    height: 70px;
+}
+
+.ec-cw-center--hero {
+    width: 80px;
+    height: 80px;
+}
+
+.ec-cw-pct {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: baseline;
+    gap: 1px;
+    z-index: 1;
+    pointer-events: none;
+}
+
+.ec-cw-pct-v {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    line-height: 1;
+    color: #fff;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.ec-cw-pct-u {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+    color: rgba(255, 255, 255, 0.7);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.ec-cw-ptr {
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: #fff;
+    border: 3px solid rgba(255, 255, 255, 0.95);
+    box-shadow: none;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 2;
+}
+
+.ec-cw-rgb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    margin-top: 6px;
+}
+
+.ec-cw-ch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.ec-cw-ch label {
+    font-size: var(--type-body);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: none;
+    color: var(--color-text-tertiary);
+}
+
+.ec-cw-ch input[type="number"] {
+    width: 38px;
+    min-height: 36px;
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    text-align: center;
+    outline: none;
+    -moz-appearance: textfield;
+}
+
+.ec-cw-ch input[type="number"]::-webkit-inner-spin-button,
+.ec-cw-ch input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* ── 6. Color Sliders ── */
+
+.ec-clr-sliders {
+    padding: 0 var(--space-5);
+    flex-shrink: 0;
+}
+
+.ec-hero .ec-clr-sliders {
+    padding: 0 var(--space-6);
+    position: relative;
+}
+
+.ec-hero .ec-clr-sliders::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 10%;
+    right: 10%;
+    height: 0.5px;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(184, 197, 212, 0.2),
+        transparent
+    );
+}
+
+.ec-cover-controls .ec-clr-sliders::before {
+    display: none;
+}
+
+.ec-clr-srow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 5px;
+}
+
+.ec-clr-lbl {
+    font-size: var(--type-body);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: none;
+    color: var(--color-text-tertiary);
+    flex-shrink: 0;
+    min-width: 48px;
+}
+
+.ec-clr-track {
+    flex: 1;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    padding: 4px 0;
+}
+
+.ec-clr-track .sld-r {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 10px;
+    border-radius: 5px;
+    outline: none;
+    cursor: pointer;
+    background: var(--color-surface-1);
+    touch-action: none;
+    transition:
+        filter 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+.ec-clr-track .sld-r:hover {
+    filter: brightness(1.1);
+}
+
+.ec-clr-track .sld-r:focus-visible {
+    box-shadow: 0 0 0 3px rgba(68, 149, 209, 0.3);
+}
+
+.ec-clr-track .sld-bri {
+    background: linear-gradient(90deg, #000, #fff);
+}
+
+.ec-clr-track .sld-white {
+    background: linear-gradient(90deg, transparent, #fff);
+}
+
+.ec-clr-track .sld-cct {
+    background: linear-gradient(90deg, #ff9329, #fff4e0, #b4d4ff);
+}
+
+.ec-clr-track .sld-cover {
+    background: linear-gradient(
+        90deg,
+        rgba(30, 40, 60, 0.8),
+        rgba(255, 235, 170, 0.35)
+    );
+}
+
+.ec-clr-track .sld-tilt {
+    background: linear-gradient(
+        90deg,
+        rgba(148, 163, 184, 0.25),
+        rgba(148, 163, 184, 0.5)
+    );
+    border-radius: 5px;
+    position: relative;
+}
+
+.ec-clr-srow:has(.sld-tilt) {
+    display: none;
+}
+
+.ec.has-tilt .ec-clr-srow:has(.sld-tilt) {
+    display: flex;
+}
+
+.ec-clr-srow--inline {
+    margin-bottom: 3px;
+}
+
+.ec-clr-track .sld-r::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--color-border-default);
+    box-shadow: none;
+    cursor: pointer;
+    transition: transform 0.15s var(--ease-out-expo);
+}
+
+.ec-clr-track .sld-r::-moz-range-thumb {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: #fff;
+    border: 2px solid var(--color-border-default);
+    box-shadow: none;
+    cursor: pointer;
+    transition: transform 0.15s var(--ease-out-expo);
+}
+
+.ec-clr-track .sld-r:hover::-webkit-slider-thumb {
+    transform: scale(1.15);
+    box-shadow: none;
+}
+
+.ec-clr-track .sld-r:hover::-moz-range-thumb {
+    transform: scale(1.15);
+    box-shadow: none;
+}
+
+.ec-clr-track .sld-r:active::-webkit-slider-thumb {
+    transform: scale(1.25);
+    box-shadow: none;
+}
+
+.ec-clr-track .sld-r:active::-moz-range-thumb {
+    transform: scale(1.25);
+    box-shadow: none;
+}
+
+.ec-clr-sv {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    color: var(--color-text-tertiary);
+    flex-shrink: 0;
+    min-width: 28px;
+    text-align: right;
+}
+
+.ec-clr-presets {
+    display: flex;
+    gap: 5px;
+    justify-content: center;
+    padding: 0 var(--space-5);
+    margin-bottom: 4px;
+    flex-shrink: 0;
+}
+
+.ec-hero .ec-clr-presets {
+    padding: 4px var(--space-6) 8px;
+    gap: 8px;
+    margin-bottom: 0;
+}
+
+.ec-clr-dot {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2.5px solid transparent;
+    transition:
+        border-color var(--duration-fast),
+        transform var(--duration-fast);
+    box-shadow: none;
+    flex-shrink: 0;
+}
+
+.ec-hero .ec-clr-dot {
+    width: 40px;
+    height: 40px;
+}
+
+.ec-hero .ec-cct-pre {
+    min-height: 40px;
+    padding: 8px 14px;
+}
+
+.ec-clr-dot:hover {
+    border-color: rgba(255, 255, 255, 0.4);
+    transform: scale(1.08);
+}
+
+.ec-clr-dot:active {
+    transform: scale(0.92);
+}
+
+.ec-clr-dot.active {
+    border-color: #fff;
+    box-shadow: none;
+}
+
+/* ── 7. CCT Mode ── */
+
+.ec-cct-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: var(--radius-2xl);
+    background: linear-gradient(
+        90deg,
+        rgba(255, 147, 41, 0.12),
+        rgba(180, 212, 255, 0.12)
+    );
+    border: 1px solid rgba(255, 208, 138, 0.15);
+    font-size: var(--type-body);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-primary);
+    letter-spacing: 0.02em;
+}
+
+.ec-cct-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    min-height: 0;
+    justify-content: center;
+    padding: 0;
+}
+
+.ec-cct-arc {
+    width: 100%;
+    max-width: 380px;
+    aspect-ratio: 380 / 180;
+}
+
+.ec-cct-arc svg {
+    width: 100%;
+    height: 100%;
+}
+
+.arc-picker {
+    cursor: grab;
+    transition: none;
+}
+
+.ec-cct-val {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    margin-top: -64px;
+    position: relative;
+    z-index: 1;
+}
+
+.ec-cct-temp {
+    font-size: var(--type-heading);
+    font-weight: var(--font-bold);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: var(--tracking-tight);
+    line-height: 1;
+    background: linear-gradient(180deg, #ffd08a 20%, rgba(255, 208, 138, 0.5));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.ec-cct-temp span {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+    letter-spacing: normal;
+}
+
+.ec-cct-label {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+}
+
+.ec-cct-pct {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    line-height: 1;
+    background: linear-gradient(
+        180deg,
+        rgba(var(--rgb-c), 1) 20%,
+        rgba(var(--rgb-c), 0.5)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: none;
+}
+
+.ec-cct-pct span {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+    -webkit-text-fill-color: rgba(var(--rgb-c), 0.4);
+}
+
+.ec-cct-temp-sm {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: 700;
+    color: var(--color-text-tertiary);
+    letter-spacing: -0.3px;
+}
+
+.ec-cct-presets {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    padding: 4px var(--space-5) 12px;
+    flex-shrink: 0;
+}
+
+.ec-hero .ec-cct-presets {
+    padding: 4px var(--space-6) 8px;
+    gap: 8px;
+}
+
+.ec-cct-pre {
+    padding: 10px 14px;
+    border-radius: 22px;
+    border: 1px solid var(--color-border-default);
+    background: var(--color-surface-1);
+    font-size: var(--type-body);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition:
+        background var(--duration-fast),
+        border-color var(--duration-fast),
+        color var(--duration-fast),
+        transform var(--duration-fast);
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ec-cct-pre:hover {
+    border-color: rgba(255, 208, 138, 0.25);
+    background: rgba(255, 208, 138, 0.06);
+}
+
+.ec-cct-pre:active {
+    transform: scale(0.93);
+}
+
+.ec-cct-pre--active {
+    border-color: rgba(255, 208, 138, 0.3);
+    background: rgba(255, 208, 138, 0.08);
+    color: var(--color-text-primary);
+}
+
+/* ── 8. Dimmer Ring ── */
+
+.ec-dim-ring-wrap {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    padding: 8px 0 4px;
+    flex-shrink: 0;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.ec-dim-ring {
+    width: 140px;
+    height: 140px;
+}
+
+.ec-dim-ring-wrap--hero {
+    padding: 20px 0 10px;
+    flex: 1;
+    min-height: 0;
+}
+
+.ec-dim-ring--hero {
+    width: 180px;
+    height: 180px;
+}
+
+.ec-dim-pct-v--hero {
+    font-size: var(--type-body);
+}
+
+.ec-hero:not(:has(.ec-hero-info)) .ec-dim-pct-v--hero {
+    font-size: var(--type-body);
+}
+
+.ec-hero:not(:has(.ec-hero-info)) .ec-dim-pct-u {
+    font-size: var(--type-body);
+}
+
+.ec-dim-ring-sub {
+    font-size: var(--type-body);
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    letter-spacing: -0.2px;
+    text-align: center;
+}
+
+.ec-dim-track {
+    fill: none;
+    stroke: var(--color-surface-1);
+    stroke-width: 7;
+    stroke-linecap: round;
+}
+
+.ec-dim-fill {
+    fill: none;
+    stroke: var(--a-dimmer);
+    stroke-width: 7;
+    stroke-linecap: round;
+    transition: stroke-dashoffset var(--duration-moderate);
+    filter: none;
+}
+
+.ec-dim-pct {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: baseline;
+    gap: 1px;
+}
+
+.ec-dim-pct-v {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    line-height: 1;
+    background: var(--gradient-value-text);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: none;
+}
+
+.ec-dim-pct-u {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+}
+
+.ec-dim-presets {
+    display: flex;
+    gap: var(--space-2);
+    padding: 0 var(--space-5);
+    flex-shrink: 0;
+    justify-content: center;
+}
+
+.ec-hero .ec-dim-presets {
+    padding: 0 var(--space-6);
+    gap: var(--space-3);
+}
+
+.ec-hero .ec-qp {
+    min-height: 36px;
+    font-size: var(--type-body);
+    border-radius: var(--radius-md);
+}
+
+/* ── 9. Filament Visual ── */
+
+.ec-filament {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.ec-fil-support {
+    stroke: rgba(184, 197, 212, 0.18);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    transition: stroke 0.15s var(--ease-out-expo);
+}
+
+.ec-fil-wire {
+    stroke: var(--fil-stroke, rgba(var(--ar), 0.25));
+    stroke-width: 2.5;
+    filter: none;
+    transition: stroke 0.15s var(--ease-out-expo);
+}
+
+.ec-fil-glare {
+    position: absolute;
+    top: 15%;
+    left: 50%;
+    width: 70px;
+    height: 70px;
+    transform: translate(-50%, -10%);
+    border-radius: 50%;
+    background: radial-gradient(
+        circle,
+        rgba(255, 255, 255, var(--glare-o, 0)) 0%,
+        rgba(255, 248, 230, calc(var(--glare-o, 0) * 0.4)) 35%,
+        transparent 65%
+    );
+    pointer-events: none;
+    transition:
+        width 0.15s var(--ease-out-expo),
+        height 0.15s var(--ease-out-expo);
+}
+
+@keyframes fil-flicker {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    25% {
+        opacity: 0.97;
+    }
+    50% {
+        opacity: 1;
+    }
+    75% {
+        opacity: 0.98;
+    }
+}
+
+/* ── 10. Shutter/Cover Visual ── */
+
+.ec-shutter-wrap {
+    display: flex;
+    align-items: flex-start;
+    flex: 0 0 auto;
+    min-height: 0;
+    justify-content: center;
+    padding: var(--space-3) var(--space-5) 0;
+    gap: var(--space-5);
+}
+
+.ec-shutter {
+    width: 130px;
+    height: 130px;
+    border-radius: 12px;
+    border: 2px solid rgba(148, 163, 184, 0.3);
+    position: relative;
+    overflow: hidden;
+    background: rgba(10, 16, 28, 0.6);
+    flex-shrink: 0;
+    box-shadow: none;
+}
+
+.ec-shutter::before {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    border-radius: 9px;
+    border: 1px solid rgba(148, 163, 184, 0.12);
+    pointer-events: none;
+    z-index: 3;
+}
+
+.ec-shutter-slats {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 0;
+    padding: 3px 3px 0;
+    z-index: 2;
+    transform: translateY(var(--slat-shift, 0%));
+    transition: transform 0.5s ease;
+}
+
+.ec-shutter-slat {
+    height: calc((100% - 3px) / 7);
+    border-radius: 2px;
+    background: linear-gradient(
+        180deg,
+        rgba(200, 210, 224, 0.55),
+        rgba(148, 163, 184, 0.2)
+    );
+    flex-shrink: 0;
+    box-shadow: none;
+    opacity: var(--slat-o, 1);
+    transition: opacity 0.5s ease;
+}
+
+.ec-shutter-light {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.ec-shutter-rays {
+    position: absolute;
+    top: -10%;
+    left: -20%;
+    right: -20%;
+    bottom: -10%;
+    pointer-events: none;
+    z-index: 1;
+    opacity: var(--rays-o, 0);
+    filter: blur(2px);
+    transform: rotate(var(--ray-angle, 8deg));
+    transform-origin: center center;
+}
+
+.ec-shutter-side {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 4px;
+    flex: 1;
+    min-width: fit-content;
+    padding-top: 8px;
+    overflow: visible;
+}
+
+.ec-shutter-pct {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    justify-content: center;
+    overflow: visible;
+}
+
+.ec-shutter-pct-v {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    line-height: 1.1;
+    background: var(--gradient-value-text);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    padding: 0 5px;
+}
+
+.ec-shutter-pct-u {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+    -webkit-text-fill-color: rgba(255, 255, 255, 0.3);
+}
+
+.ec-shutter-label {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+}
+
+.ec-shutter-tilt-val {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: var(--font-bold);
+    color: var(--color-text-tertiary);
+}
+
+.ec-shutter-sub {
+    font-size: var(--type-body);
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    margin-top: 2px;
+}
+
+.ec-shutter-sub.dim {
+    font-size: var(--type-body);
+    color: var(--color-frost);
+    opacity: 0.55;
+    margin-top: 0;
+}
+
+.ec-tilt-only {
+    display: none;
+}
+
+.ec.has-tilt .ec-tilt-only {
+    display: inline;
+}
+
+.ec-sld-labeled {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+.ec-sld-lbl {
+    font-size: var(--type-body);
+    font-weight: 700;
+    color: var(--color-frost);
+    opacity: 0.55;
+    text-transform: none;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+    width: 48px;
+    text-align: right;
+}
+
+/* ── 11. Cover Controls ── */
+
+.ec-cbtns {
+    display: flex;
+    gap: var(--space-2);
+    padding: 0 var(--space-4) var(--space-3);
+    flex-shrink: 0;
+}
+
+.ec-wr .ec-cbtns {
+    padding: 0;
+}
+
+.ec-cbtns-wr {
+    padding: 0;
+    gap: var(--space-2);
+    width: 100%;
+}
+
+.ec-cbtns-wr .ec-cbtn {
+    min-height: var(--touch-target-min);
+    border-radius: var(--radius-lg);
+}
+
+.ec-cbtns-wr .ec-cbtn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.ec-cbtn {
+    flex: 1;
+    min-height: var(--touch-target-min);
+    border-radius: var(--radius-full);
+    border: 1px solid var(--color-border-default);
+    background: var(--color-surface-1);
+    color: var(--color-text-secondary);
+    font-size: var(--type-body);
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--gap-xs);
+    transition:
+        background var(--duration-fast),
+        border-color var(--duration-fast),
+        color var(--duration-fast),
+        transform var(--duration-fast);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.ec-cbtn:hover {
+    border-color: var(--color-border-medium);
+    background: var(--color-surface-3);
+    color: var(--color-text-primary);
+}
+
+.ec-cbtn:active {
+    transform: scale(var(--press-scale, 0.95));
+}
+
+.ec-cbtn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+.ec-cbtns-sm {
+    padding: 0 var(--space-3) var(--space-3);
+    gap: var(--space-2);
+}
+
+.ec-cbtns-sm .ec-cbtn {
+    height: 52px;
+    border-radius: 14px;
+}
+
+.ec-cbtns-sm .ec-cbtn svg {
+    width: 20px;
+    height: 20px;
+}
+
+.ec-cover-controls {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+    min-height: 0;
+    position: relative;
+    padding: 10px 0 0;
+}
+
+.ec-cover-controls::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 10%;
+    right: 10%;
+    height: 0.5px;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(184, 197, 212, 0.2),
+        transparent
+    );
+}
+
+.ec-cover-sld {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 var(--space-6);
+}
+
+.ec-cover-controls .ec-dim-presets {
+    padding: 0 var(--space-6);
+    margin: 0;
+    justify-content: center;
+    align-items: center;
+}
+
+.ec-cover-btns {
+    display: flex;
+    gap: var(--space-3);
+    padding: 0 var(--space-6);
+}
+
+.ec-cover-btns .ec-cbtn {
+    flex: 1;
+    min-height: var(--touch-target-min);
+    font-size: var(--type-body);
+    font-weight: 700;
+    border-radius: var(--radius-lg);
+    gap: var(--gap-xs);
+}
+
+.ec-cover-btns .ec-cbtn svg {
+    width: var(--type-body);
+    height: var(--type-body);
+}
+
+.ec-cbtns-hero .ec-cbtn {
+    min-height: var(--touch-target-min);
+    font-size: var(--type-body);
+    font-weight: 700;
+    border-radius: var(--radius-lg);
+    gap: var(--gap-xs);
+}
+
+.ec-cbtns-hero .ec-cbtn svg {
+    width: var(--type-body);
+    height: var(--type-body);
+}
+
+/* ── 12. Bulb Mode Pill ── */
+
+.bulb-mode-pill {
+    position: absolute;
+    top: var(--space-2);
+    left: var(--space-3);
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    border-radius: var(--radius-md);
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border-default);
+    padding: 2px;
+    overflow: hidden;
+}
+
+.bulb-mp {
+    width: 36px;
+    height: 30px;
+    font-size: var(--type-body);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-frost);
+    opacity: 0.55;
+    cursor: pointer;
+    transition:
+        background var(--duration-fast),
+        color var(--duration-fast),
+        opacity var(--duration-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.bulb-mp.act {
+    background: var(--color-surface-4);
+    color: var(--color-text-primary);
+    box-shadow: none;
+}
+
+.bulb-rgb-row {
+    display: flex;
+    gap: var(--space-2);
+    justify-content: center;
+    align-items: center;
+}
+
+.bulb-cct-row {
+    display: flex;
+    gap: var(--space-2);
+    justify-content: center;
+    align-items: center;
+}

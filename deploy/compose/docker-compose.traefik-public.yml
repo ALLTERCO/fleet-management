@@ -2,18 +2,29 @@
 #
 # Used by: deploy-public.sh up --ssl --domain example.com
 # Provisions HTTPS certificates automatically via ACME (Let's Encrypt).
-# Redirects HTTP to HTTPS. Routes all traffic to Fleet Manager and Zitadel.
+# Uses TLS-ALPN-01 challenge — only port 443 needed (no port 80 required).
+# Optionally redirects HTTP to HTTPS if port 80 is open.
 #
 # Uses file provider only — no Docker socket mount needed.
 # Routes are generated into state/traefik-dynamic/ by the deploy script.
 #
 # Requirements:
 #   - Domain pointing to this machine's public IP
-#   - Ports 80 and 443 open (firewall / security group)
+#   - Port 443 open (firewall / security group)
+#   - Port 80 optional (enables HTTP→HTTPS redirect)
 
 services:
   traefik:
-    image: traefik:${TRAEFIK_VERSION:-v3.6.10}
+    image: traefik:${TRAEFIK_VERSION:-v3.7.5}
+    labels:
+      fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
+      fleet.client: "${FM_CLIENT_ID:-shared}"
+      fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
+      fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
+      fleet.version: "${TRAEFIK_VERSION:-v3.7.5}"
+      fleet.commit: "${FM_BUILD_COMMIT:-unknown}"
+      fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
+      fleet.service: "traefik"
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -26,18 +37,16 @@ services:
       # File provider: loads routing config from dynamic directory
       - "--providers.file.directory=/etc/traefik/dynamic"
       - "--providers.file.watch=true"
-      # HTTP entrypoint: redirect to HTTPS
+      # HTTP entrypoint (port 80) — redirect is applied per-router via middleware.
+      # When FM_PLAIN_WS=true, /shelly accepts plain ws:// for Wall Display devices.
       - "--entrypoints.web.address=:80"
-      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
       # HTTPS entrypoint
       - "--entrypoints.websecure.address=:443"
       # Internal ping entrypoint (container-only)
       - "--entrypoints.ping.address=:8082"
       - "--entrypoints.websecure.transport.lifecycle.graceTimeOut=300"
-      # Let's Encrypt ACME
-      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      # Let's Encrypt ACME via TLS-ALPN-01 (port 443 only, no port 80 needed)
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.email=${SSL_EMAIL:-admin@localhost}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
       # Timeouts for WebSocket + long-lived connections
@@ -53,7 +62,9 @@ services:
       - "443:443"
     volumes:
       - ../state/traefik-dynamic:/etc/traefik/dynamic:ro
-      - traefik-certs:/letsencrypt
+      - ../state/letsencrypt:/letsencrypt
+      # Only ca.crt — never ca.key. Used when FM_DEVICE_MTLS=true.
+      - ../state/tls/ca.crt:/etc/traefik/certs/ca.crt:ro
     tmpfs:
       - /tmp:size=16M
     networks:
@@ -72,6 +83,3 @@ services:
 
 networks:
   fleet-net:
-
-volumes:
-  traefik-certs:

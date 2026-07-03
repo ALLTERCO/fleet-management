@@ -1,0 +1,99 @@
+/* Single source of truth for the channel-fieldset visual shell.
+ * Imported (unscoped) from each EmailFieldset / WebhookFieldset / ... so
+ * the input chrome is identical across types without duplication. */
+
+.cfs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+/* Field labels inside a fieldset read at body weight + secondary text
+ * color — the design-system FormField default (tertiary) is too dim
+ * for the primary credentials form. */
+.cfs .form-field__label {
+    color: var(--color-text-secondary);
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    margin-bottom: var(--space-1-5);
+    letter-spacing: 0.01em;
+}
+
+.cfs .form-field__hint {
+    color: var(--color-text-tertiary);
+    font-size: var(--type-caption);
+    line-height: var(--leading-normal);
+    margin-top: var(--space-1);
+}
+
+.cfs .form-field__error {
+    color: var(--color-input-error);
+    font-size: var(--type-caption);
+    font-weight: var(--font-medium);
+    margin-top: var(--space-1);
+}
+
+.cfs__row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+}
+
+.cfs__input {
+    width: 100%;
+    min-height: var(--touch-target-min);
+    padding: var(--space-3) var(--space-4);
+    background-color: var(--color-surface-1);
+    border: 1px solid var(--color-border-medium, var(--color-border-subtle));
+    border-radius: var(--radius-md);
+    color: var(--color-text-primary);
+    font-size: var(--type-body);
+    line-height: var(--leading-tight);
+    transition:
+        border-color var(--duration-fast) var(--ease-out-expo),
+        background-color var(--duration-fast) var(--ease-out-expo),
+        box-shadow var(--duration-fast) var(--ease-out-expo);
+}
+
+.cfs__input::placeholder {
+    color: var(--color-text-tertiary);
+}
+
+.cfs__input:hover {
+    border-color: color-mix(
+        in srgb,
+        var(--color-primary) 35%,
+        var(--color-border-subtle)
+    );
+}
+
+.cfs__input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    background-color: var(--color-surface-2);
+    box-shadow: 0 0 0 3px
+        color-mix(in srgb, var(--color-primary) 22%, transparent);
+}
+
+/* Vue scoped data attributes don't reach a select's option list because the
+ * options live in the browser chrome — leave the select itself styled but
+ * accept the system option panel. */
+select.cfs__input {
+    appearance: none;
+    background-image:
+        linear-gradient(45deg, transparent 50%, currentColor 50%),
+        linear-gradient(135deg, currentColor 50%, transparent 50%);
+    background-position:
+        calc(100% - 18px) 50%,
+        calc(100% - 12px) 50%;
+    background-size: 6px 6px;
+    background-repeat: no-repeat;
+    padding-right: calc(var(--space-4) + 16px);
+    color: var(--color-text-primary);
+}
+
+@media (max-width: 520px) {
+    .cfs__row {
+        grid-template-columns: 1fr;
+    }
+}

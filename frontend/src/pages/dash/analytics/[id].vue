@@ -19,7 +19,7 @@
 
         <template #metrics>
             <MetricsGrid
-                :metrics="analyticsStore.groupMetrics?.metrics || null"
+                :metrics="analyticsStore.scopeMetrics?.metrics || null"
                 :capabilities="capabilities"
                 :enabled-metrics="settings?.enabledMetrics || []"
                 :tariff="settings?.tariff || 0"
@@ -45,7 +45,7 @@
                 title="Returned Energy"
                 unit="kWh"
                 icon="fas fa-chart-bar text-[var(--color-orange-text)]"
-                color="rgba(249, 115, 22, 1)"
+                :color="chartColors.warning"
                 chart-type="bar"
                 :precision="3"
                 :loading="loadingMetrics"
@@ -58,7 +58,7 @@
                 title="Voltage"
                 unit="V"
                 icon="fas fa-bolt text-[var(--color-warning-text)]"
-                color="rgba(250, 204, 21, 1)"
+                :color="chartColors.warning"
                 chart-type="line"
                 :precision="1"
                 :loading="loadingMetrics"
@@ -71,7 +71,7 @@
                 title="Current"
                 unit="A"
                 icon="fas fa-wave-square text-[var(--color-info-text)]"
-                color="rgba(6, 182, 212, 1)"
+                :color="chartColors.info"
                 chart-type="line"
                 :precision="3"
                 :loading="loadingMetrics"
@@ -84,13 +84,13 @@
                     Power Distribution (Current)
                 </h3>
                 <div class="h-64 flex items-center justify-center text-[var(--color-text-disabled)]">
-                    <span v-if="!analyticsStore.groupMetrics?.devices?.length">
+                    <span v-if="!analyticsStore.scopeMetrics?.devices?.length">
                         No devices in this group
                     </span>
                     <span v-else-if="!hasPowerData">
                         No power data available - devices may be offline
                     </span>
-                    <canvas v-else ref="powerPieCanvas"></canvas>
+                    <div v-else ref="powerPieContainer" class="w-full h-full"></div>
                 </div>
             </div>
 
@@ -126,12 +126,27 @@
                 <div class="flex flex-wrap items-end gap-3 mb-3">
                     <div class="flex flex-col gap-1">
                         <label class="text-xs text-[var(--color-text-tertiary)]">Report Type</label>
-                        <select v-model="reportType" class="adl-select text-sm rounded px-3 py-2">
-                            <option value="consumption">Consumption (kWh)</option>
-                            <option value="returned_energy">Returned Energy (kWh)</option>
-                            <option value="voltage">Voltage (V)</option>
-                            <option value="current">Current (A)</option>
+                        <select v-model="reportKind" class="adl-select text-sm rounded px-3 py-2">
+                            <option value="energy">Comprehensive Energy (HTML + CSV)</option>
+                            <option value="interval">Interval Data (CSV)</option>
                         </select>
+                    </div>
+                    <div v-if="reportKind === 'interval'" class="flex flex-col gap-1">
+                        <label class="text-xs text-[var(--color-text-tertiary)]">Metrics</label>
+                        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+                            <label
+                                v-for="m in METRIC_OPTIONS"
+                                :key="m.value"
+                                class="flex items-center gap-1.5 text-sm text-[var(--color-text-tertiary)]"
+                            >
+                                <input
+                                    v-model="reportMetrics"
+                                    type="checkbox"
+                                    :value="m.value"
+                                />
+                                {{ m.label }}
+                            </label>
+                        </div>
                     </div>
                     <div class="flex flex-col gap-1">
                         <label class="text-xs text-[var(--color-text-tertiary)]">Granularity</label>
@@ -147,6 +162,7 @@
                         <label for="perDevice" class="text-sm text-[var(--color-text-secondary)] cursor-pointer">Per Device</label>
                     </div>
                     <button
+                        type="button"
                         class="px-4 py-2 bg-[var(--color-success)] text-white rounded hover:bg-[var(--color-success-hover)] transition-colors text-sm"
                         :disabled="generatingReport"
                         @click="generateReport"
@@ -154,17 +170,38 @@
                         <i :class="generatingReport ? 'fas fa-spinner fa-spin' : 'fas fa-download'" class="mr-2"></i>
                         {{ generatingReport ? `Generating... ${reportElapsed}s` : 'Generate &amp; Download' }}
                     </button>
+                    <button
+                        type="button"
+                        class="px-4 py-2 bg-[var(--color-surface-3)] text-[var(--color-text-primary)] rounded hover:opacity-80 transition-opacity text-sm"
+                        :disabled="generatingReport"
+                        title="Save this report configuration as a reusable template"
+                        @click="saveAsTemplate"
+                    >
+                        <i class="fas fa-bookmark mr-2"></i>
+                        Save as template
+                    </button>
                 </div>
-                <div v-if="generatingReport" class="mb-2">
-                    <div class="w-full bg-[var(--color-surface-3)] rounded-full h-1.5 overflow-hidden">
-                        <div class="bg-[var(--color-success)] h-1.5 rounded-full animate-pulse" style="width: 100%"></div>
-                    </div>
-                </div>
+                <ReportProgress
+                    v-if="generatingReport"
+                    class="mb-2"
+                    :label="reportProgress.label.value"
+                    :percent="reportProgress.percent.value"
+                    :rows-written="reportProgress.rowsWritten.value"
+                    :bytes-written="reportProgress.bytesWritten.value"
+                    :estimated-rows="reportProgress.estimatedRows.value"
+                    @cancel="cancelGenerate"
+                />
                 <div v-if="reportError" class="text-sm text-[var(--color-danger-text)] mb-2">{{ reportError }}</div>
                 <div v-if="lastReport" class="text-sm text-[var(--color-text-tertiary)]">
-                    Last report: <a :href="lastReport.url" download class="text-[var(--color-primary-text)] hover:underline">{{ lastReport.name }}</a>
+                    Last report:
+                    <a :href="lastReport.url" download class="text-[var(--color-primary-text)] hover:underline">{{ lastReport.name }}</a>
+                    <span v-if="lastReport.htmlUrl">
+                        ·
+                        <a :href="lastReport.htmlUrl" target="_blank" rel="noopener" class="text-[var(--color-primary-text)] hover:underline">Open HTML</a>
+                    </span>
                 </div>
             </div>
+            <ReportTemplatesPanel ref="reportTemplatesRef" class="mt-3" />
         </template>
 
         <template #uptime>
@@ -173,22 +210,15 @@
                     <i class="fas fa-clock mr-2 text-[var(--color-success-text)]"></i>
                     Device Uptime
                 </h3>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-sm">
-                        <thead>
-                            <tr class="text-[var(--color-text-tertiary)] border-b border-[var(--color-border-default)]">
-                                <th class="text-left py-2 px-3">Device</th>
-                                <th class="text-right py-2 px-3">Uptime</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="device in uptimeData" :key="device.deviceId" class="border-b border-[var(--color-border-default)] hover:bg-[var(--glass-hover)]">
-                                <td class="py-2 px-3 text-[var(--color-text-primary)]">{{ device.deviceName }}</td>
-                                <td class="py-2 px-3 text-right text-[var(--color-success-text)] font-mono">{{ formatUptime(device.value) }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+                <DataList
+                    :rows="uptimeData"
+                    :columns="uptimeColumns"
+                    row-key="deviceId"
+                >
+                    <template #cell-value="{row}">
+                        <span class="text-[var(--color-success-text)] font-mono">{{ formatUptime(row.value) }}</span>
+                    </template>
+                </DataList>
             </div>
         </template>
     </AnalyticsDashboardLayout>
@@ -203,25 +233,39 @@
 </template>
 
 <script setup lang="ts">
-import {ArcElement, Chart, DoughnutController, Legend, Tooltip} from 'chart.js';
-import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue';
-import {useRoute, useRouter} from 'vue-router/auto';
+import {computed, onMounted, onUnmounted, ref, watch} from 'vue';
+import {useRoute, useRouter} from 'vue-router';
+import {createReportTemplate} from '@/api/reportTemplateRpc';
 import AnalyticsDashboardLayout from '@/components/analytics/AnalyticsDashboardLayout.vue';
-import Breadcrumbs from '@/components/core/Breadcrumbs.vue';
 import ConsumptionChart from '@/components/analytics/charts/ConsumptionChart.vue';
 import MetricChart from '@/components/analytics/charts/MetricChart.vue';
 import DashboardSettingsModal from '@/components/analytics/DashboardSettingsModal.vue';
 import DateRangeSelector from '@/components/analytics/DateRangeSelector.vue';
 import MetricsGrid from '@/components/analytics/metrics/MetricsGrid.vue';
+import Breadcrumbs from '@/components/core/Breadcrumbs.vue';
+import DataList, {type DataColumn} from '@/components/core/DataList.vue';
+import ReportProgress from '@/components/reports/ReportProgress.vue';
+import ReportTemplatesPanel from '@/components/reports/ReportTemplatesPanel.vue';
+import {useEChart} from '@/composables/useEChart';
+import {useReportProgress} from '@/composables/useReportProgress';
+import {DASHBOARDS_PATH} from '@/constants';
+import {chartColors} from '@/helpers/chartUtils';
+import {
+    cancelReport,
+    generateReportFile,
+    ReportCancelledError,
+    ReportPollAbortedError
+} from '@/helpers/reportGeneration';
 import {type DashboardSettings, useAnalyticsStore} from '@/stores/analytics';
+import {useDashboardsStore} from '@/stores/dashboards';
 import {useGroupsStore} from '@/stores/groups';
+import {useToastStore} from '@/stores/toast';
 import * as ws from '@/tools/websocket';
-
-Chart.register(ArcElement, DoughnutController, Legend, Tooltip);
 
 const route = useRoute();
 const router = useRouter();
 const analyticsStore = useAnalyticsStore();
+const dashboardsStore = useDashboardsStore();
 const groupsStore = useGroupsStore();
 
 // State
@@ -234,8 +278,26 @@ const showSettings = ref(false);
 const dashboard = ref<any>(null);
 const settings = ref<DashboardSettings | null>(null);
 const capabilities = ref<string[]>([]);
-const lastReport = ref<{name: string; url: string} | null>(null);
-const reportType = ref('consumption');
+const lastReport = ref<{
+    name: string;
+    url: string;
+    htmlUrl?: string;
+} | null>(null);
+const reportTemplatesRef = ref<{load: () => void} | null>(null);
+const toast = useToastStore();
+const reportProgress = useReportProgress();
+const reportJobId = ref<string | null>(null);
+let reportPollAbort: AbortController | null = null;
+const METRIC_OPTIONS = [
+    {value: 'consumption', label: 'Consumption (kWh)'},
+    {value: 'returned_energy', label: 'Returned Energy (kWh)'},
+    {value: 'voltage', label: 'Voltage (V)'},
+    {value: 'current', label: 'Current (A)'},
+    {value: 'power', label: 'Power (W)'}
+] as const;
+
+const reportKind = ref<'energy' | 'interval'>('energy');
+const reportMetrics = ref<string[]>(['consumption']);
 const reportGranularity = ref('day');
 const reportPerDevice = ref(true);
 const reportError = ref<string | null>(null);
@@ -250,10 +312,10 @@ const dateRange = ref<{from: string; to: string}>({
 // Computed
 const dashboardId = computed(() => {
     const id = (route.params as {id?: string}).id;
-    return typeof id === 'string' ? parseInt(id, 10) : null;
+    return typeof id === 'string' ? Number.parseInt(id, 10) : null;
 });
 
-const groupId = computed(() => dashboard.value?.group_id);
+const groupId = computed(() => dashboard.value?.groupId ?? undefined);
 
 const groupName = computed(() => {
     if (!groupId.value) return null;
@@ -304,7 +366,7 @@ const showHumidity = computed(
 );
 
 const hasPowerData = computed(() => {
-    const powerValues = analyticsStore.groupMetrics?.metrics?.power?.values;
+    const powerValues = analyticsStore.scopeMetrics?.metrics?.power?.values;
     return powerValues && powerValues.length > 0;
 });
 
@@ -314,17 +376,27 @@ const showUptime = computed(
         (settings.value?.enabledMetrics?.includes('uptime') ?? true)
 );
 
-const uptimeData = computed(() => {
-    const values =
-        (analyticsStore.groupMetrics?.metrics as any)?.uptime?.values || [];
+interface UptimeRow {
+    deviceId: number;
+    deviceName: string;
+    value: number;
+}
+
+const uptimeData = computed<UptimeRow[]>(() => {
+    const values = analyticsStore.scopeMetrics?.metrics?.uptime?.values || [];
     return values
-        .map((v: any) => ({
+        .map((v) => ({
             deviceId: v.deviceId,
             deviceName: v.deviceName || `Device ${v.deviceId}`,
             value: v.value
         }))
-        .sort((a: any, b: any) => b.value - a.value);
+        .sort((a, b) => b.value - a.value);
 });
+
+const uptimeColumns: DataColumn<UptimeRow>[] = [
+    {key: 'deviceName', label: 'Device', role: 'primary'},
+    {key: 'value', label: 'Uptime', role: 'meta', align: 'right'}
+];
 
 function formatUptime(seconds: number): string {
     if (!seconds) return '--';
@@ -338,47 +410,80 @@ function formatUptime(seconds: number): string {
     return `${minutes}m`;
 }
 
-// Canvas refs for additional charts
-const powerPieCanvas = ref<HTMLCanvasElement | null>(null);
+// Container refs for charts
+const powerPieContainer = ref<HTMLElement | null>(null);
 const tempCanvas = ref<HTMLCanvasElement | null>(null);
 const humidityCanvas = ref<HTMLCanvasElement | null>(null);
 
-// Chart instances
-let powerChart: Chart | null = null;
+// Power distribution chart option
+const powerChartOption = computed<Record<string, any>>(() => {
+    const metrics = analyticsStore.scopeMetrics?.metrics;
+    const powerValues = metrics?.power?.values || [];
+    const devices = analyticsStore.scopeMetrics?.devices || [];
+    const deviceMap = new Map(
+        devices.map((d: any) => [d.id, d.name || d.shellyID])
+    );
+
+    const powerByDevice = new Map<string, number>();
+    for (const pv of powerValues) {
+        const deviceName =
+            deviceMap.get(pv.deviceId) || `Device ${pv.deviceId}`;
+        powerByDevice.set(
+            deviceName,
+            (powerByDevice.get(deviceName) || 0) + pv.value
+        );
+    }
+
+    const seriesData = Array.from(powerByDevice.entries()).map(
+        ([name, value]) => ({name, value})
+    );
+
+    return {
+        tooltip: {
+            trigger: 'item',
+            formatter(params: any) {
+                const total = seriesData.reduce((a, b) => a + b.value, 0);
+                const pct =
+                    total > 0
+                        ? ((params.value / total) * 100).toFixed(1)
+                        : '0.0';
+                return `${params.name}: ${Number(params.value).toFixed(1)} W (${pct}%)`;
+            }
+        },
+        legend: {
+            orient: 'vertical',
+            right: 8,
+            top: 'center',
+            textStyle: {color: chartColors.textTertiary, fontSize: 13}
+        },
+        series: [
+            {
+                type: 'pie',
+                radius: ['40%', '70%'],
+                center: ['40%', '50%'],
+                itemStyle: {borderColor: chartColors.tooltipBg, borderWidth: 2},
+                label: {show: false},
+                data: seriesData
+            }
+        ]
+    };
+});
+
+useEChart(powerPieContainer, powerChartOption);
 
 // Auto-refresh
 let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
-// Methods
 async function fetchDashboard() {
     if (!dashboardId.value) return;
-
-    try {
-        const result = await ws.sendRPC<any[]>(
-            'FLEET_MANAGER',
-            'Storage.GetItem',
-            {registry: 'ui', key: 'dashboards'}
-        );
-
-        const dashboards = result || [];
-        dashboard.value = dashboards.find(
-            (d: any) => d.id === dashboardId.value
-        );
-
-        if (!dashboard.value) {
-            console.error('Dashboard not found');
-            router.push('/dash/1');
-            return;
-        }
-
-        // Verify this is an analytics dashboard
-        if (dashboard.value.dashboard_type !== 'analytics') {
-            // Redirect to classic dashboard
-            router.push(`/dash/${dashboardId.value}`);
-            return;
-        }
-    } catch (err) {
-        console.error('Failed to fetch dashboard:', err);
+    const fetched = await dashboardsStore.fetchOne(dashboardId.value);
+    if (!fetched) {
+        router.push(DASHBOARDS_PATH);
+        return;
+    }
+    dashboard.value = fetched;
+    if (fetched.dashboardType !== 'analytics') {
+        router.push(`/dash/${dashboardId.value}`);
     }
 }
 
@@ -394,14 +499,14 @@ async function fetchSettings() {
 async function fetchCapabilities() {
     if (!groupId.value) return;
 
-    const result = await analyticsStore.fetchGroupCapabilities(groupId.value);
+    const result = await analyticsStore.fetchScopeCapabilities(groupId.value);
     capabilities.value = result?.capabilities || [];
 }
 
 async function fetchMetrics() {
     if (!groupId.value) return;
 
-    await analyticsStore.fetchGroupMetrics(groupId.value);
+    await analyticsStore.fetchScopeMetrics(groupId.value);
 }
 
 async function fetchConsumptionHistory() {
@@ -463,9 +568,6 @@ async function refreshData(showOverlay = true) {
             fetchConsumptionHistory(),
             fetchMetricHistories()
         ]);
-        // Render power chart after metrics are loaded
-        await nextTick();
-        renderPowerChart();
     } finally {
         if (showOverlay) loading.value = false;
     }
@@ -501,156 +603,193 @@ async function saveSettings(newSettings: Partial<DashboardSettings>) {
     }
 }
 
+// dev_mode_token: localStorage (cross-tab). Zitadel access_token:
+// sessionStorage (tab-scoped, post-XSS migration).
+function reportAuthHeader(): Record<string, string> {
+    const token =
+        localStorage.getItem('dev_mode_token') ??
+        sessionStorage.getItem('access_token') ??
+        '';
+    return token ? {Authorization: `Bearer ${token}`} : {};
+}
+
+async function triggerBrowserDownload(filename: string, suggestedName: string) {
+    const res = await fetch(`/api/reports/download/${filename}`, {
+        credentials: 'include',
+        headers: reportAuthHeader()
+    });
+    if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = suggestedName;
+    link.click();
+    URL.revokeObjectURL(url);
+}
+
+function stopReportPoll(): void {
+    reportPollAbort?.abort();
+    reportPollAbort = null;
+}
+
+function createReportProgressOpts(signal: AbortSignal) {
+    return {
+        signal,
+        onStart: (id: string) => {
+            reportJobId.value = id;
+            reportProgress.setJobId(id);
+        },
+        onProgress: reportProgress.update
+    };
+}
+
+function currentReportProgressOpts() {
+    if (!reportPollAbort) throw new ReportPollAbortedError();
+    return createReportProgressOpts(reportPollAbort.signal);
+}
+
 async function generateReport() {
     if (!groupId.value) return;
 
+    stopReportPoll();
+    const pollAbort = new AbortController();
+    reportPollAbort = pollAbort;
+    const isCurrentReport = () => reportPollAbort === pollAbort;
     generatingReport.value = true;
     reportError.value = null;
     reportElapsed.value = 0;
+    if (reportTimer) {
+        clearInterval(reportTimer);
+        reportTimer = null;
+    }
     reportTimer = setInterval(() => {
         reportElapsed.value++;
     }, 1000);
+    reportProgress.start();
+    reportJobId.value = null;
     try {
-        const tariff = settings.value?.tariff || 0;
-        const isEnergy =
-            reportType.value === 'consumption' ||
-            reportType.value === 'returned_energy';
-
-        const result = await ws.sendRPC<{
-            id: string;
-            file: string;
-            name: string;
-            generated: string;
-            size: number;
-        }>(
-            'FLEET_MANAGER',
-            'fleetmanager.GenerateReport',
-            {
-                group_id: groupId.value,
-                report_type: reportType.value,
-                from: dateRange.value.from,
-                to: dateRange.value.to,
-                granularity: reportGranularity.value,
-                per_device: reportPerDevice.value,
-                tariff: isEnergy ? tariff : undefined
-            },
-            {timeoutMs: 300_000}
-        );
-
-        if (result?.file) {
-            // Download the generated CSV
-            const link = document.createElement('a');
-            link.href = `/${result.file}`;
-            link.download = `${result.name}.csv`;
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-
-            lastReport.value = {
-                name: `${result.name}.csv`,
-                url: `/${result.file}`
-            };
+        if (reportKind.value === 'energy') {
+            await runEnergyReport();
+        } else {
+            await runIntervalReport();
         }
-    } catch (err: any) {
-        reportError.value = err?.message || 'Failed to generate report';
-        console.error('[Analytics] generateReport error:', err);
+    } catch (err: unknown) {
+        if (
+            isCurrentReport() &&
+            !(err instanceof ReportCancelledError) &&
+            !(err instanceof ReportPollAbortedError)
+        ) {
+            reportError.value =
+                err instanceof Error ? err.message : 'Failed to generate report';
+        }
     } finally {
+        if (!isCurrentReport()) return;
         if (reportTimer) {
             clearInterval(reportTimer);
             reportTimer = null;
         }
+        reportProgress.stop();
         generatingReport.value = false;
+        reportJobId.value = null;
+        if (reportPollAbort === pollAbort) reportPollAbort = null;
     }
 }
 
-function renderPowerChart() {
-    if (!powerPieCanvas.value) return;
-
-    const metrics = analyticsStore.groupMetrics?.metrics;
-    const powerValues = metrics?.power?.values || [];
-
-    if (powerValues.length === 0) {
-        powerChart?.destroy();
-        powerChart = null;
-        return;
-    }
-
-    const ctx = powerPieCanvas.value.getContext('2d');
-    if (!ctx) return;
-
-    // Get device names from groupMetrics
-    const devices = analyticsStore.groupMetrics?.devices || [];
-    const deviceMap = new Map(
-        devices.map((d: any) => [d.id, d.name || d.shellyID])
-    );
-
-    // Aggregate power by device
-    const powerByDevice = new Map<string, number>();
-    for (const pv of powerValues) {
-        const deviceName =
-            deviceMap.get(pv.deviceId) || `Device ${pv.deviceId}`;
-        powerByDevice.set(
-            deviceName,
-            (powerByDevice.get(deviceName) || 0) + pv.value
+async function cancelGenerate(): Promise<void> {
+    if (!reportJobId.value) return;
+    try {
+        await cancelReport(ws, reportJobId.value);
+    } catch (err: unknown) {
+        toast.error(
+            err instanceof Error ? err.message : 'Could not cancel the report'
         );
     }
+}
 
-    const labels = Array.from(powerByDevice.keys());
-    const values = Array.from(powerByDevice.values());
+// Save the current report config as a reusable template (energy or interval).
+async function saveAsTemplate() {
+    const name = window.prompt('Save report as a template — name:')?.trim();
+    if (!name) return;
+    const isEnergy = reportKind.value === 'energy';
+    try {
+        await createReportTemplate({
+            name,
+            kind: isEnergy ? 'energy' : 'interval',
+            params: isEnergy ? currentEnergyParams() : currentIntervalParams()
+        });
+        toast.success(`Saved template '${name}'`);
+        reportTemplatesRef.value?.load();
+    } catch (err: any) {
+        toast.error(err?.message ?? 'Could not save template');
+    }
+}
 
-    // Generate colors
-    const colors = [
-        'rgba(59, 130, 246, 0.8)', // blue
-        'rgba(16, 185, 129, 0.8)', // green
-        'rgba(249, 115, 22, 0.8)', // orange
-        'rgba(139, 92, 246, 0.8)', // purple
-        'rgba(236, 72, 153, 0.8)', // pink
-        'rgba(245, 158, 11, 0.8)', // amber
-        'rgba(6, 182, 212, 0.8)', // cyan
-        'rgba(239, 68, 68, 0.8)' // red
-    ];
+// Interval report params from the current controls — shared by the generate
+// button and "Save as template".
+function currentIntervalParams() {
+    return {
+        scope: {groupId: groupId.value},
+        metrics: reportMetrics.value,
+        from: dateRange.value.from,
+        to: dateRange.value.to,
+        granularity: reportGranularity.value,
+        per_device: reportPerDevice.value
+    };
+}
 
-    powerChart?.destroy();
-    powerChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels,
-            datasets: [
-                {
-                    data: values,
-                    backgroundColor: colors.slice(0, labels.length),
-                    borderColor: 'rgba(30, 41, 59, 1)',
-                    borderWidth: 2
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: {
-                    position: 'right',
-                    labels: {
-                        color: '#9ca3af',
-                        padding: 10
-                    }
-                },
-                tooltip: {
-                    callbacks: {
-                        label(ctx) {
-                            const value = ctx.parsed;
-                            const total = values.reduce((a, b) => a + b, 0);
-                            const percentage = ((value / total) * 100).toFixed(
-                                1
-                            );
-                            return `${ctx.label}: ${value.toFixed(1)} W (${percentage}%)`;
-                        }
-                    }
-                }
-            }
-        }
-    });
+// Energy report params from the current controls.
+function currentEnergyParams() {
+    const tariff = settings.value?.tariff || 0;
+    return {
+        scope: {groupId: groupId.value},
+        from: dateRange.value.from,
+        to: dateRange.value.to,
+        granularity:
+            reportGranularity.value === 'minute'
+                ? 'hour'
+                : reportGranularity.value,
+        tariff: tariff || undefined,
+        dashboardId: dashboardId.value ?? undefined
+    };
+}
+
+async function runIntervalReport() {
+    const result = await generateReportFile(
+        ws,
+        {kind: 'interval', ...currentIntervalParams()},
+        reportMetrics.value.join('+'),
+        currentReportProgressOpts()
+    );
+
+    if (!result?.file) return;
+    const filename = result.file;
+    await triggerBrowserDownload(filename, `${result.name}.csv`);
+    lastReport.value = {
+        name: `${result.name}.csv`,
+        url: `/api/reports/download/${filename}`
+    };
+}
+
+// Comprehensive energy report — backend writes BOTH csv (file) and html
+// (html_file). Auto-download the csv; expose the html as "Open HTML" link.
+async function runEnergyReport() {
+    const result = await generateReportFile(
+        ws,
+        {kind: 'energy', ...currentEnergyParams()},
+        'energy_report',
+        currentReportProgressOpts()
+    );
+
+    if (!result?.file) return;
+    const csvName = result.file;
+    const htmlName = result.htmlFile;
+    await triggerBrowserDownload(csvName, `${result.name}.csv`);
+    lastReport.value = {
+        name: `${result.name}.csv`,
+        url: `/api/reports/download/${csvName}`,
+        htmlUrl: htmlName ? `/api/reports/download/${htmlName}` : undefined
+    };
 }
 
 function goBack() {
@@ -685,28 +824,37 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+    stopReportPoll();
     if (refreshInterval) {
         clearInterval(refreshInterval);
     }
     if (reportTimer) {
         clearInterval(reportTimer);
     }
-    powerChart?.destroy();
     analyticsStore.clearData();
 });
 
-// Watch for dashboard ID changes (navigating between analytics dashboards)
+// Watch for dashboard ID changes — rapid switches can interleave fetches,
+// so a seq-token discards stale results before they clobber the new state.
+let switchSeq = 0;
 watch(dashboardId, async (newId, oldId) => {
     if (newId && newId !== oldId) {
+        const seq = ++switchSeq;
         analyticsStore.clearData();
         loading.value = true;
-        await fetchDashboard();
-        if (dashboard.value) {
-            await Promise.all([fetchSettings(), fetchCapabilities()]);
-            await refreshData();
-            setupAutoRefresh();
+        try {
+            await fetchDashboard();
+            if (seq !== switchSeq) return;
+            if (dashboard.value) {
+                await Promise.all([fetchSettings(), fetchCapabilities()]);
+                if (seq !== switchSeq) return;
+                await refreshData();
+                if (seq !== switchSeq) return;
+                setupAutoRefresh();
+            }
+        } finally {
+            if (seq === switchSeq) loading.value = false;
         }
-        loading.value = false;
     }
 });
 </script>

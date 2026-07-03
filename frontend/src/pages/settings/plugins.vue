@@ -1,100 +1,112 @@
 <template>
-  <InfiniteGridScrollPage
-    :page="page"
-    :total-pages="totalPages"
-    :items="items"
-    :loading="loading"
-    @load-items="loadItems"
-  >
-    <template #header>
-      <BasicBlock blurred bordered class="mb-2">
-        <div class="flex justify-between items-center">
-          <h2 class="heading-card">Plugins</h2>
-          <div>
+    <PageTemplate
+        title="Plugins"
+        :tabs="tabs"
+        :loading="loading && plugins.length === 0"
+        :empty="plugins.length === 0 && !loading"
+        empty-title="No plugins found"
+        empty-sub="Plugins extend the features of Fleet Manager."
+        :items="plugins"
+        :page-size="50"
+        pagination-mode="infinite"
+        url-key="plugins"
+        :item-key="pluginItemKey"
+    >
+        <template #actions>
             <input
-              ref="fileInput"
-              type="file"
-              class="hidden"
-              accept=".zip"
-              aria-label="Upload plugin"
-              @change="handleFileChange"
+                ref="fileInput"
+                type="file"
+                class="hidden"
+                accept=".zip"
+                aria-label="Upload plugin"
+                @change="handleFileChange"
             />
-            <Button size="sm" type="blue" class="mr-2" narrow @click="triggerFileInput">
-              <i class="fas fa-upload" />
+            <Button v-if="canWrite" size="sm" type="blue" narrow title="Upload plugin" aria-label="Upload plugin" @click="triggerFileInput">
+                <i class="fas fa-upload" aria-hidden="true" />
             </Button>
-            <Button size="sm" type="blue" class="mr-2" narrow @click="refresh">
-              <i class="fas fa-refresh" />
-            </Button>
-            <Button
-              v-if="!editMode"
-              type="blue"
-              size="sm"
-              narrow
-              @click="toggleEditMode"
-            >
-              <i class="fas fa-pencil" />
+            <Button size="sm" type="blue-hollow" narrow @click="refresh">
+                Refresh
             </Button>
             <Button
-              v-else
-              type="red"
-              size="sm"
-              narrow
-              @click="toggleEditMode"
+                v-if="canWrite && !editMode && plugins.length > 0"
+                type="blue-hollow"
+                size="sm"
+                narrow
+                title="Edit mode"
+                aria-label="Edit mode"
+                @click="toggleEditMode"
             >
-              Exit edit mode
+                <i class="fas fa-pen" aria-hidden="true" />
             </Button>
-          </div>
-        </div>
-      </BasicBlock>
-
-      <Modal :visible="uploadModal.visible" @close="uploadModal.visible = false">
-        <template #title>Upload plugin</template>
-        <template v-if="selectedFile" #default>
-          <span>You are about to upload </span>
-          <span class="font-semibold italic">{{ selectedFile.name }}</span>
-          <span class="text-sm text-[var(--color-text-disabled)]">
-            ({{ (selectedFile.size / 1_000_000).toFixed(2) }}MB)
-          </span>
+            <Button
+                v-else-if="canWrite && editMode"
+                type="blue-hollow"
+                size="sm"
+                narrow
+                @click="toggleEditMode"
+            >
+                Exit edit mode
+            </Button>
         </template>
-        <template #footer>
-          <div class="flex justify-end">
-            <Button @click="uploadClicked">Upload</Button>
-          </div>
+
+        <template #item="{item}">
+            <PluginWidget
+                :plugin="item"
+                :edit-mode="editMode"
+                @toggle="refresh"
+                @delete="onDeletePlugin"
+            />
         </template>
-      </Modal>
-    </template>
 
-    <template #empty>
-      <EmptyBlock>
-        <p class="text-xl font-semibold pb-2">No plugins found</p>
-        <p class="text-sm pb-2">Plugins extend the features of Fleet Manager.</p>
-      </EmptyBlock>
-    </template>
-
-    <template #default="{ item: plugin, small }">
-      <PluginWidget
-        :key="plugin.info.name"
-        :plugin="plugin"
-        :edit-mode="editMode"
-        :vertical="small"
-        @toggle="refresh"
-        @delete="onDeletePlugin"
-      />
-    </template>
-  </InfiniteGridScrollPage>
+        <template #modals>
+            <Modal :visible="uploadModal.visible" @close="uploadModal.visible = false">
+                <template #title>Upload plugin</template>
+                <template v-if="selectedFile" #default>
+                    <span>You are about to upload </span>
+                    <span class="font-semibold italic">{{ selectedFile.name }}</span>
+                    <span class="text-sm text-[var(--color-text-disabled)]">
+                        ({{ (selectedFile.size / 1_000_000).toFixed(2) }}MB)
+                    </span>
+                </template>
+                <template #footer>
+                    <div class="flex justify-end">
+                        <Button v-if="canWrite" type="blue" @click="uploadClicked">Upload</Button>
+                    </div>
+                </template>
+            </Modal>
+        </template>
+    </PageTemplate>
 </template>
 
 <script setup lang="ts">
-import {computed, reactive, ref} from 'vue';
-import BasicBlock from '@/components/core/BasicBlock.vue';
+import {
+    type ComputedRef,
+    computed,
+    inject,
+    onBeforeUnmount,
+    reactive,
+    ref
+} from 'vue';
 import Button from '@/components/core/Button.vue';
-import EmptyBlock from '@/components/core/EmptyBlock.vue';
+import PageTemplate from '@/components/core/PageTemplate.vue';
 import Modal from '@/components/modals/Modal.vue';
-import InfiniteGridScrollPage from '@/components/pages/InfiniteGridScrollPage.vue';
 import PluginWidget from '@/components/widgets/PluginWidget.vue';
-import useInfiniteScroll from '@/composables/useInfiniteScroll';
-import useFleetManagerRpc from '@/composables/useWsRpc';
+import useWsRpc from '@/composables/useWsRpc';
+import {useRpcPermissions} from '@/helpers/rpcPermissions';
 import {sendRPC} from '@/tools/websocket';
+import type {RouteTab} from '@/types/page-template';
+
+const rpc = useRpcPermissions();
+// Plugin install/remove deploys code into the FM process fleet-wide;
+// gated to provider support on the backend so the UI must match.
+const canWrite = computed(
+    () => rpc.canCall('Plugin.Upload') && rpc.canCall('Plugin.Remove')
+);
+
+const tabs = inject<ComputedRef<RouteTab[]>>(
+    'settingsTabs',
+    computed(() => [])
+);
 
 interface PluginInfo {
     name: string;
@@ -122,9 +134,12 @@ const {
     data: pluginsRaw,
     loading,
     refresh
-} = useFleetManagerRpc<Record<string, FullPluginData>>('FleetManager.ListPlugins');
-const plugins = computed(() => Object.values(pluginsRaw.value || {}));
-const {items, page, totalPages, loadItems} = useInfiniteScroll(plugins);
+} = useWsRpc<{items: (FullPluginData & {name: string})[]}>('Plugin.List');
+const plugins = computed(() => pluginsRaw.value?.items ?? []);
+
+function pluginItemKey(item: FullPluginData & {name: string}): string {
+    return item.info.name;
+}
 
 const fileInput = ref<HTMLInputElement | null>(null);
 const selectedFile = ref<File>();
@@ -149,21 +164,32 @@ function handleFileChange(e: Event) {
     reader.onerror = () => alert('Error reading file');
 }
 
+let postUploadRefreshTimer: ReturnType<typeof setTimeout> | undefined;
 async function uploadClicked() {
-    await sendRPC('FLEET_MANAGER', 'FleetManager.UploadPlugin', {
-        data: fileBase64.value
-    });
-    setTimeout(refresh, 1000);
+    if (!canWrite.value) return;
+    await sendRPC('FLEET_MANAGER', 'Plugin.Upload', {data: fileBase64.value});
+    if (postUploadRefreshTimer !== undefined) {
+        clearTimeout(postUploadRefreshTimer);
+    }
+    postUploadRefreshTimer = setTimeout(() => {
+        postUploadRefreshTimer = undefined;
+        refresh();
+    }, 1000);
     fileBase64.value = '';
     selectedFile.value = undefined;
     uploadModal.visible = false;
 }
 
+onBeforeUnmount(() => {
+    if (postUploadRefreshTimer !== undefined) {
+        clearTimeout(postUploadRefreshTimer);
+    }
+});
+
 async function onDeletePlugin(plugin: WidgetPluginData) {
+    if (!canWrite.value) return;
     if (!confirm(`Delete plugin '${plugin.info.name}'?`)) return;
-    await sendRPC('FLEET_MANAGER', 'FleetManager.RemovePlugin', {
-        name: plugin.info.name
-    });
+    await sendRPC('FLEET_MANAGER', 'Plugin.Remove', {name: plugin.info.name});
     refresh();
 }
 </script>

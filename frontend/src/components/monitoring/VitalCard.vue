@@ -1,14 +1,14 @@
 <template>
-    <div class="vital-card p-4 rounded-lg border" :title="tooltip">
+    <div ref="rootEl" class="vital-card p-4 rounded-lg border" :class="colorClass" :title="tooltip">
         <div class="vital-card__label text-xs mb-1">{{ label }}</div>
         <div class="flex items-end justify-between gap-2">
-            <span class="text-sm font-mono font-semibold" :class="textClass">
+            <span class="text-sm font-mono font-semibold vital-value">
                 {{ value }}{{ suffix }}
             </span>
             <SparkLine
                 v-if="sparkData.length > 1"
                 :data="sparkData"
-                :color="sparkColor"
+                :color="resolvedSparkColor"
                 :width="60"
                 :height="20"
             />
@@ -17,7 +17,8 @@
 </template>
 
 <script setup lang="ts">
-import {computed} from 'vue';
+import {computed, nextTick, onMounted, ref, watch} from 'vue';
+import {chartColors} from '@/helpers/chartUtils';
 import SparkLine from './SparkLine.vue';
 
 const props = withDefaults(
@@ -36,7 +37,10 @@ const props = withDefaults(
     }
 );
 
-const textClass = computed(() => {
+const rootEl = ref<HTMLElement | null>(null);
+const resolvedSparkColor = ref<string>(chartColors.textDisabled);
+
+const colorClass = computed(() => {
     switch (props.color) {
         case 'red':
             return 'vital--danger';
@@ -51,20 +55,17 @@ const textClass = computed(() => {
     }
 });
 
-const sparkColor = computed(() => {
-    switch (props.color) {
-        case 'red':
-            return '#f87171';
-        case 'yellow':
-            return '#fbbf24';
-        case 'green':
-            return '#34d399';
-        case 'blue':
-            return '#60a5fa';
-        default:
-            return '#a3a3a3';
+function resolveSparkColor() {
+    if (rootEl.value) {
+        resolvedSparkColor.value =
+            getComputedStyle(rootEl.value)
+                .getPropertyValue('--vital-spark')
+                .trim() || chartColors.textDisabled;
     }
-});
+}
+
+onMounted(() => nextTick(resolveSparkColor));
+watch(colorClass, () => nextTick(resolveSparkColor));
 </script>
 
 <style scoped>
@@ -73,9 +74,10 @@ const sparkColor = computed(() => {
     border-color: color-mix(in srgb, var(--color-border-default) 40%, transparent);
 }
 .vital-card__label { color: var(--color-text-disabled); }
-.vital--danger   { color: var(--color-danger-text); }
-.vital--warning  { color: var(--color-warning-text); }
-.vital--success  { color: var(--color-success-text); }
-.vital--info     { color: var(--color-primary-text); }
-.vital--default  { color: var(--color-text-primary); }
+.vital-value { color: inherit; }
+.vital--danger   { color: var(--color-danger-text);  --vital-spark: var(--color-danger-text); }
+.vital--warning  { color: var(--color-warning-text); --vital-spark: var(--color-warning-text); }
+.vital--success  { color: var(--color-success-text); --vital-spark: var(--color-success-text); }
+.vital--info     { color: var(--color-primary-text); --vital-spark: var(--color-primary-text); }
+.vital--default  { color: var(--color-text-primary); --vital-spark: var(--color-text-disabled); }
 </style>

@@ -13,9 +13,14 @@
 import * as http from 'node:http';
 import express from 'express';
 import log4js from 'log4js';
+import {tuning} from '../../../config';
 import * as DeviceCollector from '../../DeviceCollector';
 import {UNAUTHORIZED_USER} from '../../user';
+import {httpRouteLimit} from '../rateLimit';
+import {deviceErrorToWireString} from '../utils/classifyDeviceError';
 import {canExecuteOnDevice} from '../utils/devicePermissions';
+import {isValidDeviceIp} from '../utils/ipValidation';
+import {paramStr} from '../utils/params';
 
 const logger = log4js.getLogger('device-proxy');
 const router = express.Router();
@@ -45,7 +50,7 @@ function validateDeviceAccess(options?: {requireDevice?: boolean}) {
         res: express.Response,
         next: express.NextFunction
     ) => {
-        const {shellyID} = req.params;
+        const shellyID = paramStr(req.params.shellyID);
 
         // Check authentication
         if (!req.token || !req.user || req.user === UNAUTHORIZED_USER) {
@@ -58,7 +63,7 @@ function validateDeviceAccess(options?: {requireDevice?: boolean}) {
         }
 
         // Check if user has permission to execute on this device
-        if (!canExecuteOnDevice(req.user, shellyID)) {
+        if (!(await canExecuteOnDevice(req.user, shellyID))) {
             logger.warn(
                 'User %s denied access to device %s',
                 req.user.username,
@@ -93,43 +98,53 @@ function validateDeviceAccess(options?: {requireDevice?: boolean}) {
  * Returns device information for the web GUI modal.
  * The browser opens the device GUI directly via LAN (http://<deviceIp>/).
  */
-router.get('/:shellyID/info', validateDeviceAccess(), async (req, res) => {
-    const {shellyID} = req.params;
-    const device = (req as any).device;
+router.get(
+    '/:shellyID/info',
+    httpRouteLimit({
+        name: 'device-proxy-info',
+        capacityPerMin: tuning.http.rateLimitDeviceProxyPerMin
+    }),
+    validateDeviceAccess(),
+    async (req, res) => {
+        const shellyID = paramStr(req.params.shellyID);
+        const device = (req as any).device;
 
-    // Get device IP from status
-    const status = device.status;
-    const deviceIp = status?.wifi?.sta_ip || status?.eth?.ip;
-    const fwVersion = device.info?.ver || '';
+        // Get device IP from status
+        const status = device.status;
+        const deviceIp = status?.wifi?.sta_ip || status?.eth?.ip;
+        const fwVersion = device.info?.ver || '';
 
-    logger.info(
-        'Device proxy info: %s, ip=%s, online=%s, fw=%s',
-        shellyID,
-        deviceIp,
-        device.online,
-        fwVersion
-    );
+        logger.info(
+            'Device proxy info: %s, ip=%s, online=%s, fw=%s',
+            shellyID,
+            deviceIp,
+            device.online,
+            fwVersion
+        );
 
-    // Direct LAN access only — no RPC bridge proxy started.
-    // The browser connects to the device IP directly, avoiding
-    // RPC queue saturation that caused device disconnects.
-    res.json({
-        shellyID,
-        deviceIp: deviceIp || null,
-        online: device.online,
-        guiUrl: deviceIp ? `http://${deviceIp}/` : null,
-        fwVersion
-    });
-});
+        // Direct LAN access only — no RPC bridge proxy started.
+        // The browser connects to the device IP directly, avoiding
+        // RPC queue saturation that caused device disconnects.
+        res.json({
+            shellyID,
+            deviceIp: deviceIp || null,
+            online: device.online,
+            guiUrl: deviceIp ? `http://${deviceIp}/` : null,
+            fwVersion
+        });
+    }
+);
 
 /**
  * Probe device HTTP reachability from FM backend.
- * Returns elapsed ms on success, or an error string on failure.
+ * Returns elapsed ms on success, or a classified enum error on failure
+ * (wire format: "<code>" or "<code> — <safe-detail>").
  */
 function probeDeviceHttp(
     deviceIp: string
 ): Promise<{reachable: boolean; elapsed: number; error?: string}> {
     const start = Date.now();
+    const timeoutMs = tuning.device.probeTimeoutMs;
     return new Promise((resolve) => {
         const req = http.request(
             {
@@ -137,7 +152,7 @@ function probeDeviceHttp(
                 port: 80,
                 path: '/',
                 method: 'HEAD',
-                timeout: 5000
+                timeout: timeoutMs
             },
             (res) => {
                 // Consume response to free socket
@@ -150,14 +165,15 @@ function probeDeviceHttp(
             resolve({
                 reachable: false,
                 elapsed: Date.now() - start,
-                error: 'timeout (5s)'
+                error: `timeout — ${Math.round(timeoutMs / 1000)}s`
             });
         });
         req.on('error', (err) => {
+            req.destroy();
             resolve({
                 reachable: false,
                 elapsed: Date.now() - start,
-                error: err.message
+                error: deviceErrorToWireString(err)
             });
         });
         req.end();
@@ -195,6 +211,155 @@ function collectTemperatures(
     return temps;
 }
 
+function buildDeviceHealth(device: any) {
+    return {
+        model: device.info?.model || null,
+        app: device.info?.app || null,
+        gen: device.info?.gen || null,
+        fw: device.info?.ver || null,
+        mac: device.info?.mac || null,
+        uptime: device.status?.sys?.uptime ?? null,
+        ramFree: device.status?.sys?.ram_free ?? null,
+        ramSize: device.status?.sys?.ram_size ?? null,
+        fsFree: device.status?.sys?.fs_free ?? null,
+        fsSize: device.status?.sys?.fs_size ?? null,
+        temperatures: collectTemperatures(device.status)
+    };
+}
+
+function buildTransportHealth(device: any, lastReportTs: number | null) {
+    return {
+        online: device.online,
+        presence: device.presence || null,
+        transport: device.transport?.name || null,
+        pendingRpcs: device.transport?.pendingRpcCount ?? 0,
+        lastReportTs,
+        lastReportAge: lastReportTs
+            ? Math.round((Date.now() - lastReportTs) / 1000)
+            : null,
+        rpcCheck: null as Record<string, any> | null
+    };
+}
+
+function buildNetworkQuality(device: any) {
+    return {
+        wifi: device.status?.wifi
+            ? {
+                  connected: device.status.wifi.status === 'got ip',
+                  ssid: device.status.wifi.ssid || null,
+                  rssi: device.status.wifi.rssi ?? null,
+                  ip: device.status.wifi.sta_ip || null
+              }
+            : null,
+        eth: device.status?.eth ? {ip: device.status.eth.ip || null} : null,
+        cloud: device.status?.cloud?.connected ?? null
+    };
+}
+
+function buildGuiContext(req: express.Request) {
+    const isHttps =
+        req.protocol === 'https' ||
+        req.headers['x-forwarded-proto'] === 'https';
+    return {
+        fmProtocol: req.protocol,
+        fmHost: req.headers.host || null,
+        httpsWarning: isHttps
+            ? 'FM is served over HTTPS — browsers may block the iframe loading http://<device-ip>/ due to mixed content'
+            : null
+    };
+}
+
+async function buildFmReachability(
+    deviceIp: string,
+    fmHostname: string
+): Promise<Record<string, any>> {
+    if (isPrivateIp(deviceIp) && !isPrivateIp(fmHostname)) {
+        return {
+            reachable: null,
+            skipped: true,
+            reason: `Device IP ${deviceIp} is private — not reachable from public FM host`
+        };
+    }
+    if (!isValidDeviceIp(deviceIp) || !isPrivateIp(deviceIp)) {
+        // The IP is device-reported. Probing anything outside the LAN
+        // would let a compromised device aim FM's requests at arbitrary
+        // hosts (SSRF).
+        return {
+            reachable: false,
+            skipped: true,
+            reason: `Device IP ${deviceIp} is not a probeable LAN address`
+        };
+    }
+    return probeDeviceHttp(deviceIp);
+}
+
+async function probeRpcSanity(device: any): Promise<Record<string, any>> {
+    const rpcStart = Date.now();
+    try {
+        const info = await device.sendRPC('Shelly.GetDeviceInfo', {});
+        return {ok: true, elapsed: Date.now() - rpcStart, id: info?.id};
+    } catch (e: any) {
+        return {
+            ok: false,
+            elapsed: Date.now() - rpcStart,
+            error: deviceErrorToWireString(e)
+        };
+    }
+}
+
+async function probeAdvanced(device: any): Promise<Record<string, any>> {
+    const advStart = Date.now();
+    try {
+        const methods = await device.sendRPC('Shelly.ListMethods', {});
+        return {
+            listMethods: {
+                ok: true,
+                elapsed: Date.now() - advStart,
+                count: methods?.methods?.length || 0,
+                methods: methods?.methods || []
+            }
+        };
+    } catch (e: any) {
+        return {
+            listMethods: {
+                ok: false,
+                elapsed: Date.now() - advStart,
+                error: deviceErrorToWireString(e)
+            }
+        };
+    }
+}
+
+function buildDeviceNotFoundReport(
+    shellyID: string,
+    req: express.Request
+): Record<string, any> {
+    return {
+        shellyID,
+        deviceIp: null,
+        timestamp: new Date().toISOString(),
+        deviceNotFound: true,
+        fmReachability: null,
+        deviceHealth: null,
+        transportHealth: {
+            online: false,
+            presence: null,
+            transport: null,
+            pendingRpcs: 0,
+            lastReportTs: null,
+            lastReportAge: null,
+            rpcCheck: null
+        },
+        networkQuality: null,
+        guiContext: {
+            fmProtocol: req.protocol,
+            fmHost: req.headers.host || null,
+            httpsWarning: null
+        },
+        advanced: null
+    };
+}
+
 /**
  * GET /api/device-proxy/:shellyID/gui-debug
  *
@@ -209,176 +374,57 @@ function collectTemperatures(
  */
 router.get(
     '/:shellyID/gui-debug',
+    httpRouteLimit({
+        name: 'device-proxy-gui-debug',
+        capacityPerMin: tuning.http.rateLimitDeviceProxyPerMin
+    }),
     validateDeviceAccess({requireDevice: false}),
     async (req, res) => {
-        const {shellyID} = req.params;
+        const shellyID = paramStr(req.params.shellyID);
         const device = getFreshDevice(shellyID) || (req as any).device || null;
 
-        // Device not in DeviceCollector — return a degraded diagnostics response
         if (!device) {
             logger.info(
                 'Diagnostics for %s: device not in collector',
                 shellyID
             );
-            res.json({
-                shellyID,
-                deviceIp: null,
-                timestamp: new Date().toISOString(),
-                deviceNotFound: true,
-                fmReachability: null,
-                deviceHealth: null,
-                transportHealth: {
-                    online: false,
-                    presence: null,
-                    transport: null,
-                    pendingRpcs: 0,
-                    lastReportTs: null,
-                    lastReportAge: null,
-                    rpcCheck: null
-                },
-                networkQuality: null,
-                guiContext: {
-                    fmProtocol: req.protocol,
-                    fmHost: req.headers.host || null,
-                    httpsWarning: null
-                },
-                advanced: null
-            });
+            res.json(buildDeviceNotFoundReport(shellyID, req));
             return;
         }
 
         const deviceIp = device.status?.wifi?.sta_ip || device.status?.eth?.ip;
-        const deviceJson = device.toJSON();
         const lastReportTs: number | null =
-            deviceJson.meta?.lastReportTs || null;
+            device.toJSON().meta?.lastReportTs || null;
 
         const report: Record<string, any> = {
             shellyID,
             deviceIp: deviceIp || null,
             timestamp: new Date().toISOString(),
-
-            // ── 1. FM Host → Device Reachability ──
             fmReachability: null as Record<string, any> | null,
-
-            // ── 2. Device Health (cached status, no extra RPCs) ──
-            deviceHealth: {
-                model: device.info?.model || null,
-                app: device.info?.app || null,
-                gen: device.info?.gen || null,
-                fw: device.info?.ver || null,
-                mac: device.info?.mac || null,
-                uptime: device.status?.sys?.uptime ?? null,
-                ramFree: device.status?.sys?.ram_free ?? null,
-                ramSize: device.status?.sys?.ram_size ?? null,
-                fsFree: device.status?.sys?.fs_free ?? null,
-                fsSize: device.status?.sys?.fs_size ?? null,
-                temperatures: collectTemperatures(device.status)
-            },
-
-            // ── 3. Transport Health ──
-            transportHealth: {
-                online: device.online,
-                presence: device.presence || null,
-                transport: device.transport?.name || null,
-                pendingRpcs: device.transport?.pendingRpcCount ?? 0,
-                lastReportTs,
-                lastReportAge: lastReportTs
-                    ? Math.round((Date.now() - lastReportTs) / 1000)
-                    : null,
-                rpcCheck: null as Record<string, any> | null
-            },
-
-            // ── 4. Network Quality ──
-            networkQuality: {
-                wifi: device.status?.wifi
-                    ? {
-                          connected: device.status.wifi.status === 'got ip',
-                          ssid: device.status.wifi.ssid || null,
-                          rssi: device.status.wifi.rssi ?? null,
-                          ip: device.status.wifi.sta_ip || null
-                      }
-                    : null,
-                eth: device.status?.eth
-                    ? {
-                          ip: device.status.eth.ip || null
-                      }
-                    : null,
-                cloud: device.status?.cloud?.connected ?? null
-            },
-
-            // ── GUI context (for frontend warnings) ──
-            guiContext: {
-                fmProtocol: req.protocol,
-                fmHost: req.headers.host || null,
-                httpsWarning:
-                    req.protocol === 'https' ||
-                    req.headers['x-forwarded-proto'] === 'https'
-                        ? 'FM is served over HTTPS — browsers may block the iframe loading http://<device-ip>/ due to mixed content'
-                        : null
-            },
-
-            // ── 5. Advanced (opt-in) ──
+            deviceHealth: buildDeviceHealth(device),
+            transportHealth: buildTransportHealth(device, lastReportTs),
+            networkQuality: buildNetworkQuality(device),
+            guiContext: buildGuiContext(req),
             advanced: null as Record<string, any> | null
         };
 
-        // FM → device HTTP probe
         if (deviceIp) {
-            if (isPrivateIp(deviceIp) && !isPrivateIp(req.hostname)) {
-                report.fmReachability = {
-                    reachable: null,
-                    skipped: true,
-                    reason: `Device IP ${deviceIp} is private — not reachable from public FM host`
-                };
-            } else {
-                report.fmReachability = await probeDeviceHttp(deviceIp);
-            }
+            report.fmReachability = await buildFmReachability(
+                deviceIp,
+                req.hostname
+            );
         }
 
-        // RPC sanity check (lightweight — only if online)
         if (device.online && device.transport) {
-            const rpcStart = Date.now();
-            try {
-                const info = await device.sendRPC('Shelly.GetDeviceInfo', {});
-                report.transportHealth.rpcCheck = {
-                    ok: true,
-                    elapsed: Date.now() - rpcStart,
-                    id: info?.id
-                };
-            } catch (e: any) {
-                report.transportHealth.rpcCheck = {
-                    ok: false,
-                    elapsed: Date.now() - rpcStart,
-                    error: e.message
-                };
-            }
+            report.transportHealth.rpcCheck = await probeRpcSanity(device);
         }
 
-        // Advanced probes (opt-in via ?advanced=true)
         if (
             req.query.advanced === 'true' &&
             device.online &&
             device.transport
         ) {
-            const advStart = Date.now();
-            try {
-                const methods = await device.sendRPC('Shelly.ListMethods', {});
-                report.advanced = {
-                    listMethods: {
-                        ok: true,
-                        elapsed: Date.now() - advStart,
-                        count: methods?.methods?.length || 0,
-                        methods: methods?.methods || []
-                    }
-                };
-            } catch (e: any) {
-                report.advanced = {
-                    listMethods: {
-                        ok: false,
-                        elapsed: Date.now() - advStart,
-                        error: e.message
-                    }
-                };
-            }
+            report.advanced = await probeAdvanced(device);
         }
 
         logger.info(

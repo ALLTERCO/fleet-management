@@ -1,8 +1,9 @@
-import {existsSync} from 'node:fs';
-import {stat, symlink, unlink} from 'node:fs/promises';
+import {existsSync, type Stats} from 'node:fs';
+import {lstat, stat, symlink, unlink} from 'node:fs/promises';
 import path from 'node:path';
 import * as Commander from '../Commander';
 import {rebuild as rebuildFrontend} from '../Frontend';
+import {assertSafePluginName} from './pluginName';
 
 export default class FrontendHandler {
     public static async addMenuItems(items: any[]) {
@@ -47,6 +48,13 @@ export default class FrontendHandler {
         });
     }
 
+    public static async removeMenuItems(items: any[]) {
+        for (const item of items) {
+            if (typeof item?.link !== 'string') continue;
+            await FrontendHandler.removeMenuItem(item.link);
+        }
+    }
+
     public static async buildFrontendIfNeeded(plugin: string) {
         const {source, dest} = FrontendHandler.getSrcDestPaths(plugin);
 
@@ -56,32 +64,51 @@ export default class FrontendHandler {
         // this will throw if the file does not exist
         await stat(path.join(dest, '../'));
         // hard links are not allowed for directories
-        await symlink(source, dest);
+        try {
+            await symlink(source, dest);
+        } catch (err) {
+            if ((err as NodeJS.ErrnoException).code === 'EEXIST') return;
+            throw err;
+        }
         // Rebuild frontend
         rebuildFrontend();
     }
 
     public static async removeFrontendIfNeeded(plugin: string) {
         const {dest} = FrontendHandler.getSrcDestPaths(plugin);
-        if (!existsSync(dest)) {
-            // no frontend to remove, do nothing
+        let st: Stats;
+        try {
+            st = await lstat(dest);
+        } catch (err) {
+            if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+                return;
+            }
+            throw err;
+        }
+        if (!st.isSymbolicLink()) {
             return;
         }
 
         //remove symlink
-        await unlink(dest);
+        try {
+            await unlink(dest);
+        } catch (err) {
+            if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+            return;
+        }
 
         // Rebuild frontend
         rebuildFrontend();
     }
 
     private static getSrcDestPaths(plugin: string) {
+        const safePlugin = assertSafePluginName(plugin);
         return {
             source: path.join(
                 __dirname,
                 '../../../',
                 'plugins',
-                plugin,
+                safePlugin,
                 'frontend'
             ),
             dest: path.join(
@@ -90,7 +117,7 @@ export default class FrontendHandler {
                 'frontend',
                 'src/pages',
                 'plugin',
-                plugin
+                safePlugin
             )
         };
     }

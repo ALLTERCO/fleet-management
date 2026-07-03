@@ -1,66 +1,45 @@
+import {getLogger} from 'log4js';
+import type {WebSocket} from 'ws';
+import type CommandSender from '../../../model/CommandSender';
 import {
-    type FleetPermissionConfig,
-    INSTALLER_PERMISSIONS,
-    type ScopedExecutablePermission,
-    VIEWER_PERMISSIONS
-} from '../../../model/permissions';
+    canPerformComponentOperation,
+    isComponentPermissionAllowed
+} from '../../../modules/authz/evaluator';
 import type {user_t} from '../../../types';
+import {ConnectionContext} from '../ws/ConnectionContext';
+import {senderFromUser} from './senderFromRequest';
 
-/**
- * Check if user can execute commands on a specific device.
- * Implements the same logic as CommandSender.canPerformOnItem for user_t objects.
- */
-export function canExecuteOnDevice(user: user_t, shellyID: string): boolean {
-    // Admin users have full access
-    if (user.role === 'admin' || user.group === 'admin') {
-        return true;
-    }
+const logger = getLogger('device-permissions');
 
-    // Legacy permission check
-    if (user.permissions.includes('*')) {
-        return true;
-    }
+// Injectable so the fail-closed path is testable without a live sender.
+export interface CanExecuteDeps {
+    resolveSender: (user: user_t) => Promise<CommandSender>;
+}
 
-    // Get effective permission config
-    let config: FleetPermissionConfig | undefined = user.permissionConfig;
+const defaultDeps: CanExecuteDeps = {resolveSender: senderFromUser};
 
-    if (!config) {
-        // Derive from role if no explicit config
-        // Note: admin role is already handled above, so only installer/viewer remain
-        switch (user.role) {
-            case 'installer':
-                config = INSTALLER_PERMISSIONS;
-                break;
-            case 'viewer':
-                config = VIEWER_PERMISSIONS;
-                break;
-            default:
-                return false;
-        }
-    }
-
-    // Check device execute permission
-    const devicePerms = config.components.devices as
-        | ScopedExecutablePermission<string>
-        | undefined;
-    if (!devicePerms) {
+// V2-only. No admin fast-path — the class-of-user shortcut skipped the
+// resolver's org-boundary check and let tenant admins reach cross-tenant
+// devices via WS direct relay. A check that errors denies (fail closed): a
+// permission check must answer true/false, never throw into a void-fired relay.
+export async function canExecuteOnDevice(
+    user: user_t,
+    shellyID: string,
+    socket?: WebSocket,
+    deps: CanExecuteDeps = defaultDeps
+): Promise<boolean> {
+    try {
+        const ctx = socket ? ConnectionContext.forSocket(socket) : undefined;
+        const sender = ctx ? ctx.sender : await deps.resolveSender(user);
+        return isComponentPermissionAllowed(
+            canPerformComponentOperation(sender, 'devices', 'execute', shellyID)
+        );
+    } catch (err) {
+        logger.error(
+            'permission check failed for %s, denying: %s',
+            shellyID,
+            err
+        );
         return false;
     }
-
-    // Check if execute is allowed
-    if (!devicePerms.execute) {
-        return false;
-    }
-
-    // Check scope
-    if (devicePerms.scope === 'ALL') {
-        return true;
-    }
-
-    // SELECTED scope - check if device is in list
-    if (devicePerms.scope === 'SELECTED' && devicePerms.selected) {
-        return devicePerms.selected.includes(shellyID);
-    }
-
-    return false;
 }

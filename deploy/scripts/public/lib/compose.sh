@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # lib/compose.sh — Docker Compose file assembly and image verification
 
 verify_images() {
@@ -28,10 +29,14 @@ verify_images() {
 
     images=(
         "timescale/timescaledb:${TIMESCALEDB_VERSION:-latest}"
-        "postgres:${ZITADEL_POSTGRES_VERSION:-latest}"
-        "ghcr.io/zitadel/zitadel:${ZITADEL_VERSION:-latest}"
         "${DOCKER_HUB_IMAGE}:${FM_VERSION:-latest}"
     )
+    if [ "$FM_DEV_MODE" != "true" ]; then
+        images+=(
+            "postgres:${ZITADEL_POSTGRES_VERSION:-latest}"
+            "ghcr.io/zitadel/zitadel:${ZITADEL_VERSION:-latest}"
+        )
+    fi
 
     if [ "$WITH_SSL" = "true" ]; then
         images+=("traefik:${TRAEFIK_VERSION:-latest}")
@@ -74,26 +79,32 @@ compose_cmd() {
         env_args+=(--env-file "$STATE_DIR/.env")
     fi
 
-    # Load OIDC config if available
-    if [ -f "$STATE_DIR/fm-oidc.env" ]; then
-        env_args+=(--env-file "$STATE_DIR/fm-oidc.env")
+    # Load generated FM runtime config if available
+    if [ -f "$STATE_DIR/fm-runtime.env" ]; then
+        env_args+=(--env-file "$STATE_DIR/fm-runtime.env")
     fi
 
-    # Core compose files (always included)
+    # Core compose files. Quick mode skips Zitadel (FM auto-DEV_MODE).
     compose_files=(
         -f "$COMPOSE_DIR/docker-compose.yml"
-        -f "$COMPOSE_DIR/docker-compose.zitadel.yml"
         -f "$COMPOSE_DIR/docker-compose.fleet-image.yml"
         -f "$COMPOSE_DIR/docker-compose.selfhosted.yml"
     )
+    if [ "$FM_DEV_MODE" != "true" ]; then
+        compose_files+=(-f "$COMPOSE_DIR/docker-compose.zitadel.yml")
+        if zitadel_identity_smtp_enabled; then
+            validate_zitadel_identity_smtp || return 1
+            compose_files+=(-f "$COMPOSE_DIR/docker-compose.zitadel-smtp.yml")
+        fi
+    fi
 
     # Direct public FM port publication: only when NOT behind Traefik (SSL)
     if [ "$WITH_SSL" != "true" ] && [ -f "$COMPOSE_DIR/docker-compose.fleet-image-ports.yml" ]; then
         compose_files+=(-f "$COMPOSE_DIR/docker-compose.fleet-image-ports.yml")
     fi
 
-    # Zitadel port publication: only when NOT behind Traefik (SSL)
-    if [ "$WITH_SSL" != "true" ]; then
+    # Zitadel port publication: only when NOT behind Traefik (SSL) and not quick mode
+    if [ "$WITH_SSL" != "true" ] && [ "$FM_DEV_MODE" != "true" ]; then
         compose_files+=(-f "$COMPOSE_DIR/docker-compose.zitadel-ports.yml")
     fi
 

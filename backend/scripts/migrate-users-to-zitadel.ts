@@ -15,7 +15,7 @@
 
 import {configRc} from '../src/config';
 import * as store from '../src/modules/PostgresProvider';
-import {zitadelService, type FleetUserMetadata} from '../src/modules/zitadel';
+import {type FleetUserMetadata, zitadelService} from '../src/modules/zitadel';
 
 interface PostgresUser {
     id: number;
@@ -65,7 +65,7 @@ async function main() {
 
     // Initialize database
     console.log('Initializing database connection...');
-    await store.initDatabase();
+    await store.initDatabase(configRc.internalStorage);
 
     // Fetch all users from PostgreSQL
     console.log('Fetching users from PostgreSQL...');
@@ -120,9 +120,7 @@ async function main() {
 
         if (emailExists || usernameExists) {
             if (SKIP_EXISTING) {
-                console.log(
-                    `  -> SKIPPED: User already exists in Zitadel`
-                );
+                console.log(`  -> SKIPPED: User already exists in Zitadel`);
                 results.push({
                     username,
                     status: 'skipped',
@@ -179,7 +177,9 @@ async function main() {
             console.log(`     Email: ${email}`);
             console.log(`     Full name: ${fullName}`);
             console.log(`     Group: ${user.group}`);
-            console.log(`     Permissions: ${JSON.stringify(user.permissions)}`);
+            console.log(
+                `     Permissions: ${JSON.stringify(user.permissions)}`
+            );
             results.push({username, status: 'dry-run'});
             continue;
         }
@@ -207,7 +207,9 @@ async function main() {
                 group: user.group || ''
             };
             await zitadelService.setUserMetadata(userId, metadata);
-            console.log(`  -> Set permissions: ${JSON.stringify(user.permissions)}`);
+            console.log(
+                `  -> Set permissions: ${JSON.stringify(user.permissions)}`
+            );
             console.log(`  -> Set group: ${user.group}`);
 
             // Send password reset email if requested

@@ -63,12 +63,13 @@ withDefaults(defineProps<props_t>(), {
     background-color: var(--color-surface-1);
     box-shadow: var(--shadow-md);
 }
+/* Glass tier-1 — same recipe as GlassShell (SSOT via --glass-1-* tokens). */
 .basic-block--glass {
-    background: var(--glass-bg);
-    backdrop-filter: blur(var(--glass-blur));
-    -webkit-backdrop-filter: blur(var(--glass-blur));
+    background: var(--glass-1-bg);
+    backdrop-filter: var(--glass-1-filter);
+    -webkit-backdrop-filter: var(--glass-1-filter);
     border: 1px solid var(--glass-border);
-    box-shadow: var(--glass-shadow);
+    box-shadow: inset 0 1px 0 var(--glass-highlight);
 }
 .basic-block--bordered {
     border: 1px solid var(--color-border-default);

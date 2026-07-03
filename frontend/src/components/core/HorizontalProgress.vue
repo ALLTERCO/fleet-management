@@ -1,5 +1,5 @@
 <template>
-    <div class="slider-container rounded-lg shadow-lg py-2 px-3 w-full">
+    <div class="slider-container rounded-lg shadow-none py-2 px-3 w-full">
         <div :class="`mb-1 text-base font-medium ${disabled ? 'slider-disabled' : ''}`">
             <slot name="title" />
         </div>

@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 320" width="1000" height="320" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Authorization model: personas, assignments, scope, and enforcement">
+  <title>How access is granted</title>
+  <desc>A persona is a bundle of allow/deny statements; an assignment attaches a persona to a user or group, narrowed by a scope; the union becomes the caller's effective permissions, enforced on every call against the operation's x-fm-permission.</desc>
+  <defs>
+    <marker id="zN" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A97A8"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1000" height="320" fill="#ffffff"/>
+
+  <!-- arrows -->
+  <path d="M238,90 L296,122" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#zN)"/>
+  <path d="M238,194 L296,162" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#zN)"/>
+  <path d="M402,206 L402,190" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#zN)"/>
+  <text x="446" y="204" text-anchor="middle" font-size="10" fill="#6B7A90">narrows</text>
+  <path d="M506,142 L562,142" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#zN)"/>
+  <path d="M772,142 L798,142" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#zN)"/>
+
+  <!-- Persona -->
+  <rect x="28" y="44" width="210" height="76" rx="6" fill="#EAF6FD" stroke="#4495D1" stroke-width="1.5"/>
+  <text x="133" y="74" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Persona</text>
+  <text x="133" y="92" text-anchor="middle" font-size="10.5" fill="#6B7A90">allow / deny statements</text>
+  <text x="133" y="108" text-anchor="middle" font-size="10.5" fill="#6B7A90">actions · resource types</text>
+
+  <!-- Subject -->
+  <rect x="28" y="164" width="210" height="76" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="133" y="198" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">User or user group</text>
+  <text x="133" y="216" text-anchor="middle" font-size="10.5" fill="#6B7A90">the subject</text>
+
+  <!-- Assignment -->
+  <rect x="298" y="98" width="206" height="90" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="401" y="132" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Assignment</text>
+  <text x="401" y="150" text-anchor="middle" font-size="10.5" fill="#6B7A90">attaches a persona</text>
+  <text x="401" y="166" text-anchor="middle" font-size="10.5" fill="#6B7A90">to a subject</text>
+
+  <!-- Scope -->
+  <rect x="298" y="206" width="206" height="66" rx="6" fill="#FFF7E8" stroke="#D9930B" stroke-width="1.5"/>
+  <text x="401" y="234" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Scope</text>
+  <text x="401" y="252" text-anchor="middle" font-size="10" fill="#8A6100">all · devices · locations · groups · tags</text>
+
+  <!-- Effective -->
+  <rect x="564" y="98" width="208" height="90" rx="6" fill="#E4F1FB" stroke="#4495D1" stroke-width="2"/>
+  <text x="668" y="132" text-anchor="middle" font-size="13" font-weight="700" fill="#122A4F">Effective permissions</text>
+  <text x="668" y="150" text-anchor="middle" font-size="10.5" fill="#6B7A90">union of assignments</text>
+  <text x="668" y="166" text-anchor="middle" font-size="10.5" fill="#6B7A90">explicit deny wins</text>
+
+  <!-- Enforced -->
+  <rect x="800" y="98" width="176" height="90" rx="6" fill="#EAF7F0" stroke="#2E9E6B" stroke-width="1.5"/>
+  <text x="888" y="132" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Enforced</text>
+  <text x="888" y="150" text-anchor="middle" font-size="10.5" fill="#2E7D5B">on every call</text>
+  <text x="888" y="166" text-anchor="middle" font-size="10" fill="#2E7D5B" font-family="ui-monospace,Menlo,monospace">x-fm-permission</text>
+
+  <text x="500" y="300" text-anchor="middle" font-size="10.5" fill="#8A97A8">Built-in roles map to system personas — admin · manager · editor · installer · operator · auditor · viewer</text>
+</svg>

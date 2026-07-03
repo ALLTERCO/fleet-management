@@ -1,0 +1,33 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["./src/*"],
+      "@app-root": ["./src/shell/ClientApp.vue"],
+      "@router-routes": ["./src/router/routes.client.ts"],
+      "@host": ["./src/shell/template-host/index.ts"],
+      "@host/*": ["./src/shell/template-host/*"],
+      "@template/*": ["./src/template-active/*"],
+      "@template-contract": ["./src/template-contract/index.ts"],
+      "@template-contract/*": ["./src/template-contract/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@api/*": ["../backend/src/types/api/*"]
+    }
+  },
+  "include": [
+    "src/vite-env.d.ts",
+    "src/env.d.ts",
+    "src/shell/**/*.ts",
+    "src/shell/**/*.vue",
+    "src/template-active/**/*.ts",
+    "src/template-active/**/*.vue",
+    "src/template-contract/**/*.ts",
+    "src/shared/**/*.ts",
+    "src/shared/**/*.vue",
+    "src/router/routes.client.ts",
+    "src/tools/**/*.ts",
+    "src/stores/**/*.ts",
+    "../backend/src/types/api/**/*.ts"
+  ],
+  "exclude": ["src/shared/host-stub.ts"]
+}

@@ -1,29 +1,68 @@
-import {createApp} from 'vue';
-import './style.css';
-import '@/constants';
+import {createApp, h} from 'vue';
+import './styles/style.css';
+import App from '@app-root';
 import {createPinia} from 'pinia';
+import {LOGIN_PATH} from '@/constants';
+import {setLoginRedirectHandler} from '@/helpers/authNavigation';
+import {
+    installCorruptTokenTrap,
+    purgeCorruptOidcStorage
+} from '@/helpers/oidcStorage';
 import {initWebVitals} from '@/helpers/webVitals';
 import {initZitadelAuth} from '@/helpers/zitadelAuth';
-import App from './App.vue';
-import {USE_LOGIN_ZITADEL} from './constants';
+import {installCustomization, loadCustomization} from '@/shell/customization';
+import {initLaunchSync} from '@/tools/launchSync';
+import {initPwaInstall} from '@/tools/pwaInstall';
+import {initReportAnomalyToasts} from '@/tools/reportAnomalyToast';
+import {initSwUpdate} from '@/tools/swUpdate';
 import router from './router';
 
-function init() {
+setLoginRedirectHandler(async () => {
+    await router.replace(LOGIN_PATH);
+});
+
+installCorruptTokenTrap();
+
+function mountBootError(err: unknown): void {
+    console.error('[Boot] startup failed:', err);
+    const message =
+        err instanceof Error ? err.message : 'Unknown startup error';
+    createApp({
+        render() {
+            return h('main', {class: 'boot-error'}, [
+                h('section', {class: 'boot-error__panel'}, [
+                    h('h1', 'Unable to start Fleet Manager'),
+                    h('p', message)
+                ])
+            ]);
+        }
+    }).mount('#app');
+}
+
+async function init() {
+    const customization = await loadCustomization();
     const pinia = createPinia();
 
     const app = createApp(App);
-    const rtCfg = (window as any).__FM_RUNTIME_CONFIG__;
+    const rtCfg = window.__FM_RUNTIME_CONFIG__;
     app.config.performance = rtCfg?.perfTracing ?? import.meta.env.DEV;
 
-    app.config.errorHandler = (err, instance, info) => {
+    app.config.errorHandler = (err, _instance, info) => {
         console.error(`[Vue Error] ${info}:`, err);
     };
 
     app.use(pinia);
     app.use(router);
+    installCustomization(app, customization);
+    // Block first paint until the initial beforeEach redirect resolves.
+    await router.isReady();
     app.mount('#app');
 
     initWebVitals();
+    initSwUpdate();
+    initPwaInstall();
+    initLaunchSync();
+    initReportAnomalyToasts();
 
     // Shared IntersectionObserver for v-lazyload (one observer for all images)
     let lazyObserver: IntersectionObserver | null = null;
@@ -61,28 +100,13 @@ function init() {
     });
 }
 
-if (USE_LOGIN_ZITADEL) {
-    console.debug('using zitadel login strategy');
+if (!window.__FM_RUNTIME_CONFIG__?.devMode) {
+    purgeCorruptOidcStorage();
     initZitadelAuth()
-        .then((auth) => {
-            if (!auth) {
-                console.warn('Zitadel auth init returned undefined — app will mount without session');
-                return;
-            }
-            return auth.oidcAuth
-                .startup()
-                .then((ok) => {
-                    if (ok) {
-                        console.debug('Zitadel started OK');
-                    } else {
-                        console.warn('Zitadel OIDC startup returned false — app will mount without session');
-                    }
-                });
-        })
+        .then((auth) => auth?.oidcAuth.startup())
         .catch((err) => {
             console.error('Zitadel OIDC startup error:', err);
+            purgeCorruptOidcStorage();
         })
-        .finally(() => {
-            init();
-        });
-} else init();
+        .finally(() => void init().catch(mountBootError));
+} else void init().catch(mountBootError);

@@ -10,10 +10,10 @@
         "metadata": true
     },
     "devDependencies": {
-        "@types/node": "^20.5.1",
-        "typescript": "^5.0.0"
+        "@types/node": "^24.0.0",
+        "typescript": "^5.9.3"
     },
     "dependencies": {
-        "sqlite3": "^5.1.6"
+        "sqlite3": "^6.0.1"
     }
 }

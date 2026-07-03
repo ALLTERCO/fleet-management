@@ -4,7 +4,7 @@ import * as fsp from 'node:fs/promises';
 import path from 'node:path';
 import util from 'node:util';
 import * as log4js from 'log4js';
-import {PLUGINS_FOLDER, configRc} from '../../config';
+import {configRc, PLUGINS_FOLDER} from '../../config';
 import PluginComponent from '../../model/component/PluginComponent';
 import * as Commander from '../../modules/Commander';
 import type {PluginData} from '../../types';
@@ -12,6 +12,7 @@ import {rebuild as rebuildFrontend} from '../Frontend';
 import * as Observability from '../Observability';
 import DirectoryScanner from './DirectoryScanner';
 import FrontendHandler from './FrontendHandler';
+import {pluginsToAdd, pluginsToRemove} from './pluginDiff';
 import Workers from './Workers';
 
 const FRONTEND_SOURCE = path.join(__dirname, '../../../frontend');
@@ -22,87 +23,149 @@ const exec = util.promisify(child_process.exec);
 log4js.configure(configRc.logger);
 const logger = log4js.getLogger('Plugin Loader');
 
+// Allowlist for the env passed to `npm install` so plugin install scripts
+// and any subprocess npm spawns never see FM_* / ZITADEL_* secrets.
+// PATH/HOME/USER/SHELL/LANG/LC_ALL/NODE_PATH are required for npm itself;
+// NPM_CONFIG_* and PROXY are passed through so ops can tune proxy/registry.
+const NPM_ENV_ALLOW = [
+    'PATH',
+    'HOME',
+    'USER',
+    'SHELL',
+    'LANG',
+    'LC_ALL',
+    'NODE_PATH',
+    'TMP',
+    'TMPDIR',
+    'TEMP'
+];
+function safeNpmEnv(): NodeJS.ProcessEnv {
+    const out: NodeJS.ProcessEnv = {};
+    for (const key of NPM_ENV_ALLOW) {
+        const v = process.env[key];
+        if (v !== undefined) out[key] = v;
+    }
+    for (const [k, v] of Object.entries(process.env)) {
+        if (v === undefined) continue;
+        if (k.startsWith('NPM_CONFIG_')) out[k] = v;
+        if (k === 'HTTP_PROXY' || k === 'HTTPS_PROXY' || k === 'NO_PROXY') {
+            out[k] = v;
+        }
+        const lower = k.toLowerCase();
+        if (
+            lower === 'http_proxy' ||
+            lower === 'https_proxy' ||
+            lower === 'no_proxy'
+        ) {
+            out[k] = v;
+        }
+    }
+    return out;
+}
+
+export interface PluginSetupResult {
+    loaded: string[];
+    failed: Array<{name: string; error: string}>;
+}
+
 export default class PluginLoader {
     private static readonly pluginDataMap = new Map<string, PluginData>();
+    private static readonly failedPlugins = new Map<string, string>();
     private static syncWorking = false;
+    private static syncQueued = false;
+    private static watcher: fs.FSWatcher | null = null;
 
-    private static getPluginsToAdd(newPlugins: string[], oldPlugins: string[]) {
-        return newPlugins.filter((pl) => !oldPlugins.includes(pl));
-    }
-
-    private static getPluginsToRemove(
-        newPlugins: string[],
-        oldPlugins: string[]
-    ) {
-        return oldPlugins.filter((pl) => !newPlugins.includes(pl));
-    }
-
-    private static async sync() {
-        const loadedPlugins = Array.from(
-            PluginLoader.pluginDataMap.values()
-        ).map((plugin) => plugin.info.name);
-        const existing = await DirectoryScanner.scanPluginsDir(loadedPlugins);
-        const oldPluginNames = Array.from(
-            PluginLoader.pluginDataMap.values()
-        ).map((data) => data.info.name);
-        const newPluginNames = existing.map((i) => i.pluginInfo.name);
-
-        const add = PluginLoader.getPluginsToAdd(
-            newPluginNames,
-            oldPluginNames
-        );
-        const remove = PluginLoader.getPluginsToRemove(
-            newPluginNames,
-            oldPluginNames
-        );
-
-        const comps = Commander.getComponents();
-
-        for (const val of add) {
-            const p = existing.find((v) => v?.pluginInfo.name === val);
-            if (!p) continue;
-            PluginLoader.pluginDataMap.set(p.pluginInfo.name, {
-                location: p.pluginFolder,
-                info: p.pluginInfo
-            });
-
-            const name = p?.pluginInfo.name;
-            const component = new PluginComponent(name);
-            Commander.registerComponent(component);
-            const config = component.getConfig();
-
-            // Install plugin deps (skip in Docker — deps are pre-installed at build time)
-            if (HAS_NPM) {
-                const {stdout, stderr} = await exec('npm install', {
-                    cwd: p.pluginFolder,
-                    env: {...process.env}
-                });
-                logger.mark('plugin npm i stdout:', stdout);
-                logger.mark('plugin npm i stderr:', stderr);
-            }
-
-            if (config.enable === true) {
-                await PluginLoader.enablePlugin(name);
+    private static async sync(): Promise<PluginSetupResult> {
+        const {add, remove, existingByName} = await PluginLoader.diffDisk();
+        const failedThisRun: Array<{name: string; error: string}> = [];
+        for (const name of add) {
+            const found = existingByName.get(name);
+            if (!found) continue;
+            try {
+                await PluginLoader.addPlugin(found);
+                PluginLoader.failedPlugins.delete(name);
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                logger.error('Plugin %s failed to load: %s', name, msg);
+                Observability.incrementCounter('plugin_init_failures_total');
+                PluginLoader.failedPlugins.set(name, msg);
+                failedThisRun.push({name, error: msg});
             }
         }
-
         for (const name of remove) {
-            comps.delete(name);
-            PluginLoader.pluginDataMap.delete(name);
-            PluginLoader.disablePlugin(name);
+            await PluginLoader.removePlugin(name);
+        }
+        if (add.length > 0 || remove.length > 0) {
+            PluginLoader.rebuildFrontendIfPossible();
+        }
+        return {
+            loaded: Array.from(PluginLoader.pluginDataMap.keys()),
+            failed: failedThisRun
+        };
+    }
+
+    private static async diffDisk(): Promise<{
+        add: string[];
+        remove: string[];
+        existingByName: Map<
+            string,
+            Awaited<ReturnType<typeof DirectoryScanner.scanPluginsDir>>[number]
+        >;
+    }> {
+        const loadedNames = Array.from(PluginLoader.pluginDataMap.values()).map(
+            (d) => d.info.name
+        );
+        const existing = await DirectoryScanner.scanPluginsDir(loadedNames);
+        const newNames = existing.map((i) => i.pluginInfo.name);
+        const existingByName = new Map(
+            existing.map((p) => [p.pluginInfo.name, p])
+        );
+        return {
+            add: pluginsToAdd(newNames, loadedNames),
+            remove: pluginsToRemove(newNames, loadedNames),
+            existingByName
+        };
+    }
+
+    private static async addPlugin(
+        p: Awaited<ReturnType<typeof DirectoryScanner.scanPluginsDir>>[number]
+    ): Promise<void> {
+        const name = p.pluginInfo.name;
+        PluginLoader.pluginDataMap.set(name, {
+            location: p.pluginFolder,
+            info: p.pluginInfo
+        });
+        const component = new PluginComponent(name);
+        Commander.registerComponent(component);
+        const config = component.getConfig();
+
+        // Skip in Docker — deps are pre-installed at build time.
+        if (HAS_NPM) {
+            const {stdout, stderr} = await exec(
+                'npm install --ignore-scripts',
+                {cwd: p.pluginFolder, env: safeNpmEnv()}
+            );
+            logger.mark('plugin npm i stdout:', stdout);
+            logger.mark('plugin npm i stderr:', stderr);
         }
 
-        // Only rebuild frontend when plugins changed and source tree is available
-        // (in Docker the frontend is pre-built — no source tree to rebuild from)
-        if (
-            (add.length > 0 || remove.length > 0) &&
-            fs.existsSync(FRONTEND_SOURCE)
-        ) {
-            // Rebuild in background — backend plugin functionality works immediately
-            rebuildFrontend().catch((err) => {
-                logger.error('Failed to rebuild frontend during sync', err);
-            });
+        if (config.enable === true) {
+            await PluginLoader.enablePlugin(name);
         }
+    }
+
+    private static async removePlugin(name: string): Promise<void> {
+        Commander.unregisterComponent(name);
+        await PluginLoader.disablePlugin(name);
+        PluginLoader.pluginDataMap.delete(name);
+    }
+
+    // In Docker the frontend is pre-built — no source tree to rebuild from.
+    private static rebuildFrontendIfPossible(): void {
+        if (!fs.existsSync(FRONTEND_SOURCE)) return;
+        rebuildFrontend().catch((err) => {
+            logger.error('Failed to rebuild frontend during sync', err);
+        });
     }
 
     // ----------------------------------------------------------------------------------
@@ -131,26 +194,20 @@ export default class PluginLoader {
 
         // Handle frontend
         if (buildFrontend) {
-            // do not wait for the build
-            FrontendHandler.buildFrontendIfNeeded(name).then(
-                () => {
-                    // TODO: send event for reload
-                },
-                (err) => {
-                    logger.error(
-                        "Failed to build frontend for plugin '%s'",
-                        name,
-                        err
-                    );
-                }
-            );
+            void FrontendHandler.buildFrontendIfNeeded(name).catch((err) => {
+                logger.error(
+                    "Failed to build frontend for plugin '%s'",
+                    name,
+                    err
+                );
+            });
         }
 
         Workers.createWorker(pluginData);
         return true;
     }
 
-    public static disablePlugin(name: string) {
+    public static async disablePlugin(name: string) {
         if (!PluginLoader.pluginDataMap.has(name)) {
             return false;
         }
@@ -161,7 +218,7 @@ export default class PluginLoader {
         // Remove menu items if needed
         const menuItems = pluginData.info.config?.menuItems;
         if (menuItems) {
-            FrontendHandler.removeMenuItem(menuItems[0].link);
+            await FrontendHandler.removeMenuItems(menuItems);
         }
 
         if (pluginWorker === undefined) {
@@ -176,11 +233,12 @@ export default class PluginLoader {
         setTimeout(() => {
             logger.mark('terminating plugin worker for %s', name);
             pluginWorker.terminate();
-        }, 100);
+        }, 100).unref();
 
         FrontendHandler.removeFrontendIfNeeded(name);
 
-        Commander.getComponents().delete(name);
+        Workers.unloadPlugin(name);
+        Commander.unregisterComponent(name);
 
         return true;
     }
@@ -188,37 +246,66 @@ export default class PluginLoader {
     private static folderChanged() {
         logger.debug('plugin folder changed');
         if (PluginLoader.syncWorking) {
-            logger.debug('sync already in process, do nothing');
+            logger.debug('sync already in process, queue another pass');
+            PluginLoader.syncQueued = true;
             return;
         }
         PluginLoader.syncWorking = true;
         PluginLoader.sync().finally(() => {
             PluginLoader.syncWorking = false;
+            if (PluginLoader.syncQueued) {
+                PluginLoader.syncQueued = false;
+                PluginLoader.folderChanged();
+            }
         });
     }
 
-    public static async setup() {
+    public static async setup(): Promise<PluginSetupResult> {
         try {
             await fsp.access(PLUGINS_FOLDER);
         } catch {
-            // No plugins folder
             logger.warn(
                 `Plugins folder "${PLUGINS_FOLDER}" does not exist. Creating it now...`
             );
             await fsp.mkdir(PLUGINS_FOLDER, {recursive: true});
         }
 
-        await PluginLoader.sync();
-        fs.watch(PLUGINS_FOLDER, () => {
-            PluginLoader.folderChanged();
-        });
+        const result = await PluginLoader.sync();
+        if (!PluginLoader.watcher) {
+            PluginLoader.watcher = fs.watch(PLUGINS_FOLDER, () => {
+                PluginLoader.folderChanged();
+            });
+        }
+        return result;
+    }
+
+    public static stopWatching(): void {
+        PluginLoader.watcher?.close();
+        PluginLoader.watcher = null;
+        PluginLoader.syncQueued = false;
     }
 
     public static getPluginData() {
         return PluginLoader.pluginDataMap;
     }
+
+    public static getFailedPlugins(): ReadonlyMap<string, string> {
+        return PluginLoader.failedPlugins;
+    }
 }
 
-Observability.registerModule('plugins', () => ({
-    loadedPlugins: PluginLoader.getPluginData().size
-}));
+Observability.registerModule('plugins', {
+    stats: () => ({
+        loadedPlugins: PluginLoader.getPluginData().size,
+        failedPlugins: PluginLoader.getFailedPlugins().size
+    }),
+    topology: {
+        role: 'service',
+        cluster: 'services',
+        zone: 'integrations',
+        upstreams: ['events'],
+        label: 'Plugins',
+        description: 'Plugin loader registry',
+        route: '/monitoring/services'
+    }
+});

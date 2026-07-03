@@ -1,7 +1,7 @@
 <template>
     <div
         v-if="vertical"
-        class="widget-card flex flex-row items-center gap-3 rounded-lg shadow-lg p-3 relative text-sm min-h-[76px] justify-start hover:cursor-pointer"
+        class="widget-card flex flex-row items-center gap-3 rounded-lg shadow-none p-3 relative text-sm min-h-[76px] justify-start hover:cursor-pointer"
         :class="{
             'widget-card--selected': selected,
         }"
@@ -18,7 +18,7 @@
             <slot name="image">
                 <img
                     class="rounded-full"
-                    src="/shelly_logo_black.jpg"
+                    src="/images/branding/shelly_logo_black.jpg"
                     alt="Shelly"
                 />
             </slot>
@@ -80,14 +80,11 @@
             <slot name="image">
                 <img
                     class="rounded-full"
-                    src="/shelly_logo_black.jpg"
+                    src="/images/branding/shelly_logo_black.jpg"
                     alt="Shelly"
                 />
             </slot>
-            <div
-                class="absolute text-center bottom-1 w-full drop-shadow-2xl"
-                style="text-shadow: 0 1px 8px rgba(0,0,0,0.7)"
-            >
+            <div class="vw-name-shadow absolute text-center bottom-1 w-full">
                 <slot name="name">
                     <span>Widget Name</span>
                 </slot>
@@ -142,4 +139,7 @@ function onClick() {
 
 <style>
 /* Card styles: global .widget-card system (design-tokens.css §16) — not scoped */
+.vw-name-shadow {
+    text-shadow: 0 1px 6px var(--color-overlay-heavy);
+}
 </style>

@@ -12,8 +12,8 @@ type call_t = (method: string, params?: any) => Promise<any>;
 export function load({call, defineComponent}: {call: call_t, defineComponent: define_component_t}) {
     console.log("[Greetings] Plugin loaded");
 
-    call("fleetmanager.getconfig").then((res) => {
-        console.log("fleetmanager config is", res)
+    call("system.getconfig").then((res) => {
+        console.log("system config is", res)
     });
     defineComponent({
         name: 'greetings',

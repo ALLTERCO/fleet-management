@@ -10,6 +10,15 @@ services:
   fleet-db:
     restart: unless-stopped
     image: timescale/timescaledb:${TIMESCALEDB_VERSION}
+    labels:
+      fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
+      fleet.client: "${FM_CLIENT_ID:-shared}"
+      fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
+      fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
+      fleet.version: "${TIMESCALEDB_VERSION:-unknown}"
+      fleet.commit: "${FM_BUILD_COMMIT:-unknown}"
+      fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
+      fleet.service: "fleet-db"
     security_opt:
       - no-new-privileges:true
     volumes:
@@ -25,6 +34,11 @@ services:
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: fleet
+      # Force the data dir inside the mounted volume. The timescaledb image
+      # on PG18 puts its default PGDATA at /var/lib/postgresql/18/docker,
+      # which is OUTSIDE the legacy /var/lib/postgresql/data mount — that
+      # left every restart booting with a fresh empty cluster.
+      PGDATA: /var/lib/postgresql/data/pgdata
     networks:
       fleet-net:
     tty: true
@@ -42,6 +56,21 @@ services:
 
 networks:
   fleet-net:
+    labels:
+      fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
+      fleet.client: "${FM_CLIENT_ID:-shared}"
+      fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
+      fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
+      fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
+      fleet.resource_type: "network"
 
 volumes:
   fleet-db-data:
+    labels:
+      fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
+      fleet.client: "${FM_CLIENT_ID:-shared}"
+      fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
+      fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
+      fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
+      fleet.resource_type: "volume"
+      fleet.service: "fleet-db"

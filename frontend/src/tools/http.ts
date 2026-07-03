@@ -1,34 +1,26 @@
 import {getZitadelAuth} from '@/helpers/zitadelAuth';
-import {FLEET_MANAGER_HTTP} from '../constants';
+import {RPC_URL} from '../constants';
 
-// Dev mode token storage key (same as in auth store)
+// Same priority order as helpers/axios.ts so HTTP and axios paths agree.
 const DEV_MODE_TOKEN_KEY = 'dev_mode_token';
+const ACCESS_TOKEN_KEY = 'access_token';
 
-/**
- * Check if we're in dev mode by looking for dev mode token
- */
-function isDevMode(): boolean {
-    return !!localStorage.getItem(DEV_MODE_TOKEN_KEY);
-}
-
-/**
- * Get the current access token (supports both Zitadel and dev mode)
- */
 async function getAccessToken(): Promise<string | null> {
-    // Check for dev mode token first
-    const devModeToken = localStorage.getItem(DEV_MODE_TOKEN_KEY);
-    if (devModeToken) {
-        return devModeToken;
-    }
+    // dev_mode_token: localStorage (cross-tab for dev). access_token:
+    // sessionStorage (tab-scoped, XSS-resistant).
+    const devToken = localStorage.getItem(DEV_MODE_TOKEN_KEY);
+    if (devToken) return devToken;
 
-    // Fall back to Zitadel
+    // Synced by addUserLoaded; closes the isAuthenticated/mgr.getUser race.
+    const cachedToken = sessionStorage.getItem(ACCESS_TOKEN_KEY);
+    if (cachedToken) return cachedToken;
+
+    if (window.__FM_RUNTIME_CONFIG__?.devMode) return null;
+
+    // Fallback if addUserLoaded hasn't fired yet.
     const zitadelAuth = getZitadelAuth();
-    if (!zitadelAuth) {
-        console.error('Zitadel auth not initialized');
-        return null;
-    }
-
-    const user = await zitadelAuth.oidcAuth.mgr.getUser();
+    if (!zitadelAuth) return null;
+    const user = await zitadelAuth.oidcAuth.mgr.getUser().catch(() => null);
     return user?.access_token ?? null;
 }
 
@@ -36,11 +28,17 @@ async function getAccessToken(): Promise<string | null> {
  * Send an RPC request to the backend
  * Note: For User.Authenticate in dev mode, we don't require a token
  */
-export async function sendRPC(method: string, params: object | null = null) {
+export async function sendRPC(
+    method: string,
+    params: object | null = null,
+    dst?: string | string[]
+) {
     // For authentication request, don't require token
     if (method === 'User.Authenticate') {
-        const resp = await fetch(FLEET_MANAGER_HTTP + '/rpc', {
+        const res = await fetch(RPC_URL, {
             method: 'POST',
+            mode: 'same-origin',
+            credentials: 'omit',
             headers: {
                 'Content-Type': 'application/json'
             },
@@ -48,8 +46,24 @@ export async function sendRPC(method: string, params: object | null = null) {
                 method,
                 params
             })
-        }).then((res) => res.json());
+        });
 
+        if (!res.ok) {
+            const text = await res.text();
+            try {
+                const parsed = JSON.parse(text);
+                return Promise.reject(
+                    parsed.error || {code: res.status, message: text}
+                );
+            } catch {
+                return Promise.reject({
+                    code: res.status,
+                    message: text || `HTTP ${res.status}`
+                });
+            }
+        }
+
+        const resp = await res.json();
         if (resp.error) return Promise.reject(resp.error);
         return resp;
     }
@@ -60,18 +74,36 @@ export async function sendRPC(method: string, params: object | null = null) {
         return Promise.reject({code: 401, message: 'Not authenticated'});
     }
 
-    const resp = await fetch(FLEET_MANAGER_HTTP + '/rpc', {
+    const res = await fetch(RPC_URL, {
         method: 'POST',
+        mode: 'same-origin',
+        credentials: 'omit',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer ' + token
+            Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
             method,
-            params
+            params,
+            ...(dst ? {dst} : {})
         })
-    }).then((res) => res.json());
+    });
 
+    if (!res.ok) {
+        // Try to read JSON error body — backend returns error details even on non-200
+        try {
+            const body = await res.json();
+            if (body?.error) return Promise.reject(body.error);
+        } catch {
+            // Non-JSON response (e.g., HTML error page) — fall through to generic error
+        }
+        return Promise.reject({
+            code: res.status,
+            message: `HTTP ${res.status}: ${res.statusText}`
+        });
+    }
+
+    const resp = await res.json();
     if (resp.error) return Promise.reject(resp.error);
     return resp;
 }

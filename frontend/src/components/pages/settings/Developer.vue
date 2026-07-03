@@ -65,8 +65,8 @@ async function usersOpenned() {
 }
 
 async function usersSaved() {
-    await ws.sendRPC('FLEET_MANAGER', 'User.SetConfig', {
-        config: {allowDebugUser: users.allowDebugUser}
+    await ws.sendRPC('FLEET_MANAGER', 'User.SetAllowDebug', {
+        enabled: users.allowDebugUser
     });
     toast.success('Updated user config');
 }

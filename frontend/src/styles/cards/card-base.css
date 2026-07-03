@@ -1,0 +1,3252 @@
+/* ══════════════════════════════════════════════════════
+   SHELLY FM — ENTITY CARDS
+   3 sizes: 1×1 (200px), 2×1 (wide), 2×2 (hero)
+   Ported from shelly-fm design library — all styles exact match
+   ══════════════════════════════════════════════════════ */
+
+/* ── Bento Grid ── */
+.bento-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, var(--grid-cell));
+    grid-auto-rows: var(--grid-cell);
+    gap: var(--card-grid-gap);
+    margin-bottom: var(--space-5);
+    justify-content: center;
+}
+
+/* ══════════════════════════════════════════════════════
+   CARD SHELL
+   ══════════════════════════════════════════════════════ */
+.ec {
+    --ar: 184, 197, 212;
+    border-radius: var(--radius-card);
+    border: 1px solid var(--color-border-default);
+    background: var(--color-surface-2);
+    overflow: clip;
+    cursor: pointer;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    contain: layout style paint;
+    box-shadow: none;
+    transition:
+        border-color var(--duration-normal) var(--ease-out-expo),
+        background 0.35s var(--ease-out-expo),
+        filter var(--duration-normal) var(--ease-out-expo);
+}
+
+/* ── Card ::before — disabled (was frost edge, expensive GPU layer per card) ── */
+.ec::before {
+    content: none;
+}
+
+/* ── Card ::after — subtle accent glow ── */
+.ec::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(
+        ellipse 70% 60% at 30% 110%,
+        rgba(var(--ar), 0.04),
+        transparent 70%
+    );
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* ── Presence-pulse + card-in disabled (100+ cards kills performance) ── */
+
+/* ── Hover state — subtle bg change, no lift, no shadow ── */
+.ec:hover {
+    border-color: var(--color-border-medium);
+    background: rgba(249, 250, 250, 0.04);
+}
+.ec:hover::after {
+    background: radial-gradient(
+        ellipse 70% 60% at 30% 110%,
+        rgba(var(--ar), 0.08),
+        transparent 70%
+    );
+}
+
+/* ── Active press state — subtler ── */
+.ec:active {
+    transform: scale(0.98);
+    filter: brightness(0.96);
+    transition:
+        transform 0.08s ease,
+        filter 0.08s ease;
+}
+.ec:focus-visible {
+    box-shadow: 0 0 0 2px rgba(68, 149, 209, 0.45);
+    outline: none;
+}
+
+/* ── Bento Sizes ── */
+.ec-wide {
+    grid-column: span 2;
+}
+.ec-hero {
+    grid-column: span 2;
+    grid-row: span 2;
+}
+
+/* ── Offline ── */
+.ec.is-offline {
+    border-color: rgba(232, 64, 87, 0.25);
+    background: linear-gradient(
+        165deg,
+        rgba(18, 8, 10, 0.97) 0%,
+        rgba(12, 5, 7, 0.98) 100%
+    );
+    opacity: 0.78;
+    filter: saturate(0.3) brightness(0.92);
+    box-shadow: none;
+}
+.ec.is-offline::after {
+    background: repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 8px,
+        rgba(232, 64, 87, 0.04) 8px,
+        rgba(232, 64, 87, 0.04) 9px
+    );
+    opacity: 0.5;
+}
+.ec.is-offline:hover {
+    opacity: 0.88;
+    filter: saturate(0.4) brightness(0.95);
+}
+.ec.is-offline:hover::after {
+    opacity: 0.7;
+}
+
+/* ── Sleeping ── */
+.ec.is-sleeping {
+    --ar: 139, 92, 246;
+    border-color: rgba(139, 92, 246, 0.22);
+    background: linear-gradient(
+        165deg,
+        rgba(16, 10, 28, 0.97) 0%,
+        rgba(12, 8, 22, 0.97) 100%
+    );
+    opacity: 0.82;
+    box-shadow: none;
+}
+.ec.is-sleeping::after {
+    background: none;
+}
+.ec.is-sleeping:hover {
+    opacity: 0.92;
+}
+.ec.is-sleeping .ec-icon {
+    background: rgba(139, 92, 246, 0.08);
+    border-color: rgba(139, 92, 246, 0.12);
+}
+.ec.is-sleeping .ec-icon svg {
+    stroke: rgba(139, 92, 246, 0.7);
+    opacity: 0.6;
+}
+.ec.is-sleeping .ec-name {
+    color: var(--color-text-tertiary);
+}
+
+/* ══════════════════════════════════════════════════════
+   ENTITY ACCENT RGB TRIPLETS (DRY system)
+   ══════════════════════════════════════════════════════ */
+.ec[data-type="switch"] {
+    --ar: 68, 149, 209;
+}
+.ec[data-type="energy"],
+.ec[data-type="em3"] {
+    --ar: 232, 157, 34;
+}
+.ec[data-type="temp"] {
+    --ar: 123, 138, 244;
+}
+.ec[data-type="motion"] {
+    --ar: 232, 116, 32;
+}
+.ec[data-type="door"] {
+    --ar: 26, 217, 178;
+}
+.ec[data-type="flood"] {
+    --ar: 8, 181, 211;
+}
+.ec[data-type="smoke"] {
+    --ar: 232, 64, 87;
+}
+.ec[data-type="cover"] {
+    --ar: 139, 157, 182;
+}
+.ec[data-type="dimmer"] {
+    --ar: 242, 199, 68;
+}
+.ec[data-type="rgbw"] {
+    --ar: 242, 199, 68;
+    --rgb-c: 255, 208, 138;
+}
+.ec[data-type="bulb"] {
+    --ar: 242, 199, 68;
+    --rgb-c: 255, 208, 138;
+}
+.ec[data-type="trv"] {
+    --ar: 64, 217, 124;
+}
+.ec[data-type="button"],
+.ec[data-type="inputbtn"] {
+    --ar: 162, 79, 245;
+}
+.ec[data-type="camera"] {
+    --ar: 90, 159, 245;
+}
+.ec[data-type="audio"] {
+    --ar: 184, 122, 247;
+}
+.ec[data-type="input"] {
+    --ar: 95, 113, 137;
+}
+.ec[data-type="humidity"] {
+    --ar: 56, 189, 248;
+}
+.ec[data-type="illuminance"] {
+    --ar: 250, 204, 21;
+}
+
+/* ── Loading state shimmer ── */
+.ec.is-loading .ec-val {
+    position: relative;
+    overflow: hidden;
+}
+.ec.is-loading .ec-val::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+        90deg,
+        transparent 25%,
+        rgba(184, 197, 212, 0.08) 50%,
+        transparent 75%
+    );
+    background-size: 800px 100%;
+    animation: shimmer 1.2s ease-in-out infinite;
+}
+.ec.is-loading .ec-switch {
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+/* ── Entity icon — HIDDEN (removed from design) ── */
+.ec-icon {
+    display: none;
+}
+.ec-icon svg {
+    display: block;
+    width: 13px;
+    height: 13px;
+    stroke: rgb(var(--ar));
+    stroke-width: 2;
+    fill: none;
+    transition:
+        stroke var(--duration-normal),
+        opacity var(--duration-normal);
+}
+/* ON state: brighter icon */
+.ec:has(.ec-switch.on) .ec-icon,
+.ec.is-on .ec-icon {
+    background: rgba(var(--ar), 0.14);
+    border-color: rgba(var(--ar), 0.18);
+}
+.ec:has(.ec-switch.on) .ec-icon svg,
+.ec.is-on .ec-icon svg {
+    opacity: 1;
+    filter: none;
+}
+/* OFF state: dimmed icon */
+.ec:has(.ec-switch.off) .ec-icon {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.04);
+}
+.ec:has(.ec-switch.off) .ec-icon svg {
+    stroke: var(--color-text-disabled);
+    opacity: 0.5;
+    filter: none;
+}
+/* Offline state: red-tinted icon */
+.ec.is-offline .ec-icon {
+    background: rgba(239, 68, 68, 0.06);
+    border-color: rgba(239, 68, 68, 0.08);
+}
+.ec.is-offline .ec-icon svg {
+    stroke: var(--color-status-off);
+    opacity: 0.4;
+}
+/* Sensor cards (always-on types): keep entity-colored */
+.ec[data-type="temp"] .ec-icon,
+.ec[data-type="door"] .ec-icon,
+.ec[data-type="motion"] .ec-icon,
+.ec[data-type="flood"] .ec-icon,
+.ec[data-type="smoke"] .ec-icon,
+.ec[data-type="input"] .ec-icon,
+.ec[data-type="energy"] .ec-icon,
+.ec[data-type="em3"] .ec-icon {
+    background: rgba(var(--ar), 0.1);
+    border-color: rgba(var(--ar), 0.12);
+}
+/* Open-state door/motion alarm icon */
+.ec.is-open .ec-icon svg,
+.ec[data-type="flood"] .ec-state.s-flood ~ .ec-icon svg,
+.ec[data-type="smoke"] .ec-state.s-alarm ~ .ec-icon svg {
+    stroke: var(--color-status-off);
+}
+/* Hero/wide icon: slightly larger */
+.ec-hero .ec-icon,
+.ec-wide .ec-icon {
+    width: 26px;
+    height: 26px;
+    border-radius: 9px;
+}
+.ec-hero .ec-icon svg,
+.ec-wide .ec-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* ── Status badge (battery/offline) — floats top-right of card ── */
+.ec-status {
+    position: absolute;
+    top: var(--space-2);
+    right: var(--space-3);
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+/* ── Entity-colored glow on active cards ── */
+.ec:has(.ec-switch.on),
+.ec.is-on {
+    box-shadow: 0 0 12px rgba(var(--ar), 0.07);
+}
+.ec[data-type="trv"],
+.ec[data-type="energy"],
+.ec[data-type="em3"] {
+    box-shadow: 0 0 10px rgba(var(--ar), 0.05);
+}
+.ec[data-type="motion"]:has(.s-motion),
+.ec[data-type="door"].is-open {
+    box-shadow: 0 0 10px rgba(192, 41, 61, 0.06);
+}
+
+/* ── ON state background tint (solid base) ── */
+.ec[data-type="switch"]:has(.ec-switch.on),
+.ec[data-type="switch"].is-on {
+    background: linear-gradient(
+        165deg,
+        rgba(22, 40, 65, 0.96),
+        rgba(17, 32, 52, 0.98)
+    );
+}
+.ec[data-type="dimmer"]:has(.ec-switch.on),
+.ec[data-type="dimmer"].is-on {
+    background: linear-gradient(
+        165deg,
+        rgba(30, 30, 18, 0.96),
+        rgba(22, 22, 14, 0.98)
+    );
+}
+.ec[data-type="rgbw"]:has(.ec-switch.on),
+.ec[data-type="rgbw"].is-on,
+.ec[data-type="bulb"]:has(.ec-switch.on),
+.ec[data-type="bulb"].is-on {
+    background: linear-gradient(
+        165deg,
+        rgba(30, 30, 18, 0.96),
+        rgba(22, 22, 14, 0.98)
+    );
+}
+
+/* ── Sensor state background tint ── */
+.ec[data-type="door"]:has(.s-closed) {
+    background:
+        linear-gradient(
+            165deg,
+            rgba(10, 30, 28, 0.88) 0%,
+            rgba(8, 22, 20, 0.9) 100%
+        ),
+        linear-gradient(180deg, rgba(26, 217, 178, 0.04), transparent);
+}
+.ec[data-type="door"]:has(.s-open) {
+    background:
+        linear-gradient(
+            165deg,
+            rgba(30, 12, 14, 0.88) 0%,
+            rgba(22, 8, 10, 0.9) 100%
+        ),
+        linear-gradient(180deg, rgba(232, 64, 87, 0.05), transparent);
+}
+.ec[data-type="motion"]:has(.s-motion) {
+    background:
+        linear-gradient(
+            165deg,
+            rgba(30, 20, 10, 0.88) 0%,
+            rgba(24, 14, 6, 0.9) 100%
+        ),
+        linear-gradient(180deg, rgba(232, 116, 32, 0.05), transparent);
+}
+.ec[data-type="flood"]:has(.s-flood) {
+    background:
+        linear-gradient(
+            165deg,
+            rgba(30, 12, 14, 0.95) 0%,
+            rgba(22, 8, 10, 0.97) 100%
+        ),
+        linear-gradient(180deg, rgba(232, 64, 87, 0.08), transparent);
+}
+.ec[data-type="smoke"]:has(.s-alarm) {
+    background:
+        linear-gradient(
+            165deg,
+            rgba(30, 12, 14, 0.95) 0%,
+            rgba(22, 8, 10, 0.97) 100%
+        ),
+        linear-gradient(180deg, rgba(232, 64, 87, 0.08), transparent);
+}
+
+/* ── Warning state ── */
+.ec.is-warning {
+    border-color: rgba(232, 157, 34, 0.25);
+    background: linear-gradient(
+        165deg,
+        rgba(30, 22, 8, 0.95) 0%,
+        rgba(22, 16, 6, 0.97) 100%
+    );
+}
+.ec.is-warning::after {
+    background: repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 8px,
+        rgba(232, 157, 34, 0.04) 8px,
+        rgba(232, 157, 34, 0.04) 9px
+    );
+}
+.ec.is-warning .ec-hv {
+    color: var(--color-warning-text);
+    -webkit-text-fill-color: var(--color-warning-text);
+}
+.ec.is-warning .ec-hu {
+    color: var(--color-warning-text);
+    opacity: 0.7;
+}
+.ec.is-warning .ec-switch-label {
+    color: rgba(232, 157, 34, 0.7);
+}
+
+/* ── Hero card ::after override ── */
+.ec-hero::after {
+    background:
+        radial-gradient(
+            ellipse 80% 50% at 50% 100%,
+            rgba(var(--ar), 0.1),
+            transparent 65%
+        ),
+        radial-gradient(
+            ellipse 50% 40% at 10% 0%,
+            rgba(var(--ar), 0.05),
+            transparent 60%
+        );
+}
+.ec-hero:hover::after {
+    background:
+        radial-gradient(
+            ellipse 80% 50% at 50% 100%,
+            rgba(var(--ar), 0.16),
+            transparent 65%
+        ),
+        radial-gradient(
+            ellipse 50% 40% at 10% 0%,
+            rgba(var(--ar), 0.08),
+            transparent 60%
+        );
+}
+
+/* ── Status pills ── */
+.ep {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 6px;
+    border-radius: var(--radius-2xl);
+    font-size: var(--type-body);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+.ep-off {
+    background: rgba(232, 64, 87, 0.1);
+    border: 1px solid rgba(232, 64, 87, 0.25);
+    color: var(--color-status-off);
+}
+.ep-dot {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: currentColor;
+}
+.ec-since {
+    display: inline-block;
+    font-size: var(--type-body);
+    font-weight: 600;
+    color: var(--color-text-disabled);
+    opacity: 0.7;
+    margin-top: 2px;
+}
+.ec-val-center .ec-timestamp {
+    position: absolute;
+    bottom: var(--space-2);
+    left: 0;
+    right: 0;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: 600;
+    color: var(--color-frost);
+    opacity: 0.55;
+    letter-spacing: 0.02em;
+    text-align: center;
+}
+
+/* ══════════════════════════════════════════════════════
+   CARD VALUE ZONE
+   ══════════════════════════════════════════════════════ */
+.ec-val {
+    padding: var(--space-3) var(--space-4);
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
+/* Flush variant — child controls its own layout entirely */
+.ec-val.ec-val--flush {
+    padding: 0;
+    overflow: visible;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0;
+}
+.ec-val .ec-sub {
+    position: absolute;
+    bottom: var(--space-2);
+    left: 0;
+    right: 0;
+    text-align: center;
+    margin: 0;
+}
+.ec-val .ec-sub--static {
+    position: static;
+    left: auto;
+    right: auto;
+    bottom: auto;
+}
+.ec-val .ec-sub--sensor {
+    position: static;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    font-size: var(--type-body);
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    letter-spacing: -0.2px;
+    opacity: 0.7;
+}
+.ec-val-center {
+    position: relative;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+.ec-val-center .ec-state-lg {
+    margin: 0;
+}
+.ec-sub {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--text-2xs);
+    color: var(--color-frost);
+    opacity: 0.7;
+    margin-bottom: var(--space-2);
+    line-height: 1.45;
+    text-align: center;
+}
+.ec-sub-dual {
+    display: flex;
+    justify-content: space-around;
+}
+
+/* ── Modifier utilities (replacing inline styles) ── */
+.ec-val--compact {
+    justify-content: center;
+    align-items: center;
+    gap: 6px;
+}
+.ec-val--centered {
+    justify-content: center;
+    align-items: center;
+}
+.ec-val--fixed {
+    flex: 0 0 auto;
+}
+.ec-val--split {
+    padding: 0;
+    overflow: visible;
+}
+.ec-wide-row--flush {
+    padding: 0;
+}
+.ec-wl--auto {
+    min-width: auto;
+}
+.ec-wl--sm {
+    min-width: 60px;
+}
+.ec-wl--md {
+    min-width: 72px;
+}
+.ec-wl--center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 6px;
+}
+.ec-dual--vertical {
+    flex-direction: column;
+    gap: var(--space-2);
+}
+.ec-em4--inline {
+    flex: none;
+}
+.ec-btn--centered {
+    max-width: 200px;
+    margin: 0 auto;
+}
+.ec-sub--power {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+    margin-top: 2px;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    font-variant-numeric: tabular-nums;
+}
+.ec-wr--even {
+    justify-content: space-evenly;
+}
+
+/* ── Phase / channel color utilities — in card-sensors.css ── */
+
+/* ── RGBW dynamic color-tinted text — uses --rgb-c from inline style or warm amber default ── */
+.ec[data-type="rgbw"] .ec-hv,
+.ec[data-type="bulb"] .ec-hv {
+    background: linear-gradient(
+        180deg,
+        rgba(var(--rgb-c), 1) 20%,
+        rgba(var(--rgb-c), 0.5)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.ec[data-type="rgbw"] .ec-hu,
+.ec[data-type="bulb"] .ec-hu {
+    -webkit-text-fill-color: rgba(var(--rgb-c), 0.4);
+}
+.ec[data-type="rgbw"] .ec-dpct,
+.ec[data-type="bulb"] .ec-dpct {
+    background: linear-gradient(
+        180deg,
+        rgba(var(--rgb-c), 1) 20%,
+        rgba(var(--rgb-c), 0.5)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.ec[data-type="rgbw"] .ec-dpct span,
+.ec[data-type="bulb"] .ec-dpct span {
+    -webkit-text-fill-color: rgba(var(--rgb-c), 0.4);
+}
+
+/* ── RGBW CCT brightness percentage with dynamic color glow ── */
+.ec-cct-pct {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    line-height: 1;
+    background: linear-gradient(
+        180deg,
+        rgba(var(--rgb-c), 1) 20%,
+        rgba(var(--rgb-c), 0.5)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: none;
+}
+.ec-cct-pct span {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+    -webkit-text-fill-color: rgba(var(--rgb-c), 0.4);
+}
+
+/* TRV 1×1 hierarchy — target/current values at subheading size,
+   labels stay body-sized with tertiary colour (weight + colour do the
+   demotion so cards sharing .ec-dv aren't affected). */
+.ec[data-type="trv"] .ec-dv {
+    font-size: var(--type-subheading);
+    letter-spacing: var(--tracking-tight);
+}
+.ec[data-type="trv"] .ec-dl {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--color-text-tertiary);
+    opacity: 1;
+}
+/* Current temp demoted by colour, not size. */
+.ec[data-type="trv"] .ec-dual-item:last-child .ec-dv {
+    color: var(--color-text-tertiary);
+    -webkit-text-fill-color: var(--color-text-tertiary);
+}
+
+/* ── Button entity accent ── */
+.s-accent {
+    color: var(--a-button);
+}
+
+/* ── Hero card type-colored values — in card-entities.css ── */
+
+/* ── Audio card now-playing ── */
+.ec-now-playing {
+    font-size: var(--type-body);
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    text-align: center;
+}
+.ec .ec-now-playing--sm {
+    font-size: var(--type-body);
+    margin-top: 4px;
+}
+
+/* ── Wide/hero value size overrides ── */
+.ec-wide .ec-hv {
+    font-size: var(--type-heading);
+}
+.ec-hero .ec-hv {
+    font-size: var(--type-display);
+}
+.ec-wide .ec-hu,
+.ec-hero .ec-hu {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+    text-transform: none;
+    letter-spacing: normal;
+}
+.ec-wide .ec-wl .ec-hv-wrap {
+    margin-bottom: 0;
+}
+/* Switch 2×1: 50/50 split with centered divider */
+.ec[data-type="switch"].ec-wide .ec-val {
+    padding: 0;
+    overflow: visible;
+}
+.ec[data-type="switch"].ec-wide .ec-wide-row {
+    gap: 0;
+    padding: 0;
+    position: relative;
+    align-items: stretch;
+}
+.ec[data-type="switch"].ec-wide .ec-wide-row::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 15%;
+    bottom: 15%;
+    width: 1px;
+    background: linear-gradient(
+        180deg,
+        transparent,
+        var(--color-border-medium),
+        transparent
+    );
+    transform: translateX(-50%);
+    z-index: 1;
+}
+.ec[data-type="switch"].ec-wide .ec-wl--divided::after {
+    display: none;
+}
+.ec[data-type="switch"].ec-wide .ec-wl {
+    flex: 0 0 50%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 0;
+}
+.ec[data-type="switch"].ec-wide .ec-wr {
+    flex: 0 0 50%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0;
+}
+.ec[data-type="switch"].ec-wide .ec-wl .ec-hv {
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    line-height: 1;
+}
+.ec[data-type="switch"].ec-wide .ec-wl .ec-hu {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+}
+.ec-hero .ec-hv--lg {
+    font-size: var(--type-display);
+    letter-spacing: var(--tracking-tight);
+}
+.ec-hero .ec-dpct--xl {
+    font-size: var(--type-display);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+}
+.ec-hero .ec-dpct--xl span {
+    font-size: var(--type-heading);
+    font-weight: var(--font-semibold);
+}
+.ec-sub--vol {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+}
+.ec-wide-state--lg {
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+}
+
+/* ── Dual reading (temp+humidity) ── */
+.ec-dual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-4);
+    flex: 1;
+    padding: 0 var(--space-4);
+}
+.ec-dual-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    min-width: 0;
+}
+.ec-dv {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-subheading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    background: var(--gradient-value-text);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+}
+.ec-dl {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    color: var(--color-text-tertiary);
+}
+
+.ec-dsep {
+    width: 1px;
+    align-self: stretch;
+    background: linear-gradient(
+        180deg,
+        transparent,
+        var(--color-border-medium),
+        transparent
+    );
+    flex-shrink: 0;
+    margin: 4px 0;
+    position: relative;
+}
+.ec-dsep::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: var(--color-border-medium);
+    box-shadow: none;
+    transform: translate(-50%, -50%);
+}
+.ec-dsep-lbl {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--color-surface-2);
+    padding: 2px 0;
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: 700;
+    color: var(--color-frost);
+    opacity: 0.55;
+    white-space: nowrap;
+    letter-spacing: normal;
+    text-transform: none;
+}
+.ec-dual-sep {
+    width: 1px;
+    align-self: stretch;
+    background: linear-gradient(
+        180deg,
+        transparent,
+        rgba(184, 197, 212, 0.25),
+        transparent
+    );
+    flex-shrink: 0;
+    margin: 4px 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.ec-dual-dot {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: rgba(184, 197, 212, 0.35);
+    box-shadow: none;
+}
+
+/* ── Binary state ── */
+.ec-state {
+    font-size: var(--text-xl);
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    line-height: 1;
+    margin-bottom: var(--space-2);
+    animation: state-in 0.4s ease-out;
+}
+.ec-state-lg {
+    font-size: var(--type-body);
+    letter-spacing: -2px;
+    margin-bottom: var(--space-2);
+    text-align: center;
+    width: 100%;
+}
+/* @keyframes state-in — in card-animations.css */
+.s-on {
+    color: var(--color-status-on);
+}
+.s-off {
+    color: var(--color-text-tertiary);
+}
+.s-open {
+    color: var(--color-status-off);
+}
+.s-closed {
+    color: var(--color-status-on);
+}
+.s-motion {
+    color: var(--a-motion);
+}
+.s-clear {
+    color: var(--color-text-tertiary);
+}
+.s-dry {
+    color: var(--color-text-tertiary);
+}
+/* Gradient text only on large state labels */
+.ec-state-lg.s-on {
+    background: linear-gradient(
+        180deg,
+        var(--color-status-on) 20%,
+        rgba(26, 217, 178, 0.45)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.ec-state-lg.s-off {
+    background: linear-gradient(
+        180deg,
+        var(--color-text-tertiary) 20%,
+        rgba(148, 163, 184, 0.35)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.ec-state-lg.s-open {
+    background: linear-gradient(
+        180deg,
+        var(--color-status-off) 20%,
+        rgba(232, 64, 87, 0.45)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.ec-state-lg.s-closed {
+    background: linear-gradient(
+        180deg,
+        var(--color-status-on) 20%,
+        rgba(26, 217, 178, 0.45)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.ec-state-lg.s-motion {
+    background: linear-gradient(
+        180deg,
+        var(--a-motion) 20%,
+        rgba(249, 115, 22, 0.45)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.ec-state-lg.s-clear {
+    background: linear-gradient(
+        180deg,
+        var(--color-text-tertiary) 20%,
+        rgba(148, 163, 184, 0.35)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.ec-state-lg.s-dry {
+    background: linear-gradient(
+        180deg,
+        var(--color-text-tertiary) 20%,
+        rgba(148, 163, 184, 0.35)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.s-flood {
+    color: var(--color-status-off);
+    animation: blink-err 1s ease-in-out infinite;
+}
+.s-alarm {
+    color: var(--color-status-off);
+    animation: blink-err 0.75s ease-in-out infinite;
+}
+.s-fault {
+    color: var(--color-status-warn);
+}
+.ec-state-lg.s-fault {
+    background: linear-gradient(
+        180deg,
+        var(--color-status-warn) 20%,
+        rgba(232, 157, 34, 0.45)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* ── Wide card sensor state (standardized) ── */
+.ec-wide-state {
+    font-size: var(--type-body);
+    letter-spacing: -0.5px;
+    margin: 0;
+}
+.ec-wide-sub {
+    margin: 2px 0 0;
+    font-size: var(--type-body);
+    position: static;
+}
+
+/* ── Battery ── */
+.ec-batt {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 2px var(--space-2);
+    background: var(--color-surface-1);
+    border-radius: 8px;
+    border: 1px solid var(--color-border-default);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--text-2xs);
+    align-self: center;
+    width: auto;
+    animation: badge-in 0.35s var(--ease-out-expo) both;
+}
+.batt-ok {
+    display: none;
+}
+.batt-warn {
+    color: var(--color-status-warn);
+}
+.batt-warn svg {
+    stroke: var(--color-status-warn);
+    opacity: 0.8;
+}
+
+/* ── Metrics 2×2 grid ── */
+.ec-mq {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-1);
+    margin-bottom: var(--space-3);
+}
+.ec-m {
+    display: flex;
+    align-items: baseline;
+    gap: 1.5px;
+    padding: 4px var(--space-2);
+    background: var(--color-surface-1);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border-default);
+    font-variant-numeric: tabular-nums;
+    font-size: 10.5px;
+    color: var(--color-text-secondary);
+    letter-spacing: -0.06em;
+}
+.ec-m-u {
+    font-size: var(--type-body);
+    color: var(--color-text-tertiary);
+    margin-left: 2px;
+}
+.ec.is-offline .ec-m {
+    opacity: 0.35;
+}
+
+/* ── EM 2×2 big numbers grid (base container in card-sensors.css) ── */
+.ec-em4::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 4px;
+    bottom: 4px;
+    width: 1px;
+    background: var(--color-border-default);
+    transform: translateX(-50%);
+    z-index: 0;
+}
+.ec-em4::after {
+    content: "";
+    position: absolute;
+    left: 4px;
+    right: 4px;
+    top: 50%;
+    height: 1px;
+    background: var(--color-border-default);
+    transform: translateY(-50%);
+    z-index: 0;
+}
+.ec-em4-cell {
+    padding: 12px 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    position: relative;
+    z-index: 1;
+}
+.ec-em4-v {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-subheading);
+    font-weight: var(--font-bold);
+    line-height: 1;
+    letter-spacing: var(--tracking-tight);
+    background: var(--gradient-value-text);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.ec-em4-u {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+    align-self: flex-end;
+    padding-bottom: 1px;
+}
+.ec-em4.plain .ec-em4-cell {
+    padding: 10px 8px;
+}
+
+/* ── Hero value ── */
+.ec-hv-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    margin-bottom: var(--space-2);
+}
+.ec-hv {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-subheading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    padding-right: 2px;
+    background: var(--gradient-value-text);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+}
+.ec-hu {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+    line-height: 1;
+}
+
+/* ── Dimmer / Cover percentage (shared base) ── */
+.ec-dpct,
+.ec-cpos {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-subheading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    padding-right: 2px;
+    background: var(--gradient-value-text);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1;
+    text-align: center;
+    width: 100%;
+    margin-bottom: var(--space-1);
+}
+.ec-dpct span,
+.ec-cpos span {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    letter-spacing: normal;
+    color: var(--color-text-tertiary);
+    margin-left: 2px;
+    -webkit-text-fill-color: var(--color-text-tertiary);
+}
+/* Dimmer 1×1 — bigger percentage, top-aligned info zone, breathing room above toggle */
+.ec[data-type="dimmer"]:not(.ec-wide):not(.ec-hero) .ec-val-center {
+    justify-content: center;
+    align-items: center;
+    padding: 0 var(--space-4);
+    overflow: visible;
+}
+.ec[data-type="dimmer"]:not(.ec-wide):not(.ec-hero) .ec-dpct {
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    margin-bottom: 0;
+}
+.ec[data-type="dimmer"]:not(.ec-wide):not(.ec-hero) .ec-dpct span {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+}
+.ec[data-type="dimmer"]:not(.ec-wide):not(.ec-hero) .ec-sub--sensor {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+}
+.ec[data-type="dimmer"]:not(.ec-wide):not(.ec-hero) .ec-btn-zone {
+    padding-top: 0;
+}
+/* ── RGBW 1×1 — match dimmer sizing with color-tinted value ── */
+.ec[data-type="rgbw"]:not(.ec-wide):not(.ec-hero) .ec-val-center,
+.ec[data-type="bulb"]:not(.ec-wide):not(.ec-hero) .ec-val-center {
+    justify-content: center;
+    align-items: center;
+    padding: 0 var(--space-4);
+    overflow: visible;
+}
+.ec[data-type="rgbw"]:not(.ec-wide):not(.ec-hero) .ec-dpct,
+.ec[data-type="bulb"]:not(.ec-wide):not(.ec-hero) .ec-dpct {
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    margin-bottom: 0;
+}
+.ec[data-type="rgbw"]:not(.ec-wide):not(.ec-hero) .ec-dpct span,
+.ec[data-type="bulb"]:not(.ec-wide):not(.ec-hero) .ec-dpct span {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+}
+.ec[data-type="rgbw"]:not(.ec-wide):not(.ec-hero) .ec-sub--sensor,
+.ec[data-type="bulb"]:not(.ec-wide):not(.ec-hero) .ec-sub--sensor {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+}
+.ec[data-type="rgbw"]:not(.ec-wide):not(.ec-hero) .ec-btn-zone,
+.ec[data-type="bulb"]:not(.ec-wide):not(.ec-hero) .ec-btn-zone {
+    padding-top: 0;
+}
+/* Switch 1×1 — bigger power reading, top-aligned, matching dimmer layout */
+.ec[data-type="switch"]:not(.ec-wide):not(.ec-hero) .ec-val-center {
+    justify-content: center;
+    align-items: center;
+    padding: 0 var(--space-4);
+    overflow: visible;
+}
+.ec[data-type="switch"]:not(.ec-wide):not(.ec-hero) .ec-hv-wrap {
+    margin-bottom: 0;
+}
+.ec[data-type="switch"]:not(.ec-wide):not(.ec-hero) .ec-hv {
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+}
+.ec[data-type="switch"]:not(.ec-wide):not(.ec-hero) .ec-hu {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    color: var(--color-text-tertiary);
+}
+.ec[data-type="switch"]:not(.ec-wide):not(.ec-hero) .ec-btn-zone {
+    padding-top: 0;
+    padding-bottom: var(--space-3);
+}
+/* Energy 1×1 — dual-channel side-by-side */
+.ec-em-dual {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    position: relative;
+}
+.ec-em-dual::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 12%;
+    bottom: 12%;
+    width: 0.5px;
+    background: linear-gradient(
+        180deg,
+        transparent,
+        rgba(184, 197, 212, 0.22),
+        transparent
+    );
+    transform: translateX(-50%);
+}
+.ec-em-dual-ch {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 0 var(--space-3);
+}
+.ec-em-dual-label {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    color: var(--color-text-tertiary);
+}
+.ec-em-dual-v {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-bold);
+    letter-spacing: var(--tracking-tight);
+    line-height: 1;
+    background: var(--gradient-value-text);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-variant-numeric: tabular-nums;
+}
+.ec-em-dual-u {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+}
+/* Compact metrics row — V/A/Hz inline below toggle on 2×1 cards */
+.ec-metrics-row {
+    display: flex;
+    gap: var(--space-2) var(--space-3);
+    justify-content: center;
+    align-items: center;
+}
+.ec-metrics-row--wrap {
+    flex-wrap: wrap;
+}
+/* 2×2 grid for 4 metrics — with faded crosshair dividers */
+.ec-metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2) var(--space-4);
+    padding: var(--space-2) 0;
+    position: relative;
+}
+.ec-metrics-grid .ec-metric {
+    justify-content: center;
+}
+.ec-metrics-grid .ec-metric-v {
+    font-size: var(--type-body);
+    font-weight: 700;
+}
+.ec-metrics-grid .ec-metric-u {
+    font-size: var(--type-body);
+}
+/* Horizontal faded line */
+.ec-metrics-grid::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 15%;
+    right: 15%;
+    height: 0.5px;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(184, 197, 212, 0.2),
+        transparent
+    );
+    transform: translateY(-50%);
+}
+/* Vertical faded line */
+.ec-metrics-grid::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 15%;
+    bottom: 15%;
+    width: 0.5px;
+    background: linear-gradient(
+        180deg,
+        transparent,
+        rgba(184, 197, 212, 0.2),
+        transparent
+    );
+    transform: translateX(-50%);
+}
+/* Faded vertical divider between left value and right content */
+.ec-wide-row .ec-wl--divided {
+    position: relative;
+}
+.ec-wide-row .ec-wl--divided::after {
+    content: "";
+    position: absolute;
+    right: -8px;
+    top: 15%;
+    bottom: 15%;
+    width: 1px;
+    background: linear-gradient(
+        180deg,
+        transparent,
+        var(--color-border-medium),
+        transparent
+    );
+}
+.ec-metric {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+}
+.ec-metric-v {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: var(--font-bold);
+    color: var(--color-text-secondary);
+    letter-spacing: normal;
+}
+.ec-metric-u {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+}
+/* ── Dimmer 2×1 — 50/50 split with centered divider ── */
+.ec[data-type="dimmer"].ec-wide .ec-val {
+    padding: 0;
+    overflow: visible;
+}
+.ec[data-type="dimmer"].ec-wide .ec-wide-row {
+    gap: 0;
+    padding: 0;
+    position: relative;
+    align-items: stretch;
+}
+.ec[data-type="dimmer"].ec-wide .ec-wide-row::after {
+    content: "";
+    position: absolute;
+    left: 40%;
+    top: 15%;
+    bottom: 15%;
+    width: 1px;
+    background: linear-gradient(
+        180deg,
+        transparent,
+        var(--color-border-medium),
+        transparent
+    );
+    transform: translateX(-50%);
+    z-index: 1;
+}
+.ec[data-type="dimmer"].ec-wide .ec-wl {
+    flex: 0 0 40%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 0;
+    gap: var(--space-1);
+}
+.ec[data-type="dimmer"].ec-wide .ec-wr {
+    flex: 0 0 60%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 18px;
+    padding: 0 var(--space-4);
+}
+.ec[data-type="dimmer"].ec-wide .ec-clr-track {
+    flex: 0 0 auto;
+    width: 100%;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    padding: 0;
+}
+.ec[data-type="dimmer"].ec-wide .ec-clr-track .sld-r {
+    height: 12px;
+    border-radius: 6px;
+}
+.ec[data-type="dimmer"].ec-wide .ec-dpct {
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    line-height: 1;
+    margin-bottom: 0;
+}
+.ec[data-type="dimmer"].ec-wide .ec-dpct span {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+}
+.ec[data-type="dimmer"].ec-wide .ec-sub--power {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+}
+/* ── RGBW 2×1 — 40/60 split matching dimmer ── */
+.ec[data-type="rgbw"].ec-wide .ec-val {
+    padding: 0;
+    overflow: visible;
+}
+.ec[data-type="rgbw"].ec-wide .ec-wide-row {
+    gap: 0;
+    padding: 0;
+    position: relative;
+    align-items: stretch;
+}
+.ec[data-type="rgbw"].ec-wide .ec-wide-row::after {
+    content: "";
+    position: absolute;
+    left: 40%;
+    top: 15%;
+    bottom: 15%;
+    width: 1px;
+    background: linear-gradient(
+        180deg,
+        transparent,
+        var(--color-border-medium),
+        transparent
+    );
+    transform: translateX(-50%);
+    z-index: 1;
+}
+.ec[data-type="rgbw"].ec-wide .ec-wl {
+    flex: 0 0 40%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 0;
+    gap: var(--space-1);
+}
+.ec[data-type="rgbw"].ec-wide .ec-wr {
+    flex: 0 0 60%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 18px;
+    padding: 0 var(--space-4);
+}
+.ec[data-type="rgbw"].ec-wide .ec-clr-track {
+    flex: 0 0 auto;
+    width: 100%;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    padding: 0;
+}
+.ec[data-type="rgbw"].ec-wide .ec-clr-track .sld-r {
+    height: 12px;
+    border-radius: 6px;
+}
+.ec[data-type="rgbw"].ec-wide .ec-dpct {
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    line-height: 1;
+    margin-bottom: 0;
+}
+.ec[data-type="rgbw"].ec-wide .ec-dpct span {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+}
+.ec[data-type="rgbw"].ec-wide .ec-sub--power {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+}
+.ec-clbl {
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--color-text-disabled);
+    text-align: center;
+    margin-bottom: var(--space-2);
+}
+
+/* ── Track bar ── */
+.ec-dtrack {
+    width: 100%;
+    height: 10px;
+    border-radius: 5px;
+    margin-bottom: var(--space-2);
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border-default);
+    overflow: visible;
+    position: relative;
+    touch-action: none;
+    cursor: pointer;
+}
+.ec-dtrack::before {
+    content: "";
+    position: absolute;
+    inset: -14px 0;
+    z-index: 1;
+}
+.ec-dtrack-fill {
+    height: 100%;
+    border-radius: 5px;
+    transition: width var(--duration-fast) ease-out;
+    position: relative;
+}
+.ec-dtrack-fill::after {
+    content: "";
+    position: absolute;
+    right: -1px;
+    top: 50%;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: none;
+    transform: translateY(-50%);
+}
+.ec[data-type="dimmer"] .ec-dtrack-fill {
+    background: linear-gradient(
+        90deg,
+        var(--a-dimmer),
+        rgba(242, 199, 68, 0.4)
+    );
+}
+.ec[data-type="cover"] .ec-dtrack-fill {
+    background: linear-gradient(
+        90deg,
+        var(--a-cover),
+        rgba(148, 163, 184, 0.4)
+    );
+}
+.ec[data-type="cover"].ec-wide .ec-val {
+    padding: 0;
+    overflow: visible;
+}
+.ec[data-type="cover"].ec-wide .ec-wide-row {
+    gap: 0;
+    padding: 0;
+    position: relative;
+    align-items: stretch;
+}
+.ec[data-type="cover"].ec-wide .ec-wide-row::after {
+    content: "";
+    position: absolute;
+    left: 40%;
+    top: 15%;
+    bottom: 15%;
+    width: 1px;
+    background: linear-gradient(
+        180deg,
+        transparent,
+        var(--color-border-medium),
+        transparent
+    );
+    transform: translateX(-50%);
+    z-index: 1;
+}
+.ec[data-type="cover"].ec-wide .ec-wl {
+    flex: 0 0 40%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 0;
+    gap: var(--space-1);
+}
+.ec[data-type="cover"].ec-wide .ec-wr {
+    flex: 0 0 60%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: stretch;
+    gap: 12px;
+    padding: 0 var(--space-4);
+}
+.ec[data-type="cover"].ec-wide .ec-clr-track {
+    flex: 0 0 auto;
+    width: 100%;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    padding: 0;
+}
+.ec[data-type="cover"].ec-wide .ec-clr-track .sld-r {
+    height: 12px;
+    border-radius: 6px;
+}
+.ec[data-type="cover"].ec-wide .ec-cpos {
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    line-height: 1;
+    margin-bottom: 0;
+}
+.ec[data-type="cover"].ec-wide .ec-cpos span {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+}
+.ec[data-type="cover"].ec-wide .ec-sub--power {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+}
+.ec[data-type="rgbw"] .ec-dtrack-fill,
+.ec[data-type="bulb"] .ec-dtrack-fill {
+    background: linear-gradient(90deg, #ffd08a, #ffba5c);
+}
+.ec[data-type="audio"] .ec-dtrack-fill {
+    background: linear-gradient(
+        90deg,
+        var(--a-audio),
+        rgba(192, 132, 252, 0.4)
+    );
+    box-shadow: none;
+}
+
+/* ── RGBW swatch ── */
+.ec-swatch {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: none;
+    border: 1.5px solid rgba(255, 255, 255, 0.1);
+}
+.sw-warm {
+    background: linear-gradient(135deg, #ffcf70, #ff9500);
+}
+
+/* ── RGBW bottom row (swatch + button) ── */
+.ec-rgbw-bottom {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.ec-bk {
+    border-radius: 16px;
+    padding: 10px 6px;
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border-default);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    cursor: pointer;
+    transition:
+        background var(--duration-fast),
+        border-color var(--duration-fast),
+        transform var(--duration-fast);
+}
+.ec-bk:hover {
+    border-color: rgba(162, 79, 245, 0.3);
+    background: rgba(162, 79, 245, 0.06);
+}
+.ec-bk:active {
+    transform: scale(0.95);
+}
+.ec-bk:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+.ec-bk-n {
+    font-size: var(--type-body);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--color-frost);
+    opacity: 0.55;
+    line-height: 1;
+    text-transform: none;
+}
+.ec-bk-e {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    line-height: 1;
+}
+.ec-bk-e.hit {
+    color: var(--a-button);
+}
+
+/* ── TRV extras ── */
+.trv-temps {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    gap: var(--space-3);
+    flex: 1;
+    padding: 0 var(--space-3);
+}
+.trv-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+}
+.trv-col-lbl {
+    font-size: var(--text-2xs);
+    font-weight: 700;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--color-frost);
+    opacity: 0.6;
+}
+.trv-tv {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: 500;
+    letter-spacing: -1px;
+    line-height: 1;
+    background: var(--gradient-value-text);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.trv-cv {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: 500;
+    letter-spacing: -0.8px;
+    color: var(--color-text-secondary);
+    line-height: 1;
+}
+.trv-tu {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    color: var(--color-text-tertiary);
+    line-height: 1;
+}
+.trv-sep {
+    width: 1px;
+    align-self: stretch;
+    background: var(--color-border-medium);
+    flex-shrink: 0;
+    margin: 8px 0;
+}
+.trv-valve {
+    width: 100%;
+    height: 5px;
+    border-radius: 3px;
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border-default);
+    margin-top: var(--space-2);
+    overflow: hidden;
+}
+.trv-valve-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--a-trv), rgba(74, 222, 128, 0.4));
+}
+.trv-valve-lbl {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--text-2xs);
+    color: var(--color-frost);
+    opacity: 0.5;
+    text-align: center;
+    margin-top: 3px;
+}
+
+/* ══════════════════════════════════════════════════════
+   BUTTON ZONE & NAME FOOTER
+   ══════════════════════════════════════════════════════ */
+.ec-btn-zone {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 var(--space-4) var(--space-3);
+}
+.ec-btn-zone .btn {
+    max-width: 180px;
+}
+.ec-val .ec-btn-zone {
+    margin-top: auto;
+}
+.ec-name {
+    font-size: var(--type-body);
+    font-weight: 700;
+    letter-spacing: -0.2px;
+    line-height: 1.3;
+    color: var(--color-text-primary);
+    padding: var(--space-3) var(--space-4) var(--space-2);
+    border-top: none;
+    text-align: center;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    min-height: 36px;
+    flex-shrink: 0;
+    overflow: hidden;
+    word-break: break-word;
+    position: relative;
+}
+.ec-name::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 15%;
+    right: 15%;
+    height: 0.5px;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(184, 197, 212, 0.35),
+        transparent
+    );
+}
+.ec.is-offline .ec-name {
+    color: var(--color-text-tertiary);
+}
+
+/* ── ON/OFF Button ── */
+.btn {
+    width: 100%;
+    height: 36px;
+    border-radius: 36px;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: var(--type-body);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    background: linear-gradient(135deg, #4495d1, #003c82);
+    color: var(--color-primary-text);
+    box-shadow: none;
+    transition:
+        filter 0.14s,
+        transform 0.11s,
+        background 0.3s ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+.btn:hover:not([disabled]):not(.dis) {
+    filter: brightness(1.12);
+}
+.btn:active:not([disabled]):not(.dis) {
+    transform: scale(0.94);
+    filter: brightness(0.85);
+}
+.btn:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+.btn.on {
+    background: linear-gradient(135deg, #22d3a0, #0a7a5a);
+    box-shadow: none;
+}
+.btn.off {
+    background: linear-gradient(135deg, #ef4444, #8b1a1a);
+    box-shadow: none;
+}
+.btn.dis,
+.btn[disabled] {
+    opacity: 0.25;
+    cursor: not-allowed;
+    animation: none;
+}
+/* @keyframes btn-pulse — in card-animations.css */
+
+/* ══════════════════════════════════════════════════════
+   TOGGLE SWITCH (replaces .btn for binary ON/OFF)
+   Pill-shaped track, sliding thumb, 48px tall.
+   Uses left + calc(100%) so it works at any width.
+   ON = teal (#1AD9B2), OFF = red (#E84057) — hardcoded,
+   NOT entity accent.
+   ══════════════════════════════════════════════════════ */
+.ec-switch {
+    position: relative;
+    width: 100%;
+    max-width: 180px;
+    height: 48px;
+    border-radius: 24px;
+    border: 1px solid var(--color-border-medium);
+    background: var(--color-surface-1);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition:
+        background var(--duration-normal) var(--ease-spring),
+        border-color var(--duration-normal) var(--ease-spring);
+}
+.ec-switch-thumb {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--color-frost);
+    box-shadow:
+        0 2px 6px rgba(0, 0, 0, 0.4),
+        0 0 0 1px rgba(249, 250, 250, 0.06);
+    transition:
+        left var(--duration-normal) var(--ease-spring),
+        background var(--duration-moderate) ease,
+        box-shadow var(--duration-moderate) ease;
+    z-index: 2;
+}
+.ec-switch-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--type-body);
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--color-frost);
+    z-index: 1;
+    transition: color var(--duration-moderate) ease;
+    pointer-events: none;
+    user-select: none;
+}
+/* ON — hardcoded teal, NOT entity accent */
+.ec-switch.on {
+    background: rgba(26, 217, 178, 0.12);
+    border-color: rgba(26, 217, 178, 0.25);
+    box-shadow: 0 0 12px rgba(26, 217, 178, 0.08);
+}
+.ec-switch.on .ec-switch-thumb {
+    left: calc(100% - 43px);
+    background: var(--color-status-on);
+    box-shadow:
+        0 2px 8px rgba(26, 217, 178, 0.45),
+        0 0 0 1px rgba(26, 217, 178, 0.15);
+}
+.ec-switch.on .ec-switch-label {
+    color: var(--color-status-on);
+}
+/* OFF — hardcoded red */
+.ec-switch.off {
+    background: rgba(232, 64, 87, 0.12);
+    border-color: rgba(232, 64, 87, 0.22);
+    box-shadow: 0 0 10px rgba(232, 64, 87, 0.06);
+}
+.ec-switch.off .ec-switch-thumb {
+    background: var(--color-status-off);
+    box-shadow:
+        0 2px 8px rgba(232, 64, 87, 0.4),
+        0 0 0 1px rgba(232, 64, 87, 0.12);
+}
+.ec-switch.off .ec-switch-label {
+    color: var(--color-status-off);
+}
+/* Ripple feedback — disabled */
+.ec-switch.on.ripple,
+.ec-switch.off.ripple {
+    animation: none;
+}
+/* Press */
+.ec-switch:active {
+    transform: scale(0.95);
+    filter: brightness(0.95);
+}
+.ec-switch:active .ec-switch-thumb {
+    transform: scaleX(1.15);
+}
+/* Disabled */
+.ec-switch[disabled],
+.ec-switch[aria-disabled="true"] {
+    opacity: 0.3;
+    cursor: not-allowed;
+    pointer-events: none;
+    filter: saturate(0);
+}
+.ec-switch:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(68, 149, 209, 0.3);
+}
+/* ── Size variants ── */
+/* Small — 24px inline toggle with expanded touch target */
+.ec-switch--sm {
+    width: 44px;
+    height: 24px;
+    border-radius: var(--radius-lg);
+    position: relative;
+}
+.ec-switch--sm::before {
+    content: "";
+    position: absolute;
+    inset: -10px 0;
+    z-index: 0;
+}
+.ec-switch--sm .ec-switch-thumb {
+    width: 18px;
+    height: 18px;
+    top: 2px;
+    left: 2px;
+}
+.ec-switch--sm.on .ec-switch-thumb {
+    left: 2px;
+    transform: translateX(20px);
+}
+/* Large toggle — horizontal */
+.ec-switch--lg {
+    height: 64px;
+    border-radius: 32px;
+    max-width: 200px;
+}
+.ec-switch--lg .ec-switch-thumb {
+    width: 54px;
+    height: 54px;
+    top: 4px;
+    left: 4px;
+}
+.ec-switch--lg.on .ec-switch-thumb {
+    left: calc(100% - 58px);
+}
+.ec-switch--lg .ec-switch-label {
+    font-size: var(--type-body);
+    font-weight: 800;
+    letter-spacing: 0.08em;
+}
+/* Circle toggle */
+.ec-switch--circle {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    max-width: none;
+}
+/* Vertical toggle — tall pill, thumb slides top↔bottom */
+.ec-switch--vert {
+    width: 64px;
+    height: 120px;
+    border-radius: 32px;
+    max-width: none;
+}
+.ec-switch--vert .ec-switch-thumb {
+    width: 54px;
+    height: 54px;
+    top: calc(100% - 58px);
+    left: 4px;
+    transition:
+        top var(--duration-normal) var(--ease-spring),
+        background var(--duration-moderate) ease;
+}
+.ec-switch--vert.on .ec-switch-thumb {
+    top: 4px;
+    left: 4px;
+}
+.ec-switch--vert .ec-switch-label {
+    font-size: var(--type-body);
+    font-weight: 800;
+    letter-spacing: 0.08em;
+}
+.ec-switch--vert.on .ec-switch-label {
+    align-items: flex-end;
+    padding-bottom: 10px;
+}
+.ec-switch--vert.off .ec-switch-label {
+    align-items: flex-start;
+    padding-top: 10px;
+}
+/* Toggle-only card layout — toggle fills the content area */
+.ec-val--toggle-only {
+    justify-content: center;
+    align-items: center;
+    padding: 0 var(--space-4);
+}
+
+/* ══════════════════════════════════════════════════════
+   TALL BUTTON MODIFIER
+   48px height for improved touch targets on dimmer cards
+   ══════════════════════════════════════════════════════ */
+.btn--tall {
+    height: 48px;
+    border-radius: 48px;
+    font-size: var(--type-body);
+    font-weight: 800;
+}
+
+/* ══════════════════════════════════════════════════════
+   LAYOUT PRIMITIVES
+   ══════════════════════════════════════════════════════ */
+/* ── Split layout ── */
+.ec-split {
+    display: flex;
+    gap: 0;
+    padding: 0;
+    position: relative;
+    align-items: stretch;
+    flex: 1;
+}
+.ec-split::after {
+    content: "";
+    position: absolute;
+    top: 15%;
+    bottom: 15%;
+    width: 0.5px;
+    background: linear-gradient(
+        180deg,
+        transparent,
+        var(--color-border-medium),
+        transparent
+    );
+    transform: translateX(-50%);
+    z-index: 1;
+}
+.ec-split--40-60::after {
+    left: 40%;
+}
+.ec-split--50-50::after {
+    left: 50%;
+}
+.ec-split > .ec-wl {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 0;
+    gap: var(--space-1);
+    overflow: hidden;
+}
+.ec-split--40-60 > .ec-wl {
+    flex: 0 0 40%;
+}
+.ec-split--50-50 > .ec-wl {
+    flex: 0 0 50%;
+}
+.ec-split > .ec-wr {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0;
+}
+.ec-split--40-60 > .ec-wr {
+    flex: 0 0 60%;
+}
+.ec-split--50-50 > .ec-wr {
+    flex: 0 0 50%;
+}
+
+/* ── Sensor wide split ── */
+.ec-sensor.ec-wide .ec-val {
+    padding: 0;
+}
+.ec-sensor.ec-wide .ec-split {
+    padding: 0 var(--space-5);
+    align-items: center;
+    flex: 1;
+}
+.ec-sensor.ec-wide .ec-split > .ec-wl {
+    gap: 6px;
+    overflow: visible;
+}
+.ec-sensor.ec-wide .ec-split > .ec-wr {
+    container-type: inline-size;
+}
+
+/* ── Column layout ── */
+.ec-cols {
+    display: flex;
+    gap: 0;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+}
+.ec-col {
+    flex: 1;
+    position: relative;
+    padding: var(--space-2) var(--space-3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    container-type: inline-size;
+}
+.ec-col + .ec-col::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 18%;
+    bottom: 18%;
+    width: 0.5px;
+    background: linear-gradient(
+        180deg,
+        transparent,
+        var(--color-border-medium),
+        transparent
+    );
+}
+
+@media (max-width: 480px) {
+    .ec-split {
+        flex-direction: column;
+    }
+    .ec-split::after {
+        display: none;
+    }
+    .ec-split > .ec-wl {
+        flex: none;
+        width: 100%;
+    }
+    .ec-split > .ec-wr {
+        flex: none;
+        width: 100%;
+    }
+}
+
+/* ══════════════════════════════════════════════════════
+   2×1 WIDE — full controls
+   ══════════════════════════════════════════════════════ */
+.ec-wide-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-5);
+    flex: 1;
+    min-height: 0;
+    padding: var(--space-2) var(--space-4);
+}
+.ec-wide .ec-wl {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 50%;
+    min-width: 68px;
+    align-self: stretch;
+}
+.ec-wide .ec-wr {
+    flex: 1 1 50%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: var(--space-3);
+    min-width: 0;
+}
+/* Sensor readings in wide right column (replaces timelines) */
+.ec-wr-metrics {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+.ec-wr-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+.ec-wr-metric-v {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    line-height: 1;
+    background: var(--gradient-value-text);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.ec-wr-metric-v.ok {
+    background: linear-gradient(
+        180deg,
+        var(--color-status-on) 20%,
+        rgba(26, 217, 178, 0.5)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.ec-wr-metric-v.dim {
+    background: linear-gradient(
+        180deg,
+        var(--color-text-disabled) 20%,
+        rgba(148, 163, 184, 0.4)
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.ec-wr-metric-l {
+    font-size: var(--type-body);
+    font-weight: 700;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--color-frost);
+    opacity: 0.55;
+}
+/* Two metrics: smaller font to fit */
+.ec-wr-metrics:has(.ec-wr-metric + .ec-wr-metric) .ec-wr-metric-v {
+    font-size: var(--type-body);
+    letter-spacing: -1px;
+}
+.ec-wide .ec-btn-zone {
+    flex: 0 0 auto;
+    padding: 0 var(--space-4) var(--space-3);
+    display: flex;
+    justify-content: center;
+}
+.ec-wide .ec-btn-zone .btn {
+    max-width: 180px;
+}
+.ec-wide .ec-wr > .btn {
+    height: 36px;
+    border-radius: 36px;
+    flex-shrink: 0;
+}
+.ec-wide .ec-dtrack {
+    margin-bottom: 0;
+    height: 10px;
+    border-radius: 5px;
+}
+.ec-wide .ec-dpct {
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    margin-bottom: 0;
+    width: auto;
+    line-height: 1;
+}
+.ec-wide .ec-dpct span {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+}
+.ec-wide .ec-cpos {
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    margin-bottom: 0;
+    width: auto;
+    line-height: 1;
+}
+.ec-wide .ec-cpos span {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+}
+.ec-wide .ec-dv {
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+}
+.ec-wide .ec-swatch {
+    width: 32px;
+    height: 32px;
+    margin-bottom: 4px;
+}
+.ec-wide .ec-dual {
+    gap: var(--space-4);
+}
+.ec-wide .ec-sub {
+    margin-top: 2px;
+}
+/* Graceful degradation: 1×1 content at 2×1 width */
+.ec-wide .ec-em4:not(.ec-wide-row .ec-em4) {
+    max-width: 220px;
+    margin: 0 auto;
+}
+.ec-wide .ec-cbtns:not(.ec-wr .ec-cbtns) {
+    padding: 0 var(--space-5) var(--space-3);
+    margin: 0;
+}
+.ec-wide .ec-cbtn {
+    height: 40px;
+    border-radius: 14px;
+    font-size: var(--type-body);
+    gap: 6px;
+}
+.ec-wide .ec-cbtn svg {
+    width: 14px;
+    height: 14px;
+}
+.ec-hero .ec-cbtns {
+    padding: 0 var(--space-5) var(--space-3);
+    gap: var(--space-3);
+}
+.ec-hero .ec-cbtn {
+    height: 44px;
+    border-radius: 14px;
+    font-size: var(--type-body);
+    font-weight: 700;
+    gap: 6px;
+}
+.ec-hero .ec-cbtn svg {
+    width: 14px;
+    height: 14px;
+}
+/* Graceful degradation: any size at 2×2 hero without hero-wrap */
+.ec-hero .ec-val {
+    justify-content: center;
+}
+.ec-hero .ec-dual {
+    gap: var(--space-6);
+}
+.ec-hero .ec-dv {
+    font-size: var(--type-display);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+}
+/* TRV 2×1: 40/60 split */
+.ec[data-type="trv"].ec-wide .ec-val {
+    padding: 0;
+    overflow: visible;
+}
+.ec[data-type="trv"].ec-wide .ec-wide-row {
+    gap: 0;
+    padding: 0;
+    position: relative;
+    align-items: stretch;
+}
+.ec[data-type="trv"].ec-wide .ec-wide-row::after {
+    content: "";
+    position: absolute;
+    left: 40%;
+    top: 15%;
+    bottom: 15%;
+    width: 1px;
+    background: linear-gradient(
+        180deg,
+        transparent,
+        var(--color-border-medium),
+        transparent
+    );
+    transform: translateX(-50%);
+    z-index: 1;
+}
+.ec[data-type="trv"].ec-wide .ec-wl {
+    flex: 0 0 40%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    padding: 0;
+    gap: 2px;
+    overflow: visible;
+}
+.ec[data-type="trv"].ec-wide .ec-wr {
+    flex: 0 0 60%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+    align-items: stretch;
+    padding: 0 var(--space-4);
+}
+.ec[data-type="trv"].ec-wide .ec-temps {
+    display: flex;
+    gap: 2px;
+    justify-content: center;
+}
+.ec[data-type="trv"].ec-wide .ec-tv {
+    flex: 1;
+    font-size: var(--type-body);
+    font-weight: 600;
+    padding: 0;
+    min-height: 36px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-default);
+    background: var(--color-surface-1);
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s;
+}
+.ec[data-type="trv"].ec-wide .ec-tv:hover,
+.ec[data-type="trv"].ec-wide .ec-tv.act {
+    background: var(--color-surface-4);
+    border-color: var(--color-primary);
+    color: var(--color-text-primary);
+}
+.ec[data-type="trv"].ec-wide .ec-mode {
+    min-height: 36px;
+    font-size: var(--type-body);
+}
+.ec[data-type="trv"].ec-wide .ec-adj-btn {
+    height: 36px;
+    font-size: var(--type-body);
+}
+/* 2×1 TRV — heading-sized target, body current. Degree symbol scales
+   with the digit via subheading step below heading. */
+.ec-trv-target {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    line-height: 1.1;
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+}
+.ec-trv-target,
+.ec-trv-target span {
+    background: linear-gradient(180deg, #fff 20%, rgba(255, 255, 255, 0.6));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.ec-trv-target span {
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+    letter-spacing: 0;
+}
+.ec-trv-cur-sm {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: var(--font-medium);
+    color: var(--color-text-tertiary);
+    letter-spacing: normal;
+}
+
+/* ── 3-col wide layout ── */
+.ec-3col {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    flex: 1;
+    min-height: 0;
+    padding: 0 var(--space-2);
+}
+.ec-3col .ec-wl {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    min-width: 72px;
+    padding: 0 var(--space-2);
+}
+.ec-3col .ec-wm {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    min-width: 0;
+    padding: 0 var(--space-2);
+}
+.ec-3col .ec-wt {
+    flex: 0 0 44px;
+    display: flex;
+    align-items: stretch;
+    padding: var(--space-1) 0;
+}
+.ec-3col .ec-wt .btn {
+    writing-mode: vertical-lr;
+    text-orientation: mixed;
+    border-radius: var(--radius-lg);
+    width: 100%;
+    height: auto;
+    font-size: var(--type-body);
+    letter-spacing: 0.06em;
+    padding: 0;
+    gap: 4px;
+}
+.ec-3col .ec-wt .btn svg {
+    transform: rotate(90deg);
+}
+.ec-3col .ec-dtrack {
+    margin-bottom: 0;
+    height: 7px;
+    border-radius: 4px;
+}
+.ec-3col .ec-dpct {
+    font-size: var(--type-body);
+    margin-bottom: 0;
+    width: auto;
+    line-height: 1;
+}
+.ec-3col .ec-dpct span {
+    font-size: var(--type-body);
+}
+.ec-3col .ec-cdots {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.ec-3col .ec-qrow {
+    display: flex;
+    gap: 4px;
+}
+
+/* ── Wide-only extras (hidden on 1×1) ── */
+.ec-qrow {
+    display: none;
+    gap: 4px;
+}
+.ec-wide .ec-qrow {
+    display: flex;
+}
+.ec-qp {
+    flex: 1;
+    min-height: 36px;
+    padding: 0;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-default);
+    background: var(--color-surface-1);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.12s;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+.ec-qp:hover,
+.ec-qp.act {
+    background: var(--color-surface-4);
+    border-color: var(--color-primary);
+    color: var(--color-text-primary);
+}
+.ec-qp:active {
+    transform: scale(0.93);
+    background: var(--color-surface-5);
+}
+.ec-qp.act {
+    animation: act-pop 0.25s ease-out;
+}
+.ec-cdots {
+    display: none;
+    gap: 6px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+.ec-wide .ec-cdots {
+    display: flex;
+}
+.ec-cdot {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 1.5px solid rgba(255, 255, 255, 0.1);
+    transition:
+        transform 0.12s,
+        border-color 0.12s;
+    box-shadow: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    position: relative;
+}
+.ec-cdot::before {
+    content: "";
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+}
+.ec-cdot:hover {
+    transform: scale(1.15);
+    border-color: rgba(255, 255, 255, 0.4);
+}
+.ec-cdot:active {
+    transform: scale(0.9);
+}
+.ec-cdot.act {
+    border-color: rgba(255, 255, 255, 0.7);
+    box-shadow: none;
+    transform: scale(1.1);
+}
+/* ── Entity control buttons — unified design system ── */
+.ec-modes {
+    display: none;
+    gap: var(--gap-xs);
+}
+.ec-wide .ec-modes,
+.ec-hero .ec-modes {
+    display: flex;
+}
+.ec-mode {
+    flex: 1;
+    min-height: var(--touch-target-min);
+    padding: 0 var(--gap-xs);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-default);
+    background: var(--color-surface-1);
+    font-size: var(--type-body);
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+        background var(--duration-fast),
+        border-color var(--duration-fast),
+        color var(--duration-fast),
+        transform var(--duration-fast);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+.ec-mode:hover {
+    background: var(--color-surface-3);
+    border-color: var(--color-border-medium);
+    color: var(--color-text-secondary);
+}
+.ec-mode.act {
+    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    border-color: var(--color-primary);
+    color: var(--color-text-primary);
+    font-weight: 700;
+    animation: act-pop 0.25s ease-out;
+}
+.ec-mode:active {
+    transform: scale(var(--press-scale, 0.95));
+}
+.ec-mode:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+/* Temperature value presets — now look like proper buttons */
+.ec-temps {
+    display: none;
+    gap: var(--gap-xs);
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.ec-wide .ec-temps,
+.ec-hero .ec-temps {
+    display: flex;
+}
+.ec-tv {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    padding: var(--gap-xs) var(--gap-sm);
+    min-height: var(--touch-target-min);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition:
+        background var(--duration-fast),
+        border-color var(--duration-fast),
+        color var(--duration-fast),
+        transform var(--duration-fast);
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border-default);
+    letter-spacing: -0.5px;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    display: inline-flex;
+    align-items: center;
+}
+.ec-tv:hover {
+    color: var(--color-text-secondary);
+    background: var(--color-surface-3);
+    border-color: var(--color-border-medium);
+}
+.ec-tv.act {
+    color: var(--color-text-primary);
+    font-weight: 700;
+    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    border-color: var(--color-primary);
+}
+.ec-tv:active {
+    transform: scale(var(--press-scale, 0.95));
+}
+.ec-tv:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+
+/* +/- adjustment buttons */
+.ec-adj {
+    display: none;
+    gap: var(--gap-xs);
+    justify-content: center;
+}
+.ec-wide .ec-adj,
+.ec-hero .ec-adj {
+    display: flex;
+}
+.ec-adj-btn {
+    flex: 1;
+    min-height: var(--touch-target-min);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border-default);
+    background: var(--color-surface-1);
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition:
+        background var(--duration-fast),
+        border-color var(--duration-fast),
+        color var(--duration-fast),
+        transform var(--duration-fast);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+.ec-adj-btn:hover {
+    border-color: var(--color-border-medium);
+    background: var(--color-surface-3);
+    color: var(--color-text-primary);
+}
+.ec-adj-btn:active {
+    transform: scale(var(--press-scale, 0.95));
+}
+.ec-adj-btn:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+}
+.ec-adj-val {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: 700;
+    color: var(--color-text-primary);
+    letter-spacing: -0.3px;
+    min-width: 40px;
+    text-align: center;
+}
+
+/* TRV hero full-control layout */
+/* TRV temperature display — set & current side by side */
+.ec-hero .ec-trv-temps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    padding: 0 var(--space-4);
+    margin-bottom: 4px;
+}
+.ec-hero .ec-trv-set,
+.ec-hero .ec-trv-cur {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.ec-hero .ec-trv-set-val {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: 800;
+    letter-spacing: -2.5px;
+    line-height: 1;
+    background: linear-gradient(180deg, #fff 20%, rgba(255, 255, 255, 0.6));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.ec-hero .ec-trv-set-val span {
+    font-size: var(--type-body);
+    font-weight: 600;
+    letter-spacing: 0;
+}
+.ec-hero .ec-trv-set-label {
+    font-size: var(--type-body);
+    font-weight: 700;
+    letter-spacing: normal;
+    color: var(--a-trv);
+    margin-top: 4px;
+}
+.ec-hero .ec-trv-sep {
+    width: 1px;
+    height: 40px;
+    background: linear-gradient(
+        180deg,
+        transparent,
+        var(--color-border-medium),
+        transparent
+    );
+}
+.ec-hero .ec-trv-cur-val {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: 700;
+    letter-spacing: -1.5px;
+    line-height: 1;
+    color: var(--color-text-tertiary);
+}
+.ec-hero .ec-trv-cur-val span {
+    font-size: var(--type-body);
+    font-weight: 600;
+}
+.ec-hero .ec-trv-cur-label {
+    font-size: var(--type-body);
+    font-weight: 700;
+    letter-spacing: normal;
+    color: var(--color-text-disabled);
+    margin-top: 4px;
+}
+/* Valve position row */
+.ec-hero .ec-trv-valve-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 0 var(--space-5);
+    margin-bottom: 6px;
+}
+.ec-hero .ec-trv-valve-label {
+    font-size: var(--type-body);
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: none;
+    color: var(--color-text-disabled);
+    min-width: 32px;
+}
+.ec-hero .ec-trv-adj {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    padding: 0 var(--space-6);
+    margin-bottom: 6px;
+}
+.ec-hero .ec-trv-adj .ec-adj-btn {
+    height: 36px;
+    border-radius: 14px;
+    font-size: var(--type-body);
+}
+.ec-hero .ec-trv-modes {
+    display: flex;
+    gap: 6px;
+    padding: 0 var(--space-4);
+    margin-bottom: 6px;
+}
+.ec-hero .ec-trv-modes .ec-mode {
+    min-height: 32px;
+    font-size: var(--type-body);
+    border-radius: var(--radius-md);
+}
+.ec-hero .ec-trv-presets {
+    display: flex;
+    gap: 4px;
+    justify-content: center;
+    padding: 0 var(--space-4);
+    margin-bottom: 6px;
+}
+.ec-hero .ec-trv-presets .ec-tv {
+    font-size: var(--type-body);
+    padding: 6px 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-default);
+    background: var(--color-surface-1);
+}
+.ec-hero .ec-trv-presets .ec-tv.act {
+    background: rgba(52, 211, 153, 0.1);
+    border-color: rgba(52, 211, 153, 0.25);
+    color: var(--color-status-on);
+}
+.ec-hero .ec-trv-schedule {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0 var(--space-4);
+    margin-bottom: 8px;
+}
+.ec-hero .ec-trv-slot {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: 6px var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border-default);
+}
+.ec-hero .ec-trv-slot-time {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: 700;
+    color: var(--color-text-tertiary);
+    min-width: 40px;
+}
+.ec-hero .ec-trv-slot-label {
+    font-size: var(--type-body);
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    flex: 1;
+}
+.ec-hero .ec-trv-slot-temp {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: 700;
+    color: var(--color-status-on);
+}
+.ec-hero .ec-trv-valve-bar {
+    flex: 1;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--color-surface-1);
+    overflow: hidden;
+    border: 1px solid var(--color-border-default);
+}
+.ec-hero .ec-trv-valve-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--a-trv), rgba(52, 211, 153, 0.5));
+}
+.ec-hero .ec-trv-valve-pct {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-body);
+    font-weight: 700;
+    color: var(--color-text-secondary);
+    min-width: 28px;
+    text-align: right;
+}
+/* ── TRV boost btn/dur — in card-entities.css ── */
+/* ══════════════════════════════════════════════════════
+   UTILITY OVERRIDES (replacing inline styles in library)
+   ══════════════════════════════════════════════════════ */
+
+/* Switch (no PM) hero-value as ON/OFF text */
+.ec-hv--state-on {
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    -webkit-text-fill-color: var(--color-status-on);
+    background: none;
+}
+.ec-hv--state-off {
+    font-size: var(--type-heading);
+    font-weight: var(--font-black);
+    letter-spacing: var(--tracking-tight);
+    -webkit-text-fill-color: var(--color-text-tertiary);
+    background: none;
+}
+
+/* Slider row even distribution */
+.ec-wr--even {
+    justify-content: space-evenly;
+}
+
+/* Dimmer secondary value (watt readout) */
+.ec-watt {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+    margin-top: 2px;
+    font-variant-numeric: tabular-nums;
+}
+.ec-watt--tight {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ══════════════════════════════════════════════════════
+   RESPONSIVE CARD INTERNALS
+   Scale typography, icons, and hero elements for smaller grids
+   ══════════════════════════════════════════════════════ */
+
+/* Compact internals for small cells (phones / small tablets) */
+@media (max-width: 768px) {
+    .ec-name {
+        font-size: var(--type-body);
+    }
+    .ec-hv {
+        font-size: var(--type-subheading);
+    }
+    .ec-hu {
+        font-size: var(--type-body);
+    }
+    .ec-icon {
+        width: 20px;
+        height: 20px;
+    }
+    .ec-icon i {
+        font-size: var(--type-body);
+    }
+    .ec-dpct {
+        font-size: var(--type-subheading);
+    }
+    .ec-em4-v {
+        font-size: var(--type-subheading);
+    }
+    .ec-em4-u {
+        font-size: var(--type-body);
+    }
+}
+
+/* ══════════════════════════════════════════════════════
+   SKELETON LOADING
+   ══════════════════════════════════════════════════════ */
+.skel-line {
+    border-radius: 4px;
+    background: linear-gradient(
+        90deg,
+        rgba(18, 35, 56, 0.4) 25%,
+        rgba(24, 45, 70, 0.55) 50%,
+        rgba(18, 35, 56, 0.4) 75%
+    );
+    background-size: 800px 100%;
+    animation: shimmer 1.2s ease-in-out infinite;
+}

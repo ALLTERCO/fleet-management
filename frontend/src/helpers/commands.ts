@@ -7,14 +7,11 @@ import type {action_t} from '@/types';
 
 async function runActionForDst(dst: string, method: string, params: any) {
     try {
-        const resp = await sendRPC('FLEET_MANAGER', 'FleetManager.SendRPC', {
-            dst,
+        const payload = await sendRPC('FLEET_MANAGER', 'Device.Call', {
+            shellyID: dst,
             method,
             params: params ?? {}
         });
-
-        const payload =
-            resp && typeof resp === 'object' && dst in resp ? resp[dst] : resp;
 
         return {[dst]: payload};
     } catch (error: any) {
@@ -24,7 +21,12 @@ async function runActionForDst(dst: string, method: string, params: any) {
         if (typeof error === 'object' && 'code' in error) {
             return {[dst]: error};
         }
-        return {[dst]: {code: -32700, message: String(error)}};
+        return {
+            [dst]: {
+                code: -32700,
+                message: error instanceof Error ? error.message : String(error)
+            }
+        };
     }
 }
 

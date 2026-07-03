@@ -1,34 +1,42 @@
 import {defineStore} from 'pinia';
-import {type DefineComponent, ref, shallowRef} from 'vue';
+import {type Component, computed, ref, shallowRef} from 'vue';
 
 export const useRightSideMenuStore = defineStore('right-side-menu', () => {
-    const component = shallowRef<DefineComponent>();
-    const props = ref<any>({});
-    const mobileVisible = ref(false);
-    const detached = ref(false);
+    const inspectorComponent = shallowRef<Component>();
+    const inspectorProps = ref<Record<string, unknown>>({});
+    const inspectorDrawerVisible = ref(false);
+    const hasSelection = computed(() => !!inspectorComponent.value);
+    const isInspectorDrawerOpen = computed(
+        () => inspectorDrawerVisible.value && hasSelection.value
+    );
 
-    async function setActiveComponent(
-        pass_comp: DefineComponent,
-        pass_props: Record<string, any> = {}
+    async function showInspector(
+        nextComponent: Component,
+        nextProps: Record<string, unknown> = {}
     ) {
-        component.value = pass_comp;
-        props.value = pass_props;
-        mobileVisible.value = true;
+        inspectorComponent.value = nextComponent;
+        inspectorProps.value = nextProps;
+        inspectorDrawerVisible.value = true;
     }
 
-    function clearActiveComponent() {
-        component.value = undefined;
-        props.value = undefined;
-        mobileVisible.value = false;
-        detached.value = false;
+    function closeInspectorDrawer() {
+        inspectorDrawerVisible.value = false;
+    }
+
+    function clearInspector() {
+        inspectorComponent.value = undefined;
+        inspectorProps.value = {};
+        inspectorDrawerVisible.value = false;
     }
 
     return {
-        component,
-        props,
-        setActiveComponent,
-        clearActiveComponent,
-        mobileVisible,
-        detached
+        inspectorComponent,
+        inspectorProps,
+        showInspector,
+        closeInspectorDrawer,
+        clearInspector,
+        inspectorDrawerVisible,
+        hasSelection,
+        isInspectorDrawerOpen
     };
 });

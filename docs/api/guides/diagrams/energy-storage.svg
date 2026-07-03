@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 270" width="1000" height="270" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Energy storage tiers: live status, full-resolution stats, and rollups">
+  <title>How energy data is stored</title>
+  <desc>Device readings feed a short-lived live status and a full-resolution stats store kept for about a year; rollups — 5-minute, 15-minute billing, and monthly — sit on top of the stats.</desc>
+  <defs>
+    <marker id="esN" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A97A8"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1000" height="270" fill="#ffffff"/>
+
+  <path d="M200,120 L246,74" stroke="#8A97A8" stroke-width="1.4" fill="none" marker-end="url(#esN)"/>
+  <path d="M200,150 L246,166" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#esN)"/>
+  <path d="M432,150 L556,72" stroke="#8A97A8" stroke-width="1.4" fill="none" marker-end="url(#esN)"/>
+  <path d="M432,162 L556,140" stroke="#8A97A8" stroke-width="1.4" fill="none" marker-end="url(#esN)"/>
+  <path d="M432,176 L556,208" stroke="#8A97A8" stroke-width="1.4" fill="none" marker-end="url(#esN)"/>
+  <text x="225" y="62" text-anchor="middle" font-size="10" fill="#6B7A90">live</text>
+  <text x="490" y="96" text-anchor="middle" font-size="10" fill="#6B7A90">rolled up</text>
+
+  <rect x="30" y="112" width="170" height="76" rx="6" fill="#EAF6FD" stroke="#4495D1" stroke-width="1.5"/>
+  <text x="115" y="144" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Device readings</text>
+  <text x="115" y="162" text-anchor="middle" font-size="10" fill="#3A6B92" font-family="ui-monospace,Menlo,monospace">NotifyStatus</text>
+
+  <rect x="248" y="44" width="184" height="58" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="340" y="70" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Live status</text>
+  <text x="340" y="88" text-anchor="middle" font-size="10.5" fill="#6B7A90">24 h · in memory</text>
+
+  <rect x="248" y="128" width="184" height="76" rx="6" fill="#E4F1FB" stroke="#4495D1" stroke-width="2"/>
+  <text x="340" y="160" text-anchor="middle" font-size="12.5" font-weight="700" fill="#122A4F">Stats</text>
+  <text x="340" y="178" text-anchor="middle" font-size="10.5" fill="#3A6B92">full resolution</text>
+  <text x="340" y="193" text-anchor="middle" font-size="10.5" fill="#6B7A90">~1 year (TimescaleDB)</text>
+
+  <rect x="558" y="44" width="200" height="56" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="658" y="70" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">5-minute</text>
+  <text x="658" y="88" text-anchor="middle" font-size="10.5" fill="#6B7A90">recent history</text>
+
+  <rect x="558" y="114" width="200" height="56" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="658" y="140" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">15-minute</text>
+  <text x="658" y="158" text-anchor="middle" font-size="10.5" fill="#6B7A90">billing-grade</text>
+
+  <rect x="558" y="184" width="200" height="56" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="658" y="210" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Monthly</text>
+  <text x="658" y="228" text-anchor="middle" font-size="10.5" fill="#6B7A90">long-term snapshots</text>
+</svg>

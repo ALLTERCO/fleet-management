@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 412" width="860" height="412" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Device admission states: a device connects, then becomes accepted, waiting, or denied">
+  <title>How a device is admitted</title>
+  <desc>A device connects at /shelly and is checked. A device with a known token is accepted and becomes ALLOWED. An unknown device goes to the waiting room as PENDING, where it stays read-only until an operator accepts it (ALLOWED) or rejects it (DENIED). A device blocked at the gate is denied. On reconnect an accepted device is trusted and skips the wait, and a denied device stays denied.</desc>
+  <defs>
+    <marker id="mA" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A97A8"/></marker>
+    <marker id="mG" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2E9E6B"/></marker>
+    <marker id="mR" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#DD344C"/></marker>
+  </defs>
+  <rect x="0" y="0" width="860" height="412" fill="#ffffff"/>
+
+  <text x="30" y="30" font-size="15" font-weight="700" fill="#122A4F">How a device is admitted</text>
+  <text x="30" y="49" font-size="11.5" fill="#6B7A90">A new device can connect, but it stays read-only until an operator accepts it.</text>
+
+  <!-- edges -->
+  <!-- entry -->
+  <circle cx="34" cy="198" r="7" fill="#122A4F"/>
+  <path d="M41,198 L60,198" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#mA)"/>
+
+  <!-- gate -> accepted (known token) -->
+  <path d="M214,184 C 380,150 470,112 626,108" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#mA)"/>
+  <rect x="336" y="112" width="140" height="17" rx="8" fill="#ffffff"/>
+  <text x="406" y="124" text-anchor="middle" font-size="10.5" fill="#6B7A90">has a known token</text>
+
+  <!-- gate -> waiting (unknown) -->
+  <path d="M214,198 L336,198" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#mA)"/>
+  <rect x="222" y="176" width="106" height="17" rx="8" fill="#ffffff"/>
+  <text x="275" y="188" text-anchor="middle" font-size="10.5" fill="#6B7A90">unknown device</text>
+
+  <!-- gate -> denied (blocked) -->
+  <path d="M214,212 C 380,250 470,314 626,316" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#mA)"/>
+  <rect x="338" y="292" width="136" height="17" rx="8" fill="#ffffff"/>
+  <text x="406" y="304" text-anchor="middle" font-size="10.5" fill="#6B7A90">blocked at the gate</text>
+
+  <!-- waiting -> accepted (operator accepts) -->
+  <path d="M508,184 C 560,160 590,128 626,116" stroke="#2E9E6B" stroke-width="1.5" fill="none" marker-end="url(#mG)"/>
+  <rect x="512" y="142" width="108" height="17" rx="8" fill="#ffffff"/>
+  <text x="566" y="154" text-anchor="middle" font-size="10.5" fill="#2E7D5B">operator accepts</text>
+
+  <!-- waiting -> denied (operator rejects) -->
+  <path d="M508,212 C 560,248 590,286 626,306" stroke="#DD344C" stroke-width="1.5" fill="none" marker-end="url(#mR)"/>
+  <rect x="514" y="262" width="104" height="17" rx="8" fill="#ffffff"/>
+  <text x="566" y="274" text-anchor="middle" font-size="10.5" fill="#B42318">operator rejects</text>
+
+  <!-- accepted self-loop: reconnect trusted -->
+  <path d="M666,70 C 666,44 784,44 784,70" stroke="#8A97A8" stroke-width="1.25" stroke-dasharray="4 3" fill="none" marker-end="url(#mA)"/>
+  <text x="725" y="38" text-anchor="middle" font-size="10" fill="#8A97A8">reconnect — trusted, skips the wait</text>
+
+  <!-- denied self-loop: reconnect stays denied -->
+  <path d="M666,350 C 666,378 784,378 784,350" stroke="#8A97A8" stroke-width="1.25" stroke-dasharray="4 3" fill="none" marker-end="url(#mA)"/>
+  <text x="725" y="396" text-anchor="middle" font-size="10" fill="#8A97A8">reconnect — still denied</text>
+
+  <!-- Gate -->
+  <rect x="64" y="168" width="150" height="60" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="139" y="194" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Device connects</text>
+  <text x="139" y="212" text-anchor="middle" font-size="11" fill="#3A6B92" font-family="ui-monospace,Menlo,monospace">/shelly</text>
+
+  <!-- Waiting room -->
+  <rect x="340" y="168" width="170" height="60" rx="6" fill="#FFF7E8" stroke="#D9930B" stroke-width="1.5"/>
+  <text x="425" y="194" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Waiting room</text>
+  <text x="425" y="212" text-anchor="middle" font-size="11" fill="#8A6100">PENDING — read-only</text>
+
+  <!-- Accepted -->
+  <rect x="630" y="70" width="200" height="72" rx="6" fill="#EAF7F0" stroke="#2E9E6B" stroke-width="1.5"/>
+  <text x="730" y="100" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Accepted</text>
+  <text x="730" y="119" text-anchor="middle" font-size="11" fill="#2E7D5B">ALLOWED — can be controlled</text>
+
+  <!-- Denied -->
+  <rect x="630" y="286" width="200" height="64" rx="6" fill="#FDECEE" stroke="#DD344C" stroke-width="1.5"/>
+  <text x="730" y="313" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Denied</text>
+  <text x="730" y="332" text-anchor="middle" font-size="11" fill="#B42318">DENIED — connection closed</text>
+
+  <text x="30" y="404" font-size="10" fill="#8A97A8">Dashed = what happens on reconnect. Quarantine reboots a device and sends it back through the gate.</text>
+</svg>

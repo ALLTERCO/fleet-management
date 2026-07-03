@@ -1,5 +1,5 @@
 <template>
-    <div class="collapse-box dropdown-box p-0 rounded-xl hover:cursor-pointer shadow-md" @click="expandedClicked">
+    <div class="collapse-box dropdown-box p-0 rounded-xl hover:cursor-pointer shadow-none" @click="expandedClicked">
         <div class="cursor-pointer:hover py-2 px-3 flex iflex-row align">
             <span :key="String(expanded)" class="icon pr-3">
                 <i
@@ -12,7 +12,7 @@
             </span>
             <span>{{ title }}</span>
         </div>
-        <transition mode="out-in">
+        <transition>
             <div v-if="expanded" class="box-body px-3 pb-3" @click.stop>
                 <hr class="collapse-divider mb-4 mt-1 h-[1px]" />
                 <slot />

@@ -9,6 +9,16 @@
                 <span class="device-card__pill-dot"></span> ERROR
             </span>
         </template>
+        <template v-else-if="sensorError" #status>
+            <span class="entity-card__pill-error" :title="sensorError!">
+                <i class="fas fa-triangle-exclamation"></i> {{ sensorError }}
+            </span>
+        </template>
+        <template v-else-if="device.sleeping" #status>
+            <span class="device-card__pill-sleep">
+                <i class="fas fa-moon"></i> Sleeping
+            </span>
+        </template>
         <template v-else-if="!device.online && !device.loading" #status>
             <span class="device-card__pill-off">
                 <span class="device-card__pill-dot"></span> OFFLINE
@@ -17,7 +27,7 @@
 
         <template #image>
             <div class="image-container">
-                <i v-lazyload class="rounded-full typeIcon" :class="getPredefinedImageForEntity(entity.type)"
+                <i v-lazyload class="rounded-full typeIcon" :class="getPredefinedImageForEntity(entity.type, entity.properties)"
                     alt="Shelly"></i>
             </div>
         </template>
@@ -33,11 +43,11 @@
             <div v-else-if="device?.online" class="flex select-none gap-1.5 flex-col mt-1">
                 <!-- Show the color of the RGBW, RGB, RGBCCT lights, and light entities with RGB support -->
                 <div class="flex flex-wrap gap-1.5">
-                    <span v-if="((/rgbw?|rgbcct/i.test(entity.type)) || (entity.type === 'light' && entity_status?.rgb)) && device.online && entity_status?.rgb"
+                    <span v-if="((/rgbw?|rgbcct/i.test(entity.type)) || (entity.type === 'light' && entity_status?.rgb)) && device.online && safeRgbStyle"
                         class="entity-tag"
                         role="img" :aria-label="`Color: RGB(${entity_status.rgb.join(', ')})`">
                         <p class="border-2 rounded-full" aria-hidden="true"
-                            :style="`width: 18px; height: 18px; background-color: rgb(${entity_status.rgb.join(',')});`">
+                            :style="safeRgbStyle">
                         </p>
                     </span>
 
@@ -51,38 +61,42 @@
                 <div v-if="entity_status && vertical" class="max-w-[80%]" @click.stop>
                     <HorizontalSlider v-if="
                         entity.type === 'number' && (entity as virtual_number_entity).properties.view === 'slider'
+                        && (entity as virtual_number_entity).properties.min !== undefined
+                        && (entity as virtual_number_entity).properties.max !== undefined
                     " :value="entity_status.value" :min="(entity as virtual_number_entity).properties.min"
                         :max="(entity as virtual_number_entity).properties.max"
-                        :step="(entity as virtual_number_entity).properties.step"
+                        :step="(entity as virtual_number_entity).properties.step ?? 1"
                         :disable="waitingForResponse || !device.online || !canExecute"
-                        @change="(value) => sendRpc(entity.id, 'Number.Set', { value })">
+                        @change="(value: number) => invokeAction(entity.id, 'setValue', { value })">
                         <template #title>
-                            {{ entity_status.value }} {{ (entity as virtual_number_entity).properties.unit }}
+                            {{ entity_status.value }} {{ (entity as virtual_number_entity).properties.unit ?? '' }}
                         </template>
                     </HorizontalSlider>
 
                     <HorizontalProgress v-if="
                         entity.type === 'number' &&
                         (entity as virtual_number_entity).properties.view === 'progressbar'
+                        && (entity as virtual_number_entity).properties.min !== undefined
+                        && (entity as virtual_number_entity).properties.max !== undefined
                     " :value="entity_status.value" :min="(entity as virtual_number_entity).properties.min"
                         :max="(entity as virtual_number_entity).properties.max"
-                        :step="(entity as virtual_number_entity).properties.step" :disable="!device.online"
-                        @change="(value) => sendRpc(entity.id, 'Number.Set', { value })">
+                        :step="(entity as virtual_number_entity).properties.step ?? 1" :disable="!device.online"
+                        @change="(value: number) => invokeAction(entity.id, 'setValue', { value })">
                     </HorizontalProgress>
 
                     <form
                         v-if="entity.type === 'number' && (entity as virtual_number_entity).properties.view === 'field'"
                         class="flex flex-col items-center gap-1"
-                        @submit.prevent="() => sendRpc(entity.id, 'Number.Set', { value: tempValue })">
+                        @submit.prevent="() => invokeAction(entity.id, 'setValue', { value: tempValue })">
                         <Input v-model="tempValue" :type="'number'" :placeholder="'Value'" :disabled="!canExecute" />
-                        <Button submit size="xs" :disabled="!canExecute">Save</Button>
+                        <Button type="blue" submit size="xs" :disabled="!canExecute">Save</Button>
                     </form>
                     <form v-if="entity.type === 'text' && (entity as virtual_text_entity).properties.view === 'field'"
                         class="flex flex-col items-center gap-1"
-                        @submit.prevent="() => sendRpc(entity.id, 'Text.Set', { value: tempValue })">
+                        @submit.prevent="() => invokeAction(entity.id, 'setValue', { value: tempValue })">
                         <Input v-model="tempValue" :type="'text'" :placeholder="'Value'"
                             :max="(entity as virtual_text_entity).properties.maxLength" :disabled="!canExecute" />
-                        <Button submit size="xs" :disabled="!canExecute">Save</Button>
+                        <Button type="blue" submit size="xs" :disabled="!canExecute">Save</Button>
                     </form>
                 </div>
             </div>
@@ -93,9 +107,32 @@
                 <Button type="red" @click="emit('delete')">Delete</Button>
             </template>
             <template v-else-if="entity_status && device.online && !device.loading">
-                <div v-if="entity.type === 'temperature'" class="box">
+                <div v-if="entity.properties?.errors?.length" class="box entity-error-box" :title="entity.properties.errors.join(', ')">
+                    <p><i class="fas fa-exclamation-triangle" style="color: var(--color-warning-text)" /></p>
+                </div>
+                <div v-else-if="entity.type === 'temperature'" class="box">
                     <p v-if="entity_status.tC !== null">{{ entity_status.tC }} °C</p>
                     <p v-else>N/A</p>
+                </div>
+
+                <div v-else-if="entity.type === 'flood'" class="box">
+                    <p :style="entity_status.alarm === true ? 'color: var(--color-danger-text)' : entity_status.alarm === null ? 'color: var(--color-warning-text)' : ''">
+                        {{ entity_status.alarm === true ? 'FLOOD' : entity_status.alarm === false ? 'Dry' : 'Error' }}
+                    </p>
+                    <p v-if="entityStringProp('alarm_mode') === 'rain'" style="margin-left: 0.5rem; opacity: 0.7"><i class="fas fa-cloud-rain" /> Rain</p>
+                    <p v-if="entity_status.mute" style="margin-left: 0.5rem; color: var(--color-warning-text)"><i class="fas fa-volume-mute" /> Muted</p>
+                </div>
+
+                <div v-else-if="entity.type === 'smoke'" class="box">
+                    <p :style="entity_status.alarm === true ? 'color: var(--color-danger-text)' : ''">
+                        {{ entity_status.alarm === true ? 'SMOKE' : entity_status.alarm === false ? 'Clear' : 'N/A' }}
+                    </p>
+                </div>
+
+                <div v-else-if="entity.type === 'devicepower'" class="box">
+                    <p v-if="entity_status.battery">{{ entity_status.battery.percent }}%</p>
+                    <p v-else-if="entity_status.external?.present"><i class="fas fa-plug" /> AC</p>
+                    <p v-else>—</p>
                 </div>
 
                 <div v-else-if="
@@ -150,7 +187,7 @@
                         'bg-[var(--color-danger)]': !entity_status.value && canExecute,
                         'bg-[var(--color-success)]': entity_status.value && canExecute,
                         'bg-[var(--color-surface-3)] cursor-not-allowed opacity-50': !canExecute,
-                    }" :disabled="!canExecute" @click.stop="() => sendRpc(entity.id, 'Boolean.Set', { value: !entity_status.value })">
+                    }" :disabled="!canExecute" :aria-label="entity_status.value ? 'Turn off' : 'Turn on'" @click.stop="() => invokeAction(entity.id, 'setValue', { value: !entity_status.value })">
                     <Spinner v-if="waitingForResponse" />
                     <template v-else>
                         <span>
@@ -166,7 +203,7 @@
                     (entity as virtual_number_entity).properties.view !== null &&
                     device.online
                 " class="box">
-                    <p>{{ entity_status.value }} {{ (entity as virtual_number_entity).properties.unit }}</p>
+                    <p>{{ entity_status.value }} {{ (entity as virtual_number_entity).properties.unit ?? '' }}</p>
                 </div>
 
                 <!-- Virtual text - show the value only when the view config is label or for non-vertical widgets  -->
@@ -185,7 +222,7 @@
                 " class="box">
                     <p>
                         {{
-                            (entity as virtual_enum_entity).properties.options[entity_status.value] ??
+                            ((entity as virtual_enum_entity).properties.options ?? {})[entity_status.value] ??
                             entity_status.value
                         }}
                     </p>
@@ -195,8 +232,8 @@
                     entity.type === 'enum' &&
                     (entity as virtual_enum_entity).properties.view === 'dropdown' &&
                     device.online
-                " :default="(entity as virtual_enum_entity).properties.options[entity_status.value] || entity_status.value
-                        " :options="Object.values((entity as virtual_enum_entity).properties.options)"
+                " :default="((entity as virtual_enum_entity).properties.options ?? {})[entity_status.value] || entity_status.value
+                        " :options="Object.values((entity as virtual_enum_entity).properties.options ?? {})"
                     :disabled="!canExecute" @click.stop
                     @selected="
                         (selectedValue: string) => {
@@ -209,7 +246,7 @@
                                 return;
                             }
 
-                            sendRpc(entity.id, 'Enum.Set', { value: selectedKey });
+                            invokeAction(entity.id, 'setValue', { value: selectedKey });
                         }
                     " />
 
@@ -245,7 +282,7 @@
                     'bg-[var(--color-danger)]': !entity_status.output && canExecute,
                     'bg-[var(--color-success)]': entity_status.output && canExecute,
                     'bg-[var(--color-surface-3)] cursor-not-allowed opacity-50': !canExecute,
-                }" :disabled="!canExecute" @click.stop="actionClicked">
+                }" :disabled="!canExecute" :aria-label="entity_status.output ? 'Turn off' : 'Turn on'" @click.stop="actionClicked">
                     <Spinner v-if="waitingForResponse" />
                     <template v-else>
                         <span>
@@ -260,10 +297,12 @@
                     <div
                         v-if="curySlotInfo.leftHasVial"
                         class="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold"
+                        role="img"
                         :class="{
                             'bg-[var(--color-success)]': entity_status.slots?.left?.on,
                             'bg-[var(--color-surface-3)]': !entity_status.slots?.left?.on
                         }"
+                        :aria-label="`Left slot: ${entity_status.slots?.left?.on ? 'active' : 'inactive'}`"
                         :title="`Left: ${entity_status.slots?.left?.vial?.name || 'Vial'}`"
                     >
                         <span v-if="entity_status.slots?.left?.boost" class="text-[var(--color-warning-text)]">
@@ -275,10 +314,12 @@
                     <div
                         v-if="curySlotInfo.rightHasVial"
                         class="w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold"
+                        role="img"
                         :class="{
                             'bg-[var(--color-success)]': entity_status.slots?.right?.on,
                             'bg-[var(--color-surface-3)]': !entity_status.slots?.right?.on
                         }"
+                        :aria-label="`Right slot: ${entity_status.slots?.right?.on ? 'active' : 'inactive'}`"
                         :title="`Right: ${entity_status.slots?.right?.vial?.name || 'Vial'}`"
                     >
                         <span v-if="entity_status.slots?.right?.boost" class="text-[var(--color-warning-text)]">
@@ -303,6 +344,82 @@
                     <p v-if="entity_status.voltage !== null && entity_status.voltage !== undefined">{{ entity_status.voltage }} V</p>
                     <p v-else>N/A</p>
                 </div>
+
+                <!-- Illuminance (Wall Display light sensor) -->
+                <div v-else-if="entity.type === 'illuminance'" class="box">
+                    <p v-if="entity_status.lux != null">{{ entity_status.lux }} lux</p>
+                    <p v-else>N/A</p>
+                </div>
+
+                <!-- Thermostat (Wall Display HVAC) -->
+                <div v-else-if="entity.type === 'thermostat'" class="box">
+                    <p v-if="entity_status.current_C != null">{{ entity_status.current_C }}°C</p>
+                    <p v-else>N/A</p>
+                </div>
+
+                <!-- Media (Wall Display player) -->
+                <div v-else-if="entity.type === 'media'" class="box">
+                    <p>{{ entity_status.playback?.enable ? 'Playing' : 'Stopped' }}</p>
+                </div>
+
+                <!-- UI / Display (Wall Display screen) -->
+                <div v-else-if="entity.type === 'ui'" class="box">
+                    <p><i class="fas fa-display" /></p>
+                </div>
+
+                <!-- Group (virtual component container) -->
+                <div v-else-if="entity.type === 'group'" class="box">
+                    <p><i class="fas fa-layer-group" /></p>
+                    <p style="font-size:var(--icon-size-2xs);opacity:.7">{{ (entity_status?.value?.length ?? 0) }} members</p>
+                </div>
+
+                <!-- BTHome Device (physical BLE device) -->
+                <div v-else-if="entity.type === 'bthomedevice'" class="box">
+                    <p><i class="fab fa-bluetooth-b" style="color:var(--color-ble)" /></p>
+                    <p style="font-size:var(--icon-size-2xs);opacity:.7">{{ entityStringProp('productName') || 'BLE Device' }}</p>
+                </div>
+
+                <!-- BTHome Control (BLE remote button/dimmer) -->
+                <div v-else-if="entity.type === 'bthomecontrol'" class="box">
+                    <p><i class="fas fa-gamepad" /></p>
+                </div>
+
+                <!-- XT1 Service device (Powered by Shelly / Shelly X) -->
+                <div v-else-if="entity.type === 'service'" class="box" style="gap:var(--space-1)">
+                    <!-- HVAC: temp + mode + fan -->
+                    <template v-if="vcVal('current_temperature') != null">
+                        <p class="ew-svc__value">{{ formatServiceValue(vcVal('current_temperature'), 1) }}°C</p>
+                        <div class="ew-svc__meta">
+                            <span v-if="vcVal('working_mode')">{{ vcVal('working_mode') }}</span>
+                            <span v-if="vcVal('fan_speed')">Fan: {{ vcVal('fan_speed') }}</span>
+                        </div>
+                        <p v-if="vcVal('target_temperature') != null" class="ew-svc__sub">Target: {{ vcVal('target_temperature') }}°C</p>
+                    </template>
+                    <!-- Valve: position + buttons -->
+                    <template v-else-if="vcVal('position') != null">
+                        <p class="ew-svc__value">{{ vcVal('position') }}%</p>
+                        <div v-if="canExecute" class="ec-cbtns">
+                            <button class="ec-cbtn" @click.stop="vcTriggerBtn('open')"><i class="fas fa-chevron-up" /> Open</button>
+                            <button class="ec-cbtn" @click.stop="vcTriggerBtn('close')"><i class="fas fa-chevron-down" /> Close</button>
+                        </div>
+                    </template>
+                    <!-- EV Charger: state + energy -->
+                    <template v-else-if="vcVal('work_state')">
+                        <p class="ew-svc__value ew-svc__value--sm">{{ vcVal('work_state') }}</p>
+                        <p v-if="vcVal('energy_charge') != null" class="ew-svc__sub">{{ vcVal('energy_charge') }} kWh</p>
+                    </template>
+                    <!-- Generic fallback -->
+                    <template v-else>
+                        <p>{{ entityStringProp('productName') || 'Service' }}</p>
+                    </template>
+                </div>
+
+                <!-- Matter -->
+                <div v-else-if="entity.type === 'matter'" class="box">
+                    <p :style="device.settings?.['matter:0']?.enable ? 'color: var(--color-success-text)' : 'color: var(--color-text-disabled)'">
+                        {{ device.settings?.['matter:0']?.enable ? 'Enabled' : 'Disabled' }}
+                    </p>
+                </div>
             </template>
         </template>
     </Widget>
@@ -312,11 +429,14 @@
 import {computed, onMounted, onUnmounted, ref, toRef, toRefs, watch} from 'vue';
 import Button from '@/components/core/Button.vue';
 import CoverControls from '@/components/core/Cover/CoverControls.vue';
+import {getEntityDef} from '@/config/entity-registry';
 import {getPredefinedImageForEntity} from '@/helpers/device';
+import {isInstantEntityAction} from '@/helpers/instantEntityActions';
 import {formatWatts} from '@/helpers/numbers';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
 import {useEntityStore} from '@/stores/entities';
+import {useToastStore} from '@/stores/toast';
 import {debug} from '@/tools/debug';
 import {
     type bthomesensor_entity,
@@ -355,6 +475,7 @@ const {editMode, selected, vertical} = toRefs(props);
 const entityStore = useEntityStore();
 const deviceStore = useDevicesStore();
 const authStore = useAuthStore();
+const toastStore = useToastStore();
 const entity = toRef(props, 'entity');
 
 const device = computed(() => deviceStore.devices[entity.value.source]);
@@ -364,42 +485,136 @@ const canExecute = computed(() =>
     authStore.canExecuteDevice(entity.value.source)
 );
 
-const nameFitter = computed(() =>
-    entity.value.name.length > 30
-        ? entity.value.name.substring(0, 30) + '...'
-        : entity.value.name
-);
+const nameFitter = computed(() => entity.value.name);
+
+type EntityPropertyRecord = Record<string, unknown>;
+type ComponentResourceMap = Record<string, string>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function currentEntityProps(): EntityPropertyRecord {
+    return entity.value.properties as EntityPropertyRecord;
+}
+
+function entityStringProp(key: string): string | undefined {
+    const value = currentEntityProps()[key];
+    return typeof value === 'string' ? value : undefined;
+}
+
+function componentResources(): ComponentResourceMap | null {
+    const value = currentEntityProps().components;
+    if (!isRecord(value)) return null;
+    const entries = Object.entries(value).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string'
+    );
+    return Object.fromEntries(entries);
+}
+
+function currentStatusRecord(): Record<string, unknown> | null {
+    return isRecord(entity_status.value) ? entity_status.value : null;
+}
+
+function statusErrors(): string[] {
+    const errors = currentStatusRecord()?.errors;
+    return Array.isArray(errors)
+        ? errors.filter((item): item is string => typeof item === 'string')
+        : [];
+}
+
+function statusTemperatureC(): number | null {
+    const temperature = currentStatusRecord()?.temperature;
+    if (!isRecord(temperature)) return null;
+    const value = temperature.tC;
+    return typeof value === 'number' ? value : null;
+}
 
 const checkIfVC = computed(() => {
     return (type: string) =>
         ['boolean', 'number', 'enum', 'text', 'group', 'button'].includes(type);
 });
 
+/** Validate RGB array values are finite numbers in 0-255 and return a safe CSS color string */
+const safeRgbStyle = computed(() => {
+    const rgb = entity_status.value?.rgb;
+    if (!Array.isArray(rgb) || rgb.length < 3) return undefined;
+    const [r, g, b] = rgb;
+    if (!Number.isFinite(r) || !Number.isFinite(g) || !Number.isFinite(b))
+        return undefined;
+    const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+    return `width: 18px; height: 18px; background-color: rgb(${clamp(r)},${clamp(g)},${clamp(b)});`;
+});
+
 const entity_status = computed(() => {
     if (!device.value) {
         return {};
     }
+    const e = entity.value;
+    const embedded = e.properties.embeddedIn;
+    if (e.type === 'temperature' && embedded) {
+        return device.value.status?.[embedded]?.temperature ?? {};
+    }
+    return deviceStore.statusOf(
+        entity.value.source,
+        `${e.type}:${e.properties?.id}`
+    );
+});
 
-    return device.value.status?.[
-        entity.value.type + ':' + entity.value.properties.id
-    ];
+// Service entity: read virtual component value by resource role
+function vcVal(resource: string): unknown {
+    const components = componentResources();
+    if (!components || !device.value) return null;
+    const key = components[resource];
+    if (!key) return null;
+    return deviceStore.statusOf(entity.value.source, key)?.value ?? null;
+}
+
+function formatServiceValue(value: unknown, fractionDigits = 0): string {
+    if (typeof value === 'number') return value.toFixed(fractionDigits);
+    return value == null ? '' : String(value);
+}
+
+// Service entity: trigger a button component
+function vcTriggerBtn(resource: string) {
+    const components = componentResources();
+    if (!components || !device.value) return;
+    const key = components[resource];
+    if (!key) return;
+    void invokeAction(entity.value.id, 'trigger', {
+        key,
+        event: 'single_push'
+    });
+}
+
+// Detect sensor errors (alarm:null + errors array, or smoke:null + errors)
+const sensorError = computed<string | null>(() => {
+    const s = currentStatusRecord();
+    if (!s) return null;
+    // Only for sensor types where null means error
+    const hasNullAlarm = 'alarm' in s && s.alarm === null;
+    const hasNullSmoke = 'smoke' in s && s.smoke === null;
+    if (!hasNullAlarm && !hasNullSmoke) return null;
+    const errArr = s.errors;
+    if (Array.isArray(errArr) && errArr.length) {
+        return String(errArr[0])
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, (c: string) => c.toUpperCase());
+    }
+    return 'Sensor Error';
 });
 
 let eventListener: (() => void) | null = null;
 const event = ref(null);
 let clearEventTimeout: ReturnType<typeof setTimeout>;
-let tempValue: string | number | any;
-
-watch(device, (dev) => {
-    debug('dev', dev);
-});
+const tempValue = ref<string | number>('');
 
 watch(entity_status, (status) => {
     if (!['number', 'text'].includes(entity.value.type)) {
         return;
     }
 
-    tempValue = status.value;
+    tempValue.value = status.value;
 });
 
 onMounted(() => {
@@ -426,12 +641,12 @@ onMounted(() => {
 
         clearEventTimeout = setTimeout(() => {
             event.value = null;
-            clearTimeout(clearEventTimeout);
         }, 3000);
     });
 });
 
 onUnmounted(() => {
+    if (clearEventTimeout) clearTimeout(clearEventTimeout);
     if (typeof eventListener !== 'function') {
         return;
     }
@@ -455,171 +670,156 @@ const displayEvent = computed(() => {
 });
 
 const waitingForResponse = ref(false);
-let waitingForResponseTimeout: ReturnType<typeof setTimeout>;
+let waitingForResponseTimeout: ReturnType<typeof setTimeout> | undefined;
 let lastActionTime = 0;
 
 const tags = computed(() => {
     if (
         typeof entity_status.value !== 'object' ||
-        Object.keys(entity_status.value).length == 0
+        Object.keys(entity_status.value).length === 0
     ) {
         return [];
     }
 
+    // Check registry for type-specific tag builder
+    const def = getEntityDef(entity.value.type);
+    if (def?.tags) {
+        return def.tags(entity_status.value, entity.value.properties);
+    }
+
+    // Generic tag builder — covers switch, light, cover, em, pm1, em1,
+    // temperature, humidity, flood, smoke, devicepower, voltmeter, input, etc.
     const tags: {icon?: string; text: string}[] = [];
 
-    // Handle Cury-specific tags
-    if (entity.value.type === 'cury') {
-        const status = entity_status.value;
-
-        // Show per-slot status
-        const leftSlot = status.slots?.left;
-        const rightSlot = status.slots?.right;
-        const leftHasVial =
-            leftSlot?.vial?.serial &&
-            leftSlot.vial.serial !== '0000000000000000';
-        const rightHasVial =
-            rightSlot?.vial?.serial &&
-            rightSlot.vial.serial !== '0000000000000000';
-
-        // Left slot status
-        if (leftHasVial) {
-            const leftName = leftSlot.vial.name || 'L';
-            if (leftSlot.on) {
-                tags.push({
-                    text: `${leftName}: ${leftSlot.intensity}%`,
-                    icon: 'fas fa-spray-can'
-                });
-            }
-            if (leftSlot.boost) {
-                tags.push({text: `${leftName} Boost`, icon: 'fas fa-rocket'});
-            }
-        }
-
-        // Right slot status
-        if (rightHasVial) {
-            const rightName = rightSlot.vial.name || 'R';
-            if (rightSlot.on) {
-                tags.push({
-                    text: `${rightName}: ${rightSlot.intensity}%`,
-                    icon: 'fas fa-spray-can'
-                });
-            }
-            if (rightSlot.boost) {
-                tags.push({text: `${rightName} Boost`, icon: 'fas fa-rocket'});
-            }
-        }
-
-        if (status.away_mode) {
-            tags.push({text: 'Away', icon: 'fas fa-plane-departure'});
-        }
-
-        // Show vial levels
-        if (
-            leftHasVial &&
-            typeof leftSlot.vial.level === 'number' &&
-            leftSlot.vial.level >= 0
-        ) {
-            tags.push({text: `L:${leftSlot.vial.level}%`, icon: 'fas fa-vial'});
-        }
-        if (
-            rightHasVial &&
-            typeof rightSlot.vial.level === 'number' &&
-            rightSlot.vial.level >= 0
-        ) {
-            tags.push({
-                text: `R:${rightSlot.vial.level}%`,
-                icon: 'fas fa-vial'
-            });
-        }
-
-        if (status.errors?.length > 0) {
-            tags.push({
-                text: `${status.errors.length} error${status.errors.length > 1 ? 's' : ''}`,
-                icon: 'fas fa-triangle-exclamation'
-            });
-        }
-        return tags;
+    // Device profile / source indicator
+    const ent = entity.value;
+    const profile = ent.properties.deviceProfile;
+    const source = (ent.properties as Record<string, any>)?.sensorSource;
+    const embedded =
+        ent.type === 'temperature' ? ent.properties.embeddedIn : undefined;
+    if (embedded) {
+        tags.push({text: 'Internal', icon: 'fas fa-microchip'});
+    } else if (profile === 'dali') {
+        tags.push({text: 'DALI', icon: 'fas fa-network-wired'});
+    } else if (source === 'blu' || ent.type === 'bthomesensor') {
+        tags.push({text: 'BLU', icon: 'fab fa-bluetooth-b'});
+    } else if (source === 'addon') {
+        tags.push({text: 'Add-on', icon: 'fas fa-puzzle-piece'});
     }
 
     for (const [k, v] of Object.entries(entity_status.value)) {
-        if (v == '0') continue;
+        if (v === '0') continue;
         switch (k) {
             case 'apower':
             case 'act_power':
                 tags.push({text: `${v} W`, icon: 'fas fa-bolt'});
                 break;
-
             case 'aprt_power':
                 tags.push({text: `${v} VA`, icon: 'fas fa-bolt'});
                 break;
-
             case 'voltage':
                 tags.push({text: `${v} V`});
                 break;
-
             case 'total':
             case 'total_act':
                 tags.push({text: `${v} Wh`});
                 break;
-
             case 'current':
                 tags.push({text: `${v} A`});
                 break;
-
             case 'pf':
                 tags.push({text: `PF ${v}`});
                 break;
-
             case 'freq':
                 tags.push({text: `${v} Hz`});
                 break;
-
             case 'white':
-                tags.push({text: String(v), icon: 'fa-solid fa-circle'});
+                tags.push({text: String(v), icon: 'fas fa-circle'});
                 break;
-
             case 'brightness':
                 tags.push({text: String(v), icon: 'fas fa-sun'});
                 break;
-
             case 'temp':
-                // Color temperature in Kelvin
+            case 'ct':
                 tags.push({text: `${v}K`, icon: 'fas fa-temperature-half'});
                 break;
-
-            case 'state': {
-                if (entity.value.type !== 'cover') {
-                    // skip the state for not covers
-                    break;
-                }
-
-                tags.push({text: String(v)});
+            case 'state':
+                if (entity.value.type === 'cover') tags.push({text: String(v)});
                 break;
-            }
+            case 'alarm':
+                if (v === true) {
+                    tags.push({
+                        text: 'FLOOD',
+                        icon: 'fas fa-triangle-exclamation'
+                    });
+                } else if (v === false) {
+                    tags.push({text: 'Dry', icon: 'fas fa-check-circle'});
+                } else {
+                    const errArr = statusErrors();
+                    const errText =
+                        Array.isArray(errArr) && errArr.length
+                            ? String(errArr[0])
+                                  .replace(/_/g, ' ')
+                                  .replace(/\b\w/g, (c: string) =>
+                                      c.toUpperCase()
+                                  )
+                            : 'Error';
+                    tags.push({
+                        text: errText,
+                        icon: 'fas fa-triangle-exclamation'
+                    });
+                }
+                break;
         }
     }
+
+    // Nested: PCB/internal temperature (light, switch, cover, bulb)
+    const tC = statusTemperatureC();
+    if (tC != null) {
+        tags.push({text: `${tC}°C`, icon: 'fas fa-microchip'});
+    }
+
     return tags;
 });
 
-async function sendRpc(entityId: string, method: string, params?: any) {
-    // Check if user has execute permission
-    if (!canExecute.value) {
-        console.warn('User does not have execute permission for this device');
-        return;
+async function invokeAction(
+    entityId: string,
+    action: string,
+    params?: Record<string, unknown>
+) {
+    // :disabled on the controls already blocks unauthorized clicks; the
+    // backend re-checks. No silent return — the catch below surfaces any
+    // permission rejection via toast.
+    const instantAction = isInstantEntityAction(entity.value.type, action);
+    if (!instantAction) {
+        waitingForResponse.value = true;
+        waitingForResponseTimeout = setTimeout(() => {
+            waitingForResponse.value = false;
+        }, 10000);
     }
 
-    waitingForResponse.value = true;
-    waitingForResponseTimeout = setTimeout(() => {
-        waitingForResponse.value = false;
-    }, 10000); // timeout after 10 seconds
-
-    await entityStore.sendRPC(entityId, method, params);
-
-    if (waitingForResponseTimeout) {
-        clearInterval(waitingForResponseTimeout);
+    try {
+        await entityStore.invokeAction(entityId, action, params);
+    } catch (err) {
+        toastStore.error(commandErrorMessage(action, err));
+        debug('[EntityWidget] command failed', err);
+    } finally {
+        if (waitingForResponseTimeout) {
+            clearTimeout(waitingForResponseTimeout);
+            waitingForResponseTimeout = undefined;
+        }
+        if (!instantAction) {
+            waitingForResponse.value = false;
+        }
     }
-    waitingForResponse.value = false;
+}
+
+function commandErrorMessage(action: string, err: unknown): string {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.toLowerCase().includes('timeout')) {
+        return `${action} timed out — device may still apply it`;
+    }
+    return `${action} failed`;
 }
 
 function actionClicked() {
@@ -642,7 +842,7 @@ function actionClicked() {
     }
     lastActionTime = now;
 
-    sendRpc(entity.value.id, `${entity.value.type}.toggle`);
+    void invokeAction(entity.value.id, 'toggle');
 }
 
 function coverControl(direction: 'stop' | 'open' | 'close') {
@@ -654,7 +854,7 @@ function coverControl(direction: 'stop' | 'open' | 'close') {
         return;
     }
 
-    sendRpc(entity.value.id, `${entity.value.type}.${direction}`);
+    void invokeAction(entity.value.id, direction);
 }
 
 // Cury slot info for widget display
@@ -682,8 +882,12 @@ const curySlotInfo = computed(() => {
     @apply text-xs md:text-sm line-clamp-1;
 }
 
+.entity-error-box {
+    @apply w-auto cursor-help;
+}
+
 .typeIcon {
-    font-size: 28px;
+    font-size: var(--type-subheading);
     color: white;
     display: absolute;
     top: 50%;
@@ -696,4 +900,10 @@ const curySlotInfo = computed(() => {
     align-items: center;
     height: 100%;
 }
+
+/* Service entity value styles — replaces inline styles */
+.ew-svc__value { font-size: var(--type-body); font-weight: 700; }
+.ew-svc__value--sm { font-size: var(--type-body); font-weight: 600; }
+.ew-svc__meta { display: flex; gap: var(--gap-xs); font-size: var(--type-body); color: var(--color-text-tertiary); }
+.ew-svc__sub { font-size: var(--type-body); color: var(--color-text-quaternary); }
 </style>

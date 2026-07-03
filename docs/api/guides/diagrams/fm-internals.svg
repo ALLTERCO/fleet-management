@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 440" width="1000" height="440" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Inside Fleet Manager: transport, dispatch, domain, and platform modules">
+  <title>Inside Fleet Manager</title>
+  <desc>Requests arrive at the WebSocket controller or the HTTP /rpc endpoint, are dispatched by the Commander which checks permission via the authz resolver, and run in domain modules — devices and entities, the waiting room, the alert engine, and energy. Platform modules handle event distribution over session streams and notification delivery.</desc>
+  <defs>
+    <marker id="fN" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A97A8"/></marker>
+    <marker id="fP" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7A5AF0"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1000" height="440" fill="#ffffff"/>
+
+  <!-- tier labels -->
+  <g font-size="10" font-weight="600" letter-spacing="0.07em" fill="#B4BECC" text-anchor="end">
+    <text x="978" y="74">TRANSPORT</text>
+    <text x="978" y="154">DISPATCH</text>
+    <text x="978" y="245">DOMAIN</text>
+    <text x="978" y="351">PLATFORM</text>
+  </g>
+
+  <!-- arrows: entry -> commander -->
+  <path d="M386,96 L430,122" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#fN)"/>
+  <path d="M598,96 L556,122" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#fN)"/>
+  <!-- commander -> domain (fan) -->
+  <path d="M470,176 L150,206" stroke="#8A97A8" stroke-width="1.4" fill="none" marker-end="url(#fN)"/>
+  <path d="M480,176 L372,206" stroke="#8A97A8" stroke-width="1.4" fill="none" marker-end="url(#fN)"/>
+  <path d="M500,176 L590,206" stroke="#8A97A8" stroke-width="1.4" fill="none" marker-end="url(#fN)"/>
+  <path d="M510,176 L792,206" stroke="#8A97A8" stroke-width="1.4" fill="none" marker-end="url(#fN)"/>
+  <!-- domain -> platform -->
+  <path d="M150,274 L230,314" stroke="#8A97A8" stroke-width="1.4" fill="none" marker-end="url(#fN)"/>
+  <path d="M590,274 L510,314" stroke="#8A97A8" stroke-width="1.4" fill="none" marker-end="url(#fN)"/>
+  <!-- authz -> commander (permission) -->
+  <path d="M720,316 C720,236 616,196 566,176" stroke="#7A5AF0" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#fP)"/>
+  <rect x="628" y="238" width="76" height="15" rx="7" fill="#ffffff"/>
+  <text x="666" y="249" text-anchor="middle" font-size="10" fill="#6A5AB8">permission</text>
+
+  <!-- Transport -->
+  <rect x="286" y="46" width="200" height="50" rx="6" fill="#EEF3FA" stroke="#003C82" stroke-width="1.5"/>
+  <text x="386" y="76" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">WebSocket controller</text>
+  <rect x="514" y="46" width="170" height="50" rx="6" fill="#EEF3FA" stroke="#003C82" stroke-width="1.5"/>
+  <text x="599" y="70" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">HTTP</text>
+  <text x="599" y="86" text-anchor="middle" font-size="10.5" fill="#3A5C86" font-family="ui-monospace,Menlo,monospace">/rpc</text>
+
+  <!-- Dispatch -->
+  <rect x="300" y="122" width="380" height="52" rx="6" fill="#E4F1FB" stroke="#4495D1" stroke-width="2"/>
+  <text x="490" y="146" text-anchor="middle" font-size="13.5" font-weight="700" fill="#122A4F">Commander</text>
+  <text x="490" y="163" text-anchor="middle" font-size="10.5" fill="#6B7A90">routes RPC · checks permission · audits</text>
+
+  <!-- Domain -->
+  <rect x="36" y="208" width="214" height="66" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="143" y="236" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Devices &amp; entities</text>
+  <text x="143" y="253" text-anchor="middle" font-size="10.5" fill="#6B7A90">components · composer</text>
+
+  <rect x="270" y="208" width="200" height="66" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="370" y="236" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Waiting room</text>
+  <text x="370" y="253" text-anchor="middle" font-size="10.5" fill="#6B7A90">device ingress</text>
+
+  <rect x="490" y="208" width="200" height="66" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="590" y="236" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Alert engine</text>
+  <text x="590" y="253" text-anchor="middle" font-size="10.5" fill="#6B7A90">evaluators · sweep</text>
+
+  <rect x="710" y="208" width="170" height="66" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="795" y="236" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Energy</text>
+  <text x="795" y="253" text-anchor="middle" font-size="10.5" fill="#6B7A90">meters · rollups</text>
+
+  <!-- Platform -->
+  <rect x="90" y="314" width="290" height="66" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="235" y="342" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Event distributor</text>
+  <text x="235" y="359" text-anchor="middle" font-size="10.5" fill="#6B7A90">session streams · replay (Redis)</text>
+
+  <rect x="400" y="314" width="200" height="66" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="500" y="342" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Delivery outbox</text>
+  <text x="500" y="359" text-anchor="middle" font-size="10.5" fill="#6B7A90">channels · retries</text>
+
+  <rect x="620" y="314" width="200" height="66" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="720" y="342" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Authz resolver</text>
+  <text x="720" y="359" text-anchor="middle" font-size="10.5" fill="#6B7A90">personas · assignments</text>
+
+  <text x="455" y="416" text-anchor="middle" font-size="10.5" fill="#8A97A8">persisted in <tspan fill="#6B7A90">TimescaleDB</tspan> · streamed and cached via <tspan fill="#6B7A90">Redis</tspan></text>
+</svg>

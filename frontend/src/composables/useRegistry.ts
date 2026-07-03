@@ -1,9 +1,20 @@
 import {type Ref, ref} from 'vue';
-import {getPreloadedData, getRegistry, sendRPC} from '@/tools/websocket';
+import {getPreloadedData} from '@/tools/websocket';
 import * as ws from '../tools/websocket';
 
-function storeData(prefix: string, key: string, data: object) {
-    localStorage.setItem(prefix + key, JSON.stringify(data));
+const REGISTRY_CACHE_SUFFIX = '-registry-cache:';
+
+export function clearRegistryCaches() {
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.includes(REGISTRY_CACHE_SUFFIX)) toRemove.push(key);
+    }
+    for (const key of toRemove) localStorage.removeItem(key);
+}
+
+function storeData(prefix: string, entry: {key: string; data: object}) {
+    localStorage.setItem(prefix + entry.key, JSON.stringify(entry.data));
 }
 
 function loadData<T>(prefix: string, key: string): T | null {
@@ -11,7 +22,7 @@ function loadData<T>(prefix: string, key: string): T | null {
         const raw = localStorage.getItem(prefix + key);
         if (!raw) return null;
         return JSON.parse(raw) as T;
-    } catch (error) {
+    } catch (_error) {
         return null;
     }
 }
@@ -36,8 +47,8 @@ export default function useRegistry<T extends {}>(
         try {
             const item = await UIRegistry.getItem<T>(key);
             data.value = item;
-            storeData(prefix, key, item);
-        } catch (err) {
+            storeData(prefix, {key, data: item});
+        } catch (_err) {
             error.value = true;
         } finally {
             loading.value = false;
@@ -50,19 +61,14 @@ export default function useRegistry<T extends {}>(
     }
 
     async function upload() {
-        await getRegistry('ui').setItem('dashboards', {
-            id: key,
-            items: data.value
-        });
         await UIRegistry.setItem(key, data.value);
         await refresh();
     }
 
-    // If data was preloaded (fresh from server), skip the initial RPC.
-    // Otherwise fetch: localStorage data is shown immediately while RPC refreshes in background.
-    if (!preloaded) {
-        execute();
-    }
+    // Always fetch fresh data from the server in the background.
+    // Preloaded/cached data is shown immediately to avoid blank screens,
+    // but it may be stale (e.g. widgets added since connect or last visit).
+    execute();
 
     return {
         data,

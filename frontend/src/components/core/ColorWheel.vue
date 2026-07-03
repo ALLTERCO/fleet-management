@@ -79,7 +79,7 @@ function draw() {
     context.fill();
 
     const [r, g, b] = color.value;
-    updatePointer(r, g, b);
+    updatePointer({r, g, b});
 }
 
 function onClick(event: MouseEvent) {
@@ -101,22 +101,26 @@ function onClick(event: MouseEvent) {
 
     const [red, green, blue] = context.getImageData(x, y, 1, 1).data;
     emit('change', [red, green, blue]);
-    updatePointer(red, green, blue);
+    updatePointer({r: red, g: green, b: blue});
 }
 
 // https://gist.github.com/mjackson/5311256#file-color-conversion-algorithms-js-L84
-function rgbToHsv(r: number, g: number, b: number): [number, number, number] {
-    r /= 255;
-    g /= 255;
-    b /= 255;
+function rgbToHsv(rgb: {
+    r: number;
+    g: number;
+    b: number;
+}): [number, number, number] {
+    let r = rgb.r / 255;
+    let g = rgb.g / 255;
+    let b = rgb.b / 255;
 
     const max = Math.max(r, g, b);
     const min = Math.min(r, g, b);
     const d = max - min;
-    const s = max == 0 ? 0 : d / max;
+    const s = max === 0 ? 0 : d / max;
     let h = 0;
 
-    if (max == min) {
+    if (max === min) {
         h = 0; // achromatic
     } else {
         switch (max) {
@@ -137,10 +141,10 @@ function rgbToHsv(r: number, g: number, b: number): [number, number, number] {
     return [h, s, max];
 }
 
-function updatePointer(red: number, green: number, blue: number) {
-    pointerColor = `rgb(${red}, ${green}, ${blue})`;
+function updatePointer(rgb: {r: number; g: number; b: number}) {
+    pointerColor = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
 
-    const [h, s] = rgbToHsv(red, green, blue);
+    const [h, s] = rgbToHsv(rgb);
     const angle = h * Math.PI * 2;
     pointerX.value = radius * s * Math.cos(angle) + centerX;
     pointerY.value = radius * s * Math.sin(angle) + centerY;
@@ -152,6 +156,6 @@ onMounted(() => {
 
 watch(color, () => {
     const [r, g, b] = color.value;
-    updatePointer(r, g, b);
+    updatePointer({r, g, b});
 });
 </script>

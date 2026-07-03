@@ -23,14 +23,14 @@
         />
       </div>
       <hr class="my-4"/>
-      <Button narrow type="red" class="w-full" @click="clearFilters">
+      <Button narrow type="blue-hollow" class="w-full" @click="clearFilters">
         Clear filters
       </Button>
     </div>
     <template #footer>
       <div class="flex flex-row-reverse gap-2">
-        <Button @click="applyClicked">Apply</Button>
-        <Button type="red" @click="visible = false">Cancel</Button>
+        <Button type="blue" @click="applyClicked">Apply</Button>
+        <Button type="blue-hollow" @click="visible = false">Cancel</Button>
       </div>
     </template>
   </Modal>

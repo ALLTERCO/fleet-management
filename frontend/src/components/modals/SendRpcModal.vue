@@ -4,18 +4,28 @@
 
         <template #default>
             <div class="space-y-6">
+                <div class="send-rpc-warning">
+                    <i class="fas fa-triangle-exclamation" />
+                    <span>
+                        <strong>Direct device communication.</strong>
+                        This tool sends RPCs straight to the device, bypassing
+                        backend wrappers, validation, and domain audit. Use for
+                        testing, probing new firmware, or debugging — not for
+                        everyday device control.
+                    </span>
+                </div>
                 <Steps :current="stage" :steps="runNow ? 4 : 3" @click="(selected) => (stage = selected)">
                     <template #stepTitle="{ id }">
-                        <span v-if="id == STAGES.BUILD" class="font-semibold">Build</span>
-                        <span v-if="id == STAGES.PREVIEW" class="font-semibold">Preview</span>
-                        <span v-if="id == STAGES.SAVE" class="font-semibold">Save</span>
-                        <span v-if="id == STAGES.RESPONSES" class="font-semibold">Responses</span>
+                        <span v-if="id === STAGES.BUILD" class="font-semibold">Build</span>
+                        <span v-if="id === STAGES.PREVIEW" class="font-semibold">Preview</span>
+                        <span v-if="id === STAGES.SAVE" class="font-semibold">Save</span>
+                        <span v-if="id === STAGES.RESPONSES" class="font-semibold">Responses</span>
                     </template>
                 </Steps>
                 <div class="flex flex-col gap-4">
-                    <div v-if="stage == STAGES.BUILD" class="space-y-3">
+                    <div v-if="stage === STAGES.BUILD" class="space-y-3">
                         <div class="flex flex-row items-center">
-                            <span class="has-text-white mr-2">Preset methods:</span>
+                            <span class="text-[var(--color-text-primary)] mr-2">Preset methods:</span>
                             <Dropdown
                                 class="mr-2"
                                 :options="rpcBuilderStore.ALLOWED_COMPONENT_NAMES"
@@ -36,10 +46,10 @@
                             :show-line="false"
                         />
                     </div>
-                    <div v-if="stage == STAGES.PREVIEW" class="flex flex-col gap-3">
-                        <span class="font-semibold">You are sending this command:</span>
+                    <div v-if="stage === STAGES.PREVIEW" class="flex flex-col gap-3">
+                        <div class="modal-section-title">You are sending this command:</div>
                         <pre class="rpc-preview-code p-3 rounded">{{ JSON.stringify(json, undefined, 2) }}</pre>
-                        <span class="font-semibold">To this {{ deviceStore.selectedDevices.length }} devices:</span>
+                        <div class="modal-section-title">To this {{ deviceStore.selectedDevices.length }} devices:</div>
                         <ul class="space-y-2">
                             <template v-if="deviceStore.selectedDevices.length > 0">
                                 <li v-for="dev in deviceStore.selectedDevices" :key="dev.shellyID">
@@ -53,7 +63,7 @@
                             </template>
                         </ul>
                     </div>
-                    <div v-if="stage == STAGES.SAVE" class="flex flex-col gap-1">
+                    <div v-if="stage === STAGES.SAVE" class="flex flex-col gap-1">
                         <Checkbox v-model="runNow"> Run now </Checkbox>
                         <Checkbox v-model="save.enable"> Save this action </Checkbox>
                         <div v-if="save.enable">
@@ -61,7 +71,7 @@
                                 aria-label="Action name" @blur="validateSaveName" />
                         </div>
                     </div>
-                    <div v-if="stage == STAGES.RESPONSES" class="flex flex-col gap-1">
+                    <div v-if="stage === STAGES.RESPONSES" class="flex flex-col gap-1">
                         <Collapse
                             v-for="(resp, id) in deviceStore.rpcResponses"
                             :key="id"
@@ -78,7 +88,7 @@
         <template #footer>
             <div class="flex flex-row-reverse gap-4">
                 <Button type="blue" :requires-write="true" @click="nextOrFinish">{{ isLastStage() ? 'Finish' : 'Next' }}</Button>
-                <Button v-if="stage != 1" type="blue" @click="backClicked">Back</Button>
+                <Button v-if="stage !== 1" type="blue-hollow" @click="backClicked">Back</Button>
             </div>
             <p v-if="isReadOnly" class="rpc-readonly-warning text-sm mt-2">
                 <i class="fas fa-exclamation-triangle mr-1"></i>
@@ -103,15 +113,15 @@ import 'vue-json-pretty/lib/styles.css';
 import Button from '@/components/core/Button.vue';
 import Collapse from '@/components/core/Collapse.vue';
 import Dropdown from '@/components/core/Dropdown.vue';
+import JSONViewer from '@/components/core/JSONViewer.vue';
 import Steps from '@/components/core/Steps.vue';
 import {getRegistry} from '@/tools/websocket';
 import Checkbox from '../core/Checkbox.vue';
 import Input from '../core/Input.vue';
-import JSONViewer from '../JSONViewer.vue';
 import DeviceWidget from '../widgets/DeviceWidget.vue';
 
 const emit = defineEmits<{
-    close: [void];
+    close: [];
 }>();
 
 const STAGES = {
@@ -133,7 +143,8 @@ const runNow = ref(true);
 const saveNameError = ref('');
 
 function validateSaveName() {
-    saveNameError.value = save.enable && !save.name.trim() ? 'Action name is required' : '';
+    saveNameError.value =
+        save.enable && !save.name.trim() ? 'Action name is required' : '';
 }
 
 const json = ref<Record<string, any>>({});
@@ -192,7 +203,7 @@ async function finish() {
 
 function isLastStage() {
     return (
-        stage.value == STAGES.RESPONSES ||
+        stage.value === STAGES.RESPONSES ||
         (stage.value === STAGES.SAVE && !runNow.value)
     );
 }
@@ -202,7 +213,7 @@ function nextOrFinish() {
         finish();
         return;
     }
-    if (stage.value == STAGES.SAVE) {
+    if (stage.value === STAGES.SAVE) {
         const method = json.value.method;
         const params = json.value.params;
         if (method) {
@@ -216,7 +227,7 @@ function nextOrFinish() {
 }
 
 function backClicked() {
-    if (stage.value == STAGES.BUILD) {
+    if (stage.value === STAGES.BUILD) {
         rpcBuilderStore.showModal = false;
         return;
     }
@@ -234,8 +245,8 @@ watch(
 
 <style>
 .vjs-tree {
-    color: #e2e8f0 !important;
-    background-color: transparent !important;
+    color: var(--color-text-secondary);
+    background-color: transparent;
 }
 </style>
 
@@ -243,4 +254,20 @@ watch(
 .rpc-collapse-border { border: 1px solid var(--color-border-strong); }
 .rpc-readonly-warning { color: var(--color-warning-text); }
 .rpc-preview-code { background-color: var(--color-surface-0); }
+.send-rpc-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--gap-sm);
+    padding: var(--gap-sm) var(--gap-md);
+    background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+    border-left: 3px solid var(--color-warning-text);
+    border-radius: var(--radius-sm);
+    color: var(--color-warning-text);
+    font-size: var(--type-body);
+    line-height: 1.4;
+}
+.send-rpc-warning i {
+    margin-top: var(--space-0-5);
+    flex-shrink: 0;
+}
 </style>

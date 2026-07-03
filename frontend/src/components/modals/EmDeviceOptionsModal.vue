@@ -1,7 +1,7 @@
 <template>
   <Modal :visible="visible" @close="close">
     <template #title>
-      <span class="font-semibold text-lg">Select EM Devices</span>
+      <h3 class="font-semibold text-lg">Select EM Devices</h3>
     </template>
 
     <template #default>
@@ -14,8 +14,8 @@
 
     <template #footer>
       <div class="flex justify-end gap-4">
-        <Button type="blue" @click="save">Save</Button>
-        <Button type="red" @click="close">Cancel</Button>
+        <Button type="green" @click="save">Save</Button>
+        <Button type="blue-hollow" @click="close">Cancel</Button>
       </div>
     </template>
   </Modal>
@@ -25,7 +25,7 @@
 import {computed, onMounted, ref, watch} from 'vue';
 import BasicBlock from '@/components/core/BasicBlock.vue';
 import Button from '@/components/core/Button.vue';
-import MultipleSelector from '@/components/MultipleSelector.vue';
+import MultipleSelector from '@/components/core/MultipleSelector.vue';
 import Modal from '@/components/modals/Modal.vue';
 import {getDeviceName, getLogo} from '@/helpers/device';
 import {useDevicesStore} from '@/stores/devices';

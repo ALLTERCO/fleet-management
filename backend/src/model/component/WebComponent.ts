@@ -1,67 +1,70 @@
-import assert from 'node:assert';
+import type {DescribeOutput} from '../../rpc/describe';
+import {WEB_DESCRIBE} from '../../types/api/web';
 import Component from './Component';
+import {
+    assertMergedWebConfigValid,
+    WEB_DEFAULT_HTTPS_CRT,
+    WEB_DEFAULT_HTTPS_KEY,
+    WEB_DEFAULT_PORT,
+    WEB_DEFAULT_PORT_SSL,
+    WEB_FIELD_TYPES,
+    type WebComponentConfig
+} from './webConfigValidation';
 
-export interface WebComponentConfig {
-    host?: string;
-    port: number;
-    port_ssl: number;
-    https_crt: string;
-    https_key: string;
-}
-
-function isValidConfig(config: any): config is WebComponentConfig {
-    return (
-        config &&
-        typeof config === 'object' &&
-        typeof config.port === 'number' &&
-        typeof config.port_ssl === 'number' &&
-        typeof config.https_crt === 'string' &&
-        typeof config.https_key === 'string' &&
-        typeof config.jwt_token === 'string'
-    );
-}
+export type {WebComponentConfig} from './webConfigValidation';
 
 export default class WebComponent extends Component<WebComponentConfig> {
     constructor() {
         super('web');
     }
 
+    @Component.NoAudit
+    @Component.Expose('Describe')
+    @Component.NoPermissions
+    describe(): DescribeOutput {
+        return WEB_DESCRIBE;
+    }
+
+    protected override checkConfigKey(key: string, value: unknown): boolean {
+        const expected = WEB_FIELD_TYPES[key as keyof WebComponentConfig];
+        if (expected === 'string') return typeof value === 'string';
+        if (expected === 'number') return typeof value === 'number';
+        return false;
+    }
+
     override async setConfig(
-        config: WebComponentConfig,
-        init: boolean
-    ): Promise<any> {
-        // run only on startup
+        config: Partial<WebComponentConfig>,
+        init = false
+    ): Promise<void> {
+        // Init: applying the persisted config from disk. If it's missing
+        // required fields (first boot, hand-edited JSON) fall back to
+        // generated defaults so the listener still comes up.
         if (init) {
-            // check config and apply
-            if (!isValidConfig(config)) {
+            const merged = {...this.config, ...config};
+            try {
+                assertMergedWebConfigValid(merged);
+            } catch {
                 this.logger.warn(
-                    'config is INVALID, fallback to default config'
+                    'persisted web config invalid; falling back to defaults'
                 );
-                config = this.getDefaultConfig();
+                Object.assign(this.config, this.getDefaultConfig());
             }
             return;
         }
 
-        assert(isValidConfig(config), 'Config is invalid');
-        assert(
-            config.port > -1 || config.port_ssl > -1,
-            'At least one HTTP/HTTPS port must be specified'
-        );
-        if (config.port_ssl > -1) {
-            assert(config.https_crt.length > 0, 'https_crt not set');
-            assert(config.https_key.length > 0, 'https_key not set');
-        }
-
-        await this._persistConfig();
+        // Runtime patch: merge → validate cross-field invariants → commit.
+        const merged: WebComponentConfig = {...this.config, ...config};
+        assertMergedWebConfigValid(merged);
+        await super.setConfig(config, init);
     }
 
-    protected override getDefaultConfig() {
+    protected override getDefaultConfig(): WebComponentConfig {
         return {
-            port: 7011,
-            port_ssl: -1,
-            https_crt: '/path/to/cert.crt',
-            https_key: '/path/to/cert.key',
-            jwt_token: 'shelly-secret-token'
+            port: WEB_DEFAULT_PORT,
+            port_ssl: WEB_DEFAULT_PORT_SSL,
+            https_crt: WEB_DEFAULT_HTTPS_CRT,
+            https_key: WEB_DEFAULT_HTTPS_KEY,
+            jwt_token: require('node:crypto').randomBytes(32).toString('hex')
         };
     }
 }

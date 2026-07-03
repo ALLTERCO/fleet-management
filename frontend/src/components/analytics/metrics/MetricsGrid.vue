@@ -2,26 +2,19 @@
     <div>
         <!-- Uptime Table -->
         <div v-if="!props.hideUptime && showMetric('uptime') && uptimeData.length > 0" class="mb-4 bg-[var(--color-surface-2)] rounded-lg p-4">
-            <h3 class="text-lg font-semibold text-white mb-3">
+            <h3 class="text-lg font-semibold text-[var(--color-text-primary)] mb-3">
                 <i class="fas fa-clock mr-2 text-[var(--color-success-text)]"></i>
                 Device Uptime
             </h3>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm">
-                    <thead>
-                        <tr class="text-[var(--color-text-tertiary)] border-b border-[var(--color-border-default)]">
-                            <th class="text-left py-2 px-3">Device</th>
-                            <th class="text-right py-2 px-3">Uptime</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="device in uptimeData" :key="device.deviceId" class="border-b border-[var(--color-border-default)]/50 hover:bg-[var(--color-surface-3)]/30">
-                            <td class="py-2 px-3 text-white">{{ device.deviceName }}</td>
-                            <td class="py-2 px-3 text-right text-[var(--color-success-text)] font-mono">{{ formatUptime(device.value) }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+            <DataList
+                :rows="uptimeData"
+                :columns="uptimeColumns"
+                row-key="deviceId"
+            >
+                <template #cell-value="{row}">
+                    <span class="text-[var(--color-success-text)] font-mono">{{ formatUptime(row.value) }}</span>
+                </template>
+            </DataList>
         </div>
 
         <!-- Metric Cards Grid -->
@@ -134,12 +127,24 @@
 
 <script setup lang="ts">
 import {computed} from 'vue';
-import type {GroupMetrics} from '@/stores/analytics';
+import DataList, {type DataColumn} from '@/components/core/DataList.vue';
+import type {ScopeMetrics} from '@/stores/analytics';
 import MetricCard from './MetricCard.vue';
+
+interface UptimeRow {
+    deviceId: number;
+    deviceName: string;
+    value: number;
+}
+
+const uptimeColumns: DataColumn<UptimeRow>[] = [
+    {key: 'deviceName', label: 'Device', role: 'primary'},
+    {key: 'value', label: 'Uptime', role: 'meta', align: 'right'}
+];
 
 const props = withDefaults(
     defineProps<{
-        metrics: GroupMetrics['metrics'] | null;
+        metrics: ScopeMetrics['metrics'] | null;
         capabilities: string[];
         enabledMetrics?: string[];
         tariff?: number;
@@ -178,15 +183,15 @@ const cost = computed(() => {
 });
 
 // Get uptime data for table display
-const uptimeData = computed(() => {
-    const values = (props.metrics as any)?.uptime?.values || [];
+const uptimeData = computed<UptimeRow[]>(() => {
+    const values = props.metrics?.uptime?.values || [];
     return values
-        .map((v: any) => ({
+        .map((v) => ({
             deviceId: v.deviceId,
             deviceName: v.deviceName || `Device ${v.deviceId}`,
             value: v.value
         }))
-        .sort((a: any, b: any) => b.value - a.value); // Sort by uptime descending
+        .sort((a, b) => b.value - a.value); // Sort by uptime descending
 });
 
 // Format uptime from seconds to human readable

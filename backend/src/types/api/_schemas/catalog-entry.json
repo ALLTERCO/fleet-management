@@ -1,0 +1,64 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Kind catalog entry",
+    "description": "One entry in the kind catalog (groupKindCatalog.ts): what a device or group IS. id is a bare slug; cross-axis references qualify it as kind:<id>.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "id",
+        "displayName",
+        "description",
+        "category",
+        "icon",
+        "metadataSchema",
+        "sortOrder"
+    ],
+    "properties": {
+        "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "maxLength": 64
+        },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "category": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "icon": { "type": "string", "pattern": "^fa-[a-z0-9-]+$" },
+        "metadataSchema": { "type": "object" },
+        "sortOrder": { "type": "integer", "minimum": 0 },
+        "appliesTo": { "type": "string", "enum": ["device", "group", "both"] },
+        "metrics": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "semantic", "rollup"],
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "pattern": "^[a-z][a-z0-9_]*$",
+                        "maxLength": 64
+                    },
+                    "semantic": { "type": "string", "minLength": 1 },
+                    "rollup": {
+                        "type": "object",
+                        "required": ["kind"],
+                        "properties": {
+                            "kind": {
+                                "type": "string",
+                                "enum": [
+                                    "sum",
+                                    "avg",
+                                    "max",
+                                    "min",
+                                    "imbalance",
+                                    "count",
+                                    "ratio"
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

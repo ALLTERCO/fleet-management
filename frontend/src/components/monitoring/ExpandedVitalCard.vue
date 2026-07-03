@@ -6,10 +6,10 @@
         @click="isExpanded = !isExpanded"
     >
         <!-- Collapsed view -->
-        <div class="p-3">
+        <div class="p-4">
             <div class="flex items-center justify-between mb-1">
                 <div class="text-xs evc-label">{{ label }}</div>
-                <i class="fa-solid evc-expand-icon text-2xs"
+                <i class="fas evc-expand-icon text-2xs"
                     :class="isExpanded ? 'fa-compress' : 'fa-expand'"
                 />
             </div>
@@ -17,7 +17,7 @@
                 <span class="text-sm font-mono font-semibold" :class="textColorClass">
                     {{ value }}{{ suffix }}
                 </span>
-                <SparkLine v-if="!isExpanded && sparkData.length > 1" :data="sparkData" :color="color" :width="60" :height="20" />
+                <SparkLine v-if="!isExpanded && sparkData.length > 1" :data="sparkData" :color="seriesColor" :width="60" :height="20" />
             </div>
             <!-- Stats row when expanded -->
             <div v-if="isExpanded && sparkData.length > 1" class="flex gap-4 mt-2 text-xs font-mono evc-label">
@@ -27,11 +27,11 @@
             </div>
         </div>
         <!-- Expanded chart -->
-        <div v-if="isExpanded && sparkData.length > 1" class="px-3 pb-3" @click.stop>
+        <div v-if="isExpanded && sparkData.length > 1" class="px-4 pb-4" @click.stop>
             <TimeSeriesChart
                 :data="sparkData"
                 :label="label"
-                :color="color"
+                :color="seriesColor"
                 :unit="unit"
                 :height="180"
                 :thresholds="thresholds"
@@ -42,6 +42,7 @@
 
 <script setup lang="ts">
 import {computed, ref} from 'vue';
+import {chartColors} from '@/helpers/chartUtils';
 import SparkLine from './SparkLine.vue';
 import type {Threshold} from './TimeSeriesChart.vue';
 import TimeSeriesChart from './TimeSeriesChart.vue';
@@ -61,7 +62,7 @@ const props = withDefaults(
     {
         suffix: '',
         sparkData: () => [],
-        color: '#60a5fa',
+        color: '',
         textColor: '',
         unit: '',
         thresholds: () => []
@@ -69,6 +70,10 @@ const props = withDefaults(
 );
 
 const isExpanded = ref(false);
+
+// Resolve the brand-blue fallback at render time so the token is read once the
+// document's computed styles exist.
+const seriesColor = computed(() => props.color || chartColors.primary);
 
 const textColorClass = computed(() => {
     if (props.textColor) return props.textColor;
@@ -95,12 +100,12 @@ const stats = computed(() => {
     border-color: color-mix(in srgb, var(--color-border-strong) 60%, transparent);
 }
 .evc-label { color: var(--color-text-disabled); }
-.evc-expand-icon { color: var(--color-border-strong); }
+.evc-expand-icon { color: var(--color-text-disabled); }
 .evc-stat-value { color: var(--color-text-secondary); }
 
 /* Vital status colors (used as :class from parent) */
 .vital-critical { color: var(--color-danger-text); }
 .vital-warning { color: var(--color-warning-text); }
 .vital-ok { color: var(--color-success-text); }
-.vital-neutral { color: var(--color-text-secondary); }
+.vital-neutral { color: var(--color-text-primary); }
 </style>

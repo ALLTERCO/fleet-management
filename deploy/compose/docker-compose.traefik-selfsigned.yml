@@ -10,7 +10,16 @@
 
 services:
   traefik:
-    image: traefik:${TRAEFIK_VERSION:-v3.6.10}
+    image: traefik:${TRAEFIK_VERSION:-v3.7.5}
+    labels:
+      fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
+      fleet.client: "${FM_CLIENT_ID:-shared}"
+      fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
+      fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
+      fleet.version: "${TRAEFIK_VERSION:-v3.7.5}"
+      fleet.commit: "${FM_BUILD_COMMIT:-unknown}"
+      fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
+      fleet.service: "traefik"
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -23,10 +32,9 @@ services:
       # File provider: loads TLS certs + routing config from dynamic directory
       - "--providers.file.directory=/etc/traefik/dynamic"
       - "--providers.file.watch=true"
-      # HTTP entrypoint: redirect to HTTPS
+      # HTTP entrypoint (port 80) — redirect is applied per-router via middleware.
+      # When FM_PLAIN_WS=true, /shelly accepts plain ws:// for Wall Display devices.
       - "--entrypoints.web.address=:80"
-      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
       # HTTPS entrypoint
       - "--entrypoints.websecure.address=:443"
       # Internal ping entrypoint (container-only)
@@ -44,7 +52,11 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ../state/tls:/etc/traefik/certs:ro
+      # Per-file mounts so Traefik never sees ca.key (FM container is the only
+      # legitimate consumer of the CA private key).
+      - ../state/tls/ca.crt:/etc/traefik/certs/ca.crt:ro
+      - ../state/tls/server.crt:/etc/traefik/certs/server.crt:ro
+      - ../state/tls/server.key:/etc/traefik/certs/server.key:ro
       - ../state/tls/dynamic:/etc/traefik/dynamic:ro
     tmpfs:
       - /tmp:size=16M

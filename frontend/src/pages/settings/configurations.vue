@@ -1,271 +1,570 @@
 <template>
-    <h2 class="sr-only">Configurations</h2>
-    <div v-if="initialLoading" class="flex flex-col items-center justify-center py-16">
-        <Skeleton variant="rect" width="100%" height="3rem" class="mb-4" />
-        <Skeleton variant="rect" width="100%" height="12rem" />
-    </div>
-    <div v-else class="space-y-2">
-        <!-- Profiles & Configurations -->
-        <div class="config-grid">
-            <!-- Profile selection -->
-            <div class="config-grid__card">
-                <BasicBlock darker title="Profiles">
-                    <template #buttons>
-                        <div class="flex flex-row justify-end">
-                            <Button type="blue" narrow @click="createProfileModal = true">Add profile</Button>
-                        </div>
-                    </template>
-                    <div v-if="Object.keys(allProfiles).length === 0" class="mt-6">
-                        <EmptyBlock>
-                            <p class="text-lg font-semibold pb-2">No profiles</p>
-                            <p class="text-sm">Create a profile to start managing configurations.</p>
-                        </EmptyBlock>
-                    </div>
-                    <ul v-else v-for="(item, key) in allProfiles" :key="key" class="mt-6 space-y-1">
-                        <li class="bg-[var(--color-surface-2)] rounded-xl hover:cursor-pointer shadow-md p-3"
-                            :class="key === profile ? 'p-0 border-2 border-[var(--color-primary)]' : ''" @click="profileChanged(key)">
-                            <div class="flex flex-row flex-wrap justify-between align-center">
-                                <div class="flex">
-                                    <span class="px-3">{{ key }}</span>
-                                </div>
-                                <div class="flex gap-3">
-                                    <span
-                                        class="whitespace-wrap text-center rounded-full bg-[var(--color-primary)] px-2 py-1 text-sm text-white">
-                                        {{ Object.keys(item).length }} configs
-                                    </span>
-                                    <span
-                                        class="whitespace-wrap text-center rounded-lg bg-[var(--color-danger)] px-2 py-1 text-sm text-[var(--color-text-secondary)]"
-                                        @click.stop="deleteProfile(key)">
-                                        <span class="fas fa-trash-alt" />
-                                    </span>
-                                </div>
-                            </div>
-                        </li>
-                    </ul>
-                </BasicBlock>
-            </div>
+    <PageTemplate
+        title="Configurations"
+        :count="filteredConfigCount"
+        :tabs="tabs"
+        fill
+    >
+        <template #actions>
+            <Button v-if="canWrite" type="green" size="sm" title="New profile" aria-label="New profile" @click="openCreateProfileModal"><i class="fas fa-plus" /></Button>
+            <Button v-if="canWrite && expandedProfile" type="green" size="sm" @click="openAddConfigModal(expandedProfile!)">Config</Button>
+        </template>
+        <div class="cfg-page">
 
-            <!-- Configurations list and edit/delete buttons -->
-            <div class="config-grid__card">
-                <BasicBlock darker title="Configurations">
-                    <template #buttons>
-                        <div class="flex flex-row justify-end">
-                            <Button type="blue" narrow @click="openNewConfigModal">
-                                <span class="fas fa-plus"></span> Add
-                            </Button>
-                        </div>
-                    </template>
-                    <div v-if="profile.length !== 0">
-                        <ul v-if="Object.keys(configs).length" class="mt-6 space-y-1">
-                            <li v-for="(config, key) in configs" :key="key"
-                                class="bg-[var(--color-surface-2)] p-2 rounded-xl hover:cursor-pointer shadow-md"
-                                :class="key === selectedConfigKey ? 'p-0 border-2 border-[var(--color-primary)]' : ''"
-                                @click="selectConfig(key, config)">
-                                <div class="flex flex-row flex-wrap justify-between align-center">
-                                    <div class="flex">
-                                        <span>{{ config.name }}</span>
-                                    </div>
-                                    <div class="flex gap-3">
-                                        <!-- Edit button -->
-                                        <Button narrow @click.stop="editConfig(key, config)" type="blue">
-                                            <span class="fas fa-pencil-alt"></span>
-                                        </Button>
-                                        <Button narrow type="red" @click.stop="deleteConfig(key)">
-                                            <span class="fas fa-trash-alt"></span>
-                                        </Button>
-                                    </div>
-                                </div>
-                            </li>
-                        </ul>
-                        <div v-else
-                            class="flex flex-row justify-center content-center pt-10 border-[var(--color-border-default)] rounded-lg shadow">
-                            <h3 class="mt-0.5 text-lg text-white-900">Profile has no configurations</h3>
-                        </div>
-                    </div>
-                    <div v-else
-                        class="flex flex-row justify-center content-center pt-10 border-[var(--color-border-default)] rounded-lg shadow">
-                        <h3 class="mt-0.5 text-lg text-white-900">Select profile to view its configurations</h3>
-                    </div>
-                </BasicBlock>
+        <!-- Filter bar -->
+        <div class="dp-filter-bar">
+            <div class="search-pill">
+                <i class="fas fa-search search-pill__icon" />
+                <input ref="searchInputRef" v-model.trim="searchQuery" type="text" class="search-pill__input"
+                    :class="{'search-pill__input--filtered': !!searchQuery || hasActiveFilters}"
+                    placeholder="Search configs…" aria-label="Search" />
+                <button v-if="searchQuery" type="button" class="search-pill__clear" @click="searchQuery = ''"><i class="fas fa-xmark" /></button>
+                <button type="button" class="search-pill__filter" :class="{'search-pill__filter--active': hasActiveFilters}" @click="filterModalVisible = true">
+                    <i class="fas fa-filter" />
+                    <span v-if="activeFilterCount > 0" class="cfg-filter-badge">{{ activeFilterCount }}</span>
+                </button>
             </div>
-            <div class="config-grid__card">
-                <BasicBlock darker title="Settings">
-                    <template #buttons>
-                        <div class="flex justify-end">
-                            <Button type="blue" narrow @click="toggleViewMode"
-                                v-if="Object.keys(selectedConfig).length !== 0">
-                                {{ viewMode === 'json' ? 'Structured' : 'JSON' }} view
-                            </Button>
-                        </div>
-                    </template>
-                    <div class="flex flex-col">
-                        <div v-if="Object.keys(selectedConfig).length !== 0">
-                            <div v-if="viewMode === 'json'">
-                                <JSONViewer :data="selectedConfig" />
-                            </div>
-                            <div v-else class="mt-4 p-4 bg-[var(--color-surface-2)] rounded-lg">
-                                <div v-for="section in settings" :key="section.title" class="mb-4">
-                                    <h3 class="text-xl font-bold text-white mb-2 border-b border-[var(--color-border-strong)] pb-1">
-                                        {{ section.title }}
-                                    </h3>
-                                    <div class="grid grid-cols-2 gap-4">
-                                        <div v-for="option in section.options" :key="option.key" class="flex flex-col">
-                                            <span class="text-sm text-[var(--color-text-secondary)]">{{ option.label }}</span>
-                                            <span class="text-base text-white">
-                                                {{ getNestedValue(selectedConfig, option.key) || '-' }}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div v-else
-                            class="flex flex-row justify-center content-center pt-10 border-[var(--color-border-default)] rounded-lg shadow">
-                            <h3 class="mt-0.5 text-lg text-white-900">No config selected</h3>
-                        </div>
-                    </div>
-                </BasicBlock>
+            <div class="route-tabs">
+                <div class="route-tabs__track" :class="{'route-tabs__track--end': viewMode === 'json'}" />
+                <button type="button" class="route-tabs__btn" :class="{'route-tabs__btn--active': viewMode === 'structured'}" @click="viewMode = 'structured'">Config</button>
+                <button type="button" class="route-tabs__btn" :class="{'route-tabs__btn--active': viewMode === 'json'}" @click="viewMode = 'json'">JSON</button>
             </div>
         </div>
+        <div v-if="hasActiveFilters" class="cfg-chips">
+            <span v-if="filters.profile" class="cfg-chip" @click="filters.profile = ''"><i class="fas fa-folder" /> {{ filters.profile }} <i class="fas fa-xmark cfg-chip__x" /></span>
+            <span v-if="filters.ws" class="cfg-chip" @click="filters.ws = ''"><i class="fas fa-plug" /> WS: {{ filters.ws }} <i class="fas fa-xmark cfg-chip__x" /></span>
+            <span v-if="filters.wifi" class="cfg-chip" @click="filters.wifi = ''"><i class="fas fa-wifi" /> WiFi: {{ filters.wifi }} <i class="fas fa-xmark cfg-chip__x" /></span>
+            <span v-if="filters.mqtt" class="cfg-chip" @click="filters.mqtt = ''"><i class="fas fa-tower-broadcast" /> MQTT: {{ filters.mqtt }} <i class="fas fa-xmark cfg-chip__x" /></span>
+            <span v-if="filters.bt" class="cfg-chip" @click="filters.bt = ''"><i class="fab fa-bluetooth-b" /> BT: {{ filters.bt }} <i class="fas fa-xmark cfg-chip__x" /></span>
+            <span v-if="filters.power" class="cfg-chip" @click="filters.power = ''"><i class="fas fa-power-off" /> {{ filters.power }} <i class="fas fa-xmark cfg-chip__x" /></span>
+            <button type="button" class="cfg-chip cfg-chip--clear" @click="clearFilters">Clear all</button>
+        </div>
 
-        <!-- Modal for creating a profile -->
-        <Modal :visible="createProfileModal">
-            <template #title>
-                <p class="text-2xl font-semibold">Create Profile</p>
-            </template>
-            <template #default>
-                <Input v-model="newProfileName" type="text" placeholder="Enter profile name" />
-            </template>
-            <template #footer>
-                <Button type="blue" class="mr-2" @click="createProfile">Create profile</Button>
-                <Button type="red" @click="createProfileModal = false">Cancel</Button>
-            </template>
-        </Modal>
-
-        <!-- Modal for creating/editing a configuration -->
-        <Modal :visible="createConfigurationPerProfile" @close="closeConfigModal">
-            <template #title>
-                <p class="text-2xl font-semibold">
-                    {{ editingConfigKey ? 'Edit Configuration' : 'Create Configuration' }}
-                </p>
-            </template>
-            <template #default>
-                <div v-for="section in settings" :key="section.title" class="p-1">
-                    <Collapse :title="section.title">
-                        <div v-for="option in section.options" :key="option.key" class="pt-2">
-                            <!-- Input -->
-                            <Input v-if="option.type === 'input'"
-                                :modelValue="getNestedValue(newConfig, option.key) || ''"
-                                @update:modelValue="(val: any) => updateOptionValue(option.key, val)"
-                                :label="option.label" :placeholder="(option as any).placeholder" />
-                            <!-- Dropdown -->
-                            <Dropdown v-else-if="option.type === 'dropdown'" :options="(option as any).options"
-                                :label="option.label" :default="getNestedValue(newConfig, option.key)"
-                                @selected="value => updateOptionValue(option.key, value)" />
-                            <!-- Checkbox -->
-                            <Checkbox v-else-if="option.type === 'checkbox'" :id="option.key"
-                                :modelValue="getNestedValue(newConfig, option.key) || false"
-                                @update:modelValue="(val: any) => updateOptionValue(option.key, val)">
-                                {{ option.label }}
-                            </Checkbox>
+        <!-- ═══ TWO INDEPENDENT CARDS ═══ -->
+        <div class="cfg-layout">
+            <!-- LEFT CARD -->
+            <div class="cfg-card cfg-left">
+                <!-- Filtered flat list -->
+                <template v-if="hasActiveFilters || searchQuery">
+                    <button v-for="item in filteredConfigsFlat" :key="item.profile + '/' + item.key" class="cfg-item" :class="{'cfg-item--active': selectedConfigKey === item.key && profile === item.profile}" @click="selectFlatConfig(item)">
+                        <span class="cfg-item__dot" :class="{'cfg-item__dot--active': selectedConfigKey === item.key && profile === item.profile}" />
+                        <div class="cfg-item__text">
+                            <span class="cfg-item__name">{{ item.data.name || item.key }}</span>
+                            <span class="cfg-item__sub">{{ item.profile }}</span>
                         </div>
-                    </Collapse>
+                    </button>
+                    <div v-if="filteredConfigsFlat.length === 0" class="cfg-empty cfg-empty--sm">No matches</div>
+                </template>
+
+                <!-- Profile cards -->
+                <template v-else>
+                    <div v-for="profileName in profileKeys" :key="profileName" class="cfg-profile">
+                        <!-- Profile header -->
+                        <div class="cfg-profile__head" @click="toggleProfile(profileName)">
+                            <span class="cfg-profile__icon" @click.stop="openIconPicker(profileName)">
+                                <i :class="getProfileIcon(profileName)" />
+                            </span>
+                            <div class="cfg-profile__info">
+                                <span class="cfg-profile__name">{{ profileName }}</span>
+                                <span class="cfg-profile__meta">
+                                    {{ configCount(profileName) }} config{{ configCount(profileName) === '1' ? '' : 's' }}
+                                    <template v-if="boundGroups[profileName]?.length"> · {{ boundGroups[profileName].length }} group{{ boundGroups[profileName].length === 1 ? '' : 's' }}</template>
+                                </span>
+                            </div>
+                            <i class="fas fa-chevron-down cfg-profile__arrow" :class="{'cfg-profile__arrow--open': expandedProfile === profileName}" />
+                        </div>
+
+                        <!-- Config list inside profile -->
+                        <div v-if="expandedProfile === profileName" class="cfg-profile__body">
+                            <button v-for="(config, key) in configs" :key="key" class="cfg-item" :class="{'cfg-item--active': selectedConfigKey === key}" @click="selectConfig(String(key), config)">
+                                <span class="cfg-item__dot" :class="{'cfg-item__dot--active': selectedConfigKey === key}" />
+                                <span class="cfg-item__name">{{ config.name || key }}</span>
+                            </button>
+                            <div v-if="Object.keys(configs).length === 0" class="cfg-empty cfg-empty--sm">No configs in this profile</div>
+                            <div class="cfg-profile__foot">
+                                <Button v-if="canWrite" type="green" size="sm" @click.stop="openAddConfigModal(profileName)">Config</Button>
+                                <Button v-if="canWrite" type="red" size="sm" @click.stop="deleteProfile(profileName)">Delete</Button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <div v-if="profileKeys.length === 0 && !hasActiveFilters && !searchQuery" class="cfg-empty">
+                    <i class="fas fa-folder-open cfg-empty__icon" />
+                    <span>No profiles yet</span>
                 </div>
-            </template>
-            <template #footer>
-                <div class="flex flex-row justify-end">
-                    <Button v-if="editingConfigKey" type="green" class="mr-2" @click="saveConfiguration">
-                        Save Changes
-                    </Button>
-                    <Button v-else type="green" class="mr-2" @click="addNewConfiguration">
-                        Create Configuration
-                    </Button>
-                    <Button type="red" narrow @click="closeConfigModal">Cancel</Button>
+            </div>
+
+            <!-- RIGHT CARD -->
+            <div class="cfg-card cfg-right">
+                <div v-if="!selectedConfigKey" class="cfg-placeholder">
+                    <i class="fas fa-arrow-left cfg-placeholder__icon" />
+                    <span class="cfg-placeholder__text">Select a configuration</span>
                 </div>
-            </template>
-        </Modal>
-        <!-- Confirmation modal -->
-        <ConfirmationModal ref='modalRef' footer>
-            <template #title>
-                <h1>Are you sure you want to proceed with deletion?</h1>
-            </template>
-            <template #footer>
-            </template>
-        </ConfirmationModal>
-    </div>
+                <template v-else>
+                    <div class="cfg-detail__head">
+                        <span class="cfg-detail__title">{{ selectedConfigKey }}</span>
+                        <div class="cfg-detail__actions">
+                            <Button v-if="canWrite && deployGroups.length > 0" type="green" size="sm" @click="deployModalVisible = true">Deploy</Button>
+                            <Button v-if="canWrite && !inlineEditing" type="blue-hollow" size="sm" @click="startInlineEdit">Edit</Button>
+                            <Button v-if="canWrite && inlineEditing" type="blue" size="sm" @click="saveInlineEdit">Save</Button>
+                            <Button v-if="canWrite && inlineEditing" type="blue-hollow" size="sm" @click="cancelInlineEdit">Cancel</Button>
+                            <Button v-if="canWrite && !inlineEditing" type="red" size="sm" @click="deleteConfig(selectedConfigKey)">Delete</Button>
+                        </div>
+                    </div>
+                    <div class="cfg-detail__body">
+                        <div v-if="viewMode === 'structured'" class="cfg-sections">
+                            <div v-for="section in settings" :key="section.title" class="cfg-row">
+                                <div class="cfg-row__head">
+                                    <i :class="sectionIcons[section.title] || 'fas fa-cog'" class="cfg-row__icon" />
+                                    <span class="cfg-row__title">{{ section.title }}</span>
+                                    <template v-if="!inlineEditing" v-for="opt in section.options" :key="opt.key">
+                                        <span v-if="opt.type === 'checkbox' && (opt.label === 'Enabled' || opt.label === 'Enable')" class="cfg-row__status" :class="getNestedValue(selectedConfig, opt.key) ? 'cfg-row__status--on' : 'cfg-row__status--off'">
+                                            {{ getNestedValue(selectedConfig, opt.key) ? '✓' : '✗' }}
+                                        </span>
+                                    </template>
+                                </div>
+                                <div class="cfg-row__fields">
+                                    <div v-for="option in section.options" :key="option.key" class="cfg-row__field">
+                                        <span class="cfg-row__label">{{ option.label }}</span>
+                                        <template v-if="inlineEditing">
+                                            <Input v-if="option.type === 'input'" class="cfg-row__input" :modelValue="getNestedValue(newConfig, option.key) || ''" @update:modelValue="(val: any) => updateOptionValue(option.key, val)" :placeholder="(option as any).placeholder" />
+                                            <Dropdown v-else-if="option.type === 'dropdown'" class="cfg-row__input" :options="(option as any).options" :default="getNestedValue(newConfig, option.key)" @selected="value => updateOptionValue(option.key, value)" />
+                                            <span v-else-if="option.type === 'checkbox'" class="cfg-row__check">
+                                                <Checkbox :id="option.key + '-edit'" :modelValue="getNestedValue(newConfig, option.key) || false" @update:modelValue="(val: any) => updateOptionValue(option.key, val)" />
+                                            </span>
+                                        </template>
+                                        <span v-else class="cfg-row__value">
+                                            <template v-if="typeof getNestedValue(selectedConfig, option.key) === 'boolean'">
+                                                <i :class="getNestedValue(selectedConfig, option.key) ? 'fas fa-check-circle cfg-on' : 'fas fa-times-circle cfg-off'" />
+                                            </template>
+                                            <span v-else-if="isVarRef(getNestedValue(selectedConfig, option.key))" class="cfg-var-ref"><i class="fas fa-dollar-sign" /> {{ getNestedValue(selectedConfig, option.key) }}</span>
+                                            <template v-else>{{ getNestedValue(selectedConfig, option.key) ?? '—' }}</template>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div v-else class="cfg-json">
+                            <JsonEditor v-if="inlineEditing" v-model="jsonText" :editable="true" placeholder="Enter JSON configuration…" />
+                            <JSONViewer v-else :data="selectedConfig" />
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+        </div>
+
+        <template #modals>
+            <FilterModal :visible="filterModalVisible" :sections="filterSections" :initial-state="filterState" :match-count="filteredConfigCount" title="Filter Configurations" match-label="configs" @close="filterModalVisible = false" @apply-generic="applyFilters" />
+            <ConfigurationsCreateProfileModal
+                v-model:name="newProfileName"
+                :visible="createProfileModal"
+                :error="profileNameError"
+                @close="createProfileModal = false"
+                @submit="createProfile"
+                @validate="validateProfileName"
+            />
+            <ConfigurationsConfigFormModal
+                :visible="configModalVisible"
+                :editing-key="editingConfigKey"
+                :settings="settings"
+                :config="newConfig"
+                :get-nested-value="getNestedValue"
+                @close="closeConfigModal"
+                @save="saveConfiguration"
+                @create="addNewConfiguration"
+                @update="updateOptionValue"
+            />
+            <ConfirmationModal ref="modalRef">
+                <template #title><h3>Delete this item?</h3></template>
+            </ConfirmationModal>
+            <IconPickerModal
+                :visible="iconPickerVisible"
+                :selected-glyph="iconPickerCurrent"
+                @close="iconPickerVisible = false"
+                @pick="applyProfileIcon"
+            />
+            <ConfigDeployModal
+                :visible="deployModalVisible"
+                :config-name="selectedConfigKey"
+                :config="selectedConfig"
+                :groups="deployGroups"
+                @close="deployModalVisible = false"
+            />
+        </template>
+    </PageTemplate>
 </template>
 
 <script setup lang="ts">
+import '@/styles/device-page.css';
 import {useLocalStorage} from '@vueuse/core';
-import {onMounted, ref} from 'vue';
-import BasicBlock from '@/components/core/BasicBlock.vue';
+import {
+    type ComputedRef,
+    computed,
+    defineAsyncComponent,
+    inject,
+    onMounted,
+    reactive,
+    ref,
+    watch
+} from 'vue';
 import Button from '@/components/core/Button.vue';
-import EmptyBlock from '@/components/core/EmptyBlock.vue';
 import Checkbox from '@/components/core/Checkbox.vue';
-import Collapse from '@/components/core/Collapse.vue';
 import Dropdown from '@/components/core/Dropdown.vue';
+import FilterModal, {
+    type FilterSection,
+    type FilterState
+} from '@/components/core/FilterModal.vue';
+import IconPickerModal from '@/components/core/IconPickerModal.vue';
 import Input from '@/components/core/Input.vue';
-import Skeleton from '@/components/core/Skeleton.vue';
-import JSONViewer from '@/components/JSONViewer.vue';
+import JSONViewer from '@/components/core/JSONViewer.vue';
+import PageTemplate from '@/components/core/PageTemplate.vue';
+import ConfigDeployModal from '@/components/modals/ConfigDeployModal.vue';
 import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
-import Modal from '@/components/modals/Modal.vue';
+import ConfigurationsConfigFormModal from '@/components/pages/configurations/ConfigurationsConfigFormModal.vue';
+import ConfigurationsCreateProfileModal from '@/components/pages/configurations/ConfigurationsCreateProfileModal.vue';
+import {usePermissions} from '@/composables/usePermissions';
 import {FLEET_MANAGER_WEBSOCKET} from '@/constants';
+import {
+    getNestedValue,
+    isVarRef,
+    nestConfig,
+    setNestedValue
+} from '@/helpers/configPaths';
+import {useGroupsStore} from '@/stores/groups';
 import {useToastStore} from '@/stores/toast';
 import * as ws from '@/tools/websocket';
+import type {RouteTab} from '@/types/page-template';
 
+const JsonEditor = defineAsyncComponent(
+    () => import('@/components/core/JsonEditor.vue')
+);
+
+const tabs = inject<ComputedRef<RouteTab[]>>(
+    'settingsTabs',
+    computed(() => [])
+);
+
+const {canWrite} = usePermissions();
+const groupStore = useGroupsStore();
 const toast = useToastStore();
 const configsRegistry = ws.getRegistry('configs');
-const loading = ref(false);
 const initialLoading = ref(true);
 
-// Reactive state declarations
-const allProfiles = ref<Record<string, object>>({});
-const profiles = ref(['Default']);
-const profile = ref('Default');
-const selectedProfile = ref({});
+// ── Core state ──
+
+const allProfiles = ref<Record<string, Record<string, any>>>({});
+// Tracks which profile bodies have been fetched. Lets configCount /
+// getProfileIcon distinguish "not loaded yet" from "loaded, empty".
+const loadedProfiles = ref(new Set<string>());
+const profile = ref('');
+const expandedProfile = ref<string | null>(null);
+const configs = ref<Record<string, any>>({});
 const selectedConfig = ref<Record<string, unknown>>({});
 const selectedConfigKey = ref('');
-const createProfileModal = ref(false);
-const createConfigurationPerProfile = ref(false);
-const newProfileName = ref('');
-const editingConfigKey = ref<string | null>(null);
-const viewMode = ref('structured'); // 'json' or 'structured'
-const modalRef = ref<InstanceType<typeof ConfirmationModal>>();
+const viewMode = ref<'json' | 'structured'>('structured');
+const searchQuery = ref('');
 
-// Settings definition used for both the edit modal and structured view
-const settings = [
+const profileKeys = computed(() => Object.keys(allProfiles.value));
+
+function configCount(profileName: string): string {
+    if (!loadedProfiles.value.has(profileName)) return '…';
+    const p = allProfiles.value[profileName];
+    if (!p || typeof p !== 'object') return '0';
+    return String(Object.keys(p).filter((k) => k !== '__meta').length);
+}
+
+// Groups that reference each profile via metadata.configProfile
+const boundGroups = computed(() => {
+    const map: Record<
+        string,
+        Array<{id: number; name: string; deviceCount: number}>
+    > = {};
+    for (const group of Object.values(groupStore.groups)) {
+        const cp = (group.metadata as any)?.configProfile;
+        if (cp && typeof cp === 'string') {
+            if (!map[cp]) map[cp] = [];
+            map[cp].push({
+                id: group.id,
+                name: group.name,
+                deviceCount: group.devices?.length ?? 0
+            });
+        }
+    }
+    return map;
+});
+
+// ── Profile icons ──
+
+const iconPickerVisible = ref(false);
+const iconPickerTarget = ref('');
+const iconPickerCurrent = ref('');
+
+function getProfileIcon(profileName: string): string {
+    const p = allProfiles.value[profileName] as any;
+    return p?.__meta?.icon || 'fas fa-folder';
+}
+
+function openIconPicker(profileName: string) {
+    iconPickerTarget.value = profileName;
+    iconPickerCurrent.value = getProfileIcon(profileName);
+    iconPickerVisible.value = true;
+}
+
+async function applyProfileIcon(icon: string) {
+    const profileName = iconPickerTarget.value;
+    if (!profileName) return;
+    const profileData: Record<string, any> =
+        (await configsRegistry.getItem(profileName)) || {};
+    profileData.__meta = {...(profileData.__meta || {}), icon};
+    await configsRegistry.setItem(profileName, profileData);
+    await refreshProfileData(profileName);
+    iconPickerVisible.value = false;
+}
+
+// ── Deploy ──
+
+const deployModalVisible = ref(false);
+const deployGroups = computed(() => {
+    if (!profile.value) return [];
+    const groups = boundGroups.value[profile.value] ?? [];
+    return groups.map((g) => {
+        const full = groupStore.groups[g.id];
+        return {...g, devices: full?.devices ?? []};
+    });
+});
+
+// ── Filters ──
+
+const filterModalVisible = ref(false);
+const filters = reactive({
+    profile: '',
+    ws: '',
+    wifi: '',
+    mqtt: '',
+    bt: '',
+    power: ''
+});
+const hasActiveFilters = computed(() => Object.values(filters).some(Boolean));
+const activeFilterCount = computed(
+    () => Object.values(filters).filter(Boolean).length
+);
+
+function clearFilters() {
+    Object.assign(filters, {
+        profile: '',
+        ws: '',
+        wifi: '',
+        mqtt: '',
+        bt: '',
+        power: ''
+    });
+}
+
+const filterSections = computed<FilterSection[]>(() => [
     {
-        title: 'Name',
-        options: [{label: 'Name', key: 'name', placeholder: '', type: 'input'}]
+        key: 'profile',
+        label: 'Profile',
+        icon: 'fa-folder',
+        singleSelect: true,
+        options: profileKeys.value.map((p) => ({key: p, label: p}))
     },
     {
-        title: 'Timer',
+        key: 'ws',
+        label: 'Websocket',
+        icon: 'fa-plug',
+        singleSelect: true,
         options: [
-            {
-                label: 'Auto On',
-                key: 'switch.auto_on_delay',
-                type: 'input',
-                placeholder:
-                    'Seconds to pass until the component is switched back on'
-            },
-            {label: 'Enable', key: 'switch.auto_on', type: 'checkbox'},
-            {
-                label: 'Auto Off',
-                key: 'switch.auto_off_delay',
-                type: 'input',
-                placeholder:
-                    'Seconds to pass until the component is switched back off'
-            },
-            {label: 'Enable', key: 'switch.auto_off', type: 'checkbox'}
+            {key: 'enabled', label: 'Enabled'},
+            {key: 'disabled', label: 'Disabled'}
         ]
     },
     {
-        title: 'Power on default',
+        key: 'wifi',
+        label: 'Wi-Fi',
+        icon: 'fa-wifi',
+        singleSelect: true,
+        options: [
+            {key: 'enabled', label: 'Enabled'},
+            {key: 'disabled', label: 'Disabled'}
+        ]
+    },
+    {
+        key: 'mqtt',
+        label: 'MQTT',
+        icon: 'fa-tower-broadcast',
+        singleSelect: true,
+        options: [
+            {key: 'enabled', label: 'Enabled'},
+            {key: 'disabled', label: 'Disabled'}
+        ]
+    },
+    {
+        key: 'bt',
+        label: 'Bluetooth',
+        icon: 'fa-bluetooth-b',
+        singleSelect: true,
+        options: [
+            {key: 'enabled', label: 'Enabled'},
+            {key: 'disabled', label: 'Disabled'}
+        ]
+    },
+    {
+        key: 'power',
+        label: 'Power On',
+        icon: 'fa-power-off',
+        singleSelect: true,
+        options: ['on', 'off', 'restore_last', 'match_input'].map((v) => ({
+            key: v,
+            label: v
+        }))
+    }
+]);
+
+const filterState = computed<FilterState>(() => {
+    const s: FilterState = {};
+    for (const [k, v] of Object.entries(filters)) {
+        if (v) s[k] = [v];
+    }
+    return s;
+});
+
+function applyFilters(state: FilterState) {
+    filters.profile = state.profile?.[0] ?? '';
+    filters.ws = state.ws?.[0] ?? '';
+    filters.wifi = state.wifi?.[0] ?? '';
+    filters.mqtt = state.mqtt?.[0] ?? '';
+    filters.bt = state.bt?.[0] ?? '';
+    filters.power = state.power?.[0] ?? '';
+}
+
+// ── Flat config list for filtering ──
+
+interface FlatConfig {
+    profile: string;
+    key: string;
+    data: any;
+}
+
+const allConfigsFlat = computed<FlatConfig[]>(() => {
+    const result: FlatConfig[] = [];
+    for (const [prof, configs] of Object.entries(allProfiles.value)) {
+        if (!configs || typeof configs !== 'object') continue;
+        for (const [key, data] of Object.entries(configs)) {
+            if (key === '__meta') continue;
+            result.push({profile: prof, key, data});
+        }
+    }
+    return result;
+});
+
+function matchesBoolFilter(
+    data: any,
+    rule: {path: string; filter: string}
+): boolean {
+    if (!rule.filter) return true;
+    const val = getNestedValue(data, rule.path);
+    return rule.filter === 'enabled' ? val === true : val !== true;
+}
+
+const filteredConfigsFlat = computed(() => {
+    let result = allConfigsFlat.value;
+    if (filters.profile)
+        result = result.filter((c) => c.profile === filters.profile);
+    if (filters.ws)
+        result = result.filter((c) =>
+            matchesBoolFilter(c.data, {path: 'ws.enable', filter: filters.ws})
+        );
+    if (filters.wifi)
+        result = result.filter((c) =>
+            matchesBoolFilter(c.data, {path: 'wifi.sta.enable', filter: filters.wifi})
+        );
+    if (filters.mqtt)
+        result = result.filter((c) =>
+            matchesBoolFilter(c.data, {path: 'mqtt.enable', filter: filters.mqtt})
+        );
+    if (filters.bt)
+        result = result.filter((c) =>
+            matchesBoolFilter(c.data, {path: 'bluetooth.enable', filter: filters.bt})
+        );
+    if (filters.power)
+        result = result.filter(
+            (c) =>
+                getNestedValue(c.data, 'switch.initial_state') === filters.power
+        );
+    if (searchQuery.value) {
+        const q = searchQuery.value.toLowerCase();
+        result = result.filter(
+            (c) =>
+                (c.data.name || c.key).toLowerCase().includes(q) ||
+                JSON.stringify(c.data).toLowerCase().includes(q)
+        );
+    }
+    return result;
+});
+
+const filteredConfigCount = computed(() =>
+    hasActiveFilters.value || searchQuery.value
+        ? filteredConfigsFlat.value.length
+        : allConfigsFlat.value.length
+);
+
+function selectFlatConfig(item: FlatConfig) {
+    profile.value = item.profile;
+    expandedProfile.value = item.profile;
+    selectedConfig.value = item.data;
+    selectedConfigKey.value = item.key;
+    refreshConfigs();
+}
+
+// ── Settings schema ──
+
+const sectionIcons: Record<string, string> = {
+    Name: 'fas fa-tag',
+    System: 'fas fa-microchip',
+    LED: 'fas fa-lightbulb',
+    Websocket: 'fas fa-plug',
+    'Wi-Fi': 'fas fa-wifi',
+    MQTT: 'fas fa-tower-broadcast',
+    Bluetooth: 'fab fa-bluetooth-b',
+    Switch: 'fas fa-toggle-on',
+    Cover: 'fas fa-window-maximize',
+    Input: 'fas fa-circle-dot'
+};
+
+const settings = [
+    // ── Universal (all devices) ──
+    {
+        title: 'Name',
         options: [
             {
-                label: 'Power on option:',
-                key: 'switch.initial_state',
-                options: ['on', 'off', 'restore_last', 'match_input'],
+                label: 'Config Name',
+                key: 'name',
+                placeholder: 'My configuration',
+                type: 'input'
+            }
+        ]
+    },
+    {
+        title: 'System',
+        options: [
+            {
+                label: 'Device Name',
+                key: 'sys.device.name',
+                type: 'input',
+                placeholder: 'Device display name'
+            },
+            {label: 'Eco Mode', key: 'sys.device.eco_mode', type: 'checkbox'}
+        ]
+    },
+    {
+        title: 'LED',
+        options: [
+            {
+                label: 'LED Mode',
+                key: 'sys_led.mode',
+                options: ['power', 'switch', 'off'],
                 type: 'dropdown'
             }
         ]
@@ -274,10 +573,10 @@ const settings = [
         title: 'Websocket',
         options: [
             {
-                label: 'WS Address',
+                label: 'Server',
                 key: 'ws.server',
                 type: 'input',
-                placeholder: 'Enter Fleet Manager address'
+                placeholder: 'Fleet Manager address'
             },
             {label: 'Enabled', key: 'ws.enable', type: 'checkbox'}
         ]
@@ -286,284 +585,176 @@ const settings = [
         title: 'Wi-Fi',
         options: [
             {
-                label: 'Access point password',
-                key: 'wifi.ap.pass',
-                type: 'input',
-                placeholder: 'Provide access point password'
-            },
-            {type: 'checkbox', label: 'Enable AP', key: 'wifi.ap.enable'},
-            {
-                type: 'input',
-                label: 'Network Name',
+                label: 'SSID',
                 key: 'wifi.sta.ssid',
-                placeholder: 'Enter Wi-Fi name'
+                type: 'input',
+                placeholder: 'Wi-Fi name'
             },
             {
-                type: 'input',
                 label: 'Password',
                 key: 'wifi.sta.pass',
-                placeholder: 'Enter Wi-Fi password'
-            },
-            {type: 'checkbox', label: 'Enable', key: 'wifi.sta.enable'},
-            {
                 type: 'input',
-                label: 'Network Name 2',
+                placeholder: 'Wi-Fi password'
+            },
+            {label: 'Enabled', key: 'wifi.sta.enable', type: 'checkbox'},
+            {
+                label: 'SSID 2',
                 key: 'wifi.sta1.ssid',
-                placeholder: 'Enter second Wi-Fi name'
+                type: 'input',
+                placeholder: 'Backup Wi-Fi name'
             },
             {
-                type: 'input',
-                label: 'Password',
+                label: 'Password 2',
                 key: 'wifi.sta1.pass',
-                placeholder: 'Enter Wi-Fi password'
+                type: 'input',
+                placeholder: 'Backup Wi-Fi password'
             },
-            {type: 'checkbox', label: 'Enable', key: 'wifi.sta2.enable'}
+            {label: 'Enabled 2', key: 'wifi.sta1.enable', type: 'checkbox'},
+            {
+                label: 'AP Password',
+                key: 'wifi.ap.pass',
+                type: 'input',
+                placeholder: 'Access point password'
+            },
+            {label: 'AP Enabled', key: 'wifi.ap.enable', type: 'checkbox'}
         ]
     },
     {
         title: 'MQTT',
         options: [
-            {type: 'checkbox', label: 'Enable', key: 'mqtt.enable'},
+            {label: 'Enabled', key: 'mqtt.enable', type: 'checkbox'},
             {
-                type: 'input',
                 label: 'Server',
                 key: 'mqtt.server',
-                placeholder: 'Enter MQTT server'
+                type: 'input',
+                placeholder: 'MQTT broker address'
             },
             {
-                type: 'input',
-                label: 'Client ID',
-                key: 'mqtt.client_id',
-                placeholder: 'Enter Client ID'
-            },
-            {
-                type: 'input',
                 label: 'User',
                 key: 'mqtt.user',
-                placeholder: 'Enter User'
+                type: 'input',
+                placeholder: 'Username'
             },
             {
+                label: 'Client ID',
+                key: 'mqtt.client_id',
                 type: 'input',
+                placeholder: 'Client ID'
+            },
+            {
                 label: 'Topic Prefix',
                 key: 'mqtt.topic_prefix',
-                placeholder: 'Enter Topic Prefix'
+                type: 'input',
+                placeholder: 'Topic prefix'
             }
         ]
     },
     {
         title: 'Bluetooth',
-        options: [{type: 'checkbox', label: 'Enable', key: 'bluetooth.enable'}]
+        options: [{label: 'Enabled', key: 'bluetooth.enable', type: 'checkbox'}]
+    },
+    // ── Device-type specific ──
+    {
+        title: 'Switch',
+        options: [
+            {
+                label: 'Initial State',
+                key: 'switch.initial_state',
+                options: ['on', 'off', 'restore_last', 'match_input'],
+                type: 'dropdown'
+            },
+            {
+                label: 'Auto On Delay',
+                key: 'switch.auto_on_delay',
+                type: 'input',
+                placeholder: 'Seconds'
+            },
+            {label: 'Auto On', key: 'switch.auto_on', type: 'checkbox'},
+            {
+                label: 'Auto Off Delay',
+                key: 'switch.auto_off_delay',
+                type: 'input',
+                placeholder: 'Seconds'
+            },
+            {label: 'Auto Off', key: 'switch.auto_off', type: 'checkbox'},
+            {
+                label: 'Power Limit (W)',
+                key: 'switch.power_limit',
+                type: 'input',
+                placeholder: 'Max watts'
+            }
+        ]
+    },
+    {
+        title: 'Cover',
+        options: [
+            {label: 'Swap Inputs', key: 'cover.swap_inputs', type: 'checkbox'},
+            {
+                label: 'Invert Directions',
+                key: 'cover.invert_directions',
+                type: 'checkbox'
+            }
+        ]
+    },
+    {
+        title: 'Input',
+        options: [
+            {
+                label: 'Type',
+                key: 'input.type',
+                options: ['button', 'switch', 'analog'],
+                type: 'dropdown'
+            },
+            {label: 'Invert', key: 'input.invert', type: 'checkbox'}
+        ]
     }
 ];
 
-// Helper functions for nested values
-function getNestedValue(obj: any, path: string) {
-    return path.split('.').reduce((acc, key) => acc && acc[key], obj);
-}
+// ── Helpers ──
 
-function setNestedValue(obj: any, path: string, value: any) {
-    const keys = path.split('.');
-    const lastKey = keys.pop();
-    const target = keys.reduce((acc, key) => {
-        if (!acc[key]) acc[key] = {};
-        return acc[key];
-    }, obj);
-    if (lastKey !== undefined) {
-        target[lastKey] = value;
+
+// ── Validation ──
+
+const createProfileModal = ref(false);
+const newProfileName = ref('');
+const profileNameError = ref('');
+
+function validateProfileName(): boolean {
+    if (!newProfileName.value.trim()) {
+        profileNameError.value = 'Name is required';
+        return false;
     }
-    return obj;
-}
-
-// Configurations and new configuration state
-
-const newConfig = ref({
-    name: 'My configuration',
-    ws: {
-        server: useLocalStorage(
-            'propose-ws',
-            FLEET_MANAGER_WEBSOCKET + '/shelly'
-        ),
-        enable: false
-    },
-    switch: {
-        auto_on_delay: '',
-        auto_on: false,
-        auto_off_delay: '',
-        auto_off: false,
-        initial_state: ''
-    },
-    wifi: {
-        ap: {
-            pass: '',
-            enable: false
-        },
-        sta: {
-            enable: false,
-            ssid: '',
-            pass: ''
-        },
-        sta1: {
-            enable: false,
-            ssid: '',
-            pass: ''
-        }
-    },
-    mqtt: {
-        enable: false,
-        server: '',
-        user: '',
-        client_id: '',
-        topic_prefix: ''
-    },
-    bluetooth: {
-        enable: false
+    if (allProfiles.value[newProfileName.value.trim()]) {
+        profileNameError.value = 'Already exists';
+        return false;
     }
-});
-const configs = ref<Record<string, any>>({});
-
-function toggleViewMode() {
-    viewMode.value = viewMode.value === 'json' ? 'structured' : 'json';
+    profileNameError.value = '';
+    return true;
 }
 
-function updateOptionValue(key: string, value: any): void {
-    setNestedValue(newConfig.value, key, value);
-}
+// ── Config form ──
 
-function openNewConfigModal() {
-    editingConfigKey.value = null;
-    resetNewConfig();
-    createConfigurationPerProfile.value = true;
-}
+const configModalVisible = ref(false);
+const editingConfigKey = ref<string | null>(null);
+const newConfig = ref<Record<string, any>>({});
+const modalRef = ref<InstanceType<typeof ConfirmationModal>>();
 
-function closeConfigModal() {
-    createConfigurationPerProfile.value = false;
-    editingConfigKey.value = null;
-    resetNewConfig();
-}
-
-function editConfig(key: string, config: any) {
-    editingConfigKey.value = key;
-    // Deep clone to avoid reactive linkage
-    newConfig.value = JSON.parse(JSON.stringify(config));
-    createConfigurationPerProfile.value = true;
-}
-
-async function saveConfiguration() {
-    loading.value = true;
-    const nestedConfig = nestConfig(newConfig.value);
-    const key = editingConfigKey.value || '-1';
-    if (key !== '-1') {
-        configs.value[key] = {
-            ...nestedConfig,
-            name: newConfig.value.name || 'My configuration',
-            ws: {
-                server: newConfig.value.ws?.server || '',
-                enable: newConfig.value.ws?.enable || false
-            }
-        };
-    }
-    try {
-        await configsRegistry.setItem(profile.value, configs.value);
-        await refreshConfigs();
-        toast.success('Configuration saved successfully!');
-    } catch (error) {
-        toast.error('Failed to save configuration');
-    } finally {
-        loading.value = false;
-        await closeConfigModal();
-        await refreshConfigs();
-        selectConfig(key, configs.value[key]);
-    }
-}
-
-async function addNewConfiguration() {
-    loading.value = true;
-    const nestedConfig = nestConfig(newConfig.value);
-    const key = newConfig.value.name;
-    configs.value[key] = {
-        ...nestedConfig,
-        name: newConfig.value.name || 'My configuration',
-        ws: {
-            server: newConfig.value.ws?.server || '',
-            enable: newConfig.value.ws?.enable || false
-        }
-    };
-    try {
-        await configsRegistry.setItem(profile.value, configs.value);
-        await refreshConfigs();
-        toast.success('Configuration created successfully!');
-    } catch (error) {
-        console.error('Failed to save new configuration:', error);
-        toast.error('Failed to create a new configuration');
-    } finally {
-        loading.value = false;
-        closeConfigModal();
-    }
-}
-
-async function createProfile() {
-    const name = newProfileName.value;
-    if (name.length === 0) return;
-    try {
-        await configsRegistry.setItem(name, {});
-
-        toast.success('Profile created successfully!');
-    } catch (error) {
-        toast.error('Failed to create a new profile');
-    } finally {
-        createProfileModal.value = false;
-        await getallProfiles();
-    }
-}
-
-async function profileChanged(val: string) {
-    profile.value = val;
-    selectedConfig.value = {};
-    await refreshConfigs();
-}
-
-async function getallProfiles() {
-    allProfiles.value = await configsRegistry.getAll();
-}
-
-async function refreshConfigs() {
-    configs.value = {};
-    if (!profile.value) return;
-    configs.value = (await configsRegistry.getItem(profile.value)) || {};
-}
-
-function resetNewConfig() {
-    newConfig.value = {
+function createDefaultConfig(): Record<string, any> {
+    return {
         name: 'My configuration',
+        sys: {device: {name: '', eco_mode: false}},
+        sys_led: {mode: 'power'},
         ws: {
             server: useLocalStorage(
                 'propose-ws',
-                FLEET_MANAGER_WEBSOCKET + '/shelly'
+                `${FLEET_MANAGER_WEBSOCKET}/shelly`
             ),
             enable: false
         },
-        switch: {
-            auto_on_delay: '',
-            auto_on: false,
-            auto_off_delay: '',
-            auto_off: false,
-            initial_state: ''
-        },
         wifi: {
-            ap: {
-                pass: '',
-                enable: false
-            },
-            sta: {
-                enable: false,
-                ssid: '',
-                pass: ''
-            },
-            sta1: {
-                enable: false,
-                ssid: '',
-                pass: ''
-            }
+            ap: {pass: '', enable: false},
+            sta: {enable: false, ssid: '', pass: ''},
+            sta1: {enable: false, ssid: '', pass: ''}
         },
         mqtt: {
             enable: false,
@@ -572,96 +763,677 @@ function resetNewConfig() {
             client_id: '',
             topic_prefix: ''
         },
-        bluetooth: {
-            enable: false
+        bluetooth: {enable: false},
+        switch: {
+            auto_on_delay: '',
+            auto_on: false,
+            auto_off_delay: '',
+            auto_off: false,
+            initial_state: '',
+            power_limit: ''
+        },
+        cover: {swap_inputs: false, invert_directions: false},
+        input: {type: 'button', invert: false}
+    };
+}
+
+function updateOptionValue(key: string, value: any) {
+    setNestedValue(newConfig.value, {path: key, value});
+}
+
+// ── Actions ──
+
+async function toggleProfile(name: string) {
+    if (expandedProfile.value === name) {
+        expandedProfile.value = null;
+        selectedConfig.value = {};
+        selectedConfigKey.value = '';
+        return;
+    }
+    expandedProfile.value = name;
+    profile.value = name;
+    selectedConfig.value = {};
+    selectedConfigKey.value = '';
+    // Lazy populate sidebar metadata (count, icon) for this profile.
+    await loadProfileData(name);
+    refreshConfigs();
+}
+
+function selectConfig(key: string, config: any) {
+    selectedConfig.value = config;
+    selectedConfigKey.value = key;
+    inlineEditing.value = false;
+}
+
+function openCreateProfileModal() {
+    newProfileName.value = '';
+    profileNameError.value = '';
+    createProfileModal.value = true;
+}
+
+function openAddConfigModal(profileName: string) {
+    profile.value = profileName;
+    editingConfigKey.value = null;
+    newConfig.value = createDefaultConfig();
+    configModalVisible.value = true;
+}
+
+const inlineEditing = ref(false);
+const jsonText = ref('');
+
+function startInlineEdit() {
+    editingConfigKey.value = selectedConfigKey.value;
+    newConfig.value = JSON.parse(JSON.stringify(selectedConfig.value));
+    jsonText.value = JSON.stringify(selectedConfig.value, null, 2);
+    inlineEditing.value = true;
+}
+
+function cancelInlineEdit() {
+    inlineEditing.value = false;
+    editingConfigKey.value = null;
+}
+
+function parseJsonEdit(): Record<string, any> | null {
+    try {
+        return JSON.parse(jsonText.value);
+    } catch {
+        toast.error('Cannot save — JSON is invalid');
+        return null;
+    }
+}
+
+function buildConfigFromForm(): Record<string, any> {
+    const nested = nestConfig(newConfig.value);
+    return {
+        ...nested,
+        name: newConfig.value.name || 'My configuration',
+        ws: {
+            server: newConfig.value.ws?.server || '',
+            enable: newConfig.value.ws?.enable || false
         }
     };
 }
 
+async function saveInlineEdit() {
+    if (!editingConfigKey.value) return;
+    const config =
+        viewMode.value === 'json' ? parseJsonEdit() : buildConfigFromForm();
+    if (!config) return;
+    try {
+        configs.value[editingConfigKey.value] = config;
+        await saveConfigsToRegistry();
+        toast.success('Configuration saved');
+        inlineEditing.value = false;
+        await refreshConfigs();
+        selectConfig(
+            editingConfigKey.value,
+            configs.value[editingConfigKey.value]
+        );
+        editingConfigKey.value = null;
+    } catch {
+        toast.error('Failed to save configuration');
+    }
+}
+
+function closeConfigModal() {
+    configModalVisible.value = false;
+    editingConfigKey.value = null;
+}
+
+// ── API ──
+
+async function createProfile() {
+    if (!validateProfileName()) return;
+    try {
+        const name = newProfileName.value.trim();
+        await configsRegistry.setItem(name, {});
+        toast.success('Profile created');
+        createProfileModal.value = false;
+        await fetchAllProfiles();
+        // Pre-warm the new profile's cache so its sidebar count/icon
+        // render correctly without waiting for an expand click.
+        await loadProfileData(name);
+    } catch {
+        toast.error('Failed to create profile');
+    }
+}
+
 async function deleteProfile(name: string) {
-    if (modalRef.value) {
-        modalRef.value.storeAction(async () => {
-            try {
-                await configsRegistry.removeItem(name);
-                await getallProfiles();
-                await refreshProfiles();
-                await refreshConfigs();
-                toast.success(`Deleted profile '${name}'`);
-            } catch (error) {
-                toast.error(`Failed to delete profile '${name}'`);
-            }
-        });
-    }
-}
-async function deleteConfig(name: string) {
-    if (modalRef.value) {
-        modalRef.value.storeAction(async () => {
-            try {
+    modalRef.value?.storeAction(async () => {
+        try {
+            await configsRegistry.removeItem(name);
+            toast.success(`Deleted profile '${name}'`);
+            if (expandedProfile.value === name) {
+                expandedProfile.value = null;
                 selectedConfig.value = {};
-                delete configs.value[name];
-                await configsRegistry.setItem(profile.value, configs.value);
-                await getallProfiles();
-                toast.success(`Deleted config '${name}'`);
-            } catch (error) {
-                toast.error(`Failed to delete config '${name}'`);
+                selectedConfigKey.value = '';
             }
-        });
-    }
-}
-
-function nestConfig(obj: Record<string, any>) {
-    const nested: Record<string, any> = {};
-    for (const [key, value] of Object.entries(obj)) {
-        const keys = key.split('.');
-        let current = nested;
-        while (keys.length > 1) {
-            const k = keys.shift()!;
-            if (!current[k]) {
-                current[k] = {};
-            }
-            current = current[k];
+            await fetchAllProfiles();
+        } catch {
+            toast.error(`Failed to delete profile '${name}'`);
         }
-        current[keys[0]] = value;
-    }
-    return nested;
+    });
 }
 
-async function refreshProfiles() {
-    profiles.value = await configsRegistry.keys();
-    if (profiles.value.length === 0) return;
-    if (!profiles.value.includes(profile.value)) {
-        profileChanged(profiles.value[0]);
+// Save configs while preserving __meta (icon, etc.)
+async function saveConfigsToRegistry() {
+    const existing: Record<string, any> =
+        (await configsRegistry.getItem(profile.value)) || {};
+    const toSave: Record<string, any> = {...configs.value};
+    if (existing.__meta) toSave.__meta = existing.__meta;
+    await configsRegistry.setItem(profile.value, toSave);
+}
+
+async function addNewConfiguration() {
+    try {
+        const nested = nestConfig(newConfig.value);
+        const key = newConfig.value.name || 'My configuration';
+        configs.value[key] = {
+            ...nested,
+            name: key,
+            ws: {
+                server: newConfig.value.ws?.server || '',
+                enable: newConfig.value.ws?.enable || false
+            }
+        };
+        await saveConfigsToRegistry();
+        toast.success('Configuration created');
+        closeConfigModal();
+        await refreshConfigs();
+        // Only the active profile's body changed — keys-list is stable.
+        if (profile.value) await refreshProfileData(profile.value);
+    } catch {
+        toast.error('Failed to create configuration');
     }
 }
 
-async function selectConfig(key: string, config: any) {
-    selectedConfig.value = config;
-    selectedConfigKey.value = key;
+async function saveConfiguration() {
+    if (!editingConfigKey.value) return;
+    try {
+        const nested = nestConfig(newConfig.value);
+        configs.value[editingConfigKey.value] = {
+            ...nested,
+            name: newConfig.value.name || 'My configuration',
+            ws: {
+                server: newConfig.value.ws?.server || '',
+                enable: newConfig.value.ws?.enable || false
+            }
+        };
+        await saveConfigsToRegistry();
+        toast.success('Configuration saved');
+        closeConfigModal();
+        await refreshConfigs();
+        selectConfig(
+            editingConfigKey.value,
+            configs.value[editingConfigKey.value]
+        );
+    } catch {
+        toast.error('Failed to save configuration');
+    }
+}
+
+async function deleteConfig(name: string) {
+    modalRef.value?.storeAction(async () => {
+        try {
+            selectedConfig.value = {};
+            selectedConfigKey.value = '';
+            delete configs.value[name];
+            await saveConfigsToRegistry();
+            toast.success(`Deleted '${name}'`);
+            // Only the active profile's body changed — keys-list is stable.
+            if (profile.value) await refreshProfileData(profile.value);
+        } catch {
+            toast.error(`Failed to delete '${name}'`);
+        }
+    });
+}
+
+// Lazy load: keys-only first pass so the page renders without pulling
+// the whole registry (~50KB × N profiles). Profile bodies fill in on
+// expand via loadProfileData(), or in bulk via ensureAllProfilesLoaded()
+// the first time a filter is applied.
+async function fetchAllProfiles() {
+    const keys = ((await configsRegistry.keys()) as string[]) ?? [];
+    const next: Record<string, Record<string, any>> = {};
+    for (const k of keys) {
+        // Preserve previously-loaded body so a refresh doesn't blank
+        // out icons / counts the user already sees.
+        next[k] = allProfiles.value[k] ?? {};
+    }
+    allProfiles.value = next;
+    // Drop any cache entries whose key no longer exists. Snapshot before
+    // mutating so we don't lean on Set's "delete during iteration" rules.
+    for (const k of [...loadedProfiles.value]) {
+        if (!(k in next)) loadedProfiles.value.delete(k);
+    }
+}
+
+async function loadProfileData(name: string) {
+    if (loadedProfiles.value.has(name)) return;
+    const data =
+        ((await configsRegistry.getItem(name)) as Record<string, any>) || {};
+    allProfiles.value = {...allProfiles.value, [name]: data};
+    loadedProfiles.value.add(name);
+}
+
+// Drop one profile from the lazy cache + re-fetch its body. Used after
+// a mutation (add/edit/remove config, icon change, etc) so the sidebar
+// metadata and any open filter results reflect the server's new state.
+async function refreshProfileData(name: string) {
+    loadedProfiles.value.delete(name);
+    await loadProfileData(name);
+}
+
+let allLoadInFlight: Promise<void> | null = null;
+async function ensureAllProfilesLoaded() {
+    if (allLoadInFlight) return allLoadInFlight;
+    const missing = profileKeys.value.filter(
+        (k) => !loadedProfiles.value.has(k)
+    );
+    if (missing.length === 0) return;
+    allLoadInFlight = (async () => {
+        await Promise.all(missing.map((k) => loadProfileData(k)));
+    })();
+    try {
+        await allLoadInFlight;
+    } finally {
+        allLoadInFlight = null;
+    }
+}
+
+async function refreshConfigs() {
+    if (!profile.value) {
+        configs.value = {};
+        return;
+    }
+    const raw: Record<string, any> =
+        (await configsRegistry.getItem(profile.value)) || {};
+    const {__meta, ...rest} = raw;
+    configs.value = rest;
 }
 
 onMounted(async () => {
     try {
-        await getallProfiles();
-        await refreshProfiles();
-        await refreshConfigs();
-    } catch (error) {
-        toast.error('cannot refresh configs');
-        console.error('cannot refresh configs', error);
+        await fetchAllProfiles();
+        if (profileKeys.value.length > 0) {
+            const first = profileKeys.value[0];
+            profile.value = first;
+            expandedProfile.value = first;
+            await loadProfileData(first);
+            await refreshConfigs();
+        }
+    } catch {
+        toast.error('Failed to load configurations');
     } finally {
         initialLoading.value = false;
     }
 });
+
+// Cross-profile filtering needs every body. Trigger a bulk fetch the
+// first time any filter chip becomes non-empty.
+watch(
+    () => Object.values(filters).some((v) => !!v),
+    (anyActive) => {
+        if (anyActive) void ensureAllProfilesLoaded();
+    }
+);
 </script>
 
 <style scoped>
-.config-grid {
+/* ── Page container ── */
+.cfg-page { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: var(--gap-xs); }
+.cfg-chips { display: flex; flex-wrap: wrap; gap: var(--gap-xs); padding: 0 var(--gap-md); }
+
+/* ── Two separate frosted cards side by side ── */
+.cfg-layout {
+    display: flex;
+    gap: var(--gap-sm);
+    flex: 1;
+    min-height: 0;
+}
+@media (max-width: 768px) { .cfg-layout { flex-direction: column; } }
+
+/* ── Frosted glass card — replaces BasicBlock (no wrapper divs, clean flex chain) ── */
+.cfg-card {
+    background: var(--glass-1-bg);
+    backdrop-filter: blur(var(--glass-1-blur));
+    -webkit-backdrop-filter: blur(var(--glass-1-blur));
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    padding: var(--gap-sm);
+}
+
+/* ── Left card — always 38.2% (golden ratio) ── */
+.cfg-left {
+    flex: 0 0 38.2%;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-xs);
+    overflow-y: auto;
+    min-width: 0;
+}
+@media (max-width: 768px) { .cfg-left { flex: none; } }
+
+/* ── Right card — 61.8%, JSON fills full height ── */
+.cfg-right {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ── Empty / placeholder ── */
+.cfg-empty {
+    padding: var(--gap-lg);
+    text-align: center;
+    font-size: var(--type-body);
+    color: var(--color-text-tertiary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--gap-xs);
+}
+.cfg-empty--sm { padding: var(--gap-sm); }
+.cfg-empty__icon { font-size: var(--type-heading); opacity: 0.2; }
+
+.cfg-placeholder {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--gap-sm);
+    color: var(--color-text-tertiary);
+}
+.cfg-placeholder__icon { font-size: var(--type-heading); opacity: 0.2; }
+.cfg-placeholder__text { font-size: var(--type-subheading); font-weight: var(--font-semibold); }
+
+/* ── Profile card (Option B) ── */
+.cfg-profile {
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+.cfg-profile + .cfg-profile { margin-top: var(--gap-xs); }
+
+.cfg-profile__head {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-sm);
+    padding: var(--gap-sm);
+    cursor: pointer;
+    transition: background var(--duration-fast);
+}
+.cfg-profile__head:hover { background: var(--color-surface-3); }
+
+.cfg-profile__icon {
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: rgba(var(--ar-action), 0.06);
+    border: 1.5px solid rgba(var(--ar-action), 0.18);
+    color: var(--a-action);
+    font-size: var(--type-subheading);
+    cursor: pointer;
+    transition: background var(--duration-fast);
+}
+.cfg-profile__icon:hover { background: rgba(var(--ar-action), 0.15); }
+
+.cfg-profile__info { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.cfg-profile__name { font-size: var(--type-body); font-weight: var(--font-bold); color: var(--color-text-primary); }
+.cfg-profile__meta { font-size: var(--type-card-footer); color: var(--color-text-tertiary); }
+
+.cfg-profile__arrow {
+    font-size: var(--type-body);
+    color: var(--color-text-tertiary);
+    transition: transform var(--duration-fast);
+    flex-shrink: 0;
+}
+.cfg-profile__arrow--open { transform: rotate(180deg); }
+
+.cfg-profile__body {
+    border-top: 1px solid var(--color-border-default);
+    padding: var(--gap-xs);
+}
+.cfg-profile__foot {
+    display: flex;
+    gap: var(--gap-xs);
+    padding-top: var(--gap-xs);
+    border-top: 1px solid var(--color-border-default);
+    margin-top: var(--gap-xs);
+}
+
+/* ── Config item row ── */
+.cfg-item {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-xs);
+    width: 100%;
+    padding: 0 var(--gap-sm);
+    min-height: var(--touch-target-min);
+    border-radius: var(--radius-sm);
+    border: none;
+    background: none;
+    font-family: inherit;
+    font-size: var(--type-body);
+    text-align: left;
+    cursor: pointer;
+    transition: background var(--duration-fast);
+}
+.cfg-item:hover { background: var(--color-surface-3); }
+.cfg-item:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: -2px; }
+.cfg-item--active { background: color-mix(in srgb, var(--color-primary) 8%, transparent); }
+
+/* Active dot indicator */
+.cfg-item__dot {
+    width: var(--gap-xs);
+    height: var(--gap-xs);
+    border-radius: var(--radius-full);
+    background: var(--color-border-medium);
+    flex-shrink: 0;
+}
+.cfg-item__dot--active { background: var(--color-primary); }
+
+.cfg-item__name { flex: 1; font-weight: var(--font-semibold); color: var(--color-text-secondary); }
+.cfg-item--active .cfg-item__name { color: var(--color-text-primary); font-weight: var(--font-bold); }
+
+.cfg-item__text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.cfg-item__sub { font-size: var(--type-card-footer); color: var(--color-text-quaternary); }
+
+/* ── Detail ── */
+.cfg-detail__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--gap-xs);
+    padding-bottom: var(--gap-xs);
+    border-bottom: 1px solid var(--color-border-default);
+    margin-bottom: var(--gap-xs);
+    flex-wrap: wrap;
+}
+.cfg-detail__title { font-size: var(--type-subheading); font-weight: var(--font-bold); color: var(--color-text-primary); }
+.cfg-detail__actions { display: flex; align-items: center; gap: var(--gap-xs); flex-wrap: wrap; }
+
+.cfg-detail__body {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* ── Structured view ── */
+.cfg-sections {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: var(--gap-xs);
+}
+
+.cfg-row {
+    border-bottom: 1px solid var(--color-border-default);
+    padding: var(--gap-xs) 0;
+}
+.cfg-row:last-child { border-bottom: none; padding-bottom: 0; }
+.cfg-row:first-child { padding-top: 0; }
+
+.cfg-row__head {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-xs);
+    min-height: var(--touch-target-min);
+    white-space: nowrap;
+}
+.cfg-row__icon {
+    color: var(--color-text-tertiary);
+    width: var(--gap-md);
+    text-align: center;
+    flex-shrink: 0;
+    font-size: var(--type-body);
+}
+.cfg-row__title {
+    flex: 1;
+    font-size: var(--type-body);
+    font-weight: var(--font-bold);
+    color: var(--color-text-primary);
+    white-space: nowrap;
+}
+.cfg-row__status {
+    font-size: var(--type-body);
+    font-weight: var(--font-bold);
+    width: var(--gap-md);
+    height: var(--gap-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-full);
+    flex-shrink: 0;
+}
+.cfg-row__status--on { color: var(--color-status-on); background: color-mix(in srgb, var(--color-status-on) 10%, transparent); }
+.cfg-row__status--off { color: var(--color-status-off); background: color-mix(in srgb, var(--color-status-off) 10%, transparent); }
+
+.cfg-row__fields {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: var(--space-5);
-    padding-top: var(--space-5);
-    align-items: start;
+    grid-template-columns: minmax(auto, 38.2%) 1fr;
+    gap: 0 var(--gap-sm);
+    padding-left: calc(var(--gap-md) + var(--gap-xs));
+    max-width: 480px;
 }
-.config-grid__card {
-    min-height: 240px;
+@media (max-width: 640px) {
+    .cfg-row__fields {
+        grid-template-columns: 1fr;
+        gap: var(--gap-xs) 0;
+        padding-left: var(--gap-sm);
+    }
 }
+.cfg-row__field {
+    display: contents;
+}
+.cfg-row__label {
+    font-size: var(--type-body);
+    color: var(--color-text-tertiary);
+    white-space: nowrap;
+    padding: var(--gap-xs) 0;
+    display: flex;
+    align-items: center;
+    min-height: var(--gap-lg);
+}
+.cfg-row__value {
+    font-size: var(--type-body);
+    color: var(--color-text-primary);
+    font-family: var(--font-mono);
+    padding: var(--gap-xs) 0;
+    display: flex;
+    align-items: center;
+    min-height: var(--gap-lg);
+}
+.cfg-on { color: var(--color-status-on); }
+.cfg-off { color: var(--color-status-off); }
+
+.cfg-var-ref {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gap-xs);
+    padding: var(--space-0-5) var(--gap-xs);
+    border-radius: var(--radius-sm);
+    background: rgba(var(--ar-action), 0.08);
+    border: 1px solid rgba(var(--ar-action), 0.2);
+    color: var(--a-action);
+    font-family: var(--font-mono);
+    font-weight: var(--font-bold);
+    font-size: var(--type-body);
+}
+
+/* ── JSON view — MUST fill all available height ── */
+.cfg-json {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border-default);
+    background: var(--color-surface-0);
+    padding: var(--gap-sm);
+}
+
+/* ── Inline edit controls ── */
+.cfg-row__input {
+    max-width: 220px;
+    min-width: 0;
+    padding: var(--gap-xs) 0;
+}
+.cfg-row__check {
+    display: flex;
+    align-items: center;
+    padding: var(--gap-xs) 0;
+    min-height: var(--gap-lg);
+}
+
+/* ── Filter chips ── */
+.cfg-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gap-xs);
+    padding: var(--gap-xs) var(--gap-sm);
+    border-radius: var(--radius-full);
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border-medium);
+    color: var(--color-text-primary);
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    white-space: nowrap;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background var(--duration-fast);
+}
+.cfg-chip:hover { border-color: var(--color-text-tertiary); }
+.cfg-chip__x { color: var(--color-text-disabled); }
+.cfg-chip--clear { background: color-mix(in srgb, var(--color-danger-text) 8%, transparent); border-color: transparent; color: var(--color-danger-text); }
+.cfg-chip--clear:hover { background: color-mix(in srgb, var(--color-danger-text) 15%, transparent); }
+
+.cfg-filter-badge {
+    position: absolute;
+    top: var(--space-0-5); right: var(--space-0-5);
+    width: var(--gap-sm);
+    height: var(--gap-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-primary);
+    color: var(--color-text-primary);
+    font-size: var(--icon-size-2xs); /* icon-only */
+    font-weight: var(--font-bold);
+    border-radius: var(--radius-full);
+    line-height: 1;
+}
+
+/* ─�� Modals ── */
+.cfg-footer { display: flex; justify-content: flex-end; gap: var(--gap-sm); }
+.cfg-form { display: flex; flex-direction: column; gap: var(--gap-xs); }
+.cfg-form__field { padding: var(--gap-xs) 0; }
 </style>

@@ -1,74 +1,89 @@
 <template>
-    <Transition name="modal">
-    <div v-if="visible" role="dialog" aria-modal="true" @keydown="handleKeydown">
-        <div
-            class="modal-overlay fixed top-0 left-0 w-screen h-screen z-40 modal-backdrop"
-            @click="bgClicked"
-        />
+    <Teleport to="body">
+        <Transition name="modal">
+            <div
+                v-if="visible"
+                class="modal-root"
+                role="dialog"
+                aria-modal="true"
+                :aria-labelledby="$slots.title ? titleId : undefined"
+                :style="{'--modal-depth': stackDepth}"
+                @keydown="handleKeydown"
+            >
+                <div class="modal-overlay modal-backdrop" @click="bgClicked" />
 
-        <div
-            ref="panelRef"
-            class="modal-panel fixed sm:left-1/2 sm:-translate-x-1/2 sm:translate-y-1/2 sm:bottom-1/2 sm:max-w-[95%] sm:rounded-lg bottom-0 left-0 w-full rounded-t-sm border-2 z-50 modal-content flex flex-col"
-            :class="[
-                compact
-                    ? 'sm:w-[420px] overflow-visible'
-                    : wide
-                      ? 'sm:w-[94vw] lg:w-[1480px] max-h-[92vh] overflow-hidden'
-                      : 'sm:w-[800px] lg:w-[1100px] max-h-[90vh] overflow-hidden'
-            ]"
-        >
-            <BasicBlock padding="none" class="h-full">
-                <!-- X button -->
-                <button
-                    type="button"
-                    aria-label="Close modal"
-                    class="modal-close-btn bg-transparent rounded-lg text-sm w-11 h-11 ml-auto inline-flex justify-center items-center absolute top-2 right-2"
-                    data-track="modal_close"
-                    @click="emit('close')"
+                <div
+                    ref="panelRef"
+                    tabindex="-1"
+                    class="modal-panel"
+                    :class="panelClass"
                 >
-                    <svg
-                        class="w-3 h-3"
-                        aria-hidden="true"
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 14 14"
+                    <button
+                        type="button"
+                        aria-label="Close modal"
+                        class="modal-close-btn"
+                        data-track="modal_close"
+                        @click="emit('close')"
                     >
-                        <path
-                            stroke="currentColor"
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"
-                        />
-                    </svg>
-                </button>
-                <div class="flex h-full min-h-0 flex-col p-3 md:p-5 gap-3">
-                    <div v-if="$slots.title" class="w-full pr-12 font-bold text-lg">
+                        <svg
+                            class="h-3 w-3"
+                            aria-hidden="true"
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 14 14"
+                        >
+                            <path
+                                stroke="currentColor"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="m1 1 6 6m0 0 6 6M7 7l6-6M7 7l-6 6"
+                            />
+                        </svg>
+                    </button>
+
+                    <div
+                        v-if="$slots.title"
+                        :id="titleId"
+                        class="modal-header shrink-0 pr-14"
+                    >
                         <slot name="title" />
                     </div>
-                    <div
-                        class="modal-body flex-1 min-h-0 p-4 rounded-lg"
-                        :class="compact ? 'overflow-visible' : 'overflow-y-auto z-40'"
-                    >
-                        <slot></slot>
+
+                    <div class="modal-body-shell flex-1 min-h-0">
+                        <div
+                            class="modal-body min-h-0"
+                            :class="
+                                compact ? 'overflow-visible' : 'overflow-y-auto'
+                            "
+                        >
+                            <slot />
+                        </div>
                     </div>
-                    <div v-if="$slots.footer" class="modal-footer w-full shrink-0 md:rounded-b">
+
+                    <div v-if="$slots.footer" class="modal-footer shrink-0">
                         <slot name="footer" />
                     </div>
                 </div>
-            </BasicBlock>
-        </div>
-    </div>
-    </Transition>
+            </div>
+        </Transition>
+    </Teleport>
 </template>
 
 <script setup lang="ts">
-import {nextTick, ref, toRef, watch} from 'vue';
-import BasicBlock from '../core/BasicBlock.vue';
+import {computed, nextTick, onMounted, ref, useId, watch} from 'vue';
+import {
+    lockBodyScroll,
+    releaseModalDepth,
+    reserveModalDepth,
+    unlockBodyScroll
+} from '@/helpers/modalStack';
+import {getObsLevel, trackInteraction} from '@/tools/observability';
 
 const props = defineProps<{
     visible: boolean;
     wide?: boolean;
+    huge?: boolean;
     compact?: boolean;
 }>();
 
@@ -76,53 +91,131 @@ const emit = defineEmits<{
     close: [];
 }>();
 
-const visible = toRef(props, 'visible');
 const panelRef = ref<HTMLElement | null>(null);
+const titleId = `modal-title-${useId()}`;
+const focusableSelector =
+    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 let previouslyFocused: HTMLElement | null = null;
 
-// Focus trap: cycle Tab within modal
-function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') {
+const panelClass = computed(() => {
+    if (props.compact) {
+        return 'modal-panel--compact';
+    }
+
+    if (props.huge) {
+        return 'modal-panel--huge';
+    }
+
+    if (props.wide) {
+        return 'modal-panel--wide';
+    }
+
+    return 'modal-panel--default';
+});
+
+function getFocusableElements() {
+    return (
+        panelRef.value?.querySelectorAll<HTMLElement>(focusableSelector) ?? []
+    );
+}
+
+function handleKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
         emit('close');
         return;
     }
-    if (e.key !== 'Tab' || !panelRef.value) return;
 
-    const focusable = panelRef.value.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    if (focusable.length === 0) return;
+    if (event.key !== 'Tab' || !panelRef.value) {
+        return;
+    }
+
+    const focusable = getFocusableElements();
+    if (focusable.length === 0) {
+        event.preventDefault();
+        panelRef.value.focus();
+        return;
+    }
 
     const first = focusable[0];
     const last = focusable[focusable.length - 1];
+    const activeElement = document.activeElement as HTMLElement | null;
 
-    if (e.shiftKey) {
-        if (document.activeElement === first) {
-            e.preventDefault();
-            last.focus();
+    if (!activeElement || !panelRef.value.contains(activeElement)) {
+        event.preventDefault();
+        const target = event.shiftKey ? last : first;
+        if (typeof target.focus === 'function') target.focus();
+        return;
+    }
+
+    if (event.shiftKey) {
+        if (activeElement === first) {
+            event.preventDefault();
+            if (typeof last.focus === 'function') last.focus();
         }
-    } else {
-        if (document.activeElement === last) {
-            e.preventDefault();
-            first.focus();
-        }
+
+        return;
+    }
+
+    if (activeElement === last) {
+        event.preventDefault();
+        if (typeof first.focus === 'function') first.focus();
     }
 }
 
-// Save/restore focus on open/close
-watch(visible, async (isVisible) => {
-    if (isVisible) {
-        previouslyFocused = document.activeElement as HTMLElement;
-        await nextTick();
-        // Focus the close button or first focusable inside the panel
-        const firstFocusable = panelRef.value?.querySelector<HTMLElement>(
-            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        );
-        firstFocusable?.focus();
-    } else {
-        previouslyFocused?.focus();
-        previouslyFocused = null;
+// Depth allocation + body scroll lock live in helpers/modalStack so nested
+// modals each get a unique z-layer and the body-lock is single-source.
+const stackDepth = ref(0);
+
+function focusFirstInPanel() {
+    const firstFocusable = getFocusableElements()[0];
+    if (firstFocusable && typeof firstFocusable.focus === 'function') {
+        firstFocusable.focus();
+        return;
     }
+    panelRef.value?.focus();
+}
+
+function restorePreviousFocus() {
+    if (
+        previouslyFocused &&
+        document.contains(previouslyFocused) &&
+        typeof previouslyFocused.focus === 'function' &&
+        previouslyFocused.matches(focusableSelector)
+    ) {
+        previouslyFocused.focus();
+    }
+    previouslyFocused = null;
+}
+
+async function onOpened() {
+    if (getObsLevel() >= 2) trackInteraction('modal', 'open', titleId);
+    stackDepth.value = reserveModalDepth();
+    lockBodyScroll();
+    previouslyFocused = document.activeElement as HTMLElement;
+    await nextTick();
+    focusFirstInPanel();
+}
+
+function onClosed() {
+    if (stackDepth.value > 0) releaseModalDepth(stackDepth.value);
+    stackDepth.value = 0;
+    unlockBodyScroll();
+    restorePreviousFocus();
+}
+
+watch(
+    () => props.visible,
+    (isVisible) => {
+        if (isVisible) void onOpened();
+        else onClosed();
+    }
+);
+
+// Mounted-already-open case: parents that pass `:visible="true"` literally
+// (or compute it true on first render) never trigger the watcher above.
+onMounted(() => {
+    if (props.visible) void onOpened();
 });
 
 function bgClicked() {
@@ -131,44 +224,234 @@ function bgClicked() {
 </script>
 
 <style scoped>
+.modal-root {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+}
+
 .modal-overlay {
-    background-color: var(--color-overlay-heavy);
+    position: fixed;
+    inset: 0;
+    z-index: calc(var(--z-modal) + var(--modal-depth, 0) * 10);
+    background-color: var(--modal-overlay);
+    /* Frosted backdrop — glass-3 modal tier. */
+    backdrop-filter: var(--glass-3-filter);
+    -webkit-backdrop-filter: var(--glass-3-filter);
 }
+
 .modal-panel {
-    border-color: var(--color-border-default);
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    z-index: calc(var(--z-modal) + var(--modal-depth, 0) * 10 + 1);
+    display: flex;
+    width: 100%;
+    /* Leave room for mobile bottom nav bar (4rem) + inset */
+    max-height: calc(100vh - 4rem - var(--modal-mobile-inset));
+    flex-direction: column;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    background-color: var(--glass-3-bg);
+    box-shadow: var(--card-shadow-hover), inset 0 1px 0 var(--glass-highlight);
+    outline: none;
 }
+
+/* Variant heights apply on desktop only. On mobile the panel is a
+ * bottom-sheet using the baseline max-height (which accounts for the
+ * mobile bottom bar). Variant overrides at this breakpoint would risk
+ * overlapping the bar (huge ≈ 94vh > available viewport once the bar
+ * is subtracted on smaller phones). */
+
 .modal-close-btn {
+    position: absolute;
+    right: var(--modal-close-offset);
+    top: var(--modal-close-offset);
+    display: inline-flex;
+    height: var(--touch-target-min);
+    width: var(--touch-target-min);
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-lg);
+    background-color: transparent;
+    font-size: var(--type-body);
     color: var(--color-text-secondary);
 }
+
 .modal-close-btn:hover {
     background-color: var(--color-surface-4);
     color: var(--color-text-secondary);
 }
+
+.modal-header {
+    padding:
+        var(--modal-header-padding-top)
+        var(--modal-header-padding-x)
+        0;
+    font-size: var(--type-subheading);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+}
+
+.modal-body-shell {
+    display: flex;
+    flex-direction: column;
+    padding:
+        var(--modal-body-shell-padding-top)
+        var(--modal-body-shell-padding-x)
+        var(--modal-body-shell-padding-bottom);
+}
+
 .modal-body {
-    background-color: var(--color-surface-1);
+    flex: 1;
+    padding: var(--modal-body-padding);
 }
+
 .modal-footer {
-    background-color: var(--color-surface-2);
-    border-top: 1px solid var(--color-border-default);
-    margin-left: -0.75rem;
-    margin-right: -0.75rem;
-    margin-bottom: -0.75rem;
-    padding: 0.75rem;
+    border-top: 1px solid var(--color-border-subtle);
+    background-color: var(--modal-bg);
+    padding:
+        var(--modal-footer-padding-top)
+        var(--modal-footer-padding-x)
+        calc(
+            var(--modal-footer-padding-bottom) +
+                env(safe-area-inset-bottom, 0px)
+        );
 }
+
 @media (min-width: 768px) {
+    .modal-panel {
+        left: 50%;
+        bottom: 50%;
+        max-width: 95%;
+        transform: translate(-50%, 50%);
+        border-radius: var(--radius-xl);
+    }
+
+    /* At lg+ (1024px) there is no mobile bottom bar — restore full height */
+    @media (min-width: 1024px) {
+        .modal-panel {
+            max-height: calc(100vh - var(--modal-mobile-inset));
+        }
+    }
+
+    .modal-panel--compact {
+        width: var(--modal-width-compact);
+        max-height: min(
+            calc(100vh - var(--modal-mobile-inset)),
+            var(--modal-max-height-compact)
+        );
+    }
+
+    .modal-panel--default {
+        width: var(--modal-width-default);
+        max-height: min(
+            calc(100vh - var(--modal-mobile-inset)),
+            var(--modal-max-height-default)
+        );
+    }
+
+    .modal-panel--wide {
+        width: min(var(--modal-width-wide-fluid), var(--modal-width-wide));
+        max-height: min(
+            calc(100vh - var(--modal-mobile-inset)),
+            var(--modal-max-height-wide)
+        );
+    }
+
+    .modal-panel--huge {
+        width: min(var(--modal-width-xl-fluid), var(--modal-width-xl));
+        max-height: min(
+            calc(100vh - var(--modal-mobile-inset)),
+            var(--modal-max-height-xl)
+        );
+    }
+
+    .modal-header {
+        padding:
+            var(--modal-header-padding-top-md)
+            var(--modal-header-padding-x-md)
+            0;
+    }
+
+    .modal-body-shell {
+        padding:
+            var(--modal-body-shell-padding-top)
+            var(--modal-body-shell-padding-x-md)
+            var(--modal-body-shell-padding-bottom-md);
+    }
+
     .modal-footer {
-        margin-left: -1.25rem;
-        margin-right: -1.25rem;
-        margin-bottom: -1.25rem;
-        padding: 1rem 1.25rem;
+        padding:
+            var(--modal-footer-padding-top-md)
+            var(--modal-footer-padding-x-md)
+            var(--modal-footer-padding-bottom-md);
     }
 }
+
+@media (min-width: 1024px) {
+    .modal-panel--default {
+        width: var(--modal-width-default-lg);
+    }
+
+    .modal-panel--wide {
+        width: var(--modal-width-wide);
+    }
+
+    .modal-panel--huge {
+        width: min(var(--modal-width-xl-fluid), var(--modal-width-xl));
+    }
+}
+
+/* Premium entrance — fade the overlay, scale the panel.
+   Mobile: panel is bottom-pinned (no transform), so it only fades —
+   translate-based scale would slide it off-screen.
+   Desktop: panel is centred with `translate(-50%, 50%)`, scale composes
+   with the translate by repeating it in the enter/leave classes. */
 .modal-enter-active,
 .modal-leave-active {
-    transition: opacity var(--duration-fast) var(--ease-out);
+    transition: opacity var(--duration-normal) var(--ease-out-expo);
 }
+
+.modal-enter-active .modal-panel,
+.modal-leave-active .modal-panel {
+    transition:
+        transform var(--duration-normal) var(--ease-out-expo),
+        opacity var(--duration-normal) var(--ease-out-expo);
+}
+
 .modal-enter-from,
 .modal-leave-to {
     opacity: 0;
+}
+
+.modal-enter-from .modal-panel,
+.modal-leave-to .modal-panel {
+    opacity: 0;
+}
+
+/* Mobile: slide up from the bottom edge (bottom-sheet pattern). */
+.modal-enter-from .modal-panel,
+.modal-leave-to .modal-panel {
+    transform: translateY(100%);
+}
+
+@media (min-width: 768px) {
+    .modal-enter-from .modal-panel {
+        transform: translate(-50%, 50%) scale(0.96);
+    }
+
+    .modal-leave-to .modal-panel {
+        transform: translate(-50%, 50%) scale(0.98);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .modal-enter-active,
+    .modal-leave-active,
+    .modal-enter-active .modal-panel,
+    .modal-leave-active .modal-panel {
+        transition-duration: 0ms;
+    }
 }
 </style>

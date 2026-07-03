@@ -1,29 +1,57 @@
 import {readFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {CFG_FOLDER} from '../../config';
-import type {Grafana as Params} from '../../validations/params';
+import {findDashboardBySlug} from '../../config/grafanaApi';
+import {canUseAuthenticatedRead} from '../../modules/authz/evaluator';
+import type {DescribeOutput} from '../../rpc/describe';
+import {validateOrThrow} from '../../rpc/validateOrThrow';
+import {
+    GRAFANA_DESCRIBE,
+    GRAFANA_GET_CONFIG_PARAMS_SCHEMA,
+    GRAFANA_GET_DASHBOARD_PARAMS_SCHEMA
+} from '../../types/api/grafana';
 import Component from './Component';
 
 export default class GrafanaComponent extends Component<NonNullable<any>> {
     constructor() {
-        super('Grafana', {set_config_methods: false, auto_apply_config: false});
+        super('grafana', {
+            set_config_methods: false,
+            auto_apply_config: false,
+            viewer_visible: true
+        });
+    }
+
+    @Component.NoAudit
+    @Component.Expose('Describe')
+    @Component.NoPermissions
+    describe(): DescribeOutput {
+        return GRAFANA_DESCRIBE;
     }
 
     @Component.Expose('GetConfig')
-    public override async getConfig() {
+    @Component.CheckPermissions(canUseAuthenticatedRead)
+    public override async getConfig(params?: unknown) {
+        validateOrThrow<Record<string, never>>(
+            params ?? {},
+            GRAFANA_GET_CONFIG_PARAMS_SCHEMA
+        );
         const filePath = join(CFG_FOLDER, 'grafana', 'config.json');
-        return JSON.parse(await readFile(filePath, 'utf-8'));
+        try {
+            return JSON.parse(await readFile(filePath, 'utf-8'));
+        } catch (err: any) {
+            if (err?.code === 'ENOENT') return {};
+            throw err;
+        }
     }
 
     @Component.Expose('GetDashboard')
-    public async getDashboard(params: Params.GetDashboard) {
-        const config = await this.getConfig();
-        const dashboards = config.dashboards.filter(
-            (dash: {status: string}) => dash.status === 'success'
+    @Component.CheckPermissions(canUseAuthenticatedRead)
+    public async getDashboard(params: unknown) {
+        const v = validateOrThrow<{slug: string}>(
+            params,
+            GRAFANA_GET_DASHBOARD_PARAMS_SCHEMA
         );
-        return dashboards.find(
-            (dash: {slug: string}) => dash.slug === params.slug
-        );
+        return findDashboardBySlug(await this.getConfig(), v.slug);
     }
 
     protected override getDefaultConfig() {

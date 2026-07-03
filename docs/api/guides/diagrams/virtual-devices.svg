@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 276" width="900" height="276" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="A composed virtual device binds roles to source components on real devices">
+  <title>A composed device and its bindings</title>
+  <desc>A composed virtual device has one identity and its own history; each of its roles is bound to a source component on a real device, and a source can be replaced without losing the device's identity or history.</desc>
+  <defs>
+    <marker id="vdN" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A97A8"/></marker>
+  </defs>
+  <rect x="0" y="0" width="900" height="276" fill="#ffffff"/>
+
+  <path d="M278,128 L576,130" stroke="#8A97A8" stroke-width="1.4" fill="none" marker-end="url(#vdN)"/>
+  <path d="M278,166 L576,170" stroke="#8A97A8" stroke-width="1.4" fill="none" marker-end="url(#vdN)"/>
+  <path d="M278,204 L576,210" stroke="#8A97A8" stroke-width="1.4" fill="none" marker-end="url(#vdN)"/>
+  <text x="428" y="122" text-anchor="middle" font-size="10" fill="#6B7A90">bound to</text>
+
+  <!-- Composed device -->
+  <rect x="36" y="48" width="262" height="200" rx="8" fill="#EAF6FD" stroke="#4495D1" stroke-width="1.75"/>
+  <text x="167" y="78" text-anchor="middle" font-size="13.5" font-weight="700" fill="#122A4F">Composed device</text>
+  <text x="167" y="96" text-anchor="middle" font-size="10.5" fill="#3A6B92">one identity · own history</text>
+
+  <rect x="56" y="112" width="222" height="32" rx="5" fill="#ffffff" stroke="#BBD5EC" stroke-width="1.25"/>
+  <text x="167" y="132" text-anchor="middle" font-size="11.5" fill="#122A4F" font-family="ui-monospace,Menlo,monospace">role: temperature</text>
+
+  <rect x="56" y="150" width="222" height="32" rx="5" fill="#ffffff" stroke="#BBD5EC" stroke-width="1.25"/>
+  <text x="167" y="170" text-anchor="middle" font-size="11.5" fill="#122A4F" font-family="ui-monospace,Menlo,monospace">role: switch</text>
+
+  <rect x="56" y="188" width="222" height="32" rx="5" fill="#ffffff" stroke="#BBD5EC" stroke-width="1.25"/>
+  <text x="167" y="208" text-anchor="middle" font-size="11.5" fill="#122A4F" font-family="ui-monospace,Menlo,monospace">role: power</text>
+
+  <!-- Sources -->
+  <rect x="578" y="108" width="240" height="44" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="600" y="128" font-size="12" font-weight="600" fill="#122A4F">Sensor</text>
+  <text x="806" y="128" text-anchor="end" font-size="10.5" fill="#3A6B92" font-family="ui-monospace,Menlo,monospace">temperature:0</text>
+  <text x="600" y="143" font-size="10" fill="#6B7A90">device A</text>
+
+  <rect x="578" y="148" width="240" height="44" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="600" y="168" font-size="12" font-weight="600" fill="#122A4F">Relay</text>
+  <text x="806" y="168" text-anchor="end" font-size="10.5" fill="#3A6B92" font-family="ui-monospace,Menlo,monospace">switch:0</text>
+  <text x="600" y="183" font-size="10" fill="#6B7A90">device B</text>
+
+  <rect x="578" y="188" width="240" height="44" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="600" y="208" font-size="12" font-weight="600" fill="#122A4F">Meter</text>
+  <text x="806" y="208" text-anchor="end" font-size="10.5" fill="#3A6B92" font-family="ui-monospace,Menlo,monospace">em:0</text>
+  <text x="600" y="223" font-size="10" fill="#6B7A90">device C</text>
+
+  <text x="450" y="266" text-anchor="middle" font-size="10.5" fill="#8A97A8">Replace a source and the composed device keeps its identity and history.</text>
+</svg>

@@ -2,16 +2,11 @@
     <Modal :visible="visible" @close="emit('close')">
         <template #title>Rename Backup</template>
 
-        <div class="flex flex-col gap-4">
-            <input
-                v-model="nameInput"
-                type="text"
-                class="w-full bg-[var(--color-surface-3)] border border-[var(--color-border-strong)] rounded px-3 py-2 text-sm text-white focus:border-[var(--color-primary)] focus:outline-none"
-                placeholder="Enter backup name"
-                aria-label="Backup name"
-                @keyup.enter="doRename"
-            />
-            <span class="text-xs text-[var(--color-text-disabled)]">
+        <div class="brm__body">
+            <FormField label="Backup name">
+                <Input v-model="nameInput" :placeholder="backupName" @keyup.enter="doRename" aria-label="Backup name" />
+            </FormField>
+            <span class="text-base text-[var(--color-text-disabled)]">
                 If a backup with the same name already exists, it
                 will be overwritten.
             </span>
@@ -19,7 +14,7 @@
 
         <template #footer>
             <div class="flex justify-end gap-2">
-                <Button @click="emit('close')">Cancel</Button>
+                <Button type="blue-hollow" @click="emit('close')">Cancel</Button>
                 <Button
                     type="blue"
                     :disabled="!nameInput.trim()"
@@ -35,6 +30,8 @@
 <script setup lang="ts">
 import {ref, watch} from 'vue';
 import Button from '@/components/core/Button.vue';
+import FormField from '@/components/core/FormField.vue';
+import Input from '@/components/core/Input.vue';
 import Modal from '@/components/modals/Modal.vue';
 import {useBackupsStore} from '@/stores/backups';
 import {useToastStore} from '@/stores/toast';
@@ -68,13 +65,38 @@ watch(
 async function doRename() {
     if (!props.backupId || !nameInput.value.trim()) return;
 
+    const newName = nameInput.value.trim();
+    const oldName = props.backupName;
+    const backupId = props.backupId;
+
     try {
-        await backupsStore.renameBackup(props.backupId, nameInput.value.trim());
-        toastStore.success('Backup renamed');
+        await backupsStore.renameBackup(backupId, newName);
+        toastStore.undoable(
+            `Backup renamed to "${newName}"`,
+            () => {},
+            () => revertRename(backupId, oldName)
+        );
         emit('renamed');
         emit('close');
     } catch (error: any) {
         toastStore.error(error?.message || 'Failed to rename backup');
     }
 }
+
+async function revertRename(backupId: string, previousName: string) {
+    try {
+        await backupsStore.renameBackup(backupId, previousName);
+        toastStore.success(`Backup name reverted to "${previousName}"`);
+    } catch (error: any) {
+        toastStore.error(error?.message || 'Failed to undo rename');
+    }
+}
 </script>
+
+<style scoped>
+.brm__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+}
+</style>

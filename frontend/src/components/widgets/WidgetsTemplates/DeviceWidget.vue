@@ -1,12 +1,12 @@
  <template>
     <!-- Vertical mode (board list view) -->
     <div v-if="vertical"
-        class="widget-card flex flex-row items-center gap-3 rounded-lg shadow-lg p-3 relative text-sm min-h-[76px] justify-start hover:cursor-pointer"
+        class="widget-card flex flex-row items-center gap-3 rounded-lg shadow-none p-3 relative text-sm min-h-[76px] justify-start hover:cursor-pointer"
         :class="{ 'widget-card--selected': selected }" @click="onClick">
 
          <figure class="widget-avatar w-12 h-12 aspect-square border rounded-full flex-shrink-0">
             <slot name="image">
-                <img class="rounded-full" src="/shelly_logo_black.jpg" alt="Shelly" />
+                <img class="rounded-full" src="/images/branding/shelly_logo_black.jpg" alt="Shelly" />
             </slot>
         </figure>
         <div class="flex-grow text-left overflow-hidden min-w-0">
@@ -42,16 +42,28 @@
                 <slot name="upper-corner">Device</slot>
             </span>
             <template v-if="!loading">
-                <div v-if="isOnline" class="device-card__dot"></div>
-                <span v-else class="device-card__pill-off">
-                    <span class="device-card__pill-dot"></span> OFFLINE
-                </span>
+                <div class="device-card__status-tags">
+                    <template v-if="sleeping">
+                        <div class="device-card__dot device-card__dot--sleep" :title="lastSeenText">
+                            <i class="fas fa-moon"></i>
+                        </div>
+                    </template>
+                    <template v-else-if="isOnline">
+                        <span v-if="props.battery != null" :class="batteryPillClass">
+                            <i :class="batteryIcon"></i> {{ props.battery }}%
+                        </span>
+                        <div v-else class="device-card__dot"></div>
+                    </template>
+                    <span v-else class="device-card__pill-off">
+                        <span class="device-card__pill-dot"></span> OFFLINE
+                    </span>
+                </div>
             </template>
         </div>
         <!-- Image -->
         <div class="device-card__img" :class="{ 'device-card__img--off': !isOnline && !loading }">
             <slot name="image">
-                <img src="/shelly_logo_black.jpg" alt="Shelly" />
+                <img src="/images/branding/shelly_logo_black.jpg" alt="Shelly" />
             </slot>
         </div>
         <!-- Name -->
@@ -81,6 +93,7 @@
 <script setup lang="ts">
 import {computed, toRefs} from 'vue';
 import Spinner from '@/components/core/Spinner.vue';
+import {chartColors} from '@/helpers/chartUtils';
 
 type props_t = {
     selected?: boolean;
@@ -90,14 +103,17 @@ type props_t = {
     loading?: boolean;
     editMode?: boolean;
     online?: boolean;
+    sleeping?: boolean;
     accentColor?: string;
+    lastSeen?: number;
+    battery?: number | null;
 };
 const props = withDefaults(defineProps<props_t>(), {
     stripped: false,
     selected: false,
     loading: false,
     online: true,
-    accentColor: '#3B82F6'
+    accentColor: ''
 });
 
 const emit = defineEmits<{
@@ -108,16 +124,46 @@ const {vertical, selected} = toRefs(props);
 
 const isOnline = computed(() => props.online && !props.loading);
 
-const OFFLINE_ACCENT = '#F04E5E';
-
 const accentGradient = computed(() => {
-    const color = isOnline.value ? props.accentColor : OFFLINE_ACCENT;
+    const color = props.sleeping
+        ? chartColors.accent
+        : isOnline.value
+          ? props.accentColor || chartColors.primary
+          : chartColors.statusOff;
     return `linear-gradient(90deg, ${color}cc 0%, ${color}22 50%, transparent 100%)`;
 });
 
 const typeColor = computed(() => {
-    if (!isOnline.value && !props.loading) return OFFLINE_ACCENT + 'bb';
-    return props.accentColor + 'bb';
+    if (props.sleeping) return `${chartColors.accent}bb`;
+    if (!isOnline.value && !props.loading) return `${chartColors.statusOff}bb`;
+    return `${props.accentColor || chartColors.primary}bb`;
+});
+
+const batteryPillClass = computed(() => {
+    const b = props.battery ?? 100;
+    if (b <= 25)
+        return 'device-card__pill-battery device-card__pill-battery--red';
+    if (b <= 50)
+        return 'device-card__pill-battery device-card__pill-battery--orange';
+    return 'device-card__pill-battery';
+});
+
+const batteryIcon = computed(() => {
+    const b = props.battery ?? 100;
+    if (b <= 10) return 'fas fa-battery-empty';
+    if (b <= 25) return 'fas fa-battery-quarter';
+    if (b <= 50) return 'fas fa-battery-half';
+    if (b <= 75) return 'fas fa-battery-three-quarters';
+    return 'fas fa-battery-full';
+});
+
+const lastSeenText = computed(() => {
+    if (!props.lastSeen) return 'Sleeping';
+    const diffS = Math.floor(Date.now() / 1000 - props.lastSeen);
+    if (diffS < 60) return 'just now';
+    if (diffS < 3600) return `${Math.floor(diffS / 60)}m ago`;
+    if (diffS < 86400) return `${Math.floor(diffS / 3600)}h ago`;
+    return `${Math.floor(diffS / 86400)}d ago`;
 });
 
 function onClick() {

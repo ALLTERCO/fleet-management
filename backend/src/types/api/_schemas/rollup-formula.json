@@ -1,0 +1,16 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Rollup formula",
+    "description": "How a parent kind aggregates a child metric across its members (AWS SiteWise declarative pattern). op is the closed set of aggregation verbs.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["op", "source"],
+    "properties": {
+        "op": {
+            "type": "string",
+            "enum": ["sum", "avg", "max", "min", "imbalance"]
+        },
+        "source": { "type": "string", "pattern": "^metric:[a-z][a-z0-9_]*$" },
+        "output": { "type": "string", "pattern": "^metric:[a-z][a-z0-9_]*$" }
+    }
+}

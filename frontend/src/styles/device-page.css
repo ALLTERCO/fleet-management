@@ -1,0 +1,455 @@
+/**
+ * Shared layout styles for device operation pages (Firmware, Backups, etc.)
+ *
+ * DESIGN SYSTEM:
+ * Typography — 4 sizes only: body 16px, subheading 26px, heading 42px, display 68px
+ *   Weight and color create hierarchy, NOT size differences.
+ * Spacing — golden ratio: 8 → 13 → 21 → 34 → 55
+ * Layout — 61.8% content / 38.2% actions
+ * Touch — 48px minimum on all interactive elements
+ * Color — one accent (blue), everything else neutral
+ */
+
+/* ── Page header ── */
+.dp-header {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-md);
+    padding: var(--gap-md) var(--gap-md) var(--gap-xs);
+}
+.dp-header__left {
+    flex: 0 0 var(--split-minor);
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-xs);
+    min-width: 0;
+}
+.dp-header__title {
+    font-size: var(--type-title);
+    font-weight: var(--font-bold);
+    color: var(--color-text-primary);
+    line-height: 1.1;
+}
+.dp-header__count {
+    font-size: var(--type-body);
+    color: var(--color-text-secondary);
+}
+.dp-header__stats {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 13px;
+    margin-top: var(--space-0-5);
+    font-size: var(--text-xs);
+    color: var(--color-text-tertiary);
+}
+.dp-header__center {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+}
+.dp-header__right {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: var(--gap-xs);
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+/* ── Filter bar (shared — search + slider + actions row) ── */
+.dp-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-xs);
+    padding: 0 var(--gap-md);
+}
+.dp-filter-bar .search-pill {
+    max-width: var(--search-w-max);
+    min-width: var(--search-w-min);
+    flex: 1;
+}
+
+/* Route tabs / view-mode slider — animated track */
+.route-tabs {
+    position: relative;
+    display: flex;
+    min-height: var(--touch-target-min);
+    max-width: 320px;
+    background: var(--color-surface-3);
+    border-radius: var(--btn-radius);
+    padding: 3px;
+}
+/* Fluid variant: fills its flex-parent column (e.g. PageTemplate's 38.2% header col) */
+.route-tabs--fluid {
+    max-width: none;
+    width: 100%;
+}
+.route-tabs__track {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: calc(50% - 3px);
+    height: calc(100% - 6px);
+    background: var(--color-primary);
+    border-radius: calc(var(--btn-radius) - 2px);
+    box-shadow: var(--shadow-primary);
+    transition: transform var(--duration-normal) var(--ease-spring);
+}
+/*
+ * Slider track positions use --slider-count (default 2).
+ * Width = 100% / count. Positions = index * 100%.
+ */
+.route-tabs {
+    --slider-count: 2;
+}
+.route-tabs--3 {
+    --slider-count: 3;
+}
+.route-tabs--4 {
+    --slider-count: 4;
+    max-width: 480px;
+}
+.route-tabs__track {
+    /* max() guards a 0-option toggle: calc(100% / 0) clamps the track to the
+       browser max (~16.7M px) and blows out any horizontal layout it sits in. */
+    width: calc(100% / max(var(--slider-count), 1) - 2px);
+}
+.route-tabs__track--1 {
+    transform: translateX(100%);
+}
+.route-tabs__track--2 {
+    transform: translateX(200%);
+}
+/* Legacy aliases */
+.route-tabs__track--mid {
+    transform: translateX(100%);
+}
+.route-tabs__track--end {
+    transform: translateX(calc((var(--slider-count) - 1) * 100%));
+}
+.route-tabs__btn {
+    position: relative;
+    z-index: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--gap-xs);
+    min-height: calc(var(--touch-target-min) - 6px);
+    padding: 0 var(--gap-md);
+    background: transparent;
+    border: none;
+    color: var(--color-text-tertiary);
+    font-size: var(--type-body);
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: color var(--duration-fast);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.route-tabs__btn--active {
+    color: var(--color-text-primary);
+}
+
+/* ── Filter dropdown (shared — used by groups index, detail, etc.) ── */
+.dp-filter-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    min-width: 200px;
+    padding: 8px 0;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border-medium);
+    background: var(--color-surface-2, #14263d);
+    box-shadow:
+        0 1px 3px rgba(0, 0, 0, 0.3),
+        0 8px 34px rgba(0, 0, 0, 0.4);
+    z-index: 10;
+}
+.dp-filter-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 13px;
+    border: none;
+    background: none;
+    font-size: var(--type-body);
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    text-align: left;
+    transition: background var(--duration-fast);
+}
+.dp-filter-item:hover {
+    background: var(--state-hover-bg, rgba(255, 255, 255, 0.03));
+}
+.dp-filter-item--active {
+    color: var(--color-primary);
+}
+.dp-filter-item i {
+    width: 16px;
+    text-align: center;
+    opacity: 0.6;
+}
+.dp-filter-item--active i {
+    opacity: 1;
+}
+.dp-filter-item--clear {
+    color: var(--color-text-tertiary);
+    border-top: 1px solid var(--color-border-medium);
+    margin-top: 4px;
+    padding-top: 13px;
+}
+.dp-filter-item--clear i {
+    width: 16px;
+}
+
+/* Filter chip (shown below search when filter is active) */
+.dp-filter-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 13px;
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
+    color: var(--color-primary);
+    font-size: var(--type-body);
+    font-weight: 600;
+}
+.dp-filter-chip__clear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 21px;
+    height: 21px;
+    border: none;
+    background: none;
+    color: var(--color-primary);
+    cursor: pointer;
+    font-size: var(--type-body);
+    opacity: 0.6;
+}
+.dp-filter-chip__clear:hover {
+    opacity: 1;
+}
+
+/* ── Data table ── */
+.dp-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--type-body);
+}
+.dp-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+.dp-table th {
+    padding: 13px; /* golden */
+    text-align: left;
+    font-weight: var(--font-bold);
+    color: var(--color-text-secondary);
+    border-bottom: 1px solid var(--color-border-medium);
+    background: var(--color-surface-2);
+}
+.dp-table td {
+    padding: 13px; /* golden */
+    border-bottom: 1px solid
+        color-mix(in srgb, var(--color-border-medium) 50%, transparent);
+    vertical-align: middle;
+    color: var(--color-text-secondary);
+}
+.dp-table tbody tr {
+    transition: background var(--duration-fast);
+}
+.dp-table tbody tr:hover {
+    background: color-mix(in srgb, var(--color-text-tertiary) 4%, transparent);
+}
+.dp-table__name {
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+}
+.dp-table__mono {
+    font-family: var(--font-mono);
+}
+
+/* ── Inline action buttons (edit, delete per row) ── */
+.dp-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--gap-lg);
+    height: var(--gap-lg);
+    border: none;
+    background: none;
+    border-radius: var(--radius-md);
+    font-size: var(--type-body);
+    font-family: inherit;
+    color: var(--color-text-disabled);
+    cursor: pointer;
+    transition: all var(--duration-fast);
+}
+.dp-action:hover {
+    color: var(--color-primary-text);
+    background: var(--color-primary-subtle);
+}
+.dp-action--danger:hover {
+    color: var(--color-danger-text);
+    background: var(--color-danger-subtle);
+}
+.dp-actions {
+    display: flex;
+    gap: var(--gap-xs);
+}
+
+/* ── Empty state text (inside EmptyBlock) ── */
+.dp-empty-title {
+    font-size: var(--type-body);
+    font-weight: 700;
+    color: var(--color-text-primary);
+    padding-bottom: var(--gap-xs);
+}
+.dp-empty-sub {
+    font-size: var(--type-body);
+    color: var(--color-text-secondary);
+    padding-bottom: var(--gap-xs);
+}
+
+/* ── Loading / Error ── */
+.dp-loading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-xs);
+    padding: var(--gap-sm);
+}
+.dp-error {
+    padding: var(--gap-sm);
+    color: var(--color-danger-text);
+    font-size: var(--type-body);
+    font-weight: 600;
+}
+
+/* ── Modal footer (Cancel + Save) ── */
+.dp-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--gap-sm);
+}
+
+/* ── Form inside modal ── */
+.dp-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-sm);
+}
+
+/* ── Responsive ── */
+@media (max-width: 768px) {
+    /* Page header — title row, then horizontally-scrollable action row.
+     * Edge fade hints at scroll without a visible scrollbar. */
+    .dp-header {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--gap-sm);
+        padding: var(--gap-md) var(--gap-md) var(--gap-sm);
+    }
+    .dp-header__left {
+        flex: none;
+        width: 100%;
+    }
+    .dp-header__center {
+        width: 100%;
+    }
+    .dp-header__right {
+        width: 100%;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scroll-snap-type: x proximity;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+        justify-content: flex-start;
+        padding-inline: 1px; /* avoid clipping focus rings */
+        -webkit-mask-image: linear-gradient(
+            to right,
+            transparent 0,
+            #000 16px,
+            #000 calc(100% - 16px),
+            transparent 100%
+        );
+        mask-image: linear-gradient(
+            to right,
+            transparent 0,
+            #000 16px,
+            #000 calc(100% - 16px),
+            transparent 100%
+        );
+    }
+    .dp-header__right::-webkit-scrollbar {
+        display: none;
+    }
+    .dp-header__right > * {
+        flex-shrink: 0;
+        scroll-snap-align: start;
+    }
+
+    /* Filter bar — horizontal scroll, search-pill remains primary item. */
+    .dp-filter-bar {
+        padding: 0 var(--gap-md);
+        overflow-x: auto;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+    .dp-filter-bar::-webkit-scrollbar {
+        display: none;
+    }
+    .dp-filter-bar > * {
+        flex-shrink: 0;
+    }
+    .dp-filter-bar .search-pill {
+        max-width: none;
+        min-width: 180px;
+        flex: 1 0 180px;
+    }
+
+    /* Route tabs — drop the animated track on mobile, render as a
+     * scroll-snap pill row so 4+ tabs no longer truncate. */
+    .route-tabs {
+        max-width: none;
+        width: 100%;
+        background: transparent;
+        padding: 0;
+        gap: var(--gap-xs);
+        overflow-x: auto;
+        scroll-snap-type: x mandatory;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+    .route-tabs::-webkit-scrollbar {
+        display: none;
+    }
+    .route-tabs__track {
+        display: none;
+    }
+    .route-tabs__btn {
+        flex: 0 0 auto;
+        scroll-snap-align: start;
+        background: var(--color-surface-3);
+        border-radius: var(--btn-radius);
+        padding: 0 var(--gap-sm);
+    }
+    .route-tabs__btn--active {
+        background: var(--color-primary);
+        color: var(--color-text-primary);
+    }
+
+    .search-pill {
+        width: 100%;
+    }
+}

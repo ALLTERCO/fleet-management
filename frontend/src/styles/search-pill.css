@@ -1,0 +1,88 @@
+/**
+ * Search pill — shared visual atom.
+ * Renamed from .dp-search* (formerly in device-page.css).
+ * Used by UniversalSearch.vue and any page that needs an inline search pill.
+ */
+
+/* ── Search bar ── */
+.search-pill {
+    position: relative;
+    flex: 1;
+}
+.search-pill__icon {
+    position: absolute;
+    left: 13px; /* golden */
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: var(--type-body);
+    color: var(--color-text-disabled);
+    pointer-events: none;
+}
+.search-pill__input {
+    width: 100%;
+    min-height: var(--touch-target-min);
+    padding: var(--gap-xs) var(--gap-xl) var(--gap-xs) var(--gap-lg);
+    background: var(--color-surface-3);
+    border: 1px solid
+        color-mix(in srgb, var(--color-primary) 20%, var(--color-border-medium));
+    border-radius: var(--btn-radius);
+    color: var(--color-text-primary);
+    font-size: var(--type-body);
+    font-weight: var(--font-medium);
+    font-family: inherit;
+    transition: border-color var(--duration-fast);
+}
+.search-pill__input:focus {
+    outline: none;
+    border-color: var(--color-border-focus);
+}
+.search-pill__input--filtered {
+    border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+}
+.search-pill__clear {
+    position: absolute;
+    right: 34px; /* golden */
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--color-text-disabled);
+    cursor: pointer;
+    padding: 8px;
+}
+.search-pill__clear:hover {
+    color: var(--color-text-primary);
+}
+.search-pill__filter {
+    position: absolute;
+    right: 8px; /* golden base */
+    top: 50%;
+    transform: translateY(-50%);
+    width: 34px; /* golden */
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    border-radius: calc(var(--btn-radius) - 3px);
+    color: var(--color-text-disabled);
+    font-size: var(--type-body);
+    cursor: pointer;
+    transition: all var(--duration-fast);
+}
+.search-pill__filter:hover {
+    color: var(--color-text-secondary);
+    background: color-mix(in srgb, var(--color-text-tertiary) 8%, transparent);
+}
+.search-pill__filter--active {
+    color: var(--color-text-primary);
+    background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+}
+/* Expand hit area to 48px */
+.search-pill__clear::after,
+.search-pill__filter::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
+}

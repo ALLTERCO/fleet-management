@@ -39,39 +39,48 @@ const customStyle = computed(() => {
 
 <style scoped>
 @keyframes shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
 }
 
 .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: var(--color-surface-3);
+}
+
+/* Shimmer sweep — left-to-right highlight pass */
+.skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
     background: linear-gradient(
         90deg,
-        var(--color-surface-3) 25%,
-        var(--color-surface-4) 50%,
-        var(--color-surface-3) 75%
+        transparent 0%,
+        color-mix(in srgb, var(--color-primary) 6%, var(--color-surface-4)) 50%,
+        transparent 100%
     );
-    background-size: 200% 100%;
     animation: shimmer 1.5s ease-in-out infinite;
 }
 
-/* Variants */
+/* Variants — all sizes use design tokens */
 .skeleton--text {
-    height: 0.875rem;
+    height: var(--gap-sm);
     width: 100%;
     border-radius: var(--radius-sm);
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--gap-xs);
 }
 
 .skeleton--circle {
-    width: 3rem;
-    height: 3rem;
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
     border-radius: var(--radius-full);
     flex-shrink: 0;
 }
 
 .skeleton--rect {
     width: 100%;
-    height: 6rem;
+    height: var(--gap-xl);
     border-radius: var(--radius-md);
 }
 
@@ -83,9 +92,9 @@ const customStyle = computed(() => {
 
 .skeleton--row {
     width: 100%;
-    height: 2.5rem;
+    height: var(--touch-target-min);
     border-radius: var(--radius-sm);
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--gap-xs);
 }
 
 .skeleton--rounded {

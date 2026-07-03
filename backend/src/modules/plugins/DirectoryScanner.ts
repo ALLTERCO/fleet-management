@@ -1,11 +1,12 @@
-import {exec} from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import path from 'node:path';
-import {promisify} from 'node:util';
 import AdmZip from 'adm-zip';
 import log4js from 'log4js';
 import {PLUGINS_FOLDER} from '../../config';
+import {tuning} from '../../config/tuning';
 import type {PluginInfo} from '../../types';
+import {bestEffort} from '../util/fireAndForget';
+import {normalisePluginName} from './pluginName';
 
 const logger = log4js.getLogger('plugin-loader');
 
@@ -49,6 +50,15 @@ export default class DirectoryScanner {
                 return undefined;
             }
 
+            const pluginName = normalisePluginName(pluginInfo.name);
+            if (!pluginName) {
+                logger.error(
+                    `Unsafe plugin name in 'package.json' in '${pluginFolder}'.`
+                );
+                return undefined;
+            }
+            pluginInfo.name = pluginName;
+
             if (loadedPlugins.includes(pluginInfo.name)) {
                 logger.debug(
                     'skipping plugin %s, already loaded',
@@ -56,11 +66,6 @@ export default class DirectoryScanner {
                 );
                 return undefined;
             }
-
-            pluginInfo.name =
-                (pluginInfo.name.startsWith('@') &&
-                    pluginInfo.name.split('/').at(-1)) ||
-                pluginInfo.name;
 
             return {pluginInfo, pluginFolder};
         } catch (e) {
@@ -76,11 +81,50 @@ export default class DirectoryScanner {
         logger.debug('we have detected an uploaded plugin', entry, fullpath);
 
         const zip = new AdmZip(fullpath);
-        zip.extractAllTo(PLUGINS_FOLDER, true); // overwrite = true
+        const entries = zip.getEntries();
 
-        // Clean up macOS metadata folder if present
+        // Zip-bomb guards — entry count, nesting depth, total uncompressed bytes.
+        if (entries.length > tuning.plugin.maxFiles) {
+            await bestEffort('rm.plugin-zip-rejected', fs.rm(fullpath));
+            throw new Error(
+                `plugin zip rejected: ${entries.length} entries exceeds max ${tuning.plugin.maxFiles}`
+            );
+        }
+        let totalBytes = 0;
+        const resolvedPlugins = path.resolve(PLUGINS_FOLDER);
+        for (const e of entries) {
+            const depth =
+                e.entryName.split('/').filter((s) => s.length > 0).length - 1;
+            if (depth > tuning.plugin.maxDepth) {
+                await bestEffort('rm.plugin-zip-rejected', fs.rm(fullpath));
+                throw new Error(
+                    `plugin zip rejected: entry "${e.entryName}" exceeds max depth ${tuning.plugin.maxDepth}`
+                );
+            }
+            totalBytes += e.header.size;
+            if (totalBytes > tuning.plugin.maxUncompressedBytes) {
+                await bestEffort('rm.plugin-zip-rejected', fs.rm(fullpath));
+                throw new Error(
+                    `plugin zip rejected: uncompressed total exceeds ${tuning.plugin.maxUncompressedBytes} bytes`
+                );
+            }
+            const target = path.resolve(PLUGINS_FOLDER, e.entryName);
+            if (!target.startsWith(resolvedPlugins + path.sep)) {
+                logger.warn(
+                    'Zip entry path traversal blocked: %s',
+                    e.entryName
+                );
+                continue;
+            }
+            // overwrite=false — collisions require manual cleanup.
+            zip.extractEntryTo(e, PLUGINS_FOLDER, true, false);
+        }
+
         const macosDir = path.join(PLUGINS_FOLDER, '__MACOSX');
-        await fs.rm(macosDir, {recursive: true, force: true}).catch(() => {});
+        await bestEffort(
+            'rm.plugin-macosx-meta',
+            fs.rm(macosDir, {recursive: true, force: true})
+        );
 
         await fs.rm(fullpath);
         logger.debug('unzipped & deleted ', entry);

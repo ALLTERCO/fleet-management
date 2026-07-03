@@ -9,6 +9,8 @@
  *   - UI toggle in Settings > Log
  */
 
+import {sendRPC} from './websocket';
+
 export type ObsLevel = 0 | 1 | 2 | 3;
 export const OBS_LEVEL_LABELS = ['OFF', 'Light', 'Medium', 'Full'] as const;
 export const OBS_LEVEL_COLORS = ['neutral', 'blue', 'yellow', 'red'] as const;
@@ -31,27 +33,27 @@ export interface InitFailureEntry {
     ts: number;
 }
 
-const rtCfg = (window as any).__FM_RUNTIME_CONFIG__;
+const rtCfg = window.__FM_RUNTIME_CONFIG__;
 
-// --- Initialise level from persisted state ---
+// Default is Light (1) so the monitoring surface is alive OOTB.
+// User can downgrade to 0 (OFF) explicitly via the tier toggle.
 function initLevel(): ObsLevel {
-    // Primary: fm_obs_level
     const stored = localStorage.getItem('fm_obs_level');
     if (stored !== null) {
-        const parsed = parseInt(stored, 10);
+        const parsed = Number.parseInt(stored, 10);
         if (parsed >= 0 && parsed <= 3) return parsed as ObsLevel;
     }
-    // Legacy: fm_observability = '1' → level 2
     if (localStorage.getItem('fm_observability') === '1') return 2;
-    // Runtime config
     if (rtCfg?.observability === true) return 2;
-    return 0;
+    return 1;
 }
 
 let level: ObsLevel = initLevel();
 
 const RING_SIZE = 200;
-const rpcTimings: RpcTimingEntry[] = [];
+const rpcTimings: (RpcTimingEntry | undefined)[] = new Array(RING_SIZE);
+let rpcTimingsIdx = 0;
+let rpcTimingsCount = 0;
 
 // ── Public API — level ────────────────────────────────────────────────
 
@@ -63,7 +65,9 @@ export function setObsLevel(l: ObsLevel) {
     level = l;
     localStorage.setItem('fm_obs_level', String(l));
     if (l === 0) {
-        rpcTimings.length = 0;
+        rpcTimings.fill(undefined);
+        rpcTimingsIdx = 0;
+        rpcTimingsCount = 0;
     }
     updateWsRate();
     if (l >= 2) {
@@ -87,16 +91,26 @@ export function setObservability(value: boolean) {
 
 export function recordRpcTiming(method: string, durationMs: number) {
     if (level < 2) return;
-    if (rpcTimings.length >= RING_SIZE) rpcTimings.shift();
-    rpcTimings.push({
+    rpcTimings[rpcTimingsIdx % RING_SIZE] = {
         method,
         durationMs: Math.round(durationMs),
         ts: Date.now()
-    });
+    };
+    rpcTimingsIdx++;
+    if (rpcTimingsCount < RING_SIZE) rpcTimingsCount++;
 }
 
 export function getRpcTimings(): readonly RpcTimingEntry[] {
-    return rpcTimings;
+    if (rpcTimingsCount === 0) return [];
+    if (rpcTimingsCount < RING_SIZE) {
+        return rpcTimings.slice(0, rpcTimingsCount) as RpcTimingEntry[];
+    }
+    // Return in chronological order: oldest first
+    const start = rpcTimingsIdx % RING_SIZE;
+    return [
+        ...rpcTimings.slice(start),
+        ...rpcTimings.slice(0, start)
+    ] as RpcTimingEntry[];
 }
 
 // ── WS message rate (Tier 3 only) ─────────────────────────────────────
@@ -173,8 +187,11 @@ let cachedMetrics: any = null;
 
 export async function fetchBackendMetrics(): Promise<any> {
     try {
-        const res = await fetch('/health');
-        const data = await res.json();
+        const data = await sendRPC(
+            'FLEET_MANAGER',
+            'System.Health.GetFull',
+            {}
+        );
         cachedMetrics = data.metrics ?? null;
         // Compute counter rates when counters are available
         if (cachedMetrics?.counters) {
@@ -195,8 +212,11 @@ export function getCachedBackendMetrics() {
 
 export async function fetchDebugReport(): Promise<any> {
     try {
-        const res = await fetch('/health/debug-report');
-        return await res.json();
+        return await sendRPC(
+            'FLEET_MANAGER',
+            'System.Health.GetDebugReport',
+            {}
+        );
     } catch {
         return null;
     }
@@ -222,9 +242,15 @@ export interface ClickEvent {
 const INTERACTION_RING_SIZE = 500;
 const CLICK_RING_SIZE = 200;
 const BATCH_INTERVAL_MS = 30_000;
-const interactions: InteractionEvent[] = [];
+const interactions: (InteractionEvent | undefined)[] = new Array(
+    INTERACTION_RING_SIZE
+);
+let interactionsIdx = 0;
+let interactionsCount = 0;
 const interactionCounts: Record<string, number> = {};
-const clickEvents: ClickEvent[] = [];
+const clickEvents: (ClickEvent | undefined)[] = new Array(CLICK_RING_SIZE);
+let clickEventsIdx = 0;
+let clickEventsCount = 0;
 
 export function trackInteraction(
     category: string,
@@ -232,8 +258,14 @@ export function trackInteraction(
     label?: string
 ) {
     if (level < 2) return;
-    if (interactions.length >= INTERACTION_RING_SIZE) interactions.shift();
-    interactions.push({category, action, label, ts: Date.now()});
+    interactions[interactionsIdx % INTERACTION_RING_SIZE] = {
+        category,
+        action,
+        label,
+        ts: Date.now()
+    };
+    interactionsIdx++;
+    if (interactionsCount < INTERACTION_RING_SIZE) interactionsCount++;
 
     const key = `${category}.${action}`;
     interactionCounts[key] = (interactionCounts[key] || 0) + 1;
@@ -243,24 +275,41 @@ export function trackClick(event: MouseEvent, page: string) {
     if (level < 2) return;
     const el = event.target as HTMLElement | null;
     const selector = el
-        ? `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''}${el.className && typeof el.className === 'string' ? '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.') : ''}`
+        ? `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${el.className && typeof el.className === 'string' ? `.${el.className.trim().split(/\s+/).slice(0, 2).join('.')}` : ''}`
         : 'unknown';
-    if (clickEvents.length >= CLICK_RING_SIZE) clickEvents.shift();
-    clickEvents.push({
+    clickEvents[clickEventsIdx % CLICK_RING_SIZE] = {
         x: Math.round(event.clientX),
         y: Math.round(event.clientY),
         target: selector,
         page,
         timestamp: Date.now()
-    });
+    };
+    clickEventsIdx++;
+    if (clickEventsCount < CLICK_RING_SIZE) clickEventsCount++;
 }
 
 export function getClickEvents(): readonly ClickEvent[] {
-    return clickEvents;
+    if (clickEventsCount === 0) return [];
+    if (clickEventsCount < CLICK_RING_SIZE) {
+        return clickEvents.slice(0, clickEventsCount) as ClickEvent[];
+    }
+    const start = clickEventsIdx % CLICK_RING_SIZE;
+    return [
+        ...clickEvents.slice(start),
+        ...clickEvents.slice(0, start)
+    ] as ClickEvent[];
 }
 
 export function getInteractions(): readonly InteractionEvent[] {
-    return interactions;
+    if (interactionsCount === 0) return [];
+    if (interactionsCount < INTERACTION_RING_SIZE) {
+        return interactions.slice(0, interactionsCount) as InteractionEvent[];
+    }
+    const start = interactionsIdx % INTERACTION_RING_SIZE;
+    return [
+        ...interactions.slice(start),
+        ...interactions.slice(0, start)
+    ] as InteractionEvent[];
 }
 
 export function getInteractionCounts(): Readonly<Record<string, number>> {
@@ -272,14 +321,26 @@ export function getInteractionCounts(): Readonly<Record<string, number>> {
 let batchInterval: ReturnType<typeof setInterval> | undefined;
 
 function flushTelemetryBatch() {
-    if (level < 2) return;
+    // Batch runs when either obs level ≥ 2 (interaction counts) OR
+    // the WS telemetry opt-in is on (perf-attack snapshot).
+    if (level < 2 && !wsTelemetryEnabled) return;
     const counts = {...interactionCounts};
-    if (Object.keys(counts).length === 0) return;
-    // Fire-and-forget POST; backend can expose these as Prometheus counters
-    fetch('/api/telemetry/events', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({counts, clicks: clickEvents.length})
+    const ws = wsTelemetryEnabled ? getWsTelemetry() : null;
+    const hasWs = !!(
+        ws &&
+        (ws.patchBufferMaxDepth > 0 ||
+            ws.droppedFrameCount > 0 ||
+            ws.rafFrameTimeMaxMs > 0)
+    );
+    if (Object.keys(counts).length === 0 && clickEventsCount === 0 && !hasWs) {
+        return;
+    }
+    // Fire-and-forget RPC; backend maps keys into Prometheus counters
+    // under the `ui_*` prefix via SystemComponent.
+    sendRPC('FLEET_MANAGER', 'System.SubmitTelemetry', {
+        counts,
+        clicks: clickEventsCount,
+        ...(hasWs ? {wsTelemetry: ws} : {})
     }).catch(() => {
         /* silent — telemetry is best-effort */
     });
@@ -297,13 +358,41 @@ function stopBatchSender() {
     }
 }
 
-// ── Boot: start batch sender if level warrants it ─────────────────────
-if (level >= 2) startBatchSender();
+// ── Boot: start batch sender if level warrants it or WS telemetry on ──
+// wsTelemetryEnabled hasn't been read here yet — it's declared a few
+// blocks down. Read localStorage directly so boot order doesn't matter.
+if (level >= 2 || localStorage.getItem('fm_ws_telemetry') === '1') {
+    startBatchSender();
+}
+
+// ── Heatmap overlay (opt-in toggle, requires obs level ≥ 2) ──────────
+
+let heatmapEnabled = localStorage.getItem('fm_heatmap') === '1';
+// Subscribers notified on toggle change
+const heatmapListeners: Array<(v: boolean) => void> = [];
+
+export function isHeatmapEnabled(): boolean {
+    return heatmapEnabled && level >= 2;
+}
+
+export function setHeatmap(v: boolean) {
+    heatmapEnabled = v;
+    localStorage.setItem('fm_heatmap', v ? '1' : '0');
+    const active = isHeatmapEnabled();
+    for (const fn of heatmapListeners) fn(active);
+}
+
+export function onHeatmapChange(fn: (v: boolean) => void): () => void {
+    heatmapListeners.push(fn);
+    return () => {
+        const idx = heatmapListeners.indexOf(fn);
+        if (idx >= 0) heatmapListeners.splice(idx, 1);
+    };
+}
 
 // ── WS Patch Telemetry (opt-in toggle, independent of obs level) ──────
 
-let wsTelemetryEnabled =
-    localStorage.getItem('fm_ws_telemetry') === '1';
+let wsTelemetryEnabled = localStorage.getItem('fm_ws_telemetry') === '1';
 
 export function isWsTelemetryEnabled(): boolean {
     return wsTelemetryEnabled;
@@ -313,6 +402,9 @@ export function setWsTelemetry(v: boolean) {
     wsTelemetryEnabled = v;
     localStorage.setItem('fm_ws_telemetry', v ? '1' : '0');
     if (!v) resetWsTelemetry();
+    // Without this, enabling WS telemetry below obs level 2 would collect
+    // numbers locally but never push them to backend Prometheus.
+    if (v) startBatchSender();
 }
 
 // B1: peak pendingPatches size between RAF flushes
@@ -321,6 +413,63 @@ let patchBufferMaxDepth = 0;
 let droppedFrameCount = 0;
 // B3: max applyPatchBatch() duration per frame (ms)
 let rafFrameTimeMaxMs = 0;
+// Cumulative: compare to backend `shelly_*_emitted` counters to detect lost events.
+let shellyConnectReceived = 0;
+let shellyDisconnectReceived = 0;
+
+// End-to-end latency reservoirs (ms): backend emit timestamp → frontend patch apply.
+// Fixed-capacity ring buffer — O(1) push, no array shifts under disconnect storms.
+const RESERVOIR_SIZE = 200;
+
+interface Reservoir {
+    buf: Float64Array;
+    next: number;
+    filled: number;
+}
+
+function newReservoir(): Reservoir {
+    return {buf: new Float64Array(RESERVOIR_SIZE), next: 0, filled: 0};
+}
+
+const connectLatency = newReservoir();
+const disconnectLatency = newReservoir();
+
+function pushReservoir(r: Reservoir, value: number) {
+    r.buf[r.next] = value;
+    r.next = (r.next + 1) % RESERVOIR_SIZE;
+    if (r.filled < RESERVOIR_SIZE) r.filled++;
+}
+
+function clearReservoir(r: Reservoir) {
+    r.next = 0;
+    r.filled = 0;
+}
+
+// Nearest-rank percentile (ceil(p*n)-1).
+function quantile(sorted: readonly number[], p: number): number {
+    if (sorted.length === 0) return 0;
+    const idx = Math.min(
+        sorted.length - 1,
+        Math.max(0, Math.ceil(p * sorted.length) - 1)
+    );
+    return sorted[idx];
+}
+
+function summarize(r: Reservoir) {
+    if (r.filled === 0) {
+        return {count: 0, last: 0, max: 0, p50: 0, p95: 0};
+    }
+    const samples = Array.from(r.buf.subarray(0, r.filled));
+    const sorted = [...samples].sort((a, b) => a - b);
+    const lastIdx = (r.next + RESERVOIR_SIZE - 1) % RESERVOIR_SIZE;
+    return {
+        count: r.filled,
+        last: r.buf[lastIdx],
+        max: sorted[sorted.length - 1],
+        p50: quantile(sorted, 0.5),
+        p95: quantile(sorted, 0.95)
+    };
+}
 
 export function recordPatchBufferDepth(size: number) {
     if (!wsTelemetryEnabled) return;
@@ -337,16 +486,43 @@ export function recordRafFrameTime(ms: number) {
     if (ms > rafFrameTimeMaxMs) rafFrameTimeMaxMs = ms;
 }
 
+export function recordShellyConnectReceived() {
+    if (!wsTelemetryEnabled) return;
+    shellyConnectReceived++;
+}
+
+export function recordShellyDisconnectReceived() {
+    if (!wsTelemetryEnabled) return;
+    shellyDisconnectReceived++;
+}
+
+export function recordShellyConnectLatency(ms: number) {
+    if (!wsTelemetryEnabled) return;
+    if (ms < 0 || ms > 600_000) return; // skip clock-skew or stale samples
+    pushReservoir(connectLatency, ms);
+}
+
+export function recordShellyDisconnectLatency(ms: number) {
+    if (!wsTelemetryEnabled) return;
+    if (ms < 0 || ms > 600_000) return;
+    pushReservoir(disconnectLatency, ms);
+}
+
 /** Snapshot-then-reset (same pattern as backend broadcastMaxMs) */
 export function getWsTelemetry() {
     const snapshot = {
         patchBufferMaxDepth,
         droppedFrameCount,
-        rafFrameTimeMaxMs: Math.round(rafFrameTimeMaxMs * 100) / 100
+        rafFrameTimeMaxMs: Math.round(rafFrameTimeMaxMs * 100) / 100,
+        shellyConnectReceived,
+        shellyDisconnectReceived,
+        shellyConnectLatencyMs: summarize(connectLatency),
+        shellyDisconnectLatencyMs: summarize(disconnectLatency)
     };
     patchBufferMaxDepth = 0;
     rafFrameTimeMaxMs = 0;
-    // droppedFrameCount is cumulative — don't reset
+    // droppedFrameCount + shelly*Received are cumulative — don't reset
+    // Latency reservoirs roll on their own via bounded push; don't reset either.
     return snapshot;
 }
 
@@ -354,7 +530,11 @@ function resetWsTelemetry() {
     patchBufferMaxDepth = 0;
     droppedFrameCount = 0;
     rafFrameTimeMaxMs = 0;
+    shellyConnectReceived = 0;
+    shellyDisconnectReceived = 0;
+    clearReservoir(connectLatency);
+    clearReservoir(disconnectLatency);
 }
 
 // ── Expose toggle on window for console access ────────────────────────
-(window as any).fmObservability = setObsLevel;
+window.fmObservability = setObsLevel;

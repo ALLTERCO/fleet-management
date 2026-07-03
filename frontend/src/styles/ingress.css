@@ -1,0 +1,128 @@
+/* Shared layout for the ingress operator tabs (waiting room, connected,
+ * rejected, identities). One home for the row card + action form so the tabs
+ * don't each redefine it. Tokens only. */
+
+.ig-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.ig-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border-default);
+}
+.ig-row__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+.ig-row__id {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    min-width: 0;
+}
+.ig-row__name {
+    font-family: var(--font-mono);
+    font-size: var(--type-body);
+    color: var(--color-text-primary);
+    word-break: break-all;
+}
+.ig-row__sub {
+    font-size: var(--type-caption);
+    color: var(--color-text-tertiary);
+}
+.ig-row__badges {
+    display: flex;
+    gap: var(--space-1-5);
+    flex-wrap: wrap;
+}
+.ig-row__facts {
+    display: flex;
+    gap: var(--space-6);
+    margin: 0;
+    flex-wrap: wrap;
+}
+.ig-row__facts dt {
+    font-size: var(--type-caption);
+    color: var(--color-text-tertiary);
+}
+.ig-row__facts dd {
+    margin: 0;
+    font-size: var(--type-caption);
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+}
+.ig-row__warnings {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+.ig-row__warnings li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--type-caption);
+    color: var(--color-warning-text);
+}
+.ig-row__actions {
+    display: flex;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+}
+
+.ig-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+.ig-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1-5);
+    font-size: var(--type-caption);
+    color: var(--color-text-secondary);
+}
+.ig-select {
+    appearance: none;
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--glass-input);
+    border: 1px solid var(--glass-border);
+    color: var(--color-text-primary);
+    font: inherit;
+    cursor: pointer;
+}
+.ig-select:focus {
+    outline: none;
+    border-color: rgba(var(--color-primary-rgb), 0.5);
+}
+.ig-foot {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+}
+.ig-foot__spacer {
+    flex: 1;
+}
+
+.ig-filter-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+    flex-wrap: wrap;
+}

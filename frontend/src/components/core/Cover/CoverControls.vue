@@ -8,10 +8,10 @@
         >
             <!-- Replace the error icon with pause button while moving in that direction -->
             <span v-if="state === 'opening'" class="w-11 h-11 flex items-center justify-center">
-                <i class="cover-icon fas fa-solid fa-pause"></i>
+                <i class="cover-icon fas fas fa-pause"></i>
             </span>
             <span v-else class="w-11 h-11 flex items-center justify-center">
-                <i class="cover-icon fas fa-solid fa-chevron-up"></i>
+                <i class="cover-icon fas fas fa-chevron-up"></i>
             </span>
         </button>
 
@@ -23,10 +23,10 @@
         >
             <!-- Replace the error icon with pause button while moving in that direction -->
             <span v-if="state === 'closing'" class="w-11 h-11 flex items-center justify-center">
-                <i class="cover-icon fas fa-solid fa-pause"></i>
+                <i class="cover-icon fas fas fa-pause"></i>
             </span>
             <span v-else class="w-11 h-11 flex items-center justify-center">
-                <i class="cover-icon fas fa-solid fa-chevron-down"></i>
+                <i class="cover-icon fas fas fa-chevron-down"></i>
             </span>
         </button>
     </div>

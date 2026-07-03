@@ -1,31 +1,14 @@
 <template>
-    <div class="w-full" :style="{height: height + 'px'}">
-        <canvas ref="chartCanvas" />
+    <div class="w-full tsc__host" :style="{height: height + 'px'}">
+        <div ref="chartEl" class="tsc__fill" />
     </div>
 </template>
 
 <script setup lang="ts">
-import {
-    CategoryScale,
-    Chart,
-    Filler,
-    LinearScale,
-    LineController,
-    LineElement,
-    PointElement,
-    Tooltip
-} from 'chart.js';
-import {onMounted, onUnmounted, ref, watch} from 'vue';
-
-Chart.register(
-    LineController,
-    LineElement,
-    PointElement,
-    CategoryScale,
-    LinearScale,
-    Tooltip,
-    Filler
-);
+import {computed, ref} from 'vue';
+import {useEChart} from '@/composables/useEChart';
+import {hexToRgba} from '@/helpers/chartUtils';
+import echarts from '@/tools/echarts';
 
 export interface Threshold {
     value: number;
@@ -51,162 +34,97 @@ const props = withDefaults(
     }
 );
 
-const chartCanvas = ref<HTMLCanvasElement | null>(null);
-let chart: Chart | null = null;
+const chartEl = ref<HTMLElement | null>(null);
 
-function createAnnotationLines() {
-    // Threshold lines as datasets
-    return props.thresholds.map((t) => ({
-        label: t.label,
-        data: new Array(props.data.length).fill(t.value),
-        borderColor: t.color,
-        borderWidth: 1,
-        borderDash: [4, 4],
-        pointRadius: 0,
-        fill: false
-    }));
-}
-
-function renderChart() {
-    if (!chartCanvas.value) return;
-    const ctx = chartCanvas.value.getContext('2d');
-    if (!ctx) return;
-
-    if (chart) {
-        chart.destroy();
-        chart = null;
-    }
-
-    const labels = props.data.map((_, i) => {
-        const secsAgo = (props.data.length - 1 - i) * 5;
+function buildLabels(count: number): string[] {
+    return Array.from({length: count}, (_, i) => {
+        const secsAgo = (count - 1 - i) * 5;
         if (secsAgo === 0) return 'now';
         if (secsAgo < 60) return `-${secsAgo}s`;
         return `-${Math.floor(secsAgo / 60)}m`;
     });
+}
 
-    // Only show a subset of labels to avoid clutter
-    const maxLabels = 12;
-    const step = Math.max(1, Math.floor(labels.length / maxLabels));
-    const displayLabels = labels.map((l, i) =>
-        i % step === 0 || i === labels.length - 1 ? l : ''
-    );
-
+const option = computed(() => {
+    const labels = buildLabels(props.data.length);
     const values = [...props.data];
-    const min = Math.min(...values, 0);
-    const maxVal = Math.max(
-        ...values,
-        ...props.thresholds.map((t) => t.value),
-        1
-    );
+    const thresholdMax = props.thresholds.length
+        ? Math.max(...props.thresholds.map((t) => t.value))
+        : 0;
+    const dataMax = values.length ? Math.max(...values) : 0;
+    const suggestedMax = Math.max(dataMax, thresholdMax, 1) * 1.1;
 
-    chart = new Chart(ctx, {
+    const mainSeries: any = {
         type: 'line',
-        data: {
-            labels: displayLabels,
-            datasets: [
-                {
-                    label: props.label,
-                    data: values,
-                    borderColor: props.color,
-                    backgroundColor: props.showArea
-                        ? props.color + '20'
-                        : 'transparent',
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    pointHoverRadius: 3,
-                    fill: props.showArea,
-                    tension: 0.3
-                },
-                ...createAnnotationLines()
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            animation: {duration: 0},
-            interaction: {
-                mode: 'index',
-                intersect: false
-            },
-            scales: {
-                x: {
-                    grid: {color: '#262626'},
-                    ticks: {
-                        color: '#737373',
-                        font: {size: 9, family: 'monospace'}
-                    }
-                },
-                y: {
-                    min,
-                    suggestedMax: maxVal * 1.1,
-                    grid: {color: '#262626'},
-                    ticks: {
-                        color: '#737373',
-                        font: {size: 9, family: 'monospace'},
-                        callback: (v: any) => `${v}${props.unit}`
-                    }
+        data: values,
+        smooth: 0.3,
+        symbol: 'none',
+        lineStyle: {color: props.color, width: 2},
+        emphasis: {lineStyle: {width: 2}}
+    };
+
+    if (props.showArea) {
+        mainSeries.areaStyle = {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                {offset: 0, color: hexToRgba(props.color, 0.12)},
+                {offset: 1, color: hexToRgba(props.color, 0)}
+            ])
+        };
+    }
+
+    if (props.thresholds.length) {
+        mainSeries.markLine = {
+            silent: true,
+            symbol: 'none',
+            data: props.thresholds.map((t) => ({
+                yAxis: t.value,
+                lineStyle: {color: t.color, type: 'dashed', width: 1},
+                label: {
+                    formatter: t.label,
+                    position: 'end' as const,
+                    fontSize: 10
                 }
-            },
-            plugins: {
-                tooltip: {
-                    backgroundColor: '#1a1a1a',
-                    titleColor: '#a3a3a3',
-                    bodyColor: '#e5e5e5',
-                    borderColor: '#404040',
-                    borderWidth: 1,
-                    bodyFont: {family: 'monospace', size: 11},
-                    callbacks: {
-                        label: (ctx: any) =>
-                            `${ctx.dataset.label}: ${ctx.parsed.y}${props.unit}`
-                    }
-                },
-                legend: {display: false}
+            }))
+        };
+    }
+
+    return {
+        grid: {top: 8, right: 8, bottom: 20, left: 40},
+        xAxis: {
+            type: 'category',
+            data: labels,
+            axisLabel: {interval: 'auto', fontSize: 9, fontFamily: 'monospace'}
+        },
+        yAxis: {
+            type: 'value',
+            min: Math.min(...values, 0),
+            max: suggestedMax,
+            axisLabel: {
+                fontSize: 9,
+                fontFamily: 'monospace',
+                formatter: (v: number) => `${v}${props.unit}`
             }
-        }
-    });
-}
-
-function updateChart() {
-    if (!chart) {
-        renderChart();
-        return;
-    }
-
-    const labels = props.data.map((_, i) => {
-        const secsAgo = (props.data.length - 1 - i) * 5;
-        if (secsAgo === 0) return 'now';
-        if (secsAgo < 60) return `-${secsAgo}s`;
-        return `-${Math.floor(secsAgo / 60)}m`;
-    });
-
-    const maxLabels = 12;
-    const step = Math.max(1, Math.floor(labels.length / maxLabels));
-    const displayLabels = labels.map((l, i) =>
-        i % step === 0 || i === labels.length - 1 ? l : ''
-    );
-
-    chart.data.labels = displayLabels;
-    chart.data.datasets[0].data = [...props.data];
-
-    // Update threshold line data
-    const thresholdDatasets = createAnnotationLines();
-    for (let i = 0; i < thresholdDatasets.length; i++) {
-        if (chart.data.datasets[i + 1]) {
-            chart.data.datasets[i + 1].data = thresholdDatasets[i].data;
-        }
-    }
-
-    chart.update('none');
-}
-
-watch(() => props.data.length, updateChart);
-watch(() => props.data[props.data.length - 1], updateChart);
-
-onMounted(renderChart);
-onUnmounted(() => {
-    if (chart) {
-        chart.destroy();
-        chart = null;
-    }
+        },
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: {type: 'cross'},
+            formatter: (params: any) => {
+                const p = Array.isArray(params) ? params[0] : params;
+                const val = typeof p.value === 'number' ? p.value : p.value;
+                return `${p.name}<br/>${props.label}: ${val}${props.unit}`;
+            }
+        },
+        series: [mainSeries]
+    };
 });
+
+useEChart(chartEl, option);
 </script>
+
+<style scoped>
+.tsc__fill {
+    width: 100%;
+    height: 100%;
+}
+</style>
+

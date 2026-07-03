@@ -1,0 +1,14 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Serves relation",
+    "description": "A functional relationship: subject serves object (a chiller serves floors 2-5; one meter serves several tenants). Independent graph edge, not hardware composition.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["type", "subjectId", "objectId"],
+    "properties": {
+        "type": { "type": "string", "pattern": "^serves:[a-z][a-z0-9_]*$" },
+        "subjectId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "objectId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "note": { "type": "string", "maxLength": 240 }
+    }
+}

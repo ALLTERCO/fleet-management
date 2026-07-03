@@ -1,4 +1,5 @@
 import type {
+    JsonRpcId,
     JsonRpcOutgoing,
     JsonRpcOutgoingEvent,
     JsonRpcOutgoingStatus
@@ -21,7 +22,7 @@ export function buildRpcRequest(
 }
 
 export function buildOutgoingJsonRpc(
-    id: number,
+    id: JsonRpcId,
     dst: string,
     result: any
 ): JsonRpcOutgoing {

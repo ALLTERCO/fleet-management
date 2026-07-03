@@ -31,15 +31,15 @@ type props_t = {
 const props = withDefaults(defineProps<props_t>(), {size: 'sm'});
 
 const classSize = computed(() => {
-    if (props.size == 'md') {
+    if (props.size === 'md') {
         return ['w-12 h-12'];
     }
 
-    if (props.size == 'lg') {
+    if (props.size === 'lg') {
         return ['w-16 h-16'];
     }
 
-    if (props.size == 'xs') {
+    if (props.size === 'xs') {
         return ['w-6 h-6'];
     }
 

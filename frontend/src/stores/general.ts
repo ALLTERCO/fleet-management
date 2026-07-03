@@ -1,11 +1,21 @@
 import {defineStore} from 'pinia';
 import {ref} from 'vue';
-import {getRegistry} from '@/tools/websocket';
+import {FLEET_MANAGER_HTTP} from '@/constants';
+import {
+    initialDisplayBackground,
+    isProtectedBackgroundPath
+} from '@/helpers/backgroundAssets';
+import {getRegistry, sendRPC} from '@/tools/websocket';
+import {isRecoverableReconnectError} from '@/tools/wsReconnectErrors';
 
 const BACKGROUND_STORAGE_KEY = 'fm_ui_background';
 
 export const useGeneralStore = defineStore('general', () => {
-    const background = ref(localStorage.getItem(BACKGROUND_STORAGE_KEY) || '');
+    const background = ref(
+        initialDisplayBackground(localStorage.getItem(BACKGROUND_STORAGE_KEY))
+    );
+    // Sidebar glass is always on — the user-facing toggle was removed.
+    const sidebarGlass = ref(true);
     let setupRetryTimer: ReturnType<typeof setTimeout> | null = null;
     let setupInFlight = false;
 
@@ -30,16 +40,35 @@ export const useGeneralStore = defineStore('general', () => {
         localStorage.setItem(BACKGROUND_STORAGE_KEY, value);
     };
 
-    const setBackgroundImg = async (newImg: string) => {
-        await getRegistry('ui').setItem('backgroundImg', newImg);
-        await getRegistry('ui').setItem('backgroundColor', null);
-        background.value = newImg;
+    // UI registry is global; keep background choice browser-local.
+    function assetPath(value: string): string {
+        try {
+            const url = new URL(value, FLEET_MANAGER_HTTP);
+            return url.pathname;
+        } catch {
+            return value.split('?')[0];
+        }
+    }
+
+    async function resolveBackgroundUrl(stored: string): Promise<string> {
+        if (!isProtectedBackgroundPath(stored)) return stored;
+        const res = await sendRPC<{
+            originals: string[];
+            thumbnails: string[];
+        }>('FLEET_MANAGER', 'Media.Background.List', {});
+        const base = `${FLEET_MANAGER_HTTP}/uploads/backgrounds/`;
+        const match = res.originals.find(
+            (file) => assetPath(`${base}${file}`) === assetPath(stored)
+        );
+        return match ? `${base}${match}` : '';
+    }
+
+    const setBackgroundImg = (newImg: string, displayImg?: string) => {
+        background.value = displayImg ?? newImg;
         persistBackground(newImg);
     };
 
-    const setBackgroundColor = async (newColor: string) => {
-        await getRegistry('ui').setItem('backgroundColor', newColor);
-        await getRegistry('ui').setItem('backgroundImg', null);
+    const setBackgroundColor = (newColor: string) => {
         background.value = newColor;
         persistBackground(newColor);
     };
@@ -50,42 +79,61 @@ export const useGeneralStore = defineStore('general', () => {
         try {
             const res = await getRegistry('ui').getAll<any>();
             let bg = res.backgroundColor || res.backgroundImg;
-            // Normalize legacy absolute URLs to relative paths
-            if (bg && typeof bg === 'string' && bg.includes('/uploads/backgrounds/')) {
+            // Normalize legacy absolute URLs.
+            if (bg && typeof bg === 'string' && isProtectedBackgroundPath(bg)) {
                 try {
                     bg = new URL(bg).pathname;
-                } catch { /* already relative — keep as-is */ }
+                } catch {
+                    /* already relative — keep as-is */
+                }
             }
-            background.value = bg;
+            background.value =
+                typeof bg === 'string' ? await resolveBackgroundUrl(bg) : bg;
             persistBackground(bg);
             if (setupRetryTimer) {
                 clearTimeout(setupRetryTimer);
                 setupRetryTimer = null;
             }
         } catch (e) {
-            console.error('error in setup', e);
+            logSetupFailure(e);
             if (retryCount < 3 && !setupRetryTimer) {
-                // Startup can race the websocket/registry readiness once.
-                // Retry a few times so the background is applied without
-                // waiting for the settings page to touch the UI registry.
-                setupRetryTimer = setTimeout(() => {
-                    setupRetryTimer = null;
-                    void setup(retryCount + 1);
-                }, 1000 * (retryCount + 1));
+                // Registry can be ready just after auth.
+                setupRetryTimer = setTimeout(
+                    () => {
+                        setupRetryTimer = null;
+                        void setup(retryCount + 1);
+                    },
+                    1000 * (retryCount + 1)
+                );
             }
         } finally {
             setupInFlight = false;
         }
     }
-    // setup() is called by App.vue after authentication is confirmed.
-    // It must NOT be called in onMounted — the store initializes before
-    // the OIDC callback completes, causing 401 "Not authenticated" errors.
+    // App.vue calls setup after auth; earlier calls can 401.
+
+    function logSetupFailure(error: unknown): void {
+        if (isRecoverableReconnectError(error)) {
+            console.warn('setup delayed by reconnect', error);
+            return;
+        }
+        console.error('error in setup', error);
+    }
+
+    function $dispose() {
+        if (setupRetryTimer) {
+            clearTimeout(setupRetryTimer);
+            setupRetryTimer = null;
+        }
+    }
 
     return {
         setup,
         background,
+        sidebarGlass,
         setBackgroundImg,
         setBackgroundColor,
-        solidColors
+        solidColors,
+        $dispose
     };
 });

@@ -1,21 +1,19 @@
 <template>
     <BasicBlock darker>
         <div class="space-y-3">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <HealthDot :status="panelStatus" />
-                    <span class="bottleneck__heading font-semibold text-sm">Bottleneck Analysis</span>
-                    <span v-if="bottlenecks.length > 0" class="text-xs font-mono px-1.5 py-0.5 rounded"
+            <MonitoringSectionHeader title="Bottleneck Analysis" :status="panelStatus">
+                <template v-if="bottlenecks.length > 0" #actions>
+                    <span class="text-xs font-mono px-1.5 py-0.5 rounded"
                         :class="worstSeverity === 'critical' ? 'severity-badge--critical' : 'severity-badge--warning'"
                     >
                         {{ bottlenecks.length }} issue{{ bottlenecks.length !== 1 ? 's' : '' }}
                     </span>
-                </div>
-            </div>
+                </template>
+            </MonitoringSectionHeader>
 
             <!-- No bottlenecks -->
             <div v-if="bottlenecks.length === 0" class="flex items-center gap-2 py-2">
-                <i class="fa-solid fa-circle-check bottleneck__ok-icon" />
+                <i class="fas fa-circle-check bottleneck__ok-icon" />
                 <span class="bottleneck__ok-text text-sm">No bottlenecks detected — all systems within normal thresholds.</span>
             </div>
 
@@ -42,13 +40,13 @@
                                         {{ b.category }}
                                     </span>
                                     <span v-if="b.trendingUp" class="bottleneck__trending text-xs" title="Trending up">
-                                        <i class="fa-solid fa-arrow-trend-up" />
+                                        <i class="fas fa-arrow-trend-up" />
                                     </span>
                                 </div>
                                 <p class="bottleneck__description text-xs mt-1">{{ b.description }}</p>
                             </div>
                         </div>
-                        <i class="fa-solid fa-chevron-down bottleneck__chevron text-xs flex-shrink-0 mt-1 transition-transform"
+                        <i class="fas fa-chevron-down bottleneck__chevron text-xs flex-shrink-0 mt-1 transition-transform"
                             :class="expanded.has(b.id) ? 'rotate-180' : ''"
                         />
                     </div>
@@ -62,7 +60,7 @@
                             </div>
                         </div>
                         <div class="bottleneck__tip flex items-start gap-2 p-2 border rounded">
-                            <i class="fa-solid fa-lightbulb bottleneck__tip-icon text-xs mt-0.5 flex-shrink-0" />
+                            <i class="fas fa-lightbulb bottleneck__tip-icon text-xs mt-0.5 flex-shrink-0" />
                             <span class="bottleneck__tip-text text-xs">{{ b.recommendation }}</span>
                         </div>
                     </div>
@@ -75,7 +73,7 @@
 <script setup lang="ts">
 import {computed, reactive} from 'vue';
 import BasicBlock from '@/components/core/BasicBlock.vue';
-import HealthDot from '@/components/monitoring/HealthDot.vue';
+import MonitoringSectionHeader from '@/components/monitoring/MonitoringSectionHeader.vue';
 import {
     type BottleneckSeverity,
     useBottleneckAnalysis
@@ -123,7 +121,6 @@ function severityBadgeClass(severity: BottleneckSeverity): string {
 
 <style scoped>
 /* --- Panel header --- */
-.bottleneck__heading { color: var(--color-text-secondary); }
 .bottleneck__ok-icon { color: var(--color-success); }
 .bottleneck__ok-text { color: var(--color-text-tertiary); }
 

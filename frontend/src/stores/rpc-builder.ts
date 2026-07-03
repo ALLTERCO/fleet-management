@@ -35,7 +35,7 @@ export const useRpcBuilderStore = defineStore('rpc-builder', () => {
         if (
             componentMethods.value[
                 pass_method as keyof typeof componentMethods.value
-            ] == undefined
+            ] === undefined
         ) {
             console.warn('bad method selected', pass_method);
             return;

@@ -2,8 +2,8 @@
     <svg :width="width" :height="height" class="overflow-visible flex-shrink-0">
         <defs v-if="filled">
             <linearGradient :id="gradientId" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" :stop-color="color" stop-opacity="0.3" />
-                <stop offset="100%" :stop-color="color" stop-opacity="0.03" />
+                <stop offset="0%" :style="{stopColor: strokeColor}" stop-opacity="0.3" />
+                <stop offset="100%" :style="{stopColor: strokeColor}" stop-opacity="0.03" />
             </linearGradient>
         </defs>
         <polygon
@@ -15,7 +15,7 @@
             v-if="linePoints"
             :points="linePoints"
             fill="none"
-            :stroke="color"
+            :style="{stroke: strokeColor}"
             stroke-width="1.5"
             stroke-linejoin="round"
             stroke-linecap="round"
@@ -25,6 +25,7 @@
 
 <script setup lang="ts">
 import {computed} from 'vue';
+import {chartColors} from '@/helpers/chartUtils';
 
 const props = withDefaults(
     defineProps<{
@@ -37,10 +38,14 @@ const props = withDefaults(
     {
         width: 120,
         height: 32,
-        color: '#60a5fa',
+        color: '',
         filled: true
     }
 );
+
+// Resolve the brand-blue fallback at render time (not as a prop default), so the
+// design token is read once the document's computed styles are available.
+const strokeColor = computed(() => props.color || chartColors.primary);
 
 const gradientId = `spark-grad-${Math.random().toString(36).slice(2, 8)}`;
 

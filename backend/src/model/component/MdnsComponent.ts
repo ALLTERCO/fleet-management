@@ -1,4 +1,6 @@
 import * as MdnsModule from '../../modules/Mdns';
+import type {DescribeOutput} from '../../rpc/describe';
+import {MDNS_DESCRIBE} from '../../types/api/mdns';
 import Component from './Component';
 
 export interface MdnsComponentConfig {
@@ -7,10 +9,17 @@ export interface MdnsComponentConfig {
 
 export default class MdnsComponent extends Component<MdnsComponentConfig> {
     constructor() {
-        super('mdns');
+        super('mdns', {viewer_visible: true});
     }
 
-    override getStatus(params?: any) {
+    @Component.NoAudit
+    @Component.Expose('Describe')
+    @Component.NoPermissions
+    describe(): DescribeOutput {
+        return MDNS_DESCRIBE;
+    }
+
+    override getStatus(_params?: any) {
         return {
             running: MdnsModule.started()
         };

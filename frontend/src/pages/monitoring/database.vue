@@ -1,222 +1,228 @@
 <template>
-    <div class="space-y-4 p-2">
+    <PageTemplate title="Database" :tabs="monitoringTabs" back="/monitoring/resources" active-path="/monitoring/resources" fill>
         <h2 class="sr-only">Database</h2>
-        <!-- Tier gate -->
-        <BasicBlock v-if="store.obsLevel < 2" darker class="text-center py-8">
-            <p class="text-[var(--color-text-tertiary)]">Set observability to Medium or higher to see database metrics.</p>
-            <button
-                class="mt-3 px-4 py-2 text-sm font-mono rounded bg-[var(--color-warning)] text-[var(--color-warning-text)] hover:bg-[var(--color-warning-hover)] transition-colors"
-                @click="store.changeLevel(2)"
-            >Enable Medium Monitoring</button>
-        </BasicBlock>
+        <ErrorBoundary>
+            <MonitoringEmptyState
+                v-if="store.obsLevel < 2"
+                title="Set observability to Medium or higher to see database metrics."
+                action-label="Enable Medium Monitoring"
+                icon="fas fa-database"
+                @action="store.changeLevel(2)"
+            />
 
-        <template v-if="store.obsLevel >= 1 && store.latest">
-            <!-- Insight Panel -->
-            <InsightPanel :insights="insights" />
+            <MonitoringEmptyState
+                v-else-if="store.obsLevel >= 1 && !store.latest"
+                title="Waiting for metrics data..."
+                loading
+            />
 
-            <!-- Connection Pool -->
-            <BasicBlock darker>
-                <div class="space-y-3">
-                    <div class="flex items-center gap-2">
-                        <HealthDot :status="store.databaseStatus" />
-                        <h3 class="font-semibold text-sm text-[var(--color-text-secondary)]">Connection Pool</h3>
-                    </div>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Active / Total</div>
-                            <span class="text-sm font-mono font-semibold text-[var(--color-text-primary)]">
-                                {{ store.latest.dbPoolTotal - store.latest.dbPoolIdle }} / {{ store.latest.dbPoolTotal }}
-                            </span>
-                        </div>
-                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Idle</div>
-                            <span class="text-sm font-mono font-semibold text-[var(--color-success-text)]">{{ store.latest.dbPoolIdle }}</span>
-                        </div>
-                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Waiting</div>
-                            <div class="flex items-end justify-between gap-2">
-                                <span class="text-sm font-mono font-semibold" :class="store.latest.dbPoolWaiting > 5 ? 'text-[var(--color-danger-text)]' : store.latest.dbPoolWaiting > 0 ? 'text-[var(--color-warning-text)]' : 'text-[var(--color-text-primary)]'">
-                                    {{ store.latest.dbPoolWaiting }}
-                                </span>
-                                <SparkLine :data="cachedHistory.dbPoolWaiting" color="#fbbf24" :width="60" :height="20" />
-                            </div>
-                        </div>
-                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Avg Query Latency</div>
-                            <div class="flex items-end justify-between gap-2">
-                                <span class="text-sm font-mono font-semibold" :class="durationColor(store.latest.dbAvgMs)">
-                                    {{ store.latest.dbAvgMs }}ms
-                                </span>
-                                <SparkLine :data="cachedHistory.dbAvgMs" color="#60a5fa" :width="60" :height="20" />
-                            </div>
-                        </div>
-                    </div>
-                    <!-- Pool bar visualization -->
-                    <div class="w-full h-3 bg-[var(--color-surface-1)] rounded-full overflow-hidden flex">
-                        <div
-                            class="h-full bg-[var(--color-primary)] transition-all"
-                            :style="{width: poolActivePercent + '%'}"
-                            :title="`Active: ${store.latest.dbPoolTotal - store.latest.dbPoolIdle}`"
+            <template v-if="store.obsLevel >= 1 && store.latest">
+                <InsightPanel :insights="insights" />
+
+                <BasicBlock darker>
+                    <div class="db-stack">
+                        <MonitoringStatusSummaryRow
+                            :status="store.databaseStatus"
+                            title="Connection Pool"
                         />
-                        <div
-                            class="h-full bg-[var(--color-success)] transition-all"
-                            :style="{width: poolIdlePercent + '%'}"
-                            :title="`Idle: ${store.latest.dbPoolIdle}`"
-                        />
-                    </div>
-                    <div class="flex gap-4 text-xs font-mono text-[var(--color-text-disabled)]">
-                        <span><span class="inline-block w-2 h-2 rounded-sm bg-[var(--color-primary)] mr-1" />Active</span>
-                        <span><span class="inline-block w-2 h-2 rounded-sm bg-[var(--color-success)] mr-1" />Idle</span>
-                    </div>
-                </div>
-            </BasicBlock>
-
-            <!-- Status Pipeline + Audit Queue -->
-            <BasicBlock darker>
-                <div class="space-y-3">
-                    <h3 class="font-semibold text-sm text-[var(--color-text-secondary)]">Write Pipelines</h3>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Status Queue</div>
-                            <span class="text-sm font-mono font-semibold" :class="store.latest.statusQueueSize > 100 ? 'text-[var(--color-danger-text)]' : 'text-[var(--color-text-primary)]'">
-                                {{ store.latest.statusQueueSize }}
-                            </span>
-                        </div>
-                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Status Flushing</div>
-                            <span class="text-sm font-mono font-semibold" :class="store.latest.statusFlushing ? 'text-[var(--color-warning-text)]' : 'text-[var(--color-text-primary)]'">
-                                {{ store.latest.statusFlushing ? 'Yes' : 'No' }}
-                            </span>
-                        </div>
-                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Audit Queue</div>
-                            <span class="text-sm font-mono font-semibold" :class="store.latest.auditQueueLength > 100 ? 'text-[var(--color-danger-text)]' : store.latest.auditQueueLength > 50 ? 'text-[var(--color-warning-text)]' : 'text-[var(--color-text-primary)]'">
-                                {{ store.latest.auditQueueLength }}
-                            </span>
-                        </div>
-                        <div v-if="store.obsLevel >= 2" class="p-3 bg-[var(--color-surface-1)] rounded-lg">
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Flush Rates</div>
-                            <div class="text-xs font-mono">
-                                <div class="text-[var(--color-text-tertiary)]">status: <span class="text-[var(--color-text-primary)]">{{ store.counterRates.status_flushes ?? 0 }}/min</span></div>
-                                <div class="text-[var(--color-text-tertiary)]">audit: <span class="text-[var(--color-text-primary)]">{{ store.counterRates.audit_flushes ?? 0 }}/min</span></div>
-                            </div>
-                        </div>
-                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Last Flush Duration</div>
-                            <div class="flex items-end justify-between gap-2">
-                                <span class="text-sm font-mono font-semibold" :class="flushDurationColor(store.latestMetrics?.modules?.statusQueue?.lastFlushMs ?? 0)">
-                                    {{ store.latestMetrics?.modules?.statusQueue?.lastFlushMs ?? 0 }}ms
+                        <MonitoringGrid :columns="4">
+                            <div class="db-tile">
+                                <div class="db-tile-label">Active / Total</div>
+                                <span class="db-tile-value">
+                                    {{ store.latest.dbPoolTotal - store.latest.dbPoolIdle }} / {{ store.latest.dbPoolTotal }}
                                 </span>
-                                <SparkLine :data="cachedHistory.lastFlushMs" color="#fbbf24" :width="60" :height="20" />
                             </div>
-                        </div>
-                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Last Flush Batch</div>
-                            <span class="text-sm font-mono font-semibold text-[var(--color-text-secondary)]">
-                                {{ store.latestMetrics?.modules?.statusQueue?.lastFlushBatchSize ?? 0 }} rows
-                            </span>
-                        </div>
-                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Status Cache</div>
-                            <span class="text-sm font-mono font-semibold text-[var(--color-text-secondary)]">
-                                {{ store.latestMetrics?.modules?.statusQueue?.statusCacheEntries ?? 0 }} entries
-                            </span>
-                            <div class="text-xs font-mono text-[var(--color-text-disabled)] mt-0.5">
-                                {{ store.latestMetrics?.modules?.statusQueue?.statusCacheDevices ?? 0 }} devices
+                            <div class="db-tile">
+                                <div class="db-tile-label">Idle</div>
+                                <span class="db-tile-value db-text-success">{{ store.latest.dbPoolIdle }}</span>
                             </div>
-                        </div>
-                    </div>
-                </div>
-            </BasicBlock>
+                            <div class="db-tile">
+                                <div class="db-tile-label">Waiting</div>
+                                <div class="db-tile-row">
+                                    <span class="db-tile-value" :class="poolWaitingClass">
+                                        {{ store.latest.dbPoolWaiting }}
+                                    </span>
+                                    <SparkLine :data="cachedHistory.dbPoolWaiting" :color="chartColors.warning" :width="60" :height="20" />
+                                </div>
+                            </div>
+                            <div class="db-tile">
+                                <div class="db-tile-label">Avg Query Latency</div>
+                                <div class="db-tile-row">
+                                    <span class="db-tile-value" :class="durationColor(store.latest.dbAvgMs)">
+                                        {{ store.latest.dbAvgMs }}ms
+                                    </span>
+                                    <SparkLine :data="cachedHistory.dbAvgMs" :color="chartColors.primary" :width="60" :height="20" />
+                                </div>
+                            </div>
+                        </MonitoringGrid>
 
-            <!-- DB Performance Charts -->
-            <BasicBlock darker>
-                <div class="space-y-3">
-                    <h3 class="font-semibold text-sm text-[var(--color-text-secondary)]">Performance Over Time</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Pool Waiting Queries</div>
-                            <TimeSeriesChart
-                                :data="cachedHistory.dbPoolWaiting"
-                                label="Waiting"
-                                color="#fbbf24"
-                                :thresholds="[{value: 1, color: '#fbbf24', label: 'Warning'}, {value: 5, color: '#f87171', label: 'Critical'}]"
-                                :height="160"
+                        <div class="db-bar">
+                            <div
+                                class="db-bar-fill db-bar-fill--active"
+                                :style="{width: poolActivePercent + '%'}"
+                                :title="`Active: ${store.latest.dbPoolTotal - store.latest.dbPoolIdle}`"
+                            />
+                            <div
+                                class="db-bar-fill db-bar-fill--idle"
+                                :style="{width: poolIdlePercent + '%'}"
+                                :title="`Idle: ${store.latest.dbPoolIdle}`"
                             />
                         </div>
-                        <div>
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Avg Query Latency</div>
-                            <TimeSeriesChart
-                                :data="cachedHistory.dbAvgMs"
-                                label="Avg Latency"
-                                color="#60a5fa"
-                                unit="ms"
-                                :thresholds="[{value: 200, color: '#fbbf24', label: 'Warning'}, {value: 500, color: '#f87171', label: 'Critical'}]"
-                                :height="160"
-                            />
+                        <div class="db-bar-legend">
+                            <span><span class="db-bar-swatch db-bar-swatch--active" />Active</span>
+                            <span><span class="db-bar-swatch db-bar-swatch--idle" />Idle</span>
                         </div>
                     </div>
-                </div>
-            </BasicBlock>
+                </BasicBlock>
 
-            <!-- DB Timings Table (Tier 2+) -->
-            <BasicBlock v-if="store.obsLevel >= 2 && store.latestMetrics?.dbTimings" darker>
-                <div class="space-y-3">
-                    <h3 class="font-semibold text-sm text-[var(--color-text-secondary)]">DB Query Timings</h3>
-                    <div class="overflow-auto max-h-80">
-                        <table class="w-full text-xs font-mono">
-                            <thead>
-                                <tr class="text-[var(--color-text-disabled)] border-b border-[var(--color-border-default)]">
-                                    <th class="text-left py-1.5 px-2 cursor-pointer hover:text-[var(--color-text-secondary)]" @click="sortBy('method')">
-                                        Method {{ sortIndicator('method') }}
-                                    </th>
-                                    <th class="text-right py-1.5 px-2 cursor-pointer hover:text-[var(--color-text-secondary)]" @click="sortBy('count')">
-                                        Count {{ sortIndicator('count') }}
-                                    </th>
-                                    <th class="text-right py-1.5 px-2 cursor-pointer hover:text-[var(--color-text-secondary)]" @click="sortBy('avgMs')">
-                                        Avg ms {{ sortIndicator('avgMs') }}
-                                    </th>
-                                    <th class="text-right py-1.5 px-2 cursor-pointer hover:text-[var(--color-text-secondary)]" @click="sortBy('maxMs')">
-                                        Max ms {{ sortIndicator('maxMs') }}
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="row in sortedDbTimings" :key="row.method" class="border-b border-[var(--color-border-default)] hover:bg-[var(--color-surface-2)]">
-                                    <td class="py-1.5 px-2 text-[var(--color-text-secondary)]">{{ row.method }}</td>
-                                    <td class="py-1.5 px-2 text-right text-[var(--color-text-tertiary)]">{{ row.count }}</td>
-                                    <td class="py-1.5 px-2 text-right" :class="durationColor(row.avgMs)">{{ row.avgMs }}</td>
-                                    <td class="py-1.5 px-2 text-right" :class="durationColor(row.maxMs)">{{ row.maxMs }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                <BasicBlock darker>
+                    <div class="db-stack">
+                        <MonitoringSectionHeader title="Write Pipelines" />
+                        <MonitoringGrid :columns="4">
+                            <div class="db-tile">
+                                <div class="db-tile-label">Status Queue</div>
+                                <span class="db-tile-value" :class="store.latest.statusQueueSize > 100 ? 'db-text-danger' : ''">
+                                    {{ store.latest.statusQueueSize }}
+                                </span>
+                            </div>
+                            <div class="db-tile">
+                                <div class="db-tile-label">Status Flushing</div>
+                                <span class="db-tile-value" :class="store.latest.statusFlushing ? 'db-text-warning' : ''">
+                                    {{ store.latest.statusFlushing ? 'Yes' : 'No' }}
+                                </span>
+                            </div>
+                            <div class="db-tile">
+                                <div class="db-tile-label">Audit Queue</div>
+                                <span class="db-tile-value" :class="auditQueueClass">
+                                    {{ store.latest.auditQueueLength }}
+                                </span>
+                            </div>
+                            <div v-if="store.obsLevel >= 2" class="db-tile">
+                                <div class="db-tile-label">Flush Rates</div>
+                                <div class="db-flush-rates">
+                                    <div class="db-flush-rate">
+                                        status:
+                                        <span class="db-flush-rate-val">{{ store.counterRates.status_flushes ?? 0 }}/min</span>
+                                    </div>
+                                    <div class="db-flush-rate">
+                                        audit:
+                                        <span class="db-flush-rate-val">{{ store.counterRates.audit_flushes ?? 0 }}/min</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="db-tile">
+                                <div class="db-tile-label">Last Flush Duration</div>
+                                <div class="db-tile-row">
+                                    <span class="db-tile-value" :class="flushDurationColor(store.latestMetrics?.modules?.statusQueue?.lastFlushMs ?? 0)">
+                                        {{ store.latestMetrics?.modules?.statusQueue?.lastFlushMs ?? 0 }}ms
+                                    </span>
+                                    <SparkLine :data="cachedHistory.lastFlushMs" :color="chartColors.warning" :width="60" :height="20" />
+                                </div>
+                            </div>
+                            <div class="db-tile">
+                                <div class="db-tile-label">Last Flush Batch</div>
+                                <span class="db-tile-value">
+                                    {{ store.latestMetrics?.modules?.statusQueue?.lastFlushBatchSize ?? 0 }} rows
+                                </span>
+                            </div>
+                            <div class="db-tile">
+                                <div class="db-tile-label">Status Cache</div>
+                                <span class="db-tile-value">
+                                    {{ store.latestMetrics?.modules?.statusQueue?.statusCacheEntries ?? 0 }} entries
+                                </span>
+                                <div class="db-tile-sub">
+                                    {{ store.latestMetrics?.modules?.statusQueue?.statusCacheDevices ?? 0 }} devices
+                                </div>
+                            </div>
+                        </MonitoringGrid>
                     </div>
-                </div>
-            </BasicBlock>
-        </template>
-    </div>
+                </BasicBlock>
+
+                <BasicBlock darker>
+                    <div class="db-stack">
+                        <MonitoringSectionHeader title="Performance Over Time" />
+                        <MonitoringGrid :columns="2">
+                            <div>
+                                <div class="db-chart-label">Pool Waiting Queries</div>
+                                <TimeSeriesChart
+                                    :data="cachedHistory.dbPoolWaiting"
+                                    label="Waiting"
+                                    :color="chartColors.warning"
+                                    :thresholds="[{value: 1, color: chartColors.warning, label: 'Warning'}, {value: 5, color: chartColors.danger, label: 'Critical'}]"
+                                    :height="160"
+                                />
+                            </div>
+                            <div>
+                                <div class="db-chart-label">Avg Query Latency</div>
+                                <TimeSeriesChart
+                                    :data="cachedHistory.dbAvgMs"
+                                    label="Avg Latency"
+                                    :color="chartColors.primary"
+                                    unit="ms"
+                                    :thresholds="[{value: 200, color: chartColors.warning, label: 'Warning'}, {value: 500, color: chartColors.danger, label: 'Critical'}]"
+                                    :height="160"
+                                />
+                            </div>
+                        </MonitoringGrid>
+                    </div>
+                </BasicBlock>
+
+                <BasicBlock v-if="store.obsLevel >= 2 && store.latestMetrics?.dbTimings" darker>
+                    <div class="db-stack">
+                        <MonitoringSectionHeader title="DB Query Timings" />
+                        <div class="db-scroll db-scroll--xl">
+                            <DataList
+                                :rows="sortedDbTimings"
+                                :columns="dbColumns"
+                                row-key="method"
+                                empty-message="No DB timings recorded yet"
+                                :sort-key="dbSortKey"
+                                :sort-asc="dbSortAsc"
+                                @sort="sortBy"
+                            >
+                                <template #cell-avgMs="{row}">
+                                    <span :class="durationColor(row.avgMs)">{{ row.avgMs }}</span>
+                                </template>
+                                <template #cell-maxMs="{row}">
+                                    <span :class="durationColor(row.maxMs)">{{ row.maxMs }}</span>
+                                </template>
+                            </DataList>
+                        </div>
+                    </div>
+                </BasicBlock>
+            </template>
+        </ErrorBoundary>
+    </PageTemplate>
 </template>
 
 <script setup lang="ts">
-import {computed, ref} from 'vue';
+import {type ComputedRef, computed, inject, ref } from 'vue';
 import BasicBlock from '@/components/core/BasicBlock.vue';
-import HealthDot from '@/components/monitoring/HealthDot.vue';
+import DataList, {type DataColumn} from '@/components/core/DataList.vue';
+import ErrorBoundary from '@/components/core/ErrorBoundary.vue';
+import PageTemplate from '@/components/core/PageTemplate.vue';
 import type {Insight} from '@/components/monitoring/InsightPanel.vue';
 import InsightPanel from '@/components/monitoring/InsightPanel.vue';
+import MonitoringEmptyState from '@/components/monitoring/MonitoringEmptyState.vue';
+import MonitoringGrid from '@/components/monitoring/MonitoringGrid.vue';
+import MonitoringSectionHeader from '@/components/monitoring/MonitoringSectionHeader.vue';
+import MonitoringStatusSummaryRow from '@/components/monitoring/MonitoringStatusSummaryRow.vue';
 import SparkLine from '@/components/monitoring/SparkLine.vue';
 import TimeSeriesChart from '@/components/monitoring/TimeSeriesChart.vue';
+import {chartColors} from '@/helpers/chartUtils';
 import {useMonitoringStore} from '@/stores/monitoring';
+import type {RouteTab} from '@/types/page-template';
+
+const monitoringTabs = inject<ComputedRef<RouteTab[]>>('monitoringTabs');
 
 const store = useMonitoringStore();
 
-// ── Cached history fields ────────────────────────────────────────
 const cachedHistory = computed(() => ({
     dbPoolWaiting: store.historyField('dbPoolWaiting'),
     dbAvgMs: store.historyField('dbAvgMs'),
     lastFlushMs: store.historyField('lastFlushMs')
 }));
 
-// ── Pool visualization ─────────────────────────────────────────────
 const poolActivePercent = computed(() => {
     if (!store.latest || store.latest.dbPoolTotal === 0) return 0;
     return Math.round(
@@ -232,21 +238,43 @@ const poolIdlePercent = computed(() => {
     );
 });
 
-// ── DB Timings sorting ─────────────────────────────────────────────
-const sortKey = ref('method');
-const sortAsc = ref(true);
+const poolWaitingClass = computed(() => {
+    const v = store.latest?.dbPoolWaiting ?? 0;
+    if (v > 5) return 'db-text-danger';
+    if (v > 0) return 'db-text-warning';
+    return '';
+});
 
-function sortBy(key: string) {
-    if (sortKey.value === key) sortAsc.value = !sortAsc.value;
-    else {
-        sortKey.value = key;
-        sortAsc.value = true;
-    }
+const auditQueueClass = computed(() => {
+    const v = store.latest?.auditQueueLength ?? 0;
+    if (v > 100) return 'db-text-danger';
+    if (v > 50) return 'db-text-warning';
+    return '';
+});
+
+const dbSortKey = ref('method');
+const dbSortAsc = ref(true);
+
+interface DbTiming {
+    method: string;
+    count: number;
+    avgMs: number;
+    maxMs: number;
 }
 
-function sortIndicator(key: string): string {
-    if (sortKey.value !== key) return '';
-    return sortAsc.value ? '\u25B2' : '\u25BC';
+const dbColumns: DataColumn<DbTiming>[] = [
+    {key: 'method', label: 'Method', role: 'primary', sortable: true},
+    {key: 'count', label: 'Count', role: 'meta', align: 'right', sortable: true},
+    {key: 'avgMs', label: 'Avg ms', role: 'meta', align: 'right', sortable: true},
+    {key: 'maxMs', label: 'Max ms', role: 'meta', align: 'right', sortable: true}
+];
+
+function sortBy(key: string) {
+    if (dbSortKey.value === key) dbSortAsc.value = !dbSortAsc.value;
+    else {
+        dbSortKey.value = key;
+        dbSortAsc.value = true;
+    }
 }
 
 const sortedDbTimings = computed(() => {
@@ -257,11 +285,11 @@ const sortedDbTimings = computed(() => {
             ...stats
         })
     );
-    const key = sortKey.value;
-    const asc = sortAsc.value;
+    const key = dbSortKey.value;
+    const asc = dbSortAsc.value;
     entries.sort((a: any, b: any) => {
-        const av = a[key],
-            bv = b[key];
+        const av = a[key];
+        const bv = b[key];
         if (typeof av === 'string')
             return asc ? av.localeCompare(bv) : bv.localeCompare(av);
         return asc ? av - bv : bv - av;
@@ -270,15 +298,15 @@ const sortedDbTimings = computed(() => {
 });
 
 function durationColor(ms: number): string {
-    if (ms > 1000) return 'text-[var(--color-danger-text)]';
-    if (ms > 200) return 'text-[var(--color-warning-text)]';
-    return 'text-[var(--color-success-text)]';
+    if (ms > 1000) return 'db-text-danger';
+    if (ms > 200) return 'db-text-warning';
+    return 'db-text-success';
 }
 
 function flushDurationColor(ms: number): string {
-    if (ms > 500) return 'text-[var(--color-danger-text)]';
-    if (ms > 200) return 'text-[var(--color-warning-text)]';
-    return 'text-[var(--color-text-secondary)]';
+    if (ms > 500) return 'db-text-danger';
+    if (ms > 200) return 'db-text-warning';
+    return '';
 }
 
 const insights = computed<Insight[]>(() => {
@@ -287,7 +315,7 @@ const insights = computed<Insight[]>(() => {
     if (!s) return list;
     if (s.dbPoolWaiting > 5) {
         list.push({
-            icon: 'fa-solid fa-database',
+            icon: 'fas fa-database',
             title: 'DB Pool Exhausted',
             description: `${s.dbPoolWaiting} queries waiting for a connection. All ${s.dbPoolTotal} pool connections are active.`,
             action: 'Increase DB pool size, optimize slow queries, or check for connection leaks.',
@@ -295,7 +323,7 @@ const insights = computed<Insight[]>(() => {
         });
     } else if (s.dbPoolWaiting > 0) {
         list.push({
-            icon: 'fa-solid fa-database',
+            icon: 'fas fa-database',
             title: 'DB Pool Under Pressure',
             description: `${s.dbPoolWaiting} queries waiting. Pool is approaching capacity.`,
             action: 'Monitor pool usage. If persistent, consider increasing pool size.',
@@ -304,7 +332,7 @@ const insights = computed<Insight[]>(() => {
     }
     if (s.dbAvgMs > 500) {
         list.push({
-            icon: 'fa-solid fa-clock',
+            icon: 'fas fa-clock',
             title: 'High DB Latency',
             description: `Average query latency is ${s.dbAvgMs}ms. This impacts all DB-dependent operations.`,
             action: 'Check for lock contention, missing indexes, or heavy queries. Inspect DB server load.',
@@ -314,3 +342,114 @@ const insights = computed<Insight[]>(() => {
     return list;
 });
 </script>
+
+<style scoped>
+.db-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-sm);
+}
+
+.db-tile {
+    padding: var(--gap-sm);
+    background-color: var(--color-surface-1);
+    border-radius: var(--radius-lg);
+}
+.db-tile-label {
+    font-size: var(--type-caption);
+    color: var(--color-text-disabled);
+    margin-bottom: var(--gap-xs);
+}
+.db-tile-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--gap-xs);
+}
+.db-tile-value {
+    font-size: var(--type-caption);
+    font-family: var(--font-mono);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+}
+.db-tile-sub {
+    margin-top: var(--space-0-5);
+    font-size: var(--type-caption);
+    font-family: var(--font-mono);
+    color: var(--color-text-disabled);
+}
+
+.db-flush-rates {
+    font-size: var(--type-caption);
+    font-family: var(--font-mono);
+}
+.db-flush-rate {
+    color: var(--color-text-tertiary);
+}
+.db-flush-rate-val {
+    color: var(--color-text-primary);
+}
+
+.db-bar {
+    width: 100%;
+    height: var(--space-3);
+    background-color: var(--color-surface-1);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    display: flex;
+}
+.db-bar-fill {
+    height: 100%;
+    transition: width var(--duration-normal);
+}
+.db-bar-fill--active {
+    background-color: var(--color-primary);
+}
+.db-bar-fill--idle {
+    background-color: var(--color-success);
+}
+
+.db-bar-legend {
+    display: flex;
+    gap: var(--gap-md);
+    font-size: var(--type-caption);
+    font-family: var(--font-mono);
+    color: var(--color-text-disabled);
+}
+.db-bar-swatch {
+    display: inline-block;
+    width: var(--space-2);
+    height: var(--space-2);
+    border-radius: var(--radius-xs);
+    margin-right: var(--space-1);
+}
+.db-bar-swatch--active {
+    background-color: var(--color-primary);
+}
+.db-bar-swatch--idle {
+    background-color: var(--color-success);
+}
+
+.db-chart-label {
+    font-size: var(--type-caption);
+    color: var(--color-text-disabled);
+    margin-bottom: var(--gap-xs);
+}
+
+.db-scroll {
+    overflow: auto;
+}
+.db-scroll--xl {
+    max-height: 20rem;
+}
+
+.db-text-success {
+    color: var(--color-success-text);
+}
+.db-text-warning {
+    color: var(--color-warning-text);
+}
+.db-text-danger {
+    color: var(--color-danger-text);
+}
+</style>

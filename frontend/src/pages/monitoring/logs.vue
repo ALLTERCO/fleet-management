@@ -1,141 +1,252 @@
 <template>
-    <div class="flex flex-col h-[calc(100vh-10rem)] lg:h-[calc(100vh-7rem)] w-full pb-2">
-        <h2 class="sr-only">System Logs</h2>
-        <!-- Toolbar -->
-        <div class="flex flex-wrap items-center gap-2 px-4 py-2 logs-toolbar">
-            <!-- Search input -->
-            <input
-                ref="searchInput"
-                v-model="searchQuery"
-                type="text"
-                placeholder="Search logs..."
-                aria-label="Search logs"
-                class="px-3 py-1 text-xs font-mono rounded logs-search-input w-48 focus:outline-none"
-            />
-
-            <!-- Log level filters -->
-            <button
-                v-for="level in filterOptions"
-                :key="level"
-                class="px-3 py-1 text-xs font-mono rounded transition-colors"
-                :class="logStore.filter === level
-                    ? 'logs-filter-active'
-                    : 'logs-filter-inactive'"
-                @click="logStore.setFilter(level)"
-            >
-                {{ level }}
-            </button>
-
-            <div class="flex-1" />
-
-            <!-- Log count -->
-            <span class="text-xs logs-count font-mono">{{ displayedLogs.length }} logs</span>
-
-            <!-- Action buttons -->
-            <button
-                class="px-3 py-1 text-xs font-mono rounded transition-colors"
-                :class="copyLabel === 'Copied!'
-                    ? 'logs-btn-success'
-                    : 'logs-btn-default'"
+    <PageTemplate
+        title="Logs"
+        :tabs="monitoringTabs"
+        back="/monitoring/investigate"
+        active-path="/monitoring/investigate"
+        fill
+        searchable
+        search-placeholder="Search logs…"
+        v-model:search="searchQuery"
+        :filterable="true"
+        :has-active-filter="activeFilterCount > 0"
+        :filter-count="activeFilterCount"
+        @filter-click="filterModalVisible = true"
+    >
+        <template #actions>
+            <Button
+                type="blue-hollow"
+                size="sm"
                 @click="copyLogs"
             >
                 {{ copyLabel }}
-            </button>
-            <button
-                class="px-3 py-1 text-xs font-mono rounded logs-btn-default transition-colors"
-                @click="downloadLogs"
-            >
-                Download
-            </button>
-            <button
-                class="px-3 py-1 text-xs font-mono rounded logs-btn-default transition-colors"
-                @click="logStore.clearLogs()"
-            >
-                Clear
-            </button>
-            <button
-                class="px-3 py-1 text-xs font-mono rounded transition-colors"
-                :class="autoScroll
-                    ? 'logs-btn-primary-active'
-                    : 'logs-btn-default'"
+            </Button>
+            <Button type="blue-hollow" size="sm" @click="downloadLogs">Download</Button>
+            <Button type="blue-hollow" size="sm" @click="logStore.clearLogs()">Clear</Button>
+            <Button
+                :type="autoScroll ? 'blue' : 'blue-hollow'"
+                size="sm"
                 @click="toggleAutoScroll"
             >
                 Auto-Scroll {{ autoScroll ? 'ON' : 'OFF' }}
-            </button>
-        </div>
+            </Button>
+        </template>
 
-        <!-- Search match count -->
-        <div
-            v-if="searchQuery"
-            class="flex items-center gap-2 px-4 py-1 logs-toolbar text-xs font-mono logs-match-text"
-        >
-            {{ displayedLogs.length }} matches for "{{ searchQuery }}"
-        </div>
-
-        <!-- Pinned logs -->
-        <div v-if="pinnedLogs.length > 0" class="logs-pinned-bar px-4 py-2">
-            <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-mono logs-count">Pinned ({{ pinnedLogs.length }})</span>
-                <button class="text-xs font-mono logs-clear-pins" @click="logStore.clearPins()">Clear pins</button>
-            </div>
-            <div v-for="log in pinnedLogs" :key="log.ts" class="text-xs md:text-sm font-mono border-l-2 pl-2" :class="logBorderColor(log.level)">
-                <span :style="{ color: log.color || 'white' }">{{ log.coloredPart }}</span>
-                <span class="logs-message-text"> - {{ log.message }}</span>
-            </div>
-        </div>
-
-        <!-- Log output -->
-        <div ref="logContainer" class="flex-1 logs-output overflow-auto">
-            <div v-if="displayedLogs.length === 0 && !searchQuery" class="flex flex-col items-center justify-center h-full logs-empty-text">
-                <i class="fas fa-scroll text-2xl mb-2 opacity-30" />
-                <p class="text-sm">No logs yet</p>
-                <p class="text-xs mt-1 opacity-60">Logs will appear here as the system runs</p>
-            </div>
-            <div v-else class="p-4 text-xs md:text-sm font-mono whitespace-pre-wrap">
-                <div v-for="(log, index) in displayedLogs" :key="index"
-                    class="group border-l-2 pl-2 flex items-start gap-1"
-                    :class="logBorderColor(log.level)"
+        <ErrorBoundary>
+                <!-- Search match count -->
+                <div
+                    v-if="searchQuery"
+                    class="logs-match-row"
                 >
-                    <button
-                        class="opacity-0 group-hover:opacity-100 logs-pin-btn text-xs flex-shrink-0 mt-0.5"
-                        @click="logStore.togglePin(log.ts)"
+                    {{ displayedLogs.length }} matches for "{{ searchQuery }}"
+                </div>
+
+                <!-- Pinned logs -->
+                <div v-if="pinnedLogs.length > 0" class="logs-pinned-bar">
+                    <div class="logs-pinned-bar__head">
+                        <span class="logs-count">Pinned ({{ pinnedLogs.length }})</span>
+                        <button type="button" class="logs-clear-pins" @click="logStore.clearPins()">Clear pins</button>
+                    </div>
+                    <div
+                        v-for="log in pinnedLogs"
+                        :key="log.ts"
+                        class="logs-line"
+                        :class="logBorderColor(log.level)"
                     >
-                        {{ logStore.isPinned(log.ts) ? '&#x25C6;' : '&#x25C7;' }}
-                    </button>
-                    <div class="flex-1">
                         <span :style="{ color: log.color || 'white' }">{{ log.coloredPart }}</span>
                         <span class="logs-message-text"> - {{ log.message }}</span>
                     </div>
                 </div>
-            </div>
-        </div>
-    </div>
+
+                <!-- Log output -->
+                <div ref="logContainer" class="logs-output">
+                    <EmptyBlock v-if="displayedLogs.length === 0 && !searchQuery">
+                        <template #icon>
+                            <i class="fas fa-scroll" />
+                        </template>
+                        <p class="dp-empty-title">No logs yet</p>
+                        <p class="dp-empty-sub">Logs will appear here as the system runs.</p>
+                    </EmptyBlock>
+                    <EmptyBlock v-else-if="displayedLogs.length === 0 && searchQuery">
+                        <template #icon>
+                            <i class="fas fa-magnifying-glass" />
+                        </template>
+                        <p class="dp-empty-title">No matches</p>
+                        <p class="dp-empty-sub">No log lines match "{{ searchQuery }}".</p>
+                    </EmptyBlock>
+                    <div v-else class="logs-output__list">
+                        <div
+                            v-for="(log, index) in displayedLogs"
+                            :key="index"
+                            class="group logs-line"
+                            :class="logBorderColor(log.level)"
+                        >
+                            <button
+                                type="button"
+                                class="opacity-0 group-hover:opacity-100 logs-pin-btn"
+                                :aria-label="logStore.isPinned(log.ts) ? 'Unpin log entry' : 'Pin log entry'"
+                                @click="logStore.togglePin(log.ts)"
+                            >
+                                {{ logStore.isPinned(log.ts) ? '&#x25C6;' : '&#x25C7;' }}
+                            </button>
+                            <div class="logs-line__body">
+                                <span :style="{ color: log.color || 'white' }">{{ log.coloredPart }}</span>
+                                <span class="logs-message-text"> - {{ log.message }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+        </ErrorBoundary>
+
+        <template #modals>
+            <FilterModal
+                :visible="filterModalVisible"
+                :sections="filterSections"
+                :initial-state="modalState"
+                :match-count="displayedLogs.length"
+                match-label="logs"
+                title="Log Filters"
+                @close="filterModalVisible = false"
+                @apply-generic="applyFilterState"
+            />
+        </template>
+    </PageTemplate>
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue';
+import {
+    type ComputedRef, 
+    computed,
+    inject,
+    nextTick,
+    onMounted,
+    onUnmounted,
+    ref,
+    watch
+} from 'vue';
+import Button from '@/components/core/Button.vue';
+import EmptyBlock from '@/components/core/EmptyBlock.vue';
+import ErrorBoundary from '@/components/core/ErrorBoundary.vue';
+import FilterModal, {
+    type FilterSection,
+    type FilterState
+} from '@/components/core/FilterModal.vue';
+import PageTemplate from '@/components/core/PageTemplate.vue';
+import {registerShortcut} from '@/config/shortcuts';
 import {useLogStore} from '@/stores/console';
+import type {RouteTab} from '@/types/page-template';
+
+const monitoringTabs = inject<ComputedRef<RouteTab[]>>('monitoringTabs');
 
 const logStore = useLogStore();
 const logContainer = ref<HTMLElement>();
 const searchInput = ref<HTMLInputElement>();
-const filterOptions = ['ALL', 'ERROR', 'WARN', 'INFO', 'DEBUG'] as const;
+const LEVEL_OPTIONS = ['ALL', 'ERROR', 'WARN', 'INFO', 'DEBUG'] as const;
+
+// Time scope window (ms). 0 = "All time" — show every buffered log line.
+const TIME_SCOPE_OPTIONS = [
+    {key: 'all', label: 'All time', windowMs: 0},
+    {key: '5m', label: 'Last 5 min', windowMs: 5 * 60 * 1000},
+    {key: '15m', label: 'Last 15 min', windowMs: 15 * 60 * 1000},
+    {key: '1h', label: 'Last hour', windowMs: 60 * 60 * 1000},
+    {key: '6h', label: 'Last 6 hours', windowMs: 6 * 60 * 60 * 1000}
+] as const;
+type TimeScopeKey = (typeof TIME_SCOPE_OPTIONS)[number]['key'];
 
 // State
 const searchQuery = ref('');
 const autoScroll = ref(true);
 const copyLabel = ref('Copy');
+const filterModalVisible = ref(false);
+const timeScope = ref<TimeScopeKey>('all');
+let copyTimer: ReturnType<typeof setTimeout> | undefined;
 
-// Search filter
+// "Now" tick — refreshed on a coarse interval so the time-scope filter slides
+// forward without rebuilding on every log line. 5s is plenty for a UI cutoff.
+const nowTick = ref(Date.now());
+let nowTickInterval: ReturnType<typeof setInterval> | undefined;
+
+const filterSections = computed<FilterSection[]>(() => {
+    const sections: FilterSection[] = [
+        {
+            key: 'level',
+            label: 'Log Level',
+            icon: 'fa-layer-group',
+            singleSelect: true,
+            options: LEVEL_OPTIONS.map((l) => ({key: l, label: l}))
+        },
+        {
+            key: 'timeScope',
+            label: 'Time scope',
+            icon: 'fa-clock',
+            singleSelect: true,
+            options: TIME_SCOPE_OPTIONS.map((t) => ({key: t.key, label: t.label}))
+        }
+    ];
+    if (logStore.knownCategories.length) {
+        sections.push({
+            key: 'categories',
+            label: 'Categories',
+            icon: 'fa-tag',
+            searchable: true,
+            options: logStore.knownCategories.map((c) => ({key: c, label: c}))
+        });
+    }
+    return sections;
+});
+
+const modalState = computed<FilterState>(() => ({
+    level: [logStore.filter],
+    timeScope: [timeScope.value],
+    categories: Array.from(logStore.activeCategories)
+}));
+
+function applyFilterState(state: FilterState) {
+    const level = state.level?.[0];
+    if (level) logStore.setFilter(level as (typeof LEVEL_OPTIONS)[number]);
+    const scope = state.timeScope?.[0];
+    if (scope) timeScope.value = scope as TimeScopeKey;
+    const next = new Set(state.categories ?? []);
+    for (const c of Array.from(logStore.activeCategories)) {
+        if (!next.has(c)) logStore.toggleCategory(c);
+    }
+    for (const c of next) {
+        if (!logStore.activeCategories.has(c)) logStore.toggleCategory(c);
+    }
+    filterModalVisible.value = false;
+}
+
+const activeFilterCount = computed(() => {
+    let n = 0;
+    if (logStore.filter !== 'ALL') n++;
+    if (timeScope.value !== 'all') n++;
+    if (logStore.activeCategories.size > 0) n++;
+    return n;
+});
+
+// Search + time-scope filter applied on top of the store's level/category filter.
 const displayedLogs = computed(() => {
-    const logs = logStore.filteredLogs;
-    if (!searchQuery.value) return logs;
-    const q = searchQuery.value.toLowerCase();
-    return logs.filter(
-        (l) =>
-            l.coloredPart.toLowerCase().includes(q) ||
-            l.message.toLowerCase().includes(q)
-    );
+    let logs = logStore.filteredLogs;
+
+    const scope = TIME_SCOPE_OPTIONS.find((t) => t.key === timeScope.value);
+    if (scope && scope.windowMs > 0) {
+        const cutoff = nowTick.value - scope.windowMs;
+        logs = logs.filter((l) => {
+            const ts =
+                typeof l.ts === 'number' ? l.ts : new Date(l.ts).getTime();
+            return ts >= cutoff;
+        });
+    }
+
+    if (searchQuery.value) {
+        const q = searchQuery.value.toLowerCase();
+        logs = logs.filter(
+            (l) =>
+                l.coloredPart.toLowerCase().includes(q) ||
+                l.message.toLowerCase().includes(q)
+        );
+    }
+    return logs;
 });
 
 // Auto-scroll
@@ -187,7 +298,8 @@ async function copyLogs() {
     } catch {
         copyLabel.value = 'Failed';
     }
-    setTimeout(() => {
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => {
         copyLabel.value = 'Copy';
     }, 1500);
 }
@@ -212,91 +324,137 @@ const pinnedLogs = computed(() => {
     return logStore.logs.filter((l) => logStore.isPinned(l.ts));
 });
 
-// Keyboard shortcuts
-function handleKeydown(e: KeyboardEvent) {
-    const mod = e.metaKey || e.ctrlKey;
-    if (mod && e.key === 'k') {
-        e.preventDefault();
-        searchInput.value?.focus();
-    } else if (mod && e.key === 'l') {
-        e.preventDefault();
-        logStore.clearLogs();
-    } else if (e.key === 'Escape') {
-        searchQuery.value = '';
-        searchInput.value?.blur();
-    }
-}
+const unregShortcuts: Array<() => void> = [];
 
-onMounted(() => window.addEventListener('keydown', handleKeydown));
-onUnmounted(() => window.removeEventListener('keydown', handleKeydown));
+onMounted(() => {
+    // Slide the time-scope window forward without churning on every log line.
+    nowTickInterval = setInterval(() => {
+        nowTick.value = Date.now();
+    }, 5000);
+    unregShortcuts.push(
+        registerShortcut({
+            id: 'logs.focus',
+            description: 'Focus log search',
+            section: 'Monitoring · Logs',
+            handler: (e) => {
+                e.preventDefault();
+                searchInput.value?.focus();
+            }
+        }),
+        registerShortcut({
+            id: 'logs.clear',
+            description: 'Clear log buffer',
+            section: 'Monitoring · Logs',
+            handler: (e) => {
+                e.preventDefault();
+                logStore.clearLogs();
+            }
+        }),
+        registerShortcut({
+            id: 'logs.clear-search',
+            description: 'Clear search & blur',
+            section: 'Monitoring · Logs',
+            allowInInput: true,
+            when: () =>
+                !!searchQuery.value ||
+                document.activeElement === searchInput.value,
+            handler: () => {
+                searchQuery.value = '';
+                searchInput.value?.blur();
+            }
+        })
+    );
+});
+onUnmounted(() => {
+    for (const u of unregShortcuts) u();
+    clearTimeout(copyTimer);
+    if (nowTickInterval) clearInterval(nowTickInterval);
+});
 </script>
 
 <style scoped>
-/* -- Toolbar -- */
-.logs-toolbar {
-    background-color: var(--color-surface-1);
-    border-bottom: 1px solid var(--color-border-subtle);
+/* GlassShell (provided by PageTemplate with fill) is flex-column; ErrorBoundary
+ * is transparent so .logs-output grows inside the glass surface. */
+
+/* -- Header chips -- */
+.logs-count {
+    font-size: var(--type-caption);
+    font-family: var(--font-mono);
+    color: var(--color-text-disabled);
+    align-self: center;
 }
 
-/* -- Search input -- */
-.logs-search-input {
-    background-color: var(--color-surface-2);
-    border: 1px solid var(--color-border-default);
-    color: var(--color-text-secondary);
-}
-.logs-search-input::placeholder { color: var(--color-text-disabled); }
-.logs-search-input:focus { border-color: var(--color-text-disabled); }
-
-/* -- Filter buttons -- */
-.logs-filter-active {
-    background-color: var(--color-surface-4);
-    color: var(--color-text-primary);
-}
-.logs-filter-inactive {
-    background-color: var(--color-surface-2);
+/* -- Match-count row when searching -- */
+.logs-match-row {
+    padding: var(--gap-xs) var(--gap-md);
+    font-size: var(--type-caption);
+    font-family: var(--font-mono);
     color: var(--color-text-tertiary);
 }
-.logs-filter-inactive:hover { background-color: var(--color-surface-3); }
-
-/* -- Action buttons -- */
-.logs-btn-default {
-    background-color: var(--color-surface-2);
-    color: var(--color-text-tertiary);
-}
-.logs-btn-default:hover { background-color: var(--color-surface-3); }
-
-.logs-btn-success {
-    background-color: var(--color-success-hover);
-    color: var(--primitive-green-300);
-}
-
-.logs-btn-primary-active {
-    background-color: var(--color-primary-hover);
-    color: var(--primitive-blue-200);
-}
-.logs-btn-primary-active:hover { background-color: var(--color-primary); }
-
-/* -- Counts & labels -- */
-.logs-count { color: var(--color-text-disabled); }
-.logs-match-text { color: var(--color-text-tertiary); }
 
 /* -- Pinned section -- */
 .logs-pinned-bar {
-    background-color: var(--color-surface-1);
-    border-bottom: 1px solid var(--color-border-default);
+    background: var(--glass-1-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    padding: var(--gap-xs) var(--gap-sm);
+    margin-bottom: var(--gap-sm);
 }
-.logs-clear-pins { color: var(--color-border-strong); }
-.logs-clear-pins:hover { color: var(--color-text-secondary); }
+.logs-pinned-bar__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--gap-xs);
+}
+.logs-clear-pins {
+    background: none;
+    border: none;
+    font-size: var(--type-caption);
+    font-family: var(--font-mono);
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+}
+.logs-clear-pins:hover {
+    color: var(--color-text-primary);
+}
 
-/* -- Log output -- */
-.logs-output { background-color: var(--color-surface-0); }
+/* -- Log output -- inner scroll viewport inside the GlassShell. */
+.logs-output {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    font-family: var(--font-mono);
+}
+.logs-output__list {
+    padding: var(--gap-sm);
+    font-size: var(--type-caption);
+    white-space: pre-wrap;
+}
+.logs-line {
+    border-left: 2px solid transparent;
+    padding-left: var(--gap-xs);
+    display: flex;
+    align-items: flex-start;
+    gap: var(--gap-xs);
+}
+.logs-line__body {
+    flex: 1;
+    min-width: 0;
+}
 .logs-message-text { color: var(--color-text-primary); }
-.logs-pin-btn { color: var(--color-border-strong); }
-.logs-pin-btn:hover { color: var(--color-text-secondary); }
+.logs-pin-btn {
+    background: none;
+    border: none;
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-top: var(--space-0-5);
+    font-size: var(--type-caption);
+}
+.logs-pin-btn:hover { color: var(--color-text-primary); }
 
 /* -- Log border levels -- */
 .logs-border-error { border-left-color: var(--color-danger); }
 .logs-border-warn { border-left-color: var(--color-warning); }
 .logs-border-debug { border-left-color: var(--color-border-default); }
-.logs-empty-text { color: var(--color-text-disabled); }
 </style>

@@ -1,31 +1,23 @@
-import nodemailer from 'nodemailer';
-import type Mailer from 'nodemailer/lib/mailer';
-import type SMTPTransport from 'nodemailer/lib/smtp-transport';
+import {canUsePlatformAdmin} from '../../modules/authz/evaluator';
+import {
+    createDirectEmailTransport,
+    type DirectEmailTransport,
+    type DirectEmailTransportOptions,
+    type EmailMessage
+} from '../../modules/email/EmailProvider';
+import type {DescribeOutput} from '../../rpc/describe';
 import RpcError from '../../rpc/RpcError';
+import {validateOrThrow} from '../../rpc/validateOrThrow';
+import {MAIL_DESCRIBE, MAIL_SEND_PARAMS_SCHEMA} from '../../types/api/mail';
 import Component from './Component';
-
-type MailOptions = Parameters<InstanceType<typeof Mailer>['sendMail']>[0];
-type CreateTransport = ReturnType<typeof nodemailer.createTransport>;
 
 export interface MailComponentConfig {
     enable: boolean;
-    transport?: SMTPTransport.Options;
-}
-
-function isSendMailParams(params: any) {
-    return (
-        params &&
-        typeof params === 'object' &&
-        typeof params.from === 'string' &&
-        typeof params.to === 'string' &&
-        typeof params.subject === 'string' &&
-        typeof params.text === 'string' &&
-        typeof params.html === 'string'
-    );
+    transport?: DirectEmailTransportOptions;
 }
 
 export default class MailComponent extends Component<MailComponentConfig> {
-    #transport?: CreateTransport;
+    #transport?: DirectEmailTransport;
     #verifyResponse: boolean | null;
     #verifyTs: number;
     #verifyError: Error | null;
@@ -37,18 +29,29 @@ export default class MailComponent extends Component<MailComponentConfig> {
         this.#verifyError = null;
     }
 
+    @Component.NoAudit
+    @Component.Expose('Describe')
+    @Component.NoPermissions
+    describe(): DescribeOutput {
+        return MAIL_DESCRIBE;
+    }
+
+    // Mail.Send uses instance-wide SMTP identity — provider support only.
+    // Tenants use the org-scoped Notifications namespace for app email.
     @Component.Expose('Send')
-    @Component.CheckParams(isSendMailParams)
-    async sendMail(params: MailOptions) {
+    @Component.CheckPermissions(canUsePlatformAdmin)
+    async sendMail(params: unknown) {
+        const v = validateOrThrow<EmailMessage>(
+            params,
+            MAIL_SEND_PARAMS_SCHEMA
+        );
         if (!this.config.enable) {
             throw RpcError.MethodNotFound();
         }
         if (!this.#transport) {
-            throw RpcError.Server('transport not set up');
+            throw RpcError.Unavailable('mail_transport', 'not configured');
         }
-
-        const info = await this.#transport.sendMail(params);
-        return info;
+        return await this.#transport.sendMail(v);
     }
 
     override getStatus() {
@@ -61,7 +64,7 @@ export default class MailComponent extends Component<MailComponentConfig> {
 
     protected override configChanged() {
         if (this.config.transport) {
-            this.#transport = nodemailer.createTransport(this.config.transport);
+            this.#transport = createDirectEmailTransport(this.config.transport);
             this.#transport
                 .verify()
                 .then(() => {

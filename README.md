@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](./LICENSE)
 
 Fleet Manager is a self-hosted service for managing fleets of
-[Shelly](https://shelly.com) Gen2+ (Plus, Pro, Mini) devices
+[Shelly](https://shelly.com) Gen2+ (Plus, Pro, Mini) and Wall Display devices
 via outbound WebSocket from a single dashboard.
 
 - Real-time device monitoring and control
@@ -51,12 +51,23 @@ Default login: `fm-admin` / `Admin123!`.
 
 The device will appear in the Fleet Manager dashboard.
 
+### Wall Display
+
+Shelly Wall Display devices connect the same way as other Gen2+ devices, but their firmware only trusts the Allterco CA for TLS — they cannot validate self-signed, Let's Encrypt, or custom certificates.
+
+When SSL is enabled, set `FM_PLAIN_WS=true` in `deploy/env/public.env` (enabled by default) to allow plain `ws://` connections on port 80 for the `/shelly` path. All other HTTP traffic is still redirected to HTTPS. Configure the Wall Display to connect to `ws://<your-ip>/shelly` (port 80, no TLS).
+
 ## Commands
 
 | Command | Description |
 | --- | --- |
 | `up` | Start Fleet Management (installs Docker if needed, bootstraps or restarts) |
 | `upgrade` | Pull newer images from registry, then restart |
+| `migrate --plan-only` | Show required database and Zitadel migration work |
+| `migrate --yes` | Run required migration work before upgrading |
+| `upgrade-audit` | Check whether the current state is ready to upgrade |
+| `backup-db` | Create a database backup |
+| `backup-state` | Create a deploy-state backup |
 | `down` | Stop and keep data |
 | `down --volumes` | Stop and delete all data (asks for confirmation; `--yes` to skip) |
 | `status` | Show container and health status |
@@ -73,6 +84,33 @@ All commands are run via `./deploy/deploy-public.sh <command>`.
 
 Add `--debug` for raw shell trace and full output.
 Add `--logging` to enable the Dozzle container log viewer on port 9999.
+
+## Updating
+
+Before a major upgrade, make a backup and inspect the migration plan:
+
+```bash
+./deploy/deploy-public.sh backup-db
+./deploy/deploy-public.sh backup-state
+./deploy/deploy-public.sh migrate --plan-only
+```
+
+If migration work is required, run:
+
+```bash
+./deploy/deploy-public.sh migrate --yes
+./deploy/deploy-public.sh upgrade
+```
+
+or run both steps together:
+
+```bash
+./deploy/deploy-public.sh upgrade --migrate-first --yes
+```
+
+The upgrade command refuses to continue when database or Zitadel migration work
+is pending. See [Deployment Guide](./docs/deployment.md) for the full upgrade
+flow.
 
 ## SSL / HTTPS
 
@@ -111,19 +149,16 @@ See `plugins/` for source code.
 ## Documentation
 
 - [Deployment Guide](./docs/deployment.md)
-- [API Reference](./docs/api.md)
-- [RPC and Components](./docs/rpc_and_components.md)
-- [Events](./docs/events.md)
-- [RPC Relay](./docs/rpc_relay.md)
-- [Entities](./docs/entities.md)
-- [Custom Permissions](./docs/custom-permissions.md)
-- [Zitadel Setup](./docs/ZITADEL_SETUP.md)
-- [Plugins](./docs/plugins.md)
-- [Backups](./docs/backups.md)
-- [Rollback](./docs/rollback.md)
-- [Observability](./docs/observability.md)
-- [Developing](./docs/developing.md)
-- [Codebase](./docs/codebase.md)
+- [API Reference](./docs/generated/api.md)
+- Runtime OpenAPI document: `https://<your-host>/api/docs/openapi.json`
+- [RPC and Components](./docs/reference/rpc_and_components.md)
+- [Events](./docs/reference/events.md)
+- [RPC Relay](./docs/reference/rpc_relay.md)
+- [Entities](./docs/reference/entities.md)
+- [Plugins](./docs/reference/plugins.md)
+- [Backups](./docs/reference/backups.md)
+- [Rollback](./docs/reference/rollback.md)
+- [Observability](./docs/reference/observability.md)
 
 ## Supported Platforms
 

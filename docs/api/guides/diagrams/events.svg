@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 324" width="760" height="324" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Subscribing to events and replaying them after a reconnect">
+  <title>Subscribe, receive pushes, replay after reconnect</title>
+  <desc>The client calls system.Subscribe and receives ids and a connectionId; the server pushes NotifyStatus events with a streamId. After the socket drops, the client reconnects and subscribes again with the connectionId and last streamId, and the server replays the missed events or signals a resync.</desc>
+  <defs>
+    <marker id="eB" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4495D1"/></marker>
+    <marker id="eG" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2E9E6B"/></marker>
+    <marker id="eP" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7A5AF0"/></marker>
+  </defs>
+  <rect x="0" y="0" width="760" height="324" fill="#ffffff"/>
+
+  <!-- lifelines -->
+  <g stroke="#C9D4E2" stroke-width="1.25" stroke-dasharray="4 4">
+    <line x1="150" y1="64" x2="150" y2="300"/>
+    <line x1="568" y1="64" x2="568" y2="300"/>
+  </g>
+
+  <!-- headers -->
+  <rect x="90" y="20" width="120" height="44" rx="6" fill="#EAF6FD" stroke="#4495D1" stroke-width="1.5"/>
+  <text x="150" y="47" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Client</text>
+  <rect x="500" y="20" width="136" height="44" rx="6" fill="#F4F7FB" stroke="#003C82" stroke-width="1.5"/>
+  <text x="568" y="47" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Fleet Manager</text>
+
+  <!-- M1 subscribe -->
+  <path d="M150,102 L562,102" stroke="#4495D1" stroke-width="1.75" fill="none" marker-end="url(#eB)"/>
+  <circle cx="150" cy="102" r="8" fill="#4495D1"/><text x="150" y="105.5" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">1</text>
+  <rect x="242" y="84" width="234" height="16" rx="8" fill="#ffffff"/>
+  <text x="359" y="96" text-anchor="middle" font-size="10.5" font-family="ui-monospace,Menlo,monospace" fill="#2C6C99">system.Subscribe { events }</text>
+
+  <!-- M2 ack -->
+  <path d="M568,138 L156,138" stroke="#2E9E6B" stroke-width="1.5" stroke-dasharray="5 4" fill="none" marker-end="url(#eG)"/>
+  <circle cx="568" cy="138" r="8" fill="#2E9E6B"/><text x="568" y="141.5" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">2</text>
+  <rect x="264" y="120" width="190" height="16" rx="8" fill="#ffffff"/>
+  <text x="359" y="132" text-anchor="middle" font-size="10.5" font-family="ui-monospace,Menlo,monospace" fill="#2E7D5B">{ ids, connectionId }</text>
+
+  <!-- M3 push -->
+  <path d="M568,180 L156,180" stroke="#7A5AF0" stroke-width="1.5" stroke-dasharray="5 4" fill="none" marker-end="url(#eP)"/>
+  <circle cx="568" cy="180" r="8" fill="#7A5AF0"/><text x="568" y="183.5" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">3</text>
+  <rect x="248" y="162" width="222" height="16" rx="8" fill="#ffffff"/>
+  <text x="359" y="174" text-anchor="middle" font-size="10.5" font-family="ui-monospace,Menlo,monospace" fill="#6A5AB8">NotifyStatus { streamId }</text>
+  <text x="359" y="200" text-anchor="middle" font-size="10" fill="#8A97A8">…keep the last streamId you handled</text>
+
+  <!-- reconnect separator -->
+  <line x1="60" y1="224" x2="700" y2="224" stroke="#E2E8F0" stroke-width="1" stroke-dasharray="3 3"/>
+  <rect x="300" y="216" width="160" height="16" rx="8" fill="#ffffff"/>
+  <text x="380" y="228" text-anchor="middle" font-size="10.5" fill="#8A97A8">socket drops → reconnect</text>
+  <circle cx="284" cy="224" r="8" fill="#8A97A8"/><text x="284" y="227.5" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">4</text>
+
+  <!-- M4 resume -->
+  <path d="M150,262 L562,262" stroke="#4495D1" stroke-width="1.75" fill="none" marker-end="url(#eB)"/>
+  <circle cx="150" cy="262" r="8" fill="#4495D1"/><text x="150" y="265.5" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">5</text>
+  <rect x="214" y="244" width="290" height="16" rx="8" fill="#ffffff"/>
+  <text x="359" y="256" text-anchor="middle" font-size="10.5" font-family="ui-monospace,Menlo,monospace" fill="#2C6C99">Subscribe { connectionId, lastSeenStreamId }</text>
+
+  <!-- M5 replay -->
+  <path d="M568,296 L156,296" stroke="#7A5AF0" stroke-width="1.5" stroke-dasharray="5 4" fill="none" marker-end="url(#eP)"/>
+  <circle cx="568" cy="296" r="8" fill="#7A5AF0"/><text x="568" y="299.5" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">6</text>
+  <rect x="230" y="278" width="258" height="16" rx="8" fill="#ffffff"/>
+  <text x="359" y="290" text-anchor="middle" font-size="10.5" fill="#6A5AB8">replays missed events (or <tspan font-family="ui-monospace,Menlo,monospace">resyncRequired</tspan>)</text>
+</svg>

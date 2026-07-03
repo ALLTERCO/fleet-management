@@ -1,12 +1,20 @@
 <template>
-    <!-- Fullscreen overlay — no Modal wrapper needed -->
     <Teleport to="body">
-        <div v-if="visible" class="fixed inset-0 z-50 flex flex-col bg-[var(--color-surface-0)]">
+        <div
+            v-if="visible"
+            ref="panelRef"
+            class="fixed inset-0 z-[calc(var(--z-modal)+10)] flex flex-col bg-[var(--color-surface-0)]"
+            role="dialog"
+            aria-modal="true"
+            :aria-labelledby="titleId"
+            tabindex="-1"
+            @keydown="handleKeydown"
+        >
             <!-- ═══ Top Toolbar ═══ -->
-            <div class="flex items-center gap-2 px-3 py-2 bg-[var(--color-surface-1)] border-b border-[var(--color-border-default)] shrink-0">
+            <div class="dwg-toolbar flex items-center gap-2 px-3 py-2 bg-[var(--color-surface-1)] border-b border-[var(--color-border-default)] shrink-0">
                 <!-- Title & device info -->
                 <i class="fas fa-desktop text-[var(--color-text-tertiary)]"></i>
-                <span class="font-semibold text-sm text-[var(--color-text-primary)] truncate">{{ shellyID }}</span>
+                <span :id="titleId" class="font-semibold text-sm text-[var(--color-text-primary)] truncate">{{ shellyID }}</span>
 
                 <!-- Mode badge -->
                 <span
@@ -29,6 +37,7 @@
                         <button
                             class="shrink-0 ml-2 text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)]"
                             title="Copy URL"
+                            aria-label="Copy URL"
                             @click="copyUrl"
                         >
                             <i :class="copyLabel === 'Copied!' ? 'fas fa-check text-[var(--color-success-text)]' : 'fas fa-copy'" class="text-xs"></i>
@@ -161,8 +170,8 @@
 
                     <!-- ── 1. Reachability ── -->
                     <div class="mb-3">
-                        <div class="text-2xs uppercase tracking-wider text-[var(--color-text-disabled)] mb-1">Reachability</div>
-                        <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs font-mono">
+                        <div class="text-2xs tracking-normal text-[var(--color-text-disabled)] mb-1">Reachability</div>
+                        <div class="dwg-diag-grid grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs font-mono">
                             <span class="text-[var(--color-text-disabled)]">Device IP</span>
                             <span class="text-[var(--color-text-secondary)]">{{ diagResult.deviceIp || '—' }}</span>
 
@@ -203,8 +212,8 @@
 
                     <!-- ── 2. Device Health ── -->
                     <div class="mb-3">
-                        <div class="text-2xs uppercase tracking-wider text-[var(--color-text-disabled)] mb-1">Device Health</div>
-                        <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs font-mono">
+                        <div class="text-2xs tracking-normal text-[var(--color-text-disabled)] mb-1">Device Health</div>
+                        <div class="dwg-diag-grid grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs font-mono">
                             <span class="text-[var(--color-text-disabled)]">Model</span>
                             <span class="text-[var(--color-text-secondary)]">
                                 {{ diagResult.deviceHealth?.model || '—' }}
@@ -241,8 +250,8 @@
 
                     <!-- ── 3. Transport Health ── -->
                     <div class="mb-3">
-                        <div class="text-2xs uppercase tracking-wider text-[var(--color-text-disabled)] mb-1">Transport Health</div>
-                        <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs font-mono">
+                        <div class="text-2xs tracking-normal text-[var(--color-text-disabled)] mb-1">Transport Health</div>
+                        <div class="dwg-diag-grid grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs font-mono">
                             <span class="text-[var(--color-text-disabled)]">Status</span>
                             <span :class="diagResult.transportHealth?.online ? 'text-[var(--color-success-text)]' : 'text-[var(--color-danger-text)]'">
                                 {{ diagResult.transportHealth?.online ? 'Online' : 'Offline' }}
@@ -275,8 +284,8 @@
 
                     <!-- ── 4. Network Quality ── -->
                     <div v-if="diagResult.networkQuality" class="mb-3">
-                        <div class="text-2xs uppercase tracking-wider text-[var(--color-text-disabled)] mb-1">Network Quality</div>
-                        <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs font-mono">
+                        <div class="text-2xs tracking-normal text-[var(--color-text-disabled)] mb-1">Network Quality</div>
+                        <div class="dwg-diag-grid grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-xs font-mono">
                             <template v-if="diagResult.networkQuality.wifi">
                                 <span class="text-[var(--color-text-disabled)]">WiFi</span>
                                 <span class="text-[var(--color-text-secondary)]">
@@ -363,7 +372,7 @@
                         <div class="max-h-48 overflow-auto">
                             <div v-for="(entry, i) in deviceRpcTimings" :key="i"
                                 class="flex items-center gap-3 text-xs font-mono">
-                                <span class="text-[var(--color-text-disabled)] w-16">{{ formatTime(entry.ts) }}</span>
+                                <span class="text-[var(--color-text-disabled)] w-16">{{ formatTimeOfDay(entry.ts) }}</span>
                                 <span class="flex-1 text-[var(--color-text-secondary)]">{{ entry.method }}</span>
                                 <span class="w-16 text-right font-semibold"
                                     :class="entry.durationMs > 1000 ? 'text-[var(--color-danger-text)]' : entry.durationMs > 200 ? 'text-[var(--color-warning-text)]' : 'text-[var(--color-success-text)]'">
@@ -379,9 +388,12 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref, watch} from 'vue';
+import {computed, onBeforeUnmount, ref, toRef, useId, watch} from 'vue';
+import {useFocusTrap} from '@/composables/useFocusTrap';
+import {formatTimeOfDay} from '@/helpers/format';
 import {getZitadelAuth} from '@/helpers/zitadelAuth';
-import {getObsLevel, getRpcTimings, type ObsLevel} from '@/tools/observability';
+import {debug} from '@/tools/debug';
+import {getObsLevel, getRpcTimings, type ObsLevel } from '@/tools/observability';
 import Button from '../core/Button.vue';
 import Collapse from '../core/Collapse.vue';
 import Spinner from '../core/Spinner.vue';
@@ -396,6 +408,12 @@ const emit = defineEmits<{
 }>();
 
 let abortController: AbortController | null = null;
+const titleId = `device-web-gui-title-${useId()}`;
+const panelRef = ref<HTMLElement | null>(null);
+// Focus trap + Esc + body-scroll lock + restore-focus all in one place.
+const {handleKeydown} = useFocusTrap(panelRef, toRef(props, 'visible'), () =>
+    emit('close')
+);
 
 const loading = ref(false);
 const error = ref<string | null>(null);
@@ -409,7 +427,9 @@ const diagLoading = ref(false);
 const diagResult = ref<Record<string, any> | null>(null);
 const diagError = ref<string | null>(null);
 const copyLogsLabel = ref('Copy Logs');
-const browserProbe = ref<null | 'probing' | {reachable: boolean; elapsed: number; error?: string}>(null);
+const browserProbe = ref<
+    null | 'probing' | {reachable: boolean; elapsed: number; error?: string}
+>(null);
 
 const obsLevel = computed<ObsLevel>(() => getObsLevel());
 
@@ -422,11 +442,6 @@ const deviceRpcTimings = computed(() => {
         )
         .reverse();
 });
-
-function formatTime(ts: number): string {
-    const d = new Date(ts);
-    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
-}
 
 function copyUrl() {
     if (!guiUrl.value) return;
@@ -475,11 +490,13 @@ async function copyToClipboard(text: string): Promise<boolean> {
 }
 
 async function getAccessToken(): Promise<string | null> {
+    // Dev mode: token stored in localStorage
+    const devToken = localStorage.getItem('dev_mode_token');
+    if (devToken) return devToken;
+
+    // Production: get token from Zitadel
     const zitadelAuth = getZitadelAuth();
-    if (!zitadelAuth) {
-        console.error('Zitadel auth not initialized');
-        return null;
-    }
+    if (!zitadelAuth) return null;
     const user = await zitadelAuth.oidcAuth.mgr.getUser();
     return user?.access_token ?? null;
 }
@@ -497,10 +514,7 @@ async function loadGuiInfo() {
             throw new Error('Not authenticated');
         }
 
-        console.log(
-            '[DeviceWebGuiModal] Fetching info for device:',
-            props.shellyID
-        );
+        debug('[DeviceWebGuiModal] Fetching info for device:', props.shellyID);
 
         const response = await fetch(
             `/api/device-proxy/${props.shellyID}/info`,
@@ -523,7 +537,7 @@ async function loadGuiInfo() {
         }
 
         const data = await response.json();
-        console.log('[DeviceWebGuiModal] Got info response:', data);
+        debug('[DeviceWebGuiModal] Got info response:', data);
 
         deviceIp.value = data.deviceIp;
         fwVersion.value = data.fwVersion || null;
@@ -558,18 +572,15 @@ async function loadGuiInfo() {
                 });
                 clearTimeout(timer);
             } catch {
-                error.value =
-                    `Cannot reach device at ${data.deviceIp}. ` +
-                    'Make sure your browser is on the same network as the device. ' +
-                    'The device GUI requires direct LAN access.';
+                error.value = `Cannot reach device at ${data.deviceIp}. Make sure your browser is on the same network as the device. The device GUI requires direct LAN access.`;
                 return;
             }
         }
 
         guiUrl.value = deviceUrl;
         proxyMethod.value = 'direct';
-        console.log(
-            '[DeviceWebGuiModal] Opening device GUI (direct LAN): %s',
+        debug(
+            '[DeviceWebGuiModal] Opening device GUI (direct LAN):',
             guiUrl.value
         );
     } catch (e: any) {
@@ -689,20 +700,35 @@ function openDirectly() {
     }
 }
 
-// Load GUI info when modal becomes visible
+// Focus trap / Esc / body-scroll lock live in useFocusTrap above.
+// This watch only owns the abort controller for in-flight RPCs.
 watch(
     () => props.visible,
     (newVisible) => {
         if (newVisible && props.shellyID) {
             abortController = new AbortController();
             loadGuiInfo();
-        } else {
-            if (abortController) {
-                abortController.abort();
-                abortController = null;
-            }
+        } else if (abortController) {
+            abortController.abort();
+            abortController = null;
         }
     },
     {immediate: true}
 );
+
+onBeforeUnmount(() => {
+    abortController?.abort();
+    abortController = null;
+});
 </script>
+
+<style scoped>
+@media (max-width: 768px) {
+    .dwg-toolbar {
+        flex-wrap: wrap;
+    }
+    .dwg-diag-grid {
+        grid-template-columns: 1fr;
+    }
+}
+</style>

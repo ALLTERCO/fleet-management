@@ -20,7 +20,7 @@
 </template>
 
 <script lang="ts" setup>
-import {defineEmits, onMounted, onUnmounted, ref, toRefs} from 'vue';
+import {onMounted, onUnmounted, ref, toRefs} from 'vue';
 import Button from '@/components/core/Button.vue';
 import Widget from '../WidgetsTemplates/VanilaWidget.vue';
 

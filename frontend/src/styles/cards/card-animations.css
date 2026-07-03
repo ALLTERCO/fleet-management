@@ -1,0 +1,320 @@
+/* ══════════════════════════════════════════════════════
+   ENTITY CARDS — ANIMATIONS & KEYFRAMES
+   ══════════════════════════════════════════════════════ */
+
+/* ── Card entrance — disabled (100+ cards animating kills performance) ── */
+@keyframes card-in {
+    from {
+        opacity: 1;
+        transform: none;
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+/* ── Presence pulse — disabled (was running on every online card) ── */
+@keyframes presence-pulse {
+    0%,
+    100% {
+        opacity: 0;
+    }
+    50% {
+        opacity: 0;
+    }
+}
+
+/* ── Toggle button pulse (ON state) — hardcoded teal ── */
+@keyframes btn-pulse {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 rgba(26, 217, 178, 0.25);
+    }
+    50% {
+        box-shadow: 0 0 0 6px rgba(26, 217, 178, 0);
+    }
+}
+
+/* ── Toggle ripple on press — hardcoded teal/red, NOT entity accent ── */
+@keyframes toggle-ripple {
+    0% {
+        box-shadow: 0 0 0 0 rgba(26, 217, 178, 0.3);
+    }
+    100% {
+        box-shadow: 0 0 0 12px rgba(26, 217, 178, 0);
+    }
+}
+@keyframes toggle-ripple-off {
+    0% {
+        box-shadow: 0 0 0 0 rgba(232, 64, 87, 0.3);
+    }
+    100% {
+        box-shadow: 0 0 0 12px rgba(232, 64, 87, 0);
+    }
+}
+
+/* ── Alarm / error blink ── */
+@keyframes blink-err {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.2;
+    }
+}
+
+/* ── Skeleton shimmer ── */
+@keyframes shimmer {
+    0% {
+        background-position: -400px 0;
+    }
+    100% {
+        background-position: 400px 0;
+    }
+}
+
+/* ── Value tick — number bounce on change ── */
+@keyframes val-tick {
+    0% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+    30% {
+        transform: translateY(-8px);
+        opacity: 0.4;
+    }
+    60% {
+        transform: translateY(4px);
+        opacity: 0.7;
+    }
+    100% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+.val-tick {
+    animation: val-tick var(--duration-slow) var(--ease-out);
+}
+
+/* ── State text flip-in (flat fade, no 3D) ── */
+@keyframes state-flip {
+    from {
+        opacity: 0.3;
+    }
+    to {
+        opacity: 1;
+    }
+}
+.state-flip {
+    animation: state-flip var(--duration-moderate) var(--ease-out);
+}
+
+/* ── State text slide-in ── */
+@keyframes state-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ── Sparkline SVG draw-in ── */
+@keyframes spark-draw {
+    from {
+        stroke-dashoffset: var(--spark-len, 300);
+    }
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+/* ── Brightness flash on toggle ── */
+@keyframes fill-flash {
+    0% {
+        filter: brightness(1);
+    }
+    50% {
+        filter: brightness(1.4);
+    }
+    100% {
+        filter: brightness(1);
+    }
+}
+
+/* ── Progress fill (for bars) ── */
+@keyframes progress-fill {
+    0% {
+        width: 0%;
+    }
+    100% {
+        width: var(--prog, 68%);
+    }
+}
+
+/* ── Progress pulse ── */
+@keyframes progress-pulse {
+    0%,
+    100% {
+        opacity: 0.9;
+    }
+    50% {
+        opacity: 0.55;
+    }
+}
+
+/* ── Warning pulse (battery etc) ── */
+@keyframes pulse-warn {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.3;
+    }
+}
+
+/* ── Battery pulse ── */
+@keyframes pulse-batt {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.35;
+    }
+}
+
+/* ── Action pop (button press) ── */
+@keyframes act-pop {
+    0% {
+        transform: scale(0.92);
+    }
+    50% {
+        transform: scale(1.04);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* ── Generic fade-in ── */
+@keyframes fade-in {
+    0% {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ── Spinner ── */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ── Waiting room ring — expanding fading ring ── */
+@keyframes wr-ring {
+    0% {
+        opacity: 0.7;
+        transform: scale(0.82);
+    }
+    100% {
+        opacity: 0;
+        transform: scale(1.05);
+    }
+}
+
+/* ── Badge entrance — scale + slide for battery/status badges ── */
+@keyframes badge-in {
+    from {
+        opacity: 0;
+        transform: scale(0.8) translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+/* ── Device came online — expanding ring ── */
+@keyframes online-pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(26, 217, 178, 0.4);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(26, 217, 178, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(26, 217, 178, 0);
+    }
+}
+
+/* ── Device went offline — fade to gray ── */
+@keyframes offline-fade {
+    from {
+        opacity: 1;
+        filter: saturate(1);
+    }
+    to {
+        opacity: 0.6;
+        filter: saturate(0.3);
+    }
+}
+
+/* ── Notification slide in ── */
+@keyframes slide-in {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* ── Modal/panel scale in ── */
+@keyframes scale-in {
+    from {
+        transform: scale(0.95);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* ── Sleeping/standby breathing glow ── */
+@keyframes breathing {
+    0%,
+    100% {
+        opacity: 0.4;
+        filter: drop-shadow(0 0 2px rgba(139, 92, 246, 0.2));
+    }
+    50% {
+        opacity: 1;
+        filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.6));
+    }
+}
+
+/* ══════════════════════════════════════════════════════
+   REDUCED MOTION — disable all card animations
+   ══════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+    .ec,
+    .val-tick,
+    .state-flip,
+    .card-toggle {
+        animation: none;
+    }
+}

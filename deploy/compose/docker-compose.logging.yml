@@ -11,7 +11,16 @@
 
 services:
   dozzle:
-    image: amir20/dozzle:${DOZZLE_VERSION:-v8.12.8}
+    image: amir20/dozzle:${DOZZLE_VERSION:-v10.4.1}
+    labels:
+      fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
+      fleet.client: "${FM_CLIENT_ID:-shared}"
+      fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
+      fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
+      fleet.version: "${DOZZLE_VERSION:-v10.4.1}"
+      fleet.commit: "${FM_BUILD_COMMIT:-unknown}"
+      fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
+      fleet.service: "dozzle"
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

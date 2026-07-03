@@ -1,24 +1,10 @@
 <template>
     <ChartCard
-        title="Consumption"
-        icon="fas fa-chart-bar text-[var(--color-success-text)]"
         :loading="loading"
         :empty="!data.length"
         empty-text="No consumption data available"
     >
-        <template #actions>
-            <button
-                v-for="view in views"
-                :key="view.value"
-                class="chart-card-toggle"
-                :class="currentView === view.value && 'chart-card-toggle--active'"
-                @click="currentView = view.value"
-            >
-                {{ view.label }}
-            </button>
-        </template>
-
-        <canvas ref="chartCanvas"></canvas>
+        <div ref="chartEl" class="consumption-chart"></div>
 
         <template v-if="showTotal" #stats>
             <span>Total: <strong>{{ totalConsumption.toFixed(3) }} kWh</strong></span>
@@ -30,26 +16,9 @@
 </template>
 
 <script setup lang="ts">
-import {
-    BarController,
-    BarElement,
-    CategoryScale,
-    Chart,
-    Legend,
-    LinearScale,
-    Tooltip
-} from 'chart.js';
-import {computed, onMounted, onUnmounted, ref, watch} from 'vue';
+import {computed, ref} from 'vue';
 import ChartCard from '@/components/charts/ChartCard.vue';
-
-Chart.register(
-    BarController,
-    BarElement,
-    CategoryScale,
-    LinearScale,
-    Tooltip,
-    Legend
-);
+import {useEChart} from '@/composables/useEChart';
 
 interface ConsumptionDataPoint {
     bucket: string;
@@ -66,116 +35,27 @@ const props = withDefaults(
         currency?: string;
         loading?: boolean;
         showTotal?: boolean;
+        view?: 'kwh' | 'cost';
     }>(),
     {
         tariff: 0,
         currency: 'EUR',
         loading: false,
-        showTotal: true
+        showTotal: true,
+        view: 'kwh'
     }
 );
 
-const chartCanvas = ref<HTMLCanvasElement | null>(null);
-let chart: Chart | null = null;
+const chartEl = ref<HTMLElement | null>(null);
 
-const views = [
-    {label: 'kWh', value: 'kwh'},
-    {label: 'Cost', value: 'cost'}
-];
-const currentView = ref('kwh');
-
-const totalConsumption = computed(() => {
-    return props.data.reduce((sum, d) => sum + (d.value || 0), 0);
-});
-
-const totalCost = computed(() => {
-    return totalConsumption.value * props.tariff;
-});
-
-function renderChart() {
-    if (!chartCanvas.value || !props.data.length) {
-        chart?.destroy();
-        chart = null;
-        return;
-    }
-
-    const ctx = chartCanvas.value.getContext('2d');
-    if (!ctx) return;
-
-    // Group by bucket (date/time)
-    const groupedData = new Map<string, number>();
-    for (const d of props.data) {
-        const label = formatBucket(d.bucket);
-        const current = groupedData.get(label) || 0;
-        groupedData.set(label, current + d.value);
-    }
-
-    const labels = Array.from(groupedData.keys());
-    const values = Array.from(groupedData.values());
-    const displayValues =
-        currentView.value === 'cost'
-            ? values.map((v) => v * props.tariff)
-            : values;
-
-    chart?.destroy();
-    chart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels,
-            datasets: [
-                {
-                    label:
-                        currentView.value === 'cost'
-                            ? `Cost (${props.currency})`
-                            : 'Consumption (kWh)',
-                    data: displayValues,
-                    backgroundColor:
-                        currentView.value === 'cost'
-                            ? 'rgba(168, 85, 247, 0.7)' // purple
-                            : 'rgba(74, 222, 128, 0.7)', // green
-                    borderColor:
-                        currentView.value === 'cost'
-                            ? 'rgba(168, 85, 247, 1)'
-                            : 'rgba(74, 222, 128, 1)',
-                    borderWidth: 1
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    grid: {color: 'rgba(255,255,255,0.1)'},
-                    ticks: {color: '#9ca3af'}
-                },
-                x: {
-                    grid: {display: false},
-                    ticks: {color: '#9ca3af'}
-                }
-            },
-            plugins: {
-                legend: {display: false},
-                tooltip: {
-                    callbacks: {
-                        label(ctx) {
-                            const val = ctx.parsed.y ?? 0;
-                            return currentView.value === 'cost'
-                                ? `${val.toFixed(2)} ${props.currency}`
-                                : `${val.toFixed(3)} kWh`;
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
+const totalConsumption = computed(() =>
+    props.data.reduce((sum, d) => sum + (d.value || 0), 0)
+);
+const totalCost = computed(() => totalConsumption.value * props.tariff);
 
 function formatBucket(bucket: string): string {
     try {
-        const date = new Date(bucket);
-        return date.toLocaleDateString('en-US', {
+        return new Date(bucket).toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric'
         });
@@ -184,31 +64,76 @@ function formatBucket(bucket: string): string {
     }
 }
 
-onMounted(renderChart);
-watch(() => props.data, renderChart, {deep: true});
-watch(currentView, renderChart);
+function groupByBucket(): Map<string, number> {
+    const grouped = new Map<string, number>();
+    for (const d of props.data) {
+        const label = formatBucket(d.bucket);
+        grouped.set(label, (grouped.get(label) ?? 0) + d.value);
+    }
+    return grouped;
+}
 
-onUnmounted(() => {
-    chart?.destroy();
+const isKwh = computed(() => props.view !== 'cost');
+
+const barColor = computed(() =>
+    isKwh.value ? 'rgba(var(--color-success-rgb), 0.85)' : 'rgba(168, 85, 247, 0.85)'
+);
+
+const option = computed(() => {
+    const grouped = groupByBucket();
+    const labels = Array.from(grouped.keys());
+    const rawValues = Array.from(grouped.values());
+    const displayValues = isKwh.value
+        ? rawValues
+        : rawValues.map((v) => v * props.tariff);
+
+    const seriesLabel = isKwh.value
+        ? 'Consumption (kWh)'
+        : `Cost (${props.currency})`;
+
+    const unitSuffix = isKwh.value ? ' kWh' : ` ${props.currency}`;
+    const precision = isKwh.value ? 3 : 2;
+
+    return {
+        tooltip: {
+            trigger: 'axis',
+            formatter(params: any[]) {
+                const p = params[0];
+                if (!p) return '';
+                const val = (p.value as number) ?? 0;
+                return `${p.axisValue}<br/>${p.marker}${val.toFixed(precision)}${unitSuffix}`;
+            }
+        },
+        legend: {show: false},
+        grid: {left: 40, right: 12, top: 8, bottom: 24},
+        xAxis: {
+            type: 'category',
+            data: labels,
+            axisLabel: {fontSize: 10}
+        },
+        yAxis: {
+            type: 'value',
+            min: 0,
+            axisLabel: {fontSize: 10}
+        },
+        series: [
+            {
+                name: seriesLabel,
+                type: 'bar',
+                data: displayValues,
+                itemStyle: {color: barColor.value}
+            }
+        ]
+    };
 });
+
+useEChart(chartEl, option);
 </script>
 
 <style scoped>
-.chart-card-toggle {
-    font-size: var(--text-sm);
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-md);
-    background-color: var(--color-surface-3);
-    color: var(--color-text-tertiary);
-    transition: background-color var(--duration-fast) var(--ease-default),
-                color var(--duration-fast) var(--ease-default);
-    cursor: pointer;
-}
-.chart-card-toggle:hover {
-    color: var(--color-text-primary);
-}
-.chart-card-toggle--active {
-    background-color: var(--color-primary);
-    color: white;
+.consumption-chart {
+    width: 100%;
+    height: 100%;
+    min-height: 160px;
 }
 </style>

@@ -8,37 +8,34 @@
 </template>
 
 <script setup lang="ts">
-import {useRouter} from 'vue-router/auto';
+import {useRouter} from 'vue-router';
 import EmptyBlock from '@/components/core/EmptyBlock.vue';
 import Spinner from '@/components/core/Spinner.vue';
 import {getZitadelAuth} from '@/helpers/zitadelAuth';
+import {debug, debugWarn} from '@/tools/debug';
 
 const router = useRouter();
-console.log('zitadel auth started');
 
 const zitadelAuth = getZitadelAuth();
-if (zitadelAuth == undefined) {
+if (zitadelAuth === undefined) {
     window.location.href = '/';
 } else {
     zitadelAuth.oidcAuth.mgr
         .signinRedirectCallback()
         .then((data) => {
-            console.debug(
-                `${zitadelAuth!.oidcAuth.authName} Window signin callback success`
-            );
-            // need to manually redirect for window type
-            // goto original secure route or root
-            const redirect = data.state ? data.state.to : null;
-            if (router) router.replace(redirect || '/');
-            else window.location.href = zitadelAuth!.oidcAuth.appUrl;
+            debug('OIDC popup callback success');
+            const state = data.state as {to?: string} | undefined;
+            if (router) router.replace(state?.to || '/');
+            else window.location.href = '/';
         })
         .catch((err) => {
-            console.error(
-                `${zitadelAuth!.oidcAuth.authName} Window signin callback error`,
-                err
-            );
+            debugWarn('OIDC popup callback error', err);
             if (router) router.replace('/');
-            else window.location.href = zitadelAuth!.oidcAuth.appUrl;
+            else window.location.href = '/';
         });
 }
 </script>
+
+<route lang="json">
+{ "meta": { "layout": "basic" } }
+</route>

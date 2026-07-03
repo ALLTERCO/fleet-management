@@ -1,4 +1,40 @@
 import {computed} from 'vue';
+import {
+    ACTIVE_HANDLES_CRITICAL,
+    ACTIVE_HANDLES_WARN,
+    CPU_USER_CRITICAL_PCT,
+    CPU_USER_WARN_PCT,
+    DB_AVG_CRITICAL_MS,
+    DB_AVG_WARN_MS,
+    DB_POOL_WAITING_CRITICAL,
+    DB_POOL_WAITING_WARN,
+    EM_ACTIVE_CRITICAL,
+    EM_ACTIVE_WARN,
+    EM_QUEUE_CRITICAL,
+    EM_QUEUE_WARN,
+    EVENT_LISTENERS_CRITICAL,
+    EVENT_LISTENERS_WARN,
+    EVENT_LOOP_CRITICAL_MS,
+    EVENT_LOOP_WARN_MS,
+    GC_PAUSE_CRITICAL_MS,
+    GC_PAUSE_WARN_MS,
+    HEAP_CRITICAL_MB,
+    HEAP_WARN_MB,
+    INIT_ACTIVE_CRITICAL,
+    INIT_ACTIVE_WARN,
+    INIT_FAIL_RATE_WARN_PCT,
+    OS_FREE_MEM_CRITICAL_PCT,
+    OS_FREE_MEM_WARN_PCT,
+    RPC_AVG_CRITICAL_MS,
+    RPC_AVG_WARN_MS,
+    RPC_ERR_RATE_CRITICAL_PCT,
+    RPC_ERR_RATE_WARN_PCT,
+    STATUS_QUEUE_CRITICAL,
+    STATUS_QUEUE_WARN,
+    TREND_RECENT_HALF,
+    TREND_UP_RATIO,
+    TREND_WINDOW_SAMPLES
+} from '@/helpers/monitoring-thresholds';
 import type {MetricSnapshot} from '@/stores/monitoring';
 import {useMonitoringStore} from '@/stores/monitoring';
 
@@ -31,17 +67,17 @@ interface CheckContext {
 }
 
 function isTrendingUp(history: number[]): boolean {
-    if (history.length < 10) return false;
-    const recent = history.slice(-5);
-    const earlier = history.slice(-10, -5);
+    if (history.length < TREND_WINDOW_SAMPLES) return false;
+    const recent = history.slice(-TREND_RECENT_HALF);
+    const earlier = history.slice(-TREND_WINDOW_SAMPLES, -TREND_RECENT_HALF);
     const recentAvg = recent.reduce((a, b) => a + b, 0) / recent.length;
     const earlierAvg = earlier.reduce((a, b) => a + b, 0) / earlier.length;
-    return earlierAvg > 0 && recentAvg > earlierAvg * 1.5;
+    return earlierAvg > 0 && recentAvg > earlierAvg * TREND_UP_RATIO;
 }
 
 function checkEventLoop({s, history}: CheckContext): Bottleneck | null {
-    if (s.eventLoopLagMs <= 50) return null;
-    const critical = s.eventLoopLagMs > 100;
+    if (s.eventLoopLagMs <= EVENT_LOOP_WARN_MS) return null;
+    const critical = s.eventLoopLagMs > EVENT_LOOP_CRITICAL_MS;
     return {
         id: 'event-loop',
         name: 'Event Loop Lag',
@@ -64,8 +100,8 @@ function checkEventLoop({s, history}: CheckContext): Bottleneck | null {
 }
 
 function checkInitSaturation({s, history}: CheckContext): Bottleneck | null {
-    if (s.initActive <= 50) return null;
-    const critical = s.initActive >= 80;
+    if (s.initActive <= INIT_ACTIVE_WARN) return null;
+    const critical = s.initActive >= INIT_ACTIVE_CRITICAL;
     return {
         id: 'init-saturation',
         name: 'Init Queue Saturation',
@@ -81,6 +117,23 @@ function checkInitSaturation({s, history}: CheckContext): Bottleneck | null {
         affectedMetrics: [
             {label: 'Active Inits', value: `${s.initActive}/100`},
             {label: 'Queued', value: s.initQueued},
+            {
+                label: 'Oldest queued',
+                value: Math.round(s.initOldestQueuedMs / 1000),
+                unit: 's'
+            },
+            {
+                label: 'Oldest held',
+                value: Math.round(s.initOldestHeldMs / 1000),
+                unit: 's'
+            },
+            {label: 'Reclaimed', value: s.initReclaimedTotal},
+            {label: 'Slow builds', value: s.buildSlowCount},
+            {
+                label: 'Slowest build',
+                value: Math.round(s.buildSlowestMs / 1000),
+                unit: 's'
+            },
             {label: 'Failures/min', value: s.initFailureRate}
         ],
         trendingUp: isTrendingUp(history('initActive'))
@@ -88,8 +141,8 @@ function checkInitSaturation({s, history}: CheckContext): Bottleneck | null {
 }
 
 function checkDbPoolExhaustion({s, history}: CheckContext): Bottleneck | null {
-    if (s.dbPoolWaiting <= 0) return null;
-    const critical = s.dbPoolWaiting > 5;
+    if (s.dbPoolWaiting <= DB_POOL_WAITING_WARN) return null;
+    const critical = s.dbPoolWaiting > DB_POOL_WAITING_CRITICAL;
     return {
         id: 'db-pool-exhaustion',
         name: 'DB Pool Exhaustion',
@@ -115,8 +168,8 @@ function checkDbPoolExhaustion({s, history}: CheckContext): Bottleneck | null {
 }
 
 function checkDbLatency({s, history}: CheckContext): Bottleneck | null {
-    if (s.dbAvgMs <= 200) return null;
-    const critical = s.dbAvgMs > 500;
+    if (s.dbAvgMs <= DB_AVG_WARN_MS) return null;
+    const critical = s.dbAvgMs > DB_AVG_CRITICAL_MS;
     return {
         id: 'db-latency',
         name: 'Database Latency',
@@ -138,8 +191,8 @@ function checkDbLatency({s, history}: CheckContext): Bottleneck | null {
 }
 
 function checkRpcLatency({s, history}: CheckContext): Bottleneck | null {
-    if (s.rpcAvgMs <= 500) return null;
-    const critical = s.rpcAvgMs > 1000;
+    if (s.rpcAvgMs <= RPC_AVG_WARN_MS) return null;
+    const critical = s.rpcAvgMs > RPC_AVG_CRITICAL_MS;
     return {
         id: 'rpc-latency',
         name: 'RPC Command Latency',
@@ -162,8 +215,8 @@ function checkRpcLatency({s, history}: CheckContext): Bottleneck | null {
 }
 
 function checkRpcErrors({s}: CheckContext): Bottleneck | null {
-    if (s.rpcErrorRate <= 2) return null;
-    const critical = s.rpcErrorRate > 10;
+    if (s.rpcErrorRate <= RPC_ERR_RATE_WARN_PCT) return null;
+    const critical = s.rpcErrorRate > RPC_ERR_RATE_CRITICAL_PCT;
     return {
         id: 'rpc-errors',
         name: 'RPC Error Rate',
@@ -185,8 +238,9 @@ function checkRpcErrors({s}: CheckContext): Bottleneck | null {
 }
 
 function checkStatusBacklog({s, history}: CheckContext): Bottleneck | null {
-    if (s.statusQueueSize <= 50) return null;
-    const critical = s.statusFlushing && s.statusQueueSize > 100;
+    if (s.statusQueueSize <= STATUS_QUEUE_WARN) return null;
+    const critical =
+        s.statusFlushing && s.statusQueueSize > STATUS_QUEUE_CRITICAL;
     return {
         id: 'status-backlog',
         name: 'Status Pipeline Backlog',
@@ -209,8 +263,8 @@ function checkStatusBacklog({s, history}: CheckContext): Bottleneck | null {
 }
 
 function checkHeapPressure({s}: CheckContext): Bottleneck | null {
-    if (s.heapTrend !== 'growing' || s.heapUsedM <= 256) return null;
-    const critical = s.heapUsedM > 512;
+    if (s.heapTrend !== 'growing' || s.heapUsedM <= HEAP_WARN_MB) return null;
+    const critical = s.heapUsedM > HEAP_CRITICAL_MB;
     return {
         id: 'heap-pressure',
         name: 'Memory Pressure',
@@ -224,7 +278,11 @@ function checkHeapPressure({s}: CheckContext): Bottleneck | null {
         score: critical ? 75 : 55,
         affectedMetrics: [
             {label: 'Heap Used', value: s.heapUsedM, unit: 'MB'},
-            {label: 'Heap Total', value: s.heapTotalM, unit: 'MB'},
+            {
+                label: 'Heap Limit',
+                value: s.heapLimitM || s.heapTotalM,
+                unit: 'MB'
+            },
             {label: 'RSS', value: s.rssM, unit: 'MB'},
             {label: 'Trend', value: s.heapTrend}
         ],
@@ -233,8 +291,11 @@ function checkHeapPressure({s}: CheckContext): Bottleneck | null {
 }
 
 function checkEmSyncCapacity({s, history}: CheckContext): Bottleneck | null {
-    if (s.emActiveSyncs < 35 || s.emQueueSize <= 50) return null;
-    const critical = s.emActiveSyncs >= 38 && s.emQueueSize > 100;
+    if (s.emActiveSyncs < EM_ACTIVE_WARN || s.emQueueSize <= EM_QUEUE_WARN)
+        return null;
+    const critical =
+        s.emActiveSyncs >= EM_ACTIVE_CRITICAL &&
+        s.emQueueSize > EM_QUEUE_CRITICAL;
     return {
         id: 'em-sync-capacity',
         name: 'Energy Meter Sync Capacity',
@@ -246,15 +307,21 @@ function checkEmSyncCapacity({s, history}: CheckContext): Bottleneck | null {
         score: critical ? 60 : 35,
         affectedMetrics: [
             {label: 'Active Syncs', value: `${s.emActiveSyncs}/40`},
-            {label: 'Queue', value: s.emQueueSize}
+            {label: 'Queue', value: s.emQueueSize},
+            {
+                label: 'Oldest held',
+                value: Math.round(s.emSyncOldestHeldMs / 1000),
+                unit: 's'
+            },
+            {label: 'Stuck', value: s.emSyncStuck}
         ],
         trendingUp: isTrendingUp(history('emActiveSyncs'))
     };
 }
 
 function checkEventListeners({s, history}: CheckContext): Bottleneck | null {
-    if (s.eventsListeners <= 500) return null;
-    const critical = s.eventsListeners > 1000;
+    if (s.eventsListeners <= EVENT_LISTENERS_WARN) return null;
+    const critical = s.eventsListeners > EVENT_LISTENERS_CRITICAL;
     return {
         id: 'event-listeners',
         name: 'Event Listener Count',
@@ -275,8 +342,8 @@ function checkEventListeners({s, history}: CheckContext): Bottleneck | null {
 }
 
 function checkCpuSaturation({s, history}: CheckContext): Bottleneck | null {
-    if (s.cpuUserPct <= 70) return null;
-    const critical = s.cpuUserPct > 90;
+    if (s.cpuUserPct <= CPU_USER_WARN_PCT) return null;
+    const critical = s.cpuUserPct > CPU_USER_CRITICAL_PCT;
     return {
         id: 'cpu-saturation',
         name: 'CPU Saturation',
@@ -299,8 +366,10 @@ function checkCpuSaturation({s, history}: CheckContext): Bottleneck | null {
 }
 
 function checkOsMemory({s}: CheckContext): Bottleneck | null {
-    if (s.osFreeMemM <= 0 || s.osFreeMemM >= 500) return null;
-    const critical = s.osFreeMemM < 200;
+    if (s.osTotalMemM <= 0 || s.osFreeMemM <= 0) return null;
+    const freePct = (s.osFreeMemM / s.osTotalMemM) * 100;
+    if (freePct >= OS_FREE_MEM_WARN_PCT) return null;
+    const critical = freePct < OS_FREE_MEM_CRITICAL_PCT;
     return {
         id: 'os-memory-pressure',
         name: 'OS Memory Pressure',
@@ -323,8 +392,8 @@ function checkOsMemory({s}: CheckContext): Bottleneck | null {
 }
 
 function checkGcPressure({s}: CheckContext): Bottleneck | null {
-    if (s.gcMaxPauseMs <= 100) return null;
-    const critical = s.gcMaxPauseMs > 500;
+    if (s.gcMaxPauseMs <= GC_PAUSE_WARN_MS) return null;
+    const critical = s.gcMaxPauseMs > GC_PAUSE_CRITICAL_MS;
     return {
         id: 'gc-pressure',
         name: 'GC Pause Pressure',
@@ -347,8 +416,8 @@ function checkGcPressure({s}: CheckContext): Bottleneck | null {
 }
 
 function checkHandleLeak({s, history}: CheckContext): Bottleneck | null {
-    if (s.activeHandles <= 1000) return null;
-    const critical = s.activeHandles > 5000;
+    if (s.activeHandles <= ACTIVE_HANDLES_WARN) return null;
+    const critical = s.activeHandles > ACTIVE_HANDLES_CRITICAL;
     return {
         id: 'handle-leak',
         name: 'Handle Leak',
@@ -370,8 +439,8 @@ function checkHandleLeak({s, history}: CheckContext): Bottleneck | null {
 }
 
 function checkInitFailures({s}: CheckContext): Bottleneck | null {
-    if (s.initFailureRate <= 2) return null;
-    const critical = s.initFailureRate > 10;
+    if (s.initFailureRate <= INIT_FAIL_RATE_WARN_PCT) return null;
+    const critical = s.initFailureRate > RPC_ERR_RATE_CRITICAL_PCT;
     return {
         id: 'init-failures',
         name: 'Device Init Failures',
@@ -394,7 +463,7 @@ function checkInitFailures({s}: CheckContext): Bottleneck | null {
 
 function checkStatusFlushLatency({s}: CheckContext): Bottleneck | null {
     const store = useMonitoringStore();
-    const flushTiming = store.latestMetrics?.dbTimings?.['status_flush'];
+    const flushTiming = store.latestMetrics?.dbTimings?.status_flush;
     if (!flushTiming || flushTiming.avgMs <= 200) return null;
     const critical = flushTiming.avgMs > 500;
     return {
@@ -403,7 +472,8 @@ function checkStatusFlushLatency({s}: CheckContext): Bottleneck | null {
         severity: critical ? 'critical' : 'warning',
         category: 'latency',
         description: `Status flush avg is ${flushTiming.avgMs}ms (${flushTiming.count} flushes). DB writes can't keep up.`,
-        recommendation: 'Try disabling DB writes (Control Panel) to confirm DB is the bottleneck.',
+        recommendation:
+            'Try disabling DB writes (Control Panel) to confirm DB is the bottleneck.',
         score: critical ? 80 : 50,
         affectedMetrics: [
             {label: 'Flush Avg', value: flushTiming.avgMs, unit: 'ms'},

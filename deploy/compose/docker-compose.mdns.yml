@@ -5,6 +5,15 @@
 services:
   mdns-repeater:
     image: shellygroup/mdns-repeater:${MDNS_REPEATER_VERSION}
+    labels:
+      fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
+      fleet.client: "${FM_CLIENT_ID:-shared}"
+      fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
+      fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
+      fleet.version: "${MDNS_REPEATER_VERSION:-unknown}"
+      fleet.commit: "${FM_BUILD_COMMIT:-unknown}"
+      fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
+      fleet.service: "mdns-repeater"
     restart: unless-stopped
     environment:
       LISTEN_ON: ${MDNS_ON}

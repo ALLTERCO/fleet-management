@@ -1,4 +1,4 @@
-import {computed, type Ref, ref, type WatchStopHandle, watch} from 'vue';
+import {computed, ref, type WatchStopHandle, watch} from 'vue';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
 import {useGroupsStore} from '@/stores/groups';
@@ -19,6 +19,31 @@ export function useDeviceSelection(filterFn?: (device: any) => boolean) {
 
     let _refCount = 0;
     let _stopWatch: WatchStopHandle | null = null;
+    let _debounce: ReturnType<typeof setTimeout> | undefined;
+
+    function canSelectDevice(shellyID: string) {
+        const device = devicesStore.devices[shellyID];
+        return Boolean(
+            device?.online &&
+                authStore.canExecuteDevice(shellyID) &&
+                (filterFn ? filterFn(device) : true)
+        );
+    }
+
+    function rebuildExecutable() {
+        executableDevices.value = Object.values(devicesStore.devices).filter(
+            (device) =>
+                device.online &&
+                authStore.canExecuteDevice(device.shellyID) &&
+                (filterFn ? filterFn(device) : true)
+        );
+
+        for (const shellyID of Array.from(selectedDevices.value)) {
+            if (!canSelectDevice(shellyID)) {
+                selectedDevices.value.delete(shellyID);
+            }
+        }
+    }
 
     function activate() {
         _refCount++;
@@ -26,14 +51,8 @@ export function useDeviceSelection(filterFn?: (device: any) => boolean) {
             _stopWatch = watch(
                 () => devicesStore.devicesVersion,
                 () => {
-                    executableDevices.value = Object.values(
-                        devicesStore.devices
-                    ).filter(
-                        (device) =>
-                            device.online &&
-                            authStore.canExecuteDevice(device.shellyID) &&
-                            (filterFn ? filterFn(device) : true)
-                    );
+                    clearTimeout(_debounce);
+                    _debounce = setTimeout(rebuildExecutable, 300);
                 },
                 {immediate: true}
             );
@@ -42,9 +61,12 @@ export function useDeviceSelection(filterFn?: (device: any) => boolean) {
 
     function deactivate() {
         _refCount = Math.max(0, _refCount - 1);
-        if (_refCount === 0 && _stopWatch) {
-            _stopWatch();
-            _stopWatch = null;
+        if (_refCount === 0) {
+            if (_stopWatch) {
+                _stopWatch();
+                _stopWatch = null;
+            }
+            clearTimeout(_debounce);
             executableDevices.value = [];
         }
     }
@@ -52,13 +74,13 @@ export function useDeviceSelection(filterFn?: (device: any) => boolean) {
     function toggleDevice(shellyID: string) {
         if (selectedDevices.value.has(shellyID)) {
             selectedDevices.value.delete(shellyID);
-        } else if (authStore.canExecuteDevice(shellyID)) {
+        } else if (canSelectDevice(shellyID)) {
             selectedDevices.value.add(shellyID);
         }
     }
 
     function selectDevice(shellyID: string) {
-        if (authStore.canExecuteDevice(shellyID)) {
+        if (canSelectDevice(shellyID)) {
             selectedDevices.value.add(shellyID);
         }
     }
@@ -71,7 +93,7 @@ export function useDeviceSelection(filterFn?: (device: any) => boolean) {
         const group = groupsStore.groups[groupId];
         if (!group) return;
         for (const shellyID of group.devices) {
-            if (authStore.canExecuteDevice(shellyID)) {
+            if (canSelectDevice(shellyID)) {
                 selectedDevices.value.add(shellyID);
             }
         }

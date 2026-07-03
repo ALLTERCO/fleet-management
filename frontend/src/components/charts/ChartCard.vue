@@ -1,8 +1,8 @@
 <template>
     <div class="chart-card" :style="accentStyle">
-        <!-- Header -->
-        <div class="chart-card__header">
-            <h3 class="chart-card__title">
+        <!-- Header — only rendered when there is something to show -->
+        <div v-if="title || $slots.summary || $slots.actions" class="chart-card__header">
+            <h3 v-if="title" class="chart-card__title">
                 <i v-if="icon" :class="icon" class="chart-card__icon"></i>
                 {{ title }}
             </h3>
@@ -18,7 +18,7 @@
 
             <!-- Loading overlay -->
             <div v-if="loading" class="chart-card__overlay">
-                <i class="fas fa-spinner fa-spin text-xl text-[var(--color-text-disabled)]"></i>
+                <Spinner size="sm" />
             </div>
 
             <!-- Empty state -->
@@ -36,21 +36,25 @@
 
 <script setup lang="ts">
 import {computed} from 'vue';
+import Spinner from '@/components/core/Spinner.vue';
 
-const props = withDefaults(defineProps<{
-    title: string;
-    icon?: string;
-    color?: string;
-    height?: number;
-    loading?: boolean;
-    empty?: boolean;
-    emptyText?: string;
-}>(), {
-    height: 256,
-    loading: false,
-    empty: false,
-    emptyText: 'No data available'
-});
+const props = withDefaults(
+    defineProps<{
+        title?: string;
+        icon?: string;
+        color?: string;
+        height?: number;
+        loading?: boolean;
+        empty?: boolean;
+        emptyText?: string;
+    }>(),
+    {
+        height: 256,
+        loading: false,
+        empty: false,
+        emptyText: 'No data available'
+    }
+);
 
 const accentStyle = computed(() => {
     if (!props.color) return {};
@@ -75,7 +79,7 @@ const accentStyle = computed(() => {
 }
 
 .chart-card__title {
-    font-size: var(--text-sm);
+    font-size: var(--type-body);
     font-weight: var(--font-semibold);
     color: var(--color-text-primary);
     display: flex;
@@ -84,7 +88,7 @@ const accentStyle = computed(() => {
 }
 
 .chart-card__icon {
-    font-size: var(--text-sm);
+    font-size: var(--type-body);
 }
 
 .chart-card__header-right {
@@ -117,7 +121,7 @@ const accentStyle = computed(() => {
     margin-top: var(--space-3);
     padding-top: var(--space-3);
     border-top: 1px solid var(--color-border-subtle);
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     color: var(--color-text-tertiary);
 }
 

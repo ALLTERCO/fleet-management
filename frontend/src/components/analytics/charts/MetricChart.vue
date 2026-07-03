@@ -15,7 +15,7 @@
             </span>
         </template>
 
-        <canvas ref="chartCanvas"></canvas>
+        <div ref="chartEl" class="metric-chart"></div>
 
         <template v-if="data.length" #stats>
             <span>Min: <strong>{{ statsMin.toFixed(precision) }} {{ unit }}</strong></span>
@@ -25,34 +25,11 @@
 </template>
 
 <script setup lang="ts">
-import {
-    BarController,
-    BarElement,
-    CategoryScale,
-    Chart,
-    Filler,
-    Legend,
-    LinearScale,
-    LineController,
-    LineElement,
-    PointElement,
-    Tooltip
-} from 'chart.js';
-import {computed, onMounted, onUnmounted, ref, watch} from 'vue';
+import {computed, ref} from 'vue';
 import ChartCard from '@/components/charts/ChartCard.vue';
-
-Chart.register(
-    BarController,
-    BarElement,
-    LineController,
-    LineElement,
-    PointElement,
-    CategoryScale,
-    LinearScale,
-    Tooltip,
-    Legend,
-    Filler
-);
+import {useEChart} from '@/composables/useEChart';
+import {hexToRgba} from '@/helpers/chartUtils';
+import {escapeHtml} from '@/helpers/texts';
 
 interface DataPoint {
     bucket: string;
@@ -81,8 +58,7 @@ const props = withDefaults(
     }
 );
 
-const chartCanvas = ref<HTMLCanvasElement | null>(null);
-let chart: Chart | null = null;
+const chartEl = ref<HTMLElement | null>(null);
 
 interface BucketData {
     sumVal: number;
@@ -98,8 +74,8 @@ function groupByBucket(): Map<string, BucketData> {
         const existing = grouped.get(label) || {
             sumVal: 0,
             countVal: 0,
-            realMin: Infinity,
-            realMax: -Infinity
+            realMin: Number.POSITIVE_INFINITY,
+            realMax: Number.NEGATIVE_INFINITY
         };
         existing.sumVal += d.value;
         existing.countVal += 1;
@@ -129,134 +105,22 @@ const statsAvg = computed(() => {
 const statsMin = computed(() => {
     if (!props.data.length) return 0;
     const grouped = groupByBucket();
-    let min = Infinity;
+    let min = Number.POSITIVE_INFINITY;
     for (const b of grouped.values()) {
         if (b.realMin < min) min = b.realMin;
     }
-    return min === Infinity ? 0 : min;
+    return min === Number.POSITIVE_INFINITY ? 0 : min;
 });
 
 const statsMax = computed(() => {
     if (!props.data.length) return 0;
     const grouped = groupByBucket();
-    let max = -Infinity;
+    let max = Number.NEGATIVE_INFINITY;
     for (const b of grouped.values()) {
         if (b.realMax > max) max = b.realMax;
     }
-    return max === -Infinity ? 0 : max;
+    return max === Number.NEGATIVE_INFINITY ? 0 : max;
 });
-
-function getCSSColor(varName: string, fallback: string): string {
-    return getComputedStyle(document.documentElement).getPropertyValue(varName).trim() || fallback;
-}
-
-function renderChart() {
-    if (!chartCanvas.value || !props.data.length) {
-        chart?.destroy();
-        chart = null;
-        return;
-    }
-
-    const ctx = chartCanvas.value.getContext('2d');
-    if (!ctx) return;
-
-    const tickColor = getCSSColor('--color-text-disabled', '#9ca3af');
-    const gridColor = getCSSColor('--color-border-subtle', 'rgba(255,255,255,0.1)');
-
-    const grouped = groupByBucket();
-    const labels = Array.from(grouped.keys());
-    const isEnergy = props.unit === 'kWh';
-
-    const avgValues = labels.map((l) => {
-        const b = grouped.get(l)!;
-        return isEnergy ? b.sumVal : b.sumVal / b.countVal;
-    });
-
-    const hasMinMax = props.data.some((d) => d.min != null || d.max != null);
-
-    const datasets: any[] = [];
-
-    if (hasMinMax && props.chartType === 'line') {
-        // Show min/max as a shaded band
-        const minValues = labels.map((l) => grouped.get(l)!.realMin);
-        const maxValues = labels.map((l) => grouped.get(l)!.realMax);
-
-        datasets.push({
-            label: `Max (${props.unit})`,
-            data: maxValues,
-            borderColor: props.color.replace('1)', '0.4)'),
-            backgroundColor: props.color.replace('1)', '0.1)'),
-            borderWidth: 1,
-            pointRadius: 0,
-            fill: '+1',
-            tension: 0.3
-        });
-        datasets.push({
-            label: `Avg (${props.unit})`,
-            data: avgValues,
-            borderColor: props.color,
-            backgroundColor: 'transparent',
-            borderWidth: 2,
-            pointRadius: 2,
-            pointBackgroundColor: props.color,
-            tension: 0.3
-        });
-        datasets.push({
-            label: `Min (${props.unit})`,
-            data: minValues,
-            borderColor: props.color.replace('1)', '0.4)'),
-            backgroundColor: 'transparent',
-            borderWidth: 1,
-            pointRadius: 0,
-            tension: 0.3
-        });
-    } else {
-        datasets.push({
-            label: `${props.title} (${props.unit})`,
-            data: avgValues,
-            backgroundColor:
-                props.chartType === 'bar'
-                    ? props.color.replace('1)', '0.7)')
-                    : 'transparent',
-            borderColor: props.color,
-            borderWidth: props.chartType === 'line' ? 2 : 1,
-            pointRadius: props.chartType === 'line' ? 2 : 0,
-            pointBackgroundColor: props.color,
-            tension: 0.3
-        });
-    }
-
-    chart?.destroy();
-    chart = new Chart(ctx, {
-        type: props.chartType,
-        data: {labels, datasets},
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: props.unit === 'kWh' || props.unit === 'A',
-                    grid: {color: gridColor},
-                    ticks: {color: tickColor}
-                },
-                x: {
-                    grid: {display: false},
-                    ticks: {color: tickColor}
-                }
-            },
-            plugins: {
-                legend: {display: hasMinMax},
-                tooltip: {
-                    callbacks: {
-                        label(ctx) {
-                            return `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(props.precision)} ${props.unit}`;
-                        }
-                    }
-                }
-            }
-        }
-    });
-}
 
 function formatBucket(bucket: string): string {
     try {
@@ -270,28 +134,145 @@ function formatBucket(bucket: string): string {
     }
 }
 
-onMounted(renderChart);
-watch(() => props.data, renderChart, {deep: true});
+const option = computed(() => {
+    const grouped = groupByBucket();
+    const labels = Array.from(grouped.keys());
+    const isEnergy = props.unit === 'kWh';
+    const hasMinMax =
+        props.chartType === 'line' &&
+        props.data.some((d) => d.min != null || d.max != null);
 
-onUnmounted(() => {
-    chart?.destroy();
+    const avgValues = labels.map((l) => {
+        const b = grouped.get(l)!;
+        return isEnergy ? b.sumVal : b.sumVal / b.countVal;
+    });
+
+    const beginAtZero = props.unit === 'kWh' || props.unit === 'A';
+    const colorMain = props.color;
+    const colorBand = hexToRgba(props.color, 0.12);
+
+    const series: any[] = [];
+
+    if (hasMinMax) {
+        const minValues = labels.map((l) => grouped.get(l)!.realMin);
+        const maxValues = labels.map((l) => grouped.get(l)!.realMax);
+
+        // Avg line with a markArea band between min and max at each point
+        series.push({
+            name: `Avg (${props.unit})`,
+            type: 'line',
+            data: avgValues,
+            lineStyle: {color: colorMain, width: 2},
+            itemStyle: {color: colorMain},
+            symbolSize: 4,
+            smooth: true,
+            markArea: {
+                silent: true,
+                itemStyle: {color: colorBand},
+                data: labels.map((label, i) => [
+                    {xAxis: label, yAxis: minValues[i]},
+                    {xAxis: label, yAxis: maxValues[i]}
+                ])
+            }
+        });
+
+        // Invisible min/max lines so tooltip shows them
+        series.push({
+            name: `Min (${props.unit})`,
+            type: 'line',
+            data: minValues,
+            lineStyle: {
+                color: hexToRgba(props.color, 0.4),
+                width: 1,
+                type: 'dashed'
+            },
+            itemStyle: {color: hexToRgba(props.color, 0.4)},
+            symbolSize: 0,
+            smooth: true
+        });
+        series.push({
+            name: `Max (${props.unit})`,
+            type: 'line',
+            data: maxValues,
+            lineStyle: {
+                color: hexToRgba(props.color, 0.4),
+                width: 1,
+                type: 'dashed'
+            },
+            itemStyle: {color: hexToRgba(props.color, 0.4)},
+            symbolSize: 0,
+            smooth: true
+        });
+    } else if (props.chartType === 'bar') {
+        series.push({
+            name: `${props.title} (${props.unit})`,
+            type: 'bar',
+            data: avgValues,
+            itemStyle: {color: hexToRgba(props.color, 0.8)}
+        });
+    } else {
+        series.push({
+            name: `${props.title} (${props.unit})`,
+            type: 'line',
+            data: avgValues,
+            lineStyle: {color: colorMain, width: 2},
+            itemStyle: {color: colorMain},
+            symbolSize: 4,
+            smooth: true
+        });
+    }
+
+    return {
+        tooltip: {
+            trigger: 'axis',
+            formatter(params: any[]) {
+                if (!params.length) return '';
+                const lines = params.map((p: any) => {
+                    const val = (p.value as number) ?? 0;
+                    return `${p.marker}${escapeHtml(String(p.seriesName))}: ${val.toFixed(props.precision)} ${escapeHtml(props.unit)}`;
+                });
+                return `${params[0].axisValue}<br/>${lines.join('<br/>')}`;
+            }
+        },
+        legend: {show: hasMinMax},
+        grid: {left: 44, right: 12, top: hasMinMax ? 24 : 8, bottom: 24},
+        xAxis: {
+            type: 'category',
+            data: labels,
+            axisLabel: {fontSize: 10}
+        },
+        yAxis: {
+            type: 'value',
+            min: beginAtZero ? 0 : undefined,
+            axisLabel: {fontSize: 10}
+        },
+        series
+    };
 });
+
+useEChart(chartEl, option);
 </script>
 
 <style scoped>
+.metric-chart {
+    width: 100%;
+    height: 100%;
+    min-height: 140px;
+}
+
 .metric-stat {
     display: flex;
     align-items: baseline;
-    gap: 4px;
+    gap: var(--space-1);
 }
 .metric-stat__value {
-    font-size: var(--text-lg);
+    font-size: var(--type-subheading);
     font-weight: var(--font-semibold);
     color: var(--color-text-primary);
     line-height: 1;
 }
 .metric-stat__unit {
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     color: var(--color-text-tertiary);
 }
 </style>

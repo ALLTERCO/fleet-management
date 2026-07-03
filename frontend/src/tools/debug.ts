@@ -7,10 +7,10 @@
  * or when FM_DEBUG_DEFAULT=true is set in the deploy env.
  */
 
-const rtCfg = (window as any).__FM_RUNTIME_CONFIG__;
+const rtCfg = window.__FM_RUNTIME_CONFIG__;
 let enabled =
     localStorage.getItem('fm_debug') === '1' ||
-    (import.meta as any).env?.DEV ||
+    import.meta.env?.DEV ||
     rtCfg?.debugDefault === true;
 
 export function isDebugEnabled() {
@@ -35,4 +35,4 @@ export function debugWarn(...args: any[]) {
 }
 
 // Expose toggle on window for easy access from browser console
-(window as any).fmDebug = setDebug;
+window.fmDebug = setDebug;

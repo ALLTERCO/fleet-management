@@ -14,6 +14,19 @@ dist
 # Backend plugins dir is populated at runtime via volume — exclude from build context
 /backend/plugins
 
+# Backend runtime state — never bake into the image. It accumulates on reused CI
+# runners (audit logs, reports, uploads, temp, cfg state). Seed assets ship via
+# an explicit COPY in the Dockerfile.
+/backend/cfg/**/*.json
+/backend/cfg/**/*.tmp
+/backend/uploads/audit-logs
+/backend/uploads/reports
+/backend/uploads/reportImages
+/backend/uploads/floor-plans
+/backend/uploads/temp
+/backend/uploads/firmware-temp
+/backend/uploads/firmware-library
+
 # OS junk
 **/.DS_Store
 
@@ -30,3 +43,9 @@ docs
 # CI/CD and config files not needed in build
 .gitignore
 *.md
+
+# API guides + namespace prose feed /api/docs at generate time. Re-included last
+# so the `docs` and `*.md` excludes above don't drop them from the build context.
+# (Also requires docs/api/guides/ in the public export manifest.)
+!docs/api
+!docs/api/**

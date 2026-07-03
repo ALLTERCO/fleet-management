@@ -1,96 +1,127 @@
 <template>
-    <div>
-        <EmptyBlock v-if="!system.config.mdns.enable" class="space-y-2">
-            <p class="text-xl font-semibold pb-2">mDNS is disabled in settings</p>
-            <p class="text-sm pb-2">Try enabling this feature to discover devices in your local network.</p>
+    <PageTemplate
+        fill
+        v-model:search="nameFilter"
+        title="Discovered Devices"
+        :searchable="mdnsEnabled"
+        search-placeholder="Search by device name…"
+        :empty="isEmpty"
+        :empty-title="emptyTitle"
+        :empty-sub="emptySub"
+    >
+        <template v-if="!mdnsEnabled" #empty-cta>
             <Button type="blue" @click="goToSettings">Go to Settings</Button>
-        </EmptyBlock>
-        <div v-else class="space-y-2">
-            <BasicBlock title="All mDNS devices" bordered blurred padding="sm" class="relative">
-                <Input v-model="nameFilter" class="max-w-sm mt-2" label="Device name" />
-            </BasicBlock>
+        </template>
+        <template v-else-if="hasNameFilterButNoMatches" #empty-cta>
+            <Button type="blue" @click="nameFilter = ''">Reset search</Button>
+        </template>
 
-            <EmptyBlock v-if="Object.keys(deviceStore.devices).length == 0">
-                <p class="text-xl font-semibold pb-2">No devices found</p>
-                <p class="text-sm pb-2">Connect shelly devices via their outbound websocket.</p>
-            </EmptyBlock>
-            <template v-else>
-                <EmptyBlock v-if="Object.keys(devices).length == 0">
-                    <p class="text-xl font-semibold pb-2">No devices found</p>
-                    <p class="text-sm pb-2">Try changing you search parameters.</p>
-                    <Button type="blue" @click="nameFilter = ''">Reset search</Button>
-                </EmptyBlock>
-                <div :class="[small ? 'flex flex-col gap-2' : 'widget-grid']">
-                    <DeviceWidget
-                        v-for="device in devices"
-                        :key="device.shellyID"
-                        :device-id="device.shellyID"
-                        :selected="activeDevice === device.shellyID"
-                        :vertical="small"
-                        class="hover:cursor-pointer"
-                        @click.stop="clicked(device)"
-                    />
-                </div>
-            </template>
+        <div class="dd-grid">
+            <DeviceWidget
+                v-for="device in devices"
+                :key="device.shellyID"
+                :device-id="device.shellyID"
+                :selected="activeDevice === device.shellyID"
+                :vertical="false"
+                class="dd-tile"
+                @click.stop="clicked(device)"
+            />
         </div>
-    </div>
+    </PageTemplate>
 </template>
 
 <script setup lang="ts">
 import {computed, ref} from 'vue';
-import {useRouter} from 'vue-router/auto';
-import BasicBlock from '@/components/core/BasicBlock.vue';
-import EmptyBlock from '@/components/core/EmptyBlock.vue';
-import Input from '@/components/core/Input.vue';
+import {useRouter} from 'vue-router';
+import Button from '@/components/core/Button.vue';
+import PageTemplate from '@/components/core/PageTemplate.vue';
+import DeviceWidget from '@/components/widgets/DeviceWidget.vue';
+import {SETTINGS_PATH} from '@/constants';
+import {DeviceBoard} from '@/helpers/components';
+import {isDiscovered} from '@/helpers/device';
 import {useDevicesStore} from '@/stores/devices';
+import {useRightSideMenuStore} from '@/stores/right-side';
+import {useSystemStore} from '@/stores/system';
 import type {shelly_device_t} from '@/types';
 
 const router = useRouter();
-
-import Button from '@/components/core/Button.vue';
-import DeviceWidget from '@/components/widgets/DeviceWidget.vue';
-import {DeviceBoard} from '@/helpers/components';
-import {isDiscovered} from '@/helpers/device';
-import {small} from '@/helpers/ui';
-import {useRightSideMenuStore} from '@/stores/right-side';
-import {useSystemStore} from '@/stores/system';
-
 const deviceStore = useDevicesStore();
 const system = useSystemStore();
 const rightSideStore = useRightSideMenuStore();
 
-const devices = computed(() =>
-    Object.values(deviceStore.devices).filter((d) => filterDevice(d))
-);
 const nameFilter = ref('');
 const activeDevice = ref<string>();
 
+const mdnsEnabled = computed(() => system.config.mdns.enable);
+
+const devices = computed(() =>
+    Object.values(deviceStore.devices).filter((d) => filterDevice(d))
+);
+
+const hasAnyDiscoveredDevice = computed(() =>
+    Object.values(deviceStore.devices).some((d) => isDiscovered(d.shellyID))
+);
+
+const hasNameFilterButNoMatches = computed(
+    () =>
+        nameFilter.value.length > 1 &&
+        hasAnyDiscoveredDevice.value &&
+        devices.value.length === 0
+);
+
+const isEmpty = computed(
+    () =>
+        !mdnsEnabled.value ||
+        !hasAnyDiscoveredDevice.value ||
+        hasNameFilterButNoMatches.value
+);
+
+const emptyTitle = computed(() => {
+    if (!mdnsEnabled.value) return 'mDNS is disabled in settings';
+    if (!hasAnyDiscoveredDevice.value) return 'No devices found';
+    return 'No devices match';
+});
+
+const emptySub = computed(() => {
+    if (!mdnsEnabled.value) {
+        return 'Enable mDNS to discover devices on your local network.';
+    }
+    if (!hasAnyDiscoveredDevice.value) {
+        return 'Connect Shelly devices via their outbound websocket.';
+    }
+    return 'Try changing your search parameters.';
+});
+
 function filterDevice(device: shelly_device_t) {
-    if (!isDiscovered(device.shellyID)) {
-        return false;
-    }
-
+    if (!isDiscovered(device.shellyID)) return false;
     if (nameFilter.value.length > 1) {
-        if (
-            !device.info.name
-                .toLowerCase()
-                .includes(nameFilter.value.toLowerCase())
-        ) {
-            return false;
-        }
+        return device.info.name
+            .toLowerCase()
+            .includes(nameFilter.value.toLowerCase());
     }
-
     return true;
 }
 
 function clicked(device: shelly_device_t) {
-    rightSideStore.setActiveComponent(DeviceBoard, {
+    rightSideStore.showInspector(DeviceBoard, {
         shellyID: device.shellyID
     });
     activeDevice.value = device.shellyID;
 }
 
 function goToSettings() {
-    router.push('/settings/app');
+    router.push(SETTINGS_PATH);
 }
 </script>
+
+<style scoped>
+.dd-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: var(--gap-sm);
+}
+
+.dd-tile {
+    cursor: pointer;
+}
+</style>

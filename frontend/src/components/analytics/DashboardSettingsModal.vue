@@ -1,26 +1,14 @@
 <template>
-    <teleport to="body">
-        <div
-            v-if="visible"
-            class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50"
-            role="dialog"
-            aria-modal="true"
-            @click.self="close"
-        >
-            <div class="bg-[var(--color-surface-2)] text-[var(--color-text-primary)] rounded-lg shadow-lg w-full max-w-md">
-                <header class="flex justify-between items-center p-4 border-b border-[var(--color-border-default)]">
-                    <h2 class="text-lg font-semibold">
-                        <i class="fas fa-cog mr-2"></i>
-                        Dashboard Settings
-                    </h2>
-                    <button
-                        @click="close"
-                        class="text-[var(--color-text-tertiary)] hover:text-[var(--color-text-primary)] text-2xl leading-none"
-                        aria-label="Close"
-                    >&times;</button>
-                </header>
+    <Modal :visible="visible" compact @close="close">
+        <template #title>
+            <span class="inline-flex items-center gap-2">
+                <i class="fas fa-cog"></i>
+                Dashboard Settings
+            </span>
+        </template>
 
-                <div class="p-4 space-y-4">
+        <template #default>
+            <div class="space-y-4">
                     <!-- Tariff -->
                     <div>
                         <label class="block text-sm text-[var(--color-text-tertiary)] mb-1">Energy Tariff (per kWh)</label>
@@ -30,18 +18,14 @@
                                 type="number"
                                 step="0.0001"
                                 min="0"
-                                class="flex-1 bg-[var(--color-surface-3)] text-white px-3 py-2 rounded border border-[var(--color-border-strong)] focus:border-[var(--color-primary)] focus:outline-none"
+                                class="flex-1 bg-[var(--color-surface-3)] text-[var(--color-text-primary)] px-3 py-2 rounded border border-[var(--color-border-strong)] focus:border-[var(--color-primary)] focus:outline-none"
                                 placeholder="0.00"
                             />
                             <select
                                 v-model="localSettings.currency"
-                                class="bg-[var(--color-surface-3)] text-white px-3 py-2 rounded border border-[var(--color-border-strong)] focus:border-[var(--color-primary)] focus:outline-none"
+                                class="bg-[var(--color-surface-3)] text-[var(--color-text-primary)] px-3 py-2 rounded border border-[var(--color-border-strong)] focus:border-[var(--color-primary)] focus:outline-none"
                             >
-                                <option value="EUR">EUR</option>
-                                <option value="USD">USD</option>
-                                <option value="GBP">GBP</option>
-                                <option value="BGN">BGN</option>
-                                <option value="CHF">CHF</option>
+                                <option v-for="c in CURRENCIES" :key="c" :value="c">{{ c }}</option>
                             </select>
                         </div>
                     </div>
@@ -51,7 +35,7 @@
                         <label class="block text-sm text-[var(--color-text-tertiary)] mb-1">Default Time Range</label>
                         <select
                             v-model="localSettings.defaultRange"
-                            class="w-full bg-[var(--color-surface-3)] text-white px-3 py-2 rounded border border-[var(--color-border-strong)] focus:border-[var(--color-primary)] focus:outline-none"
+                            class="w-full bg-[var(--color-surface-3)] text-[var(--color-text-primary)] px-3 py-2 rounded border border-[var(--color-border-strong)] focus:border-[var(--color-primary)] focus:outline-none"
                         >
                             <option value="last_24h">Last 24 hours</option>
                             <option value="last_7_days">Last 7 days</option>
@@ -65,7 +49,7 @@
                         <label class="block text-sm text-[var(--color-text-tertiary)] mb-1">Auto-refresh Interval</label>
                         <select
                             v-model.number="localSettings.refreshInterval"
-                            class="w-full bg-[var(--color-surface-3)] text-white px-3 py-2 rounded border border-[var(--color-border-strong)] focus:border-[var(--color-primary)] focus:outline-none"
+                            class="w-full bg-[var(--color-surface-3)] text-[var(--color-text-primary)] px-3 py-2 rounded border border-[var(--color-border-strong)] focus:border-[var(--color-primary)] focus:outline-none"
                         >
                             <option :value="30000">30 seconds</option>
                             <option :value="60000">1 minute</option>
@@ -95,31 +79,25 @@
                             </label>
                         </div>
                     </div>
-                </div>
-
-                <footer class="flex justify-end gap-2 p-4 border-t border-[var(--color-border-default)]">
-                    <button
-                        class="px-4 py-2 bg-[var(--color-surface-3)] text-[var(--color-text-secondary)] rounded hover:bg-[var(--color-surface-2)] transition-colors"
-                        @click="close"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        class="px-4 py-2 bg-[var(--color-primary)] text-white rounded hover:bg-[var(--color-primary-hover)] transition-colors"
-                        :disabled="saving"
-                        @click="save"
-                    >
-                        <i v-if="saving" class="fas fa-spinner fa-spin mr-2"></i>
-                        Save Settings
-                    </button>
-                </footer>
             </div>
-        </div>
-    </teleport>
+        </template>
+
+        <template #footer>
+            <div class="flex justify-end gap-2">
+                <Button type="blue-hollow" @click="close">Cancel</Button>
+                <Button type="blue" :disabled="saving" :loading="saving" @click="save">
+                    Save Settings
+                </Button>
+            </div>
+        </template>
+    </Modal>
 </template>
 
 <script setup lang="ts">
 import {reactive, ref, watch} from 'vue';
+import Button from '@/components/core/Button.vue';
+import Modal from '@/components/modals/Modal.vue';
+import {CURRENCIES} from '@/helpers/currencies';
 import type {DashboardSettings} from '@/stores/analytics';
 
 const props = defineProps<{

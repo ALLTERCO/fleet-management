@@ -1,15 +1,17 @@
-export interface JsonRpcIncomming {
+export type JsonRpcId = number | string | null;
+
+export interface JsonRpcIncoming {
     jsonrpc?: '2.0';
-    id: number;
+    id: JsonRpcId;
     src: string;
     dst?: string | string[];
     method: string;
     params?: undefined | any | any[];
 }
 
-export interface JsonRpcOutgoingSucess {
+export interface JsonRpcOutgoingSuccess {
     jsonrpc?: '2.0';
-    id: number;
+    id: JsonRpcId;
     src: string;
     dst: string;
     result: any;
@@ -17,7 +19,7 @@ export interface JsonRpcOutgoingSucess {
 
 export interface JsonRpcOutgoingError {
     jsonrpc?: '2.0';
-    id: number | null;
+    id: JsonRpcId;
     src: string;
     dst?: string | undefined;
     error: {
@@ -50,14 +52,21 @@ export interface JsonRpcOutgoingStatus {
     };
 }
 
-export type JsonRpcOutgoing = JsonRpcOutgoingSucess | JsonRpcOutgoingError;
+export type JsonRpcOutgoing = JsonRpcOutgoingSuccess | JsonRpcOutgoingError;
 
-export function parseIncomingJsonRpc(data: any): data is JsonRpcIncomming {
+function isJsonRpcId(value: unknown): value is JsonRpcId {
     return (
+        typeof value === 'number' || typeof value === 'string' || value === null
+    );
+}
+
+export function parseIncomingJsonRpc(data: any): data is JsonRpcIncoming {
+    return (
+        data !== null &&
         typeof data === 'object' &&
         ((typeof data.jsonrpc === 'string' && data.jsonrpc === '2.0') ||
             typeof data.jsonrpc === 'undefined') &&
-        typeof data.id === 'number' &&
+        isJsonRpcId(data.id) &&
         typeof data.src === 'string' &&
         typeof data.method === 'string' &&
         (typeof data.dst === 'undefined' ||

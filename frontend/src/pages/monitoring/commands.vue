@@ -1,221 +1,232 @@
 <template>
-    <div class="space-y-4 p-2">
+    <PageTemplate title="Commands" :tabs="monitoringTabs" back="/monitoring/investigate" active-path="/monitoring/investigate" fill>
         <h2 class="sr-only">RPC Commands</h2>
-        <!-- Tier gate -->
-        <BasicBlock v-if="store.obsLevel < 2" darker class="text-center py-8">
-            <p class="text-[var(--color-text-tertiary)]">Set observability to Medium or higher to see RPC command metrics.</p>
-            <button
-                class="mt-3 px-4 py-2 text-sm font-mono rounded bg-[var(--color-warning)] text-[var(--color-warning-text)] hover:bg-[var(--color-warning-hover)] transition-colors"
-                @click="store.changeLevel(2)"
-            >Enable Medium Monitoring</button>
-        </BasicBlock>
+        <ErrorBoundary>
+            <MonitoringEmptyState
+                v-if="store.obsLevel < 2"
+                title="Set observability to Medium or higher to see RPC command metrics."
+                action-label="Enable Medium Monitoring"
+                icon="fas fa-gauge-high"
+                @action="store.changeLevel(2)"
+            />
 
-        <EmptyBlock v-else-if="store.obsLevel >= 2 && !store.latestMetrics">
-            <Spinner />
-            <p class="text-sm pt-2">Waiting for metrics data...</p>
-        </EmptyBlock>
+            <EmptyBlock v-else-if="store.obsLevel >= 2 && !store.latestMetrics">
+                <Spinner />
+                <p class="cmd-empty-text">Waiting for metrics data...</p>
+            </EmptyBlock>
 
-        <template v-if="store.obsLevel >= 2 && store.latestMetrics">
-            <!-- Insight Panel -->
-            <InsightPanel :insights="insights" />
+            <template v-if="store.obsLevel >= 2 && store.latestMetrics">
+                <InsightPanel :insights="insights" />
 
-            <!-- Summary -->
-            <BasicBlock darker>
-                <div class="space-y-3">
-                    <div class="flex items-center gap-2">
-                        <HealthDot :status="store.rpcCommandsStatus" />
-                        <h3 class="font-semibold text-sm text-[var(--color-text-secondary)]">RPC Command Health</h3>
-                    </div>
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Avg Latency</div>
-                            <div class="flex items-end justify-between gap-2">
-                                <span class="text-sm font-mono font-semibold" :class="durationColor(store.latest?.rpcAvgMs ?? 0)">
-                                    {{ store.latest?.rpcAvgMs ?? 0 }}ms
+                <BasicBlock darker>
+                    <ConcurrentLoadPanel />
+                </BasicBlock>
+
+                <BasicBlock darker>
+                    <SlowRpcPanel />
+                </BasicBlock>
+
+                <BasicBlock darker>
+                    <SlowBuildsPanel />
+                </BasicBlock>
+
+                <BasicBlock darker>
+                    <SlowClientsPanel />
+                </BasicBlock>
+
+                <BasicBlock darker>
+                    <div class="cmd-stack">
+                        <MonitoringSectionHeader
+                            title="RPC Command Health"
+                            :status="store.rpcCommandsStatus"
+                        />
+                        <MonitoringGrid :columns="4">
+                            <div class="cmd-tile">
+                                <div class="cmd-tile-label">Avg Latency</div>
+                                <div class="cmd-tile-row">
+                                    <span class="cmd-tile-value" :class="durationColor(store.latest?.rpcAvgMs ?? 0)">
+                                        {{ store.latest?.rpcAvgMs ?? 0 }}ms
+                                    </span>
+                                    <SparkLine :data="cachedHistory.rpcAvgMs" :color="chartColors.success" :width="60" :height="20" />
+                                </div>
+                            </div>
+                            <div class="cmd-tile">
+                                <div class="cmd-tile-label">Error Rate</div>
+                                <div class="cmd-tile-row">
+                                    <span class="cmd-tile-value" :class="(store.latest?.rpcErrorRate ?? 0) > 2 ? 'cmd-text-danger' : ''">
+                                        {{ store.latest?.rpcErrorRate ?? 0 }}/min
+                                    </span>
+                                    <SparkLine :data="cachedHistory.rpcErrorRate" :color="chartColors.danger" :width="60" :height="20" />
+                                </div>
+                            </div>
+                            <div class="cmd-tile">
+                                <div class="cmd-tile-label">Success/min</div>
+                                <span class="cmd-tile-value cmd-text-success">{{ store.counterRates.rpc_success ?? 0 }}</span>
+                            </div>
+                            <div class="cmd-tile">
+                                <div class="cmd-tile-label">Errors/min</div>
+                                <span class="cmd-tile-value" :class="(store.counterRates.rpc_errors ?? 0) > 0 ? 'cmd-text-danger' : ''">
+                                    {{ store.counterRates.rpc_errors ?? 0 }}
                                 </span>
-                                <SparkLine :data="cachedHistory.rpcAvgMs" color="#34d399" :width="60" :height="20" />
+                            </div>
+                        </MonitoringGrid>
+                    </div>
+                </BasicBlock>
+
+                <BasicBlock darker>
+                    <div class="cmd-stack">
+                        <MonitoringSectionHeader title="RPC Timings">
+                            <template #actions>
+                                <button type="button" class="cmd-reset-btn" @click="resetTimings">Reset</button>
+                            </template>
+                        </MonitoringSectionHeader>
+                        <div class="cmd-scroll cmd-scroll--xl">
+                            <DataList
+                                :rows="sortedRpcTimings"
+                                :columns="rpcColumns"
+                                row-key="method"
+                                empty-message="No RPC timings recorded yet"
+                                :sort-key="rpcSortKey"
+                                :sort-asc="rpcSortAsc"
+                                @sort="sortBy"
+                            >
+                                <template #cell-avgMs="{row}">
+                                    <span :class="durationColor(row.avgMs)">{{ row.avgMs }}</span>
+                                </template>
+                                <template #cell-maxMs="{row}">
+                                    <span :class="durationColor(row.maxMs)">{{ row.maxMs }}</span>
+                                </template>
+                            </DataList>
+                        </div>
+                    </div>
+                </BasicBlock>
+
+                <BasicBlock darker>
+                    <div class="cmd-stack">
+                        <MonitoringSectionHeader title="Performance Over Time" />
+                        <MonitoringGrid :columns="2">
+                            <div>
+                                <div class="cmd-chart-label">RPC Avg Latency</div>
+                                <TimeSeriesChart
+                                    :data="cachedHistory.rpcAvgMs"
+                                    label="Avg Latency"
+                                    :color="chartColors.success"
+                                    unit="ms"
+                                    :thresholds="[{value: 500, color: chartColors.warning, label: 'Warning'}, {value: 1000, color: chartColors.danger, label: 'Critical'}]"
+                                    :height="160"
+                                />
+                            </div>
+                            <div>
+                                <div class="cmd-chart-label">RPC Error Rate</div>
+                                <TimeSeriesChart
+                                    :data="cachedHistory.rpcErrorRate"
+                                    label="Errors/min"
+                                    :color="chartColors.danger"
+                                    unit="/min"
+                                    :thresholds="[{value: 2, color: chartColors.warning, label: 'Warning'}, {value: 10, color: chartColors.danger, label: 'Critical'}]"
+                                    :height="160"
+                                />
+                            </div>
+                        </MonitoringGrid>
+                    </div>
+                </BasicBlock>
+
+                <BasicBlock v-if="rpcErrors.length > 0" darker>
+                    <div class="cmd-stack">
+                        <MonitoringSectionHeader
+                            title="Recent RPC Errors"
+                            :description="`last ${rpcErrors.length}`"
+                        />
+                        <div class="cmd-scroll cmd-scroll--lg">
+                            <div v-for="(entry, i) in rpcErrors" :key="i" class="cmd-list-row">
+                                <span class="cmd-time">{{ formatTimeOfDay(entry.ts) }}</span>
+                                <span class="cmd-method-error">{{ entry.method }}</span>
+                                <span class="cmd-error-msg">{{ entry.error }}</span>
                             </div>
                         </div>
-                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Error Rate</div>
-                            <div class="flex items-end justify-between gap-2">
-                                <span class="text-sm font-mono font-semibold" :class="(store.latest?.rpcErrorRate ?? 0) > 2 ? 'text-[var(--color-danger-text)]' : 'text-[var(--color-text-primary)]'">
-                                    {{ store.latest?.rpcErrorRate ?? 0 }}/min
+                    </div>
+                </BasicBlock>
+
+                <BasicBlock v-if="store.obsLevel >= 3 && store.rpcTimings.length > 0" darker>
+                    <div class="cmd-stack">
+                        <MonitoringSectionHeader title="Frontend RPC Timings" />
+                        <div class="cmd-meta-row">
+                            <span>WS msg/s: {{ store.wsMessagesPerSec }}</span>
+                            <span>Pending RPCs: {{ store.pendingRpcCount }}</span>
+                        </div>
+                        <div class="cmd-scroll cmd-scroll--md">
+                            <div v-for="(entry, i) in clientTimingsReversed" :key="i" class="cmd-list-row cmd-list-row--no-border">
+                                <span class="cmd-time">{{ formatTimeOfDay(entry.ts) }}</span>
+                                <span class="cmd-method-fill">{{ entry.method }}</span>
+                                <span class="cmd-fixed-duration" :class="durationColor(entry.durationMs)">
+                                    {{ entry.durationMs }}ms
                                 </span>
-                                <SparkLine :data="cachedHistory.rpcErrorRate" color="#f87171" :width="60" :height="20" />
                             </div>
                         </div>
-                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Success/min</div>
-                            <span class="text-sm font-mono font-semibold text-[var(--color-success-text)]">{{ store.counterRates.rpc_success ?? 0 }}</span>
-                        </div>
-                        <div class="p-3 bg-[var(--color-surface-1)] rounded-lg">
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">Errors/min</div>
-                            <span class="text-sm font-mono font-semibold" :class="(store.counterRates.rpc_errors ?? 0) > 0 ? 'text-[var(--color-danger-text)]' : 'text-[var(--color-text-primary)]'">
-                                {{ store.counterRates.rpc_errors ?? 0 }}
-                            </span>
-                        </div>
                     </div>
-                </div>
-            </BasicBlock>
-
-            <!-- RPC Timings Table -->
-            <BasicBlock darker>
-                <div class="space-y-3">
-                    <div class="flex items-center justify-between">
-                        <h3 class="font-semibold text-sm text-[var(--color-text-secondary)]">RPC Timings</h3>
-                        <button
-                            class="px-3 py-1 text-xs font-mono rounded bg-[var(--color-surface-2)] text-[var(--color-text-tertiary)] hover:bg-[var(--color-surface-3)] transition-colors"
-                            @click="resetTimings"
-                        >Reset</button>
-                    </div>
-                    <div v-if="sortedRpcTimings.length === 0" class="text-center py-6 text-[var(--color-text-disabled)] text-xs font-mono">
-                        No RPC timings recorded yet
-                    </div>
-                    <div v-else class="overflow-auto max-h-80">
-                        <table class="w-full text-xs font-mono">
-                            <thead>
-                                <tr class="text-[var(--color-text-disabled)] border-b border-[var(--color-border-default)]">
-                                    <th class="text-left py-1.5 px-2 cursor-pointer hover:text-[var(--color-text-secondary)]" @click="sortBy('method')">
-                                        Method {{ sortIndicator('method') }}
-                                    </th>
-                                    <th class="text-right py-1.5 px-2 cursor-pointer hover:text-[var(--color-text-secondary)]" @click="sortBy('count')">
-                                        Count {{ sortIndicator('count') }}
-                                    </th>
-                                    <th class="text-right py-1.5 px-2 cursor-pointer hover:text-[var(--color-text-secondary)]" @click="sortBy('avgMs')">
-                                        Avg ms {{ sortIndicator('avgMs') }}
-                                    </th>
-                                    <th class="text-right py-1.5 px-2 cursor-pointer hover:text-[var(--color-text-secondary)]" @click="sortBy('maxMs')">
-                                        Max ms {{ sortIndicator('maxMs') }}
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="row in sortedRpcTimings" :key="row.method" class="border-b border-[var(--color-border-default)] hover:bg-[var(--color-surface-2)]">
-                                    <td class="py-1.5 px-2 text-[var(--color-text-secondary)]">{{ row.method }}</td>
-                                    <td class="py-1.5 px-2 text-right text-[var(--color-text-tertiary)]">{{ row.count }}</td>
-                                    <td class="py-1.5 px-2 text-right" :class="durationColor(row.avgMs)">{{ row.avgMs }}</td>
-                                    <td class="py-1.5 px-2 text-right" :class="durationColor(row.maxMs)">{{ row.maxMs }}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </BasicBlock>
-
-            <!-- RPC Performance Charts -->
-            <BasicBlock darker>
-                <div class="space-y-3">
-                    <h3 class="font-semibold text-sm text-[var(--color-text-secondary)]">Performance Over Time</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">RPC Avg Latency</div>
-                            <TimeSeriesChart
-                                :data="cachedHistory.rpcAvgMs"
-                                label="Avg Latency"
-                                color="#34d399"
-                                unit="ms"
-                                :thresholds="[{value: 500, color: '#fbbf24', label: 'Warning'}, {value: 1000, color: '#f87171', label: 'Critical'}]"
-                                :height="160"
-                            />
-                        </div>
-                        <div>
-                            <div class="text-xs text-[var(--color-text-disabled)] mb-1">RPC Error Rate</div>
-                            <TimeSeriesChart
-                                :data="cachedHistory.rpcErrorRate"
-                                label="Errors/min"
-                                color="#f87171"
-                                unit="/min"
-                                :thresholds="[{value: 2, color: '#fbbf24', label: 'Warning'}, {value: 10, color: '#f87171', label: 'Critical'}]"
-                                :height="160"
-                            />
-                        </div>
-                    </div>
-                </div>
-            </BasicBlock>
-
-            <!-- RPC Errors -->
-            <BasicBlock v-if="rpcErrors.length > 0" darker>
-                <div class="space-y-3">
-                    <h3 class="font-semibold text-sm text-[var(--color-text-secondary)]">
-                        Recent RPC Errors
-                        <span class="text-[var(--color-text-disabled)] font-normal">(last {{ rpcErrors.length }})</span>
-                    </h3>
-                    <div class="max-h-64 overflow-auto">
-                        <div
-                            v-for="(entry, i) in rpcErrors"
-                            :key="i"
-                            class="flex items-center gap-3 text-xs font-mono border-b border-[var(--color-border-default)] py-1.5"
-                        >
-                            <span class="text-[var(--color-text-disabled)] w-16 flex-shrink-0">{{ formatTime(entry.ts) }}</span>
-                            <span class="text-[var(--color-danger-text)] flex-shrink-0">{{ entry.method }}</span>
-                            <span class="text-[var(--color-text-tertiary)] truncate">{{ entry.error }}</span>
-                        </div>
-                    </div>
-                </div>
-            </BasicBlock>
-
-            <!-- Frontend RPC Ring Buffer (Tier 3) -->
-            <BasicBlock v-if="store.obsLevel >= 3 && store.rpcTimings.length > 0" darker>
-                <div class="space-y-3">
-                    <h3 class="font-semibold text-sm text-[var(--color-text-secondary)]">Frontend RPC Timings</h3>
-                    <div class="flex gap-4 text-xs font-mono text-[var(--color-text-tertiary)] mb-2">
-                        <span>WS msg/s: {{ store.wsMessagesPerSec }}</span>
-                        <span>Pending RPCs: {{ store.pendingRpcCount }}</span>
-                    </div>
-                    <div class="max-h-48 overflow-auto">
-                        <div
-                            v-for="(entry, i) in clientTimingsReversed"
-                            :key="i"
-                            class="flex items-center gap-3 text-xs font-mono"
-                        >
-                            <span class="text-[var(--color-text-disabled)] w-16">{{ formatTime(entry.ts) }}</span>
-                            <span class="flex-1 text-[var(--color-text-secondary)]">{{ entry.method }}</span>
-                            <span class="w-16 text-right font-semibold" :class="durationColor(entry.durationMs)">{{ entry.durationMs }}ms</span>
-                        </div>
-                    </div>
-                </div>
-            </BasicBlock>
-        </template>
-    </div>
+                </BasicBlock>
+            </template>
+        </ErrorBoundary>
+    </PageTemplate>
 </template>
 
 <script setup lang="ts">
-import {computed, ref} from 'vue';
+import {type ComputedRef, computed, inject, ref } from 'vue';
 import BasicBlock from '@/components/core/BasicBlock.vue';
+import DataList, {type DataColumn} from '@/components/core/DataList.vue';
 import EmptyBlock from '@/components/core/EmptyBlock.vue';
+import ErrorBoundary from '@/components/core/ErrorBoundary.vue';
+import PageTemplate from '@/components/core/PageTemplate.vue';
 import Spinner from '@/components/core/Spinner.vue';
-import apiClient from '@/helpers/axios';
-import HealthDot from '@/components/monitoring/HealthDot.vue';
+import ConcurrentLoadPanel from '@/components/monitoring/ConcurrentLoadPanel.vue';
 import type {Insight} from '@/components/monitoring/InsightPanel.vue';
 import InsightPanel from '@/components/monitoring/InsightPanel.vue';
+import MonitoringEmptyState from '@/components/monitoring/MonitoringEmptyState.vue';
+import MonitoringGrid from '@/components/monitoring/MonitoringGrid.vue';
+import MonitoringSectionHeader from '@/components/monitoring/MonitoringSectionHeader.vue';
+import SlowBuildsPanel from '@/components/monitoring/SlowBuildsPanel.vue';
+import SlowClientsPanel from '@/components/monitoring/SlowClientsPanel.vue';
+import SlowRpcPanel from '@/components/monitoring/SlowRpcPanel.vue';
 import SparkLine from '@/components/monitoring/SparkLine.vue';
 import TimeSeriesChart from '@/components/monitoring/TimeSeriesChart.vue';
+import {chartColors} from '@/helpers/chartUtils';
+import {formatTimeOfDay} from '@/helpers/format';
 import {useMonitoringStore} from '@/stores/monitoring';
+import {sendRPC} from '@/tools/websocket';
+import type {RouteTab} from '@/types/page-template';
+
+const monitoringTabs = inject<ComputedRef<RouteTab[]>>('monitoringTabs');
 
 const store = useMonitoringStore();
 
-// ── Cached history fields ────────────────────────────────────────
 const cachedHistory = computed(() => ({
     rpcAvgMs: store.historyField('rpcAvgMs'),
     rpcErrorRate: store.historyField('rpcErrorRate')
 }));
 
-// ── Sorting ────────────────────────────────────────────────────────
-const sortKey = ref('method');
-const sortAsc = ref(true);
+const rpcSortKey = ref('method');
+const rpcSortAsc = ref(true);
 
-function sortBy(key: string) {
-    if (sortKey.value === key) sortAsc.value = !sortAsc.value;
-    else {
-        sortKey.value = key;
-        sortAsc.value = true;
-    }
+interface RpcTiming {
+    method: string;
+    count: number;
+    avgMs: number;
+    maxMs: number;
 }
 
-function sortIndicator(key: string): string {
-    if (sortKey.value !== key) return '';
-    return sortAsc.value ? '\u25B2' : '\u25BC';
+const rpcColumns: DataColumn<RpcTiming>[] = [
+    {key: 'method', label: 'Method', role: 'primary', sortable: true},
+    {key: 'count', label: 'Count', role: 'meta', align: 'right', sortable: true},
+    {key: 'avgMs', label: 'Avg ms', role: 'meta', align: 'right', sortable: true},
+    {key: 'maxMs', label: 'Max ms', role: 'meta', align: 'right', sortable: true}
+];
+
+function sortBy(key: string) {
+    if (rpcSortKey.value === key) rpcSortAsc.value = !rpcSortAsc.value;
+    else {
+        rpcSortKey.value = key;
+        rpcSortAsc.value = true;
+    }
 }
 
 const sortedRpcTimings = computed(() => {
@@ -226,11 +237,11 @@ const sortedRpcTimings = computed(() => {
             ...stats
         })
     );
-    const key = sortKey.value;
-    const asc = sortAsc.value;
+    const key = rpcSortKey.value;
+    const asc = rpcSortAsc.value;
     entries.sort((a: any, b: any) => {
-        const av = a[key],
-            bv = b[key];
+        const av = a[key];
+        const bv = b[key];
         if (typeof av === 'string')
             return asc ? av.localeCompare(bv) : bv.localeCompare(av);
         return asc ? av - bv : bv - av;
@@ -238,28 +249,20 @@ const sortedRpcTimings = computed(() => {
     return entries;
 });
 
-// ── RPC Errors ─────────────────────────────────────────────────────
 const rpcErrors = computed(() => store.latestMetrics?.rpcErrors ?? []);
-
-// ── Client-side timings (reversed for newest first) ────────────────
 const clientTimingsReversed = computed(() => [...store.rpcTimings].reverse());
 
-// ── Reset ──────────────────────────────────────────────────────────
 async function resetTimings() {
-    await apiClient.post('/health/observability/reset').catch(() => {});
+    await sendRPC('FLEET_MANAGER', 'System.Observability.Reset', {}).catch(
+        () => {}
+    );
     store.fetchAndRecord();
 }
 
-// ── Helpers ────────────────────────────────────────────────────────
 function durationColor(ms: number): string {
-    if (ms > 1000) return 'text-[var(--color-danger-text)]';
-    if (ms > 200) return 'text-[var(--color-warning-text)]';
-    return 'text-[var(--color-success-text)]';
-}
-
-function formatTime(ts: number): string {
-    const d = new Date(ts);
-    return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`;
+    if (ms > 1000) return 'cmd-text-danger';
+    if (ms > 200) return 'cmd-text-warning';
+    return 'cmd-text-success';
 }
 
 const insights = computed<Insight[]>(() => {
@@ -268,7 +271,7 @@ const insights = computed<Insight[]>(() => {
     if (!s) return list;
     if (s.rpcAvgMs > 1000) {
         list.push({
-            icon: 'fa-solid fa-gauge-high',
+            icon: 'fas fa-gauge-high',
             title: 'Critical RPC Latency',
             description: `Average RPC latency is ${s.rpcAvgMs}ms. Device commands are severely delayed.`,
             action: 'Check backend load, database latency, and device connectivity. Look for slow command handlers.',
@@ -276,7 +279,7 @@ const insights = computed<Insight[]>(() => {
         });
     } else if (s.rpcAvgMs > 500) {
         list.push({
-            icon: 'fa-solid fa-gauge-high',
+            icon: 'fas fa-gauge-high',
             title: 'High RPC Latency',
             description: `Average RPC latency is ${s.rpcAvgMs}ms. Commands are taking longer than expected.`,
             action: 'Review slow RPC methods in the timings table below. Check DB query performance.',
@@ -285,7 +288,7 @@ const insights = computed<Insight[]>(() => {
     }
     if (s.rpcErrorRate > 10) {
         list.push({
-            icon: 'fa-solid fa-triangle-exclamation',
+            icon: 'fas fa-triangle-exclamation',
             title: 'High RPC Error Rate',
             description: `${s.rpcErrorRate} RPC errors/min. Many device commands are failing.`,
             action: 'Check device connectivity, firmware compatibility, and recent RPC errors below.',
@@ -293,7 +296,7 @@ const insights = computed<Insight[]>(() => {
         });
     } else if (s.rpcErrorRate > 2) {
         list.push({
-            icon: 'fa-solid fa-triangle-exclamation',
+            icon: 'fas fa-triangle-exclamation',
             title: 'Elevated RPC Errors',
             description: `${s.rpcErrorRate} errors/min. Some device commands are failing.`,
             action: 'Review error details below. May indicate device timeouts or unreachable devices.',
@@ -303,3 +306,157 @@ const insights = computed<Insight[]>(() => {
     return list;
 });
 </script>
+
+<style scoped>
+.cmd-disabled {
+    text-align: center;
+    padding-top: var(--gap-lg);
+    padding-bottom: var(--gap-lg);
+}
+.cmd-disabled-text {
+    color: var(--color-text-tertiary);
+}
+.cmd-enable-btn {
+    margin-top: var(--gap-sm);
+    padding: var(--gap-xs) var(--gap-md);
+    font-size: var(--type-caption);
+    font-family: var(--font-mono);
+    border-radius: var(--radius-md);
+    background-color: var(--color-warning);
+    color: var(--color-warning-text);
+    transition: background-color var(--duration-fast);
+}
+.cmd-enable-btn:hover {
+    background-color: var(--color-warning-hover);
+}
+
+.cmd-empty-text {
+    font-size: var(--type-caption);
+    padding-top: var(--gap-xs);
+}
+
+.cmd-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-sm);
+}
+.cmd-row {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-xs);
+}
+.cmd-tile {
+    padding: var(--gap-sm);
+    background-color: var(--color-surface-1);
+    border-radius: var(--radius-lg);
+}
+.cmd-tile-label {
+    font-size: var(--type-caption);
+    color: var(--color-text-disabled);
+    margin-bottom: var(--gap-xs);
+}
+.cmd-tile-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--gap-xs);
+}
+.cmd-tile-value {
+    font-size: var(--type-caption);
+    font-family: var(--font-mono);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+}
+
+.cmd-reset-btn {
+    padding: var(--gap-xs) var(--gap-sm);
+    font-size: var(--type-caption);
+    font-family: var(--font-mono);
+    border-radius: var(--radius-md);
+    background-color: var(--color-surface-2);
+    color: var(--color-text-tertiary);
+    transition: background-color var(--duration-fast);
+}
+.cmd-reset-btn:hover {
+    background-color: var(--color-surface-3);
+}
+
+.cmd-chart-label {
+    font-size: var(--type-caption);
+    color: var(--color-text-disabled);
+    margin-bottom: var(--gap-xs);
+}
+
+.cmd-meta-row {
+    display: flex;
+    gap: var(--gap-md);
+    font-size: var(--type-caption);
+    font-family: var(--font-mono);
+    color: var(--color-text-tertiary);
+    margin-bottom: var(--gap-xs);
+}
+
+.cmd-scroll {
+    overflow: auto;
+}
+.cmd-scroll--md {
+    max-height: 12rem;
+}
+.cmd-scroll--lg {
+    max-height: 16rem;
+}
+.cmd-scroll--xl {
+    max-height: 20rem;
+}
+
+.cmd-list-row {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-sm);
+    padding: var(--space-1-5) 0;
+    font-size: var(--type-caption);
+    font-family: var(--font-mono);
+    border-bottom: 1px solid var(--color-border-default);
+}
+.cmd-list-row--no-border {
+    border-bottom: none;
+}
+
+.cmd-time {
+    color: var(--color-text-disabled);
+    width: 4rem;
+    flex-shrink: 0;
+}
+
+.cmd-method-error {
+    color: var(--color-danger-text);
+    flex-shrink: 0;
+}
+.cmd-method-fill {
+    flex: 1;
+    color: var(--color-text-secondary);
+}
+
+.cmd-error-msg {
+    color: var(--color-text-tertiary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.cmd-fixed-duration {
+    width: 4rem;
+    text-align: right;
+    font-weight: var(--font-semibold);
+}
+
+.cmd-text-success {
+    color: var(--color-success-text);
+}
+.cmd-text-warning {
+    color: var(--color-warning-text);
+}
+.cmd-text-danger {
+    color: var(--color-danger-text);
+}
+</style>

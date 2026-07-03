@@ -1,7 +1,9 @@
 --------------UP
--- Update dashboard add to support analytics dashboards
+-- Support analytics dashboards. DROP first; CREATE OR REPLACE does not
+-- work when the argument list changes (1-arg → 3-arg).
 DROP FUNCTION IF EXISTS ui.fn_dashboard_add(VARCHAR);
-CREATE FUNCTION ui.fn_dashboard_add(
+
+CREATE OR REPLACE FUNCTION ui.fn_dashboard_add(
     p_name VARCHAR(250),
     p_group_id INT DEFAULT NULL,
     p_dashboard_type VARCHAR(20) DEFAULT 'classic'
@@ -16,8 +18,8 @@ BEGIN
     VALUES (p_name, p_group_id, p_dashboard_type)
     RETURNING id INTO r_id;
 
-    -- If this is an analytics dashboard, create default settings
-    IF p_dashboard_type = 'analytics' THEN
+    -- If this is a settings-backed dashboard type, create default settings
+    IF p_dashboard_type IN ('analytics', 'overview', 'energy', 'environment', 'control', 'safety') THEN
         INSERT INTO ui.dashboard_settings (dashboard_id) VALUES (r_id);
     END IF;
 
@@ -26,7 +28,7 @@ END;
 $$
 LANGUAGE plpgsql;
 --------------DOWN
-DROP FUNCTION IF EXISTS ui.fn_dashboard_add;
+DROP FUNCTION IF EXISTS ui.fn_dashboard_add(VARCHAR, INT, VARCHAR);
 CREATE FUNCTION ui.fn_dashboard_add(
     p_name VARCHAR(250)
 )

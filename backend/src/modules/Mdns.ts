@@ -3,6 +3,11 @@ import createMdns from 'multicast-dns';
 import ShellyDeviceFactory from '../model/ShellyDeviceFactory';
 import HttpTransport from '../model/transport/HttpTransport';
 import * as DeviceCollector from './DeviceCollector';
+import {
+    ingressConnect,
+    ingressDropped,
+    ingressRegistered
+} from './deviceIngress/ingressTrace';
 import * as Observability from './Observability';
 
 const logger = log4js.getLogger('local-scanner');
@@ -17,55 +22,51 @@ export function start() {
     mdns = createMdns();
     logger.debug('created mdns object');
     mdns.on('response', async (response: any) => {
-        const {answers} = response;
-        if (
-            answers === undefined ||
-            !Array.isArray(answers) ||
-            answers.length === 0
-        )
-            return;
-        const nameRec = answers.find(({type}) => type === 'A');
-        const txtRec = answers.find(({type}) => type === 'TXT');
-        if (!nameRec || !txtRec?.data) {
-            logger.info(
-                'mdns assert fail: nameRec[%s];txtRec?.data[%s]',
-                nameRec && JSON.stringify(nameRec),
-                txtRec?.data && JSON.stringify(txtRec?.data)
+        const answers: any[] = response.answers ?? [];
+        const additional: any[] = response.additionals ?? [];
+        const allRecords = [...answers, ...additional];
+        if (allRecords.length === 0) return;
+
+        // Only process responses that advertise _shelly._tcp — the official
+        // mDNS service type for all Shelly, Powered by Shelly, and Shelly X devices.
+        const hasShellyService =
+            allRecords.some(
+                (r) =>
+                    r.type === 'PTR' &&
+                    typeof r.data === 'string' &&
+                    r.data.includes('_shelly._tcp')
+            ) ||
+            allRecords.some(
+                (r) =>
+                    typeof r.name === 'string' &&
+                    r.name.includes('_shelly._tcp')
             );
-            return;
-        }
-        const name = nameRec.name.toLowerCase();
+        if (!hasShellyService) return;
+
+        const nameRec = allRecords.find(({type}) => type === 'A');
+        if (!nameRec) return;
+
         const shellyId = nameRec.name.replace('.local', '');
+        // Skip if already known
         if (
-            !name.includes('shelly') ||
             DeviceCollector.getDevice(shellyId) ||
             DeviceCollector.getDevice(shellyId.toLowerCase())
         ) {
-            logger.info(
-                'mdns assert fail: name[%s];name.includes[%s];DeviceManager.getDevice[%s]',
-                name,
-                name.includes('shelly'),
-                shellyId
-            );
-            return;
-        }
-        const dataStr = JSON.stringify(
-            (Array.isArray(txtRec.data) &&
-                txtRec.data.map((b: Buffer) => b.toString('utf8'))) ||
-                txtRec.data
-        );
-        if (!(dataStr.includes('gen=2') || dataStr.includes('gen=3'))) {
-            logger.info(
-                'mdns assert fail: dataStr.includes:g2|g3[%s]',
-                dataStr
-            );
             return;
         }
         const ip = nameRec.data;
-        const transport = new HttpTransport(ip);
-        const shellyDevice = await ShellyDeviceFactory.fromHttp(transport);
-        DeviceCollector.register(shellyDevice);
-        Observability.incrementCounter('mdns_discovered');
+        try {
+            // mDNS is a separate door — the LAN discovery is this device's birth.
+            ingressConnect(shellyId);
+            const transport = new HttpTransport(ip);
+            const shellyDevice = await ShellyDeviceFactory.fromHttp(transport);
+            DeviceCollector.register(shellyDevice);
+            Observability.incrementCounter('mdns_discovered');
+            ingressRegistered(shellyId, `mdns ${shellyDevice.shellyID}`);
+        } catch (err) {
+            ingressDropped(shellyId, 'mdns_fetch_failed');
+            logger.warn('Failed to register mDNS device at %s: %s', ip, err);
+        }
     });
 }
 
@@ -83,6 +84,17 @@ export function started() {
     return mdns !== undefined;
 }
 
-Observability.registerModule('mdns', () => ({
-    running: mdns !== undefined ? 1 : 0
-}));
+Observability.registerModule('mdns', {
+    stats: () => ({
+        running: mdns !== undefined ? 1 : 0
+    }),
+    topology: {
+        role: 'source',
+        cluster: 'ingest',
+        zone: 'device_admission',
+        downstreams: ['devices'],
+        label: 'mDNS',
+        description: 'Local-network device discovery',
+        route: '/monitoring/services'
+    }
+});

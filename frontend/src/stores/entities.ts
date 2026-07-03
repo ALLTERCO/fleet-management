@@ -1,7 +1,10 @@
 import {defineStore} from 'pinia';
-import {ref, shallowRef, triggerRef} from 'vue';
+import {computed, ref, shallowRef, triggerRef} from 'vue';
+import {predictedStatusPatchFor} from '@/helpers/entityCommandCatalog';
 import * as ws from '../tools/websocket';
 import type {entity_t} from '../types';
+import {useDevicesStore} from './devices';
+import {createRefreshCoordinator} from './refreshCoordinator';
 
 export const useEntityStore = defineStore('entities', () => {
     const entities = shallowRef<Record<string, entity_t>>({});
@@ -12,8 +15,13 @@ export const useEntityStore = defineStore('entities', () => {
         Array<(event: string) => void>
     >();
 
+    const entityRefresh = createRefreshCoordinator(refreshEntities);
+
     async function fetchEntities() {
-        // Collect all chunks into a single object, then assign once
+        await entityRefresh.request();
+    }
+
+    async function refreshEntities(): Promise<void> {
         const collected: Record<string, entity_t> = {};
         await ws.listEntitiesChunked((chunk) => {
             Object.assign(collected, chunk);
@@ -41,10 +49,18 @@ export const useEntityStore = defineStore('entities', () => {
         }
     }
 
-    async function removeEntities(oldEntities: string[]) {
+    function removeEntities(oldEntities: string[]) {
         for (const id of oldEntities) {
             delete entities.value[id];
             eventListeners.delete(id);
+        }
+        triggerRef(entities);
+        version.value++;
+    }
+
+    function upsertEntities(nextEntities: entity_t[]) {
+        for (const entity of nextEntities) {
+            entities.value[entity.id] = entity;
         }
         triggerRef(entities);
         version.value++;
@@ -54,30 +70,85 @@ export const useEntityStore = defineStore('entities', () => {
         return await addEntity(entityID, true);
     }
 
-    async function sendRPC(entityID: string, method: string, params?: any) {
+    async function invokeAction(
+        entityID: string,
+        action: string,
+        params?: Record<string, unknown>
+    ) {
         const entity = entities.value[entityID];
-        if (entity == undefined) {
+        if (entity === undefined) {
             return Promise.reject(new Error('Entity not found'));
         }
 
-        if (!entity.type) {
-            return Promise.reject(new Error('Entity has no type'));
+        const devicesStore = useDevicesStore();
+        const handle = paintOptimistic(devicesStore, entity, action, params);
+
+        try {
+            return await ws.sendRPC('FLEET_MANAGER', 'Entity.InvokeAction', {
+                id: entityID,
+                action,
+                params
+            });
+        } catch (err) {
+            if (handle && shouldIgnoreOptimisticFailure(handle)) return;
+            handle?.revert();
+            throw err;
+        }
+    }
+
+    // Tolerates missing real status — mergeOverlay handles undefined, so the
+    // first interaction with a freshly-mounted device still paints optimism.
+    function paintOptimistic(
+        devicesStore: ReturnType<typeof useDevicesStore>,
+        entity: entity_t,
+        action: string,
+        params: Record<string, unknown> | undefined
+    ) {
+        const statusObj = devicesStore.devices[entity.source]?.status;
+        const statusKey = actionStatusKey(entity, action, params, statusObj);
+        if (statusKey === null) return null;
+        const currentStatus =
+            devicesStore.statusOf(entity.source, statusKey) ?? {};
+
+        const patch = predictedStatusPatchFor(
+            entity.type,
+            action,
+            params,
+            currentStatus
+        );
+        if (!patch) return null;
+        return devicesStore.applyOptimistic(entity.source, statusKey, patch);
+    }
+
+    function shouldIgnoreOptimisticFailure(handle: {
+        isConfirmed(): boolean;
+        isSuperseded(): boolean;
+    }): boolean {
+        return handle.isConfirmed() || handle.isSuperseded();
+    }
+
+    function actionStatusKey(
+        entity: entity_t,
+        action: string,
+        params: Record<string, unknown> | undefined,
+        statusObj: Record<string, unknown> | undefined
+    ): string | null {
+        if (entity.type === 'service' && action === 'setVariable') {
+            return typeof params?.key === 'string' ? params.key : null;
         }
 
-        if (
-            method.split('.')[0].toLocaleLowerCase() !==
-            entity.type.toLocaleLowerCase()
-        ) {
-            return Promise.reject(new Error('Method not supported by entity'));
-        }
-
-        if (params == undefined) {
-            params = {};
-        }
-
-        params['id'] = 'id' in entity.properties ? entity.properties.id : 0;
-
-        return ws.sendRPC(entity.source, method, params);
+        const internalId = (entity as {properties?: {id?: number | string}})
+            .properties?.id;
+        const candidates =
+            internalId !== undefined
+                ? [`${entity.type}:${internalId}`, entity.type]
+                : [entity.type, `${entity.type}:0`];
+        // Fall back to canonical key when status hasn't loaded — blocks
+        // null-return that would skip the first interaction's overlay.
+        return (
+            candidates.find((k) => statusObj?.[k] !== undefined) ??
+            candidates[0]
+        );
     }
 
     function addListener(entityId: string, callback: (event: string) => void) {
@@ -104,6 +175,9 @@ export const useEntityStore = defineStore('entities', () => {
         if (index !== -1) {
             listeners.splice(index, 1);
         }
+        if (listeners.length === 0) {
+            eventListeners.delete(entityId);
+        }
     }
 
     function notifyEvent(
@@ -121,12 +195,30 @@ export const useEntityStore = defineStore('entities', () => {
         }
     }
 
+    // Pre-indexed entity types by device shellyID — O(1) lookup per device
+    const typesBySource = computed(() => {
+        // Force dependency on version so this recomputes when entities change
+        version.value;
+        const map = new Map<string, Set<string>>();
+        for (const e of Object.values(entities.value)) {
+            let types = map.get(e.source);
+            if (!types) {
+                types = new Set();
+                map.set(e.source, types);
+            }
+            types.add(e.type);
+        }
+        return map;
+    });
+
     return {
         entities,
         version,
+        typesBySource,
         fetchEntities,
-        sendRPC,
+        invokeAction,
         addEntity,
+        upsertEntities,
         removeEntities,
         updateEntity,
         notifyEvent,

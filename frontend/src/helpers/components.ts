@@ -12,6 +12,9 @@ export const ActionBoard = createDynamicComponent(
 export const UserBoard = createDynamicComponent(
     () => import('@/components/boards/UserBoard.vue')
 );
+export const GroupBoard = createDynamicComponent(
+    () => import('@/components/boards/GroupBoard.vue')
+);
 
 export function createDynamicComponent(loader: AsyncComponentLoader) {
     return defineAsyncComponent(loader);

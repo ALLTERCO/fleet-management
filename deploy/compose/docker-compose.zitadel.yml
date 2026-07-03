@@ -6,6 +6,15 @@
 services:
   zitadel-db:
     image: postgres:${ZITADEL_POSTGRES_VERSION}
+    labels:
+      fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
+      fleet.client: "${FM_CLIENT_ID:-shared}"
+      fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
+      fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
+      fleet.version: "${ZITADEL_POSTGRES_VERSION:-unknown}"
+      fleet.commit: "${FM_BUILD_COMMIT:-unknown}"
+      fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
+      fleet.service: "zitadel-db"
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -19,7 +28,7 @@ services:
       POSTGRES_PASSWORD: ${ZITADEL_POSTGRES_PASSWORD}
       POSTGRES_DB: zitadel
     volumes:
-      - zitadel-db-data:/var/lib/postgresql/data
+      - zitadel-db-data:/var/lib/postgresql
       - ../state/init-zitadel-db.sql:/docker-entrypoint-initdb.d/init-zitadel-db.sql:ro
     networks:
       - fleet-net
@@ -35,22 +44,69 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  zitadel:
+  redis:
+    # Cache V2 backend — shared by zitadel-api (instance/org/milestone caches)
+    # and fleet-manager (sessions, rate limits). DB 0 = FM, DB 10 = Zitadel.
+    image: redis:${REDIS_VERSION:-7.4.2-alpine}
+    container_name: fm-redis
+    labels:
+      fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
+      fleet.client: "${FM_CLIENT_ID:-shared}"
+      fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
+      fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
+      fleet.version: "${REDIS_VERSION:-7.4.2-alpine}"
+      fleet.commit: "${FM_BUILD_COMMIT:-unknown}"
+      fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
+      fleet.service: "redis"
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --maxmemory
+      - ${REDIS_MAX_MEMORY:-256mb}
+      - --maxmemory-policy
+      - allkeys-lru
+      - --appendonly
+      - ${REDIS_APPENDONLY:-no}
+      - --appendfsync
+      - ${REDIS_APPENDFSYNC:-everysec}
+      - --aclfile
+      - /etc/redis/users.acl
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --user fm-admin --pass $$REDIS_ADMIN_PASSWORD ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    environment:
+      REDIS_ADMIN_PASSWORD: ${REDIS_ADMIN_PASSWORD}
+    volumes:
+      - redis-data:/data
+      - ../state/redis-users.acl:/etc/redis/users.acl
+    networks:
+      - fleet-net
+
+  zitadel-api:
     image: ghcr.io/zitadel/zitadel:${ZITADEL_VERSION}
+    container_name: fm-zitadel-api-1
+    labels:
+      fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
+      fleet.client: "${FM_CLIENT_ID:-shared}"
+      fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
+      fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
+      fleet.version: "${ZITADEL_VERSION:-unknown}"
+      fleet.commit: "${FM_BUILD_COMMIT:-unknown}"
+      fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
+      fleet.service: "zitadel-api"
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    command: 'start-from-init --masterkey "${ZITADEL_MASTERKEY}" --tlsMode ${ZITADEL_TLS_MODE:-disabled} --config /system-api/system-api-config.yaml'
+    # Required so init can write the login-client PAT to the named volume.
+    user: "0"
+    command: '${ZITADEL_START_PHASE:-start-from-init --init-projections=true} --masterkey "${ZITADEL_MASTERKEY}" --tlsMode ${ZITADEL_TLS_MODE:-disabled} --config /system-api/system-api-config.yaml'
     environment:
       - GOMEMLIMIT=${ZITADEL_MEM_LIMIT}
       - ZITADEL_EXTERNALPORT=${ZITADEL_EXTERNALPORT}
       - ZITADEL_EXTERNALSECURE=${ZITADEL_EXTERNALSECURE:-false}
       - ZITADEL_TLS_ENABLED=false
-      - ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED=false
-      - ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_TLS=false
-      - ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_SMTP_HOST=mailcatcher:1025
-      - ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_FROM=noreply@shelly.cloud
-      - ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_FROMNAME=noreply
       - ZITADEL_EXTERNALDOMAIN=${ZITADEL_HOSTNAME}
       - ZITADEL_LOGSTORE_ACCESS_STDOUT_ENABLED=true
       - ZITADEL_DATABASE_POSTGRES_HOST=zitadel-db
@@ -62,24 +118,81 @@ services:
       - ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD=${ZITADEL_POSTGRES_PASSWORD}
       - ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE=disable
       - ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE=disable
+      - ZITADEL_FIRSTINSTANCE_ORG_NAME=${ZITADEL_DEFAULT_ORG_NAME:-zitadel}
       - ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME=root
+      - ZITADEL_FIRSTINSTANCE_ORG_HUMAN_EMAIL=root@${ZITADEL_HOSTNAME}
       - ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORD=${ZITADEL_ADMIN_PASSWORD}
       - ZITADEL_FIRSTINSTANCE_MACHINEKEYPATH=/machinekey/zitadel-admin-sa.json
       - ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME=zitadel-admin-sa
       - ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME=Admin
       - ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINEKEY_TYPE=1
+      # FIRSTINSTANCE creates the login-client machine user + PAT for the V2 login app.
+      - ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH=/zitadel/bootstrap/login-client.pat
+      - ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME=login-client
+      - ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_NAME=Automatically Initialized IAM_LOGIN_CLIENT
+      - ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT_EXPIRATIONDATE=${LOGIN_CLIENT_PAT_EXPIRATION:-2099-01-01T00:00:00Z}
+      # Force V2 login: required + base URI set at instance level. Without these, V1
+      # is still rendered but post-password advancement fails silently.
+      - ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED=true
+      - ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_BASEURI=${ZITADEL_PUBLIC_SCHEME:-https}://${ZITADEL_HOSTNAME}/ui/v2/login/
+      # Free perf + correctness toggles documented in the v4 plan.
+      - ZITADEL_DEFAULTINSTANCE_FEATURES_PERMISSIONCHECKV2=true
+      - ZITADEL_DEFAULTINSTANCE_FEATURES_OIDCSINGLEV1SESSIONTERMINATION=true
+      - ZITADEL_DEFAULTINSTANCE_FEATURES_IMPROVEDPERFORMANCE_0=IMPROVED_PERFORMANCE_TYPE_PROJECT_GRANT
+      - ZITADEL_DEFAULTINSTANCE_FEATURES_IMPROVEDPERFORMANCE_1=IMPROVED_PERFORMANCE_TYPE_PROJECT
+      - ZITADEL_DEFAULTINSTANCE_FEATURES_IMPROVEDPERFORMANCE_2=IMPROVED_PERFORMANCE_TYPE_USER_GRANT
+      - ZITADEL_DEFAULTINSTANCE_FEATURES_IMPROVEDPERFORMANCE_3=IMPROVED_PERFORMANCE_TYPE_ORG_DOMAIN_VERIFIED
+      # Surface upstream OIDC error context — env-driven (dev/staging on, prod off).
+      - ZITADEL_DEFAULTINSTANCE_FEATURES_DEBUGOIDCPARENTERROR=${ZITADEL_DEBUG_OIDC_PARENT_ERROR:-false}
+      - ZITADEL_OIDC_DEFAULTLOGINURLV2=${ZITADEL_PUBLIC_SCHEME:-https}://${ZITADEL_HOSTNAME}/ui/v2/login/login?authRequest=
+      - ZITADEL_OIDC_DEFAULTLOGOUTURLV2=${ZITADEL_PUBLIC_SCHEME:-https}://${ZITADEL_HOSTNAME}/ui/v2/login/logout?post_logout_redirect=
+      - ZITADEL_SAML_DEFAULTLOGINURLV2=${ZITADEL_PUBLIC_SCHEME:-https}://${ZITADEL_HOSTNAME}/ui/v2/login/login?samlRequest=
+      # Login policy — disable self-registration, allow user/password.
+      - ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_ALLOWUSERNAMEPASSWORD=true
+      - ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_ALLOWREGISTER=false
+      - ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_ALLOWEXTERNALIDP=false
+      - ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_FORCEMFA=${ZITADEL_FORCE_MFA:-false}
+      # 0=NOT_ALLOWED, 1=ALLOWED (passkeys/WebAuthn).
+      - ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_PASSWORDLESSTYPE=${ZITADEL_PASSWORDLESS_TYPE:-1}
+      - ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_HIDEPASSWORDRESET=false
+      - ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_IGNOREUNKNOWNUSERNAMES=false
+      - ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_USERLOGINMUSTBEDOMAIN=false
+      # Lockout caps — Zitadel default of 0 = unlimited.
+      - ZITADEL_DEFAULTINSTANCE_LOCKOUTPOLICY_MAXPASSWORDATTEMPTS=${ZITADEL_LOCKOUT_MAX_PASSWORD:-10}
+      - ZITADEL_DEFAULTINSTANCE_LOCKOUTPOLICY_MAXOTPATTEMPTS=${ZITADEL_LOCKOUT_MAX_OTP:-5}
+      - ZITADEL_DEFAULTINSTANCE_LOCKOUTPOLICY_SHOWLOCKOUTFAILURE=${ZITADEL_LOCKOUT_SHOW_FAILURES:-true}
+      # Cache V2 on Redis. ZITADEL may FLUSHDB cache DBs, so keep them away
+      # from FM's DB 0 with an explicit offset.
+      - ZITADEL_CACHES_CONNECTORS_REDIS_ENABLED=true
+      - ZITADEL_CACHES_CONNECTORS_REDIS_NETWORK=tcp
+      - ZITADEL_CACHES_CONNECTORS_REDIS_ADDR=redis:6379
+      - ZITADEL_CACHES_CONNECTORS_REDIS_DBOFFSET=${ZITADEL_REDIS_DB_OFFSET:-10}
+      - ZITADEL_CACHES_CONNECTORS_REDIS_USERNAME=zitadel
+      - ZITADEL_CACHES_CONNECTORS_REDIS_PASSWORD=${REDIS_ZITADEL_PASSWORD}
+      # Bumped from 100ms — Docker bridge can spike past that under load.
+      - ZITADEL_CACHES_CONNECTORS_REDIS_READTIMEOUT=1s
+      - ZITADEL_CACHES_CONNECTORS_REDIS_WRITETIMEOUT=1s
+      - ZITADEL_CACHES_CONNECTORS_REDIS_POOLTIMEOUT=1s
+      - ZITADEL_CACHES_CONNECTORS_REDIS_CIRCUITBREAKER_MAXCONSECUTIVEFAILURES=10
+      - ZITADEL_CACHES_CONNECTORS_REDIS_CIRCUITBREAKER_MAXFAILURERATIO=0.5
+      - ZITADEL_CACHES_INSTANCE_CONNECTOR=redis
+      - ZITADEL_CACHES_ORGANIZATION_CONNECTOR=redis
+      - ZITADEL_CACHES_MILESTONES_CONNECTOR=redis
     # Public port published by zitadel-ports.yml (direct) or routed via Traefik.
     # Localhost-only binding for bootstrap/health scripts that run on the host
     # before Traefik is up. Not accessible from external networks.
     ports:
-      - "127.0.0.1:8080:8080"
+      - "${ZITADEL_API_HOST_BIND:-127.0.0.1}:${ZITADEL_API_HOST_PORT:-8080}:8080"
     volumes:
       - ../state/machinekey:/machinekey
       - ../state/system-api:/system-api:ro
+      - zitadel-bootstrap:/zitadel/bootstrap:rw
     networks:
       - fleet-net
     depends_on:
       zitadel-db:
+        condition: "service_healthy"
+      redis:
         condition: "service_healthy"
     healthcheck:
       test: ["CMD", "/app/zitadel", "ready"]
@@ -93,8 +206,99 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  zitadel-login:
+    image: ghcr.io/zitadel/zitadel-login:${ZITADEL_VERSION}
+    labels:
+      fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
+      fleet.client: "${FM_CLIENT_ID:-shared}"
+      fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
+      fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
+      fleet.version: "${ZITADEL_VERSION:-unknown}"
+      fleet.commit: "${FM_BUILD_COMMIT:-unknown}"
+      fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
+      fleet.service: "zitadel-login"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    user: "0"
+    environment:
+      - ZITADEL_API_URL=http://zitadel-api:8080
+      - NEXT_PUBLIC_BASE_PATH=/ui/v2/login
+      - ZITADEL_SERVICE_USER_TOKEN_FILE=/zitadel/bootstrap/login-client.pat
+      - CUSTOM_REQUEST_HEADERS=Host:${ZITADEL_HOSTNAME},X-Forwarded-Proto:${ZITADEL_PUBLIC_SCHEME:-https}
+    volumes:
+      - zitadel-bootstrap:/zitadel/bootstrap:ro
+    networks:
+      - fleet-net
+    depends_on:
+      zitadel-api:
+        condition: "service_healthy"
+    healthcheck:
+      test: ["CMD", "/bin/sh", "-c", "node /app/healthcheck.mjs http://localhost:3000/ui/v2/login/healthy"]
+      interval: 10s
+      timeout: 30s
+      retries: 12
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  zitadel-backup:
+    # Periodic pg_dump → state/backups/zitadel; cadence ZITADEL_BACKUP_INTERVAL.
+    image: postgres:${ZITADEL_POSTGRES_VERSION}
+    labels:
+      fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
+      fleet.client: "${FM_CLIENT_ID:-shared}"
+      fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
+      fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
+      fleet.version: "${ZITADEL_POSTGRES_VERSION:-unknown}"
+      fleet.commit: "${FM_BUILD_COMMIT:-unknown}"
+      fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
+      fleet.service: "zitadel-backup"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PGPASSWORD: ${ZITADEL_POSTGRES_PASSWORD}
+      ZITADEL_BACKUP_INTERVAL: ${ZITADEL_BACKUP_INTERVAL:-86400}
+      FM_BACKUP_RETAIN_DAYS: ${FM_BACKUP_RETAIN_DAYS:-7}
+    volumes:
+      - ../state/backups/zitadel:/backups
+    networks:
+      - fleet-net
+    depends_on:
+      zitadel-db:
+        condition: "service_healthy"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        mkdir -p /backups
+        while :; do
+          ts=$$(date -u +%Y%m%dT%H%M%SZ)
+          out="/backups/zitadel-$$ts.sql.gz"
+          if pg_dump -h zitadel-db -U postgres -d zitadel | gzip -9 > "$$out.tmp"; then
+            mv "$$out.tmp" "$$out"
+            echo "[zitadel-backup] wrote $$out"
+          else
+            rm -f "$$out.tmp"
+            echo "[zitadel-backup] dump failed" >&2
+          fi
+          find /backups -name 'zitadel-*.sql.gz' -type f -mtime "+$${FM_BACKUP_RETAIN_DAYS}" -delete || true
+          sleep "$${ZITADEL_BACKUP_INTERVAL}"
+        done
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   fleet-net:
 
 volumes:
   zitadel-db-data:
+  zitadel-bootstrap:
+  redis-data:

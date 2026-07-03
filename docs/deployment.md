@@ -72,6 +72,12 @@ Once ready, you'll see:
 `up` never contacts the Docker registry — it works offline once images are cached.
 Use `upgrade` when a new version is available or you want to refresh `:latest` tags.
 
+### Firmware library
+
+The firmware library feature is included in the public build. Public releases do
+not ship seeded firmware `.zip` packages; upload firmware packages through Fleet
+Manager after deployment.
+
 ### Options
 
 | Option                                                     | Description                                                       |
@@ -121,9 +127,9 @@ For Shelly outbound WebSocket with self-signed TLS:
 ./deploy/deploy-public.sh up --ssl --domain your.domain.com
 ```
 
-Automatically obtains and renews a certificate from Let's Encrypt. Requires:
+Automatically obtains and renews a certificate from Let's Encrypt via TLS-ALPN-01. Requires:
 
-- Port 80 and 443 accessible from the internet
+- Port 443 accessible from the internet (port 80 is optional — used for HTTP→HTTPS redirect)
 - DNS A record pointing to your server's public IP
 
 ### Custom certificate (public domains)
@@ -158,12 +164,14 @@ Can be combined with any other option (e.g., `--ssl selfsigned --logging --mdns`
 
 - `selfsigned` is for anything that is not publicly issuable by Let’s Encrypt.
 - That includes IPv4 addresses, `.local`, split-DNS/internal hostnames, and local domains that only exist inside your network. IPv6 literals are not currently supported.
-- `letsencrypt` is only for a real public FQDN that resolves publicly to the server and can pass ACME on port `80/443`.
+- `letsencrypt` is only for a real public FQDN that resolves publicly to the server and can pass ACME TLS-ALPN-01 on port `443`.
 - `custom` is for “I already have a cert/key I want to use”, including a corporate/internal CA for an internal domain.
 
 ### Port and TLS model
 
 All SSL modes terminate TLS at Traefik on port 443. Traefik uses a file-based routing provider (static YAML routes mounted read-only) — it does not require access to the Docker socket. The `--domain` flag accepts a plain hostname, FQDN, or IPv4 address where supported — `host:port` syntax is not supported, and IPv6 literals are not currently supported. Internal services communicate over plain HTTP on the Docker bridge network; TLS is external-facing only.
+
+When `FM_PLAIN_WS=true`, Traefik also listens on port 80 and serves the `/shelly` WebSocket path as plain `ws://` (no TLS, no redirect). This is required for Wall Display devices whose firmware cannot validate non-Allterco certificates. All other port 80 traffic is redirected to HTTPS.
 
 ---
 
@@ -201,6 +209,16 @@ These configure the OIDC project and admin user created in Zitadel on first depl
 | `ZITADEL_POSTGRES_PASSWORD`| `fleet-public-demo`  | Zitadel DB password                |
 | `ZITADEL_ADMIN_PASSWORD`   | `FleetDemo1234!`     | Zitadel root admin password        |
 
+### Wall Display Support
+
+| Variable       | Default | Description                                            |
+|----------------|---------|--------------------------------------------------------|
+| `FM_PLAIN_WS`  | `true`  | Allow plain `ws://` on port 80 for `/shelly`           |
+
+When SSL is enabled, Traefik redirects all HTTP traffic to HTTPS. Wall Display devices cannot validate non-Allterco TLS certificates, so they need plain `ws://` on port 80. Setting `FM_PLAIN_WS=true` adds a high-priority Traefik route that serves `/shelly` on port 80 without redirect. All other HTTP traffic is still redirected to HTTPS.
+
+Set to `false` if you have no Wall Display devices and want to enforce HTTPS-only on all paths.
+
 ### Performance Tuning
 
 | Variable               | Default    | Description                                |
@@ -215,7 +233,8 @@ These configure the OIDC project and admin user created in Zitadel on first depl
 | Variable               | Default    | Description                                |
 |------------------------|------------|--------------------------------------------|
 | `STATUS_RETENTION`     | `7 days`   | Device telemetry retention                 |
-| `EM_STATS_RETENTION`   | `1 year`   | Energy meter readings retention            |
+| `EM_STATS_RETENTION`   | `31 days`  | Raw energy retention (long-term = 15-min rollup) |
+| `EM_ROLLUP_RETENTION`  | _(empty)_  | 15-min energy rollup retention; empty = kept forever |
 | `AUDIT_LOG_RETENTION`  | `90 days`  | Audit log retention                        |
 
 ### Generated State
@@ -226,7 +245,7 @@ On first run, the deploy script generates credentials and OIDC config in `deploy
 |----------------------------|----------------------------------|
 | `deploy/state/.env`        | Generated passwords and secrets  |
 | `deploy/state/zitadel.env` | OIDC client IDs and endpoints    |
-| `deploy/state/fm-oidc.env` | Fleet Manager OIDC configuration |
+| `deploy/state/fm-runtime.env` | Generated Fleet Manager runtime configuration |
 | `deploy/state/machinekey/` | Zitadel service account key      |
 
 ---
@@ -289,19 +308,54 @@ In SSL mode, device WebSocket traffic goes through Traefik on port 443, so do no
 
 The device will appear in the Fleet Manager waiting room. An admin must approve it before it appears in the dashboard.
 
+### Connecting Wall Display devices
+
+Shelly Wall Display (SAWD) devices connect the same way, but their firmware only trusts the Allterco CA — they reject self-signed, Let's Encrypt, and custom TLS certificates. For SSL deployments:
+
+1. Ensure `FM_PLAIN_WS=true` is set in `deploy/env/public.env` (enabled by default)
+2. Ensure port 80 is accessible from the Wall Display
+3. Configure the Wall Display's outbound WebSocket to: `ws://<your-ip>/shelly` (port 80, no TLS)
+
+The plain WebSocket path (`/shelly` on port 80) is the **only** HTTP path not redirected to HTTPS when `FM_PLAIN_WS=true`. All browser traffic and other devices still use HTTPS on port 443.
+
+Without SSL, Wall Displays connect normally via `ws://<your-ip>:7011/shelly` — no special configuration needed.
+
 ---
 
 ## Updating
 
-Pull newer images and restart:
+For normal patch updates, pull newer images and restart:
 
 ```bash
 ./deploy/deploy-public.sh upgrade
 ```
 
-This runs `docker compose pull` for all configured images, then runs the full `up` flow. Database data is preserved. If no prior deployment exists, `upgrade` performs a fresh bootstrap automatically.
+This runs `docker compose pull` for all configured images, then runs the full `up` flow. If no prior deployment exists, `upgrade` performs a fresh bootstrap automatically.
 
 `up` alone never pulls from the registry — it uses cached images. Use `upgrade` when you want to get newer versions.
+
+### Major upgrades
+
+Some releases change database or identity-provider major versions. Before those
+upgrades, print the migration plan:
+
+```bash
+./deploy/deploy-public.sh migrate --plan-only
+```
+
+If the plan reports required work, run one of:
+
+```bash
+./deploy/deploy-public.sh migrate --yes
+./deploy/deploy-public.sh upgrade --migrate-first --yes
+```
+
+The migration flow creates backups and handles staged database/Zitadel upgrade
+steps. A plain `upgrade` refuses to continue when migration work is required.
+
+For the `v1.80.0 -> v1.90.0` upgrade, this matters because Fleet Manager moves
+from PostgreSQL 16 based images to PostgreSQL 18 based images, and Zitadel moves
+from v2 to v4 through an intermediate v3 stage.
 
 ---
 
@@ -369,7 +423,7 @@ To start completely fresh:
 
 # Specific service
 ./deploy/deploy-public.sh logs fleet-manager
-./deploy/deploy-public.sh logs zitadel
+./deploy/deploy-public.sh logs zitadel-api
 ./deploy/deploy-public.sh logs fleet-db
 ```
 
@@ -385,6 +439,8 @@ To start completely fresh:
 - with SSL: `wss://<host>/shelly`
 
 For `--ssl selfsigned`, also verify the device is using `User TLS` with the Fleet Manager-generated CA uploaded from `deploy/state/tls/ca.crt` (or the same certificate exported as `ca.pem`). `Default TLS` uses the built-in public CA bundle and will reject the self-signed Fleet Manager certificate.
+
+**Wall Display won't connect with SSL:** Wall Display firmware only trusts the Allterco CA. Ensure `FM_PLAIN_WS=true` in `deploy/env/public.env` and connect via `ws://<your-ip>/shelly` (port 80, no TLS). Verify port 80 is accessible from the device.
 
 **Login fails after reset:** If you ran `down --volumes` without removing `deploy/state/`, stale credentials may conflict with the fresh database. Remove `deploy/state/` and run `up` again.
 

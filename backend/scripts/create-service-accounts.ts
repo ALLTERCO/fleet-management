@@ -2,7 +2,7 @@
  * Service Account Creation Script
  *
  * Creates machine users (service accounts) in Zitadel for:
- * - Node-RED: Local websocket authentication
+ * - Node-RED: Standalone automation runtime service identity
  * - Alexa: Voice assistant integration (optional)
  *
  * Usage:
@@ -19,16 +19,17 @@
  *   Store these tokens securely in your .fleet-managerrc configuration.
  */
 
-import {zitadelService, type FleetUserMetadata} from '../src/modules/zitadel';
+import {type FleetUserMetadata, zitadelService} from '../src/modules/zitadel';
 
 // Service account definitions
 const SERVICE_ACCOUNTS = {
     nodered: {
         userName: 'fleet-nodered',
         name: 'Fleet Manager Node-RED',
-        description: 'Service account for Node-RED local websocket authentication',
-        permissions: ['*'] as string[],
-        group: 'service'
+        description:
+            'Service account for the standalone Node-RED automation runtime',
+        permissions: ['automation:execute'] as string[],
+        group: 'automation_service'
     },
     alexa: {
         userName: 'fleet-alexa',
@@ -76,7 +77,9 @@ async function createServiceAccount(
 
     try {
         // Check if user already exists
-        const existing = await zitadelService.findUserByUsername(config.userName);
+        const existing = await zitadelService.findUserByUsername(
+            config.userName
+        );
         if (existing) {
             console.log(
                 `  -> Service account already exists with ID: ${existing.userId}`
@@ -149,7 +152,9 @@ async function main() {
 
     if (!CREATE_NODERED && !CREATE_ALEXA) {
         console.log('No service accounts selected.');
-        console.log('Usage: npx tsx scripts/create-service-accounts.ts [--nodered] [--alexa] [--all]');
+        console.log(
+            'Usage: npx tsx scripts/create-service-accounts.ts [--nodered] [--alexa] [--all]'
+        );
         process.exit(0);
     }
 

@@ -1,4 +1,24 @@
+import {tuning} from '../../config/tuning';
+import {
+    canCrossOrganizationBoundary,
+    canPerformComponentOperation,
+    canUseAuthenticatedWrite,
+    hasTenantAdminAuthority,
+    isComponentPermissionAllowed
+} from '../../modules/authz/evaluator';
 import * as Registry from '../../modules/Registry';
+import type {DescribeOutput} from '../../rpc/describe';
+import {buildListResponse} from '../../rpc/listResponse';
+import RpcError from '../../rpc/RpcError';
+import {validateOrThrow} from '../../rpc/validateOrThrow';
+import {
+    STORAGE_DESCRIBE,
+    STORAGE_GET_ITEM_PARAMS,
+    STORAGE_GETALL_PARAMS,
+    STORAGE_KEYS_PARAMS,
+    STORAGE_REMOVE_ITEM_PARAMS,
+    STORAGE_SET_ITEM_PARAMS
+} from '../../types/api/storage';
 import type CommandSender from '../CommandSender';
 import Component from './Component';
 
@@ -7,68 +27,211 @@ export interface StorageComponentConfig {
     items: Record<string, any>;
 }
 
-function isGetAll(params: any) {
-    return (
-        params &&
-        typeof params === 'object' &&
-        (typeof params.registry === 'undefined' ||
-            typeof params.registry === 'string')
-    );
+interface StorageGetItemParams {
+    registry?: string;
+    key: string;
 }
-
-function isAddItem(params: any) {
-    return (
-        typeof params.registry === 'string' &&
-        typeof params.key === 'string' &&
-        typeof params.dashboard === 'number' &&
-        typeof params.type === 'number' &&
-        typeof params.item === 'number' &&
-        (params.order === undefined || typeof params.order === 'number') &&
-        (params.sub_item === undefined ||
-            typeof params.sub_item === 'string' ||
-            params.sub_item === null)
-    );
+interface StorageSetItemParams {
+    registry?: string;
+    key: string;
+    value: unknown;
 }
-
-function isRemoveWidget(params: any) {
-    return (
-        typeof params.registry === 'string' &&
-        typeof params.key === 'string' &&
-        typeof params.dashboard === 'number' &&
-        typeof params.itemId === 'number'
-    );
+interface StorageKeysParams {
+    registry?: string;
 }
-
-function isGetItem(params: any) {
-    return isGetAll(params) && typeof params.key === 'string';
-}
-
-function isSetItem(params: any) {
-    return isGetItem(params) && typeof params.value !== 'undefined';
+interface StorageRemoveItemParams {
+    registry?: string;
+    key: string;
+    value?: any;
 }
 
 export default class StorageComponent extends Component<StorageComponentConfig> {
     constructor() {
-        super('storage');
+        super('storage', {viewer_visible: true});
+    }
+
+    // Known (registry, key) pairs that have an org-scoped DB handler in
+    // modules/Registry.actions. Anything else for these registries falls
+    // through to global file writes, so we require provider support for
+    // arbitrary keys to close the cross-tenant escape.
+    #isOrgScopedRegistryKey(registry: string, key: string): boolean {
+        const cc = `${registry}.${key}`.toLowerCase();
+        return (
+            cc === 'ui.menuitems' ||
+            cc === 'ui.config' ||
+            cc === 'ui.dashboardsettings' ||
+            cc === 'actions.rpc'
+        );
+    }
+
+    #checkRegistryWritePermission(
+        sender: CommandSender,
+        registry: string,
+        key?: string,
+        operation: 'create' | 'update' | 'delete' = 'update',
+        _itemId?: string | number
+    ) {
+        const reg = (registry ?? '').toLowerCase();
+        const k = (key ?? '').toLowerCase();
+        if (reg === 'memory') return;
+        // Dashboards live in DB via DashboardComponent — Storage.* file
+        // fallback is legacy and would write to global state.
+        if (reg === 'dashboards' || k === 'dashboards') {
+            if (!canCrossOrganizationBoundary(sender)) {
+                throw RpcError.InvalidRequest(
+                    'dashboards: use dashboard.* RPCs; Storage.* fallback is provider-support-only'
+                );
+            }
+            return;
+        }
+        // Known DB-backed (registry, key) pair → admin baseline.
+        if (this.#isOrgScopedRegistryKey(reg, k)) {
+            if (hasTenantAdminAuthority(sender)) return;
+            if (reg === 'actions') {
+                if (!sender.hasCrudPermission('actions', operation)) {
+                    throw RpcError.InvalidRequest(
+                        `No ${operation} permission on actions`
+                    );
+                }
+            }
+            // ui.* keys: admin baseline above; non-admin would only get
+            // here through hasCrudPermission for dashboards, which we
+            // do not grant via the ui registry.
+            return;
+        }
+        // Configs registry has arbitrary keys but is admin-managed global
+        // state; admin baseline matches current page behavior.
+        if (reg === 'configs' || k === 'configs') {
+            if (hasTenantAdminAuthority(sender)) return;
+            if (!sender.hasCrudPermission('configurations', operation)) {
+                throw RpcError.InvalidRequest(
+                    `No ${operation} permission on configurations`
+                );
+            }
+            return;
+        }
+        // Variables registry — file-backed but admin-managed via the
+        // actions resource (matches Variables.Set/Delete RPC contract).
+        if (reg === 'action-variables' || reg === 'action-variables-meta') {
+            if (hasTenantAdminAuthority(sender)) return;
+            if (!sender.hasCrudPermission('actions', operation)) {
+                throw RpcError.InvalidRequest(
+                    `No ${operation} permission on action variables`
+                );
+            }
+            return;
+        }
+        // Any other (registry, key) — including actions.<not-rpc> and
+        // arbitrary ui.<unknown> — falls through to a global file write.
+        // provider support only.
+        if (!canCrossOrganizationBoundary(sender)) {
+            throw RpcError.InvalidRequest(
+                `No write permission on registry '${reg}' key '${k || '(none)'}'`
+            );
+        }
+    }
+
+    @Component.NoAudit
+    @Component.Expose('Describe')
+    @Component.NoPermissions
+    describe(): DescribeOutput {
+        return STORAGE_DESCRIBE;
     }
 
     @Component.Expose('SetItem')
-    @Component.CheckParams(isSetItem)
-    @Component.NoPermissions
-    async setItem(params: {registry: string; key: string; value: string}) {
+    @Component.CheckPermissions(canUseAuthenticatedWrite)
+    async setItem(rawParams: unknown, sender: CommandSender) {
+        const params = validateOrThrow<StorageSetItemParams>(
+            rawParams,
+            STORAGE_SET_ITEM_PARAMS
+        );
         const registry = (params.registry ?? 'memory').toLowerCase();
-        await Registry.addToRegistry(registry, params.key, params.value);
+        const val = params.value as any;
+        const op = val?.id ? 'update' : 'create';
+        this.#checkRegistryWritePermission(
+            sender,
+            registry,
+            params.key,
+            op,
+            val?.id
+        );
+        await Registry.addToRegistry(
+            registry,
+            params.key,
+            params.value,
+            sender.getOrganizationId()
+        );
         return {updated: params.key};
     }
 
+    // Known registries get downstream per-resource filtering inside
+    // getItem/#fetchGetAll. Unknown registries are not org-partitioned —
+    // global provider support only.
+    #assertRegistryReadable(
+        sender: CommandSender,
+        registry: string,
+        key?: string
+    ): void {
+        const reg = (registry ?? '').toLowerCase();
+        const k = (key ?? '').toLowerCase();
+        if (reg === 'memory') return;
+        if (reg === 'dashboards') {
+            if (!canCrossOrganizationBoundary(sender)) {
+                throw RpcError.InvalidRequest(
+                    'dashboards: use dashboard.* RPCs; Storage.* fallback is provider-support-only'
+                );
+            }
+            return;
+        }
+        if (this.#isOrgScopedRegistryKey(reg, k)) return;
+        if (reg === 'ui' || reg === 'configs') {
+            // ui registry is the frontend's app-state store (loaded on
+            // every boot). configs is admin-managed singletons —
+            // getItem-level filtering happens downstream.
+            return;
+        }
+        if (reg === 'actions') {
+            // actions registry has exactly one known DB-scoped key
+            // (rpc) — that path is caught by #isOrgScopedRegistryKey
+            // above. Arbitrary actions.<other> keys are global file
+            // state; provider support only.
+            if (!canCrossOrganizationBoundary(sender)) {
+                throw RpcError.InvalidRequest(
+                    `No read permission on registry 'actions' key '${k || '(none)'}'`
+                );
+            }
+            return;
+        }
+        if (reg === 'action-variables' || reg === 'action-variables-meta') {
+            // Variables registry is file-backed; can hold secrets. Match
+            // the Variables RPC contract: actions:read.
+            if (
+                !hasTenantAdminAuthority(sender) &&
+                !sender.hasCrudPermission('actions', 'read')
+            ) {
+                throw RpcError.InvalidRequest(
+                    `No read permission on registry '${reg}'`
+                );
+            }
+            return;
+        }
+        if (!canCrossOrganizationBoundary(sender)) {
+            throw RpcError.InvalidRequest(
+                `No read permission on registry '${reg}'`
+            );
+        }
+    }
+
+    @Component.NoAudit
     @Component.Expose('GetItem')
-    @Component.CheckParams(isGetItem)
     @Component.NoPermissions
-    async getItem(
-        params: {registry: string; key: string},
-        sender: CommandSender
-    ) {
-        const registry = params.registry ?? 'memory';
+    async getItem(rawParams: unknown, sender: CommandSender) {
+        const params = validateOrThrow<StorageGetItemParams>(
+            rawParams,
+            STORAGE_GET_ITEM_PARAMS
+        );
+        const registry = (params.registry ?? 'memory').toLowerCase();
+        this.#assertRegistryReadable(sender, registry, params.key);
 
         if (registry === 'memory') {
             return this.config.items[params.key] ?? null;
@@ -76,32 +239,29 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
         try {
             const registryContent = await Registry.getFromRegistry(
                 registry,
-                params.key
+                params.key,
+                sender.getOrganizationId()
             );
 
             if (!registryContent) {
                 return null;
             }
 
-            // Admin sees everything
-            if (sender.isAdmin()) {
+            // Whole-registry global bypass for global provider support only.
+            // Tenant admins flow through the per-resource filters below.
+            if (canCrossOrganizationBoundary(sender)) {
                 return registryContent;
             }
 
-            // Actions registry: filter by device access
+            const key = (params.key ?? '').toLowerCase();
             if (
-                registry === 'actions' &&
-                params.key === 'rpc' &&
+                (registry === 'actions' || key === 'rpc') &&
                 Array.isArray(registryContent)
             ) {
-                // Check if user can read actions at all
                 if (!sender.hasCrudPermission('actions', 'read')) {
                     return [];
                 }
 
-                // Batch permission check — collect all unique device IDs,
-                // check once, then filter with O(1) Set lookups.
-                // (Replaces sequential await-per-device N+1 pattern.)
                 const allDeviceIds = new Set<string>();
                 for (const act of registryContent) {
                     for (const step of act.actions) {
@@ -129,38 +289,49 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
                 return filtered;
             }
 
-            // Dashboards registry: use CRUD permission model
-            if (registry === 'dashboards') {
-                // Check if user can read dashboards at all
+            if (registry === 'dashboards' || key === 'dashboards') {
                 if (!sender.hasCrudPermission('dashboards', 'read')) {
-                    return {};
+                    return Array.isArray(registryContent) ? [] : {};
                 }
 
-                // Filter by scoped access if needed
+                if (Array.isArray(registryContent)) {
+                    return registryContent.filter((d: any) =>
+                        isComponentPermissionAllowed(
+                            canPerformComponentOperation(
+                                sender,
+                                'dashboards',
+                                'read',
+                                d?.id
+                            )
+                        )
+                    );
+                }
                 const result: Record<string, any> = {};
-                for (const id of Object.keys(registryContent)) {
+                for (const [id, val] of Object.entries(registryContent)) {
+                    const dashId = (val as any)?.id ?? Number(id);
                     if (
-                        sender.canPerformOnItem(
-                            'dashboards',
-                            'read',
-                            Number(id)
+                        isComponentPermissionAllowed(
+                            canPerformComponentOperation(
+                                sender,
+                                'dashboards',
+                                'read',
+                                dashId
+                            )
                         )
                     ) {
-                        result[id] = registryContent[id];
+                        result[id] = val;
                     }
                 }
                 return result;
             }
 
-            // Configs registry: use configurations CRUD permission
-            if (registry === 'configs') {
+            if (registry === 'configs' || key === 'configs') {
                 if (!sender.hasCrudPermission('configurations', 'read')) {
                     return {};
                 }
                 return registryContent;
             }
 
-            // Default: return content (for other registries)
             return registryContent;
         } catch (error) {
             this.logger.error(`Error accessing registry ${registry}:`, error);
@@ -168,49 +339,72 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
         }
     }
 
+    @Component.NoAudit
     @Component.Expose('Keys')
-    @Component.CheckParams(isGetAll)
     @Component.NoPermissions
-    keys(params: {registry: string}) {
-        const registry = params.registry ?? 'memory';
+    keys(rawParams: unknown, sender: CommandSender) {
+        const params = validateOrThrow<StorageKeysParams>(
+            rawParams ?? {},
+            STORAGE_KEYS_PARAMS
+        );
+        const registry = (params.registry ?? 'memory').toLowerCase();
+        this.#assertRegistryReadable(sender, registry);
 
         return registry === 'memory'
             ? Object.keys(this.config.items)
             : Registry.getRegistryKeys(registry);
     }
 
+    @Component.NoAudit
     @Component.Expose('GetAll')
-    @Component.CheckParams(isGetAll)
     @Component.NoPermissions
-    async getall(params: {registry: string}, sender: CommandSender) {
-        const registry = params.registry ?? 'memory';
+    async getall(rawParams: unknown, sender: CommandSender) {
+        const params = validateOrThrow<StorageKeysParams>(
+            rawParams ?? {},
+            STORAGE_GETALL_PARAMS
+        );
+        const registry = (params.registry ?? 'memory').toLowerCase();
+        const result = await this.#fetchGetAll(registry, sender);
+        this.#enforceGetAllSizeCap(registry, result);
+        return result;
+    }
 
+    async #fetchGetAll(
+        registry: string,
+        sender: CommandSender
+    ): Promise<Record<string, any>> {
         if (registry === 'memory') {
             return this.config.items;
         }
+        this.#assertRegistryReadable(sender, registry);
 
-        // Admin sees everything
-        if (sender.isAdmin()) {
+        // Whole-registry global reads only for global provider support. Tenant
+        // admins flow through the per-resource filters below so
+        // file-backed state stays scoped per-resource where it can be.
+        if (canCrossOrganizationBoundary(sender)) {
             return Registry.getAll(registry);
         }
 
-        // Dashboards registry: check CRUD permission
         if (registry === 'dashboards') {
             if (!sender.hasCrudPermission('dashboards', 'read')) {
                 return {};
             }
             const all = await Registry.getAll(registry);
-            // Filter by scoped access
             const result: Record<string, any> = {};
             for (const id of Object.keys(all)) {
-                if (sender.canPerformOnItem('dashboards', 'read', Number(id))) {
+                const decision = canPerformComponentOperation(
+                    sender,
+                    'dashboards',
+                    'read',
+                    Number(id)
+                );
+                if (isComponentPermissionAllowed(decision)) {
                     result[id] = all[id];
                 }
             }
             return result;
         }
 
-        // Configs registry: check configurations CRUD permission
         if (registry === 'configs') {
             if (!sender.hasCrudPermission('configurations', 'read')) {
                 return {};
@@ -218,7 +412,6 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
             return Registry.getAll(registry);
         }
 
-        // Actions registry: check actions CRUD permission
         if (registry === 'actions') {
             if (!sender.hasCrudPermission('actions', 'read')) {
                 return {};
@@ -226,15 +419,69 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
             return Registry.getAll(registry);
         }
 
-        // Default: return all (for other registries)
-        return Registry.getAll(registry);
+        if (
+            registry === 'action-variables' ||
+            registry === 'action-variables-meta'
+        ) {
+            if (!sender.hasCrudPermission('actions', 'read')) {
+                return {};
+            }
+            return Registry.getAll(registry);
+        }
+
+        // Unreachable: #assertRegistryReadable above throws for unknown
+        // registries when sender is not provider support; provider support
+        // short-circuited at the top.
+        return {};
+    }
+
+    // Guard the wire payload so a runaway registry can't blow up
+    // first-load bandwidth. Callers should switch to Storage.Keys +
+    // Storage.GetItem when this fires.
+    #enforceGetAllSizeCap(registry: string, payload: unknown): void {
+        const cap = tuning.storage.getAllMaxBytes;
+        if (cap <= 0) return;
+        const size = Buffer.byteLength(JSON.stringify(payload ?? {}), 'utf8');
+        if (size <= cap) return;
+        throw RpcError.InvalidRequest(
+            `Storage.GetAll('${registry}') payload ${size}B exceeds FM_STORAGE_GETALL_MAX_BYTES=${cap}B; use Storage.Keys + Storage.GetItem instead.`
+        );
+    }
+
+    // Auth is enforced inside `getall`'s body (scoped filtering per registry).
+    @Component.NoAudit
+    @Component.Expose('List')
+    @Component.NoPermissions
+    async list(rawParams: unknown, sender: CommandSender) {
+        const params = validateOrThrow<StorageKeysParams>(
+            rawParams ?? {},
+            STORAGE_GETALL_PARAMS
+        );
+        const dict = (await this.getall(params, sender)) as Record<
+            string,
+            unknown
+        >;
+        const entries =
+            dict && typeof dict === 'object' ? Object.entries(dict) : [];
+        const items = entries.map(([key, value]) => ({key, value}));
+        return buildListResponse(items, items.length, items.length, 0);
     }
 
     @Component.Expose('RemoveItem')
-    @Component.CheckParams(isGetItem)
-    @Component.NoPermissions
-    async removeItem(params: {registry: string; key: string; value: any}) {
-        const registry = params.registry ?? 'memory';
+    @Component.CheckPermissions(canUseAuthenticatedWrite)
+    async removeItem(rawParams: unknown, sender: CommandSender) {
+        const params = validateOrThrow<StorageRemoveItemParams>(
+            rawParams,
+            STORAGE_REMOVE_ITEM_PARAMS
+        );
+        const registry = (params.registry ?? 'memory').toLowerCase();
+        this.#checkRegistryWritePermission(
+            sender,
+            registry,
+            params.key,
+            'delete',
+            params.value?.id
+        );
 
         if (registry === 'memory') {
             this.setConfig({
@@ -244,55 +491,12 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
             await Registry.removeFromRegistry(
                 registry,
                 params.key,
-                params.value
+                params.value,
+                sender.getOrganizationId()
             );
         }
 
         return {removed: params.key};
-    }
-
-    @Component.Expose('AddItem') // add a dashboard widget
-    @Component.CheckParams(isAddItem)
-    @Component.NoPermissions
-    async addItem(params: {
-        registry: string;
-        key: string;
-        dashboard: number;
-        type: number;
-        item: number;
-        order?: number;
-        sub_item?: string | null;
-    }) {
-        const registry = params.registry.toLowerCase();
-        const {dashboard, type, item, order = 0, sub_item = null} = params;
-        const newId = await Registry.addDashboardItem(
-            dashboard,
-            type,
-            item,
-            order,
-            sub_item
-        );
-        return {id: newId};
-    }
-
-    @Component.Expose('RemoveWidget')
-    @Component.CheckParams(isRemoveWidget)
-    @Component.NoPermissions
-    async removeWidget(params: {
-        registry: string;
-        key: string;
-        dashboard: number;
-        itemId: number;
-    }) {
-        const {dashboard, itemId} = params;
-        await Registry.removeDashboardWidget(dashboard, itemId);
-        return {removed: itemId};
-    }
-
-    @Component.Expose('GetUIConfig')
-    @Component.NoPermissions
-    async getUIConfig() {
-        return await Registry.getUIConfig();
     }
 
     protected override checkConfigKey(key: string, value: any): boolean {
@@ -314,7 +518,7 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
                         const inner_value = value[inner_key];
                         if (inner_value === undefined) {
                             delete this.config.items[inner_key];
-                            return;
+                            continue;
                         }
                         this.config.items[inner_key] = inner_value;
                     }

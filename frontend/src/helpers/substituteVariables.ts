@@ -1,6 +1,7 @@
+import {ACTION_VARIABLES_REGISTRY} from '@api/registryNames';
 import {getRegistry} from '@/tools/websocket';
 
-const registry = getRegistry('action-variables');
+const registry = getRegistry(ACTION_VARIABLES_REGISTRY);
 
 export async function fetchActionVariables(): Promise<Record<string, string>> {
     try {

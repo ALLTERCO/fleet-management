@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 792 244" width="792" height="244" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="The energy model: auto-detected facts become user-set meaning">
+  <title>Energy model: facts become meaning</title>
+  <desc>A device and its measurement points are auto-detected facts. A logical meter carries the meaning you set — its role — and belongs to a group or location.</desc>
+  <defs>
+    <marker id="gN" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A97A8"/></marker>
+  </defs>
+  <rect x="0" y="0" width="792" height="244" fill="#ffffff"/>
+
+  <!-- band labels + divider -->
+  <text x="212" y="34" text-anchor="middle" font-size="11.5" font-weight="600" fill="#2C6C99">Facts — auto-detected</text>
+  <text x="592" y="34" text-anchor="middle" font-size="11.5" font-weight="600" fill="#003C82">Meaning — you set</text>
+  <line x1="402" y1="46" x2="402" y2="206" stroke="#D7E0EC" stroke-width="1.25" stroke-dasharray="5 4"/>
+
+  <!-- nodes -->
+  <rect x="26" y="86" width="160" height="86" rx="6" fill="#EAF6FD" stroke="#4495D1" stroke-width="1.5"/>
+  <text x="106" y="116" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Device</text>
+  <text x="106" y="134" text-anchor="middle" font-size="11" fill="#6B7A90">physical Shelly</text>
+  <text x="106" y="150" text-anchor="middle" font-size="11" fill="#6B7A90">model · profile</text>
+
+  <path d="M186,129 L212,129" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#gN)"/>
+
+  <rect x="214" y="86" width="176" height="86" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="302" y="112" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Measurement point</text>
+  <text x="302" y="132" text-anchor="middle" font-size="10.5" fill="#3A6B92" font-family="ui-monospace,Menlo,monospace">em:0.a_total_act_energy</text>
+  <text x="302" y="150" text-anchor="middle" font-size="11" fill="#6B7A90">phase · electricalDomain</text>
+
+  <path d="M390,129 L416,129" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#gN)"/>
+  <rect x="404" y="188" width="90" height="15" rx="7" fill="#ffffff"/>
+  <text x="449" y="199" text-anchor="middle" font-size="10" fill="#8A97A8">referenced by</text>
+
+  <rect x="418" y="86" width="176" height="86" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="506" y="112" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Logical meter</text>
+  <text x="506" y="132" text-anchor="middle" font-size="11" fill="#6B7A90">the saved meaning</text>
+  <text x="506" y="150" text-anchor="middle" font-size="11" fill="#003C82">role: grid · pv · battery</text>
+
+  <path d="M594,129 L620,129" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#gN)"/>
+
+  <rect x="622" y="86" width="150" height="86" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="697" y="116" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Group / location</text>
+  <text x="697" y="134" text-anchor="middle" font-size="11" fill="#6B7A90">site · building</text>
+  <text x="697" y="150" text-anchor="middle" font-size="11" fill="#6B7A90">tenant</text>
+</svg>

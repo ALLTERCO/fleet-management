@@ -1,0 +1,523 @@
+/* Location create/edit form content (the step bodies inside the shared
+ * SteppedModal). Global, not scoped, because the step markup lives in child
+ * components (LocationEntryDrawerStep1/2/3) — scoped parent CSS never reaches a
+ * child's inner elements, which is why these used to render unstyled. All
+ * values come from design-tokens.css. The `lf-marker` rules must be global
+ * regardless: MapLibre injects the marker element into the map at runtime. */
+
+.lf-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
+.lf-field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1-5);
+}
+.lf-label {
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+    letter-spacing: var(--tracking-wide);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+.lf-label__optional,
+.lf-required {
+    font-size: var(--type-caption);
+    font-weight: var(--font-medium);
+    padding: var(--space-px) var(--space-2);
+    border-radius: var(--radius-sm);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+}
+.lf-label__optional {
+    color: var(--color-text-tertiary);
+    background: var(--glass-hover);
+}
+.lf-required {
+    color: var(--color-danger-text);
+    background: var(--color-danger-subtle);
+}
+.lf-hint {
+    margin: 0;
+    font-size: var(--type-caption);
+    color: var(--color-text-tertiary);
+}
+.lf-hint code {
+    background: var(--glass-hover);
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-sm);
+}
+.lf-error {
+    margin: 0;
+    font-size: var(--type-caption);
+    color: var(--color-danger-text);
+}
+
+/* Native kind <select> — tokenized; chevron is an icon element (a CSS var
+ * can't reach inside a background-image data-URI), so the colour stays a token. */
+.lf-select-wrap {
+    position: relative;
+}
+.lf-select-chev {
+    position: absolute;
+    right: var(--space-3);
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-text-tertiary);
+    font-size: var(--type-caption);
+    pointer-events: none;
+}
+.lf-select {
+    appearance: none;
+    width: 100%;
+    padding: var(--space-2) var(--space-8) var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    background-color: var(--glass-input);
+    border: 1px solid var(--glass-border);
+    color: var(--color-text-primary);
+    font: inherit;
+    cursor: pointer;
+}
+.lf-select:focus {
+    outline: none;
+    border-color: rgba(var(--color-primary-rgb), 0.5);
+}
+.lf-select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Kind segmented control */
+.lf-segmented {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-1);
+    padding: var(--space-1);
+    border-radius: var(--radius-xl);
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border-subtle);
+}
+.lf-seg {
+    appearance: none;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-2);
+    border-radius: var(--radius-lg);
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    cursor: pointer;
+    transition: background var(--motion-state), color var(--motion-state);
+}
+.lf-seg:hover:not(:disabled) {
+    background: var(--glass-hover);
+    color: var(--color-text-primary);
+}
+.lf-seg:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.lf-seg--on {
+    background: var(--color-surface-4);
+    color: var(--color-text-primary);
+    box-shadow: inset 0 1px 0 var(--glass-highlight);
+}
+.lf-seg i {
+    font-size: var(--icon-size-md);
+}
+
+/* Resolved address card */
+.lf-card {
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    background: var(--glass-input);
+    padding: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+.lf-card__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+}
+.lf-card__title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1-5);
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+}
+.lf-card__edit {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-full);
+    background: var(--glass-hover);
+    border: 1px solid var(--glass-border);
+    color: var(--color-text-primary);
+    cursor: pointer;
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+}
+.lf-card__edit:hover {
+    background: var(--color-surface-4);
+}
+.lf-card__list {
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-1-5) var(--space-3);
+}
+.lf-card__row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    min-width: 0;
+}
+.lf-card__row dt {
+    font-size: var(--type-caption);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    color: var(--color-text-tertiary);
+}
+.lf-card__row dd {
+    margin: 0;
+    font-size: var(--type-caption);
+    color: var(--color-text-primary);
+    word-break: break-word;
+}
+.lf-card__form {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-2);
+}
+.lf-card__label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    font-size: var(--type-caption);
+    color: var(--color-text-secondary);
+}
+
+/* Mini map */
+.lf-map {
+    position: relative;
+    width: 100%;
+    height: 320px;
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    border: 1px solid var(--glass-border);
+    background: var(--color-surface-1);
+}
+.lf-map__empty {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    color: var(--color-text-tertiary);
+    text-align: center;
+    pointer-events: none;
+    z-index: 1;
+}
+.lf-map__empty i {
+    font-size: var(--icon-size-lg);
+}
+.lf-map__empty p {
+    margin: 0;
+    font-size: var(--type-caption);
+}
+.lf-map__meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+.lf-map__coords {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-1-5) var(--space-3);
+    border-radius: var(--radius-full);
+    background: var(--glass-input);
+    border: 1px solid var(--color-border-subtle);
+    font-size: var(--type-caption);
+    color: var(--color-text-primary);
+}
+.lf-map__coord {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-variant-numeric: tabular-nums;
+}
+.lf-map__coord-label {
+    color: var(--color-text-tertiary);
+    letter-spacing: var(--tracking-wide);
+}
+.lf-map__coord-val {
+    font-weight: var(--font-semibold);
+}
+.lf-map__precision {
+    padding: var(--space-0-5) var(--space-2);
+    border-radius: var(--radius-full);
+    font-size: var(--type-caption);
+    font-weight: var(--font-bold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+}
+.lf-map__precision--geocoded {
+    background: rgba(var(--color-status-warn-rgb), 0.18);
+    color: var(--color-warning-text);
+}
+.lf-map__precision--confirmed {
+    background: rgba(var(--color-success-rgb), 0.18);
+    color: var(--color-success-text);
+}
+.lf-map__precision--manual {
+    background: var(--color-surface-2);
+    color: var(--color-text-tertiary);
+}
+.lf-map__reset {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1-5) var(--space-3);
+    border-radius: var(--radius-full);
+    background: var(--glass-hover);
+    border: 1px solid var(--glass-border);
+    color: var(--color-text-primary);
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    cursor: pointer;
+    transition: background var(--motion-state);
+}
+.lf-map__reset:hover {
+    background: var(--color-surface-4);
+}
+
+/* MapLibre HTML marker — created in JS, lives outside Vue's scope. */
+.lf-marker {
+    position: relative;
+    width: 28px;
+    height: 36px;
+    cursor: grab;
+}
+.lf-marker:active {
+    cursor: grabbing;
+}
+.lf-marker__pin {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    transform: translateX(-50%);
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-full);
+    background: var(--color-primary);
+    border: 2px solid var(--color-text-primary);
+    box-shadow: var(--shadow-md);
+}
+.lf-marker__shadow {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: 12px;
+    height: 4px;
+    border-radius: var(--radius-full);
+    background: var(--color-overlay);
+    filter: blur(2px);
+}
+
+/* Manual-coords disclosure */
+.lf-disclose {
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-1);
+    overflow: hidden;
+}
+.lf-disclose__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    cursor: pointer;
+    list-style: none;
+    color: var(--color-text-secondary);
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+}
+.lf-disclose__head::-webkit-details-marker {
+    display: none;
+}
+.lf-disclose[open] .lf-disclose__head {
+    color: var(--color-text-primary);
+    border-bottom: 1px solid var(--color-border-subtle);
+}
+.lf-disclose__body {
+    padding: var(--space-3);
+}
+.lf-manual {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+}
+.lf-manual label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    font-size: var(--type-caption);
+    color: var(--color-text-secondary);
+}
+.lf-manual__input {
+    appearance: none;
+    background: var(--glass-input);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    padding: var(--space-2) var(--space-3);
+    color: var(--color-text-primary);
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Detail accordions */
+.lf-accordion {
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-xl);
+    background: var(--color-surface-1);
+    overflow: hidden;
+}
+.lf-accordion + .lf-accordion {
+    margin-top: var(--space-2);
+}
+.lf-accordion__head {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+.lf-accordion__head::-webkit-details-marker {
+    display: none;
+}
+.lf-accordion__head:hover {
+    background: var(--glass-hover);
+}
+.lf-accordion__icon {
+    color: var(--color-text-tertiary);
+}
+.lf-accordion__label {
+    flex: 1;
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+}
+.lf-accordion__tag {
+    font-size: var(--type-caption);
+    font-weight: var(--font-medium);
+    color: var(--color-text-tertiary);
+    padding: var(--space-px) var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--glass-hover);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+}
+.lf-accordion__chev {
+    color: var(--color-text-tertiary);
+    transition: transform var(--motion-state);
+}
+.lf-accordion[open] .lf-accordion__chev {
+    transform: rotate(180deg);
+}
+.lf-accordion__body {
+    padding: var(--space-2) var(--space-4) var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    border-top: 1px solid var(--color-border-subtle);
+}
+
+/* Tag chips */
+.lf-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1-5);
+    padding: var(--space-2);
+    border-radius: var(--radius-lg);
+    background: var(--glass-input);
+    border: 1px solid var(--glass-border);
+    min-height: var(--touch-target-min);
+}
+.lf-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-full);
+    background: rgba(var(--color-primary-rgb), 0.22);
+    color: var(--color-primary-text);
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+}
+.lf-tag__x {
+    appearance: none;
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+    opacity: 0.7;
+}
+.lf-tag__x:hover {
+    opacity: 1;
+}
+.lf-tag__input {
+    flex: 1;
+    min-width: 120px;
+    background: transparent;
+    border: none;
+    color: var(--color-text-primary);
+    font-size: var(--type-body);
+    outline: none;
+}
+.lf-tag__input::placeholder {
+    color: var(--color-text-disabled);
+}
+
+.lf-textarea {
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-lg);
+    background: var(--glass-input);
+    border: 1px solid var(--glass-border);
+    color: var(--color-text-primary);
+    font-family: inherit;
+    font-size: var(--type-body);
+    line-height: var(--leading-normal);
+    resize: vertical;
+    outline: none;
+}
+.lf-textarea:focus {
+    border-color: rgba(var(--color-primary-rgb), 0.5);
+}

@@ -16,7 +16,7 @@
                 </div>
                 <p class="insight-card__description text-xs mt-0.5">{{ insight.description }}</p>
                 <p class="text-xs mt-1 flex items-center gap-1">
-                    <i class="fa-solid fa-lightbulb insight-card__tip-icon" />
+                    <i class="fas fa-lightbulb insight-card__tip-icon" />
                     <span class="insight-card__tip-text">{{ insight.action }}</span>
                 </p>
             </div>

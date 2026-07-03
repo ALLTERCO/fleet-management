@@ -1,5 +1,5 @@
 <template>
-    <div class="notification p-4 mb-4 rounded-lg shadow-md border-l flex flex-row" :class="`notification--${type}`" aria-live="polite" role="status">
+    <div class="notification p-4 mb-4 rounded-lg shadow-none border-l flex flex-row" :class="`notification--${type}`" aria-live="polite" role="status">
         <span class="notification__icon mr-4 m-auto"> <i class="fas fa-circle-info"></i></span>
         <div class="flex-grow">
             <slot />

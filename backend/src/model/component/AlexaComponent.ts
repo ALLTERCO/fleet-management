@@ -1,5 +1,17 @@
 import {DEV_MODE} from '../../config';
+import {canUsePlatformAdmin} from '../../modules/authz/evaluator';
+import {requireSaasMode} from '../../modules/saasMode';
+import type {DescribeOutput} from '../../rpc/describe';
 import RpcError from '../../rpc/RpcError';
+import {validateOrThrow} from '../../rpc/validateOrThrow';
+import {
+    ALEXA_DESCRIBE,
+    ALEXA_DISABLE_PARAMS_SCHEMA,
+    ALEXA_ENABLE_PARAMS_SCHEMA,
+    type AlexaDisableResponse,
+    type AlexaEnableParams,
+    type AlexaEnableResponse
+} from '../../types/api/alexa';
 import Component from './Component';
 
 interface AlexaConfig {
@@ -9,24 +21,19 @@ interface AlexaConfig {
     entities?: string[];
 }
 
-function isEnableConfig(obj: any) {
-    return (
-        obj &&
-        typeof obj === 'object' &&
-        typeof obj.access_token === 'string' &&
-        typeof obj.refresh_token === 'string' &&
-        Array.isArray(obj.entities) &&
-        obj.entities.every((ent: unknown) => typeof ent === 'string')
-    );
-}
-
 export default class AlexaComponent extends Component<AlexaConfig> {
     constructor() {
-        super('Alexa', {set_config_methods: false, auto_apply_config: false});
+        super('alexa', {set_config_methods: false, auto_apply_config: false});
     }
 
     @Component.Expose('Disable')
-    disable() {
+    @Component.CheckPermissions(canUsePlatformAdmin)
+    disable(params: unknown): AlexaDisableResponse {
+        requireSaasMode('alexa');
+        validateOrThrow<Record<string, never>>(
+            params ?? {},
+            ALEXA_DISABLE_PARAMS_SCHEMA
+        );
         if (!this.config.enable) {
             throw RpcError.InvalidRequest();
         }
@@ -34,13 +41,24 @@ export default class AlexaComponent extends Component<AlexaConfig> {
     }
 
     @Component.Expose('Enable')
-    @Component.CheckParams((params) => isEnableConfig(params))
-    enable(params: Required<AlexaConfig>) {
+    @Component.CheckPermissions(canUsePlatformAdmin)
+    enable(params: unknown): AlexaEnableResponse {
+        requireSaasMode('alexa');
+        const validated = validateOrThrow<AlexaEnableParams>(
+            params,
+            ALEXA_ENABLE_PARAMS_SCHEMA
+        );
         if (this.config.enable) {
             throw RpcError.InvalidRequest();
         }
-        this.setConfig({...params, enable: true});
-        return {cmd: 'enable', params};
+        this.setConfig({...validated, enable: true});
+        return {cmd: 'enable', params: validated};
+    }
+
+    @Component.Expose('Describe')
+    @Component.NoPermissions
+    describe(): DescribeOutput {
+        return ALEXA_DESCRIBE;
     }
 
     override getConfig(): Partial<AlexaConfig> {

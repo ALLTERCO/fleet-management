@@ -1,4 +1,8 @@
+# shellcheck shell=bash
 # lib/zitadel.sh — Zitadel bootstrap, OIDC config generation
+
+# shellcheck source=deploy/scripts/common/zitadel-lib.sh
+source "$DEPLOY_DIR/scripts/common/zitadel-lib.sh"
 
 wait_for_zitadel() {
     local url="$1"
@@ -17,7 +21,7 @@ wait_for_zitadel() {
     done
 
     spinner_stop fail "Zitadel did not start within ${timeout}s"
-    error "Check logs: ./deploy/deploy-public.sh logs zitadel"
+    hc_dump_diagnostics zitadel 100
     return 1
 }
 
@@ -39,16 +43,17 @@ run_bootstrap() {
     export MACHINEKEY_PATH="$STATE_DIR/machinekey/zitadel-admin-sa.json"
     export STATE_FILE="$STATE_DIR/zitadel.env"
     export SYSTEM_API_KEY_PATH="$STATE_DIR/system-api/system-user.pem"
-    export DOCKER_INTERNAL_HOST="zitadel"
+    export DOCKER_INTERNAL_HOST="zitadel-api"
     export CREATE_TEST_USER="true"
     export ZITADEL_HOSTNAME="$hostname"
+    export DEPLOY_ENV_NAME="${DEPLOY_ENV:-public}"
 
     # Run bootstrap with retry
     local attempts=0
     local max_attempts=5
     while [ $attempts -lt $max_attempts ]; do
         attempts=$((attempts + 1))
-        if run_quiet "Zitadel bootstrap" bash "$DEPLOY_DIR/scripts/deploy/bootstrap-zitadel.sh"; then
+        if run_quiet "Zitadel bootstrap" bash "$DEPLOY_DIR/scripts/common/bootstrap-zitadel.sh"; then
             ok "Bootstrap complete"
             return 0
         fi
@@ -62,6 +67,19 @@ run_bootstrap() {
     return 1
 }
 
+# Registers Action V2 webhook targets (GDPR cascade + grant-removed) — must
+# run AFTER FM is up because Zitadel resolves the endpoint via DNS at create.
+run_actions_bootstrap() {
+    step "Registering Zitadel Action V2 webhook"
+    if run_quiet "Action V2 bootstrap" \
+        bash "$DEPLOY_DIR/scripts/common/bootstrap-zitadel-actions.sh"; then
+        ok "Action V2 webhook registered"
+        return 0
+    fi
+    warn "Action V2 registration failed — webhook deliveries will be unverified"
+    return 1
+}
+
 generate_fm_config() {
     local hostname="$1"
 
@@ -69,7 +87,7 @@ generate_fm_config() {
     export ZITADEL_EXTERNALPORT
     export FLEET_MANAGER_PORT
 
-    if ! run_quiet "Generating Fleet Manager OIDC config" bash "$DEPLOY_DIR/scripts/deploy/generate-fm-config.sh" --mode zitadel --target docker; then
+    if ! run_quiet "Generating Fleet Manager OIDC config" bash "$DEPLOY_DIR/scripts/common/generate-fm-config.sh" --mode zitadel --target docker; then
         error "Fleet Manager OIDC config generation failed"
         return 1
     fi

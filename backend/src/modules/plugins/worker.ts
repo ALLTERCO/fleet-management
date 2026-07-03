@@ -1,12 +1,15 @@
 import * as fs from 'node:fs';
 import path from 'node:path';
 import {isMainThread, parentPort, workerData} from 'node:worker_threads';
+import {tuning} from '../../config';
 import type {
-    FleetManagerPlugin,
-    PluginData,
     event_data_t,
-    json_rpc_event
+    FleetManagerPlugin,
+    json_rpc_event,
+    PluginData
 } from '../../types';
+import {validateIpcFrame} from './ipcFrame';
+import {settlePluginCallResponse} from './workerResponses';
 
 if (isMainThread) {
     console.warn('Somehow the plugin worker is in the main thread');
@@ -26,7 +29,7 @@ interface define_component_t {
     methods: Map<string, (params: any, sender: any) => Promise<any>>;
 }
 
-const pluginData: PluginData = workerData;
+const pluginData: PluginData & {pluginsFolder?: string} = workerData;
 let plugin: FleetManagerPlugin;
 
 let waiting_id = 0;
@@ -89,13 +92,7 @@ async function commandCalled(others: any[]) {
 
 function commanderResponse(others: any[]) {
     const [id, response_type, data] = others;
-    const {resolve, reject} = waiting.get(id)!;
-    waiting.delete(id);
-    if (response_type === 'resolve') {
-        resolve(data);
-    } else {
-        reject(data);
-    }
+    settlePluginCallResponse(waiting, id, response_type, data);
 }
 
 async function addMetadata(
@@ -110,7 +107,20 @@ async function addMetadata(
 }
 
 parentPort?.on('message', async (args) => {
-    const [method, ...others] = args;
+    const v = validateIpcFrame(args, tuning.plugin.ipcMaxBytes);
+    if (!v.ok) {
+        if (typeof v.idForReject === 'number') {
+            parentPort?.postMessage([
+                'command_response',
+                v.idForReject,
+                'reject',
+                {reason: v.reason}
+            ]);
+        }
+        console.warn('plugin worker rejected ipc frame: %s', v.reason);
+        return;
+    }
+    const {method, others} = v;
     switch (method) {
         case 'load': {
             const additionalNodeModulesPath = path.join(
@@ -121,7 +131,26 @@ parentPort?.on('message', async (args) => {
                 module.paths.push(additionalNodeModulesPath);
             }
 
-            plugin = require(pluginData.location) as FleetManagerPlugin;
+            const resolvedLocation = path.resolve(pluginData.location);
+            if (!pluginData.pluginsFolder) {
+                parentPort?.postMessage([
+                    'load_error',
+                    'pluginsFolder not provided'
+                ]);
+                return;
+            }
+            const resolvedPlugins = path.resolve(pluginData.pluginsFolder);
+            if (
+                !resolvedLocation.startsWith(resolvedPlugins + path.sep) &&
+                resolvedLocation !== resolvedPlugins
+            ) {
+                parentPort?.postMessage([
+                    'load_error',
+                    `Plugin location outside plugins folder: ${resolvedLocation}`
+                ]);
+                return;
+            }
+            plugin = require(resolvedLocation) as FleetManagerPlugin;
 
             if (typeof plugin.load === 'function') {
                 plugin.load({call, defineComponent});
@@ -138,12 +167,19 @@ parentPort?.on('message', async (args) => {
             break;
         case 'on':
             if (typeof plugin.on === 'function') {
-                plugin.on(others[0], others[1]);
+                plugin.on(
+                    others[0] as json_rpc_event,
+                    others[1] as event_data_t
+                );
             }
             break;
 
         case 'add_metadata':
-            addMetadata(others[0], others[1], others[2]);
+            addMetadata(
+                others[0] as json_rpc_event,
+                others[1] as event_data_t,
+                others[2] as number
+            );
             break;
 
         case 'command_called':

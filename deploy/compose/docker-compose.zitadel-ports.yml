@@ -4,6 +4,6 @@
 # Excluded when --routing traefik (Traefik routes Zitadel paths on the FM port).
 
 services:
-  zitadel:
+  zitadel-api:
     ports:
       - "${ZITADEL_EXTERNALPORT}:8080"

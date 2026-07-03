@@ -4,10 +4,15 @@
 # Same multi-stage build as the private Dockerfile, but:
 #   - Only community plugins included (not paid/proprietary ones)
 #
-# Build arg:
-#   NODE_VERSION  Pinned Node.js base image tag (default from VERSIONS.env)
+# Build args:
+#   NODE_VERSION    Pinned Node.js base image tag (default from VERSIONS.env)
+#   FM_FRONTEND_BUILD_HEAP_SIZE  Node heap MB for Vue/Vite build.
+#   TEMPLATE        Optional template name under template-source/templates/
+#   template-source Build context containing the selected template repo
+#   OVERRIDES_JSON_B64  Base64-encoded client customization JSON
 
-ARG NODE_VERSION=22-alpine3.23
+ARG NODE_VERSION=24-alpine
+ARG FM_FRONTEND_BUILD_HEAP_SIZE=4096
 
 # ── Stage 1: Backend build ──────────────────────────────────
 FROM node:${NODE_VERSION} AS backend-build
@@ -16,10 +21,18 @@ RUN apk add --no-cache git
 
 WORKDIR /build/backend
 COPY backend/package.json backend/package-lock.json* ./
-RUN npm install
+RUN npm ci --no-audit
 
 COPY backend/ ./
 RUN npx tsc --build --force
+# Integrator guides + namespace prose feed the /api/docs spec at generate time;
+# docs/ is otherwise excluded from the build context. Needs docs/api/guides/ in
+# the public export manifest, or the guides render empty.
+COPY docs/api /build/docs/api
+# Bake /api/docs artifacts — must run before prune (needs devDeps).
+RUN npm run generate
+# Serializes heavy TS builds under BuildKit on small CI runners.
+RUN touch /tmp/backend-build-ready
 RUN npm prune --omit=dev
 
 # ── Stage 2: Plugin build (community plugins only) ─────────
@@ -38,21 +51,34 @@ RUN for dir in */; do \
       [ -f "${dir}package.json" ] || continue; \
       name="${dir%/}"; \
       echo "[plugins] Installing deps for $name"; \
-      (cd "$dir" && npm install --omit=dev 2>&1) || echo "[plugins] WARN: npm install failed for $name"; \
+      (cd "$dir" && if [ -f package-lock.json ]; then npm ci --no-audit; else npm install --no-audit; fi); \
       if [ -f "${dir}tsconfig.json" ]; then \
         echo "[plugins] Compiling TypeScript for $name"; \
-        (cd "$dir" && npx tsc --build 2>&1) || echo "[plugins] WARN: tsc failed for $name"; \
+        (cd "$dir" && npx tsc --build); \
       fi; \
+      (cd "$dir" && npm prune --omit=dev); \
     done
 
-# ── Stage 3: Frontend build ─────────────────────────────────
-FROM node:${NODE_VERSION} AS frontend-build
+# ── Stage 3: Frontend base ──────────────────────────────────
+FROM node:${NODE_VERSION} AS frontend-base
+
+ARG FM_FRONTEND_BUILD_HEAP_SIZE=4096
+ENV NODE_OPTIONS=--max-old-space-size=${FM_FRONTEND_BUILD_HEAP_SIZE}
 
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install --legacy-peer-deps
+# patch-package postinstall needs patches/ before dependency install.
+COPY frontend/patches ./patches
+# Keep the lockfile authoritative while installing platform optional packages
+# such as Rollup/esbuild/lightningcss native binaries.
+RUN npm ci --include=optional --no-audit
 
 COPY frontend/ ./
+# Shared types + rpc + model consumed via the `@api/*` alias. Model is the
+# SoT for permission types, role templates, and resource-role helpers.
+COPY backend/src/types /build/backend/src/types
+COPY backend/src/rpc /build/backend/src/rpc
+COPY backend/src/model /build/backend/src/model
 
 # Inject plugin frontend pages before building
 COPY --from=plugin-build /build/plugins /tmp/plugins
@@ -65,11 +91,40 @@ RUN for dir in /tmp/plugins/*/; do \
       fi; \
     done && rm -rf /tmp/plugins
 
-# Build WITHOUT baking OIDC config — injected at runtime via entrypoint.sh
+# Standard FM build. No template source is visible in this target.
+FROM frontend-base AS frontend-fm
+COPY --from=backend-build /tmp/backend-build-ready /tmp/backend-build-ready
 RUN npm run build
 
-# ── Stage 4: Runtime image ──────────────────────────────────
-FROM node:${NODE_VERSION}
+# BM build. Template source is an explicit external build context.
+FROM frontend-base AS frontend-bm
+ARG TEMPLATE
+ARG OVERRIDES_JSON_B64
+COPY --from=backend-build /tmp/backend-build-ready /tmp/backend-build-ready
+COPY --from=template-source / /build/template-source/
+RUN test -n "$TEMPLATE"; \
+    test -n "$OVERRIDES_JSON_B64"; \
+    test -f "/build/template-source/templates/${TEMPLATE}/index.vue"; \
+    rm -rf src/template-active; \
+    mkdir -p src/template-active; \
+    cp -r "/build/template-source/templates/${TEMPLATE}/." src/template-active/; \
+    test -d "/build/template-source/contracts"; \
+    rm -rf src/template-contract; \
+    mkdir -p src/template-contract; \
+    cp -r "/build/template-source/contracts/." src/template-contract/; \
+    rm -rf src/shared; \
+    mkdir -p src/shared; \
+    if [ -d "/build/template-source/shared" ]; then \
+      cp -r "/build/template-source/shared/." src/shared/; \
+    fi; \
+    printf '%s' "$OVERRIDES_JSON_B64" | base64 -d > public/customization.json; \
+    npm run validate:customization -- public/customization.json && \
+    npm run validate:template-package -- ../template-source "$TEMPLATE" public/customization.json && \
+    npm run check:template-boundaries -- ../template-source/templates/${TEMPLATE} && \
+    FM_BUILD_MODE=client npm run build:client
+
+# ── Stage 4: Runtime base ───────────────────────────────────
+FROM node:${NODE_VERSION} AS runtime-base
 
 RUN apk add --no-cache tini
 
@@ -89,18 +144,25 @@ COPY --from=backend-build --chown=node:node /build/backend/node_modules /app/bac
 COPY --from=backend-build --chown=node:node /build/backend/package.json /app/backend/package.json
 COPY --from=backend-build --chown=node:node /build/backend/db /app/backend/db
 COPY --from=backend-build --chown=node:node /build/backend/cfg /app/backend/cfg
-COPY --from=backend-build --chown=node:node /build/backend/validations /app/backend/validations
-COPY --from=frontend-build --chown=node:node /build/frontend/dist /app/frontend/dist
+# API reference artifacts — served by /api/docs at runtime.
+COPY --from=backend-build --chown=node:node /build/docs/generated /app/docs/generated
 
 # Community plugins only (no paid plugins)
 COPY --from=plugin-build --chown=node:node /build/plugins /app/plugins
 
-# Seed assets
-COPY --chown=node:node backend/uploads/ /app/backend/uploads-seed/
+# Seed assets — allowlist the tracked seed dirs only, never runtime data (audit
+# logs, reports, uploads, temp) that accumulates in backend/uploads on reused
+# build runners. entrypoint.sh copies these into the uploads volume on first run.
+COPY --chown=node:node backend/uploads/backgrounds/ /app/backend/uploads-seed/backgrounds/
+COPY --chown=node:node backend/uploads/profilePics/ /app/backend/uploads-seed/profilePics/
+
+FROM runtime-base AS runtime-bm
+COPY --from=frontend-bm --chown=node:node /build/frontend/dist /app/frontend/dist
 
 # Runtime config: entrypoint.sh injects OIDC config inline into index.html at startup.
 # Safari blocks external script loads with self-signed certs, so we inline it.
 RUN mv /app/frontend/dist/index.html /app/frontend/dist/index.html.tmpl \
+    && rm -f /app/frontend/dist/runtime-config.js \
     && ln -s /tmp/index.html /app/frontend/dist/index.html \
     && ln -s /tmp/runtime-config.js /app/frontend/dist/runtime-config.js
 
@@ -110,6 +172,33 @@ RUN chmod +x /app/entrypoint.sh
 USER node
 WORKDIR /app/backend
 ENV NODE_PATH=/app/backend/
+
+# Surfaced at /health.commit. Empty when no --build-arg is passed.
+ARG BUILD_COMMIT=
+ENV FM_BUILD_COMMIT=$BUILD_COMMIT
+LABEL org.opencontainers.image.revision=$BUILD_COMMIT
+
+ENTRYPOINT ["/sbin/tini", "--", "/app/entrypoint.sh"]
+CMD ["node", "dist/app.js"]
+
+FROM runtime-base AS runtime-fm
+COPY --from=frontend-fm --chown=node:node /build/frontend/dist /app/frontend/dist
+
+RUN mv /app/frontend/dist/index.html /app/frontend/dist/index.html.tmpl \
+    && rm -f /app/frontend/dist/runtime-config.js \
+    && ln -s /tmp/index.html /app/frontend/dist/index.html \
+    && ln -s /tmp/runtime-config.js /app/frontend/dist/runtime-config.js
+
+COPY deploy/docker/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+USER node
+WORKDIR /app/backend
+ENV NODE_PATH=/app/backend/
+
+ARG BUILD_COMMIT=
+ENV FM_BUILD_COMMIT=$BUILD_COMMIT
+LABEL org.opencontainers.image.revision=$BUILD_COMMIT
 
 ENTRYPOINT ["/sbin/tini", "--", "/app/entrypoint.sh"]
 CMD ["node", "dist/app.js"]

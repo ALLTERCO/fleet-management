@@ -5,7 +5,7 @@
             <div class="flex justify-end px-4 pt-4">
             </div>
             <div class="flex flex-col items-center pb-10">
-                <img class="w-24 h-24 mb-3 rounded-full shadow-lg" :src="userImg" @error="imageLoadError" :alt="props.user.name + ' avatar'" />
+                <img class="w-24 h-24 mb-3 rounded-full shadow-none" :src="userImg" @error="imageLoadError" :alt="props.user.name + ' avatar'" />
                 <h5 class="mb-1 text-xl font-medium text-[var(--color-text-primary)]">{{ props.user.name }}</h5>
                 <span class="text-md text-[var(--color-text-tertiary)]">{{ props.user.group }}</span>
                 <span class="text-md" :class="[props.user.enabled ? 'text-[var(--color-success-text)]' : 'text-[var(--color-danger-text)]']">{{
@@ -16,17 +16,17 @@
     </BasicBlock>
 
     <BasicBlock title="General information" title-padding>
-        <TabSelector :tabs="['Permissions', 'Groups', 'Devices', 'FleetManager']">
+        <TabSelector :tabs="['Permissions', 'Groups', 'Devices', 'System']">
             <!-- Permissions Tab -->
             <template #Permissions>
                 <div v-if="summarizedPermissions.permissions.length > 0">
                     <div class="max-w-7xl mx-auto">
-                        <div class="user-table shadow overflow-hidden">
+                        <div class="user-table shadow overflow-x-auto">
                             <table class="min-w-full divide-y divide-[var(--table-border)] border border-[var(--table-border)]">
                                 <thead class="user-table__head">
                                     <tr>
-                                        <th class="px-3 py-3 text-left text-xs font-medium text-[var(--table-header-text)] uppercase tracking-wider">Scope</th>
-                                        <th class="px-3 py-3 text-left text-xs font-medium text-[var(--table-header-text)] uppercase tracking-wider">Permission</th>
+                                        <th class="px-3 py-3 text-left text-xs font-medium text-[var(--table-header-text)] tracking-normal">Scope</th>
+                                        <th class="px-3 py-3 text-left text-xs font-medium text-[var(--table-header-text)] tracking-normal">Permission</th>
                                     </tr>
                                 </thead>
                                 <tbody class="user-table__body divide-y divide-[var(--table-border)]">
@@ -54,12 +54,12 @@
             <template #Groups>
                 <div v-if="summarizedPermissions.groups.length > 0">
                     <div class="max-w-7xl mx-auto">
-                        <div class="user-table shadow overflow-hidden">
+                        <div class="user-table shadow overflow-x-auto">
                             <table class="min-w-full divide-y divide-[var(--table-border)] border border-[var(--table-border)]">
                                 <thead class="user-table__head">
                                     <tr>
-                                        <th class="px-3 py-3 text-left text-xs font-medium text-[var(--table-header-text)] uppercase tracking-wider">Scope</th>
-                                        <th class="px-3 py-3 text-left text-xs font-medium text-[var(--table-header-text)] uppercase tracking-wider">Group</th>
+                                        <th class="px-3 py-3 text-left text-xs font-medium text-[var(--table-header-text)] tracking-normal">Scope</th>
+                                        <th class="px-3 py-3 text-left text-xs font-medium text-[var(--table-header-text)] tracking-normal">Group</th>
                                     </tr>
                                 </thead>
                                 <tbody class="user-table__body divide-y divide-[var(--table-border)]">
@@ -87,12 +87,12 @@
             <template #Devices>
                 <div v-if="summarizedPermissions.devices.length > 0">
                     <div class="max-w-7xl mx-auto">
-                        <div class="user-table shadow overflow-hidden">
+                        <div class="user-table shadow overflow-x-auto">
                             <table class="min-w-full divide-y divide-[var(--table-border)] border border-[var(--table-border)]">
                                 <thead class="user-table__head">
                                     <tr>
-                                        <th class="px-3 py-3 text-left text-xs font-medium text-[var(--table-header-text)] uppercase tracking-wider">Scope</th>
-                                        <th class="px-3 py-3 text-left text-xs font-medium text-[var(--table-header-text)] uppercase tracking-wider">Device</th>
+                                        <th class="px-3 py-3 text-left text-xs font-medium text-[var(--table-header-text)] tracking-normal">Scope</th>
+                                        <th class="px-3 py-3 text-left text-xs font-medium text-[var(--table-header-text)] tracking-normal">Device</th>
                                     </tr>
                                 </thead>
                                 <tbody class="user-table__body divide-y divide-[var(--table-border)]">
@@ -115,19 +115,19 @@
                     <p class="text-center text-[var(--color-text-disabled)]">No devices found</p>
                 </div>
             </template>
-            <template #FleetManager>
-                <div v-if="summarizedPermissions.fleetManager.length > 0">
+            <template #System>
+                <div v-if="summarizedPermissions.system.length > 0">
                     <div class="max-w-7xl mx-auto">
-                        <div class="user-table shadow overflow-hidden">
+                        <div class="user-table shadow overflow-x-auto">
                             <table class="min-w-full divide-y divide-[var(--table-border)] border border-[var(--table-border)]">
                                 <thead class="user-table__head">
                                     <tr>
-                                        <th class="px-3 py-3 text-left text-xs font-medium text-[var(--table-header-text)] uppercase tracking-wider">Scope</th>
-                                        <th class="px-3 py-3 text-left text-xs font-medium text-[var(--table-header-text)] uppercase tracking-wider">Permission</th>
+                                        <th class="px-3 py-3 text-left text-xs font-medium text-[var(--table-header-text)] tracking-normal">Scope</th>
+                                        <th class="px-3 py-3 text-left text-xs font-medium text-[var(--table-header-text)] tracking-normal">Permission</th>
                                     </tr>
                                 </thead>
                                 <tbody class="user-table__body divide-y divide-[var(--table-border)]">
-                                    <tr v-for="fm in summarizedPermissions.fleetManager" :key="fm.key + fm.value">
+                                    <tr v-for="fm in summarizedPermissions.system" :key="fm.key + fm.value">
                                         <td class="px-3 py-4 whitespace-nowrap">
                                             <div class="text-sm font-medium text-[var(--color-text-secondary)]">{{ fm.key }}</div>
                                         </td>
@@ -153,8 +153,8 @@
 
 
 <script setup lang="ts">
-import {computed, ref, toRef} from 'vue';
-import {FLEET_MANAGER_HTTP} from '@/constants';
+import {computed, onMounted, ref, toRef, watch} from 'vue';
+import {getProfilePictureUrl} from '@/helpers/profilePicture';
 import {possiblePermissionsForUser} from '@/helpers/sharedInfo';
 import {useAuthStore} from '@/stores/auth';
 import BasicBlock from '../core/BasicBlock.vue';
@@ -172,20 +172,26 @@ const emit = defineEmits<{
     close: [];
 }>();
 
-const userImg = ref<string>(
-    `${FLEET_MANAGER_HTTP}/uploads/profilePics/${props.user.username}.png`
-);
+const userImg = ref<string>('');
+
+async function loadUserImg() {
+    if (!props.user.username) return;
+    userImg.value = await getProfilePictureUrl(props.user.username);
+}
 
 function imageLoadError() {
-    userImg.value = FLEET_MANAGER_HTTP + '/uploads/profilePics/default.png';
+    void loadUserImg();
 }
+
+onMounted(loadUserImg);
+watch(() => props.user.username, loadUserImg);
 
 function parsePermissions(permissions: Array<string>) {
     const result = {
         permissions: [] as {key: string; value: string}[],
         devices: [] as {key: string; value: string}[],
         groups: [] as {key: string; value: string}[],
-        fleetManager: [] as {key: string; value: string}[]
+        system: [] as {key: string; value: string}[]
     };
 
     permissions.forEach((permission) => {
@@ -195,8 +201,8 @@ function parsePermissions(permissions: Array<string>) {
             result.devices.push({key, value});
         } else if (key === 'Group' || key === 'Groups') {
             result.groups.push({key, value});
-        } else if (key === 'FleetManager') {
-            result.fleetManager.push({key, value});
+        } else if (key === 'System') {
+            result.system.push({key, value});
         } else {
             result.permissions.push({key, value});
         }
@@ -224,12 +230,11 @@ const summarizedPermissions = computed(() => {
         parsed.groups = [{key: 'Group', value: '*'}];
     }
     if (
-        possiblePermissionsForUser.FleetManager &&
-        parsed.fleetManager.length &&
-        parsed.fleetManager.length ===
-            possiblePermissionsForUser.FleetManager.length
+        possiblePermissionsForUser.System &&
+        parsed.system.length &&
+        parsed.system.length === possiblePermissionsForUser.System.length
     ) {
-        parsed.fleetManager = [{key: 'FleetManager', value: '*'}];
+        parsed.system = [{key: 'System', value: '*'}];
     }
 
     // Process other permission categories from parsed.permissions by grouping them by key

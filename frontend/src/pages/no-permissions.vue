@@ -4,7 +4,7 @@
             <div class="mb-6">
                 <i class="fas fa-lock text-6xl no-perms-icon"></i>
             </div>
-            <h1 class="text-2xl font-bold no-perms-title mb-4">No Access</h1>
+            <h1 class="heading-page no-perms-title mb-4">No Access</h1>
             <p class="no-perms-body mb-6">
                 Your account does not have any permissions configured for this application.
             </p>
@@ -12,12 +12,10 @@
                 Please contact your administrator to request access.
             </p>
             <div class="flex flex-col gap-3">
-                <Button type="blue" @click="refresh">
-                    <i class="fas fa-refresh mr-2"></i>
+                <Button type="blue-hollow" @click="refresh">
                     Check Again
                 </Button>
-                <Button type="white" @click="logout">
-                    <i class="fas fa-sign-out-alt mr-2"></i>
+                <Button type="blue-hollow" @click="logout">
                     Sign Out
                 </Button>
             </div>
@@ -68,3 +66,7 @@ function logout() {
     color: var(--color-text-disabled);
 }
 </style>
+
+<route lang="json">
+{ "meta": { "layout": "basic" } }
+</route>

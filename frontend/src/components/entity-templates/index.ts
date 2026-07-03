@@ -1,39 +1,27 @@
 import type {Component} from 'vue';
-import EntityTemplate_Cover from './EntityTemplate_Cover.vue';
-import EntityTemplate_Light from './EntityTemplate_Light.vue';
-import EntityTemplate_Meter from './EntityTemplate_Meter.vue';
-import EntityTemplate_Switch from './EntityTemplate_Switch.vue';
-
-const TEMPLATE_MAP: Record<string, Component> = {
-    // Energy meters (single-phase)
-    pm1: EntityTemplate_Meter,
-    em1: EntityTemplate_Meter,
-
-    // Switches & relays
-    switch: EntityTemplate_Switch,
-
-    // Lights (all variants — capabilities auto-detected from status keys)
-    light: EntityTemplate_Light,
-    rgb: EntityTemplate_Light,
-    rgbw: EntityTemplate_Light,
-    cct: EntityTemplate_Light,
-    rgbcct: EntityTemplate_Light,
-
-    // Covers / rollers
-    cover: EntityTemplate_Cover
-};
+import {getEntityTemplate} from '@/config/entity-registry';
 
 /**
  * Resolve the entity template component for a given entity type.
  * Returns undefined if no dedicated template exists (falls back to generic EntityWidget).
  */
-export function resolveEntityTemplate(entityType: string): Component | undefined {
-    return TEMPLATE_MAP[entityType];
+export function resolveEntityTemplate(
+    entityType: string
+): Component | undefined {
+    return getEntityTemplate(entityType);
 }
 
-export {
-    EntityTemplate_Cover,
-    EntityTemplate_Light,
-    EntityTemplate_Meter,
-    EntityTemplate_Switch
-};
+// Re-export individual templates for direct imports
+export {default as EntityTemplate_Cover} from './EntityTemplate_Cover.vue';
+export {default as EntityTemplate_Cury} from './EntityTemplate_Cury.vue';
+export {default as EntityTemplate_DaliLight} from './EntityTemplate_DaliLight.vue';
+export {default as EntityTemplate_Illuminance} from './EntityTemplate_Illuminance.vue';
+export {default as EntityTemplate_Light} from './EntityTemplate_Light.vue';
+export {default as EntityTemplate_Matter} from './EntityTemplate_Matter.vue';
+export {default as EntityTemplate_Media} from './EntityTemplate_Media.vue';
+export {default as EntityTemplate_Meter} from './EntityTemplate_Meter.vue';
+export {default as EntityTemplate_Sensor} from './EntityTemplate_Sensor.vue';
+export {default as EntityTemplate_Service} from './EntityTemplate_Service.vue';
+export {default as EntityTemplate_Switch} from './EntityTemplate_Switch.vue';
+export {default as EntityTemplate_Thermostat} from './EntityTemplate_Thermostat.vue';
+export {default as EntityTemplate_Ui} from './EntityTemplate_Ui.vue';

@@ -14,10 +14,12 @@
 </template>
 
 <script setup lang="ts">
-import {onErrorCaptured, ref} from 'vue';
+import {onErrorCaptured, ref, watch} from 'vue';
+import {useRoute} from 'vue-router';
 
 const error = ref<Error | null>(null);
 const errorMessage = ref('');
+const route = useRoute();
 
 onErrorCaptured((err: Error) => {
     error.value = err;
@@ -25,6 +27,16 @@ onErrorCaptured((err: Error) => {
     console.error('[ErrorBoundary]', err);
     return false; // prevent propagation
 });
+
+// Reset on route change so the fallback never sticks while the user
+// navigates away from the failing page.
+watch(
+    () => route.fullPath,
+    () => {
+        error.value = null;
+        errorMessage.value = '';
+    }
+);
 
 function reset() {
     error.value = null;
@@ -51,16 +63,16 @@ function reset() {
     gap: var(--space-3);
 }
 .error-boundary__icon {
-    font-size: var(--text-2xl);
+    font-size: var(--type-subheading);
     color: var(--color-danger);
 }
 .error-boundary__title {
-    font-size: var(--text-lg);
+    font-size: var(--type-subheading);
     font-weight: var(--font-semibold);
     color: var(--color-text-primary);
 }
 .error-boundary__message {
-    font-size: var(--text-sm);
+    font-size: var(--type-body);
     color: var(--color-text-tertiary);
     max-width: 400px;
 }
@@ -73,7 +85,7 @@ function reset() {
     background-color: var(--color-primary);
     color: var(--color-text-primary);
     font-weight: var(--font-semibold);
-    font-size: var(--text-sm);
+    font-size: var(--type-body);
     cursor: pointer;
     border: none;
     transition: transform var(--duration-fast) var(--ease-default);

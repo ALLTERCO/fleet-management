@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 300" width="1000" height="300" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Organization model: an organization contains devices, organized by groups, locations, and tags">
+  <title>Organizations, groups, locations, tags</title>
+  <desc>An organization is the tenant boundary and owns its devices. Devices are organized along three independent axes — groups, locations, and tags — and those same axes are the dimensions that scope access.</desc>
+  <defs>
+    <marker id="oN" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A97A8"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1000" height="300" fill="#ffffff"/>
+
+  <!-- arrows -->
+  <path d="M232,150 L416,150" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#oN)"/>
+  <text x="324" y="142" text-anchor="middle" font-size="10.5" fill="#6B7A90">owns</text>
+  <path d="M756,76 L596,130" stroke="#8A97A8" stroke-width="1.4" fill="none" marker-end="url(#oN)"/>
+  <path d="M756,150 L596,150" stroke="#8A97A8" stroke-width="1.4" fill="none" marker-end="url(#oN)"/>
+  <path d="M756,224 L596,170" stroke="#8A97A8" stroke-width="1.4" fill="none" marker-end="url(#oN)"/>
+  <text x="672" y="104" text-anchor="middle" font-size="10" fill="#6B7A90">grouped</text>
+  <text x="676" y="140" text-anchor="middle" font-size="10" fill="#6B7A90">located</text>
+  <text x="672" y="204" text-anchor="middle" font-size="10" fill="#6B7A90">tagged</text>
+
+  <!-- Organization -->
+  <rect x="40" y="102" width="192" height="96" rx="6" fill="#EAF6FD" stroke="#4495D1" stroke-width="1.5"/>
+  <text x="136" y="140" text-anchor="middle" font-size="13.5" font-weight="600" fill="#122A4F">Organization</text>
+  <text x="136" y="158" text-anchor="middle" font-size="10.5" fill="#6B7A90">tenant boundary</text>
+  <text x="136" y="174" text-anchor="middle" font-size="10.5" fill="#6B7A90">isolated data</text>
+
+  <!-- Devices -->
+  <rect x="418" y="102" width="178" height="96" rx="6" fill="#E4F1FB" stroke="#4495D1" stroke-width="2"/>
+  <text x="507" y="146" text-anchor="middle" font-size="14" font-weight="700" fill="#122A4F">Devices</text>
+  <text x="507" y="164" text-anchor="middle" font-size="10.5" fill="#6B7A90">the managed things</text>
+
+  <!-- Axes -->
+  <rect x="758" y="46" width="204" height="62" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="860" y="72" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Groups</text>
+  <text x="860" y="90" text-anchor="middle" font-size="10.5" fill="#6B7A90">bulk ops · hierarchy</text>
+
+  <rect x="758" y="120" width="204" height="62" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="860" y="146" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Locations</text>
+  <text x="860" y="164" text-anchor="middle" font-size="10.5" fill="#6B7A90">site · building · room</text>
+
+  <rect x="758" y="194" width="204" height="62" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="860" y="220" text-anchor="middle" font-size="12.5" font-weight="600" fill="#122A4F">Tags</text>
+  <text x="860" y="238" text-anchor="middle" font-size="10.5" fill="#6B7A90">labels · well-known keys</text>
+
+  <text x="500" y="284" text-anchor="middle" font-size="10.5" fill="#8A97A8">The same axes — groups, locations, tags — are the dimensions that scope access.</text>
+</svg>

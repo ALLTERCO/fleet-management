@@ -1,5 +1,6 @@
 import {defineStore} from 'pinia';
 import {computed, ref} from 'vue';
+import {LOG_BUFFER_MAX, LOG_CATEGORY_MAX} from '@/constants';
 
 type LogLevel = 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'FATAL' | 'MARK';
 type LogFilter = LogLevel | 'ALL';
@@ -12,15 +13,6 @@ const LOG_LEVELS: LogLevel[] = [
     'FATAL',
     'MARK'
 ];
-const LEVEL_SEVERITY: Record<LogLevel, number> = {
-    DEBUG: 0,
-    MARK: 1,
-    INFO: 2,
-    WARN: 3,
-    ERROR: 4,
-    FATAL: 5
-};
-const MAX_LOGS = 2000;
 
 function parseLevel(coloredPart: string): LogLevel {
     for (const level of LOG_LEVELS) {
@@ -36,46 +28,85 @@ export const useLogStore = defineStore('logStore', () => {
             message: string;
             color: string;
             level: LogLevel;
+            category?: string;
             ts: number;
         }[]
     >([]);
     const filter = ref<LogFilter>('ALL');
+    // Empty set = all categories allowed. Only filters when non-empty.
+    const activeCategories = ref<Set<string>>(new Set());
 
-    const filteredLogs = computed(() => {
-        if (filter.value === 'ALL') return logs.value;
-        return logs.value.filter((log) => log.level === filter.value);
+    const knownCategories = computed(() => {
+        const seen = new Set<string>();
+        for (const l of logs.value) if (l.category) seen.add(l.category);
+        return [...seen].sort().slice(0, LOG_CATEGORY_MAX);
     });
 
-    function addLog(coloredPart: string, message: string, color: string) {
+    const filteredLogs = computed(() => {
+        let result = logs.value;
+        if (filter.value !== 'ALL') {
+            result = result.filter((log) => log.level === filter.value);
+        }
+        if (activeCategories.value.size > 0) {
+            result = result.filter(
+                (l) => l.category && activeCategories.value.has(l.category)
+            );
+        }
+        return result;
+    });
+
+    function addLog(
+        coloredPart: string,
+        message: string,
+        color: string,
+        category?: string
+    ) {
         logs.value.push({
             coloredPart,
             message,
             color,
             level: parseLevel(coloredPart),
+            category,
             ts: Date.now()
         });
-        if (logs.value.length > MAX_LOGS) {
-            logs.value.splice(0, logs.value.length - MAX_LOGS);
+        if (logs.value.length > LOG_BUFFER_MAX) {
+            logs.value.splice(0, logs.value.length - LOG_BUFFER_MAX);
         }
     }
 
     function clearLogs() {
         logs.value = [];
+        pinnedLogTimestamps.value = new Set();
+        // Without this, new logs after clear would be filtered against
+        // categories that no longer exist in the buffer — silently hidden.
+        activeCategories.value = new Set();
     }
 
     function setFilter(level: LogFilter) {
         filter.value = level;
     }
 
+    function toggleCategory(cat: string) {
+        const next = new Set(activeCategories.value);
+        if (next.has(cat)) next.delete(cat);
+        else next.add(cat);
+        activeCategories.value = next;
+    }
+
+    function clearCategoryFilter() {
+        activeCategories.value = new Set();
+    }
+
     const pinnedLogTimestamps = ref<Set<number>>(new Set());
 
     function togglePin(ts: number) {
-        if (pinnedLogTimestamps.value.has(ts)) {
-            pinnedLogTimestamps.value.delete(ts);
+        const next = new Set(pinnedLogTimestamps.value);
+        if (next.has(ts)) {
+            next.delete(ts);
         } else {
-            pinnedLogTimestamps.value.add(ts);
+            next.add(ts);
         }
-        pinnedLogTimestamps.value = new Set(pinnedLogTimestamps.value);
+        pinnedLogTimestamps.value = next;
     }
 
     function isPinned(ts: number): boolean {
@@ -91,7 +122,8 @@ export const useLogStore = defineStore('logStore', () => {
             .map((l) => {
                 const d = new Date(l.ts);
                 const time = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}.${d.getMilliseconds().toString().padStart(3, '0')}`;
-                return `[${time}] [${l.level}] ${l.coloredPart} - ${l.message}`;
+                const cat = l.category ? ` [${l.category}]` : '';
+                return `[${time}] [${l.level}]${cat} ${l.coloredPart} - ${l.message}`;
             })
             .join('\n');
     }
@@ -100,10 +132,14 @@ export const useLogStore = defineStore('logStore', () => {
         logs,
         filter,
         filteredLogs,
+        knownCategories,
+        activeCategories,
         pinnedLogTimestamps,
         addLog,
         clearLogs,
         setFilter,
+        toggleCategory,
+        clearCategoryFilter,
         formatLogsForExport,
         togglePin,
         isPinned,

@@ -2,14 +2,14 @@
     <div>
         <div class="flex flex-row gap-4 mt-2">
             <Button
-                type="blue"
+                type="blue-hollow"
                 :class="{ 'is-selected': !useCustom, 'is-primary': !useCustom }"
                 @click="useCustom = false"
                 @keyup.enter="useCustom = false"
                 >Builder</Button
             >
             <Button
-                type="blue"
+                type="blue-hollow"
                 :class="{ 'is-selected': useCustom, 'is-primary': useCustom }"
                 @click="useCustom = true"
                 @keyup.enter="useCustom = true"
@@ -19,9 +19,9 @@
         <div v-if="useCustom" class="custom mt-2">
             <Input v-model="custom" label="Cron" />
             <Notification class="mt-4"
-                >Read more about the format
+                >Read more about the
                 <a class="underline" href="https://github.com/mongoose-os-libs/cron" target="_blank"
-                    >here</a
+                    >cron format</a
                 ></Notification
             >
         </div>
@@ -95,7 +95,7 @@
                 <Button type="blue" @click="saveClicked">Save</Button>
             </div>
             <div class="control">
-                <Button type="blue" @click="resetClicked">Reset</Button>
+                <Button type="blue-hollow" @click="resetClicked">Reset</Button>
             </div>
         </div>
     </div>
@@ -143,15 +143,15 @@ function saveClicked() {
     display: flex;
     justify-content: flex-start;
     flex-wrap: wrap;
-    margin-top: 10px;
-    gap: 1.5rem;
+    margin-top: var(--space-3);
+    gap: var(--space-6);
 }
 
 .checkbox-item {
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-bottom: 15px;
+    margin-bottom: var(--space-4);
     width: 40px;
 }
 
@@ -167,7 +167,7 @@ input:invalid {
 input:invalid::after {
     content: attr(title);
     color: red;
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     display: block;
 }
 </style>

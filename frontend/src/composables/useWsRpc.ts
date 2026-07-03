@@ -1,37 +1,71 @@
 import {onScopeDispose, type Ref, ref} from 'vue';
+import {debugWarn} from '@/tools/debug';
 import * as ws from '@/tools/websocket';
 import {consumePreloadedRpc} from '@/tools/websocket';
+import {isRecoverableReconnectError} from '@/tools/wsReconnectErrors';
 
 const RPC_CACHE_PREFIX = 'rpc-cache:';
 
-function loadCached<T>(method: string): T | null {
+// Order-independent JSON so the cache key is stable regardless of key order.
+function stableStringify(value: unknown): string {
+    if (value === null || typeof value !== 'object')
+        return JSON.stringify(value);
+    if (Array.isArray(value)) {
+        return `[${value.map(stableStringify).join(',')}]`;
+    }
+    const entries = Object.keys(value as Record<string, unknown>)
+        .sort()
+        .map(
+            (k) =>
+                `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`
+        );
+    return `{${entries.join(',')}}`;
+}
+
+function cacheKey(method: string, params: object): string {
+    return `${RPC_CACHE_PREFIX}${method}:${stableStringify(params)}`;
+}
+
+export function clearRpcCaches() {
+    const toRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith(RPC_CACHE_PREFIX)) toRemove.push(key);
+    }
+    for (const key of toRemove) localStorage.removeItem(key);
+}
+
+function loadCached<T>(method: string, params: object): T | null {
+    const key = cacheKey(method, params);
     try {
-        const raw = localStorage.getItem(RPC_CACHE_PREFIX + method);
+        const raw = localStorage.getItem(key);
         if (!raw) return null;
         return JSON.parse(raw) as T;
-    } catch {
+    } catch (error) {
+        localStorage.removeItem(key);
+        debugWarn('RPC cache entry discarded', {method, error});
         return null;
     }
 }
 
-function storeCache(method: string, data: object) {
-    localStorage.setItem(RPC_CACHE_PREFIX + method, JSON.stringify(data));
+function storeCache(method: string, params: object, data: object) {
+    localStorage.setItem(cacheKey(method, params), JSON.stringify(data));
 }
 
-interface UseFleetManagerRpcOptions {
+interface UseWsRpcOptions {
     /** When true, don't fire the initial RPC — wait for manual refresh() call. */
     lazy?: boolean;
 }
 
-export default function useFleetManagerRpc<T>(
+export default function useWsRpc<T>(
     method: string,
     params: Record<string, any> = {},
-    options: UseFleetManagerRpcOptions = {}
+    options: UseWsRpcOptions = {}
 ) {
     // Priority: preloaded (fresh from server on connect) → localStorage cache → null
     // consume (delete) preloaded data so re-mounts always fire a fresh RPC
     const preloaded = consumePreloadedRpc<T>(method);
-    const initial = preloaded ?? loadCached<T>(method);
+    const initial = preloaded ?? loadCached<T>(method, params);
     const data = ref<T | null>(initial) as Ref<T | null>;
     const loading = ref(initial == null && !options.lazy);
     const error = ref(false);
@@ -42,44 +76,38 @@ export default function useFleetManagerRpc<T>(
 
     function execute() {
         if (disposed) return;
-        // Only show spinner if we have no data at all (first-ever visit)
         loading.value = data.value == null;
         error.value = false;
         retryPending = false;
-        ws.sendRPC('FLEET_MANAGER', method, params)
-            .then(
-                (res) => {
-                    if (disposed) return;
-                    data.value = res;
-                    if (res != null && typeof res === 'object') {
-                        storeCache(method, res);
-                    }
-                },
-                (err) => {
-                    if (disposed) return;
-                    // If WS closed or RPC timed out, retry after reconnect delay
-                    // instead of showing a permanent error state.
-                    // Keep loading=true so templates don't show a blank gap.
-                    if (
-                        err instanceof Error &&
-                        (err.message === 'WebSocket closed' ||
-                            err.message.startsWith('RPC timeout'))
-                    ) {
-                        retryPending = true;
-                        retryTimer = setTimeout(() => execute(), 3000);
-                        return;
-                    }
-                    error.value = true;
-                }
-            )
-            .finally(() => {
-                if (disposed) return;
-                // Don't clear loading while a retry is scheduled —
-                // otherwise templates see loading=false + data=null → blank screen
-                if (!retryPending) {
-                    loading.value = false;
-                }
-            });
+        doExecute();
+    }
+
+    async function doExecute() {
+        try {
+            const res = await ws.sendRPC('FLEET_MANAGER', method, params);
+            if (disposed) return;
+            data.value = res;
+            if (res != null && typeof res === 'object')
+                storeCache(method, params, res);
+        } catch (err) {
+            if (disposed) return;
+            if (isRetryableError(err)) {
+                scheduleRetry();
+                return;
+            }
+            error.value = true;
+        } finally {
+            if (!disposed && !retryPending) loading.value = false;
+        }
+    }
+
+    function isRetryableError(err: unknown): boolean {
+        return isRecoverableReconnectError(err);
+    }
+
+    function scheduleRetry() {
+        retryPending = true;
+        retryTimer = setTimeout(() => execute(), 3000);
     }
 
     // Clean up retry timers when the component/scope is disposed.

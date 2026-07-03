@@ -1,6 +1,18 @@
 import {defineStore} from 'pinia';
 import {computed, ref, watch} from 'vue';
-import apiClient from '@/helpers/axios';
+import {toastRpcError} from '@/helpers/domainErrors';
+import {
+    DB_AVG_CRITICAL_MS,
+    DB_AVG_WARN_MS,
+    DB_POOL_WAITING_CRITICAL,
+    DB_POOL_WAITING_WARN,
+    EVENT_LISTENERS_CRITICAL,
+    EVENT_LISTENERS_WARN,
+    RPC_AVG_CRITICAL_MS,
+    RPC_AVG_WARN_MS,
+    RPC_ERR_RATE_CRITICAL_PCT,
+    RPC_ERR_RATE_WARN_PCT
+} from '@/helpers/monitoring-thresholds';
 import {isDebugEnabled, setDebug} from '@/tools/debug';
 import {
     fetchBackendMetrics,
@@ -16,6 +28,8 @@ import {
     setObsLevel,
     setWsTelemetry
 } from '@/tools/observability';
+import {sendRPC} from '@/tools/websocket';
+import {useToastStore} from './toast';
 
 export type FlowStatus = 'healthy' | 'warning' | 'critical' | 'unknown';
 
@@ -25,22 +39,57 @@ export interface MetricSnapshot {
     rssM: number;
     heapUsedM: number;
     heapTotalM: number;
+    heapLimitM: number;
     heapTrend: string;
     wsClients: number;
     // Module gauges
     devicesTotal: number;
     initActive: number;
     initQueued: number;
+    initOldestHeldMs: number;
+    initOldestQueuedMs: number;
+    initReclaimedTotal: number;
+    buildSlowCount: number;
+    buildSlowestMs: number;
     statusQueueSize: number;
     statusFlushing: boolean;
     dbPoolTotal: number;
     dbPoolIdle: number;
     dbPoolWaiting: number;
+    dbRuntimeStatus: string;
+    dbRuntimeStatusCode: number;
+    dbRuntimeCheckedAt: string;
+    dbRuntimeCheckAgeSec: number;
+    dbRuntimeLastSuccessfulAt: string;
+    dbRuntimeLastSuccessfulAgeSec: number;
+    dbRuntimePostgresVersion: string;
+    dbRuntimePostgresMajor: number;
+    dbRuntimeTimescaleVersion: string;
+    dbRuntimeExpectedTimescaleImage: string;
+    dbRuntimeExpectedTimescaleVersion: string;
+    dbRuntimeError: string;
     auditQueueLength: number;
     // Service gauges
     waitingRoomPending: number;
     emQueueSize: number;
     emActiveSyncs: number;
+    emSyncOldestHeldMs: number;
+    emSyncStuck: number;
+    emSyncStreamDepth: number;
+    emSyncStreamOldestAgeMs: number;
+    emSyncStreamPending: number;
+    emSyncRowsWrittenPerMin: number;
+    emSyncLastWriteRows: number;
+    emSyncLastWriteMs: number;
+    emSyncLastWriteRowsPerSec: number;
+    emSyncLastRpcFetchMs: number;
+    emSyncLastRpcRecords: number;
+    emSyncLastPassBlocks: number;
+    emSyncLastPassMs: number;
+    emSyncWorstChannelLagSec: number;
+    emSyncLaggedChannels: number;
+    emSyncWorstLagDeviceId: string;
+    emSyncWorstLagChannel: number;
     pluginsLoaded: number;
     pluginWorkers: number;
     eventsListeners: number;
@@ -74,6 +123,8 @@ export interface MetricSnapshot {
     broadcastMaxMs: number;
     serializeMaxMs: number;
     wsMaxBufferedKB: number;
+    wsStrugglingClients: number;
+    wsWorstBufferedKB: number;
     // Tier 2+ (0 when unavailable)
     rpcSuccessRate: number;
     rpcErrorRate: number;
@@ -85,9 +136,9 @@ export interface MetricSnapshot {
 
 const HISTORY_SIZE = 720;
 
-function ringPush<T>(arr: T[], item: T, max: number) {
-    if (arr.length >= max) arr.shift();
-    arr.push(item);
+function ringPush<T>(arr: T[], entry: {item: T; max: number}) {
+    if (arr.length >= entry.max) arr.shift();
+    arr.push(entry.item);
 }
 
 function worstStatus(...statuses: FlowStatus[]): FlowStatus {
@@ -106,6 +157,48 @@ function computeAvgMs(timings: any): number {
     );
 }
 
+interface LabeledMetricEntry {
+    labels: Record<string, string>;
+    value: number;
+}
+
+function labeledMetricEntries(
+    metrics: any,
+    bucket: 'labeledCounters' | 'labeledGauges',
+    name: string
+): LabeledMetricEntry[] {
+    const source = metrics?.[bucket] ?? {};
+    const entries: LabeledMetricEntry[] = [];
+    for (const [key, rawValue] of Object.entries(source)) {
+        let parsed: {name?: unknown; labels?: unknown};
+        try {
+            parsed = JSON.parse(key);
+        } catch {
+            continue;
+        }
+        if (parsed.name !== name || !parsed.labels) continue;
+        const value = Number(rawValue);
+        if (!Number.isFinite(value)) continue;
+        entries.push({
+            labels: parsed.labels as Record<string, string>,
+            value
+        });
+    }
+    return entries;
+}
+
+function labeledGaugeValue(
+    metrics: any,
+    name: string,
+    labels: Record<string, string>
+): number {
+    return (
+        labeledMetricEntries(metrics, 'labeledGauges', name).find((entry) =>
+            Object.entries(labels).every(([key, value]) => entry.labels[key] === value)
+        )?.value ?? 0
+    );
+}
+
 function extractSnapshot(
     metrics: any,
     rates: Record<string, number>
@@ -114,6 +207,7 @@ function extractSnapshot(
     const di = modules.deviceInit ?? {};
     const sq = modules.statusQueue ?? {};
     const pool = modules.dbPool ?? {};
+    const dbRuntime = modules.dbRuntime ?? {};
     const audit = modules.audit ?? {};
     const devices = modules.devices ?? {};
     const waitingRoom = modules.waitingRoom ?? {};
@@ -125,7 +219,7 @@ function extractSnapshot(
     const mdnsM = modules.mdns ?? {};
     const firmware = modules.firmwareScheduler ?? {};
     const registry = modules.registry ?? {};
-
+    const gauges = metrics?.gauges ?? {};
     const rpcAvgMs = computeAvgMs(metrics?.rpcTimings);
     const dbAvgMs = computeAvgMs(metrics?.dbTimings);
 
@@ -135,6 +229,7 @@ function extractSnapshot(
         rssM: metrics?.memory?.rssM ?? 0,
         heapUsedM: metrics?.memory?.heapUsedM ?? 0,
         heapTotalM: metrics?.memory?.heapTotalM ?? 0,
+        heapLimitM: metrics?.memory?.heapLimitM ?? 0,
         heapTrend: metrics?.memory?.heapTrend ?? 'stable',
         externalM: metrics?.memory?.externalM ?? 0,
         arrayBuffersM: metrics?.memory?.arrayBuffersM ?? 0,
@@ -156,15 +251,68 @@ function extractSnapshot(
         devicesTotal: devices.total ?? 0,
         initActive: di.active ?? 0,
         initQueued: di.queued ?? 0,
+        initOldestHeldMs: di.oldestHeldMs ?? 0,
+        initOldestQueuedMs: di.oldestQueuedMs ?? 0,
+        initReclaimedTotal: di.reclaimedTotal ?? 0,
+        buildSlowCount: di.slowBuilds ?? 0,
+        buildSlowestMs: di.slowestBuildMs ?? 0,
         statusQueueSize: sq.queueSize ?? sq.pending ?? 0,
         statusFlushing: sq.flushing ?? false,
         dbPoolTotal: pool.totalCount ?? 0,
         dbPoolIdle: pool.idleCount ?? 0,
         dbPoolWaiting: pool.waitingCount ?? 0,
+        dbRuntimeStatus: dbRuntime.status ?? 'unknown',
+        dbRuntimeStatusCode: dbRuntime.statusCode ?? 0,
+        dbRuntimeCheckedAt: dbRuntime.checkedAt ?? '',
+        dbRuntimeCheckAgeSec: dbRuntime.checkAgeSeconds ?? -1,
+        dbRuntimeLastSuccessfulAt: dbRuntime.lastSuccessfulAt ?? '',
+        dbRuntimeLastSuccessfulAgeSec:
+            dbRuntime.lastSuccessfulAgeSeconds ?? -1,
+        dbRuntimePostgresVersion: dbRuntime.postgresVersion ?? '',
+        dbRuntimePostgresMajor: dbRuntime.postgresMajor ?? -1,
+        dbRuntimeTimescaleVersion: dbRuntime.timescaleVersion ?? '',
+        dbRuntimeExpectedTimescaleImage:
+            dbRuntime.expectedTimescaleImage ?? '',
+        dbRuntimeExpectedTimescaleVersion:
+            dbRuntime.expectedTimescaleVersion ?? '',
+        dbRuntimeError: dbRuntime.error ?? '',
         auditQueueLength: audit.queueLength ?? 0,
         waitingRoomPending: waitingRoom.pendingDevices ?? 0,
         emQueueSize: emSync.queueSize ?? 0,
         emActiveSyncs: emSync.activeSyncs ?? 0,
+        emSyncOldestHeldMs: emSync.oldestHeldMs ?? 0,
+        emSyncStuck: emSync.stuck ?? 0,
+        emSyncStreamDepth: labeledGaugeValue(metrics, 'stream_length', {
+            stream: 'em-sync-buffer'
+        }),
+        emSyncStreamOldestAgeMs: labeledGaugeValue(
+            metrics,
+            'stream_oldest_age_ms',
+            {stream: 'em-sync-buffer'}
+        ),
+        emSyncStreamPending: labeledGaugeValue(
+            metrics,
+            'stream_pending_entries',
+            {stream: 'em-sync-buffer'}
+        ),
+        emSyncRowsWrittenPerMin: rates.em_sync_buffer_rows_written ?? 0,
+        emSyncLastWriteRows: gauges.em_sync_last_write_rows ?? 0,
+        emSyncLastWriteMs: gauges.em_sync_last_write_ms ?? 0,
+        emSyncLastWriteRowsPerSec:
+            gauges.em_sync_last_write_rows_per_sec ?? 0,
+        emSyncLastRpcFetchMs: gauges.em_sync_last_rpc_fetch_ms ?? 0,
+        emSyncLastRpcRecords: gauges.em_sync_last_rpc_records ?? 0,
+        emSyncLastPassBlocks: gauges.em_sync_last_pass_blocks ?? 0,
+        emSyncLastPassMs: gauges.em_sync_last_pass_ms ?? 0,
+        emSyncWorstChannelLagSec: Math.round(
+            emSync.worstChannelLagSeconds ??
+                gauges.em_sync_worst_channel_lag_seconds ??
+                0
+        ),
+        emSyncLaggedChannels:
+            emSync.laggedChannels ?? gauges.em_sync_lagged_channels ?? 0,
+        emSyncWorstLagDeviceId: emSync.worstLagDeviceId ?? '',
+        emSyncWorstLagChannel: emSync.worstLagChannel ?? -1,
         pluginsLoaded: plugins.loadedPlugins ?? 0,
         pluginWorkers: pluginWorkersM.activeWorkers ?? 0,
         eventsListeners: events.listeners ?? 0,
@@ -181,6 +329,10 @@ function extractSnapshot(
         broadcastMaxMs: events.broadcastMaxMs ?? 0,
         serializeMaxMs: events.serializeMaxMs ?? 0,
         wsMaxBufferedKB: metrics?.gauges?.ws_max_buffered_kb ?? 0,
+        wsStrugglingClients: metrics?.wsClientHealth?.strugglingClients ?? 0,
+        wsWorstBufferedKB: Math.round(
+            (metrics?.wsClientHealth?.worstBufferedBytes ?? 0) / 1024
+        ),
         rpcSuccessRate: rates.rpc_success ?? 0,
         rpcErrorRate: rates.rpc_errors ?? 0,
         rpcAvgMs,
@@ -191,6 +343,7 @@ function extractSnapshot(
 }
 
 export const useMonitoringStore = defineStore('monitoring', () => {
+    const toast = useToastStore();
     const obsLevel = ref<ObsLevel>(getObsLevel());
     const latestMetrics = ref<any>(null);
     const history = ref<MetricSnapshot[]>([]);
@@ -203,7 +356,15 @@ export const useMonitoringStore = defineStore('monitoring', () => {
     const frontendDebug = ref(isDebugEnabled());
     const dbWritesDisabled = ref(false);
     const wsTelemetryEnabled = ref(isWsTelemetryEnabled());
-    const wsTelemetryData = ref({ patchBufferMaxDepth: 0, droppedFrameCount: 0, rafFrameTimeMaxMs: 0 });
+    const wsTelemetryData = ref({
+        patchBufferMaxDepth: 0,
+        droppedFrameCount: 0,
+        rafFrameTimeMaxMs: 0,
+        shellyConnectReceived: 0,
+        shellyDisconnectReceived: 0,
+        shellyConnectLatencyMs: {count: 0, last: 0, max: 0, p50: 0, p95: 0},
+        shellyDisconnectLatencyMs: {count: 0, last: 0, max: 0, p50: 0, p95: 0}
+    });
     let pollTimer: ReturnType<typeof setInterval> | undefined;
     let _historyGen = 0;
     const _historyFieldCache = new Map<string, {gen: number; data: number[]}>();
@@ -236,24 +397,61 @@ export const useMonitoringStore = defineStore('monitoring', () => {
     const rpcCommandsStatus = computed<FlowStatus>(() => {
         if (!latest.value || obsLevel.value === 0) return 'unknown';
         const snap = latest.value;
-        if (snap.rpcErrorRate > 10 || snap.rpcAvgMs > 1000) return 'critical';
-        if (snap.rpcErrorRate > 2 || snap.rpcAvgMs > 500) return 'warning';
+        if (
+            snap.rpcErrorRate > RPC_ERR_RATE_CRITICAL_PCT ||
+            snap.rpcAvgMs > RPC_AVG_CRITICAL_MS
+        )
+            return 'critical';
+        if (
+            snap.rpcErrorRate > RPC_ERR_RATE_WARN_PCT ||
+            snap.rpcAvgMs > RPC_AVG_WARN_MS
+        )
+            return 'warning';
         return 'healthy';
     });
 
     const databaseStatus = computed<FlowStatus>(() => {
         if (!latest.value || obsLevel.value === 0) return 'unknown';
         const snap = latest.value;
-        if (snap.dbPoolWaiting > 5 || snap.dbAvgMs > 500) return 'critical';
-        if (snap.dbPoolWaiting > 0 || snap.dbAvgMs > 200) return 'warning';
+        if ([3, 4].includes(snap.dbRuntimeStatusCode)) return 'critical';
+        if (snap.dbRuntimeStatusCode === 2 || snap.dbRuntimeCheckAgeSec > 900)
+            return 'warning';
+        if (
+            snap.dbPoolWaiting > DB_POOL_WAITING_CRITICAL ||
+            snap.dbAvgMs > DB_AVG_CRITICAL_MS
+        )
+            return 'critical';
+        if (
+            snap.dbPoolWaiting > DB_POOL_WAITING_WARN ||
+            snap.dbAvgMs > DB_AVG_WARN_MS
+        )
+            return 'warning';
         return 'healthy';
     });
 
     const emSyncStatus = computed<FlowStatus>(() => {
         if (!latest.value || obsLevel.value === 0) return 'unknown';
         const snap = latest.value;
+        if (
+            snap.emSyncStreamDepth > 200000 ||
+            snap.emSyncStreamOldestAgeMs > 30 * 60 * 1000 ||
+            snap.emSyncStreamPending > 10000 ||
+            snap.emSyncLastWriteMs > 5000 ||
+            snap.emSyncLastRpcFetchMs > 10000 ||
+            snap.emSyncWorstChannelLagSec > 6 * 3600
+        )
+            return 'critical';
         if (snap.emActiveSyncs >= 40 && snap.emQueueSize > 200)
             return 'critical';
+        if (
+            snap.emSyncStreamDepth > 50000 ||
+            snap.emSyncStreamOldestAgeMs > 5 * 60 * 1000 ||
+            snap.emSyncStreamPending > 1000 ||
+            snap.emSyncLastWriteMs > 1500 ||
+            snap.emSyncLastRpcFetchMs > 3000 ||
+            snap.emSyncWorstChannelLagSec > 3600
+        )
+            return 'warning';
         if (snap.emActiveSyncs > 30) return 'warning';
         return 'healthy';
     });
@@ -269,8 +467,8 @@ export const useMonitoringStore = defineStore('monitoring', () => {
     const eventsStatus = computed<FlowStatus>(() => {
         if (!latest.value || obsLevel.value === 0) return 'unknown';
         const snap = latest.value;
-        if (snap.eventsListeners > 1000) return 'critical';
-        if (snap.eventsListeners > 500) return 'warning';
+        if (snap.eventsListeners > EVENT_LISTENERS_CRITICAL) return 'critical';
+        if (snap.eventsListeners > EVENT_LISTENERS_WARN) return 'warning';
         return 'healthy';
     });
 
@@ -298,7 +496,7 @@ export const useMonitoringStore = defineStore('monitoring', () => {
         pendingRpcCount.value = getPendingRpcCount();
 
         const snapshot = extractSnapshot(metrics, counterRates.value);
-        ringPush(history.value, snapshot, HISTORY_SIZE);
+        ringPush(history.value, {item: snapshot, max: HISTORY_SIZE});
         _historyGen++;
         _historyFieldCache.clear();
 
@@ -310,13 +508,13 @@ export const useMonitoringStore = defineStore('monitoring', () => {
 
     async function loadHistory() {
         try {
-            const res = await fetch('/health/history');
-            const data = await res.json();
-            if (Array.isArray(data.history)) {
-                const snapshots = data.history.map((entry: any) =>
+            const data = await sendRPC<{
+                history?: Array<{ts: number; metrics: unknown}>;
+            }>('FLEET_MANAGER', 'System.Health.GetHistory', {});
+            if (Array.isArray(data?.history)) {
+                const snapshots = data.history.map((entry) =>
                     extractSnapshot(entry.metrics, {})
                 );
-                // Replace history with backend data, keep within size limit
                 history.value = snapshots.slice(-HISTORY_SIZE);
                 _historyGen++;
                 _historyFieldCache.clear();
@@ -345,16 +543,28 @@ export const useMonitoringStore = defineStore('monitoring', () => {
         }
     }
 
-    function changeLevel(l: ObsLevel) {
+    async function changeLevel(l: ObsLevel) {
+        const previous = obsLevel.value;
         obsLevel.value = l;
         setObsLevel(l);
-        apiClient.post('/health/observability', {level: l}).catch(() => {});
+        restartPollingForLevel(l);
 
-        // Restart polling with new interval
-        if (polling.value) {
-            stopPolling();
-            if (l > 0) startPolling();
+        try {
+            await sendRPC('FLEET_MANAGER', 'System.Observability.Set', {
+                level: l
+            });
+        } catch (err) {
+            obsLevel.value = previous;
+            setObsLevel(previous);
+            restartPollingForLevel(previous);
+            toastRpcError(toast, err, 'Failed to set observability level');
         }
+    }
+
+    function restartPollingForLevel(l: ObsLevel) {
+        if (!polling.value) return;
+        stopPolling();
+        if (l > 0) startPolling();
     }
 
     function historyField(field: keyof MetricSnapshot): number[] {
@@ -372,7 +582,11 @@ export const useMonitoringStore = defineStore('monitoring', () => {
     // ── Log level management ─────────────────────────────────────────
     async function fetchLogLevels() {
         try {
-            const {data} = await apiClient.get('/health/log-levels');
+            const data = await sendRPC<{levels?: Record<string, string>}>(
+                'FLEET_MANAGER',
+                'System.Log.ListLevels',
+                {}
+            );
             logLevels.value = data.levels ?? {};
         } catch {
             // Endpoint may not be available
@@ -380,7 +594,10 @@ export const useMonitoringStore = defineStore('monitoring', () => {
     }
 
     async function setLogLevel(category: string, level: string) {
-        await apiClient.post('/health/log-level', {category, level});
+        await sendRPC('FLEET_MANAGER', 'System.Log.SetLevel', {
+            category,
+            level
+        });
         logLevels.value[category] = level;
     }
 
@@ -398,7 +615,27 @@ export const useMonitoringStore = defineStore('monitoring', () => {
         setWsTelemetry(value);
         wsTelemetryEnabled.value = value;
         if (!value) {
-            wsTelemetryData.value = { patchBufferMaxDepth: 0, droppedFrameCount: 0, rafFrameTimeMaxMs: 0 };
+            wsTelemetryData.value = {
+                patchBufferMaxDepth: 0,
+                droppedFrameCount: 0,
+                rafFrameTimeMaxMs: 0,
+                shellyConnectReceived: 0,
+                shellyDisconnectReceived: 0,
+                shellyConnectLatencyMs: {
+                    count: 0,
+                    last: 0,
+                    max: 0,
+                    p50: 0,
+                    p95: 0
+                },
+                shellyDisconnectLatencyMs: {
+                    count: 0,
+                    last: 0,
+                    max: 0,
+                    p50: 0,
+                    p95: 0
+                }
+            };
         }
     }
 

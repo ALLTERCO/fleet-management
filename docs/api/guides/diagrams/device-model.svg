@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 300" width="800" height="300" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="The device model: components are discovered, entities are normalized, and there are three ways to act">
+  <title>Device, components, entities — and three ways to act</title>
+  <desc>A device reports its methods; Fleet Manager discovers components and normalizes them into typed entities. Three surfaces act on a device — Entity.InvokeAction, a component method, or the raw Device.Call — and all resolve to one permission-checked, audited device RPC.</desc>
+  <defs>
+    <marker id="dN" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A97A8"/></marker>
+  </defs>
+  <rect x="0" y="0" width="800" height="300" fill="#ffffff"/>
+
+  <!-- top row -->
+  <rect x="28" y="34" width="136" height="60" rx="6" fill="#EAF6FD" stroke="#4495D1" stroke-width="1.5"/>
+  <text x="96" y="60" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Device</text>
+  <text x="96" y="78" text-anchor="middle" font-size="11" fill="#3A6B92" font-family="ui-monospace,Menlo,monospace">shellyID</text>
+
+  <path d="M164,64 L286,64" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#dN)"/>
+  <text x="221" y="56" text-anchor="middle" font-size="10.5" fill="#6B7A90">reports methods</text>
+
+  <rect x="290" y="34" width="188" height="60" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="384" y="60" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Components</text>
+  <text x="384" y="78" text-anchor="middle" font-size="11" fill="#6B7A90">auto-discovered</text>
+
+  <path d="M478,64 L600,64" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#dN)"/>
+  <text x="539" y="56" text-anchor="middle" font-size="10.5" fill="#6B7A90">normalized to</text>
+
+  <rect x="604" y="34" width="168" height="60" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="688" y="60" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Entities</text>
+  <text x="688" y="78" text-anchor="middle" font-size="11" fill="#6B7A90">typed capabilities</text>
+
+  <!-- section label -->
+  <text x="400" y="136" text-anchor="middle" font-size="12" font-weight="600" fill="#122A4F">Three ways to act on a device</text>
+
+  <!-- three surfaces -->
+  <rect x="46" y="152" width="216" height="58" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="154" y="176" text-anchor="middle" font-size="12" font-weight="600" fill="#122A4F" font-family="ui-monospace,Menlo,monospace">Entity.InvokeAction</text>
+  <text x="154" y="194" text-anchor="middle" font-size="11" fill="#6B7A90">typed verbs — start here</text>
+
+  <rect x="292" y="152" width="216" height="58" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="400" y="176" text-anchor="middle" font-size="12" font-weight="600" fill="#122A4F" font-family="ui-monospace,Menlo,monospace">&lt;Component&gt;.Method</text>
+  <text x="400" y="194" text-anchor="middle" font-size="11" fill="#6B7A90">e.g. Switch.SetConfig</text>
+
+  <rect x="538" y="152" width="216" height="58" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="646" y="176" text-anchor="middle" font-size="12" font-weight="600" fill="#122A4F" font-family="ui-monospace,Menlo,monospace">Device.Call</text>
+  <text x="646" y="194" text-anchor="middle" font-size="11" fill="#6B7A90">raw escape hatch</text>
+
+  <!-- converge -->
+  <path d="M154,210 L338,248" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#dN)"/>
+  <path d="M400,210 L400,248" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#dN)"/>
+  <path d="M646,210 L462,248" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#dN)"/>
+
+  <rect x="254" y="252" width="292" height="36" rx="6" fill="#EAF6FD" stroke="#4495D1" stroke-width="1.5"/>
+  <text x="400" y="274" text-anchor="middle" font-size="11.5" fill="#122A4F">one device RPC · permission-checked · audited</text>
+</svg>

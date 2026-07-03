@@ -11,7 +11,7 @@
                     <i class="fas fa-arrow-left text-xl"></i>
                 </button>
                 <div>
-                    <h1 class="text-xl font-bold adl-title">{{ title }}</h1>
+                    <h1 class="text-2xl font-bold adl-title">{{ title }}</h1>
                     <p v-if="subtitle" class="text-sm adl-subtitle">{{ subtitle }}</p>
                 </div>
             </div>
@@ -75,14 +75,16 @@
             class="fixed inset-0 adl-loading-overlay flex items-center justify-center z-40 pointer-events-none"
         >
             <div class="adl-panel rounded-lg p-4 flex items-center gap-3">
-                <i class="fas fa-spinner fa-spin adl-icon-primary text-xl"></i>
-                <span class="adl-title">Loading...</span>
+                <Spinner size="sm" />
+                <span class="adl-title">Loading dashboard</span>
             </div>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
+import Spinner from '@/components/core/Spinner.vue';
+
 withDefaults(
     defineProps<{
         title: string;
@@ -116,7 +118,7 @@ defineEmits<{
 .adl-icon-btn:hover { background-color: var(--glass-hover); }
 .adl-icon-primary { color: var(--color-primary-text); }
 .adl-icon-success { color: var(--color-success-text); }
-.adl-loading-overlay { background-color: rgba(0, 0, 0, 0.2); }
+.adl-loading-overlay { background-color: var(--color-overlay-light); }
 
 /* Smooth refresh spin (slower than animate-spin for a polished feel) */
 .adl-spin {

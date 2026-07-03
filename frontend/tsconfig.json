@@ -22,9 +22,18 @@
     "noFallthroughCasesInSwitch": false,
     "paths": {
       "@/*": ["./src/*"],
+      "@app-root": ["./src/App.vue"],
+      "@router-routes": ["./src/router/routes.full.ts"],
+      "@host": ["./src/shell/template-host/index.ts"],
+      "@host/*": ["./src/shell/template-host/*"],
+      "@template/*": ["./src/template-active/*"],
+      "@template-contract": ["./src/template-contract/index.ts"],
+      "@template-contract/*": ["./src/template-contract/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@api/*": ["../backend/src/types/api/*"]
     },
     "types": []
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue", "src/App.vue", "typed-router.d.ts"],
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue", "src/App.vue", "typed-router.d.ts", "../backend/src/types/api/**/*.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500" width="1000" height="500" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Fleet Manager system architecture">
+  <title>Fleet Manager system architecture</title>
+  <desc>Browsers, apps, the mobile Fleet Assistant, and Shelly devices reach Fleet Manager through the Traefik TLS edge. Fleet Manager verifies identity with Zitadel (OIDC), stores devices, energy, and config in TimescaleDB, and uses Redis for streams, cache, and leader election. It delivers alert notifications through configured channels. Traefik also routes the login UI to Zitadel.</desc>
+  <defs>
+    <marker id="mN" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A97A8"/></marker>
+    <marker id="mD" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#003C82"/></marker>
+    <marker id="mP" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7A5AF0"/></marker>
+  </defs>
+  <rect x="0" y="0" width="1000" height="500" fill="#ffffff"/>
+
+  <!-- zone labels -->
+  <text x="100" y="34" text-anchor="middle" font-size="10.5" font-weight="600" letter-spacing="0.06em" fill="#8A97A8">CLIENTS &amp; DEVICES</text>
+  <text x="800" y="34" text-anchor="middle" font-size="10.5" font-weight="600" letter-spacing="0.06em" fill="#8A97A8">BACKING SERVICES</text>
+  <text x="640" y="366" text-anchor="middle" font-size="10.5" font-weight="600" letter-spacing="0.06em" fill="#8A97A8">OUTBOUND</text>
+
+  <!-- login arc -->
+  <path d="M306,48 C306,20 800,20 800,50" stroke="#003C82" stroke-width="1.4" stroke-dasharray="5 4" fill="none" marker-end="url(#mD)"/>
+  <rect x="522" y="12" width="60" height="15" rx="7" fill="#ffffff"/>
+  <text x="552" y="23" text-anchor="middle" font-size="10.5" fill="#3A5C86">login UI</text>
+
+  <!-- clients -> edge -->
+  <path d="M176,74 L244,74" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#mN)"/>
+  <path d="M176,138 L244,138" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#mN)"/>
+  <path d="M176,202 L244,202" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#mN)"/>
+  <path d="M176,283 L244,283" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#mN)"/>
+  <text x="210" y="196" text-anchor="middle" font-size="10" fill="#6B7A90" font-family="ui-monospace,Menlo,monospace">/shelly</text>
+  <text x="210" y="277" text-anchor="middle" font-size="10" fill="#6B7A90">PAT</text>
+
+  <!-- edge -> app -->
+  <path d="M364,183 L436,183" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#mN)"/>
+
+  <!-- app -> backing -->
+  <path d="M612,140 L696,90" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#mN)"/>
+  <path d="M612,183 L696,166" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#mN)"/>
+  <path d="M612,226 L696,244" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#mN)"/>
+  <text x="655" y="106" text-anchor="middle" font-size="10" fill="#6B7A90">OIDC</text>
+  <text x="651" y="176" text-anchor="middle" font-size="10" fill="#6B7A90" font-family="ui-monospace,Menlo,monospace">SQL</text>
+  <text x="651" y="248" text-anchor="middle" font-size="10" fill="#6B7A90">streams</text>
+
+  <!-- app -> outbound -->
+  <path d="M500,266 L392,388" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#mN)"/>
+  <path d="M566,266 L700,388" stroke="#8A97A8" stroke-width="1.5" fill="none" marker-end="url(#mN)"/>
+  <text x="430" y="332" text-anchor="middle" font-size="10" fill="#6B7A90">mobile</text>
+  <text x="648" y="332" text-anchor="middle" font-size="10" fill="#6B7A90">deliver</text>
+
+  <!-- Fleet Manager -> mobile app notification loop -->
+  <path d="M300,404 C232,404 150,360 118,316" stroke="#7A5AF0" stroke-width="1.5" stroke-dasharray="5 4" fill="none" marker-end="url(#mP)"/>
+  <rect x="150" y="378" width="86" height="15" rx="7" fill="#ffffff"/>
+  <text x="193" y="389" text-anchor="middle" font-size="10" fill="#6A5AB8">notifications</text>
+
+  <!-- Clients -->
+  <rect x="24" y="48" width="152" height="52" rx="6" fill="#EAF6FD" stroke="#4495D1" stroke-width="1.5"/>
+  <text x="100" y="72" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Browser</text>
+  <text x="100" y="89" text-anchor="middle" font-size="10.5" fill="#6B7A90">web app</text>
+
+  <rect x="24" y="112" width="152" height="52" rx="6" fill="#EAF6FD" stroke="#4495D1" stroke-width="1.5"/>
+  <text x="100" y="136" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">App / SDK</text>
+  <text x="100" y="153" text-anchor="middle" font-size="10.5" fill="#6B7A90">API clients</text>
+
+  <rect x="24" y="176" width="152" height="52" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="100" y="200" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Shelly device</text>
+  <text x="100" y="217" text-anchor="middle" font-size="10.5" fill="#6B7A90">firmware</text>
+
+  <rect x="24" y="252" width="152" height="62" rx="6" fill="#EAF6FD" stroke="#4495D1" stroke-width="1.5"/>
+  <text x="100" y="278" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Mobile app</text>
+  <text x="100" y="296" text-anchor="middle" font-size="10.5" fill="#3A6B92">Fleet Assistant · provisioning</text>
+
+  <!-- Traefik -->
+  <rect x="244" y="48" width="120" height="270" rx="6" fill="#EEF3FA" stroke="#003C82" stroke-width="1.5"/>
+  <text x="304" y="168" text-anchor="middle" font-size="14" font-weight="600" fill="#122A4F">Traefik</text>
+  <text x="304" y="186" text-anchor="middle" font-size="10.5" fill="#6B7A90">TLS edge</text>
+  <text x="304" y="205" text-anchor="middle" font-size="10" fill="#3A5C86" font-family="ui-monospace,Menlo,monospace">/ · /rpc · /shelly</text>
+
+  <!-- Fleet Manager -->
+  <rect x="436" y="100" width="176" height="166" rx="6" fill="#E4F1FB" stroke="#4495D1" stroke-width="2"/>
+  <text x="524" y="172" text-anchor="middle" font-size="15" font-weight="700" fill="#122A4F">Fleet Manager</text>
+  <text x="524" y="191" text-anchor="middle" font-size="10.5" fill="#3A6B92">API · WebSocket</text>
+  <text x="524" y="207" text-anchor="middle" font-size="10.5" fill="#6B7A90">serves the UI</text>
+
+  <!-- Backing services -->
+  <rect x="700" y="52" width="200" height="62" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="800" y="78" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Zitadel</text>
+  <text x="800" y="96" text-anchor="middle" font-size="10.5" fill="#6B7A90">OIDC · login · own Postgres</text>
+
+  <rect x="700" y="132" width="200" height="62" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="800" y="158" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">TimescaleDB</text>
+  <text x="800" y="176" text-anchor="middle" font-size="10.5" fill="#6B7A90">devices · energy · config</text>
+
+  <rect x="700" y="212" width="200" height="62" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="800" y="238" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Redis</text>
+  <text x="800" y="256" text-anchor="middle" font-size="10.5" fill="#6B7A90">streams · cache · leader</text>
+
+  <!-- Outbound -->
+  <rect x="300" y="388" width="176" height="58" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="388" y="412" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Mobile app</text>
+  <text x="388" y="430" text-anchor="middle" font-size="10.5" fill="#6B7A90">notifications</text>
+
+  <rect x="560" y="388" width="340" height="58" rx="6" fill="#F4F7FB" stroke="#C9D4E2" stroke-width="1.5"/>
+  <text x="730" y="412" text-anchor="middle" font-size="13" font-weight="600" fill="#122A4F">Notification channels</text>
+  <text x="730" y="430" text-anchor="middle" font-size="10.5" fill="#6B7A90">configured alert channels</text>
+</svg>

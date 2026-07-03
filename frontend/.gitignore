@@ -24,3 +24,8 @@ dist-ssr
 *.sw?
 
 typed-router.d.ts
+.playwright-mcp/
+.auth/
+playwright-report/
+test-results/
+.claude/

@@ -1,0 +1,168 @@
+/* Shared skeleton for device-config panels (Cloud / BLE / Wifi / Eth / Modbus / …). */
+
+.cfg-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+
+.cfg-panel__status-row {
+    display: flex;
+    justify-content: flex-end;
+    padding-bottom: var(--space-1);
+}
+
+.cfg-panel__status {
+    font-size: var(--type-body);
+    font-weight: var(--font-bold);
+    padding: var(--space-px) var(--space-3);
+    border-radius: var(--radius-2xl);
+}
+
+.cfg-panel__status--on {
+    background: rgba(var(--color-success-rgb), 0.12);
+    color: var(--color-success-text);
+    border: 1px solid rgba(var(--color-success-rgb), 0.25);
+}
+
+.cfg-panel__status--off {
+    background: rgba(var(--color-danger-rgb), 0.12);
+    color: var(--color-danger-text);
+    border: 1px solid rgba(var(--color-danger-rgb), 0.25);
+}
+
+.cfg-panel__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--color-border-subtle);
+    transition: background-color var(--motion-hover);
+}
+
+.cfg-panel__row:hover {
+    background: var(--state-hover-bg);
+}
+
+.cfg-panel__row:last-child {
+    border-bottom: none;
+}
+
+.cfg-panel__row-label {
+    flex: 1;
+    min-width: 0;
+}
+
+.cfg-panel__row-label strong {
+    display: block;
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+}
+
+.cfg-panel__row-label span {
+    display: block;
+    font-size: var(--type-caption);
+    color: var(--color-text-tertiary);
+    margin-top: var(--space-px);
+}
+
+.cfg-panel__input {
+    width: var(--floating-w-xs);
+    max-width: 100%;
+    padding: var(--input-padding) var(--space-3);
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: var(--input-radius);
+    color: var(--color-text-primary);
+    font-size: var(--input-font-size);
+    transition:
+        border-color var(--motion-hover),
+        box-shadow var(--motion-hover);
+}
+
+.cfg-panel__input:hover {
+    border-color: var(--input-border-hover);
+}
+
+.cfg-panel__input:focus {
+    outline: none;
+    border-color: var(--input-focus-ring);
+    box-shadow: 0 0 0 var(--focus-ring-width)
+        rgba(var(--color-primary-rgb), 0.25);
+}
+
+.cfg-panel__input::placeholder {
+    color: var(--input-placeholder);
+}
+
+.cfg-panel__section-label {
+    font-size: var(--type-caption);
+    font-weight: var(--font-bold);
+    color: var(--color-text-tertiary);
+    padding: var(--space-2) var(--space-3) 0;
+}
+
+.cfg-panel__group {
+    display: flex;
+    flex-direction: column;
+}
+
+.cfg-panel__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-top: 1px solid var(--color-border-default);
+    margin-top: var(--space-1);
+}
+
+.cfg-panel__warn {
+    font-size: var(--type-caption);
+    color: var(--color-warning-text);
+}
+
+.cfg-panel__warn i {
+    margin-right: var(--space-1);
+}
+
+.cfg-panel__reboot-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    background: rgba(var(--color-primary-rgb), 0.08);
+    border: 1px solid rgba(var(--color-primary-rgb), 0.2);
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    color: var(--color-primary-text);
+}
+
+.cfg-panel__error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    color: var(--color-text-tertiary);
+    font-size: var(--type-caption);
+}
+
+.cfg-panel__notice {
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    background: rgba(var(--color-warning-rgb), 0.1);
+    border: 1px solid rgba(var(--color-warning-rgb), 0.25);
+    color: var(--color-warning-text);
+    font-size: var(--type-caption);
+}
+
+.cfg-panel__notice--error {
+    background: rgba(var(--color-danger-rgb), 0.1);
+    border-color: rgba(var(--color-danger-rgb), 0.25);
+    color: var(--color-danger-text);
+}

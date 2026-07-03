@@ -60,19 +60,49 @@ const props = withDefaults(
 );
 
 const colorMap = {
-    blue: {bg: 'hover:bg-[var(--color-primary-subtle)]/30', text: 'text-[var(--color-primary-text)]'},
-    green: {bg: 'hover:bg-[var(--color-success-subtle)]/30', text: 'text-[var(--color-success-text)]'},
-    yellow: {bg: 'hover:bg-[var(--color-warning-subtle)]/30', text: 'text-[var(--color-warning-text)]'},
-    red: {bg: 'hover:bg-[var(--color-danger-subtle)]/30', text: 'text-[var(--color-danger-text)]'},
-    purple: {bg: 'hover:bg-[var(--color-accent-subtle)]/30', text: 'text-[var(--color-accent-text)]'},
-    cyan: {bg: 'hover:bg-[var(--color-info-subtle)]/30', text: 'text-[var(--color-info-text)]'},
-    teal: {bg: 'hover:bg-[var(--color-teal)]/10', text: 'text-[var(--color-teal-text)]'},
-    orange: {bg: 'hover:bg-[var(--color-orange-subtle)]/30', text: 'text-[var(--color-orange-text)]'},
-    gray: {bg: 'hover:bg-[var(--color-surface-1)]/30', text: 'text-[var(--color-text-tertiary)]'}
+    blue: {
+        bg: 'hover:bg-[var(--color-primary-subtle)]/30',
+        text: 'text-[var(--color-primary-text)]'
+    },
+    green: {
+        bg: 'hover:bg-[var(--color-success-subtle)]/30',
+        text: 'text-[var(--color-success-text)]'
+    },
+    yellow: {
+        bg: 'hover:bg-[var(--color-warning-subtle)]/30',
+        text: 'text-[var(--color-warning-text)]'
+    },
+    red: {
+        bg: 'hover:bg-[var(--color-danger-subtle)]/30',
+        text: 'text-[var(--color-danger-text)]'
+    },
+    purple: {
+        bg: 'hover:bg-[var(--color-accent-subtle)]/30',
+        text: 'text-[var(--color-accent-text)]'
+    },
+    cyan: {
+        bg: 'hover:bg-[var(--color-info-subtle)]/30',
+        text: 'text-[var(--color-info-text)]'
+    },
+    teal: {
+        bg: 'hover:bg-[var(--color-teal)]/10',
+        text: 'text-[var(--color-teal-text)]'
+    },
+    orange: {
+        bg: 'hover:bg-[var(--color-orange-subtle)]/30',
+        text: 'text-[var(--color-orange-text)]'
+    },
+    gray: {
+        bg: 'hover:bg-[var(--color-surface-1)]/30',
+        text: 'text-[var(--color-text-tertiary)]'
+    }
 };
 
+// Data-viz palette for caller-passed `color` prop. Hex literals because
+// these resolve at runtime via inline style; CSS-var indirection would
+// not survive prop binding. Categorical, not chrome.
 const iconColorMap: Record<string, string> = {
-    blue: '#60a5fa',
+    blue: '#4495D1',
     green: '#4ade80',
     yellow: '#facc15',
     red: '#f87171',
@@ -95,14 +125,16 @@ const formattedValue = computed(() => {
 });
 
 function formatValue(val: number): string {
-    if (val >= 1000000) return (val / 1000000).toFixed(props.decimals) + 'M';
-    if (val >= 1000) return (val / 1000).toFixed(props.decimals) + 'k';
+    if (val >= 1000000) return `${(val / 1000000).toFixed(props.decimals)}M`;
+    if (val >= 1000) return `${(val / 1000).toFixed(props.decimals)}k`;
     return val.toFixed(props.decimals);
 }
 
 const trendClass = computed(() => {
     if (props.trend === undefined) return '';
-    return props.trend >= 0 ? 'text-[var(--color-success-text)]' : 'text-[var(--color-danger-text)]';
+    return props.trend >= 0
+        ? 'text-[var(--color-success-text)]'
+        : 'text-[var(--color-danger-text)]';
 });
 
 const trendIcon = computed(() => {

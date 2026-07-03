@@ -1,100 +1,63 @@
 <template>
     <Modal :visible="visible" @close="emit('close')">
-        <template #title>
-            <div class="flex items-center gap-2">
-                <i class="fas fa-database"></i>
-                <span>{{ backup?.name }}</span>
-            </div>
-        </template>
+        <template #title>{{ backup?.name }}</template>
 
-        <div v-if="backup" class="flex flex-col gap-4">
-            <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                <div>
-                    <span class="text-[var(--color-text-tertiary)]">Device</span>
-                    <div class="font-medium">{{ backup.shellyID }}</div>
+        <div v-if="backup" class="bkd">
+            <div class="bkd__grid">
+                <div class="bkd__field">
+                    <span class="bkd__label">Device</span>
+                    <span class="bkd__value">{{ backup.deviceName || backup.shellyID }}</span>
+                    <span class="bkd__sub">{{ backup.shellyID }}</span>
                 </div>
-                <div>
-                    <span class="text-[var(--color-text-tertiary)]">Model</span>
-                    <div class="font-medium">{{ backup.model }}</div>
+                <div class="bkd__field">
+                    <span class="bkd__label">Model</span>
+                    <span class="bkd__value">{{ backup.model }}</span>
                 </div>
-                <div>
-                    <span class="text-[var(--color-text-tertiary)]">App</span>
-                    <div class="font-medium">{{ backup.app }}</div>
+                <div class="bkd__field">
+                    <span class="bkd__label">App</span>
+                    <span class="bkd__value">{{ backup.app }}</span>
                 </div>
-                <div>
-                    <span class="text-[var(--color-text-tertiary)]">Firmware</span>
-                    <div class="font-medium">{{ backup.fwVersion }}</div>
+                <div class="bkd__field">
+                    <span class="bkd__label">Firmware</span>
+                    <span class="bkd__value">{{ backup.fwVersion }}</span>
                 </div>
-                <div>
-                    <span class="text-[var(--color-text-tertiary)]">Created</span>
-                    <div class="font-medium">
-                        {{ new Date(backup.createdAt).toLocaleString() }}
-                    </div>
+                <div class="bkd__field">
+                    <span class="bkd__label">Created (UTC)</span>
+                    <span class="bkd__value">{{ formatCreatedAtUtc(backup.createdAt) }}</span>
                 </div>
-                <div>
-                    <span class="text-[var(--color-text-tertiary)]">Size</span>
-                    <div class="font-medium">
-                        {{ formatSize(backup.fileSize) }}
-                    </div>
+                <div class="bkd__field">
+                    <span class="bkd__label">Size</span>
+                    <span class="bkd__value">{{ formatBytes(backup.fileSize) }}</span>
                 </div>
             </div>
 
-            <!-- Contents -->
-            <div v-if="backupContents.length > 0">
-                <span class="text-[var(--color-text-tertiary)] text-sm">Contents</span>
-                <div class="flex flex-wrap gap-1 mt-1">
-                    <span
-                        v-for="item in backupContents"
-                        :key="item"
-                        class="px-2 py-0.5 rounded bg-[var(--color-surface-3)] text-xs"
-                        >{{ item }}</span
-                    >
+            <div v-if="backupContents.length > 0" class="bkd__section">
+                <span class="bkd__label">Contents</span>
+                <div class="bkd__chips">
+                    <span v-for="item in backupContents" :key="item" class="bkd__chip">{{ item }}</span>
                 </div>
             </div>
 
-            <!-- Metadata -->
-            <div v-if="backupMeta.length > 0">
-                <span class="text-[var(--color-text-tertiary)] text-sm">Metadata</span>
-                <div
-                    class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm mt-1"
-                >
-                    <div v-for="[k, v] in backupMeta" :key="k">
-                        <span class="text-[var(--color-text-tertiary)]">{{ k }}:</span>
-                        {{ v }}
-                    </div>
+            <div v-if="(backup.groupNames || []).length > 0" class="bkd__section">
+                <span class="bkd__label">Groups</span>
+                <div class="bkd__chips">
+                    <span v-for="group in backup.groupNames" :key="group" class="bkd__chip">{{ group }}</span>
                 </div>
             </div>
         </div>
 
         <template #footer>
-            <div class="flex justify-between">
-                <Button
-                    type="red"
-                    size="sm"
-                    @click="emit('action', 'delete')"
-                >
-                    <i class="fas fa-trash mr-1"></i> Delete
+            <div class="bkd__footer">
+                <Button type="red" size="sm" @click="emit('action', 'delete')">
+                    Delete
                 </Button>
-                <div class="flex gap-2">
-                    <Button
-                        size="sm"
-                        @click="emit('action', 'rename')"
-                    >
-                        <i class="fas fa-pen mr-1"></i> Rename
+                <div class="bkd__footer-right">
+                    <Button type="blue-hollow" size="sm" @click="emit('action', 'rename')">Rename</Button>
+                    <Button type="blue-hollow" size="sm" @click="emit('action', 'download')">
+                        Download
                     </Button>
-                    <Button
-                        type="green"
-                        size="sm"
-                        @click="emit('action', 'download')"
-                    >
-                        <i class="fas fa-download mr-1"></i> Download
-                    </Button>
-                    <Button
-                        type="blue"
-                        size="sm"
-                        @click="emit('action', 'restore')"
-                    >
-                        <i class="fas fa-upload mr-1"></i> Restore
+                    <Button type="blue" size="sm" @click="emit('action', 'restore')">
+                        Restore
                     </Button>
                 </div>
             </div>
@@ -106,6 +69,8 @@
 import {computed} from 'vue';
 import Button from '@/components/core/Button.vue';
 import Modal from '@/components/modals/Modal.vue';
+import {getEnabledBackupContentLabels} from '@/helpers/backupContents';
+import {formatBytes} from '@/helpers/format';
 import type {BackupMetadata} from '@/stores/backups';
 
 const props = defineProps<{
@@ -120,24 +85,85 @@ const emit = defineEmits<{
 
 const backupContents = computed(() => {
     if (!props.backup?.contents) return [];
-    return Object.entries(props.backup.contents)
-        .filter(([, v]) => v)
-        .map(([k]) => k);
+    return getEnabledBackupContentLabels(props.backup.contents);
 });
 
-const backupMeta = computed(() => {
-    if (!props.backup?.metadata) return [];
-    return Object.entries(props.backup.metadata)
-        .filter(([k]) => String(k).trim().length > 0)
-        .map(
-            ([k, v]) =>
-                [String(k), v == null ? '' : String(v)] as [string, string]
-        );
-});
 
-function formatSize(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+function formatCreatedAtUtc(timestamp: number): string {
+    return new Date(timestamp)
+        .toISOString()
+        .replace('T', ' ')
+        .slice(0, 16)
+        .concat(' UTC');
 }
 </script>
+
+<style scoped>
+.bkd {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+}
+
+.bkd__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-3) var(--space-5);
+}
+
+.bkd__field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2); /* golden base */
+}
+
+.bkd__label {
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+}
+
+.bkd__value {
+    font-size: var(--type-caption);
+    font-weight: var(--font-bold);
+    color: var(--color-text-primary);
+}
+
+.bkd__sub {
+    font-size: var(--type-caption);
+    color: var(--color-text-disabled);
+    font-family: var(--font-mono);
+}
+
+.bkd__section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.bkd__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.bkd__chip {
+    padding: var(--space-1) var(--space-3);
+    background: var(--color-surface-3);
+    border-radius: var(--radius-full);
+    font-size: var(--type-caption);
+    color: var(--color-text-secondary);
+}
+
+.bkd__footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.bkd__footer-right {
+    display: flex;
+    gap: var(--space-2);
+}
+</style>

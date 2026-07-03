@@ -1,3 +1,4 @@
+import {hasTenantAdminAuthority} from '../../modules/authz/evaluator/policies';
 import {PluginLoader} from '../../modules/plugins';
 import Component from './Component';
 
@@ -12,6 +13,16 @@ export default class PluginComponent extends Component<PluginComponentConfig> {
     constructor(name: string) {
         super(`plugin:${name}`, {config_base: {name}});
         this.pluginName = name;
+        // Plugins are per-instance — enabling is an org-admin action, not
+        // platform-admin. Re-gate the default setconfig accordingly.
+        this.addMethod<{config: Partial<PluginComponentConfig>}>(
+            'setconfig',
+            (params) => this.setConfig(params.config),
+            {
+                checkPermissions: (sender) =>
+                    sender.isTrusted() || hasTenantAdminAuthority(sender)
+            }
+        );
     }
 
     protected override checkConfigKey(key: string, value: any): boolean {
@@ -39,7 +50,7 @@ export default class PluginComponent extends Component<PluginComponentConfig> {
                 if (value) {
                     await PluginLoader.enablePlugin(name);
                 } else {
-                    PluginLoader.disablePlugin(name);
+                    await PluginLoader.disablePlugin(name);
                 }
                 super.applyConfigKey(key, value, config, init);
 

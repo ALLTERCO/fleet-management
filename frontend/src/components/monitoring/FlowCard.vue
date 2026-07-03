@@ -1,7 +1,7 @@
 <template>
-    <router-link :to="to" class="block">
+    <router-link :to="to" class="block h-full">
         <div
-            class="flow-card p-4 rounded-lg border transition-colors"
+            class="flow-card p-4 rounded-lg border transition-colors h-full"
             :class="cardClass"
             :title="tooltip"
         >

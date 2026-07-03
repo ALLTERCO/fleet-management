@@ -1,0 +1,163 @@
+/* ══════════════════════════════════════════════════════
+   KIOSK MODE — Wall display / always-on screen
+   ══════════════════════════════════════════════════════ */
+
+body.kiosk .nav,
+body.kiosk .sb-fleet,
+body.kiosk .ph {
+    display: none;
+}
+body.kiosk .main {
+    margin-left: 0;
+    padding: var(--space-3);
+}
+body.kiosk .bento-grid {
+    gap: 10px;
+}
+body.kiosk .bento {
+    gap: 10px;
+}
+
+/* Disable glass on kiosk — underpowered GPU can't handle backdrop-filter */
+body.kiosk .do-panel,
+body.kiosk .ed,
+body.kiosk .ec,
+body.kiosk .modal-backdrop {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border-medium);
+}
+
+/* Disable 3D transforms on kiosk — perspective/rotateX thrash the GPU */
+body.kiosk .ec:hover,
+body.kiosk .dc:hover {
+    transform: none;
+}
+body.kiosk .ec::before {
+    display: none;
+}
+
+/* overflow:clip fallback for older WebView (< Chrome 90) */
+body.kiosk .ec {
+    overflow: hidden;
+}
+
+/* Hide noise/ambient overlays on kiosk for GPU perf */
+body.kiosk::before,
+body.kiosk::after {
+    display: none;
+}
+
+/* ── Touch Targets (44px minimum, kiosk only) ── */
+body.kiosk .nav-item,
+body.kiosk .nav-sub-item,
+body.kiosk .nav-section-toggle,
+body.kiosk .filter-chip,
+body.kiosk .btn,
+body.kiosk .dropdown-item {
+    min-height: 44px;
+}
+body.kiosk .btn-sm {
+    padding: 10px 16px;
+}
+
+/* ── Active States (touch feedback, mirrors :hover) ── */
+.nav-item:active {
+    background: rgba(249, 250, 250, 0.04);
+    color: var(--color-text-secondary);
+}
+.nav-sub-item:active {
+    color: var(--color-text-secondary);
+    background: rgba(249, 250, 250, 0.04);
+}
+.filter-chip:active {
+    border-color: var(--color-border-medium);
+    color: var(--color-text-secondary);
+}
+.btn:active {
+    filter: brightness(1.06);
+}
+.btn-primary:active {
+    background: var(--color-primary);
+}
+.btn-icon:active {
+    background: var(--color-surface-3);
+    border-color: var(--color-border-medium);
+    color: var(--color-text-primary);
+}
+.auto-card:active {
+    border-color: var(--color-border-medium);
+}
+.set-row:active {
+    background: rgba(184, 197, 212, 0.02);
+}
+
+/* ── Reduced Motion (manual class for embedded devices) ── */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+}
+.reduce-motion .pulse-batt,
+.reduce-motion .blink-err,
+.reduce-motion .pulse-warn {
+    animation-duration: 2s;
+    animation-iteration-count: infinite;
+}
+
+/* ── Small Wall Display (320×480) ── */
+@media (max-width: 480px) {
+    .bento-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 8px;
+    }
+    .bento {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 8px;
+    }
+    .sec-hdr {
+        padding: var(--space-1) 0;
+    }
+    .sec-t {
+        font-size: var(--text-xs);
+    }
+    .ph h1 {
+        font-size: var(--text-lg);
+    }
+    .filter-bar {
+        gap: var(--space-1);
+    }
+    .filter-chip {
+        font-size: var(--type-body);
+        padding: 8px 10px;
+    }
+    .modal {
+        max-width: calc(100vw - 16px);
+        max-height: calc(100vh - 16px);
+    }
+    .stat-card {
+        min-width: 120px;
+        padding: 12px;
+    }
+    .stat-value {
+        font-size: var(--type-subheading);
+    }
+}
+
+/* ── Medium Wall Display X2i (480×854) ── */
+@media (min-width: 481px) and (max-width: 600px) {
+    .bento-grid {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 10px;
+    }
+    .bento {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 10px;
+    }
+    .ph h1 {
+        font-size: var(--text-xl);
+    }
+}

@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 494" width="860" height="494" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Anatomy of the four WebSocket frame shapes: request, success reply, error reply, and server push">
+  <title>Anatomy of a frame</title>
+  <desc>One socket carries four frame shapes. A request carries an id you pick. The success and error replies echo the same id, so you match them to your call. A pushed NotifyStatus has no id — it is an unsolicited server event, and you keep its streamId to resume after a reconnect.</desc>
+  <rect x="0" y="0" width="860" height="494" fill="#ffffff"/>
+
+  <text x="30" y="34" font-size="15" font-weight="700" fill="#122A4F">Anatomy of a frame</text>
+  <text x="30" y="53" font-size="11.5" fill="#6B7A90">One connection carries four kinds of message. The <tspan font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">id</tspan> tells a reply apart from a push.</text>
+
+  <!-- Card 1: Request -->
+  <rect x="30" y="72" width="800" height="92" rx="8" fill="#FBFCFE" stroke="#E4EBF3" stroke-width="1"/>
+  <rect x="30" y="72" width="4" height="92" fill="#4495D1"/>
+  <circle cx="52" cy="96" r="5" fill="#4495D1"/>
+  <text x="64" y="100" font-size="12.5" font-weight="700" fill="#122A4F">Request<tspan font-weight="400" fill="#8A97A8">  — you → Fleet Manager</tspan></text>
+  <rect x="714" y="84" width="110" height="20" rx="10" fill="#EAF6FD"/>
+  <text x="769" y="98" text-anchor="middle" font-size="10.5" font-weight="600" fill="#2C6C99">request</text>
+  <text x="64" y="130" font-size="11.5" font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">{ <tspan font-weight="700" fill="#2C6C99">"id": 1</tspan>, "src": "my-client", <tspan font-weight="700" fill="#122A4F">"dst": "FLEET_MANAGER"</tspan>, "method": "device.List", "params": {} }</text>
+  <text x="64" y="152" font-size="10.5" fill="#6B7A90">You choose the <tspan font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">id</tspan> and <tspan font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">src</tspan>. Send <tspan font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">dst</tspan> as <tspan font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">FLEET_MANAGER</tspan>, or a device's id to reach that device.</text>
+
+  <!-- Card 2: Success reply -->
+  <rect x="30" y="176" width="800" height="92" rx="8" fill="#FBFCFE" stroke="#E4EBF3" stroke-width="1"/>
+  <rect x="30" y="176" width="4" height="92" fill="#2E9E6B"/>
+  <circle cx="52" cy="200" r="5" fill="#2E9E6B"/>
+  <text x="64" y="204" font-size="12.5" font-weight="700" fill="#122A4F">Success reply<tspan font-weight="400" fill="#8A97A8">  — Fleet Manager → you</tspan></text>
+  <rect x="708" y="188" width="116" height="20" rx="10" fill="#EAF7F0"/>
+  <text x="766" y="202" text-anchor="middle" font-size="10.5" font-weight="600" fill="#2E7D5B">reply · id-matched</text>
+  <text x="64" y="234" font-size="11.5" font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">{ <tspan font-weight="700" fill="#2E7D5B">"id": 1</tspan>, "src": "FLEET_MANAGER", "dst": "my-client", <tspan font-weight="700" fill="#2E7D5B">"result"</tspan>: { … } }</text>
+  <text x="64" y="256" font-size="10.5" fill="#6B7A90">The <tspan font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">id</tspan> matches your request, so this is its reply. The answer is in <tspan font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">result</tspan>.</text>
+
+  <!-- Card 3: Error reply -->
+  <rect x="30" y="280" width="800" height="92" rx="8" fill="#FBFCFE" stroke="#E4EBF3" stroke-width="1"/>
+  <rect x="30" y="280" width="4" height="92" fill="#DD344C"/>
+  <circle cx="52" cy="304" r="5" fill="#DD344C"/>
+  <text x="64" y="308" font-size="12.5" font-weight="700" fill="#122A4F">Error reply<tspan font-weight="400" fill="#8A97A8">  — Fleet Manager → you</tspan></text>
+  <rect x="708" y="292" width="116" height="20" rx="10" fill="#FDECEE"/>
+  <text x="766" y="306" text-anchor="middle" font-size="10.5" font-weight="600" fill="#B42318">reply · id-matched</text>
+  <text x="64" y="338" font-size="11.5" font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">{ <tspan font-weight="700" fill="#B42318">"id": 1</tspan>, "src": "FLEET_MANAGER", "dst": "my-client", <tspan font-weight="700" fill="#B42318">"error"</tspan>: { "code": -32601, "message": "…" } }</text>
+  <text x="64" y="360" font-size="10.5" fill="#6B7A90">Same <tspan font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">id</tspan>, but you get <tspan font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">error</tspan> instead of <tspan font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">result</tspan>. A failed call still replies on its <tspan font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">id</tspan>.</text>
+
+  <!-- Card 4: Server push -->
+  <rect x="30" y="384" width="800" height="92" rx="8" fill="#FBFCFE" stroke="#E4EBF3" stroke-width="1"/>
+  <rect x="30" y="384" width="4" height="92" fill="#7A5AF0"/>
+  <circle cx="52" cy="408" r="5" fill="#7A5AF0"/>
+  <text x="64" y="412" font-size="12.5" font-weight="700" fill="#122A4F">Server push<tspan font-weight="400" fill="#8A97A8">  — Fleet Manager → you (NotifyStatus)</tspan></text>
+  <rect x="726" y="396" width="98" height="20" rx="10" fill="#F1EEFC"/>
+  <text x="775" y="410" text-anchor="middle" font-size="10.5" font-weight="600" fill="#6A5AB8">push · no id</text>
+  <text x="64" y="442" font-size="11.5" font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">{ "method": "Shelly.Status", "params": { "shellyID": "…", "status": { … } }, <tspan font-weight="700" fill="#6A5AB8">"streamId"</tspan>: "1684…-0" }</text>
+  <text x="64" y="464" font-size="10.5" fill="#6B7A90">No <tspan font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">id</tspan> — the server sends this on its own, so it can arrive any time. Save the last <tspan font-family="ui-monospace,Menlo,monospace" fill="#3A4A5E">streamId</tspan> to catch up later.</text>
+</svg>

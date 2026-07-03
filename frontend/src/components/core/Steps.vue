@@ -1,17 +1,22 @@
 <template>
     <div>
-        <div class="w-full flex flex-row gap-2 text-center">
+        <div class="w-full flex flex-row gap-2 text-center" role="group" aria-label="Wizard steps">
             <div
                 v-for="(_, id) in Array(steps)"
                 :key="id"
                 class="flex-1 hover:cursor-pointer"
+                role="button"
+                tabindex="0"
+                :aria-current="current === id + 1 ? 'step' : undefined"
+                :aria-label="`Step ${id + 1}`"
                 @click="emit('click', id + 1)"
+                @keydown="onKey($event, id + 1)"
             >
                 <slot :id="id + 1" name="stepTitle">
                     <span
                         class="font-semibold"
                         :class="{
-                            'step-inactive': current != id + 1,
+                            'step-inactive': current !== id + 1,
                         }"
                     >
                         Step {{ id + 1 }}
@@ -20,8 +25,8 @@
                 <div
                     class="w-full h-2 rounded-lg mt-1"
                     :class="{
-                        'step-bar--active': current == id + 1,
-                        'step-bar--inactive': current != id + 1,
+                        'step-bar--active': current === id + 1,
+                        'step-bar--inactive': current !== id + 1,
                     }"
                 />
             </div>
@@ -42,6 +47,13 @@ const steps = toRef(props, 'steps');
 const emit = defineEmits<{
     click: [number];
 }>();
+
+function onKey(event: KeyboardEvent, stepId: number): void {
+    if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        emit('click', stepId);
+    }
+}
 </script>
 
 <style scoped>

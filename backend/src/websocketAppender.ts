@@ -1,6 +1,6 @@
 import {format} from 'node:util';
 import type {AppenderModule, LoggingEvent} from 'log4js';
-import {emitConsoleLogBatch} from './modules/ShellyEvents';
+import {tuning} from './config/tuning';
 
 function getLogColor(level: string): string {
     switch (level) {
@@ -21,7 +21,12 @@ function getLogColor(level: string): string {
     }
 }
 
-type LogEntry = {coloredPart: string; log: string; color: string};
+type LogEntry = {
+    coloredPart: string;
+    log: string;
+    color: string;
+    category?: string;
+};
 const logBuffer: LogEntry[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let emitting = false;
@@ -30,12 +35,15 @@ function flushLogs() {
     flushTimer = null;
     if (logBuffer.length === 0) return;
     emitting = true;
-    try {
-        const batch = logBuffer.splice(0);
-        emitConsoleLogBatch(batch);
-    } finally {
-        emitting = false;
-    }
+    const batch = logBuffer.splice(0);
+    void import('./modules/ShellyEvents.js')
+        .then(({emitConsoleLogBatch}) => emitConsoleLogBatch(batch))
+        // Silent on purpose — this IS the log appender; routing the
+        // failure through log4js would recurse back into us.
+        .catch(() => {})
+        .finally(() => {
+            emitting = false;
+        });
 }
 
 function websocketAppender(): (loggingEvent: LoggingEvent) => void {
@@ -45,9 +53,14 @@ function websocketAppender(): (loggingEvent: LoggingEvent) => void {
         const message = format(...loggingEvent.data);
         const logColor = getLogColor(loggingEvent.level.levelStr);
 
-        logBuffer.push({coloredPart, log: message, color: logColor});
+        logBuffer.push({
+            coloredPart,
+            log: message,
+            color: logColor,
+            category: loggingEvent.categoryName
+        });
         if (!flushTimer) {
-            flushTimer = setTimeout(flushLogs, 250);
+            flushTimer = setTimeout(flushLogs, tuning.ws.logFlushMs);
         }
     };
 }

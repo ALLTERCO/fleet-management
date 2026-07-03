@@ -1,1255 +1,1284 @@
 {
-    "annotations": {
-        "list": [
-            {
-                "builtIn": 1,
-                "datasource": "fm",
-                "enable": true,
-                "hide": true,
-                "iconColor": "rgba(0, 211, 255, 1)",
-                "limit": 100,
-                "name": "Annotations & Alerts",
-                "showIn": 0,
-                "target": {
-                    "limit": 100,
-                    "matchAny": false,
-                    "tags": [],
-                    "type": "dashboard"
-                },
-                "type": "dashboard"
-            }
-        ]
-    },
-    "description": "A dashboard that shows your home energy usage. Using Prometheus, Home Assistant and the Emporia Vue 2.",
-    "editable": true,
-    "fiscalYearStartMonth": 0,
-    "graphTooltip": 0,
-    "id": 6,
-    "links": [],
-    "panels": [
-        {
-            "datasource": "fm",
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "thresholds"
-                    },
-                    "mappings": [],
-                    "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                            {
-                                "color": "green",
-                                "value": null
-                            },
-                            {
-                                "color": "light-orange",
-                                "value": 300
-                            },
-                            {
-                                "color": "dark-orange",
-                                "value": 500
-                            },
-                            {
-                                "color": "dark-red",
-                                "value": 1000
-                            }
-                        ]
-                    },
-                    "unit": "watt"
-                },
-                "overrides": []
-            },
-            "gridPos": {
-                "h": 5,
-                "w": 12,
-                "x": 0,
-                "y": 0
-            },
-            "id": 28,
-            "options": {
-                "colorMode": "background",
-                "graphMode": "none",
-                "justifyMode": "center",
-                "orientation": "auto",
-                "percentChangeColorMode": "standard",
-                "reduceOptions": {
-                    "calcs": ["lastNotNull"],
-                    "fields": "",
-                    "values": false
-                },
-                "showPercentChange": false,
-                "text": {},
-                "textMode": "auto",
-                "wideLayout": true
-            },
-            "pluginVersion": "11.5.0",
-            "targets": [
-                {
-                    "datasource": "fm",
-                    "editorMode": "code",
-                    "format": "table",
-                    "rawQuery": true,
-                    "rawSql": "SELECT\n  MIN(se.external_id) id,\n  MAX(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (value_max / 1000) * 60 ELSE value_max END) - MIN(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (prev_val_min / 1000) * 60 ELSE prev_val_min END) watts\nFROM device.mv__em_total_act_5_min_history_20_days s\nLEFT JOIN device.list se ON s.id = se.id\nWHERE\n    1 = 1\n    AND s.id IN($devices)\n    AND s.field_group IN (\n        'emdata:*.total_act',\n        'em1data:*.total_act_energy',\n        'switch:*.aenergy.total'\n    )\n    AND s.bucket BETWEEN now() - '1 hour'::INTERVAL AND NOW()\nGROUP BY\n  s.id\nORDER BY watts DESC\nLIMIT 5;",
-                    "refId": "A",
-                    "sql": {
-                        "columns": [
-                            {
-                                "parameters": [],
-                                "type": "function"
-                            }
-                        ],
-                        "groupBy": [
-                            {
-                                "property": {
-                                    "type": "string"
-                                },
-                                "type": "groupBy"
-                            }
-                        ],
-                        "limit": 50
-                    }
-                }
-            ],
-            "title": "Top 5 Devices Currently Running",
-            "transformations": [
-                {
-                    "id": "rowsToFields",
-                    "options": {
-                        "mappings": [
-                            {
-                                "fieldName": "watts",
-                                "handlerKey": "field.value"
-                            },
-                            {
-                                "fieldName": "external_id",
-                                "handlerKey": "field.name"
-                            }
-                        ]
-                    }
-                }
-            ],
-            "type": "stat"
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "fm",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "limit": 100,
+        "name": "Annotations & Alerts",
+        "showIn": 0,
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [],
+          "type": "dashboard"
         },
-        {
-            "datasource": "fm",
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "thresholds"
-                    },
-                    "fieldMinMax": false,
-                    "mappings": [],
-                    "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                            {
-                                "color": "light-orange",
-                                "value": null
-                            }
-                        ]
-                    },
-                    "unit": "watth"
-                },
-                "overrides": [
-                    {
-                        "matcher": {
-                            "id": "byName",
-                            "options": "power_kwh{domain=\"sensor\", entity=\"sensor.power_freels_vue_123_1mon\", friendly_name=\"Total Power 1Mon\", instance=\"192.168.2.233:8123\", job=\"zzzz\"}"
-                        },
-                        "properties": [
-                            {
-                                "id": "unit",
-                                "value": "watt"
-                            }
-                        ]
-                    }
-                ]
-            },
-            "gridPos": {
-                "h": 5,
-                "w": 6,
-                "x": 12,
-                "y": 0
-            },
-            "id": 9,
-            "interval": "1d",
-            "options": {
-                "colorMode": "value",
-                "graphMode": "area",
-                "justifyMode": "auto",
-                "orientation": "horizontal",
-                "percentChangeColorMode": "standard",
-                "reduceOptions": {
-                    "calcs": ["lastNotNull"],
-                    "fields": "/^watts$/",
-                    "values": false
-                },
-                "showPercentChange": true,
-                "text": {},
-                "textMode": "auto",
-                "wideLayout": true
-            },
-            "pluginVersion": "11.5.0",
-            "targets": [
-                {
-                    "datasource": "fm",
-                    "editorMode": "code",
-                    "format": "table",
-                    "rawQuery": true,
-                    "rawSql": "SELECT\n    t1.bucket,\n    SUM(t1.diff) watts\nFROM (\n    SELECT\n      s.id,\n      s.bucket::date,\n      MAX(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (value_max / 1000) * 60 ELSE value_max END) - MIN(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (prev_val_min / 1000) * 60 ELSE prev_val_min END) diff\n    FROM device.mv__em_total_act_5_min_history_20_days s\n    WHERE\n        1 = 1\n        AND s.id IN($devices)\n        AND s.field_group IN (\n            'emdata:*.total_act',\n            'em1data:*.total_act_energy',\n            'switch:*.aenergy.total'\n        )\n        AND s.bucket BETWEEN date_trunc('month', current_date) AND NOW()\n    GROUP BY\n      s.id,\n      s.bucket::date\n  ) t1\n  GROUP BY\n    t1.bucket",
-                    "refId": "A",
-                    "sql": {
-                        "columns": [
-                            {
-                                "parameters": [],
-                                "type": "function"
-                            }
-                        ],
-                        "groupBy": [
-                            {
-                                "property": {
-                                    "type": "string"
-                                },
-                                "type": "groupBy"
-                            }
-                        ],
-                        "limit": 50
-                    }
-                }
-            ],
-            "timeFrom": "1M",
-            "title": "Current Month Total Power Usage",
-            "type": "stat"
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "A dashboard that shows your home energy usage. Using Prometheus, Home Assistant and the Emporia Vue 2.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 6,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "fm",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "light-orange",
+                "value": 300
+              },
+              {
+                "color": "dark-orange",
+                "value": 500
+              },
+              {
+                "color": "dark-red",
+                "value": 1000
+              }
+            ]
+          },
+          "unit": "watt"
         },
-        {
-            "datasource": "fm",
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "thresholds"
-                    },
-                    "mappings": [],
-                    "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                            {
-                                "color": "green",
-                                "value": null
-                            }
-                        ]
-                    }
-                },
-                "overrides": [
-                    {
-                        "matcher": {
-                            "id": "byType",
-                            "options": "number"
-                        },
-                        "properties": [
-                            {
-                                "id": "decimals",
-                                "value": 2
-                            },
-                            {
-                                "id": "unit",
-                                "value": "currencyBGN"
-                            }
-                        ]
-                    }
-                ]
-            },
-            "gridPos": {
-                "h": 5,
-                "w": 6,
-                "x": 18,
-                "y": 0
-            },
-            "id": 11,
-            "options": {
-                "colorMode": "value",
-                "graphMode": "none",
-                "justifyMode": "auto",
-                "orientation": "auto",
-                "percentChangeColorMode": "standard",
-                "reduceOptions": {
-                    "calcs": ["lastNotNull"],
-                    "fields": "",
-                    "values": false
-                },
-                "showPercentChange": false,
-                "text": {},
-                "textMode": "value",
-                "wideLayout": true
-            },
-            "pluginVersion": "11.5.0",
-            "targets": [
-                {
-                    "datasource": "fm",
-                    "editorMode": "code",
-                    "format": "table",
-                    "rawQuery": true,
-                    "rawSql": "SELECT\n    SUM(t1.diff) * $watt_price AS price\nFROM (\n    SELECT\n      s.id,\n      s.bucket::date,\n      MAX(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (value_max / 1000) * 60 ELSE value_max END) - MIN(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (prev_val_min / 1000) * 60 ELSE prev_val_min END) diff\n    FROM device.mv__em_total_act_5_min_history_20_days s\n    WHERE\n        1 = 1\n        AND s.id IN($devices)\n        AND s.field_group IN (\n            'emdata:*.total_act',\n            'em1data:*.total_act_energy',\n            'switch:*.aenergy.total'\n        )\n        AND s.bucket BETWEEN date_trunc('month', current_date) AND NOW()\n    GROUP BY\n      s.id,\n      s.bucket::date\n  ) t1\n",
-                    "refId": "A",
-                    "sql": {
-                        "columns": [
-                            {
-                                "parameters": [],
-                                "type": "function"
-                            }
-                        ],
-                        "groupBy": [
-                            {
-                                "property": {
-                                    "type": "string"
-                                },
-                                "type": "groupBy"
-                            }
-                        ],
-                        "limit": 50
-                    }
-                }
-            ],
-            "title": "Current Month Bill ",
-            "type": "stat"
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 28,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
         },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.5.0",
+      "targets": [
         {
-            "datasource": "fm",
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "thresholds"
-                    },
-                    "mappings": [],
-                    "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                            {
-                                "color": "semi-dark-orange",
-                                "value": null
-                            }
-                        ]
-                    },
-                    "unit": "watth"
-                },
-                "overrides": [
-                    {
-                        "matcher": {
-                            "id": "byName",
-                            "options": "power_kwh{domain=\"sensor\", entity=\"sensor.power_freels_vue_123_1d\", friendly_name=\"Total Power 1D\", instance=\"192.168.2.233:8123\", job=\"zzzz\"}"
-                        },
-                        "properties": [
-                            {
-                                "id": "unit",
-                                "value": "kwatth"
-                            }
-                        ]
-                    }
-                ]
-            },
-            "gridPos": {
-                "h": 5,
-                "w": 6,
-                "x": 0,
-                "y": 5
-            },
-            "id": 18,
-            "options": {
-                "colorMode": "value",
-                "graphMode": "area",
-                "justifyMode": "auto",
-                "orientation": "horizontal",
-                "percentChangeColorMode": "standard",
-                "reduceOptions": {
-                    "calcs": ["lastNotNull"],
-                    "fields": "",
-                    "values": false
-                },
-                "showPercentChange": true,
-                "text": {},
-                "textMode": "auto",
-                "wideLayout": true
-            },
-            "pluginVersion": "11.5.0",
-            "targets": [
-                {
-                    "datasource": "fm",
-                    "editorMode": "code",
-                    "format": "table",
-                    "rawQuery": true,
-                    "rawSql": "SELECT\n    t1.b bucket,\n    sum(diff) watts\nFROM (\n    SELECT\n      s.id,\n      time_bucket('1 hours', s.bucket) b,\n      MAX(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (value_max / 1000) * 60 ELSE value_max END) - MIN(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (prev_val_min / 1000) * 60 ELSE prev_val_min END) diff\n    FROM device.mv__em_total_act_5_min_history_20_days s\n    WHERE\n        1 = 1\n        AND s.id IN($devices)\n        AND s.field_group IN (\n            'emdata:*.total_act',\n            'em1data:*.total_act_energy',\n            'switch:*.aenergy.total'\n        )\n        AND s.bucket BETWEEN now() - '1 day'::INTERVAL AND NOW()\n    GROUP BY\n      s.id,\n      b\n) t1\ngroup by t1.b",
-                    "refId": "A",
-                    "sql": {
-                        "columns": [
-                            {
-                                "parameters": [],
-                                "type": "function"
-                            }
-                        ],
-                        "groupBy": [
-                            {
-                                "property": {
-                                    "type": "string"
-                                },
-                                "type": "groupBy"
-                            }
-                        ],
-                        "limit": 50
-                    }
-                }
+          "datasource": "fm",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  MIN(se.external_id) id,\n  SUM(s.sum_val) energy_wh\nFROM device_em.energy_15min s\nLEFT JOIN device.list se ON s.device = se.id\nWHERE\n    1 = 1\n    AND s.device IN($devices)\n    AND s.tag = 'total_act_energy'\n    AND s.bucket BETWEEN now() - '1 hour'::INTERVAL AND NOW()\nGROUP BY\n  s.device\nORDER BY energy_wh DESC\nLIMIT 5;",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
             ],
-            "timeFrom": "now/d",
-            "title": "Current Day Power Total",
-            "type": "stat"
-        },
-        {
-            "datasource": "fm",
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "thresholds"
-                    },
-                    "decimals": 2,
-                    "mappings": [],
-                    "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                            {
-                                "color": "green",
-                                "value": null
-                            },
-                            {
-                                "color": "red",
-                                "value": 80
-                            }
-                        ]
-                    }
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
                 },
-                "overrides": [
-                    {
-                        "matcher": {
-                            "id": "byName",
-                            "options": "power_kwh{domain=\"sensor\", entity=\"sensor.power_freels_vue_123_1d\", friendly_name=\"Total Power 1D\", instance=\"192.168.2.233:8123\", job=\"zzzz\"}"
-                        },
-                        "properties": [
-                            {
-                                "id": "unit",
-                                "value": "kwatth"
-                            }
-                        ]
-                    }
-                ]
-            },
-            "gridPos": {
-                "h": 5,
-                "w": 6,
-                "x": 6,
-                "y": 5
-            },
-            "id": 39,
-            "options": {
-                "colorMode": "value",
-                "graphMode": "none",
-                "justifyMode": "auto",
-                "orientation": "auto",
-                "percentChangeColorMode": "standard",
-                "reduceOptions": {
-                    "calcs": ["lastNotNull"],
-                    "fields": "",
-                    "values": false
-                },
-                "showPercentChange": false,
-                "text": {},
-                "textMode": "auto",
-                "wideLayout": true
-            },
-            "pluginVersion": "11.5.0",
-            "targets": [
-                {
-                    "datasource": "fm",
-                    "editorMode": "code",
-                    "format": "table",
-                    "rawQuery": true,
-                    "rawSql": "SELECT\n    SUM(t1.diff) * $watt_price AS price\nFROM (\n    SELECT\n      s.id,\n      s.bucket::date,\n      MAX(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (value_max / 1000) * 60 ELSE value_max END) - MIN(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (prev_val_min / 1000) * 60 ELSE prev_val_min END) diff\n    FROM device.mv__em_total_act_5_min_history_20_days s\n    WHERE\n        1 = 1\n        AND s.id IN($devices)\n        AND s.field_group IN (\n            'emdata:*.total_act',\n            'em1data:*.total_act_energy',\n            'switch:*.aenergy.total'\n        )\n        AND s.bucket BETWEEN now()::date::timestamp AND NOW()\n    GROUP BY\n      s.id,\n      s.bucket::date\n  ) t1",
-                    "refId": "A",
-                    "sql": {
-                        "columns": [
-                            {
-                                "parameters": [],
-                                "type": "function"
-                            }
-                        ],
-                        "groupBy": [
-                            {
-                                "property": {
-                                    "type": "string"
-                                },
-                                "type": "groupBy"
-                            }
-                        ],
-                        "limit": 50
-                    }
-                }
+                "type": "groupBy"
+              }
             ],
-            "timeFrom": "now/d",
-            "title": "Current Day Power Cost",
-            "type": "stat"
-        },
-        {
-            "datasource": "fm",
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "thresholds"
-                    },
-                    "mappings": [],
-                    "thresholds": {
-                        "mode": "percentage",
-                        "steps": [
-                            {
-                                "color": "green",
-                                "value": null
-                            },
-                            {
-                                "color": "#6ED0E0",
-                                "value": 30
-                            },
-                            {
-                                "color": "#EAB839",
-                                "value": 60
-                            },
-                            {
-                                "color": "red",
-                                "value": 90
-                            }
-                        ]
-                    },
-                    "unit": "watth"
-                },
-                "overrides": []
-            },
-            "gridPos": {
-                "h": 9,
-                "w": 12,
-                "x": 12,
-                "y": 5
-            },
-            "id": 6,
-            "options": {
-                "displayMode": "lcd",
-                "legend": {
-                    "calcs": [],
-                    "displayMode": "list",
-                    "placement": "bottom",
-                    "showLegend": false
-                },
-                "maxVizHeight": 300,
-                "minVizHeight": 16,
-                "minVizWidth": 8,
-                "namePlacement": "left",
-                "orientation": "horizontal",
-                "reduceOptions": {
-                    "calcs": ["lastNotNull"],
-                    "fields": "",
-                    "values": false
-                },
-                "showUnfilled": true,
-                "sizing": "auto",
-                "text": {},
-                "valueMode": "color"
-            },
-            "pluginVersion": "11.5.0",
-            "targets": [
-                {
-                    "datasource": "fm",
-                    "editorMode": "code",
-                    "format": "table",
-                    "rawQuery": true,
-                    "rawSql": "SELECT\n  ss.external_id,\n  MAX(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (value_max / 1000) * 60 ELSE value_max END) -\n  MIN(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (prev_val_min / 1000) * 60 ELSE prev_val_min END) watts\nFROM device.mv__em_total_act_5_min_history_20_days s\nLEFT JOIN device.list ss ON s.id = ss.id\nWHERE\n    1 = 1\n    AND s.id IN($devices)\n    AND s.field_group IN (\n        'emdata:*.total_act',\n        'em1data:*.total_act_energy',\n        'switch:*.aenergy.total'\n    )\n    AND s.bucket BETWEEN date_trunc('month', now()) AND NOW()\nGROUP BY\n  s.id,\n  ss.external_id",
-                    "refId": "A",
-                    "sql": {
-                        "columns": [
-                            {
-                                "parameters": [],
-                                "type": "function"
-                            }
-                        ],
-                        "groupBy": [
-                            {
-                                "property": {
-                                    "type": "string"
-                                },
-                                "type": "groupBy"
-                            }
-                        ],
-                        "limit": 50
-                    }
-                }
-            ],
-            "title": "Month Power Total",
-            "transformations": [
-                {
-                    "id": "partitionByValues",
-                    "options": {
-                        "fields": ["external_id"],
-                        "keepFields": false,
-                        "naming": {
-                            "asLabels": false
-                        }
-                    }
-                }
-            ],
-            "type": "bargauge"
-        },
-        {
-            "datasource": "fm",
-            "description": "",
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "palette-classic"
-                    },
-                    "custom": {
-                        "axisBorderShow": false,
-                        "axisCenteredZero": false,
-                        "axisColorMode": "text",
-                        "axisLabel": "",
-                        "axisPlacement": "auto",
-                        "barAlignment": 0,
-                        "barWidthFactor": 0.6,
-                        "drawStyle": "bars",
-                        "fillOpacity": 100,
-                        "gradientMode": "none",
-                        "hideFrom": {
-                            "legend": false,
-                            "tooltip": false,
-                            "viz": false
-                        },
-                        "insertNulls": false,
-                        "lineInterpolation": "linear",
-                        "lineWidth": 1,
-                        "pointSize": 5,
-                        "scaleDistribution": {
-                            "type": "linear"
-                        },
-                        "showPoints": "never",
-                        "spanNulls": true,
-                        "stacking": {
-                            "group": "A",
-                            "mode": "normal"
-                        },
-                        "thresholdsStyle": {
-                            "mode": "off"
-                        }
-                    },
-                    "mappings": [],
-                    "min": 0,
-                    "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                            {
-                                "color": "green",
-                                "value": null
-                            },
-                            {
-                                "color": "red",
-                                "value": 80
-                            }
-                        ]
-                    },
-                    "unit": "watt"
-                },
-                "overrides": []
-            },
-            "gridPos": {
-                "h": 9,
-                "w": 12,
-                "x": 0,
-                "y": 10
-            },
-            "hideTimeOverride": true,
-            "id": 23,
-            "interval": "1h",
-            "options": {
-                "legend": {
-                    "calcs": [],
-                    "displayMode": "list",
-                    "placement": "bottom",
-                    "showLegend": true
-                },
-                "tooltip": {
-                    "hideZeros": false,
-                    "maxHeight": 600,
-                    "mode": "single",
-                    "sort": "none"
-                }
-            },
-            "pluginVersion": "11.5.0",
-            "targets": [
-                {
-                    "datasource": "fm",
-                    "editorMode": "code",
-                    "format": "table",
-                    "rawQuery": true,
-                    "rawSql": "SELECT\n    s.external_id,\n    $__timeGroupAlias(t1.bucket, '1h'),\n    pw watts\nFROM (\n    WITH main as (\n        SELECT\n            date_trunc('hour', s.bucket) bucket,\n            s.id,\n            MAX(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (value_max / 1000) * 60 ELSE value_max END) watts,\n            ROW_NUMBER () OVER (PARTITION BY s.id ORDER BY s.id, date_trunc('hour', s.bucket)) rn\n        FROM device.mv__em_total_act_5_min_history_20_days s\n        WHERE\n            s.id IN($devices)\n            AND s.field_group IN (\n                'emdata:*.total_act',\n                'em1data:*.total_act_energy',\n                'switch:*.aenergy.total'\n            )\n            AND s.bucket BETWEEN now()::date - interval '24h' AND NOW()\n        GROUP BY\n            s.id,\n            date_trunc('hour', s.bucket)\n        ORDER BY\n            s.id\n    )\n    select\n        t1.*,\n        (t1.watts - CASE WHEN t2.watts IS NULL THEN 0 ELSE t2.watts END) pw\n        FROM main t1\n        LEFT JOIN main t2 ON t2.id = t1.id AND t2.rn = t1.rn - 1\n) t1\nLEFT JOIN device.list s ON s.id = t1.id",
-                    "refId": "A",
-                    "sql": {
-                        "columns": [
-                            {
-                                "parameters": [],
-                                "type": "function"
-                            }
-                        ],
-                        "groupBy": [
-                            {
-                                "property": {
-                                    "type": "string"
-                                },
-                                "type": "groupBy"
-                            }
-                        ],
-                        "limit": 50
-                    }
-                }
-            ],
-            "timeFrom": "now/d",
-            "title": "Hourly Power by Device",
-            "transformations": [
-                {
-                    "id": "partitionByValues",
-                    "options": {
-                        "fields": ["external_id"],
-                        "keepFields": true,
-                        "naming": {
-                            "asLabels": false
-                        }
-                    }
-                },
-                {
-                    "id": "filterFieldsByName",
-                    "options": {
-                        "byVariable": false,
-                        "include": {
-                            "pattern": "[\\S]+\\s(time|watts)"
-                        }
-                    }
-                }
-            ],
-            "type": "timeseries"
-        },
-        {
-            "datasource": "fm",
-            "description": "",
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "palette-classic"
-                    },
-                    "custom": {
-                        "hideFrom": {
-                            "legend": false,
-                            "tooltip": false,
-                            "viz": false
-                        }
-                    },
-                    "mappings": [],
-                    "unit": "watth"
-                },
-                "overrides": []
-            },
-            "gridPos": {
-                "h": 6,
-                "w": 12,
-                "x": 12,
-                "y": 14
-            },
-            "id": 38,
-            "options": {
-                "displayLabels": ["value"],
-                "legend": {
-                    "displayMode": "list",
-                    "placement": "right",
-                    "showLegend": true
-                },
-                "pieType": "pie",
-                "reduceOptions": {
-                    "calcs": ["lastNotNull"],
-                    "fields": "",
-                    "values": false
-                },
-                "tooltip": {
-                    "hideZeros": false,
-                    "maxHeight": 600,
-                    "mode": "single",
-                    "sort": "none"
-                }
-            },
-            "pluginVersion": "11.5.0",
-            "targets": [
-                {
-                    "datasource": "fm",
-                    "editorMode": "code",
-                    "format": "table",
-                    "rawQuery": true,
-                    "rawSql": "SELECT\n  MIN(se.external_id) id,\n  MAX(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (value_max / 1000) * 60 ELSE value_max END) - MIN(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (prev_val_min / 1000) * 60 ELSE prev_val_min END) watts\nFROM device.mv__em_total_act_5_min_history_20_days s\nLEFT JOIN device.list se ON s.id = se.id\nWHERE\n    1 = 1\n    AND s.id IN($devices)\n    AND s.field_group IN (\n        'emdata:*.total_act',\n        'em1data:*.total_act_energy',\n        'switch:*.aenergy.total'\n    )\n    AND s.bucket BETWEEN now() - '7 days'::INTERVAL AND NOW()\nGROUP BY\n  s.id\nORDER BY watts DESC\nLIMIT 5;",
-                    "refId": "A",
-                    "sql": {
-                        "columns": [
-                            {
-                                "parameters": [],
-                                "type": "function"
-                            }
-                        ],
-                        "groupBy": [
-                            {
-                                "property": {
-                                    "type": "string"
-                                },
-                                "type": "groupBy"
-                            }
-                        ],
-                        "limit": 50
-                    }
-                }
-            ],
-            "title": "Top 5 Devices Last 7 Days",
-            "transformations": [
-                {
-                    "id": "rowsToFields",
-                    "options": {
-                        "mappings": [
-                            {
-                                "fieldName": "watts",
-                                "handlerKey": "field.value"
-                            }
-                        ]
-                    }
-                }
-            ],
-            "type": "piechart"
-        },
-        {
-            "datasource": "fm",
-            "description": "",
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "palette-classic"
-                    },
-                    "custom": {
-                        "axisBorderShow": false,
-                        "axisCenteredZero": false,
-                        "axisColorMode": "text",
-                        "axisLabel": "",
-                        "axisPlacement": "auto",
-                        "barAlignment": 0,
-                        "barWidthFactor": 0.6,
-                        "drawStyle": "bars",
-                        "fillOpacity": 100,
-                        "gradientMode": "none",
-                        "hideFrom": {
-                            "legend": false,
-                            "tooltip": false,
-                            "viz": false
-                        },
-                        "insertNulls": false,
-                        "lineInterpolation": "linear",
-                        "lineWidth": 1,
-                        "pointSize": 5,
-                        "scaleDistribution": {
-                            "type": "linear"
-                        },
-                        "showPoints": "never",
-                        "spanNulls": false,
-                        "stacking": {
-                            "group": "A",
-                            "mode": "normal"
-                        },
-                        "thresholdsStyle": {
-                            "mode": "off"
-                        }
-                    },
-                    "mappings": [],
-                    "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                            {
-                                "color": "green",
-                                "value": null
-                            },
-                            {
-                                "color": "red",
-                                "value": 80
-                            }
-                        ]
-                    },
-                    "unit": "watth"
-                },
-                "overrides": [
-                    {
-                        "matcher": {
-                            "id": "byName",
-                            "options": "Time"
-                        },
-                        "properties": [
-                            {
-                                "id": "displayName"
-                            }
-                        ]
-                    },
-                    {
-                        "matcher": {
-                            "id": "byType",
-                            "options": "time"
-                        },
-                        "properties": [
-                            {
-                                "id": "custom.axisPlacement",
-                                "value": "hidden"
-                            }
-                        ]
-                    }
-                ]
-            },
-            "gridPos": {
-                "h": 8,
-                "w": 12,
-                "x": 0,
-                "y": 19
-            },
-            "hideTimeOverride": false,
-            "id": 37,
-            "interval": "24",
-            "maxDataPoints": 7,
-            "options": {
-                "legend": {
-                    "calcs": [],
-                    "displayMode": "list",
-                    "placement": "bottom",
-                    "showLegend": true
-                },
-                "tooltip": {
-                    "hideZeros": false,
-                    "maxHeight": 600,
-                    "mode": "multi",
-                    "sort": "none"
-                }
-            },
-            "pluginVersion": "11.5.0",
-            "targets": [
-                {
-                    "datasource": "fm",
-                    "editorMode": "code",
-                    "format": "table",
-                    "rawQuery": true,
-                    "rawSql": "SELECT\n    b bucket,\n    SUM(diff) watts\nFROM (\n    SELECT\n        s.id,\n        date_trunc('day', s.bucket) b,\n        MAX(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (s.value_max / 1000) * 60 ELSE s.value_max END) -\n        MIN(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (s.prev_val_min / 1000) * 60 ELSE s.prev_val_min END) diff\n    FROM device.mv__em_total_act_5_min_history_20_days s\n    WHERE\n        1 = 1\n        AND s.id IN($devices)\n        AND s.field_group IN (\n            'emdata:*.total_act',\n            'em1data:*.total_act_energy',\n            'switch:*.aenergy.total'\n        )\n        AND s.bucket BETWEEN date_trunc('day', now()) - INTERVAL '8 days' AND NOW()\n    GROUP BY\n        s.id,\n        b\n    ORDER BY b, s.id\n) x\nGROUP BY b",
-                    "refId": "A",
-                    "sql": {
-                        "columns": [
-                            {
-                                "parameters": [],
-                                "type": "function"
-                            }
-                        ],
-                        "groupBy": [
-                            {
-                                "property": {
-                                    "type": "string"
-                                },
-                                "type": "groupBy"
-                            }
-                        ],
-                        "limit": 50
-                    }
-                }
-            ],
-            "timeFrom": "7d",
-            "title": "Daily Power Usage ",
-            "type": "timeseries"
-        },
-        {
-            "datasource": "fm",
-            "fieldConfig": {
-                "defaults": {
-                    "color": {
-                        "mode": "palette-classic"
-                    },
-                    "custom": {
-                        "axisBorderShow": false,
-                        "axisCenteredZero": false,
-                        "axisColorMode": "text",
-                        "axisLabel": "",
-                        "axisPlacement": "auto",
-                        "barAlignment": 0,
-                        "barWidthFactor": 0.6,
-                        "drawStyle": "line",
-                        "fillOpacity": 61,
-                        "gradientMode": "none",
-                        "hideFrom": {
-                            "graph": false,
-                            "legend": false,
-                            "tooltip": false,
-                            "viz": false
-                        },
-                        "insertNulls": false,
-                        "lineInterpolation": "smooth",
-                        "lineWidth": 1,
-                        "pointSize": 5,
-                        "scaleDistribution": {
-                            "type": "linear"
-                        },
-                        "showPoints": "never",
-                        "spanNulls": true,
-                        "stacking": {
-                            "group": "A",
-                            "mode": "none"
-                        },
-                        "thresholdsStyle": {
-                            "mode": "off"
-                        }
-                    },
-                    "mappings": [],
-                    "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                            {
-                                "color": "green",
-                                "value": null
-                            },
-                            {
-                                "color": "red",
-                                "value": 80
-                            }
-                        ]
-                    },
-                    "unit": "short"
-                },
-                "overrides": []
-            },
-            "gridPos": {
-                "h": 7,
-                "w": 12,
-                "x": 12,
-                "y": 20
-            },
-            "hideTimeOverride": false,
-            "id": 25,
-            "options": {
-                "graph": {},
-                "legend": {
-                    "calcs": [],
-                    "displayMode": "list",
-                    "placement": "bottom",
-                    "showLegend": true
-                },
-                "tooltip": {
-                    "hideZeros": false,
-                    "maxHeight": 600,
-                    "mode": "single",
-                    "sort": "none"
-                }
-            },
-            "pluginVersion": "11.5.0",
-            "targets": [
-                {
-                    "datasource": "fm",
-                    "editorMode": "code",
-                    "format": "table",
-                    "rawQuery": true,
-                    "rawSql": "SELECT\n    $__timeGroupAlias(s.bucket, '1h'),\n    MAX(CASE WHEN s.field_group = 'switch:*.aenergy.total' THEN (value_max / 1000) * 60 ELSE value_max END) watts\nFROM device.mv__em_total_act_5_min_history_20_days s\nWHERE\n    s.id IN($devices)\n    AND s.field_group IN (\n        'emdata:*.total_act',\n        'em1data:*.total_act_energy',\n        'switch:*.aenergy.total'\n    )\n    AND s.bucket BETWEEN now() - INTERVAL '7 days' AND NOW()\nGROUP BY\n    s.id,\n    \"time\"\nORDER BY \"time\", s.id",
-                    "refId": "A",
-                    "sql": {
-                        "columns": [
-                            {
-                                "parameters": [],
-                                "type": "function"
-                            }
-                        ],
-                        "groupBy": [
-                            {
-                                "property": {
-                                    "type": "string"
-                                },
-                                "type": "groupBy"
-                            }
-                        ],
-                        "limit": 50
-                    }
-                }
-            ],
-            "timeFrom": "now/w",
-            "title": "Power Spikes This Week",
-            "type": "timeseries"
-        },
-        {
-            "datasource": "fm",
-            "fieldConfig": {
-                "defaults": {
-                    "custom": {
-                        "hideFrom": {
-                            "legend": false,
-                            "tooltip": false,
-                            "viz": false
-                        },
-                        "scaleDistribution": {
-                            "type": "linear"
-                        }
-                    }
-                },
-                "overrides": []
-            },
-            "gridPos": {
-                "h": 8,
-                "w": 24,
-                "x": 0,
-                "y": 27
-            },
-            "id": 40,
-            "options": {
-                "calculate": false,
-                "cellGap": 1,
-                "cellValues": {
-                    "decimals": 1,
-                    "unit": "bool_on_off"
-                },
-                "color": {
-                    "exponent": 0.5,
-                    "fill": "dark-orange",
-                    "max": 1,
-                    "min": 0,
-                    "mode": "scheme",
-                    "reverse": true,
-                    "scale": "exponential",
-                    "scheme": "Greens",
-                    "steps": 16
-                },
-                "exemplars": {
-                    "color": "rgba(255,0,255,0.7)"
-                },
-                "filterValues": {
-                    "ge": 1.1,
-                    "le": -1.1
-                },
-                "legend": {
-                    "show": false
-                },
-                "rowsFrame": {
-                    "layout": "auto",
-                    "value": "Presence"
-                },
-                "tooltip": {
-                    "maxHeight": 600,
-                    "mode": "single",
-                    "showColorScale": false,
-                    "yHistogram": false
-                },
-                "yAxis": {
-                    "axisPlacement": "right",
-                    "reverse": false
-                }
-            },
-            "pluginVersion": "11.5.0",
-            "targets": [
-                {
-                    "datasource": "fm",
-                    "editorMode": "code",
-                    "format": "table",
-                    "rawQuery": true,
-                    "rawSql": "SELECT b bucket, presence, se.external_id FROM (\n  SELECT\n      time_bucket_gapfill(INTERVAL '5 min', s.bucket, NOW() - interval '7 days', NOW()) as b,\n      s.id, CASE WHEN MIN(s.field) IS NULL THEN 0 ELSE 1 END presence\n  FROM\n      device.mv__status_presence s\n  WHERE\n      s.id IN($devices)\n      AND $__timeFilter(s.bucket)\n  GROUP BY b, s.id\n  ORDER BY b,s.id\n) s\nLEFT JOIN device.list se ON s.id = se.id;",
-                    "refId": "A",
-                    "sql": {
-                        "columns": [
-                            {
-                                "parameters": [],
-                                "type": "function"
-                            }
-                        ],
-                        "groupBy": [
-                            {
-                                "property": {
-                                    "type": "string"
-                                },
-                                "type": "groupBy"
-                            }
-                        ],
-                        "limit": 50
-                    }
-                }
-            ],
-            "title": "Presence",
-            "transformations": [
-                {
-                    "id": "prepareTimeSeries",
-                    "options": {
-                        "format": "multi"
-                    }
-                }
-            ],
-            "type": "heatmap"
+            "limit": 50
+          }
         }
-    ],
-    "preload": false,
-    "refresh": "15m",
-    "schemaVersion": 40,
-    "tags": [],
-    "templating": {
-        "list": [
-            {
-                "current": {
-                    "text": "0.00015",
-                    "value": "0.00015"
-                },
-                "includeAll": false,
-                "label": "Price per Watt",
-                "name": "watt_price",
-                "options": [
-                    {
-                        "selected": true,
-                        "text": "0.00015",
-                        "value": "0.00015"
-                    }
-                ],
-                "query": "0.00015",
-                "type": "custom"
+      ],
+      "title": "Top 5 Devices Currently Running",
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {
+            "mappings": [
+              {
+                "fieldName": "energy_wh",
+                "handlerKey": "field.value"
+              },
+              {
+                "fieldName": "external_id",
+                "handlerKey": "field.name"
+              }
+            ]
+          }
+        }
+      ],
+      "type": "stat"
+    },
+    {
+      "datasource": "fm",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "fieldMinMax": false,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "light-orange",
+                "value": null
+              }
+            ]
+          },
+          "unit": "watth"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "power_kwh{domain=\"sensor\", entity=\"sensor.power_freels_vue_123_1mon\", friendly_name=\"Total Power 1Mon\", instance=\"192.168.2.233:8123\", job=\"zzzz\"}"
             },
-            {
-                "current": {
-                    "text": [
-                        "shellypro1pm-30c6f78298e0",
-                        "livingroom-elin-PPS",
-                        "shellyplus1-a8032abe50f8",
-                        "Recirculating pump",
-                        "ProEM-work-elin",
-                        "sleepingroom-elin-PPS",
-                        "shellypro4pm-94b97ec071d0",
-                        "selqni-Pro3EM"
-                    ],
-                    "value": ["6", "1", "4", "3", "8", "7", "5", "2"]
-                },
-                "datasource": "fm",
-                "definition": "SELECT\n    id AS __value,\n    CASE WHEN\n        jdoc #>'{info, name}' != 'null'\n    THEN\n        jdoc #>> '{info, name}'\n    ELSE\n        jdoc #>> '{info, id}'\n    END AS __text\nfrom device.list;",
-                "label": "Devices",
-                "multi": true,
-                "name": "devices",
-                "options": [],
-                "query": "SELECT\n    id AS __value,\n    CASE WHEN\n        jdoc #>'{info, name}' != 'null'\n    THEN\n        jdoc #>> '{info, name}'\n    ELSE\n        jdoc #>> '{info, id}'\n    END AS __text\nfrom device.list;",
-                "refresh": 1,
-                "regex": "",
-                "sort": 1,
-                "type": "query"
-            }
+            "properties": [
+              {
+                "id": "unit",
+                "value": "watt"
+              }
+            ]
+          }
         ]
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "id": 9,
+      "interval": "1d",
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^energy_wh$/",
+          "values": false
+        },
+        "showPercentChange": true,
+        "text": {},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.5.0",
+      "targets": [
+        {
+          "datasource": "fm",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n    t1.bucket,\n    SUM(t1.diff) energy_wh\nFROM (\n    SELECT\n      s.device,\n      s.bucket::date,\n      SUM(s.sum_val) diff\n    FROM device_em.energy_15min s\n    WHERE\n        1 = 1\n        AND s.device IN($devices)\n        AND s.tag = 'total_act_energy'\n        AND s.bucket BETWEEN date_trunc('month', current_date) AND NOW()\n    GROUP BY\n      s.device,\n      s.bucket::date\n  ) t1\n  GROUP BY\n    t1.bucket",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "timeFrom": "1M",
+      "title": "Current Month Total Power Usage",
+      "type": "stat"
     },
-    "time": {
-        "from": "now-2d",
-        "to": "now"
+    {
+      "datasource": "fm",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byType",
+              "options": "number"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "unit",
+                "value": "currencyBGN"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "id": 11,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "value",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.5.0",
+      "targets": [
+        {
+          "datasource": "fm",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n    SUM(t1.diff) * $watt_price AS price\nFROM (\n    SELECT\n      s.device,\n      s.bucket::date,\n      SUM(s.sum_val) diff\n    FROM device_em.energy_15min s\n    WHERE\n        1 = 1\n        AND s.device IN($devices)\n        AND s.tag = 'total_act_energy'\n        AND s.bucket BETWEEN date_trunc('month', current_date) AND NOW()\n    GROUP BY\n      s.device,\n      s.bucket::date\n  ) t1\n",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "Current Month Bill ",
+      "type": "stat"
     },
-    "timepicker": {
-        "nowDelay": ""
+    {
+      "datasource": "fm",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "semi-dark-orange",
+                "value": null
+              }
+            ]
+          },
+          "unit": "watth"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "power_kwh{domain=\"sensor\", entity=\"sensor.power_freels_vue_123_1d\", friendly_name=\"Total Power 1D\", instance=\"192.168.2.233:8123\", job=\"zzzz\"}"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "kwatth"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 5
+      },
+      "id": 18,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": true,
+        "text": {},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.5.0",
+      "targets": [
+        {
+          "datasource": "fm",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n    t1.b bucket,\n    sum(diff) energy_wh\nFROM (\n    SELECT\n      s.device,\n      time_bucket('1 hours', s.bucket) b,\n      SUM(s.sum_val) diff\n    FROM device_em.energy_15min s\n    WHERE\n        1 = 1\n        AND s.device IN($devices)\n        AND s.tag = 'total_act_energy'\n        AND s.bucket BETWEEN now() - '1 day'::INTERVAL AND NOW()\n    GROUP BY\n      s.device,\n      b\n) t1\ngroup by t1.b",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "timeFrom": "now/d",
+      "title": "Current Day Power Total",
+      "type": "stat"
     },
-    "timezone": "utc",
-    "title": "Energy Usage Variants",
-    "uid": "feflosf1kwpa8c",
-    "version": 99,
-    "weekStart": "monday"
+    {
+      "datasource": "fm",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "power_kwh{domain=\"sensor\", entity=\"sensor.power_freels_vue_123_1d\", friendly_name=\"Total Power 1D\", instance=\"192.168.2.233:8123\", job=\"zzzz\"}"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "kwatth"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 5
+      },
+      "id": 39,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "text": {},
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.5.0",
+      "targets": [
+        {
+          "datasource": "fm",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n    SUM(t1.diff) * $watt_price AS price\nFROM (\n    SELECT\n      s.device,\n      s.bucket::date,\n      SUM(s.sum_val) diff\n    FROM device_em.energy_15min s\n    WHERE\n        1 = 1\n        AND s.device IN($devices)\n        AND s.tag = 'total_act_energy'\n        AND s.bucket BETWEEN now()::date::timestamp AND NOW()\n    GROUP BY\n      s.device,\n      s.bucket::date\n  ) t1",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "timeFrom": "now/d",
+      "title": "Current Day Power Cost",
+      "type": "stat"
+    },
+    {
+      "datasource": "fm",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "percentage",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "#6ED0E0",
+                "value": 30
+              },
+              {
+                "color": "#EAB839",
+                "value": 60
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
+          },
+          "unit": "watth"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "id": 6,
+      "options": {
+        "displayMode": "lcd",
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "maxVizHeight": 300,
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "namePlacement": "left",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto",
+        "text": {},
+        "valueMode": "color"
+      },
+      "pluginVersion": "11.5.0",
+      "targets": [
+        {
+          "datasource": "fm",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  ss.external_id,\n  SUM(s.sum_val) energy_wh\nFROM device_em.energy_15min s\nLEFT JOIN device.list ss ON s.device = ss.id\nWHERE\n    1 = 1\n    AND s.device IN($devices)\n    AND s.tag = 'total_act_energy'\n    AND s.bucket BETWEEN date_trunc('month', now()) AND NOW()\nGROUP BY\n  s.device,\n  ss.external_id",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "Month Power Total",
+      "transformations": [
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "external_id"
+            ],
+            "keepFields": false,
+            "naming": {
+              "asLabels": false
+            }
+          }
+        }
+      ],
+      "type": "bargauge"
+    },
+    {
+      "datasource": "fm",
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "bars",
+            "fillOpacity": 100,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "watt"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "hideTimeOverride": true,
+      "id": 23,
+      "interval": "1h",
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "maxHeight": 600,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.5.0",
+      "targets": [
+        {
+          "datasource": "fm",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n    s.external_id,\n    $__timeGroupAlias(t1.bucket, '1h'),\n    pw energy_wh\nFROM (\n    WITH main as (\n        SELECT\n            date_trunc('hour', s.bucket) bucket,\n            s.device,\n            SUM(s.sum_val) energy_wh,\n            ROW_NUMBER () OVER (PARTITION BY s.device ORDER BY s.device, date_trunc('hour', s.bucket)) rn\n        FROM device_em.energy_15min s\n        WHERE\n            s.device IN($devices)\n            AND s.tag = 'total_act_energy'\n            AND s.bucket BETWEEN now()::date - interval '24h' AND NOW()\n        GROUP BY\n            s.device,\n            date_trunc('hour', s.bucket)\n        ORDER BY\n            s.device\n    )\n    select\n        t1.*,\n        (t1.energy_wh - CASE WHEN t2.energy_wh IS NULL THEN 0 ELSE t2.energy_wh END) pw\n        FROM main t1\n        LEFT JOIN main t2 ON t2.id = t1.id AND t2.rn = t1.rn - 1\n) t1\nLEFT JOIN device.list s ON s.device = t1.id",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "timeFrom": "now/d",
+      "title": "Hourly Power by Device",
+      "transformations": [
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "external_id"
+            ],
+            "keepFields": true,
+            "naming": {
+              "asLabels": false
+            }
+          }
+        },
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "byVariable": false,
+            "include": {
+              "pattern": "[\\S]+\\s(time|energy_wh)"
+            }
+          }
+        }
+      ],
+      "type": "timeseries"
+    },
+    {
+      "datasource": "fm",
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": [],
+          "unit": "watth"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "id": 38,
+      "options": {
+        "displayLabels": [
+          "value"
+        ],
+        "legend": {
+          "displayMode": "list",
+          "placement": "right",
+          "showLegend": true
+        },
+        "pieType": "pie",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "maxHeight": 600,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.5.0",
+      "targets": [
+        {
+          "datasource": "fm",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  MIN(se.external_id) id,\n  SUM(s.sum_val) energy_wh\nFROM device_em.energy_15min s\nLEFT JOIN device.list se ON s.device = se.id\nWHERE\n    1 = 1\n    AND s.device IN($devices)\n    AND s.tag = 'total_act_energy'\n    AND s.bucket BETWEEN now() - '7 days'::INTERVAL AND NOW()\nGROUP BY\n  s.device\nORDER BY energy_wh DESC\nLIMIT 5;",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "Top 5 Devices Last 7 Days",
+      "transformations": [
+        {
+          "id": "rowsToFields",
+          "options": {
+            "mappings": [
+              {
+                "fieldName": "energy_wh",
+                "handlerKey": "field.value"
+              }
+            ]
+          }
+        }
+      ],
+      "type": "piechart"
+    },
+    {
+      "datasource": "fm",
+      "description": "",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "bars",
+            "fillOpacity": 100,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "watth"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time"
+            },
+            "properties": [
+              {
+                "id": "displayName"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byType",
+              "options": "time"
+            },
+            "properties": [
+              {
+                "id": "custom.axisPlacement",
+                "value": "hidden"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      },
+      "hideTimeOverride": false,
+      "id": 37,
+      "interval": "24",
+      "maxDataPoints": 7,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "maxHeight": 600,
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.5.0",
+      "targets": [
+        {
+          "datasource": "fm",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n    b bucket,\n    SUM(diff) energy_wh\nFROM (\n    SELECT\n        s.device,\n        date_trunc('day', s.bucket) b,\n        SUM(s.sum_val) diff\n    FROM device_em.energy_15min s\n    WHERE\n        1 = 1\n        AND s.device IN($devices)\n        AND s.tag = 'total_act_energy'\n        AND s.bucket BETWEEN date_trunc('day', now()) - INTERVAL '8 days' AND NOW()\n    GROUP BY\n        s.device,\n        b\n    ORDER BY b, s.device\n) x\nGROUP BY b",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "timeFrom": "7d",
+      "title": "Daily Power Usage ",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "fm",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 61,
+            "gradientMode": "none",
+            "hideFrom": {
+              "graph": false,
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "hideTimeOverride": false,
+      "id": 25,
+      "options": {
+        "graph": {},
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "maxHeight": 600,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.5.0",
+      "targets": [
+        {
+          "datasource": "fm",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT\n    $__timeGroupAlias(s.bucket, '1h'),\n    SUM(s.sum_val) energy_wh\nFROM device_em.energy_15min s\nWHERE\n    s.device IN($devices)\n    AND s.tag = 'total_act_energy'\n    AND s.bucket BETWEEN now() - INTERVAL '7 days' AND NOW()\nGROUP BY\n    s.device,\n    \"time\"\nORDER BY \"time\", s.device",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "timeFrom": "now/w",
+      "title": "Power Spikes This Week",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "fm",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
+      "id": 40,
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "cellValues": {
+          "decimals": 1,
+          "unit": "bool_on_off"
+        },
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "max": 1,
+          "min": 0,
+          "mode": "scheme",
+          "reverse": true,
+          "scale": "exponential",
+          "scheme": "Greens",
+          "steps": 16
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "ge": 1.1,
+          "le": -1.1
+        },
+        "legend": {
+          "show": false
+        },
+        "rowsFrame": {
+          "layout": "auto",
+          "value": "Presence"
+        },
+        "tooltip": {
+          "maxHeight": 600,
+          "mode": "single",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "right",
+          "reverse": false
+        }
+      },
+      "pluginVersion": "11.5.0",
+      "targets": [
+        {
+          "datasource": "fm",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT b bucket, presence, se.external_id FROM (\n  SELECT\n      time_bucket_gapfill(INTERVAL '5 min', s.bucket, NOW() - interval '7 days', NOW()) as b,\n      s.id, CASE WHEN MIN(s.field) IS NULL THEN 0 ELSE 1 END presence\n  FROM\n      device.mv__status_presence s\n  WHERE\n      s.id IN($devices)\n      AND $__timeFilter(s.bucket)\n  GROUP BY b, s.id\n  ORDER BY b,s.id\n) s\nLEFT JOIN device.list se ON s.id = se.id;",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "Presence",
+      "transformations": [
+        {
+          "id": "prepareTimeSeries",
+          "options": {
+            "format": "multi"
+          }
+        }
+      ],
+      "type": "heatmap"
+    }
+  ],
+  "preload": false,
+  "refresh": "15m",
+  "schemaVersion": 40,
+  "tags": [],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "0.00015",
+          "value": "0.00015"
+        },
+        "includeAll": false,
+        "label": "Price per Watt",
+        "name": "watt_price",
+        "options": [
+          {
+            "selected": true,
+            "text": "0.00015",
+            "value": "0.00015"
+          }
+        ],
+        "query": "0.00015",
+        "type": "custom"
+      },
+      {
+        "current": {
+          "text": [
+            "shellypro1pm-30c6f78298e0",
+            "livingroom-elin-PPS",
+            "shellyplus1-a8032abe50f8",
+            "Recirculating pump",
+            "ProEM-work-elin",
+            "sleepingroom-elin-PPS",
+            "shellypro4pm-94b97ec071d0",
+            "selqni-Pro3EM"
+          ],
+          "value": [
+            "6",
+            "1",
+            "4",
+            "3",
+            "8",
+            "7",
+            "5",
+            "2"
+          ]
+        },
+        "datasource": "fm",
+        "definition": "SELECT\n    id AS __value,\n    CASE WHEN\n        jdoc #>'{info, name}' != 'null'\n    THEN\n        jdoc #>> '{info, name}'\n    ELSE\n        jdoc #>> '{info, id}'\n    END AS __text\nfrom device.list;",
+        "label": "Devices",
+        "multi": true,
+        "name": "devices",
+        "options": [],
+        "query": "SELECT\n    id AS __value,\n    CASE WHEN\n        jdoc #>'{info, name}' != 'null'\n    THEN\n        jdoc #>> '{info, name}'\n    ELSE\n        jdoc #>> '{info, id}'\n    END AS __text\nfrom device.list;",
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-2d",
+    "to": "now"
+  },
+  "timepicker": {
+    "nowDelay": ""
+  },
+  "timezone": "utc",
+  "title": "Energy Usage Variants",
+  "uid": "feflosf1kwpa8c",
+  "version": 99,
+  "weekStart": "monday"
 }

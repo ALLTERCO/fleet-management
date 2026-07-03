@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # lib/install.sh — Platform-specific Docker and dependency installation
 
 cmd_install() {
@@ -46,6 +47,12 @@ cmd_install() {
 
 install_debian() {
     info "Installing for Debian/Ubuntu..."
+    local os_id os_codename
+
+    # shellcheck source=/dev/null
+    . /etc/os-release
+    os_id="$ID"
+    os_codename="$VERSION_CODENAME"
 
     # Dependencies
     run_quiet "Updating apt package index" run_privileged apt-get update -qq
@@ -55,14 +62,14 @@ install_debian() {
         info "Installing Docker and Docker Compose..."
         # Add Docker GPG key
         run_quiet "Preparing Docker apt keyring" run_privileged install -m 0755 -d /etc/apt/keyrings
-        curl -fsSL https://download.docker.com/linux/$(. /etc/os-release && echo "$ID")/gpg \
+        curl -fsSL "https://download.docker.com/linux/${os_id}/gpg" \
             | run_privileged gpg --dearmor -o /etc/apt/keyrings/docker.gpg 2>/dev/null
         run_privileged chmod a+r /etc/apt/keyrings/docker.gpg
 
         # Add Docker repo
         echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-            https://download.docker.com/linux/$(. /etc/os-release && echo "$ID") \
-            $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+            https://download.docker.com/linux/${os_id} \
+            ${os_codename} stable" \
             | run_privileged tee /etc/apt/sources.list.d/docker.list > /dev/null
 
         run_quiet "Refreshing apt sources" run_privileged apt-get update -qq
@@ -128,7 +135,7 @@ install_macos() {
     if ! check_docker; then
         info "Opening Docker Desktop..."
         open -a Docker >/dev/null 2>&1 || true
-        if wait_for_docker_daemon 120; then
+        if wait_for_docker_daemon "${DOCKER_DAEMON_TIMEOUT:-120}"; then
             ok "Docker Desktop is running"
         else
             echo ""

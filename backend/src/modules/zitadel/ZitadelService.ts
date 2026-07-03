@@ -1077,7 +1077,13 @@ class ZitadelService {
             },
             email: {
                 email: params.email,
-                isEmailVerified: false
+                // When an admin provisions the account with a password, mark the
+                // email verified so the user is immediately active and can log in.
+                // Without this the user stays in INITIAL state and requires an
+                // email-based activation flow, which is unavailable in deployments
+                // without a configured mail server. When no password is supplied
+                // (e.g. migrations relying on a reset email), leave it unverified.
+                isEmailVerified: Boolean(params.password)
             },
             requestPasswordlessRegistration: false
         };
@@ -1199,8 +1205,10 @@ class ZitadelService {
 
         const encoded = Buffer.from(JSON.stringify(config)).toString('base64');
 
+        // Zitadel's Management API exposes SetUserMetadata as POST (not PUT) on
+        // this path; using PUT returns 405 Method Not Allowed.
         await this.request(
-            'PUT',
+            'POST',
             `/management/v1/users/${userId}/metadata/${FM_PERMISSIONS_KEY}`,
             {value: encoded}
         );

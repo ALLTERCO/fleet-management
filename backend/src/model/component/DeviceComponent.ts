@@ -1047,7 +1047,13 @@ export default class DeviceComponent extends Component<any> {
     }
 
     @Component.Expose('GetSetup')
-    @Component.CrudPermission('devices', 'read', (params) => params?.shellyID)
+    // Gate on configurations:read — the data returned here is the config-profile
+    // catalog, not a device. Gating on devices:read for params.shellyID breaks
+    // installer provisioning (e.g. the FMA app): the target device isn't admitted
+    // yet, so the per-device check resolves to no organization and always denies,
+    // returning an empty catalog. The method already re-checks configurations:read
+    // internally. (Before 1.90 this method was @NoPermissions.)
+    @Component.CrudPermission('configurations', 'read')
     async getSetup(rawParams: unknown, sender: CommandSender) {
         const {mode = 'json'} = validateOrThrow<DeviceGetSetupParams>(
             rawParams,

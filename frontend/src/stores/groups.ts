@@ -12,6 +12,7 @@ import {deviceMembers} from '@/helpers/groupMembers';
 import {type PagedEnvelope, paginate} from '@/helpers/pagination';
 import {subjectRefKey} from '@/helpers/subjectRefs';
 import {runOptimisticMutation} from '@/stores/optimisticMutation';
+import {createStaleGuard} from '@/stores/staleGuard';
 import * as ws from '../tools/websocket';
 import {useToastStore} from './toast';
 
@@ -95,19 +96,19 @@ export const useGroupsStore = defineStore('groups', () => {
     const toast = useToastStore();
 
     // Fetch groups + members, apply in one reactive update.
-    // Seq-token + post-await re-read: a concurrent fetchGroup/fetchMembers
+    // Stale guard + post-await re-read: a concurrent fetchGroup/fetchMembers
     // landing between the awaits and the write would otherwise be clobbered.
-    let refreshScopeSeq = 0;
+    const refreshScopeGuard = createStaleGuard();
     async function refreshScope(
         listParams: {parentGroupId?: number | null},
         affects: (g: StoreGroup) => boolean
     ): Promise<void> {
-        const seq = ++refreshScopeSeq;
+        const token = refreshScopeGuard.bump();
         const items = await listGroupsBulk(listParams);
-        if (seq !== refreshScopeSeq) return;
+        if (refreshScopeGuard.isStale(token)) return;
         const ids = items.map((g) => g.id);
         const devicesByGroupId = await listMembershipsBulk(ids);
-        if (seq !== refreshScopeSeq) return;
+        if (refreshScopeGuard.isStale(token)) return;
 
         // Re-read groups.value AFTER the awaits so concurrent mutations
         // (single-group refetch, member updates) survive the merge.
@@ -154,12 +155,14 @@ export const useGroupsStore = defineStore('groups', () => {
     }
 
     async function fetchGroup(id: number) {
+        // Read: snapshot before the RPC; a list refetch mid-flight wins.
+        const token = refreshScopeGuard.current();
         try {
             const [group, members] = await Promise.all([
                 ws.sendRPC<ApiGroup>('FLEET_MANAGER', 'group.get', {id}),
                 listAllMembersForGroup(id)
             ]);
-            if (!group) return;
+            if (!group || refreshScopeGuard.isStale(token)) return;
             groups.value = {
                 ...groups.value,
                 [id]: {...group, devices: deviceIdsFrom(members), members}

@@ -1,10 +1,41 @@
 import {defineStore} from 'pinia';
 import {computed, ref, shallowRef, triggerRef} from 'vue';
-import {predictedStatusPatchFor} from '@/helpers/entityCommandCatalog';
+import {
+    entityCommandLatestIntentKey,
+    predictedStatusPatchFor
+} from '@/helpers/entityCommandCatalog';
 import * as ws from '../tools/websocket';
 import type {entity_t} from '../types';
 import {useDevicesStore} from './devices';
 import {createRefreshCoordinator} from './refreshCoordinator';
+import {createStaleGuard} from './staleGuard';
+
+interface EntityCommand {
+    action: string;
+    params?: Record<string, unknown>;
+}
+
+interface CommandHandle {
+    isConfirmed(): boolean;
+    isSuperseded(): boolean;
+    revert(): void;
+}
+
+interface PreparedCommand extends EntityCommand {
+    entityID: string;
+    handle: CommandHandle | null;
+}
+
+interface QueuedCommand extends PreparedCommand {
+    fingerprint: string;
+    resolve(value: unknown): void;
+    reject(error: unknown): void;
+}
+
+interface CommandLane {
+    current: QueuedCommand | undefined;
+    queued?: QueuedCommand;
+}
 
 export const useEntityStore = defineStore('entities', () => {
     const entities = shallowRef<Record<string, entity_t>>({});
@@ -16,18 +47,43 @@ export const useEntityStore = defineStore('entities', () => {
     >();
 
     const entityRefresh = createRefreshCoordinator(refreshEntities);
+    // Guards the entities map: WS mutations bump; a stale refresh replays them.
+    const entitiesGuard = createStaleGuard();
+    // Writes recorded while a bulk refresh is in flight (null = removal).
+    let refreshWrites: Map<string, entity_t | null> | null = null;
+    const commandLanes = new Map<string, CommandLane>();
 
     async function fetchEntities() {
         await entityRefresh.request();
     }
 
     async function refreshEntities(): Promise<void> {
+        // Bump at start: latest-wins between list fetches.
+        const token = entitiesGuard.bump();
+        const writes = new Map<string, entity_t | null>();
+        refreshWrites = writes;
         const collected: Record<string, entity_t> = {};
-        await ws.listEntitiesChunked((chunk) => {
-            Object.assign(collected, chunk);
-        });
+        try {
+            await ws.listEntitiesChunked((chunk) => {
+                Object.assign(collected, chunk);
+            });
+        } finally {
+            refreshWrites = null;
+        }
+        // Writes landed mid-flight: replay them on top instead of dropping the load.
+        if (entitiesGuard.isStale(token)) replayWrites(collected, writes);
         entities.value = collected;
         version.value++;
+    }
+
+    function replayWrites(
+        target: Record<string, entity_t>,
+        writes: Map<string, entity_t | null>
+    ): void {
+        for (const [id, value] of writes) {
+            if (value === null) delete target[id];
+            else target[id] = value;
+        }
     }
 
     async function addEntity(id: string, force = false) {
@@ -37,33 +93,39 @@ export const useEntityStore = defineStore('entities', () => {
             const entity = await ws.getEntityInfo(id);
             if (entity) {
                 entities.value[entity.id] = entity;
+                refreshWrites?.set(entity.id, entity);
                 triggerRef(entities);
                 version.value++;
+                entitiesGuard.bump();
             }
         } catch (err) {
-            if (import.meta.env.DEV)
-                console.warn(
-                    `[addEntity] Failed to get entity info for ${id}:`,
-                    err
-                );
+            // Background load (WS events / device snapshot) — not user-triggered.
+            console.warn(
+                `[addEntity] Failed to get entity info for ${id}:`,
+                err
+            );
         }
     }
 
     function removeEntities(oldEntities: string[]) {
         for (const id of oldEntities) {
             delete entities.value[id];
+            refreshWrites?.set(id, null);
             eventListeners.delete(id);
         }
         triggerRef(entities);
         version.value++;
+        entitiesGuard.bump();
     }
 
     function upsertEntities(nextEntities: entity_t[]) {
         for (const entity of nextEntities) {
             entities.value[entity.id] = entity;
+            refreshWrites?.set(entity.id, entity);
         }
         triggerRef(entities);
         version.value++;
+        entitiesGuard.bump();
     }
 
     async function updateEntity(entityID: string) {
@@ -79,20 +141,117 @@ export const useEntityStore = defineStore('entities', () => {
         if (entity === undefined) {
             return Promise.reject(new Error('Entity not found'));
         }
+        if (action === 'toggle') {
+            return Promise.reject(
+                new Error('Entity controls must send an explicit desired state')
+            );
+        }
 
         const devicesStore = useDevicesStore();
-        const handle = paintOptimistic(devicesStore, entity, action, params);
+        const command: EntityCommand = {action, params};
+        const handle = paintOptimistic(
+            devicesStore,
+            entity,
+            command.action,
+            command.params
+        );
+        const intentKey = entityCommandLatestIntentKey(
+            entity.type,
+            action,
+            params
+        );
+        const laneKey = intentKey ? `${entity.id}:${intentKey}` : null;
+        if (laneKey) {
+            return enqueueLatestCommand(laneKey, {
+                entityID,
+                ...command,
+                handle
+            });
+        }
 
         try {
             return await ws.sendRPC('FLEET_MANAGER', 'Entity.InvokeAction', {
                 id: entityID,
-                action,
-                params
+                action: command.action,
+                params: command.params
             });
         } catch (err) {
             if (handle && shouldIgnoreOptimisticFailure(handle)) return;
             handle?.revert();
             throw err;
+        }
+    }
+
+    function enqueueLatestCommand(
+        laneKey: string,
+        command: PreparedCommand
+    ): Promise<unknown> {
+        return new Promise((resolve, reject) => {
+            const request: QueuedCommand = {
+                ...command,
+                fingerprint: JSON.stringify([command.action, command.params]),
+                resolve,
+                reject
+            };
+            const lane = commandLanes.get(laneKey);
+            if (lane) {
+                lane.queued?.resolve(undefined);
+                lane.queued = request;
+                return;
+            }
+
+            const nextLane: CommandLane = {current: request};
+            commandLanes.set(laneKey, nextLane);
+            void drainCommandLane(laneKey, nextLane);
+        });
+    }
+
+    async function drainCommandLane(
+        laneKey: string,
+        lane: CommandLane
+    ): Promise<void> {
+        while (lane.current) {
+            const current = lane.current;
+            const result = await executeQueuedCommand(current);
+            const next = lane.queued;
+            lane.queued = undefined;
+
+            if (result.success && next?.fingerprint === current.fingerprint) {
+                next.resolve(result.value);
+                lane.current = undefined;
+            } else {
+                lane.current = next;
+            }
+        }
+        commandLanes.delete(laneKey);
+    }
+
+    async function executeQueuedCommand(
+        command: QueuedCommand
+    ): Promise<{success: boolean; value?: unknown}> {
+        try {
+            const value = await ws.sendRPC(
+                'FLEET_MANAGER',
+                'Entity.InvokeAction',
+                {
+                    id: command.entityID,
+                    action: command.action,
+                    params: command.params
+                }
+            );
+            command.resolve(value);
+            return {success: true, value};
+        } catch (error) {
+            if (
+                command.handle &&
+                shouldIgnoreOptimisticFailure(command.handle)
+            ) {
+                command.resolve(undefined);
+            } else {
+                command.handle?.revert();
+                command.reject(error);
+            }
+            return {success: false};
         }
     }
 

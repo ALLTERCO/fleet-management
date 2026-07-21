@@ -35,10 +35,12 @@
                         </button>
                     </div>
 
-                    <!-- Size picker (write-only) -->
+                    <!-- Size picker (write-only). Hidden when the entity allows
+                         only one size — nothing to pick. -->
                     <SizePicker
-                        v-if="canResize"
-                        :size="size"
+                        v-if="canResize && allowedSizes.length > 1"
+                        :size="activeSize"
+                        :allowed-sizes="allowedSizes"
                         @change="$emit('update:size', $event)"
                     />
 
@@ -105,6 +107,10 @@ import {computed, nextTick, onUnmounted, ref, toRef, watch} from 'vue';
 import {useFocusTrap} from '@/composables/useFocusTrap';
 import {getEntityIcon} from '@/config/entity-registry';
 import {normalizeCardType} from '@/helpers/card-accents';
+import {
+    allowedSizesForEntity,
+    clampSizeForEntity
+} from '@/helpers/widgetCatalog';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
 import {useToastStore} from '@/stores/toast';
@@ -152,6 +158,12 @@ const normalizedType = computed(() => normalizeCardType(props.entity.type));
 const icon = computed(() =>
     getEntityIcon(props.entity.type, props.entity.properties)
 );
+// Same per-entity cap the dashboard render enforces, so the picker can't offer a
+// size that clamps back (e.g. 2x2 on a single-button BLU remote or a battery).
+const allowedSizes = computed(() => allowedSizesForEntity(props.entity));
+// A legacy tile can hold an over-cap size; clamp it so the picker highlights the
+// size the dashboard actually renders, not a filtered-out option.
+const activeSize = computed(() => clampSizeForEntity(props.size, props.entity));
 
 const isSleeping = computed(() => !!device.value?.sleeping);
 const isOffline = computed(() => !device.value?.online && !isSleeping.value);

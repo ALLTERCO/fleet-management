@@ -4,9 +4,13 @@ import type {DescribeOutput} from '../../rpc/describe';
 import {
     CB_DESCRIBE,
     CB_GET_PARAMS_SCHEMA,
+    CB_GETLOG_PARAMS_SCHEMA,
     CB_SET_CONFIG_PARAMS_SCHEMA,
+    CB_SET_PARAMS_SCHEMA,
+    type CbGetLogParams,
     type CbGetParams,
-    type CbSetConfigParams
+    type CbSetConfigParams,
+    type CbSetParams
 } from '../../types/api/cb';
 import {passthroughRpc} from '../devicePassthrough';
 import Component from './Component';
@@ -53,6 +57,31 @@ export default class CbComponent extends Component<any> {
             method: 'SetConfig',
             paramsSchema: CB_SET_CONFIG_PARAMS_SCHEMA,
             payload: (v) => ({id: v.id, config: v.config})
+        });
+    }
+
+    @Component.Expose('Set')
+    @Component.CrudPermission('devices', 'execute', (p) => p?.shellyID)
+    rpcSet(params: unknown) {
+        return passthroughRpc<CbSetParams>(params, {
+            namespace: 'CB',
+            method: 'Set',
+            paramsSchema: CB_SET_PARAMS_SCHEMA,
+            // output true = engage, false = disengage. The device gates remote
+            // re-engage while safety-latched; FM does not second-guess it.
+            payload: (v) => ({id: v.id, output: v.output})
+        });
+    }
+
+    @Component.Expose('GetLog')
+    @Component.CrudPermission('devices', 'read', (p) => p?.shellyID)
+    rpcGetLog(params: unknown) {
+        return passthroughRpc<CbGetLogParams>(params, {
+            namespace: 'CB',
+            method: 'GetLog',
+            paramsSchema: CB_GETLOG_PARAMS_SCHEMA,
+            payload: (v) =>
+                v.after !== undefined ? {id: v.id, after: v.after} : {id: v.id}
         });
     }
 

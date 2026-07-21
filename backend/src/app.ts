@@ -5,6 +5,7 @@ import './polyfills';
 import 'dotenv/config';
 import {bootstrapOrgNames} from './modules/bootstrapOrgNames';
 import * as EventDistributor from './modules/EventDistributor';
+import {seedRetiredDevices} from './modules/retiredDevices';
 import './config';
 import * as log4js from 'log4js';
 import {
@@ -127,6 +128,7 @@ import RgbwComponent from './model/component/RgbwComponent';
 import ScheduleComponent from './model/component/ScheduleComponent';
 import ScriptComponent from './model/component/ScriptComponent';
 import SecurityComponent from './model/component/SecurityComponent';
+import SensorComponent from './model/component/SensorComponent';
 import SerialComponent from './model/component/SerialComponent';
 import ServesComponent from './model/component/ServesComponent';
 import ServiceComponent from './model/component/ServiceComponent';
@@ -196,6 +198,7 @@ import {
     startIngressAuditFlusher,
     stopIngressAuditFlusher
 } from './modules/deviceIngress/ingressAuditFlusher';
+import {assertIngressTokenPepperConfigured} from './modules/deviceIngress/tokenHash';
 import {
     bindAutoAdmittedDeviceOrg,
     recordAutoAdmitAudit
@@ -234,6 +237,8 @@ import {
 } from './modules/user/cache';
 import * as PatRevokeWorker from './modules/user/patRevokeWorker';
 import {startScopedPatRetentionSweep} from './modules/user/tokenStore';
+import {fireAndForget} from './modules/util/fireAndForget';
+import {armForceExit} from './modules/util/forceExitWatchdog';
 import * as WaitingRoom from './modules/WaitingRoom';
 import * as web from './modules/web';
 import {start as startWeb} from './modules/web';
@@ -276,6 +281,10 @@ for (const signal of Object.keys(SIGNAL_EXIT_CODE) as NodeJS.Signals[]) {
 }
 
 let shuttingDown = false;
+// A shutdown step that hangs (e.g. Redis quit blocking) must not strand the
+// process with an already-released port; force-exit after this bound so the
+// orchestrator can restart. envInt rejects garbage so setTimeout gets no NaN.
+const SHUTDOWN_TIMEOUT_MS = envInt('FM_SHUTDOWN_TIMEOUT_MS', 15_000, 1_000);
 // Run a single shutdown step. Errors are logged so one failed stop()
 // doesn't stop the rest from running.
 async function runShutdownStep(
@@ -293,6 +302,10 @@ async function onShutdown(exitCode = 0) {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.fatal('Shutting down (exit %d)...', exitCode);
+
+    // Backstop: if any step below hangs, exit anyway so a dead port + live
+    // process (which the orchestrator never restarts) cannot happen.
+    const watchdog = armForceExit(SHUTDOWN_TIMEOUT_MS, exitCode);
 
     // 0. Snapshot live sessions before closing — peer process reads on boot.
     await runShutdownStep('sessionSnapshot.write', async () => {
@@ -446,6 +459,12 @@ async function onShutdown(exitCode = 0) {
     await runShutdownStep('DeviceEventLogger.flush', () =>
         DeviceEventLogger.flush()
     );
+    await runShutdownStep('device ownership leases stop', async () => {
+        const {stopDeviceOwnershipHeartbeat} = await import(
+            './modules/deviceIdentityRuntime.js'
+        );
+        await stopDeviceOwnershipHeartbeat();
+    });
     // Drop-on-overflow during the final flush spills to Redis Streams via a
     // fire-and-forget hook — wait for those writes to land before redis quits.
     await runShutdownStep('audit overflow drain', async () => {
@@ -490,6 +509,8 @@ async function onShutdown(exitCode = 0) {
         await shutdownSharedRedis();
     });
 
+    // Clean shutdown reached the end; the watchdog is no longer needed.
+    clearTimeout(watchdog);
     // Give Node one tick to flush stdio before exit.
     setImmediate(() => process.exit(exitCode));
 }
@@ -606,6 +627,7 @@ function registerDefaultComponents() {
     Commander.registerComponent(new FleetSummaryComponent());
     Commander.registerComponent(new FleetMapComponent());
     Commander.registerComponent(new EnergyComponent());
+    Commander.registerComponent(new SensorComponent());
     Commander.registerComponent(new TariffComponent());
     Commander.registerComponent(
         new AnalyticsComponent(createAttributeWindowRepo())
@@ -789,6 +811,23 @@ async function initRedisAndDrainers(): Promise<void> {
     } catch (err) {
         logger.warn('subscribeToOrgSignals failed (continuing): %s', err);
     }
+    try {
+        const {onDevice} = await import('./modules/redis/DeviceSignals.js');
+        const {handlePeerIdentityChangingSignal} = await import(
+            './modules/deviceIdentityRuntime.js'
+        );
+        await onDevice((signal) => {
+            if (signal.kind !== 'identity-changing') return;
+            void handlePeerIdentityChangingSignal(signal).catch((error) => {
+                logger.error(
+                    'device identity-change telemetry flush failed: %s',
+                    error
+                );
+            });
+        });
+    } catch (err) {
+        logger.warn('device signals subscribe failed (continuing): %s', err);
+    }
     // Audit DLQ.
     {
         const {setAuditSpillHook} = await import('./modules/AuditLogger.js');
@@ -799,7 +838,7 @@ async function initRedisAndDrainers(): Promise<void> {
             './modules/audit/AuditDrainer.js'
         );
         setAuditSpillHook((entry) => {
-            void spillAuditEntry(entry);
+            fireAndForget('audit-spill', spillAuditEntry(entry));
         });
         startAuditDrainer();
     }
@@ -863,72 +902,23 @@ async function initRedisAndDrainers(): Promise<void> {
             './modules/status/StatusDrainer.js'
         );
         const PG = await import('./modules/PostgresProvider.js');
-        const {projectStatusBatch} = await import(
-            './modules/virtualDevice/historyProjection.js'
+        const {projectPersistedStatusBatch} = await import(
+            './modules/status/statusProjection.js'
         );
-        const {
-            bluetoothProjectedStatusBatch,
-            recordBluetoothGatewayStatusBatch
-        } = await import('./modules/virtualDevice/bluetoothProvenance.js');
-        type ProjectionBatchEntry = Parameters<
-            typeof projectStatusBatch
-        >[0] extends readonly (infer E)[]
-            ? E
-            : never;
         const Observability = await import('./modules/Observability.js');
         const projectionLogger = log4js.getLogger('virtual-projection');
         startStatusDrainer(async (batch) => {
             await PG.rawCall('device.fn_status_push', batch);
-            void runProjection(batch).catch((err) => {
+            await projectPersistedStatusBatch(batch).catch((err) => {
                 Observability.incrementCounter(
                     'virtual_projection_drain_errors'
                 );
                 projectionLogger.warn(
-                    'projection batch failed (non-fatal): %s',
+                    'projection batch failed; status batch will retry: %s',
                     err instanceof Error ? err.message : String(err)
                 );
+                throw err;
             });
-
-            async function runProjection(b: typeof batch) {
-                const entries: ProjectionBatchEntry[] = [];
-                for (let i = 0; i < b.p_ts.length; i++) {
-                    const tsIso = msToIsoSafe(b.p_ts[i] as number);
-                    if (!tsIso) continue;
-                    entries.push({
-                        sourceDeviceListId: b.p_id[i] as number,
-                        field: b.p_field[i] as string,
-                        value: b.p_value[i],
-                        prevValue: b.p_prev_value[i],
-                        ts: tsIso
-                    });
-                }
-                if (entries.length === 0) return;
-                const [projection, bluetooth] = await Promise.all([
-                    projectStatusBatch(entries),
-                    recordBluetoothGatewayStatusBatch(entries)
-                ]);
-                const bluetoothStatusBatch = bluetoothProjectedStatusBatch(
-                    bluetooth.statusRows
-                );
-                if (bluetoothStatusBatch) {
-                    await PG.rawCall(
-                        'device.fn_status_push',
-                        bluetoothStatusBatch
-                    );
-                }
-                if (
-                    projection.projected > 0 ||
-                    bluetooth.recorded > 0 ||
-                    bluetooth.statusRows.length > 0
-                ) {
-                    Observability.incrementCounter(
-                        'virtual_projection_rows',
-                        projection.projected +
-                            bluetooth.recorded +
-                            bluetooth.statusRows.length
-                    );
-                }
-            }
         });
     }
     // Device snapshots: Redis-first persist path drains compact snapshots to PG.
@@ -942,9 +932,16 @@ async function initRedisAndDrainers(): Promise<void> {
             await PG.storeBatch(rows);
             for (const row of rows) {
                 const device = dc.getDevice(row.externalId) as
-                    | {reconcilePersistedBluetoothChildren?: () => void}
+                    | {
+                          reconcilePersistedBluetoothChildren?: (
+                              persistedConfig?: Record<string, unknown>
+                          ) => void;
+                      }
                     | undefined;
-                device?.reconcilePersistedBluetoothChildren?.();
+                // Reconcile against the drained snapshot, not the live config (write-behind).
+                device?.reconcilePersistedBluetoothChildren?.(
+                    row.jdoc?.settings ?? {}
+                );
             }
         });
     }
@@ -966,15 +963,10 @@ async function initRedisAndDrainers(): Promise<void> {
     startScopedPatRetentionSweep();
 }
 
-function msToIsoSafe(ms: number): string | null {
-    if (typeof ms !== 'number' || !Number.isFinite(ms)) return null;
-    const date = new Date(ms);
-    if (Number.isNaN(date.getTime())) return null;
-    return date.toISOString();
-}
-
 async function loadDevicesAndIngestReplay(): Promise<void> {
     await postgres.loadSavedDevices();
+    // Seed the retired-device set so soft-deleted devices stay hidden on boot.
+    await seedRetiredDevices();
     // Device ingest drainer — opt-in. Replays Phase E captured frames after a
     // prior FM crashed mid-process. Off by default because the consumer
     // (AbstractDevice.onMessage) hasn't been proven idempotent for double
@@ -1021,6 +1013,9 @@ function armInProcessCaches(): void {
     // Periodic batch-flush of the device-event-log queue. Lifecycle pair —
     // stopFlushTimer is called in onShutdown.
     DeviceEventLogger.startFlushTimer();
+    void import('./modules/deviceIdentityRuntime.js').then((runtime) =>
+        runtime.startDeviceOwnershipHeartbeat()
+    );
     // Single consolidated TTL sweep for the 4 user/token caches.
     startUserCacheSweep();
     // Bind device→org BEFORE approve (so Shelly.Connect sees the org),
@@ -1121,6 +1116,7 @@ async function main() {
     console.time('boot');
 
     logBootSafety();
+    assertIngressTokenPepperConfigured();
     await initPersistenceAndAuthz();
     await initRedisAndDrainers();
     // Subscribe to Entity.Added / Entity.Removed before loadSavedDevices

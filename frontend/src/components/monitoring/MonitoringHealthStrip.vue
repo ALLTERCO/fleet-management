@@ -40,12 +40,6 @@
             >
                 {{ OBS_LEVEL_LABELS[obsLevel] }}
             </span>
-            <router-link to="/monitoring/host" class="hs__nav-link">
-                <i class="fas fa-microchip" aria-hidden="true" /> Host
-            </router-link>
-            <router-link to="/monitoring/control-panel" class="hs__nav-link">
-                <i class="fas fa-sliders" aria-hidden="true" /> Control Panel
-            </router-link>
         </div>
     </div>
 </template>
@@ -53,7 +47,7 @@
 <script setup lang="ts">
 import {computed} from 'vue';
 import HealthDot from '@/components/monitoring/HealthDot.vue';
-import {formatUptime} from '@/helpers/dashboardUtils';
+import {formatDuration} from '@/helpers/format';
 import {countByStatus} from '@/helpers/topologyStatusCounts';
 import {type FlowStatus, useMonitoringStore} from '@/stores/monitoring';
 import {useTopologyStore} from '@/stores/topology';
@@ -98,7 +92,7 @@ const hasSnapshot = computed(() => topology.current !== null);
 
 const uptimeText = computed(() => {
     const s = monitoring.latestMetrics?.uptimeS;
-    return typeof s === 'number' ? formatUptime(s) : null;
+    return typeof s === 'number' ? formatDuration(s) : null;
 });
 
 const buckets = computed(() => {
@@ -230,27 +224,6 @@ const buckets = computed(() => {
 .hs__obs-pill--light { color: var(--color-primary-text); }
 .hs__obs-pill--medium { color: var(--color-accent-text); }
 .hs__obs-pill--heavy { color: var(--color-warning-text); }
-
-.hs__nav-link {
-    font-size: var(--type-caption);
-    font-family: var(--font-mono);
-    padding: 4px 10px;
-    border-radius: var(--radius-sm);
-    background: var(--color-surface-2);
-    color: var(--color-text-tertiary);
-    text-decoration: none;
-    transition: background var(--duration-fast), color var(--duration-fast);
-}
-.hs__nav-link:hover {
-    background: var(--color-surface-3);
-    color: var(--color-text-secondary);
-}
-.hs__nav-link:hover, .hs__nav-link:focus-visible {
-    text-decoration: underline;
-}
-.hs__nav-link i {
-    margin-right: var(--space-1);
-}
 
 @media (max-width: 720px) {
     .hs {

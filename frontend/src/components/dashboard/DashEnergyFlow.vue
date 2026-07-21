@@ -310,7 +310,7 @@ function formatPower(value: number): string {
     border-radius: var(--radius-lg);
 }
 .def__empty-icon {
-    font-size: 32px;
+    font-size: var(--type-subheading);
     color: var(--color-text-tertiary);
 }
 .def__empty-title {
@@ -344,7 +344,7 @@ function formatPower(value: number): string {
 
 .def__edge-label {
     fill: var(--color-text-secondary);
-    font-size: 11px;
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     font-variant-numeric: tabular-nums;
     paint-order: stroke;
@@ -371,8 +371,8 @@ function formatPower(value: number): string {
 }
 
 .def__node-circle--grid {
-    fill: color-mix(in srgb, var(--accent-energy) 18%, var(--color-surface-3));
-    stroke: var(--accent-energy);
+    fill: color-mix(in srgb, rgb(var(--accent-energy)) 18%, var(--color-surface-3));
+    stroke: rgb(var(--accent-energy));
 }
 
 .def__node-circle--solar {

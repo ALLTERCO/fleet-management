@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json.schemastore.org/mcp.json",
+  "mcpServers": {
+    "fleet-manager-docs": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["backend/scripts/fleet-docs-mcp-server.mjs"]
+    }
+  }
+}

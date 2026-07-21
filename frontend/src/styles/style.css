@@ -3,6 +3,9 @@
 
 @import "tailwindcss" layer(base);
 
+/* Unlayered so .evolt rules keep the priority they had as a component style. */
+@import "./voltaine.css";
+
 @layer design-system {
     @import "./design-tokens.css";
     @import "./search-pill.css";
@@ -106,7 +109,7 @@
     }
 
     .tag {
-        font-size: var(--text-xs);
+        font-size: var(--type-body);
     }
 
     .input {
@@ -215,20 +218,7 @@
         opacity: 0;
     }
 
-    /* Focus-visible ring with glow */
-    :focus-visible {
-        outline: none;
-        box-shadow:
-            0 0 0 2px rgba(68, 149, 209, 0.45),
-            0 0 12px rgba(68, 149, 209, 0.18);
-        border-radius: 4px;
-    }
-    button:focus-visible {
-        outline: none;
-        box-shadow:
-            0 0 0 2px rgba(68, 149, 209, 0.45),
-            0 0 12px rgba(68, 149, 209, 0.18);
-    }
+    /* Focus ring lives in design-tokens.css section 13 — single home. */
 } /* end @layer design-system */
 
 /* Utilities that must escape the layer (print, tab-hidden use !important) */

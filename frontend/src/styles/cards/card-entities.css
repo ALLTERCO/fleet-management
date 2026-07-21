@@ -32,12 +32,13 @@
 .ec-camera-feed video {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    /* Show the whole 16:9 frame — never crop the scene to fill the card. */
+    object-fit: contain;
 }
 .ec-camera-placeholder {
     color: var(--color-frost);
     opacity: 0.4;
-    font-size: var(--text-2xs);
+    font-size: var(--type-body);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -661,7 +662,7 @@
     stroke-width: 2;
 }
 .ec-vbtn-label {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: 600;
     color: var(--color-text-secondary);
     letter-spacing: 0.02em;
@@ -673,7 +674,7 @@
     white-space: nowrap;
 }
 .ec-vbtn-src {
-    font-size: 7.5px;
+    font-size: var(--type-caption);
     color: var(--color-frost);
     opacity: 0.55;
     letter-spacing: 0.02em;
@@ -697,10 +698,7 @@
     height: 16px;
 }
 .ec-hero .ec-vbtn-label {
-    font-size: var(--type-body);
-}
-.ec-hero .ec-vbtn-src {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
 }
 .ec-wide .ec-vpad {
     gap: 8px;
@@ -1470,7 +1468,7 @@
     min-height: 24px;
 }
 .gc-label {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: normal;
     text-transform: none;
@@ -1643,7 +1641,7 @@
     height: 140px;
 }
 .gc-ring-label {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: 600;
     margin-top: 8px;
 }
@@ -1757,7 +1755,7 @@
     background-clip: text;
 }
 .gc-stat-label {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: none;
@@ -2132,7 +2130,7 @@
 }
 /* Label reads as demotion: same 16 px body, tertiary colour, uppercase. */
 .ec-trv-hero-set-l {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     letter-spacing: var(--tracking-wide);
     text-transform: uppercase;
@@ -2161,7 +2159,7 @@
     color: var(--color-text-tertiary);
 }
 .ec-trv-hero-now-l {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     letter-spacing: var(--tracking-wide);
     text-transform: uppercase;
@@ -2205,7 +2203,7 @@
     gap: var(--space-2);
 }
 .ec-trv-hero-controls .ec-trv-valve-label {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: none;
@@ -2415,9 +2413,9 @@
 }
 .dh-pct {
     font-variant-numeric: tabular-nums;
-    font-size: var(--type-body);
+    font-size: var(--type-display);
     font-weight: 800;
-    letter-spacing: -4px;
+    letter-spacing: var(--tracking-tight);
     line-height: 1;
     background: var(--gradient-value-text);
     -webkit-background-clip: text;
@@ -2426,12 +2424,12 @@
     filter: none;
 }
 .dh-pct span {
-    font-size: var(--type-body);
+    font-size: var(--type-subheading);
     font-weight: 600;
     letter-spacing: 0;
 }
 .dh-sub {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: 600;
     color: var(--color-text-tertiary);
     letter-spacing: 0.5px;
@@ -2470,6 +2468,46 @@
 .dh-presets {
     display: flex;
     gap: var(--space-3);
+}
+/* Calibration prompt — replaces the presets row until the dimmer is calibrated */
+.dh-calibrate {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+}
+.dh-cal-btn {
+    flex: 1;
+    height: 44px;
+    font-size: var(--type-body);
+    font-weight: 700;
+    border-radius: var(--radius-lg);
+    border: 1px solid rgb(var(--accent-dimmer));
+    background: color-mix(in srgb, rgb(var(--accent-dimmer)) 14%, transparent);
+    color: var(--color-text-primary);
+    cursor: pointer;
+    transition: background var(--duration-fast);
+}
+.dh-cal-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, rgb(var(--accent-dimmer)) 24%, transparent);
+}
+.dh-cal-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+/* Compact variant for the 1x1 / 2x1 dimmer sizes */
+.dh-cal-btn--sm {
+    height: 32px;
+    flex: 0 1 auto;
+    padding: 0 var(--space-3);
+    font-size: var(--type-caption);
+}
+.dh-cal-progress {
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
 }
 .dh-qp {
     flex: 1;
@@ -2561,7 +2599,7 @@
     background-clip: text;
 }
 .ec-hero-col-l {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     color: var(--color-text-tertiary);
     text-transform: uppercase;
@@ -2688,7 +2726,7 @@
     opacity: 0.55;
 }
 .ec-hero-reading-l {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     color: var(--color-text-tertiary);
     text-transform: uppercase;
@@ -2792,7 +2830,7 @@
 }
 .ec-hero-stat-v {
     font-variant-numeric: tabular-nums;
-    font-size: var(--text-sm);
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: -0.5px;
     line-height: 1;
@@ -2801,11 +2839,28 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
 }
+/* Label-less stats row (value + unit only) — the value carries the meaning,
+   so size it up from the caption used when a label sits below. Each stat is an
+   equal column so the row spreads across almost the full card width. */
+.ec-hero-info--values {
+    /* Value-only stats: single non-wrapping row, standard footer padding. */
+    gap: var(--space-1);
+    flex-wrap: nowrap;
+}
+.ec-hero-info--values .ec-hero-stat {
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+    text-align: center;
+}
+.ec-hero-info--values .ec-hero-stat-v {
+    font-size: var(--type-body);
+}
 .ec-hero-stat-v.stat-pulse {
     animation: val-tick 0.35s ease-out;
 }
 .ec-hero-stat-l {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: none;
@@ -2833,7 +2888,7 @@
     filter: none;
 }
 .ec-hero-top-u {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     letter-spacing: var(--tracking-wide);
     text-transform: uppercase;
@@ -3120,7 +3175,7 @@
     margin-top: var(--space-0-5);
 }
 .ec-aud-tick {
-    font-size: 9px;
+    font-size: var(--type-caption);
     font-weight: 600;
     color: var(--color-text-disabled);
     font-variant-numeric: tabular-nums;
@@ -3175,12 +3230,12 @@
     gap: var(--space-1);
 }
 .ec-trv-state-label {
-    font-size: 11px;
+    font-size: var(--type-caption);
     font-weight: 700;
     color: var(--color-text-quaternary);
 }
 .ec-trv-valve-label {
-    font-size: 10px;
+    font-size: var(--type-caption);
     font-weight: 600;
     color: var(--color-text-quaternary);
     margin-left: var(--space-1);
@@ -3227,7 +3282,7 @@
     opacity: 0.5;
 }
 .ec-dist-unit {
-    font-size: 16px;
+    font-size: var(--type-caption);
     font-weight: 600;
     color: var(--color-text-tertiary);
 }
@@ -3280,7 +3335,7 @@
     height: 100px;
 }
 .ec-hero-rain-icon {
-    font-size: 40px;
+    font-size: var(--type-heading);
     color: rgb(var(--accent-humidity));
     opacity: 0.6;
 }

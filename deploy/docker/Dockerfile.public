@@ -10,6 +10,7 @@
 #   TEMPLATE        Optional template name under template-source/templates/
 #   template-source Build context containing the selected template repo
 #   OVERRIDES_JSON_B64  Base64-encoded client customization JSON
+#   IMAGE_VERSION   Release version for the OCI version label, e.g. 1.91.0
 
 ARG NODE_VERSION=24-alpine
 ARG FM_FRONTEND_BUILD_HEAP_SIZE=4096
@@ -29,6 +30,12 @@ RUN npx tsc --build --force
 # docs/ is otherwise excluded from the build context. Needs docs/api/guides/ in
 # the public export manifest, or the guides render empty.
 COPY docs/api /build/docs/api
+COPY docs/README.md /build/docs/README.md
+COPY docs/reference/ai-and-mcp.md docs/reference/ai-mcp-operations.md docs/reference/separate-ui-host-sdk.md /build/docs/reference/
+COPY docs/architecture/deploy-reference.md /build/docs/architecture/deploy-reference.md
+COPY deploy/public/deployment.md /build/deploy/public/deployment.md
+# host-sdk-index reads the Host SDK source; without it the index bakes empty.
+COPY frontend/src/shell/template-host /build/frontend/src/shell/template-host
 # Bake /api/docs artifacts — must run before prune (needs devDeps).
 RUN npm run generate
 # Serializes heavy TS builds under BuildKit on small CI runners.
@@ -126,7 +133,7 @@ RUN test -n "$TEMPLATE"; \
 # ── Stage 4: Runtime base ───────────────────────────────────
 FROM node:${NODE_VERSION} AS runtime-base
 
-RUN apk add --no-cache tini
+RUN apk add --no-cache tini openssl
 
 # Remove npm, yarn, corepack from runtime
 RUN rm -rf /usr/local/lib/node_modules/npm \
@@ -144,8 +151,9 @@ COPY --from=backend-build --chown=node:node /build/backend/node_modules /app/bac
 COPY --from=backend-build --chown=node:node /build/backend/package.json /app/backend/package.json
 COPY --from=backend-build --chown=node:node /build/backend/db /app/backend/db
 COPY --from=backend-build --chown=node:node /build/backend/cfg /app/backend/cfg
-# API reference artifacts — served by /api/docs at runtime.
-COPY --from=backend-build --chown=node:node /build/docs/generated /app/docs/generated
+# API reference and MCP search resources.
+COPY --from=backend-build --chown=node:node /build/docs /app/docs
+COPY --from=backend-build --chown=node:node /build/deploy/public/deployment.md /app/deploy/public/deployment.md
 
 # Community plugins only (no paid plugins)
 COPY --from=plugin-build --chown=node:node /build/plugins /app/plugins
@@ -155,6 +163,17 @@ COPY --from=plugin-build --chown=node:node /build/plugins /app/plugins
 # build runners. entrypoint.sh copies these into the uploads volume on first run.
 COPY --chown=node:node backend/uploads/backgrounds/ /app/backend/uploads-seed/backgrounds/
 COPY --chown=node:node backend/uploads/profilePics/ /app/backend/uploads-seed/profilePics/
+
+# No created label: it changes every build and breaks layer cache.
+ARG IMAGE_VERSION=
+LABEL org.opencontainers.image.title="Shelly Fleet Manager" \
+      org.opencontainers.image.description="Self-hosted management for Shelly Gen2+ and Wall Display devices over outbound WebSocket." \
+      org.opencontainers.image.source="https://github.com/ALLTERCO/fleet-management" \
+      org.opencontainers.image.url="https://shelly.com" \
+      org.opencontainers.image.documentation="https://github.com/ALLTERCO/fleet-management#readme" \
+      org.opencontainers.image.vendor="Shelly Group" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.version="$IMAGE_VERSION"
 
 FROM runtime-base AS runtime-bm
 COPY --from=frontend-bm --chown=node:node /build/frontend/dist /app/frontend/dist

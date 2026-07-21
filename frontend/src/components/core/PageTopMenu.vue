@@ -104,9 +104,11 @@ function onSignOut(close: () => void) {
     flex-shrink: 0;
 }
 
-/* Avatar trigger — profile picture with a ring that lights up on hover. */
+/* Avatar trigger — profile picture with a ring that lights up on hover.
+   flex, not inline-flex: an inline trigger adds line-box space under it,
+   which pushes the avatar off-center next to the bell. */
 .ptm-avatar-btn {
-    display: inline-flex;
+    display: flex;
     width: var(--space-10);
     height: var(--space-10);
     padding: 0;

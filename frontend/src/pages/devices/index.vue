@@ -618,6 +618,10 @@ function buildBTHomeCard(
         ...(typeof overview?.summary === 'string' && overview.summary
             ? {summary: overview.summary}
             : {}),
+        ...(typeof overview?.primaryDisplayValue === 'string' &&
+        overview.primaryDisplayValue
+            ? {primaryDisplayValue: overview.primaryDisplayValue}
+            : {}),
         ...(typeof overview?.lastEventSummary === 'string' &&
         overview.lastEventSummary
             ? {lastEvent: overview.lastEventSummary}
@@ -667,13 +671,15 @@ function enrichPromotedCard(
     promoted: shelly_device_t
 ): BTHomeCard {
     const model = (promoted.info as {model?: string} | undefined)?.model;
+    const imageModel = promoted.meta?.bluetoothDevice?.visual?.imageModel;
     return {
         ...card,
         shellyID: promoted.shellyID,
         name: card.name || getDeviceName(promoted.info, promoted.shellyID),
         online: promoted.online,
         promoted: true,
-        ...(model ? {modelId: model} : {})
+        ...(model ? {modelId: model} : {}),
+        ...(imageModel ? {imageModel} : {})
     };
 }
 
@@ -798,13 +804,22 @@ function deleteSelectedDevices() {
     const toDelete = selectedDevices.value.slice();
     if (!toDelete.length) return;
     modalRefDelete.value?.storeAction(async () => {
+        let deleted = 0;
         for (const dev of toDelete) {
             try {
                 await deleteFleetDevice(dev);
                 deviceStore.deviceDeleted(dev.shellyID);
+                deleted += 1;
             } catch {
                 toast.error(`Failed to delete ${dev.shellyID}`);
             }
+        }
+        if (deleted > 0) {
+            toast.success(
+                deleted === 1
+                    ? 'Device deleted'
+                    : `${deleted} devices deleted`
+            );
         }
         rightSideStore.clearInspector();
         activeDevice.value = null;

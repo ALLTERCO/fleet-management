@@ -9,6 +9,7 @@ import {enqueueEmSyncBlock} from './device/emSyncStream';
 import type {EmSyncCursor} from './energyRollup';
 import * as Observability from './Observability';
 import {callMethod, get, getQueryPoolPressure} from './PostgresProvider';
+import {fireAndForget} from './util/fireAndForget';
 import {StuckMonitor} from './util/inFlightStuck';
 import {runBoundedParallel} from './util/runBoundedParallel';
 import {StageTimer} from './util/stageTimer';
@@ -180,9 +181,16 @@ const EM_SYNC_GRACE_PERIOD_MS = envInt(
 let MAX_CONCURRENT_SYNCS = 40;
 let emTuningInitialized = false;
 const TICK_INTERVAL_MS = envInt('FM_EMDATA_TICK_INTERVAL_MS', 1000);
+const EM_SYNC_FUTURE_TOLERANCE_S = 5 * 60;
 // A channel sync pass slower than this logs a one-line stage breakdown
 // (last_sync vs drain) so the slow part of a pass is visible per device.
 const EMSYNC_PASS_SLOW_MS = envInt('FM_EMDATA_PASS_SLOW_MS', 5000);
+
+export function isEmSyncCursorPlausible(cursor: number, nowS: number): boolean {
+    return (
+        Number.isFinite(cursor) && cursor <= nowS + EM_SYNC_FUTURE_TOLERANCE_S
+    );
+}
 
 // ── EM-sync catch-up ─────────────────────────────────────────────────────────
 // A single emdata.getdata block covers only a few minutes of device history, so
@@ -434,6 +442,15 @@ export const InitEm = (): EmHandler => {
         return {worst, laggedChannels};
     }
 
+    // Release a device's per-channel lag entries when it leaves the sync queue,
+    // so this observability map can't grow without bound on device churn.
+    function pruneEmSyncChannelLags(deviceId: number): void {
+        const prefix = `${deviceId}:`;
+        for (const key of channelLags.keys()) {
+            if (key.startsWith(prefix)) channelLags.delete(key);
+        }
+    }
+
     function recordEmSyncChannelLag(
         deviceId: string,
         channel: number,
@@ -519,7 +536,7 @@ export const InitEm = (): EmHandler => {
 
     let tickBusy = false;
     const syncTimer = setInterval(() => {
-        void runSyncTick();
+        fireAndForget('em-sync-tick', runSyncTick());
     }, TICK_INTERVAL_MS);
     syncTimer.unref?.();
 
@@ -655,7 +672,19 @@ export const InitEm = (): EmHandler => {
                     p_channel: -1
                 });
                 if (rows.length > 0) {
-                    lastSyncedTs = rows[0].created;
+                    const cursor = Number(rows[0].created);
+                    if (!isEmSyncCursorPlausible(cursor, Date.now() / 1000)) {
+                        logger.warn(
+                            'Ignoring future EM sync cursor device=%s cursor=%d',
+                            device,
+                            cursor
+                        );
+                        Observability.incrementCounter(
+                            'em_sync_future_cursors_rejected'
+                        );
+                        return;
+                    }
+                    lastSyncedTs = cursor;
                 }
             } catch (err) {
                 logger.warn(
@@ -887,6 +916,7 @@ export const InitEm = (): EmHandler => {
         if (!shellyDev) {
             // Device fully deleted — remove immediately (no unlock needed, entry is gone)
             syncQueue.delete(shellyId);
+            pruneEmSyncChannelLags(id);
             logger.info(
                 `EM Sync: removed deleted device ${id} from sync queue`
             );
@@ -899,6 +929,7 @@ export const InitEm = (): EmHandler => {
             }
             if (Date.now() - device.offlineSince > EM_SYNC_GRACE_PERIOD_MS) {
                 syncQueue.delete(shellyId);
+                pruneEmSyncChannelLags(id);
                 logger.info(
                     `EM Sync: removed device ${id} after ${EM_SYNC_GRACE_PERIOD_MS / 1000}s offline`
                 );

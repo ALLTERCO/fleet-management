@@ -40,12 +40,13 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref, watch} from 'vue';
+import {computed, onScopeDispose, ref, watch} from 'vue';
 import Skeleton from '@/components/core/Skeleton.vue';
 import type {ChartRange} from '@/composables/useChartData';
-import {useChartData} from '@/composables/useChartData';
+import {rangeToParams} from '@/composables/useChartData';
 import {useDashboardContext} from '@/composables/useDashboardContext';
 import {useEntityStore} from '@/stores/entities';
+import * as ws from '@/tools/websocket';
 import CardShell from './CardShell.vue';
 import ChartRangeTabs from './ChartRangeTabs.vue';
 
@@ -80,43 +81,92 @@ const entityStore = useEntityStore();
 const range = ref<ChartRange>(props.config.range ?? '24h');
 const limit = props.config.limit ?? 10;
 
-// Create chart data instances once at setup time — never inside a computed()
-// Each instance gets a reactive shellyId ref so it updates if the entity reconnects
-const chartInstances = (props.config.entityIds ?? [])
-    .slice(0, limit)
-    .map((eid) => ({
-        entityId: eid,
-        chart: useChartData(
-            computed(
-                () => (entityStore.entities[eid] as any)?.source ?? undefined
-            ),
-            computed(() => 'consumption' as const),
-            range
-        )
-    }));
+const loading = ref(false);
+const totalsByShelly = ref<Map<string, number>>(new Map());
+let abortId = 0;
+let disposed = false;
+onScopeDispose(() => {
+    disposed = true;
+});
 
-const loading = computed(() =>
-    chartInstances.some((c) => c.chart.loading.value)
+// One grouped energy.query for every entity's device source — replaces the
+// per-entity fan-out. perDevice=true tags each row with its shellyID.
+async function fetchTotals() {
+    const sources = [
+        ...new Set(
+            (props.config.entityIds ?? [])
+                .slice(0, limit)
+                .map((eid) => (entityStore.entities[eid] as any)?.source)
+                .filter((s): s is string => typeof s === 'string')
+        )
+    ];
+    if (!sources.length) {
+        // Bump so any in-flight fetch is invalidated and cannot repopulate.
+        abortId++;
+        totalsByShelly.value = new Map();
+        loading.value = false;
+        return;
+    }
+    const id = ++abortId;
+    loading.value = true;
+    const {from, to, bucket} = rangeToParams(range.value);
+    try {
+        const res = await ws.sendRPC<{
+            items?: Array<{shellyID?: string | null; value: number}>;
+        }>('FLEET_MANAGER', 'energy.query', {
+            from,
+            to,
+            tags: ['total_act_energy'],
+            bucket,
+            devices: sources,
+            perDevice: true
+        });
+        if (disposed || id !== abortId) return;
+        const totals = new Map<string, number>();
+        for (const row of res.items ?? []) {
+            if (typeof row.shellyID !== 'string') continue;
+            totals.set(
+                row.shellyID,
+                (totals.get(row.shellyID) ?? 0) + (Number(row.value) || 0)
+            );
+        }
+        totalsByShelly.value = totals;
+    } catch {
+        if (disposed || id !== abortId) return;
+        totalsByShelly.value = new Map();
+    } finally {
+        if (!disposed && id === abortId) loading.value = false;
+    }
+}
+
+watch(range, fetchTotals, {immediate: true});
+
+// Entity sources populate after the card mounts on a cold dashboard load;
+// re-fetch when they land so the card doesn't sit on "No data".
+watch(
+    () =>
+        (props.config.entityIds ?? [])
+            .slice(0, limit)
+            .map((eid) => (entityStore.entities[eid] as any)?.source)
+            .join(','),
+    fetchTotals
 );
 
 const dashCtx = useDashboardContext();
 watch(
     () => dashCtx.value.refreshSignal.value,
-    () => {
-        for (const inst of chartInstances) inst.chart.refresh();
-    }
+    () => fetchTotals()
 );
 
 const ranked = computed(() => {
-    const items = chartInstances.map(({entityId, chart}) => {
-        const entity = entityStore.entities[entityId] as any;
-        const name = entity?.name || entity?.properties?.name || entityId;
-        const total = (chart.data.value ?? []).reduce(
-            (sum, p) => sum + (p.value ?? 0),
-            0
-        );
-        return {entityId, name, total};
-    });
+    const items = (props.config.entityIds ?? [])
+        .slice(0, limit)
+        .map((eid) => {
+            const entity = entityStore.entities[eid] as any;
+            const name = entity?.name || entity?.properties?.name || eid;
+            const total = totalsByShelly.value.get(entity?.source) ?? 0;
+            return {entityId: eid, name, total};
+        });
 
     const sorted = items
         .filter((it) => it.total > 0)

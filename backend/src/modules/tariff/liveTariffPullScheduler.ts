@@ -70,7 +70,7 @@ async function pullSource(source: {
     );
 }
 
-async function runPull(): Promise<void> {
+async function runPullBody(): Promise<void> {
     const repo = await defaultLiveTariffRepository();
     const sources = await repo.listPullSources();
     if (sources.length === 0) {
@@ -86,6 +86,31 @@ async function runPull(): Promise<void> {
             logger.error('tariff %d pull failed: %s', source.tariffId, err);
         }
     }
+}
+
+let pullInFlight = false;
+let pullBody: () => Promise<void> = runPullBody;
+
+// Skip a tick while the previous pull is still running so a slow source cannot
+// stack overlapping pulls.
+async function runPull(): Promise<void> {
+    if (pullInFlight) {
+        Observability.incrementCounter('tariff_pull_skipped_overlap');
+        return;
+    }
+    pullInFlight = true;
+    try {
+        await pullBody();
+    } finally {
+        pullInFlight = false;
+    }
+}
+
+/** Test-only: replace the pull body. Pass undefined to restore. */
+export function __setPullBodyForTests(
+    fn: (() => Promise<void>) | undefined
+): void {
+    pullBody = fn ?? runPullBody;
 }
 
 export function startScheduler(): void {

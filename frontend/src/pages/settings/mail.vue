@@ -307,7 +307,7 @@ function channelRecipients(channel: Channel): string {
 .mail-card h3,
 .mail-empty h3 {
     margin: 0;
-    font-size: var(--type-title);
+    font-size: var(--type-heading);
     font-weight: var(--font-semibold);
 }
 

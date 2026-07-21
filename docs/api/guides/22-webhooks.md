@@ -1,5 +1,7 @@
 ## Webhooks
 
+![Two kinds of webhook: device-fired ones managed through the relayed webhook namespace, and Fleet-Manager-sent alert-delivery ones registered as channels with generic_webhook or webhook_signed and an fm-signature HMAC](diagrams/webhooks.svg)
+
 Two unrelated things share the name "webhook" in Fleet Manager. Keep them
 straight.
 

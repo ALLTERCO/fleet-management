@@ -278,6 +278,21 @@ export default class SystemComponent extends Component<any> {
                 event_id,
                 eventOptions
             );
+            // Widget data contract: a subscription that declares component
+            // paths is a scoped dashboard feed. Count it and log its size so we
+            // can see how tightly each page scopes its live data.
+            if (paths && paths.length > 0) {
+                Observability.incrementLabeledCounter(
+                    'widget_contract_subscriptions',
+                    {event}
+                );
+                this.logger.debug(
+                    'widget-contract subscription event:[%s] devices:[%d] paths:[%d]',
+                    event,
+                    Array.isArray(shellyIDs) ? shellyIDs.length : 0,
+                    paths.length
+                );
+            }
         }
         // Drain exactly this call's listener ids on close.
         ctx.onClose(() => {

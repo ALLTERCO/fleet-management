@@ -16,6 +16,7 @@
                 class="dropdown-trigger"
                 type="button"
                 role="combobox"
+                :aria-label="ariaLabel || undefined"
                 :aria-expanded="expanded"
                 :aria-controls="`${id}-listbox`"
                 :aria-activedescendant="activeDescendantId"
@@ -147,6 +148,7 @@ const props = withDefaults(
         groups?: DropdownGroup<T>[];
         default?: T;
         label?: string;
+        ariaLabel?: string;
         searchable?: boolean;
         toDefault?: boolean;
         disabled?: boolean;
@@ -159,6 +161,7 @@ const props = withDefaults(
     }>(),
     {
         disabled: false,
+        ariaLabel: '',
         inlineLabel: false
     }
 );

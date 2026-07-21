@@ -77,17 +77,29 @@ export default class FleetMapComponent extends Component {
     ): Promise<FleetMapEnergySnapshot> {
         const p = validateOrThrow<MapParams>(params, FLEET_MAP_PARAMS);
         const orgId = requireOrganizationId(sender, p);
-        const cached = readCache(this.#energyCache, orgId);
-        if (cached) return cached;
+        // Only an unrestricted caller sees the org-wide map, so only they read or
+        // write the shared per-org cache; a restricted caller aggregates over its
+        // accessible subset and bypasses the cache.
+        const unrestricted = sender.hasUnrestrictedDeviceRead();
+        if (unrestricted) {
+            const cached = readCache(this.#energyCache, orgId);
+            if (cached) return cached;
+        }
 
         const locations = await listLocations(orgId);
-        const devicesByLocation = await devicesForLocations(orgId, locations);
+        const byLocation = await visibleDevicesByLocation(
+            sender,
+            await devicesForLocations(orgId, locations),
+            unrestricted
+        );
         const pins: FleetMapEnergyPin[] = locations.map((loc) => ({
             locationId: loc.id,
-            currentLoadWatts: sumLiveLoad(devicesByLocation.get(loc.id) ?? []),
+            currentLoadWatts: sumLiveLoad(byLocation.get(loc.id) ?? []),
             baselineWatts: null
         }));
-        return writeCache(this.#energyCache, orgId, {pins, asOf: nowIso()});
+        const snapshot: FleetMapEnergySnapshot = {pins, asOf: nowIso()};
+        if (unrestricted) writeCache(this.#energyCache, orgId, snapshot);
+        return snapshot;
     }
 
     @Component.Expose('GetSignalSnapshot')
@@ -99,20 +111,29 @@ export default class FleetMapComponent extends Component {
     ): Promise<FleetMapSignalSnapshot> {
         const p = validateOrThrow<MapParams>(params, FLEET_MAP_PARAMS);
         const orgId = requireOrganizationId(sender, p);
-        const cached = readCache(this.#signalCache, orgId);
-        if (cached) return cached;
+        const unrestricted = sender.hasUnrestrictedDeviceRead();
+        if (unrestricted) {
+            const cached = readCache(this.#signalCache, orgId);
+            if (cached) return cached;
+        }
 
         const locations = await listLocations(orgId);
-        const devicesByLocation = await devicesForLocations(orgId, locations);
+        const byLocation = await visibleDevicesByLocation(
+            sender,
+            await devicesForLocations(orgId, locations),
+            unrestricted
+        );
         const pins: FleetMapSignalPin[] = locations.map((loc) => {
-            const devices = devicesByLocation.get(loc.id) ?? [];
+            const devices = byLocation.get(loc.id) ?? [];
             return {
                 locationId: loc.id,
                 signalHealth: avgSignalHealth(devices),
                 deviceCount: devices.length
             };
         });
-        return writeCache(this.#signalCache, orgId, {pins, asOf: nowIso()});
+        const snapshot: FleetMapSignalSnapshot = {pins, asOf: nowIso()};
+        if (unrestricted) writeCache(this.#signalCache, orgId, snapshot);
+        return snapshot;
     }
 
     @Component.Expose('GetAlertSnapshot')
@@ -124,11 +145,19 @@ export default class FleetMapComponent extends Component {
     ): Promise<FleetMapAlertSnapshot> {
         const p = validateOrThrow<MapParams>(params, FLEET_MAP_PARAMS);
         const orgId = requireOrganizationId(sender, p);
-        const cached = readCache(this.#alertCache, orgId);
-        if (cached) return cached;
+        const unrestricted = sender.hasUnrestrictedDeviceRead();
+        if (unrestricted) {
+            const cached = readCache(this.#alertCache, orgId);
+            if (cached) return cached;
+        }
 
-        const pins = await aggregateAlertsByLocation(orgId);
-        return writeCache(this.#alertCache, orgId, {pins, asOf: nowIso()});
+        const pins = await aggregateAlertsByLocation(
+            orgId,
+            unrestricted ? null : sender
+        );
+        const snapshot: FleetMapAlertSnapshot = {pins, asOf: nowIso()};
+        if (unrestricted) writeCache(this.#alertCache, orgId, snapshot);
+        return snapshot;
     }
 }
 
@@ -195,6 +224,28 @@ async function devicesForLocations(
     return devicesByLocation;
 }
 
+// Restrict each location's device list to the caller's accessible subset. An
+// unrestricted caller keeps every device (the filter-then-aggregate default).
+async function visibleDevicesByLocation(
+    sender: CommandSender,
+    byLocation: Map<number, AbstractDevice[]>,
+    unrestricted: boolean
+): Promise<Map<number, AbstractDevice[]>> {
+    if (unrestricted) return byLocation;
+    const allIds = [...byLocation.values()].flatMap((devices) =>
+        devices.map((d) => d.shellyID)
+    );
+    const accessible = await sender.filterAccessibleDevices(allIds);
+    const visible = new Map<number, AbstractDevice[]>();
+    for (const [loc, devices] of byLocation) {
+        visible.set(
+            loc,
+            devices.filter((d) => accessible.has(d.shellyID))
+        );
+    }
+    return visible;
+}
+
 function liveDevices(shellyIDs: readonly string[]): AbstractDevice[] {
     return shellyIDs
         .map((s) => DeviceCollector.getDevice(s))
@@ -242,7 +293,8 @@ interface OpenAlertBucket {
 }
 
 async function aggregateAlertsByLocation(
-    orgId: string
+    orgId: string,
+    restrictTo: CommandSender | null
 ): Promise<FleetMapAlertPin[]> {
     const {rows} = await callMethod('notifications.fn_alert_instance_list', {
         p_organization_id: orgId,
@@ -293,6 +345,17 @@ async function aggregateAlertsByLocation(
             bucket.oldest = r.active_since;
         }
         openByDevice.set(r.source_subject_id, bucket);
+    }
+
+    // Drop alerts on devices a restricted caller cannot see (filter-then-
+    // aggregate); an unrestricted caller (null) keeps every device.
+    if (restrictTo) {
+        const accessible = await restrictTo.filterAccessibleDevices([
+            ...openByDevice.keys()
+        ]);
+        for (const id of [...openByDevice.keys()]) {
+            if (!accessible.has(id)) openByDevice.delete(id);
+        }
     }
 
     const locations = await listLocations(orgId);

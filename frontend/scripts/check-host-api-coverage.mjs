@@ -31,7 +31,7 @@ const REQUIRED_DOMAIN_MODULES = [
     'users',
     'audit',
     'reports',
-    'integrations',
+    'channels',
     'notifications',
     'settings',
     'waiting-room'

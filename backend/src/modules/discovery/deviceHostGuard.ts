@@ -3,6 +3,7 @@
 import dns from 'node:dns/promises';
 import {envBool} from '../../config/envReader';
 import RpcError from '../../rpc/RpcError';
+import {isSaasMode} from '../saasMode';
 
 export interface DeviceHostTarget {
     host: string;
@@ -17,7 +18,8 @@ const HOSTNAME_RE =
 const DNS_LOOKUP_TIMEOUT_MS = 2_000;
 
 function isPrivateRangesAllowed(): boolean {
-    return envBool('FM_DISCOVERY_ALLOW_PRIVATE', true);
+    // Enabled for local installs, disabled in hosted mode by default.
+    return envBool('FM_DISCOVERY_ALLOW_PRIVATE', !isSaasMode());
 }
 
 function rejectNotShelly(reason: string): never {
@@ -73,6 +75,11 @@ function enforceV4Policy(ip: string, rawHost: string): void {
     const verdict = classifyV4(ip);
     if (verdict === 'blocked') {
         rejectHostNotAllowed('reserved-range', rawHost);
+    }
+    // Devices are reached on the local network; a public address is never a
+    // valid device host.
+    if (verdict === 'public') {
+        rejectHostNotAllowed('public-range', rawHost);
     }
     if (verdict === 'private' && !isPrivateRangesAllowed()) {
         rejectHostNotAllowed('private-range', rawHost);

@@ -1,4 +1,5 @@
 import {authzAuditWriter} from '../../modules/authz/audit';
+import * as EventDistributor from '../../modules/EventDistributor';
 import * as store from '../../modules/PostgresProvider';
 import {buildListResponse} from '../../rpc/listResponse';
 import RpcError from '../../rpc/RpcError';
@@ -103,6 +104,7 @@ export default class PersonaComponent extends Component<Config> {
             key: p.key,
             name: p.name
         });
+        EventDistributor.emitPersonaCreated(rows[0].id, rows[0].name, orgId);
         return rows[0];
     }
 
@@ -150,6 +152,7 @@ export default class PersonaComponent extends Component<Config> {
             description: p.description,
             statements: p.statements
         });
+        EventDistributor.emitPersonaUpdated(rows[0].id, rows[0].name, orgId);
         return rows[0];
     }
 
@@ -184,6 +187,7 @@ export default class PersonaComponent extends Component<Config> {
             operation: 'delete',
             personaId: p.id
         });
+        EventDistributor.emitPersonaDeleted(p.id, orgId);
         return {success: true};
     }
 

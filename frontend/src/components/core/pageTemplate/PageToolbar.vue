@@ -48,16 +48,15 @@
             </div>
         </div>
 
-        <!-- Center: UniversalSearch. Filter funnel emits filter-click; page opens FilterModal. -->
+        <!-- Center: local filter pill. Filter funnel emits filter-click; page opens FilterModal. -->
         <div
             v-if="searchable || $slots.center"
             class="pt-toolbar__center"
         >
             <slot name="center">
-                <UniversalSearch
+                <FilterPill
                     v-if="searchable"
                     v-model="search"
-                    :scope="scope"
                     :placeholder="searchPlaceholder"
                     :filterable="filterable"
                     :has-active-filter="hasActiveFilter"
@@ -82,10 +81,9 @@
     </div>
 </template>
 
-<script setup lang="ts" generic="T">
+<script setup lang="ts">
 import Button from '@/components/core/Button.vue';
-import UniversalSearch from '@/components/core/UniversalSearch.vue';
-import type {PageScope} from '@/composables/useUniversalSearch';
+import FilterPill from '@/components/core/FilterPill.vue';
 import type {RouteTab} from '@/types/page-template';
 
 defineProps<{
@@ -94,7 +92,6 @@ defineProps<{
     activeTabIndex: number;
     searchable: boolean;
     searchPlaceholder: string;
-    scope?: PageScope<T>;
     filterable: boolean;
     hasActiveFilter: boolean;
     filterCount?: number;
@@ -144,10 +141,8 @@ const search = defineModel<string>('search', {default: ''});
     justify-content: flex-end;
     flex-wrap: wrap;
     min-width: 0;
-}
-.pt-toolbar :deep(.route-tabs__btn) {
-    padding: 0 var(--gap-lg);
-    font-size: var(--type-body);
+    /* Actions stay on the right even when there is no center search. */
+    margin-left: auto;
 }
 .pt-toggles {
     display: flex;
@@ -228,5 +223,14 @@ const search = defineModel<string>('search', {default: ''});
     .pt-toolbar__right {
         justify-content: flex-start;
     }
+}
+</style>
+
+<style>
+/* Reaches RouteTabs' buttons rendered inside the toolbar slot — plain
+   block instead of scoped :deep (opaque to the CSS linter). */
+.pt-toolbar .route-tabs__btn {
+    padding: 0 var(--gap-lg);
+    font-size: var(--type-body);
 }
 </style>

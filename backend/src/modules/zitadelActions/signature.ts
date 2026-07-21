@@ -1,6 +1,6 @@
 import {createHash, createHmac, timingSafeEqual} from 'node:crypto';
 
-// Zitadel signature: `ZITADEL-Signature: t=<unix>,v1=<hex>`; HMAC-SHA256 over `${t}.${rawBody}`.
+// Zitadel signature: `X-ZITADEL-Signature: t=<unix>,v1=<hex>`; HMAC-SHA256 over `${t}.${rawBody}`.
 
 export interface VerifyOptions {
     rawBody: Buffer;

@@ -6,10 +6,15 @@ import type {
 } from '@api/dashboard';
 import {defineStore} from 'pinia';
 import {ref} from 'vue';
+import {useDashboardOrder} from '@/composables/useDashboardOrder';
 import {toastRpcError} from '@/helpers/domainErrors';
 import {runOptimisticMutation} from '@/stores/optimisticMutation';
+import {createBatchCoalescer} from '../tools/coalesce';
 import * as ws from '../tools/websocket';
+import {DASHBOARD_EVENT} from '../tools/wsEvents';
+import {useAuthStore} from './auth';
 import {createRefreshCoordinator} from './refreshCoordinator';
+import {createStaleGuard} from './staleGuard';
 import {useToastStore} from './toast';
 
 export type {Dashboard, DashboardItem, DashboardItemKind, DashboardType};
@@ -45,12 +50,6 @@ export interface DashboardTemplatePreview {
     items: DashboardTemplatePreviewItem[];
 }
 
-export interface DashboardPin {
-    dashboardId: number;
-    sortOrder: number;
-    pinnedAt: string;
-}
-
 export interface CreateDashboardParams {
     name: string;
     dashboardType: DashboardType;
@@ -75,7 +74,17 @@ export const useDashboardsStore = defineStore('dashboards', () => {
     const dashboards = ref<Record<number, Dashboard>>({});
     const loading = ref(true);
 
+    // Bumped on every dashboards write; stale list refreshes are discarded.
+    const dashboardsGuard = createStaleGuard();
+
+    // Write path — mutations, WS writes, rollbacks. Bumps to discard stale reads.
     function upsert(d: Dashboard) {
+        dashboardsGuard.bump();
+        mergeDashboard(d);
+    }
+
+    // Read path — never bumps; callers guard with a pre-RPC token instead.
+    function mergeDashboard(d: Dashboard) {
         dashboards.value = {...dashboards.value, [d.id]: d};
     }
 
@@ -89,12 +98,15 @@ export const useDashboardsStore = defineStore('dashboards', () => {
 
     async function refreshAllDashboards(): Promise<void> {
         loading.value = true;
+        const token = dashboardsGuard.current();
         try {
             const res = await ws.sendRPC<{items: Dashboard[]; total: number}>(
                 'FLEET_MANAGER',
                 'Dashboard.List',
                 {}
             );
+            // A write landed mid-flight; replacing would overwrite newer state.
+            if (dashboardsGuard.isStale(token)) return;
             const items = res.items ?? [];
             const next: Record<number, Dashboard> = {};
             for (const d of items) next[d.id] = d;
@@ -109,13 +121,16 @@ export const useDashboardsStore = defineStore('dashboards', () => {
     }
 
     async function fetchOne(id: number): Promise<Dashboard | null> {
+        const token = dashboardsGuard.current();
         try {
             const d = await ws.sendRPC<Dashboard>(
                 'FLEET_MANAGER',
                 'Dashboard.Get',
                 {id}
             );
-            upsert(d);
+            // A write landed mid-flight; this older read must not overwrite it.
+            if (dashboardsGuard.isStale(token)) return d;
+            mergeDashboard(d);
             return d;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load dashboard');
@@ -186,66 +201,6 @@ export const useDashboardsStore = defineStore('dashboards', () => {
         }
     }
 
-    async function setDefault(id: number): Promise<boolean> {
-        try {
-            await ws.sendRPC('FLEET_MANAGER', 'Dashboard.SetDefault', {id});
-            return true;
-        } catch (err) {
-            toastRpcError(toast, err, 'Failed to set default');
-            return false;
-        }
-    }
-
-    async function clearDefault(): Promise<boolean> {
-        try {
-            await ws.sendRPC('FLEET_MANAGER', 'Dashboard.ClearDefault', {});
-            return true;
-        } catch {
-            return false;
-        }
-    }
-
-    async function listPinned(): Promise<DashboardPin[]> {
-        try {
-            const res = await ws.sendRPC<{items: DashboardPin[]}>(
-                'FLEET_MANAGER',
-                'Dashboard.ListPinned',
-                {}
-            );
-            return res.items ?? [];
-        } catch {
-            return [];
-        }
-    }
-
-    async function pin(id: number): Promise<boolean> {
-        try {
-            await ws.sendRPC('FLEET_MANAGER', 'Dashboard.Pin', {id});
-            return true;
-        } catch (err) {
-            toastRpcError(toast, err, 'Failed to pin dashboard');
-            return false;
-        }
-    }
-
-    async function unpin(id: number): Promise<boolean> {
-        try {
-            await ws.sendRPC('FLEET_MANAGER', 'Dashboard.Unpin', {id});
-            return true;
-        } catch {
-            return false;
-        }
-    }
-
-    async function reorderPins(ids: number[]): Promise<boolean> {
-        try {
-            await ws.sendRPC('FLEET_MANAGER', 'Dashboard.ReorderPins', {ids});
-            return true;
-        } catch {
-            return false;
-        }
-    }
-
     async function clone(
         id: number,
         name: string,
@@ -265,16 +220,35 @@ export const useDashboardsStore = defineStore('dashboards', () => {
         }
     }
 
+    // One default per organization. The backend flips it atomically; we mirror
+    // that locally so the pill star updates without a full refetch.
+    async function setDefault(id: number): Promise<boolean> {
+        if (!Number.isFinite(id)) return false;
+        try {
+            await ws.sendRPC('FLEET_MANAGER', 'Dashboard.SetDefault', {id});
+            dashboardsGuard.bump();
+            const next: Record<number, Dashboard> = {};
+            for (const [key, dash] of Object.entries(dashboards.value)) {
+                next[Number(key)] = {...dash, isDefault: dash.id === id};
+            }
+            dashboards.value = next;
+            return true;
+        } catch (err) {
+            toastRpcError(toast, err, 'Failed to set default dashboard');
+            return false;
+        }
+    }
+
     async function update(
         id: number,
         patch: UpdateDashboardPatch
     ): Promise<Dashboard | null> {
         try {
             return await runOptimisticMutation({
-                snapshot: () => snapshotDashboard(id),
+                snapshot: () => snapshotPatchedFields(id, patch),
                 apply: () => applyDashboardPatch(id, patch),
                 commit: () => commitDashboardUpdate(id, patch),
-                rollback: rollbackDashboard,
+                rollback: (fields) => rollbackPatchedFields(id, fields),
                 reconcile: upsert,
                 onError: (err) =>
                     toastRpcError(toast, err, 'Failed to update dashboard')
@@ -284,8 +258,31 @@ export const useDashboardsStore = defineStore('dashboards', () => {
         }
     }
 
-    function snapshotDashboard(id: number): Dashboard | undefined {
-        return dashboards.value[id];
+    // Snapshot only patched fields — a whole-row rollback would revert
+    // concurrent committed writes.
+    function snapshotPatchedFields(
+        id: number,
+        patch: UpdateDashboardPatch
+    ): Partial<Dashboard> | undefined {
+        const current = dashboards.value[id];
+        if (!current) return undefined;
+        const fields: Partial<Dashboard> = {};
+        if (patch.name !== undefined) fields.name = current.name;
+        if (patch.dashboardType !== undefined) {
+            fields.dashboardType = current.dashboardType;
+        }
+        if (patch.scope !== undefined) fields.scope = current.scope;
+        return fields;
+    }
+
+    function rollbackPatchedFields(
+        id: number,
+        fields: Partial<Dashboard> | undefined
+    ): void {
+        if (!fields) return;
+        const current = dashboards.value[id];
+        if (!current) return;
+        upsert({...current, ...fields});
     }
 
     function applyDashboardPatch(
@@ -311,11 +308,6 @@ export const useDashboardsStore = defineStore('dashboards', () => {
         return next;
     }
 
-    function rollbackDashboard(previous: Dashboard | undefined): void {
-        if (!previous) return;
-        upsert(previous);
-    }
-
     function commitDashboardUpdate(
         id: number,
         patch: UpdateDashboardPatch
@@ -331,10 +323,10 @@ export const useDashboardsStore = defineStore('dashboards', () => {
     ): Promise<boolean> {
         try {
             await runOptimisticMutation({
-                snapshot: () => snapshotDashboard(input.dashboardId),
+                snapshot: () => snapshotItemSize(input),
                 apply: () => applyDashboardItemSize(input),
                 commit: () => commitDashboardItemSize(input),
-                rollback: rollbackDashboard,
+                rollback: (size) => rollbackItemSize(input, size),
                 onError: (err) =>
                     toastRpcError(toast, err, 'Failed to update card size')
             });
@@ -342,6 +334,23 @@ export const useDashboardsStore = defineStore('dashboards', () => {
         } catch {
             return false;
         }
+    }
+
+    // Snapshot only the mutated item's size — a whole-row rollback would
+    // revert other items' committed resizes.
+    function snapshotItemSize(
+        input: UpdateDashboardItemSizeInput
+    ): DashboardItem['size'] | undefined {
+        const items = dashboards.value[input.dashboardId]?.items ?? [];
+        return items.find((item) => item.id === input.itemId)?.size;
+    }
+
+    function rollbackItemSize(
+        input: UpdateDashboardItemSizeInput,
+        size: DashboardItem['size'] | undefined
+    ): void {
+        if (size === undefined) return;
+        applyDashboardItemSize({...input, size});
     }
 
     function applyDashboardItemSize(input: UpdateDashboardItemSizeInput): void {
@@ -369,6 +378,7 @@ export const useDashboardsStore = defineStore('dashboards', () => {
         if (!Number.isFinite(id)) return false;
         try {
             await ws.sendRPC('FLEET_MANAGER', 'Dashboard.Delete', {id});
+            dashboardsGuard.bump();
             const next = {...dashboards.value};
             delete next[id];
             dashboards.value = next;
@@ -392,6 +402,7 @@ export const useDashboardsStore = defineStore('dashboards', () => {
             );
             const deleted = res?.deleted ?? [];
             if (deleted.length > 0) {
+                dashboardsGuard.bump();
                 const next = {...dashboards.value};
                 for (const id of deleted) delete next[id];
                 dashboards.value = next;
@@ -403,19 +414,41 @@ export const useDashboardsStore = defineStore('dashboards', () => {
         }
     }
 
-    // Live updates — backend emits lightweight {dashboardId, ...} payloads;
-    // refetch the affected row to stay in sync with the authoritative state.
+    // Item edits emit per mutation — collapse a burst into one fetch per id.
+    const ITEMS_CHANGED_QUIET_MS = 400;
+    const itemsChangedRefetch = createBatchCoalescer<number>((ids) => {
+        for (const id of ids) void fetchOne(id);
+    }, ITEMS_CHANGED_QUIET_MS);
+
+    // Live updates — backend sends {id, name} or {id}; refetch the row.
     ws.onDashboardEvent((e) => {
-        const id = e.params.dashboardId as number | undefined;
+        // OrderChanged is the odd one out — {userId, ids}, no dashboard id.
+        if (e.method === DASHBOARD_EVENT.ORDER_CHANGED) {
+            applyRemoteOrder(e.params);
+            return;
+        }
+        const id = e.params.id as number | undefined;
         if (typeof id !== 'number') return;
-        if (e.method === 'Dashboard.Deleted') {
+        if (e.method === DASHBOARD_EVENT.DELETED) {
+            dashboardsGuard.bump();
             const next = {...dashboards.value};
             delete next[id];
             dashboards.value = next;
             return;
         }
+        if (e.method === DASHBOARD_EVENT.ITEMS_CHANGED) {
+            itemsChangedRefetch.schedule(id);
+            return;
+        }
         void fetchOne(id);
     });
+
+    // Reorder is per-user — apply only the current user's own order.
+    function applyRemoteOrder(params: Record<string, unknown>): void {
+        if (!Array.isArray(params.ids)) return;
+        if (params.userId !== useAuthStore().username) return;
+        useDashboardOrder().replace(params.ids as number[]);
+    }
 
     return {
         dashboards,
@@ -432,11 +465,6 @@ export const useDashboardsStore = defineStore('dashboards', () => {
         previewTemplate,
         getDefault,
         setDefault,
-        clearDefault,
-        listPinned,
-        pin,
-        unpin,
-        reorderPins,
         clone
     };
 });

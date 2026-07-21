@@ -49,6 +49,16 @@
                     {{ row.userAgent?.description ?? '' }}
                 </span>
             </template>
+            <template #cell-creationDate="{row}">
+                <span :title="timeTitle(row.creationDate)">
+                    {{ createdLabel(row.creationDate) }}
+                </span>
+            </template>
+            <template #cell-expirationDate="{row}">
+                <span :title="timeTitle(row.expirationDate)">
+                    {{ expiresLabel(row.expirationDate) }}
+                </span>
+            </template>
             <template #cell-actions="{row}">
                 <button
                     v-if="canRevoke"
@@ -80,6 +90,8 @@ import {computed, onMounted, ref, watch} from 'vue';
 import Button from '@/components/core/Button.vue';
 import DataList, {type DataColumn} from '@/components/core/DataList.vue';
 import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
+import {formatRelative, formatTime, formatUntil} from '@/helpers/format';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useRpcPermissions} from '@/helpers/rpcPermissions';
 import {useAuthStore} from '@/stores/auth';
 import {sendRPC} from '@/tools/websocket';
@@ -165,11 +177,28 @@ async function refresh(): Promise<void> {
         );
         items.value = resp.items ?? [];
     } catch (err) {
-        error.value = err instanceof Error ? err.message : String(err);
+        error.value = rpcErrorMessage(err, 'Could not load sessions');
         items.value = [];
     } finally {
         loading.value = false;
     }
+}
+
+function timeTitle(value?: string): string {
+    return value ? formatTime(value) : '';
+}
+
+function createdLabel(value?: string): string {
+    return value ? formatRelative(value) : '—';
+}
+
+// Sessions normally expire in the future; a stale row past its
+// expiry flips to "Nh ago" instead of going negative.
+function expiresLabel(value?: string): string {
+    if (!value) return '—';
+    return new Date(value).getTime() > Date.now()
+        ? formatUntil(value)
+        : formatRelative(value);
 }
 
 function isCurrentUserSession(row: SessionRow): boolean {
@@ -211,7 +240,7 @@ onMounted(() => void refresh());
     gap: var(--space-1);
 }
 .usp-tag {
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     padding: 1px var(--space-2);
     border-radius: var(--radius-sm);
     color: var(--color-primary-text);
@@ -219,7 +248,7 @@ onMounted(() => void refresh());
 }
 .usp-mono {
     font-family: var(--font-mono);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
 }
 .usp-revoke {
     display: inline-flex;
@@ -231,7 +260,7 @@ onMounted(() => void refresh());
     border: 1px solid var(--color-status-off);
     border-radius: var(--radius-sm);
     cursor: pointer;
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
 }
 .usp-revoke:disabled {
     opacity: 0.5;
@@ -247,7 +276,7 @@ onMounted(() => void refresh());
     border-radius: var(--radius-full);
     background-color: var(--color-success-subtle);
     color: var(--color-success-text);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     text-transform: lowercase;
 }

@@ -4,6 +4,8 @@ import {buildScope, type ScopeSelection} from './scopeDimensions';
 // one shared type, defined in scopeDimensions.
 export type PickedScopedPatBoundary = ScopeSelection;
 
+export type McpKeyLevel = 'read' | 'write' | 'full';
+
 export interface ScopedPatCreateInput {
     userId: string | undefined;
     expirationDaysText: string;
@@ -11,6 +13,9 @@ export interface ScopedPatCreateInput {
     scopeAll: boolean;
     pickedScope: PickedScopedPatBoundary;
     purpose: string;
+    // Scopes the key for the MCP surface at a level (audience `mcp:<level>`).
+    // Undefined = not for MCP.
+    mcpLevel?: McpKeyLevel;
     // Optional human label for the key (Zitadel PATs only — stored FM-side).
     name?: string;
 }
@@ -37,6 +42,7 @@ export type PatCreatePlan =
               userId: string;
               boundaryScope: Record<string, unknown>;
               purpose: string;
+              audience?: string[];
               expirationDays?: number;
           };
       };
@@ -55,15 +61,15 @@ export function buildPatCreatePlan(input: ScopedPatCreateInput): PatCreatePlan {
     }
     const purpose = requirePurpose(input.purpose);
     const boundaryScope = buildBoundaryScope(input);
+    const base = input.mcpLevel
+        ? {userId, boundaryScope, purpose, audience: [`mcp:${input.mcpLevel}`]}
+        : {userId, boundaryScope, purpose};
     return {
         kind: 'fm_scoped_pat',
         previewMethod: 'User.PreviewScopedPAT',
         previewParams: {userId, boundaryScope},
         createMethod: 'User.CreateScopedPAT',
-        createParams: withExpirationDays(
-            {userId, boundaryScope, purpose},
-            expirationDays
-        )
+        createParams: withExpirationDays(base, expirationDays)
     };
 }
 

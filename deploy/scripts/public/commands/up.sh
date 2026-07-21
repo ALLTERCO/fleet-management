@@ -1,18 +1,13 @@
 # shellcheck shell=bash
 
-# DB-truth: is the Zitadel event store present? A stale state/zitadel.env can
-# outlive a wiped volume, and start-from-setup on an empty DB fails. Any one
-# marker table (events/events2 across versions, or projection/system) counts.
+# Resolve the public zitadel-db container, then delegate the event-store probe
+# to the shared helper (deploy/scripts/common/zitadel-state.sh) so the marker
+# tables live in one place.
 zitadel_db_initialized() {
     local c
     c="$(container_name zitadel-db)"
     container_exists "$c" || return 1
-    [ "$(docker exec "$c" psql -U postgres -d zitadel -tAc \
-          "SELECT (to_regclass('eventstore.events') IS NOT NULL
-                OR to_regclass('eventstore.events2') IS NOT NULL
-                OR to_regclass('projections.current_states') IS NOT NULL
-                OR to_regclass('system.instances') IS NOT NULL);" \
-          2>/dev/null | tr -d '[:space:]')" = "t" ]
+    zitadel_event_store_initialized "$c"
 }
 
 cmd_up() {
@@ -144,7 +139,7 @@ cmd_up() {
             fi
         fi
     fi
-    preserve_legacy_secret_encryption_key || true
+    migrate_legacy_secret_encryption_key
     generate_passwords
     if ! validate_no_demo_literals; then
         error "Demo / weak secret detected. Rotate before continuing."
@@ -269,12 +264,8 @@ cmd_up() {
         wait_for_zitadel "http://localhost:8080" "${ZITADEL_STARTUP_TIMEOUT:-180}"
 
         # Zitadel routes by Host — strip default ports for exact match.
-        local _probe_host="${hostname}:${ZITADEL_EXTERNALPORT}"
-        if [ "${ZITADEL_EXTERNALSECURE:-false}" = "true" ]; then
-            _probe_host="${_probe_host%:443}"
-        else
-            _probe_host="${_probe_host%:80}"
-        fi
+        local _probe_host
+        _probe_host="$(zitadel_host_header "${hostname}:${ZITADEL_EXTERNALPORT}" "${ZITADEL_EXTERNALSECURE:-false}")"
 
         # Step 3b: token endpoint — /debug/ready passes before OIDC is wired.
         if ! zitadel_wait_token_ready "http://localhost:8080" "$_probe_host" "${ZITADEL_TOKEN_TIMEOUT:-60}"; then
@@ -379,8 +370,14 @@ cmd_up() {
     fi
 
     # Action V2 webhook — Zitadel-only; quick mode has no OIDC to wire.
-    if [ "$FM_DEV_MODE" != "true" ] && run_actions_bootstrap; then
+    if [ "$FM_DEV_MODE" != "true" ]; then
+        run_actions_bootstrap || return 1
         if generate_fm_config "$hostname"; then
+            FM_RUNTIME_ENV_FILE="$STATE_DIR/fm-runtime.env" \
+              bash "$DEPLOY_DIR/scripts/common/check-zitadel-actions.sh" --quiet || {
+                error "Action V2 signing keys are missing from FM runtime config"
+                return 1
+              }
             run_quiet "Restarting Fleet Manager with signing key" \
                 compose_cmd up -d fleet-manager || true
         fi

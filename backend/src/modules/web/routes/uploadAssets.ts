@@ -1,7 +1,9 @@
 import type express from 'express';
 import {tuning} from '../../../config/tuning';
 import {UNAUTHORIZED_USER} from '../../user';
+import {assertProfilePictureVisible} from '../../user/zitadelUserCrud';
 import {isLoggedIn} from '../utils/authMiddleware';
+import {senderFromUser} from '../utils/senderFromRequest';
 import {
     type ResolvedUploadAsset,
     resolveUploadAsset,
@@ -61,7 +63,7 @@ function sendResolvedAsset(
 }
 
 function uploadAssetHandler(kind: UploadAssetKind) {
-    return (
+    return async (
         req: express.Request,
         res: express.Response,
         next: express.NextFunction
@@ -79,6 +81,25 @@ function uploadAssetHandler(kind: UploadAssetKind) {
         if (!signed && !loggedIn) {
             isLoggedIn(req, res, next);
             return;
+        }
+        if (kind === 'profilePic' && !signed && assetPath !== 'default.png') {
+            const username = assetPath.endsWith('.png')
+                ? assetPath.slice(0, -'.png'.length)
+                : '';
+            const user = req.user;
+            if (!user) {
+                res.status(404).json({error: 'Not found'});
+                return;
+            }
+            try {
+                const sender = await senderFromUser(user, {
+                    sourceIp: req.ip
+                });
+                await assertProfilePictureVisible(sender, username);
+            } catch {
+                res.status(404).json({error: 'Not found'});
+                return;
+            }
         }
         const resolved = resolveUploadAsset(kind, assetPath, req.user, signed);
         if (!resolved) {

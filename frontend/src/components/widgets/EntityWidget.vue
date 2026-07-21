@@ -33,7 +33,7 @@
         </template>
 
         <template #name>
-            <span class="text-xs text-wrap text-center truncate line-clamp-2"> {{ nameFitter }}</span>
+            <span class="text-[length:var(--type-caption)] text-wrap text-center truncate line-clamp-2"> {{ nameFitter }}</span>
         </template>
 
         <template #description>
@@ -148,7 +148,7 @@
                     (entity as bthomesensor_entity).properties.sensorType === 'binary_sensor' &&
                     device.online
                 " class="box">
-                    <p>{{ entity_status.value ? 'True' : 'False' }}</p>
+                    <p>{{ binaryStateLabel }}</p>
                 </div>
 
                 <div v-else-if="
@@ -370,13 +370,13 @@
                 <!-- Group (virtual component container) -->
                 <div v-else-if="entity.type === 'group'" class="box">
                     <p><i class="fas fa-layer-group" /></p>
-                    <p style="font-size:var(--icon-size-2xs);opacity:.7">{{ (entity_status?.value?.length ?? 0) }} members</p>
+                    <p style="font-size:var(--type-caption);opacity:.7">{{ (entity_status?.value?.length ?? 0) }} members</p>
                 </div>
 
                 <!-- BTHome Device (physical BLE device) -->
                 <div v-else-if="entity.type === 'bthomedevice'" class="box">
                     <p><i class="fab fa-bluetooth-b" style="color:var(--color-ble)" /></p>
-                    <p style="font-size:var(--icon-size-2xs);opacity:.7">{{ entityStringProp('productName') || 'BLE Device' }}</p>
+                    <p style="font-size:var(--type-caption);opacity:.7">{{ entityStringProp('productName') || 'BLE Device' }}</p>
                 </div>
 
                 <!-- BTHome Control (BLE remote button/dimmer) -->
@@ -429,6 +429,7 @@
 import {computed, onMounted, onUnmounted, ref, toRef, toRefs, watch} from 'vue';
 import Button from '@/components/core/Button.vue';
 import CoverControls from '@/components/core/Cover/CoverControls.vue';
+import {getBThomeBinaryStateWords} from '@/config/bthome-presentation';
 import {getEntityDef} from '@/config/entity-registry';
 import {getPredefinedImageForEntity} from '@/helpers/device';
 import {isInstantEntityAction} from '@/helpers/instantEntityActions';
@@ -442,6 +443,7 @@ import {
     type bthomesensor_entity,
     type entity_t,
     type input_entity,
+    type shelly_device_t,
     virtual_boolean_entity,
     virtual_enum_entity,
     virtual_number_entity,
@@ -459,6 +461,8 @@ type props_t = {
     editMode?: boolean;
     selected?: boolean;
     vertical?: boolean;
+    // Draft previews render from this device — it never enters the devices store.
+    sourceDevice?: shelly_device_t | null;
 };
 
 const props = withDefaults(defineProps<props_t>(), {
@@ -478,7 +482,9 @@ const authStore = useAuthStore();
 const toastStore = useToastStore();
 const entity = toRef(props, 'entity');
 
-const device = computed(() => deviceStore.devices[entity.value.source]);
+const device = computed(
+    () => props.sourceDevice ?? deviceStore.devices[entity.value.source]
+);
 
 // Check if user can execute commands on this device
 const canExecute = computed(() =>
@@ -546,6 +552,14 @@ const safeRgbStyle = computed(() => {
     return `width: 18px; height: 18px; background-color: rgb(${clamp(r)},${clamp(g)},${clamp(b)});`;
 });
 
+// Binary state words are presentation, keyed on the backend-sent objName.
+const binaryStateLabel = computed(() => {
+    const objName = (entity.value as bthomesensor_entity).properties?.objName;
+    const on = Boolean((entity_status.value as {value?: unknown}).value);
+    const words = getBThomeBinaryStateWords(objName);
+    return on ? words.on : words.off;
+});
+
 const entity_status = computed(() => {
     if (!device.value) {
         return {};
@@ -555,10 +569,12 @@ const entity_status = computed(() => {
     if (e.type === 'temperature' && embedded) {
         return device.value.status?.[embedded]?.temperature ?? {};
     }
-    return deviceStore.statusOf(
-        entity.value.source,
-        `${e.type}:${e.properties?.id}`
-    );
+    const statusKey = `${e.type}:${e.properties?.id}`;
+    // statusOf reads the devices store — a passed-in preview device is not there.
+    if (props.sourceDevice) {
+        return props.sourceDevice.status?.[statusKey];
+    }
+    return deviceStore.statusOf(entity.value.source, statusKey);
 });
 
 // Service entity: read virtual component value by resource role
@@ -842,7 +858,9 @@ function actionClicked() {
     }
     lastActionTime = now;
 
-    void invokeAction(entity.value.id, 'toggle');
+    void invokeAction(entity.value.id, 'setOutput', {
+        on: !entity_status.value?.output
+    });
 }
 
 function coverControl(direction: 'stop' | 'open' | 'close') {
@@ -879,7 +897,7 @@ const curySlotInfo = computed(() => {
 }
 
 .box>p {
-    @apply text-xs md:text-sm line-clamp-1;
+    @apply text-[length:var(--type-caption)] md:text-[length:var(--type-body)] line-clamp-1;
 }
 
 .entity-error-box {

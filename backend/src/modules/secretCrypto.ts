@@ -28,6 +28,7 @@ import {BoundedMap} from './boundedMap';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_BYTES = 12;
+const TAG_BYTES = 16;
 const KEY_BYTES = 32;
 const MIN_SALT_BYTES = 16;
 const SCRYPT_COST = {N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024};
@@ -212,6 +213,12 @@ function tryDecrypt(
     // requireBinding to refuse those rows.
     if (parsed.aadFlag === AAD_FLAG_BOUND && additionalData) {
         decipher.setAAD(Buffer.from(additionalData, 'utf8'));
+    }
+    // Reject a truncated GCM tag; a short tag weakens the integrity check.
+    if (parsed.authTag.length !== TAG_BYTES) {
+        throw new Error(
+            `Invalid GCM auth tag length: ${parsed.authTag.length}`
+        );
     }
     decipher.setAuthTag(parsed.authTag);
     return Buffer.concat([

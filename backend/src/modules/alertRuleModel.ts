@@ -104,7 +104,13 @@ export function publicScopeSelector(scope: unknown): ScopeSelector {
 }
 
 export function storageScopeSelector(scope: ScopeSelector): ScopeSelector {
-    return normalizeScopeSelector(scope);
+    const normalized = normalizeScopeSelector(scope);
+    const {
+        deviceIds: _deviceIds,
+        componentIds: _componentIds,
+        ...stored
+    } = normalized;
+    return stored;
 }
 
 export function validateSupportedScopeSelector(

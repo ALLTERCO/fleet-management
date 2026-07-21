@@ -104,6 +104,46 @@ export function pickTouSchedule(
     return base;
 }
 
+// True when a local wall-clock hour falls in the day-rate window, handling a
+// window that wraps past midnight (e.g. dayStart 22, dayEnd 6 → 22:00–06:00).
+export function isDayRateHour(
+    hour: number,
+    dayStartH: number,
+    dayEndH: number
+): boolean {
+    return dayStartH <= dayEndH
+        ? hour >= dayStartH && hour < dayEndH
+        : hour >= dayStartH || hour < dayEndH;
+}
+
+// Fraction of a 24h day inside the day-rate window (wrap-aware). Used to blend
+// whole-day/month buckets that span both windows.
+export function dayRateFraction(dayStartH: number, dayEndH: number): number {
+    const dayHours =
+        dayStartH <= dayEndH ? dayEndH - dayStartH : 24 - dayStartH + dayEndH;
+    return Math.max(0, Math.min(24, dayHours)) / 24;
+}
+
+// Resolve the TOU rate active at a wall-clock time, using the schedule that
+// applies on that date (weekend/holiday-aware). `hhmm` is the local "HH:MM" in
+// the tariff zone; `when` selects weekday vs weekend/holiday. Returns null when
+// no window covers the time so the caller can fall back to the flat rate.
+export function resolveTouRate(
+    settings: TariffSettings,
+    when: Date,
+    hhmm: string
+): number | null {
+    const schedule = pickTouSchedule(settings, when);
+    if (!schedule) return null;
+    for (const window of schedule) {
+        if (typeof window.rate !== 'number') continue;
+        for (const slice of expandWrap(window)) {
+            if (hhmm >= slice.from && hhmm < slice.to) return window.rate;
+        }
+    }
+    return null;
+}
+
 // Map a TOU window to a band-friendly color based on its rate rank
 // (highest = peak warmth, lowest = off-peak coolness, middle = neutral).
 // Callers without a rate get the neutral tone.

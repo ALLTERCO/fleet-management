@@ -178,17 +178,7 @@ export async function subscribe(rawParams: unknown, sender: CommandSender) {
         );
     }
 
-    // Bind the token to the caller's identity. @ReadOnly lets every
-    // CommandSender through the permission gate — including the
-    // UNAUTHORIZED_USER stand-in (`username: '<UNAUTHORIZED>'`,
-    // `group: ''`) that MessageHandler uses for WS messages that
-    // arrived before the socket authenticated. Those are not
-    // real users and must not bind tokens, so reject the
-    // unauthorized sentinel explicitly.
-    const userId = sender.getUser()?.username;
-    if (!userId || userId === '<UNAUTHORIZED>') {
-        throw RpcError.Unauthorized();
-    }
+    const userId = requireAuthenticatedUser(sender);
 
     try {
         const res = await PostgresProvider.callMethod(

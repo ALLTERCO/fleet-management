@@ -20,12 +20,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type {DescribeOutput, MethodDescriptor} from '../../src/rpc/describe';
 import type {JsonSchema} from '../../src/types/api/_schema';
-import {
-    DOCS_DIR,
-    GENERATED_DIR,
-    REPO_ROOT,
-    relPath
-} from './_shared.js';
+import {DOCS_DIR, GENERATED_DIR, REPO_ROOT, relPath} from './_shared.js';
 
 const PROSE_DIR = path.join(DOCS_DIR, 'api');
 const TYPES_DIR = path.join(REPO_ROOT, 'backend/src/types/api');

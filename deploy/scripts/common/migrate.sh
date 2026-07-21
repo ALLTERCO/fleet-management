@@ -807,7 +807,7 @@ mg_prepare_current_runtime_state() {
     if declare -F ensure_deploy_secrets >/dev/null 2>&1; then
         ensure_deploy_secrets "$DEPLOY_DIR" || return 1
     else
-        preserve_legacy_secret_encryption_key || true
+        migrate_legacy_secret_encryption_key
         generate_passwords || return 1
         if ! validate_no_demo_literals; then
             log_error "Refusing to migrate with demo / weak secrets in environment."

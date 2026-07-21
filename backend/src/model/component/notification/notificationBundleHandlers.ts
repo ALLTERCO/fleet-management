@@ -63,6 +63,28 @@ export async function validateBundle(params: unknown, sender: CommandSender) {
     };
 }
 
+// Shared loading for plan + apply: fetch the existing destinations and resolve
+// virtual-subject mappings. Validation stays inline in each handler so the v2
+// handler ratchet can see it.
+async function loadBundleImportContext(orgId: string, bundle: unknown) {
+    const [existingChannels, existingRoutingPolicies, existingOnCallSchedules] =
+        await Promise.all([
+            listBundleChannels({organizationId: orgId}),
+            listRoutingPolicies({organizationId: orgId, enabledOnly: false}),
+            listOnCallSchedules({organizationId: orgId, enabledOnly: false})
+        ]);
+    const virtualSubjectMappings = await resolveVirtualSubjectMappings(
+        orgId,
+        bundle
+    );
+    return {
+        existingChannels,
+        existingRoutingPolicies,
+        existingOnCallSchedules,
+        virtualSubjectMappings
+    };
+}
+
 export async function planBundleImport(params: unknown, sender: CommandSender) {
     const p = validateOrThrow<{
         organizationId?: string;
@@ -70,26 +92,14 @@ export async function planBundleImport(params: unknown, sender: CommandSender) {
         channelMappings?: Record<string, number>;
     }>(params, NOTIFICATION_BUNDLE_VALIDATE_PARAMS_SCHEMA);
     const orgId = requireOrganizationId(sender, p);
-    const [existingChannels, existingRoutingPolicies, existingOnCallSchedules] =
-        await Promise.all([
-            listBundleChannels({organizationId: orgId}),
-            listRoutingPolicies({
-                organizationId: orgId,
-                enabledOnly: false
-            }),
-            listOnCallSchedules({organizationId: orgId, enabledOnly: false})
-        ]);
-    const virtualSubjectMappings = await resolveVirtualSubjectMappings(
-        orgId,
-        p.bundle
-    );
+    const ctx = await loadBundleImportContext(orgId, p.bundle);
     const planned = planNotificationBundleImport({
         bundle: p.bundle,
-        existingChannels,
-        existingRoutingPolicies,
-        existingOnCallSchedules,
+        existingChannels: ctx.existingChannels,
+        existingRoutingPolicies: ctx.existingRoutingPolicies,
+        existingOnCallSchedules: ctx.existingOnCallSchedules,
         channelMappings: p.channelMappings,
-        virtualSubjectMappings
+        virtualSubjectMappings: ctx.virtualSubjectMappings
     });
 
     return {dryRun: true, ...planned};
@@ -105,27 +115,15 @@ export async function applyBundleImport(
         channelMappings?: Record<string, number>;
     }>(params, NOTIFICATION_BUNDLE_VALIDATE_PARAMS_SCHEMA);
     const orgId = requireOrganizationId(sender, p);
-    const [existingChannels, existingRoutingPolicies, existingOnCallSchedules] =
-        await Promise.all([
-            listBundleChannels({organizationId: orgId}),
-            listRoutingPolicies({
-                organizationId: orgId,
-                enabledOnly: false
-            }),
-            listOnCallSchedules({organizationId: orgId, enabledOnly: false})
-        ]);
-    const virtualSubjectMappings = await resolveVirtualSubjectMappings(
-        orgId,
-        p.bundle
-    );
+    const ctx = await loadBundleImportContext(orgId, p.bundle);
     const applied = await applyNotificationBundleImport({
         organizationId: orgId,
         bundle: p.bundle,
-        existingChannels,
-        existingRoutingPolicies,
-        existingOnCallSchedules,
+        existingChannels: ctx.existingChannels,
+        existingRoutingPolicies: ctx.existingRoutingPolicies,
+        existingOnCallSchedules: ctx.existingOnCallSchedules,
         channelMappings: p.channelMappings ?? {},
-        virtualSubjectMappings
+        virtualSubjectMappings: ctx.virtualSubjectMappings
     });
 
     return {dryRun: false, ...applied};

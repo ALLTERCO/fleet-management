@@ -50,6 +50,7 @@
 
 <script setup lang="ts">
 import {computed} from 'vue';
+import {getBThomeBinaryStateWords} from '@/config/bthome-presentation';
 
 const props = defineProps<{
     status: Record<string, any> | undefined;
@@ -99,28 +100,11 @@ const eventDisplay = computed(() => {
     return 'No events';
 });
 
-const BINARY_LABELS: Record<string, [string, string]> = {
-    door: ['Open', 'Closed'],
-    window: ['Open', 'Closed'],
-    opening: ['Open', 'Closed'],
-    motion: ['Motion Detected', 'Clear'],
-    occupancy: ['Occupied', 'Empty'],
-    presence: ['Present', 'Absent'],
-    smoke: ['Smoke Detected', 'Clear'],
-    tamper: ['Tampered', 'OK'],
-    vibration: ['Vibration', 'Still'],
-    moisture: ['Wet', 'Dry'],
-    light: ['Light', 'Dark'],
-    lock: ['Locked', 'Unlocked'],
-    gas: ['Gas Detected', 'Clear'],
-    co2: ['CO₂ Detected', 'Clear']
-};
-
+// Binary state words are presentation, keyed on the backend-sent objName.
 const binaryLabel = computed(() => {
     const v = !!props.status?.value;
-    const labels = BINARY_LABELS[props.objName ?? ''];
-    if (labels) return v ? labels[0] : labels[1];
-    return v ? 'Active' : 'Inactive';
+    const words = getBThomeBinaryStateWords(props.objName);
+    return v ? words.on : words.off;
 });
 
 const SKIP_KEYS = new Set(['id', 'value', 'last_event']);

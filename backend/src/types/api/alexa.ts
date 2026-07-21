@@ -84,6 +84,7 @@ export const ALEXA_DESCRIBE: DescribeOutput = new DescribeBuilder('alexa', {
         'Enable or disable the Alexa skill integration and manage its OAuth tokens.'
 })
     .registerMethod('Enable', {
+        safety: {operation: 'update'},
         params: ALEXA_ENABLE_PARAMS_SCHEMA,
         response: ALEXA_ENABLE_RESPONSE_SCHEMA,
         permission: {
@@ -93,6 +94,7 @@ export const ALEXA_DESCRIBE: DescribeOutput = new DescribeBuilder('alexa', {
             'Enable Alexa skill integration with provided OAuth tokens.'
     })
     .registerMethod('Disable', {
+        safety: {operation: 'update'},
         params: ALEXA_DISABLE_PARAMS_SCHEMA,
         response: ALEXA_DISABLE_RESPONSE_SCHEMA,
         permission: {

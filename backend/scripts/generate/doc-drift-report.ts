@@ -134,7 +134,11 @@ function isFocusedRpc(method: {namespace: string; method: string}): boolean {
     return FOCUSED_RPC_METHODS.has(name);
 }
 
-function routeName(route: {method: string; mount?: string; path: string}): string {
+function routeName(route: {
+    method: string;
+    mount?: string;
+    path: string;
+}): string {
     return `${route.method} ${(route.mount ?? '') + route.path}`;
 }
 

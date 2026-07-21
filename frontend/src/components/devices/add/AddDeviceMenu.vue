@@ -32,7 +32,10 @@
                     @click="onPick(option, close)"
                 >
                     <span class="adm__icon">
-                        <i :class="option.icon" aria-hidden="true" />
+                        <ShellyDeviceGlyph
+                            v-if="option.icon === 'glyph:shelly-device'"
+                        />
+                        <i v-else :class="option.icon" aria-hidden="true" />
                     </span>
                     <span class="adm__text">
                         <span class="adm__label">{{ option.label }}</span>
@@ -50,6 +53,7 @@
 <script setup lang="ts">
 import Button from '@/components/core/Button.vue';
 import MenuPopover from '@/components/core/MenuPopover.vue';
+import ShellyDeviceGlyph from '@/components/core/ShellyDeviceGlyph.vue';
 import {
     DEVICE_KIND_META,
     DEVICE_KIND_ORDER,
@@ -81,7 +85,7 @@ function onPick(option: KindOption, close: () => void): void {
 .adm {
     display: flex;
     flex-direction: column;
-    min-width: var(--floating-w-md);
+    min-width: var(--floating-w-sm);
     padding: var(--space-1);
 }
 .adm__item {
@@ -89,7 +93,7 @@ function onPick(option: KindOption, close: () => void): void {
     align-items: center;
     gap: var(--gap-sm);
     width: 100%;
-    padding: var(--gap-sm) var(--space-2);
+    padding: var(--space-2) var(--space-3);
     border: none;
     border-radius: var(--radius-md);
     background: transparent;
@@ -98,28 +102,52 @@ function onPick(option: KindOption, close: () => void): void {
     cursor: pointer;
     transition:
         background var(--motion-hover),
-        color var(--motion-hover);
+        color var(--motion-hover),
+        box-shadow var(--motion-hover);
 }
 .adm__item:hover:not(.adm__item--disabled) {
     background: var(--state-hover-bg);
     color: var(--color-text-primary);
+    box-shadow: var(--selection-glow);
+}
+.adm__item:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: calc(-1 * var(--focus-ring-width));
+    background: var(--state-hover-bg);
+    color: var(--color-text-primary);
+}
+.adm__item:active:not(.adm__item--disabled) {
+    background: var(--state-hover-bg-strong);
 }
 .adm__item--disabled {
     cursor: not-allowed;
     opacity: 0.55;
 }
+/* Leading mark — stretches to the label + gap + hint block height. */
 .adm__icon {
     flex-shrink: 0;
-    width: var(--icon-size-sm);
-    text-align: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: stretch;
+    width: var(--icon-size-row);
+    font-size: var(--icon-size-lg);
+    line-height: 1;
     color: var(--color-text-tertiary);
+    transition: color var(--motion-hover);
 }
-.adm__item:hover:not(.adm__item--disabled) .adm__icon {
-    color: inherit;
+.adm__icon .sdg {
+    height: var(--icon-size-lg);
+    width: auto;
+}
+.adm__item:hover:not(.adm__item--disabled) .adm__icon,
+.adm__item:focus-visible .adm__icon {
+    color: var(--color-primary);
 }
 .adm__text {
     display: flex;
     flex-direction: column;
+    gap: var(--space-1);
     min-width: 0;
     flex: 1;
 }
@@ -132,10 +160,13 @@ function onPick(option: KindOption, close: () => void): void {
     font-size: var(--type-caption);
     color: var(--color-text-tertiary);
     line-height: var(--leading-snug);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .adm__badge {
     flex-shrink: 0;
-    padding: 2px 8px;
+    padding: var(--space-0-5) var(--space-2);
     font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     letter-spacing: var(--tracking-wide);

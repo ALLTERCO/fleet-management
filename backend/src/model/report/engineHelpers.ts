@@ -278,6 +278,9 @@ export async function fetchAndCheckReportStats(
             p_tags: reportDef.tags,
             p_bucket: bucket,
             p_per_device: params.per_device !== false,
+            // AC-mains electricity report; other commodities/sources are explicit.
+            p_commodity: 'electricity',
+            p_electrical_source: 'ac_mains',
             p_limit: tuning.report.maxRows + 1,
             p_offset: 0
         }

@@ -15,8 +15,6 @@ export const DOMAIN_TYPES: DomainDashboardType[] = [
     'overview',
     'energy',
     'environment',
-    'control',
-    'safety',
     'map'
 ];
 

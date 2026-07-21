@@ -80,8 +80,18 @@ const PAGE_RULES: readonly PageRule[] = [
         gate: adminOnly(),
         fallback: SETTINGS_PATH
     }),
+    sectionPage({
+        path: '/settings/security',
+        gate: adminOnly(),
+        fallback: SETTINGS_PATH
+    }),
     exactPage({
         path: '/settings/plugins',
+        gate: adminOnly(),
+        fallback: SETTINGS_PATH
+    }),
+    exactPage({
+        path: '/settings/configurations',
         gate: adminOnly(),
         fallback: SETTINGS_PATH
     }),
@@ -101,7 +111,7 @@ const PAGE_RULES: readonly PageRule[] = [
         fallback: SETTINGS_PATH
     }),
     sectionPage({
-        path: '/alerts/channels',
+        path: '/settings/alerts/channels',
         gate: adminOnly(),
         fallback: SETTINGS_PATH
     }),
@@ -111,17 +121,17 @@ const PAGE_RULES: readonly PageRule[] = [
         fallback: firstAccessibleSection
     }),
     exactPage({
-        path: '/monitoring/audit-log',
+        path: '/settings/monitoring/audit-log',
         gate: auditRead(),
         fallback: firstAccessibleSection
     }),
     exactPage({
-        path: '/monitoring/troubleshoot',
+        path: '/settings/monitoring/troubleshoot',
         gate: auditRead(),
         fallback: firstAccessibleSection
     }),
     sectionPage({
-        path: '/monitoring',
+        path: '/settings/monitoring',
         gate: adminOnly(),
         fallback: firstAccessibleSection
     }),

@@ -178,30 +178,35 @@ export const PERSONA_DESCRIBE: DescribeOutput = new DescribeBuilder('persona', {
         description: 'Component metadata.'
     })
     .registerMethod('List', {
+        safety: {operation: 'read'},
         params: PERSONA_LIST_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,
         description: 'List personas (system + custom).'
     })
     .registerMethod('Get', {
+        safety: {operation: 'read'},
         params: PERSONA_GET_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,
         description: 'Fetch a persona by id.'
     })
     .registerMethod('Create', {
+        safety: {operation: 'create'},
         params: PERSONA_CREATE_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
         description: 'Create a custom persona.'
     })
     .registerMethod('Update', {
+        safety: {operation: 'update'},
         params: PERSONA_UPDATE_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
         description: 'Update a custom persona.'
     })
     .registerMethod('Delete', {
+        safety: {operation: 'delete'},
         params: PERSONA_DELETE_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,

@@ -652,6 +652,126 @@ export function emitOrganizationProfileUpdated(id: string) {
     );
 }
 
+export function emitCertificateCreated(
+    id: string,
+    name: string,
+    orgId: string
+) {
+    notifyAll(
+        {method: 'Certificate.Created', params: {id, name}},
+        {organizationId: orgId}
+    );
+}
+
+export function emitCertificateUpdated(id: string, orgId: string) {
+    notifyAll(
+        {method: 'Certificate.Updated', params: {id}},
+        {organizationId: orgId}
+    );
+}
+
+export function emitCertificateDeleted(id: string, orgId: string) {
+    notifyAll(
+        {method: 'Certificate.Deleted', params: {id}},
+        {organizationId: orgId}
+    );
+}
+
+// Per-device: the credential list is keyed by deviceId; clients refetch that row.
+export function emitCredentialChanged(deviceId: string, orgId: string) {
+    notifyAll(
+        {method: 'Credential.Changed', params: {deviceId}},
+        {organizationId: orgId}
+    );
+}
+
+export function emitPersonaCreated(id: string, name: string, orgId: string) {
+    notifyAll(
+        {method: 'Persona.Created', params: {id, name}},
+        {organizationId: orgId}
+    );
+}
+
+export function emitPersonaUpdated(id: string, name: string, orgId: string) {
+    notifyAll(
+        {method: 'Persona.Updated', params: {id, name}},
+        {organizationId: orgId}
+    );
+}
+
+export function emitPersonaDeleted(id: string, orgId: string) {
+    notifyAll(
+        {method: 'Persona.Deleted', params: {id}},
+        {organizationId: orgId}
+    );
+}
+
+export function emitUserGroupCreated(id: string, name: string, orgId: string) {
+    notifyAll(
+        {method: 'UserGroup.Created', params: {id, name}},
+        {organizationId: orgId}
+    );
+}
+
+export function emitUserGroupUpdated(id: string, name: string, orgId: string) {
+    notifyAll(
+        {method: 'UserGroup.Updated', params: {id, name}},
+        {organizationId: orgId}
+    );
+}
+
+export function emitUserGroupDeleted(id: string, orgId: string) {
+    notifyAll(
+        {method: 'UserGroup.Deleted', params: {id}},
+        {organizationId: orgId}
+    );
+}
+
+export function emitUserGroupMembersAdded(
+    id: string,
+    userIds: string[],
+    orgId: string
+) {
+    if (userIds.length === 0) return;
+    notifyAll(
+        {method: 'UserGroup.MembersAdded', params: {id, userIds}},
+        {organizationId: orgId}
+    );
+}
+
+export function emitUserGroupMembersRemoved(
+    id: string,
+    userIds: string[],
+    orgId: string
+) {
+    if (userIds.length === 0) return;
+    notifyAll(
+        {method: 'UserGroup.MembersRemoved', params: {id, userIds}},
+        {organizationId: orgId}
+    );
+}
+
+export function emitUserCreated(userId: string, orgId: string) {
+    notifyAll(
+        {method: 'User.Created', params: {userId}},
+        {organizationId: orgId}
+    );
+}
+
+export function emitUserUpdated(userId: string, orgId: string) {
+    notifyAll(
+        {method: 'User.Updated', params: {userId}},
+        {organizationId: orgId}
+    );
+}
+
+export function emitUserDeleted(userId: string, orgId: string) {
+    notifyAll(
+        {method: 'User.Deleted', params: {userId}},
+        {organizationId: orgId}
+    );
+}
+
 export type DeviceInventorySource = 'physical' | 'virtual' | 'bluetooth';
 type DeviceInventoryMethod =
     | 'Device.Created'
@@ -812,6 +932,18 @@ export function emitLocationAssignmentRemoved(
     );
 }
 
+// One aggregate event for a batch assign, so N subjects broadcast one event
+// instead of N. Clients refetch the location's assignments once.
+export function emitLocationAssignmentsSet(locationId: number, orgId: string) {
+    notifyAll(
+        {
+            method: 'Location.AssignmentsSet',
+            params: {locationId}
+        },
+        {organizationId: orgId}
+    );
+}
+
 export function emitTagCreated(
     id: number,
     key: string,
@@ -953,7 +1085,7 @@ async function isDeviceAccessAllowed(
     }
 }
 
-function passesOptionFilters(
+export function passesOptionFilters(
     options: options_t,
     device: AbstractDevice | undefined,
     splitReasons: split_rule_t[] | undefined
@@ -1041,9 +1173,11 @@ function buildPathFilteredEvent(
         const v = readDotPath(status, p);
         if (v !== undefined) writeDotPath(slim, p, v);
     }
+    // Partial: only the subscriber's declared components, so the client must
+    // merge it, not prune (which would drop everything it didn't declare).
     return {
         method: event.method,
-        params: {...event.params, status: slim}
+        params: {...event.params, status: slim, partial: true}
     };
 }
 

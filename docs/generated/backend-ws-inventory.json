@@ -1,0 +1,59 @@
+{
+  "generator": "backend-ws-inventory",
+  "version": 1,
+  "totals": {
+    "upgradePaths": 4,
+    "handlers": 3
+  },
+  "paths": [
+    {
+      "pathname": "/",
+      "authRequired": false,
+      "handler": "unknown",
+      "sourceFile": "backend/src/modules/web/ws/WebsocketController.ts",
+      "sourceLine": 105
+    },
+    {
+      "pathname": "/",
+      "authRequired": false,
+      "handler": "unknown",
+      "sourceFile": "backend/src/modules/web/ws/WebsocketController.ts",
+      "sourceLine": 115
+    },
+    {
+      "pathname": "/node-red",
+      "authRequired": false,
+      "handler": "unknown",
+      "sourceFile": "backend/src/modules/web/ws/WebsocketController.ts",
+      "sourceLine": 74
+    },
+    {
+      "pathname": "/shelly",
+      "authRequired": false,
+      "handler": "unknown",
+      "sourceFile": "backend/src/modules/web/ws/WebsocketController.ts",
+      "sourceLine": 98
+    }
+  ],
+  "handlers": [
+    {
+      "className": "AbstractWebsocketHandler",
+      "sourceFile": "backend/src/modules/web/ws/handlers/AbstractWebsocketHandler.ts",
+      "sourceLine": 123,
+      "maxPayload": 5242880,
+      "notes": []
+    },
+    {
+      "className": "ClientWebsocketHandler",
+      "sourceFile": "backend/src/modules/web/ws/handlers/ClientWebsocketHandler.ts",
+      "sourceLine": 19,
+      "notes": []
+    },
+    {
+      "className": "ShellyWebsocketHandler",
+      "sourceFile": "backend/src/modules/web/ws/handlers/ShellyWebsocketHandler.ts",
+      "sourceLine": 324,
+      "notes": []
+    }
+  ]
+}

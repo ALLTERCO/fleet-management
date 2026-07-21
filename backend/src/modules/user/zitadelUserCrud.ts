@@ -15,6 +15,7 @@ import {
     type UserLifecycleAuditInput
 } from '../authz/audit';
 import {canCrossOrganizationBoundary} from '../authz/evaluator';
+import * as EventDistributor from '../EventDistributor';
 import {ConnectionContext} from '../web/ws/ConnectionContext';
 import {zitadelService} from '../zitadel';
 import {evictCachedUserByCredentialId, evictCachedUserByUserId} from './cache';
@@ -121,7 +122,12 @@ export async function createZitadelUser(
     // New users land in the sender's tenant org so resourceOwner matches
     // what the tenant gate expects — no cross-tenant bounce for the admin
     // granting roles after.
-    return await zitadelService.createHumanUser({...params, tenantId: orgId});
+    const created = await zitadelService.createHumanUser({
+        ...params,
+        tenantId: orgId
+    });
+    EventDistributor.emitUserCreated(created.userId, orgId);
+    return created;
 }
 
 export async function updateZitadelUser(
@@ -142,7 +148,7 @@ export async function updateZitadelUser(
         // recovery channel to an address they no longer control.
         guardNotSelf(sender, userId, 'change the email of');
     }
-    await requireOwnedByTenant(sender, userId);
+    const orgId = await requireOwnedByTenant(sender, userId);
     ensureZitadelManagement();
     if (firstName !== undefined && lastName !== undefined) {
         await zitadelService.updateHumanProfile(userId, {
@@ -156,6 +162,7 @@ export async function updateZitadelUser(
         // the change does not take effect until the new address is proven.
         await zitadelService.updateHumanEmail(userId, email);
     }
+    EventDistributor.emitUserUpdated(userId, orgId);
     return {success: true};
 }
 
@@ -208,6 +215,7 @@ export async function deactivateZitadelUser(
         },
         deps
     );
+    EventDistributor.emitUserUpdated(params.userId, orgId);
     return {success: true};
 }
 
@@ -237,6 +245,7 @@ export async function reactivateZitadelUser(
         },
         deps
     );
+    EventDistributor.emitUserUpdated(params.userId, orgId);
     return {success: true};
 }
 
@@ -290,6 +299,7 @@ export async function deleteZitadelUser(
         },
         deps
     );
+    EventDistributor.emitUserDeleted(params.userId, orgId);
     return {success: true};
 }
 

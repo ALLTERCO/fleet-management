@@ -297,9 +297,14 @@ const metrics = computed<Metric[]>(() => {
     if (s.tF != null && s.tC == null)
         out.push({label: 'Temperature', value: `${s.tF} °F`});
     if (s.rh != null) out.push({label: 'Humidity', value: `${s.rh}%`});
+    // With an xvoltage transform+unit set, the transformed value is the real
+    // reading in its own unit; list it before raw volts.
+    const xUnit = props.settings?.xvoltage?.unit;
+    if (s.xvoltage != null && xUnit)
+        out.push({label: 'Reading', value: `${s.xvoltage} ${xUnit}`});
     if (s.voltage != null)
         out.push({label: 'Voltage', value: `${s.voltage} V`});
-    if (s.xvoltage != null)
+    if (s.xvoltage != null && !xUnit)
         out.push({label: 'Transformed', value: `${s.xvoltage}`});
     if (s.mute != null)
         out.push({label: 'Muted', value: s.mute ? 'Yes' : 'No'});
@@ -396,7 +401,7 @@ function formatConfigValue(v: unknown): string {
     border-radius: var(--radius-md); background-color: var(--color-surface-2);
 }
 .et-sensor__value { font-size: var(--type-body); font-weight: var(--font-bold); color: var(--color-text-primary); }
-.et-sensor__label { font-size: var(--type-body); color: var(--color-text-disabled); text-align: center; }
+.et-sensor__label { font-size: var(--type-caption); color: var(--color-text-disabled); text-align: center; }
 
 /* Smoke mute */
 .et-sensor__mute { display: flex; }

@@ -371,12 +371,12 @@ function save() {
     border-bottom: 1px solid rgba(255, 255, 255, 0.055);
 }
 .esp-hd h3 {
-    font-size: 15px;
+    font-size: var(--type-body);
     font-weight: 650;
     letter-spacing: -0.02em;
 }
 .esp-sub {
-    font-size: 11.5px;
+    font-size: var(--type-caption);
     color: #5d646f;
 }
 .esp-x {
@@ -387,7 +387,7 @@ function save() {
     border: none;
     color: #9aa1ac;
     cursor: pointer;
-    font-size: 15px;
+    font-size: var(--type-body);
 }
 .esp-x:hover {
     background: #181c23;
@@ -437,7 +437,7 @@ function save() {
 }
 .esp-field > label {
     display: block;
-    font-size: 10px;
+    font-size: var(--type-caption);
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -494,7 +494,7 @@ textarea.esp-input {
     font-family: 'Inter', system-ui, sans-serif;
 }
 .esp-hint {
-    font-size: 11px;
+    font-size: var(--type-caption);
     color: #5d646f;
     line-height: 1.45;
     margin: 6px 2px 0;
@@ -523,7 +523,7 @@ textarea.esp-input {
     border-color: rgba(255, 255, 255, 0.25);
 }
 .esp-subhead {
-    font-size: 11px;
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -536,7 +536,7 @@ textarea.esp-input {
     display: flex;
     align-items: center;
     gap: 9px;
-    font-size: 12.5px;
+    font-size: var(--type-caption);
     font-weight: 500;
     color: #c9ced6;
     cursor: pointer;

@@ -30,6 +30,99 @@ const dbResultCache = new BoundedMap<string, any>({
     ttlMs: DB_RESULT_CACHE_TTL_MS
 });
 
+interface DashboardActionRecord {
+    id: string;
+    name: string;
+    type: 'action';
+    actions: Array<Record<string, any>>;
+    icon?: string;
+}
+
+function parseDashboardActionSteps(value: unknown): Array<Record<string, any>> {
+    let parsed: unknown;
+    try {
+        parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    } catch {
+        throw new Error('Invalid actions JSON');
+    }
+    if (!Array.isArray(parsed)) throw new Error('Invalid actions JSON');
+    return parsed as Array<Record<string, any>>;
+}
+
+function collectLogicalActionTargets(
+    actions: DashboardActionRecord[]
+): number[] {
+    const ids = new Set<number>();
+    const visit = (destination: unknown): void => {
+        if (Array.isArray(destination)) {
+            for (const item of destination) visit(item);
+            return;
+        }
+        if (Number.isInteger(destination) && Number(destination) > 0) {
+            ids.add(Number(destination));
+        }
+    };
+    for (const action of actions) {
+        for (const step of action.actions) visit(step.dst);
+    }
+    return [...ids];
+}
+
+function projectActionDestination(
+    destination: unknown,
+    externalIds: ReadonlyMap<number, string>
+): unknown {
+    if (Array.isArray(destination)) {
+        return destination.map((item) =>
+            projectActionDestination(item, externalIds)
+        );
+    }
+    return typeof destination === 'number'
+        ? (externalIds.get(destination) ?? destination)
+        : destination;
+}
+
+function projectActionRecords(
+    actions: DashboardActionRecord[],
+    externalIds: ReadonlyMap<number, string>
+): DashboardActionRecord[] {
+    return actions.map((action) => ({
+        ...action,
+        actions: action.actions.map((step) =>
+            Object.hasOwn(step, 'dst')
+                ? {
+                      ...step,
+                      dst: projectActionDestination(step.dst, externalIds)
+                  }
+                : step
+        )
+    }));
+}
+
+async function projectDashboardActionsForApi(
+    actions: DashboardActionRecord[],
+    organizationId?: string
+): Promise<DashboardActionRecord[]> {
+    if (!organizationId) return actions;
+    const deviceIds = collectLogicalActionTargets(actions);
+    if (deviceIds.length === 0) return actions;
+    const {rows} = await callMethod(
+        'ui.fn_dashboard_action_target_external_ids',
+        {
+            p_organization_id: organizationId,
+            p_device_ids: deviceIds
+        }
+    );
+    const externalIds = new Map<number, string>();
+    for (const row of rows as Array<{
+        device_id: number;
+        external_id: string;
+    }>) {
+        externalIds.set(row.device_id, row.external_id);
+    }
+    return projectActionRecords(actions, externalIds);
+}
+
 function cacheKey(cc: string, organizationId?: string): string {
     return organizationId ? `${cc}:${organizationId}` : cc;
 }
@@ -199,14 +292,23 @@ const actions = {
                         actions: udf
                     };
                 }
+                const actionSteps = Array.isArray(udf?.actions)
+                    ? udf.actions
+                    : [];
                 return {
                     id: r.id.toString(),
                     name: r.name,
                     type: 'action' as const,
-                    actions: udf?.actions ?? [],
+                    actions: actionSteps,
                     icon: udf?.icon ?? undefined
                 };
             });
+        },
+        async project(
+            records: DashboardActionRecord[],
+            opts?: {organizationId?: string}
+        ) {
+            return projectDashboardActionsForApi(records, opts?.organizationId);
         },
         async add({
             organizationId,
@@ -219,13 +321,7 @@ const actions = {
             actions: any;
             icon?: string;
         }) {
-            let parsed: any;
-            try {
-                parsed =
-                    typeof actions === 'string' ? JSON.parse(actions) : actions;
-            } catch {
-                throw new Error('Invalid actions JSON');
-            }
+            const parsed = parseDashboardActionSteps(actions);
             const udf = icon ? {actions: parsed, icon} : parsed;
             await callMethod('ui.fn_dashboard_item_action_add', {
                 p_organization_id: organizationId,
@@ -247,13 +343,7 @@ const actions = {
             actions: any;
             icon?: string;
         }) {
-            let parsed: any;
-            try {
-                parsed =
-                    typeof actions === 'string' ? JSON.parse(actions) : actions;
-            } catch {
-                throw new Error('Invalid actions JSON');
-            }
+            const parsed = parseDashboardActionSteps(actions);
             const udf = icon ? {actions: parsed, icon} : parsed;
             await callMethod('ui.fn_dashboard_item_action_update', {
                 p_organization_id: organizationId,
@@ -486,12 +576,15 @@ export async function getFromRegistry(
     const cc: string = `${name}.${key}`;
 
     if (actions[cc]) {
+        const act = actions[cc];
         const ck = cacheKey(cc, organizationId);
         const cached = dbResultCache.get(ck);
-        if (cached !== undefined) return cached;
-        const rr = await actions[cc].fetch({organizationId});
+        if (cached !== undefined) {
+            return act.project ? act.project(cached, {organizationId}) : cached;
+        }
+        const rr = await act.fetch({organizationId});
         dbResultCache.set(ck, rr);
-        return rr;
+        return act.project ? act.project(rr, {organizationId}) : rr;
     }
     const data = await loadRegistry(name);
     return data[key] ?? null;
@@ -504,6 +597,18 @@ export async function getRegistryKeys(name: string) {
 
 export async function getAll(name: string) {
     return await loadRegistry(name);
+}
+
+export function __setFileRegistryForTests(
+    name: string,
+    content: Record<string, any>
+): () => void {
+    const previous = fileCache.get(name);
+    fileCache.set(name, content);
+    return () => {
+        if (previous === undefined) fileCache.delete(name);
+        else fileCache.set(name, previous);
+    };
 }
 
 /**

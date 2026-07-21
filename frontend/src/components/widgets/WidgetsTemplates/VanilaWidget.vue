@@ -1,7 +1,7 @@
 <template>
     <div
         v-if="vertical"
-        class="widget-card flex flex-row items-center gap-3 rounded-lg shadow-none p-3 relative text-sm min-h-[76px] justify-start hover:cursor-pointer"
+        class="widget-card flex flex-row items-center gap-3 rounded-lg shadow-none p-3 relative text-[length:var(--type-body)] min-h-[76px] justify-start hover:cursor-pointer"
         :class="{
             'widget-card--selected': selected,
         }"
@@ -52,7 +52,7 @@
 
     <div
         v-else
-        class="widget-card min-w-[var(--grid-min-width)] h-[var(--grid-min-height)] no-scrollbar overflow-hidden text-ellipsis whitespace-pre-line text-center relative rounded-lg text-sm border self-stretch leading-tight"
+        class="widget-card min-w-[var(--grid-min-width)] h-[var(--grid-min-height)] no-scrollbar overflow-hidden text-ellipsis whitespace-pre-line text-center relative rounded-lg text-[length:var(--type-body)] border self-stretch leading-tight"
         :class="[
             selected
                 ? 'widget-card--selected'
@@ -61,7 +61,7 @@
         @click="onClick"
     >
         <span
-            class="widget-badge text-xs rounded-br-lg py-[2px] px-[6px] absolute h-5 self-center top-0 left-0 z-[var(--z-raised)]"
+            class="widget-badge text-[length:var(--type-caption)] rounded-br-lg py-[2px] px-[6px] absolute h-5 self-center top-0 left-0 z-[var(--z-raised)]"
         >
             <slot name="upper-corner">
                 <i class="mr-1 fas fa-code"></i>

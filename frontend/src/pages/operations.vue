@@ -16,12 +16,7 @@ import type {RouteTab} from '@/types/page-template';
 const operationsTabs: RouteTab[] = [
     {label: 'Firmware', path: '/operations/firmware', icon: 'fas fa-microchip'},
     {label: 'Backups', path: '/operations/backups', icon: 'fas fa-box-archive'},
-    {label: 'Jobs', path: '/operations/jobs', icon: 'fas fa-list-check'},
-    {
-        label: 'Device Auth',
-        path: '/operations/device-auth',
-        icon: 'fas fa-key'
-    }
+    {label: 'Jobs', path: '/operations/jobs', icon: 'fas fa-list-check'}
 ];
 
 provide('operationsTabs', operationsTabs);

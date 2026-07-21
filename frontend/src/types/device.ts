@@ -18,8 +18,24 @@ export interface DeviceSettings {
     [key: string]: any;
 }
 
+/** Device-specific UI surfaces, derived by the backend. Mostly from what the
+ *  device announces; `wallDisplay` is the one app/model-based flag (no RPC
+ *  marks the relay/thermostat mode switch). */
+export interface DeviceUiCapabilities {
+    /** Device advertises Pill.SetConfig — pin-mode configuration UI */
+    pillPinMode: boolean;
+    /** Device reports a cury:N component in status */
+    cury: boolean;
+    /** LED settings via a device-reported `*_ui` component (plugs_ui, …) */
+    ledSettings: boolean;
+    /** Wall Display — shows the relay↔thermostat mode switch */
+    wallDisplay: boolean;
+}
+
 export interface DeviceCapabilities {
     backup?: boolean;
+    /** Device advertises the RPCs the FM restore flow sends */
+    restore?: boolean;
     firmwareUpdate?: boolean;
     firmwareCheck?: boolean;
     otaCommit?: boolean;
@@ -32,6 +48,10 @@ export interface DeviceCapabilities {
     serviceResetCounters?: boolean;
     /** Device supports user-created virtual components (Virtual.Add/Delete) */
     virtualComponents?: boolean;
+    /** Addon services the device advertises, as sys.device.addon_type values */
+    addons?: string[];
+    /** Device-specific UI feature flags */
+    ui?: DeviceUiCapabilities;
     tlsUserCA?: boolean;
     tlsClientCert?: boolean;
 }

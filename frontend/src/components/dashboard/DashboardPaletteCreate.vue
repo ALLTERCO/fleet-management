@@ -73,15 +73,13 @@ interface TypeOption {
     description: string;
 }
 
-// Domain dashboard types offered in the create picker. Only Energy is enabled
-// for now (alongside Classic below). The other domain types are intentionally
-// HIDDEN here — commented out, not deleted — so they stay creatable-ready and,
-// crucially, remain in the global DOMAIN_TYPES so existing dashboards of those
-// kinds still route and render. To re-enable one in the picker, uncomment it.
+// Domain types offered in the create picker. Others stay commented out (not
+// deleted) so they remain in DOMAIN_TYPES and existing dashboards still route;
+// uncomment to offer one.
 const CREATABLE_DOMAIN_TYPES: readonly DomainDashboardType[] = [
-    'energy'
+    'energy',
+    'environment'
     // 'overview',
-    // 'environment',
     // 'control',
     // 'safety',
     // 'map'

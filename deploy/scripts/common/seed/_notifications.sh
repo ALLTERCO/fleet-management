@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Notification destinations, email templates, and alert rules.
+# shellcheck disable=SC2016 # Template placeholders are literal.
 
 set -euo pipefail
 
 _seed_notification_destinations() {
     info "Seeding notification destinations (channels)..."
+    local existing
+    existing=$(_seed_rpc 'Notification.Destination.List' '{"limit":100}')
     local destinations=(
         'Ops Email:Operational alerts go here'
         'Critical Pager:Pager / on-call for showstopper alerts'
@@ -13,14 +16,20 @@ _seed_notification_destinations() {
     for entry in "${destinations[@]}"; do
         name="${entry%%:*}"
         desc="${entry#*:}"
+        if _seed_named_item_exists "$existing" "$name"; then
+            info "  $name"
+            continue
+        fi
         body=$(jq -cn --arg n "$name" --arg d "$desc" \
             '{name:$n, description:$d, enabled:true}')
-        _seed_rpc_log 'notification.Destination.Create' "$body" "  $name"
+        _seed_rpc_log 'Notification.Destination.Create' "$body" "  $name"
     done
 }
 
 _seed_notification_templates() {
     info "Seeding notification email templates..."
+    SEED_EMAIL_TEMPLATES=$(_seed_rpc \
+        'Notification.EmailTemplate.List' '{"limit":100}')
     _seed_one_email_template \
         'Critical alert (HTML)' \
         '[CRITICAL] ${alert.name} on ${device.name}' \
@@ -35,16 +44,21 @@ _seed_notification_templates() {
 
 _seed_one_email_template() {
     local name="$1" subj="$2" html="$3" txt="$4" body
+    if _seed_named_item_exists "$SEED_EMAIL_TEMPLATES" "$name"; then
+        info "  $name"
+        return 0
+    fi
     body=$(jq -nc \
         --arg n "$name" --arg s "$subj" --arg h "$html" --arg t "$txt" '
             {name:$n, subjectTemplate:$s, htmlTemplate:$h, textTemplate:$t}
         ')
-    _seed_rpc_log 'notification.EmailTemplate.Create' "$body" "  $name"
+    _seed_rpc_log 'Notification.EmailTemplate.Create' "$body" "  $name"
 }
 
 _seed_alert_rules() {
     info "Seeding alert rules..."
     local dest_ids
+    SEED_ALERT_RULES=$(_seed_rpc 'Alert.Rule.List' '{"limit":100}')
     dest_ids=$(_seed_first_notification_dest_ids)
     if [ -z "$dest_ids" ]; then
         info "  skipped — no notification destinations to route to"
@@ -71,17 +85,27 @@ _seed_alert_rules() {
 
 _seed_one_alert_rule() {
     local name="$1" kind="$2" sev="$3" cfg_json="$4" dest_ids="$5" payload
+    if _seed_named_item_exists "$SEED_ALERT_RULES" "$name"; then
+        info "  $name"
+        return 0
+    fi
     payload=$(jq -nc --arg n "$name" --arg k "$kind" --arg s "$sev" \
         --argjson cfg "$cfg_json" \
         --argjson dids "[$dest_ids]" '
             {name:$n, kind:$k, severity:$s, config:$cfg, scope:{}, destinationGroupIds:$dids}
         ')
-    _seed_rpc_log 'alert.Rule.Create' "$payload" "  $name"
+    _seed_rpc_log 'Alert.Rule.Create' "$payload" "  $name"
+}
+
+_seed_named_item_exists() {
+    local response="$1" name="$2"
+    echo "$response" | jq -e --arg n "$name" \
+        '.items[]? | select(.name == $n)' >/dev/null
 }
 
 _seed_first_notification_dest_ids() {
     local resp
-    resp=$(_seed_rpc 'notification.Destination.List' '{"limit":50}' 2>/dev/null \
+    resp=$(_seed_rpc 'Notification.Destination.List' '{"limit":50}' 2>/dev/null \
         || echo '{}')
     echo "$resp" | jq -r '.items[]? | .id' 2>/dev/null | head -n2 | paste -sd, -
 }

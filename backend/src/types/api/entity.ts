@@ -13,8 +13,11 @@ export interface EntityGetCapabilitiesParams {
 export interface EntityCapabilityResponse {
     /** The entity's type discriminator (e.g. 'switch', 'light', 'cover') */
     type: string;
-    /** Action verbs the entity supports */
+    /** Action verbs the entity supports (control + maintenance) */
     actions: string[];
+    /** Subset of `actions` that are maintenance (reset/calibrate), not output
+     *  control — clients present these quietly, not as primary controls. */
+    maintenanceActions: string[];
 }
 
 export const ENTITY_GET_CAPABILITIES_PARAMS_SCHEMA: JsonSchema = {
@@ -31,7 +34,7 @@ export const ENTITY_GET_CAPABILITIES_PARAMS_SCHEMA: JsonSchema = {
 
 export const ENTITY_GET_CAPABILITIES_RESPONSE_SCHEMA: JsonSchema = {
     type: 'object',
-    required: ['type', 'actions'],
+    required: ['type', 'actions', 'maintenanceActions'],
     properties: {
         type: {
             type: 'string',
@@ -40,7 +43,14 @@ export const ENTITY_GET_CAPABILITIES_RESPONSE_SCHEMA: JsonSchema = {
         actions: {
             type: 'array',
             items: {type: 'string'},
-            description: 'Action verbs the entity supports'
+            description:
+                'Action verbs the entity supports (control + maintenance)'
+        },
+        maintenanceActions: {
+            type: 'array',
+            items: {type: 'string'},
+            description:
+                'Subset of actions that are maintenance (reset/calibrate), not output control'
         }
     }
 };
@@ -215,6 +225,7 @@ export const ENTITY_DESCRIBE: DescribeOutput = new DescribeBuilder('entity', {
         'List, read, and invoke actions on normalized fleet entities across devices.'
 })
     .registerMethod('List', {
+        safety: {operation: 'read'},
         params: ENTITY_LIST_PARAMS_SCHEMA,
         response: ENTITY_LIST_RESPONSE_SCHEMA,
         permission: {note: 'authenticated — filtered by device access'},
@@ -236,6 +247,7 @@ export const ENTITY_DESCRIBE: DescribeOutput = new DescribeBuilder('entity', {
             'Return the JSON Schema for an action on a specific entity. Callers use this to build forms or validate InvokeAction params without hardcoding shapes.'
     })
     .registerMethod('InvokeAction', {
+        safety: {effectDependsOnInput: true},
         params: ENTITY_INVOKE_ACTION_PARAMS_SCHEMA,
         response: ENTITY_INVOKE_ACTION_RESPONSE_SCHEMA,
         permission: {component: 'devices', operation: 'execute'},

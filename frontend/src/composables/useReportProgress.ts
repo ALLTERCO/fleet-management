@@ -9,6 +9,7 @@
 import {computed, getCurrentScope, onScopeDispose, ref} from 'vue';
 import type {ReportProgress} from '@/helpers/reportGeneration';
 import {onReportEvent} from '@/tools/websocket';
+import {REPORT_EVENT} from '@/tools/wsEvents';
 
 interface ProgressParams {
     jobId?: string;
@@ -66,9 +67,18 @@ export function useReportProgress() {
         activeJobId.value = jobId;
         if (unsubscribe) return;
         unsubscribe = onReportEvent((event) => {
-            if (event.method !== 'Report.Progress') return;
-            const params = event.params as ProgressParams;
+            const params = event.params as ProgressParams & {
+                status?: 'ready' | 'failed' | 'cancelled';
+            };
             if (params.jobId !== activeJobId.value) return;
+            // Terminal push — reflect the outcome instantly. The caller's
+            // Report.GetReport poll stays the durable fetch of the file.
+            if (event.method === REPORT_EVENT.READY) {
+                phase.value = params.status === 'failed' ? 'failed' : 'done';
+                if (params.status !== 'failed') percent.value = 100;
+                return;
+            }
+            if (event.method !== REPORT_EVENT.PROGRESS) return;
             if (typeof params.phase === 'string') phase.value = params.phase;
             update(params);
         });

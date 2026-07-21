@@ -14,13 +14,19 @@ export interface ReportJobSenderSnapshot {
     credentialBoundary?: Scope;
 }
 
-export interface EngineReportExportPayload {
-    kind: 'energy' | 'interval' | 'energy_dump';
+interface ReportExportPayloadBase {
+    kind: 'energy' | 'interval' | 'energy_dump' | 'environment';
     jobId: string;
     userId: string;
     orgId: string | null;
-    rawParams: unknown;
     sender: ReportJobSenderSnapshot;
 }
+
+export type EngineReportExportPayload = ReportExportPayloadBase &
+    (
+        | {logicalParams: unknown; rawParams?: never}
+        /** Jobs queued before logical device selectors were introduced. */
+        | {logicalParams?: never; rawParams: unknown}
+    );
 
 export type ReportExportPayload = EngineReportExportPayload;

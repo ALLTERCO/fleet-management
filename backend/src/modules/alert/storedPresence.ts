@@ -1,6 +1,7 @@
 import * as PostgresProvider from '../PostgresProvider';
 
 export interface StoredPresenceRow {
+    id: number;
     external_id: string;
     last_seen: Date | string | null;
     name?: string | null;
@@ -10,7 +11,7 @@ export async function storedDevicePresence(
     organizationId: string
 ): Promise<StoredPresenceRow[]> {
     return PostgresProvider.queryRows<StoredPresenceRow>(
-        `SELECT external_id,
+        `SELECT id, external_id,
                 last_seen,
                 COALESCE(jdoc->'info'->>'name', jdoc->>'name') AS name
            FROM device.list

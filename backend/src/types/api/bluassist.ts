@@ -460,6 +460,7 @@ b.registerMethod('SetNotify', {
         'bluassist.SetNotify — subscribe (notify/indicate) or unsubscribe (none) to a characteristic.'
 });
 b.registerMethod('Call', {
+    safety: {effectDependsOnInput: true},
     params: BLU_ASSIST_CALL_PARAMS_SCHEMA,
     response: {type: 'object', additionalProperties: true},
     permission: PERM_UPDATE,

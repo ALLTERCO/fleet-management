@@ -14,6 +14,7 @@ import RpcError from '../../rpc/RpcError';
 import {validateOrThrow} from '../../rpc/validateOrThrow';
 import {
     REPORT_GENERATE_ENERGY_PARAMS_SCHEMA,
+    REPORT_GENERATE_ENVIRONMENT_PARAMS_SCHEMA,
     REPORT_GENERATE_PARAMS_SCHEMA
 } from '../../types/api/report';
 import {
@@ -43,11 +44,12 @@ function requireOrg(sender: CommandSender): string {
 }
 
 // The report request schema a template's params must validate against, by kind.
-// interval uses the generic report request; energy has its own.
+// energy and environment each have their own; interval uses the generic request.
 function paramSchemaFor(kind: ReportTemplateKind) {
-    return kind === 'energy'
-        ? REPORT_GENERATE_ENERGY_PARAMS_SCHEMA
-        : REPORT_GENERATE_PARAMS_SCHEMA;
+    if (kind === 'energy') return REPORT_GENERATE_ENERGY_PARAMS_SCHEMA;
+    if (kind === 'environment')
+        return REPORT_GENERATE_ENVIRONMENT_PARAMS_SCHEMA;
+    return REPORT_GENERATE_PARAMS_SCHEMA;
 }
 
 // Single source of truth for the duplicate-name rejection.

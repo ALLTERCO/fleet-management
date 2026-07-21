@@ -2,6 +2,10 @@ import type {EnergyQueryResponse, EnergyQueryRow} from '@api/energy';
 import {defineStore} from 'pinia';
 import {computed, ref} from 'vue';
 import {normaliseDashboardSettings} from '@/helpers/dashboardSettings';
+import {toastRpcError} from '@/helpers/domainErrors';
+import type {PhaseMetrics} from '@/helpers/liveMetrics';
+import {createStaleGuard, type StaleGuard} from '@/stores/staleGuard';
+import {useToastStore} from '@/stores/toast';
 import type {
     DashboardSettings,
     DashboardType,
@@ -28,25 +32,7 @@ export interface ScopeMetrics {
         humidity: MetricData;
         luminance: MetricData;
     };
-    phaseMetrics: PhaseMetricsSnapshot | null;
-}
-
-export interface PhaseMetricsSnapshot {
-    threePhaseDeviceCount: number;
-    phases: {
-        label: string;
-        totalPower: number;
-        avgVoltage: number | null;
-        avgCurrent: number | null;
-    }[];
-    imbalancedCount: number;
-    worstImbalanced: {
-        deviceId: number;
-        shellyId: string;
-        deviceName: string;
-        imbalancePct: number;
-        channels: unknown[];
-    }[];
+    phaseMetrics: PhaseMetrics | null;
 }
 
 export interface DeviceInfo {
@@ -130,10 +116,10 @@ export interface ScopeCapabilities {
 }
 
 export const useAnalyticsStore = defineStore('analytics', () => {
+    const toast = useToastStore();
     // State — use a counter so concurrent fetches don't prematurely clear loading
     const loadingCount = ref(0);
     const loading = computed(() => loadingCount.value > 0);
-    const error = ref<string | null>(null);
     const scopeMetrics = ref<ScopeMetrics | null>(null);
     const consumptionHistory = ref<ConsumptionData[]>([]);
     const voltageHistory = ref<ConsumptionData[]>([]);
@@ -162,38 +148,36 @@ export const useAnalyticsStore = defineStore('analytics', () => {
     const tariff = computed(() => settings.value?.tariff ?? 0);
     const currency = computed(() => settings.value?.currency ?? 'EUR');
 
-    // Per-ref seq tokens so a stale (older) response can't overwrite
+    // Per-ref stale guards so a stale (older) response can't overwrite
     // a newer one when filters change faster than RPCs settle.
-    let scopeMetricsSeq = 0;
-    let consumptionSeq = 0;
-    let environmentalSeq = 0;
-    let capabilitiesSeq = 0;
-    let settingsSeq = 0;
-    const metricHistorySeq: Record<string, number> = {
-        consumption: 0,
-        voltage: 0,
-        current: 0,
-        returned_energy: 0
+    const scopeMetricsGuard = createStaleGuard();
+    const consumptionGuard = createStaleGuard();
+    const environmentalGuard = createStaleGuard();
+    const capabilitiesGuard = createStaleGuard();
+    const settingsGuard = createStaleGuard();
+    const metricHistoryGuards: Record<string, StaleGuard> = {
+        consumption: createStaleGuard(),
+        voltage: createStaleGuard(),
+        current: createStaleGuard(),
+        returned_energy: createStaleGuard()
     };
 
     // Actions
     async function fetchScopeMetrics(groupId: number) {
-        const seq = ++scopeMetricsSeq;
+        const token = scopeMetricsGuard.bump();
         loadingCount.value++;
-        error.value = null;
         try {
             const result = await ws.sendRPC<ScopeMetrics>(
                 'FLEET_MANAGER',
                 'fleet.GetMetrics',
                 {scope: {groupId}}
             );
-            if (seq !== scopeMetricsSeq) return null;
+            if (scopeMetricsGuard.isStale(token)) return null;
             scopeMetrics.value = result;
             return result;
         } catch (err: any) {
-            if (seq !== scopeMetricsSeq) return null;
-            error.value = err?.message ?? 'Failed to fetch scope metrics';
-            console.error('[Analytics] fetchScopeMetrics error:', err);
+            if (scopeMetricsGuard.isStale(token)) return null;
+            toastRpcError(toast, err, 'Failed to load scope metrics');
             return null;
         } finally {
             loadingCount.value--;
@@ -212,9 +196,8 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         to: string,
         granularity: 'hour' | 'day' | 'month' = 'day'
     ) {
-        const seq = ++consumptionSeq;
+        const token = consumptionGuard.bump();
         loadingCount.value++;
-        error.value = null;
         try {
             const result = await ws.sendRPC<EnergyQueryResponse>(
                 'FLEET_MANAGER',
@@ -224,19 +207,21 @@ export const useAnalyticsStore = defineStore('analytics', () => {
                     from,
                     to,
                     tags: ['total_act_energy'],
+                    // AC grid electricity view — keep DC energy out of the total.
+                    commodity: 'electricity',
+                    electricalSource: 'ac_mains',
                     bucket: GRAN_TO_BUCKET[granularity]
                 }
             );
-            if (seq !== consumptionSeq) return null;
+            if (consumptionGuard.isStale(token)) return null;
             const data = applyTariffCost(
                 (result?.items ?? []).map(toConsumption)
             );
             consumptionHistory.value = data;
             return result;
         } catch (err: any) {
-            if (seq !== consumptionSeq) return null;
-            error.value = err?.message ?? 'Failed to fetch consumption history';
-            console.error('[Analytics] fetchConsumptionHistory error:', err);
+            if (consumptionGuard.isStale(token)) return null;
+            toastRpcError(toast, err, 'Failed to load consumption history');
             return null;
         } finally {
             loadingCount.value--;
@@ -258,7 +243,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         metric: 'consumption' | 'returned_energy' | 'voltage' | 'current',
         granularity: 'hour' | 'day' | 'month' = 'day'
     ) {
-        const seq = ++metricHistorySeq[metric];
+        const token = metricHistoryGuards[metric].bump();
         loadingCount.value++;
         try {
             const result = await ws.sendRPC<EnergyQueryResponse>(
@@ -269,21 +254,20 @@ export const useAnalyticsStore = defineStore('analytics', () => {
                     from,
                     to,
                     tags: [METRIC_TO_TAG[metric]],
+                    // AC electrical metrics — DC readings have their own view.
+                    commodity: 'electricity',
+                    electricalSource: 'ac_mains',
                     bucket: GRAN_TO_BUCKET[granularity]
                 }
             );
-            if (seq !== metricHistorySeq[metric]) return null;
+            if (metricHistoryGuards[metric].isStale(token)) return null;
             const data = (result?.items ?? []).map(toConsumption);
             const target = metricHistoryRefs[metric];
             if (target) target.value = data;
             return result;
         } catch (err: any) {
-            if (seq !== metricHistorySeq[metric]) return null;
-            error.value = err?.message ?? 'Failed to fetch metric history';
-            console.error(
-                `[Analytics] fetchMetricHistory(${metric}) error:`,
-                err
-            );
+            if (metricHistoryGuards[metric].isStale(token)) return null;
+            toastRpcError(toast, err, `Failed to load ${metric} history`);
             return null;
         } finally {
             loadingCount.value--;
@@ -296,9 +280,8 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         to: string,
         metric: 'temperature' | 'humidity' | 'luminance'
     ) {
-        const seq = ++environmentalSeq;
+        const token = environmentalGuard.bump();
         loadingCount.value++;
-        error.value = null;
         try {
             const result = await ws.sendRPC<EnergyQueryResponse>(
                 'FLEET_MANAGER',
@@ -310,16 +293,14 @@ export const useAnalyticsStore = defineStore('analytics', () => {
                     tags: [metric]
                 }
             );
-            if (seq !== environmentalSeq) return null;
+            if (environmentalGuard.isStale(token)) return null;
             environmentalHistory.value = (result?.items ?? []).map(
                 toEnvironmental
             );
             return result;
         } catch (err: any) {
-            if (seq !== environmentalSeq) return null;
-            error.value =
-                err?.message ?? 'Failed to fetch environmental history';
-            console.error('[Analytics] fetchEnvironmentalHistory error:', err);
+            if (environmentalGuard.isStale(token)) return null;
+            toastRpcError(toast, err, 'Failed to load environmental history');
             return null;
         } finally {
             loadingCount.value--;
@@ -327,36 +308,36 @@ export const useAnalyticsStore = defineStore('analytics', () => {
     }
 
     async function fetchScopeCapabilities(groupId: number) {
-        const seq = ++capabilitiesSeq;
+        const token = capabilitiesGuard.bump();
         try {
             const result = await ws.sendRPC<ScopeCapabilities>(
                 'FLEET_MANAGER',
                 'fleet.GetCapabilities',
                 {scope: {groupId}}
             );
-            if (seq !== capabilitiesSeq) return null;
+            if (capabilitiesGuard.isStale(token)) return null;
             capabilities.value = result;
             return result;
         } catch (err: any) {
-            console.error('[Analytics] fetchScopeCapabilities error:', err);
+            toastRpcError(toast, err, 'Failed to load scope capabilities');
             return null;
         }
     }
 
     async function fetchDashboardSettings(dashboardId: number) {
-        const seq = ++settingsSeq;
+        const token = settingsGuard.bump();
         try {
             const result = await ws.sendRPC<DashboardSettings>(
                 'FLEET_MANAGER',
                 'dashboard.getsettings',
                 {dashboardId}
             );
-            if (seq !== settingsSeq) return null;
+            if (settingsGuard.isStale(token)) return null;
             const normalised = normaliseDashboardSettings(result);
             settings.value = normalised;
             return normalised;
         } catch (err: any) {
-            console.error('[Analytics] fetchDashboardSettings error:', err);
+            toastRpcError(toast, err, 'Failed to load dashboard settings');
             return null;
         }
     }
@@ -374,7 +355,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
             await fetchDashboardSettings(dashboardId);
             return true;
         } catch (err: any) {
-            console.error('[Analytics] updateDashboardSettings error:', err);
+            toastRpcError(toast, err, 'Failed to save dashboard settings');
             return false;
         }
     }
@@ -401,10 +382,6 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         }
     }
 
-    function createAnalyticsDashboard(name: string, groupId: number) {
-        return createDashboard(name, 'analytics', groupId);
-    }
-
     function createDomainDashboard(
         name: string,
         dashboardType: DomainDashboardType,
@@ -421,7 +398,6 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         tariff?: number;
     }) {
         loadingCount.value++;
-        error.value = null;
         try {
             if (params.reportType === 'monthly') {
                 const result = await fetchConsumptionHistory(
@@ -446,8 +422,7 @@ export const useAnalyticsStore = defineStore('analytics', () => {
             );
             return result;
         } catch (err: any) {
-            error.value = err?.message ?? 'Failed to generate report';
-            console.error('[Analytics] generateReport error:', err);
+            toastRpcError(toast, err, 'Failed to generate report');
             return null;
         } finally {
             loadingCount.value--;
@@ -463,13 +438,11 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         environmentalHistory.value = [];
         settings.value = null;
         capabilities.value = null;
-        error.value = null;
     }
 
     return {
         // State
         loading,
-        error,
         scopeMetrics,
         consumptionHistory,
         voltageHistory,
@@ -500,7 +473,6 @@ export const useAnalyticsStore = defineStore('analytics', () => {
         fetchScopeCapabilities,
         fetchDashboardSettings,
         updateDashboardSettings,
-        createAnalyticsDashboard,
         createDomainDashboard,
         generateReport,
         clearData

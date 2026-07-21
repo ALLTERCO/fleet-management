@@ -188,6 +188,7 @@ import {computed, onMounted, ref} from 'vue';
 import Button from '@/components/core/Button.vue';
 import EmptyBlock from '@/components/core/EmptyBlock.vue';
 import Input from '@/components/core/Input.vue';
+import {formatBytes} from '@/helpers/format';
 import {
     type EmailAsset,
     type EmailAttachment,
@@ -314,12 +315,6 @@ function assetFor(id: number | undefined): EmailAsset | undefined {
 
 function isImage(contentType: string | undefined): boolean {
     return !!contentType && contentType.startsWith('image/');
-}
-
-function formatBytes(n: number): string {
-    if (n < 1024) return `${n} B`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-    return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 </script>
 

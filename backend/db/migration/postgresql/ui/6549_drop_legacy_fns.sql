@@ -1,4 +1,5 @@
 --------------UP
+-- LINT-IGNORE: additive-only (deliberate legacy function removal)
 -- Phase 3: drop legacy SQL fns; TS no longer calls them.
 DROP FUNCTION IF EXISTS ui.fn_dashboard_fetch(VARCHAR);
 DROP FUNCTION IF EXISTS ui.fn_dashboard_item_fetch(INT);

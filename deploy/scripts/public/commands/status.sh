@@ -39,6 +39,7 @@ cmd_status() {
     done
 
     _status_show_deployed
+    _status_show_zitadel_actions
     echo ""
 }
 
@@ -87,4 +88,31 @@ _status_show_db_runtime() {
     info "Timescale live   ${ts_actual:-unavailable}"
     info "Timescale expect ${ts_expected:-unavailable}"
     info "Match status     ${ts_status}"
+}
+
+_status_show_zitadel_actions() {
+    [ "$FM_DEV_MODE" != "true" ] || return 0
+    [ -f "$STATE_DIR/machinekey/zitadel-admin-sa.json" ] || return 0
+    [ -f "$STATE_DIR/zitadel.env" ] || return 0
+
+    echo ""
+    step "Zitadel Action Hooks"
+
+    local host_header="${ZITADEL_HOSTNAME:-localhost}:${ZITADEL_EXTERNALPORT:-9090}"
+    if [ "${ZITADEL_EXTERNALSECURE:-false}" = "true" ]; then
+        host_header="${host_header%:443}"
+    else
+        host_header="${host_header%:80}"
+    fi
+
+    if ZITADEL_URL="${ZITADEL_URL:-http://localhost:8080}" \
+       ZITADEL_HOST_HEADER="$host_header" \
+       MACHINEKEY_PATH="$STATE_DIR/machinekey/zitadel-admin-sa.json" \
+       STATE_FILE="$STATE_DIR/zitadel.env" \
+       FM_RUNTIME_ENV_FILE="$STATE_DIR/fm-runtime.env" \
+         bash "$DEPLOY_DIR/scripts/common/check-zitadel-actions.sh"; then
+        info "Status ok"
+    else
+        error "Status failed"
+    fi
 }

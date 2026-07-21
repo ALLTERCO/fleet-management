@@ -50,13 +50,71 @@ export const ENERGY_QUERY_TAGS = [
     'max_voltage',
     'min_current',
     'max_current',
+    // Battery-monitor (bm) DC telemetry — domain dc_battery. Divisor 1: soc/soh
+    // are %, cycles a count, charge_ah/discharge_ah Amp-hours (no scaling).
+    'soc',
+    'soh',
+    'cycles',
+    'charge_ah',
+    'discharge_ah',
     // From device.status
     'temperature',
     'humidity',
-    'luminance'
+    'luminance',
+    // From device_sensor.numeric_15min (BTHome/BLU + weather-station sensors).
+    // Electrical readings (voltage/current/power/energy) are NOT here — they
+    // are owned by the energy pipeline (device_em) above. 'distance' is mm.
+    'pressure',
+    'dewpoint',
+    'co2',
+    'tvoc',
+    'pm25',
+    'pm10',
+    'moisture',
+    'uv',
+    'conductivity',
+    'wind_direction',
+    'precipitation',
+    'battery',
+    'distance'
 ] as const;
 
 export type EnergyQueryTag = (typeof ENERGY_QUERY_TAGS)[number];
+
+/**
+ * The raw classifier `domain` vocabulary — mirrors `EnergyDomain` in the runtime
+ * classifier. commodity + electrical_source are DERIVED from this (fn_commodity_for
+ * / fn_electrical_source_for); it is not a read filter anymore.
+ */
+export const ENERGY_DOMAINS = [
+    'ac_mains',
+    'dc_pv',
+    'dc_battery',
+    'dc_bus',
+    'thermal',
+    'gas',
+    'unspecified'
+] as const;
+
+export type EnergyDomain = (typeof ENERGY_DOMAINS)[number];
+
+/** Commodity axis — what is flowing. The primary identity of a reading. */
+export const ENERGY_COMMODITIES = [
+    'electricity',
+    'water',
+    'gas',
+    'heat'
+] as const;
+export type EnergyCommodity = (typeof ENERGY_COMMODITIES)[number];
+
+/** Electrical source — AC/DC side, meaningful only for electricity. */
+export const ELECTRICAL_SOURCES = [
+    'ac_mains',
+    'dc_pv',
+    'dc_battery',
+    'dc_bus'
+] as const;
+export type ElectricalSource = (typeof ELECTRICAL_SOURCES)[number];
 
 // --- Limits --------------------------------------------------------------
 
@@ -80,6 +138,16 @@ export interface EnergyQueryParams {
     to: string;
     /** One or more metric tags */
     tags: EnergyQueryTag[];
+    /**
+     * Commodity filter (electricity / water / heat). Omitted → all
+     * commodities; each domain still comes back as its own row. Energy path.
+     */
+    commodity?: EnergyCommodity;
+    /**
+     * Electrical-source filter (ac_mains / …). Omitted → all sources. Pair
+     * with commodity=electricity to isolate AC mains.
+     */
+    electricalSource?: ElectricalSource;
     /** Bucket interval — defaults to '1 day' */
     bucket?: EnergyBucket;
     /** Scope: group / location / tag / fleet (mutually exclusive with `devices`) */
@@ -130,6 +198,8 @@ export interface EnergyQueryRow {
     shellyID: string | null;
     /** Metric tag */
     tag: EnergyQueryTag;
+    /** Electrical domain this row was read from (ac_mains / dc_battery / …). */
+    domain: string;
     /** Aggregated value in display units (kWh / V / A / W / °C / % / lux) */
     value: number;
     /** Bucket minimum — present for environmental tags */
@@ -138,6 +208,12 @@ export interface EnergyQueryRow {
     max?: number | null;
     /** Phase letter when `perPhase=true` (energy tags only) */
     phase?: 'a' | 'b' | 'c';
+    /**
+     * Reading source — present for device_sensor tags. One of
+     * internal/builtin/addon/blu/weather; separates a device's own chip
+     * reading from a paired BLU/weather-station sensor.
+     */
+    source?: string;
 }
 
 export interface EnergyQueryMeta {
@@ -201,6 +277,18 @@ export const ENERGY_QUERY_PARAMS_SCHEMA: JsonSchema = {
             minItems: 1,
             items: {type: 'string', enum: [...ENERGY_QUERY_TAGS]}
         },
+        commodity: {
+            type: 'string',
+            enum: [...ENERGY_COMMODITIES],
+            description:
+                'Commodity filter (electricity / water / gas / heat). Omitted returns all.'
+        },
+        electricalSource: {
+            type: 'string',
+            enum: [...ELECTRICAL_SOURCES],
+            description:
+                'Electrical-source filter (ac_mains / dc_*). Omitted returns all.'
+        },
         bucket: {
             type: 'string',
             enum: [...ENERGY_BUCKETS],
@@ -244,7 +332,14 @@ export const ENERGY_QUERY_RESPONSE_SCHEMA: JsonSchema = {
             type: 'array',
             items: {
                 type: 'object',
-                required: ['bucket', 'device', 'shellyID', 'tag', 'value'],
+                required: [
+                    'bucket',
+                    'device',
+                    'shellyID',
+                    'tag',
+                    'domain',
+                    'value'
+                ],
                 properties: {
                     bucket: {type: 'string'},
                     meterId: {type: 'number'},
@@ -253,10 +348,12 @@ export const ENERGY_QUERY_RESPONSE_SCHEMA: JsonSchema = {
                         type: ['string', 'null'] as JsonSchemaType[]
                     },
                     tag: {type: 'string'},
+                    domain: {type: 'string'},
                     value: {type: 'number'},
                     min: {type: ['number', 'null'] as JsonSchemaType[]},
                     max: {type: ['number', 'null'] as JsonSchemaType[]},
-                    phase: {type: 'string', enum: ['a', 'b', 'c']}
+                    phase: {type: 'string', enum: ['a', 'b', 'c']},
+                    source: {type: 'string'}
                 }
             }
         },
@@ -481,17 +578,18 @@ const ENERGY_CLASSIFICATION_TAGS = [
     'volume_m3',
     'volume_storage_l',
     'volume_flow_m3h',
-    'thermal_energy_kwh'
+    'thermal_energy_kwh',
+    // Battery-monitor (bm) telemetry — the classifier produces these for
+    // dc_battery points, so they stay in lockstep with the runtime EnergyTag.
+    'soc',
+    'soh',
+    'cycles',
+    'charge_ah',
+    'discharge_ah'
 ] as const;
 
-const ENERGY_CLASSIFICATION_DOMAINS = [
-    'ac_mains',
-    'dc_pv',
-    'dc_battery',
-    'dc_bus',
-    'thermal',
-    'unspecified'
-] as const;
+// One home for the electrical-domain vocabulary — see ENERGY_DOMAINS above.
+const ENERGY_CLASSIFICATION_DOMAINS = ENERGY_DOMAINS;
 
 export interface EnergyClassificationRow {
     deviceId: number;
@@ -1161,19 +1259,21 @@ export const ENERGY_DESCRIBE: DescribeOutput = new DescribeBuilder('energy', {
         'the rare unknown point.'
 })
     .registerMethod('Query', {
+        safety: {operation: 'read'},
         params: ENERGY_QUERY_PARAMS_SCHEMA,
         response: ENERGY_QUERY_RESPONSE_SCHEMA,
         permission: {
             note: 'Scope-dependent: groupId→groups:read, devices→devices:read per device, fleet→dashboards:read'
         },
         description:
-            'Unified time-series read for energy (device_em.stats) and environmental (device.status) tags. ' +
+            'Unified time-series read for energy (device_em.stats) and sensor (device_sensor) tags. ' +
             'Group / devices / fleet scope selected by params. Mixed tag sets fan out in parallel. ' +
             'Values are scaled to display units (kWh / V / A / W / °C / % / lux). ' +
             'Omit limit to return the full set (up to the server OOM ceiling); set limit to paginate. ' +
             'total is a lower bound, not exact — has_more is the authoritative "more data exists" signal.'
     })
     .registerMethod('Current', {
+        safety: {operation: 'read'},
         params: ENERGY_CURRENT_PARAMS_SCHEMA,
         response: ENERGY_CURRENT_RESPONSE_SCHEMA,
         permission: {
@@ -1209,6 +1309,7 @@ export const ENERGY_DESCRIBE: DescribeOutput = new DescribeBuilder('energy', {
             'a firmware glitch or that an operator pressed ResetCounters on.'
     })
     .registerMethod('ListMeasurementPoints', {
+        safety: {operation: 'read'},
         params: ENERGY_LIST_MEASUREMENT_POINTS_PARAMS_SCHEMA,
         response: ENERGY_LIST_MEASUREMENT_POINTS_RESPONSE_SCHEMA,
         permission: {

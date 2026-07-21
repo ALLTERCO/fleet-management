@@ -1,0 +1,1480 @@
+{
+  "totals": {
+    "entityTypes": 52,
+    "actionCount": 295
+  },
+  "entities": [
+    {
+      "type": "blutrv",
+      "shellyComponent": null,
+      "actions": [
+        {
+          "action": "setTarget",
+          "rpc": "BluTrv.Call"
+        },
+        {
+          "action": "setSchedule",
+          "rpc": "BluTrv.Call"
+        },
+        {
+          "action": "setEnabled",
+          "rpc": "BluTrv.Call"
+        },
+        {
+          "action": "startBoost",
+          "rpc": "BluTrv.Call"
+        },
+        {
+          "action": "clearBoost",
+          "rpc": "BluTrv.Call"
+        }
+      ]
+    },
+    {
+      "type": "bm",
+      "shellyComponent": "BM",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "BM.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "BM.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "BM.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "BM.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "BM.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "BM.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "BM.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "BM.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "BM.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "BM.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "BM.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "BM.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "BM.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "boolean",
+      "shellyComponent": null,
+      "actions": [
+        {
+          "action": "setValue",
+          "rpc": "Boolean.Set"
+        }
+      ]
+    },
+    {
+      "type": "bthomecontrol",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "bthomedevice",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "bthomesensor",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "button",
+      "shellyComponent": null,
+      "actions": [
+        {
+          "action": "press",
+          "rpc": "Button.Trigger"
+        }
+      ]
+    },
+    {
+      "type": "camera",
+      "shellyComponent": null,
+      "actions": [
+        {
+          "action": "setArmed",
+          "rpc": "Camera.SetConfig"
+        },
+        {
+          "action": "setPrivacy",
+          "rpc": "Camera.SetConfig"
+        },
+        {
+          "action": "capture",
+          "rpc": "Camera.CaptureImage"
+        },
+        {
+          "action": "startRecording",
+          "rpc": "Camera.StartRecording"
+        },
+        {
+          "action": "stopRecording",
+          "rpc": "Camera.StopRecording"
+        }
+      ]
+    },
+    {
+      "type": "camerazone",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "cb",
+      "shellyComponent": "CB",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "CB.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "CB.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "CB.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "CB.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "CB.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "CB.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "CB.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "CB.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "CB.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "CB.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "CB.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "CB.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "CB.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "cct",
+      "shellyComponent": "CCT",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "CCT.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "CCT.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "CCT.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "CCT.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "CCT.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "CCT.Set"
+        },
+        {
+          "action": "setColorTemperature",
+          "rpc": "CCT.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "CCT.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "CCT.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "CCT.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "CCT.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "CCT.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "CCT.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "CCT.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "cover",
+      "shellyComponent": "Cover",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "Cover.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "Cover.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "Cover.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "Cover.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "Cover.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "Cover.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "Cover.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "Cover.GoToPosition"
+        },
+        {
+          "action": "setTilt",
+          "rpc": "Cover.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "Cover.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "Cover.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "Cover.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "Cover.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "Cover.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "cury",
+      "shellyComponent": null,
+      "actions": [
+        {
+          "action": "setBoost",
+          "rpc": "Cury.Boost"
+        },
+        {
+          "action": "setAwayMode",
+          "rpc": "Cury.SetAwayMode"
+        },
+        {
+          "action": "setCuryMode",
+          "rpc": "Cury.SetMode"
+        },
+        {
+          "action": "setSlot",
+          "rpc": "Cury.Set"
+        },
+        {
+          "action": "setIntensity",
+          "rpc": "Cury.Set"
+        },
+        {
+          "action": "setAmbientColor",
+          "rpc": "Cury.SetConfig"
+        }
+      ]
+    },
+    {
+      "type": "dali",
+      "shellyComponent": "DALI",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "DALI.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "DALI.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "DALI.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "DALI.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "DALI.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "DALI.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "DALI.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "DALI.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "DALI.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "DALI.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "DALI.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "DALI.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "DALI.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "devicepower",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "em",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "em1",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "em1data",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "emdata",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "enum",
+      "shellyComponent": null,
+      "actions": [
+        {
+          "action": "setValue",
+          "rpc": "Enum.Set"
+        }
+      ]
+    },
+    {
+      "type": "fan",
+      "shellyComponent": "Fan",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "Fan.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "Fan.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "Fan.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "Fan.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "Fan.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "Fan.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "Fan.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "Fan.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "Fan.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "Fan.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "Fan.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "Fan.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "Fan.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "flood",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "group",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "humidity",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "illuminance",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "input",
+      "shellyComponent": "Input",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "Input.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "Input.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "Input.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "Input.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "Input.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "Input.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "Input.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "Input.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "Input.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "Input.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "Input.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "Input.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "Input.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "ledstrip",
+      "shellyComponent": "LedStrip",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "LedStrip.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "LedStrip.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "LedStrip.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "LedStrip.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "LedStrip.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "LedStrip.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "LedStrip.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "LedStrip.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "LedStrip.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "LedStrip.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "LedStrip.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "LedStrip.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "LedStrip.ResetCounters"
+        },
+        {
+          "action": "setLedStripField",
+          "rpc": "LedStrip.Set"
+        },
+        {
+          "action": "nextLedStripEffect",
+          "rpc": "LedStrip.NextEffect"
+        }
+      ]
+    },
+    {
+      "type": "light",
+      "shellyComponent": "Light",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "Light.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "Light.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "Light.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "Light.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "Light.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "Light.Set"
+        },
+        {
+          "action": "setColorTemperature",
+          "rpc": "Light.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "Light.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "Light.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "Light.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "Light.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "Light.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "Light.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "Light.ResetCounters"
+        },
+        {
+          "action": "setDaliGroup",
+          "rpc": "Group.Set"
+        }
+      ]
+    },
+    {
+      "type": "lnm",
+      "shellyComponent": "LNM",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "LNM.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "LNM.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "LNM.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "LNM.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "LNM.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "LNM.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "LNM.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "LNM.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "LNM.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "LNM.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "LNM.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "LNM.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "LNM.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "matter",
+      "shellyComponent": null,
+      "actions": [
+        {
+          "action": "setEnabled",
+          "rpc": "Matter.SetConfig"
+        }
+      ]
+    },
+    {
+      "type": "media",
+      "shellyComponent": null,
+      "actions": [
+        {
+          "action": "play",
+          "rpc": "Media.MediaPlayer.PlayOrPause"
+        },
+        {
+          "action": "pause",
+          "rpc": "Media.MediaPlayer.PlayOrPause"
+        },
+        {
+          "action": "playPause",
+          "rpc": "Media.MediaPlayer.PlayOrPause"
+        },
+        {
+          "action": "next",
+          "rpc": "Media.MediaPlayer.Next"
+        },
+        {
+          "action": "previous",
+          "rpc": "Media.MediaPlayer.Previous"
+        },
+        {
+          "action": "setVolume",
+          "rpc": "Media.SetVolume"
+        },
+        {
+          "action": "playFavourite",
+          "rpc": "Media.Radio.PlayFavourite"
+        },
+        {
+          "action": "playNextFavourite",
+          "rpc": "Media.Radio.PlayNextFavourite"
+        },
+        {
+          "action": "playPreviousFavourite",
+          "rpc": "Media.Radio.PlayPreviousFavourite"
+        },
+        {
+          "action": "radioStop",
+          "rpc": "Media.Radio.Stop"
+        }
+      ]
+    },
+    {
+      "type": "modbus",
+      "shellyComponent": "Modbus",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "Modbus.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "Modbus.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "Modbus.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "Modbus.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "Modbus.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "Modbus.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "Modbus.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "Modbus.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "Modbus.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "Modbus.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "Modbus.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "Modbus.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "Modbus.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "number",
+      "shellyComponent": null,
+      "actions": [
+        {
+          "action": "setValue",
+          "rpc": "Number.Set"
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "pill",
+      "shellyComponent": "Pill",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "Pill.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "Pill.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "Pill.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "Pill.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "Pill.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "Pill.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "Pill.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "Pill.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "Pill.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "Pill.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "Pill.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "Pill.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "Pill.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "pm1",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "presence",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "presencezone",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "rgb",
+      "shellyComponent": "RGB",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "RGB.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "RGB.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "RGB.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "RGB.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "RGB.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "RGB.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "RGB.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "RGB.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "RGB.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "RGB.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "RGB.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "RGB.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "RGB.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "rgbcct",
+      "shellyComponent": "RGBCCT",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "RGBCCT.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "RGBCCT.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "RGBCCT.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "RGBCCT.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "RGBCCT.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "RGBCCT.Set"
+        },
+        {
+          "action": "setColorTemperature",
+          "rpc": "RGBCCT.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "RGBCCT.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "RGBCCT.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "RGBCCT.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "RGBCCT.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "RGBCCT.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "RGBCCT.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "RGBCCT.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "rgbw",
+      "shellyComponent": "RGBW",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "RGBW.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "RGBW.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "RGBW.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "RGBW.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "RGBW.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "RGBW.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "RGBW.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "RGBW.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "RGBW.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "RGBW.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "RGBW.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "RGBW.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "RGBW.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "schedule",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "script",
+      "shellyComponent": "Script",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "Script.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "Script.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "Script.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "Script.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "Script.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "Script.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "Script.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "Script.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "Script.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "Script.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "Script.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "Script.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "Script.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "service",
+      "shellyComponent": null,
+      "actions": [
+        {
+          "action": "trigger",
+          "rpc": "Button.Trigger"
+        },
+        {
+          "action": "setVariable",
+          "rpc": "Boolean.Set"
+        }
+      ]
+    },
+    {
+      "type": "smoke",
+      "shellyComponent": null,
+      "actions": [
+        {
+          "action": "mute",
+          "rpc": "Smoke.SetConfig"
+        }
+      ]
+    },
+    {
+      "type": "switch",
+      "shellyComponent": "Switch",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "Switch.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "Switch.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "Switch.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "Switch.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "Switch.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "Switch.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "Switch.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "Switch.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "Switch.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "Switch.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "Switch.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "Switch.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "Switch.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "temperature",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "text",
+      "shellyComponent": null,
+      "actions": [
+        {
+          "action": "setValue",
+          "rpc": "Text.Set"
+        }
+      ]
+    },
+    {
+      "type": "thermostat",
+      "shellyComponent": "Thermostat",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "Thermostat.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "Thermostat.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "Thermostat.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "Thermostat.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "Thermostat.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "Thermostat.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "Thermostat.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "Thermostat.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "Thermostat.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "Thermostat.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "Thermostat.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "Thermostat.Calibrate"
+        },
+        {
+          "action": "setTarget",
+          "rpc": "Thermostat.SetConfig"
+        },
+        {
+          "action": "setSchedule",
+          "rpc": "Thermostat.SetConfig"
+        },
+        {
+          "action": "setEnabled",
+          "rpc": "Thermostat.SetConfig"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "Thermostat.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "ui",
+      "shellyComponent": null,
+      "actions": [
+        {
+          "action": "setScreen",
+          "rpc": "Ui.Screen.Set"
+        },
+        {
+          "action": "swipe",
+          "rpc": "Ui.Swipe"
+        },
+        {
+          "action": "tap",
+          "rpc": "Ui.Tap"
+        }
+      ]
+    },
+    {
+      "type": "voltmeter",
+      "shellyComponent": null,
+      "actions": []
+    },
+    {
+      "type": "zigbee",
+      "shellyComponent": "Zigbee",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "Zigbee.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "Zigbee.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "Zigbee.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "Zigbee.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "Zigbee.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "Zigbee.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "Zigbee.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "Zigbee.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "Zigbee.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "Zigbee.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "Zigbee.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "Zigbee.Calibrate"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "Zigbee.ResetCounters"
+        }
+      ]
+    }
+  ]
+}

@@ -240,30 +240,35 @@ export const ASSIGNMENT_DESCRIBE: DescribeOutput = new DescribeBuilder(
         description: 'Component metadata.'
     })
     .registerMethod('Create', {
+        safety: {operation: 'create'},
         params: ASSIGNMENT_CREATE_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
         description: 'Attach a persona to a user or group with scope.'
     })
     .registerMethod('Delete', {
+        safety: {operation: 'delete'},
         params: ASSIGNMENT_DELETE_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
         description: 'Remove an assignment.'
     })
     .registerMethod('ListForSubject', {
+        safety: {operation: 'read'},
         params: ASSIGNMENT_LIST_FOR_SUBJECT_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,
         description: 'List assignments attached to a specific user or group.'
     })
     .registerMethod('ListForPersona', {
+        safety: {operation: 'read'},
         params: ASSIGNMENT_LIST_FOR_PERSONA_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,
         description: 'List subjects that have a given persona attached.'
     })
     .registerMethod('ListForResource', {
+        safety: {operation: 'read'},
         params: ASSIGNMENT_LIST_FOR_RESOURCE_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,
@@ -272,6 +277,7 @@ export const ASSIGNMENT_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Backs the ShareDialog "Shared with" panel.'
     })
     .registerMethod('ListUnused', {
+        safety: {operation: 'read'},
         params: ASSIGNMENT_LIST_UNUSED_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,

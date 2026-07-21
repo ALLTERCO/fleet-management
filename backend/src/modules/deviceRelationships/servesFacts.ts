@@ -43,7 +43,7 @@ async function queryServesRelationshipRows(
              target_id,
              relation,
              weight
-           FROM device.device_serves
+           FROM device.v_device_serves_api
           WHERE organization_id = $1
             AND (
                 source_device_id = $2

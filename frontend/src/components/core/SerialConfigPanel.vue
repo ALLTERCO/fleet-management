@@ -1,86 +1,121 @@
 <template>
     <div class="cfg-panel">
-        <form v-if="config" @submit.prevent autocomplete="off">
-            <div class="cfg-panel__row">
-                <div class="cfg-panel__row-label">
-                    <strong>Mode</strong>
+        <form
+            v-if="config"
+            class="cfg-panel__form"
+            @submit.prevent
+            autocomplete="off"
+        >
+            <section class="cfg-panel__section">
+                <div class="cfg-panel__row">
+                    <div class="cfg-panel__row-label">
+                        <strong>Mode</strong>
+                    </div>
+                    <div class="cfg-panel__control">
+                        <Dropdown
+                            aria-label="Serial mode"
+                            :default="modeLabel(local.mode)"
+                            :options="MODE_LABELS"
+                            @selected="(label: string) => {
+                                local.mode = labelToMode(label);
+                                markDirty();
+                            }"
+                        />
+                    </div>
                 </div>
-                <Dropdown
-                    :default="modeLabel(local.mode)"
-                    :options="MODE_LABELS"
-                    @selected="(label: string) => {
-                        local.mode = labelToMode(label);
-                        markDirty();
-                    }"
-                />
-            </div>
 
-            <div class="cfg-panel__row">
-                <div class="cfg-panel__row-label">
-                    <strong>Baud rate</strong>
+                <div class="cfg-panel__row">
+                    <div class="cfg-panel__row-label">
+                        <strong>Baud rate</strong>
+                    </div>
+                    <input
+                        v-model.number="local.baud"
+                        type="number"
+                        min="300"
+                        step="1"
+                        class="cfg-panel__input"
+                        aria-label="Baud rate"
+                        @input="markDirty"
+                    />
                 </div>
-                <input
-                    v-model.number="local.baud"
-                    type="number"
-                    min="300"
-                    step="1"
-                    class="cfg-panel__input"
-                    @input="markDirty"
-                />
-            </div>
 
-            <div class="cfg-panel__row">
-                <div class="cfg-panel__row-label">
-                    <strong>Frame format</strong>
+                <div class="cfg-panel__row">
+                    <div class="cfg-panel__row-label">
+                        <strong>Frame format</strong>
+                    </div>
+                    <input
+                        v-model.trim="local.format"
+                        type="text"
+                        maxlength="3"
+                        pattern="^[578][NEOneo][12]$"
+                        class="cfg-panel__input"
+                        aria-label="Frame format"
+                        @input="markDirty"
+                    />
                 </div>
-                <input
-                    v-model.trim="local.format"
-                    type="text"
-                    maxlength="3"
-                    pattern="^[578][NEOneo][12]$"
-                    class="cfg-panel__input"
-                    @input="markDirty"
-                />
-            </div>
 
-            <div class="cfg-panel__row">
-                <div class="cfg-panel__row-label">
-                    <strong>Half-duplex</strong>
+                <div class="cfg-panel__row">
+                    <div class="cfg-panel__row-label">
+                        <strong>Half-duplex</strong>
+                    </div>
+                    <div class="cfg-panel__control">
+                        <CardToggle size="row"
+                            v-model="local.hd"
+                            aria-label="Half-duplex"
+                            @update:model-value="markDirty"
+                        />
+                    </div>
                 </div>
-                <Checkbox v-model="local.hd" @update:model-value="markDirty" />
-            </div>
 
-            <div class="cfg-panel__row">
-                <div class="cfg-panel__row-label">
-                    <strong>Drive-enable active-low</strong>
+                <div class="cfg-panel__row">
+                    <div class="cfg-panel__row-label">
+                        <strong>Drive-enable active-low</strong>
+                    </div>
+                    <div class="cfg-panel__control">
+                        <CardToggle size="row"
+                            v-model="local.de_al"
+                            aria-label="Drive-enable active-low"
+                            @update:model-value="markDirty"
+                        />
+                    </div>
                 </div>
-                <Checkbox v-model="local.de_al" @update:model-value="markDirty" />
-            </div>
 
-            <div v-if="local.mode === 'mb_server'" class="cfg-panel__row">
-                <div class="cfg-panel__row-label">
-                    <strong>RTU server address</strong>
+                <div v-if="local.mode === 'mb_server'" class="cfg-panel__row">
+                    <div class="cfg-panel__row-label">
+                        <strong>RTU server address</strong>
+                    </div>
+                    <input
+                        v-model.number="local.mb_server_addr"
+                        type="number"
+                        min="1"
+                        max="247"
+                        class="cfg-panel__input"
+                        aria-label="RTU server address"
+                        @input="markDirty"
+                    />
                 </div>
-                <input
-                    v-model.number="local.mb_server_addr"
-                    type="number"
-                    min="1"
-                    max="247"
-                    class="cfg-panel__input"
-                    @input="markDirty"
-                />
-            </div>
 
-            <div v-if="dirty" class="cfg-panel__footer">
-                <Button type="blue" size="sm" :loading="saving" @click="save">
-                    Save
-                </Button>
-            </div>
+            </section>
+
+            <ConfigPanelFooter
+                label="Serial"
+                :dirty="dirty"
+                :saving="saving"
+                :restart-required="restartRequired"
+                :rebooting="rebooting"
+                :external-changed="externalConfigChanged"
+                @save="save"
+                @reboot="rebootDevice"
+                @refresh="reload"
+            />
         </form>
 
+        <div v-else-if="refetching" class="cfg-panel__loading">
+            Loading configuration…
+        </div>
         <div v-else class="cfg-panel__error">
             <p>Serial configuration not available on this device.</p>
-            <Button type="blue-hollow" size="sm" @click="reload">Retry</Button>
+            <Button type="blue-hollow" size="sm" :loading="refetching" @click="refetch">Retry</Button>
         </div>
     </div>
 </template>
@@ -88,8 +123,9 @@
 <script setup lang="ts">
 import {useDeviceConfigPanel} from '@/composables/useDeviceConfigPanel';
 import Button from './Button.vue';
-import Checkbox from './Checkbox.vue';
+import ConfigPanelFooter from './ConfigPanelFooter.vue';
 import Dropdown from './Dropdown.vue';
+import CardToggle from '../cards/CardToggle.vue';
 
 type SerialMode = 'disabled' | 'jsuart' | 'mb_server' | 'mb_client';
 
@@ -141,8 +177,21 @@ function labelToMode(label: string): SerialMode {
 
 const props = defineProps<{shellyID: string}>();
 
-const {config, local, dirty, saving, markDirty, save, reload} =
-    useDeviceConfigPanel<SerialConfigRead, LocalForm>({
+const {
+    config,
+    local,
+    dirty,
+    saving,
+    restartRequired,
+    rebooting,
+    externalConfigChanged,
+    markDirty,
+    save,
+    rebootDevice,
+    refetch,
+    refetching,
+    reload
+} = useDeviceConfigPanel<SerialConfigRead, LocalForm>({
         shellyID: () => props.shellyID,
         settingsKey: 'serial:0',
         method: 'Serial.SetConfig',

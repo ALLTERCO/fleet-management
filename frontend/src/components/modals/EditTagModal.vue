@@ -1,10 +1,16 @@
 <template>
-    <Modal :visible="visible" wide @close="close">
+    <!-- Create is a single narrow column (compact); edit is the wider
+         two-column layout. -->
+    <Modal
+        :visible="visible"
+        :compact="props.mode === 'create'"
+        :wide="props.mode === 'edit'"
+        @close="close"
+    >
         <template #title>
-            <div v-if="props.mode === 'create'" class="etm-title">
-                <i class="fas fa-plus etm-title-icon" /> New Tag
-            </div>
-            <span v-else class="etm-title">Edit "{{ initial?.name }}"</span>
+            <span class="etm-title">
+                {{ props.mode === 'create' ? 'New tag' : `Edit "${initial?.name}"` }}
+            </span>
         </template>
 
         <template #default>
@@ -747,8 +753,13 @@ async function handleSave() {
     gap: var(--space-4);
     min-width: 0;
 }
+/* Create mode is a single narrow column — center it instead of leaving it
+   pinned to the left with empty space on the right. */
+.etm:not(.etm--split) {
+    align-items: center;
+}
 .etm:not(.etm--split) .etm__identity {
-    max-width: 22rem;
+    width: min(22rem, 100%);
 }
 .etm__applied {
     display: flex;
@@ -773,7 +784,6 @@ async function handleSave() {
     font-size: var(--type-subheading);
     font-weight: 700;
 }
-.etm-title-icon { color: var(--color-primary); }
 .etm__color-label {
     display: block;
     font-size: var(--type-caption);

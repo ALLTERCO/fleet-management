@@ -15,7 +15,8 @@ export const AUDIT_EVENT_TYPES = [
     'device_delete',
     'device_reconnect_replace',
     'config_change',
-    'permission_change'
+    'permission_change',
+    'mcp_tool_call'
 ] as const;
 
 export type AuditEventType = (typeof AUDIT_EVENT_TYPES)[number];
@@ -31,7 +32,8 @@ export const AUDIT_EVENT_LABELS: Record<AuditEventType, string> = {
     device_delete: 'Device deleted',
     device_reconnect_replace: 'Device reconnect replaced existing socket',
     config_change: 'Config change',
-    permission_change: 'Permission change'
+    permission_change: 'Permission change',
+    mcp_tool_call: 'MCP agent tool call'
 };
 
 export const AUDIT_QUERY_PARAMS_SCHEMA: JsonSchema = {
@@ -136,6 +138,7 @@ export const AUDIT_DESCRIBE: DescribeOutput = new DescribeBuilder('audit', {
     description: 'Query and export the audit log of user and device activity.'
 })
     .registerMethod('Query', {
+        safety: {operation: 'read'},
         params: AUDIT_QUERY_PARAMS_SCHEMA,
         response: AUDIT_QUERY_RESPONSE_SCHEMA,
         permission: {note: 'admin-only'},
@@ -143,6 +146,7 @@ export const AUDIT_DESCRIBE: DescribeOutput = new DescribeBuilder('audit', {
             'Search the audit log with optional time range, event-type, username, and shellyID filters.'
     })
     .registerMethod('Export', {
+        safety: {operation: 'create'},
         params: AUDIT_EXPORT_PARAMS_SCHEMA,
         response: AUDIT_EXPORT_RESPONSE_SCHEMA,
         permission: {note: 'admin-only'},

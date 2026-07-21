@@ -13,3 +13,13 @@ export function isValidDeviceIp(ip: string): boolean {
     if (parts[0] >= 224) return false; // multicast + reserved
     return true;
 }
+
+export function isPrivateDeviceIp(ip: string): boolean {
+    if (!isValidDeviceIp(ip)) return false;
+    const [first, second] = ip.split('.').map(Number);
+    return (
+        first === 10 ||
+        (first === 172 && second >= 16 && second <= 31) ||
+        (first === 192 && second === 168)
+    );
+}

@@ -1,4 +1,5 @@
 --------------UP
+-- LINT-IGNORE: additive-only (deliberate legacy function removal)
 -- Phase 7 cleanup: drop the orphan `fn_status_consumption_history`.
 --
 -- Verified zero callers across `backend/src` and the rest of

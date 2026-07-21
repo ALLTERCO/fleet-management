@@ -91,8 +91,8 @@ type OperationsJob = BackendJobRecord | JobRecord;
 const JOB_TYPE_ROUTE: Record<BackendJobKind | JobType, string> = {
     firmware: '/operations/firmware',
     backup: '/operations/backups',
-    certificate: '/operations/device-auth/certificates',
-    credential: '/operations/device-auth'
+    certificate: '/settings/security/certificates',
+    credential: '/settings/security/credentials'
 };
 
 const opsStore = useBackgroundOpsStore();

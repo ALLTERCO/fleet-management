@@ -5,14 +5,15 @@
                 <span class="bg-panel__title">App Settings</span>
                 <span v-if="version" class="bg-panel__version">v{{ version }}</span>
             </div>
-            <label v-if="canManageBackgroundAssets" for="file-upload" class="bg-panel__upload"
-                :class="{'bg-panel__upload--busy': uploadingBackground}">
-                <i class="fas" :class="uploadingBackground ? 'fa-spinner fa-spin' : 'fa-upload'"></i>
-                <span>{{ uploadingBackground ? 'Uploading…' : 'Upload' }}</span>
-            </label>
-            <input id="file-upload" class="hidden-input" type="file" capture accept=".jpg, .jpeg, .png"
-                :disabled="uploadingBackground"
-                aria-label="Upload app picture" @change="handleFileUpload" />
+            <FileUploadField
+                v-if="canManageBackgroundAssets"
+                accept=".jpg,.jpeg,.png"
+                capture
+                :loading="uploadingBackground"
+                :upload-label="uploadingBackground ? 'Uploading…' : 'Upload'"
+                :show-delete="false"
+                @upload="handleFileUpload"
+            />
         </div>
         <div class="bg-panel__body">
             <div>
@@ -23,7 +24,7 @@
                         :style="{ backgroundImage: `url(${thumb})` }"
                         @click="handleBackgroundChange(index, thumb)">
                         <span v-if="isSelectedAsBackground(index)" class="as-check"><i class="fas fa-check" /></span>
-                        <button v-if="canManageBackgroundAssets" class="as-delete" title="Delete background" aria-label="Delete background" @click.stop="deleteBackground(index)"><i class="fas fa-trash" /></button>
+                        <button type="button" v-if="canManageBackgroundAssets" class="as-delete" title="Delete background" aria-label="Delete background" @click.stop="deleteBackground(index)"><i class="fas fa-trash" /></button>
                     </div>
                 </div>
             </div>
@@ -58,11 +59,7 @@
                     <i class="fas fa-columns" />
                     <span>Sidebar</span>
                 </div>
-                <div class="as-options">
-                    <button v-for="opt in sidebarOptions" :key="opt.value"
-                        class="as-opt-btn" :class="{'as-opt-btn--active': sidebarMode === opt.value}"
-                        @click="sidebarMode = opt.value">{{ opt.label }}</button>
-                </div>
+                <ViewToggle v-model="sidebarMode" :options="sidebarOptions" />
             </div>
             <p class="ui-panel__hint">
                 {{ sidebarModeHint }}
@@ -74,6 +71,8 @@
 <script setup lang="ts">
 import {storeToRefs} from 'pinia';
 import {computed, onMounted, ref, watch} from 'vue';
+import FileUploadField from '@/components/core/FileUploadField.vue';
+import ViewToggle from '@/components/core/ViewToggle.vue';
 import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
 import {FLEET_MANAGER_HTTP} from '@/constants';
 import apiClient from '@/helpers/axios';
@@ -232,8 +231,8 @@ const selectBackground = async (index: number, thumb: string) => {
     const paintUrl = displays.value[index] ?? originalUrl;
     selectedBackground.value = originalUrl;
     selectedColor.value = null;
-    const relative = assetPath(paintUrl);
-    await setBackgroundImg(relative, paintUrl);
+    const storedPath = assetPath(originalUrl);
+    await setBackgroundImg(storedPath, paintUrl);
     await loadImages();
     toast.success('Background changed successfully');
 };
@@ -377,22 +376,6 @@ onMounted(async () => {
     border-radius: var(--radius-full);
     background-color: var(--color-surface-3);
 }
-.bg-panel__upload {
-    display: flex;
-    align-items: center;
-    gap: var(--gap-xs);
-    padding: var(--gap-xs) var(--gap-sm);
-    font-size: var(--type-body);
-    font-weight: 700;
-    color: var(--color-text-primary);
-    background: linear-gradient(to left, var(--color-primary-active), var(--color-primary));
-    border-radius: var(--btn-radius);
-    cursor: pointer;
-    transition: background var(--duration-fast);
-}
-.bg-panel__upload:hover {
-    background: linear-gradient(to left, var(--color-primary-active), var(--color-primary-hover));
-}
 .bg-panel__body {
     padding: var(--gap-sm);
 }
@@ -402,7 +385,6 @@ onMounted(async () => {
     color: var(--color-text-tertiary);
     margin-bottom: var(--gap-sm);
 }
-.hidden-input { display: none; }
 
 /* Thumbnail grid */
 .as-thumb-grid {
@@ -426,7 +408,7 @@ onMounted(async () => {
     width: var(--gap-md); height: var(--gap-md);
     border-radius: 50%;
     background: var(--color-primary);
-    color: var(--primitive-neutral-50);
+    color: var(--color-text-on-primary);
     display: flex; align-items: center; justify-content: center;
     font-size: var(--type-body);
 }
@@ -435,7 +417,7 @@ onMounted(async () => {
     width: var(--gap-md); height: var(--gap-md);
     border-radius: 50%;
     background: var(--color-danger);
-    color: var(--primitive-neutral-50);
+    color: var(--color-text-on-danger);
     border: none; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     font-size: var(--type-body);
@@ -446,31 +428,6 @@ onMounted(async () => {
 .as-section-gap { margin-top: var(--gap-sm); }
 
 /* Option buttons (sidebar mode) */
-.as-options { display: flex; gap: var(--gap-xs); }
-.as-opt-btn {
-    padding: var(--gap-xs) var(--gap-sm);
-    min-height: var(--touch-target-min);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--color-border-default);
-    background: transparent;
-    font-size: var(--type-body); font-weight: 600; font-family: inherit;
-    color: var(--color-text-tertiary);
-    cursor: pointer;
-    transition: background var(--duration-fast), color var(--duration-fast), border-color var(--duration-fast);
-}
-.as-opt-btn:hover {
-    color: var(--color-text-primary);
-    background: var(--color-surface-3);
-    border-color: var(--color-border-medium);
-}
-.as-opt-btn:active { transform: scale(var(--press-scale, 0.95)); }
-.as-opt-btn:focus-visible { outline: 2px solid var(--color-border-focus); outline-offset: 2px; }
-.as-opt-btn--active {
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    color: var(--color-primary);
-    border-color: var(--color-primary);
-    font-weight: 700;
-}
 
 /* ========== Interface panel ========== */
 .ui-panel {
@@ -537,7 +494,7 @@ onMounted(async () => {
     width: 1.125rem;
     height: 1.125rem;
     border-radius: 50%;
-    background-color: var(--primitive-neutral-50);
+    background-color: var(--color-text-on-primary);
     transition: transform var(--duration-fast);
 }
 .ui-panel__toggle--on .ui-panel__toggle-knob {

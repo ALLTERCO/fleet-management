@@ -4,13 +4,28 @@
  * `devices[]`, `metrics{}`, and `capabilities[]` returned to callers —
  * UIs never re-derive these.
  *
- * The four on-device power sources (em, em1, switch, pm1) and two
- * cumulative-energy sources (emdata, em1data) share a single extraction
- * loop driven by `POWER_SOURCES` / `ENERGY_SOURCES`. Adding a new source
- * is a one-line registry entry, not a new loop.
+ * Active power always comes from the SSOT componentActivePower(); the list of
+ * AC power components lives once in componentPower.ts
+ * (AC_ACTIVE_POWER_COMPONENTS). Voltage/current/energy fields plus the
+ * emdata/em1data registers drive a single extraction loop. Adding a metered
+ * component type is one entry in the shared list, not a new loop here.
+ *
+ * Phase data (em a/b/c, em1:0/1/2) goes through `devicePhaseChannels`, not bare.
  */
+
 import * as Observability from '../../modules/Observability';
-import type {ScopeKind} from '../../types/api/fleet';
+import {
+    AC_ACTIVE_POWER_COMPONENTS,
+    CONSUMED_ENERGY_PATH,
+    componentActivePower,
+    devicePhaseChannels,
+    type EmPhaseChannel,
+    emPhaseChannels,
+    RETURNED_ENERGY_PATH,
+    SINGLE_CURRENT_FIELD,
+    SINGLE_VOLTAGE_FIELD
+} from '../../types/api/componentPower';
+import type {FleetMetricsDevice, ScopeKind} from '../../types/api/fleet';
 import type AbstractDevice from '../AbstractDevice';
 
 /** Stats-style metric: average/min/max over samples. */
@@ -61,48 +76,39 @@ function emptyMetrics(): Metrics {
 const CHANNEL_INDICES = [0, 1, 2, 3, 4] as const;
 const ENERGY_SUB_INDICES = [0, 1, 2] as const;
 
-/** Live-status source → which metrics it feeds and the field path per metric. */
+/** Live-status source → the single-reading fields it feeds. Active power is NOT
+ *  here — it always comes from the SSOT componentActivePower(). `em` is 3-phase
+ *  and phase-expanded instead. All field names come from componentPower.ts. */
 interface PowerSource {
-    prefix: 'em' | 'em1' | 'switch' | 'pm1';
-    /** Map metric key → dot-path under the channel object. */
+    prefix: string;
     fieldMap: Partial<{
         voltage: string;
         current: string;
-        power: string;
         consumption: string;
         returned_energy: string;
     }>;
 }
 
+// One field shape for every single-phase AC-mains component (same set the
+// ingestion classifier uses). A missing field reads null and is skipped, so
+// cct (no energy) and rgbcct (no voltage/current) need no special case.
+const AC_MAINS_FIELD_MAP: PowerSource['fieldMap'] = {
+    voltage: SINGLE_VOLTAGE_FIELD,
+    current: SINGLE_CURRENT_FIELD,
+    consumption: CONSUMED_ENERGY_PATH,
+    returned_energy: RETURNED_ENERGY_PATH
+};
+
 const POWER_SOURCES: readonly PowerSource[] = [
-    {
-        prefix: 'em',
-        fieldMap: {voltage: 'voltage', current: 'current', power: 'act_power'}
-    },
-    {
-        prefix: 'em1',
-        fieldMap: {voltage: 'voltage', current: 'current', power: 'act_power'}
-    },
-    {
-        prefix: 'switch',
-        fieldMap: {
-            voltage: 'voltage',
-            current: 'current',
-            power: 'apower',
-            consumption: 'aenergy.total',
-            returned_energy: 'ret_aenergy.total'
-        }
-    },
-    {
-        prefix: 'pm1',
-        fieldMap: {
-            voltage: 'voltage',
-            current: 'current',
-            power: 'apower',
-            consumption: 'aenergy.total',
-            returned_energy: 'ret_aenergy.total'
-        }
-    }
+    // 3-phase: phase-expanded via emPhaseChannels(), power summed per phase.
+    {prefix: 'em', fieldMap: {}},
+    // Every other AC power component reads one power value (componentActivePower)
+    // plus the shared field shape — driven by the one component list.
+    ...AC_ACTIVE_POWER_COMPONENTS.filter((prefix) => prefix !== 'em').map(
+        (prefix) => ({prefix, fieldMap: AC_MAINS_FIELD_MAP})
+    ),
+    // Voltmeter is voltage-only (no power/energy).
+    {prefix: 'voltmeter', fieldMap: {voltage: SINGLE_VOLTAGE_FIELD}}
 ];
 
 /** Cumulative energy registers (separate component on em/em1 devices). */
@@ -146,6 +152,13 @@ const ENTITY_CAPABILITIES: Readonly<Record<string, readonly string[]>> = {
     em1: ['voltage', 'current', 'power', 'consumption', 'returned_energy'],
     switch: ['voltage', 'current', 'power', 'consumption'],
     pm1: ['voltage', 'current', 'power', 'consumption'],
+    cover: ['voltage', 'current', 'power', 'consumption'],
+    light: ['voltage', 'current', 'power', 'consumption'],
+    rgb: ['voltage', 'current', 'power', 'consumption'],
+    rgbw: ['voltage', 'current', 'power', 'consumption'],
+    cct: ['voltage', 'current', 'power'],
+    rgbcct: ['power', 'consumption'],
+    voltmeter: ['voltage'],
     temperature: ['temperature'],
     humidity: ['humidity'],
     illuminance: ['luminance'],
@@ -167,6 +180,40 @@ function readNumber(obj: unknown, path: string): number | null {
     return typeof v === 'number' ? v : null;
 }
 
+/**
+ * Sum a device's live cumulative returned (exported) active energy in Wh,
+ * across every metering channel. Reuses the `returned_energy` field paths in
+ * POWER_SOURCES + ENERGY_SOURCES so the Shelly field names for returned energy
+ * live in exactly one home. Per Shelly device APIs, returned active energy is
+ * Wh on every component family: emdata `total_act_ret`, em1data
+ * `total_act_ret_energy`, switch/pm1 `ret_aenergy.total`. Non-metered devices
+ * return 0.
+ */
+export function deviceReturnedEnergyWh(device: AbstractDevice): number {
+    const status = (device.status ?? {}) as Record<string, unknown>;
+    let wh = 0;
+    for (const src of POWER_SOURCES) {
+        const path = src.fieldMap.returned_energy;
+        if (!path) continue;
+        for (const idx of CHANNEL_INDICES) {
+            const ch = status[`${src.prefix}:${idx}`];
+            if (!ch || typeof ch !== 'object') continue;
+            const er = readNumber(ch, path);
+            if (er !== null) wh += er;
+        }
+    }
+    for (const src of ENERGY_SOURCES) {
+        for (const idx of ENERGY_SUB_INDICES) {
+            const ch = status[`${src.prefix}:${idx}`];
+            if (!ch) continue;
+            const er = readNumber(ch, src.fieldMap.returned_energy);
+            // src.wh true => device value already Wh; false => kWh, scale up.
+            if (er !== null) wh += src.wh ? er : er * 1000;
+        }
+    }
+    return wh;
+}
+
 function pushStat(
     bucket: StatsBucket,
     deviceId: number,
@@ -179,25 +226,15 @@ function pushTotal(bucket: TotalBucket, deviceId: number, value: number): void {
     bucket.values.push({deviceId, value});
 }
 
-interface EmChannel {
-    channel: number;
-    act_power: number | null;
-    voltage: number | null;
-    current: number | null;
-}
+// Phase channel shape is the SSOT EmPhaseChannel (channel 0/1/2 == L1/L2/L3).
+type EmChannel = EmPhaseChannel;
 
 /** Collect live-status metrics from one device into shared accumulators. */
 function collectDeviceMetrics(
     device: AbstractDevice,
     metrics: Metrics,
     phases: PhaseAggregator
-): {
-    id: number;
-    shellyID: string;
-    name: string;
-    hasEmChannels: boolean;
-    hasEm1Channels: boolean;
-} {
+): FleetMetricsDevice {
     const deviceId = device.id;
     const status = device.status ?? {};
     const name = (device.info?.name as string) || device.shellyID;
@@ -205,7 +242,7 @@ function collectDeviceMetrics(
     const uptime = readNumber(status, 'sys.uptime');
     if (uptime !== null) pushStat(metrics.uptime, deviceId, uptime, name);
 
-    const emChannels: EmChannel[] = [];
+    let hasEm = false;
     let hasEm1 = false;
 
     for (const src of POWER_SOURCES) {
@@ -215,11 +252,27 @@ function collectDeviceMetrics(
             ];
             if (!ch || typeof ch !== 'object') continue;
 
+            // 3-phase em:N -> feed each a/b/c phase into the general metrics.
+            if (src.prefix === 'em') {
+                hasEm = true;
+                for (const phase of emPhaseChannels(
+                    ch as Record<string, unknown>
+                )) {
+                    if (phase.voltage !== null)
+                        pushStat(metrics.voltage, deviceId, phase.voltage);
+                    if (phase.current !== null)
+                        pushStat(metrics.current, deviceId, phase.current);
+                    if (phase.act_power !== null)
+                        pushTotal(metrics.power, deviceId, phase.act_power);
+                }
+                continue;
+            }
+
             if (src.prefix === 'em1') hasEm1 = true;
 
             const v = readNumber(ch, src.fieldMap.voltage ?? '');
             const a = readNumber(ch, src.fieldMap.current ?? '');
-            const p = readNumber(ch, src.fieldMap.power ?? '');
+            const p = componentActivePower(ch as Record<string, unknown>);
 
             if (v !== null) pushStat(metrics.voltage, deviceId, v);
             if (a !== null) pushStat(metrics.current, deviceId, a);
@@ -234,15 +287,6 @@ function collectDeviceMetrics(
                 const er = readNumber(ch, src.fieldMap.returned_energy);
                 if (er !== null)
                     pushTotal(metrics.returned_energy, deviceId, er / 1000);
-            }
-
-            if (src.prefix === 'em') {
-                emChannels.push({
-                    channel: idx,
-                    voltage: v,
-                    current: a,
-                    act_power: p
-                });
             }
         }
     }
@@ -274,18 +318,20 @@ function collectDeviceMetrics(
         if (val !== null) pushStat(metrics[env.metric], deviceId, val);
     }
 
+    // Both Pro 3EM profiles are one 3-phase device: em:0 (a/b/c) OR em1:0/1/2.
     phases.observeDevice({
         deviceId,
         shellyID: device.shellyID,
         name,
-        emChannels
+        channels: devicePhaseChannels(status as Record<string, unknown>)
     });
 
     return {
         id: deviceId,
         shellyID: device.shellyID,
         name,
-        hasEmChannels: emChannels.length > 0,
+        online: device.online ?? false,
+        hasEmChannels: hasEm,
         hasEm1Channels: hasEm1
     };
 }
@@ -294,10 +340,19 @@ function collectDeviceMetrics(
 function finalize(metrics: Metrics): void {
     const finishStats = (b: StatsBucket) => {
         if (b.values.length === 0) return;
-        const nums = b.values.map((v) => v.value);
-        b.avg = nums.reduce((a, n) => a + n, 0) / nums.length;
-        b.min = Math.min(...nums);
-        b.max = Math.max(...nums);
+        // One pass, no argument spread: Math.min(...nums) throws RangeError past
+        // ~100k samples (large fleets), which would fail the whole metrics call.
+        let sum = 0;
+        let min = Number.POSITIVE_INFINITY;
+        let max = Number.NEGATIVE_INFINITY;
+        for (const {value} of b.values) {
+            sum += value;
+            if (value < min) min = value;
+            if (value > max) max = value;
+        }
+        b.avg = sum / b.values.length;
+        b.min = min;
+        b.max = max;
     };
     const finishTotal = (b: TotalBucket) => {
         b.total = b.values.reduce((a, v) => a + v.value, 0);
@@ -338,15 +393,17 @@ class PhaseAggregator {
     ];
     readonly worst: WorstCandidate[] = [];
 
+    // 3-phase == 3 phase channels: one em:0 (a/b/c) OR three em1:0/1/2. Fewer
+    // (Pro EM's two em1) stays independent single-phase and is not counted.
     observeDevice(d: {
         deviceId: number;
         shellyID: string;
         name: string;
-        emChannels: EmChannel[];
+        channels: EmChannel[];
     }): void {
-        if (d.emChannels.length < 2) return;
+        if (d.channels.length < 3) return;
         this.threePhaseCount++;
-        for (const ch of d.emChannels) {
+        for (const ch of d.channels) {
             const p = this.phases[ch.channel];
             if (!p) continue;
             if (ch.act_power !== null) p.totalPower += ch.act_power;
@@ -360,7 +417,7 @@ class PhaseAggregator {
             }
         }
 
-        const powers = d.emChannels
+        const powers = d.channels
             .map((c) => c.act_power)
             .filter((p): p is number => p !== null);
         if (powers.length < 2) return;
@@ -375,7 +432,7 @@ class PhaseAggregator {
             shellyId: d.shellyID,
             deviceName: d.name,
             imbalancePct,
-            channels: d.emChannels
+            channels: d.channels
         });
     }
 
@@ -402,13 +459,7 @@ class PhaseAggregator {
 export interface ScopeMetricsResult {
     scopeKind: ScopeKind;
     scopeId: number | null;
-    devices: Array<{
-        id: number;
-        shellyID: string;
-        name: string;
-        hasEmChannels: boolean;
-        hasEm1Channels: boolean;
-    }>;
+    devices: FleetMetricsDevice[];
     metrics: Metrics;
     phaseMetrics: ReturnType<PhaseAggregator['snapshot']>;
 }

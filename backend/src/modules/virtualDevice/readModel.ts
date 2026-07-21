@@ -8,7 +8,11 @@ import {
     type ActiveVirtualDeviceBinding,
     loadActiveVirtualDeviceBindings
 } from './bindingReadRepository';
-import {projectVirtualEntity, virtualEntityType} from './entityProjection';
+import {
+    type ProjectedVirtualEntity,
+    projectVirtualEntity,
+    virtualEntityType
+} from './entityProjection';
 import {
     computeDeviceHealth,
     computeRoleHealth,
@@ -34,28 +38,7 @@ export interface VirtualDeviceRoleStatusEntry {
     };
 }
 
-export interface VirtualDeviceEntity {
-    id: string;
-    name: string;
-    type: string;
-    source: string;
-    properties: {
-        id: number;
-        roleKey: string;
-        sourceDeviceExternalId: string;
-        sourceComponentKey: string;
-        available: boolean;
-        writable: boolean;
-        unit?: string;
-        min?: number;
-        max?: number;
-        step?: number;
-        options?: Record<string, string>;
-        objName?: string;
-        sensorType?: string;
-        type?: string;
-    };
-}
+export type VirtualDeviceEntity = ProjectedVirtualEntity;
 
 export interface VirtualDeviceReadModel {
     externalId: string;

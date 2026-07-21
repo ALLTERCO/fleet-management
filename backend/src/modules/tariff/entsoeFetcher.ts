@@ -1,3 +1,4 @@
+import {tuning} from '../../config/tuning';
 import {type LivePricePoint, parseEntsoeDayAhead} from './entsoeParser';
 
 // ENTSO-E Transparency Platform REST API base URL.
@@ -44,7 +45,9 @@ export async function fetchEntsoeDayAhead(config: {
     const url = buildUrl(config.token, config.area, config.date);
     let res: Response;
     try {
-        res = await fetch(url);
+        res = await fetch(url, {
+            signal: AbortSignal.timeout(tuning.tariffPull.fetchTimeoutMs)
+        });
     } catch (err) {
         throw new Error(
             `ENTSO-E fetch failed for ${config.area}/${config.date}: ${err}`

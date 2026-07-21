@@ -141,6 +141,7 @@
                             v-for="entity in draft.previewEntities"
                             :key="entity.id"
                             :entity="entity"
+                            :source-device="draft.previewDevice"
                             vertical
                             class="dds__entity-card"
                         />
@@ -177,17 +178,17 @@
 </template>
 
 <script setup lang="ts">
+import type {EnergyMeterRole} from '@api/energy';
 import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue';
 import type {VisualAsset} from '@/api/assetRpc';
-import type {EnergyMeterRole} from '@api/energy';
+import DeviceFleetCard from '@/components/cards/DeviceFleetCard.vue';
 import Dropdown from '@/components/core/Dropdown.vue';
 import FormField from '@/components/core/FormField.vue';
 import Input from '@/components/core/Input.vue';
-import DeviceFleetCard from '@/components/cards/DeviceFleetCard.vue';
 import AssetPickerModal from '@/components/modals/AssetPickerModal.vue';
+import EntityWidget from '@/components/widgets/EntityWidget.vue';
 import {DEVICE_CATEGORIES} from '@/helpers/deviceCategories';
 import {energyRolesForUtility} from '@/helpers/energyAssignment';
-import EntityWidget from '@/components/widgets/EntityWidget.vue';
 import {useGroupsStore} from '@/stores/groups';
 import {useLocationsStore} from '@/stores/locations';
 import {useTagsStore} from '@/stores/tags';
@@ -214,7 +215,6 @@ onMounted(() => {
     void locationsStore.fetchLocations();
     void tagsStore.fetchTags();
     void groupsStore.fetchGroups();
-    draft.syncPreviewModel();
 });
 
 // ── Name ──────────────────────────────────────────────────────────────────
@@ -415,21 +415,6 @@ watch(
     }
 );
 
-watch(
-    () => [
-        draft.details.name,
-        draft.details.typeKey,
-        draft.details.categoryKey,
-        draft.details.imageAssetId,
-        draft.details.visual.icon,
-        draft.details.visual.accent,
-        draft.details.visual.imageModel,
-        draft.roles.map((role) => `${role.roleKey}:${role.source?.deviceExternalId ?? ''}:${role.source?.componentKey ?? ''}`).join('|')
-    ],
-    () => draft.syncPreviewModel(),
-    {deep: false}
-);
-
 onBeforeUnmount(revokePreview);
 </script>
 
@@ -606,7 +591,7 @@ onBeforeUnmount(revokePreview);
     border-radius: var(--radius-xl);
     background: var(--color-surface-2);
     overflow: hidden;
-    box-shadow: var(--shadow-card);
+    box-shadow: var(--shadow-md);
 }
 
 .dds__card-photo {

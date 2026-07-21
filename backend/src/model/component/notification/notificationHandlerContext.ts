@@ -3,8 +3,8 @@ import RpcError from '../../../rpc/RpcError';
 import type CommandSender from '../../CommandSender';
 
 export function requireAuthenticatedUser(sender: CommandSender): string {
-    const userId = sender.getUser()?.username;
-    if (!userId || userId === '<UNAUTHORIZED>') {
+    const userId = sender.getUserId();
+    if (!userId) {
         throw RpcError.Unauthorized();
     }
 

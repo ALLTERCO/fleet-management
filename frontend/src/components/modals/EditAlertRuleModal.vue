@@ -557,9 +557,9 @@ import AlertSeverityBadge from '@/components/core/AlertSeverityBadge.vue';
 import BluButtonPicker from '@/components/core/BluButtonPicker.vue';
 import BuiltinTemplateGallery from '@/components/core/BuiltinTemplateGallery.vue';
 import Button from '@/components/core/Button.vue';
+import ChannelPicker from '@/components/core/ChannelPicker.vue';
 import DestinationGroupPicker from '@/components/core/DestinationGroupPicker.vue';
 import DurationField from '@/components/core/DurationField.vue';
-import ChannelPicker from '@/components/core/ChannelPicker.vue';
 import Input from '@/components/core/Input.vue';
 import ModalFooter from '@/components/core/ModalFooter.vue';
 import ModalHeader from '@/components/core/ModalHeader.vue';
@@ -592,8 +592,8 @@ import {
     type MessageTemplate,
     useAlertsStore
 } from '@/stores/alerts';
-import {useEntityStore} from '@/stores/entities';
 import {useChannelsStore} from '@/stores/channels';
+import {useEntityStore} from '@/stores/entities';
 import Modal from './Modal.vue';
 
 // Three plain steps. Index + 1 maps to the `step` ref.
@@ -824,7 +824,7 @@ watch(
             return;
         }
         dupTimer = setTimeout(async () => {
-            duplicate.value = await store.checkDuplicate({
+            const check = await store.checkDuplicate({
                 kind: formKind.value as AlertRuleKind,
                 severity: formSeverityModel.value as AlertSeverity,
                 scope: formScope.value,
@@ -835,6 +835,8 @@ watch(
                     ? {excludeId: props.initial.id}
                     : {})
             });
+            // Failed check: skip the warning without claiming "no duplicate".
+            duplicate.value = check.status === 'ok' ? check.duplicate : null;
         }, UI_CONFIG.duplicateCheckDebounceMs);
     },
     {deep: true}

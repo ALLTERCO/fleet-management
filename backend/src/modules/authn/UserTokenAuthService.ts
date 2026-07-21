@@ -325,7 +325,8 @@ function logDevModeFirstLogin(input: {token: string; username: string}): void {
         undefined,
         true,
         undefined,
-        tuning.deviceIngress.defaultOrganizationId
+        tuning.deviceIngress.defaultOrganizationId,
+        input.username
     );
 }
 
@@ -353,7 +354,8 @@ async function loadScopedPatUser(
         mfaPresent: false,
         credentialId: row.tokenId,
         credentialPurpose: row.purpose,
-        credentialBoundary: row.boundaryScope
+        credentialBoundary: row.boundaryScope,
+        credentialAudience: row.audience
     };
 
     touchScopedPatLastUsedBestEffort(tokenId);

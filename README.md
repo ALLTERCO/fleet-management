@@ -8,11 +8,15 @@ Fleet Manager is a self-hosted service for managing fleets of
 via outbound WebSocket from a single dashboard.
 
 - Real-time device monitoring and control
-- Device grouping and bulk operations
-- Energy metering and consumption tracking
+- Fleet alerts with rules and notification channels
+- Energy and environment dashboards and reports
+- Device settings editor
+- Device onboarding with enrollment tokens and a waiting room
+- Device grouping, locations, tags, and bulk operations
 - OTA firmware updates
 - Role-based access control (OIDC)
 - Plugin system for custom extensions
+- MCP endpoint for permissioned AI tools
 - WebSocket and HTTP API
 
 ## Quick Start
@@ -66,8 +70,10 @@ When SSL is enabled, set `FM_PLAIN_WS=true` in `deploy/env/public.env` (enabled 
 | `migrate --plan-only` | Show required database and Zitadel migration work |
 | `migrate --yes` | Run required migration work before upgrading |
 | `upgrade-audit` | Check whether the current state is ready to upgrade |
+| `rollback` | Revert to the image tagged by the previous upgrade |
 | `backup-db` | Create a database backup |
-| `backup-state` | Create a deploy-state backup |
+| `backup-state` | Create an encrypted deploy-state backup (credentials, keys, certs) |
+| `rotate-secrets` | Rotate JWT secret, encryption key, and database password |
 | `down` | Stop and keep data |
 | `down --volumes` | Stop and delete all data (asks for confirmation; `--yes` to skip) |
 | `status` | Show container and health status |
@@ -139,6 +145,28 @@ Pre-built multi-arch images (amd64 + arm64):
 docker pull shellygroup/fleet-management:latest
 ```
 
+## MCP
+
+The Fleet Manager image serves MCP on the normal application endpoint:
+
+```text
+https://<your-host>/mcp
+```
+
+Create a scoped access key with `mcp:read`, `mcp:write`, or `mcp:full`, then
+send it as a bearer token. No extra container or port is required.
+
+```bash
+curl -X POST https://<your-host>/mcp \
+  -H "Authorization: Bearer <scoped-key>" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}'
+```
+
+For local documentation lookup, use `mcp.example.json`. Install backend
+dependencies first, then point your MCP client at the included stdio server.
+
 ## Example Plugins
 
 - **greetings** - Hello-world plugin demonstrating the API
@@ -159,6 +187,8 @@ See `plugins/` for source code.
 - [Backups](./docs/reference/backups.md)
 - [Rollback](./docs/reference/rollback.md)
 - [Observability](./docs/reference/observability.md)
+- [AI and MCP](./docs/reference/ai-and-mcp.md)
+- [MCP Operations](./docs/reference/ai-mcp-operations.md)
 
 ## Supported Platforms
 
@@ -169,6 +199,11 @@ See `plugins/` for source code.
 | Raspberry Pi OS | arm64 | Supported |
 | Arch Linux | amd64/arm64 | Supported |
 | macOS | amd64/arm64 | Supported (Docker Desktop) |
+
+## Support
+
+- Bugs and feature requests: [GitHub Issues](https://github.com/ALLTERCO/fleet-management/issues)
+- Run `./deploy/deploy-public.sh doctor` first for deployment problems; include its output in your report.
 
 ## License
 

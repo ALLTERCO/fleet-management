@@ -4,6 +4,8 @@ import * as Observability from '../Observability';
 import type {
     BulkAcceptJobRecord,
     BulkAcceptJobStorePort,
+    DeviceGuiSessionPort,
+    DeviceIdentityFencePort,
     DeviceIngestPort,
     DeviceOwnershipPort,
     DeviceShadowPort,
@@ -245,13 +247,33 @@ setInterval(sweepRateLimiterMaps, RATE_LIMITER_TTL_MS).unref();
 
 // Single-process: this instance owns everything it has claimed.
 const nullOwned = new Set<string>();
+const nullIdentityFences = new Map<string, string>();
+
+export const nullDeviceIdentityFence: DeviceIdentityFencePort = {
+    async acquire(shellyIDs, token) {
+        const ids = [...new Set(shellyIDs)].sort();
+        if (ids.some((id) => nullIdentityFences.has(id))) return false;
+        for (const id of ids) nullIdentityFences.set(id, token);
+        return true;
+    },
+    async release(shellyIDs, token) {
+        for (const id of new Set(shellyIDs)) {
+            if (nullIdentityFences.get(id) === token) {
+                nullIdentityFences.delete(id);
+            }
+        }
+    }
+};
 
 export const nullDeviceOwnership: DeviceOwnershipPort = {
     async claim(shellyID: string): Promise<boolean> {
+        if (nullIdentityFences.has(shellyID)) return false;
         nullOwned.add(shellyID);
         return true;
     },
-    async heartbeat(): Promise<void> {},
+    async heartbeat(): Promise<boolean> {
+        return true;
+    },
     async release(shellyID: string): Promise<void> {
         nullOwned.delete(shellyID);
     },
@@ -337,6 +359,84 @@ export const nullUploadSessions: UploadSessionPort = {
     },
     async delete(sessionId) {
         nullUploadSessionStore.delete(sessionId);
+    }
+};
+
+interface NullDeviceGuiEntry {
+    value: string;
+    expiresAt: number;
+}
+const nullDeviceGuiSessionStore = new Map<string, NullDeviceGuiEntry>();
+const nullDeviceGuiAttestations = new Map<string, NullDeviceGuiEntry>();
+const nullDeviceGuiSlots = new Map<string, NullDeviceGuiEntry>();
+const nullDeviceGuiRevocationHandlers = new Set<(sessionId: string) => void>();
+const NULL_DEVICE_GUI_MAX = 10_000;
+
+function readDeviceGuiEntry(
+    store: Map<string, NullDeviceGuiEntry>,
+    key: string,
+    consume: boolean
+): string | null {
+    const entry = store.get(key);
+    if (!entry) return null;
+    if (consume || entry.expiresAt <= Date.now()) store.delete(key);
+    return entry.expiresAt > Date.now() ? entry.value : null;
+}
+
+export const nullDeviceGuiSessions: DeviceGuiSessionPort = {
+    async create(input) {
+        const now = Date.now();
+        sweepExpiredMap(nullDeviceGuiSessionStore, now);
+        sweepExpiredMap(nullDeviceGuiAttestations, now);
+        sweepExpiredMap(nullDeviceGuiSlots, now);
+        const replacedSessionId = readDeviceGuiEntry(
+            nullDeviceGuiSlots,
+            input.slotId,
+            false
+        );
+        if (replacedSessionId) {
+            nullDeviceGuiSessionStore.delete(replacedSessionId);
+            nullDeviceGuiAttestations.delete(replacedSessionId);
+        }
+        if (nullDeviceGuiSessionStore.size >= NULL_DEVICE_GUI_MAX) {
+            throw new Error('Device GUI session capacity reached');
+        }
+        nullDeviceGuiSessionStore.set(input.sessionId, {
+            value: input.session,
+            expiresAt: now + input.ttlSec * 1000
+        });
+        nullDeviceGuiSlots.set(input.slotId, {
+            value: input.sessionId,
+            expiresAt: now + input.ttlSec * 1000
+        });
+        return replacedSessionId;
+    },
+    async get(sessionId) {
+        return readDeviceGuiEntry(nullDeviceGuiSessionStore, sessionId, false);
+    },
+    async isAttested(sessionId) {
+        return (
+            readDeviceGuiEntry(nullDeviceGuiAttestations, sessionId, false) !==
+            null
+        );
+    },
+    async markAttested(sessionId, ttlSec) {
+        nullDeviceGuiAttestations.set(sessionId, {
+            value: '1',
+            expiresAt: Date.now() + ttlSec * 1000
+        });
+    },
+    async delete(sessionId) {
+        nullDeviceGuiSessionStore.delete(sessionId);
+        nullDeviceGuiAttestations.delete(sessionId);
+    },
+    async publishRevoked(sessionId) {
+        for (const handler of nullDeviceGuiRevocationHandlers) {
+            handler(sessionId);
+        }
+    },
+    async onRevoked(handler) {
+        nullDeviceGuiRevocationHandlers.add(handler);
     }
 };
 

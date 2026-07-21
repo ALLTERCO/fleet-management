@@ -52,6 +52,7 @@
             <!-- Zone labels (colored to match zone, matching prototype) -->
             <text v-for="zone in displayZones" :key="'zl'+zone.id"
                 :x="zlX(zone)" :y="zlY(zone)" class="prm-zlabel" text-anchor="middle" dominant-baseline="middle"
+                :font-size="compact ? 9 : 7"
                 :fill="zc(zone.color, highlightZoneId === zone.id ? 0.6 : 0.4)"
             >{{ zone.name || `Zone ${zone.id}` }}</text>
 
@@ -72,18 +73,18 @@
 
             <!-- Sensor marker (at top center) -->
             <rect :x="sensorX-T*0.6" :y="-T*0.3" :width="T*1.2" :height="T*0.3" rx="1" class="prm-sensor" />
-            <text v-if="!compact" :x="sensorX" :y="-T*0.5" class="prm-slabel" text-anchor="middle">SENSOR</text>
+            <text v-if="!compact" :x="sensorX" :y="-T*0.5" class="prm-slabel" font-size="5" text-anchor="middle">SENSOR</text>
 
             <!-- Tracked objects (X mirrored, rendered after sensor so they appear on top) -->
             <g v-for="(obj, idx) in objects" :key="'o'+obj.id">
                 <circle :cx="-obj.x*T" :cy="obj.y*T" :r="4" class="prm-obj" />
-                <text :x="-obj.x*T" :y="obj.y*T" class="prm-oid" text-anchor="middle" dominant-baseline="central">{{ idx + 1 }}</text>
+                <text :x="-obj.x*T" :y="obj.y*T" class="prm-oid" font-size="5" text-anchor="middle" dominant-baseline="central">{{ idx + 1 }}</text>
             </g>
 
             <!-- Meter labels -->
             <template v-if="!compact">
-                <text v-for="m in mLabelsY" :key="'my'+m" :x="grid.x+T*0.3" :y="m*T+T*0.3" class="prm-ml">{{ m*0.5 }}m</text>
-                <text v-for="m in mLabelsX" :key="'mx'+m" :x="m*T" :y="-T*0.3" class="prm-ml" text-anchor="middle">{{ m*0.5 }}m</text>
+                <text v-for="m in mLabelsY" :key="'my'+m" :x="grid.x+T*0.3" :y="m*T+T*0.3" class="prm-ml" font-size="5">{{ m*0.5 }}m</text>
+                <text v-for="m in mLabelsX" :key="'mx'+m" :x="m*T" :y="-T*0.3" class="prm-ml" font-size="5" text-anchor="middle">{{ m*0.5 }}m</text>
             </template>
         </svg>
 
@@ -390,14 +391,14 @@ function cancelEdit() {
 .prm-det { fill: rgba(var(--color-primary-rgb),0.015); stroke: rgba(var(--color-primary-rgb),0.08); stroke-width: 0.5; stroke-dasharray: 3 2; }
 .prm-zone { fill: var(--zf, rgba(var(--color-primary-rgb),0.1)); stroke: var(--zs, rgba(var(--color-primary-rgb),0.3)); stroke-width: 0.5; rx: 1; }
 .prm-zone--hl { fill: var(--zf, rgba(var(--color-success-rgb),0.15)); stroke: var(--zs, rgba(var(--color-success-rgb),0.4)); stroke-width: 0.8; }
-.prm-zlabel { fill: var(--color-text-primary); font-size: var(--type-body); font-weight: 700; pointer-events: none; }
-.prm--compact .prm-zlabel { font-size: var(--type-body); }
+/* SVG font sizes use viewBox units, so screen type tokens do not apply. */
+.prm-zlabel { fill: var(--color-text-primary); font-weight: 700; pointer-events: none; }
 .prm-blind { fill: rgba(var(--color-danger-rgb),0.05); stroke: rgba(var(--color-danger-rgb),0.12); stroke-width: 0.4; stroke-dasharray: 2 2; }
 .prm-obj { fill: rgba(var(--color-success-rgb),0.85); }
-.prm-oid { fill: #fff; font-size: var(--type-body); font-weight: 800; pointer-events: none; }
+.prm-oid { fill: #fff; font-weight: 800; pointer-events: none; }
 .prm-sensor { fill: rgba(var(--color-primary-rgb),0.5); }
-.prm-slabel { fill: rgba(var(--color-primary-rgb),0.4); font-size: var(--type-body); font-weight: 700; letter-spacing: 0.5px; }
-.prm-ml { fill: rgba(148,163,184,0.2); font-size: var(--type-body); font-weight: 600; }
+.prm-slabel { fill: rgba(var(--color-primary-rgb),0.4); font-weight: 700; letter-spacing: 0.5px; }
+.prm-ml { fill: rgba(148,163,184,0.2); font-weight: 600; }
 
 /* Edit mode tiles */
 .prm-tile-hover { fill: var(--color-border-default); stroke: var(--color-border-strong); stroke-width: 0.5; pointer-events: none; }

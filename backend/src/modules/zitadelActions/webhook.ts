@@ -14,7 +14,10 @@ import {
 } from './signature';
 
 const logger = log4js.getLogger('zitadel-actions');
-const ZITADEL_SIGNATURE_HEADER = 'zitadel-signature';
+const ZITADEL_SIGNATURE_HEADERS = [
+    'x-zitadel-signature',
+    'zitadel-signature'
+] as const;
 const USER_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
 export interface WebhookOutcome {
@@ -35,9 +38,13 @@ export interface VerifiedWebhook {
 }
 
 function readSignatureHeader(req: RawRequestLike): string | undefined {
-    const v = req.headers[ZITADEL_SIGNATURE_HEADER];
-    // Node turns duplicate headers into arrays; Zitadel sends one signature.
-    return Array.isArray(v) ? v[0] : v;
+    for (const header of ZITADEL_SIGNATURE_HEADERS) {
+        const v = req.headers[header];
+        // Node turns duplicate headers into arrays; Zitadel sends one signature.
+        const signature = Array.isArray(v) ? v[0] : v;
+        if (signature) return signature;
+    }
+    return undefined;
 }
 
 export async function verifyZitadelWebhook(

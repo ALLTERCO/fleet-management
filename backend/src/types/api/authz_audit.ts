@@ -134,6 +134,7 @@ export const AUTHZ_AUDIT_DESCRIBE: DescribeOutput = new DescribeBuilder(
         description: 'Component metadata.'
     })
     .registerMethod('List', {
+        safety: {operation: 'read'},
         params: AUTHZ_AUDIT_LIST_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,

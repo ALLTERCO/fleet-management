@@ -91,6 +91,7 @@ export const MOBILE_DESCRIBE: DescribeOutput = new DescribeBuilder('mobile', {
         description: 'Component metadata.'
     })
     .registerMethod('GetBootstrap', {
+        safety: {operation: 'read'},
         params: MOBILE_GET_BOOTSTRAP_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: AUTH_PERM,
@@ -101,6 +102,7 @@ export const MOBILE_DESCRIBE: DescribeOutput = new DescribeBuilder('mobile', {
             'returned with visible=false.'
     })
     .registerMethod('SyncDelta', {
+        safety: {operation: 'read'},
         params: MOBILE_SYNC_DELTA_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: AUTH_PERM,

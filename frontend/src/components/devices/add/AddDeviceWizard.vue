@@ -1,11 +1,11 @@
 <template>
-    <Modal :visible="visible" wide @close="onCloseRequest">
+    <Modal :visible="visible" large @close="onCloseRequest">
         <template #title>{{ heroTitle }}</template>
 
         <div class="adw">
             <div class="adw__body">
                 <section class="adw__form" :data-step="currentStepId">
-                    <Transition :name="transitionName" mode="out-in">
+                    <Transition :name="transitionName">
                         <KeepAlive>
                             <PickPartsStep
                                 v-if="currentStepId === 'parts'"
@@ -254,7 +254,7 @@ watch(
 }
 .adw__form {
     min-height: 340px;
-    padding: var(--gap-xl);
+    padding: var(--gap-md) var(--gap-lg);
 }
 .adw__footer {
     display: flex;

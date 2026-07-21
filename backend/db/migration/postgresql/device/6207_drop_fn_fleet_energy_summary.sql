@@ -1,4 +1,5 @@
 --------------UP
+-- LINT-IGNORE: additive-only (deliberate legacy function removal)
 -- Phase 7 cleanup: drop the orphan `fn_fleet_energy_summary`.
 --
 -- Replaced in Phase 2c by `device_em.fn_energy_summary` (migration

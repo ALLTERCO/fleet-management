@@ -273,6 +273,8 @@ export interface service_entity extends entity {
     properties: entity['properties'] & {
         /** Service type from jwt.xt1.svc0.type (e.g. "linkedgo-st-802-hvac") */
         serviceType: string;
+        /** Backend-resolved card category — frontends must not regex serviceType */
+        category: 'hvac' | 'valve' | 'ev_charger' | 'irrigation' | 'generic';
         /** Service component key (e.g. "service:0") */
         serviceKey: string;
         /** Product name from jwt.n (e.g. "Youth Smart Thermostat ST802") */

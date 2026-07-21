@@ -85,6 +85,7 @@ export const DEVICE_EVENT_DESCRIBE: DescribeOutput = new DescribeBuilder(
     }
 )
     .registerMethod('Query', {
+        safety: {operation: 'read'},
         params: DEVICE_EVENT_QUERY_PARAMS_SCHEMA,
         response: DEVICE_EVENT_QUERY_RESPONSE_SCHEMA,
         permission: {note: 'admin-only'},

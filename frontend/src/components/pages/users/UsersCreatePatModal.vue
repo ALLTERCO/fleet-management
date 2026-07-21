@@ -39,6 +39,23 @@
                             placeholder="e.g. CI scraper for Grafana"
                         />
                     </FormField>
+                    <FormField
+                        label="MCP access (AI agent)"
+                        hint="What an MCP agent may do with this key. None = not for MCP."
+                    >
+                        <select
+                            v-model="mcpLevelModel"
+                            class="usr-select"
+                            aria-label="MCP access level"
+                        >
+                            <option value="">None</option>
+                            <option value="read">Read — look only</option>
+                            <option value="write">
+                                Write — read + normal changes
+                            </option>
+                            <option value="full">Full — everything</option>
+                        </select>
+                    </FormField>
                     <Checkbox
                         v-model="scopeAllModel"
                         label="Scope: inherit all (boundary = no narrowing)"
@@ -160,6 +177,7 @@ const expirationModel = defineModel<string>('expiration', {required: true});
 const scopedModel = defineModel<boolean>('scoped', {required: true});
 const scopeAllModel = defineModel<boolean>('scopeAll', {required: true});
 const purposeModel = defineModel<string>('purpose', {required: true});
+const mcpLevelModel = defineModel<string>('mcpLevel', {default: ''});
 const scopePickedModel = defineModel<PickedScopedPatBoundary>('scopePicked', {
     required: true
 });

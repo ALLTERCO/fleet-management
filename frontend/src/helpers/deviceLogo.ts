@@ -4,7 +4,6 @@ import type {shelly_device_t} from '@/types';
 import {GENERIC_LOGO, getLogo, getLogoFromModel} from './device';
 
 const SYNTHETIC_BLU_LOGO = '/images/devices/generic-blu-device.png';
-const SYNTHETIC_VIRTUAL_ICON = 'fas fa-cube';
 
 // Asset id → resolver URL. Holder columns store UUIDs only.
 export function resolveAssetSrc(assetId: string): string {
@@ -28,7 +27,10 @@ function decorationLogo(device: shelly_device_t): DeviceLogo | null {
     if (typeof imageAssetId === 'string' && imageAssetId.length > 0) {
         return {kind: 'image', src: resolveAssetSrc(imageAssetId)};
     }
-    if (typeof visual?.imageModel === 'string' && visual.imageModel.length > 0) {
+    if (
+        typeof visual?.imageModel === 'string' &&
+        visual.imageModel.length > 0
+    ) {
         return {kind: 'image', src: getLogoFromModel(visual.imageModel)};
     }
     const overrideIcon = device.info?.icon;
@@ -45,7 +47,8 @@ function decorationLogo(device: shelly_device_t): DeviceLogo | null {
 // Placeholder when no product model is known — by device nature.
 function fallbackLogo(source: string | undefined): DeviceLogo {
     if (source === 'virtual') {
-        return {kind: 'icon', faClass: SYNTHETIC_VIRTUAL_ICON};
+        // Same default picture as every other device (human decision).
+        return {kind: 'image', src: GENERIC_LOGO};
     }
     if (source === 'bluetooth') {
         return {kind: 'image', src: SYNTHETIC_BLU_LOGO};
@@ -84,4 +87,17 @@ export function resolveDeviceLogo(device: shelly_device_t): DeviceLogo {
     }
     // Regular Shelly (info.model) + modular Shelly X (jwt code, via getLogo).
     return device.info?.model ? productPhoto(device) : fallbackLogo(source);
+}
+
+// Grid-card pipeline — model-based only; the shellyID-prefix guess is gone.
+export function resolveDeviceCardLogo(device: shelly_device_t): DeviceLogo {
+    return resolveDeviceLogo(device);
+}
+
+// Accent color for icon-kind logos — same token mapping as the grid card.
+export function deviceGlyphStyle(
+    logo: DeviceLogo
+): Record<string, string> | undefined {
+    if (logo.kind !== 'icon' || !logo.accent) return undefined;
+    return {color: `rgb(var(--accent-${logo.accent}))`};
 }

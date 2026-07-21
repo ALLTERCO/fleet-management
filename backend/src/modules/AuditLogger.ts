@@ -2,7 +2,7 @@ import * as log4js from 'log4js';
 import {tuning} from '../config';
 import {normalizeActor, SYSTEM_ACTOR} from '../types/api/auditActors';
 import {writeAuditRow, writeAuditRowBatch} from './audit/writeAuditRow';
-import {entryToBatchRow} from './auditBatchRow';
+import {entryToBatchRow, scrubSensitiveValues} from './auditBatchRow';
 import {BoundedQueue} from './boundedQueue';
 import * as DeviceCollector from './DeviceCollector';
 import * as Observability from './Observability';
@@ -31,7 +31,8 @@ export type AuditEventType =
     | 'notification_manual_retry'
     | 'notification_endpoint_reenable'
     | 'device_ingress'
-    | 'rate_limit_exceeded';
+    | 'rate_limit_exceeded'
+    | 'mcp_tool_call';
 
 export interface AuditLogEntry {
     eventType: AuditEventType;
@@ -40,11 +41,16 @@ export interface AuditLogEntry {
      *  and are drained later. */
     ts?: string;
     username?: string;
+    /** Stable Zitadel subject. Username remains a display snapshot. */
+    actorUserId?: string;
     /** Primary device for single-device rows — kept for display/back-compat. */
     shellyId?: string;
     /** Every device touched by the row (1 for single, N for bulk). Used
      *  by the GIN-indexed audit_log.shelly_ids column for forensic queries. */
     shellyIds?: string[];
+    /** Durable logical Fleet device references. External IDs remain snapshots. */
+    deviceId?: number;
+    deviceIds?: number[];
     method?: string;
     params?: Record<string, any>;
     success?: boolean;
@@ -60,6 +66,8 @@ export interface AuditLogRow {
     username: string | null;
     shelly_id: string | null;
     shelly_ids: string[] | null;
+    device_id: number | null;
+    device_ids: number[] | null;
     method: string | null;
     params: Record<string, any>;
     success: boolean;
@@ -96,7 +104,7 @@ function getAuditLogQueue(): BoundedQueue<QueuedAuditEntry> {
     });
     return auditLogQueueInstance;
 }
-let flushInProgress = false;
+let inFlightFlush: Promise<void> | null = null;
 
 // Periodic flush timer. Armed via startAuditFlushTimer() at boot so that
 // importing this module is side-effect-free (tests, scripts, generators).
@@ -175,9 +183,9 @@ async function flushPerRow(
     }
 }
 
-async function flushAuditLogQueue(): Promise<void> {
+async function flushAuditLogQueueOnce(): Promise<void> {
     const queue = getAuditLogQueue();
-    if (flushInProgress || queue.size === 0) return;
+    if (queue.size === 0) return;
 
     if (Observability.isDbWritesDisabled()) {
         // Hold queue until writes re-enable. BoundedQueue caps memory.
@@ -185,7 +193,6 @@ async function flushAuditLogQueue(): Promise<void> {
         return;
     }
 
-    flushInProgress = true;
     Observability.incrementCounter('audit_flushes');
     const entriesToWrite = queue.drain();
     const failed: QueuedAuditEntry[] = [];
@@ -209,28 +216,59 @@ async function flushAuditLogQueue(): Promise<void> {
             'audit_flush',
             performance.now() - auditFlushStart
         );
-        flushInProgress = false;
         for (const f of failed) getAuditLogQueue().push(f);
     }
+}
+
+function flushAuditLogQueue(): Promise<void> {
+    if (inFlightFlush) return inFlightFlush;
+    inFlightFlush = flushAuditLogQueueOnce().finally(() => {
+        inFlightFlush = null;
+    });
+    return inFlightFlush;
 }
 
 export async function log(entry: AuditLogEntry): Promise<number | null> {
     recordUnarmedLogIfAny();
     Observability.incrementCounter('audit_entries');
     // Stamp NOW() if caller didn't — preserves event time across spill/drain.
-    const stamped: AuditLogEntry = entry.ts
-        ? entry
-        : {...entry, ts: new Date().toISOString()};
+    const owned = attachLogicalDeviceRefs(entry);
+    const stamped: AuditLogEntry = owned.ts
+        ? owned
+        : {...owned, ts: new Date().toISOString()};
     const queue = getAuditLogQueue();
     queue.push(stamped);
 
-    if (queue.size >= tuning.audit.queueMax && !flushInProgress) {
+    if (queue.size >= tuning.audit.queueMax && !inFlightFlush) {
         void flushAuditLogQueue().catch((err) =>
             logger.error('audit flush failed: %s', err)
         );
     }
 
     return null;
+}
+
+function attachLogicalDeviceRefs(entry: AuditLogEntry): AuditLogEntry {
+    if (entry.deviceId !== undefined || entry.deviceIds !== undefined) {
+        return entry;
+    }
+    const externalIds =
+        entry.shellyIds && entry.shellyIds.length > 0
+            ? entry.shellyIds
+            : entry.shellyId
+              ? [entry.shellyId]
+              : [];
+    if (externalIds.length === 0) return entry;
+    const logicalIds = externalIds.map(
+        (externalId) => DeviceCollector.getDevice(externalId)?.id
+    );
+    if (logicalIds.some((id) => id === undefined)) return entry;
+    const deviceIds = logicalIds as number[];
+    return {
+        ...entry,
+        deviceId: deviceIds.length === 1 ? deviceIds[0] : undefined,
+        deviceIds
+    };
 }
 
 export async function query(params: {
@@ -285,22 +323,46 @@ export function logRateLimitExceeded(args: {
     });
 }
 
-// Convenience methods
+export interface LoginAuditInput {
+    username: string;
+    actorUserId?: string;
+    ipAddress?: string;
+    success?: boolean;
+    errorMessage?: string;
+    organizationId?: string;
+}
+
+export function buildLoginAuditEvent(input: LoginAuditInput): AuditLogEntry {
+    return {
+        eventType: 'login',
+        username: normalizeActor(input.username),
+        actorUserId: input.actorUserId,
+        ipAddress: input.ipAddress,
+        success: input.success ?? true,
+        errorMessage: input.errorMessage,
+        organizationId: input.organizationId
+    };
+}
+
+// Positional wrapper retained for existing authentication call sites.
 export function logLogin(
     username: string,
     ipAddress?: string,
     success = true,
     errorMessage?: string,
-    organizationId?: string
+    organizationId?: string,
+    actorUserId?: string
 ) {
-    return log({
-        eventType: 'login',
-        username: normalizeActor(username),
-        ipAddress,
-        success,
-        errorMessage,
-        organizationId
-    });
+    return log(
+        buildLoginAuditEvent({
+            username,
+            ipAddress,
+            success,
+            errorMessage,
+            organizationId,
+            actorUserId
+        })
+    );
 }
 
 // Methods whose params must never be logged (auth, tokens, secrets)
@@ -320,16 +382,6 @@ const SENSITIVE_METHODS = new Set([
     'pluginmgr.upload'
 ]);
 
-// Param keys that are always redacted regardless of method
-const SENSITIVE_PARAM_KEYS = new Set([
-    'password',
-    'token',
-    'secret',
-    'refresh_token',
-    'access_token',
-    'pat'
-]);
-
 // Alias dispatch rewrites method strings to `old (→new)`. Strip before lookup.
 function canonicalMethod(method: string): string {
     const space = method.indexOf(' ');
@@ -342,18 +394,9 @@ export function redactSensitiveParams(
 ): Record<string, any> | undefined {
     if (!params || typeof params !== 'object') return params;
     if (SENSITIVE_METHODS.has(canonicalMethod(method))) return undefined;
-
-    const redacted: Record<string, any> = {};
-    let changed = false;
-    for (const key of Object.keys(params)) {
-        if (SENSITIVE_PARAM_KEYS.has(key.toLowerCase())) {
-            redacted[key] = '[REDACTED]';
-            changed = true;
-        } else {
-            redacted[key] = params[key];
-        }
-    }
-    return changed ? redacted : params;
+    // One home for deep param redaction — shared with audit persistence so the
+    // WS debug log and the stored row scrub the same keys (incl. nested).
+    return scrubSensitiveValues(params) as Record<string, any>;
 }
 
 /** Every shellyID referenced by RPC params (single or bulk). */
@@ -369,28 +412,78 @@ function extractShellyIds(params: any): string[] {
     return out;
 }
 
-export function logRpc(
-    username: string | undefined,
-    method: string,
-    params?: any,
-    success = true,
-    errorMessage?: string,
-    organizationId?: string
-) {
-    const safeParams = redactSensitiveParams(method, params);
-    const ids = extractShellyIds(params);
+export interface RpcAuditInput {
+    username?: string;
+    actorUserId?: string;
+    method: string;
+    params?: any;
+    success?: boolean;
+    errorMessage?: string;
+    organizationId?: string;
+    ipAddress?: string;
+}
 
-    return log({
+export function buildRpcAuditEvent(input: RpcAuditInput): AuditLogEntry {
+    const safeParams = redactSensitiveParams(input.method, input.params);
+    const ids = extractShellyIds(input.params);
+
+    return {
         eventType: 'rpc',
-        username: normalizeActor(username),
-        method,
+        username: normalizeActor(input.username),
+        actorUserId: input.actorUserId,
+        method: input.method,
         params: safeParams,
         shellyId: ids.length === 1 ? ids[0] : undefined,
         shellyIds: ids,
-        success,
-        errorMessage,
-        organizationId
-    });
+        success: input.success ?? true,
+        errorMessage: input.errorMessage,
+        organizationId: input.organizationId,
+        ipAddress: input.ipAddress
+    };
+}
+
+export function logRpc(input: RpcAuditInput) {
+    return log(buildRpcAuditEvent(input));
+}
+
+// MCP doorway audit: which agent tool ran, on which method, and whether
+// it was allowed. Complements the RPC-level 'rpc' event that Commander
+// writes for the underlying call.
+export interface McpAuditArgs {
+    username?: string;
+    tool: string;
+    method?: string;
+    success: boolean;
+    errorMessage?: string;
+    organizationId?: string | null;
+    // Attribution: which agent credential + client, so an agent-token call is
+    // distinguishable from the user's browser session. Not secrets.
+    credentialId?: string;
+    clientId?: string;
+    // 'prepare' = preview only (nothing ran); 'execute' = the write ran. Lets
+    // the trail tell a planned fm_write apart from one that changed data.
+    phase?: 'prepare' | 'execute';
+}
+
+// Pure builder, split from enqueueing so the event shape is unit-testable.
+export function buildMcpAuditEvent(args: McpAuditArgs): AuditLogEntry {
+    const params: Record<string, unknown> = {};
+    if (args.credentialId) params.credentialId = args.credentialId;
+    if (args.clientId) params.clientId = args.clientId;
+    if (args.phase) params.phase = args.phase;
+    return {
+        eventType: 'mcp_tool_call',
+        username: normalizeActor(args.username),
+        method: args.method ? `${args.tool}:${args.method}` : args.tool,
+        params: Object.keys(params).length > 0 ? params : undefined,
+        success: args.success,
+        errorMessage: args.errorMessage,
+        organizationId: args.organizationId ?? undefined
+    };
+}
+
+export function logMcpTool(args: McpAuditArgs) {
+    return log(buildMcpAuditEvent(args));
 }
 
 export function logDeviceOnline(shellyId: string) {
@@ -502,7 +595,9 @@ export function logDeviceReconnectReplace(
 
 // Export flush function for shutdown cleanup
 export async function flush(): Promise<void> {
-    await flushAuditLogQueue();
+    do {
+        await flushAuditLogQueue();
+    } while (getAuditLogQueue().size > 0);
 }
 
 // Get queue length for monitoring

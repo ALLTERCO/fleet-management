@@ -3,6 +3,7 @@ import {defineStore} from 'pinia';
 import {computed, reactive} from 'vue';
 import {debugWarn} from '@/tools/debug';
 import * as ws from '../tools/websocket';
+import {JOB_EVENT} from '../tools/wsEvents';
 
 export type BackendJobKind =
     | 'certificate'
@@ -281,12 +282,12 @@ export const useJobsStore = defineStore('jobs', () => {
     }
 
     function handleJobEvent(event: ws.NamespacedEvent): void {
-        if (event.method === 'Job.Updated') {
+        if (event.method === JOB_EVENT.UPDATED) {
             const job = event.params.job as OperationJobSnapshot | undefined;
             if (job) trackSnapshot(job);
             return;
         }
-        if (event.method !== 'Job.UnitUpdated') return;
+        if (event.method !== JOB_EVENT.UNIT_UPDATED) return;
         const params = event.params as JobUnitUpdatedParams;
         if (!params.jobId || !params.unitId || !params.status) return;
         applyUnit({

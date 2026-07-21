@@ -1,0 +1,403 @@
+{
+  "generator": "ai-index",
+  "version": 1,
+  "summary": {
+    "purpose": "Route AI agents to the smallest correct source of truth before reading large generated files.",
+    "rule": "Use Host SDK for UI/multi-UI work; use backend RPC/OpenAPI for backend/API contracts.",
+    "mcpStatus": "Fleet Manager MCP provides local read-only documentation over stdio and authenticated, governed operations through POST /mcp on a running instance."
+  },
+  "surfaces": [
+    {
+      "id": "backend-rpc-describe",
+      "role": "Backend source of truth.",
+      "sourceOfTruth": "backend/src/types/api/*_DESCRIBE",
+      "useFor": "RPC params, responses, permissions, generated OpenAPI, generated Host SDK contract.",
+      "avoidFor": "UI layout and template-specific convenience APIs."
+    },
+    {
+      "id": "host-sdk",
+      "role": "UI-facing source of truth for templates and alternate UIs.",
+      "sourceOfTruth": "frontend/src/shell/template-host/* + frontend/src/shell/template-host/generated/contract.ts",
+      "useFor": "Multi-UI/template calls, typed frontend helpers, domain-level UI behavior.",
+      "avoidFor": "Changing backend API contracts directly."
+    },
+    {
+      "id": "scalar-openapi",
+      "role": "Human/API-tooling reference.",
+      "sourceOfTruth": "docs/generated/api.openapi.json",
+      "useFor": "Scalar docs, OpenAPI clients, future OpenAPI-backed MCP execution.",
+      "avoidFor": "Repo architecture, frontend call ownership, or internal plans."
+    },
+    {
+      "id": "local-docs-mcp",
+      "role": "Read-only AI retrieval layer.",
+      "sourceOfTruth": "docs/generated/ai-index.json + generated inventories + stable docs",
+      "useFor": "Read-only doc search and exact contract lookup.",
+      "avoidFor": "Unreviewed write/API execution."
+    }
+  ],
+  "resources": [
+    {
+      "id": "ai-index",
+      "path": "docs/generated/ai-index.json",
+      "audience": "ai-agents",
+      "kind": "generated-contract",
+      "format": "json",
+      "role": "Small map of AI-readable docs and generated contracts.",
+      "aiUse": "Start here before reading large generated files.",
+      "readFirst": true
+    },
+    {
+      "id": "openapi",
+      "path": "docs/generated/api.openapi.json",
+      "audience": "api-consumers",
+      "kind": "generated-contract",
+      "format": "json",
+      "role": "OpenAPI 3.1 contract for the backend RPC surface.",
+      "aiUse": "Use for exact params, responses, operation ids, and Scalar/MCP API tooling.",
+      "readFirst": true
+    },
+    {
+      "id": "api-catalog",
+      "path": "docs/generated/api-catalog.json",
+      "audience": "ai-agents",
+      "kind": "generated-contract",
+      "format": "json",
+      "role": "Agent-facing method catalog: namespaceKind, descriptions, schemas, permissions, safety hints, recommended Host SDK wrappers.",
+      "aiUse": "Use get_api_method (MCP) for one method; read this file only for bulk analysis.",
+      "readFirst": true
+    },
+    {
+      "id": "host-contract",
+      "path": "frontend/src/shell/template-host/generated/contract.ts",
+      "audience": "frontend-agents",
+      "kind": "generated-contract",
+      "format": "typescript",
+      "role": "Typed Host SDK method contract for template and multi-UI code.",
+      "aiUse": "Use when building UI/template calls so the UI depends on the host layer, not raw backend details.",
+      "readFirst": true
+    },
+    {
+      "id": "host-sdk",
+      "path": "frontend/src/shell/template-host/index.ts",
+      "audience": "frontend-agents",
+      "kind": "stable-doc",
+      "format": "typescript",
+      "role": "Host SDK public entrypoint exposed to templates and alternate UIs.",
+      "aiUse": "Use to discover the supported UI-facing domains and helpers.",
+      "readFirst": true
+    },
+    {
+      "id": "host-method-metadata",
+      "path": "frontend/src/shell/template-host/generated/method-metadata.ts",
+      "audience": "frontend-agents",
+      "kind": "generated-contract",
+      "format": "typescript",
+      "role": "SDK-side per-method metadata: namespaceKind, risk flags, recommended wrapper, escape hatches.",
+      "aiUse": "Use in UI code via the HOST_METHOD_METADATA export to pick safe calls without leaving @host.",
+      "readFirst": false
+    },
+    {
+      "id": "host-sdk-index",
+      "path": "docs/generated/host-sdk-index.json",
+      "audience": "frontend-agents",
+      "kind": "generated-inventory",
+      "format": "json",
+      "role": "Generated index of Host SDK modules, exports, and RPC bridge usage.",
+      "aiUse": "Use to find the right @host domain before touching UI/template code.",
+      "readFirst": true
+    },
+    {
+      "id": "ai-and-mcp-reference",
+      "path": "docs/reference/ai-and-mcp.md",
+      "audience": "ai-agents",
+      "kind": "stable-doc",
+      "format": "markdown",
+      "role": "Short AI/MCP entrypoint with Host SDK rules and common UI flows.",
+      "aiUse": "Use before UI, docs, or MCP work so agents follow the right contract layer.",
+      "readFirst": true
+    },
+    {
+      "id": "deployment-guide",
+      "path": "deploy/public/deployment.md",
+      "audience": "operators",
+      "kind": "stable-doc",
+      "format": "markdown",
+      "role": "Fleet Manager deploy.sh install, update, environment, and flag guide.",
+      "aiUse": "Use for Fleet Manager install/deploy commands and deploy.sh parameters.",
+      "readFirst": true
+    },
+    {
+      "id": "separate-ui-host-sdk-guide",
+      "path": "docs/reference/separate-ui-host-sdk.md",
+      "audience": "frontend-agents",
+      "kind": "stable-doc",
+      "format": "markdown",
+      "role": "Guide for BM template UIs and fully separate UIs using Fleet Manager.",
+      "aiUse": "Use before building a separate UI, BM template UI, or Host SDK adapter.",
+      "readFirst": true
+    },
+    {
+      "id": "deploy-reference",
+      "path": "docs/architecture/deploy-reference.md",
+      "audience": "operators",
+      "kind": "stable-doc",
+      "format": "markdown",
+      "role": "Detailed deploy.sh architecture, topology, routing, SSL, and mode reference.",
+      "aiUse": "Use after the deployment guide when deploy behavior needs deeper explanation.",
+      "readFirst": false
+    },
+    {
+      "id": "rpc-inventory",
+      "path": "docs/generated/backend-rpc-inventory.json",
+      "audience": "ai-agents",
+      "kind": "generated-inventory",
+      "format": "json",
+      "role": "Backend component and RPC inventory.",
+      "aiUse": "Use to find backend owners, permissions, source locations, and callable methods.",
+      "readFirst": false
+    },
+    {
+      "id": "http-inventory",
+      "path": "docs/generated/backend-http-inventory.json",
+      "audience": "ai-agents",
+      "kind": "generated-inventory",
+      "format": "json",
+      "role": "HTTP route and middleware inventory.",
+      "aiUse": "Use to verify route shapes, auth middleware, and served static/API endpoints.",
+      "readFirst": false
+    },
+    {
+      "id": "ws-inventory",
+      "path": "docs/generated/backend-ws-inventory.json",
+      "audience": "ai-agents",
+      "kind": "generated-inventory",
+      "format": "json",
+      "role": "WebSocket upgrade path and handler inventory.",
+      "aiUse": "Use to check WS paths, handlers, and payload caps.",
+      "readFirst": false
+    },
+    {
+      "id": "events",
+      "path": "docs/generated/backend-event-inventory.json",
+      "audience": "ai-agents",
+      "kind": "generated-inventory",
+      "format": "json",
+      "role": "Backend event emission inventory.",
+      "aiUse": "Use when adding or wiring event contracts.",
+      "readFirst": false
+    },
+    {
+      "id": "frontend-backend-dependencies",
+      "path": "docs/generated/frontend-backend-dependencies.json",
+      "audience": "frontend-agents",
+      "kind": "generated-inventory",
+      "format": "json",
+      "role": "Frontend calls into backend RPC/HTTP/direct device surfaces.",
+      "aiUse": "Use to find existing UI callers before changing a backend contract.",
+      "readFirst": false
+    },
+    {
+      "id": "auth-matrix",
+      "path": "docs/generated/transport-auth-matrix.json",
+      "audience": "ai-agents",
+      "kind": "generated-inventory",
+      "format": "json",
+      "role": "Transport and authorization matrix.",
+      "aiUse": "Use to check public/admin/permission boundaries before exposing a surface.",
+      "readFirst": false
+    },
+    {
+      "id": "entity-capabilities",
+      "path": "docs/generated/entity-capabilities.json",
+      "audience": "frontend-agents",
+      "kind": "generated-inventory",
+      "format": "json",
+      "role": "Entity type capability and action inventory.",
+      "aiUse": "Use to drive component/action UI without duplicating entity rules.",
+      "readFirst": false
+    },
+    {
+      "id": "embedded-apps-api",
+      "path": "docs/generated/embedded-apps-api.json",
+      "audience": "ai-agents",
+      "kind": "generated-inventory",
+      "format": "json",
+      "role": "Node-RED Admin API + Grafana API (proxied) with create/update/delete examples.",
+      "aiUse": "Use to provision Node-RED flows or Grafana dashboards via the FM proxy; live /api/docs/embedded-apps lists only enabled add-ons.",
+      "readFirst": false
+    },
+    {
+      "id": "doc-drift-report",
+      "path": "docs/generated/doc-drift-report.md",
+      "audience": "ai-agents",
+      "kind": "generated-inventory",
+      "format": "markdown",
+      "role": "Compares stable docs against generated backend inventories.",
+      "aiUse": "Use to detect stale handwritten docs.",
+      "readFirst": false
+    },
+    {
+      "id": "docs-readme",
+      "path": "docs/README.md",
+      "audience": "ai-agents",
+      "kind": "stable-doc",
+      "format": "markdown",
+      "role": "Docs folder convention and audience rules.",
+      "aiUse": "Use before creating or moving documentation.",
+      "readFirst": true
+    }
+  ],
+  "mcpResources": [
+    {
+      "uri": "fm://docs/ai-index",
+      "source": "docs/generated/ai-index.json",
+      "role": "Small resource map for agents.",
+      "safeMode": "read-only"
+    },
+    {
+      "uri": "fm://api/openapi",
+      "source": "docs/generated/api.openapi.json",
+      "role": "OpenAPI contract for Scalar/OpenAPI tools.",
+      "safeMode": "read-only"
+    },
+    {
+      "uri": "fm://api/rpc-inventory",
+      "source": "docs/generated/backend-rpc-inventory.json",
+      "role": "RPC method/source/permission lookup.",
+      "safeMode": "read-only"
+    },
+    {
+      "uri": "fm://api/api-catalog",
+      "source": "docs/generated/api-catalog.json",
+      "role": "Agent-facing method catalog with namespaceKind, safety hints, and Host SDK wrappers.",
+      "safeMode": "read-only"
+    },
+    {
+      "uri": "fm://ui/host-contract",
+      "source": "docs/generated/host-contract.ts",
+      "role": "Typed Host SDK contract for multi-UI work.",
+      "safeMode": "read-only"
+    },
+    {
+      "uri": "fm://ui/host-sdk-index",
+      "source": "docs/generated/host-sdk-index.json",
+      "role": "Host SDK module/export lookup for multi-UI work.",
+      "safeMode": "read-only"
+    },
+    {
+      "uri": "fm://ui/frontend-backend-dependencies",
+      "source": "docs/generated/frontend-backend-dependencies.json",
+      "role": "Find UI callers before backend changes.",
+      "safeMode": "read-only"
+    },
+    {
+      "uri": "fm://auth/transport-matrix",
+      "source": "docs/generated/transport-auth-matrix.json",
+      "role": "Authorization and transport boundary lookup.",
+      "safeMode": "read-only"
+    },
+    {
+      "uri": "fm://api/embedded-apps",
+      "source": "docs/generated/embedded-apps-api.json",
+      "role": "Node-RED + Grafana proxied API (create/update/delete flows and dashboards).",
+      "safeMode": "read-only"
+    },
+    {
+      "uri": "fm://api/execute",
+      "source": "docs/generated/api.openapi.json",
+      "role": "Future controlled API execution through OpenAPI/Scalar MCP.",
+      "safeMode": "read-write-deferred"
+    }
+  ],
+  "mcpSearchResources": [
+    {
+      "id": "ai-and-mcp-reference",
+      "source": "docs/reference/ai-and-mcp.md",
+      "role": "MCP and Host SDK entrypoint."
+    },
+    {
+      "id": "ai-mcp-operations",
+      "source": "docs/reference/ai-mcp-operations.md",
+      "role": "Governed MCP operation workflow."
+    },
+    {
+      "id": "separate-ui-host-sdk-guide",
+      "source": "docs/reference/separate-ui-host-sdk.md",
+      "role": "Separate UI and template Host SDK guide."
+    },
+    {
+      "id": "deployment-guide",
+      "source": "deploy/public/deployment.md",
+      "role": "Public installation and deployment guide."
+    },
+    {
+      "id": "deploy-reference",
+      "source": "docs/architecture/deploy-reference.md",
+      "role": "Deployment architecture reference."
+    },
+    {
+      "id": "docs-readme",
+      "source": "docs/README.md",
+      "role": "Documentation map and conventions."
+    },
+    {
+      "id": "doc-drift-report",
+      "source": "docs/generated/doc-drift-report.md",
+      "role": "Generated documentation drift report."
+    }
+  ],
+  "workflows": [
+    {
+      "task": "Build or change UI/template code",
+      "read": [
+        "separate-ui-host-sdk-guide",
+        "host-sdk",
+        "host-sdk-index",
+        "host-contract",
+        "frontend-backend-dependencies"
+      ],
+      "reason": "The Host SDK is the stable UI-facing layer; raw backend RPC is lower level."
+    },
+    {
+      "task": "Install or deploy Fleet Manager",
+      "read": [
+        "deployment-guide",
+        "deploy-reference",
+        "ai-and-mcp-reference"
+      ],
+      "reason": "The deploy docs define deploy.sh commands, flags, environments, modes, and routing behavior."
+    },
+    {
+      "task": "Change backend RPC contract",
+      "read": [
+        "api-catalog",
+        "rpc-inventory",
+        "openapi",
+        "auth-matrix"
+      ],
+      "reason": "Backend contract changes must preserve params, responses, and permission boundaries."
+    },
+    {
+      "task": "Find existing callers",
+      "read": [
+        "frontend-backend-dependencies",
+        "rpc-inventory"
+      ],
+      "reason": "Caller lookup prevents breaking existing frontend flows."
+    },
+    {
+      "task": "Prepare MCP context",
+      "read": [
+        "ai-and-mcp-reference",
+        "ai-index",
+        "api-catalog",
+        "openapi",
+        "rpc-inventory",
+        "deployment-guide",
+        "host-contract"
+      ],
+      "reason": "Use read-only resources for context, then authenticated live tools for governed Fleet Manager operations."
+    }
+  ]
+}

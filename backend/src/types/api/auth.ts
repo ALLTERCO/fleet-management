@@ -42,6 +42,7 @@ export const AUTH_DESCRIBE: DescribeOutput = new DescribeBuilder('auth', {
         'Issue short-lived, single-purpose scoped bearer tokens bound to the caller org.'
 })
     .registerMethod('MintScopedToken', {
+        safety: {operation: 'create'},
         params: AUTH_MINT_SCOPED_TOKEN_PARAMS_SCHEMA,
         response: AUTH_MINT_SCOPED_TOKEN_RESPONSE,
         permission: {note: 'authenticated; bounded PATs rejected'},

@@ -1,4 +1,5 @@
 --------------UP
+-- LINT-IGNORE: additive-only (deliberate legacy function removal)
 -- Drop the dead legacy report-config / report-instance SQL functions. They have
 -- no caller: the AddReportConfig RPC is gone and report_instances is never
 -- written. Superseded by the async report job system (Report.Generate +

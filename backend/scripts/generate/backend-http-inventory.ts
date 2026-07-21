@@ -15,7 +15,6 @@
 import * as path from 'node:path';
 import ts from 'typescript';
 import {
-    BACKEND_SRC,
     getBackendProgram,
     getBackendSourceFiles,
     lineOf,
@@ -43,6 +42,7 @@ export interface HttpRoute {
         | 'requiresPermission'
         | 'requiresAuditView'
         | 'requiresObservabilityAuth'
+        | 'device-gui-session'
         | 'route-permission'
         | 'public'
         | 'unknown';
@@ -103,10 +103,15 @@ function authModelFromMiddleware(chain: string[]): HttpRoute['authModel'] {
     // audit-view > logged-in > route-permission > public.
     if (joined.includes('requiresPlatformAdmin'))
         return 'requiresPlatformAdmin';
-    if (joined.includes('requiresPermission(')) return 'requiresPermission';
+    if (
+        joined.includes('requiresPermission(') ||
+        joined.includes('requiresAnyPermission(')
+    )
+        return 'requiresPermission';
     if (joined.includes('requiresAdmin')) return 'requiresAdmin';
     if (joined.includes('requiresAuditView')) return 'requiresAuditView';
     if (joined.includes('requireObsAuth')) return 'requiresObservabilityAuth';
+    if (joined.includes('requireDeviceGuiSession')) return 'device-gui-session';
     // rpcBodyAuth wraps isLoggedIn with a DEV_MODE bypass for the auth
     // bootstrap methods — classify it alongside isLoggedIn.
     if (joined.includes('isLoggedIn') || joined.includes('rpcBodyAuth'))

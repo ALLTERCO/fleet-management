@@ -1,9 +1,12 @@
 import {defineStore, storeToRefs} from 'pinia';
 import {computed, ref, watch} from 'vue';
+import {toastRpcError} from '@/helpers/domainErrors';
 import * as ws from '@/tools/websocket';
 import {useAuthStore} from './auth';
+import {useToastStore} from './toast';
 
 export const useSystemStore = defineStore('system', () => {
+    const toast = useToastStore();
     const config = ref({
         ble: false,
         mdns: {enable: false},
@@ -13,8 +16,8 @@ export const useSystemStore = defineStore('system', () => {
     async function updateConfig() {
         try {
             config.value = await ws.getServerConfig();
-        } catch (_error) {
-            console.error('failed to get server config');
+        } catch (error) {
+            toastRpcError(toast, error, 'Failed to load server configuration');
         }
     }
 

@@ -557,7 +557,7 @@ export function authzAuditActor(user?: {
     username?: string;
     userId?: string;
 }): string {
-    return user?.username ?? user?.userId ?? 'admin';
+    return user?.userId ?? user?.username ?? 'admin';
 }
 
 async function insertAuthzAuditEntry(entry: AuthzAuditEntry): Promise<void> {

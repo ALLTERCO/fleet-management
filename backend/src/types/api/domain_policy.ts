@@ -71,12 +71,14 @@ const b = new DescribeBuilder('domain_policy', {
 });
 
 b.registerMethod('GetPolicy', {
+    safety: {operation: 'read'},
     params: DOMAIN_POLICY_SCOPE_SCHEMA,
     response: RESP_POLICY,
     permission: PERM_ORG,
     description: 'domain_policy.GetPolicy — per-org domain policy (effective).'
 });
 b.registerMethod('SetPolicy', {
+    safety: {operation: 'update'},
     params: DOMAIN_POLICY_SET_SCHEMA,
     response: RESP_OK,
     permission: PERM_ORG,
@@ -84,6 +86,7 @@ b.registerMethod('SetPolicy', {
         'domain_policy.SetPolicy — write per-org domain policy override.'
 });
 b.registerMethod('Reset', {
+    safety: {operation: 'update'},
     params: DOMAIN_POLICY_SCOPE_SCHEMA,
     response: RESP_OK,
     permission: PERM_ORG,
@@ -91,12 +94,14 @@ b.registerMethod('Reset', {
         'domain_policy.Reset — drop org override; instance default applies.'
 });
 b.registerMethod('GetInstance', {
+    safety: {operation: 'read'},
     params: DOMAIN_POLICY_GET_INSTANCE_SCHEMA,
     response: RESP_POLICY,
     permission: PERM_INSTANCE,
     description: 'domain_policy.GetInstance — instance-wide default policy.'
 });
 b.registerMethod('SetInstance', {
+    safety: {operation: 'update'},
     params: DOMAIN_POLICY_INSTANCE_SET_SCHEMA,
     response: RESP_OK,
     permission: PERM_INSTANCE,

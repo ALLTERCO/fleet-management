@@ -191,13 +191,13 @@ function formatTotal(n: number): string {
 .dap__row-bar {
     height: 6px;
     background: var(--color-surface-3);
-    border-radius: var(--radius-pill);
+    border-radius: var(--radius-full);
     overflow: hidden;
 }
 .dap__row-fill {
     height: 100%;
     background: linear-gradient(90deg, rgba(var(--color-primary-rgb), 0.5), var(--color-primary));
-    border-radius: var(--radius-pill);
+    border-radius: var(--radius-full);
     transition: width var(--duration-normal) var(--ease-default);
 }
 .dap__row-meta {

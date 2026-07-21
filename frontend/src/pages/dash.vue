@@ -1,17 +1,21 @@
 <template>
     <div class="relative flex min-h-0 flex-1 flex-col">
-        <DashPillBar
-            :dashboards="pillDashboards"
-            :active-id="activeDashId"
-            :loading="dashboardsStore.loading"
-            @select="onPillSelect"
-            @open-palette="openPalette"
-        />
+        <!-- One frosted panel: the pill bar is its header, route content its body. -->
+        <div class="dash-surface">
+            <DashPillBar
+                :dashboards="pillDashboards"
+                :active-id="activeDashId"
+                :loading="dashboardsStore.loading"
+                @select="onPillSelect"
+            />
 
-        <!-- Child route content (e.g. /dash/:id) -->
-        <RouterView v-slot="{ Component }">
-            <component :is="Component" :key="$route.path" />
-        </RouterView>
+            <!-- Scrolling body; the pill-bar header above stays put. -->
+            <div class="dash-body">
+                <RouterView v-slot="{ Component }">
+                    <component :is="Component" :key="$route.path" />
+                </RouterView>
+            </div>
+        </div>
 
         <DashboardPalette
             :visible="paletteOpen"
@@ -34,6 +38,9 @@
 </template>
 
 <script setup lang="ts">
+// Import the pill-bar sheet directly: lightningcss drops it from
+// card-system.css's @layer @import chain, but a JS import always loads.
+import '@/styles/cards/card-dashboard.css';
 import {computed, onMounted, provide, ref, watch} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import DashboardPalette from '@/components/dashboard/DashboardPalette.vue';
@@ -67,7 +74,7 @@ const recents = useRecentDashboards({
     scopeKey: () => authStore.currentUserId
 });
 
-const ROUTED_TYPES = ['analytics', ...DOMAIN_TYPES] as const;
+const ROUTED_TYPES = [...DOMAIN_TYPES] as const;
 
 const paletteOpen = ref(false);
 const paletteInitialMode = ref<'list' | 'create'>('list');
@@ -104,7 +111,7 @@ const sortedDashboards = computed<Dashboard[]>(() => {
 const pillDashboards = computed<DashPillItem[]>(() =>
     sortedDashboards.value.map((dash) => {
         const {id, name, color} = dash as Dashboard & {color?: string};
-        return {id, name, color};
+        return {id, name, color, isDefault: Boolean(dash.isDefault)};
     })
 );
 
@@ -319,22 +326,51 @@ watch(
     {immediate: true}
 );
 
+// Populates the pill bar for the whole /dash layout (including deep links to
+// /dash/:id that never mount the index route). Landing resolution for bare
+// /dash lives solely in pages/dash/index.vue — the single redirect owner.
 onMounted(async () => {
     if (Object.keys(dashboardsStore.dashboards).length === 0) {
         await dashboardsStore.fetchAll();
     }
-
-    // Auto-redirect /dash → default → first when no specific dashboard chosen.
-    if (route.path === DASHBOARDS_PATH) {
-        const defaultId = await dashboardsStore.getDefault();
-        if (defaultId && dashboardsStore.dashboards[defaultId]) {
-            router.replace({name: '/dash/[id]', params: {id: defaultId}});
-            return;
-        }
-        const first = sortedDashboards.value[0];
-        if (first) {
-            router.replace({name: '/dash/[id]', params: {id: first.id}});
-        }
-    }
 });
 </script>
+
+<style scoped>
+/* One frosted panel for the whole /dash view; the pill bar is its header. */
+.dash-surface {
+    display: flex;
+    flex-direction: column;
+    flex: 0 1 auto;
+    min-height: 0;
+    background: var(--glass-1-bg);
+    backdrop-filter: var(--glass-1-filter);
+    -webkit-backdrop-filter: var(--glass-1-filter);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+}
+/* Present mode: fullscreen composites over black, so the glass panel needs an
+   opaque backing and no rounded corners while it fills the display. */
+.dash-surface:fullscreen {
+    background: var(--color-surface-bg);
+    border-radius: 0;
+    border: none;
+}
+/* Pill bar is the panel header: drop its standalone glass and lift it (with
+   the actions menu) above the scrolling body so its dropdown overlaps content. */
+.dash-surface :deep(.dash-bar) {
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
+    position: relative;
+    z-index: 2;
+}
+/* Body scrolls under the fixed header, so the pills + actions stay put. */
+.dash-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+</style>

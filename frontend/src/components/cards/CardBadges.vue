@@ -11,9 +11,10 @@
             OFF
         </span>
 
-        <!-- Battery pill (hidden when sleeping — moon takes its place) -->
+        <!-- Battery pill (hidden when sleeping — moon takes its place; and on
+             battery cards, whose whole face already shows the level) -->
         <span
-            v-if="resolvedBattery != null && !isSleeping"
+            v-if="resolvedBattery != null && !isSleeping && !hideBattery"
             class="ec-batt"
             :class="batteryClass"
         >
@@ -31,6 +32,7 @@ const props = defineProps<{
     battery?: number | null;
     isOffline: boolean;
     shellyId?: string;
+    hideBattery?: boolean;
 }>();
 
 const deviceStore = useDevicesStore();

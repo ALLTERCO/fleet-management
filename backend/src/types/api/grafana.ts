@@ -42,12 +42,14 @@ export const GRAFANA_DESCRIBE: DescribeOutput = new DescribeBuilder('grafana', {
         'Serve embedded Grafana dashboard metadata and config snapshots.'
 })
     .registerMethod('GetConfig', {
+        safety: {operation: 'read'},
         params: GRAFANA_GET_CONFIG_PARAMS_SCHEMA,
         response: GRAFANA_GET_CONFIG_RESPONSE_SCHEMA,
         permission: {note: 'authenticated — viewer-visible'},
         description: 'Return the Grafana integration config snapshot.'
     })
     .registerMethod('GetDashboard', {
+        safety: {operation: 'read'},
         params: GRAFANA_GET_DASHBOARD_PARAMS_SCHEMA,
         response: GRAFANA_GET_DASHBOARD_RESPONSE_SCHEMA,
         permission: {note: 'authenticated — viewer-visible'},

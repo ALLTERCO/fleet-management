@@ -325,7 +325,7 @@ watch(() => authStore.username, refreshProfileImage);
     align-items: center;
     justify-content: center;
     background-color: var(--color-overlay-light);
-    color: var(--primitive-neutral-50);
+    color: var(--color-text-primary);
     font-size: var(--type-body);
     opacity: 0;
     transition: opacity var(--duration-fast) var(--ease-default);

@@ -1,5 +1,6 @@
 import {authzAuditWriter} from '../../modules/authz/audit';
 import {loadAuthzConfig} from '../../modules/authz/config';
+import * as EventDistributor from '../../modules/EventDistributor';
 import {identityDirectory} from '../../modules/identity';
 import * as store from '../../modules/PostgresProvider';
 import {ensureZitadelManagement} from '../../modules/user/validation';
@@ -129,6 +130,7 @@ export default class UserGroupComponent extends Component<Config> {
             name: p.name,
             parentGroupId: p.parentGroupId ?? null
         });
+        EventDistributor.emitUserGroupCreated(rows[0].id, rows[0].name, orgId);
         return {...rows[0], member_count: 0};
     }
 
@@ -171,6 +173,7 @@ export default class UserGroupComponent extends Component<Config> {
             description: p.description,
             parentGroupId: reparenting ? (p.parentGroupId ?? null) : undefined
         });
+        EventDistributor.emitUserGroupUpdated(rows[0].id, rows[0].name, orgId);
         return rows[0];
     }
 
@@ -246,6 +249,7 @@ export default class UserGroupComponent extends Component<Config> {
             operation: 'delete',
             userGroupId: p.id
         });
+        EventDistributor.emitUserGroupDeleted(p.id, orgId);
         return {success: true};
     }
 
@@ -320,6 +324,7 @@ export default class UserGroupComponent extends Component<Config> {
                 userGroupId: p.id,
                 added
             });
+            EventDistributor.emitUserGroupMembersAdded(p.id, added, orgId);
         }
         return {added, alreadyMember};
     }
@@ -351,6 +356,7 @@ export default class UserGroupComponent extends Component<Config> {
                 userGroupId: p.id,
                 removed
             });
+            EventDistributor.emitUserGroupMembersRemoved(p.id, removed, orgId);
         }
         return {removed, notMember};
     }

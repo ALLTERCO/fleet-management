@@ -35,6 +35,7 @@ import {useDevicesStore} from '@/stores/devices';
 import {useGeneralStore} from '@/stores/general';
 import {useJobsStore} from '@/stores/jobs';
 import {useNavStore} from '@/stores/nav';
+import {useOrganizationStore} from '@/stores/organization';
 import {useScopeModelStore} from '@/stores/scopeModel';
 import {debugWarn} from '@/tools/debug';
 import {getObsLevel, trackClick} from '@/tools/observability';
@@ -65,6 +66,7 @@ onUnmounted(() =>
 const generalStore = useGeneralStore();
 const authStore = useAuthStore();
 const scopeModelStore = useScopeModelStore();
+const organizationStore = useOrganizationStore();
 const navStore = useNavStore();
 const route = useRoute();
 
@@ -106,6 +108,7 @@ watch(
         if (loaded) {
             generalStore.setup();
             void scopeModelStore.fetch();
+            void organizationStore.fetchProfile();
             void navStore.init();
             // Seed devices store from launch bootstrap for instant first paint;
             // pages still call fetchDevices() for the full chunked list.

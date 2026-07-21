@@ -169,7 +169,16 @@ export const CATEGORIES: readonly Category[] = [
         label: 'Networking',
         blurb: 'Wi-Fi, Ethernet, mDNS, HTTP/WS transport surfaces, local-network messaging.',
         icon: 'M5 12a14 14 0 0 1 14 0M3 9a18 18 0 0 1 18 0M8 15a10 10 0 0 1 8 0M12 18h0',
-        namespaces: ['wifi', 'eth', 'http', 'mdns', 'web', 'ws', 'mobile', 'lnm']
+        namespaces: [
+            'wifi',
+            'eth',
+            'http',
+            'mdns',
+            'web',
+            'ws',
+            'mobile',
+            'lnm'
+        ]
     },
     {
         label: 'Industrial Protocols',

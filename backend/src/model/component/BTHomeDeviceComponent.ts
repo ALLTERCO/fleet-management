@@ -44,6 +44,16 @@ export default class BTHomeDeviceComponent extends Component<any> {
                         }
                     ]
                 })),
+                {
+                    event: 'sensor_update',
+                    attrs: [
+                        {
+                            name: 'sensors',
+                            type: 'object' as const,
+                            desc: 'Updated BTHome sensor statuses'
+                        }
+                    ]
+                },
                 {event: 'new_objects'}
             ]
         });

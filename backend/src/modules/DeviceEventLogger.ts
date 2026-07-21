@@ -44,7 +44,8 @@ function getQueue(): BoundedQueue<QueuedEntry> {
     return queueInstance;
 }
 
-let flushInProgress = false;
+let inFlightFlush: Promise<void> | null = null;
+const pendingStreamAppends = new Set<Promise<void>>();
 let flushTimer: ReturnType<typeof setInterval> | null = null;
 
 export function startFlushTimer(): void {
@@ -79,9 +80,9 @@ function requeueFailed(entries: QueuedEntry[]): void {
     }
 }
 
-async function flushQueue(): Promise<void> {
+async function flushQueueOnce(): Promise<void> {
     const queue = getQueue();
-    if (flushInProgress || queue.size === 0) return;
+    if (queue.size === 0) return;
 
     if (Observability.isDbWritesDisabled()) {
         // Hold the queue until writes re-enable; BoundedQueue caps memory.
@@ -89,7 +90,6 @@ async function flushQueue(): Promise<void> {
         return;
     }
 
-    flushInProgress = true;
     Observability.incrementCounter('device_event_flushes');
     const entries = queue.drain();
     const start = performance.now();
@@ -107,8 +107,15 @@ async function flushQueue(): Promise<void> {
             'device_event_flush',
             performance.now() - start
         );
-        flushInProgress = false;
     }
+}
+
+function flushQueue(): Promise<void> {
+    if (inFlightFlush) return inFlightFlush;
+    inFlightFlush = flushQueueOnce().finally(() => {
+        inFlightFlush = null;
+    });
+    return inFlightFlush;
 }
 
 function stampEntry(entry: DeviceEventEntry): DeviceEventEntry {
@@ -120,8 +127,8 @@ function pushToQueue(entry: DeviceEventEntry): void {
     recordUnarmedIfAny();
     const queue = getQueue();
     queue.push(entry);
-    if (queue.size >= tuning.deviceEvents.queueMax && !flushInProgress) {
-        flushQueue();
+    if (queue.size >= tuning.deviceEvents.queueMax && !inFlightFlush) {
+        void flushQueue();
     }
 }
 
@@ -142,11 +149,17 @@ function record(device: AbstractDevice, entries: DeviceEventEntry[]): void {
     Observability.incrementCounter('device_event_entries', stamped.length);
 
     if (tuning.deviceEvents.redisFirst) {
-        void appendDeviceEventEntries(stamped).catch((err) => {
-            Observability.incrementCounter('device_event_stream_append_errors');
-            logger.error('device-event Redis-first append failed: %s', err);
-            for (const entry of stamped) pushToQueue(entry);
-        });
+        let pending: Promise<void>;
+        pending = appendDeviceEventEntries(stamped)
+            .catch((err) => {
+                Observability.incrementCounter(
+                    'device_event_stream_append_errors'
+                );
+                logger.error('device-event Redis-first append failed: %s', err);
+                for (const entry of stamped) pushToQueue(entry);
+            })
+            .finally(() => pendingStreamAppends.delete(pending));
+        pendingStreamAppends.add(pending);
         emitDeviceChange(device, entries);
         return;
     }
@@ -164,6 +177,7 @@ export function captureChanges(input: CaptureInput): void {
     record(
         input.device,
         changesToEntries({
+            deviceId: input.device.id,
             shellyId,
             organizationId: getDeviceOrg(shellyId),
             tsEpochSec: input.tsEpochSec,
@@ -192,6 +206,7 @@ export function captureDeviceEvent(input: DeviceEventInput): void {
     record(input.device, [
         {
             ts: epochSecToIso(input.tsEpochSec),
+            deviceId: input.device.id,
             shellyId,
             organizationId: getDeviceOrg(shellyId),
             component: input.component,
@@ -225,12 +240,18 @@ function emitDeviceChange(
 }
 
 export async function flush(): Promise<void> {
-    await flushQueue();
+    while (true) {
+        const pending = [...pendingStreamAppends];
+        if (pending.length > 0) await Promise.all(pending);
+        await flushQueue();
+        if (pendingStreamAppends.size === 0 && getQueue().size === 0) return;
+    }
 }
 
 Observability.registerModule('deviceEvents', {
     stats: () => ({
         queueLength: getQueue().size,
+        pendingStreamAppends: pendingStreamAppends.size,
         redisFirst: tuning.deviceEvents.redisFirst,
         redisShadow: tuning.deviceEvents.redisShadow
     }),

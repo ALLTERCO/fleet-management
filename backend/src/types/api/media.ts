@@ -157,18 +157,21 @@ const b = new DescribeBuilder('media', {
 });
 
 b.registerMethod('Background.List', {
+    safety: {operation: 'read'},
     params: EMPTY_PARAMS_SCHEMA,
     response: IMAGE_LIST_RESPONSE,
     permission: {note: 'authenticated'},
     description: 'List visible background images with signed asset URLs.'
 });
 b.registerMethod('Background.CreateUploadTicket', {
+    safety: {operation: 'create'},
     params: EMPTY_PARAMS_SCHEMA,
     response: UPLOAD_TICKET_RESPONSE_SCHEMA,
     permission: {note: 'admin-only'},
     description: 'Mint a short-lived ticket for POST /media/uploadBackground.'
 });
 b.registerMethod('Background.Delete', {
+    safety: {operation: 'delete'},
     params: MEDIA_BACKGROUND_DELETE_PARAMS_SCHEMA,
     response: {
         type: 'object',
@@ -180,12 +183,14 @@ b.registerMethod('Background.Delete', {
     description: 'Delete a visible background image.'
 });
 b.registerMethod('ReportImage.List', {
+    safety: {operation: 'read'},
     params: EMPTY_PARAMS_SCHEMA,
     response: IMAGE_LIST_RESPONSE,
     permission: {note: 'authenticated'},
     description: 'List report images with signed asset URLs.'
 });
 b.registerMethod('ReportImage.CreateUploadTicket', {
+    safety: {operation: 'create'},
     params: EMPTY_PARAMS_SCHEMA,
     response: UPLOAD_TICKET_RESPONSE_SCHEMA,
     permission: {note: 'admin-only'},

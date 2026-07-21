@@ -121,6 +121,7 @@ export const JOB_DESCRIBE: DescribeOutput = new DescribeBuilder('job', {
     description: 'List and read backend-owned operation jobs for the tenant.'
 })
     .registerMethod('ListActive', {
+        safety: {operation: 'read'},
         params: JOB_LIST_ACTIVE_PARAMS_SCHEMA,
         response: JOB_LIST_RESPONSE_SCHEMA,
         permission: {note: 'admin'},
@@ -128,6 +129,7 @@ export const JOB_DESCRIBE: DescribeOutput = new DescribeBuilder('job', {
             'Restore active backend-owned operation jobs for the current tenant.'
     })
     .registerMethod('Get', {
+        safety: {operation: 'read'},
         params: JOB_GET_PARAMS_SCHEMA,
         response: JOB_SNAPSHOT_SCHEMA,
         permission: {note: 'admin'},

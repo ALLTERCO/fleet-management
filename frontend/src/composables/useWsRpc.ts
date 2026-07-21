@@ -1,4 +1,5 @@
 import {onScopeDispose, type Ref, ref} from 'vue';
+import {createStaleGuard} from '@/stores/staleGuard';
 import {debugWarn} from '@/tools/debug';
 import * as ws from '@/tools/websocket';
 import {consumePreloadedRpc} from '@/tools/websocket';
@@ -49,7 +50,13 @@ function loadCached<T>(method: string, params: object): T | null {
 }
 
 function storeCache(method: string, params: object, data: object) {
-    localStorage.setItem(cacheKey(method, params), JSON.stringify(data));
+    // A write failure (quota full, private mode, storage disabled) must not
+    // demote a successful RPC to an error — the cache is a bonus, not the reply.
+    try {
+        localStorage.setItem(cacheKey(method, params), JSON.stringify(data));
+    } catch (error) {
+        debugWarn('RPC cache entry not stored', {method, error});
+    }
 }
 
 interface UseWsRpcOptions {
@@ -73,6 +80,8 @@ export default function useWsRpc<T>(
     let retryPending = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let disposed = false;
+    // Latest-wins: a newer execute or an invalidate() discards older responses.
+    const guard = createStaleGuard();
 
     function execute() {
         if (disposed) return;
@@ -83,14 +92,15 @@ export default function useWsRpc<T>(
     }
 
     async function doExecute() {
+        const token = guard.bump();
         try {
             const res = await ws.sendRPC('FLEET_MANAGER', method, params);
-            if (disposed) return;
+            if (disposed || guard.isStale(token)) return;
             data.value = res;
             if (res != null && typeof res === 'object')
                 storeCache(method, params, res);
         } catch (err) {
-            if (disposed) return;
+            if (disposed || guard.isStale(token)) return;
             if (isRetryableError(err)) {
                 scheduleRetry();
                 return;
@@ -99,6 +109,11 @@ export default function useWsRpc<T>(
         } finally {
             if (!disposed && !retryPending) loading.value = false;
         }
+    }
+
+    // For optimistic local mutations: discard any in-flight response.
+    function invalidate(): void {
+        guard.bump();
     }
 
     function isRetryableError(err: unknown): boolean {
@@ -136,6 +151,7 @@ export default function useWsRpc<T>(
         data,
         loading,
         error,
-        refresh
+        refresh,
+        invalidate
     };
 }

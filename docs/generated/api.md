@@ -488,25 +488,39 @@ while (true) {
 
 ### Retry on transient device errors
 
-`DeviceOperationFailed` (1201) and `DeviceOffline` (1200) are usually
-worth one retry after a short delay; `PermissionDenied` (1001) and
-`ValidationFailed` (1000) never are.
+A few errors are worth retrying; most are not. Decide with the error **code**
+(the top-level `error.code`), not by any `kind` field — the wire error carries a
+`code` and a `data.type` category, but no `kind`.
+
+- **Retry** after a short delay: `DeviceOffline` (**1200**) and
+  `DeviceOperationFailed` (**1201**). The device was briefly unreachable or busy,
+  so the same call may succeed on the next try.
+- **Never retry**: `ValidationFailed` (**1000**) and `PermissionDenied`
+  (**1001**). The request itself is wrong, so it will fail the same way every
+  time; retrying only wastes calls.
+
+The example below assumes `call()` throws the JSON-RPC error object
+(`{ code, message, data }`) when a request fails.
 
 ```js
+const RETRYABLE = new Set([1200, 1201]); // DeviceOffline, DeviceOperationFailed
+
 async function callRetry(method, params, tries = 3) {
-    for (let i = 0; i < tries; i++) {
+    for (let attempt = 0; attempt < tries; attempt++) {
         try {
             return await call(method, params);
         } catch (e) {
-            const kind = e?.data?.kind;
-            if (i === tries - 1 || (kind !== 'DeviceOperationFailed' && kind !== 'DeviceOffline')) {
-                throw e;
-            }
-            await new Promise(r => setTimeout(r, 500 * 2 ** i));
+            const lastTry = attempt === tries - 1;
+            if (lastTry || !RETRYABLE.has(e.code)) throw e; // give up
+            // back off before the next try: 0.5s, then 1s, then 2s
+            await new Promise(r => setTimeout(r, 500 * 2 ** attempt));
         }
     }
 }
 ```
+
+If you would rather branch on the category than the exact code,
+`e.data?.type === 'device'` covers both device errors at once.
 
 ### HTTP single-call shortcut
 
@@ -543,7 +557,7 @@ curl -X POST "https://<HOST>/rpc" \
 ## Contents
 
 - [`addon`](#addon-namespace) — 10 method(s)
-- [`admin`](#admin-namespace) — 3 method(s)
+- [`admin`](#admin-namespace) — 4 method(s)
 - [`alert`](#alert-namespace) — 30 method(s)
 - [`alexa`](#alexa-namespace) — 3 method(s)
 - [`analytics`](#analytics-namespace) — 2 method(s)
@@ -562,7 +576,7 @@ curl -X POST "https://<HOST>/rpc" \
 - [`bthome`](#bthome-namespace) — 34 method(s)
 - [`button`](#button-namespace) — 5 method(s)
 - [`camera`](#camera-namespace) — 24 method(s)
-- [`cb`](#cb-namespace) — 4 method(s)
+- [`cb`](#cb-namespace) — 6 method(s)
 - [`cct`](#cct-namespace) — 9 method(s)
 - [`certificate`](#certificate-namespace) — 16 method(s)
 - [`channel`](#channel-namespace) — 9 method(s)
@@ -573,7 +587,7 @@ curl -X POST "https://<HOST>/rpc" \
 - [`cury`](#cury-namespace) — 10 method(s)
 - [`dali`](#dali-namespace) — 10 method(s)
 - [`dashboard`](#dashboard-namespace) — 40 method(s)
-- [`device`](#device-namespace) — 19 method(s)
+- [`device`](#device-namespace) — 22 method(s)
 - [`deviceevents`](#deviceevents-namespace) — 2 method(s)
 - [`deviceIngress`](#deviceIngress-namespace) — 24 method(s)
 - [`devicepower`](#devicepower-namespace) — 4 method(s)
@@ -587,7 +601,7 @@ curl -X POST "https://<HOST>/rpc" \
 - [`entity`](#entity-namespace) — 6 method(s)
 - [`eth`](#eth-namespace) — 5 method(s)
 - [`fan`](#fan-namespace) — 5 method(s)
-- [`firmware`](#firmware-namespace) — 21 method(s)
+- [`firmware`](#firmware-namespace) — 22 method(s)
 - [`fleet`](#fleet-namespace) — 3 method(s)
 - [`fleetMap`](#fleetMap-namespace) — 4 method(s)
 - [`fleetSummary`](#fleetSummary-namespace) — 2 method(s)
@@ -606,7 +620,7 @@ curl -X POST "https://<HOST>/rpc" \
 - [`ledstrip`](#ledstrip-namespace) — 13 method(s)
 - [`light`](#light-namespace) — 12 method(s)
 - [`lnm`](#lnm-namespace) — 6 method(s)
-- [`location`](#location-namespace) — 19 method(s)
+- [`location`](#location-namespace) — 20 method(s)
 - [`login_text`](#login_text-namespace) — 5 method(s)
 - [`mail`](#mail-namespace) — 2 method(s)
 - [`matter`](#matter-namespace) — 6 method(s)
@@ -640,6 +654,7 @@ curl -X POST "https://<HOST>/rpc" \
 - [`schedule`](#schedule-namespace) — 6 method(s)
 - [`script`](#script-namespace) — 12 method(s)
 - [`security`](#security-namespace) — 7 method(s)
+- [`sensor`](#sensor-namespace) — 3 method(s)
 - [`serial`](#serial-namespace) — 3 method(s)
 - [`serves`](#serves-namespace) — 5 method(s)
 - [`service`](#service-namespace) — 8 method(s)
@@ -1144,6 +1159,38 @@ Invoke an allowlisted PostgresProvider method. Super-admin recovery only.
 #### Response
 
 Type: `object<any>`
+
+<a id="admin-reconciledevices"></a>
+### `admin.ReconcileDevices`
+
+Register saved devices not yet in memory. Picks up devices inserted out-of-band without an FM restart; leaves connected devices untouched.
+
+**Permission**: tenant-admin
+
+#### Params
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+
+**Params example:**
+
+```json
+{}
+```
+
+#### Response
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `registered` | `integer` | yes |  |  |
+
+**Response example:**
+
+```json
+{
+  "registered": 0
+}
+```
 
 ### Error kinds
 
@@ -4513,7 +4560,7 @@ Search the audit log with optional time range, event-type, username, and shellyI
 |-------|------|----------|---------|-------------|
 | `from` | `string` | no |  | ISO-8601 inclusive start |
 | `to` | `string` | no |  | ISO-8601 exclusive end |
-| `eventTypes` | `array<enum("login" \| "logout" \| "rpc" \| "device_online" \| "device_offline" \| "device_add" \| "device_delete" \| "device_reconnect_replace" \| "config_change" \| "permission_change")>` | no |  |  |
+| `eventTypes` | `array<enum("login" \| "logout" \| "rpc" \| "device_online" \| "device_offline" \| "device_add" \| "device_delete" \| "device_reconnect_replace" \| "config_change" \| "permission_change" \| "mcp_tool_call")>` | no |  |  |
 | `username` | `string` | no |  |  |
 | `shellyId` | `string` | no |  |  |
 | `limit` | `integer` | no | `200` | min 1, max 10000 |
@@ -8851,7 +8898,11 @@ Add a detection zone to the camera.
 |-------|------|----------|---------|-------------|
 | `shellyID` | `string` | yes |  | minLength 1, maxLength 120 |
 | `id` | `integer` | yes |  | min 0 |
-| `config` | `object` | yes |  |  |
+| `enable` | `boolean` | yes |  |  |
+| `type` | `enum("motion" \| "privacy")` | yes |  |  |
+| `coordinates` | `array<number>` | yes |  | minItems 4 |
+| `color` | `array<integer>` | no |  |  |
+| `name` | `string` | no |  | maxLength 64 |
 
 **Params example:**
 
@@ -8859,7 +8910,11 @@ Add a detection zone to the camera.
 {
   "shellyID": "string",
   "id": 0,
-  "config": {}
+  "enable": false,
+  "type": "motion",
+  "coordinates": [
+    0
+  ]
 }
 ```
 
@@ -8880,6 +8935,7 @@ Trigger a one-shot image capture.
 |-------|------|----------|---------|-------------|
 | `shellyID` | `string` | yes |  | minLength 1, maxLength 120 |
 | `id` | `integer` | yes |  | min 0 |
+| `stream` | `integer` | no |  | min 0 |
 
 **Params example:**
 
@@ -8907,13 +8963,15 @@ Remove a detection zone by id.
 |-------|------|----------|---------|-------------|
 | `shellyID` | `string` | yes |  | minLength 1, maxLength 120 |
 | `id` | `integer` | yes |  | min 0 |
+| `zone_id` | `integer` | yes |  | min 0 |
 
 **Params example:**
 
 ```json
 {
   "shellyID": "string",
-  "id": 0
+  "id": 0,
+  "zone_id": 0
 }
 ```
 
@@ -9081,13 +9139,17 @@ Start recording to on-device storage.
 |-------|------|----------|---------|-------------|
 | `shellyID` | `string` | yes |  | minLength 1, maxLength 120 |
 | `id` | `integer` | yes |  | min 0 |
+| `duration` | `integer` | yes |  | min 1 |
+| `stream` | `integer` | yes |  | min 0 |
 
 **Params example:**
 
 ```json
 {
   "shellyID": "string",
-  "id": 0
+  "id": 0,
+  "duration": 1,
+  "stream": 0
 }
 ```
 
@@ -9108,6 +9170,7 @@ Stop an active recording.
 |-------|------|----------|---------|-------------|
 | `shellyID` | `string` | yes |  | minLength 1, maxLength 120 |
 | `id` | `integer` | yes |  | min 0 |
+| `rec_id` | `string` | no |  | minLength 1, maxLength 64 |
 
 **Params example:**
 
@@ -9135,14 +9198,14 @@ Delete a named file from on-device storage.
 |-------|------|----------|---------|-------------|
 | `shellyID` | `string` | yes |  | minLength 1, maxLength 120 |
 | `id` | `integer` | no |  | min 0 |
-| `name` | `string` | yes |  | minLength 1, maxLength 256 |
+| `media_id` | `string` | yes |  | minLength 1, maxLength 64 |
 
 **Params example:**
 
 ```json
 {
   "shellyID": "string",
-  "name": "string"
+  "media_id": "string"
 }
 ```
 
@@ -9267,6 +9330,7 @@ List files in on-device storage.
 |-------|------|----------|---------|-------------|
 | `shellyID` | `string` | yes |  | minLength 1, maxLength 120 |
 | `id` | `integer` | no |  | min 0 |
+| `offset` | `integer` | no |  | min 0 |
 
 **Params example:**
 
@@ -9301,38 +9365,6 @@ Apply a partial storage config update.
 {
   "shellyID": "string",
   "config": {}
-}
-```
-
-#### Response
-
-Type: `object`
-
-<a id="camera-storage-upload"></a>
-### `camera.Storage.Upload`
-
-Storage.Upload — chunked file upload.
-
-**Permission**: devices / update
-
-#### Params
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `shellyID` | `string` | yes |  | minLength 1, maxLength 120 |
-| `id` | `integer` | no |  | min 0 |
-| `name` | `string` | yes |  | minLength 1, maxLength 256 |
-| `data` | `string` | yes |  |  |
-| `offset` | `integer` | no |  | min 0 |
-| `last` | `boolean` | no |  |  |
-
-**Params example:**
-
-```json
-{
-  "shellyID": "string",
-  "name": "string",
-  "data": "string"
 }
 ```
 
@@ -9434,6 +9466,33 @@ Streamer.SetStreamSource — switch active stream.
   "shellyID": "string",
   "session_id": "string",
   "stream_id": 0
+}
+```
+
+#### Response
+
+Type: `object`
+
+<a id="camera-streamer-stopstream"></a>
+### `camera.Streamer.StopStream`
+
+Streamer.StopStream — end a WebRTC session and free the device stream slot.
+
+**Permission**: devices / execute
+
+#### Params
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `shellyID` | `string` | yes |  | minLength 1, maxLength 120 |
+| `session_id` | `string` | yes |  |  |
+
+**Params example:**
+
+```json
+{
+  "shellyID": "string",
+  "session_id": "string"
 }
 ```
 
@@ -9656,6 +9715,34 @@ Circuit Breaker config.
 
 Type: `object<any>`
 
+<a id="cb-getlog"></a>
+### `cb.GetLog`
+
+Circuit Breaker activity log — last 50 lever events.
+
+**Permission**: devices / read
+
+#### Params
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `shellyID` | `string` | yes |  | Target Shelly device identifier — minLength 1, maxLength 120 |
+| `id` | `integer` | yes |  | min 0 |
+| `after` | `integer` | no |  | min 0 |
+
+**Params example:**
+
+```json
+{
+  "shellyID": "string",
+  "id": 0
+}
+```
+
+#### Response
+
+Type: `object<any>`
+
 <a id="cb-getstatus"></a>
 ### `cb.GetStatus`
 
@@ -9676,6 +9763,35 @@ Circuit Breaker status — state, trip cause, last events.
 {
   "shellyID": "string",
   "id": 0
+}
+```
+
+#### Response
+
+Type: `object<any>`
+
+<a id="cb-set"></a>
+### `cb.Set`
+
+Circuit Breaker Set — engage (output:true) or disengage (output:false).
+
+**Permission**: devices / execute
+
+#### Params
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `shellyID` | `string` | yes |  | Target Shelly device identifier — minLength 1, maxLength 120 |
+| `id` | `integer` | yes |  | min 0 |
+| `output` | `boolean` | yes |  |  |
+
+**Params example:**
+
+```json
+{
+  "shellyID": "string",
+  "id": 0,
+  "output": false
 }
 ```
 
@@ -16940,7 +17056,7 @@ Check whether a newly admitted Shelly can replace an existing Fleet device witho
 <a id="device-delete"></a>
 ### `device.Delete`
 
-Remove device from fleet.
+Permanently purge a device and all its history. Irreversible — the everyday delete should use Retire.
 
 **Permission**: devices / delete
 
@@ -17177,21 +17293,19 @@ Get the catalog kind classification for a device (null = unclassified).
 
 Device configuration profiles.
 
-**Permission**: also requires configurations.read
+**Permission**: filtered by configuration_keys; independent of device admission
 
 #### Params
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `shellyID` | `string` | yes |  | Target Shelly device identifier — minLength 1, maxLength 120 |
+| `shellyID` | `string` | no |  | Ignored compatibility field for older clients — minLength 1, maxLength 120 |
 | `mode` | `enum("json" \| "rpc")` | no | `"json"` |  |
 
 **Params example:**
 
 ```json
-{
-  "shellyID": "string"
-}
+{}
 ```
 
 #### Response
@@ -17346,6 +17460,45 @@ Paginated slim device list (capability-filtered per user).
 {
   "items": [],
   "total": 0
+}
+```
+
+<a id="device-listretired"></a>
+### `device.ListRetired`
+
+List retired devices (the trash) available to restore or purge.
+
+**Permission**: devices / read
+
+#### Params
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+
+**Params example:**
+
+```json
+{}
+```
+
+#### Response
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `devices` | `array<object>` | yes |  |  |
+| `devices[].id` | `integer` | no |  |  |
+| `devices[].external_id` | `string` | no |  |  |
+| `devices[].organization_id` | `string` | no |  |  |
+| `devices[].kind` | `string \| null` | no |  |  |
+| `devices[].deleted_at` | `string` | no |  |  |
+
+**Response example:**
+
+```json
+{
+  "devices": [
+    {}
+  ]
 }
 ```
 
@@ -17582,6 +17735,76 @@ Atomically keep the old Fleet device id but swap it to the new physical Shelly e
   "oldShellyID": "string",
   "newShellyID": "string",
   "auditId": 0
+}
+```
+
+<a id="device-restore"></a>
+### `device.Restore`
+
+Restore a retired device with its full history.
+
+**Permission**: devices / delete
+
+#### Params
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `shellyID` | `string` | yes |  | Target Shelly device identifier — minLength 1, maxLength 120 |
+
+**Params example:**
+
+```json
+{
+  "shellyID": "string"
+}
+```
+
+#### Response
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `restored` | `string` | yes |  |  |
+
+**Response example:**
+
+```json
+{
+  "restored": "string"
+}
+```
+
+<a id="device-retire"></a>
+### `device.Retire`
+
+Retire (soft-delete) a device: hide it from fleet lists but keep its id and history. Reversible via Restore.
+
+**Permission**: devices / delete
+
+#### Params
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `shellyID` | `string` | yes |  | Target Shelly device identifier — minLength 1, maxLength 120 |
+
+**Params example:**
+
+```json
+{
+  "shellyID": "string"
+}
+```
+
+#### Response
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `retired` | `string` | yes |  |  |
+
+**Response example:**
+
+```json
+{
+  "retired": "string"
 }
 ```
 
@@ -20975,7 +21198,7 @@ EMData.SetConfig.
 <a id="energy-namespace"></a>
 ## `energy` namespace
 
-**Tags:** `total_act_energy`, `total_act_ret_energy`, `volume_l`, `volume_m3`, `thermal_energy_kwh`, `power`, `volume_flow_m3h`, `volume_storage_l`, `voltage`, `current`, `min_voltage`, `max_voltage`, `min_current`, `max_current`, `temperature`, `humidity`, `luminance`
+**Tags:** `total_act_energy`, `total_act_ret_energy`, `volume_l`, `volume_m3`, `thermal_energy_kwh`, `power`, `volume_flow_m3h`, `volume_storage_l`, `voltage`, `current`, `min_voltage`, `max_voltage`, `min_current`, `max_current`, `soc`, `soh`, `cycles`, `charge_ah`, `discharge_ah`, `temperature`, `humidity`, `luminance`, `pressure`, `dewpoint`, `co2`, `tvoc`, `pm25`, `pm10`, `moisture`, `uv`, `conductivity`, `wind_direction`, `precipitation`, `battery`, `distance`
 
 <a id="energy-current"></a>
 ### `energy.Current`
@@ -21224,8 +21447,8 @@ List the org logical meters with their meaning (utility / role / kind) and their
 | `meters[].points[].componentKey` | `string \| null` | no |  | maxLength 100 |
 | `meters[].points[].channel` | `number` | no |  | min 0, max 31 |
 | `meters[].points[].phase` | `enum("a" \| "b" \| "c" \| "z")` | no |  |  |
-| `meters[].points[].tag` | `enum("power" \| "apparent_power" \| "reactive_power" \| "voltage" \| "current" \| "frequency" \| "power_factor" \| "total_power" \| "total_apparent_power" \| "total_current" \| "neutral_current" \| "total_act_energy" \| "total_act_ret_energy" \| "percentage" \| "temperature_c" \| "temperature_f" \| "volume_l" \| "volume_m3" \| "volume_storage_l" \| "volume_flow_m3h" \| "thermal_energy_kwh")` | yes |  |  |
-| `meters[].points[].electricalDomain` | `enum("ac_mains" \| "dc_pv" \| "dc_battery" \| "dc_bus" \| "thermal" \| "unspecified" \| null)` | no |  |  |
+| `meters[].points[].tag` | `enum("power" \| "apparent_power" \| "reactive_power" \| "voltage" \| "current" \| "frequency" \| "power_factor" \| "total_power" \| "total_apparent_power" \| "total_current" \| "neutral_current" \| "total_act_energy" \| "total_act_ret_energy" \| "percentage" \| "temperature_c" \| "temperature_f" \| "volume_l" \| "volume_m3" \| "volume_storage_l" \| "volume_flow_m3h" \| "thermal_energy_kwh" \| "soc" \| "soh" \| "cycles" \| "charge_ah" \| "discharge_ah")` | yes |  |  |
+| `meters[].points[].electricalDomain` | `enum("ac_mains" \| "dc_pv" \| "dc_battery" \| "dc_bus" \| "thermal" \| "gas" \| "unspecified" \| null)` | no |  |  |
 | `meters[].points[].directionHint` | `enum("import" \| "export" \| "charge" \| "discharge" \| null)` | no |  |  |
 | `meters[].groupId` | `number \| null` | no |  |  |
 | `meters[].locationId` | `number \| null` | no |  |  |
@@ -21295,8 +21518,8 @@ List a device or scope wireable measurement points for the device Energy assignm
 | `points[].componentKey` | `string \| null` | yes |  |  |
 | `points[].channel` | `number` | yes |  |  |
 | `points[].phase` | `enum("a" \| "b" \| "c" \| "z")` | yes |  |  |
-| `points[].tag` | `enum("power" \| "apparent_power" \| "reactive_power" \| "voltage" \| "current" \| "frequency" \| "power_factor" \| "total_power" \| "total_apparent_power" \| "total_current" \| "neutral_current" \| "total_act_energy" \| "total_act_ret_energy" \| "percentage" \| "temperature_c" \| "temperature_f" \| "volume_l" \| "volume_m3" \| "volume_storage_l" \| "volume_flow_m3h" \| "thermal_energy_kwh")` | yes |  |  |
-| `points[].electricalDomain` | `enum("ac_mains" \| "dc_pv" \| "dc_battery" \| "dc_bus" \| "thermal" \| "unspecified")` | yes |  |  |
+| `points[].tag` | `enum("power" \| "apparent_power" \| "reactive_power" \| "voltage" \| "current" \| "frequency" \| "power_factor" \| "total_power" \| "total_apparent_power" \| "total_current" \| "neutral_current" \| "total_act_energy" \| "total_act_ret_energy" \| "percentage" \| "temperature_c" \| "temperature_f" \| "volume_l" \| "volume_m3" \| "volume_storage_l" \| "volume_flow_m3h" \| "thermal_energy_kwh" \| "soc" \| "soh" \| "cycles" \| "charge_ah" \| "discharge_ah")` | yes |  |  |
+| `points[].electricalDomain` | `enum("ac_mains" \| "dc_pv" \| "dc_battery" \| "dc_bus" \| "thermal" \| "gas" \| "unspecified")` | yes |  |  |
 | `points[].source` | `enum("history" \| "live" \| "both")` | yes |  |  |
 | `points[].hasHistory` | `boolean` | yes |  |  |
 | `points[].isLiveNow` | `boolean` | yes |  |  |
@@ -21373,7 +21596,7 @@ List the org topology edges — which node each logical meter sits between and t
 <a id="energy-query"></a>
 ### `energy.Query`
 
-Unified time-series read for energy (device_em.stats) and environmental (device.status) tags. Group / devices / fleet scope selected by params. Mixed tag sets fan out in parallel. Values are scaled to display units (kWh / V / A / W / °C / % / lux). Omit limit to return the full set (up to the server OOM ceiling); set limit to paginate. total is a lower bound, not exact — has_more is the authoritative "more data exists" signal.
+Unified time-series read for energy (device_em.stats) and sensor (device_sensor) tags. Group / devices / fleet scope selected by params. Mixed tag sets fan out in parallel. Values are scaled to display units (kWh / V / A / W / °C / % / lux). Omit limit to return the full set (up to the server OOM ceiling); set limit to paginate. total is a lower bound, not exact — has_more is the authoritative "more data exists" signal.
 
 **Permission**: Scope-dependent: groupId→groups:read, devices→devices:read per device, fleet→dashboards:read
 
@@ -21383,7 +21606,9 @@ Unified time-series read for energy (device_em.stats) and environmental (device.
 |-------|------|----------|---------|-------------|
 | `from` | `string` | yes |  | ISO-8601 start — minLength 1 |
 | `to` | `string` | yes |  | ISO-8601 end — minLength 1 |
-| `tags` | `array<enum("total_act_energy" \| "total_act_ret_energy" \| "volume_l" \| "volume_m3" \| "thermal_energy_kwh" \| "power" \| "volume_flow_m3h" \| "volume_storage_l" \| "voltage" \| "current" \| "min_voltage" \| "max_voltage" \| "min_current" \| "max_current" \| "temperature" \| "humidity" \| "luminance")>` | yes |  | minItems 1 |
+| `tags` | `array<enum("total_act_energy" \| "total_act_ret_energy" \| "volume_l" \| "volume_m3" \| "thermal_energy_kwh" \| "power" \| "volume_flow_m3h" \| "volume_storage_l" \| "voltage" \| "current" \| "min_voltage" \| "max_voltage" \| "min_current" \| "max_current" \| "soc" \| "soh" \| "cycles" \| "charge_ah" \| "discharge_ah" \| "temperature" \| "humidity" \| "luminance" \| "pressure" \| "dewpoint" \| "co2" \| "tvoc" \| "pm25" \| "pm10" \| "moisture" \| "uv" \| "conductivity" \| "wind_direction" \| "precipitation" \| "battery" \| "distance")>` | yes |  | minItems 1 |
+| `commodity` | `enum("electricity" \| "water" \| "gas" \| "heat")` | no |  | Commodity filter (electricity / water / gas / heat). Omitted returns all. |
+| `electricalSource` | `enum("ac_mains" \| "dc_pv" \| "dc_battery" \| "dc_bus")` | no |  | Electrical-source filter (ac_mains / dc_*). Omitted returns all. |
 | `bucket` | `enum("1 minute" \| "5 minutes" \| "15 minutes" \| "30 minutes" \| "1 hour" \| "6 hours" \| "12 hours" \| "1 day" \| "1 week" \| "1 month")` | no |  | Bucket interval — defaults to 1 day |
 | `scope` | `object` | no |  |  |
 | `scope.groupId` | `integer` | no |  | min 1 |
@@ -21421,10 +21646,12 @@ Unified time-series read for energy (device_em.stats) and environmental (device.
 | `items[].device` | `number` | yes |  |  |
 | `items[].shellyID` | `string \| null` | yes |  |  |
 | `items[].tag` | `string` | yes |  |  |
+| `items[].domain` | `string` | yes |  |  |
 | `items[].value` | `number` | yes |  |  |
 | `items[].min` | `number \| null` | no |  |  |
 | `items[].max` | `number \| null` | no |  |  |
 | `items[].phase` | `enum("a" \| "b" \| "c")` | no |  |  |
+| `items[].source` | `string` | no |  |  |
 | `groups` | `array<object>` | no |  | Grouped series — present only when groupBy is set; items is empty. |
 | `groups[].bucket` | `string` | yes |  |  |
 | `groups[].groupBy` | `enum("meter" \| "role" \| "kind" \| "utility")` | yes |  |  |
@@ -21453,6 +21680,7 @@ Unified time-series read for energy (device_em.stats) and environmental (device.
       "device": 0,
       "shellyID": "string",
       "tag": "string",
+      "domain": "string",
       "value": 0
     }
   ],
@@ -21492,8 +21720,8 @@ Create (omit id) or update one logical meter — the meaning the user sets. role
 | `points[].componentKey` | `string \| null` | no |  | maxLength 100 |
 | `points[].channel` | `number` | no |  | min 0, max 31 |
 | `points[].phase` | `enum("a" \| "b" \| "c" \| "z")` | no |  |  |
-| `points[].tag` | `enum("power" \| "apparent_power" \| "reactive_power" \| "voltage" \| "current" \| "frequency" \| "power_factor" \| "total_power" \| "total_apparent_power" \| "total_current" \| "neutral_current" \| "total_act_energy" \| "total_act_ret_energy" \| "percentage" \| "temperature_c" \| "temperature_f" \| "volume_l" \| "volume_m3" \| "volume_storage_l" \| "volume_flow_m3h" \| "thermal_energy_kwh")` | yes |  |  |
-| `points[].electricalDomain` | `enum("ac_mains" \| "dc_pv" \| "dc_battery" \| "dc_bus" \| "thermal" \| "unspecified" \| null)` | no |  |  |
+| `points[].tag` | `enum("power" \| "apparent_power" \| "reactive_power" \| "voltage" \| "current" \| "frequency" \| "power_factor" \| "total_power" \| "total_apparent_power" \| "total_current" \| "neutral_current" \| "total_act_energy" \| "total_act_ret_energy" \| "percentage" \| "temperature_c" \| "temperature_f" \| "volume_l" \| "volume_m3" \| "volume_storage_l" \| "volume_flow_m3h" \| "thermal_energy_kwh" \| "soc" \| "soh" \| "cycles" \| "charge_ah" \| "discharge_ah")` | yes |  |  |
+| `points[].electricalDomain` | `enum("ac_mains" \| "dc_pv" \| "dc_battery" \| "dc_bus" \| "thermal" \| "gas" \| "unspecified" \| null)` | no |  |  |
 | `points[].directionHint` | `enum("import" \| "export" \| "charge" \| "discharge" \| null)` | no |  |  |
 | `groupId` | `number \| null` | no |  |  |
 | `locationId` | `number \| null` | no |  |  |
@@ -21534,8 +21762,8 @@ Create (omit id) or update one logical meter — the meaning the user sets. role
 | `meter.points[].componentKey` | `string \| null` | no |  | maxLength 100 |
 | `meter.points[].channel` | `number` | no |  | min 0, max 31 |
 | `meter.points[].phase` | `enum("a" \| "b" \| "c" \| "z")` | no |  |  |
-| `meter.points[].tag` | `enum("power" \| "apparent_power" \| "reactive_power" \| "voltage" \| "current" \| "frequency" \| "power_factor" \| "total_power" \| "total_apparent_power" \| "total_current" \| "neutral_current" \| "total_act_energy" \| "total_act_ret_energy" \| "percentage" \| "temperature_c" \| "temperature_f" \| "volume_l" \| "volume_m3" \| "volume_storage_l" \| "volume_flow_m3h" \| "thermal_energy_kwh")` | yes |  |  |
-| `meter.points[].electricalDomain` | `enum("ac_mains" \| "dc_pv" \| "dc_battery" \| "dc_bus" \| "thermal" \| "unspecified" \| null)` | no |  |  |
+| `meter.points[].tag` | `enum("power" \| "apparent_power" \| "reactive_power" \| "voltage" \| "current" \| "frequency" \| "power_factor" \| "total_power" \| "total_apparent_power" \| "total_current" \| "neutral_current" \| "total_act_energy" \| "total_act_ret_energy" \| "percentage" \| "temperature_c" \| "temperature_f" \| "volume_l" \| "volume_m3" \| "volume_storage_l" \| "volume_flow_m3h" \| "thermal_energy_kwh" \| "soc" \| "soh" \| "cycles" \| "charge_ah" \| "discharge_ah")` | yes |  |  |
+| `meter.points[].electricalDomain` | `enum("ac_mains" \| "dc_pv" \| "dc_battery" \| "dc_bus" \| "thermal" \| "gas" \| "unspecified" \| null)` | no |  |  |
 | `meter.points[].directionHint` | `enum("import" \| "export" \| "charge" \| "discharge" \| null)` | no |  |  |
 | `meter.groupId` | `number \| null` | no |  |  |
 | `meter.locationId` | `number \| null` | no |  |  |
@@ -21635,8 +21863,8 @@ Fix the one fact a device cannot state — the electrical domain or tag of an un
 | `deviceId` | `number` | yes |  |  |
 | `componentKey` | `string` | yes |  | minLength 1, maxLength 100 |
 | `channel` | `number` | yes |  | min 0, max 31 |
-| `tag` | `enum("power" \| "apparent_power" \| "reactive_power" \| "voltage" \| "current" \| "frequency" \| "power_factor" \| "total_power" \| "total_apparent_power" \| "total_current" \| "neutral_current" \| "total_act_energy" \| "total_act_ret_energy" \| "percentage" \| "temperature_c" \| "temperature_f" \| "volume_l" \| "volume_m3" \| "volume_storage_l" \| "volume_flow_m3h" \| "thermal_energy_kwh")` | yes |  |  |
-| `electricalDomain` | `enum("ac_mains" \| "dc_pv" \| "dc_battery" \| "dc_bus" \| "thermal" \| "unspecified")` | yes |  |  |
+| `tag` | `enum("power" \| "apparent_power" \| "reactive_power" \| "voltage" \| "current" \| "frequency" \| "power_factor" \| "total_power" \| "total_apparent_power" \| "total_current" \| "neutral_current" \| "total_act_energy" \| "total_act_ret_energy" \| "percentage" \| "temperature_c" \| "temperature_f" \| "volume_l" \| "volume_m3" \| "volume_storage_l" \| "volume_flow_m3h" \| "thermal_energy_kwh" \| "soc" \| "soh" \| "cycles" \| "charge_ah" \| "discharge_ah")` | yes |  |  |
+| `electricalDomain` | `enum("ac_mains" \| "dc_pv" \| "dc_battery" \| "dc_bus" \| "thermal" \| "gas" \| "unspecified")` | yes |  |  |
 
 **Params example:**
 
@@ -21881,7 +22109,8 @@ Return the backend-declared capability set for an entity — what actions it sup
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `type` | `string` | yes |  | Entity type discriminator |
-| `actions` | `array<string>` | yes |  | Action verbs the entity supports |
+| `actions` | `array<string>` | yes |  | Action verbs the entity supports (control + maintenance) |
+| `maintenanceActions` | `array<string>` | yes |  | Subset of actions that are maintenance (reset/calibrate), not output control |
 
 **Response example:**
 
@@ -21889,6 +22118,9 @@ Return the backend-declared capability set for an entity — what actions it sup
 {
   "type": "string",
   "actions": [
+    "string"
+  ],
+  "maintenanceActions": [
     "string"
   ]
 }
@@ -22490,6 +22722,57 @@ Type: `object<any>`
 
 <a id="firmware-namespace"></a>
 ## `firmware` namespace
+
+<a id="firmware-checkforupdatebulk"></a>
+### `firmware.CheckForUpdateBulk`
+
+Check for firmware updates on many devices in one call. Fans out server-side and returns a per-device result (checked/offline/error).
+
+**Permission**: per-device execute; inaccessible devices skipped
+
+#### Params
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `shellyIDs` | `array<string>` | yes |  | minItems 1, maxItems 500 |
+
+**Params example:**
+
+```json
+{
+  "shellyIDs": [
+    "string"
+  ]
+}
+```
+
+#### Response
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `items` | `array<object>` | yes |  |  |
+| `items[].shellyID` | `string` | yes |  | minLength 1 |
+| `items[].status` | `enum("checked" \| "offline" \| "error")` | yes |  |  |
+| `items[].stable` | `object` | no |  |  |
+| `items[].stable.version` | `string` | yes |  | minLength 1 |
+| `items[].stable.build_id` | `string` | no |  |  |
+| `items[].beta` | `object` | no |  |  |
+| `items[].beta.version` | `string` | yes |  | minLength 1 |
+| `items[].beta.build_id` | `string` | no |  |  |
+| `items[].error` | `string` | no |  |  |
+
+**Response example:**
+
+```json
+{
+  "items": [
+    {
+      "shellyID": "string",
+      "status": "checked"
+    }
+  ]
+}
+```
 
 <a id="firmware-createlibrarydownloadurl"></a>
 ### `firmware.CreateLibraryDownloadUrl`
@@ -23340,6 +23623,7 @@ Aggregate live in-memory device metrics for a slice (group / location / tag / fl
 | `devices[].id` | `integer` | yes |  |  |
 | `devices[].shellyID` | `string` | yes |  | minLength 1 |
 | `devices[].name` | `string` | yes |  |  |
+| `devices[].online` | `boolean` | yes |  |  |
 | `devices[].hasEmChannels` | `boolean` | yes |  |  |
 | `devices[].hasEm1Channels` | `boolean` | yes |  |  |
 | `metrics` | `object<any>` | yes |  | Live-status metric buckets keyed by name: power, voltage, current, consumption, returned_energy, uptime, temperature, humidity, luminance. |
@@ -23357,6 +23641,7 @@ Aggregate live in-memory device metrics for a slice (group / location / tag / fl
       "id": 0,
       "shellyID": "string",
       "name": "string",
+      "online": false,
       "hasEmChannels": false,
       "hasEm1Channels": false
     }
@@ -25887,7 +26172,7 @@ Type: `array<object>`
 <a id="identity-rotateactionsigningkeys"></a>
 ### `identity.RotateActionSigningKeys`
 
-Identity.RotateActionSigningKeys — recreate Action V2 GDPR + grant-removed targets. Old keys move to _PREVIOUS slots; FM keeps both verifying through the replay window.
+Identity.RotateActionSigningKeys — recreate Action V2 GDPR + grant-change targets. Old keys move to _PREVIOUS slots; FM keeps both verifying through the replay window.
 
 **Permission**: provider-support-only — instance-wide Zitadel admin API
 
@@ -29763,6 +30048,68 @@ Upsert primary location assignment for a device/entity.
   "locationId": 0,
   "createdAt": "string",
   "updatedAt": "string"
+}
+```
+
+<a id="location-setassignments"></a>
+### `location.SetAssignments`
+
+Assign many subjects to one location in a single atomic call.
+
+**Permission**: locations / update
+
+#### Params
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `organizationId` | `string` | no |  | minLength 1, maxLength 120 |
+| `locationId` | `integer` | yes |  |  |
+| `subjects` | `array<object>` | yes |  | minItems 1, maxItems 500 |
+| `subjects[].subjectType` | `enum("device" \| "entity" \| "group")` | yes |  |  |
+| `subjects[].subjectId` | `string` | yes |  | minLength 1, maxLength 255 |
+
+**Params example:**
+
+```json
+{
+  "locationId": 0,
+  "subjects": [
+    {
+      "subjectType": "device",
+      "subjectId": "string"
+    }
+  ]
+}
+```
+
+#### Response
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `locationId` | `integer` | yes |  |  |
+| `assigned` | `array<object>` | yes |  |  |
+| `assigned[].organizationId` | `string` | yes |  | minLength 1, maxLength 120 |
+| `assigned[].subjectType` | `enum("device" \| "entity" \| "group")` | yes |  |  |
+| `assigned[].subjectId` | `string` | yes |  | minLength 1, maxLength 255 |
+| `assigned[].locationId` | `integer` | yes |  |  |
+| `assigned[].createdAt` | `string` | yes |  |  |
+| `assigned[].updatedAt` | `string \| null` | yes |  |  |
+
+**Response example:**
+
+```json
+{
+  "locationId": 0,
+  "assigned": [
+    {
+      "organizationId": "string",
+      "subjectType": "device",
+      "subjectId": "string",
+      "locationId": 0,
+      "createdAt": "string",
+      "updatedAt": "string"
+    }
+  ]
 }
 ```
 
@@ -36744,6 +37091,8 @@ Return the caller's organization profile.
 | `localeDefault` | `string \| null` | yes |  |  |
 | `currencyDefault` | `string \| null` | yes |  |  |
 | `unitSystemDefault` | `enum("metric" \| "imperial" \| null)` | yes |  |  |
+| `brandInitials` | `string \| null` | yes |  |  |
+| `brandColor` | `string \| null` | yes |  |  |
 | `metadata` | `object<any>` | yes |  | ≤ 65536 B JSON |
 
 **Response example:**
@@ -36757,6 +37106,8 @@ Return the caller's organization profile.
   "localeDefault": "string",
   "currencyDefault": "string",
   "unitSystemDefault": "metric",
+  "brandInitials": "string",
+  "brandColor": "string",
   "metadata": {}
 }
 ```
@@ -36885,6 +37236,8 @@ Partial-update the caller organization profile. Null field = clear.
 | `patch.localeDefault` | `string \| null` | no |  | maxLength 32 |
 | `patch.currencyDefault` | `string \| null` | no |  |  |
 | `patch.unitSystemDefault` | `enum("metric" \| "imperial" \| null)` | no |  |  |
+| `patch.brandInitials` | `string \| null` | no |  |  |
+| `patch.brandColor` | `string \| null` | no |  |  |
 | `patch.metadata` | `object<any>` | no |  | ≤ 65536 B JSON |
 
 **Params example:**
@@ -36906,6 +37259,8 @@ Partial-update the caller organization profile. Null field = clear.
 | `localeDefault` | `string \| null` | yes |  |  |
 | `currencyDefault` | `string \| null` | yes |  |  |
 | `unitSystemDefault` | `enum("metric" \| "imperial" \| null)` | yes |  |  |
+| `brandInitials` | `string \| null` | yes |  |  |
+| `brandColor` | `string \| null` | yes |  |  |
 | `metadata` | `object<any>` | yes |  | ≤ 65536 B JSON |
 
 **Response example:**
@@ -36919,6 +37274,8 @@ Partial-update the caller organization profile. Null field = clear.
   "localeDefault": "string",
   "currencyDefault": "string",
   "unitSystemDefault": "metric",
+  "brandInitials": "string",
+  "brandColor": "string",
   "metadata": {}
 }
 ```
@@ -38987,7 +39344,7 @@ Type: `object`
 
 Start tilt calibration for the mmWave sensor.
 
-**Permission**: devices / update
+**Permission**: devices / execute
 
 #### Params
 
@@ -39586,7 +39943,7 @@ Return the report namespace contract (methods, schemas, permissions, errors).
 <a id="report-generate"></a>
 ### `report.Generate`
 
-Unified report endpoint — one front door for reports and data exports. Returns a jobId immediately (async); poll Report.GetReport for status + the owner-bound download URL. Two `kind`s: `energy` (the energy report — cost, tariff, CO2 and per-source sections; from, to, granularity incl. 15-minute, scope, tariff, currency, main_meter_ids, dashboardId; format html | csv) and `interval` (interval data / "load profile" — per-device readings of one or more metrics at a chosen granularity: metrics, from, to, granularity, scope/devices, per_device; streamed CSV). Use Energy.Query for live on-screen charts; use this for files to download.
+Unified report endpoint — one front door for reports and data exports. Returns a jobId immediately (async); poll Report.GetReport for status + the owner-bound download URL. Two `kind`s: `energy` (the energy report — cost, tariff, CO2 and per-source sections; from, to, granularity incl. 15-minute, scope, tariff, currency, main_meter_ids, dashboardId; format html | csv) and `interval` (interval data / "load profile" — per-device readings of one or more metrics at a chosen granularity: metrics, from, to, granularity, scope/devices, per_device; streamed CSV) and `environment` (the environmental report — comfort, air quality, light, weather, per-sensor breakdown, threshold breaches from the device_sensor rollup; from, to, granularity, scope, source; format html | csv). Use Energy.Query for live on-screen charts; use this for files to download.
 
 **Permission**: reports / update
 
@@ -39594,7 +39951,7 @@ Unified report endpoint — one front door for reports and data exports. Returns
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `kind` | `enum("energy" \| "interval" \| "energy_dump")` | yes |  |  |
+| `kind` | `enum("energy" \| "interval" \| "energy_dump" \| "environment")` | yes |  |  |
 | `format` | `enum("csv" \| "html")` | no |  |  |
 | `<additional>` | `any` | no |  | Additional unspecified keys are accepted with any value. |
 
@@ -39828,7 +40185,7 @@ Save a named report template.
 |-------|------|----------|---------|-------------|
 | `name` | `string` | yes |  | minLength 1, maxLength 120 |
 | `description` | `string \| null` | no |  |  |
-| `kind` | `enum("energy" \| "interval")` | yes |  |  |
+| `kind` | `enum("energy" \| "interval" \| "environment")` | yes |  |  |
 | `params` | `object` | yes |  |  |
 | `sectionsEnabled` | `array<enum("demand" \| "solar" \| "battery" \| "ev" \| "tenant")> \| null` | no |  |  |
 
@@ -41209,7 +41566,7 @@ RGBW.Toggle.
 
 Add a new schedule job; returns the device-assigned id.
 
-**Permission**: devices / execute
+**Permission**: devices / update
 
 #### Params
 
@@ -41255,7 +41612,7 @@ Add a new schedule job; returns the device-assigned id.
 
 Remove a schedule job by id.
 
-**Permission**: devices / execute
+**Permission**: devices / update
 
 #### Params
 
@@ -41292,7 +41649,7 @@ Remove a schedule job by id.
 
 Wipe every schedule job on the target device.
 
-**Permission**: devices / execute
+**Permission**: devices / update
 
 #### Params
 
@@ -41424,7 +41781,7 @@ List cron-style schedules stored on the target device.
 
 Partial-update an existing schedule job by id.
 
-**Permission**: devices / execute
+**Permission**: devices / update
 
 #### Params
 
@@ -42221,6 +42578,263 @@ Upload or delete the device user CA via Shelly.PutUserCA.
 
 ```json
 {}
+```
+
+### Error kinds
+
+| Kind | Code | Message |
+|------|------|---------|
+| `ValidationFailed` | 1000 | Request params failed validation |
+| `PermissionDenied` | 1001 | Caller is not authorized for this operation |
+| `ResourceNotFound` | 1002 | Resource not found |
+| `ResourceConflict` | 1003 | Resource already exists or is in a conflicting state |
+| `UnsupportedOperation` | 1005 | Operation is not supported for this resource |
+| `OperationFailed` | 1006 | Operation failed |
+| `ServiceUnavailable` | 1007 | Service is temporarily unavailable |
+| `RateLimitExceeded` | 1008 | Caller is issuing requests too fast — retry later |
+| `OrgScopeRequired` | 1010 | organizationId is required for this operation |
+| `CrossOrgReference` | 1011 | Reference crosses organization boundary |
+| `InvalidSubjectType` | 1012 | Subject type is not allowed for this operation |
+| `InvalidPatchField` | 1013 | Patch contains an unsupported or immutable field |
+| `EntityCapabilityUnknown` | 1100 | Entity does not expose the requested capability |
+| `DeviceOffline` | 1200 | Device is offline — command cannot be delivered |
+| `DeviceOperationFailed` | 1201 | Device operation failed |
+| `DashboardNotFound` | 1500 | Dashboard not found |
+| `DashboardTemplateNotFound` | 1501 | Dashboard template not found |
+| `DashboardTemplateBuiltinReadonly` | 1502 | Builtin dashboard template cannot be modified or deleted |
+| `DashboardItemNotFound` | 1503 | Dashboard item not found |
+| `DashboardScopeMismatch` | 1504 | Item references a resource outside the dashboard scope |
+| `DashboardImportSchemaMismatch` | 1505 | Import JSON does not match expected format |
+| `DashboardImportUnsupportedGrafanaVersion` | 1506 | Grafana schemaVersion is below supported floor |
+| `DashboardDefaultConflict` | 1507 | Another dashboard is already default for this organization |
+| `DashboardItemRefInvalid` | 1508 | Dashboard item refers to a missing or cross-org subject |
+| `AdminCommandFailed` | 1800 | Device RPC command failed |
+| `GroupNotFound` | 2500 | Group not found |
+| `GroupParentNotFound` | 2501 | Parent group not found |
+| `GroupParentCycle` | 2502 | Parent change would create a cycle |
+| `GroupNameConflict` | 2503 | A group with this name already exists at this parent |
+| `GroupDeleteBlockedHasChildren` | 2504 | Group has child groups |
+| `GroupMembershipModeUnsupported` | 2505 | Membership mode is not supported in phase 1 |
+| `GroupLegacyHierarchyLocked` | 2506 | Legacy group hierarchy is locked — create a new group to reorganize |
+| `LocationNotFound` | 2900 | Location not found |
+| `LocationParentNotFound` | 2901 | Parent location not found |
+| `LocationParentCycle` | 2902 | Parent change would create a cycle |
+| `LocationNameConflict` | 2903 | A location with this name already exists at this parent |
+| `LocationCodeConflict` | 2904 | locationCode is already in use in this organization |
+| `LocationDeleteBlockedHasChildren` | 2905 | Location has child locations |
+| `LocationDeleteBlockedHasAssignments` | 2906 | Location has direct device/entity assignments |
+| `TagNotFound` | 3000 | Tag not found |
+| `TagKeyConflict` | 3001 | Tag key already exists in this organization |
+| `TagKeyInvalid` | 3002 | Tag key is not valid per `^[a-z0-9][a-z0-9._-]{1,63}$` |
+| `DestinationNotFound` | 3100 | Destination group not found |
+| `DestinationNameConflict` | 3101 | A destination group with this name already exists |
+| `DestinationInUseByRule` | 3102 | Destination group is still referenced by one or more alert rules |
+| `DeliveryJobNotFound` | 3200 | Delivery job not found |
+| `PolicyGroupTypeUnknown` | 3300 | groupType is not a known type |
+| `PolicyFieldUnknown` | 3301 | field key is not editable via policy API |
+| `PolicyValueInvalid` | 3302 | value violates the policy field's shape constraint |
+| `PolicyDefaultsStaleUpdate` | 3303 | policy defaults changed since getdefaults — refresh and retry |
+| `NotAShellyDevice` | 3401 | response did not match the Shelly RPC contract |
+| `UnsupportedDeviceGen` | 3402 | device generation is not supported by Discovery.AdmitDevice |
+| `FirmwareTooOld` | 3403 | device firmware is below the minimum required by FM |
+| `AuthRequired` | 3404 | device has authentication enabled; re-invoke AdmitDevice with the device password |
+| `AuthFailed` | 3405 | device rejected the supplied credentials |
+| `HostNotAllowed` | 3406 | host resolves to a reserved address range and cannot be admitted; set FM_DISCOVERY_ALLOW_PRIVATE=true for office-LAN installs |
+| `IngressRejected` | 3500 | Device ingress connection was rejected |
+
+
+---
+
+<a id="sensor-namespace"></a>
+## `sensor` namespace
+
+<a id="sensor-describe"></a>
+### `sensor.Describe`
+
+Return the sensor namespace contract (methods, schemas, permissions, errors).
+
+**Permission**: public — no-permission metadata
+
+#### Params
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+
+**Params example:**
+
+```json
+{}
+```
+
+#### Response
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `namespace` | `string` | yes |  |  |
+| `methods` | `object` | yes |  |  |
+| `limits` | `object` | no |  |  |
+| `tags` | `array<string>` | no |  |  |
+| `errors` | `array<any>` | no |  |  |
+
+**Response example:**
+
+```json
+{
+  "namespace": "string",
+  "methods": {}
+}
+```
+
+<a id="sensor-events"></a>
+### `sensor.Events`
+
+Discrete event history from device_sensor.events (append-only: binary sensors record on state change, buttons record every push). devices is a required shellyID allowlist — no group/location/tag/fleet scope yet. kind narrows to one event kind; omit for all kinds.
+
+**Permission**: devices:read per requested device — same devices-allowlist model as Energy.Query
+
+#### Params
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `from` | `string` | yes |  | ISO-8601 start — minLength 1 |
+| `to` | `string` | yes |  | ISO-8601 end — minLength 1 |
+| `devices` | `array<string>` | yes |  | shellyID allowlist — minItems 1, maxItems 500 |
+| `kind` | `string` | no |  | Event kind filter — omit for every kind — minLength 1, maxLength 24 |
+| `limit` | `integer` | no |  | min 1, max 20000 |
+
+**Params example:**
+
+```json
+{
+  "from": "string",
+  "to": "string",
+  "devices": [
+    "string"
+  ]
+}
+```
+
+#### Response
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `items` | `array<object>` | yes |  |  |
+| `items[].ts` | `string` | yes |  |  |
+| `items[].device` | `number` | yes |  |  |
+| `items[].shellyID` | `string \| null` | yes |  |  |
+| `items[].source` | `string` | yes |  |  |
+| `items[].kind` | `string` | yes |  |  |
+| `items[].channel` | `number \| null` | yes |  |  |
+| `items[].state` | `number` | yes |  |  |
+
+**Response example:**
+
+```json
+{
+  "items": [
+    {
+      "ts": "string",
+      "device": 0,
+      "shellyID": "string",
+      "source": "string",
+      "kind": "string",
+      "channel": 0,
+      "state": 0
+    }
+  ]
+}
+```
+
+<a id="sensor-query"></a>
+### `sensor.Query`
+
+Numeric sensor history from device_sensor.numeric_15min (the forever 15-minute rollup), re-bucketed per channel to sample-weighted avg + true min/max, with reading counts. The numeric twin of Sensor.Events. Group / location / tag / devices / fleet scope selected by params (scope XOR devices). kinds fan out one DB call each; source narrows to one reading source (omit for all). Omit limit for the full set (up to the server row ceiling); set limit to paginate. total is a lower bound — has_more is authoritative.
+
+**Permission**: Scope-dependent: groupId→groups:read, devices→devices:read per device, fleet→dashboards:read — same model as Energy.Query
+
+#### Params
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `from` | `string` | yes |  | ISO-8601 start — minLength 1 |
+| `to` | `string` | yes |  | ISO-8601 end — minLength 1 |
+| `kinds` | `array<string>` | yes |  | Sensor kinds to read — one DB fan-out per kind — minItems 1 |
+| `source` | `enum("internal" \| "builtin" \| "addon" \| "blu" \| "weather")` | no |  | Reading-source filter — omit for every source |
+| `scope` | `object` | no |  |  |
+| `scope.groupId` | `integer` | no |  | min 1 |
+| `scope.locationId` | `integer` | no |  | min 1 |
+| `scope.tagId` | `integer` | no |  | min 1 |
+| `devices` | `array<string>` | no |  | shellyID allowlist — mutually exclusive with scope — maxItems 500 |
+| `bucket` | `enum("1 minute" \| "5 minutes" \| "15 minutes" \| "30 minutes" \| "1 hour" \| "6 hours" \| "12 hours" \| "1 day" \| "1 week" \| "1 month")` | no |  | Bucket interval — defaults to 1 hour |
+| `limit` | `integer` | no |  | Page size. Omit to return the full set (up to the server row ceiling); set to paginate. — min 1, max 50000 |
+| `offset` | `integer` | no |  | min 0 |
+
+**Params example:**
+
+```json
+{
+  "from": "string",
+  "to": "string",
+  "kinds": [
+    "string"
+  ]
+}
+```
+
+#### Response
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `items` | `array<object>` | yes |  |  |
+| `items[].bucket` | `string` | yes |  |  |
+| `items[].device` | `number` | yes |  |  |
+| `items[].shellyID` | `string \| null` | yes |  |  |
+| `items[].kind` | `string` | yes |  |  |
+| `items[].source` | `string` | yes |  |  |
+| `items[].channel` | `number \| null` | yes |  |  |
+| `items[].sampleCount` | `number` | yes |  | Number of raw readings represented by this bucket. — min 0 |
+| `items[].value` | `number` | yes |  |  |
+| `items[].min` | `number \| null` | yes |  |  |
+| `items[].max` | `number \| null` | yes |  |  |
+| `total` | `number` | yes |  | Lower bound on total rows (offset + returned + 1 when more exist) — has_more is authoritative. |
+| `limit` | `number` | yes |  |  |
+| `offset` | `number` | yes |  |  |
+| `has_more` | `boolean` | yes |  | Authoritative signal that more rows exist beyond this page. |
+| `meta` | `object` | yes |  |  |
+| `meta.from` | `string` | yes |  |  |
+| `meta.to` | `string` | yes |  |  |
+| `meta.bucket` | `string` | yes |  |  |
+| `meta.executionMs` | `number` | yes |  |  |
+
+**Response example:**
+
+```json
+{
+  "items": [
+    {
+      "bucket": "string",
+      "device": 0,
+      "shellyID": "string",
+      "kind": "string",
+      "source": "string",
+      "channel": 0,
+      "sampleCount": 0,
+      "value": 0,
+      "min": 0,
+      "max": 0
+    }
+  ],
+  "total": 0,
+  "limit": 0,
+  "offset": 0,
+  "has_more": false,
+  "meta": {
+    "from": "string",
+    "to": "string",
+    "bucket": "string",
+    "executionMs": 0
+  }
+}
 ```
 
 ### Error kinds
@@ -43892,12 +44506,13 @@ Return the storage namespace contract (methods, schemas, permissions, errors).
 
 Raw (key → value) dict — kept for legacy registry callers. New callers should prefer `storage.list`.
 
-**Permission**: authenticated
+**Permission**: registry-specific read permission
 
 #### Params
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
+| `registry` | `string` | no |  | minLength 1 |
 
 **Params example:**
 
@@ -43914,12 +44529,13 @@ Type: `object<any>`
 
 Read a value by key.
 
-**Permission**: authenticated
+**Permission**: registry-specific read permission
 
 #### Params
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
+| `registry` | `string` | no |  | minLength 1 |
 | `key` | `string` | yes |  | minLength 1 |
 
 **Params example:**
@@ -43937,14 +44553,15 @@ Type: `object<any>`
 <a id="storage-keys"></a>
 ### `storage.Keys`
 
-List all stored keys for the caller.
+List readable keys in a registry.
 
-**Permission**: authenticated
+**Permission**: registry-specific read permission
 
 #### Params
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
+| `registry` | `string` | no |  | minLength 1 |
 
 **Params example:**
 
@@ -43961,12 +44578,13 @@ Type: `array<string>`
 
 Every (key, value) pair in the standard list envelope.
 
-**Permission**: authenticated
+**Permission**: registry-specific read permission
 
 #### Params
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
+| `registry` | `string` | no |  | minLength 1 |
 
 **Params example:**
 
@@ -44008,12 +44626,13 @@ Every (key, value) pair in the standard list envelope.
 
 Delete a value by key.
 
-**Permission**: authenticated
+**Permission**: registry-specific delete permission
 
 #### Params
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
+| `registry` | `string` | no |  | minLength 1 |
 | `key` | `string` | yes |  | minLength 1 |
 
 **Params example:**
@@ -44031,14 +44650,15 @@ Type: `object<any>`
 <a id="storage-setitem"></a>
 ### `storage.SetItem`
 
-Upsert a value under a key in user-scoped storage.
+Upsert a value under a registry key.
 
-**Permission**: authenticated
+**Permission**: registry-specific write permission
 
 #### Params
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
+| `registry` | `string` | no |  | minLength 1 |
 | `key` | `string` | yes |  | minLength 1 |
 | `value` | `any` | yes |  |  |
 
@@ -55698,8 +56318,8 @@ Voltmeter.CheckExpression — evaluate JS xvoltage expression against inputs.
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `shellyID` | `string` | yes |  | Target Shelly device identifier — minLength 1, maxLength 120 |
-| `expr` | `string` | yes |  |  |
-| `inputs` | `array<number>` | yes |  |  |
+| `expr` | `string` | yes |  | maxLength 100 |
+| `inputs` | `array<number \| null>` | yes |  | maxItems 5 |
 
 **Params example:**
 

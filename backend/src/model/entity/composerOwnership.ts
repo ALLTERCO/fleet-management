@@ -74,7 +74,11 @@ export function partitionServiceOwnedComponents(
 ): ServiceGroup[] {
     const groups = new Map<string, Record<string, string>>();
     for (const type of SERVICE_GROUPABLE_TYPES) {
-        for (const key of instanceKeysOfType(type, input.deviceStatus)) {
+        for (const key of instanceKeysOfType(
+            type,
+            input.deviceStatus,
+            input.deviceConfig
+        )) {
             addServiceOwnedComponent({
                 config: input.deviceConfig[key],
                 componentKey: key,
@@ -182,14 +186,19 @@ function readAttrs(cfg: unknown): AttrsBag | undefined {
     return attrs as AttrsBag;
 }
 
+// Union keys across sources: service-owned virtual components live in Config
+// from creation but stay out of Status until first write, so read both.
 function instanceKeysOfType(
     type: string,
-    status: Record<string, unknown>
+    ...sources: Record<string, unknown>[]
 ): string[] {
-    const out: string[] = [];
     const prefix = `${type}:`;
-    for (const k in status) if (k.startsWith(prefix)) out.push(k);
-    return out;
+    const seen = new Set<string>();
+    for (const src of sources) {
+        if (!src || typeof src !== 'object') continue;
+        for (const k in src) if (k.startsWith(prefix)) seen.add(k);
+    }
+    return [...seen];
 }
 
 export function resolveServiceType(

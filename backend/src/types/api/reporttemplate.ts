@@ -11,7 +11,11 @@ import type {JsonSchema} from './_schema';
 const PERM_READ = {component: 'reports', operation: 'read' as const};
 const PERM_WRITE = {component: 'reports', operation: 'update' as const};
 
-export const REPORT_TEMPLATE_KINDS = ['energy', 'interval'] as const;
+export const REPORT_TEMPLATE_KINDS = [
+    'energy',
+    'interval',
+    'environment'
+] as const;
 export type ReportTemplateKind = (typeof REPORT_TEMPLATE_KINDS)[number];
 
 // Role-gated section ids. Single source of truth for the vocabulary; the engine

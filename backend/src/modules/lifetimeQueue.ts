@@ -8,8 +8,12 @@ export interface LifetimeRow {
     deviceId: number;
     channel: number;
     tag: string;
-    // Absolute reading in storage units (Wh) — NOT the delta.
+    // Absolute reading in the tag's native unit (Wh for AC energy, Ah for bm
+    // charge/discharge) — NOT the delta.
     cumulativeWh: number;
+    // Electrical domain — part of the counter identity so DC Ah and AC Wh
+    // counters coexist on the same channel/tag.
+    domain: string;
     ts: number;
 }
 
@@ -19,6 +23,7 @@ export interface LifetimeBatch {
     p_tag: string[];
     p_cumulative: number[];
     p_ts: number[];
+    p_domain: string[];
 }
 
 export class LifetimeQueue {
@@ -30,6 +35,7 @@ export class LifetimeQueue {
         this.#batch.p_tag.push(row.tag);
         this.#batch.p_cumulative.push(row.cumulativeWh);
         this.#batch.p_ts.push(row.ts);
+        this.#batch.p_domain.push(row.domain);
     }
 
     size(): number {
@@ -49,7 +55,8 @@ export class LifetimeQueue {
             p_channel: batch.p_channel.concat(next.p_channel),
             p_tag: batch.p_tag.concat(next.p_tag),
             p_cumulative: batch.p_cumulative.concat(next.p_cumulative),
-            p_ts: batch.p_ts.concat(next.p_ts)
+            p_ts: batch.p_ts.concat(next.p_ts),
+            p_domain: batch.p_domain.concat(next.p_domain)
         };
     }
 }
@@ -60,7 +67,8 @@ function emptyBatch(): LifetimeBatch {
         p_channel: [],
         p_tag: [],
         p_cumulative: [],
-        p_ts: []
+        p_ts: [],
+        p_domain: []
     };
 }
 

@@ -7,7 +7,7 @@
         >
             <div class="scp__chosen-meta">
                 <span class="scp__chosen-device">
-                    {{ selected.deviceExternalId }}
+                    {{ deviceNameById(selected.deviceExternalId) }}
                 </span>
                 <span class="scp__chosen-component">
                     {{ selected.componentKey }}
@@ -40,24 +40,39 @@
         </div>
         <ul v-else-if="!selected && candidates.length" class="scp__list">
             <li
-                v-for="candidate in candidates"
-                :key="`${candidate.deviceExternalId}|${candidate.componentKey}`"
+                v-for="row in candidateViews"
+                :key="`${row.candidate.deviceExternalId}|${row.candidate.componentKey}`"
             >
                 <button
                     type="button"
                     class="scp__candidate"
-                    :data-candidate="`${candidate.deviceExternalId}|${candidate.componentKey}`"
-                    @click="onPick(candidate)"
+                    :data-candidate="`${row.candidate.deviceExternalId}|${row.candidate.componentKey}`"
+                    @click="onPick(row.candidate)"
                 >
+                    <span class="scp__candidate-photo">
+                        <i
+                            v-if="row.logo.kind === 'icon'"
+                            class="scp__candidate-glyph"
+                            :class="row.logo.faClass"
+                            :style="deviceGlyphStyle(row.logo)"
+                            :aria-label="row.name"
+                        />
+                        <img
+                            v-else
+                            :src="row.logo.src"
+                            :alt="row.name"
+                            loading="lazy"
+                        />
+                    </span>
                     <span class="scp__candidate-device">
-                        {{ candidate.deviceName }}
+                        {{ row.name }}
                     </span>
                     <span class="scp__candidate-component">
-                        {{ candidate.componentKey }} ·
-                        {{ candidate.componentType }}
+                        {{ row.candidate.componentKey }} ·
+                        {{ row.candidate.componentType }}
                     </span>
                     <span
-                        v-if="candidate.writable"
+                        v-if="row.candidate.writable"
                         class="scp__candidate-pill"
                     >
                         Writable
@@ -75,14 +90,16 @@
 </template>
 
 <script setup lang="ts">
-import {ref, watch} from 'vue';
 import {
     type SourceComponentCandidate,
     type SourceComponentRef,
     virtualDevices
 } from '@host/virtualDevices';
+import {computed, ref, watch} from 'vue';
 import Input from '@/components/core/Input.vue';
 import Spinner from '@/components/core/Spinner.vue';
+import {useDeviceIdentity} from '@/composables/useDeviceIdentity';
+import {type DeviceLogo, deviceGlyphStyle} from '@/helpers/deviceLogo';
 
 const props = defineProps<{
     roleKey: string;
@@ -95,12 +112,29 @@ const emit = defineEmits<{
     clear: [];
 }>();
 
+const {deviceLogoById, deviceNameById} = useDeviceIdentity();
+
 const query = ref('');
 const candidates = ref<SourceComponentCandidate[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
 let loaded = false;
 let debounce: ReturnType<typeof setTimeout> | undefined;
+
+interface CandidateView {
+    candidate: SourceComponentCandidate;
+    logo: DeviceLogo;
+    name: string;
+}
+
+// Identity via the shared grid pipeline, not the raw backend fields.
+const candidateViews = computed<CandidateView[]>(() =>
+    candidates.value.map((candidate) => ({
+        candidate,
+        logo: deviceLogoById(candidate.deviceExternalId),
+        name: deviceNameById(candidate.deviceExternalId, candidate.deviceName)
+    }))
+);
 
 async function load(q?: string): Promise<void> {
     loading.value = true;
@@ -225,8 +259,8 @@ watch(
 .scp__candidate {
     width: 100%;
     display: grid;
-    grid-template-columns: 1fr auto;
-    grid-template-areas: 'name pill' 'comp pill';
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas: 'photo name pill' 'photo comp pill';
     gap: 2px var(--gap-sm);
     padding: var(--gap-sm) var(--gap-md);
     background: var(--color-surface-2);
@@ -240,6 +274,26 @@ watch(
 .scp__candidate:hover {
     border-color: var(--color-border-focus);
     background: var(--color-surface-3);
+}
+.scp__candidate-photo {
+    grid-area: photo;
+    align-self: center;
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-3);
+    overflow: hidden;
+}
+.scp__candidate-photo img {
+    width: 30px;
+    height: 30px;
+    object-fit: contain;
+}
+.scp__candidate-glyph {
+    font-size: 16px;
+    color: var(--color-text-secondary);
 }
 .scp__candidate-device {
     grid-area: name;

@@ -25,7 +25,8 @@
     min-width: 0;
 }
 .dp-header__title {
-    font-size: var(--type-title);
+    /* Subheading step: the heading step (42px) is too large for a page title. */
+    font-size: var(--type-subheading);
     font-weight: var(--font-bold);
     color: var(--color-text-primary);
     line-height: 1.1;
@@ -40,7 +41,7 @@
     flex-wrap: wrap;
     gap: 13px;
     margin-top: var(--space-0-5);
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     color: var(--color-text-tertiary);
 }
 .dp-header__center {

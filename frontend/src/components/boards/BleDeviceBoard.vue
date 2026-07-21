@@ -131,7 +131,7 @@
 
 <script setup lang="ts">
 import {computed, ref} from 'vue';
-import {getBThomeBinaryLabels} from '@/config/bthome';
+import {getBThomeBinaryStateWords} from '@/config/bthome-presentation';
 import {
     formatBTHomeChannelLabel,
     formatBTHomeEventName,
@@ -345,10 +345,10 @@ function sensorDisplay(entity: entity_t): string {
     return String(val);
 }
 
+// Binary state words are presentation, keyed on the backend-sent objName.
 function formatBTHomeBinaryValue(objName: string, value: boolean): string {
-    const labels = getBThomeBinaryLabels(objName);
-    const label = value ? labels.on : labels.off;
-    return label.charAt(0).toUpperCase() + label.slice(1).toLowerCase();
+    const words = getBThomeBinaryStateWords(objName);
+    return value ? words.on : words.off;
 }
 
 function sensorLastUpdated(entity: entity_t): string {

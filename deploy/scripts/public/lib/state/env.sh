@@ -7,7 +7,12 @@ load_state_env() {
         source "$STATE_DIR/.env"
         export POSTGRES_PASSWORD ZITADEL_POSTGRES_PASSWORD ZITADEL_DB_USER_PASSWORD
         export ZITADEL_ADMIN_PASSWORD ZITADEL_MASTERKEY
-        export FM_SECRET_ENCRYPTION_KEY FM_SECRET_KDF_SALT JWT_SECRET
+        export FM_SECRET_ENCRYPTION_KEY FM_SECRET_KDF_SALT
+        export FM_SECRET_ENCRYPTION_KEY_ID FM_SECRET_ENCRYPTION_KEY_PREVIOUS
+        export FM_SECRET_ENCRYPTION_KEY_PREVIOUS_ID
+        export FM_DEVICE_INGRESS_TOKEN_PEPPER FM_NOTIFICATION_RECEIPT_SIGNING_SECRET
+        export JWT_SECRET
+        export FM_JWT_KID_CURRENT FM_JWT_SECRET_PREVIOUS FM_JWT_KID_PREVIOUS
         export FM_ADMIN_PASSWORD FM_PLATFORM_ADMIN_PASSWORD
         export REDIS_ADMIN_PASSWORD REDIS_FM_PASSWORD REDIS_ZITADEL_PASSWORD
     fi
@@ -22,7 +27,12 @@ save_env() {
         source "$env_file"
         export POSTGRES_PASSWORD ZITADEL_POSTGRES_PASSWORD ZITADEL_DB_USER_PASSWORD
         export ZITADEL_ADMIN_PASSWORD ZITADEL_MASTERKEY
-        export FM_SECRET_ENCRYPTION_KEY FM_SECRET_KDF_SALT JWT_SECRET
+        export FM_SECRET_ENCRYPTION_KEY FM_SECRET_KDF_SALT
+        export FM_SECRET_ENCRYPTION_KEY_ID FM_SECRET_ENCRYPTION_KEY_PREVIOUS
+        export FM_SECRET_ENCRYPTION_KEY_PREVIOUS_ID
+        export FM_DEVICE_INGRESS_TOKEN_PEPPER FM_NOTIFICATION_RECEIPT_SIGNING_SECRET
+        export JWT_SECRET
+        export FM_JWT_KID_CURRENT FM_JWT_SECRET_PREVIOUS FM_JWT_KID_PREVIOUS
         export FM_ADMIN_PASSWORD FM_PLATFORM_ADMIN_PASSWORD
 
         # Persist any secret the prior file lacked. Catches both legacy
@@ -32,9 +42,9 @@ save_env() {
         local backfill_lines=()
         _backfill_random() {
             local name="$1" bytes="${2:-48}"
-            if [ -z "${!name:-}" ]; then
-                local val
-                val=$(_random_passwd "$bytes")
+            if [ -z "$(_state_env_value "$name")" ]; then
+                local val="${!name:-}"
+                [ -n "$val" ] || val=$(_random_passwd "$bytes")
                 printf -v "$name" '%s' "$val"
                 export "${name?}"
                 backfill_lines+=("${name}=${val}")
@@ -97,21 +107,24 @@ save_env() {
             backfilled+=("ZITADEL_ADMIN_PASSWORD")
         fi
         _backfill_random ZITADEL_MASTERKEY 32
-        local state_fm_secret state_jwt_secret
+        local state_fm_secret state_jwt_secret state_fm_key_id
         state_fm_secret="$(_state_env_value FM_SECRET_ENCRYPTION_KEY)"
         state_jwt_secret="$(_state_env_value JWT_SECRET)"
+        state_fm_key_id="$(_state_env_value FM_SECRET_ENCRYPTION_KEY_ID)"
         if [ -z "$state_fm_secret" ] && [ -n "$state_jwt_secret" ]; then
-            FM_SECRET_ENCRYPTION_KEY="$state_jwt_secret"
-            export FM_SECRET_ENCRYPTION_KEY
+            migrate_legacy_secret_encryption_key \
+                "$state_jwt_secret" "${state_fm_key_id:-primary}" || return 1
             backfill_lines+=("FM_SECRET_ENCRYPTION_KEY=${FM_SECRET_ENCRYPTION_KEY}")
-            backfilled+=("FM_SECRET_ENCRYPTION_KEY")
-        elif ! preserve_legacy_secret_encryption_key; then
+            backfill_lines+=("FM_SECRET_ENCRYPTION_KEY_ID=${FM_SECRET_ENCRYPTION_KEY_ID}")
+            backfill_lines+=("FM_SECRET_ENCRYPTION_KEY_PREVIOUS=${FM_SECRET_ENCRYPTION_KEY_PREVIOUS}")
+            backfill_lines+=("FM_SECRET_ENCRYPTION_KEY_PREVIOUS_ID=${FM_SECRET_ENCRYPTION_KEY_PREVIOUS_ID}")
+            backfilled+=("FM_SECRET_ENCRYPTION_KEY" "FM_SECRET_ENCRYPTION_KEY_PREVIOUS")
+        elif [ -z "${FM_SECRET_ENCRYPTION_KEY:-}" ]; then
             _backfill_random FM_SECRET_ENCRYPTION_KEY 64
-        else
-            backfill_lines+=("FM_SECRET_ENCRYPTION_KEY=${FM_SECRET_ENCRYPTION_KEY}")
-            backfilled+=("FM_SECRET_ENCRYPTION_KEY")
         fi
         _backfill_random FM_SECRET_KDF_SALT 32
+        _backfill_random FM_DEVICE_INGRESS_TOKEN_PEPPER 64
+        _backfill_random FM_NOTIFICATION_RECEIPT_SIGNING_SECRET 64
         _backfill_random JWT_SECRET 64
         if [ -z "${FM_ADMIN_PASSWORD:-}" ]; then
             FM_ADMIN_PASSWORD="$(_random_zitadel_admin)"
@@ -152,7 +165,15 @@ ZITADEL_ADMIN_PASSWORD=${ZITADEL_ADMIN_PASSWORD}
 ZITADEL_MASTERKEY=${ZITADEL_MASTERKEY}
 FM_SECRET_ENCRYPTION_KEY=${FM_SECRET_ENCRYPTION_KEY}
 FM_SECRET_KDF_SALT=${FM_SECRET_KDF_SALT}
+FM_SECRET_ENCRYPTION_KEY_ID=${FM_SECRET_ENCRYPTION_KEY_ID:-primary}
+FM_SECRET_ENCRYPTION_KEY_PREVIOUS=${FM_SECRET_ENCRYPTION_KEY_PREVIOUS:-}
+FM_SECRET_ENCRYPTION_KEY_PREVIOUS_ID=${FM_SECRET_ENCRYPTION_KEY_PREVIOUS_ID:-previous}
+FM_DEVICE_INGRESS_TOKEN_PEPPER=${FM_DEVICE_INGRESS_TOKEN_PEPPER}
+FM_NOTIFICATION_RECEIPT_SIGNING_SECRET=${FM_NOTIFICATION_RECEIPT_SIGNING_SECRET}
 JWT_SECRET=${JWT_SECRET}
+FM_JWT_KID_CURRENT=${FM_JWT_KID_CURRENT:-}
+FM_JWT_SECRET_PREVIOUS=${FM_JWT_SECRET_PREVIOUS:-}
+FM_JWT_KID_PREVIOUS=${FM_JWT_KID_PREVIOUS:-}
 FM_ADMIN_PASSWORD=${FM_ADMIN_PASSWORD}
 FM_PLATFORM_ADMIN_PASSWORD=${FM_PLATFORM_ADMIN_PASSWORD}
 REDIS_ADMIN_PASSWORD=${REDIS_ADMIN_PASSWORD}
@@ -197,6 +218,7 @@ Server-side internals (rotate via deploy-public.sh rotate-secrets)
   ZITADEL_MASTERKEY:        ${ZITADEL_MASTERKEY}
   FM_SECRET_ENCRYPTION_KEY: ${FM_SECRET_ENCRYPTION_KEY}
   FM_SECRET_KDF_SALT:       ${FM_SECRET_KDF_SALT}
+  FM_DEVICE_INGRESS_TOKEN_PEPPER: ${FM_DEVICE_INGRESS_TOKEN_PEPPER}
   JWT_SECRET:               ${JWT_SECRET}
 
 Retrieve again later:

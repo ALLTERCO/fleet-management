@@ -202,12 +202,18 @@ export function isDeviceOrgKnown(shellyID: string): boolean {
 // never blocked; failures are logged, not thrown.
 const backgroundActions: ChildReconcileActions = {
     reconcile: (gatewayExternalId) =>
-        void reconcileGatewayChildren(gatewayExternalId).catch((err) =>
-            logger.warn(
-                'BLU auto-promote failed for %s: %s',
-                gatewayExternalId,
-                err
-            )
+        reconcileGatewayChildren(gatewayExternalId).then(
+            () => true,
+            (err) => {
+                // Report the failure so the device keeps its prior state and
+                // retries on the next persist instead of losing the child.
+                logger.warn(
+                    'BLU auto-promote failed for %s: %s',
+                    gatewayExternalId,
+                    err
+                );
+                return false;
+            }
         ),
     demote: (gatewayExternalId, componentKey) =>
         void demoteRemovedChild(gatewayExternalId, componentKey).catch((err) =>

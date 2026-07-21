@@ -51,6 +51,8 @@ function isDeviceEventEntry(value: unknown): value is DeviceEventEntry {
     if (typeof value !== 'object' || value === null) return false;
     const row = value as Partial<DeviceEventEntry>;
     return (
+        typeof row.deviceId === 'number' &&
+        Number.isInteger(row.deviceId) &&
         typeof row.shellyId === 'string' &&
         typeof row.component === 'string' &&
         typeof row.field === 'string' &&

@@ -15,7 +15,7 @@ import {
     WAITING_ROOM_REFRESH_MS
 } from '@/constants';
 import {formatMac} from '@/helpers/device';
-import {toastRpcError} from '@/helpers/domainErrors';
+import {domainErrorKind, toastRpcError} from '@/helpers/domainErrors';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
 import {useToastStore} from '@/stores/toast';
@@ -114,7 +114,8 @@ export function useWaitingRoomList(mode: WaitingRoomMode) {
         data: devices,
         loading,
         error,
-        refresh
+        refresh,
+        invalidate
     } = useWsRpc<Record<string, PendingDevice>>(RPC_METHOD[mode]);
 
     // ── Local UI state ─────────────────────────────────────────────────
@@ -401,6 +402,8 @@ export function useWaitingRoomList(mode: WaitingRoomMode) {
     function removeLocalEntries(ids: string[]) {
         if (!devices.value) return;
         devices.value = removeWaitingRoomEntries(devices.value, ids).devices;
+        // A poll snapshotted before this removal must not resurrect the rows.
+        invalidate();
     }
 
     // Device data is read from a per-call snapshot (rows are already gone), so
@@ -461,6 +464,8 @@ export function useWaitingRoomList(mode: WaitingRoomMode) {
             if (snap[id]) restored[id] = snap[id];
         }
         devices.value = restored;
+        // A poll snapshotted before this restore must not drop the rows again.
+        invalidate();
     }
 
     // Optimistic accept: drop the rows (and badge) now, send in the background,
@@ -594,8 +599,10 @@ export function useWaitingRoomList(mode: WaitingRoomMode) {
     ): Promise<void> {
         for (const id of ingressIds) {
             try {
+                // Send the full prefixed entryId; the backend
+                // parseWaitingRoomEntryId strips deviceIngress: to route it.
                 await approveDeviceIngressEntry(
-                    id.slice(DEVICE_INGRESS_PREFIX.length),
+                    id,
                     lookup[id]?.profileId ?? undefined
                 );
                 outcome.success.push(id);
@@ -761,6 +768,18 @@ export function useWaitingRoomList(mode: WaitingRoomMode) {
                     await finalizeBulkJob(status);
                 }
             } catch (e) {
+                // The job record is gone for good (server restart or Redis
+                // eviction). Retrying cannot bring it back; the accepts
+                // themselves are unaffected, so reconcile from the list.
+                if (domainErrorKind(e) === 'ResourceNotFound') {
+                    toast.info(
+                        'The server lost track of the bulk accept progress. ' +
+                            'Devices already accepted stayed accepted — ' +
+                            'refreshing the list.'
+                    );
+                    abandonBulkJob();
+                    return;
+                }
                 // Transient poll failures: retry before giving up.
                 if (failures + 1 < WAITING_ROOM_BULK_POLL_MAX_FAILURES) {
                     pollBulkJob(jobId, failures + 1);
@@ -768,14 +787,20 @@ export function useWaitingRoomList(mode: WaitingRoomMode) {
                 }
                 // Gave up: restore rows, let refresh reconcile.
                 toastRpcError(toast, e, 'Lost track of the bulk accept job');
-                restoreEntries(bulkSnapshot, Object.keys(bulkSnapshot));
-                bulkSnapshot = {};
-                bulkKeyByShelly = new Map();
-                bulkBusy.value = false;
-                bulkJob.value = null;
-                refresh();
+                abandonBulkJob();
             }
         }, WAITING_ROOM_BULK_POLL_MS);
+    }
+
+    // Progress tracking is unrecoverable: restore rows and reconcile via
+    // refresh. Shared by the not-found and gave-up paths above.
+    function abandonBulkJob(): void {
+        restoreEntries(bulkSnapshot, Object.keys(bulkSnapshot));
+        bulkSnapshot = {};
+        bulkKeyByShelly = new Map();
+        bulkBusy.value = false;
+        bulkJob.value = null;
+        refresh();
     }
 
     // Job finished (done / canceled / error): restore the rows that weren't

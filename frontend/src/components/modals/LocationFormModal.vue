@@ -98,7 +98,7 @@
                     @remove-tag="removeTag"
                     @commit-tag="commitTag"
                     @tag-backspace="onTagBackspace"
-                    @clear-tag-error="tagError = ''"
+                    @clear-tag-error="clearTagError"
                 />
             </div>
         </template>
@@ -133,27 +133,19 @@ import Button from '@/components/core/Button.vue';
 import Input from '@/components/core/Input.vue';
 import LocationParentPicker from '@/components/core/LocationParentPicker.vue';
 import Modal from '@/components/modals/Modal.vue';
+import {useLocationDetails} from '@/composables/useLocationDetails';
 import {
     type GeoPrecision,
     type GeoState,
     nameContentErrorMessage,
-    notesErrorMessage,
-    type TagRejectionReason,
-    tagRejectionReason
+    notesErrorMessage
 } from '@/helpers/location-drawer-steps';
 import {inheritKindFieldsFromParent} from '@/helpers/location-inheritance';
 import {isPlanFriendlyKind} from '@/helpers/location-kinds';
 import {NAME_MAX_LENGTH} from '@/helpers/validation-limits';
-import {
-    type LocationFieldDescriptor,
-    type LocationFieldGroup,
-    type LocationKindDescriptor,
-    useLocationsStore
-} from '@/stores/locations';
+import {type LocationKindDescriptor, useLocationsStore} from '@/stores/locations';
 import LocationEntryDrawerStep2 from './LocationEntryDrawerStep2.vue';
-import LocationEntryDrawerStep3, {
-    type DetailGroup
-} from './LocationEntryDrawerStep3.vue';
+import LocationEntryDrawerStep3 from './LocationEntryDrawerStep3.vue';
 
 // Tier buckets for the <optgroup> grouping. Membership only — labels and
 // order still come from the backend descriptors.
@@ -166,36 +158,6 @@ const GEO_KINDS = new Set<LocationKind>([
     'neighborhood'
 ]);
 const LOGICAL_KINDS = new Set<LocationKind>(['zone']);
-
-const GROUP_LABELS: Record<LocationFieldGroup, string> = {
-    identity: 'Identity',
-    physical: 'Physical',
-    contact: 'Contact',
-    hours: 'Hours',
-    operational: 'Operational',
-    compliance: 'Compliance',
-    environmental: 'Environmental',
-    custom: 'Other'
-};
-const GROUP_ICONS: Record<LocationFieldGroup, string> = {
-    identity: 'fas fa-id-card',
-    physical: 'fas fa-cube',
-    contact: 'fas fa-address-book',
-    hours: 'fas fa-clock',
-    operational: 'fas fa-gears',
-    compliance: 'fas fa-shield-halved',
-    environmental: 'fas fa-leaf',
-    custom: 'fas fa-tags'
-};
-
-// Fields with dedicated UI (map section) — skipped by the generic detail loop.
-const STEP2_FIELD_KEYS = new Set(['address', 'geo']);
-const STEP3_BESPOKE_FIELD_WIDGETS = new Set([
-    'address',
-    'geo',
-    'floorPlan',
-    'operatingHours'
-]);
 
 const visible = defineModel<boolean>({required: true});
 
@@ -228,9 +190,6 @@ const precision = ref<GeoPrecision>('geocoded');
 const what3wordsError = ref('');
 const manualError = ref('');
 
-const tags = ref<string[]>([]);
-const tagDraft = ref('');
-const tagError = ref('');
 const notes = ref('');
 const notesError = computed(() => notesErrorMessage(notes.value));
 
@@ -267,6 +226,18 @@ function pickKinds(
 const currentDescriptor = computed<LocationKindDescriptor | null>(
     () => kinds.value.find((k) => k.kind === formKind.value) ?? null
 );
+const {
+    detailGroups,
+    hasOperatingHoursField,
+    tags,
+    tagDraft,
+    tagError,
+    commitTag,
+    removeTag,
+    onTagBackspace,
+    clearTagError,
+    resetTags
+} = useLocationDetails(() => currentDescriptor.value?.fields);
 
 // Parent rules come straight from the descriptor — no hardcoded kind sets.
 const parentRequired = computed(() => currentDescriptor.value?.allowRoot === false);
@@ -298,36 +269,6 @@ function labelForKind(kind: LocationKind): string {
 }
 
 const canShowFloorPlan = computed(() => isPlanFriendlyKind(formKind.value));
-const hasOperatingHoursField = computed(
-    () =>
-        currentDescriptor.value?.fields.some(
-            (f) => f.widget === 'operatingHours'
-        ) ?? false
-);
-
-const detailGroups = computed<DetailGroup[]>(() => {
-    const descriptor = currentDescriptor.value;
-    if (!descriptor) return [];
-    const buckets = new Map<LocationFieldGroup, LocationFieldDescriptor[]>();
-    for (const f of descriptor.fields) {
-        if (STEP2_FIELD_KEYS.has(f.widget)) continue;
-        if (STEP3_BESPOKE_FIELD_WIDGETS.has(f.widget)) continue;
-        const list = buckets.get(f.group) ?? [];
-        list.push(f);
-        buckets.set(f.group, list);
-    }
-    const out: DetailGroup[] = [];
-    for (const [key, fields] of buckets) {
-        if (fields.length === 0) continue;
-        out.push({
-            key,
-            label: GROUP_LABELS[key] ?? key,
-            icon: GROUP_ICONS[key] ?? 'fas fa-circle',
-            fields
-        });
-    }
-    return out;
-});
 
 // ── Validation — pure Answer functions; Do functions apply them to refs ──
 
@@ -384,50 +325,6 @@ function close(): void {
 }
 
 
-// ── Tag chip input ──
-
-function commitTag(): void {
-    const t = tagDraft.value.trim().toLowerCase();
-    if (!t) return;
-    const reason = tagRejectionReason({candidate: t, existing: tags.value});
-    if (reason) {
-        tagError.value = tagRejectionMessage(reason);
-        return;
-    }
-    tags.value = [...tags.value, t];
-    tagDraft.value = '';
-    tagError.value = '';
-}
-
-function tagRejectionMessage(reason: TagRejectionReason): string {
-    switch (reason) {
-        case 'empty':
-            return 'Tags cannot be empty.';
-        case 'length':
-            return 'Tag is too long.';
-        case 'format':
-            return 'Tags must start with a letter or number; only letters, numbers, dot, dash, and underscore are allowed.';
-        case 'duplicate':
-            return 'That tag is already in the list.';
-        case 'count':
-            return 'You have reached the maximum number of tags.';
-    }
-}
-
-function removeTag(i: number): void {
-    const next = [...tags.value];
-    next.splice(i, 1);
-    tags.value = next;
-}
-
-function onTagBackspace(): void {
-    if (tagDraft.value.length === 0 && tags.value.length > 0) {
-        const next = [...tags.value];
-        next.pop();
-        tags.value = next;
-    }
-}
-
 // ── Open / reset ──
 
 // Do — seed kindFields for a new child from its parent's inheritable fields.
@@ -456,9 +353,9 @@ function resetForm(): void {
     what3wordsError.value = '';
     manualError.value = '';
     serverError.value = null;
-    tagError.value = '';
-    tags.value = [];
-    tagDraft.value = '';
+    resetTags(
+        (t?.kindFields as Record<string, unknown> | undefined)?.tags
+    );
     notes.value = '';
 
     const priorGeo = (t?.kindFields as Record<string, unknown> | undefined)
@@ -476,11 +373,6 @@ function resetForm(): void {
     const priorNotes = (t?.kindFields as Record<string, unknown> | undefined)
         ?.notes;
     if (typeof priorNotes === 'string') notes.value = priorNotes;
-    const priorTags = (t?.kindFields as Record<string, unknown> | undefined)
-        ?.tags;
-    if (Array.isArray(priorTags)) {
-        tags.value = priorTags.filter((x): x is string => typeof x === 'string');
-    }
 }
 
 // Inheritance + detail groups need the kind descriptors. Reset immediately

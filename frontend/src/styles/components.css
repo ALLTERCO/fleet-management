@@ -7,19 +7,8 @@
    Avatars, Timeline, Command Palette, Date Picker, Fleet Card, Print
    ========================================================================== */
 
-/* ── Accessibility: visible focus indicators ── */
-:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: 2px;
-}
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-    outline: 2px solid var(--color-border-focus);
-    outline-offset: 2px;
-}
+/* ── Accessibility: the focus ring is defined once in design-tokens.css
+   section 13 (box-shadow ring, follows element shape). ── */
 
 /* ── Shared input primitive — any component can adopt `core-input` and
    inherit the same border, focus ring, touch target. Must live outside
@@ -223,7 +212,7 @@ button:active {
 .btn-md {
     height: 36px;
     padding: 0 18px;
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     border-radius: var(--radius-md);
 }
 .btn-lg {
@@ -389,7 +378,7 @@ button:active {
     padding: 9px 14px;
     color: var(--color-text-primary);
     font-family: inherit;
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     outline: none;
     transition: border-color var(--duration-fast);
     width: 100%;
@@ -447,7 +436,7 @@ textarea:focus {
     gap: var(--space-2);
     cursor: pointer;
     padding: var(--space-2) 0;
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     color: var(--color-text-secondary);
 }
 .form-check input[type="checkbox"],
@@ -494,7 +483,7 @@ textarea:focus {
     border-radius: var(--radius-md);
     color: var(--color-text-primary);
     padding: var(--space-1) var(--space-2);
-    font-size: var(--text-sm);
+    font-size: var(--type-body);
     font-family: inherit;
     min-height: var(--touch-target-min);
     transition: border-color var(--duration-fast);
@@ -539,7 +528,7 @@ textarea:focus {
     min-width: 0;
 }
 .toast-title {
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     font-weight: 700;
     color: var(--color-text-primary);
     margin-bottom: 2px;
@@ -739,7 +728,7 @@ textarea:focus {
     border-radius: 14px;
     padding: 9px var(--space-4) 9px 36px;
     color: var(--color-text-primary);
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     outline: none;
     transition: border-color var(--duration-fast);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23B8C5D4' stroke-width='2.5'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
@@ -770,7 +759,7 @@ textarea:focus {
     border-radius: 14px;
     padding: 9px var(--space-4) 9px 36px;
     color: var(--color-text-primary);
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     outline: none;
     transition: border-color var(--duration-fast);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23B8C5D4' stroke-width='2.5'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E");
@@ -829,7 +818,7 @@ textarea:focus {
 }
 .set-label strong {
     display: block;
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     font-weight: 600;
     color: var(--color-text-primary);
 }
@@ -1014,7 +1003,7 @@ textarea:focus {
     min-width: 0;
 }
 .auto-name {
-    font-size: var(--text-sm);
+    font-size: var(--type-body);
     font-weight: 800;
     letter-spacing: -0.3px;
     color: var(--color-text-primary);
@@ -1116,11 +1105,11 @@ textarea:focus {
 .dc-selected {
     outline: var(--selection-ring-width) solid rgb(var(--selection-ring-rgb));
     outline-offset: var(--selection-ring-offset);
-    filter: drop-shadow(0 0 5px rgba(var(--selection-ring-rgb), 0.5));
+    filter: drop-shadow(var(--selection-glow));
 }
 .is-selected:hover,
 .dc-selected:hover {
-    filter: drop-shadow(0 0 8px rgba(var(--selection-ring-rgb), 0.65));
+    filter: drop-shadow(var(--selection-glow-hover));
 }
 .dc-topbar {
     height: 1.5px;
@@ -1128,11 +1117,25 @@ textarea:focus {
 .dc-head {
     display: flex;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: space-between;
+    gap: var(--space-1-5);
     padding: 8px 10px 0;
 }
+/* Head zones — connectivity left, live state right; empty right renders nothing. */
+.dc-head-left {
+    display: flex;
+    align-items: center;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.dc-head-state {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    min-width: 0;
+}
 .dc-type {
-    font-size: 7.5px;
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: normal;
     text-transform: none;
@@ -1173,7 +1176,7 @@ textarea:focus {
     border-radius: var(--radius-2xl);
     background: rgba(232, 64, 87, 0.12);
     border: 1px solid rgba(232, 64, 87, 0.35);
-    font-size: 7.5px;
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: 0.04em;
     color: var(--color-status-off);
@@ -1185,6 +1188,45 @@ textarea:focus {
     background: var(--color-status-off);
     flex-shrink: 0;
 }
+/* BLU/BTHome state pill — the pre-existing sensor-card visual, shared so
+   fleet cards can render the same state in the right head zone. */
+.bthome-state {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    max-width: 100%;
+    overflow: hidden;
+    padding: 0 var(--space-2);
+    border-radius: 999px;
+    background: var(--color-surface-2);
+    color: var(--color-text-secondary);
+    font-size: var(--type-caption);
+    font-weight: 700;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.bthome-state--open,
+.bthome-state--event {
+    background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+    color: var(--color-warning-text);
+}
+.bthome-state--closed {
+    background: color-mix(in srgb, var(--color-success) 14%, transparent);
+    color: var(--color-success-text);
+}
+.bthome-state--offline {
+    background: rgba(232, 64, 87, 0.12);
+    color: var(--color-status-off);
+}
+/* Alarm-active (smoke/flood) — same danger family as the offline pill. */
+.bthome-state--alarm {
+    background: rgba(var(--color-danger-rgb), 0.12);
+    color: rgba(var(--color-danger-rgb), 0.95);
+}
+/* Muted — the report outlived the model's expected cadence. */
+.bthome-state--stale {
+    opacity: 0.55;
+}
 .dc-img {
     display: flex;
     justify-content: center;
@@ -1193,6 +1235,10 @@ textarea:focus {
     flex: 1;
     min-height: 0;
     overflow: hidden;
+}
+/* Glyph logos center; product photos stay bottom-anchored. */
+.dc-img--glyph {
+    align-items: center;
 }
 .dc-img img {
     max-width: 100%;
@@ -1221,7 +1267,7 @@ textarea:focus {
     text-align: center;
 }
 .dc-name-txt {
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: -0.3px;
     color: var(--color-text-primary);
@@ -1238,57 +1284,57 @@ textarea:focus {
 .dc-accent-teal .dc-topbar {
     background: linear-gradient(
         90deg,
-        #08b5d3cc 0%,
-        #08b5d322 50%,
+        rgba(var(--ar-flood), 0.8) 0%,
+        rgba(var(--ar-flood), 0.13) 50%,
         transparent 100%
     );
 }
 .dc-accent-teal .dc-type {
-    color: #08b5d3bb;
+    color: rgba(var(--ar-flood), 0.73);
 }
 .dc-accent-amber .dc-topbar {
     background: linear-gradient(
         90deg,
-        #e89d22cc 0%,
-        #e89d2222 50%,
+        rgba(var(--ar-energy), 0.8) 0%,
+        rgba(var(--ar-energy), 0.13) 50%,
         transparent 100%
     );
 }
 .dc-accent-amber .dc-type {
-    color: #e89d22bb;
+    color: rgba(var(--ar-energy), 0.73);
 }
 .dc-accent-blue .dc-topbar {
     background: linear-gradient(
         90deg,
-        #4495d1cc 0%,
-        #4495d122 50%,
+        rgba(var(--ar-switch), 0.8) 0%,
+        rgba(var(--ar-switch), 0.13) 50%,
         transparent 100%
     );
 }
 .dc-accent-blue .dc-type {
-    color: #4495d1bb;
+    color: rgba(var(--ar-switch), 0.73);
 }
 .dc-accent-orange .dc-topbar {
     background: linear-gradient(
         90deg,
-        #e87420cc 0%,
-        #e8742022 50%,
+        rgba(var(--ar-motion), 0.8) 0%,
+        rgba(var(--ar-motion), 0.13) 50%,
         transparent 100%
     );
 }
 .dc-accent-orange .dc-type {
-    color: #e87420bb;
+    color: rgba(var(--ar-motion), 0.73);
 }
 .dc-accent-purple .dc-topbar {
     background: linear-gradient(
         90deg,
-        #a24ff5cc 0%,
-        #a24ff522 50%,
+        rgba(var(--ar-button), 0.8) 0%,
+        rgba(var(--ar-button), 0.13) 50%,
         transparent 100%
     );
 }
 .dc-accent-purple .dc-type {
-    color: #a24ff5bb;
+    color: rgba(var(--ar-button), 0.73);
 }
 .dc-accent-pink .dc-topbar {
     background: linear-gradient(
@@ -1304,46 +1350,46 @@ textarea:focus {
 .dc-accent-red .dc-topbar {
     background: linear-gradient(
         90deg,
-        #c0293dcc 0%,
-        #c0293d22 50%,
+        rgba(var(--color-status-off-rgb), 0.8) 0%,
+        rgba(var(--color-status-off-rgb), 0.13) 50%,
         transparent 100%
     );
 }
 .dc-accent-red .dc-type {
-    color: #c0293dbb;
+    color: rgba(var(--color-status-off-rgb), 0.73);
 }
 .dc-accent-green .dc-topbar {
     background: linear-gradient(
         90deg,
-        #12b580cc 0%,
-        #12b58022 50%,
+        rgba(var(--accent-emerald), 0.8) 0%,
+        rgba(var(--accent-emerald), 0.13) 50%,
         transparent 100%
     );
 }
 .dc-accent-green .dc-type {
-    color: #12b580bb;
+    color: rgba(var(--accent-emerald), 0.73);
 }
 .dc-accent-sleep .dc-topbar {
     background: linear-gradient(
         90deg,
-        rgba(139, 92, 246, 0.7) 0%,
-        rgba(139, 92, 246, 0.1) 50%,
+        rgba(var(--accent-violet), 0.7) 0%,
+        rgba(var(--accent-violet), 0.1) 50%,
         transparent 100%
     );
 }
 .dc-accent-sleep .dc-type {
-    color: rgba(139, 92, 246, 0.75);
+    color: rgba(var(--accent-violet), 0.75);
 }
 .dc-accent-off .dc-topbar {
     background: linear-gradient(
         90deg,
-        rgba(232, 64, 87, 0.6) 0%,
-        rgba(232, 64, 87, 0.08) 50%,
+        rgba(var(--ar-smoke), 0.6) 0%,
+        rgba(var(--ar-smoke), 0.08) 50%,
         transparent 100%
     );
 }
 .dc-accent-off .dc-type {
-    color: rgba(232, 64, 87, 0.6);
+    color: rgba(var(--ar-smoke), 0.6);
 }
 .dc-section {
     display: flex;
@@ -1427,7 +1473,7 @@ textarea:focus {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
-    font-size: var(--text-2xs);
+    font-size: var(--type-body);
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: none;
@@ -1441,14 +1487,14 @@ textarea:focus {
     background: var(--color-primary);
 }
 .ph h1 {
-    font-size: var(--text-2xl);
+    font-size: var(--type-subheading);
     font-weight: 800;
     letter-spacing: -1.2px;
     margin-bottom: 6px;
     color: var(--color-text-primary);
 }
 .ph p {
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     color: var(--color-text-tertiary);
     line-height: 1.65;
     max-width: 580px;
@@ -1467,12 +1513,12 @@ textarea:focus {
 }
 .sec-n {
     font-variant-numeric: tabular-nums;
-    font-size: var(--text-2xs);
+    font-size: var(--type-body);
     color: var(--color-text-disabled);
     letter-spacing: normal;
 }
 .sec-t {
-    font-size: var(--text-sm);
+    font-size: var(--type-body);
     font-weight: 800;
     letter-spacing: -0.3px;
     color: var(--color-text-primary);
@@ -1498,13 +1544,13 @@ textarea:focus {
     opacity: 0.4;
 }
 .empty-state-title {
-    font-size: var(--text-sm);
+    font-size: var(--type-body);
     font-weight: 700;
     color: var(--color-text-secondary);
     margin-bottom: var(--space-2);
 }
 .empty-state-desc {
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     color: var(--color-frost);
     opacity: 0.5;
     max-width: 320px;
@@ -1553,7 +1599,7 @@ textarea:focus {
     background: var(--color-surface-1);
 }
 .modal-hdr h3 {
-    font-size: var(--text-sm);
+    font-size: var(--type-body);
     font-weight: 800;
     letter-spacing: -0.3px;
     color: var(--color-text-primary);
@@ -1575,7 +1621,7 @@ textarea:focus {
 
 /* ── Modal section title ── */
 .modal-section-title {
-    font-size: var(--text-sm);
+    font-size: var(--type-body);
     font-weight: var(--font-semibold);
     color: var(--color-text-primary);
     padding-bottom: var(--space-2);
@@ -1768,7 +1814,7 @@ textarea:focus {
 .table {
     width: 100%;
     border-collapse: collapse;
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
 }
 .table th {
     text-align: left;
@@ -1854,9 +1900,12 @@ textarea:focus {
     gap: var(--space-2);
     padding: 8px 12px;
     border-radius: var(--radius-md);
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     font-weight: 500;
     color: var(--color-text-secondary);
+    /* Menus size to their longest option — labels never wrap mid-word.
+       The floating panel's match-width is a minimum, so it can grow. */
+    white-space: nowrap;
     cursor: pointer;
     transition:
         background var(--duration-fast),
@@ -1912,7 +1961,7 @@ textarea:focus {
     min-width: 0;
 }
 .alert-title {
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     font-weight: 700;
     color: var(--color-text-primary);
     margin-bottom: 2px;
@@ -2077,7 +2126,7 @@ textarea:focus {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     flex-wrap: wrap;
 }
 .breadcrumb-item {
@@ -2927,7 +2976,7 @@ textarea:focus {
         padding: 60px var(--space-3) 80px;
     }
     .ph h1 {
-        font-size: var(--text-xl);
+        font-size: var(--type-subheading);
     }
     .ph p {
         font-size: var(--type-body);
@@ -3045,10 +3094,10 @@ textarea:focus {
         padding: 56px var(--space-2) 60px;
     }
     .ph h1 {
-        font-size: var(--text-lg);
+        font-size: var(--type-subheading);
     }
     .sec-t {
-        font-size: var(--text-sm);
+        font-size: var(--type-body);
     }
     .ec-name {
         font-size: var(--type-body);

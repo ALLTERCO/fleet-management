@@ -3,8 +3,26 @@ import type AbstractDevice from './model/AbstractDevice';
 import type {DeviceProfile} from './model/deviceProfile';
 import type {FleetRole} from './modules/zitadel';
 
+/** Device-specific UI surfaces, derived from what the device announces
+ *  (components/methods). Exception: `wallDisplay` — no advertised RPC marks
+ *  the relay/thermostat mode switch, so it keys off app/model like the
+ *  backend's entity composer already does. */
+export interface DeviceUiCapabilities {
+    /** Device advertises Pill.SetConfig — pin-mode configuration UI */
+    pillPinMode: boolean;
+    /** Device reports a cury:N component in status */
+    cury: boolean;
+    /** LED settings via a device-reported `*_ui` component (plugs_ui, …) */
+    ledSettings: boolean;
+    /** Wall Display (app WallDisplayV2 / model SAWD) — relay↔thermostat mode */
+    wallDisplay: boolean;
+}
+
 export interface DeviceCapabilities {
     backup?: boolean;
+    /** Device advertises the RPCs the FM restore flow sends
+     *  (Sys.RestoreBackup + Shelly.GetDeviceInfo) */
+    restore?: boolean;
     firmwareUpdate?: boolean;
     firmwareCheck?: boolean;
     otaCommit?: boolean;
@@ -19,6 +37,11 @@ export interface DeviceCapabilities {
     serviceResetCounters?: boolean;
     /** Device supports user-created virtual components (Virtual.Add/Delete) */
     virtualComponents?: boolean;
+    /** Addon services the device advertises via ListMethods, as
+     *  sys.device.addon_type values; [] = no slot or none advertised */
+    addons?: string[];
+    /** Device-specific UI feature flags */
+    ui?: DeviceUiCapabilities;
 }
 
 export interface ShellyDeviceExternal {
@@ -134,6 +157,8 @@ export interface user_t {
     credentialId?: string;
     credentialPurpose?: string;
     credentialBoundary?: import('./modules/authz/types').Scope;
+    // Surfaces this token is scoped to (e.g. 'mcp'). Empty = unrestricted.
+    credentialAudience?: string[];
     // Pre-computed V2 shape. Set by short-lived single-use scoped tokens whose
     // grant is one fixed action — skips the resolver DB lookup.
     effectiveShape?: import('./modules/authz/types').EffectiveShape;
@@ -247,6 +272,7 @@ export namespace ShellyEvent {
         params: {
             shellyID: string;
             status: any;
+            partial?: boolean;
         };
     }
     export interface Settings extends Basic {
@@ -315,6 +341,12 @@ export namespace EntityEvent {
 
     export interface Added extends Basic {
         method: 'Entity.Added';
+        // Carry the full entity so the client never round-trips Entity.Get per
+        // add — a snapshot/seed of N entities is 0 extra RPCs, not N.
+        params: {
+            entityId: string;
+            entity: entity_t;
+        };
     }
 
     export interface Removed extends Basic {
@@ -335,14 +367,6 @@ export namespace EntityEvent {
                 | 'rotate_left'
                 | 'rotate_right'
                 | 'hold_press';
-        };
-    }
-
-    export interface StatusChange extends Basic {
-        method: 'Entity.StatusChange';
-        params: {
-            entityId: string;
-            status: any;
         };
     }
 }
@@ -623,6 +647,12 @@ export interface illuminance_entity extends entity {
     type: 'illuminance';
 }
 
+// Binary presence sensor (e.g. Wall Display occupancy:N). Live state is
+// status.value (bool); config carries wake_screen.
+export interface occupancy_entity extends entity {
+    type: 'occupancy';
+}
+
 export interface thermostat_entity extends entity {
     type: 'thermostat';
 }
@@ -664,6 +694,8 @@ export interface service_entity extends entity {
     properties: entity['properties'] & {
         /** Service type from jwt.xt1.svc0.type (e.g. "linkedgo-st-802-hvac") */
         serviceType: string;
+        /** Backend-resolved card category — frontends must not regex serviceType */
+        category: 'hvac' | 'valve' | 'ev_charger' | 'irrigation' | 'generic';
         /** Service component key (e.g. "service:0") */
         serviceKey: string;
         /** Product name from jwt.n (e.g. "Youth Smart Thermostat ST802") */
@@ -730,7 +762,18 @@ export interface blutrv_entity extends entity {
 export type BareEntity<T extends string> = entity & {type: T};
 
 export type bm_entity = BareEntity<'bm'>;
-export type cb_entity = BareEntity<'cb'>;
+export interface cb_entity extends entity {
+    type: 'cb';
+    properties: entity['properties'] & {
+        /** Protection thresholds surfaced from CB.GetConfig (volts). */
+        undervoltageLimit?: number;
+        voltageLimit?: number;
+        /** Hysteresis band around the limits; drives the near-limit warning. */
+        voltageThr?: number;
+        /** Pole count (voltmeter components), fixed from the full device. */
+        poles?: number;
+    };
+}
 export type fan_entity = BareEntity<'fan'>;
 export type lnm_entity = BareEntity<'lnm'>;
 export type zigbee_entity = BareEntity<'zigbee'>;
@@ -764,6 +807,7 @@ export type entity_t =
     | smoke_entity
     | devicepower_entity
     | illuminance_entity
+    | occupancy_entity
     | thermostat_entity
     | media_entity
     | ui_entity

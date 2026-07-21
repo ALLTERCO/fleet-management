@@ -17,6 +17,17 @@ function describeFiles(): string[] {
         .map((f) => path.join(TYPES_DIR, f));
 }
 
+/** Lowercased "<namespace>.<method>" ids for the whole surface. */
+export function describeMethodIds(describes: DescribeOutput[]): Set<string> {
+    return new Set(
+        describes.flatMap((d) =>
+            Object.keys(d.methods).map((m) =>
+                `${d.namespace}.${m}`.toLowerCase()
+            )
+        )
+    );
+}
+
 // Sorted by namespace for stable output.
 export async function loadAllDescribes(): Promise<DescribeOutput[]> {
     const byNamespace = new Map<string, DescribeOutput>();

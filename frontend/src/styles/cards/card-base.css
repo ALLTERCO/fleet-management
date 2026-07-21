@@ -213,6 +213,9 @@
 .ec[data-type="illuminance"] {
     --ar: 250, 204, 21;
 }
+.ec[data-type="cb"] {
+    --ar: 120, 144, 170;
+}
 
 /* ── Loading state shimmer ── */
 .ec.is-loading .ec-val {
@@ -530,6 +533,16 @@
     overflow: hidden;
     position: relative;
 }
+/* 2x2 hero body — the value area for hero cards. Same flex:1 clip region as
+   .ec-val so the card name below keeps its reserved space and never moves. */
+.ec-hero-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+}
 /* Flush variant — child controls its own layout entirely */
 .ec-val.ec-val--flush {
     padding: 0;
@@ -557,7 +570,7 @@
     left: auto;
     right: auto;
     bottom: auto;
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: 600;
     color: var(--color-text-tertiary);
     letter-spacing: -0.2px;
@@ -574,7 +587,7 @@
 }
 .ec-sub {
     font-variant-numeric: tabular-nums;
-    font-size: var(--text-2xs);
+    font-size: var(--type-caption);
     color: var(--color-frost);
     opacity: 0.7;
     margin-bottom: var(--space-2);
@@ -635,7 +648,7 @@
     margin: 0 auto;
 }
 .ec-sub--power {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     color: var(--color-text-tertiary);
     margin-top: 2px;
@@ -681,28 +694,7 @@
     -webkit-text-fill-color: rgba(var(--rgb-c), 0.4);
 }
 
-/* ── RGBW CCT brightness percentage with dynamic color glow ── */
-.ec-cct-pct {
-    font-variant-numeric: tabular-nums;
-    font-size: var(--type-heading);
-    font-weight: var(--font-black);
-    letter-spacing: var(--tracking-tight);
-    line-height: 1;
-    background: linear-gradient(
-        180deg,
-        rgba(var(--rgb-c), 1) 20%,
-        rgba(var(--rgb-c), 0.5)
-    );
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    filter: none;
-}
-.ec-cct-pct span {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
-    -webkit-text-fill-color: rgba(var(--rgb-c), 0.4);
-}
+/* .ec-cct-pct lives once, in card-controls.css (RGBW CCT brightness %). */
 
 /* TRV 1×1 hierarchy — target/current values at subheading size,
    labels stay body-sized with tertiary colour (weight + colour do the
@@ -803,13 +795,16 @@
     flex: 0 0 50%;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    /* Even vertical rhythm: equal gaps top->metrics, metrics->toggle,
+       toggle->footer. Stretch to the full row height so space-evenly has room
+       to distribute; the row centers by default, which left no slack. */
+    align-self: stretch;
+    justify-content: space-evenly;
     align-items: center;
-    gap: var(--space-2);
     padding: 0;
 }
 .ec[data-type="switch"].ec-wide .ec-wl .ec-hv {
-    font-size: var(--type-heading);
+    font-size: var(--type-display);
     font-weight: var(--font-black);
     letter-spacing: var(--tracking-tight);
     line-height: 1;
@@ -832,7 +827,7 @@
     font-weight: var(--font-semibold);
 }
 .ec-sub--vol {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     color: var(--color-text-tertiary);
     text-transform: uppercase;
@@ -912,7 +907,7 @@
     background: var(--color-surface-2);
     padding: 2px 0;
     font-variant-numeric: tabular-nums;
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: 700;
     color: var(--color-frost);
     opacity: 0.55;
@@ -945,7 +940,7 @@
 
 /* ── Binary state ── */
 .ec-state {
-    font-size: var(--text-xl);
+    font-size: var(--type-subheading);
     font-weight: 800;
     letter-spacing: -0.3px;
     line-height: 1;
@@ -953,7 +948,8 @@
     animation: state-in 0.4s ease-out;
 }
 .ec-state-lg {
-    font-size: var(--type-body);
+    /* hero state word — 44px pre-collapse, must exceed .ec-state */
+    font-size: var(--type-heading);
     letter-spacing: -2px;
     margin-bottom: var(--space-2);
     text-align: center;
@@ -1074,7 +1070,7 @@
 }
 .ec-wide-sub {
     margin: 2px 0 0;
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     position: static;
 }
 
@@ -1088,7 +1084,7 @@
     border-radius: 8px;
     border: 1px solid var(--color-border-default);
     font-variant-numeric: tabular-nums;
-    font-size: var(--text-2xs);
+    font-size: var(--type-body);
     align-self: center;
     width: auto;
     animation: badge-in 0.35s var(--ease-out-expo) both;
@@ -1120,12 +1116,12 @@
     border-radius: var(--radius-lg);
     border: 1px solid var(--color-border-default);
     font-variant-numeric: tabular-nums;
-    font-size: 10.5px;
+    font-size: var(--type-caption);
     color: var(--color-text-secondary);
     letter-spacing: -0.06em;
 }
 .ec-m-u {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
     margin-left: 2px;
 }
@@ -1310,7 +1306,7 @@
     margin-bottom: 0;
 }
 .ec[data-type="switch"]:not(.ec-wide):not(.ec-hero) .ec-hv {
-    font-size: var(--type-heading);
+    font-size: var(--type-display);
     font-weight: var(--font-black);
     letter-spacing: var(--tracking-tight);
 }
@@ -1357,7 +1353,7 @@
     padding: 0 var(--space-3);
 }
 .ec-em-dual-label {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     text-transform: uppercase;
     letter-spacing: var(--tracking-wide);
@@ -1375,7 +1371,7 @@
     font-variant-numeric: tabular-nums;
 }
 .ec-em-dual-u {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     color: var(--color-text-tertiary);
 }
@@ -1393,19 +1389,19 @@
 .ec-metrics-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: var(--space-2) var(--space-4);
-    padding: var(--space-2) 0;
+    gap: 0 var(--space-6);
+    padding: 0;
     position: relative;
 }
 .ec-metrics-grid .ec-metric {
     justify-content: center;
 }
 .ec-metrics-grid .ec-metric-v {
-    font-size: var(--type-body);
+    font-size: var(--type-subheading);
     font-weight: 700;
 }
 .ec-metrics-grid .ec-metric-u {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
 }
 /* Horizontal faded line */
 .ec-metrics-grid::before {
@@ -1470,7 +1466,7 @@
     letter-spacing: normal;
 }
 .ec-metric-u {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     color: var(--color-text-tertiary);
     text-transform: uppercase;
@@ -1545,7 +1541,7 @@
     font-weight: var(--font-semibold);
 }
 .ec[data-type="dimmer"].ec-wide .ec-sub--power {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     color: var(--color-text-tertiary);
     text-transform: uppercase;
@@ -1620,14 +1616,14 @@
     font-weight: var(--font-semibold);
 }
 .ec[data-type="rgbw"].ec-wide .ec-sub--power {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     color: var(--color-text-tertiary);
     text-transform: uppercase;
     letter-spacing: var(--tracking-wide);
 }
 .ec-clbl {
-    font-size: var(--text-2xs);
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: normal;
     text-transform: none;
@@ -1755,7 +1751,7 @@
     font-weight: var(--font-semibold);
 }
 .ec[data-type="cover"].ec-wide .ec-sub--power {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     color: var(--color-text-tertiary);
     text-transform: uppercase;
@@ -1858,7 +1854,7 @@
     gap: 3px;
 }
 .trv-col-lbl {
-    font-size: var(--text-2xs);
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: normal;
     text-transform: none;
@@ -1913,7 +1909,7 @@
 }
 .trv-valve-lbl {
     font-variant-numeric: tabular-nums;
-    font-size: var(--text-2xs);
+    font-size: var(--type-caption);
     color: var(--color-frost);
     opacity: 0.5;
     text-align: center;
@@ -1949,6 +1945,9 @@
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     min-height: 36px;
+    /* Bolted to the bottom of every card — the name is always visible and
+       never shifts when the value area above it changes height. */
+    margin-top: auto;
     flex-shrink: 0;
     overflow: hidden;
     word-break: break-word;
@@ -2068,7 +2067,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: 0.06em;
     color: var(--color-frost);
@@ -2157,6 +2156,20 @@
     left: 2px;
     transform: translateX(20px);
 }
+/* Row toggle — settings form rows: the card pill scaled for dense forms */
+.ec-switch--row {
+    width: 104px;
+    height: 36px;
+    border-radius: 18px;
+    flex: none;
+}
+.ec-switch--row .ec-switch-thumb {
+    width: 30px;
+    height: 30px;
+}
+.ec-switch--row.on .ec-switch-thumb {
+    left: calc(100% - 33px);
+}
 /* Large toggle — horizontal */
 .ec-switch--lg {
     height: 64px;
@@ -2173,7 +2186,7 @@
     left: calc(100% - 58px);
 }
 .ec-switch--lg .ec-switch-label {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: 800;
     letter-spacing: 0.08em;
 }
@@ -2205,7 +2218,7 @@
     left: 4px;
 }
 .ec-switch--vert .ec-switch-label {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: 800;
     letter-spacing: 0.08em;
 }
@@ -2438,7 +2451,7 @@
     background-clip: text;
 }
 .ec-wr-metric-l {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: normal;
     text-transform: none;
@@ -3056,7 +3069,7 @@
     margin-bottom: 6px;
 }
 .ec-hero .ec-trv-valve-label {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: none;

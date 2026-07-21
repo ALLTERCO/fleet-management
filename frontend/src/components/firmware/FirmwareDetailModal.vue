@@ -22,7 +22,7 @@
                 </div>
                 <div v-if="item.fwId" class="fwd__field">
                     <span class="fwd__label">Build ID</span>
-                    <span class="fwd__value">{{ item.fwId }}</span>
+                    <span class="fwd__value fwd__value--mono">{{ item.fwId }}</span>
                 </div>
                 <div class="fwd__field">
                     <span class="fwd__label">Size</span>
@@ -61,6 +61,7 @@
             <div class="fwd__footer">
                 <Button type="red" size="sm" @click="emit('delete')">Delete</Button>
                 <div class="fwd__footer-right">
+                    <Button type="blue-hollow" size="sm" @click="emit('download')">Download</Button>
                     <Button type="blue-hollow" size="sm" @click="emit('edit')">Edit</Button>
                     <Button type="blue" size="sm" :disabled="!canFlash" @click="emit('flash')">
                         Flash
@@ -88,6 +89,7 @@ const emit = defineEmits<{
     flash: [];
     edit: [];
     delete: [];
+    download: [];
 }>();
 </script>
 
@@ -117,16 +119,18 @@ const emit = defineEmits<{
     color: var(--color-text-tertiary);
 }
 .fwd__value {
+    /* Medium weight, proportional: readable but quieter than the title. */
     font-size: var(--type-caption);
-    font-weight: var(--font-bold);
+    font-weight: var(--font-medium);
     color: var(--color-text-primary);
-    font-family: var(--font-mono);
     overflow-wrap: anywhere;
 }
 .fwd__value--cap {
     text-transform: capitalize;
 }
 .fwd__value--mono {
+    /* Technical ids (build id, checksum) read better in monospace. */
+    font-family: var(--font-mono);
     color: var(--color-text-secondary);
     font-weight: var(--font-normal);
 }

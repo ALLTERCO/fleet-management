@@ -237,6 +237,7 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
         'Manage fleet-manager users, authentication, PATs, and permissions.'
 })
     .registerMethod('SetAllowDebug', {
+        safety: {operation: 'update'},
         params: {
             type: 'object',
             required: ['enabled'],
@@ -274,6 +275,7 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
         description: 'Login with username + password (dev-mode / non-Zitadel).'
     })
     .registerMethod('RotateToken', {
+        safety: {operation: 'update'},
         params: {
             type: 'object',
             required: ['access_token'],
@@ -295,12 +297,14 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
         description: 'Refresh the access token.'
     })
     .registerMethod('GetMe', {
+        safety: {operation: 'read'},
         params: {type: 'object', properties: {}},
         response: GET_ME_RESPONSE,
         permission: {note: 'authenticated'},
         description: 'Return the current user profile + permissions.'
     })
     .registerMethod('ProfilePicture.CreateUploadTicket', {
+        safety: {operation: 'create'},
         params: USERNAME_UPLOAD_TICKET_PARAMS_SCHEMA,
         response: UPLOAD_TICKET_RESPONSE_SCHEMA,
         permission: {note: 'self or provider-support admin'},
@@ -308,12 +312,14 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
             'Mint a short-lived ticket for POST /media/uploadProfilePic.'
     })
     .registerMethod('ProfilePicture.GetUrl', {
+        safety: {operation: 'read'},
         params: USERNAME_UPLOAD_TICKET_PARAMS_SCHEMA,
         response: PROFILE_PICTURE_URL_RESPONSE,
         permission: {note: 'authenticated'},
         description: 'Mint a short-lived profile picture URL.'
     })
     .registerMethod('ProfilePicture.Remove', {
+        safety: {operation: 'delete'},
         params: USERNAME_UPLOAD_TICKET_PARAMS_SCHEMA,
         response: {
             type: 'object',
@@ -326,18 +332,21 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
             "Delete the user's uploaded profile picture. Subsequent GetUrl calls fall back to the default avatar."
     })
     .registerMethod('ZitadelAvailable', {
+        safety: {operation: 'read'},
         params: {type: 'object', properties: {}},
         response: ZITADEL_AVAILABLE_RESPONSE,
         permission: {note: 'public'},
         description: 'Report whether Zitadel integration is configured.'
     })
     .registerMethod('ListZitadelUsers', {
+        safety: {operation: 'read'},
         params: {type: 'object', properties: {}},
         response: LIST_RESPONSE,
         permission: {note: 'admin-only'},
         description: 'List users known to Zitadel for this organization.'
     })
     .registerMethod('GetEffectivePermissionsV2', {
+        safety: {operation: 'read'},
         params: {
             type: 'object',
             required: ['userId'],
@@ -349,6 +358,7 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
             'Return the resolved effective shape from the new authz resolver — built-in roles + group + direct assignments unioned, with provenance.'
     })
     .registerMethod('SimulateV2', {
+        safety: {operation: 'read'},
         params: {
             type: 'object',
             required: ['userId', 'action', 'resourceType'],
@@ -368,6 +378,7 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
             'Simulate an authz decision for a user via the new resolver. Returns decision + matchedBy provenance.'
     })
     .registerMethod('AttachCustomPersona', {
+        safety: {operation: 'create'},
         params: {
             type: 'object',
             required: ['userId', 'personaId', 'scope'],
@@ -393,36 +404,42 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
         description: 'Attach a custom FM persona to a user with scope.'
     })
     .registerMethod('CreateZitadelUser', {
+        safety: {operation: 'create'},
         params: {type: 'object', additionalProperties: true},
         response: USER_ID_RESPONSE,
         permission: {note: 'admin-only'},
         description: 'Provision a Zitadel user.'
     })
     .registerMethod('UpdateZitadelUser', {
+        safety: {operation: 'update'},
         params: {type: 'object', additionalProperties: true},
         response: SUCCESS_ACK,
         permission: {note: 'admin-only'},
         description: 'Update a Zitadel user.'
     })
     .registerMethod('SendPasswordReset', {
+        safety: {operation: 'execute'},
         params: USERNAME_PARAM,
         response: SUCCESS_ACK,
         permission: {note: 'admin-only'},
         description: 'Trigger a Zitadel password-reset email for the user.'
     })
     .registerMethod('DeactivateUser', {
+        safety: {operation: 'update'},
         params: USERNAME_PARAM,
         response: SUCCESS_ACK,
         permission: {note: 'admin-only'},
         description: 'Deactivate a user in Zitadel.'
     })
     .registerMethod('ReactivateUser', {
+        safety: {operation: 'update'},
         params: USERNAME_PARAM,
         response: SUCCESS_ACK,
         permission: {note: 'admin-only'},
         description: 'Reactivate a previously deactivated Zitadel user.'
     })
     .registerMethod('DeleteZitadelUser', {
+        safety: {operation: 'delete'},
         params: USERNAME_PARAM,
         response: SUCCESS_ACK,
         permission: {note: 'admin-only'},
@@ -430,6 +447,7 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
             'Hard-delete a Zitadel user. Irreversible; audit_log retains the historical record. Use DeactivateUser for soft delete.'
     })
     .registerMethod('ListServiceUsers', {
+        safety: {operation: 'read'},
         params: {type: 'object', properties: {}},
         response: LIST_RESPONSE,
         permission: {note: 'admin-only'},
@@ -437,6 +455,7 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
             'List Zitadel service users (machine accounts). Tenant-scoped admins see own org; global provider support sees all.'
     })
     .registerMethod('CreateServiceUser', {
+        safety: {operation: 'create'},
         params: {
             type: 'object',
             required: ['userName', 'name'],
@@ -487,6 +506,7 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
             'Create a Zitadel service user. Role is optional; users without a role or FM assignment have no FM access.'
     })
     .registerMethod('DeleteServiceUser', {
+        safety: {operation: 'delete'},
         params: USERNAME_PARAM,
         response: SUCCESS_ACK,
         permission: {note: 'admin-only'},
@@ -494,6 +514,7 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
             'Hard-delete a Zitadel service user. Irreversible; tenant gate ensures only the home-org admin can delete.'
     })
     .registerMethod('CreatePAT', {
+        safety: {operation: 'create'},
         params: {
             type: 'object',
             required: ['userId'],
@@ -507,6 +528,7 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
         description: 'Create a Personal Access Token for a user/service user.'
     })
     .registerMethod('ListPATs', {
+        safety: {operation: 'read'},
         params: {
             type: 'object',
             required: ['userId'],
@@ -517,6 +539,7 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
         description: 'List Personal Access Tokens for a user.'
     })
     .registerMethod('RevokePAT', {
+        safety: {operation: 'delete'},
         params: {
             type: 'object',
             required: ['userId', 'tokenId'],
@@ -527,6 +550,7 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
         description: 'Revoke a Personal Access Token.'
     })
     .registerMethod('CreateScopedPAT', {
+        safety: {operation: 'create'},
         params: {
             type: 'object',
             required: ['userId', 'boundaryScope', 'purpose'],
@@ -548,6 +572,7 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
             'Mint an FM-issued scoped PAT. boundaryScope narrows the user effective shape at the auth gate; can only subtract, never escalate.'
     })
     .registerMethod('ListScopedPATs', {
+        safety: {operation: 'read'},
         params: {
             type: 'object',
             additionalProperties: false,
@@ -559,6 +584,7 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
             'List FM-issued scoped PATs. Filter by userId when supplied; otherwise lists every scoped PAT in the caller tenant.'
     })
     .registerMethod('PreviewScopedPAT', {
+        safety: {operation: 'read'},
         params: {
             type: 'object',
             required: ['userId', 'boundaryScope'],
@@ -574,6 +600,7 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
             'Preview the effective access produced by applying a proposed FM scoped PAT boundary to the target principal.'
     })
     .registerMethod('RevokeScopedPAT', {
+        safety: {operation: 'delete'},
         params: {
             type: 'object',
             required: ['tokenId'],
@@ -585,6 +612,7 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
         description: 'Revoke an FM-issued scoped PAT (soft delete).'
     })
     .registerMethod('RevokeAllUserPATs', {
+        safety: {operation: 'delete'},
         params: {
             type: 'object',
             required: ['userId'],
@@ -597,6 +625,7 @@ export const USER_DESCRIBE: DescribeOutput = new DescribeBuilder('user', {
             'Bulk-revoke every active FM-issued scoped PAT for a user. Off-boarding helper.'
     })
     .registerMethod('RotateScopedPAT', {
+        safety: {operation: 'execute'},
         params: {
             type: 'object',
             required: ['tokenId'],

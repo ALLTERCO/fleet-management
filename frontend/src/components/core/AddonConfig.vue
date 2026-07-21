@@ -208,6 +208,7 @@
 
 <script setup lang="ts">
 import {computed, onMounted, ref, watch} from 'vue';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useDevicesStore} from '@/stores/devices';
 import {useToastStore} from '@/stores/toast';
 import {sendRPC} from '@/tools/websocket';
@@ -230,20 +231,23 @@ const ALL_ADDON_TYPE_LABELS: Record<string, string> = {
     LoRa: 'LoRa Add-on'
 };
 
-const isProDevice = computed(() => {
-    const app = (
-        deviceStore.devices[props.shellyID]?.info?.app ?? ''
-    ).toLowerCase();
-    return app.startsWith('pro') || app.includes('pro');
+// Options come from capabilities.addons (the services the device advertises).
+// Caveat: an occupied slot advertises only the enabled service; a free slot
+// advertises none, so the picker needs a static set to offer anything.
+const addonTypes = computed(() => {
+    const dev = deviceStore.devices[props.shellyID];
+    const advertised = dev?.capabilities?.addons ?? [];
+    if (advertised.length > 0) return ['none', ...advertised];
+    const sysDevice = dev?.settings?.sys?.device;
+    const hasSlot = sysDevice != null && 'addon_type' in sysDevice;
+    // picker fallback until slot-hostable set is wire-known
+    if (hasSlot) return ['none', 'sensor', 'prooutput', 'LoRa'];
+    return ['none'];
 });
 
-const addonTypeOptions = computed(() => {
-    // Plus/Gen3/Gen4: Sensor + LoRa
-    // Pro: Sensor + ProOutput + LoRa
-    const types = ['none', 'sensor', 'LoRa'];
-    if (isProDevice.value) types.splice(2, 0, 'prooutput');
-    return types.map((t) => ALL_ADDON_TYPE_LABELS[t] ?? t);
-});
+const addonTypeOptions = computed(() =>
+    addonTypes.value.map((t) => ALL_ADDON_TYPE_LABELS[t] ?? t)
+);
 
 const localAddonType = ref('none');
 const applyingType = ref(false);
@@ -385,7 +389,7 @@ async function loadPeripherals() {
 
         peripheralList.value = entries;
     } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to load peripherals');
+        toast.error(rpcErrorMessage(err, 'Failed to load peripherals'));
     } finally {
         loading.value = false;
     }
@@ -408,7 +412,7 @@ async function applyAddonType() {
         toast.info('Addon type changed — rebooting device…');
         await sendRPC('FLEET_MANAGER', 'Shelly.Reboot', {shellyID: props.shellyID});
     } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to change addon type');
+        toast.error(rpcErrorMessage(err, 'Failed to change addon type'));
     } finally {
         applyingType.value = false;
     }
@@ -463,7 +467,7 @@ async function savePeripheralConfig(
         toast.success(`${field} updated`);
         await loadPeripherals();
     } catch (err: any) {
-        toast.error(err?.message ?? `Failed to update ${field}`);
+        toast.error(rpcErrorMessage(err, `Failed to update ${field}`));
     }
 }
 
@@ -485,7 +489,7 @@ async function addDs18b20(addr: string, andReboot: boolean) {
             await scanOneWire();
         }
     } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to add sensor');
+        toast.error(rpcErrorMessage(err, 'Failed to add sensor'));
     } finally {
         adding.value = false;
     }
@@ -509,7 +513,7 @@ async function addPeripheral(type: string, andReboot: boolean) {
             await loadPeripherals();
         }
     } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to add peripheral');
+        toast.error(rpcErrorMessage(err, 'Failed to add peripheral'));
     } finally {
         adding.value = false;
     }
@@ -528,7 +532,7 @@ async function removePeripheral(p: PeripheralEntry) {
         toast.info(`${p.component} removed — reboot to apply`);
         await loadPeripherals();
     } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to remove peripheral');
+        toast.error(rpcErrorMessage(err, 'Failed to remove peripheral'));
     }
 }
 
@@ -540,7 +544,7 @@ async function rebootDevice() {
         toast.info('Device rebooting…');
         needsReboot.value = false;
     } catch (err: any) {
-        toast.error(err?.message ?? 'Reboot failed');
+        toast.error(rpcErrorMessage(err, 'Reboot failed'));
     } finally {
         rebooting.value = false;
     }
@@ -588,7 +592,7 @@ async function addProOutputPeripheral() {
         toast.success('Switch peripheral added — reboot to activate');
         await loadProOutputPeripherals();
     } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to add peripheral');
+        toast.error(rpcErrorMessage(err, 'Failed to add peripheral'));
     }
     proOutputAdding.value = false;
 }
@@ -605,7 +609,7 @@ async function removeProOutputPeripheral(component: string) {
         toast.info(`${component} removed — reboot to apply`);
         await loadProOutputPeripherals();
     } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to remove peripheral');
+        toast.error(rpcErrorMessage(err, 'Failed to remove peripheral'));
     }
 }
 

@@ -147,8 +147,8 @@
 <script setup lang="ts">
 import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue';
 import {useWebRtcStream} from '@/composables/useWebRtcStream';
+import apiClient from '@/helpers/axios';
 import {useDevicesStore} from '@/stores/devices';
-import {sendRPC} from '@/tools/websocket';
 import type {entity_t} from '@/types';
 import CardBadges from './CardBadges.vue';
 import CardShell from './CardShell.vue';
@@ -179,7 +179,11 @@ const status = computed(() => {
     return device.value.status?.[`${e.type}:${e.properties.id}`] ?? null;
 });
 
-const isRecording = computed(() => !!status.value?.recording);
+// Device status carries `recordings` (an object keyed by rec_id), not a boolean.
+const isRecording = computed(() => {
+    const r = status.value?.recordings;
+    return !!r && typeof r === 'object' && Object.keys(r).length > 0;
+});
 
 // ---------------------------------------------------------------------------
 // WebRTC live mode refs (declared early — snapshot polling guards on liveMode)
@@ -222,22 +226,25 @@ const isWebRtcActive = computed(
 // ---------------------------------------------------------------------------
 
 const snapshotUrl = ref<string | null>(null);
+let snapshotObjectUrl: string | null = null;
 let snapshotTimer: ReturnType<typeof setInterval> | undefined;
 
+// Live still, proxied by FM. CaptureImage returns a cloud/SD media_id (not
+// bytes), so it can't feed an <img>; the device snapshot endpoint can.
 async function fetchSnapshot() {
     if (isOffline.value) return;
     try {
-        const resp = await sendRPC<{url?: string}>(
-            'FLEET_MANAGER',
-            'Camera.CaptureImage',
-            {
-                shellyID: props.entity.source,
-                id: props.entity.properties.id
-            }
+        const res = await apiClient.get(
+            `/api/device-proxy/${props.entity.source}/camera/${props.entity.properties.id}/snapshot`,
+            {responseType: 'blob'}
         );
-        if (resp?.url) snapshotUrl.value = resp.url;
+        const nextUrl = URL.createObjectURL(res.data);
+        if (snapshotObjectUrl) URL.revokeObjectURL(snapshotObjectUrl);
+        snapshotObjectUrl = nextUrl;
+        snapshotUrl.value = nextUrl;
     } catch {
-        /* device may be offline or unreachable */
+        // Transient poll failure — keep the last good frame; the offline state
+        // handles a real loss of the device.
     }
 }
 
@@ -299,10 +306,11 @@ const sdStatusDisplay = computed(() => {
 });
 
 const nightModeDisplay = computed(() => {
-    const mode = camSettings.value?.night_vision?.mode;
-    if (mode === 'auto') return 'IR Auto';
-    if (mode) return `IR ${mode.charAt(0).toUpperCase() + mode.slice(1)}`;
-    return '—';
+    // Device shape is {auto, ir_leds}; there is no `mode` field.
+    const nv = camSettings.value?.night_vision;
+    if (!nv) return '—';
+    if (nv.auto) return 'IR Auto';
+    return nv.ir_leds ? 'IR On' : 'IR Off';
 });
 
 // ---------------------------------------------------------------------------
@@ -317,6 +325,21 @@ const availableStreams = computed(
             codec?: string;
         }[]) ?? []
 );
+
+// Lowest-quality stream = highest index (Shelly: 0 = main/high). Small cards
+// use it to save bandwidth; larger cards default to the high-quality stream 0.
+const lowStreamId = computed(() => {
+    const s = camSettings.value?.streams;
+    if (!s || typeof s !== 'object') return 0;
+    const ids = Object.keys(s)
+        .map(Number)
+        .filter((n) => !Number.isNaN(n));
+    return ids.length ? Math.max(...ids) : 0;
+});
+
+function defaultStreamForSize(): number {
+    return props.size === '1x1' ? lowStreamId.value : 0;
+}
 
 function startLive() {
     liveMode.value = true;
@@ -384,20 +407,19 @@ watch(qualityOpen, (open) => {
 
 onMounted(() => {
     const pref = getLivePref()[props.entity.id];
-    if (pref) selectedStreamId.value = pref.streamId;
+    // A camera widget is meant to be watched — auto-start live at every size,
+    // no manual button. Stream choice follows the card size (small = low).
+    selectedStreamId.value = pref ? pref.streamId : defaultStreamForSize();
 
     document.addEventListener('visibilitychange', onVisibilityChange);
 
-    // 2x2 auto-starts live stream; smaller sizes use snapshot polling
-    if (props.size === '2x2' && !isOffline.value) {
-        startLive();
-    } else {
-        startPolling();
-    }
+    if (!isOffline.value) startLive();
+    else startPolling();
 });
 
 onBeforeUnmount(() => {
     stopPolling();
+    if (snapshotObjectUrl) URL.revokeObjectURL(snapshotObjectUrl);
     document.removeEventListener('visibilitychange', onVisibilityChange);
     document.removeEventListener('click', closeQualityDropdown);
 });
@@ -450,7 +472,8 @@ watch(
 .ec-cam-img {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    /* Show the whole 16:9 frame — never crop the scene to fill the card. */
+    object-fit: contain;
     display: block;
 }
 

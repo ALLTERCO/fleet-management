@@ -11,7 +11,10 @@ import type {
 import {defineStore} from 'pinia';
 import {reactive, ref} from 'vue';
 import {toastRpcError} from '@/helpers/domainErrors';
+import {BACKEND_LIST_MAX_LIMIT, paginateWhileFull} from '@/helpers/pagination';
+import {createStaleGuard} from '@/stores/staleGuard';
 import * as ws from '../tools/websocket';
+import {CERTIFICATE_EVENT} from '../tools/wsEvents';
 import {useJobsStore} from './jobs';
 import {useToastStore} from './toast';
 
@@ -21,6 +24,8 @@ interface CertificateWsEvent {
         jobId?: string;
         row?: CertificatePushRow;
         job?: CertificateJobResponse;
+        name?: string;
+        daysLeft?: number;
     };
 }
 
@@ -32,17 +37,23 @@ export const useCertificatesStore = defineStore('certificates', () => {
     const toast = useToastStore();
     const jobsStore = useJobsStore();
 
+    // Writes bump so an in-flight read can't clobber them; reads never bump.
+    const certificatesGuard = createStaleGuard();
+
     // Per-job push-row cache for the current page; keyed by jobId.
     const pushRows = reactive<Record<string, CertificatePushRow[]>>({});
 
     ws.onCertificateEvent(handleCertificateEvent);
 
     function handleCertificateEvent(event: CertificateWsEvent): void {
-        if (event.method === 'Certificate.PushRow' && event.params?.row) {
+        if (event.method === CERTIFICATE_EVENT.PUSH_ROW && event.params?.row) {
             applyPushRow(event.params.row);
             return;
         }
-        if (event.method === 'Certificate.JobUpdated' && event.params?.job) {
+        if (
+            event.method === CERTIFICATE_EVENT.JOB_UPDATED &&
+            event.params?.job
+        ) {
             jobsStore.applyStatus({
                 jobId: event.params.job.id,
                 status: event.params.job.status,
@@ -50,7 +61,20 @@ export const useCertificatesStore = defineStore('certificates', () => {
                     ? Date.parse(event.params.job.finished_at)
                     : undefined
             });
+            return;
         }
+        if (event.method === CERTIFICATE_EVENT.EXPIRING) {
+            handleCertificateExpiring(event.params ?? {});
+        }
+    }
+
+    // Warn + refresh; fetchAll is the guarded latest-wins list fetch.
+    function handleCertificateExpiring(params: {
+        name?: string;
+        daysLeft?: number;
+    }): void {
+        toast.warning(certificateExpiryMessage(params));
+        void fetchAll();
     }
 
     function applyPushRow(row: CertificatePushRow): void {
@@ -97,15 +121,23 @@ export const useCertificatesStore = defineStore('certificates', () => {
     ): Promise<CertificateResponse[]> {
         loading.value = true;
         try {
-            const res = await ws.sendRPC<{items: CertificateResponse[]}>(
-                'FLEET_MANAGER',
-                'certificate.list',
-                params
+            // List fetch: bump so the latest fetch wins between racing fetches.
+            // Token spans the whole page loop — a write mid-loop discards it.
+            const token = certificatesGuard.bump();
+            const items = await paginateWhileFull<CertificateResponse>(
+                (offset) =>
+                    ws.sendRPC('FLEET_MANAGER', 'certificate.list', {
+                        ...params,
+                        limit: BACKEND_LIST_MAX_LIMIT,
+                        offset
+                    }),
+                BACKEND_LIST_MAX_LIMIT
             );
+            if (certificatesGuard.isStale(token)) return items;
             const next: Record<string, CertificateResponse> = {};
-            for (const c of res.items) next[c.id] = c;
+            for (const c of items) next[c.id] = c;
             certificates.value = next;
-            return res.items;
+            return items;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load certificates');
             return [];
@@ -123,6 +155,7 @@ export const useCertificatesStore = defineStore('certificates', () => {
                 'certificate.import',
                 params
             );
+            certificatesGuard.bump();
             certificates.value = {...certificates.value, [c.id]: c};
             toast.success(`Imported ${c.name}`);
             return c;
@@ -135,6 +168,7 @@ export const useCertificatesStore = defineStore('certificates', () => {
     async function remove(id: string): Promise<boolean> {
         try {
             await ws.sendRPC('FLEET_MANAGER', 'certificate.delete', {id});
+            certificatesGuard.bump();
             const {[id]: _removed, ...rest} = certificates.value;
             certificates.value = rest;
             toast.success('Certificate deleted');
@@ -152,6 +186,7 @@ export const useCertificatesStore = defineStore('certificates', () => {
                 'certificate.update',
                 {id, name}
             );
+            certificatesGuard.bump();
             certificates.value = {...certificates.value, [c.id]: c};
             return true;
         } catch (err) {
@@ -169,6 +204,7 @@ export const useCertificatesStore = defineStore('certificates', () => {
             );
             const prev = certificates.value[id];
             if (prev) {
+                certificatesGuard.bump();
                 certificates.value = {
                     ...certificates.value,
                     [id]: {...prev, tags: r.tags}
@@ -189,6 +225,7 @@ export const useCertificatesStore = defineStore('certificates', () => {
             }>('FLEET_MANAGER', 'certificate.setGroups', {id, groupIds});
             const prev = certificates.value[id];
             if (prev) {
+                certificatesGuard.bump();
                 certificates.value = {
                     ...certificates.value,
                     [id]: {...prev, device_group_ids: r.device_group_ids}
@@ -304,6 +341,7 @@ export const useCertificatesStore = defineStore('certificates', () => {
                 'certificate.issueDeviceCert',
                 params
             );
+            certificatesGuard.bump();
             certificates.value = {...certificates.value, [c.id]: c};
             toast.success(`Issued device cert for ${params.shellyId}`);
             return c;
@@ -330,3 +368,17 @@ export const useCertificatesStore = defineStore('certificates', () => {
         downloadPem
     };
 });
+
+function certificateExpiryMessage(params: {
+    name?: string;
+    daysLeft?: number;
+}): string {
+    const label = params.name
+        ? `Certificate "${params.name}"`
+        : 'A certificate';
+    const days = params.daysLeft;
+    if (typeof days !== 'number') return `${label} expires soon`;
+    if (days <= 0) return `${label} has expired`;
+    if (days === 1) return `${label} expires in 1 day`;
+    return `${label} expires in ${days} days`;
+}

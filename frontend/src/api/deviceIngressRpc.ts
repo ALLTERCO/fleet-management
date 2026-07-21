@@ -89,3 +89,46 @@ export async function createCertificateEnrollment(
         userCaPem: install.userCaPem
     };
 }
+
+// Token bookkeeping: the backend stores every minted token (never the
+// secret) with its lifecycle state and usage counters.
+export interface EnrollmentTokenSummary {
+    id: string;
+    tokenPrefix: string;
+    preferredProfileId: DeviceIngressProfileId | null;
+    state: 'active' | 'consumed' | 'revoked';
+    maxUses: number;
+    useCount: number;
+    notAfter: string;
+    createdBy: string | null;
+    createdAt: string;
+    lastUsedAt: string | null;
+    revokedAt: string | null;
+}
+
+export function listEnrollmentTokens(): Promise<
+    IngressList<EnrollmentTokenSummary>
+> {
+    return sendRPC(TARGET, 'deviceIngress.EnrollmentToken.List', {});
+}
+
+export function revokeEnrollmentToken(id: string): Promise<{success: true}> {
+    return sendRPC(TARGET, 'deviceIngress.EnrollmentToken.Revoke', {id});
+}
+
+// Device credential identities — which device connects with what.
+export interface IngressIdentity {
+    id: string;
+    displayName: string;
+    securityModel: string;
+    transport: string;
+    status: string;
+    expectedExternalId: string | null;
+    reportedExternalIds: string[];
+    lastSeenAt: string | null;
+    createdAt: string;
+}
+
+export function listIdentities(): Promise<IngressList<IngressIdentity>> {
+    return sendRPC(TARGET, 'deviceIngress.Identity.List', {});
+}

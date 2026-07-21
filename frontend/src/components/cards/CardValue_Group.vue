@@ -17,7 +17,11 @@
             </div>
             <!-- Kind (left) · number of devices (right) -->
             <div class="gc-1x1-meta">
-                <span v-if="kindLabel" class="gc-1x1-kind">{{ kindLabel }}</span>
+                <GroupKindBadge
+                    :kind-id="group.kind"
+                    plain
+                    class="gc-1x1-kind"
+                />
                 <span class="gc-1x1-devcount">{{ totalDevices }}</span>
             </div>
         </div>
@@ -275,7 +279,6 @@ import type {AlertSeverity} from '@api/alert';
 import {computed, onBeforeUnmount, ref} from 'vue';
 import GroupGlyph from '@/components/core/GroupGlyph.vue';
 import GroupKindBadge from '@/components/core/GroupKindBadge.vue';
-import {useGroupKinds} from '@/composables/useGroupKinds';
 import {useDevicesStore} from '@/stores/devices';
 import {useGroupsStore} from '@/stores/groups';
 
@@ -320,15 +323,6 @@ defineEmits<{
 
 const devicesStore = useDevicesStore();
 const groupsStore = useGroupsStore();
-
-// Kind as plain text (no icon) for the compact card.
-const {byId: groupKindsById, ensureLoaded: ensureGroupKinds} = useGroupKinds();
-void ensureGroupKinds();
-const kindLabel = computed(() => {
-    const id = props.group.kind;
-    if (!id || id === 'manual') return '';
-    return groupKindsById.value.get(id)?.displayName ?? id;
-});
 
 // --- Health computations ---
 

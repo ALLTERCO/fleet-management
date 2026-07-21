@@ -24,7 +24,7 @@ const SENDER_TYPE_LABELS: Record<string, string> = {
 
 function openAuditFor(entry: SlowOpsRow): void {
     router.push({
-        path: '/monitoring/audit-log',
+        path: '/settings/monitoring/audit-log',
         query: {method: String(entry.method)}
     });
 }

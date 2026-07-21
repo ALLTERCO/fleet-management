@@ -3,7 +3,10 @@ import {
     ACTION_VARIABLES_REGISTRY
 } from '@api/registryNames';
 import {computed, onMounted, ref} from 'vue';
-import {getRegistry} from '@/tools/websocket';
+import {formatRpcError} from '@/helpers/domainErrors';
+import {useToastStore} from '@/stores/toast';
+import {createTrailingCoalescer} from '@/tools/coalesce';
+import {getRegistry, onVariablesEvent} from '@/tools/websocket';
 
 export interface VariableMeta {
     description?: string;
@@ -121,27 +124,30 @@ async function fetchAll() {
     }
 }
 
+// The value operation already succeeded — warn, don't fail the whole action.
+async function clearMetaWithWarning(name: string, succeededAction: string) {
+    try {
+        await metaRegistry.removeItem(name);
+    } catch (e) {
+        useToastStore().warning(
+            `${succeededAction}, but its old metadata was not removed: ${formatRpcError(e)}`
+        );
+    }
+}
+
 async function saveVariable({name, value, metadata}: SaveVariableParams) {
     await valuesRegistry.setItem(name, value);
     // Why always write: clearing description/category must remove stale metadata
     if (metadata.description?.trim() || metadata.category?.trim()) {
         await metaRegistry.setItem(name, metadata);
     } else {
-        try {
-            await metaRegistry.removeItem(name);
-        } catch (e) {
-            console.debug('metaRegistry.removeItem skipped:', e);
-        }
+        await clearMetaWithWarning(name, 'Variable value saved');
     }
 }
 
 async function deleteVariable(name: string) {
     await valuesRegistry.removeItem(name);
-    try {
-        await metaRegistry.removeItem(name);
-    } catch (e) {
-        console.debug('metaRegistry.removeItem skipped:', e);
-    }
+    await clearMetaWithWarning(name, 'Variable deleted');
 }
 
 async function renameVariable({
@@ -153,6 +159,16 @@ async function renameVariable({
     if (oldName !== newName) await deleteVariable(oldName);
     await saveVariable({name: newName, value, metadata});
 }
+
+// Live updates: refetch when a variable changes elsewhere (another tab,
+// Node-RED, automation). Bursts collapse to one refetch; the shared refs
+// above keep every consumer in sync. Registered once at module load.
+const refetchOnChange = createTrailingCoalescer(
+    () => void fetchAll(),
+    250,
+    2000
+);
+onVariablesEvent(() => refetchOnChange.schedule());
 
 export function useVariables() {
     onMounted(fetchAll);

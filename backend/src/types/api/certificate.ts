@@ -16,9 +16,9 @@ export type CertificateKind = (typeof CERTIFICATE_KINDS)[number];
 
 export const CERTIFICATE_KIND_LABELS: Record<CertificateKind, string> = {
     root_ca: 'Root CA',
-    client_pair: 'Client cert + key',
-    server_bundle: 'Server bundle',
-    device: 'Device leaf',
+    client_pair: 'Client certificate',
+    server_bundle: 'Server certificate',
+    device: 'Device certificate',
     other: 'Other'
 };
 
@@ -433,12 +433,14 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
         description: 'Component metadata.'
     })
     .registerMethod('List', {
+        safety: {operation: 'read'},
         params: CERTIFICATE_LIST_PARAMS_SCHEMA,
         response: LIST_RESPONSE,
         permission: READ_PERM,
         description: 'List certificates with optional filters.'
     })
     .registerMethod('Get', {
+        safety: {operation: 'read'},
         params: CERTIFICATE_GET_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,
@@ -446,6 +448,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Full metadata for one cert. PEM body included only when includePem=true (admin).'
     })
     .registerMethod('Import', {
+        safety: {operation: 'create'},
         params: CERTIFICATE_IMPORT_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
@@ -453,6 +456,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Import an unencrypted PEM cert (and optional unencrypted private key). Encrypted keys / PFX are rejected per Shelly TLS KB.'
     })
     .registerMethod('Update', {
+        safety: {operation: 'update'},
         params: CERTIFICATE_UPDATE_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
@@ -460,6 +464,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Update mutable cert fields (name only). PEM is immutable after import.'
     })
     .registerMethod('Delete', {
+        safety: {operation: 'delete'},
         params: CERTIFICATE_DELETE_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
@@ -467,6 +472,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Delete a cert. Refuses if currently pushed and not yet replaced.'
     })
     .registerMethod('SetTags', {
+        safety: {operation: 'update'},
         params: CERTIFICATE_SET_TAGS_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
@@ -474,6 +480,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Replace the tag set on a cert. Free-form labels for filter/search.'
     })
     .registerMethod('SetGroups', {
+        safety: {operation: 'update'},
         params: CERTIFICATE_SET_GROUPS_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
@@ -488,6 +495,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Export cert PEM (+ optional private key). Audited every call.'
     })
     .registerMethod('IssueDeviceCert', {
+        safety: {operation: 'create'},
         params: CERTIFICATE_ISSUE_DEVICE_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
@@ -495,6 +503,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'FM signs a leaf cert for a shellyID against the local Shelly Fleet Manager Root CA.'
     })
     .registerMethod('SignCsr', {
+        safety: {operation: 'create'},
         params: CERTIFICATE_SIGN_CSR_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
@@ -502,6 +511,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'FM signs an operator-supplied CSR against the local Shelly Fleet Manager Root CA. Operator keeps the private key on the device that generated the CSR.'
     })
     .registerMethod('GetIssueDefaults', {
+        safety: {operation: 'read'},
         params: CERTIFICATE_GET_ISSUE_DEFAULTS_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,
@@ -509,6 +519,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Returns {defaultValidityDays, maxValidityDays} from FM env. Frontend reads these instead of mirroring FM_UI_CERT_* runtime config.'
     })
     .registerMethod('PreflightPush', {
+        safety: {operation: 'read'},
         params: CERTIFICATE_PREFLIGHT_PUSH_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,
@@ -516,6 +527,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Resolve the target and report which devices are compatible vs skipped (offline / firmware too old / unsupported key algo / slot incompat) plus warnings (clock skew, enhanced_security off).'
     })
     .registerMethod('PushToDevices', {
+        safety: {operation: 'execute'},
         params: CERTIFICATE_PUSH_TO_DEVICES_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
@@ -523,12 +535,14 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Queue a push job that fans the cert out to the resolved target devices in the chosen slot. Returns {jobId, deviceCount}.'
     })
     .registerMethod('PushStatus', {
+        safety: {operation: 'read'},
         params: CERTIFICATE_PUSH_STATUS_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,
         description: 'Polling fallback for the WS push event stream.'
     })
     .registerMethod('ListPushes', {
+        safety: {operation: 'read'},
         params: CERTIFICATE_LIST_PUSHES_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,

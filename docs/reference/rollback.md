@@ -31,9 +31,9 @@ Fleet Manager runs database migrations automatically on startup. If a migration 
 # 1. Stop Fleet Manager (keeps databases running)
 docker stop fm-fleet-manager-1
 
-# 2. Check the migration table for what ran
+# 2. Check the migration ledger for what ran (newest first)
 docker exec fm-fleet-db-1 psql -U postgres -d fleet \
-  -c "SELECT * FROM migration.schema_version ORDER BY installed_on DESC LIMIT 10;"
+  -c 'SELECT id, name FROM migration."migration.list" ORDER BY id DESC LIMIT 10;'
 
 # 3. If the last migration is the problem, apply a manual fix:
 docker exec -i fm-fleet-db-1 psql -U postgres -d fleet <<< "YOUR SQL FIX HERE"
@@ -82,7 +82,7 @@ Zitadel manages its own database (`zitadel-db`). If Zitadel is broken:
 
 ```bash
 # Pin the previous Zitadel version in VERSIONS.env
-# e.g. ZITADEL_VERSION=v2.64.1
+# e.g. ZITADEL_VERSION=v4.15.3
 
 # Restart just Zitadel
 docker compose -p fm restart zitadel
@@ -101,8 +101,8 @@ Zitadel migrations are generally backwards-compatible. If a Zitadel migration tr
 2. **Pin versions** in `deploy/VERSIONS.env` instead of using `latest`:
 
    ```text
-   FM_VERSION=v2.64.1
-   ZITADEL_VERSION=v2.64.1
+   FM_VERSION=v1.90.0
+   ZITADEL_VERSION=v4.15.3
    ```
 
 3. **Test in staging** if available — run the update on a non-production instance first.

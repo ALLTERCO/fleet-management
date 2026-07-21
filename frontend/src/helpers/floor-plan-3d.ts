@@ -79,6 +79,7 @@ import {
     normalizedToWorld as normalizedToWorldXZ,
     worldToNormalizedXY
 } from '@/helpers/floor-plan-coords';
+import {floorPlanPlacementId} from '@/helpers/floor-plan-device-identity';
 import {stripInkscapeBaseLayer} from '@/helpers/svg-floorplan';
 import {
     loadSvgFloorPlanGeometry,
@@ -1013,7 +1014,7 @@ function updateDevices(
     }> = [];
 
     for (const dev of devices) {
-        const p = placements[dev.id];
+        const p = placements[floorPlanPlacementId(dev)];
         if (!p) continue;
         const pos = normalizedToWorld(p, state.floorSize);
         const fixture = getFixture(p.fixture);
@@ -1050,7 +1051,7 @@ function updateDevices(
 
     // Labels stay per-device — sprites are cheap and always tappable.
     for (const dev of devices) {
-        const p = placements[dev.id];
+        const p = placements[floorPlanPlacementId(dev)];
         if (!p) continue;
         const pos = normalizedToWorld(p, state.floorSize);
         const label = positionedLabel(dev, pos, state.palette);

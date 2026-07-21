@@ -4,6 +4,8 @@
 import type {TripPath} from '../eventReplay';
 import type {
     BulkAcceptJobStorePort,
+    DeviceGuiSessionPort,
+    DeviceIdentityFencePort,
     DeviceIngestPort,
     DeviceOwnershipPort,
     DeviceShadowPort,
@@ -26,6 +28,8 @@ import type {
 import {
     makeNullEventReplayCache,
     nullBulkAcceptJobStore,
+    nullDeviceGuiSessions,
+    nullDeviceIdentityFence,
     nullDeviceIngest,
     nullDeviceOwnership,
     nullDeviceShadow,
@@ -48,6 +52,8 @@ import {
     makeRedisEventReplayCache,
     makeRedisKvStore,
     redisBulkAcceptJobStorePort,
+    redisDeviceGuiSessions,
+    redisDeviceIdentityFence,
     redisDeviceIngest,
     redisDeviceOwnership,
     redisDeviceShadow,
@@ -73,11 +79,13 @@ interface RedisServices {
     deviceTrustCache: DeviceTrustCachePort;
     sessionSignals: SessionSignalsPort;
     deviceIngest: DeviceIngestPort;
+    deviceGuiSessions: DeviceGuiSessionPort;
     eventReplayCache: EventReplayCachePort<TripPath>;
     leadership: LeadershipFactory;
     rateLimiter: RateLimiterPort;
     reservation: ReservationPort;
     deviceOwnership: DeviceOwnershipPort;
+    deviceIdentityFence: DeviceIdentityFencePort;
     deviceShadow: DeviceShadowPort;
     ingressAudit: IngressAuditPort;
     exportOwnership: ExportOwnershipPort;
@@ -95,11 +103,13 @@ const nullSet = (): RedisServices => ({
     deviceTrustCache: nullDeviceTrustCache,
     sessionSignals: nullSessionSignals,
     deviceIngest: nullDeviceIngest,
+    deviceGuiSessions: nullDeviceGuiSessions,
     eventReplayCache: makeNullEventReplayCache<TripPath>(),
     leadership: nullLeadershipFactory,
     rateLimiter: nullRateLimiter,
     reservation: nullReservation,
     deviceOwnership: nullDeviceOwnership,
+    deviceIdentityFence: nullDeviceIdentityFence,
     deviceShadow: nullDeviceShadow,
     ingressAudit: nullIngressAudit,
     exportOwnership: nullExportOwnership,
@@ -122,11 +132,13 @@ export function installRedisServices(): void {
         deviceTrustCache: redisDeviceTrustCache,
         sessionSignals: redisSessionSignals,
         deviceIngest: redisDeviceIngest,
+        deviceGuiSessions: redisDeviceGuiSessions,
         eventReplayCache: makeRedisEventReplayCache(),
         leadership: redisLeadershipFactory,
         rateLimiter: redisRateLimiter,
         reservation: redisReservation,
         deviceOwnership: redisDeviceOwnership,
+        deviceIdentityFence: redisDeviceIdentityFence,
         deviceShadow: redisDeviceShadow,
         ingressAudit: redisIngressAudit,
         exportOwnership: redisExportOwnership,
@@ -173,6 +185,17 @@ export const sessionSignals: SessionSignalsPort = {
 export const deviceIngest: DeviceIngestPort = {
     appendFrame: (id, f) => services.deviceIngest.appendFrame(id, f)
 };
+export const deviceGuiSessions: DeviceGuiSessionPort = {
+    create: (input) => services.deviceGuiSessions.create(input),
+    get: (sessionId) => services.deviceGuiSessions.get(sessionId),
+    isAttested: (sessionId) => services.deviceGuiSessions.isAttested(sessionId),
+    markAttested: (sessionId, ttlSec) =>
+        services.deviceGuiSessions.markAttested(sessionId, ttlSec),
+    delete: (sessionId) => services.deviceGuiSessions.delete(sessionId),
+    publishRevoked: (sessionId) =>
+        services.deviceGuiSessions.publishRevoked(sessionId),
+    onRevoked: (handler) => services.deviceGuiSessions.onRevoked(handler)
+};
 export const eventReplayCache: EventReplayCachePort<TripPath> = {
     get: (orgId, params, fetcher) =>
         services.eventReplayCache.get(orgId, params, fetcher)
@@ -194,6 +217,11 @@ export const deviceOwnership: DeviceOwnershipPort = {
     heartbeat: (id, ttl) => services.deviceOwnership.heartbeat(id, ttl),
     release: (id) => services.deviceOwnership.release(id),
     owner: (id) => services.deviceOwnership.owner(id)
+};
+export const deviceIdentityFence: DeviceIdentityFencePort = {
+    acquire: (ids, token, ttl) =>
+        services.deviceIdentityFence.acquire(ids, token, ttl),
+    release: (ids, token) => services.deviceIdentityFence.release(ids, token)
 };
 export const deviceShadow: DeviceShadowPort = {
     write: (id, fields, ttl) => services.deviceShadow.write(id, fields, ttl),

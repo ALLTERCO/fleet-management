@@ -138,8 +138,8 @@
                                 class="lfp-drw__chip"
                                 :title="`Drag onto the plan to place ${d.label}`"
                                 draggable="true"
-                                @dragstart="onPaletteDragStart($event, d.id)"
-                                @click="placeAtCenter(d.id)"
+                                @dragstart="onPaletteDragStart($event, floorPlanPlacementId(d))"
+                                @click="placeAtCenter(floorPlanPlacementId(d))"
                             >
                                 <span
                                     class="lfp-drw__dot"
@@ -168,7 +168,7 @@
                                     type="button"
                                     class="lfp-drw__icon-btn"
                                     title="Remove from plan"
-                                    @click="removePlacement(d.id)"
+                                    @click="removePlacement(floorPlanPlacementId(d))"
                                 >
                                     <i class="fas fa-xmark" aria-hidden="true" />
                                 </button>
@@ -269,9 +269,9 @@
                             <span class="lfp-drw__label" :title="d.label">{{ d.label }}</span>
                             <select
                                 class="lfp-drw__select"
-                                :value="localPlacements[d.id]?.fixture ?? ''"
+                                :value="localPlacements[floorPlanPlacementId(d)]?.fixture ?? ''"
                                 :title="`Set fixture for ${d.label}`"
-                                @change="setPlacementFixture(d.id, ($event.target as HTMLSelectElement).value)"
+                                @change="setPlacementFixture(floorPlanPlacementId(d), ($event.target as HTMLSelectElement).value)"
                             >
                                 <option value="">— Generic pin —</option>
                                 <optgroup
@@ -327,6 +327,7 @@ import {
     mergePlacements
 } from '@/helpers/auto-placement';
 import {FIXTURES_BY_CATEGORY} from '@/helpers/fixture-registry';
+import {floorPlanPlacementId} from '@/helpers/floor-plan-device-identity';
 import {useLocationsStore} from '@/stores/locations';
 import type {
     DevicePlacement,
@@ -396,7 +397,7 @@ const localPlacements = ref<DevicePlacementMap>({...storedPlacements.value});
 const localZones = ref<ZoneShape[]>(storedZones.value.map((z) => ({...z})));
 
 const autoPlacements = computed(() =>
-    computeAutoPlacements(props.devices.map((d) => d.id))
+    computeAutoPlacements(props.devices.map(floorPlanPlacementId))
 );
 const effectivePlacements = computed<DevicePlacementMap>(() =>
     mergePlacements(autoPlacements.value, localPlacements.value)
@@ -527,11 +528,11 @@ async function pushKindFieldsToBackend(
 const paletteDevices = computed(() => props.devices);
 
 const unplacedDevices = computed(() =>
-    props.devices.filter((d) => !localPlacements.value[d.id])
+    props.devices.filter((d) => !localPlacements.value[floorPlanPlacementId(d)])
 );
 
 const placedDevices = computed(() =>
-    props.devices.filter((d) => !!localPlacements.value[d.id])
+    props.devices.filter((d) => !!localPlacements.value[floorPlanPlacementId(d)])
 );
 
 const fixturesByCategory = FIXTURES_BY_CATEGORY;
@@ -958,7 +959,7 @@ watch(
 
 .lfp__no-devices i {
     color: var(--color-text-tertiary);
-    font-size: var(--icon-size-2xs);
+    font-size: var(--type-caption);
 }
 
 .lfp__empty {
@@ -1098,7 +1099,7 @@ watch(
 
 .lfp-drw__chev {
     color: var(--color-text-quaternary);
-    font-size: var(--icon-size-2xs);
+    font-size: var(--type-caption);
 }
 
 .lfp-drw__icon-btn {

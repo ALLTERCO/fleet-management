@@ -370,14 +370,16 @@ export default class UserComponent extends Component<UserComponentConfig> {
         try {
             await assertTargetInTenant(sender, userId, tenantId);
         } catch (err) {
-            AuditLogger.logRpc(
-                sender.getUser()?.username,
-                'User.GetEffectivePermissionsV2.CrossTenantDenied',
-                {userId},
-                false,
-                err instanceof Error ? err.message : String(err),
-                tenantId
-            );
+            AuditLogger.logRpc({
+                username: sender.getUser()?.username,
+                actorUserId: sender.getUserId(),
+                method: 'User.GetEffectivePermissionsV2.CrossTenantDenied',
+                params: {userId},
+                success: false,
+                errorMessage: err instanceof Error ? err.message : String(err),
+                organizationId: tenantId,
+                ipAddress: sender.getSourceIp()
+            });
             throw err;
         }
     }
@@ -426,14 +428,16 @@ export default class UserComponent extends Component<UserComponentConfig> {
         try {
             await assertTargetInTenant(sender, params.userId, tenantId);
         } catch (err) {
-            AuditLogger.logRpc(
-                sender.getUser()?.username,
-                'User.SimulateV2.CrossTenantDenied',
-                {userId: params.userId, action: params.action},
-                false,
-                err instanceof Error ? err.message : String(err),
-                tenantId
-            );
+            AuditLogger.logRpc({
+                username: sender.getUser()?.username,
+                actorUserId: sender.getUserId(),
+                method: 'User.SimulateV2.CrossTenantDenied',
+                params: {userId: params.userId, action: params.action},
+                success: false,
+                errorMessage: err instanceof Error ? err.message : String(err),
+                organizationId: tenantId,
+                ipAddress: sender.getSourceIp()
+            });
             throw err;
         }
         // Omitted = use the user's actual JWT roles. Explicit (incl. []) = override.

@@ -5,6 +5,21 @@ import type {JsonSchema} from './_schema';
 
 export type ScopeKind = 'group' | 'location' | 'tag' | 'fleet';
 
+/**
+ * Per-device summary in a fleet.GetMetrics result. Single source of truth for
+ * the shape: the backend aggregator produces it and the frontend consumes it
+ * (via @api/fleet), so the two tiers cannot drift. Kept in sync with the
+ * fleet.GetMetrics device schema in FLEET_METRICS_RESULT below.
+ */
+export interface FleetMetricsDevice {
+    id: number;
+    shellyID: string;
+    name: string;
+    online: boolean;
+    hasEmChannels: boolean;
+    hasEm1Channels: boolean;
+}
+
 export interface DashboardScope {
     groupId?: number;
     locationId?: number;
@@ -81,6 +96,7 @@ export const FLEET_METRICS_RESPONSE: JsonSchema = {
                     'id',
                     'shellyID',
                     'name',
+                    'online',
                     'hasEmChannels',
                     'hasEm1Channels'
                 ],
@@ -89,6 +105,7 @@ export const FLEET_METRICS_RESPONSE: JsonSchema = {
                     id: {type: 'integer'},
                     shellyID: {type: 'string', minLength: 1},
                     name: {type: 'string'},
+                    online: {type: 'boolean'},
                     hasEmChannels: {type: 'boolean'},
                     hasEm1Channels: {type: 'boolean'}
                 }

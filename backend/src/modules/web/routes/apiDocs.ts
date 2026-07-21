@@ -32,6 +32,7 @@ const EMBEDDED_APPS_PATH = path.join(
     REPO_ROOT,
     'docs/generated/embedded-apps-api.json'
 );
+export const LLMS_TXT_PATH = path.join(REPO_ROOT, 'docs/generated/llms.txt');
 
 interface EmbeddedAppDoc {
     feature: 'grafana' | 'node-red';
@@ -120,6 +121,20 @@ router.get('/', isLoggedInOrRedirect, docsRateLimit, (_req, res) => {
     res.setHeader('Content-Security-Policy', SCALAR_CSP);
     res.sendFile(HTML_PATH);
 });
+
+// Agent entrypoint (llms.txt convention). Same login gate as the docs:
+// it maps the documentation surface, so it follows the same posture.
+export function serveLlmsTxt(_req: express.Request, res: express.Response) {
+    if (!fs.existsSync(LLMS_TXT_PATH)) {
+        res.status(404).json({error: 'llms.txt not generated yet'});
+        return;
+    }
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.sendFile(LLMS_TXT_PATH);
+}
+
+export const llmsTxtRouter = express.Router();
+llmsTxtRouter.get('/', isLoggedInOrRedirect, docsRateLimit, serveLlmsTxt);
 
 // Node-RED / Grafana proxy APIs — only the add-ons this deployment serves.
 router.get(

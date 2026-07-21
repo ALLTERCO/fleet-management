@@ -28,6 +28,8 @@ interface ProfileRow {
     locale_default: string | null;
     currency_default: string | null;
     unit_system_default: string | null;
+    brand_initials: string | null;
+    brand_color: string | null;
     metadata: Record<string, unknown> | null;
 }
 
@@ -40,6 +42,8 @@ export function rowToOrganizationProfile(row: ProfileRow): OrganizationProfile {
         localeDefault: row.locale_default,
         currencyDefault: row.currency_default,
         unitSystemDefault: normalizeUnitSystem(row.unit_system_default),
+        brandInitials: row.brand_initials,
+        brandColor: row.brand_color,
         metadata: row.metadata ?? {}
     };
 }
@@ -86,6 +90,8 @@ export async function getOrganizationProfile(
         localeDefault: null,
         currencyDefault: null,
         unitSystemDefault: null,
+        brandInitials: null,
+        brandColor: null,
         metadata: {}
     };
 }

@@ -1,27 +1,49 @@
+import {
+    AC_ACTIVE_POWER_COMPONENTS,
+    componentActivePower,
+    devicePhaseChannels
+} from '@api/componentPower';
 import type {EnergyQueryResponse, EnergyQueryRow} from '@api/energy';
+import type {FleetMetricsDevice} from '@api/fleet';
 import {defineStore} from 'pinia';
 import {computed, ref} from 'vue';
 import {normaliseDashboardSettings} from '@/helpers/dashboardSettings';
 import {getDeviceName} from '@/helpers/device';
+import {toastRpcError} from '@/helpers/domainErrors';
 import type {EmChannel, PhaseMetrics} from '@/helpers/liveMetrics';
-import {computePhaseMetrics, extractEmChannels} from '@/helpers/liveMetrics';
+import {
+    computePhaseMetrics,
+    extractEmChannels,
+    tariffLocalTime
+} from '@/helpers/liveMetrics';
+import {
+    dayRateFraction,
+    isDayRateHour,
+    resolveTouRate
+} from '@/helpers/tariffBands';
+import {createStaleGuard} from '@/stores/staleGuard';
+import {useToastStore} from '@/stores/toast';
 import * as ws from '@/tools/websocket';
 import type {DashboardSettings} from '@/types/dashboard';
 
 export type {EmChannel, PhaseMetrics};
 
-function extractDevicePower(status: any): number {
-    if (!status) return 0;
+// A device's live power = the active power of every AC power component it
+// reports. The component list and the field rule both live in one home
+// (componentPower.ts): AC_ACTIVE_POWER_COMPONENTS + componentActivePower
+// (per-phase a/b/c → single apower/act_power → total, never double-counts).
+// Same list + rule the backend fleet metrics use, so both tiers agree.
+export function extractDevicePower(status: any): number {
+    if (!status || typeof status !== 'object') return 0;
     let total = 0;
     for (let i = 0; i < 5; i++) {
-        const sw = status[`switch:${i}`];
-        if (sw?.apower != null) total += sw.apower;
-        const em = status[`em:${i}`];
-        if (em?.act_power != null) total += em.act_power;
-        const em1 = status[`em1:${i}`];
-        if (em1?.act_power != null) total += em1.act_power;
-        const pm = status[`pm1:${i}`];
-        if (pm?.apower != null) total += pm.apower;
+        for (const type of AC_ACTIVE_POWER_COMPONENTS) {
+            const comp = status[`${type}:${i}`];
+            if (comp && typeof comp === 'object') {
+                const power = componentActivePower(comp);
+                if (power !== null) total += power;
+            }
+        }
     }
     return total;
 }
@@ -79,33 +101,57 @@ export function calculateCostFromFlat(
             ? data.filter((d) => d.deviceId === deviceId)
             : data;
     if (s.tariffMode === 'single') {
-        return filtered.reduce((sum, point) => sum + point.value * s.tariff, 0);
+        const rate = s.tariff ?? 0;
+        return filtered.reduce((sum, point) => sum + point.value * rate, 0);
+    }
+    if (s.tariffMode === 'tou') {
+        // Price each bucket by the time-of-use window that covers its local
+        // wall-clock time; fall back to the flat tariff when no window matches.
+        const flat = s.tariff ?? 0;
+        return filtered.reduce((sum, point) => {
+            const {hhmm} = tariffLocalTime(point.bucket, s.tariffTimezone);
+            const rate =
+                resolveTouRate(s, new Date(point.bucket), hhmm) ?? flat;
+            return sum + point.value * rate;
+        }, 0);
     }
     const dayRate = s.dayRate ?? s.tariff ?? 0;
     const nightRate = s.nightRate ?? s.tariff ?? 0;
     const dayStartH = Number.parseInt(s.dayStart.slice(0, 2), 10);
     const dayEndH = Number.parseInt(s.dayEnd.slice(0, 2), 10);
-    const dayFraction = Math.max(0, Math.min(24, dayEndH - dayStartH)) / 24;
-    // Hourly buckets classify by their hour; whole-day/month buckets sit at 00:00
-    // and span both windows, so blend by the day-hour share — else getUTCHours()===0
-    // prices every daily bucket at the night rate.
+    const dayFraction = dayRateFraction(dayStartH, dayEndH);
+    // Bucket granularity is detected on the UTC-aligned bucket boundary (day/
+    // month buckets sit at 00:00 UTC): whole-day/month buckets span both windows
+    // and blend by the day-hour share, else a 00:00 bucket prices as all-night.
     const hourly = filtered.some((p) => new Date(p.bucket).getUTCHours() !== 0);
     return filtered.reduce((sum, point) => {
         if (hourly) {
-            const hour = new Date(point.bucket).getUTCHours();
-            return sum + point.value * (hour >= dayStartH && hour < dayEndH ? dayRate : nightRate);
+            // Classification uses local wall-clock hour in the tariff zone.
+            const hour = tariffLocalTime(point.bucket, s.tariffTimezone).hour;
+            return (
+                sum +
+                point.value *
+                    (isDayRateHour(hour, dayStartH, dayEndH)
+                        ? dayRate
+                        : nightRate)
+            );
         }
-        return sum + point.value * (dayFraction * dayRate + (1 - dayFraction) * nightRate);
+        return (
+            sum +
+            point.value *
+                (dayFraction * dayRate + (1 - dayFraction) * nightRate)
+        );
     }, 0);
 }
 
 export function buildHeatmap(
-    data: ConsumptionDataPoint[]
+    data: ConsumptionDataPoint[],
+    timeZone?: string | null
 ): {hour: number; day: number; value: number}[] {
     const matrix: Record<string, number> = {};
     for (const point of data) {
-        const date = new Date(point.bucket);
-        const key = `${date.getUTCDay()}-${date.getUTCHours()}`;
+        const {hour, day} = tariffLocalTime(point.bucket, timeZone);
+        const key = `${day}-${hour}`;
         matrix[key] = (matrix[key] ?? 0) + point.value;
     }
     return Object.entries(matrix).map(([key, value]) => {
@@ -125,13 +171,16 @@ interface LiveDevice {
 }
 
 export const useEnergyDashboardStore = defineStore('energyDashboard', () => {
+    const toast = useToastStore();
     const loading = ref(false);
-    const error = ref<string | null>(null);
     const settings = ref<DashboardSettings | null>(null);
     const periodData = ref<EnergyPeriodData | null>(null);
     const liveDevices = ref<LiveDevice[]>([]);
     const phaseMetrics = ref<PhaseMetrics | null>(null);
     const groupId = ref<number | null>(null);
+    // Latest-wins guards: one per state slice.
+    const periodGuard = createStaleGuard();
+    const liveGuard = createStaleGuard();
 
     const totalConsumption = computed(
         () =>
@@ -176,7 +225,12 @@ export const useEnergyDashboardStore = defineStore('energyDashboard', () => {
     });
 
     const heatmapData = computed(() =>
-        periodData.value ? buildHeatmap(periodData.value.current) : []
+        periodData.value
+            ? buildHeatmap(
+                  periodData.value.current,
+                  settings.value?.tariffTimezone
+              )
+            : []
     );
 
     const peakHourInsight = computed(() => {
@@ -239,7 +293,7 @@ export const useEnergyDashboardStore = defineStore('energyDashboard', () => {
         granularity: 'hour' | 'day' | 'month'
     ) {
         loading.value = true;
-        error.value = null;
+        const token = periodGuard.bump();
         try {
             const [currentRes, previousRes] = await Promise.all([
                 ws.sendRPC<EnergyQueryResponse>(
@@ -250,6 +304,9 @@ export const useEnergyDashboardStore = defineStore('energyDashboard', () => {
                         from,
                         to,
                         tags: ['total_act_energy'],
+                        // AC grid electricity — exclude DC / other commodities.
+                        commodity: 'electricity',
+                        electricalSource: 'ac_mains',
                         bucket: GRAN_TO_BUCKET[granularity]
                     }
                 ),
@@ -270,11 +327,15 @@ export const useEnergyDashboardStore = defineStore('energyDashboard', () => {
                             from: prevFrom,
                             to: prevTo,
                             tags: ['total_act_energy'],
+                            // AC grid electricity — exclude DC / other commodities.
+                            commodity: 'electricity',
+                            electricalSource: 'ac_mains',
                             bucket: GRAN_TO_BUCKET[granularity]
                         }
                     );
                 })()
             ]);
+            if (periodGuard.isStale(token)) return;
             periodData.value = {
                 current: (currentRes?.items ?? []).map(toConsumption),
                 previous: (previousRes?.items ?? []).map(toConsumption),
@@ -283,8 +344,8 @@ export const useEnergyDashboardStore = defineStore('energyDashboard', () => {
                 to
             };
         } catch (err: any) {
-            error.value = err?.message ?? 'Failed to fetch energy data';
-            console.error('[EnergyDashboard] fetchPeriodData error:', err);
+            if (periodGuard.isStale(token)) return;
+            toastRpcError(toast, err, 'Failed to load energy data');
         } finally {
             loading.value = false;
         }
@@ -299,8 +360,7 @@ export const useEnergyDashboardStore = defineStore('energyDashboard', () => {
             );
             settings.value = normaliseDashboardSettings(result);
         } catch (err: any) {
-            error.value = err?.message ?? 'Failed to fetch settings';
-            console.error('[EnergyDashboard] fetchSettings error:', err);
+            toastRpcError(toast, err, 'Failed to load dashboard settings');
         }
     }
 
@@ -310,7 +370,7 @@ export const useEnergyDashboardStore = defineStore('energyDashboard', () => {
         granularity: 'hour' | 'day' | 'month'
     ) {
         loading.value = true;
-        error.value = null;
+        const token = periodGuard.bump();
         try {
             const duration = new Date(to).getTime() - new Date(from).getTime();
             const prevFrom = new Date(
@@ -328,6 +388,9 @@ export const useEnergyDashboardStore = defineStore('energyDashboard', () => {
                         from,
                         to,
                         tags: ['total_act_energy'],
+                        // AC grid electricity — exclude DC / other commodities.
+                        commodity: 'electricity',
+                        electricalSource: 'ac_mains',
                         bucket: GRAN_TO_BUCKET[granularity]
                     }
                 ),
@@ -338,11 +401,15 @@ export const useEnergyDashboardStore = defineStore('energyDashboard', () => {
                         from: prevFrom,
                         to: prevTo,
                         tags: ['total_act_energy'],
+                        // AC grid electricity — exclude DC / other commodities.
+                        commodity: 'electricity',
+                        electricalSource: 'ac_mains',
                         bucket: GRAN_TO_BUCKET[granularity]
                     }
                 )
             ]);
 
+            if (periodGuard.isStale(token)) return;
             periodData.value = {
                 current: (currentRes?.items ?? []).map(toConsumption),
                 previous: (prevRes?.items ?? []).map(toConsumption),
@@ -351,8 +418,8 @@ export const useEnergyDashboardStore = defineStore('energyDashboard', () => {
                 to
             };
         } catch (err: any) {
-            error.value = err?.message ?? 'Failed to fetch energy data';
-            console.error('[EnergyDashboard] fetchPeriodDataFleet error:', err);
+            if (periodGuard.isStale(token)) return;
+            toastRpcError(toast, err, 'Failed to load energy data');
         } finally {
             loading.value = false;
         }
@@ -362,13 +429,15 @@ export const useEnergyDashboardStore = defineStore('energyDashboard', () => {
         shellyIds: string[],
         deviceMap: Record<string, any>
     ) {
-        const emChannelsList: EmChannel[][] = [];
+        // Phase channels fold both Pro 3EM profiles (em:0 a/b/c OR em1:0/1/2);
+        // count decides 3-phase in computePhaseMetrics.
+        const phaseChannelsList: EmChannel[][] = [];
 
         liveDevices.value = shellyIds.map((shellyId, idx) => {
             const dev = deviceMap[shellyId];
             const status = dev?.status ?? {};
             const {emChannels, em1Channels} = extractEmChannels(status);
-            emChannelsList.push(emChannels);
+            phaseChannelsList.push(devicePhaseChannels(status));
             return {
                 id: dev?.id ?? idx + 1,
                 shellyId,
@@ -385,24 +454,22 @@ export const useEnergyDashboardStore = defineStore('energyDashboard', () => {
             liveDevices.value.map((d) => d.id),
             liveDevices.value.map((d) => d.shellyId),
             liveDevices.value.map((d) => d.name),
-            emChannelsList
+            phaseChannelsList
         );
+        // Selection write: any in-flight live fetch is now stale.
+        liveGuard.bump();
     }
 
     async function fetchLiveMetrics(gId: number) {
+        const token = liveGuard.bump();
         try {
             const result = await ws.sendRPC<{
-                devices: {
-                    id: number;
-                    shellyID: string;
-                    name: string;
-                    hasEmChannels: boolean;
-                    hasEm1Channels: boolean;
-                }[];
+                devices: FleetMetricsDevice[];
                 metrics: {power: {values: {deviceId: number; value: number}[]}};
                 phaseMetrics: PhaseMetrics | null;
             }>('FLEET_MANAGER', 'fleet.GetMetrics', {scope: {groupId: gId}});
 
+            if (liveGuard.isStale(token)) return;
             // Sum per deviceId — a 3-phase device contributes one entry per em channel
             const powerMap = new Map<number, number>();
             for (const v of result?.metrics?.power?.values ?? []) {
@@ -417,15 +484,15 @@ export const useEnergyDashboardStore = defineStore('energyDashboard', () => {
                 shellyId: d.shellyID,
                 name: d.name,
                 power: powerMap.get(d.id) ?? 0,
-                online: true,
+                online: d.online ?? false,
                 hasEmChannels: d.hasEmChannels ?? false,
                 hasEm1Channels: d.hasEm1Channels ?? false
             }));
 
             phaseMetrics.value = result?.phaseMetrics ?? null;
         } catch (err: any) {
-            error.value = err?.message ?? 'Failed to fetch live metrics';
-            console.error('[EnergyDashboard] fetchLiveMetrics error:', err);
+            if (liveGuard.isStale(token)) return;
+            toastRpcError(toast, err, 'Failed to load live metrics');
         }
     }
 
@@ -445,7 +512,6 @@ export const useEnergyDashboardStore = defineStore('energyDashboard', () => {
 
     return {
         loading,
-        error,
         settings,
         periodData,
         liveDevices,

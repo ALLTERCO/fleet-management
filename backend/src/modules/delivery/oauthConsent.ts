@@ -228,18 +228,16 @@ async function exchangeCode(params: {
         )
     });
     const text = await res.text();
+    // The body reaches the error log and the browser landing page, so bound it.
+    const snippet = text.slice(0, envInt('FM_DELIVERY_ERROR_SNIPPET_MAX', 500));
     if (!res.ok) {
-        const snippet = text.slice(
-            0,
-            envInt('FM_DELIVERY_ERROR_SNIPPET_MAX', 500)
-        );
         throw new Error(`token exchange failed: HTTP ${res.status} ${snippet}`);
     }
     let payload: unknown;
     try {
         payload = JSON.parse(text);
     } catch {
-        throw new Error(`token exchange returned non-JSON: ${text}`);
+        throw new Error(`token exchange returned non-JSON: ${snippet}`);
     }
     const refreshToken = (payload as {refresh_token?: unknown}).refresh_token;
     if (typeof refreshToken !== 'string' || refreshToken.length === 0) {

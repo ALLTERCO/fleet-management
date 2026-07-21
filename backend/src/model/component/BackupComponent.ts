@@ -13,18 +13,25 @@ import {
     isComponentPermissionAllowed
 } from '../../modules/authz/evaluator';
 import {
+    BACKUP_CONTENT_KEYS,
+    parseAndValidateBackupArchive
+} from '../../modules/backup/backupArchive';
+import {
     type BackupUnitResult,
     registerBackupUnitProcessor
 } from '../../modules/backup/jobWorker';
 import * as DeviceCollector from '../../modules/DeviceCollector';
 import * as EventDistributor from '../../modules/EventDistributor';
 import {
+    type BackupDeviceOwnership,
     type BackupQueuedUnit,
-    backupCaptureOrgs,
+    backupCaptureOwners,
     createBackupJob,
-    enqueueBackupTargets
+    enqueueBackupTargets,
+    resolveBackupDeviceOwners
 } from '../../modules/jobs/repository';
 import * as Registry from '../../modules/Registry';
+import {captureStreamError} from '../../modules/util/faultGuard';
 import type {DescribeOutput} from '../../rpc/describe';
 import {buildListResponse} from '../../rpc/listResponse';
 import RpcError from '../../rpc/RpcError';
@@ -89,7 +96,12 @@ export interface BackupMetadata {
     // read scoped to this field can't leak across tenants. Null only for
     // legacy records captured before stamping, backfilled on first access.
     organizationId: string | null;
+    device: {
+        id: number | null;
+        external_id: string;
+    };
     name: string;
+    /** @deprecated Use device.external_id for the capture snapshot. */
     shellyID: string;
     deviceName: string;
     model: string;
@@ -102,12 +114,25 @@ export interface BackupMetadata {
     contentsSummary: string;
     groupIds: number[];
     groupNames: string[];
+    // Provenance: 'imported' for an uploaded archive, 'device' (or absent on
+    // legacy records) for one captured from a live device.
+    source?: 'device' | 'imported';
     metadata: Record<string, any>;
 }
 
 type BackupMutationResult = BackupMetadata & {
     replacedBackupId?: string;
 };
+
+interface BackupCurrentBinding {
+    externalId: string;
+    organizationId: string | null;
+}
+
+interface HydratedBackup {
+    metadata: BackupMetadata;
+    currentBinding: BackupCurrentBinding | null;
+}
 
 type StoredBackupRecord = {
     raw: any;
@@ -188,16 +213,6 @@ interface GetParams {
 interface GetFileParams {
     id: string;
 }
-
-const BACKUP_CONTENT_KEYS = [
-    'ble_bondings',
-    'dynamic_components',
-    'persistent_counters',
-    'schedules',
-    'scripts',
-    'webhooks',
-    'matter_storage'
-] as const;
 
 function generateId(): string {
     return `${Date.now()}-${randomBytes(6).toString('hex')}`;
@@ -582,29 +597,32 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
     // Exposed Methods
     // ========================================================================
 
-    // Gate by devices:<op> on the backup's source shellyID. Throws
-    // NotFound (not Unauthorized) so foreign and missing ids return
-    // identical responses — no ID-existence oracle.
+    // Capture ownership is permanent. Current device access is used only while
+    // the logical device still belongs to the capture organization.
     #assertBackupDeviceAccessible(
         sender: CommandSender,
         backup: BackupMetadata | undefined | null,
+        currentBinding: BackupCurrentBinding | null,
         operation: 'read' | 'update' | 'delete',
         idForOracle: string
     ): void {
         if (!backup) return;
+        if (backupOwnerBlocks(backup.organizationId, sender)) {
+            throw RpcError.NotFound('backup', idForOracle);
+        }
+        const movedAway =
+            currentBinding !== null &&
+            currentBinding.organizationId !== backup.organizationId;
+        if (movedAway || (backup.device.id !== null && !currentBinding)) return;
+        const accessSubject =
+            currentBinding?.externalId ?? backup.device.external_id;
         const decision = canPerformComponentOperation(
             sender,
             'devices',
             operation,
-            backup.shellyID
+            accessSubject
         );
         if (!isComponentPermissionAllowed(decision)) {
-            throw RpcError.NotFound('backup', idForOracle);
-        }
-        // Ownership gate: the backup belongs to the org that captured it
-        // (stamped on the record), not whoever can reach the device now. A
-        // device transferred A→B must not expose A's backup secrets to B.
-        if (backupOwnerBlocks(backup.organizationId, sender)) {
             throw RpcError.NotFound('backup', idForOracle);
         }
     }
@@ -617,8 +635,7 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
         idForOracle: string
     ): void {
         if (!expectedSourceOrg) return;
-        const sourceOrg = EventDistributor.getDeviceOrg(backup.shellyID);
-        if (sourceOrg !== expectedSourceOrg) {
+        if (backup.organizationId !== expectedSourceOrg) {
             throw RpcError.NotFound('backup', idForOracle);
         }
     }
@@ -668,41 +685,48 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
         shellyIDFilter: string | undefined
     ): Promise<any[]> {
         const all = await Registry.getAll(REGISTRY_NAME);
-        const raws = Object.values(all).filter((raw) => {
+        const hydrated = await this.#hydrateBackupOwnership(Object.values(all));
+        const owned = hydrated.filter(
+            (backup) =>
+                !backupOwnerBlocks(backup.metadata.organizationId, sender)
+        );
+        const filtered = owned.filter((backup) => {
             if (!shellyIDFilter) return true;
-            return String(raw?.shellyID ?? '') === shellyIDFilter;
+            return (
+                backup.currentBinding?.externalId === shellyIDFilter ||
+                backup.metadata.device.external_id === shellyIDFilter
+            );
         });
-        if (canCrossOrganizationBoundary(sender)) return raws;
-        const accessible = await sender.filterAccessibleDevices(
-            raws.map((raw) => String(raw?.shellyID ?? ''))
-        );
-        const deviceVisible = raws.filter((raw) =>
-            accessible.has(String(raw?.shellyID ?? ''))
-        );
-        return this.#filterByCaptureOrg(deviceVisible, sender);
-    }
+        if (canCrossOrganizationBoundary(sender)) {
+            return filtered.map((backup) => backup.metadata);
+        }
 
-    // Keep only backups this org owns. Owner lives on the record; legacy records
-    // missing it are backfilled once from their create unit, then scoped the
-    // same way. A transferred device never drags its old org's backups along.
-    async #filterByCaptureOrg(
-        raws: any[],
-        sender: CommandSender
-    ): Promise<any[]> {
-        const legacyIds = raws
-            .filter((raw) => !raw?.organizationId)
-            .map((raw) => String(raw?.id ?? ''));
-        const seeded =
-            legacyIds.length > 0
-                ? await this.#backfillBackupOrgs(legacyIds)
-                : new Map<string, string>();
-        return raws.filter((raw) => {
-            const org =
-                raw?.organizationId ??
-                seeded.get(String(raw?.id ?? '')) ??
-                null;
-            return !backupOwnerBlocks(org, sender);
-        });
+        const resourceScoped = filtered.filter(
+            (backup) =>
+                backup.metadata.device.id === null ||
+                backup.currentBinding?.organizationId ===
+                    backup.metadata.organizationId
+        );
+        const accessible = await sender.filterAccessibleDevices(
+            resourceScoped.map(
+                (backup) =>
+                    backup.currentBinding?.externalId ??
+                    backup.metadata.device.external_id
+            )
+        );
+        return filtered
+            .filter((backup) => {
+                const movedOrDetached =
+                    backup.metadata.device.id !== null &&
+                    backup.currentBinding?.organizationId !==
+                        backup.metadata.organizationId;
+                if (movedOrDetached) return true;
+                return accessible.has(
+                    backup.currentBinding?.externalId ??
+                        backup.metadata.device.external_id
+                );
+            })
+            .map((backup) => backup.metadata);
     }
 
     #resolveListLimit(requested: unknown): number {
@@ -728,6 +752,7 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
         this.#assertBackupDeviceAccessible(
             sender,
             backup?.normalized,
+            backup?.currentBinding ?? null,
             'read',
             v.id
         );
@@ -830,6 +855,7 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
         this.#assertBackupDeviceAccessible(
             sender,
             storedBackup?.normalized,
+            storedBackup?.currentBinding ?? null,
             'read',
             backupId
         );
@@ -1049,11 +1075,18 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
         const backupId = generateId();
         const filePath = path.join(BACKUPS_DIR, `${backupId}.zip`);
         const writeStream = fs.createWriteStream(filePath);
+        // Capture async fd errors (e.g. disk full) so they surface at the next
+        // await instead of crashing the process during a sendRPC gap.
+        const throwIfWriteFailed = captureStreamError(
+            writeStream,
+            `backup-write:${shellyID}`
+        );
         let fileSize = 0;
         let offset = 0;
         let left = 1;
         try {
             while (left > 0) {
+                throwIfWriteFailed();
                 const device = DeviceCollector.getDevice(shellyID);
                 if (!device) {
                     throw RpcError.Domain('DeviceOffline', {
@@ -1143,6 +1176,10 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
                 // Owner = the device's org at capture time (you can only back up
                 // your own device). Stamped once; survives later transfers.
                 organizationId: EventDistributor.getDeviceOrg(shellyID) ?? null,
+                device: {
+                    id: initialDevice.id,
+                    external_id: shellyID
+                },
                 name: finalName,
                 shellyID,
                 deviceName,
@@ -1219,6 +1256,109 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
     }
 
     /**
+     * Store a backup uploaded as a file, after strict validation.
+     *
+     * The archive is attacker-controlled, so identity/model come only from the
+     * validated archive (never the caller). Owner is stamped to the importing
+     * org — the same capture rule — so it scopes and lists like a device
+     * backup. Fail-loud: a bad archive throws before any bytes are written.
+     */
+    async importBackup(input: {
+        fileBuffer: Buffer;
+        organizationId: string | null;
+        requestedName?: string;
+        originalFileName?: string;
+    }): Promise<BackupMetadata> {
+        const parsed = parseAndValidateBackupArchive(
+            input.fileBuffer,
+            tuning.backup.importMaxBytes
+        );
+
+        const backupId = generateId();
+        const filePath = this.getBackupFilePath(backupId);
+        const createdAt = Date.now();
+        const dateStr = getCreatedDateKey(createdAt);
+        const contentsSummary = summarizeBackupContents(parsed.contents);
+        const deviceName = parsed.deviceName || parsed.sourceDeviceId;
+        const defaultNameBase =
+            deviceName === parsed.sourceDeviceId
+                ? `${parsed.sourceDeviceId}-${dateStr}`
+                : `${deviceName}-${parsed.sourceDeviceId}-${dateStr}`;
+        const sourceDevice = DeviceCollector.getDevice(parsed.sourceDeviceId);
+        const sourceDeviceId =
+            sourceDevice &&
+            input.organizationId !== null &&
+            EventDistributor.getDeviceOrg(parsed.sourceDeviceId) ===
+                input.organizationId
+                ? sourceDevice.id
+                : null;
+
+        return await this.withBackupMutationLock(async () => {
+            const requestedName =
+                typeof input.requestedName === 'string' &&
+                input.requestedName.trim()
+                    ? input.requestedName
+                    : undefined;
+            const finalName = normalizeBackupName(
+                requestedName ??
+                    (await this.getUniqueGeneratedBackupName(defaultNameBase))
+            );
+
+            const metadata: BackupMetadata = {
+                id: backupId,
+                organizationId: input.organizationId,
+                device: {
+                    id: sourceDeviceId,
+                    external_id: parsed.sourceDeviceId
+                },
+                name: finalName,
+                shellyID: parsed.sourceDeviceId,
+                deviceName,
+                model: parsed.model,
+                app: parsed.app,
+                fwVersion: parsed.fwVersion,
+                createdAt,
+                createdDateKey: dateStr,
+                fileSize: input.fileBuffer.length,
+                contents: parsed.contents,
+                contentsSummary,
+                groupIds: [],
+                groupNames: [],
+                source: 'imported',
+                metadata: {
+                    device_name: deviceName,
+                    source: 'imported',
+                    actual_contents: contentsSummary,
+                    ...(input.originalFileName
+                        ? {original_file_name: input.originalFileName}
+                        : {})
+                }
+            };
+
+            // Bytes first, then registry — roll back the file if the record
+            // write fails so the store never keeps an orphaned archive.
+            await fsPromises.writeFile(filePath, input.fileBuffer);
+            try {
+                await Registry.mutateRegistry(REGISTRY_NAME, (draft) => {
+                    draft[backupId] = metadata;
+                });
+            } catch (error) {
+                await this.deleteFileIfExists(filePath);
+                throw error;
+            }
+
+            logger.info(
+                'Backup imported: id=%s, name=%s, model=%s, size=%d bytes',
+                backupId,
+                finalName,
+                parsed.model,
+                input.fileBuffer.length
+            );
+            return this.normalizeStoredBackup(metadata);
+        });
+    }
+
+    /**
      * Rename a backup.
      */
     @Component.Expose('Rename')
@@ -1244,6 +1384,7 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
             this.#assertBackupDeviceAccessible(
                 sender,
                 storedBackup?.normalized,
+                storedBackup?.currentBinding ?? null,
                 'update',
                 id
             );
@@ -1317,6 +1458,7 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
             this.#assertBackupDeviceAccessible(
                 sender,
                 storedBackup?.normalized,
+                storedBackup?.currentBinding ?? null,
                 'delete',
                 id
             );
@@ -1691,6 +1833,7 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
                 this.#assertBackupDeviceAccessible(
                     authorization.sender,
                     storedBackup.normalized,
+                    storedBackup.currentBinding,
                     'read',
                     id
                 );
@@ -1761,6 +1904,7 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
         this.#assertBackupDeviceAccessible(
             sender,
             storedBackup?.normalized,
+            storedBackup?.currentBinding ?? null,
             'read',
             id
         );
@@ -2142,6 +2286,7 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
     private async getStoredBackupRecord(id: string): Promise<{
         raw: any;
         normalized: BackupMetadata;
+        currentBinding: BackupCurrentBinding | null;
     } | null> {
         const raw = await Registry.getFromRegistry(REGISTRY_NAME, id);
         if (!raw) {
@@ -2152,32 +2297,97 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
         if (!normalized) {
             return null;
         }
-        if (normalized.organizationId === null) {
-            normalized.organizationId = await this.#backfillBackupOrg(
-                normalized.id
-            );
+        const [hydrated] = await this.#hydrateBackupOwnership([normalized]);
+
+        return {
+            raw: {
+                ...raw,
+                organizationId: hydrated.metadata.organizationId,
+                device: hydrated.metadata.device,
+                shellyID: hydrated.metadata.device.external_id
+            },
+            normalized: hydrated.metadata,
+            currentBinding: hydrated.currentBinding
+        };
+    }
+
+    async #hydrateBackupOwnership(raws: any[]): Promise<HydratedBackup[]> {
+        const backups = raws.map((raw) => this.normalizeStoredBackup(raw));
+        const captureIds = backups
+            .filter(
+                (backup) =>
+                    backup.organizationId === null || backup.device.id === null
+            )
+            .map((backup) => backup.id);
+        const captures = await backupCaptureOwners(captureIds);
+
+        for (const backup of backups) {
+            const capture = captures.get(backup.id);
+            if (!capture) continue;
+            if (backup.organizationId === null) {
+                backup.organizationId = capture.organizationId;
+            }
+            if (backup.device.id === null) {
+                backup.device.id = capture.device.id;
+            }
+            if (!backup.device.external_id) {
+                backup.device.external_id = capture.device.external_id;
+                backup.shellyID = capture.device.external_id;
+            }
         }
 
-        return {raw, normalized};
-    }
+        const probes = backups
+            .filter(
+                (backup) =>
+                    backup.organizationId !== null &&
+                    backup.device.external_id.length > 0
+            )
+            .map((backup) => ({
+                backupId: backup.id,
+                organizationId: backup.organizationId as string,
+                device: backup.device
+            }));
+        const resolved = await resolveBackupDeviceOwners(probes);
+        for (const backup of backups) {
+            const owner: BackupDeviceOwnership | undefined = resolved.get(
+                backup.id
+            );
+            if (!owner) continue;
+            if (backup.device.id === null) backup.device.id = owner.device.id;
+        }
 
-    // Legacy records predate owner stamping. Seed the owner once from the
-    // create-mode unit (the authoritative capture org) and persist it, so every
-    // later read scopes on the record itself — no cross-table lookup.
-    async #backfillBackupOrg(id: string): Promise<string | null> {
-        return (await this.#backfillBackupOrgs([id])).get(id) ?? null;
-    }
-
-    async #backfillBackupOrgs(ids: string[]): Promise<Map<string, string>> {
-        const orgs = await backupCaptureOrgs(ids);
-        if (orgs.size > 0) {
+        const changed = backups.filter((backup, index) => {
+            const raw = raws[index];
+            return (
+                raw?.organizationId !== backup.organizationId ||
+                raw?.device?.id !== backup.device.id ||
+                raw?.device?.external_id !== backup.device.external_id
+            );
+        });
+        if (changed.length > 0) {
             await Registry.mutateRegistry(REGISTRY_NAME, (draft) => {
-                for (const [id, org] of orgs) {
-                    if (draft[id]) draft[id].organizationId = org;
+                for (const backup of changed) {
+                    if (!draft[backup.id]) continue;
+                    draft[backup.id].organizationId = backup.organizationId;
+                    draft[backup.id].device = backup.device;
+                    draft[backup.id].shellyID = backup.device.external_id;
                 }
             });
         }
-        return orgs;
+        return backups.map((metadata) => {
+            const owner =
+                resolved.get(metadata.id) ?? captures.get(metadata.id);
+            return {
+                metadata,
+                currentBinding:
+                    owner?.currentExternalId && owner.currentOrganizationId
+                        ? {
+                              externalId: owner.currentExternalId,
+                              organizationId: owner.currentOrganizationId
+                          }
+                        : null
+            };
+        });
     }
 
     private normalizeStoredBackup(raw: any): BackupMetadata {
@@ -2213,8 +2423,17 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
                 typeof raw?.organizationId === 'string' && raw.organizationId
                     ? raw.organizationId
                     : null,
+            device: {
+                id:
+                    Number.isInteger(raw?.device?.id) && raw.device.id > 0
+                        ? raw.device.id
+                        : null,
+                external_id: String(
+                    raw?.device?.external_id ?? raw?.shellyID ?? ''
+                )
+            },
             name: String(raw?.name ?? ''),
-            shellyID: String(raw?.shellyID ?? ''),
+            shellyID: String(raw?.shellyID ?? raw?.device?.external_id ?? ''),
             deviceName:
                 typeof raw?.deviceName === 'string' && raw.deviceName
                     ? raw.deviceName
@@ -2244,6 +2463,7 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
                       : summarizeBackupContents(contents),
             groupIds,
             groupNames,
+            source: raw?.source === 'imported' ? 'imported' : 'device',
             metadata
         };
     }

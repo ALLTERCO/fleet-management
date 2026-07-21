@@ -3,7 +3,11 @@
  * Shared by the live dashboard renderer and the add-widget catalog preview.
  */
 
-export type CardSize = '1x1' | '2x1' | '2x2';
+// Card size is owned by the widget catalog (single source of truth for the
+// size vocabulary + rules). Re-exported here so the renderer keeps one import.
+import type {CardSize} from '@/helpers/widgetCatalog';
+
+export type {CardSize};
 
 export type DashboardEntryType =
     | 'entity'

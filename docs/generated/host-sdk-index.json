@@ -1,0 +1,689 @@
+{
+  "generator": "host-sdk-index",
+  "version": 1,
+  "summary": {
+    "entrypoint": "frontend/src/shell/template-host/index.ts",
+    "rule": "Templates and alternate UIs use @host domains before raw RPC.",
+    "moduleCount": 36,
+    "contractMethodCount": 1215
+  },
+  "modules": [
+    {
+      "name": "alerts",
+      "path": "frontend/src/shell/template-host/alerts.ts",
+      "exports": [
+        "alerts",
+        "useAlerts",
+        "useSupervisedAlerts"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": true,
+      "namespaces": [
+        "alert"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "api",
+      "path": "frontend/src/shell/template-host/api.ts",
+      "exports": [
+        "HostApiMethod",
+        "HostApiNode",
+        "api",
+        "call",
+        "listAll",
+        "toRpcMethod"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": true,
+      "namespaces": [],
+      "namespaceKinds": []
+    },
+    {
+      "name": "audit",
+      "path": "frontend/src/shell/template-host/audit.ts",
+      "exports": [
+        "audit",
+        "authzAudit"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [
+        "audit",
+        "authz_audit"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "auth",
+      "path": "frontend/src/shell/template-host/auth.ts",
+      "exports": [
+        "auth",
+        "useCurrentUser"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [],
+      "namespaceKinds": []
+    },
+    {
+      "name": "backups",
+      "path": "frontend/src/shell/template-host/backups.ts",
+      "exports": [
+        "backups"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [
+        "backup"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "bluetoothDevices",
+      "path": "frontend/src/shell/template-host/bluetoothDevices.ts",
+      "exports": [
+        "BTHomeGateway",
+        "BluetoothCandidate",
+        "BluetoothDevice",
+        "BluetoothGetParams",
+        "BluetoothGetResult",
+        "BluetoothListParams",
+        "BluetoothListResult",
+        "BluetoothTransport",
+        "BluetoothTransportListParams",
+        "BluetoothTransportListResult",
+        "BluetoothTransportSetPrimaryParams",
+        "BluetoothTransportSetPrimaryResult",
+        "BluetoothUpdateParams",
+        "BluetoothUpdateResult",
+        "bluetoothDevices"
+      ],
+      "usesGeneratedContract": true,
+      "usesRawRpc": true,
+      "namespaces": [
+        "bthome",
+        "virtualdevice"
+      ],
+      "namespaceKinds": [
+        "device",
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "channels",
+      "path": "frontend/src/shell/template-host/channels.ts",
+      "exports": [
+        "channels"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [
+        "channel"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "configurations",
+      "path": "frontend/src/shell/template-host/configurations.ts",
+      "exports": [
+        "configurations"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [
+        "ble",
+        "cloud",
+        "device",
+        "eth",
+        "knx",
+        "modbus",
+        "mqtt",
+        "script",
+        "sys",
+        "web",
+        "wifi"
+      ],
+      "namespaceKinds": [
+        "device",
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "currentUser",
+      "path": "frontend/src/shell/template-host/currentUser.ts",
+      "exports": [
+        "auth",
+        "signOut",
+        "useCurrentUser"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [],
+      "namespaceKinds": []
+    },
+    {
+      "name": "customization",
+      "path": "frontend/src/shell/template-host/customization.ts",
+      "exports": [
+        "useCustomization",
+        "useCustomizationField"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [],
+      "namespaceKinds": []
+    },
+    {
+      "name": "dashboards",
+      "path": "frontend/src/shell/template-host/dashboards.ts",
+      "exports": [
+        "dashboards"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [
+        "dashboard"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "deviceCapabilities",
+      "path": "frontend/src/shell/template-host/deviceCapabilities.ts",
+      "exports": [
+        "deriveDomainCapabilities"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [],
+      "namespaceKinds": []
+    },
+    {
+      "name": "deviceMapper",
+      "path": "frontend/src/shell/template-host/deviceMapper.ts",
+      "exports": [
+        "toHostDevice"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [],
+      "namespaceKinds": []
+    },
+    {
+      "name": "devices",
+      "path": "frontend/src/shell/template-host/devices.ts",
+      "exports": [
+        "devices",
+        "useDeviceActions",
+        "useDeviceCapabilities",
+        "useDevices",
+        "useDevicesForGroup"
+      ],
+      "usesGeneratedContract": true,
+      "usesRawRpc": true,
+      "namespaces": [
+        "device"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "domain",
+      "path": "frontend/src/shell/template-host/domain.ts",
+      "exports": [
+        "HostDomainApi",
+        "TypedHostDomainApi",
+        "createHostDomain"
+      ],
+      "usesGeneratedContract": true,
+      "usesRawRpc": false,
+      "namespaces": [],
+      "namespaceKinds": []
+    },
+    {
+      "name": "energy",
+      "path": "frontend/src/shell/template-host/energy.ts",
+      "exports": [
+        "LiveMetric",
+        "LiveMetricOptions",
+        "MetricHistory",
+        "MetricHistoryOptions",
+        "UseMetricHistoryOptions",
+        "UseMetricLiveOptions",
+        "metrics",
+        "useLiveMetric",
+        "useMetric",
+        "useMetricHistory"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": true,
+      "namespaces": [
+        "energy"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "entities",
+      "path": "frontend/src/shell/template-host/entities.ts",
+      "exports": [
+        "entities"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [
+        "entity"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "firmware",
+      "path": "frontend/src/shell/template-host/firmware.ts",
+      "exports": [
+        "firmware"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [
+        "firmware"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "groups",
+      "path": "frontend/src/shell/template-host/groups.ts",
+      "exports": [
+        "groups",
+        "useGroup",
+        "useGroupActions",
+        "useGroups"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": true,
+      "namespaces": [
+        "group"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "index",
+      "path": "frontend/src/shell/template-host/index.ts",
+      "exports": [
+        "HOST_ESCAPE_HATCHES",
+        "HOST_METHOD_METADATA",
+        "HOST_NAMESPACE_GUIDE",
+        "alerts",
+        "api",
+        "audit",
+        "auth",
+        "authzAudit",
+        "backups",
+        "bluetoothDevices",
+        "call",
+        "callMethod",
+        "channels",
+        "configurations",
+        "createHostDomain",
+        "dashboards",
+        "devices",
+        "energyReports",
+        "entities",
+        "firmware",
+        "groups",
+        "host",
+        "listAll",
+        "locations",
+        "metrics",
+        "navigation",
+        "notificationPolicies",
+        "notifications",
+        "permissions",
+        "relationships",
+        "reports",
+        "settings",
+        "signOut",
+        "tags",
+        "toRpcMethod",
+        "useAlerts",
+        "useCurrentUser",
+        "useCustomNavItems",
+        "useCustomization",
+        "useDashboardBlocks",
+        "useDeviceActions",
+        "useDeviceCapabilities",
+        "useDevices",
+        "useDevicesForGroup",
+        "useGroup",
+        "useGroupActions",
+        "useGroups",
+        "useHiddenSections",
+        "useKpiOverrides",
+        "useLiveMetric",
+        "useLocations",
+        "useMetric",
+        "useMetricHistory",
+        "useNavLabels",
+        "useNavOrder",
+        "usePermissions",
+        "usePortalAlerts",
+        "usePortalCustomNavItems",
+        "usePortalDashboardBlocks",
+        "usePortalGroups",
+        "usePortalHiddenSections",
+        "usePortalKpis",
+        "usePortalNavLabels",
+        "usePortalNavOrder",
+        "usePortalVocabulary",
+        "useSupervisedAlerts",
+        "useTemplateRpc",
+        "useThemeTokens",
+        "useVocabulary",
+        "userGroups",
+        "users",
+        "virtualDevices",
+        "waitingRoom"
+      ],
+      "usesGeneratedContract": true,
+      "usesRawRpc": true,
+      "namespaces": [],
+      "namespaceKinds": []
+    },
+    {
+      "name": "locations",
+      "path": "frontend/src/shell/template-host/locations.ts",
+      "exports": [
+        "LocationCreateInput",
+        "LocationListParams",
+        "LocationUpdateInput",
+        "locations",
+        "useLocations"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": true,
+      "namespaces": [
+        "location"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "navigation",
+      "path": "frontend/src/shell/template-host/navigation.ts",
+      "exports": [
+        "navigation",
+        "useNavLabels",
+        "useNavOrder"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [],
+      "namespaceKinds": []
+    },
+    {
+      "name": "notifications",
+      "path": "frontend/src/shell/template-host/notifications.ts",
+      "exports": [
+        "notificationPolicies",
+        "notifications"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [
+        "notification",
+        "notification_policy"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "permissions",
+      "path": "frontend/src/shell/template-host/permissions.ts",
+      "exports": [
+        "permissions",
+        "usePermissions"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [],
+      "namespaceKinds": []
+    },
+    {
+      "name": "portalProject",
+      "path": "frontend/src/shell/template-host/portalProject.ts",
+      "exports": [
+        "useCustomNavItems",
+        "useDashboardBlocks",
+        "useHiddenSections",
+        "useKpiOverrides",
+        "usePortalAlerts",
+        "usePortalCustomNavItems",
+        "usePortalDashboardBlocks",
+        "usePortalGroups",
+        "usePortalHiddenSections",
+        "usePortalKpis",
+        "usePortalNavLabels",
+        "usePortalNavOrder",
+        "usePortalVocabulary",
+        "useVocabulary"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [],
+      "namespaceKinds": []
+    },
+    {
+      "name": "relationships",
+      "path": "frontend/src/shell/template-host/relationships.ts",
+      "exports": [
+        "DeviceRelationshipsGetParams",
+        "DeviceRelationshipsGraph",
+        "DeviceRelationshipsQueryParams",
+        "DeviceRelationshipsQueryResult",
+        "relationships"
+      ],
+      "usesGeneratedContract": true,
+      "usesRawRpc": true,
+      "namespaces": [
+        "device"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "reports",
+      "path": "frontend/src/shell/template-host/reports.ts",
+      "exports": [
+        "energyReports",
+        "reports"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [
+        "energy",
+        "report"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "rpc",
+      "path": "frontend/src/shell/template-host/rpc.ts",
+      "exports": [
+        "hostListAll",
+        "hostRpc",
+        "useTemplateRpc"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": true,
+      "namespaces": [],
+      "namespaceKinds": []
+    },
+    {
+      "name": "settings",
+      "path": "frontend/src/shell/template-host/settings.ts",
+      "exports": [
+        "settings"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [
+        "branding",
+        "domain_policy",
+        "identity",
+        "login_text",
+        "message_text",
+        "privacy"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "tags",
+      "path": "frontend/src/shell/template-host/tags.ts",
+      "exports": [
+        "tags"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [
+        "tag"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "theme",
+      "path": "frontend/src/shell/template-host/theme.ts",
+      "exports": [
+        "useThemeTokens"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [],
+      "namespaceKinds": []
+    },
+    {
+      "name": "typed",
+      "path": "frontend/src/shell/template-host/typed.ts",
+      "exports": [
+        "HOST_NAMESPACE_GUIDE",
+        "callMethod"
+      ],
+      "usesGeneratedContract": true,
+      "usesRawRpc": true,
+      "namespaces": [],
+      "namespaceKinds": []
+    },
+    {
+      "name": "types",
+      "path": "frontend/src/shell/template-host/types.ts",
+      "exports": [
+        "DeviceCapabilities",
+        "DeviceDoorCapability",
+        "DeviceEnergyCapability",
+        "DeviceMotionCapability",
+        "DeviceRelayCapability",
+        "DeviceTemperatureCapability",
+        "HostAction",
+        "HostAsyncState",
+        "HostDevice",
+        "HostError",
+        "HostLoadState",
+        "HostPagedEnvelope",
+        "HostResource"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [],
+      "namespaceKinds": []
+    },
+    {
+      "name": "users",
+      "path": "frontend/src/shell/template-host/users.ts",
+      "exports": [
+        "userGroups",
+        "users"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [
+        "user",
+        "user_group"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "virtualDevices",
+      "path": "frontend/src/shell/template-host/virtualDevices.ts",
+      "exports": [
+        "BindingDraftItem",
+        "CreateVirtualDeviceRequest",
+        "DraftPreviewResponse",
+        "ExtractionPreview",
+        "HistoryMode",
+        "ProfileSuggestCandidate",
+        "RoleVisual",
+        "SourceComponentCandidate",
+        "SourceComponentRef",
+        "ValidationResult",
+        "VirtualDeviceDto",
+        "VirtualDeviceKind",
+        "VirtualDeviceMethod",
+        "VirtualDeviceParams",
+        "VirtualDeviceProfile",
+        "VirtualDeviceResult",
+        "VirtualDeviceVisual",
+        "virtualDevices"
+      ],
+      "usesGeneratedContract": true,
+      "usesRawRpc": true,
+      "namespaces": [
+        "virtualdevice"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    },
+    {
+      "name": "waiting-room",
+      "path": "frontend/src/shell/template-host/waiting-room.ts",
+      "exports": [
+        "waitingRoom"
+      ],
+      "usesGeneratedContract": false,
+      "usesRawRpc": false,
+      "namespaces": [
+        "waitingroom"
+      ],
+      "namespaceKinds": [
+        "fleet-manager"
+      ]
+    }
+  ]
+}

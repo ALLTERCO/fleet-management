@@ -57,17 +57,25 @@ fm_obs_level = '0' | '1' | '2' | '3'
 
 ### REST API
 
+The POST endpoints require a platform-admin bearer token. Only `GET /health`
+is public.
+
 ```bash
 # Set level
-curl -X POST /health/observability -H 'Content-Type: application/json' -d '{"level": 2}'
+curl -X POST /health/observability \
+  -H 'Authorization: Bearer <platform-admin-pat>' \
+  -H 'Content-Type: application/json' -d '{"level": 2}'
 
 # Legacy boolean (backward compatible)
-curl -X POST /health/observability -H 'Content-Type: application/json' -d '{"enabled": true}'
+curl -X POST /health/observability \
+  -H 'Authorization: Bearer <platform-admin-pat>' \
+  -H 'Content-Type: application/json' -d '{"enabled": true}'
 
 # Reset all timings and counters
-curl -X POST /health/observability/reset
+curl -X POST /health/observability/reset \
+  -H 'Authorization: Bearer <platform-admin-pat>'
 
-# Get current metrics
+# Get current metrics (public)
 curl /health
 ```
 
@@ -231,6 +239,66 @@ Module stat cards are color-coded to highlight bottlenecks:
 ### Device GUI Diagnostics
 
 When OBS level >= 2, the Device Web GUI modal shows a collapsible section with device-specific RPC timings filtered from the ring buffer by shellyID.
+
+The server also emits structured `device-gui` logs for the complete proxy path.
+Each line carries a bounded stage and outcome plus the available logical device
+ID, Shelly ID, target IP, short session trace, HTTP method, path, status, and
+duration. Query strings, cookies, tokens, and payloads are not logged.
+
+Follow one GUI attempt by filtering for `"event":"device_gui"` and its
+eight-character `trace`. The normal sequence is:
+
+1. `launch/requested`
+2. `attestation/identity_matched`
+3. `session/success`
+4. `launch/success`
+5. `http/success`
+6. `websocket/success`
+7. `websocket/closed` or `websocket/revoked`
+
+The HTTP and WebSocket proxy responses include `X-FM-Device-GUI-Trace`.
+HTTP responses also include `Server-Timing: device-gui;dur=...` for browser
+network inspection.
+
+| Metric | Meaning |
+| --- | --- |
+| `fm_device_gui_events_total{stage,outcome}` | Launch, identity, session, HTTP, and WebSocket results |
+| `fm_device_gui_bytes_total{transport,direction}` | HTTP and WebSocket bytes in both directions |
+| `fm_device_gui_duration_ms_total{stage,outcome}` | Total operation time by stage and outcome |
+| `fm_device_gui_duration_samples_total{stage,outcome}` | Operation samples used to calculate average time |
+| `fm_device_gui_http_responses_total{status}` | Proxied HTTP responses by status class |
+| `fm_device_gui_websocket_compression_total{offered,negotiated}` | Device GUI per-message deflate negotiation |
+| `fm_device_gui_active_websockets` | Current Device GUI WebSocket count |
+
+Common VPC failures are reported as `timeout`, `connection_refused`,
+`connection_reset`, `unreachable`, `identity_mismatch`, or `device_changed`.
+This distinguishes a missing route or firewall timeout from a reachable host
+that is not the expected Shelly device.
+
+### WebSocket Traffic Diagnostics
+
+The shared browser and Shelly WebSocket servers track traffic without recording
+message payloads.
+
+| Metric | Meaning |
+| --- | --- |
+| `fm_ws_connection_events_total{traffic,outcome,compression}` | Open, close, and error events for client and device sockets |
+| `fm_ws_compression_total{traffic,offered,negotiated}` | Connections with and without per-message deflate |
+| `fm_ws_message_bytes_total{traffic,direction,format,negotiated}` | Decoded inbound text and binary message bytes |
+| `fm_ws_message_size_bucket_total{traffic,direction,format,size,negotiated}` | Message counts split into bounded size buckets |
+| `fm_ws_wire_bytes_total{traffic,direction,negotiated}` | TCP wire bytes on connections with or without negotiated compression |
+| `fm_ws_closes_total{traffic,negotiated,code}` | Bounded close codes for connections with or without negotiated compression |
+| `fm_ws_active_connections{traffic}` | Current client and device WebSocket count |
+
+Connection-close debug lines include the traffic class, compression state,
+close code, lifetime, and TCP bytes sent and received. Payload inspection is
+intentionally excluded because device frames can contain credentials, commands,
+and private sensor data.
+
+Wire-byte counters are updated on the heartbeat interval and once more at close,
+so long-lived device sockets remain visible in rate queries. Debug connection
+logs include the remote IP for network diagnosis; apply the normal diagnostic
+log retention and access policy to this data.
 
 ### Log Level Border Colors
 

@@ -4,7 +4,7 @@
         <div class="ds-bar">
             <div class="ds-search">
                 <Input v-model="filter" placeholder="Search devices..." class="ds-search-input" />
-                <button class="ds-filter-btn" :class="{'ds-filter-btn--active': hasFiltersFromModal}" @click="filterVisible = true" title="Filters">
+                <button type="button" class="ds-filter-btn" :class="{'ds-filter-btn--active': hasFiltersFromModal}" @click="filterVisible = true" title="Filters">
                     <i class="fas fa-filter" />
                 </button>
             </div>
@@ -64,40 +64,49 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onMounted, reactive, ref, shallowRef} from 'vue';
+import {computed, reactive, ref} from 'vue';
 import DeviceFleetCard from '@/components/cards/DeviceFleetCard.vue';
 import DeviceFilter from '@/components/pages/devices/DeviceFilterActions.vue';
-import {getDeviceName, getLogo} from '@/helpers/device';
+import {deviceMatchesQuery, getDeviceName} from '@/helpers/device';
 import {useDevicesStore} from '@/stores/devices';
 import type {shelly_device_t} from '@/types';
 import Button from './Button.vue';
 import Input from './Input.vue';
 
 const filterVisible = ref(false);
-const hasFiltersFromModal = computed(
-    () => devices.value.length !== filteredDevices.value.length
-);
 
 const defaultFilters = {type: 'All devices', group: 'All groups'};
 const activeFilterPills = reactive({...defaultFilters});
+const hasFiltersFromModal = computed(
+    () =>
+        activeFilterPills.type !== defaultFilters.type ||
+        activeFilterPills.group !== defaultFilters.group
+);
 
 const selected = defineModel<string[]>({required: true});
 const devicesStore = useDevicesStore();
 
-const devices = shallowRef<
-    Array<{
-        shellyID: string;
-        name: string;
-        picture_url: string;
-        online: boolean;
-        sleeping: boolean;
-    }>
->([]);
+// null = no modal filter applied; otherwise the allowed shellyIDs.
+const allowedIds = ref<Set<string> | null>(null);
+
+// Live store view: late-connecting devices regroup while open.
+const devices = computed(() => {
+    void devicesStore.devicesVersion;
+    return Object.values(devicesStore.devices).map((dev) => ({
+        shellyID: dev.shellyID,
+        name: getDeviceName(dev.info, dev.shellyID),
+        online: dev.online
+    }));
+});
 
 const filter = ref('');
-const filteredDevices = computed(() => {
-    return devices.value.filter((dev) => dev.name.includes(filter.value));
-});
+const filteredDevices = computed(() =>
+    devices.value.filter(
+        (dev) =>
+            (allowedIds.value === null || allowedIds.value.has(dev.shellyID)) &&
+            deviceMatchesQuery({name: dev.name, id: dev.shellyID}, filter.value)
+    )
+);
 // Online devices always come first, offline below the divider.
 const onlineDevices = computed(() =>
     filteredDevices.value.filter((dev) => dev.online)
@@ -133,28 +142,15 @@ function selectAll() {
     }
 }
 
-onMounted(() => {
-    devices.value = Object.values(devicesStore.devices).map((dev) => ({
-        shellyID: dev.shellyID,
-        name: getDeviceName(dev.info, dev.shellyID),
-        picture_url: getLogo(dev),
-        online: dev.online,
-        sleeping: dev.sleeping
-    }));
-});
-
 function setActiveFilters(filters: typeof activeFilterPills) {
     Object.assign(activeFilterPills, filters);
 }
 
+// A filter change drops selections outside the new scope.
 function setDevices(filteredShellyDevices: shelly_device_t[]) {
-    devices.value = filteredShellyDevices.map((dev) => ({
-        shellyID: dev.shellyID,
-        name: getDeviceName(dev.info, dev.shellyID),
-        picture_url: getLogo(dev),
-        online: dev.online,
-        sleeping: dev.sleeping
-    }));
+    const allowed = new Set(filteredShellyDevices.map((dev) => dev.shellyID));
+    allowedIds.value = allowed;
+    selected.value = selected.value.filter((id) => allowed.has(id));
 }
 </script>
 

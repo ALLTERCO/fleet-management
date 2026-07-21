@@ -199,82 +199,49 @@
                 </div>
             </div>
 
-            <!-- Dual columns -->
+            <!-- Both columns render from one block, so they stay identical. -->
             <div class="cy-hero-cols">
-                <!-- LEFT SLOT -->
-                <div class="cy-hero-slot" :style="leftVialColor ? {'--ar': leftVialColor} : undefined">
-                    <div class="cy-hero-slot-name">{{ leftVialName }}</div>
-                    <div class="cy-hero-slot-body">
-                        <svg v-if="!leftVialFault" class="cy-hero-vial" width="72" height="155" viewBox="0 0 22 46" fill="none">
-                            <template v-if="leftSlot?.on">
-                                <circle cx="8" cy="3" r="1" class="cy-svg-accent" opacity=".3" />
-                                <circle cx="14" cy="2" r=".7" class="cy-svg-accent" opacity=".2" />
-                                <circle cx="11" cy="1" r=".8" class="cy-svg-accent" opacity=".25" />
-                            </template>
-                            <rect x="6" y="5" width="10" height="3" rx="1.5" :class="leftSlot?.on ? 'cy-svg-accent-15' : 'cy-svg-muted-10'" />
-                            <rect x="2" y="8" width="18" height="34" rx="3.5" stroke-width="1" :class="leftSlot?.on ? 'cy-svg-body-on' : 'cy-svg-body-off'" />
-                            <rect x="3" :y="8 + (1 - (leftVialLevel ?? 0) / 100) * 34" width="16" :height="Math.max(0, (leftVialLevel ?? 0) / 100 * 34)" rx="2.5" :class="leftSlot?.on ? 'cy-svg-fill-on' : 'cy-svg-fill-off'" />
-                            <text v-if="leftVialLevel != null" x="11" y="39" text-anchor="middle" class="cy-svg-accent" font-size="5.5" font-weight="700" opacity=".6">{{ leftVialLevel }}%</text>
-                        </svg>
-                        <div class="cy-hero-slot-vals">
-                            <div class="cy-hero-preset-label">{{ presetLabel(leftSlot?.intensity ?? 0) }}</div>
-                            <div class="cy-hero-pct">{{ leftSlot?.intensity ?? 0 }}<span>%</span></div>
+                <template v-for="(s, i) in heroSlots" :key="s.key">
+                    <div v-if="i === 1" class="cy-hero-sep" />
+                    <div class="cy-hero-slot" :style="s.color ? {'--ar': s.color} : undefined">
+                        <div class="cy-hero-slot-name">{{ s.name }}</div>
+                        <div class="cy-hero-slot-body">
+                            <!-- Hidden on a fault: a bad vial has nothing to show. -->
+                            <svg v-if="!s.fault" class="cy-hero-vial" width="58" height="125" viewBox="0 0 22 46" fill="none">
+                                <template v-if="s.slot?.on">
+                                    <circle cx="8" cy="3" r="1" class="cy-svg-accent cy-bubble" opacity=".3" />
+                                    <circle cx="14" cy="2" r=".7" class="cy-svg-accent cy-bubble" opacity=".2" style="animation-delay:.8s" />
+                                    <circle cx="11" cy="1" r=".8" class="cy-svg-accent cy-bubble" opacity=".25" style="animation-delay:1.6s" />
+                                </template>
+                                <rect x="6" y="5" width="10" height="3" rx="1.5" :class="s.slot?.on ? 'cy-svg-accent-15' : 'cy-svg-muted-10'" />
+                                <rect x="2" y="8" width="18" height="34" rx="3.5" stroke-width="1" :class="s.slot?.on ? 'cy-svg-body-on' : 'cy-svg-body-off'" />
+                                <rect x="3" :y="8 + (1 - (s.level ?? 0) / 100) * 34" width="16" :height="Math.max(0, (s.level ?? 0) / 100 * 34)" rx="2.5" :class="s.slot?.on ? 'cy-svg-fill-on' : 'cy-svg-fill-off'" />
+                                <text v-if="s.level != null" x="11" y="39" text-anchor="middle" class="cy-svg-accent" font-size="5.5" font-weight="700" opacity=".6">{{ s.level }}%</text>
+                            </svg>
+                            <div class="cy-hero-slot-vals">
+                                <div class="cy-hero-preset-label">{{ presetLabel(s.slot?.intensity ?? 0) }}</div>
+                                <div class="cy-hero-pct">{{ s.slot?.intensity ?? 0 }}<span>%</span></div>
+                            </div>
+                        </div>
+                        <!-- Slider snaps to the 4 zones (step 25); labels mark them.
+                             Hidden on a fault: cannot set intensity on a bad vial. -->
+                        <div v-if="!s.fault" class="cy-hero-slider">
+                            <div class="ec-clr-track" style="height:32px">
+                                <input type="range" class="sld-r cy-sld" min="25" max="100" step="25" :value="s.slot?.intensity ?? 50" :disabled="!canExecute" :style="{background: `linear-gradient(90deg,rgba(var(--ar),.1),rgba(var(--ar),.6))`}" @change="(e) => setIntensity(s.key, e)" @click.stop />
+                            </div>
+                            <div class="cy-zone-labels">
+                                <span v-for="p in PRESETS" :key="p.value" class="cy-zone-label" :class="{'cy-zone-label--active': (s.slot?.intensity ?? 0) === p.value}">{{ p.label }}</span>
+                            </div>
+                        </div>
+                        <!-- Stop + Boost -->
+                        <div class="cy-hero-btns">
+                            <button class="cy-wide-stop" :class="s.slot?.on ? 'cy-wide-stop--red' : 'cy-wide-stop--green'" :disabled="!canExecute" @click.stop="toggleSlot(s.key)">{{ s.slot?.on ? 'Stop' : 'Start' }}</button>
+                            <button class="cy-wide-boost" :disabled="!canExecute || !!s.fault" @click.stop="s.slot?.boost ? stopBoostSlot(s.key) : boostSlot(s.key)">
+                                <i class="fas fa-bolt" /> {{ s.slot?.boost ? s.boostRemaining : 'Boost' }}
+                            </button>
                         </div>
                     </div>
-                    <!-- Slider + presets -->
-                    <div v-if="!leftVialFault" class="cy-hero-slider">
-                        <div class="ec-clr-track" style="height:32px">
-                            <input type="range" class="sld-r cy-sld" min="25" max="100" step="25" :value="leftSlot?.intensity ?? 50" :disabled="!canExecute" :style="{background: `linear-gradient(90deg,rgba(var(--ar),.1),rgba(var(--ar),.6))`}" @change="(e) => setIntensity('left', e)" @click.stop />
-                        </div>
-                        <div class="cy-col-presets">
-                            <button v-for="p in PRESETS" :key="p.value" class="cy-col-preset" :class="{'cy-col-preset--active': (leftSlot?.intensity ?? 0) === p.value}" @click.stop="setIntensityDirect('left', p.value)">{{ p.label }}</button>
-                        </div>
-                    </div>
-                    <!-- Stop + Boost -->
-                    <div class="cy-hero-btns">
-                        <button class="cy-wide-stop" :class="leftSlot?.on ? 'cy-wide-stop--red' : 'cy-wide-stop--green'" :disabled="!canExecute" @click.stop="toggleSlot('left')">{{ leftSlot?.on ? 'Stop' : 'Start' }}</button>
-                        <button class="cy-wide-boost" :disabled="!canExecute || !!leftVialFault" @click.stop="leftSlot?.boost ? stopBoostSlot('left') : boostSlot('left')">
-                            <i class="fas fa-bolt" /> {{ leftSlot?.boost ? leftBoostRemaining : 'Boost' }}
-                        </button>
-                    </div>
-                </div>
-
-                <div class="cy-hero-sep" />
-
-                <!-- RIGHT SLOT -->
-                <div class="cy-hero-slot" :style="rightVialColor ? {'--ar': rightVialColor} : undefined">
-                    <div class="cy-hero-slot-name">{{ rightVialName }}</div>
-                    <div class="cy-hero-slot-body">
-                        <svg v-if="!rightVialFault" class="cy-hero-vial" width="72" height="155" viewBox="0 0 22 46" fill="none">
-                            <template v-if="rightSlot?.on">
-                                <circle cx="9" cy="3" r=".8" class="cy-svg-accent" opacity=".25" />
-                                <circle cx="13" cy="2" r=".6" class="cy-svg-accent" opacity=".2" />
-                            </template>
-                            <rect x="6" y="5" width="10" height="3" rx="1.5" :class="rightSlot?.on ? 'cy-svg-accent-15' : 'cy-svg-muted-10'" />
-                            <rect x="2" y="8" width="18" height="34" rx="3.5" stroke-width="1" :class="rightSlot?.on ? 'cy-svg-body-on' : 'cy-svg-body-off'" />
-                            <rect x="3" :y="8 + (1 - (rightVialLevel ?? 0) / 100) * 34" width="16" :height="Math.max(0, (rightVialLevel ?? 0) / 100 * 34)" rx="2.5" :class="rightSlot?.on ? 'cy-svg-fill-on' : 'cy-svg-fill-off'" />
-                            <text v-if="rightVialLevel != null" x="11" y="39" text-anchor="middle" class="cy-svg-accent" font-size="5.5" font-weight="700" opacity=".6">{{ rightVialLevel }}%</text>
-                        </svg>
-                        <div class="cy-hero-slot-vals">
-                            <div class="cy-hero-preset-label">{{ presetLabel(rightSlot?.intensity ?? 0) }}</div>
-                            <div class="cy-hero-pct">{{ rightSlot?.intensity ?? 0 }}<span>%</span></div>
-                        </div>
-                    </div>
-                    <div v-if="!rightVialFault" class="cy-hero-slider">
-                        <div class="ec-clr-track" style="height:32px">
-                            <input type="range" class="sld-r cy-sld" min="25" max="100" step="25" :value="rightSlot?.intensity ?? 50" :disabled="!canExecute" :style="{background: `linear-gradient(90deg,rgba(var(--ar),.1),rgba(var(--ar),.6))`}" @change="(e) => setIntensity('right', e)" @click.stop />
-                        </div>
-                        <div class="cy-col-presets">
-                            <button v-for="p in PRESETS" :key="p.value" class="cy-col-preset" :class="{'cy-col-preset--active': (rightSlot?.intensity ?? 0) === p.value}" @click.stop="setIntensityDirect('right', p.value)">{{ p.label }}</button>
-                        </div>
-                    </div>
-                    <div class="cy-hero-btns">
-                        <button class="cy-wide-stop" :class="rightSlot?.on ? 'cy-wide-stop--red' : 'cy-wide-stop--green'" :disabled="!canExecute" @click.stop="toggleSlot('right')">{{ rightSlot?.on ? 'Stop' : 'Start' }}</button>
-                        <button class="cy-wide-boost" :disabled="!canExecute || !!rightVialFault" @click.stop="rightSlot?.boost ? stopBoostSlot('right') : boostSlot('right')">
-                            <i class="fas fa-bolt" /> {{ rightSlot?.boost ? rightBoostRemaining : 'Boost' }}
-                        </button>
-                    </div>
-                </div>
+                </template>
             </div>
         </template>
 
@@ -499,6 +466,28 @@ function boostRemaining(slot: CurySlot | null | undefined): string {
 const leftBoostRemaining = computed(() => boostRemaining(leftSlot.value));
 const rightBoostRemaining = computed(() => boostRemaining(rightSlot.value));
 
+// One list drives both columns from a single template, so they stay identical.
+const heroSlots = computed(() => [
+    {
+        key: 'left' as 'left' | 'right',
+        name: leftVialName.value,
+        color: leftVialColor.value,
+        level: leftVialLevel.value,
+        fault: leftVialFault.value,
+        slot: leftSlot.value,
+        boostRemaining: leftBoostRemaining.value
+    },
+    {
+        key: 'right' as 'left' | 'right',
+        name: rightVialName.value,
+        color: rightVialColor.value,
+        level: rightVialLevel.value,
+        fault: rightVialFault.value,
+        slot: rightSlot.value,
+        boostRemaining: rightBoostRemaining.value
+    }
+]);
+
 const rssiDisplay = computed(() => {
     const wifi = device.value?.status?.wifi;
     return wifi?.rssi != null ? `${wifi.rssi} dBm` : '—';
@@ -685,6 +674,35 @@ function stopBoostSlot(side: 'left' | 'right') {
 /* SVG accent classes — use CSS var(--ar) for fill/stroke */
 .cy-svg-accent {
     fill: rgb(var(--ar));
+}
+
+/* Scent particles rise and fade while spraying. transform + opacity only
+   (GPU-cheap); staggered via animation-delay. */
+.cy-bubble {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: cy-bubble-rise 2.4s ease-in-out infinite;
+}
+@keyframes cy-bubble-rise {
+    0% {
+        opacity: 0;
+        transform: translateY(4px) scale(0.4);
+    }
+    25% {
+        opacity: 0.6;
+    }
+    80% {
+        opacity: 0.35;
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-6px) scale(1.05);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .cy-bubble {
+        animation: none;
+    }
 }
 
 .cy-svg-accent-15 {
@@ -1213,6 +1231,8 @@ function stopBoostSlot(side: 'left' | 'right') {
 }
 .cy-hero-slot {
     flex: 1;
+    /* min-width:0 makes both columns split 50/50 regardless of content. */
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
@@ -1221,10 +1241,10 @@ function stopBoostSlot(side: 'left' | 'right') {
     padding: 0 var(--space-3) 0 0;
 }
 .cy-hero-slot:last-child {
-    padding: 0 0 0 10px;
+    padding: 0 0 0 var(--space-3);
 }
 .cy-hero-slot-name {
-    font-size: var(--type-subheading);
+    font-size: var(--type-body);
     font-weight: 700;
     color: var(--color-text-primary);
     text-align: center;
@@ -1276,8 +1296,20 @@ function stopBoostSlot(side: 'left' | 'right') {
     height: 32px;
     flex: none;
 }
-.cy-hero-slider .cy-col-presets {
-    padding: var(--space-1) 0 0;
+/* Static zone markers under the slider, at the 4 snap positions. */
+.cy-zone-labels {
+    display: flex;
+    justify-content: space-between;
+    padding: var(--space-1) var(--space-1) 0;
+}
+.cy-zone-label {
+    font-size: var(--type-caption);
+    font-weight: 600;
+    color: var(--color-text-quaternary);
+    transition: color var(--duration-fast);
+}
+.cy-zone-label--active {
+    color: rgb(var(--ar));
 }
 .cy-hero-btns {
     display: flex;

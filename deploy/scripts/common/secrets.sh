@@ -25,6 +25,8 @@ generate_passwords() {
     : "${ZITADEL_MASTERKEY:=$(_random_passwd 32)}"
     : "${FM_SECRET_ENCRYPTION_KEY:=$(_random_passwd 64)}"
     : "${FM_SECRET_KDF_SALT:=$(_random_passwd 32)}"
+    : "${FM_DEVICE_INGRESS_TOKEN_PEPPER:=$(_random_passwd 64)}"
+    : "${FM_NOTIFICATION_RECEIPT_SIGNING_SECRET:=$(_random_passwd 64)}"
     : "${JWT_SECRET:=$(_random_passwd 64)}"
     : "${FM_GRAFANA_DB_PASSWORD:=$(_random_passwd 32)}"
     : "${REDIS_ADMIN_PASSWORD:=$(_random_passwd 32)}"
@@ -35,19 +37,43 @@ generate_passwords() {
 
     export POSTGRES_PASSWORD ZITADEL_POSTGRES_PASSWORD ZITADEL_DB_USER_PASSWORD
     export ZITADEL_ADMIN_PASSWORD ZITADEL_MASTERKEY
-    export FM_SECRET_ENCRYPTION_KEY FM_SECRET_KDF_SALT JWT_SECRET
+    export FM_SECRET_ENCRYPTION_KEY FM_SECRET_KDF_SALT
+    export FM_DEVICE_INGRESS_TOKEN_PEPPER FM_NOTIFICATION_RECEIPT_SIGNING_SECRET
+    export JWT_SECRET
     export FM_GRAFANA_DB_PASSWORD
     export REDIS_ADMIN_PASSWORD REDIS_FM_PASSWORD REDIS_ZITADEL_PASSWORD
     export FM_ADMIN_PASSWORD FM_PLATFORM_ADMIN_PASSWORD
 }
 
-preserve_legacy_secret_encryption_key() {
-    if [ -z "${FM_SECRET_ENCRYPTION_KEY:-}" ] && [ -n "${JWT_SECRET:-}" ]; then
-        FM_SECRET_ENCRYPTION_KEY="$JWT_SECRET"
-        export FM_SECRET_ENCRYPTION_KEY
+migrate_legacy_secret_encryption_key() {
+    local explicit_legacy_key="${1:-}"
+    local legacy_key="${explicit_legacy_key:-${JWT_SECRET:-}}"
+    if [ -z "$legacy_key" ]; then
         return 0
     fi
-    return 1
+    if [ -z "$explicit_legacy_key" ] && [ -n "${FM_SECRET_ENCRYPTION_KEY:-}" ]; then
+        return 0
+    fi
+    if [ -n "${FM_SECRET_ENCRYPTION_KEY_PREVIOUS:-}" ] && \
+       [ "$FM_SECRET_ENCRYPTION_KEY_PREVIOUS" != "$legacy_key" ]; then
+        _secrets_error "cannot preserve legacy JWT encryption key: previous-key slot is already occupied"
+        return 1
+    fi
+
+    local legacy_key_id="${2:-${FM_SECRET_ENCRYPTION_KEY_ID:-primary}}"
+    FM_SECRET_ENCRYPTION_KEY_PREVIOUS="$legacy_key"
+    FM_SECRET_ENCRYPTION_KEY_PREVIOUS_ID="$legacy_key_id"
+    if [ -z "${FM_SECRET_ENCRYPTION_KEY:-}" ] || \
+       [ "$FM_SECRET_ENCRYPTION_KEY" = "$legacy_key" ]; then
+        FM_SECRET_ENCRYPTION_KEY="$(_random_passwd 64)" || return 1
+    fi
+    if [ -z "${FM_SECRET_ENCRYPTION_KEY_ID:-}" ] || \
+       [ "$FM_SECRET_ENCRYPTION_KEY_ID" = "$legacy_key_id" ]; then
+        FM_SECRET_ENCRYPTION_KEY_ID="migrated-$(_random_passwd 12)" || return 1
+    fi
+    export FM_SECRET_ENCRYPTION_KEY FM_SECRET_ENCRYPTION_KEY_ID
+    export FM_SECRET_ENCRYPTION_KEY_PREVIOUS
+    export FM_SECRET_ENCRYPTION_KEY_PREVIOUS_ID
 }
 
 # 0 = clean. Non-zero = count of vars holding demo / placeholder literals.
@@ -55,7 +81,9 @@ validate_no_demo_literals() {
     local var bad=0
     for var in POSTGRES_PASSWORD ZITADEL_POSTGRES_PASSWORD \
         ZITADEL_DB_USER_PASSWORD ZITADEL_ADMIN_PASSWORD ZITADEL_MASTERKEY \
-        FM_SECRET_ENCRYPTION_KEY FM_SECRET_KDF_SALT JWT_SECRET; do
+        FM_SECRET_ENCRYPTION_KEY FM_SECRET_KDF_SALT \
+        FM_DEVICE_INGRESS_TOKEN_PEPPER FM_NOTIFICATION_RECEIPT_SIGNING_SECRET \
+        JWT_SECRET; do
         local val="${!var:-}"
         if [ -z "$val" ]; then
             _secrets_error "$var is empty — refusing to start"

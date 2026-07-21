@@ -142,7 +142,7 @@ export const PRESENCE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('TiltCalibrate', {
         params: PRESENCE_TILT_CALIBRATE_SCHEMA,
         response: ACK,
-        permission: {component: 'devices', operation: 'update'},
+        permission: {component: 'devices', operation: 'execute'},
         description: 'Start tilt calibration for the mmWave sensor.'
     })
     .registerMethod('GetConfig', {

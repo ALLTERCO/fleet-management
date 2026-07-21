@@ -308,7 +308,7 @@ const cardAccent = computed(() => {
 .tgc-hdot--off { background: var(--color-status-off); }
 .tgc-stat-icon {
     color: var(--color-text-tertiary);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
 }
 .tgc-stat-v {
     font-size: var(--type-body);
@@ -317,7 +317,7 @@ const cardAccent = computed(() => {
     color: var(--color-text-primary);
 }
 .tgc-stat-l {
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
     text-transform: uppercase;
     letter-spacing: var(--tracking-caps);

@@ -7,6 +7,7 @@ import {
 } from '@/helpers/backgroundAssets';
 import {getRegistry, sendRPC} from '@/tools/websocket';
 import {isRecoverableReconnectError} from '@/tools/wsReconnectErrors';
+import {createStaleGuard} from './staleGuard';
 
 const BACKGROUND_STORAGE_KEY = 'fm_ui_background';
 
@@ -18,6 +19,8 @@ export const useGeneralStore = defineStore('general', () => {
     const sidebarGlass = ref(true);
     let setupRetryTimer: ReturnType<typeof setTimeout> | null = null;
     let setupInFlight = false;
+    // Guards background: a pick during setup makes the fetched value stale.
+    const backgroundGuard = createStaleGuard();
 
     const solidColors = [
         '#FF0000',
@@ -54,31 +57,39 @@ export const useGeneralStore = defineStore('general', () => {
         if (!isProtectedBackgroundPath(stored)) return stored;
         const res = await sendRPC<{
             originals: string[];
+            displays?: string[];
             thumbnails: string[];
         }>('FLEET_MANAGER', 'Media.Background.List', {});
         const base = `${FLEET_MANAGER_HTTP}/uploads/backgrounds/`;
-        const match = res.originals.find(
+        const index = res.originals.findIndex(
             (file) => assetPath(`${base}${file}`) === assetPath(stored)
         );
-        return match ? `${base}${match}` : '';
+        if (index < 0) return '';
+        return `${base}${res.displays?.[index] ?? res.originals[index]}`;
     }
 
     const setBackgroundImg = (newImg: string, displayImg?: string) => {
         background.value = displayImg ?? newImg;
         persistBackground(newImg);
+        backgroundGuard.bump();
     };
 
     const setBackgroundColor = (newColor: string) => {
         background.value = newColor;
         persistBackground(newColor);
+        backgroundGuard.bump();
     };
 
     async function setup(retryCount = 0) {
         if (setupInFlight) return;
         setupInFlight = true;
+        const token = backgroundGuard.bump();
         try {
             const res = await getRegistry('ui').getAll<any>();
-            let bg = res.backgroundColor || res.backgroundImg;
+            let bg =
+                localStorage.getItem(BACKGROUND_STORAGE_KEY) ||
+                res.backgroundColor ||
+                res.backgroundImg;
             // Normalize legacy absolute URLs.
             if (bg && typeof bg === 'string' && isProtectedBackgroundPath(bg)) {
                 try {
@@ -87,9 +98,12 @@ export const useGeneralStore = defineStore('general', () => {
                     /* already relative — keep as-is */
                 }
             }
-            background.value =
+            const resolved =
                 typeof bg === 'string' ? await resolveBackgroundUrl(bg) : bg;
-            persistBackground(bg);
+            if (!backgroundGuard.isStale(token)) {
+                background.value = resolved;
+                persistBackground(bg);
+            }
             if (setupRetryTimer) {
                 clearTimeout(setupRetryTimer);
                 setupRetryTimer = null;

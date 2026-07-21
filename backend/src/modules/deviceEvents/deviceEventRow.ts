@@ -11,6 +11,7 @@ type DeviceEventSource = 'device' | 'command' | 'unknown';
 // preserved verbatim; stamped NOW() by the logger only when absent.
 export interface DeviceEventEntry {
     ts?: string;
+    deviceId: number;
     shellyId: string;
     organizationId?: string;
     component: string;
@@ -25,6 +26,7 @@ export interface DeviceEventEntry {
 // values — JSON.stringify of the array embeds them; the SQL casts e->'prev'.
 export interface DeviceEventBatchRow {
     ts: string | null;
+    device_id: number;
     shelly_id: string;
     organization_id: string | null;
     component: string;
@@ -38,6 +40,7 @@ export interface DeviceEventBatchRow {
 export function entryToBatchRow(entry: DeviceEventEntry): DeviceEventBatchRow {
     return {
         ts: entry.ts ?? null,
+        device_id: entry.deviceId,
         shelly_id: entry.shellyId,
         organization_id: entry.organizationId ?? null,
         component: entry.component,
@@ -70,6 +73,7 @@ export function epochSecToIso(sec: number | undefined): string | undefined {
 }
 
 export interface ChangeCapture {
+    deviceId: number;
     shellyId: string;
     organizationId?: string;
     /** Device-reported time (Unix epoch seconds). Preserved verbatim. */
@@ -85,18 +89,39 @@ export function changesToEntries(input: ChangeCapture): DeviceEventEntry[] {
     const ts = epochSecToIso(input.tsEpochSec);
     const kind = input.kind ?? 'state_change';
     const source = input.source ?? 'device';
-    return input.changes.map((change) => {
+    const entries: DeviceEventEntry[] = [];
+    for (const change of input.changes) {
         const {component, field} = pathToComponentField(change.path);
-        return {
+        const isBthomeSensor = component.startsWith('bthomesensor:');
+        // displayValue is a derived reading, never a device state — never audit
+        // it: as its own field, or embedded in a whole-component snapshot (a
+        // new sensor's first status). Scoped to bthomesensor.
+        if (isBthomeSensor && field === 'displayValue') continue;
+        let next = change.next;
+        if (
+            isBthomeSensor &&
+            next &&
+            typeof next === 'object' &&
+            !Array.isArray(next)
+        ) {
+            const {displayValue: _dv, ...rest} = next as Record<
+                string,
+                unknown
+            >;
+            next = rest;
+        }
+        entries.push({
             ts,
+            deviceId: input.deviceId,
             shellyId: input.shellyId,
             organizationId: input.organizationId,
             component,
             field,
             prev: change.prev,
-            next: change.next,
+            next,
             kind,
             source
-        };
-    });
+        });
+    }
+    return entries;
 }

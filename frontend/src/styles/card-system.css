@@ -5,5 +5,6 @@
     @import "./cards/card-sensors.css";
     @import "./cards/card-entities.css";
     @import "./cards/card-detail.css";
-    @import "./cards/card-dashboard.css";
+    /* card-dashboard.css is imported via JS in pages/dash.vue: lightningcss
+       drops it when @import'd into this @layer chain. */
 }

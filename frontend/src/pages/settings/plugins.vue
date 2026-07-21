@@ -2,11 +2,14 @@
     <PageTemplate
         title="Plugins"
         :tabs="tabs"
+        v-model:search="pluginSearch"
+        searchable
+        search-placeholder="Search plugins…"
         :loading="loading && plugins.length === 0"
         :empty="plugins.length === 0 && !loading"
         empty-title="No plugins found"
         empty-sub="Plugins extend the features of Fleet Manager."
-        :items="plugins"
+        :items="filteredPlugins"
         :page-size="50"
         pagination-mode="infinite"
         url-key="plugins"
@@ -24,8 +27,15 @@
             <Button v-if="canWrite" size="sm" type="blue" narrow title="Upload plugin" aria-label="Upload plugin" @click="triggerFileInput">
                 <i class="fas fa-upload" aria-hidden="true" />
             </Button>
-            <Button size="sm" type="blue-hollow" narrow @click="refresh">
-                Refresh
+            <Button
+                size="sm"
+                type="blue-hollow"
+                narrow
+                title="Refresh"
+                aria-label="Refresh plugins"
+                @click="refresh"
+            >
+                <i class="fas fa-sync-alt" aria-hidden="true" />
             </Button>
             <Button
                 v-if="canWrite && !editMode && plugins.length > 0"
@@ -74,6 +84,7 @@
                     </div>
                 </template>
             </Modal>
+            <ConfirmationModal ref="confirmModal" />
         </template>
     </PageTemplate>
 </template>
@@ -89,10 +100,13 @@ import {
 } from 'vue';
 import Button from '@/components/core/Button.vue';
 import PageTemplate from '@/components/core/PageTemplate.vue';
+import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
 import Modal from '@/components/modals/Modal.vue';
 import PluginWidget from '@/components/widgets/PluginWidget.vue';
 import useWsRpc from '@/composables/useWsRpc';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useRpcPermissions} from '@/helpers/rpcPermissions';
+import {useToastStore} from '@/stores/toast';
 import {sendRPC} from '@/tools/websocket';
 import type {RouteTab} from '@/types/page-template';
 
@@ -137,6 +151,15 @@ const {
 } = useWsRpc<{items: (FullPluginData & {name: string})[]}>('Plugin.List');
 const plugins = computed(() => pluginsRaw.value?.items ?? []);
 
+const pluginSearch = ref('');
+const filteredPlugins = computed(() => {
+    const query = pluginSearch.value.trim().toLowerCase();
+    if (!query) return plugins.value;
+    return plugins.value.filter((p) =>
+        p.info.name.toLowerCase().includes(query)
+    );
+});
+
 function pluginItemKey(item: FullPluginData & {name: string}): string {
     return item.info.name;
 }
@@ -161,13 +184,26 @@ function handleFileChange(e: Event) {
         );
         uploadModal.visible = true;
     };
-    reader.onerror = () => alert('Error reading file');
+    reader.onerror = () => toast.error('Could not read the selected file');
 }
+
+const toast = useToastStore();
+const confirmModal = ref<InstanceType<typeof ConfirmationModal> | null>(
+    null
+);
 
 let postUploadRefreshTimer: ReturnType<typeof setTimeout> | undefined;
 async function uploadClicked() {
     if (!canWrite.value) return;
-    await sendRPC('FLEET_MANAGER', 'Plugin.Upload', {data: fileBase64.value});
+    try {
+        await sendRPC('FLEET_MANAGER', 'Plugin.Upload', {
+            data: fileBase64.value
+        });
+    } catch (err) {
+        toast.error(rpcErrorMessage(err, 'Plugin upload failed'));
+        return;
+    }
+    toast.success('Plugin uploaded');
     if (postUploadRefreshTimer !== undefined) {
         clearTimeout(postUploadRefreshTimer);
     }
@@ -186,10 +222,26 @@ onBeforeUnmount(() => {
     }
 });
 
-async function onDeletePlugin(plugin: WidgetPluginData) {
+function onDeletePlugin(plugin: WidgetPluginData) {
     if (!canWrite.value) return;
-    if (!confirm(`Delete plugin '${plugin.info.name}'?`)) return;
-    await sendRPC('FLEET_MANAGER', 'Plugin.Remove', {name: plugin.info.name});
-    refresh();
+    confirmModal.value?.storeAction(
+        async () => {
+            try {
+                await sendRPC('FLEET_MANAGER', 'Plugin.Remove', {
+                    name: plugin.info.name
+                });
+            } catch (err) {
+                toast.error(rpcErrorMessage(err, 'Plugin delete failed'));
+                return;
+            }
+            toast.success(`Plugin ${plugin.info.name} deleted`);
+            refresh();
+        },
+        {
+            title: 'Delete plugin',
+            message: `${plugin.info.name} and its widgets disappear from every dashboard.`,
+            confirmLabel: 'Delete'
+        }
+    );
 }
 </script>

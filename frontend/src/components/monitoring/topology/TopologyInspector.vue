@@ -219,33 +219,24 @@ const edgeMetadataRows = computed(() => {
     ]);
 });
 
+// A short, targeted set — the sidebar covers general navigation; these
+// jump straight to the evidence for the selected node or edge.
 const nodeLinks = computed(() => {
     if (!props.node) return [];
-    const links = [
-        {label: 'Runtime', to: '/monitoring/runtime'},
-        {label: 'Resources', to: '/monitoring/resources'},
-        {label: 'Activity', to: '/monitoring/activity'},
-        {label: 'Investigate', to: '/monitoring/investigate'},
-        {label: 'Logs', to: '/monitoring/logs'},
-        {label: 'Grafana', to: '/graphs'}
-    ];
+    const links = [{label: 'Logs', to: '/settings/monitoring/logs'}];
     if (props.node.route) links.unshift({label: 'Module page', to: props.node.route});
     if (props.node.zone === 'auth_security' || hasFlow(props.node, 'audit_write')) {
-        links.push({label: 'Audit', to: '/monitoring/audit-log'});
+        links.push({label: 'Audit', to: '/settings/monitoring/audit-log'});
     }
     return dedupeLinks(links);
 });
 
 const edgeLinks = computed(() => {
     if (!props.edge) return [];
-    const links = [
-        {label: 'Investigate', to: '/monitoring/investigate'},
-        {label: 'Logs', to: '/monitoring/logs'},
-        {label: 'Grafana', to: '/graphs'}
-    ];
-    if (props.edge.kind === 'storage') links.unshift({label: 'Resources', to: '/monitoring/resources'});
-    if (props.edge.kind === 'auth') links.unshift({label: 'Audit', to: '/monitoring/audit-log'});
-    if (props.edge.kind === 'deploy') links.unshift({label: 'Runtime', to: '/monitoring/runtime'});
+    const links = [{label: 'Logs', to: '/settings/monitoring/logs'}];
+    if (props.edge.kind === 'storage') links.unshift({label: 'Database', to: '/settings/monitoring/database'});
+    if (props.edge.kind === 'auth') links.unshift({label: 'Audit', to: '/settings/monitoring/audit-log'});
+    if (props.edge.kind === 'deploy') links.unshift({label: 'Runtime', to: '/settings/monitoring/runtime'});
     return dedupeLinks(links);
 });
 

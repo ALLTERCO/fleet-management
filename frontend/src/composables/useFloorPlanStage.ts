@@ -3,6 +3,7 @@ import {Viewport} from 'pixi-viewport';
 import type {Ref} from 'vue';
 import {onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import {isAutoPlaced} from '@/helpers/auto-placement';
+import {floorPlanPlacementId} from '@/helpers/floor-plan-device-identity';
 import {stripInkscapeBaseLayer} from '@/helpers/svg-floorplan';
 import {hasWebGL} from '@/helpers/webgl';
 import {debug} from '@/tools/debug';
@@ -20,6 +21,7 @@ const AUTO_PIN_ALPHA = 0.45;
 
 export interface DeviceSprite {
     id: string;
+    placementId?: string;
     label: string;
     color: number;
 }
@@ -85,6 +87,8 @@ export function useFloorPlanStage(
     const viewport = shallowRef<Viewport | null>(null);
     const ready = ref(false);
     const unsupported = ref(false);
+    // True when the plan image failed to load — distinct from "no plan".
+    const planLoadError = ref(false);
     const planLayer = new Container();
     const zoneLayer = new Container();
     const drawingLayer = new Container();
@@ -170,6 +174,7 @@ export function useFloorPlanStage(
         if (!p) {
             planLayer.removeChildren();
             lastLoadedUrl = null;
+            planLoadError.value = false;
             debug('[FloorPlanStage] plan cleared');
             return;
         }
@@ -205,6 +210,7 @@ export function useFloorPlanStage(
         // load below fails, future calls with the same URL won't hit
         // the empty-skip path that would leave the canvas blank.
         lastLoadedUrl = null;
+        planLoadError.value = false;
         debug('[FloorPlanStage] plan load', {url: p.url, gen});
         try {
             const loadUrl = await resolveLoadUrl(p.url);
@@ -241,6 +247,7 @@ export function useFloorPlanStage(
             }
         } catch (err) {
             if (gen !== loadGen || cancelled) return;
+            planLoadError.value = true;
             console.warn('[FloorPlanStage] plan load failed', {
                 url: p.url,
                 err
@@ -317,7 +324,8 @@ export function useFloorPlanStage(
         const seen = new Set<string>();
 
         for (const device of opts.devices.value) {
-            const pos = placements[device.id];
+            const placementId = floorPlanPlacementId(device);
+            const pos = placements[placementId];
             if (!pos) continue;
             seen.add(device.id);
 
@@ -369,7 +377,7 @@ export function useFloorPlanStage(
                 entry.drag = bindDrag(entry.node, viewport.value, (wx, wy) => {
                     const cp = opts.plan.value;
                     if (!cp) return;
-                    opts.onDeviceMove?.(device.id, {
+                    opts.onDeviceMove?.(placementId, {
                         x: wx / cp.widthPx,
                         y: wy / cp.heightPx
                     });
@@ -560,7 +568,7 @@ export function useFloorPlanStage(
         }
     }
 
-    return {app, viewport, ready, unsupported};
+    return {app, viewport, ready, unsupported, planLoadError};
 }
 
 /* ── helpers ── */

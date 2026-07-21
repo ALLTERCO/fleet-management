@@ -4,68 +4,85 @@
             <span class="script-mgr__count">
                 {{ scripts.length }} script{{ scripts.length === 1 ? '' : 's' }}
             </span>
-            <Button type="blue-hollow" size="sm" :loading="loading" @click="loadScripts">
-                Refresh
-            </Button>
             <Button
                 type="green"
                 size="sm"
                 :loading="creating"
-                title="New script"
-                aria-label="New script"
                 @click="createScript"
             >
-                <i class="fas fa-plus" aria-hidden="true" />
+                New script
+            </Button>
+            <Button type="blue-hollow" size="sm" :loading="loading" @click="loadScripts">
+                Refresh
             </Button>
         </div>
 
         <div
             v-if="error"
-            class="cfg-panel__notice cfg-panel__notice--error"
+            class="cfg-panel__notice cfg-panel__notice--error cfg-panel__notice--split"
+            role="alert"
         >
-            <i class="fas fa-triangle-exclamation" /> {{ error }}
+            <span><i class="fas fa-triangle-exclamation" aria-hidden="true" /> {{ error }}</span>
+            <Button type="blue-hollow" size="sm" :loading="loading" @click="loadScripts">
+                Retry
+            </Button>
         </div>
 
-        <div v-if="!scripts.length && !loading" class="cfg-panel__error">
-            <p>No scripts on this device.</p>
+        <div
+            v-if="!scripts.length && !loading && !error"
+            class="cfg-panel__empty"
+        >
+            <i class="fas fa-code" aria-hidden="true" />
+            <strong>No scripts yet</strong>
+            <span>Automation scripts run on the device itself.</span>
+            <Button type="green" size="sm" :loading="creating" @click="createScript">
+                New script
+            </Button>
         </div>
 
+        <div v-if="scripts.length" class="cfg-panel__section">
         <div
             v-for="script in scripts"
             :key="script.id"
             class="script-mgr__item"
         >
-            <div
-                class="script-mgr__header"
-                @click="toggleExpand(script.id)"
-            >
-                <i
-                    class="fas script-mgr__chevron"
-                    :class="
-                        expanded.has(script.id)
-                            ? 'fa-chevron-down'
-                            : 'fa-chevron-right'
-                    "
-                />
-                <span class="script-mgr__name">{{ script.name }}</span>
-                <span
-                    class="script-mgr__badge"
-                    :class="{
-                        'script-mgr__badge--running': script.running,
-                        'script-mgr__badge--enabled':
-                            script.enable && !script.running,
-                        'script-mgr__badge--off':
-                            !script.enable && !script.running
-                    }"
+            <div class="script-mgr__header">
+                <button
+                    type="button"
+                    class="script-mgr__expand"
+                    :aria-expanded="expanded.has(script.id)"
+                    :aria-controls="`script-body-${script.id}`"
+                    @click="toggleExpand(script.id)"
                 >
-                    {{
-                        script.running
-                            ? 'Running'
-                            : script.enable
-                              ? 'Enabled'
-                              : 'Stopped'
-                    }}
-                </span>
+                    <i
+                        class="fas script-mgr__chevron"
+                        :class="
+                            expanded.has(script.id)
+                                ? 'fa-chevron-down'
+                                : 'fa-chevron-right'
+                        "
+                        aria-hidden="true"
+                    />
+                    <span class="script-mgr__name">{{ script.name }}</span>
+                    <span
+                        class="script-mgr__badge"
+                        :class="{
+                            'script-mgr__badge--running': script.running,
+                            'script-mgr__badge--enabled':
+                                script.enable && !script.running,
+                            'script-mgr__badge--off':
+                                !script.enable && !script.running
+                        }"
+                    >
+                        {{
+                            script.running
+                                ? 'Running'
+                                : script.enable
+                                  ? 'Enabled'
+                                  : 'Stopped'
+                        }}
+                    </span>
+                </button>
                 <Button
                     v-if="script.running"
                     type="blue-hollow"
@@ -86,7 +103,11 @@
                 </Button>
             </div>
 
-            <div v-if="expanded.has(script.id)" class="script-mgr__body">
+            <div
+                v-if="expanded.has(script.id)"
+                :id="`script-body-${script.id}`"
+                class="script-mgr__body"
+            >
                 <div class="cfg-panel__row">
                     <div class="cfg-panel__row-label">
                         <strong>Name</strong>
@@ -95,6 +116,7 @@
                         :value="script.name"
                         type="text"
                         class="cfg-panel__input"
+                        aria-label="Script name"
                         readonly
                     />
                 </div>
@@ -103,8 +125,9 @@
                     <div class="cfg-panel__row-label">
                         <strong>Auto-start on boot</strong>
                     </div>
-                    <Checkbox
+                    <CardToggle size="row"
                         :model-value="script.enable"
+                        aria-label="Auto-start on boot"
                         @update:model-value="
                             (v: boolean) => saveEnable(script, v)
                         "
@@ -162,6 +185,7 @@
                     <textarea
                         v-model="code[script.id]"
                         class="script-mgr__editor"
+                        :aria-label="`${script.name} code`"
                         placeholder="JavaScript code…"
                         spellcheck="false"
                     />
@@ -179,16 +203,22 @@
                 </div>
             </div>
         </div>
+
+        </div>
+
+        <ConfirmationModal ref="deleteConfirm" />
     </div>
 </template>
 
 <script setup lang="ts">
-import {onMounted, reactive, ref, watch} from 'vue';
+import {computed, onMounted, reactive, ref, watch} from 'vue';
+import {useSettingsDirtySource} from '@/composables/useSettingsDirtyTracker';
 import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useToastStore} from '@/stores/toast';
 import {sendRPC} from '@/tools/websocket';
+import ConfirmationModal from '../modals/ConfirmationModal.vue';
 import Button from './Button.vue';
-import Checkbox from './Checkbox.vue';
+import CardToggle from '../cards/CardToggle.vue';
 
 interface ScriptInfo {
     id: number;
@@ -221,6 +251,7 @@ const scripts = ref<ScriptInfo[]>([]);
 const status = reactive<Record<number, ScriptStatus>>({});
 const statusFailed = reactive(new Set<number>());
 const code = reactive<Record<number, string>>({});
+const savedCode = reactive<Record<number, string>>({});
 const expanded = reactive(new Set<number>());
 const busy = reactive(new Set<number>());
 const codeLoading = reactive(new Set<number>());
@@ -228,6 +259,20 @@ const codeSaving = reactive(new Set<number>());
 const loading = ref(false);
 const creating = ref(false);
 const error = ref<string | null>(null);
+const deleteConfirm = ref<InstanceType<typeof ConfirmationModal> | null>(null);
+
+// Unsaved script code must surface in the settings modal's dirty tracking —
+// losing an edited script body is real work lost, not just a form draft.
+const hasUnsavedCode = computed(() =>
+    Object.entries(code).some(
+        ([id, value]) => value !== undefined && value !== savedCode[Number(id)]
+    )
+);
+useSettingsDirtySource(
+    'config:script',
+    'device-config:script-code',
+    hasUnsavedCode
+);
 
 async function loadScripts(): Promise<void> {
     loading.value = true;
@@ -284,8 +329,16 @@ async function createScript(): Promise<void> {
     }
 }
 
-async function deleteScript(id: number): Promise<void> {
-    if (!window.confirm(`Delete script ${id}?`)) return;
+function deleteScript(id: number): void {
+    const name = scripts.value.find((s) => s.id === id)?.name ?? `script ${id}`;
+    deleteConfirm.value?.storeAction(() => performScriptDelete(id), {
+        title: `Delete ${name}?`,
+        message: 'The script and its code are removed from the device.',
+        confirmLabel: 'Delete'
+    });
+}
+
+async function performScriptDelete(id: number): Promise<void> {
     busy.add(id);
     try {
         await sendRPC('FLEET_MANAGER', 'Script.Delete', {
@@ -295,6 +348,7 @@ async function deleteScript(id: number): Promise<void> {
         scripts.value = scripts.value.filter((s) => s.id !== id);
         delete status[id];
         delete code[id];
+        delete savedCode[id];
         statusFailed.delete(id);
         expanded.delete(id);
         toast.success('Script deleted');
@@ -340,6 +394,10 @@ async function stopScript(id: number): Promise<void> {
 }
 
 async function saveEnable(s: ScriptInfo, enable: boolean): Promise<void> {
+    // Optimistic flip — the Checkbox realigns to its prop on next tick, so
+    // waiting for the device reply would visually bounce the click back.
+    const previous = s.enable;
+    s.enable = enable;
     busy.add(s.id);
     try {
         await sendRPC('FLEET_MANAGER', 'Script.SetConfig', {
@@ -347,8 +405,8 @@ async function saveEnable(s: ScriptInfo, enable: boolean): Promise<void> {
             id: s.id,
             config: {enable}
         });
-        s.enable = enable;
     } catch (err: unknown) {
+        s.enable = previous;
         toast.error(rpcErrorMessage(err));
     } finally {
         busy.delete(s.id);
@@ -387,6 +445,7 @@ async function loadCode(id: number): Promise<void> {
             offset += chunk.length;
         }
         code[id] = result;
+        savedCode[id] = result;
     } catch (err: unknown) {
         toast.error(rpcErrorMessage(err));
     } finally {
@@ -414,6 +473,7 @@ async function saveCode(id: number): Promise<void> {
             stopped = true;
         }
         await putCodeChunked(id, source);
+        savedCode[id] = source;
         toast.success(
             wasRunning
                 ? 'Code saved (script was stopped; restart manually)'
@@ -456,6 +516,7 @@ watch(
         scripts.value = [];
         for (const k of Object.keys(status)) delete status[Number(k)];
         for (const k of Object.keys(code)) delete code[Number(k)];
+        for (const k of Object.keys(savedCode)) delete savedCode[Number(k)];
         statusFailed.clear();
         expanded.clear();
         void loadScripts();
@@ -476,17 +537,37 @@ watch(
     color: var(--color-text-tertiary);
 }
 .script-mgr__item {
-    border-top: 1px solid var(--color-border-subtle);
+    border-top: var(--space-px) solid var(--color-border-subtle);
+}
+.script-mgr__item:first-child {
+    border-top: 0;
 }
 .script-mgr__header {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    cursor: pointer;
+    padding: var(--space-1) var(--space-3) var(--space-1) 0;
 }
-.script-mgr__header:hover {
+.script-mgr__expand {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--touch-target-min);
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    transition: background-color var(--motion-hover);
+}
+.script-mgr__expand:hover {
     background: var(--state-hover-bg);
+}
+.script-mgr__expand:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: calc(-1 * var(--focus-ring-width));
 }
 .script-mgr__chevron {
     color: var(--color-text-tertiary);
@@ -494,13 +575,17 @@ watch(
 }
 .script-mgr__name {
     flex: 1;
-    font-family: var(--font-mono, monospace);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
     font-size: var(--type-caption);
     color: var(--color-text-primary);
 }
 .script-mgr__badge {
     padding: var(--space-px) var(--space-2);
-    border-radius: var(--radius-2xl);
+    border-radius: var(--radius-full);
     font-size: var(--type-caption);
     font-weight: var(--font-semibold);
 }
@@ -546,12 +631,12 @@ watch(
     min-height: 12rem;
     padding: var(--space-2);
     background: var(--color-surface-2);
-    border: 1px solid var(--color-border-subtle);
+    border: var(--space-px) solid var(--color-border-subtle);
     border-radius: var(--radius-md);
     color: var(--color-text-primary);
-    font-family: var(--font-mono, monospace);
+    font-family: var(--font-mono);
     font-size: var(--type-caption);
-    line-height: 1.4;
+    line-height: var(--leading-normal);
     resize: vertical;
 }
 .script-mgr__footer {

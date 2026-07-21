@@ -90,18 +90,21 @@ const b = new DescribeBuilder('message_text', {
 });
 
 b.registerMethod('GetText', {
+    safety: {operation: 'read'},
     params: MESSAGE_TEXT_SCOPE_SCHEMA,
     response: RESP_TEXT,
     permission: PERM,
     description: 'message_text.GetText — read message text for type+language.'
 });
 b.registerMethod('GetDefault', {
+    safety: {operation: 'read'},
     params: MESSAGE_TEXT_GET_DEFAULT_SCHEMA,
     response: RESP_TEXT,
     permission: PERM,
     description: 'message_text.GetDefault — Zitadel factory-default text.'
 });
 b.registerMethod('SetText', {
+    safety: {operation: 'update'},
     params: MESSAGE_TEXT_SET_SCHEMA,
     response: RESP_OK,
     permission: PERM,
@@ -109,6 +112,7 @@ b.registerMethod('SetText', {
         'message_text.SetText — override message text for type+language.'
 });
 b.registerMethod('Reset', {
+    safety: {operation: 'update'},
     params: MESSAGE_TEXT_SCOPE_SCHEMA,
     response: RESP_OK,
     permission: PERM,

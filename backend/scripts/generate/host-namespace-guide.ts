@@ -40,10 +40,10 @@ export const NAMESPACE_GUIDE: Record<string, NamespaceGuide> = {
             'For structured grouping use `group`; for physical places use `location`.'
     },
     fleet: {purpose: 'Fleet-wide metrics and operations across a scope.'},
-    fleetmap: {
+    fleetMap: {
         purpose: 'Map-dashboard snapshots: energy/signal/alerts per location.'
     },
-    fleetsummary: {
+    fleetSummary: {
         purpose: 'Org-wide live load and energy totals for summary tiles.'
     },
     dashboard: {purpose: 'User dashboards: cards, items, layout, ordering.'},
@@ -57,7 +57,7 @@ export const NAMESPACE_GUIDE: Record<string, NamespaceGuide> = {
     notification_policy: {
         purpose: 'Routing and suppression policies for notifications.'
     },
-    integration: {
+    channel: {
         purpose: 'Outbound endpoints (webhook/email/slack/teams/telegram).'
     },
     report: {purpose: 'Generated reports (energy, dumps) and downloads.'},

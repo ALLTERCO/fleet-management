@@ -6,7 +6,6 @@
         :stats="headerStats"
         :searchable="true"
         search-placeholder="Search locations…"
-        :scope="scope"
         :filterable="true"
         :has-active-filter="activeFilterCount > 0"
         :filter-count="activeFilterCount"
@@ -130,13 +129,13 @@ import {
     holdsSelectedClass
 } from '@/helpers/deviceTypeFilter';
 import {isFeatureEnabled} from '@/helpers/featureFlags';
-import {collectDescendants} from '@/helpers/locationTree';
 import {
     countByKey,
     deviceClassSection,
     enumSection,
     namedSection
 } from '@/helpers/filter-sections';
+import {collectDescendants} from '@/helpers/locationTree';
 import {useDevicesStore} from '@/stores/devices';
 import {useLocationsStore} from '@/stores/locations';
 import {useTagsStore} from '@/stores/tags';
@@ -316,21 +315,6 @@ const headerStats = computed<StatItem[]>(() => {
     ];
 });
 
-const scope = {
-    type: 'Location',
-    icon: 'fas fa-location-dot',
-    items: sortedLocations,
-    keys: ['name', 'kind'] as const,
-    toHit: (l: ApiLocation) => ({
-        id: `location-${l.id}`,
-        label: l.name,
-        meta: l.kind,
-        type: 'Location',
-        icon: 'fas fa-location-dot',
-        route: `/organize/locations?selected=${l.id}`
-    })
-};
-
 function openCreate() {
     createVisible.value = true;
 }
@@ -385,7 +369,7 @@ function onRequestDelete(id: number): void {
     );
 }
 
-// `/` focuses the page search. UniversalSearch (rendered by PageTemplate)
+// mod+k focuses the page search. FilterPill (rendered by PageTemplate)
 // owns the input — we reach for it by its stable selector. The editable-
 // target guard in useKeyboardShortcuts already skips when typing.
 function focusPageSearch(): void {

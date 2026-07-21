@@ -3,33 +3,27 @@
         title="Configurations"
         :count="filteredConfigCount"
         :tabs="tabs"
+        v-model:search="searchQuery"
+        searchable
+        search-placeholder="Search configs…"
+        filterable
+        :has-active-filter="hasActiveFilters"
+        :filter-count="activeFilterCount"
         fill
+        @filter-click="filterModalVisible = true"
     >
-        <template #actions>
-            <Button v-if="canWrite" type="green" size="sm" title="New profile" aria-label="New profile" @click="openCreateProfileModal"><i class="fas fa-plus" /></Button>
-            <Button v-if="canWrite && expandedProfile" type="green" size="sm" @click="openAddConfigModal(expandedProfile!)">Config</Button>
-        </template>
-        <div class="cfg-page">
-
-        <!-- Filter bar -->
-        <div class="dp-filter-bar">
-            <div class="search-pill">
-                <i class="fas fa-search search-pill__icon" />
-                <input ref="searchInputRef" v-model.trim="searchQuery" type="text" class="search-pill__input"
-                    :class="{'search-pill__input--filtered': !!searchQuery || hasActiveFilters}"
-                    placeholder="Search configs…" aria-label="Search" />
-                <button v-if="searchQuery" type="button" class="search-pill__clear" @click="searchQuery = ''"><i class="fas fa-xmark" /></button>
-                <button type="button" class="search-pill__filter" :class="{'search-pill__filter--active': hasActiveFilters}" @click="filterModalVisible = true">
-                    <i class="fas fa-filter" />
-                    <span v-if="activeFilterCount > 0" class="cfg-filter-badge">{{ activeFilterCount }}</span>
-                </button>
-            </div>
+        <template #toggles>
             <div class="route-tabs">
                 <div class="route-tabs__track" :class="{'route-tabs__track--end': viewMode === 'json'}" />
                 <button type="button" class="route-tabs__btn" :class="{'route-tabs__btn--active': viewMode === 'structured'}" @click="viewMode = 'structured'">Config</button>
                 <button type="button" class="route-tabs__btn" :class="{'route-tabs__btn--active': viewMode === 'json'}" @click="viewMode = 'json'">JSON</button>
             </div>
-        </div>
+        </template>
+        <template #actions>
+            <Button v-if="canWrite" type="green" size="sm" title="New profile" aria-label="New profile" @click="openCreateProfileModal"><i class="fas fa-plus" /></Button>
+            <Button v-if="canWrite && expandedProfile" type="green" size="sm" @click="openAddConfigModal(expandedProfile!)">Config</Button>
+        </template>
+        <div class="cfg-page">
         <div v-if="hasActiveFilters" class="cfg-chips">
             <span v-if="filters.profile" class="cfg-chip" @click="filters.profile = ''"><i class="fas fa-folder" /> {{ filters.profile }} <i class="fas fa-xmark cfg-chip__x" /></span>
             <span v-if="filters.ws" class="cfg-chip" @click="filters.ws = ''"><i class="fas fa-plug" /> WS: {{ filters.ws }} <i class="fas fa-xmark cfg-chip__x" /></span>
@@ -1185,7 +1179,7 @@ watch(
 
 .cfg-profile__info { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .cfg-profile__name { font-size: var(--type-body); font-weight: var(--font-bold); color: var(--color-text-primary); }
-.cfg-profile__meta { font-size: var(--type-card-footer); color: var(--color-text-tertiary); }
+.cfg-profile__meta { font-size: var(--type-caption); color: var(--color-text-tertiary); }
 
 .cfg-profile__arrow {
     font-size: var(--type-body);
@@ -1242,7 +1236,7 @@ watch(
 .cfg-item--active .cfg-item__name { color: var(--color-text-primary); font-weight: var(--font-bold); }
 
 .cfg-item__text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-.cfg-item__sub { font-size: var(--type-card-footer); color: var(--color-text-quaternary); }
+.cfg-item__sub { font-size: var(--type-caption); color: var(--color-text-quaternary); }
 
 /* ── Detail ── */
 .cfg-detail__head {

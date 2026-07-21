@@ -258,6 +258,7 @@
         @flash="flashFromDetail"
         @edit="editFromDetail"
         @delete="deleteFromDetail"
+        @download="downloadFromDetail"
     />
     <FilterModal
         :visible="filterModalVisible"
@@ -305,6 +306,7 @@ import FirmwareProgressStrip from '@/components/pages/firmware/FirmwareProgressS
 import {useSubjectAssociations} from '@/composables/useSubjectAssociations';
 import {FLEET_MANAGER_HTTP} from '@/constants';
 import apiClient from '@/helpers/axios';
+import {triggerUrlDownload} from '@/helpers/download';
 import {
     countByKey,
     type KindedLocation,
@@ -321,6 +323,7 @@ import {
 } from '@/helpers/firmwareStatus';
 import {formatBytes, formatDate} from '@/helpers/format';
 import {shellyIdsFromGroups} from '@/helpers/groupDevices';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useDevicesStore} from '@/stores/devices';
 import {type FirmwareDeviceInfo, useFirmwareStore} from '@/stores/firmware';
 import {useGroupsStore} from '@/stores/groups';
@@ -1176,6 +1179,37 @@ function deleteFromDetail() {
     libraryDetailVisible.value = false;
 }
 
+// Mint a fresh library download URL and save the firmware file to disk. Same
+// RPC the OTA flow uses; here the browser is the client instead of a device.
+async function downloadFromDetail() {
+    const item = libraryDetailItem.value;
+    if (!item) return;
+    libraryDetailVisible.value = false;
+    try {
+        const urlResult = await sendRPC<{url: string}>(
+            'FLEET_MANAGER',
+            'Firmware.CreateLibraryDownloadUrl',
+            {id: item.id}
+        );
+        triggerUrlDownload(
+            `${FLEET_MANAGER_HTTP}${urlResult.url}`,
+            item.originalFileName || item.name
+        );
+        toastStore.success('Firmware download started');
+    } catch (error: any) {
+        const isStale = isResourceNotFound(
+            error,
+            FIRMWARE_LIBRARY_ITEM_RESOURCE_TYPE
+        );
+        if (isStale) removeStaleLibraryItem(item.id);
+        toastStore.error(
+            isStale
+                ? 'Firmware library item is no longer available'
+                : error?.message || 'Failed to download firmware'
+        );
+    }
+}
+
 async function executeLibraryUpdate(
     item: FirmwareLibraryItem,
     compatibleIds: string[]
@@ -1316,7 +1350,7 @@ async function retryDevice(shellyID: string) {
     try {
         await firmwareStore.retryDevice(shellyID);
     } catch (error: any) {
-        toastStore.error(error?.message || 'Failed to retry firmware update');
+        toastStore.error(rpcErrorMessage(error, 'Failed to retry firmware update'));
     }
 }
 

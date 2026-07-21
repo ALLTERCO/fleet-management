@@ -1,4 +1,5 @@
 --------------UP
+-- LINT-IGNORE: additive-only (deliberate legacy function removal)
 -- Drop legacy v1 dashboard-item functions. v3 (6510 add, 6511 update,
 -- 6512 remove, 6513 reorder) is the single source of truth — accepts
 -- kind enum, populates the NOT NULL kind column added in 6504, and

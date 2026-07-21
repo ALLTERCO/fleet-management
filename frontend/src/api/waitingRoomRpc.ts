@@ -14,14 +14,16 @@ export interface PendingDevice {
 }
 
 // deviceIngress entries are approved through their own RPC (legacy accept can't
-// admit them). create_new_device is the right action for a fresh waiting device;
+// admit them). entryId is the full waiting-room entry id, prefixed
+// deviceIngress:<uuid> — the backend parseWaitingRoomEntryId strips the prefix
+// to route it. create_new_device is the right action for a fresh waiting device;
 // profile is optional — the backend defaults to the device's connected security.
 export function approveDeviceIngressEntry(
-    waitingRoomId: string,
+    entryId: string,
     profileId?: string
 ): Promise<unknown> {
-    return sendRPC(FM, 'deviceIngress.WaitingRoom.Approve', {
-        waitingRoomId,
+    return sendRPC(FM, 'waitingroom.Approve', {
+        entryId,
         action: 'create_new_device',
         ...(profileId ? {profileId} : {})
     });

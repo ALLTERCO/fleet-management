@@ -1,15 +1,13 @@
 <template>
     <div v-if="field.kind === 'toggle'" class="ls-field ls-field--toggle">
-        <button
-            type="button"
-            class="ls-field__power"
-            :class="boolValue && 'ls-field__power--on'"
+        <span class="ls-field__label">{{ label }}</span>
+        <CardToggle
+            size="row"
+            :is-on="boolValue"
             :disabled="disabled"
-            @click="emit('change', !boolValue)"
-        >
-            <i class="fas fa-power-off" />
-            <span>{{ boolValue ? 'On' : 'Off' }}</span>
-        </button>
+            :aria-label="label"
+            @toggle="emit('change', !boolValue)"
+        />
     </div>
 
     <div v-else-if="field.kind === 'slider'" class="ls-field ls-field--slider">
@@ -29,12 +27,30 @@
 
     <div v-else-if="field.kind === 'color'" class="ls-field ls-field--color">
         <span class="ls-field__label">{{ label }}</span>
-        <input
-            type="color"
-            :value="rgbAsHex(rgbValue)"
-            :disabled="disabled"
-            @change="emitColorChange"
-        />
+        <div class="ls-color" role="group" :aria-label="`${label} color`">
+            <button
+                v-for="preset in COLOR_PRESETS"
+                :key="preset"
+                type="button"
+                class="ls-color__swatch"
+                :class="{'ls-color__swatch--active': rgbAsHex(rgbValue) === preset}"
+                :style="{background: preset}"
+                :aria-label="`Set ${label} to ${preset}`"
+                :title="preset"
+                :disabled="disabled"
+                @click="emit('change', hexToRgb(preset))"
+            />
+            <label class="ls-color__custom" title="Pick a custom color">
+                <input
+                    type="color"
+                    :value="rgbAsHex(rgbValue)"
+                    :disabled="disabled"
+                    :aria-label="`Pick a custom ${label} color`"
+                    @input="emitColorChange"
+                />
+            </label>
+            <span class="ls-color__hex">{{ rgbAsHex(rgbValue) }}</span>
+        </div>
     </div>
 
     <div
@@ -104,6 +120,21 @@
 import type {LedStripCatalogEntry, LedStripUiField} from '@api/ledstrip';
 import {computed} from 'vue';
 import {labelizeKey} from '@/helpers/labelize';
+import CardToggle from '../cards/CardToggle.vue';
+
+// Classic LED strip palette — one click for the common cases, the custom
+// picker for everything else.
+const COLOR_PRESETS = [
+    '#ffffff',
+    '#ff3b30',
+    '#ff9500',
+    '#ffcc00',
+    '#34c759',
+    '#00c7be',
+    '#007aff',
+    '#af52de',
+    '#ff2d55'
+];
 
 type CatalogList = (string | LedStripCatalogEntry)[];
 
@@ -178,6 +209,7 @@ function emitRangeChange(e: Event): void {
 function emitColorChange(e: Event): void {
     emit('change', hexToRgb((e.target as HTMLInputElement).value));
 }
+// hexToRgb/rgbAsHex also serve the preset swatches in the template.
 
 function emitSelectChange(e: Event): void {
     emit('change', (e.target as HTMLSelectElement).value);
@@ -205,11 +237,16 @@ function emitMultiToggle(optKey: string, on: boolean): void {
 <style scoped>
 .ls-field {
     display: flex;
+    min-height: var(--touch-target-min);
     align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border-bottom: var(--space-px) solid var(--color-border-subtle);
+}
+
+.ls-field:last-of-type {
+    border-bottom: 0;
 }
 
 .ls-field--multi {
@@ -218,10 +255,11 @@ function emitMultiToggle(optKey: string, on: boolean): void {
 }
 
 .ls-field__label {
-    flex: 0 0 auto;
-    min-width: 5rem;
-    font-size: var(--type-caption);
-    color: var(--color-text-tertiary);
+    flex: 1;
+    min-width: 0;
+    color: var(--color-text-primary);
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
 }
 
 .ls-field__value {
@@ -244,23 +282,69 @@ function emitMultiToggle(optKey: string, on: boolean): void {
     font-size: var(--input-font-size);
 }
 
-.ls-field__power {
+/* Color chooser — preset swatches plus the native custom picker. */
+.ls-color {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
+    justify-content: flex-end;
     gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    background: var(--color-surface-3);
-    border: 1px solid var(--color-border-default);
-    border-radius: var(--radius-md);
-    color: var(--color-text-tertiary);
-    font-weight: var(--font-semibold);
+}
+
+.ls-color__swatch {
+    width: var(--icon-size-lg);
+    height: var(--icon-size-lg);
+    border: var(--space-px) solid var(--color-border-medium);
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    transition:
+        transform var(--duration-fast) var(--ease-default),
+        box-shadow var(--duration-fast) var(--ease-default);
+}
+
+.ls-color__swatch:hover {
+    transform: scale(1.12);
+}
+
+.ls-color__swatch--active {
+    box-shadow: 0 0 0 2px var(--color-surface-0),
+        0 0 0 4px var(--color-text-primary);
+}
+
+.ls-color__custom {
+    position: relative;
+    display: grid;
+    width: var(--icon-size-lg);
+    height: var(--icon-size-lg);
+    place-items: center;
+    overflow: hidden;
+    border: var(--space-px) dashed var(--color-border-medium);
+    border-radius: var(--radius-full);
+    background: conic-gradient(
+        red,
+        yellow,
+        lime,
+        cyan,
+        blue,
+        magenta,
+        red
+    );
     cursor: pointer;
 }
 
-.ls-field__power--on {
-    background: rgba(var(--color-success-rgb), 0.15);
-    color: var(--color-success-text);
-    border-color: rgba(var(--color-success-rgb), 0.35);
+.ls-color__custom input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.ls-color__hex {
+    min-width: 4.5rem;
+    color: var(--color-text-tertiary);
+    font-family: var(--font-mono, monospace);
+    font-size: var(--type-caption);
+    text-align: right;
 }
 
 .ls-field__section-label {

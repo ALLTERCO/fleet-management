@@ -15,8 +15,10 @@ export interface OrgSignalsPort {
 
 export interface DeviceSignal {
     instanceId: string;
-    kind: 'connected' | 'disconnected' | 'deleted';
+    kind: 'connected' | 'disconnected' | 'deleted' | 'identity-changing';
     shellyID: string;
+    previousShellyID?: string;
+    operationId?: string;
 }
 
 export interface DeviceSignalsPort {
@@ -179,9 +181,18 @@ export type Reservation =
 // claim() succeeds only when no other instance holds the key.
 export interface DeviceOwnershipPort {
     claim(shellyID: string, ttlMs: number): Promise<boolean>;
-    heartbeat(shellyID: string, ttlMs: number): Promise<void>;
+    heartbeat(shellyID: string, ttlMs: number): Promise<boolean>;
     release(shellyID: string): Promise<void>;
     owner(shellyID: string): Promise<string | null>;
+}
+
+export interface DeviceIdentityFencePort {
+    acquire(
+        shellyIDs: readonly string[],
+        token: string,
+        ttlMs: number
+    ): Promise<boolean>;
+    release(shellyIDs: readonly string[], token: string): Promise<void>;
 }
 
 // set THROWS on backend failure so the caller never returns a dead URL.
@@ -199,6 +210,21 @@ export interface UploadSessionPort {
     set(sessionId: string, value: string, ttlSec: number): Promise<void>;
     get(sessionId: string): Promise<string | null>;
     delete(sessionId: string): Promise<void>;
+}
+
+export interface DeviceGuiSessionPort {
+    create(input: {
+        slotId: string;
+        sessionId: string;
+        session: string;
+        ttlSec: number;
+    }): Promise<string | null>;
+    get(sessionId: string): Promise<string | null>;
+    isAttested(sessionId: string): Promise<boolean>;
+    markAttested(sessionId: string, ttlSec: number): Promise<void>;
+    delete(sessionId: string): Promise<void>;
+    publishRevoked(sessionId: string): Promise<void>;
+    onRevoked(handler: (sessionId: string) => void): Promise<void>;
 }
 
 export type WaitingAuthMethod = 'none' | 'token' | 'certificate';

@@ -8,6 +8,7 @@
 
 const ACCENT_MAP: Record<string, string> = {
     switch: 'var(--accent-switch)',
+    cb: 'var(--accent-cb)',
     light: 'var(--accent-dimmer)',
     dimmer: 'var(--accent-dimmer)',
     rgbw: 'var(--accent-rgbw)',

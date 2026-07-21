@@ -1,4 +1,5 @@
 import type {EmailAttachment} from '@api/_shared';
+import type {Channel, ChannelProvider, ChannelTestResult} from '@api/channel';
 import type {
     DeliveryAttempt,
     DeliveryJob,
@@ -10,20 +11,18 @@ import type {
     NotificationRoutingPolicy,
     TemplateTokenDescriptor
 } from '@api/notification';
-import type {
-    Channel,
-    ChannelProvider,
-    ChannelTestResult
-} from '@api/channel';
 import {defineStore} from 'pinia';
 import {computed, ref} from 'vue';
 import apiClient from '@/helpers/axios';
 import {toastRpcError} from '@/helpers/domainErrors';
 import {type PagedEnvelope, paginate} from '@/helpers/pagination';
 import {runOptimisticMutation} from '@/stores/optimisticMutation';
+import {createTrailingCoalescer} from '../tools/coalesce';
 import {createUploadTicket} from '../tools/uploadTickets';
 import * as ws from '../tools/websocket';
+import {NOTIFICATION_EVENT} from '../tools/wsEvents';
 import {createLatestRefreshCoordinator} from './refreshCoordinator';
+import {createStaleGuard} from './staleGuard';
 import {useToastStore} from './toast';
 
 export type {
@@ -172,6 +171,16 @@ export const useNotificationsStore = defineStore('notifications', () => {
     const onCallLoading = ref(true);
     const preferencesLoading = ref(true);
 
+    // One stale guard per collection — a write invalidates in-flight fetches.
+    const inboxGuard = createStaleGuard();
+    const historyGuard = createStaleGuard();
+    const emailTemplatesGuard = createStaleGuard();
+    const emailAssetsGuard = createStaleGuard();
+    const channelsGuard = createStaleGuard();
+    const routingPoliciesGuard = createStaleGuard();
+    const onCallSchedulesGuard = createStaleGuard();
+    const preferencesGuard = createStaleGuard();
+
     const unreadCount = computed(
         () =>
             Object.values(inbox.value).filter((i) => i.state === 'unread')
@@ -179,42 +188,71 @@ export const useNotificationsStore = defineStore('notifications', () => {
     );
 
     function upsertInbox(item: NotificationInboxItem) {
+        inboxGuard.bump();
         inbox.value = {...inbox.value, [item.id]: item};
     }
 
+    // Write path — mutations and WS writes. Bumps to discard stale reads.
     function upsertJob(job: DeliveryJob) {
+        historyGuard.bump();
+        mergeJob(job);
+    }
+
+    // Read path — never bumps; callers guard with a pre-RPC token instead.
+    function mergeJob(job: DeliveryJob) {
         history.value = {...history.value, [job.id]: job};
     }
 
     function upsertEmailTemplate(t: EmailTemplate) {
+        emailTemplatesGuard.bump();
         emailTemplates.value = {...emailTemplates.value, [t.id]: t};
     }
 
+    function removeEmailTemplate(id: number) {
+        emailTemplatesGuard.bump();
+        const next = {...emailTemplates.value};
+        delete next[id];
+        emailTemplates.value = next;
+    }
+
     function upsertEmailAsset(a: EmailAsset) {
+        emailAssetsGuard.bump();
         emailAssets.value = {...emailAssets.value, [a.id]: a};
     }
 
+    function removeEmailAsset(id: number) {
+        emailAssetsGuard.bump();
+        const next = {...emailAssets.value};
+        delete next[id];
+        emailAssets.value = next;
+    }
+
     function upsertChannel(channel: Channel) {
+        channelsGuard.bump();
         channels.value = {...channels.value, [channel.id]: channel};
     }
 
     function removeChannel(id: number) {
+        channelsGuard.bump();
         const next = {...channels.value};
         delete next[id];
         channels.value = next;
     }
 
     function upsertRoutingPolicy(policy: NotificationRoutingPolicy) {
+        routingPoliciesGuard.bump();
         routingPolicies.value = {...routingPolicies.value, [policy.id]: policy};
     }
 
     function removeRoutingPolicy(id: number) {
+        routingPoliciesGuard.bump();
         const next = {...routingPolicies.value};
         delete next[id];
         routingPolicies.value = next;
     }
 
     function upsertOnCallSchedule(schedule: NotificationOnCallSchedule) {
+        onCallSchedulesGuard.bump();
         onCallSchedules.value = {
             ...onCallSchedules.value,
             [schedule.id]: schedule
@@ -222,12 +260,14 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
 
     function removeOnCallSchedule(id: number) {
+        onCallSchedulesGuard.bump();
         const next = {...onCallSchedules.value};
         delete next[id];
         onCallSchedules.value = next;
     }
 
     function upsertPreference(preference: NotificationPreference) {
+        preferencesGuard.bump();
         preferences.value = {
             ...preferences.value,
             [preference.channelType]: preference
@@ -241,6 +281,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
 
     async function refreshInbox(state?: InboxState): Promise<void> {
+        const fetchToken = inboxGuard.bump();
         inboxLoading.value = true;
         try {
             const items = await paginate<NotificationInboxItem>(
@@ -256,6 +297,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
                     ),
                 MAX_PER_PAGE
             );
+            if (inboxGuard.isStale(fetchToken)) return;
             const next: Record<number, NotificationInboxItem> = state
                 ? {...inbox.value}
                 : {};
@@ -359,6 +401,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
 
     async function refreshHistory(filters: HistoryFilters): Promise<void> {
+        const fetchToken = historyGuard.bump();
         historyLoading.value = true;
         try {
             const items = await paginate<DeliveryJob>(
@@ -370,6 +413,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
                     ),
                 MAX_PER_PAGE
             );
+            if (historyGuard.isStale(fetchToken)) return;
             const next: Record<number, DeliveryJob> = {};
             for (const j of items) next[j.id] = j;
             history.value = next;
@@ -383,13 +427,16 @@ export const useNotificationsStore = defineStore('notifications', () => {
     async function fetchHistoryDetail(
         id: number
     ): Promise<{job: DeliveryJob; attempts: DeliveryAttempt[]} | null> {
+        const token = historyGuard.current();
         try {
             const res = await ws.sendRPC<{
                 job: DeliveryJob;
                 attempts: DeliveryAttempt[];
             }>('FLEET_MANAGER', 'notification.history.get', {id});
-            upsertJob(res.job);
             attempts.value = {...attempts.value, [id]: res.attempts};
+            // A write landed mid-flight; this older read must not overwrite it.
+            if (historyGuard.isStale(token)) return res;
+            mergeJob(res.job);
             return res;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load delivery detail');
@@ -413,25 +460,26 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
 
     // Live updates — bursty event runs would otherwise stack many concurrent
-    // fetchInbox calls; coalesce to one refetch per 250ms burst.
-    let inboxRefetchTimer: ReturnType<typeof setTimeout> | undefined;
-    function scheduleInboxRefetch() {
-        if (inboxRefetchTimer !== undefined) return;
-        inboxRefetchTimer = setTimeout(() => {
-            inboxRefetchTimer = undefined;
+    // fetchInbox calls; coalesce each burst into one trailing refetch.
+    const inboxRefetch = createTrailingCoalescer(
+        () => {
             void fetchInbox();
-        }, 250);
-    }
+        },
+        250,
+        // Cap so a sustained notification burst still refreshes the unread
+        // badge/inbox at least this often instead of starving until it pauses.
+        2000
+    );
 
     ws.onNotificationEvent((e) => {
-        if (e.method === 'Notification.DeliveryUpdated') {
+        if (e.method === NOTIFICATION_EVENT.DELIVERY_UPDATED) {
             const jobId = e.params.jobId as number | undefined;
             if (typeof jobId === 'number' && history.value[jobId]) {
                 void fetchHistoryDetail(jobId);
             }
             return;
         }
-        scheduleInboxRefetch();
+        inboxRefetch.schedule();
     });
 
     async function renderTemplate(params: {
@@ -482,6 +530,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
 
     // ─── Email template library ────────────────────────────────────────
     async function fetchEmailTemplates(): Promise<EmailTemplate[]> {
+        const fetchToken = emailTemplatesGuard.bump();
         try {
             const items = await paginate<EmailTemplate>(
                 (offset) =>
@@ -492,6 +541,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
                     ),
                 MAX_PER_PAGE
             );
+            if (emailTemplatesGuard.isStale(fetchToken)) return items;
             const next: Record<number, EmailTemplate> = {};
             for (const t of items) next[t.id] = t;
             emailTemplates.value = next;
@@ -575,9 +625,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
                     id
                 }
             );
-            const next = {...emailTemplates.value};
-            delete next[id];
-            emailTemplates.value = next;
+            removeEmailTemplate(id);
             return true;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to delete email template');
@@ -588,6 +636,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     // ─── Email asset library (binary blobs — uploaded via multipart HTTP,
     //     listed/deleted via RPC) ─────────────────────────────────────────
     async function fetchEmailAssets(): Promise<EmailAsset[]> {
+        const fetchToken = emailAssetsGuard.bump();
         try {
             const items = await paginate<EmailAsset>(
                 (offset) =>
@@ -598,6 +647,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
                     ),
                 MAX_PER_PAGE
             );
+            if (emailAssetsGuard.isStale(fetchToken)) return items;
             const next: Record<number, EmailAsset> = {};
             for (const a of items) next[a.id] = a;
             emailAssets.value = next;
@@ -655,9 +705,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
                     id
                 }
             );
-            const next = {...emailAssets.value};
-            delete next[id];
-            emailAssets.value = next;
+            removeEmailAsset(id);
             return true;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to delete email asset');
@@ -673,6 +721,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     async function fetchChannels(
         type?: NotificationChannelType
     ): Promise<void> {
+        const fetchToken = channelsGuard.bump();
         channelsLoading.value = true;
         try {
             const result = await ws.sendRPC<{items: Channel[]}>(
@@ -680,6 +729,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
                 'channel.list',
                 type ? {provider: type} : {}
             );
+            if (channelsGuard.isStale(fetchToken)) return;
             const next: Record<number, Channel> = {};
             for (const channel of result.items) {
                 next[channel.id] = channel;
@@ -757,12 +807,14 @@ export const useNotificationsStore = defineStore('notifications', () => {
                     ...channel,
                     lastTestAt: result.testedAt,
                     lastTestStatus: result.state,
-                    lastDeliveryStatus: dryRun !== true
-                        ? result.state
-                        : channel.lastDeliveryStatus,
-                    lastDeliveryAt: dryRun !== true
-                        ? result.testedAt
-                        : channel.lastDeliveryAt,
+                    lastDeliveryStatus:
+                        dryRun !== true
+                            ? result.state
+                            : channel.lastDeliveryStatus,
+                    lastDeliveryAt:
+                        dryRun !== true
+                            ? result.testedAt
+                            : channel.lastDeliveryAt,
                     health: {
                         ...channel.health,
                         lastFailureAt:
@@ -781,11 +833,13 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
 
     async function fetchRoutingPolicies(enabledOnly = false): Promise<void> {
+        const fetchToken = routingPoliciesGuard.bump();
         routingLoading.value = true;
         try {
             const result = await ws.sendRPC<{
                 items: NotificationRoutingPolicy[];
             }>('FLEET_MANAGER', 'notification.routing.list', {enabledOnly});
+            if (routingPoliciesGuard.isStale(fetchToken)) return;
             const next: Record<number, NotificationRoutingPolicy> = {};
             for (const policy of result.items) next[policy.id] = policy;
             routingPolicies.value = next;
@@ -846,11 +900,13 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
 
     async function fetchOnCallSchedules(enabledOnly = false): Promise<void> {
+        const fetchToken = onCallSchedulesGuard.bump();
         onCallLoading.value = true;
         try {
             const result = await ws.sendRPC<{
                 items: NotificationOnCallSchedule[];
             }>('FLEET_MANAGER', 'notification.oncall.list', {enabledOnly});
+            if (onCallSchedulesGuard.isStale(fetchToken)) return;
             const next: Record<number, NotificationOnCallSchedule> = {};
             for (const schedule of result.items) next[schedule.id] = schedule;
             onCallSchedules.value = next;
@@ -894,6 +950,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
 
     async function fetchPreferences(): Promise<void> {
+        const fetchToken = preferencesGuard.bump();
         preferencesLoading.value = true;
         try {
             const result = await ws.sendRPC<{items: NotificationPreference[]}>(
@@ -901,6 +958,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
                 'notification.preference.list',
                 {}
             );
+            if (preferencesGuard.isStale(fetchToken)) return;
             const next = {} as Record<
                 NotificationChannelType,
                 NotificationPreference

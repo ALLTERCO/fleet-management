@@ -84,9 +84,14 @@ const READ_METHODS = new Set([
     'Analytics.AttributeWindow',
     'Discovery.Probe',
     'Report.SuggestTimeShift',
+    'Shelly.DetectLocation',
+    'Sys.DownloadSettings',
+    'sensor.events',
     'virtualdevice.Binding.ReplacementReport',
     'virtualdevice.Profile.SuggestFromDevice'
 ]);
+
+const PENDING_COMMAND_METHODS = new Set(['Shelly.FactoryReset']);
 
 const ACCESS_CHANGE_METHODS = new Set([
     'Identity.SetSmtpSettings',
@@ -110,6 +115,7 @@ const ACCESS_CHANGE_METHODS = new Set([
     'User.UpdateZitadelUser',
     'assignment.create',
     'assignment.delete',
+    'deviceIngress.EnrollmentToken.Revoke',
     'permission.GrantRoles',
     'permission.RevokeRoles',
     'persona.create',
@@ -307,6 +313,11 @@ const RPC_SURFACE_RULES: readonly RpcSurfaceRule[] = [
         'read'
     ),
     setRule(READ_METHODS, 'backend-authoritative read or report RPC', 'read'),
+    setRule(
+        PENDING_COMMAND_METHODS,
+        'server-authoritative mutation or device command',
+        'pending-command'
+    ),
     setRule(
         ACCESS_CHANGE_METHODS,
         'identity or permission access-changing RPC',

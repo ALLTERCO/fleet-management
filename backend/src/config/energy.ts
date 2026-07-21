@@ -123,16 +123,35 @@ export const VALID_BUCKETS: ReadonlySet<string> = new Set(
 );
 
 /**
- * Environmental-metric field patterns used with `device.status`
- * `field_group LIKE` queries. Used by `fn_status_environmental_history`.
+ * Environmental-metric tag → `device_sensor.numeric_15min.kind` value.
+ * Used by the rollup read path (`device_sensor.fn_numeric_history`). Mostly
+ * identity — 'wind_direction' maps to stored kind 'direction', 'luminance' to
+ * 'illuminance'.
+ * Electrical readings (voltage/current/power/energy) are NOT here — they belong
+ * to the energy pipeline (ENERGY_TABLE_TAGS).
  */
-export const ENV_FIELD_PATTERNS: Record<string, string> = {
-    temperature: 'temperature:%',
-    humidity: 'humidity:%',
-    luminance: 'illuminance:%'
+export const ENV_ROLLUP_FIELD: Record<string, string> = {
+    temperature: 'temperature',
+    humidity: 'humidity',
+    luminance: 'illuminance',
+    pressure: 'pressure',
+    dewpoint: 'dewpoint',
+    co2: 'co2',
+    tvoc: 'tvoc',
+    pm25: 'pm25',
+    pm10: 'pm10',
+    moisture: 'moisture',
+    uv: 'uv',
+    conductivity: 'conductivity',
+    // BTHome object name is 'direction' (obj_id 94) — no 'wind_direction' kind exists.
+    wind_direction: 'direction',
+    precipitation: 'precipitation',
+    battery: 'battery',
+    // Millimetres, stored as kind 'distance' (the metre object is skipped).
+    distance: 'distance'
 };
 
-/** Tags that come from `device_em.stats` (vs `device.status`) */
+/** Tags that come from `device_em.stats` (vs the device_sensor rollup below) */
 export const ENERGY_TABLE_TAGS: ReadonlySet<string> = new Set([
     'total_act_energy',
     'total_act_ret_energy',
@@ -147,14 +166,41 @@ export const ENERGY_TABLE_TAGS: ReadonlySet<string> = new Set([
     'min_voltage',
     'max_voltage',
     'min_current',
-    'max_current'
+    'max_current',
+    // Battery-monitor (bm) DC telemetry — domain dc_battery in device_em.stats.
+    // soc/soh are %, cycles a count, charge_ah/discharge_ah Amp-hours (divisor 1).
+    'soc',
+    'soh',
+    'cycles',
+    'charge_ah',
+    'discharge_ah'
 ]);
 
-/** Tags that come from `device.status` (environmental sensors) */
+/**
+ * Tags read from the device_sensor rollup (`device_sensor.numeric_15min`,
+ * via `fn_numeric_history`). 'distance' is millimetres (the metre object is
+ * skipped at capture). Excludes 'wind_speed'/'wind_gust': they share one BTHome
+ * object ('speed', obj_id 68/98) told apart only by channel, which
+ * fn_numeric_history does not group by, so they cannot be separated at this read
+ * layer yet — deferred, not wired to a misleading mixed average.
+ */
 export const ENV_TABLE_TAGS: ReadonlySet<string> = new Set([
     'temperature',
     'humidity',
-    'luminance'
+    'luminance',
+    'pressure',
+    'dewpoint',
+    'co2',
+    'tvoc',
+    'pm25',
+    'pm10',
+    'moisture',
+    'uv',
+    'conductivity',
+    'wind_direction',
+    'precipitation',
+    'battery',
+    'distance'
 ]);
 
 /**

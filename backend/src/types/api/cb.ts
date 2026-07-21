@@ -44,6 +44,44 @@ export const CB_SET_CONFIG_PARAMS_SCHEMA: JsonSchema = {
     }
 };
 
+export interface CbSetParams {
+    shellyID: string;
+    id: number;
+    output: boolean;
+}
+
+// output true = engage/close, false = disengage/trip. Both directions work on
+// firmware when the breaker is not safety-latched; after a protection trip
+// (status.safety) the device rejects remote re-engage and the lever is reset
+// by hand. (Public docs say "false only" — stale; the device is the truth.)
+export const CB_SET_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['shellyID', 'id', 'output'],
+    properties: {
+        shellyID: SHELLY_ID_SCHEMA,
+        id: ID_PROP,
+        output: {type: 'boolean'}
+    }
+};
+
+export interface CbGetLogParams {
+    shellyID: string;
+    id: number;
+    after?: number;
+}
+
+export const CB_GETLOG_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['shellyID', 'id'],
+    properties: {
+        shellyID: SHELLY_ID_SCHEMA,
+        id: ID_PROP,
+        after: {type: 'integer', minimum: 0}
+    }
+};
+
 const b = new DescribeBuilder('cb', {
     kind: 'device',
     description:
@@ -66,6 +104,19 @@ b.registerMethod('SetConfig', {
     response: RESP_OPAQUE,
     permission: PERM_UPDATE,
     description: 'Circuit Breaker SetConfig — opaque pass-through.'
+});
+b.registerMethod('Set', {
+    params: CB_SET_PARAMS_SCHEMA,
+    response: RESP_OPAQUE,
+    permission: {component: 'devices', operation: 'execute' as const},
+    description:
+        'Circuit Breaker Set — engage (output:true) or disengage (output:false).'
+});
+b.registerMethod('GetLog', {
+    params: CB_GETLOG_PARAMS_SCHEMA,
+    response: RESP_OPAQUE,
+    permission: PERM_READ,
+    description: 'Circuit Breaker activity log — last 50 lever events.'
 });
 
 const CB_METRICS: MetricDescriptor[] = [

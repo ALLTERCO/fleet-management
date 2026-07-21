@@ -202,7 +202,7 @@ async function loadExistingAssignmentGrant(
                 a.subject_id::text,
                 a.persona_id::text,
                 p.key AS persona_key,
-                a.scope,
+                organization.fn_assignment_scope_external(a.id, a.scope) AS scope,
                 a.reason,
                 a.comment,
                 a.expires_at::text

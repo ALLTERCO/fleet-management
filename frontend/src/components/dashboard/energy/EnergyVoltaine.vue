@@ -9,26 +9,18 @@
     <button v-if="view.config.solar" data-t="solar" role="tab">{{ assetsTabLabel }}</button>
     <button data-t="insights" role="tab">Carbon &amp; Insights</button>
   </div>
-  <div class="tools">
-    <div class="ed-tool-wrap">
-      <button class="range num" title="Change date range" @click.stop="rangeMenu = !rangeMenu">{{ view.meta.rangeLabel }} <span style="opacity:.6">▾</span></button>
-      <div v-if="rangeMenu" class="rmenu" @click.stop>
-        <button v-for="r in RANGES" :key="r.key" type="button" @click="pickRange(r.key)">{{ r.label }}</button>
-        <div class="rmenu-custom">
-          <div class="rmenu-clabel">Custom range</div>
-          <div class="rmenu-crow">
-            <input v-model="customFrom" type="date" class="rmenu-cinput" aria-label="From date" />
-            <input v-model="customTo" type="date" class="rmenu-cinput" aria-label="To date" />
-          </div>
-          <button type="button" class="rmenu-apply" :disabled="!customFrom || !customTo" @click="applyCustom">Apply</button>
-        </div>
-      </div>
-    </div>
-    <button class="ic" title="Filter devices" aria-label="Filter devices" @click="emit('open-filter')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18l-7 8v5l-4 2v-7z"/></svg></button>
-    <button class="ic" title="Refresh" aria-label="Refresh" @click="emit('refresh')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button>
-    <button class="ic" title="Dashboard settings" aria-label="Dashboard settings" @click="emit('open-settings')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
-    <button class="rep-btn" title="Download report" @click="repOpen = true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11M8 10l4 4 4-4M5 20h14"/></svg> Report</button>
-  </div>
+  <DashVoltaineTools
+    :range-label="view.meta.rangeLabel"
+    :refresh-interval="refreshInterval"
+    show-filter
+    show-interval
+    @pick-range="emit('pick-range', $event)"
+    @open-filter="emit('open-filter')"
+    @refresh="emit('refresh')"
+    @set-interval="emit('set-interval', $event)"
+    @open-settings="emit('open-settings')"
+    @open-report="repOpen = true"
+  />
 </div>
 
 <section id="overview" class="on">
@@ -134,7 +126,7 @@
         <span class="meta num" style="color:var(--green)">{{ view.power.liveNote }}</span>
       </div>
       <div style="padding:0 20px 6px">
-        <div class="kpi num" style="font-size:38px"><span id="bigW">{{ view.power.liveKw.toFixed(2) }}</span><small>kW</small></div>
+        <div class="kpi num" style="font-size:var(--type-heading)"><span id="bigW">{{ view.power.liveKw.toFixed(2) }}</span><small>kW</small></div>
       </div>
       <svg id="liveChart" class="bleed" viewBox="0 0 760 190" preserveAspectRatio="none" style="min-height:180px"></svg>
     </div>
@@ -226,10 +218,10 @@
       <div class="card" style="--i:3">
         <div class="lab">Environment</div>
         <div class="sub" style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <span>Temp<br><b style="font-size:15px">{{ view.energy.env.temp }}</b></span>
-          <span>Humidity<br><b style="font-size:15px">{{ view.energy.env.humidity }}</b></span>
-          <span>Luminance<br><b style="font-size:15px">{{ view.energy.env.luminance }}</b></span>
-          <span>Flow<br><b style="font-size:15px">{{ view.energy.env.flow }}</b></span>
+          <span>Temp<br><b style="font-size:var(--type-body)">{{ view.energy.env.temp }}</b></span>
+          <span>Humidity<br><b style="font-size:var(--type-body)">{{ view.energy.env.humidity }}</b></span>
+          <span>Luminance<br><b style="font-size:var(--type-body)">{{ view.energy.env.luminance }}</b></span>
+          <span>Flow<br><b style="font-size:var(--type-body)">{{ view.energy.env.flow }}</b></span>
         </div>
       </div>
     </div>
@@ -456,6 +448,7 @@
 // (the EnergyDashboardData contract). When `d` is omitted the dev fixture renders,
 // so the exact visual stays verifiable in the standalone preview.
 import {computed, onMounted, onUnmounted, reactive, ref} from 'vue';
+import DashVoltaineTools from '@/components/dashboard/DashVoltaineTools.vue';
 import {resolveEnergyDashboardView} from './energyDashboard.view';
 
 const props = defineProps({
@@ -464,35 +457,13 @@ const props = defineProps({
     // Tab to open on mount — lets the parent preserve the active tab across a
     // renderKey remount (refresh / lazy-loaded data) instead of resetting to Overview.
     initialTab: {type: String, default: 'overview'},
+    // Live auto-refresh cadence in ms (0 = off). Drives the header interval picker.
+    refreshInterval: {type: Number, default: 0},
 });
-const emit = defineEmits(['pick-range', 'generate-report', 'open-filter', 'open-settings', 'refresh', 'tab-change']);
+const emit = defineEmits(['pick-range', 'generate-report', 'open-filter', 'open-settings', 'refresh', 'tab-change', 'set-interval']);
 
 const rootEl = ref(null);
 let cleanups = [];
-
-// Date-range presets (Voltaine style); the parent resolves a key → from/to.
-const RANGES = [
-    {key: '24h', label: 'Last 24 hours'},
-    {key: '7d', label: 'Last 7 days'},
-    {key: '30d', label: 'Last 30 days'},
-    {key: '90d', label: 'Last 90 days'},
-    {key: 'month', label: 'This month'},
-    {key: 'last_month', label: 'Last month'},
-    {key: 'ytd', label: 'Year to date'},
-    {key: 'last_year', label: 'Last year'},
-];
-const rangeMenu = ref(false);
-const customFrom = ref('');
-const customTo = ref('');
-function pickRange(key) {
-    emit('pick-range', {key});
-    rangeMenu.value = false;
-}
-function applyCustom() {
-    if (!customFrom.value || !customTo.value) return;
-    emit('pick-range', {key: 'custom', from: customFrom.value, to: customTo.value});
-    rangeMenu.value = false;
-}
 
 // Download report menu — exposes what report.generate honours. Range, scope and
 // tariff come from the dashboard's own settings (one source, not re-asked).
@@ -592,8 +563,8 @@ onMounted(() => {
   const root = rootEl.value;
   if (!root) return;
 
-(function(){
-"use strict";
+(()=> {
+
 const $=s=>root.querySelector(s), $$=s=>[...root.querySelectorAll(s)];
 const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -618,7 +589,7 @@ function runCounts(scope){
     const target=parseFloat(el.dataset.count),dec=+el.dataset.dec||0,t0=performance.now(),dur=reduced?1:1000;
     if(isNaN(target)){el.textContent='—';return;}
     (function step(t){
-      const p=Math.min((t-t0)/dur,1),e=1-Math.pow(1-p,3);
+      const p=Math.min((t-t0)/dur,1),e=1-(1-p) ** 3;
       el.textContent=(target*e).toLocaleString('en-US',{minimumFractionDigits:dec,maximumFractionDigits:dec});
       if(p<1)requestAnimationFrame(step);
     })(t0);
@@ -641,7 +612,7 @@ function smooth(pts){
 function niceScale(rawMax){
   const max=rawMax>0?rawMax:1;
   const rough=max/4;
-  const pow=Math.pow(10,Math.floor(Math.log10(rough)));
+  const pow=10 ** Math.floor(Math.log10(rough));
   const n=rough/pow;
   const step=(n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*pow;
   return {top:Math.ceil(max/step)*step,step};
@@ -675,7 +646,7 @@ function defer(fn){
 }
 
 /* ---- overview chart (full-bleed) ---- */
-(function(){
+(()=> {
   const svg=$('#mainChart'),W=760,H=318,P={l:52,r:20,t:16,b:28};
   const V=view.value;
   const cons=V.overview.consumption.map(p=>p.value);
@@ -712,7 +683,7 @@ function defer(fn){
     hl.setAttribute('x1',X(i));hl.setAttribute('x2',X(i));hl.setAttribute('opacity',1);
     hc.setAttribute('cx',X(i));hc.setAttribute('cy',Y(cons[i]));hc.setAttribute('opacity',1);
     const rt=ret[i]!=null?`<br><span style="color:var(--green)">↩ ${ret[i].toFixed(1)} kWh returned</span>`:'';
-    tt.innerHTML=`<small>${labels[i]||''}</small>${cons[i].toFixed(1)} kWh${rt}`;
+    tt.innerHTML=`<small>${esc(labels[i]||'')}</small>${cons[i].toFixed(1)} kWh${rt}`;
     tt.style.opacity=1;tt.style.left=(e.clientX+14)+'px';tt.style.top=(e.clientY-14)+'px';
   });
   svg.addEventListener('mouseleave',()=>{tt.style.opacity=0;hl.setAttribute('opacity',0);hc.setAttribute('opacity',0);});
@@ -720,7 +691,7 @@ function defer(fn){
 
 defer(()=>{
 /* ---- live power (full-bleed) ---- */
-(function(){
+(()=> {
   const svg=$('#liveChart'),W=760,H=190;
   let data=view.value.power.live.map(p=>p.value).filter(Number.isFinite);
   if(!data.length) data=[Number.isFinite(view.value.power.liveKw)?view.value.power.liveKw:0];
@@ -739,7 +710,7 @@ defer(()=>{
 })();
 
 /* ---- daily rhythm (replaces heatmap) ---- */
-(function(){
+(()=> {
   const svg=$('#rhythm'),W=760,H=268,P={l:38,r:20,t:16,b:28};
   const wd=view.value.energy.rhythmWeekday.map(p=>p.value);
   const we=view.value.energy.rhythmWeekend.map(p=>p.value);
@@ -770,7 +741,7 @@ defer(()=>{
 })();
 
 /* ---- hourly bars ---- */
-(function(){
+(()=> {
   const svg=$('#hourly'),W=640,H=180;
   const vals=view.value.energy.hourly.map(p=>p.value);
   const max=Math.max(1,...vals),bw=(W-40)/24-5;
@@ -784,7 +755,7 @@ defer(()=>{
 })();
 
 /* ---- load duration ---- */
-(function(){
+(()=> {
   const svg=$('#ldc'),W=640,H=180,P={l:34,r:12,t:12,b:24};
   const pts=view.value.energy.loadDuration.map(p=>p.value);const n=pts.length;const aoKw=view.value.energy.alwaysOnW/1000;
   const scale=niceScale(Math.max(aoKw,...pts));
@@ -813,7 +784,7 @@ defer(()=>{
    Balance: solar 3.28 kW out → home 2.41 + battery 0.63 + EV 0.24. Grid idle 0.00.
    Each path is drawn FROM source TO target; the dash animation moves dots start→end,
    so direction is always correct. */
-(function(){
+(()=> {
   const svg=$('#flow');
   if(!svg)return;
   const F=view.value.solar.flow;
@@ -874,7 +845,7 @@ defer(()=>{
 })();
 
 /* ---- devices ---- */
-(function(){
+(()=> {
   const cy=view.value.meta.currency;
   const consumers=view.value.devices.consumers;
   const maxShare=Math.max(1,...consumers.map(c=>c.sharePct));
@@ -900,7 +871,7 @@ defer(()=>{
 })();
 
 /* ---- anomalies & recommendations ---- */
-(function(){
+(()=> {
   const icons={
     v:'<path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12L13 2Z"/>',
     ph:'<path d="M12 3v18M5 8h14M5 16h14"/>',
@@ -911,11 +882,11 @@ defer(()=>{
   };
   function rowHTML(color,icon,title,body,pill,pillCls){
     return `<div class="alert-row">
-      <div class="glyph" style="background:${color}18;color:${color}">
+      <div class="glyph" style="background:${esc(color)}18;color:${esc(color)}">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icon}</svg>
       </div>
       <div><h4>${esc(title)}</h4><p>${esc(body)}</p></div>
-      <div class="st"><span class="pill ${pillCls}">${esc(pill)}</span></div></div>`;
+      <div class="st"><span class="pill ${esc(pillCls)}">${esc(pill)}</span></div></div>`;
   }
   const alertHTML=a=>rowHTML(a.color,icons[a.icon]||'',a.title,a.body,a.pill,a.pillClass);
   $('#anoms').innerHTML=view.value.carbon.anomalies.map(alertHTML).join('');
@@ -924,306 +895,11 @@ defer(()=>{
 });
 })();
 
-  // ---- toolbar dropdowns: close range menu / report menu on outside click + Escape ----
+  // ---- report modal: close on Escape (the range menu owns its own dismissal) ----
   const onDoc=(ev,fn)=>{document.addEventListener(ev,fn);cleanups.push(()=>document.removeEventListener(ev,fn));};
-  onDoc('click',(e)=>{if(rangeMenu.value&&!e.target.closest('.ed-tool-wrap'))rangeMenu.value=false;});
-  onDoc('keydown',(e)=>{if(e.key==='Escape'){rangeMenu.value=false;repOpen.value=false;}});
+  onDoc('keydown',(e)=>{if(e.key==='Escape'){repOpen.value=false;}});
 });
 
 onUnmounted(() => { cleanups.forEach((f) => f()); cleanups = []; });
 </script>
 
-<style>
-.evolt,.evolt *{box-sizing:border-box}
-.evolt{
-  --bg:#0A0C10;
-  --panel:#13161C;
-  --panel2:#181C23;
-  --hair:rgba(255,255,255,.055);
-  --hair2:rgba(255,255,255,.10);
-  --ink:#F5F6F8;
-  --sub:#9AA1AC;
-  --faint:#5D646F;
-  --blue:#0A84FF;
-  --green:#30D158;
-  --yellow:#FFD60A;
-  --orange:#FF9F0A;
-  --red:#FF453A;
-  --cyan:#64D2FF;
-  --grey:#A9B2BE;
-  --r:18px;
-  --font:'Inter',-apple-system,'SF Pro Text',system-ui,sans-serif;
-}
-.evolt *{margin:0;padding:0;box-sizing:border-box}
-.evolt{
-  /* transparent + fills the host container so the app's glass surface shows through */
-  color:var(--ink);font-family:var(--font);
-  font-size:14.5px;line-height:1.52;letter-spacing:-.008em;
-  -webkit-font-smoothing:antialiased;
-}
-.evolt .num{font-variant-numeric:tabular-nums;letter-spacing:-.02em}
-.evolt{display:flex;flex-direction:column;width:100%}
-.evolt header{display:flex;align-items:center;gap:14px;margin-bottom:20px;flex-wrap:wrap}
-.evolt .mark{width:34px;height:34px;border-radius:10px;background:linear-gradient(160deg,#1E232B,#12151A);
-  border:1px solid var(--hair2);display:grid;place-items:center;flex:0 0 auto}
-.evolt .site h1{font-size:15px;font-weight:650;letter-spacing:-.02em}
-.evolt .site p{font-size:11.5px;color:var(--faint);font-weight:450}
-.evolt .hsp{flex:1}
-.evolt .live{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--hair);
-  border-radius:99px;padding:7px 14px 7px 11px;font-weight:500}
-.evolt .ldot{width:7px;height:7px;border-radius:50%;background:var(--green);position:relative}
-.evolt .ldot::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:1px solid var(--green);
-  opacity:0;animation:ping 2.4s ease-out infinite}
-@keyframes ping{0%{transform:scale(.4);opacity:.7}70%{transform:scale(1.1);opacity:0}100%{opacity:0}}
-.evolt .live b{font-weight:600;font-size:13px}
-.evolt .live span{color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.1em;font-weight:600}
-.evolt .range{font:500 12px var(--font);color:var(--sub);background:var(--panel);border:1px solid var(--hair);
-  border-radius:99px;padding:8px 14px;cursor:pointer}
-.evolt .range:hover{color:var(--ink);border-color:var(--hair2)}
-.evolt .ic{cursor:pointer}
-.evolt .ed-tool-wrap{position:relative}
-.evolt .rmenu{position:absolute;top:calc(100% + 6px);right:0;min-width:180px;background:var(--panel);border:1px solid var(--hair2);border-radius:12px;padding:6px;z-index:30;box-shadow:0 20px 50px rgba(0,0,0,.55)}
-.evolt .rmenu button{display:block;width:100%;text-align:left;background:transparent;border:none;color:var(--ink);font:500 12.5px var(--font);padding:8px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
-.evolt .rmenu button:hover{background:var(--panel2)}
-.evolt .rmenu-custom{border-top:1px solid var(--hair);margin-top:6px;padding:8px 4px 2px}
-.evolt .rmenu-clabel{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);padding:0 6px 6px}
-.evolt .rmenu-crow{display:flex;gap:6px;padding:0 4px 6px}
-.evolt .rmenu-cinput{flex:1;min-width:0;background:#0E1116;border:1px solid var(--hair2);border-radius:8px;padding:6px 8px;color:var(--ink);font:500 11.5px var(--font)}
-.evolt .rmenu-apply{display:block;width:calc(100% - 8px);margin:0 4px;text-align:center;background:var(--blue);color:#fff;border:none;border-radius:8px;padding:7px;font:600 12px var(--font);cursor:pointer}
-.evolt .rmenu-apply:disabled{opacity:.4;cursor:not-allowed}
-.evolt .toolbar{display:flex;align-items:center;gap:14px;margin:2px 0 24px;flex-wrap:wrap}
-.evolt .tools{display:flex;align-items:center;gap:10px;margin-left:auto;flex-wrap:wrap}
-.evolt .seg{display:flex;gap:2px;background:#14171D;border:1px solid var(--hair);border-radius:13px;
-  padding:3px;overflow-x:auto;scrollbar-width:none;max-width:100%}
-.evolt .seg::-webkit-scrollbar{display:none}
-.evolt .seg button{appearance:none;border:none;background:transparent;color:var(--sub);cursor:pointer;
-  font:500 12.5px var(--font);letter-spacing:-.01em;padding:8px 16px;border-radius:10px;
-  white-space:nowrap;transition:color .2s,background .2s}
-.evolt .seg button:hover{color:var(--ink)}
-.evolt .seg button.on{background:#252A33;color:var(--ink);font-weight:600;
-  box-shadow:0 1px 4px rgba(0,0,0,.35),inset 0 .5px 0 rgba(255,255,255,.07)}
-.evolt .seg button:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
-.evolt section{display:none}
-.evolt section.on{display:block}
-.evolt .grid{display:grid;gap:11px}
-.evolt .g4{grid-template-columns:repeat(4,1fr)}
-.evolt .g3{grid-template-columns:repeat(3,1fr)}
-.evolt .g2{grid-template-columns:repeat(2,1fr)}
-.evolt .g32{grid-template-columns:1.75fr 1fr}
-.evolt .mt{margin-top:12px}
-@media(max-width:940px){.evolt .g4{grid-template-columns:repeat(2,1fr)}
-.evolt .g3{grid-template-columns:repeat(2,1fr)}
-.evolt .g32{grid-template-columns:1fr}}
-@media(max-width:560px){.evolt .g4,
-.evolt .g3,
-.evolt .g2{grid-template-columns:1fr}}
-.evolt .card{background:var(--panel);border:1px solid var(--hair);border-radius:var(--r);
-  padding:15px 20px;position:relative;overflow:hidden}
-.evolt .card.pad0{padding:0}
-.evolt .on .card{animation:rise .5s cubic-bezier(.25,.7,.3,1) both;animation-delay:calc(var(--i,0)*45ms)}
-@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.evolt .lab{font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--sub);margin-bottom:10px}
-.evolt .ctr{text-align:center;display:flex;flex-direction:column;justify-content:center}
-.evolt .ctr .sub{justify-content:center}
-.evolt .kpi{font-size:34px;font-weight:600;letter-spacing:-.03em;line-height:1.15;font-variant-numeric:tabular-nums}
-.evolt .kpi small{font-size:13px;color:var(--sub);font-weight:500;margin-left:3px;letter-spacing:-.01em}
-.evolt .kdelta{font-size:11px;font-weight:600;margin-top:6px;letter-spacing:.01em}
-.evolt .kdelta.dn-good{color:var(--green)}
-.evolt .kdelta.dn-bad{color:var(--orange)}
-.evolt .sub{font-size:12px;color:var(--sub);margin-top:6px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-weight:450}
-.evolt .sub b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
-.evolt .delta{font-size:11px;font-weight:600;padding:2px 7px;border-radius:99px;font-variant-numeric:tabular-nums}
-.evolt .d-up{color:var(--red);background:rgba(255,69,58,.12)}
-.evolt .d-dn{color:var(--green);background:rgba(48,209,88,.12)}
-.evolt .d-ok{color:var(--green);background:rgba(48,209,88,.12)}
-.evolt .d-warn{color:var(--orange);background:rgba(255,159,10,.12)}
-.evolt .chip{font-size:11px;color:var(--sub);background:var(--panel2);border:1px solid var(--hair);
-  padding:2.5px 9px;border-radius:99px;font-weight:500;font-variant-numeric:tabular-nums}
-.evolt .head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:14px;flex-wrap:wrap}
-.evolt .head h3{font-size:15px;font-weight:650;letter-spacing:-.015em}
-.evolt .head span.meta{font-size:11px;color:var(--faint);font-weight:500}
-.evolt .legend{display:flex;gap:14px;flex-wrap:wrap}
-.evolt .legend i{display:inline-flex;align-items:center;gap:6px;font-style:normal;font-size:11px;color:var(--sub);font-weight:500}
-.evolt .dot{width:7px;height:7px;border-radius:50%;display:inline-block}
-.evolt .hero{display:flex;flex-direction:column}
-.evolt .hero .head{padding:16px 20px 0;margin-bottom:10px}
-.evolt .hero svg.bleed{width:100%;flex:1;min-height:0;height:auto}
-.evolt .hero .foot{padding:0 20px 16px}
-.evolt .rows{margin-top:2px}
-.evolt .row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
-  padding:7px 0;border-bottom:1px solid var(--hair);font-size:12.5px;color:var(--sub);font-weight:450}
-.evolt .row:last-child{border-bottom:none}
-.evolt .row b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
-.evolt .row.total{border-top:1px solid var(--hair2);margin-top:2px;padding-top:9px}
-.evolt .row.total span{color:var(--ink);font-weight:600}
-.evolt svg{display:block}
-.evolt text{font-family:var(--font);font-variant-numeric:tabular-nums}
-.evolt .axis{font-size:9.5px;fill:var(--faint);font-weight:500}
-.evolt .gl{stroke:rgba(255,255,255,.045)}
-.evolt .on path.draw{stroke-dasharray:1;stroke-dashoffset:1;animation:draw 1.3s .2s cubic-bezier(.4,0,.2,1) forwards}
-@keyframes draw{to{stroke-dashoffset:0}}
-.evolt .on .fade{opacity:0;animation:fade .7s .55s forwards}
-@keyframes fade{to{opacity:1}}
-.evolt .on .bar{transform:scaleY(0);transform-origin:bottom;animation:grow .6s cubic-bezier(.25,.7,.3,1) forwards;
-  animation-delay:calc(.12s + var(--i,0)*18ms)}
-@keyframes grow{to{transform:scaleY(1)}}
-.evolt .on .hbar{transform:scaleX(0);transform-origin:left;animation:growx .7s cubic-bezier(.25,.7,.3,1) forwards;
-  animation-delay:calc(.15s + var(--i,0)*55ms)}
-@keyframes growx{to{transform:scaleX(1)}}
-.evolt .prog{height:5px;border-radius:99px;background:var(--panel2);overflow:hidden;margin-top:10px}
-.evolt .prog i{display:block;height:100%;border-radius:99px}
-.evolt .split{display:flex;height:7px;border-radius:99px;overflow:hidden;margin:11px 0 9px;gap:2px}
-.evolt .split i{height:100%;border-radius:99px}
-.evolt .dev{display:grid;grid-template-columns:1fr 96px 78px 64px;gap:12px;align-items:center;
-  padding:11px 0;border-bottom:1px solid var(--hair)}
-.evolt .dev:last-child{border-bottom:none}
-.evolt .dev .nm b{font-size:13px;font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.01em}
-.evolt .dev .nm small{font-size:10.5px;color:var(--faint);font-weight:450}
-.evolt .dev .track{height:4px;border-radius:99px;background:var(--panel2);margin-top:7px;overflow:hidden}
-.evolt .dev .track i{display:block;height:100%;border-radius:99px;background:var(--blue)}
-.evolt .dev .val{font-size:12.5px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
-.evolt .dev .val small{display:block;color:var(--faint);font-size:10px;font-weight:450}
-.evolt .tree .row{padding:6.5px 0}
-.evolt .tree .in1{padding-left:18px}
-.evolt .tree .muted{color:var(--faint)}
-.evolt table{width:100%;border-collapse:collapse;font-size:12px}
-.evolt th{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);
-  text-align:left;padding:12px 18px;border-bottom:1px solid var(--hair)}
-.evolt td{padding:10px 18px;border-bottom:1px solid var(--hair);font-variant-numeric:tabular-nums;font-weight:500}
-.evolt tr:last-child td{border-bottom:none}
-.evolt td.mut{color:var(--sub);font-weight:450}
-.evolt th.r,
-.evolt td.r{text-align:right}
-.evolt .pill{font-size:10.5px;font-weight:600;padding:2px 8px;border-radius:99px}
-.evolt .p-ok{color:var(--green);background:rgba(48,209,88,.1)}
-.evolt .p-bad{color:var(--red);background:rgba(255,69,58,.1)}
-.evolt .p-warn{color:var(--orange);background:rgba(255,159,10,.1)}
-.evolt .flow-rail{fill:none;stroke:rgba(255,255,255,.07);stroke-width:2}
-.evolt .flow-rail.idle{stroke-dasharray:2 6;stroke:rgba(255,255,255,.09)}
-.evolt .flow-dots{fill:none;stroke-width:3.5;stroke-linecap:round;stroke-dasharray:.5 12;animation:flow linear infinite}
-@keyframes flow{to{stroke-dashoffset:-12.5}}
-.evolt .fnode circle.body{fill:#161A21;stroke-width:1.5}
-.evolt .fnode circle.halo{opacity:.10}
-.evolt .fnode .fic{stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;fill:none}
-.evolt .fnode .fname{font-size:10px;fill:var(--sub);text-anchor:middle;font-weight:600;letter-spacing:.07em;text-transform:uppercase}
-.evolt .fnode .fval{font-size:16px;fill:var(--ink);text-anchor:middle;font-weight:650;letter-spacing:-.02em}
-.evolt .fnode .funit{font-size:9.5px;fill:var(--faint);text-anchor:middle;font-weight:500}
-.evolt .fnode .fstate{font-size:9.5px;text-anchor:middle;font-weight:600}
-.evolt .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-top:1px solid var(--hair)}
-.evolt .stats>div{padding:13px 20px;border-right:1px solid var(--hair)}
-.evolt .stats>div:last-child{border-right:none}
-.evolt .stats .sl{font-size:11.5px;font-weight:600;color:var(--sub);letter-spacing:.02em}
-.evolt .stats .sv{font-size:16px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.02em;margin-top:1px}
-.evolt .stats .sv small{font-size:10.5px;color:var(--sub);font-weight:500}
-@media(max-width:560px){.evolt .stats{grid-template-columns:repeat(2,1fr)}
-.evolt .stats>div:nth-child(2){border-right:none}}
-.evolt .alert-row{display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--hair)}
-.evolt .alert-row:last-child{border-bottom:none}
-.evolt .glyph{width:30px;height:30px;flex:0 0 auto;border-radius:9px;display:grid;place-items:center}
-.evolt .alert-row h4{font-size:12.5px;font-weight:600;letter-spacing:-.01em}
-.evolt .alert-row p{font-size:11.5px;color:var(--sub);font-weight:450;margin-top:1px}
-.evolt .alert-row p b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums}
-.evolt .alert-row .st{margin-left:auto;flex:0 0 auto}
-.evolt footer{margin-top:36px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
-  color:var(--faint);font-size:10.5px;font-weight:500;letter-spacing:.02em}
-.evolt .tt{position:fixed;pointer-events:none;background:rgba(18,21,27,.92);backdrop-filter:blur(8px);
-  border:1px solid var(--hair2);border-radius:11px;padding:8px 12px;font-size:11.5px;font-weight:600;
-  font-variant-numeric:tabular-nums;z-index:10;opacity:0;transition:opacity .15s;
-  box-shadow:0 10px 30px rgba(0,0,0,.5)}
-.evolt .tt small{display:block;color:var(--sub);font-weight:500;font-size:10px;margin-bottom:2px}
-@media (prefers-reduced-motion: reduce){.evolt *,
-.evolt *::before,
-.evolt *::after{animation-duration:.01ms!important;animation-delay:0ms!important;transition-duration:.01ms!important}}
-@keyframes pf{to{stroke-dashoffset:0}}
-.evolt .ic{width:36px;height:36px;border-radius:99px;background:var(--panel);border:1px solid var(--hair);color:var(--sub);display:grid;place-items:center;cursor:pointer;transition:color .2s,background .2s,border-color .2s;flex:0 0 auto}
-.evolt .ic:hover{color:var(--ink);border-color:var(--hair2)}
-.evolt .ic.on{color:var(--ink);background:var(--panel2);border-color:var(--hair2)}
-.evolt .ic.spin svg{animation:spin .7s linear}
-@keyframes spin{to{transform:rotate(360deg)}}
-.evolt .fpop{position:fixed;top:66px;right:34px;width:322px;background:var(--panel);border:1px solid var(--hair2);border-radius:16px;padding:16px 18px;z-index:30;box-shadow:0 22px 54px rgba(0,0,0,.55);display:none}
-.evolt .fpop.on{display:block}
-.evolt .fpop .fh{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px}
-.evolt .fpop .fh h4{font-size:13px;font-weight:650;letter-spacing:-.01em}
-.evolt .fg{margin-bottom:14px}
-.evolt .fl{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:8px}
-.evolt .fc{display:flex;flex-wrap:wrap;gap:6px}
-.evolt .fchip{font-size:12px;color:var(--sub);background:var(--panel2);border:1px solid var(--hair);padding:6px 12px;border-radius:99px;cursor:pointer;font-weight:500}
-.evolt .fchip:hover{color:var(--ink)}
-.evolt .fchip.on{color:var(--ink);background:#252A33;border-color:var(--hair2);font-weight:600}
-.evolt .fhint{font-size:11px;color:var(--faint);border-top:1px solid var(--hair);padding-top:11px;line-height:1.5}
-.evolt .fhint a{color:var(--blue);text-decoration:none}
-.evolt .rep-btn{display:inline-flex;align-items:center;gap:7px;background:var(--blue);color:#fff;border:none;border-radius:99px;padding:8px 15px;font:600 12.5px var(--font);cursor:pointer;flex:0 0 auto}
-.evolt .rep-btn:hover{filter:brightness(1.08)}
-.evolt .mov{position:fixed;inset:0;background:rgba(6,8,12,.72);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;z-index:100;padding:24px}
-.evolt .mov.on{display:flex}
-.evolt .modal{width:760px;max-width:100%;max-height:88vh;background:var(--panel);border:1px solid var(--hair2);border-radius:20px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 30px 80px rgba(0,0,0,.6)}
-.evolt .rep-modal{width:520px}
-.evolt .rep-types{display:flex;flex-direction:column;gap:9px}
-.evolt .rep-type{display:flex;flex-direction:column;gap:3px;text-align:left;background:#0E1116;border:1px solid var(--hair2);border-radius:13px;padding:13px 15px;cursor:pointer;transition:border-color .12s,background .12s}
-.evolt .rep-type:hover{border-color:var(--hair2);background:#12161C}
-.evolt .rep-type.on{border-color:var(--blue);background:rgba(68,149,209,.09)}
-.evolt .rt-name{font:600 13.5px var(--font);color:var(--ink)}
-.evolt .rt-desc{font:450 12px var(--font);color:var(--faint);line-height:1.45}
-.evolt .rep-note{font:450 11.5px var(--font);color:var(--faint);line-height:1.5;margin:2px 0 0}
-.evolt .rep-chips{display:flex;flex-wrap:wrap;gap:6px}
-.evolt .rep-chip{font-size:12px;color:var(--sub);background:var(--panel2);border:1px solid var(--hair);padding:6px 12px;border-radius:99px;cursor:pointer;font-weight:500}
-.evolt .rep-chip:hover{color:var(--ink)}
-.evolt .rep-chip.on{color:var(--ink);background:#252A33;border-color:var(--hair2);font-weight:600}
-.evolt .rep-check{display:flex;align-items:center;gap:9px;font-size:12.5px;font-weight:500;color:var(--sub);cursor:pointer;margin-bottom:14px}
-.evolt .rep-hint-inline{text-transform:none;font-weight:450;color:var(--faint)}
-.evolt .mhd{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--hair)}
-.evolt .mhd h3{font-size:15px;font-weight:650;letter-spacing:-.02em}
-.evolt .msub{font-size:11.5px;color:var(--faint);font-weight:450;margin-top:1px}
-.evolt .mx{width:30px;height:30px;border-radius:9px;background:transparent;border:1px solid transparent;color:var(--sub);cursor:pointer;font-size:15px}
-.evolt .mx:hover{background:var(--panel2);color:var(--ink)}
-.evolt .mbody{display:grid;grid-template-columns:186px 1fr;min-height:0;flex:1}
-.evolt .mrail{border-right:1px solid var(--hair);padding:12px;display:flex;flex-direction:column;gap:2px;background:#111419;overflow:auto}
-.evolt .mtab{appearance:none;border:none;background:transparent;color:var(--sub);cursor:pointer;font:500 13px var(--font);text-align:left;padding:9px 12px;border-radius:9px}
-.evolt .mtab:hover{color:var(--ink);background:var(--panel2)}
-.evolt .mtab.on{color:var(--ink);background:var(--panel2);font-weight:600}
-.evolt .mpanel{padding:20px 22px;overflow:auto}
-.evolt .mview{display:none}
-.evolt .mview.on{display:block}
-.evolt .field{margin-bottom:16px}
-.evolt .field .fl{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin-bottom:8px}
-.evolt .field input,
-.evolt .field select{width:100%;background:#0E1116;border:1px solid var(--hair2);border-radius:10px;padding:9px 11px;color:var(--ink);font:500 13px var(--font)}
-.evolt .frow{display:flex;gap:10px}
-.evolt .seg2{display:inline-flex;flex-wrap:wrap;gap:2px;background:#14171D;border:1px solid var(--hair);border-radius:11px;padding:3px}
-.evolt .seg2 button{appearance:none;border:none;background:transparent;color:var(--sub);cursor:pointer;font:500 12px var(--font);padding:7px 13px;border-radius:8px;white-space:nowrap}
-.evolt .seg2 button:hover{color:var(--ink)}
-.evolt .seg2 button.on{background:#252A33;color:var(--ink);font-weight:600}
-.evolt .chkrow{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--sub);font-weight:500;margin-top:10px;cursor:pointer}
-.evolt .chks{display:flex;flex-direction:column;gap:9px;margin-top:4px}
-.evolt .mft{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 22px;border-top:1px solid var(--hair)}
-.evolt .btn-primary{background:var(--blue);color:#fff;border:none;border-radius:11px;padding:9px 18px;font:600 13px var(--font);cursor:pointer}
-.evolt .btn-primary:hover{filter:brightness(1.08)}
-.evolt .btn-ghost{background:transparent;color:var(--sub);border:1px solid var(--hair2);border-radius:11px;padding:9px 16px;font:500 13px var(--font);cursor:pointer}
-.evolt .btn-ghost:hover{color:var(--ink)}
-.evolt{min-height:100%;flex:1}
-.evolt section.on>.grid{flex-shrink:0}
-.evolt section.on>.grid:has(.hero){flex-shrink:1}
-.evolt section{flex:1 1 auto}
-.evolt section.on{display:flex;flex-direction:column;gap:11px;min-height:0}
-.evolt .mt{margin-top:0}
-.evolt section.on>.grid:has(.hero){flex:1 1 auto;min-height:0}
-.evolt section.on .hero{height:100%}
-.evolt #solar.on>.hero{flex:1 1 auto;min-height:0}
-.evolt #devices.on>.grid:first-of-type{flex:1 1 auto;min-height:0}
-.evolt #insights.on>.grid:last-of-type{flex:1 1 auto;min-height:0}
-.evolt section.on>.grid:has(.hero)>.grid{align-content:stretch;grid-auto-rows:1fr}
-.evolt .nudge{display:none;flex-direction:column;align-items:center;gap:5px;color:var(--faint);font-size:12px;font-weight:500;text-align:center}
-.evolt .nudge .cta{color:var(--blue);font-weight:600;cursor:pointer}
-.evolt .card-nudge{align-items:flex-start;text-align:left;padding:16px 0 6px}
-.evolt.cold .hide-cold{display:none!important}
-.evolt.cold .nudge{display:flex}
-.evolt .setup{display:flex;flex-wrap:wrap;align-items:center;gap:18px;background:linear-gradient(180deg,rgba(10,132,255,.09),var(--panel));border:1px solid rgba(10,132,255,.28);border-radius:var(--r);padding:16px 20px;margin-bottom:16px}
-.evolt .setup-l{display:flex;flex-direction:column;gap:2px;flex:1;min-width:260px}
-.evolt .setup-l b{font-size:15px;font-weight:650}
-.evolt .setup-l span{font-size:12.5px;color:var(--sub)}
-.evolt .setup-items{display:flex;flex-wrap:wrap;gap:8px}
-.evolt .si{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--hair);border-radius:99px;padding:7px 13px;font-size:12px;font-weight:500;color:var(--sub);appearance:none;cursor:pointer;font-family:var(--font)}
-.evolt .si:hover{border-color:rgba(10,132,255,.5);color:var(--ink)}
-.evolt .sidot{width:7px;height:7px;border-radius:50%;background:var(--orange);flex:0 0 auto}
-.evolt .si .cta{color:var(--blue);font-weight:600;cursor:pointer;margin-left:2px}
-</style>

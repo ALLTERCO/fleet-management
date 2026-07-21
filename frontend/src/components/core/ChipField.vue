@@ -132,7 +132,7 @@ function onBackspace(e: KeyboardEvent) {
     background: var(--color-surface-3);
     border: 1px solid var(--color-border-default);
     border-radius: var(--radius-full);
-    font-size: var(--type-small);
+    font-size: var(--type-caption);
     color: var(--color-text-primary);
 }
 
@@ -168,7 +168,7 @@ function onBackspace(e: KeyboardEvent) {
 
 .chip-field__hint {
     margin: 0;
-    font-size: var(--type-xsmall);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
 }
 </style>

@@ -60,7 +60,6 @@ import {ReconnectLimiter} from '../../../../modules/WaitingRoom/ReconnectLimiter
 import type {
     DeviceIngressRejectionReason,
     DeviceIngressRiskLevel,
-    DeviceIngressSecurityModel,
     DeviceIngressTransport
 } from '../../../../types/api/deviceIngress';
 import {hashRemoteAddress} from './shellyIngressRecorder';
@@ -314,7 +313,9 @@ async function handleHandshakeResult(
             organizationId:
                 result.entry.organizationId || config.defaultOrganizationId,
             observedTransport: config.shellyTransport,
-            authMethod: authMethodForSecurityModel(result.entry.securityModel),
+            // The handshake declares what the device presented; a credential-less
+            // device is 'none' so the default-org fan-out surfaces it.
+            authMethod: result.entry.authMethod,
             status: statusFromSafeDetail(safeDetail(input, config))
         };
     }
@@ -829,14 +830,6 @@ function fallbackRiskLevel(
     config: ShellyIngressGateConfig
 ): DeviceIngressRiskLevel {
     return config.shellyTransport === 'ws' ? 'legacy' : 'compatible';
-}
-
-function authMethodForSecurityModel(
-    securityModel: DeviceIngressSecurityModel
-): WaitingAuthMethod {
-    if (securityModel === 'certificate') return 'certificate';
-    if (securityModel === 'direct_token') return 'token';
-    return 'none';
 }
 
 async function markRejectedInStore(

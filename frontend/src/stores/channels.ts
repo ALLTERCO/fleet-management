@@ -1,21 +1,22 @@
 import type {
     Channel,
-    ChannelTestResult,
     ChannelProvider,
-    ChannelProviderDescriptor
+    ChannelProviderDescriptor,
+    ChannelTestResult
 } from '@api/channel';
 import {defineStore} from 'pinia';
 import {ref} from 'vue';
 import {toastRpcError} from '@/helpers/domainErrors';
 import {type PagedEnvelope, paginate} from '@/helpers/pagination';
+import {createStaleGuard} from '@/stores/staleGuard';
 import * as ws from '../tools/websocket';
 import {useToastStore} from './toast';
 
 export type {
     Channel,
-    ChannelTestResult,
     ChannelProvider,
-    ChannelProviderDescriptor
+    ChannelProviderDescriptor,
+    ChannelTestResult
 };
 
 const MAX_ENDPOINTS_PER_PAGE = 1000;
@@ -44,6 +45,9 @@ export const useChannelsStore = defineStore('integrations', () => {
     const loading = ref(true);
     const toast = useToastStore();
 
+    // Writes bump so an in-flight read can't clobber them; reads never bump.
+    const channelsGuard = createStaleGuard();
+
     async function fetchProviders(): Promise<ChannelProviderDescriptor[]> {
         try {
             const res = await ws.sendRPC<{
@@ -59,6 +63,8 @@ export const useChannelsStore = defineStore('integrations', () => {
     async function fetchChannels() {
         loading.value = true;
         try {
+            // List fetch: bump so the latest fetch wins between racing fetches.
+            const token = channelsGuard.bump();
             const items = await paginate<Channel>(
                 (offset) =>
                     ws.sendRPC<PagedEnvelope<Channel>>(
@@ -68,6 +74,7 @@ export const useChannelsStore = defineStore('integrations', () => {
                     ),
                 MAX_ENDPOINTS_PER_PAGE
             );
+            if (channelsGuard.isStale(token)) return;
             const next: Record<number, Channel> = {};
             for (const e of items) next[e.id] = e;
             channels.value = next;
@@ -78,16 +85,18 @@ export const useChannelsStore = defineStore('integrations', () => {
         }
     }
 
-    async function fetchChannel(
-        id: number
-    ): Promise<Channel | null> {
+    async function fetchChannel(id: number): Promise<Channel | null> {
+        // Read: snapshot before the RPC; a write mid-flight discards the merge.
+        const token = channelsGuard.current();
         try {
             const ep = await ws.sendRPC<Channel>(
                 'FLEET_MANAGER',
                 'channel.get',
                 {id}
             );
-            channels.value = {...channels.value, [ep.id]: ep};
+            if (!channelsGuard.isStale(token)) {
+                channels.value = {...channels.value, [ep.id]: ep};
+            }
             return ep;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load channel');
@@ -104,6 +113,7 @@ export const useChannelsStore = defineStore('integrations', () => {
                 'channel.create',
                 params
             );
+            channelsGuard.bump();
             channels.value = {...channels.value, [ep.id]: ep};
             return ep;
         } catch (err) {
@@ -122,6 +132,7 @@ export const useChannelsStore = defineStore('integrations', () => {
                 'channel.update',
                 {id, patch}
             );
+            channelsGuard.bump();
             channels.value = {...channels.value, [ep.id]: ep};
             return ep;
         } catch (err) {
@@ -135,6 +146,7 @@ export const useChannelsStore = defineStore('integrations', () => {
             await ws.sendRPC('FLEET_MANAGER', 'channel.delete', {
                 id
             });
+            channelsGuard.bump();
             const next = {...channels.value};
             delete next[id];
             channels.value = next;

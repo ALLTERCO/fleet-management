@@ -1,6 +1,9 @@
 // DeviceCollector ↔ read-model wiring, extracted so it stays unit-testable.
 
-import {bthomeObjectInfos, isBluTransportStale} from '../../config/BTHomeData';
+import {
+    isBluTransportStale,
+    isBTHomeDoorLikeObjectId
+} from '../../config/BTHomeData';
 import type AbstractDevice from '../../model/AbstractDevice';
 import type {ShellyDeviceExternal} from '../../types';
 import type {
@@ -133,8 +136,12 @@ export function projectBluetoothComponentStatus(input: {
     if (!source) return {};
     const out: Record<string, unknown> = {};
     for (const component of input.device.components) {
-        if (component.role === 'identity') continue;
         const value = source[component.componentKey];
+        if (component.role === 'identity') {
+            const identity = bluetoothIdentityStatus(value);
+            if (identity) out.bluetoothdevice = identity;
+            continue;
+        }
         if (value !== undefined) {
             out[component.componentKey] = withFriendlyBluetoothState(
                 component.objectId,
@@ -143,6 +150,26 @@ export function projectBluetoothComponentStatus(input: {
         }
     }
     return out;
+}
+
+function bluetoothIdentityStatus(
+    value: unknown
+): Record<string, unknown> | null {
+    const source = asRecord(value);
+    if (!source) return null;
+    const out: Record<string, unknown> = {};
+    for (const field of [
+        'battery',
+        'rssi',
+        'paired',
+        'packet_id',
+        'last_updated_ts'
+    ]) {
+        if (source[field] !== undefined) out[field] = source[field];
+    }
+    const overview = asRecord(source.overview);
+    if (overview) out.overview = overview;
+    return Object.keys(out).length > 0 ? out : null;
 }
 
 function withFriendlyBluetoothState(
@@ -154,11 +181,7 @@ function withFriendlyBluetoothState(
     }
     const record = value as Record<string, unknown>;
     if (typeof record.value !== 'boolean') return value;
-    const name =
-        objectId != null
-            ? bthomeObjectInfos[objectId]?.name?.toLowerCase()
-            : undefined;
-    if (name !== 'opening' && name !== 'door' && name !== 'window') {
+    if (objectId == null || !isBTHomeDoorLikeObjectId(objectId)) {
         return value;
     }
     return {

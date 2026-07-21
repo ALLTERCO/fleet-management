@@ -1,4 +1,3 @@
-import {publicScopeSelector} from '../alertRuleModel';
 import * as postgres from '../PostgresProvider';
 import {centerEntityIds, requireOrganization} from './relationshipShared';
 import type {
@@ -26,21 +25,61 @@ export async function queryDirectAlertRules(
     input: OrganizationRelationshipLoadInput
 ): Promise<AlertRuleRow[]> {
     return await postgres.queryRows<AlertRuleRow>(
-        `SELECT id, name, kind, enabled, severity, scope
-           FROM notifications.alert_rules
-          WHERE organization_id = $1
+        `WITH center AS (
+             SELECT id, external_id
+               FROM device.list
+              WHERE organization_id = $1 AND external_id = $2
+              LIMIT 1
+         )
+         SELECT r.id, r.name, r.kind, r.enabled, r.severity,
+                EXISTS (
+                    SELECT 1
+                      FROM notifications.alert_rule_device_scope ds
+                     WHERE ds.organization_id = r.organization_id
+                       AND ds.rule_id = r.id
+                       AND ds.device_id = center.id
+                ) AS targets_center_device,
+                ARRAY(
+                    SELECT COALESCE(
+                               center.external_id || '_' || es.entity_suffix,
+                               es.virtual_entity_id
+                           )
+                      FROM notifications.alert_rule_entity_scope es
+                     WHERE es.organization_id = r.organization_id
+                       AND es.rule_id = r.id
+                       AND (
+                           (es.device_id = center.id
+                            AND center.external_id || '_' || es.entity_suffix =
+                                ANY($3::text[]))
+                           OR es.virtual_entity_id = ANY($3::text[])
+                       )
+                     ORDER BY es.ordinal
+                ) AS target_entity_ids
+           FROM notifications.alert_rules r
+           JOIN center ON TRUE
+          WHERE r.organization_id = $1
             AND (
-                scope @> jsonb_build_object('deviceIds', jsonb_build_array($2::text))
+                EXISTS (
+                    SELECT 1
+                      FROM notifications.alert_rule_device_scope ds
+                     WHERE ds.organization_id = r.organization_id
+                       AND ds.rule_id = r.id
+                       AND ds.device_id = center.id
+                )
                 OR EXISTS (
                     SELECT 1
-                      FROM jsonb_array_elements_text(
-                          COALESCE(scope->'componentIds', '[]'::jsonb) ||
-                          COALESCE(scope->'entityIds', '[]'::jsonb)
-                      ) component_id
-                     WHERE component_id = ANY($3::text[])
+                      FROM notifications.alert_rule_entity_scope es
+                     WHERE es.organization_id = r.organization_id
+                       AND es.rule_id = r.id
+                       AND (
+                           (es.device_id = center.id
+                            AND center.external_id || '_' || es.entity_suffix =
+                                ANY($3::text[]))
+                           OR es.virtual_entity_id = ANY($3::text[])
+                       )
                 )
             )
-          ORDER BY name ASC, id ASC
+          ORDER BY r.name ASC, r.id ASC
           LIMIT 200`,
         [input.organizationId, input.centerExternalId, centerEntityIds(input)]
     );
@@ -50,16 +89,12 @@ function alertRuleFactsFromRow(input: {
     input: RelationshipLoadInput;
     row: AlertRuleRow;
 }): RelationshipAlertRuleFact[] {
-    const scope = safeAlertScope(input.row.scope);
-    const componentIds = scope.componentIds?.filter((entityId) =>
-        centerEntityIds(input.input).includes(entityId)
-    );
-    if (componentIds && componentIds.length > 0) {
-        return componentIds.map((entityId) =>
+    if (input.row.target_entity_ids.length > 0) {
+        return input.row.target_entity_ids.map((entityId) =>
             alertRuleFact({...input, targetEntityId: entityId})
         );
     }
-    if (!scope.deviceIds?.includes(input.input.centerExternalId)) return [];
+    if (!input.row.targets_center_device) return [];
     return [alertRuleFact(input)];
 }
 
@@ -77,14 +112,4 @@ function alertRuleFact(input: {
         targetExternalId: input.input.centerExternalId,
         targetEntityId: input.targetEntityId
     };
-}
-
-function safeAlertScope(
-    scope: unknown
-): ReturnType<typeof publicScopeSelector> {
-    try {
-        return publicScopeSelector(scope);
-    } catch {
-        return {};
-    }
 }

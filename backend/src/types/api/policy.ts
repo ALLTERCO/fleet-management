@@ -173,6 +173,7 @@ export const POLICY_DESCRIBE: DescribeOutput = new DescribeBuilder('policy', {
             'Read per-type policy defaults (current DB value + env default + source + audit fields).'
     })
     .registerMethod('UpdateDefaults', {
+        safety: {operation: 'update'},
         params: POLICY_UPDATE_DEFAULTS_PARAMS,
         response: GROUP_TYPE_POLICY_SCHEMA,
         permission: {
@@ -182,6 +183,7 @@ export const POLICY_DESCRIBE: DescribeOutput = new DescribeBuilder('policy', {
             'provider-support-only partial update of one groupType row. null clears (falls through to env); omitted = no change. Optional ifUnchangedSince for optimistic concurrency (409 PolicyDefaultsStaleUpdate on conflict).'
     })
     .registerMethod('ResetDefault', {
+        safety: {operation: 'update'},
         params: POLICY_RESETDEFAULT_PARAMS,
         response: GROUP_TYPE_POLICY_SCHEMA,
         permission: {

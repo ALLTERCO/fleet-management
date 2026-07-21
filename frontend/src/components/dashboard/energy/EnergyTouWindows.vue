@@ -46,7 +46,7 @@ function remove(i: number) {
     align-items: center;
 }
 .etw-head {
-    font-size: 10px;
+    font-size: var(--type-caption);
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -79,7 +79,7 @@ function remove(i: number) {
     background: #181c23;
 }
 .etw-empty {
-    font-size: 11.5px;
+    font-size: var(--type-caption);
     color: #5d646f;
     padding: 4px 2px 8px;
 }

@@ -8,13 +8,16 @@ interface BaseComposerEntry {
     // FM_DISABLE_BETA_COMPONENTS hides entries from getComposer + knownEntityTypes.
     beta?: boolean;
 }
+// role = control-capability; shellyNamespace = action-routing target. Two
+// independent things: an actuator commands an output; a sensor doesn't, but may
+// still expose maintenance methods (bm/pm1 ResetCounters) that need a target.
 export interface ActuatorComposerEntry extends BaseComposerEntry {
     role: 'actuator';
-    // Required so action routing has a target ('Switch', 'PresenceZone', ...).
     shellyNamespace: string;
 }
 export interface SensorComposerEntry extends BaseComposerEntry {
     role: 'sensor';
+    shellyNamespace?: string;
 }
 export type ComposerEntry = ActuatorComposerEntry | SensorComposerEntry;
 
@@ -49,8 +52,8 @@ export function knownEntityTypes(): readonly string[] {
 export function shellyNamespaceForEntityType(
     componentType: string
 ): string | undefined {
-    const entry = getComposer(componentType);
-    return entry?.role === 'actuator' ? entry.shellyNamespace : undefined;
+    // Routing target, independent of control/sensor role.
+    return getComposer(componentType)?.shellyNamespace;
 }
 
 export function __resetComposerRegistryForTests(): void {

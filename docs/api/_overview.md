@@ -485,25 +485,39 @@ while (true) {
 
 ### Retry on transient device errors
 
-`DeviceOperationFailed` (1201) and `DeviceOffline` (1200) are usually
-worth one retry after a short delay; `PermissionDenied` (1001) and
-`ValidationFailed` (1000) never are.
+A few errors are worth retrying; most are not. Decide with the error **code**
+(the top-level `error.code`), not by any `kind` field — the wire error carries a
+`code` and a `data.type` category, but no `kind`.
+
+- **Retry** after a short delay: `DeviceOffline` (**1200**) and
+  `DeviceOperationFailed` (**1201**). The device was briefly unreachable or busy,
+  so the same call may succeed on the next try.
+- **Never retry**: `ValidationFailed` (**1000**) and `PermissionDenied`
+  (**1001**). The request itself is wrong, so it will fail the same way every
+  time; retrying only wastes calls.
+
+The example below assumes `call()` throws the JSON-RPC error object
+(`{ code, message, data }`) when a request fails.
 
 ```js
+const RETRYABLE = new Set([1200, 1201]); // DeviceOffline, DeviceOperationFailed
+
 async function callRetry(method, params, tries = 3) {
-    for (let i = 0; i < tries; i++) {
+    for (let attempt = 0; attempt < tries; attempt++) {
         try {
             return await call(method, params);
         } catch (e) {
-            const kind = e?.data?.kind;
-            if (i === tries - 1 || (kind !== 'DeviceOperationFailed' && kind !== 'DeviceOffline')) {
-                throw e;
-            }
-            await new Promise(r => setTimeout(r, 500 * 2 ** i));
+            const lastTry = attempt === tries - 1;
+            if (lastTry || !RETRYABLE.has(e.code)) throw e; // give up
+            // back off before the next try: 0.5s, then 1s, then 2s
+            await new Promise(r => setTimeout(r, 500 * 2 ** attempt));
         }
     }
 }
 ```
+
+If you would rather branch on the category than the exact code,
+`e.data?.type === 'device'` covers both device errors at once.
 
 ### HTTP single-call shortcut
 

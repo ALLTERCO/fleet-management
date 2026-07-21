@@ -1,17 +1,23 @@
 // Generates the typed Host SDK contract from the live _DESCRIBE surface.
 
-import {spawnSync} from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type {DescribeOutput, MethodDescriptor} from '../../src/rpc/describe';
+import type {NamespaceKind} from '../../src/types/api/_describe';
 import {loadAllDescribes} from './_describes.js';
-import {BACKEND_ROOT, FRONTEND_SRC, relPath} from './_shared.js';
-import {NAMESPACE_GUIDE} from './host-namespace-guide.js';
+import {
+    FRONTEND_SRC,
+    formatWithBiome,
+    GENERATED_DIR,
+    relPath
+} from './_shared.js';
+import {NAMESPACE_GUIDE, type NamespaceGuide} from './host-namespace-guide.js';
 
-const OUT_FILE = path.join(
+const FRONTEND_OUT_FILE = path.join(
     FRONTEND_SRC,
     'shell/template-host/generated/contract.ts'
 );
+const MCP_OUT_FILE = path.join(GENERATED_DIR, 'host-contract.ts');
 
 type Schema = Record<string, unknown>;
 
@@ -140,12 +146,28 @@ function renderEntry(namespace: string, method: MethodDescriptor): string {
     );
 }
 
-function renderGuide(): string {
-    const seen = NAMESPACE_GUIDE;
+// Guide entries get their namespace kind from Describe — the guide file
+// stays prose-only, the kind has one home.
+export function buildGuide(
+    describes: DescribeOutput[]
+): Record<string, NamespaceGuide & {kind: NamespaceKind}> {
+    const kinds = new Map(describes.map((d) => [d.namespace, d.kind]));
+    const out: Record<string, NamespaceGuide & {kind: NamespaceKind}> = {};
+    for (const [namespace, entry] of Object.entries(NAMESPACE_GUIDE)) {
+        const kind = kinds.get(namespace);
+        if (!kind) {
+            throw new Error(`guide namespace '${namespace}' has no Describe`);
+        }
+        out[namespace] = {kind, ...entry};
+    }
+    return out;
+}
+
+function renderGuide(describes: DescribeOutput[]): string {
     return `export const HOST_NAMESPACE_GUIDE: Record<
     string,
     HostNamespaceGuide
-> = ${JSON.stringify(seen, null, 4)} as const;`;
+> = ${JSON.stringify(buildGuide(describes), null, 4)} as const;`;
 }
 
 function render(describes: DescribeOutput[]): string {
@@ -171,26 +193,14 @@ function render(describes: DescribeOutput[]): string {
         "export type HostResult<M extends HostMethod> = HostContract[M]['result'];",
         '',
         'export interface HostNamespaceGuide {',
+        "    kind: 'device' | 'fleet-manager';",
         '    purpose: string;',
         '    useInstead?: string;',
         '}',
         '',
-        renderGuide(),
+        renderGuide(describes),
         ''
     ].join('\n');
-}
-
-// Format generated output with biome so re-runs are byte-stable. Fail loud.
-function formatWithBiome(file: string): void {
-    const biome = path.join(BACKEND_ROOT, 'node_modules/.bin/biome');
-    const result = spawnSync(biome, ['check', '--write', file], {
-        stdio: 'inherit'
-    });
-    if (result.status !== 0) {
-        throw new Error(
-            `biome failed to format ${relPath(file)} (status ${result.status})`
-        );
-    }
 }
 
 export async function generate(): Promise<{
@@ -198,9 +208,12 @@ export async function generate(): Promise<{
     methods: number;
 }> {
     const describes = await loadAllDescribes();
-    fs.mkdirSync(path.dirname(OUT_FILE), {recursive: true});
-    fs.writeFileSync(OUT_FILE, render(describes));
-    formatWithBiome(OUT_FILE);
+    const output = render(describes);
+    for (const file of [FRONTEND_OUT_FILE, MCP_OUT_FILE]) {
+        fs.mkdirSync(path.dirname(file), {recursive: true});
+        fs.writeFileSync(file, output);
+        formatWithBiome(file);
+    }
     const methods = describes.reduce(
         (n, d) => n + Object.keys(d.methods).length,
         0
@@ -209,7 +222,7 @@ export async function generate(): Promise<{
         '[host-contract] %d namespaces, %d methods -> %s',
         describes.length,
         methods,
-        relPath(OUT_FILE)
+        `${relPath(FRONTEND_OUT_FILE)} + ${relPath(MCP_OUT_FILE)}`
     );
     return {namespaces: describes.length, methods};
 }

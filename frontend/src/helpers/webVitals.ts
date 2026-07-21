@@ -1,4 +1,5 @@
 import type {Metric} from 'web-vitals';
+import {debug} from '@/tools/debug';
 
 /**
  * Initializes Web Vitals tracking.
@@ -7,12 +8,10 @@ import type {Metric} from 'web-vitals';
 export function initWebVitals() {
     import('web-vitals').then(({onCLS, onLCP, onINP, onTTFB}) => {
         const report = (metric: Metric) => {
-            if (import.meta.env.DEV) {
-                console.debug(
-                    `[WebVitals] ${metric.name}: ${metric.value.toFixed(1)}`,
-                    metric.rating
-                );
-            }
+            debug(
+                `[WebVitals] ${metric.name}: ${metric.value.toFixed(1)}`,
+                metric.rating
+            );
         };
 
         onCLS(report);

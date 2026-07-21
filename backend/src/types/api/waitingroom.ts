@@ -349,12 +349,14 @@ export const WAITINGROOM_DESCRIBE: DescribeOutput = new DescribeBuilder(
     }
 )
     .registerMethod('GetPending', {
+        safety: {operation: 'read'},
         params: WAITINGROOM_GET_PENDING_PARAMS_SCHEMA,
         response: PENDING_MAP,
         permission: {note: 'authenticated'},
         description: 'Raw map keyed by internal id — kept for legacy callers.'
     })
     .registerMethod('GetDenied', {
+        safety: {operation: 'read'},
         params: WAITINGROOM_GET_DENIED_PARAMS_SCHEMA,
         response: PENDING_MAP,
         permission: {note: 'authenticated'},
@@ -368,6 +370,7 @@ export const WAITINGROOM_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Lightweight waiting-room counters for badges and launch sync.'
     })
     .registerMethod('List', {
+        safety: {operation: 'read'},
         params: WAITINGROOM_LIST_PARAMS_SCHEMA,
         response: LIST_ENVELOPE,
         permission: {note: 'authenticated'},
@@ -387,6 +390,7 @@ export const WAITINGROOM_DESCRIBE: DescribeOutput = new DescribeBuilder(
         description: 'Probe one live waiting-room device when a socket exists.'
     })
     .registerMethod('ListDenied', {
+        safety: {operation: 'read'},
         params: WAITINGROOM_LIST_DENIED_PARAMS_SCHEMA,
         response: LIST_ENVELOPE,
         permission: {note: 'authenticated'},

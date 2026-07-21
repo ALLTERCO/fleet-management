@@ -1,118 +1,140 @@
 <template>
     <div class="cfg-panel">
-        <div class="cfg-panel__status-row">
-            <span
-                class="cfg-panel__status"
-                :class="linkUp
-                    ? 'cfg-panel__status--on'
-                    : 'cfg-panel__status--off'"
-            >
-                {{ linkLabel }}
-            </span>
-        </div>
-
-        <form v-if="config" @submit.prevent autocomplete="off">
-            <div class="cfg-panel__row">
-                <div class="cfg-panel__row-label">
-                    <strong>Enable Ethernet</strong>
-                </div>
-                <Checkbox v-model="local.enable" @update:model-value="markDirty" />
-            </div>
-
-            <div class="cfg-panel__row">
-                <div class="cfg-panel__row-label">
-                    <strong>IPv4 mode</strong>
-                </div>
-                <Dropdown
-                    :default="ipv4Label(local.ipv4mode)"
-                    :options="IPV4_MODE_LABELS"
-                    @selected="(label: string) => {
-                        local.ipv4mode = labelToIpv4(label);
-                        markDirty();
-                    }"
-                />
-            </div>
-
-            <template v-if="local.ipv4mode === 'static'">
-                <div
-                    v-for="f in IP_FIELDS"
-                    :key="f.key"
-                    class="cfg-panel__row"
-                >
+        <form
+            v-if="config"
+            class="cfg-panel__form"
+            @submit.prevent
+            autocomplete="off"
+        >
+            <section class="cfg-panel__section">
+                <div class="cfg-panel__row">
                     <div class="cfg-panel__row-label">
-                        <strong>{{ f.label }}</strong>
-                        <span
-                            v-if="local[f.key] && !ipv4Valid(local[f.key])"
-                            class="eth-panel__invalid"
-                        >
-                            Not a valid IPv4 address
-                        </span>
+                        <strong>Enable Ethernet</strong>
                     </div>
-                    <input
-                        v-model="local[f.key]"
-                        class="cfg-panel__input"
-                        :placeholder="f.placeholder"
-                        @input="markDirty"
-                    />
+                    <div class="cfg-panel__control">
+                        <CardToggle size="row"
+                            v-model="local.enable"
+                            aria-label="Enable Ethernet"
+                            @update:model-value="markDirty"
+                        />
+                    </div>
                 </div>
-            </template>
 
-            <p v-if="addressDirty" class="cfg-panel__notice">
-                <i class="fas fa-triangle-exclamation" />
-                Address changes require a device reboot to take effect.
-            </p>
-
-            <div v-if="dirty" class="cfg-panel__footer">
-                <Button
-                    type="blue"
-                    size="sm"
-                    :loading="saving"
-                    @click="onSave"
-                >
-                    Save
-                </Button>
-            </div>
-
-            <Collapse title="Connected clients">
-                <div class="eth-panel__clients">
-                    <div class="cfg-panel__row">
-                        <span class="eth-panel__muted">
-                            DHCP leases reported by the device
-                        </span>
-                        <Button
-                            type="blue-hollow"
-                            size="sm"
-                            :loading="loadingClients"
-                            @click="loadClients"
-                        >
-                            Refresh
-                        </Button>
+                <div class="cfg-panel__row">
+                    <div class="cfg-panel__row-label">
+                        <strong>IPv4 mode</strong>
                     </div>
-
-                    <div
-                        v-if="clients.length === 0 && !loadingClients"
-                        class="cfg-panel__row"
-                    >
-                        <span class="eth-panel__muted">No clients reported.</span>
+                    <div class="cfg-panel__control">
+                        <Dropdown
+                            aria-label="IPv4 mode"
+                            :default="ipv4Label(local.ipv4mode)"
+                            :options="IPV4_MODE_LABELS"
+                            @selected="(label: string) => {
+                                local.ipv4mode = labelToIpv4(label);
+                                markDirty();
+                            }"
+                        />
                     </div>
+                </div>
 
+                <template v-if="local.ipv4mode === 'static'">
                     <div
-                        v-for="(c, i) in clients"
-                        :key="(c.mac as string) ?? i"
+                        v-for="f in IP_FIELDS"
+                        :key="f.key"
                         class="cfg-panel__row"
                     >
                         <div class="cfg-panel__row-label">
-                            <strong>{{ c.hostname || c.ip || 'Unknown' }}</strong>
-                            <span>{{ clientSubtitle(c) }}</span>
+                            <strong>{{ f.label }}</strong>
+                            <span
+                                v-if="local[f.key] && !ipv4Valid(local[f.key])"
+                                class="cfg-panel__field-error"
+                            >
+                                Not a valid IPv4 address
+                            </span>
+                        </div>
+                        <input
+                            v-model="local[f.key]"
+                            class="cfg-panel__input"
+                            :class="{
+                                'cfg-panel__input--error':
+                                    local[f.key] && !ipv4Valid(local[f.key])
+                            }"
+                            :aria-label="f.label"
+                            :aria-invalid="
+                                local[f.key] && !ipv4Valid(local[f.key])
+                                    ? 'true'
+                                    : undefined
+                            "
+                            :placeholder="f.placeholder"
+                            @input="markDirty"
+                        />
+                    </div>
+                </template>
+
+                <p v-if="addressDirty" class="cfg-panel__notice">
+                    <i class="fas fa-triangle-exclamation" />
+                    Address changes require a device reboot to take effect.
+                </p>
+
+            </section>
+
+            <section class="cfg-panel__section cfg-panel__section--disclosure">
+                <Collapse class="cfg-panel__disclosure" title="Connected clients">
+                    <div class="eth-panel__clients">
+                        <div class="cfg-panel__row">
+                            <span class="eth-panel__muted">
+                                DHCP leases reported by the device
+                            </span>
+                            <Button
+                                type="blue-hollow"
+                                size="sm"
+                                :loading="loadingClients"
+                                @click="loadClients"
+                            >
+                                Refresh
+                            </Button>
+                        </div>
+
+                        <div
+                            v-if="clients.length === 0 && !loadingClients"
+                            class="cfg-panel__row"
+                        >
+                            <span class="eth-panel__muted">No clients reported.</span>
+                        </div>
+
+                        <div
+                            v-for="(c, i) in clients"
+                            :key="(c.mac as string) ?? i"
+                            class="cfg-panel__row"
+                        >
+                            <div class="cfg-panel__row-label">
+                                <strong>{{ c.hostname || c.ip || 'Unknown' }}</strong>
+                                <span>{{ clientSubtitle(c) }}</span>
+                            </div>
                         </div>
                     </div>
-                </div>
-            </Collapse>
+                </Collapse>
+            </section>
+
+            <ConfigPanelFooter
+                label="Ethernet"
+                :dirty="dirty"
+                :saving="saving"
+                :restart-required="restartRequired"
+                :rebooting="rebooting"
+                :external-changed="externalConfigChanged"
+                @save="onSave"
+                @reboot="rebootDevice"
+                @refresh="reload"
+            />
         </form>
 
+        <div v-else-if="refetching" class="cfg-panel__loading">
+            Loading configuration…
+        </div>
         <div v-else class="cfg-panel__error">
             <p>Failed to load Ethernet configuration.</p>
-            <Button type="blue-hollow" size="sm" @click="reload">Retry</Button>
+            <Button type="blue-hollow" size="sm" :loading="refetching" @click="refetch">Retry</Button>
         </div>
     </div>
 </template>
@@ -120,13 +142,14 @@
 <script setup lang="ts">
 import {computed, ref, watch} from 'vue';
 import {useDeviceConfigPanel} from '@/composables/useDeviceConfigPanel';
-import {useDevicesStore} from '@/stores/devices';
+import {ipv4Valid} from '@/helpers/ipv4';
 import {useToastStore} from '@/stores/toast';
 import {sendRPC} from '@/tools/websocket';
 import Button from './Button.vue';
-import Checkbox from './Checkbox.vue';
 import Collapse from './Collapse.vue';
+import ConfigPanelFooter from './ConfigPanelFooter.vue';
 import Dropdown from './Dropdown.vue';
+import CardToggle from '../cards/CardToggle.vue';
 
 interface EthConfig {
     enable?: boolean;
@@ -166,11 +189,23 @@ const IP_FIELDS = [
 ] as const;
 
 const props = defineProps<{shellyID: string}>();
-const deviceStore = useDevicesStore();
 const toast = useToastStore();
 
-const {config, local, dirty, saving, markDirty, save, reload} =
-    useDeviceConfigPanel<EthConfig, LocalForm>({
+const {
+    config,
+    local,
+    dirty,
+    saving,
+    restartRequired,
+    rebooting,
+    externalConfigChanged,
+    markDirty,
+    save,
+    rebootDevice,
+    refetch,
+    refetching,
+    reload
+} = useDeviceConfigPanel<EthConfig, LocalForm>({
         shellyID: () => props.shellyID,
         settingsKey: 'eth',
         method: 'Eth.SetConfig',
@@ -211,16 +246,6 @@ const {config, local, dirty, saving, markDirty, save, reload} =
 const clients = ref<EthClient[]>([]);
 const loadingClients = ref(false);
 
-const linkUp = computed(() => {
-    const ip = deviceStore.devices[props.shellyID]?.status?.eth?.ip;
-    return typeof ip === 'string' && ip.length > 0;
-});
-
-const linkLabel = computed(() => {
-    const ip = deviceStore.devices[props.shellyID]?.status?.eth?.ip;
-    return ip ? `Link up · ${ip}` : 'No link';
-});
-
 const addressDirty = computed(() => {
     if (!config.value) return false;
     if ((config.value.ipv4mode ?? 'dhcp') !== local.ipv4mode) return true;
@@ -239,12 +264,6 @@ function ipv4Label(mode: string): string {
 
 function labelToIpv4(label: string): string {
     return label === 'Static' ? 'static' : 'dhcp';
-}
-
-function ipv4Valid(s: string): boolean {
-    return /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/.test(
-        s
-    );
 }
 
 async function onSave(): Promise<void> {
@@ -301,9 +320,5 @@ watch(
     color: var(--color-text-tertiary);
     font-size: var(--type-caption);
     flex: 1;
-}
-
-.eth-panel__invalid {
-    color: var(--color-danger-text);
 }
 </style>

@@ -2,12 +2,15 @@
     <label :for="id" class="core-cb" :class="{'core-cb--disabled': disabled}">
         <span class="core-cb__box-wrap">
             <input
+                ref="inputRef"
                 :id="id"
-                v-model="selected"
+                :checked="modelValue"
                 type="checkbox"
                 class="core-cb__box"
+                :aria-label="ariaLabel || undefined"
                 :disabled="disabled"
-                @click="onClick"
+                @click="onNativeToggle"
+                @change="onNativeToggle"
             />
         </span>
         <span class="core-cb__body">
@@ -27,7 +30,7 @@
 </template>
 
 <script setup lang="ts">
-import {ref, useId, watch} from 'vue';
+import {nextTick, ref, useId} from 'vue';
 
 // Fixes the historical "label prop silently ignored" bug — Checkbox now
 // accepts label as a prop OR via the default slot (slot wins if both given).
@@ -35,6 +38,7 @@ const props = withDefaults(
     defineProps<{
         modelValue?: boolean;
         label?: string;
+        ariaLabel?: string;
         hint?: string;
         required?: boolean;
         disabled?: boolean;
@@ -42,6 +46,7 @@ const props = withDefaults(
     {
         modelValue: false,
         label: '',
+        ariaLabel: '',
         hint: '',
         required: false,
         disabled: false
@@ -53,19 +58,22 @@ const emit = defineEmits<{
 }>();
 
 const id = useId();
-const selected = ref(props.modelValue);
+const inputRef = ref<HTMLInputElement | null>(null);
+let pendingChecked: boolean | null = null;
 
-watch(
-    () => props.modelValue,
-    (value) => {
-        selected.value = value;
-    }
-);
-
-function onClick() {
+function onNativeToggle(event: Event): void {
     if (props.disabled) return;
-    selected.value = !selected.value;
-    emit('update:modelValue', selected.value);
+    const checked = (event.target as HTMLInputElement).checked;
+    if (pendingChecked === checked) return;
+    pendingChecked = checked;
+    emit('update:modelValue', checked);
+
+    // Keep the native control aligned when a controlled parent rejects the
+    // update. With v-model, the accepted prop update lands before this tick.
+    void nextTick(() => {
+        pendingChecked = null;
+        if (inputRef.value) inputRef.value.checked = props.modelValue;
+    });
 }
 </script>
 

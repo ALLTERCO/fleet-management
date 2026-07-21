@@ -20,6 +20,7 @@ import type {
     UiCapabilities
 } from '@/helpers/sharedInfo';
 import {getZitadelAuth, setAuthLifecycleHandlers} from '@/helpers/zitadelAuth';
+import {createStaleGuard} from '@/stores/staleGuard';
 import {debug} from '@/tools/debug';
 import {sendRPC} from '@/tools/http';
 import * as ws from '@/tools/websocket';
@@ -506,11 +507,11 @@ export const useAuthStore = defineStore('auth', () => {
         rerunIfBusy?: boolean;
     };
 
-    // Seq-token + status check: a sign-out racing this branch must NOT
+    // Stale guard + status check: a sign-out racing this branch must NOT
     // resurrect permissions after `unauthenticated` was set.
     // Only explicit auth-change callers queue one rerun while busy; normal
     // startup/reconnect callers share the in-flight request.
-    let fetchPermissionsSeq = 0;
+    const fetchPermissionsGuard = createStaleGuard();
     let refreshPending = false;
     let permissionsInFlight: Promise<void> | null = null;
     async function fetchUserPermissions(
@@ -530,9 +531,10 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     async function doFetchUserPermissions() {
-        const seq = ++fetchPermissionsSeq;
+        const token = fetchPermissionsGuard.bump();
         const isCurrent = () =>
-            seq === fetchPermissionsSeq && status.value !== 'unauthenticated';
+            !fetchPermissionsGuard.isStale(token) &&
+            status.value !== 'unauthenticated';
 
         permissionsLoading.value = true;
         try {
@@ -583,12 +585,13 @@ export const useAuthStore = defineStore('auth', () => {
                 permissionsLoaded.value = true;
             }
         } finally {
-            if (seq === fetchPermissionsSeq) permissionsLoading.value = false;
+            if (!fetchPermissionsGuard.isStale(token))
+                permissionsLoading.value = false;
         }
         // Skip the rerun if signOut happened while we were in-flight.
         if (
             refreshPending &&
-            seq === fetchPermissionsSeq &&
+            !fetchPermissionsGuard.isStale(token) &&
             status.value !== 'unauthenticated'
         ) {
             refreshPending = false;
@@ -599,17 +602,29 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     let loginLifecycleInFlight: Promise<void> | null = null;
+    // Bumped on every login/logout transition so a lifecycle that started
+    // before a transition can detect it was superseded and stand down.
+    let loginEpoch = 0;
 
     async function handleLoginChanged(isLoggedIn: boolean) {
         if (isLoggedIn) {
             if (status.value === 'authenticated' && permissionsLoaded.value)
                 return;
             if (loginLifecycleInFlight) return loginLifecycleInFlight;
-            loginLifecycleInFlight = completeLoginLifecycle().finally(() => {
-                loginLifecycleInFlight = null;
-            });
+            const epoch = ++loginEpoch;
+            loginLifecycleInFlight = completeLoginLifecycle(epoch).finally(
+                () => {
+                    // Don't clobber a newer lifecycle's handle.
+                    if (epoch === loginEpoch) loginLifecycleInFlight = null;
+                }
+            );
             return loginLifecycleInFlight;
         } else {
+            // Invalidate any in-flight login lifecycle and drop its handle so a
+            // later login starts a fresh one instead of awaiting a stale promise
+            // that can never reach 'authenticated'.
+            loginEpoch++;
+            loginLifecycleInFlight = null;
             ws.close();
             userPermissions.value = null;
             permissionsLoaded.value = false;
@@ -618,12 +633,17 @@ export const useAuthStore = defineStore('auth', () => {
         }
     }
 
-    async function completeLoginLifecycle() {
+    async function completeLoginLifecycle(epoch: number) {
         status.value = 'booting';
         await ws.connect();
         await fetchUserPermissions();
-        // Guard against signOut() racing this branch mid-await.
-        if (permissionsLoaded.value && status.value === 'booting') {
+        // Only promote to 'authenticated' if this lifecycle is still current —
+        // a logout or newer login during the awaits above supersedes it.
+        if (
+            epoch === loginEpoch &&
+            permissionsLoaded.value &&
+            status.value === 'booting'
+        ) {
             status.value = 'authenticated';
         }
     }

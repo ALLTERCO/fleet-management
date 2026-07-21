@@ -1,14 +1,14 @@
 // Generated index for the UI-facing Host SDK.
 
-import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
-    FRONTEND_SRC,
-    mdEscape,
-    readFile,
-    relPath,
-    walkFiles
-} from './_shared.js';
+    factoryNamespaces,
+    moduleRpcLiterals,
+    sdkSourceFiles
+} from './_hostSdkSource.js';
+import {readGeneratedJson} from './_inventories.js';
+import {mdEscape, readFile, relPath} from './_shared.js';
+import type {ApiCatalog} from './api-catalog.js';
 
 interface HostSdkModule {
     name: string;
@@ -16,6 +16,8 @@ interface HostSdkModule {
     exports: string[];
     usesGeneratedContract: boolean;
     usesRawRpc: boolean;
+    namespaces: string[];
+    namespaceKinds: ('device' | 'fleet-manager')[];
 }
 
 export interface HostSdkIndex {
@@ -29,9 +31,6 @@ export interface HostSdkIndex {
     };
     modules: HostSdkModule[];
 }
-
-const HOST_DIR = path.join(FRONTEND_SRC, 'shell/template-host');
-const CONTRACT_FILE = path.join(HOST_DIR, 'generated/contract.ts');
 
 function moduleName(file: string): string {
     return path.basename(file, '.ts');
@@ -53,32 +52,68 @@ function exportNames(source: string): string[] {
     return [...names].sort();
 }
 
-function contractMethodCount(source: string): number {
-    return [...source.matchAll(/'[^']+':\s*\{/g)].length;
-}
-
-function hostFiles(): string[] {
-    return walkFiles(HOST_DIR, ['.ts']).filter(
-        (file) => !file.includes(`${path.sep}generated${path.sep}`)
+// Namespaces each module touches: factory proxies + known RPC literals,
+// joined against the catalog (the kind's single home).
+function moduleNamespaceIndex(catalog: ApiCatalog): {
+    byModule: Map<string, Set<string>>;
+    kindOf: Map<string, 'device' | 'fleet-manager'>;
+} {
+    const namespaceOfId = new Map(
+        catalog.methods.map((m) => [m.id, m.namespace])
     );
+    const kindOf = new Map(
+        catalog.methods.map((m) => [m.namespace, m.namespaceKind])
+    );
+    const byModule = new Map<string, Set<string>>();
+    const add = (module: string, namespace: string) => {
+        const set = byModule.get(module) ?? new Set<string>();
+        set.add(namespace);
+        byModule.set(module, set);
+    };
+    for (const [namespace, files] of factoryNamespaces()) {
+        for (const file of files) add(moduleName(file), namespace);
+    }
+    for (const [module, literals] of moduleRpcLiterals()) {
+        for (const literal of literals) {
+            const namespace = namespaceOfId.get(literal);
+            if (namespace) add(module, namespace);
+        }
+    }
+    return {byModule, kindOf};
 }
 
-function moduleFor(file: string): HostSdkModule {
+function moduleFor(
+    file: string,
+    namespaceIndex: ReturnType<typeof moduleNamespaceIndex>
+): HostSdkModule {
     const source = readFile(file);
+    const name = moduleName(file);
+    const namespaces = [...(namespaceIndex.byModule.get(name) ?? [])].sort();
+    const namespaceKinds = [
+        ...new Set(
+            namespaces.flatMap((ns) => {
+                const kind = namespaceIndex.kindOf.get(ns);
+                return kind ? [kind] : [];
+            })
+        )
+    ].sort();
     return {
-        name: moduleName(file),
+        name,
         path: relPath(file),
         exports: exportNames(source),
         usesGeneratedContract: /generated\/contract|\.\/typed/.test(source),
-        usesRawRpc: /sendRPC|hostRpc|hostListAll|callMethod/.test(source)
+        usesRawRpc: /sendRPC|hostRpc|hostListAll|callMethod/.test(source),
+        namespaces,
+        namespaceKinds
     };
 }
 
 export function generate(): HostSdkIndex {
-    const contract = fs.existsSync(CONTRACT_FILE)
-        ? readFile(CONTRACT_FILE)
-        : '';
-    const modules = hostFiles().map(moduleFor);
+    const catalog = readGeneratedJson<ApiCatalog>('api-catalog.json');
+    const namespaceIndex = moduleNamespaceIndex(catalog);
+    const modules = sdkSourceFiles().map((file) =>
+        moduleFor(file, namespaceIndex)
+    );
     return {
         generator: 'host-sdk-index',
         version: 1,
@@ -86,7 +121,9 @@ export function generate(): HostSdkIndex {
             entrypoint: 'frontend/src/shell/template-host/index.ts',
             rule: 'Templates and alternate UIs use @host domains before raw RPC.',
             moduleCount: modules.length,
-            contractMethodCount: contractMethodCount(contract)
+            // The contract types every catalog method; count from the catalog
+            // SSOT, not by re-parsing the formatted contract file.
+            contractMethodCount: catalog.methods.length
         },
         modules
     };
@@ -104,14 +141,19 @@ export function renderMarkdown(index: HostSdkIndex): string {
         '',
         `Generated contract methods: ${index.summary.contractMethodCount}`,
         '',
-        '| Module | Path | Exports | Contract | RPC bridge |',
-        '|---|---|---|---|---|',
+        '| Module | Path | Exports | Namespaces (kinds) | Contract | RPC bridge |',
+        '|---|---|---|---|---|---|',
         ...index.modules.map(
             (module) =>
                 `| ${[
                     `\`${mdEscape(module.name)}\``,
                     `\`${mdEscape(module.path)}\``,
                     mdEscape(module.exports.join(', ') || 'none'),
+                    mdEscape(
+                        module.namespaces.length
+                            ? `${module.namespaces.join(', ')} (${module.namespaceKinds.join(', ')})`
+                            : 'none'
+                    ),
                     module.usesGeneratedContract ? 'yes' : 'no',
                     module.usesRawRpc ? 'yes' : 'no'
                 ].join(' | ')} |`

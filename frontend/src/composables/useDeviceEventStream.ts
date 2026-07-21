@@ -1,4 +1,5 @@
-import {onUnmounted, type Ref, watch} from 'vue';
+import {onUnmounted, type Ref, ref, watch} from 'vue';
+import {formatRpcError} from '@/helpers/domainErrors';
 import {useDeviceEventsStore} from '@/stores/deviceEvents';
 import type {DeviceChange} from '@/tools/deviceEventFormat';
 import {
@@ -7,13 +8,18 @@ import {
     onDeviceChange,
     type TemporarySubscription
 } from '@/tools/websocket';
+import {DEVICE_CHANGE_EVENT} from '@/tools/wsEvents';
 
 // Live wiring for the troubleshooting console. Subscribes DeviceEvent.Change
 // scoped to the watched devices (server-side filter, so the browser only
 // receives what it is watching) and feeds the store. Re-subscribes when the
 // watched set changes; tears everything down on unmount.
-export function useDeviceEventStream(shellyIds: Ref<string[]>): void {
+export function useDeviceEventStream(shellyIds: Ref<string[]>): {
+    // Non-null while the live subscription is broken — the consumer renders it.
+    subscriptionError: Ref<string | null>;
+} {
     const store = useDeviceEventsStore();
+    const subscriptionError = ref<string | null>(null);
     let sub: TemporarySubscription | null = null;
 
     const off = onDeviceChange((event: NamespacedEvent) => {
@@ -23,11 +29,26 @@ export function useDeviceEventStream(shellyIds: Ref<string[]>): void {
         store.addChanges(shellyId, changes as DeviceChange[]);
     });
 
+    // Monotonic token so overlapping resubscribes (fast shellyIds changes)
+    // can't orphan a server-side subscription: only the latest call keeps its
+    // handle; any superseded call unsubscribes the handle it created.
+    let resubToken = 0;
     async function resubscribe(ids: string[]): Promise<void> {
-        await sub?.unsubscribe();
+        const token = ++resubToken;
+        const prev = sub;
         sub = null;
-        if (ids.length === 0) return;
-        sub = await addTemporarySubscription(ids, ['DeviceEvent.Change']);
+        await prev?.unsubscribe();
+        if (ids.length === 0) {
+            subscriptionError.value = null;
+            return;
+        }
+        const next = await addTemporarySubscription(ids, [DEVICE_CHANGE_EVENT]);
+        if (token !== resubToken) {
+            void next.unsubscribe();
+            return;
+        }
+        sub = next;
+        subscriptionError.value = null;
     }
 
     // Surface a failed (re)subscribe rather than swallowing it — a silent
@@ -36,7 +57,7 @@ export function useDeviceEventStream(shellyIds: Ref<string[]>): void {
         shellyIds,
         (ids) => {
             resubscribe([...ids]).catch((err) => {
-                console.error('device-event subscription failed', ids, err);
+                subscriptionError.value = `Live events paused — ${formatRpcError(err, 'subscription failed')}`;
             });
         },
         {immediate: true}
@@ -46,4 +67,6 @@ export function useDeviceEventStream(shellyIds: Ref<string[]>): void {
         off();
         void sub?.unsubscribe();
     });
+
+    return {subscriptionError};
 }

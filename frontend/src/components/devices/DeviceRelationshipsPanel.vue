@@ -850,7 +850,7 @@ function navigateToNode(node: RelationshipNode | undefined): void {
         return;
     }
     if (node.type === 'alert.rule') {
-        void router.push('/alerts');
+        void router.push('/settings/alerts');
     }
 }
 
@@ -1150,7 +1150,7 @@ function idPart(nodeId: string): string {
 
 .rel-node__k {
     color: var(--color-text-tertiary);
-    font-size: 10px;
+    font-size: var(--type-caption);
     font-weight: 650;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -1210,7 +1210,7 @@ function idPart(nodeId: string): string {
     align-items: center;
     gap: var(--space-2);
     color: var(--color-text-tertiary);
-    font-size: 11px;
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -1507,7 +1507,7 @@ function idPart(nodeId: string): string {
 
 .rel-row__k {
     color: var(--color-text-tertiary);
-    font-size: 10.5px;
+    font-size: var(--type-caption);
     font-weight: 650;
     letter-spacing: 0.05em;
     text-transform: uppercase;
@@ -1544,7 +1544,7 @@ function idPart(nodeId: string): string {
     background: var(--color-surface-3);
     padding: 2px var(--space-2);
     color: var(--color-text-secondary);
-    font-size: 11px;
+    font-size: var(--type-caption);
     white-space: nowrap;
     text-transform: capitalize;
 }

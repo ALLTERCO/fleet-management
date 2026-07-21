@@ -102,6 +102,7 @@ export async function assertGroupMembersBelongToOrg(
     // Per shellyID, keep the original member so the NotFound error reports the
     // caller's subjectId (entity vs device) instead of the resolved shellyID.
     const shellyIdToMember = new Map<string, GroupMemberRef>();
+    const legacyEntityMembers = new Map<string, GroupMemberRef>();
 
     for (const member of members) {
         if (member.subjectType === 'location') {
@@ -111,12 +112,29 @@ export async function assertGroupMembersBelongToOrg(
         let shellyID = member.subjectId;
         if (member.subjectType === 'entity') {
             const ref = DeviceCollector.findEntityAndDevice(member.subjectId);
-            if (!ref) throw RpcError.NotFound('entity', member.subjectId);
+            if (!ref) {
+                legacyEntityMembers.set(member.subjectId, member);
+                continue;
+            }
             shellyID = ref.device.shellyID;
         }
         if (!shellyIdToMember.has(shellyID)) {
             shellyIdToMember.set(shellyID, member);
         }
+    }
+
+    const normalizedLegacyEntities = new Set<string>();
+    if (legacyEntityMembers.size > 0) {
+        const rows = await postgres.queryRows<{subject_id: string}>(
+            `SELECT input.subject_id
+               FROM unnest($2::text[]) input(subject_id)
+               CROSS JOIN LATERAL organization.fn_normalize_entity_subject(
+                   $1, input.subject_id
+               ) normalized
+              WHERE normalized.device_id IS NOT NULL`,
+            [orgId, [...legacyEntityMembers.keys()]]
+        );
+        for (const row of rows) normalizedLegacyEntities.add(row.subject_id);
     }
 
     const foundLocations = new Set<number>();
@@ -144,6 +162,15 @@ export async function assertGroupMembersBelongToOrg(
             const intId = subjectIntegerId('location', member.subjectId);
             if (!foundLocations.has(intId)) {
                 throw RpcError.NotFound('location', member.subjectId);
+            }
+            continue;
+        }
+        if (
+            member.subjectType === 'entity' &&
+            legacyEntityMembers.has(member.subjectId)
+        ) {
+            if (!normalizedLegacyEntities.has(member.subjectId)) {
+                throw RpcError.NotFound('entity', member.subjectId);
             }
             continue;
         }

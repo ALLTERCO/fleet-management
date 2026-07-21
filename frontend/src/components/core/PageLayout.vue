@@ -24,10 +24,9 @@
                     </div>
                     <div v-if="searchable || $slots.center" class="dp-header__center">
                         <slot name="center">
-                            <UniversalSearch
+                            <FilterPill
                                 v-if="searchable"
                                 v-model="searchModel"
-                                :scope="scope"
                                 :placeholder="searchPlaceholder"
                                 :filterable="filterable"
                                 :has-active-filter="hasActiveFilter"
@@ -95,14 +94,13 @@
     </div>
 </template>
 
-<script setup lang="ts" generic="T">
+<script setup lang="ts">
 import '@/styles/device-page.css';
 import BasicBlock from '@/components/core/BasicBlock.vue';
 import EmptyBlock from '@/components/core/EmptyBlock.vue';
 import ErrorBoundary from '@/components/core/ErrorBoundary.vue';
+import FilterPill from '@/components/core/FilterPill.vue';
 import Skeleton from '@/components/core/Skeleton.vue';
-import UniversalSearch from '@/components/core/UniversalSearch.vue';
-import type {PageScope} from '@/composables/useUniversalSearch';
 
 withDefaults(
     defineProps<{
@@ -114,7 +112,6 @@ withDefaults(
         skeletonGrid?: string;
         searchable?: boolean;
         searchPlaceholder?: string;
-        scope?: PageScope<T>;
         filterable?: boolean;
         hasActiveFilter?: boolean;
         filterCount?: number;

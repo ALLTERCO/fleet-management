@@ -101,7 +101,7 @@
                             @remove-tag="removeTag"
                             @commit-tag="commitTag"
                             @tag-backspace="onTagBackspace"
-                            @clear-tag-error="tagError = ''"
+                            @clear-tag-error="clearTagError"
                         />
                     </div>
 
@@ -159,13 +159,7 @@ import type {
 import {storeToRefs} from 'pinia';
 import {computed, ref, watch} from 'vue';
 import Button from '@/components/core/Button.vue';
-import type {FloorPlanValue} from '@/components/core/FloorPlanScaleEditor.vue';
-import FloorPlanScaleEditor from '@/components/core/FloorPlanScaleEditor.vue';
-import Input from '@/components/core/Input.vue';
-import LocationFieldRenderer from '@/components/core/LocationFieldRenderer.vue';
-import LocationParentPicker from '@/components/core/LocationParentPicker.vue';
-import type {OperatingHoursValue} from '@/components/core/OperatingHoursGrid.vue';
-import OperatingHoursGrid from '@/components/core/OperatingHoursGrid.vue';
+import {useLocationDetails} from '@/composables/useLocationDetails';
 import {
     clampStepForKind,
     type GeoPrecision,
@@ -175,18 +169,12 @@ import {
     MAX_NOTES_LENGTH,
     nameContentErrorMessage,
     notesErrorMessage,
-    type TagRejectionReason,
-    tagRejectionReason,
     visibleStepsForKind,
     type WizardStep
 } from '@/helpers/location-drawer-steps';
 import {isPlanFriendlyKind} from '@/helpers/location-kinds';
 import {NAME_MAX_LENGTH} from '@/helpers/validation-limits';
-import {
-    type LocationFieldDescriptor,
-    type LocationFieldGroup,
-    useLocationsStore
-} from '@/stores/locations';
+import {useLocationsStore} from '@/stores/locations';
 import LocationEntryDrawerStep1 from './LocationEntryDrawerStep1.vue';
 import LocationEntryDrawerStep2 from './LocationEntryDrawerStep2.vue';
 import LocationEntryDrawerStep3 from './LocationEntryDrawerStep3.vue';
@@ -227,37 +215,6 @@ const KIND_OPTIONS: KindOption[] = [
     }
 ];
 
-const GROUP_LABELS: Record<LocationFieldGroup, string> = {
-    identity: 'Identity',
-    physical: 'Physical',
-    contact: 'Contact',
-    hours: 'Hours',
-    operational: 'Operational',
-    compliance: 'Compliance',
-    environmental: 'Environmental',
-    custom: 'Other'
-};
-const GROUP_ICONS: Record<LocationFieldGroup, string> = {
-    identity: 'fas fa-id-card',
-    physical: 'fas fa-cube',
-    contact: 'fas fa-address-book',
-    hours: 'fas fa-clock',
-    operational: 'fas fa-gears',
-    compliance: 'fas fa-shield-halved',
-    environmental: 'fas fa-leaf',
-    custom: 'fas fa-tags'
-};
-
-// Fields that already have dedicated UI elsewhere — skipped by the generic
-// step-3 LocationFieldRenderer loop to avoid duplicate inputs.
-const STEP2_FIELD_KEYS = new Set(['address', 'geo']);
-const STEP3_BESPOKE_FIELD_WIDGETS = new Set([
-    'address',
-    'geo',
-    'floorPlan',
-    'operatingHours'
-]);
-
 const visible = defineModel<boolean>({required: true});
 
 const props = defineProps<{
@@ -293,9 +250,20 @@ const what3wordsError = ref('');
 const manualError = ref('');
 
 // Step 3 state — tags + notes (with their own per-field error state).
-const tags = ref<string[]>([]);
-const tagDraft = ref('');
-const tagError = ref('');
+const {
+    detailGroups,
+    hasOperatingHoursField,
+    tags,
+    tagDraft,
+    tagError,
+    commitTag,
+    removeTag,
+    onTagBackspace,
+    clearTagError,
+    resetTags
+} = useLocationDetails(
+    () => kinds.value.find((kind) => kind.kind === formKind.value)?.fields
+);
 const notes = ref('');
 const notesError = computed(() => notesErrorMessage(notes.value));
 
@@ -324,44 +292,7 @@ const lastStepId = computed(
     () => visibleSteps.value[visibleSteps.value.length - 1]?.id ?? 1
 );
 
-// Step 3 — only show groups that exist for this kind AND aren't covered by
-// dedicated step-3 components or step 2.
-interface DetailGroup {
-    key: LocationFieldGroup;
-    label: string;
-    icon: string;
-    fields: LocationFieldDescriptor[];
-}
-const detailGroups = computed<DetailGroup[]>(() => {
-    const descriptor = kinds.value.find((k) => k.kind === formKind.value);
-    if (!descriptor) return [];
-    const buckets = new Map<LocationFieldGroup, LocationFieldDescriptor[]>();
-    for (const f of descriptor.fields) {
-        if (STEP2_FIELD_KEYS.has(f.widget)) continue;
-        if (STEP3_BESPOKE_FIELD_WIDGETS.has(f.widget)) continue;
-        const list = buckets.get(f.group) ?? [];
-        list.push(f);
-        buckets.set(f.group, list);
-    }
-    const out: DetailGroup[] = [];
-    for (const [key, fields] of buckets) {
-        if (fields.length === 0) continue;
-        out.push({
-            key,
-            label: GROUP_LABELS[key] ?? key,
-            icon: GROUP_ICONS[key] ?? 'fas fa-circle',
-            fields
-        });
-    }
-    return out;
-});
-
 const canShowFloorPlan = computed(() => isPlanFriendlyKind(formKind.value));
-
-const hasOperatingHoursField = computed(() => {
-    const descriptor = kinds.value.find((k) => k.kind === formKind.value);
-    return !!descriptor?.fields.some((f) => f.widget === 'operatingHours');
-});
 
 function canEnterStep(id: number): boolean {
     if (id <= currentStep.value) return true;
@@ -478,9 +409,9 @@ function resetForm(): void {
     what3wordsError.value = '';
     manualError.value = '';
     serverError.value = null;
-    tagError.value = '';
-    tags.value = [];
-    tagDraft.value = '';
+    resetTags(
+        (t?.kindFields as Record<string, unknown> | undefined)?.tags
+    );
     notes.value = '';
     currentStep.value = clampStepForKind(
         props.defaultStep ?? 1,
@@ -499,58 +430,6 @@ function resetForm(): void {
     const priorNotes = (t?.kindFields as Record<string, unknown> | undefined)
         ?.notes;
     if (typeof priorNotes === 'string') notes.value = priorNotes;
-    const priorTags = (t?.kindFields as Record<string, unknown> | undefined)
-        ?.tags;
-    if (Array.isArray(priorTags)) {
-        tags.value = priorTags.filter((x): x is string => typeof x === 'string');
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// Tag chip input
-// ─────────────────────────────────────────────────────────────────────────
-
-function commitTag(): void {
-    const t = tagDraft.value.trim().toLowerCase();
-    if (!t) return;
-    const reason = tagRejectionReason({candidate: t, existing: tags.value});
-    if (reason) {
-        tagError.value = tagRejectionMessage(reason);
-        return;
-    }
-    tags.value = [...tags.value, t];
-    tagDraft.value = '';
-    tagError.value = '';
-}
-
-// Answer — user-facing reason text for a tag-rejection code.
-function tagRejectionMessage(reason: TagRejectionReason): string {
-    switch (reason) {
-        case 'empty':
-            return 'Tags cannot be empty.';
-        case 'length':
-            return 'Tag is too long.';
-        case 'format':
-            return 'Tags must start with a letter or number; only letters, numbers, dot, dash, and underscore are allowed.';
-        case 'duplicate':
-            return 'That tag is already in the list.';
-        case 'count':
-            return 'You have reached the maximum number of tags.';
-    }
-}
-
-function removeTag(i: number): void {
-    const next = [...tags.value];
-    next.splice(i, 1);
-    tags.value = next;
-}
-
-function onTagBackspace(): void {
-    if (tagDraft.value.length === 0 && tags.value.length > 0) {
-        const next = [...tags.value];
-        next.pop();
-        tags.value = next;
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────

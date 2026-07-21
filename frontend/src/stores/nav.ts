@@ -4,15 +4,16 @@ import {defineStore} from 'pinia';
 import {computed, ref} from 'vue';
 import {canAccessPage, type PageAccessContext} from '@/auth/pageAccess';
 import {
-    ALERTS_PATH,
     AUTOMATIONS_PATH,
     DASHBOARDS_PATH,
     DEVICES_PATH,
-    MONITORING_PATH,
     OPERATIONS_PATH,
-    ORGANIZE_PATH
+    ORGANIZE_PATH,
+    SETTINGS_PATH
 } from '@/constants';
+import {toastRpcError} from '@/helpers/domainErrors';
 import {useAuthStore} from '@/stores/auth';
+import {useToastStore} from '@/stores/toast';
 import * as ws from '@/tools/websocket';
 
 export type MenuEntry = {
@@ -51,7 +52,8 @@ const BUILTIN_TOP: BuiltinItem[][] = [
         {
             name: 'Devices',
             link: DEVICES_PATH,
-            icon: 'fa-regular fa-hard-drive'
+            // Resolved to ShellyDeviceGlyph.vue by icon renderers.
+            icon: 'glyph:shelly-device'
         }
     ],
     [
@@ -61,7 +63,6 @@ const BUILTIN_TOP: BuiltinItem[][] = [
             icon: 'fa-regular fa-folder-tree'
         }
     ],
-    [{name: 'Alerts', link: ALERTS_PATH, icon: 'fa-regular fa-bell'}],
     [
         {
             name: 'Automations',
@@ -79,12 +80,12 @@ const BUILTIN_TOP: BuiltinItem[][] = [
     // Grafana is a tab under Automations (/automations/grafana), not top-level.
 ];
 
-// Settings now lives in PageTopMenu (top-right of every page), not the sidebar.
+// Pinned to the bottom of the sidebar. Monitoring lives inside Settings now.
 const BUILTIN_BOTTOM: BuiltinItem[] = [
     {
-        name: 'Monitoring',
-        link: MONITORING_PATH,
-        icon: 'fa-regular fa-chart-line'
+        name: 'Settings',
+        link: SETTINGS_PATH,
+        icon: 'fa-regular fa-gear'
     }
 ];
 
@@ -155,6 +156,7 @@ function buildBottomEntries(access: PageAccessContext): MenuEntry[] {
 
 export const useNavStore = defineStore('nav', () => {
     const authStore = useAuthStore();
+    const toast = useToastStore();
     const customItems = ref<CustomItem[]>([]);
     let initPromise: Promise<void> | undefined;
 
@@ -163,7 +165,8 @@ export const useNavStore = defineStore('nav', () => {
             const raw = await ws.getRegistry('ui').getItem('menuItems');
             customItems.value = normaliseCustomItems(raw);
         } catch (e) {
-            console.warn('Failed to load custom menu items', e);
+            // init() is memoised, so this toasts once per load attempt.
+            toastRpcError(toast, e, 'Failed to load custom menu items');
             customItems.value = [];
             // Allow retry on next init() call (e.g. WS reconnect, re-login).
             initPromise = undefined;

@@ -9,19 +9,24 @@
         @click="emit('click', $event)"
         @img-error="handleImgError"
     >
-        <template v-if="channelLabel || statusLabel" #status>
-            <span v-if="channelLabel" class="bthome-channel-pill">
-                <i class="fas fa-tower-broadcast" /> {{ channelLabel }}
-            </span>
+        <template #status>
+            <DeviceCardStatus :device="statusDevice" />
+        </template>
+        <template v-if="stateLabel" #state>
             <span
-                v-if="statusLabel"
                 class="bthome-state"
-                :class="`bthome-state--${statusTone}`"
+                :class="[
+                    `bthome-state--${stateTone}`,
+                    {'bthome-state--stale': isOffline}
+                ]"
             >
-                {{ statusLabel }}
+                {{ stateLabel }}
             </span>
         </template>
-        <template v-if="device.summary && !statusLabel && !channelLabel" #footer>
+        <template
+            v-if="showSummaryFooter"
+            #footer
+        >
             <span class="bthome-summary">{{ device.summary }}</span>
         </template>
     </DCCard>
@@ -30,7 +35,11 @@
 <script setup lang="ts">
 import {computed} from 'vue';
 import DCCard from '@/components/core/DCCard.vue';
+import DeviceCardStatus from '@/components/devices/DeviceCardStatus.vue';
 import {handleDeviceImgError} from '@/helpers/device';
+import {resolveDeviceStatePill} from '@/helpers/deviceState';
+import {useDevicesStore} from '@/stores/devices';
+import {useEntityStore} from '@/stores/entities';
 import {type SensorDevice, useSensorsStore} from '@/stores/sensors';
 
 const KIND_LABELS: Record<string, string> = {
@@ -66,6 +75,19 @@ const emit = defineEmits<{
 }>();
 
 const {getLogo} = useSensorsStore();
+const deviceStore = useDevicesStore();
+const entityStore = useEntityStore();
+
+// Fallback when the runtime overview summary is absent: the promoted device's
+// durable displayValue via the shared resolver. Neutral pill = a reading.
+const durableReading = computed(() => {
+    const shellyID = props.device.shellyID;
+    if (!shellyID) return '';
+    const full = deviceStore.devices[shellyID];
+    if (!full) return '';
+    const pill = resolveDeviceStatePill(full, (id) => entityStore.entities[id]);
+    return pill?.tone === 'neutral' ? pill.label : '';
+});
 
 const logo = computed(() => getLogo(props.device));
 const displayLabel = computed(
@@ -74,15 +96,13 @@ const displayLabel = computed(
 const accentClass = computed(
     () => KIND_ACCENTS[props.device.kind] ?? 'dc-accent-blue'
 );
-// Remote controllers surface their active channel as a top pill (the backend
-// otherwise leaks it into the summary footer at the bottom of the card).
+// The active channel is the remote's only data value.
 const channelLabel = computed(() =>
     props.device.kind === 'remote_controller' && props.device.activeChannelLabel
         ? props.device.activeChannelLabel
         : ''
 );
-const statusLabel = computed(() => {
-    if (isOffline.value) return 'Offline';
+const stateLabel = computed(() => {
     switch (props.device.kind) {
         case 'door_window':
             return props.device.state === 'open'
@@ -97,90 +117,67 @@ const statusLabel = computed(() => {
                   ? 'Clear'
                   : '';
         case 'button':
+            return 'No events';
         case 'remote_controller':
-            return props.device.lastEvent ?? '';
+            return channelLabel.value;
+        case 'weather_station':
+            return (
+                props.device.primaryDisplayValue ||
+                durableReading.value ||
+                props.device.summary ||
+                ''
+            );
         default:
-            return props.device.summary || batteryLabel.value;
+            return (
+                props.device.summary || durableReading.value
+            );
     }
 });
-const batteryLabel = computed(() =>
-    props.device.battery == null ? '' : `${props.device.battery}%`
+const showSummaryFooter = computed(
+    () =>
+        Boolean(props.device.summary) &&
+        !stateLabel.value &&
+        !isOffline.value &&
+        !channelLabel.value &&
+        props.device.kind !== 'remote_controller'
 );
-const statusTone = computed(() => {
-    if (isOffline.value) return 'offline';
+const statusDevice = computed(() => ({
+    online: props.device.online,
+    source: 'bluetooth',
+    status: {
+        bluetoothdevice: {
+            battery: props.device.battery
+        }
+    }
+}));
+const stateTone = computed(() => {
     if (
         props.device.kind === 'door_window' ||
         props.device.kind === 'motion_sensor'
     ) {
         return props.device.state ?? 'neutral';
     }
-    return 'event';
+    return 'neutral';
 });
 
 // undefined → treat as online; matches the gateway-card convention.
 const isOffline = computed(() => props.device.online === false);
 
 function handleImgError(e: Event) {
-    handleDeviceImgError(e, props.device.modelId);
+    handleDeviceImgError(
+        e,
+        props.device.imageModel ?? props.device.modelId
+    );
 }
 </script>
 
 <style scoped>
-.bthome-state,
-.bthome-summary,
-.bthome-channel-pill {
+/* .bthome-state now lives in styles/components.css — shared with fleet cards. */
+.bthome-summary {
     overflow: hidden;
     max-width: 100%;
     text-overflow: ellipsis;
     white-space: nowrap;
-}
-
-/* Active-channel pill — same rounded token pill as the fleet-card battery pill. */
-.bthome-channel-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    padding: var(--space-0-5) var(--space-2);
-    border-radius: var(--radius-2xl);
-    background: color-mix(in srgb, var(--color-primary) 14%, transparent);
-    border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
-    color: var(--color-primary);
-    font-size: var(--type-caption);
-    font-weight: 700;
-    letter-spacing: 0.04em;
-}
-
-.bthome-channel-pill i {
-    font-size: var(--type-caption);
-}
-
-.bthome-state {
-    display: inline-flex;
-    align-items: center;
-    min-height: 22px;
-    margin-left: auto;
-    padding: 0 var(--space-2);
-    border-radius: 999px;
-    background: var(--color-surface-2);
-    color: var(--color-text-secondary);
-    font-size: var(--type-caption);
-    font-weight: 700;
-}
-
-.bthome-state--open,
-.bthome-state--event {
-    background: color-mix(in srgb, var(--color-warning) 14%, transparent);
-    color: var(--color-warning-text);
-}
-
-.bthome-state--closed {
-    background: color-mix(in srgb, var(--color-success) 14%, transparent);
-    color: var(--color-success-text);
-}
-
-.bthome-state--offline {
-    background: rgba(232, 64, 87, 0.12);
-    color: var(--color-status-off);
 }
 
 .bthome-summary {

@@ -52,12 +52,14 @@ export const WEB_DESCRIBE: DescribeOutput = new DescribeBuilder('web', {
         'Relay the device web-server namespace (HTTP/HTTPS listener configuration).'
 })
     .registerMethod('GetStatus', {
+        safety: {operation: 'read'},
         params: {type: 'object'},
         response: {type: 'object', additionalProperties: true},
         permission: {note: 'authenticated'},
         description: 'Returns the listener status (currently empty).'
     })
     .registerMethod('GetConfig', {
+        safety: {operation: 'read'},
         params: {type: 'object'},
         response: WEB_CONFIG_SCHEMA,
         permission: {note: 'authenticated'},

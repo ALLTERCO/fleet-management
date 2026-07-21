@@ -26,12 +26,23 @@ export interface PermissionRequirement {
     note?: string;
 }
 
+// What the method DOES, when the permission alone can't say (note-only
+// permissions). Optional overrides refine the operation-derived hints.
+export interface MethodSafety {
+    operation?: CrudOp;
+    idempotent?: boolean;
+    destructive?: boolean;
+    /** Dispatcher/tunnel: the real effect depends on caller input. */
+    effectDependsOnInput?: boolean;
+}
+
 export interface MethodDescriptor {
     name: string;
     params: JsonSchema;
     response: JsonSchema;
     permission: PermissionRequirement;
     description?: string;
+    safety?: MethodSafety;
 }
 
 // One telemetry field a component emits. Field name is firmware-defined;
@@ -127,6 +138,9 @@ export class DescribeBuilder {
                 permission: {...descriptor.permission},
                 ...(descriptor.description !== undefined
                     ? {description: descriptor.description}
+                    : {}),
+                ...(descriptor.safety !== undefined
+                    ? {safety: {...descriptor.safety}}
                     : {})
             };
         }

@@ -117,6 +117,33 @@ oidc_service_auth_block() {
     fi
 }
 
+device_ingress_public_ws_base_url() {
+    local fm_hostname="$1"
+    local fm_port="$2"
+    local scheme="$3"
+    local explicit="${FM_DEVICE_INGRESS_PUBLIC_WS_BASE_URL:-${FM_DEVICE_WS_URL:-}}"
+    if [ -n "$explicit" ]; then
+        printf '%s' "${explicit%/}"
+        return
+    fi
+
+    if [ -n "${FM_PUBLIC_BASE_URL:-}" ]; then
+        local public_base="${FM_PUBLIC_BASE_URL%/}"
+        public_base="${public_base/#https:/wss:}"
+        public_base="${public_base/#http:/ws:}"
+        printf '%s/shelly' "$public_base"
+        return
+    fi
+
+    local ws_scheme="ws"
+    local port_part=":${fm_port}"
+    if [ "$scheme" = "https" ]; then
+        ws_scheme="wss"
+        port_part=""
+    fi
+    printf '%s://%s%s/shelly' "$ws_scheme" "$fm_hostname" "$port_part"
+}
+
 generate_zitadel_docker_config() {
     local client_id="$1"
     local output_file
@@ -133,6 +160,8 @@ generate_zitadel_docker_config() {
     [ "${ZITADEL_EXTERNALSECURE:-false}" = "true" ] && scheme="https"
 
     local redirect_host="${CLIENT_DOMAIN:-$fm_hostname}"
+    local device_ingress_ws_url
+    device_ingress_ws_url="$(device_ingress_public_ws_base_url "$redirect_host" "$fm_port" "$scheme")"
     local backend_authority backend_api_base_url frontend_authority redirect_uri backend_auth_block service_auth_block
     backend_api_base_url="$(oidc_backend_api_base_url_for_docker)"
     backend_authority="$(oidc_backend_issuer_for_docker "$backend_api_base_url")"
@@ -143,6 +172,7 @@ generate_zitadel_docker_config() {
     else
         redirect_uri="${scheme}://${redirect_host}:${fm_port}/callback"
     fi
+    local oauth_redirect_base="${FM_OAUTH_REDIRECT_BASE:-${redirect_uri%/callback}}"
 
     backend_auth_block="$(oidc_backend_auth_block)"
     service_auth_block="$(oidc_service_auth_block "$backend_authority")"
@@ -191,6 +221,10 @@ FM_ENVIRONMENT_ID=${FM_ENVIRONMENT_ID:-${ENV_NAME:-unknown}}
 FM_TOPOLOGY_MODE=${runtime_topology_mode}
 FM_COMPOSE_PROJECT_NAME=${runtime_compose_project}
 FM_MANAGED_BY=${FM_MANAGED_BY:-fleet-manager}
+FM_DEVICE_INGRESS_TOKEN_PEPPER=${FM_DEVICE_INGRESS_TOKEN_PEPPER:?Missing FM_DEVICE_INGRESS_TOKEN_PEPPER}
+FM_DEVICE_INGRESS_PUBLIC_WS_BASE_URL=${device_ingress_ws_url}
+FM_NOTIFICATION_RECEIPT_SIGNING_SECRET=${FM_NOTIFICATION_RECEIPT_SIGNING_SECRET:?Missing FM_NOTIFICATION_RECEIPT_SIGNING_SECRET}
+FM_OAUTH_REDIRECT_BASE=${oauth_redirect_base}
 # HMAC keys Zitadel signs Action V2 webhook deliveries with.
 # *_PREVIOUS slots stay populated for one rotation to bridge the overlap window.
 FM_ZITADEL_GDPR_SIGNING_KEY=${FM_ZITADEL_GDPR_SIGNING_KEY:-}
@@ -218,6 +252,18 @@ generate_zitadel_local_config() {
     local fm_port="${FLEET_MANAGER_PORT:-7011}"
     local db_port="${POSTGRES_PORT:-5434}"
     local authority="http://${fm_hostname}:${zitadel_external_port}"
+
+    # Migration dirs + linked schemas come from the single source of truth
+    # (backend/db/migration/migration-layout.json), the same file the backend
+    # reads in migrationLayout.ts — so this generator can never drift from it.
+    local layout_file="$REPO_ROOT/backend/db/migration/migration-layout.json"
+    if [ ! -f "$layout_file" ]; then
+        echo "ERROR: migration layout not found: $layout_file" >&2
+        return 1
+    fi
+    local cwd_json schemas_json
+    cwd_json="$(jq -c '.migrationDirs' "$layout_file")" || return 1
+    schemas_json="$(jq -c '.linkedSchemas' "$layout_file")" || return 1
 
     cat > "$rc_file" <<RCEOF
 {
@@ -270,18 +316,9 @@ generate_zitadel_local_config() {
       "max": 40
     },
     "schema": "migration",
-    "cwd": [
-      "./db/migration/postgresql/logging",
-      "./db/migration/postgresql/organization",
-      "./db/migration/postgresql/user",
-      "./db/migration/postgresql/ui",
-      "./db/migration/postgresql/device",
-      "./db/migration/postgresql/device/groups",
-      "./db/migration/postgresql/device/em",
-      "./db/migration/postgresql/notifications"
-    ],
+    "cwd": ${cwd_json},
     "link": {
-      "schemas": ["device", "user", "ui", "organization", "device_em", "logging", "notifications"]
+      "schemas": ${schemas_json}
     }
   },
   "components": {

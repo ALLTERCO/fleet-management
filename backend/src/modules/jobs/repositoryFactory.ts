@@ -20,6 +20,7 @@ export interface BackupQueuedUnit {
     id: number;
     job_id: string;
     tenant_id: string;
+    logical_device_id: number;
     device_id: string;
     mode: 'create' | 'restore';
     target_summary: Record<string, unknown>;
@@ -30,10 +31,30 @@ export interface BackupUnitCounts {
     failed: number;
 }
 
+export interface BackupDeviceOwnership {
+    organizationId: string;
+    device: {
+        id: number | null;
+        external_id: string;
+    };
+    currentExternalId: string | null;
+    currentOrganizationId: string | null;
+}
+
+export interface BackupDeviceOwnershipProbe {
+    backupId: string;
+    organizationId: string;
+    device: {
+        id: number | null;
+        external_id: string;
+    };
+}
+
 export interface FirmwareQueuedUnit {
     id: number;
     job_id: string;
     tenant_id: string;
+    logical_device_id: number;
     device_id: string;
     mode: 'channel' | 'url';
     target_summary: Record<string, unknown>;
@@ -234,6 +255,7 @@ const ALL_JOB_KINDS: readonly OperationJobKind[] = [
     'firmware'
 ];
 const DEFAULT_LIMIT = 50;
+export const LOGICAL_DEVICE_LOCK_NAMESPACE = 73002;
 
 function normalizeLimit(limit: number | undefined): number {
     if (limit === undefined) return DEFAULT_LIMIT;
@@ -502,29 +524,66 @@ function markCredentialUnitSql(): string {
 
 function selectQueuedBackupUnitsSql(): string {
     return `
-        UPDATE organization.backup_units u
-           SET status = 'in_progress',
-               phase = 'running',
-               picked_up_at = now()
-          FROM (
-              SELECT u.id
+        WITH candidates AS MATERIALIZED (
+              SELECT u.id, u.logical_device_id
                 FROM organization.backup_units u
                 JOIN organization.backup_jobs j ON j.id = u.job_id
                WHERE u.status = 'queued'
                  AND j.status IN ('queued', 'running')
+                 AND u.logical_device_id IS NOT NULL
                ORDER BY u.id ASC
                LIMIT $1
-               FOR UPDATE SKIP LOCKED
-          ) sub,
-          organization.backup_jobs j
-         WHERE u.id = sub.id
-           AND j.id = u.job_id
-     RETURNING u.id,
-               u.job_id::text,
-               u.tenant_id,
-               u.device_id,
-               j.mode,
-               j.target_summary
+        ), bound AS MATERIALIZED (
+              SELECT candidates.id,
+                     candidates.logical_device_id,
+                     device.external_id
+                FROM candidates
+                JOIN device.list device
+                  ON device.id = candidates.logical_device_id
+                JOIN organization.backup_units unit
+                  ON unit.id = candidates.id
+                 AND device.organization_id = unit.tenant_id
+               ORDER BY candidates.logical_device_id, candidates.id
+               FOR UPDATE OF device
+        ), locked AS MATERIALIZED (
+              SELECT bound.*,
+                     pg_advisory_xact_lock(
+                         ${LOGICAL_DEVICE_LOCK_NAMESPACE},
+                         bound.logical_device_id
+                     ) AS identity_lock
+                FROM bound
+               ORDER BY bound.logical_device_id, bound.id
+        ), claimable AS MATERIALIZED (
+              SELECT unit.id,
+                     locked.logical_device_id,
+                     locked.external_id
+                FROM locked
+                JOIN organization.backup_units unit ON unit.id = locked.id
+               WHERE unit.status = 'queued'
+               FOR UPDATE OF unit SKIP LOCKED
+        ), claimed AS (
+              UPDATE organization.backup_units unit
+                 SET status = 'in_progress',
+                     phase = 'running',
+                     picked_up_at = now()
+                FROM claimable
+               WHERE unit.id = claimable.id
+           RETURNING unit.id,
+                     unit.job_id,
+                     unit.tenant_id,
+                     claimable.logical_device_id,
+                     claimable.external_id
+        )
+        SELECT claimed.id,
+               claimed.job_id::text,
+               claimed.tenant_id,
+               claimed.logical_device_id,
+               claimed.external_id AS device_id,
+               job.mode,
+               job.target_summary
+          FROM claimed
+          JOIN organization.backup_jobs job ON job.id = claimed.job_id
+         ORDER BY claimed.id
     `;
 }
 
@@ -566,14 +625,73 @@ function backupUnitCountsSql(): string {
 // The org that captured a stored backup = the tenant of its create-mode unit.
 // Authoritative even after the device transfers orgs, so a read can be scoped
 // to the capturing org instead of whoever can reach the device now.
-function backupCaptureOrgsSql(): string {
+function backupCaptureOwnersSql(): string {
     return `
-        SELECT DISTINCT ON (bu.backup_id) bu.backup_id, bu.tenant_id
+        SELECT DISTINCT ON (bu.backup_id)
+               bu.backup_id,
+               bu.tenant_id,
+               COALESCE(
+                   bu.logical_device_id,
+                   current_device.id,
+                   retired.device_id
+               ) AS logical_device_id,
+               bu.device_id AS snapshot_external_id,
+               bound_device.external_id AS current_external_id,
+               bound_device.organization_id AS current_organization_id
           FROM organization.backup_units bu
           JOIN organization.backup_jobs bj ON bj.id = bu.job_id
+          LEFT JOIN device.list current_device
+            ON current_device.organization_id = bu.tenant_id
+           AND current_device.external_id = bu.device_id
+          LEFT JOIN device.retired_external_identity retired
+            ON retired.organization_id = bu.tenant_id
+           AND retired.external_id = bu.device_id
+          LEFT JOIN device.list bound_device
+            ON bound_device.id = COALESCE(
+                bu.logical_device_id,
+                current_device.id,
+                retired.device_id
+            )
          WHERE bu.backup_id = ANY($1)
            AND bj.mode = 'create'
          ORDER BY bu.backup_id, bu.id ASC
+    `;
+}
+
+function resolveBackupDeviceOwnersSql(): string {
+    return `
+        WITH requested AS (
+            SELECT *
+              FROM jsonb_to_recordset($1::jsonb) AS probe(
+                  backup_id VARCHAR,
+                  organization_id VARCHAR,
+                  logical_device_id INT,
+                  snapshot_external_id VARCHAR
+              )
+        )
+        SELECT requested.backup_id,
+               requested.organization_id AS tenant_id,
+               COALESCE(
+                   requested.logical_device_id,
+                   current_device.id,
+                   retired.device_id
+               ) AS logical_device_id,
+               requested.snapshot_external_id,
+               bound_device.external_id AS current_external_id,
+               bound_device.organization_id AS current_organization_id
+          FROM requested
+          LEFT JOIN device.list current_device
+            ON current_device.organization_id = requested.organization_id
+           AND current_device.external_id = requested.snapshot_external_id
+          LEFT JOIN device.retired_external_identity retired
+            ON retired.organization_id = requested.organization_id
+           AND retired.external_id = requested.snapshot_external_id
+          LEFT JOIN device.list bound_device
+            ON bound_device.id = COALESCE(
+                requested.logical_device_id,
+                current_device.id,
+                retired.device_id
+            )
     `;
 }
 
@@ -592,30 +710,68 @@ function reclaimStaleBackupUnitsSql(): string {
 
 function selectQueuedFirmwareUnitsSql(): string {
     return `
-        UPDATE organization.firmware_units u
-           SET status = 'in_progress',
-               phase = 'starting',
-               picked_up_at = now()
-          FROM (
-              SELECT u.id
+        WITH candidates AS MATERIALIZED (
+              SELECT u.id, u.logical_device_id
                 FROM organization.firmware_units u
                 JOIN organization.firmware_jobs j ON j.id = u.job_id
                WHERE u.status = 'queued'
                  AND j.status IN ('queued', 'running')
+                 AND u.logical_device_id IS NOT NULL
                ORDER BY u.id ASC
                LIMIT $1
-               FOR UPDATE SKIP LOCKED
-          ) sub,
-          organization.firmware_jobs j
-         WHERE u.id = sub.id
-           AND j.id = u.job_id
-     RETURNING u.id,
-               u.job_id::text,
-               u.tenant_id,
-               u.device_id,
-               j.mode,
-               j.target_summary,
-               u.request
+        ), bound AS MATERIALIZED (
+              SELECT candidates.id,
+                     candidates.logical_device_id,
+                     device.external_id
+                FROM candidates
+                JOIN device.list device
+                  ON device.id = candidates.logical_device_id
+                JOIN organization.firmware_units unit
+                  ON unit.id = candidates.id
+                 AND device.organization_id = unit.tenant_id
+               ORDER BY candidates.logical_device_id, candidates.id
+               FOR UPDATE OF device
+        ), locked AS MATERIALIZED (
+              SELECT bound.*,
+                     pg_advisory_xact_lock(
+                         ${LOGICAL_DEVICE_LOCK_NAMESPACE},
+                         bound.logical_device_id
+                     ) AS identity_lock
+                FROM bound
+               ORDER BY bound.logical_device_id, bound.id
+        ), claimable AS MATERIALIZED (
+              SELECT unit.id,
+                     locked.logical_device_id,
+                     locked.external_id
+                FROM locked
+                JOIN organization.firmware_units unit ON unit.id = locked.id
+               WHERE unit.status = 'queued'
+               FOR UPDATE OF unit SKIP LOCKED
+        ), claimed AS (
+              UPDATE organization.firmware_units unit
+                 SET status = 'in_progress',
+                     phase = 'starting',
+                     picked_up_at = now()
+                FROM claimable
+               WHERE unit.id = claimable.id
+           RETURNING unit.id,
+                     unit.job_id,
+                     unit.tenant_id,
+                     unit.request,
+                     claimable.logical_device_id,
+                     claimable.external_id
+        )
+        SELECT claimed.id,
+               claimed.job_id::text,
+               claimed.tenant_id,
+               claimed.logical_device_id,
+               claimed.external_id AS device_id,
+               job.mode,
+               job.target_summary,
+               claimed.request
+          FROM claimed
+          JOIN organization.firmware_jobs job ON job.id = claimed.job_id
+         ORDER BY claimed.id
     `;
 }
 
@@ -850,13 +1006,74 @@ export function createJobRepository(
     async function backupCaptureOrgs(
         backupIds: string[]
     ): Promise<Map<string, string>> {
-        if (backupIds.length === 0) return new Map();
-        const rows = await queryRows<{backup_id: string; tenant_id: string}>(
-            backupCaptureOrgsSql(),
-            [backupIds]
-        );
+        const owners = await backupCaptureOwners(backupIds);
         const map = new Map<string, string>();
-        for (const r of rows) map.set(r.backup_id, r.tenant_id);
+        for (const [backupId, owner] of owners) {
+            map.set(backupId, owner.organizationId);
+        }
+        return map;
+    }
+
+    async function backupCaptureOwners(
+        backupIds: string[]
+    ): Promise<Map<string, BackupDeviceOwnership>> {
+        if (backupIds.length === 0) return new Map();
+        const rows = await queryRows<{
+            backup_id: string;
+            tenant_id: string;
+            logical_device_id: number | null;
+            snapshot_external_id: string;
+            current_external_id: string | null;
+            current_organization_id: string | null;
+        }>(backupCaptureOwnersSql(), [backupIds]);
+        const map = new Map<string, BackupDeviceOwnership>();
+        for (const row of rows) {
+            map.set(row.backup_id, {
+                organizationId: row.tenant_id,
+                device: {
+                    id: row.logical_device_id,
+                    external_id: row.snapshot_external_id
+                },
+                currentExternalId: row.current_external_id,
+                currentOrganizationId: row.current_organization_id
+            });
+        }
+        return map;
+    }
+
+    async function resolveBackupDeviceOwners(
+        probes: BackupDeviceOwnershipProbe[]
+    ): Promise<Map<string, BackupDeviceOwnership>> {
+        if (probes.length === 0) return new Map();
+        const rows = await queryRows<{
+            backup_id: string;
+            tenant_id: string;
+            logical_device_id: number | null;
+            snapshot_external_id: string;
+            current_external_id: string | null;
+            current_organization_id: string | null;
+        }>(resolveBackupDeviceOwnersSql(), [
+            JSON.stringify(
+                probes.map((probe) => ({
+                    backup_id: probe.backupId,
+                    organization_id: probe.organizationId,
+                    logical_device_id: probe.device.id,
+                    snapshot_external_id: probe.device.external_id
+                }))
+            )
+        ]);
+        const map = new Map<string, BackupDeviceOwnership>();
+        for (const row of rows) {
+            map.set(row.backup_id, {
+                organizationId: row.tenant_id,
+                device: {
+                    id: row.logical_device_id,
+                    external_id: row.snapshot_external_id
+                },
+                currentExternalId: row.current_external_id,
+                currentOrganizationId: row.current_organization_id
+            });
+        }
         return map;
     }
 
@@ -1051,6 +1268,8 @@ export function createJobRepository(
         markBackupUnitFailed,
         getBackupUnitCounts,
         backupCaptureOrgs,
+        backupCaptureOwners,
+        resolveBackupDeviceOwners,
         reclaimStaleBackupUnits,
         listQueuedFirmwareUnits,
         markFirmwareUnitProgress,

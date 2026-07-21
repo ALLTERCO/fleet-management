@@ -54,6 +54,7 @@ import RpcError from '../../rpc/RpcError';
 import {requireOrganizationId} from '../../rpc/scope';
 import {validateOrThrow} from '../../rpc/validateOrThrow';
 import {
+    FIRMWARE_CHECK_FOR_UPDATE_BULK_PARAMS_SCHEMA,
     FIRMWARE_CREATE_LIBRARY_DOWNLOAD_URL_PARAMS_SCHEMA,
     FIRMWARE_DELETE_LIBRARY_ENTRY_PARAMS_SCHEMA,
     FIRMWARE_DESCRIBE,
@@ -76,6 +77,9 @@ import {
     FIRMWARE_TRIGGER_AUTO_UPDATE_PARAMS_SCHEMA,
     FIRMWARE_UNREGISTER_MANUAL_UPDATE_PARAMS_SCHEMA,
     FIRMWARE_UPDATE_LIBRARY_ENTRY_PARAMS_SCHEMA,
+    type FirmwareCheckForUpdateBulkParams,
+    type FirmwareCheckForUpdateBulkResponse,
+    type FirmwareCheckForUpdateResult,
     type FirmwareCreateLibraryDownloadUrlParams,
     type FirmwareCreateLibraryDownloadUrlResponse,
     type FirmwareDeleteLibraryEntryParams,
@@ -325,6 +329,25 @@ function canUpdateFirmwareDevices(sender: CommandSender): boolean {
     return isComponentPermissionAllowed(
         canPerformComponentOperation(sender, 'devices', 'update')
     );
+}
+
+function canExecuteFirmwareDevices(sender: CommandSender): boolean {
+    return isComponentPermissionAllowed(
+        canPerformComponentOperation(sender, 'devices', 'execute')
+    );
+}
+
+// Devices checked concurrently by CheckForUpdateBulk (mirrors the auto-update
+// candidate batch size — one Shelly.CheckForUpdate round-trip each).
+const FIRMWARE_CHECK_BULK_CONCURRENCY = 5;
+
+function firmwareVersionOffer(
+    offer: {version?: unknown; build_id?: unknown} | null | undefined
+): {version: string; build_id?: string} | undefined {
+    if (!offer || typeof offer.version !== 'string') return undefined;
+    return typeof offer.build_id === 'string'
+        ? {version: offer.version, build_id: offer.build_id}
+        : {version: offer.version};
 }
 
 export default class FirmwareComponent extends Component<FirmwareComponentConfig> {
@@ -776,6 +799,70 @@ export default class FirmwareComponent extends Component<FirmwareComponentConfig
         } catch (err) {
             this.releaseFirmwareJobLocks(shellyIDs, ownerKey);
             throw err;
+        }
+    }
+
+    // One call checks firmware on many devices, fanning out server-side with a
+    // bounded concurrency instead of one FM RPC per device. A non-mutating
+    // check, so it skips devices the caller cannot execute and reports each
+    // device's outcome (checked/offline/error) rather than failing the batch.
+    // The frontend chunks the fleet so one call stays under the WS timeout.
+    @Component.Expose('CheckForUpdateBulk')
+    @Component.CheckPermissions(canExecuteFirmwareDevices)
+    async checkForUpdateBulk(
+        rawParams: unknown,
+        sender: CommandSender
+    ): Promise<FirmwareCheckForUpdateBulkResponse> {
+        const params = validateOrThrow<FirmwareCheckForUpdateBulkParams>(
+            rawParams,
+            FIRMWARE_CHECK_FOR_UPDATE_BULK_PARAMS_SCHEMA
+        );
+        const requested = Array.from(new Set(params.shellyIDs.filter(Boolean)));
+        const allowed = await Promise.all(
+            requested.map((id) =>
+                canPerformComponentOperationAsync(
+                    sender,
+                    'devices',
+                    'execute',
+                    id
+                )
+            )
+        );
+        const ids = requested.filter((_, i) =>
+            isComponentPermissionAllowed(allowed[i])
+        );
+
+        const items: FirmwareCheckForUpdateResult[] = [];
+        for (let i = 0; i < ids.length; i += FIRMWARE_CHECK_BULK_CONCURRENCY) {
+            const batch = ids.slice(i, i + FIRMWARE_CHECK_BULK_CONCURRENCY);
+            items.push(
+                ...(await Promise.all(
+                    batch.map((id) => this.checkOneForUpdate(id))
+                ))
+            );
+        }
+        return {items};
+    }
+
+    private async checkOneForUpdate(
+        shellyID: string
+    ): Promise<FirmwareCheckForUpdateResult> {
+        const device = DeviceCollector.getDevice(shellyID);
+        if (!device) return {shellyID, status: 'offline'};
+        try {
+            const resp = await device.sendRPC('Shelly.CheckForUpdate', {});
+            return {
+                shellyID,
+                status: 'checked',
+                stable: firmwareVersionOffer(resp?.stable),
+                beta: firmwareVersionOffer(resp?.beta)
+            };
+        } catch (error) {
+            return {
+                shellyID,
+                status: 'error',
+                error: RpcError.messageOf(error) ?? String(error)
+            };
         }
     }
 

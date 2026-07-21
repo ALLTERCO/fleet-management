@@ -3,9 +3,9 @@
         <div class="ug-layout">
             <h2 class="sr-only">User Groups</h2>
 
-            <BasicBlock darker title="User Groups">
-                <div class="ug-toolbar">
-                    <div class="search-pill">
+            <div class="ug-panel">
+                <div class="ug-panel__head">
+                    <div class="search-pill ug-search">
                         <i class="fas fa-search search-pill__icon" />
                         <input
                             v-model.trim="search"
@@ -66,7 +66,7 @@
                         </button>
                     </template>
                 </DataList>
-            </BasicBlock>
+            </div>
         </div>
 
         <template #modals>
@@ -191,7 +191,6 @@ import {
     reactive,
     ref
 } from 'vue';
-import BasicBlock from '@/components/core/BasicBlock.vue';
 import Button from '@/components/core/Button.vue';
 import DataList, {type DataColumn} from '@/components/core/DataList.vue';
 import FormField from '@/components/core/FormField.vue';
@@ -395,16 +394,26 @@ function confirmDelete(g: UserGroupResponse) {
     gap: var(--gap-sm);
     padding-top: var(--gap-sm);
 }
-.ug-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--gap-sm);
-    margin-bottom: var(--gap-sm);
+/* Same panel language as the Users page — head row with the search
+   centered and the action on the right, no title header. */
+.ug-panel {
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-lg);
+    background-color: var(--color-surface-1);
+    overflow: hidden;
 }
-.ug-toolbar .search-pill {
-    flex: 1 1 200px;
-    max-width: 320px;
+.ug-panel__head {
+    display: flex;
+    align-items: center;
+    padding: var(--gap-xs) var(--gap-sm);
+    min-height: var(--touch-target-min);
+    border-bottom: 1px solid var(--color-border-default);
+    background-color: var(--color-surface-2);
+}
+.ug-search {
+    margin: 0 auto;
+    max-width: 240px;
+    min-width: 140px;
 }
 .ug-action-btn {
     display: inline-flex;
@@ -479,6 +488,6 @@ function confirmDelete(g: UserGroupResponse) {
 }
 .ug-hint {
     color: var(--color-text-quaternary);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
 }
 </style>

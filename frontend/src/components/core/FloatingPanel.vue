@@ -1,5 +1,5 @@
 <template>
-    <Teleport :to="teleportTarget">
+    <Teleport to="body">
         <Transition name="floating-panel-fade">
             <div
                 v-if="open"
@@ -16,7 +16,7 @@
 </template>
 
 <script setup lang="ts">
-import {nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue';
+import {nextTick, onBeforeUnmount, ref, watch} from 'vue';
 
 type Placement = 'bottom-start' | 'bottom-end' | 'top-start' | 'top-end';
 
@@ -55,15 +55,9 @@ const panelRef = ref<HTMLElement | null>(null);
 const panelStyle = ref<Record<string, string>>({
     visibility: 'hidden'
 });
-const teleportTarget = ref<string | HTMLElement>('body');
 
 let frameId = 0;
 let listenersAttached = false;
-
-function syncTeleportTarget() {
-    const host = document.getElementById('fleet-floating-root');
-    teleportTarget.value = host ?? 'body';
-}
 
 function clamp(value: number, bounds: {min: number; max: number}) {
     return Math.min(Math.max(value, bounds.min), bounds.max);
@@ -197,7 +191,6 @@ watch(
     () => props.open,
     async (isOpen) => {
         if (isOpen) {
-            syncTeleportTarget();
             panelStyle.value = {visibility: 'hidden'};
             attachListeners();
             await nextTick();
@@ -219,10 +212,6 @@ watch(
     }
 );
 
-onMounted(() => {
-    syncTeleportTarget();
-});
-
 onBeforeUnmount(() => {
     if (frameId) {
         cancelAnimationFrame(frameId);
@@ -238,7 +227,7 @@ defineExpose({
 <style scoped>
 .floating-panel {
     position: fixed;
-    z-index: calc(var(--z-modal) + 10);
+    z-index: var(--z-tooltip);
     pointer-events: auto;
 }
 
@@ -249,6 +238,9 @@ defineExpose({
     backdrop-filter: var(--glass-3-filter);
     -webkit-backdrop-filter: var(--glass-3-filter);
     border: 1px solid var(--glass-border);
+    /* Menus were designed on radius-lg (Dropdown, GroupWidget pass the
+       same via utility); the base owns it so no consumer needs to. */
+    border-radius: var(--radius-lg);
     box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
 }
 

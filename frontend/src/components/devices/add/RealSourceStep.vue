@@ -1,77 +1,10 @@
 <template>
     <div class="rss">
-        <div class="rss__intro">
-            <h4 class="rss__heading">Find the device</h4>
-            <p class="rss__subheading">
-                Pick a device that's already knocking on the door, or hand the
-                wizard an IP so it can reach out.
-            </p>
-        </div>
+        <!-- The tabs say it all — no intro line repeating them. -->
+        <ViewToggle v-model="activeLane" :options="laneOptions" />
 
-        <nav class="rss__tabs" role="tablist" aria-label="Discovery source">
-            <template v-for="lane in lanes" :key="lane.id">
-                <button
-                    role="tab"
-                    type="button"
-                    class="rss__tab"
-                    :class="{
-                        'rss__tab--active': activeLane === lane.id,
-                        'rss__tab--disabled': lane.disabled
-                    }"
-                    :aria-selected="activeLane === lane.id ? 'true' : 'false'"
-                    :aria-disabled="lane.disabled ? 'true' : 'false'"
-                    :data-lane="lane.id"
-                    @click="onLaneClick(lane)"
-                >
-                    <i :class="lane.icon" aria-hidden="true" />
-                    {{ lane.label }}
-                </button>
-            </template>
-        </nav>
-
-        <section v-if="activeLane === 'waiting'" class="rss__lane">
-            <div class="rss__lane-head">
-                <span class="rss__lane-hint">
-                    Select devices to admit, or generate an enrollment token to
-                    set one up.
-                </span>
-                <div class="rss__lane-actions">
-                    <WaitingRoomBulkActions
-                        :state="waitingState"
-                        mode="pending"
-                        :can-accept="canAccept"
-                        :can-reject="canReject"
-                    />
-                </div>
-            </div>
-            <div
-                v-if="waitingState.loading.value && !waitingState.devices.value"
-                class="rss__state"
-            >
-                <Spinner size="sm" /> <span>Loading…</span>
-            </div>
-            <div
-                v-else-if="waitingState.allEntries.value.length === 0"
-                class="rss__state rss__state--empty"
-            >
-                <i class="fas fa-inbox" aria-hidden="true" />
-                <span>Nothing waiting. Plug a device into the network and
-                    it'll show up here.</span>
-            </div>
-            <div v-else class="dc-grid">
-                <WaitingRoomDeviceCard
-                    v-for="[internalId, device] in waitingState.paginatedItems.value"
-                    :key="internalId"
-                    :device="device"
-                    :selected="waitingState.selectedSet.value.has(internalId)"
-                    :can-accept="canAccept"
-                    :can-reject="canReject"
-                    show-reject
-                    @click="waitingState.deviceClicked(internalId)"
-                    @accept="waitingState.acceptDevice(internalId)"
-                    @reject="waitingState.rejectDevice(internalId)"
-                />
-            </div>
+        <section v-if="activeLane === 'token'" class="rss__lane">
+            <EnrollmentTokenPanel />
         </section>
 
         <section v-else-if="activeLane === 'ip'" class="rss__lane">
@@ -105,101 +38,80 @@
                 :admitting="admitting"
                 @admit="admitProbed"
             />
-            <div
-                v-if="ipReconnect?.status === 'waiting'"
-                class="rss__state rss__state--info"
-            >
-                <Spinner size="sm" />
-                <span>
-                    Device {{ ipReconnect.shellyId }} is rebooting and
-                    connecting to FM — wizard will continue automatically.
-                </span>
-            </div>
-            <div
-                v-else-if="ipReconnect?.status === 'connected'"
-                class="rss__state rss__state--success"
-            >
-                <i class="fas fa-check-circle" aria-hidden="true" />
-                Device {{ ipReconnect.shellyId }} joined the fleet.
-            </div>
-            <div
-                v-else-if="ipReconnect?.status === 'timeout'"
-                class="rss__state rss__state--error"
-            >
-                <i class="fas fa-triangle-exclamation" aria-hidden="true" />
-                Device {{ ipReconnect.shellyId }} did not reconnect within
-                the expected window. Power-cycle the device and try again
-                — the admission intent is still valid.
-            </div>
         </section>
 
         <section v-else-if="activeLane === 'scan'" class="rss__lane">
-            <div v-if="!mdnsEnabled" class="rss__state rss__state--empty">
-                <i class="fas fa-radar" aria-hidden="true" />
-                <strong>mDNS is disabled</strong>
-                <span>
-                    Active LAN scanning is off in server config. Enable mDNS
-                    in Settings to broadcast a query and discover devices.
-                </span>
-                <Button type="white" size="sm" @click="goToSettings">
-                    Open Settings
-                </Button>
-            </div>
-            <template v-else>
-                <div class="rss__form">
-                    <Button
-                        type="blue"
-                        size="sm"
-                        :loading="scanning"
-                        @click="onScan"
-                    >
-                        <i class="fas fa-radar" aria-hidden="true" />
-                        {{ scanHits.length ? 'Re-scan LAN' : 'Scan LAN' }}
-                    </Button>
-                    <span v-if="lastScanLabel" class="rss__scan-meta">
-                        {{ lastScanLabel }}
-                    </span>
-                </div>
-                <div v-if="scanError" class="rss__state rss__state--error">
-                    {{ scanError }}
-                </div>
-                <div
-                    v-else-if="!scanning && scanHits.length === 0 && hasScanned"
-                    class="rss__state rss__state--empty"
+            <div class="rss__form">
+                <Button
+                    type="blue"
+                    size="sm"
+                    :loading="scanning"
+                    @click="onScan"
                 >
                     <i class="fas fa-radar" aria-hidden="true" />
-                    <span>No Shelly devices answered on the LAN.</span>
-                </div>
-                <ul v-else-if="scanHits.length" class="rss__scan-list">
-                    <li
-                        v-for="hit in scanHits"
-                        :key="hit.shellyId"
-                        class="rss__scan-row"
-                    >
-                        <DiscoveredDeviceCard
-                            :device="{
-                                ...hit,
-                                authRequired:
-                                    scanHitAuth[hit.shellyId]?.authRequired ===
-                                    true
-                            }"
-                            :password="scanHitAuth[hit.shellyId]?.password ?? ''"
-                            :admitting="admittingScanId === hit.shellyId"
-                            @admit="admitScanHit(hit)"
-                            @update:password="
-                                (value) => (authForHit(hit.shellyId).password = value)
-                            "
-                        />
-                    </li>
-                </ul>
-            </template>
+                    {{ scanHits.length ? 'Re-scan network' : 'Scan network' }}
+                </Button>
+                <span v-if="lastScanLabel" class="rss__scan-meta">
+                    {{ lastScanLabel }}
+                </span>
+            </div>
+            <div v-if="scanError" class="rss__state rss__state--error">
+                {{ scanError }}
+            </div>
+            <div
+                v-else-if="!scanning && scanHits.length === 0 && hasScanned"
+                class="rss__state rss__state--empty"
+            >
+                <i class="fas fa-radar" aria-hidden="true" />
+                <span>No Shelly devices answered on the LAN.</span>
+            </div>
+            <div v-else-if="scanHits.length" class="dc-grid">
+                <DiscoveredDeviceCard
+                    v-for="hit in scanHits"
+                    :key="hit.shellyId"
+                    :device="enrichedHit(hit)"
+                    :password="scanHitAuth[hit.shellyId]?.password ?? ''"
+                    :admitting="admittingScanId === hit.shellyId"
+                    @admit="admitScanHit(hit)"
+                    @update:password="
+                        (value) => (authForHit(hit.shellyId).password = value)
+                    "
+                />
+            </div>
         </section>
+
+        <!-- Admission progress — shared by the IP and scan lanes. -->
+        <div
+            v-if="ipReconnect?.status === 'waiting'"
+            class="rss__state rss__state--info"
+        >
+            <Spinner size="sm" />
+            <span>
+                Device {{ ipReconnect.shellyId }} is rebooting and
+                connecting to FM. The wizard continues automatically.
+            </span>
+        </div>
+        <div
+            v-else-if="ipReconnect?.status === 'connected'"
+            class="rss__state rss__state--success"
+        >
+            <i class="fas fa-check-circle" aria-hidden="true" />
+            Device {{ ipReconnect.shellyId }} joined the fleet.
+        </div>
+        <div
+            v-else-if="ipReconnect?.status === 'timeout'"
+            class="rss__state rss__state--error"
+        >
+            <i class="fas fa-triangle-exclamation" aria-hidden="true" />
+            Device {{ ipReconnect.shellyId }} did not reconnect within
+            the expected window. Power-cycle the device and try again.
+            The admission intent is still valid.
+        </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import {computed, onBeforeUnmount, onMounted, reactive, ref} from 'vue';
-import {useRouter} from 'vue-router';
+import {computed, onBeforeUnmount, reactive, ref} from 'vue';
 import {
     admitByHost,
     type DiscoveryProbeResult,
@@ -207,43 +119,22 @@ import {
     probeHost,
     scanLan
 } from '@/api/discoveryRpc';
-import WaitingRoomDeviceCard from '@/components/cards/WaitingRoomDeviceCard.vue';
 import Button from '@/components/core/Button.vue';
 import FormField from '@/components/core/FormField.vue';
 import Input from '@/components/core/Input.vue';
 import Spinner from '@/components/core/Spinner.vue';
-import WaitingRoomBulkActions from '@/components/ingress/WaitingRoomBulkActions.vue';
-import {useWaitingRoomList} from '@/composables/useWaitingRoomList';
-import {SETTINGS_PATH} from '@/constants';
-import {useAuthStore} from '@/stores/auth';
+import ViewToggle, {
+    type ViewToggleOption
+} from '@/components/core/ViewToggle.vue';
+import EnrollmentTokenPanel from '@/components/ingress/EnrollmentTokenPanel.vue';
 import {useDevicesStore} from '@/stores/devices';
 import {useSystemStore} from '@/stores/system';
 import DiscoveredDeviceCard from './DiscoveredDeviceCard.vue';
 
 const devicesStore = useDevicesStore();
 const systemStore = useSystemStore();
-const authStore = useAuthStore();
-const router = useRouter();
 
-// Same gates as the Waiting Room page.
-const canAccept = computed(() =>
-    authStore.canPerformComponent('waiting_room', 'create')
-);
-const canReject = computed(() =>
-    authStore.canPerformComponent('waiting_room', 'delete')
-);
-
-// SSOT: reuse the Waiting Room composable — no duplicate pending/admit code.
-const waitingState = useWaitingRoomList('pending');
-
-type LaneId = 'waiting' | 'ip' | 'scan';
-
-interface Lane {
-    id: LaneId;
-    label: string;
-    icon: string;
-    disabled?: boolean;
-}
+type LaneId = 'token' | 'ip' | 'scan';
 
 const RECONNECT_POLL_INTERVAL_MS = 2_000;
 const AUTH_REQUIRED_CODE = 3404;
@@ -259,7 +150,7 @@ interface ReconnectWatch {
     timerId: number;
 }
 
-const activeLane = ref<LaneId>('waiting');
+const activeLane = ref<LaneId>('token');
 const ipInput = ref('');
 const ipPassword = ref('');
 const probedDevice = ref<DiscoveryProbeResult | null>(null);
@@ -285,14 +176,20 @@ let reconnectWatch: ReconnectWatch | null = null;
 
 const mdnsEnabled = computed(() => systemStore.config.mdns.enable);
 
-const lanes = computed<Lane[]>(() => [
-    {id: 'waiting', label: 'Waiting room', icon: 'fas fa-inbox'},
-    {id: 'ip', label: 'Type an IP', icon: 'fas fa-network-wired'},
-    {
-        id: 'scan',
-        label: mdnsEnabled.value ? 'Scan LAN' : 'Scan LAN (off)',
-        icon: 'fas fa-radar'
-    }
+// Token first — it is the main way a device joins. The network scan tab
+// exists only when the server has mDNS on; off means hidden, not greyed.
+const laneOptions = computed<ViewToggleOption<LaneId>[]>(() => [
+    {value: 'token', label: 'Generate token', icon: 'fas fa-key'},
+    {value: 'ip', label: 'Add by IP', icon: 'fas fa-network-wired'},
+    ...(mdnsEnabled.value
+        ? [
+              {
+                  value: 'scan',
+                  label: 'Network scan',
+                  icon: 'fas fa-radar'
+              } as ViewToggleOption<LaneId>
+          ]
+        : [])
 ]);
 
 const lastScanLabel = computed(() => {
@@ -303,15 +200,6 @@ const lastScanLabel = computed(() => {
 
 function formatTime(d: Date): string {
     return d.toLocaleTimeString();
-}
-
-function onLaneClick(lane: Lane): void {
-    if (lane.disabled) return;
-    activeLane.value = lane.id;
-}
-
-function goToSettings(): void {
-    router.push(SETTINGS_PATH);
 }
 
 async function onProbe(): Promise<void> {
@@ -402,20 +290,68 @@ function authForHit(shellyId: string): ScanHitAuth {
 }
 
 async function onScan(): Promise<void> {
+    // A new scan invalidates every in-flight enrichment probe.
+    const generation = ++scanGeneration;
     scanning.value = true;
     scanError.value = null;
-    // Drop old per-hit passwords so they don't survive a re-scan.
+    // Drop old per-hit passwords and details so they don't survive a re-scan.
     for (const key of Object.keys(scanHitAuth)) delete scanHitAuth[key];
+    for (const key of Object.keys(scanHitDetails)) delete scanHitDetails[key];
     try {
         const result = await scanLan();
         scanHits.value = result.hits;
         lastScannedAt.value = result.scannedAt;
         hasScanned.value = true;
+        void enrichScanHits(result.hits, generation);
     } catch (err) {
         scanError.value = err instanceof Error ? err.message : String(err);
     } finally {
         scanning.value = false;
     }
+}
+
+// mDNS answers carry only id, model and IP — ask each device directly so
+// the cards fill in firmware and auth info like the waiting-room cards.
+const ENRICH_CONCURRENCY = 3;
+let scanGeneration = 0;
+const scanHitDetails = reactive<Record<string, Partial<DiscoveryProbeResult>>>(
+    {}
+);
+
+function enrichedHit(hit: DiscoveryScanHit) {
+    const details = scanHitDetails[hit.shellyId] ?? {};
+    return {
+        ...hit,
+        ...details,
+        authRequired:
+            details.authRequired === true ||
+            scanHitAuth[hit.shellyId]?.authRequired === true
+    };
+}
+
+async function enrichScanHits(
+    hits: DiscoveryScanHit[],
+    generation: number
+): Promise<void> {
+    const queue = hits.filter((h) => !h.alreadyKnown);
+    const workers = Array.from(
+        {length: Math.min(ENRICH_CONCURRENCY, queue.length)},
+        async () => {
+            while (queue.length > 0 && generation === scanGeneration) {
+                const hit = queue.shift();
+                if (!hit) return;
+                try {
+                    const details = await probeHost(hit.ip);
+                    // A newer scan owns the map now — drop the late answer.
+                    if (generation !== scanGeneration) return;
+                    scanHitDetails[hit.shellyId] = details;
+                } catch {
+                    // Best-effort: the card falls back to the mDNS answer.
+                }
+            }
+        }
+    );
+    await Promise.all(workers);
 }
 
 async function admitScanHit(hit: DiscoveryScanHit): Promise<void> {
@@ -430,7 +366,7 @@ async function admitScanHit(hit: DiscoveryScanHit): Promise<void> {
         if (rpcErrorCode(err) === AUTH_REQUIRED_CODE) {
             auth.authRequired = true;
             scanError.value =
-                'Device requires a password — enter it on the card and try again.';
+                'Device requires a password. Enter it on the card and try again.';
         } else {
             scanError.value = errorMessage(err);
         }
@@ -439,8 +375,6 @@ async function admitScanHit(hit: DiscoveryScanHit): Promise<void> {
     }
 }
 
-
-onMounted(() => waitingState.loadItems());
 
 onBeforeUnmount(() => {
     invalidateProbe();
@@ -451,88 +385,20 @@ onBeforeUnmount(() => {
 <style scoped>
 .rss {
     display: grid;
-    gap: var(--gap-lg);
-}
-.rss__intro {
-    display: grid;
-    gap: 6px;
-}
-.rss__eyebrow {
-    font-size: var(--type-caption);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-caps);
-    color: var(--brand-light);
-    font-weight: var(--font-semibold);
-}
-.rss__heading {
-    margin: 0;
-    font-size: var(--type-display);
-    line-height: var(--leading-tight);
-    color: var(--color-text-primary);
-    font-weight: var(--font-semibold);
-}
-.rss__subheading {
-    margin: 0;
-    color: var(--color-text-secondary);
-    font-size: var(--type-body);
-    max-width: 56ch;
-}
-.rss__tabs {
-    display: flex;
-    gap: var(--gap-sm);
-    padding: 4px;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: var(--radius-md);
-    width: fit-content;
-}
-.rss__tab {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--gap-xs);
-    padding: 8px 14px;
-    background: transparent;
-    border: 0;
-    border-radius: var(--radius-sm);
-    color: var(--color-text-secondary);
-    font-weight: var(--font-medium);
-    cursor: pointer;
-    transition:
-        background var(--duration-fast),
-        color var(--duration-fast);
-}
-.rss__tab:hover:not(.rss__tab--disabled) {
-    color: var(--color-text-primary);
-}
-.rss__tab--active {
-    background: var(--color-primary);
-    color: var(--color-text-inverse);
-    box-shadow: var(--shadow-brand-glow);
-}
-.rss__tab--disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
+    gap: var(--gap-md);
 }
 .rss__lane {
     display: grid;
     gap: var(--gap-md);
 }
-.rss__lane-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--gap-md);
-    flex-wrap: wrap;
+/* Triage cards were built for the devices grid; inside the modal they
+   size to their content so the modal never scrolls. */
+.rss__lane :deep(.dtc) {
+    height: auto;
+    max-width: 30rem;
 }
-.rss__lane-hint {
-    color: var(--color-text-tertiary);
-    font-size: var(--type-caption);
-}
-.rss__lane-actions {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: var(--gap-sm);
+.rss__lane .dc-grid :deep(.dtc) {
+    max-width: none;
 }
 .rss__form {
     display: flex;
@@ -590,15 +456,5 @@ onBeforeUnmount(() => {
 .rss__state--empty i {
     color: var(--brand-light);
     font-size: var(--type-subheading);
-}
-.rss__scan-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: var(--gap-sm);
-}
-.rss__scan-row {
-    display: contents;
 }
 </style>

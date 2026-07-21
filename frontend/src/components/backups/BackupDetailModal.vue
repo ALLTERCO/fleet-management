@@ -124,8 +124,9 @@ function formatCreatedAtUtc(timestamp: number): string {
 }
 
 .bkd__value {
+    /* Medium weight: readable but quieter than the modal title. */
     font-size: var(--type-caption);
-    font-weight: var(--font-bold);
+    font-weight: var(--font-medium);
     color: var(--color-text-primary);
 }
 

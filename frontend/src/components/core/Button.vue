@@ -92,9 +92,9 @@ const classColor = computed(() => {
     } else if (props.size === 'sm') {
         classes.push('py-2 px-3 min-h-[var(--touch-target-min)]');
     } else if (props.size === 'md') {
-        classes.push('py-2.5', 'px-4');
+        classes.push('py-2.5 px-4 min-h-[var(--touch-target-min)]');
     } else if (props.size === 'lg') {
-        classes.push('core-btn--lg py-3 px-6');
+        classes.push('core-btn--lg py-3 px-6 min-h-[var(--touch-target-min)]');
     }
 
     if (props.narrow) {
@@ -138,6 +138,14 @@ const classColor = computed(() => {
    on mousedown, the spring easing gives a tiny overshoot on release. */
 .core-btn:active:not(:disabled) {
     transform: scale(var(--press-scale));
+}
+/* Solid variants set their own box-shadow, which overrides the global
+   box-shadow-based focus ring and leaves keyboard focus invisible on the
+   primary CTA and the destructive Confirm. An outline is drawn independently
+   of box-shadow, so it stays visible on every variant. */
+.core-btn:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
 }
 .btn-white {
     background-color: var(--color-text-primary);

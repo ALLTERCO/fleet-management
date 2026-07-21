@@ -36,6 +36,7 @@ export const MAIL_DESCRIBE: DescribeOutput = new DescribeBuilder('mail', {
     description: 'Send email through the configured server SMTP transport.'
 })
     .registerMethod('Send', {
+        safety: {operation: 'execute'},
         params: MAIL_SEND_PARAMS_SCHEMA,
         response: MAIL_SEND_RESPONSE_SCHEMA,
         permission: {

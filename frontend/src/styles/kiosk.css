@@ -122,10 +122,10 @@ body.kiosk .btn-sm {
         padding: var(--space-1) 0;
     }
     .sec-t {
-        font-size: var(--text-xs);
+        font-size: var(--type-body);
     }
     .ph h1 {
-        font-size: var(--text-lg);
+        font-size: var(--type-subheading);
     }
     .filter-bar {
         gap: var(--space-1);
@@ -158,6 +158,6 @@ body.kiosk .btn-sm {
         gap: 10px;
     }
     .ph h1 {
-        font-size: var(--text-xl);
+        font-size: var(--type-subheading);
     }
 }

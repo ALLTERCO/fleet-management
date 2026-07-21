@@ -2,7 +2,7 @@ import log4js from 'log4js';
 import type WebSocket from 'ws';
 import {tuning} from '../../../config';
 import type CommandSender from '../../../model/CommandSender';
-import {redactSensitiveParams} from '../../../modules/AuditLogger';
+import * as AuditLogger from '../../../modules/AuditLogger';
 import * as Commander from '../../../modules/Commander';
 import * as DeviceCollector from '../../../modules/DeviceCollector';
 import * as Observability from '../../../modules/Observability';
@@ -18,6 +18,7 @@ import {enforceRateLimit} from '../rateLimit';
 import {canExecuteOnDevice} from '../utils/devicePermissions';
 import {senderFromUser} from '../utils/senderFromRequest';
 import {ConnectionContext} from './ConnectionContext';
+import {auditRelay} from './relayAudit';
 import {safeSocketSend} from './safeSocketSend';
 
 const logger = log4js.getLogger('message-handler');
@@ -184,6 +185,15 @@ export default class MessageHandler {
             const targets = data.dst.filter(
                 (dst): dst is string => typeof dst === 'string'
             );
+            // Bound the fan-out: an unbounded dst array amplifies into N authz
+            // checks before any rate limit applies.
+            if (targets.length > tuning.ws.maxBatchSize) {
+                const rpcError = RpcError.InvalidRequest(
+                    `relay target count exceeds maximum ${tuning.ws.maxBatchSize}`
+                ).getRpcError(data.id);
+                safeSocketSend(socket, JSON.stringify(rpcError));
+                return;
+            }
             for (const dst of targets) {
                 void this.#singleRelayCommand(socket, dst, data, user);
             }
@@ -211,10 +221,28 @@ export default class MessageHandler {
             shellyID,
             data.method,
             truncateForDebugLog(
-                redactSensitiveParams(data.method, data.params),
+                AuditLogger.redactSensitiveParams(data.method, data.params),
                 tuning.ws.debugLogMaxBytes
             )
         );
+        // Throttle before the existence and permission checks so a flood of
+        // denied or unknown-device relays can't amplify.
+        try {
+            enforceRateLimit(
+                user.username,
+                data.method,
+                user.organizationId ?? null
+            );
+        } catch (err) {
+            if (err instanceof RpcError) {
+                safeSocketSend(
+                    socket,
+                    JSON.stringify(err.getRpcError(data.id))
+                );
+                return;
+            }
+            throw err;
+        }
         const shelly = DeviceCollector.getDevice(shellyID);
         if (shelly === undefined) {
             const rpcError = RpcError.DeviceNotFound().getRpcError(data.id);
@@ -234,30 +262,19 @@ export default class MessageHandler {
             return;
         }
 
-        try {
-            enforceRateLimit(
-                user.username,
-                data.method,
-                user.organizationId ?? null
-            );
-        } catch (err) {
-            if (err instanceof RpcError) {
-                safeSocketSend(
-                    socket,
-                    JSON.stringify(err.getRpcError(data.id))
-                );
-                return;
-            }
-            throw err;
-        }
-
         const {method, params, src, id} = data;
         shelly.sendRPC(method, params, true).then(
             (resp) => {
+                auditRelay(user, method, params, {success: true});
                 const result = buildOutgoingJsonRpc(id, src, resp);
                 safeSocketSend(socket, JSON.stringify(result));
             },
             (err) => {
+                auditRelay(user, method, params, {
+                    success: false,
+                    errorMessage:
+                        err instanceof Error ? err.message : String(err)
+                });
                 logger.error(
                     'Relay RPC failed dst:[%s] method:[%s] err:[%s]',
                     shellyID,
@@ -338,7 +355,7 @@ export default class MessageHandler {
             'Received %s with %s from %s:%s',
             data.method,
             truncateForDebugLog(
-                redactSensitiveParams(data.method, data.params),
+                AuditLogger.redactSensitiveParams(data.method, data.params),
                 tuning.ws.debugLogMaxBytes
             ),
             user.username,
@@ -368,7 +385,7 @@ export default class MessageHandler {
                 err?.message,
                 data.method,
                 truncateForDebugLog(
-                    redactSensitiveParams(data.method, params),
+                    AuditLogger.redactSensitiveParams(data.method, params),
                     tuning.ws.debugLogMaxBytes
                 )
             );

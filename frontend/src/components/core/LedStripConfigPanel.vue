@@ -1,31 +1,42 @@
 <template>
     <div class="cfg-panel">
-        <div v-if="!fields.length" class="cfg-panel__error">
+        <div v-if="!fields.length && refetching" class="cfg-panel__loading">
+            Loading configuration…
+        </div>
+        <div v-else-if="!fields.length" class="cfg-panel__error">
             <p>LedStrip configuration not available on this device.</p>
-            <Button type="blue-hollow" size="sm" @click="reload">Retry</Button>
+            <Button type="blue-hollow" size="sm" :loading="refetching" @click="refetch">Retry</Button>
         </div>
 
         <form
             v-else
-            class="cfg-panel__group"
+            class="cfg-panel__form"
             @submit.prevent
             autocomplete="off"
         >
-            <LedStripField
-                v-for="field in fields"
-                :key="field.key"
-                :field="field"
-                :value="localValue(field.key)"
-                :catalog="catalog"
-                :allowlist="null"
-                @change="(v) => updateField(field.key, v)"
-            />
+            <section class="cfg-panel__section" aria-label="LED settings">
+                <LedStripField
+                    v-for="field in fields"
+                    :key="field.key"
+                    :field="field"
+                    :value="localValue(field.key)"
+                    :catalog="catalog"
+                    :allowlist="null"
+                    @change="(v) => updateField(field.key, v)"
+                />
+            </section>
 
-            <div v-if="dirty" class="cfg-panel__footer">
-                <Button type="blue" size="sm" :loading="saving" @click="save">
-                    Save
-                </Button>
-            </div>
+            <ConfigPanelFooter
+                label="LED strip"
+                :dirty="dirty"
+                :saving="saving"
+                :restart-required="restartRequired"
+                :rebooting="rebooting"
+                :external-changed="externalConfigChanged"
+                @save="save"
+                @reboot="rebootDevice"
+                @refresh="reload"
+            />
         </form>
     </div>
 </template>
@@ -35,6 +46,7 @@ import type {LedStripCatalog, LedStripUiField} from '@api/ledstrip';
 import {computed} from 'vue';
 import {useDeviceConfigPanel} from '@/composables/useDeviceConfigPanel';
 import Button from './Button.vue';
+import ConfigPanelFooter from './ConfigPanelFooter.vue';
 import LedStripField from './LedStripField.vue';
 
 type LocalForm = Record<string, unknown>;
@@ -51,8 +63,21 @@ interface LedStripConfigRead {
 
 const props = defineProps<{shellyID: string}>();
 
-const {config, local, dirty, saving, markDirty, save, reload} =
-    useDeviceConfigPanel<LedStripConfigRead, LocalForm>({
+const {
+    config,
+    local,
+    dirty,
+    saving,
+    restartRequired,
+    rebooting,
+    externalConfigChanged,
+    markDirty,
+    save,
+    rebootDevice,
+    refetch,
+    refetching,
+    reload
+} = useDeviceConfigPanel<LedStripConfigRead, LocalForm>({
         shellyID: () => props.shellyID,
         settingsKey: 'ledstrip:0',
         method: 'LedStrip.SetConfig',

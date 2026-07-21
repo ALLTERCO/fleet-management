@@ -5,7 +5,7 @@
  *   - A size-bounded TTL cache for shellyID ↔ internal-device-id lookups,
  *     so a single `Energy.Query` does not make N separate DB round-trips.
  *   - DB accessors that wrap the TimescaleDB functions `fn_report_stats`,
- *     `fn_report_stats_by_phase`, and `fn_status_environmental_history`.
+ *     `fn_report_stats_by_phase`, and `fn_numeric_history` (device_sensor).
  *   - Group-device resolution (`device.fn_groups_get`).
  *
  * Eviction policy: per the 2026-04-17 audit finding #2, unbounded module-
@@ -86,6 +86,10 @@ export interface ReportStatsOpts {
     to: Date;
     tags: readonly string[];
     bucket: string;
+    /** Commodity filter (electricity/water/heat). Omitted → all. */
+    commodity?: string;
+    /** Electrical-source filter (ac_mains/…). Omitted → all. */
+    electricalSource?: string;
     perDevice: boolean;
     limit?: number;
     offset?: number;
@@ -97,6 +101,8 @@ export interface EnergyStatsRow {
     bucket: string;
     device: number;
     tag: string;
+    /** Electrical domain the row was read from (ac_mains / dc_battery / …). */
+    domain?: string;
     agg_value: number;
     /** Set only by by-phase queries; loose for 'z' / no-phase rows. */
     phase?: string;
@@ -135,6 +141,8 @@ export interface EnvironmentalStatsRow {
     avg_value: number | string;
     min_value: number | string;
     max_value: number | string;
+    /** Reading source (internal/builtin/addon/blu/weather) — device_sensor only. */
+    source?: string;
 }
 
 // --- Repository ---------------------------------------------------------
@@ -373,7 +381,10 @@ export class EnergyRepository {
         };
     }
 
-    /** Avg + true min/max per tag over the window. Tags with no data are absent. */
+    /**
+     * Avg + true min/max per tag over the window. Tags with no data are absent.
+     * AC-electricity metrics (voltage, power_factor) — pinned to that source.
+     */
     async queryMetricStats(opts: {
         internalIds: readonly number[];
         from: Date;
@@ -396,7 +407,9 @@ export class EnergyRepository {
                 p_devices: [...opts.internalIds],
                 p_from: opts.from,
                 p_to: opts.to,
-                p_tags: [...opts.tags]
+                p_tags: [...opts.tags],
+                p_commodity: 'electricity',
+                p_electrical_source: 'ac_mains'
             }
         );
         const rows =
@@ -427,6 +440,9 @@ export class EnergyRepository {
             return [];
         }
         const usePaged = typeof opts.limit === 'number' && opts.limit > 0;
+        // p_commodity / p_electrical_source omitted → the fn's NULL default
+        // returns every commodity/source. Passed → filter to that value.
+        // No hidden default: nothing is silently excluded.
         const args: Record<string, unknown> = {
             p_devices: [...opts.internalIds],
             p_from: opts.from,
@@ -435,6 +451,9 @@ export class EnergyRepository {
             p_bucket: opts.bucket,
             p_per_device: opts.perDevice
         };
+        if (opts.commodity !== undefined) args.p_commodity = opts.commodity;
+        if (opts.electricalSource !== undefined)
+            args.p_electrical_source = opts.electricalSource;
         if (usePaged) {
             args.p_limit = opts.limit;
             args.p_offset = opts.offset ?? 0;
@@ -443,26 +462,35 @@ export class EnergyRepository {
         return (res?.rows as T[]) ?? [];
     }
 
-    /** Wrap device.fn_status_environmental_history; bucket param ignored (DB hardcodes 1h). */
+    /**
+     * Numeric sensor history from the forever rollup
+     * (device_sensor.fn_numeric_history). `field` carries the sensor kind
+     * (e.g. 'temperature', 'co2') — no source filter, so rows from every
+     * source (internal/builtin/addon/blu/weather) for that kind come back
+     * together, grouped by source.
+     */
     async queryEnvironmental(opts: {
         organizationId: string | null;
         internalIds: readonly number[];
-        fieldPattern: string;
+        field: string;
         from: Date;
         to: Date;
+        bucket: string;
         limit?: number;
     }): Promise<EnvironmentalStatsRow[]> {
         if (opts.internalIds.length === 0) {
             return [];
         }
         const res = await this.#deps.callDb(
-            'device.fn_status_environmental_history',
+            'device_sensor.fn_numeric_history',
             {
                 p_organization_id: opts.organizationId,
                 p_device_ids: [...opts.internalIds],
-                p_field_pattern: opts.fieldPattern,
+                p_kind: opts.field,
+                p_source: null,
                 p_from: opts.from.toISOString(),
                 p_to: opts.to.toISOString(),
+                p_bucket: opts.bucket,
                 p_limit: opts.limit ?? null
             }
         );
@@ -558,4 +586,10 @@ export function defaultEnergyRepository(): Promise<EnergyRepository> {
         })();
     }
     return defaultInstance;
+}
+
+export async function invalidateDefaultEnergyRepository(): Promise<void> {
+    const instance = defaultInstance;
+    if (!instance) return;
+    (await instance).invalidate();
 }

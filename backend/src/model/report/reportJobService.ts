@@ -16,6 +16,7 @@ import {createExportJob} from '../energy/exportJobStore';
 import type {EngineReportExportPayload} from '../energy/reportExportPayload';
 import {runReportExportJob} from '../energy/reportExportTask';
 import {eventOrgId} from './engineHelpers';
+import {snapshotLogicalReportSelectors} from './reportDeviceSelectors';
 import {snapshotReportSender} from './reportJobSender';
 
 const logger = getLogger('reportJobService');
@@ -52,6 +53,7 @@ export async function startReportJob(
     );
     const userId = sender.getUserId();
     if (!userId) throw RpcError.Unauthorized();
+    const logicalParams = await snapshotLogicalReportSelectors(params);
     const jobId = randomUUID();
     await createExportJob({jobId, userId});
     await enqueueEngineExport({
@@ -59,7 +61,7 @@ export async function startReportJob(
         jobId,
         userId,
         orgId: eventOrgId(sender),
-        rawParams,
+        logicalParams,
         sender: snapshotReportSender(sender)
     });
     return {jobId, status: 'pending'};

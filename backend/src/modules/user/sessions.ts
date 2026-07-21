@@ -49,14 +49,14 @@ export async function deleteSession(
     ensureZitadelManagement();
     if (!canCrossOrganizationBoundary(sender)) throw RpcError.Unauthorized();
     await zitadelService.deleteSession(params.sessionId);
-    AuditLogger.logRpc(
-        sender.getUser()?.username ?? 'admin',
-        'User.DeleteSession',
-        {sessionId: params.sessionId},
-        true,
-        undefined,
-        sender.getOrganizationId()
-    );
+    AuditLogger.logRpc({
+        username: sender.getUser()?.username ?? 'admin',
+        actorUserId: sender.getUserId(),
+        method: 'User.DeleteSession',
+        params: {sessionId: params.sessionId},
+        organizationId: sender.getOrganizationId(),
+        ipAddress: sender.getSourceIp()
+    });
     return {success: true};
 }
 

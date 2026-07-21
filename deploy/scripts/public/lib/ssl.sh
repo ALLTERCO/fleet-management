@@ -3,6 +3,8 @@
 
 SSL_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/ssl" && pwd)"
 
+# shellcheck source=deploy/scripts/common/selfsigned-cert.sh
+source "$SSL_LIB_DIR/../../../common/selfsigned-cert.sh"
 # shellcheck source=deploy/scripts/public/lib/ssl/validate.sh
 source "$SSL_LIB_DIR/validate.sh"
 # shellcheck source=deploy/scripts/public/lib/ssl/routes.sh

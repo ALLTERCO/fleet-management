@@ -51,6 +51,8 @@ const deviceChannel = () => `${tuning.redis.pubsubChannelPrefix}:device`;
 const sessionChannel = () => `${tuning.redis.pubsubChannelPrefix}:session`;
 const deviceTrustChannel = () =>
     `${tuning.redis.pubsubChannelPrefix}:device-trust`;
+const deviceGuiRevocationChannel = () =>
+    `${tuning.redis.pubsubChannelPrefix}:device-gui-revoked`;
 
 function readSignal<T>(payload: string, category: string): T | null {
     try {
@@ -606,39 +608,100 @@ export const redisReservation: import('./ports').ReservationPort = {
 
 const ownershipKey = (shellyID: string) =>
     `${tuning.redis.keyPrefix}:device:${shellyID}:owner`;
+const identityFenceKey = (shellyID: string) =>
+    `${tuning.redis.keyPrefix}:device:${shellyID}:identity-fence`;
+const CLAIM_DEVICE_LUA = `if redis.call('exists', KEYS[2]) == 1 then return 0 end; local current = redis.call('get', KEYS[1]); if not current then redis.call('psetex', KEYS[1], ARGV[2], ARGV[1]); return 1 elseif current == ARGV[1] then redis.call('pexpire', KEYS[1], ARGV[2]); return 1 else return 0 end`;
+
+export const redisDeviceIdentityFence: import('./ports').DeviceIdentityFencePort =
+    {
+        async acquire(shellyIDs, token, ttlMs) {
+            const {cmd} = getSharedRedis();
+            const acquired: string[] = [];
+            try {
+                for (const shellyID of [...new Set(shellyIDs)].sort()) {
+                    const key = identityFenceKey(shellyID);
+                    const result = await cmd.set(key, token, 'PX', ttlMs, 'NX');
+                    if (result === 'OK') {
+                        acquired.push(key);
+                        continue;
+                    }
+                    for (const acquiredKey of acquired) {
+                        await cmd.eval(RELEASE_LUA, 1, acquiredKey, token);
+                    }
+                    return false;
+                }
+                return true;
+            } catch (err) {
+                Observability.incrementCounter(
+                    'device_identity_fence_errors_total'
+                );
+                logger.warn('identity fence acquire failed: %s', err);
+                for (const acquiredKey of acquired) {
+                    await cmd.eval(RELEASE_LUA, 1, acquiredKey, token);
+                }
+                return false;
+            }
+        },
+        async release(shellyIDs, token) {
+            const {cmd} = getSharedRedis();
+            for (const shellyID of new Set(shellyIDs)) {
+                try {
+                    await cmd.eval(
+                        RELEASE_LUA,
+                        1,
+                        identityFenceKey(shellyID),
+                        token
+                    );
+                } catch (err) {
+                    Observability.incrementCounter(
+                        'device_identity_fence_errors_total'
+                    );
+                    logger.warn(
+                        'identity fence release failed shellyID=%s: %s',
+                        shellyID,
+                        err
+                    );
+                }
+            }
+        }
+    };
 
 export const redisDeviceOwnership: import('./ports').DeviceOwnershipPort = {
     async claim(shellyID: string, ttlMs: number): Promise<boolean> {
         const {cmd} = getSharedRedis();
         try {
-            const res = await cmd.set(
+            const token = getInstanceId();
+            const claimed = await cmd.eval(
+                CLAIM_DEVICE_LUA,
+                2,
                 ownershipKey(shellyID),
-                getInstanceId(),
-                'PX',
-                ttlMs,
-                'NX'
+                identityFenceKey(shellyID),
+                token,
+                String(ttlMs)
             );
-            return res === 'OK';
+            return Number(claimed) === 1;
         } catch (err) {
             Observability.incrementCounter('device_ownership_errors_total');
             logger.warn('claim failed shellyID=%s: %s', shellyID, err);
             return false;
         }
     },
-    async heartbeat(shellyID: string, ttlMs: number): Promise<void> {
+    async heartbeat(shellyID: string, ttlMs: number): Promise<boolean> {
         const {cmd} = getSharedRedis();
         try {
             // Refresh the TTL only while the token still matches.
-            await cmd.eval(
+            const renewed = await cmd.eval(
                 RENEW_LUA,
                 1,
                 ownershipKey(shellyID),
                 getInstanceId(),
                 String(ttlMs)
             );
+            return Number(renewed) === 1;
         } catch (err) {
             Observability.incrementCounter('device_ownership_errors_total');
             logger.warn('heartbeat failed shellyID=%s: %s', shellyID, err);
+            return false;
         }
     },
     async release(shellyID: string): Promise<void> {
@@ -732,6 +795,92 @@ export const redisUploadSessions: import('./ports').UploadSessionPort = {
     async delete(sessionId: string): Promise<void> {
         const {cmd} = getSharedRedis();
         await cmd.del(uploadSessionKey(sessionId));
+    }
+};
+
+const deviceGuiSessionKey = (sessionId: string) =>
+    `${tuning.redis.keyPrefix}:device-gui-session:${sessionId}`;
+const deviceGuiAttestationKey = (sessionId: string) =>
+    `${tuning.redis.keyPrefix}:device-gui-attestation:${sessionId}`;
+const deviceGuiSlotKey = (slotId: string) =>
+    `${tuning.redis.keyPrefix}:device-gui-slot:${slotId}`;
+const deviceGuiSessionIndexKey = () =>
+    `${tuning.redis.keyPrefix}:device-gui-session-index`;
+const DEVICE_GUI_SESSION_MAX = 10_000;
+const DEVICE_GUI_CREATE_LUA = `
+redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', ARGV[4])
+local old = redis.call('GET', KEYS[3]) or ''
+if old ~= '' then
+  redis.call('DEL', ARGV[6] .. old)
+  redis.call('DEL', ARGV[8] .. old)
+  redis.call('ZREM', KEYS[2], old)
+end
+if redis.call('ZCARD', KEYS[2]) >= tonumber(ARGV[3]) then return '__capacity__' end
+redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+redis.call('ZADD', KEYS[2], ARGV[5], ARGV[7])
+redis.call('SET', KEYS[3], ARGV[7], 'EX', ARGV[2])
+return old
+`.trim();
+
+export const redisDeviceGuiSessions: import('./ports').DeviceGuiSessionPort = {
+    async create(input): Promise<string | null> {
+        const {cmd} = getSharedRedis();
+        const now = Date.now();
+        const created = await cmd.eval(
+            DEVICE_GUI_CREATE_LUA,
+            3,
+            deviceGuiSessionKey(input.sessionId),
+            deviceGuiSessionIndexKey(),
+            deviceGuiSlotKey(input.slotId),
+            input.session,
+            input.ttlSec,
+            DEVICE_GUI_SESSION_MAX,
+            now,
+            now + input.ttlSec * 1000,
+            `${tuning.redis.keyPrefix}:device-gui-session:`,
+            input.sessionId,
+            `${tuning.redis.keyPrefix}:device-gui-attestation:`
+        );
+        if (created === '__capacity__') {
+            throw new Error('Device GUI session capacity reached');
+        }
+        return typeof created === 'string' && created.length > 0
+            ? created
+            : null;
+    },
+    async get(sessionId): Promise<string | null> {
+        const {cmd} = getSharedRedis();
+        return (await cmd.get(deviceGuiSessionKey(sessionId))) ?? null;
+    },
+    async isAttested(sessionId): Promise<boolean> {
+        const {cmd} = getSharedRedis();
+        return (await cmd.exists(deviceGuiAttestationKey(sessionId))) === 1;
+    },
+    async markAttested(sessionId, ttlSec): Promise<void> {
+        const {cmd} = getSharedRedis();
+        await cmd.set(deviceGuiAttestationKey(sessionId), '1', 'EX', ttlSec);
+    },
+    async delete(sessionId): Promise<void> {
+        const {cmd} = getSharedRedis();
+        const pipeline = cmd.multi();
+        pipeline.del(deviceGuiSessionKey(sessionId));
+        pipeline.del(deviceGuiAttestationKey(sessionId));
+        pipeline.zrem(deviceGuiSessionIndexKey(), sessionId);
+        await pipeline.exec();
+    },
+    async publishRevoked(sessionId): Promise<void> {
+        await getSharedPubSub().publish(
+            deviceGuiRevocationChannel(),
+            sessionId
+        );
+    },
+    async onRevoked(handler): Promise<void> {
+        await getSharedPubSub().subscribe(
+            deviceGuiRevocationChannel(),
+            (_channel, sessionId) => {
+                if (/^[a-f0-9]{24}$/.test(sessionId)) handler(sessionId);
+            }
+        );
     }
 };
 

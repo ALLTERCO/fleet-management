@@ -416,6 +416,50 @@ export function checkAdditiveOnly(
     }
 }
 
+// A `DROP FUNCTION IF EXISTS` immediately paired with a CREATE of the same
+// function is a replace and is allowed; a drop with no matching CREATE in the
+// UP block removes it for good. Escape hatch: `-- LINT-IGNORE: additive-only`.
+// Dynamic EXECUTE-format drops carry no static name and are out of scope.
+export function checkFunctionRemovals(
+    files: Array<{relPath: string; content: string}>,
+    findings: Finding[]
+): void {
+    for (const f of files) {
+        const {up} = splitUpDown(f.content);
+        if (!up.trim()) continue;
+        const lines = up.split('\n');
+        const fileScopeIgnore = lines
+            .slice(0, 10)
+            .some((l) => LINT_IGNORE_ADDITIVE_RE.test(l));
+        if (fileScopeIgnore) continue;
+        const created = new Set(findCreates(up).map((c) => c.qname));
+        const upStartIdx = f.content.indexOf(up);
+        const upLineBase =
+            upStartIdx >= 0
+                ? f.content.slice(0, upStartIdx).split('\n').length - 1
+                : 0;
+        for (const drop of findDrops(up)) {
+            if (created.has(drop.qname)) continue;
+            const idx = drop.line - 1;
+            const line = lines[idx] ?? '';
+            const prev = idx > 0 ? lines[idx - 1] : '';
+            if (
+                LINT_IGNORE_ADDITIVE_RE.test(line) ||
+                LINT_IGNORE_ADDITIVE_RE.test(prev)
+            ) {
+                continue;
+            }
+            findings.push({
+                severity: 'error',
+                file: f.relPath,
+                line: upLineBase + drop.line,
+                message: `UP: DROP FUNCTION ${drop.qname} removes a function without re-creating it (violates additive-only policy).`,
+                fix: 'Re-create it in the same migration, add a new additive migration, or add `-- LINT-IGNORE: additive-only` for a deliberate removal.'
+            });
+        }
+    }
+}
+
 // --- Idempotency check ------------------------------------------------
 // New migrations must use IF NOT EXISTS / IF EXISTS / OR REPLACE on bare
 // DDL so partial-recovery re-runs don't error. Per-schema thresholds
@@ -580,6 +624,7 @@ function lint(): Finding[] {
 
     checkCrossSchemaOrdering(files, findings);
     checkAdditiveOnly(files, findings);
+    checkFunctionRemovals(files, findings);
     checkIdempotency(files, findings);
     checkCreateIndexConcurrently(files, findings);
     checkUuidIntDrift(files, findings);
@@ -608,7 +653,7 @@ export function checkSentinelParseable(
                 line: 1,
                 message:
                     'No parseable UP sentinel — runtime needs a line ending in 5+ dashes then UP.',
-                fix: "Replace with `--------------UP` on its own line."
+                fix: 'Replace with `--------------UP` on its own line.'
             });
         }
         // DOWN sentinel is advisory — missing DOWN = no rollback path

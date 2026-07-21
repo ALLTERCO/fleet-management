@@ -15,6 +15,7 @@ import type {WaitingEntry} from '../redis/ports';
 import {gatelessDeviceOrg, operatorOwnsGatelessOrg} from './defaultOrg';
 import * as WaitingRoomModule from './index';
 import {listPending} from './redisWaitingStore';
+import {withResolvedDeviceModel} from './sanitize';
 
 const DEVICE_INGRESS_KEY_PREFIX = 'deviceIngress:';
 const DEFAULT_LIST_LIMIT = 100;
@@ -222,7 +223,7 @@ function legacyWaitingRoomItem(item: {
         waitingRoomKind: 'legacy',
         entryId: item.shellyID,
         shellyID: item.shellyID,
-        status: item.status,
+        status: withResolvedDeviceModel(item.shellyID, item.status),
         sortTime: item.touchedAt ?? item.addedAt ?? 0
     };
 }
@@ -239,7 +240,10 @@ function ingressWaitingRoomItem(
         waitingRoomId: item.id,
         shellyID: item.reportedExternalId,
         state: item.state,
-        status: statusFromSafeDetail(item.safeDetail),
+        status: withResolvedDeviceModel(
+            item.reportedExternalId,
+            statusFromSafeDetail(item.safeDetail)
+        ),
         organizationId: item.organizationId,
         observedTransport: item.observedTransport,
         securityModel: item.securityModel,
@@ -264,7 +268,7 @@ function storeWaitingRoomItem(entry: WaitingEntry): UnifiedWaitingRoomEntry {
         entryId: entry.shellyID,
         shellyID: entry.shellyID,
         state: 'open',
-        status: entry.jdoc,
+        status: withResolvedDeviceModel(entry.shellyID, entry.jdoc),
         organizationId: entry.organizationId,
         securityModel: securityModelForAuthMethod(entry.authMethod),
         authMethod: entry.authMethod,

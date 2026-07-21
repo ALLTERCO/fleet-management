@@ -48,6 +48,7 @@ const floorPlanDevices = computed<FloorPlanDevice[]>(() => {
         if (!dev) continue;
         out.push({
             id: shellyId,
+            placementId: String(dev.id),
             label: dev.info?.name ?? shellyId,
             color: colorFromId(shellyId),
             online: dev.online ?? true,

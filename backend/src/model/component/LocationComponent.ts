@@ -52,6 +52,7 @@ import {
     LOCATION_REMOVE_ASSIGNMENT_PARAMS,
     LOCATION_SEARCH_PLACES_PARAMS,
     LOCATION_SET_ASSIGNMENT_PARAMS,
+    LOCATION_SET_ASSIGNMENTS_PARAMS,
     LOCATION_SIGNAL_HEATMAP_PARAMS,
     LOCATION_UPDATE_PARAMS,
     type Location,
@@ -698,10 +699,13 @@ export default class LocationComponent extends Component {
             lat: number;
             lng: number;
         }>(
-            `SELECT la.subject_id AS shelly_id,
+            `SELECT dl.external_id AS shelly_id,
                     (l.geo->>'lat')::float8 AS lat,
                     (l.geo->>'lng')::float8 AS lng
                FROM organization.location_assignments la
+               JOIN device.list dl
+                 ON dl.organization_id = la.organization_id
+                AND dl.id = la.device_id
                JOIN organization.locations l
                  ON l.id = la.location_id
                 AND l.organization_id = la.organization_id
@@ -802,6 +806,61 @@ export default class LocationComponent extends Component {
         } catch (err: unknown) {
             if (err instanceof RpcError) throw err;
             throw translatePgError(err, 'location setAssignment');
+        }
+    }
+
+    // Assign many subjects to one location in a single atomic upsert, instead
+    // of one SetAssignment RPC per subject. Validation failure (a subject not
+    // in the org) rejects the whole batch; the write itself is all-or-nothing.
+    @Component.Expose('SetAssignments')
+    @Component.CrudPermission('locations', 'update', (p) => p?.locationId)
+    async setAssignments(
+        params: unknown,
+        sender: CommandSender
+    ): Promise<{locationId: number; assigned: LocationAssignment[]}> {
+        const p = validateOrThrow<{
+            organizationId?: string;
+            locationId: number;
+            subjects: Array<{
+                subjectType: LocationSubjectType;
+                subjectId: string;
+            }>;
+        }>(params, LOCATION_SET_ASSIGNMENTS_PARAMS);
+        const orgId = requireOrganizationId(sender, p);
+
+        // Dedup by subject: the PK-conflict upsert cannot touch a row twice in
+        // one statement.
+        const bySubject = new Map<
+            string,
+            {subjectType: LocationSubjectType; subjectId: string}
+        >();
+        for (const s of p.subjects) {
+            bySubject.set(`${s.subjectType}:${s.subjectId}`, s);
+        }
+        const subjects = [...bySubject.values()];
+
+        await assertLocationSubjectsBelongToOrg(orgId, subjects);
+
+        try {
+            const result = await postgres.callMethod(
+                'organization.fn_location_set_assignment_batch',
+                {
+                    p_organization_id: orgId,
+                    p_location_id: p.locationId,
+                    p_subject_types: subjects.map((s) => s.subjectType),
+                    p_subject_ids: subjects.map((s) => s.subjectId)
+                }
+            );
+            const rows = (result?.rows ?? []) as AssignmentRow[];
+            EventDistributor.invalidateGroupCache(orgId);
+            EventDistributor.emitLocationAssignmentsSet(p.locationId, orgId);
+            return {
+                locationId: p.locationId,
+                assigned: rows.map(rowToAssignment)
+            };
+        } catch (err: unknown) {
+            if (err instanceof RpcError) throw err;
+            throw translatePgError(err, 'location setAssignments');
         }
     }
 
@@ -954,8 +1013,11 @@ async function runEventReplayQuery(
            FROM logging.audit_log a
            JOIN organization.location_assignments la
              ON la.subject_type = 'device'
-            AND la.subject_id = a.shelly_id
             AND la.organization_id = $1
+           JOIN device.list dl
+             ON dl.organization_id = la.organization_id
+            AND dl.id = la.device_id
+            AND dl.external_id = a.shelly_id
            JOIN organization.locations l
              ON l.id = la.location_id
             AND l.organization_id = la.organization_id
@@ -1013,7 +1075,16 @@ async function assertDeviceSubjectBelongsToOrg(
     let shellyID = subjectId;
     if (subjectType === 'entity') {
         const ref = DeviceCollector.findEntityAndDevice(subjectId);
-        if (!ref) throw RpcError.NotFound('entity', subjectId);
+        if (!ref) {
+            const rows = await postgres.queryRows(
+                `SELECT 1
+                   FROM organization.fn_normalize_entity_subject($1, $2)
+                  WHERE device_id IS NOT NULL`,
+                [orgId, subjectId]
+            );
+            if (rows.length === 0) throw RpcError.NotFound('entity', subjectId);
+            return;
+        }
         shellyID = ref.device.shellyID;
     }
     const rows = await postgres.queryRows(
@@ -1035,6 +1106,90 @@ async function assertLocationSubjectBelongsToOrg(
         return assertGroupBelongsToOrg(orgId, subjectId);
     }
     return assertDeviceSubjectBelongsToOrg(orgId, subjectType, subjectId);
+}
+
+// Batched membership check for a set of subjects — one query per subject type
+// instead of one query per subject (a bulk assign of N would otherwise fire N
+// concurrent SELECTs). Same errors as the singular assert.
+async function assertLocationSubjectsBelongToOrg(
+    orgId: string,
+    subjects: Array<{subjectType: LocationSubjectType; subjectId: string}>
+): Promise<void> {
+    // shellyID -> its original subject, so a missing device reports the right
+    // subjectType/subjectId (entity vs device).
+    const deviceCheck = new Map<
+        string,
+        {subjectType: LocationSubjectType; subjectId: string}
+    >();
+    const legacyEntityCheck = new Map<
+        string,
+        {subjectType: LocationSubjectType; subjectId: string}
+    >();
+    const groupIds: number[] = [];
+    for (const s of subjects) {
+        if (s.subjectType === 'group') {
+            const gid = Number(s.subjectId);
+            if (!Number.isInteger(gid)) {
+                throw RpcError.NotFound('group', s.subjectId);
+            }
+            groupIds.push(gid);
+        } else if (s.subjectType === 'entity') {
+            const ref = DeviceCollector.findEntityAndDevice(s.subjectId);
+            if (!ref) {
+                legacyEntityCheck.set(s.subjectId, s);
+                continue;
+            }
+            deviceCheck.set(ref.device.shellyID, s);
+        } else {
+            deviceCheck.set(s.subjectId, s);
+        }
+    }
+
+    if (legacyEntityCheck.size > 0) {
+        const ids = [...legacyEntityCheck.keys()];
+        const rows = await postgres.queryRows<{subject_id: string}>(
+            `SELECT input.subject_id
+               FROM unnest($2::text[]) input(subject_id)
+               CROSS JOIN LATERAL organization.fn_normalize_entity_subject(
+                   $1, input.subject_id
+               ) normalized
+              WHERE normalized.device_id IS NOT NULL`,
+            [orgId, ids]
+        );
+        const found = new Set(rows.map((row) => row.subject_id));
+        for (const [subjectId] of legacyEntityCheck) {
+            if (!found.has(subjectId)) {
+                throw RpcError.NotFound('entity', subjectId);
+            }
+        }
+    }
+
+    if (deviceCheck.size > 0) {
+        const ids = [...deviceCheck.keys()];
+        const rows = await postgres.queryRows(
+            `SELECT external_id FROM device.list
+              WHERE organization_id = $1 AND external_id = ANY($2)`,
+            [orgId, ids]
+        );
+        const found = new Set(rows.map((r) => r.external_id as string));
+        for (const [shellyID, subj] of deviceCheck) {
+            if (!found.has(shellyID)) {
+                throw RpcError.NotFound(subj.subjectType, subj.subjectId);
+            }
+        }
+    }
+
+    if (groupIds.length > 0) {
+        const rows = await postgres.queryRows(
+            `SELECT id FROM organization.groups
+              WHERE organization_id = $1 AND id = ANY($2)`,
+            [orgId, groupIds]
+        );
+        const found = new Set(rows.map((r) => Number(r.id)));
+        for (const gid of groupIds) {
+            if (!found.has(gid)) throw RpcError.NotFound('group', String(gid));
+        }
+    }
 }
 
 type AssignmentListRow = Partial<AssignmentRow> & {

@@ -1,4 +1,5 @@
 --------------UP
+-- LINT-IGNORE: additive-only (deliberate legacy function removal)
 -- Phase 7 cleanup: drop the orphan `notifications.delete_token`.
 --
 -- Verified zero callers across `backend/src` — NotificationComponent

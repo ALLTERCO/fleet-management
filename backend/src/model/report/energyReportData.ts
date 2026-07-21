@@ -250,16 +250,20 @@ async function resolveReportTariffId(
 // Peak power is measured over the chosen devices; empty = all. One resolution
 // path, two input sources: explicit peak_device_ids param wins, else the
 // dashboard's stored selection.
-async function resolvePeakDeviceIds(
+async function resolvePeakSelection(
     request: ReadEnergySeriesRequest
-): Promise<number[]> {
+): Promise<{internalIds: number[]; constrained: boolean}> {
     const wanted = await resolvePeakDeviceShellyIds(request.params);
-    if (!wanted || wanted.length === 0) return request.internalIds;
+    if (!wanted || wanted.length === 0) {
+        return {internalIds: request.internalIds, constrained: false};
+    }
     const want = new Set(wanted);
-    const filtered = request.internalIds.filter((id) =>
-        want.has(request.deviceMap.get(id) ?? '')
-    );
-    return filtered.length > 0 ? filtered : request.internalIds;
+    return {
+        internalIds: request.internalIds.filter((id) =>
+            want.has(request.deviceMap.get(id) ?? '')
+        ),
+        constrained: true
+    };
 }
 
 async function resolvePeakDeviceShellyIds(
@@ -286,10 +290,9 @@ async function dashboardPeakDeviceIds(
     try {
         const rows = await PostgresProvider.queryRows<{
             peak_device_ids: string[] | null;
-        }>(
-            'SELECT peak_device_ids FROM ui.dashboard_settings WHERE dashboard_id = $1',
-            [dashboardId]
-        );
+        }>('SELECT peak_device_ids FROM ui.fn_dashboard_settings_fetch($1)', [
+            dashboardId
+        ]);
         const v = rows[0]?.peak_device_ids;
         return Array.isArray(v) ? v : null;
     } catch (err) {
@@ -437,7 +440,7 @@ async function dashboardPvConfig(
             pv_grid_refs: unknown;
             pv_generation_refs: unknown;
         }>(
-            'SELECT pv_mode, pv_grid_refs, pv_generation_refs FROM ui.dashboard_settings WHERE dashboard_id = $1',
+            'SELECT pv_mode, pv_grid_refs, pv_generation_refs FROM ui.fn_dashboard_settings_fetch($1)',
             [dashboardId]
         );
         return parsePvConfigRow(rows[0]);
@@ -569,7 +572,7 @@ async function readEnergySeries(request: ReadEnergySeriesRequest): Promise<{
     const bucket = reportBucket(request.params);
     const rate = rateContext(request.params, request.timezone);
     const repo = await defaultEnergyRepository();
-    const peakIds = await resolvePeakDeviceIds(request);
+    const peakSelection = await resolvePeakSelection(request);
     const [
         {combinedRep, phaseRep},
         priorConsByDevice,
@@ -596,7 +599,7 @@ async function readEnergySeries(request: ReadEnergySeriesRequest): Promise<{
         ),
         timeVaryingCostPass(request, rate, repo),
         repo.queryPeakPowerW({
-            internalIds: peakIds,
+            internalIds: peakSelection.internalIds,
             from: request.range.fromDate,
             to: request.range.toDate
         }),
@@ -640,6 +643,7 @@ async function readEnergySeries(request: ReadEnergySeriesRequest): Promise<{
     });
     // True peak from 15-min maxes, not a smoothed bucket average.
     if (typeof peakW === 'number') timeSeries.peakPower = +peakW.toFixed(1);
+    else if (peakSelection.constrained) timeSeries.peakPower = 0;
     return {
         priorConsByDevice,
         priorTotalCons: totalPriorConsumption(priorConsByDevice),

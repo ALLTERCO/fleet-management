@@ -222,34 +222,26 @@ const serviceProps = computed(() => {
     const p = props.entity.properties as any;
     return {
         serviceType: p?.serviceType ?? '',
+        category: (p?.category ?? 'generic') as string,
         serviceKey: p?.serviceKey ?? 'service:0',
         productName: p?.productName ?? props.entity.name,
         components: (p?.components ?? {}) as Record<string, string>
     };
 });
 
-// Why ordered: more specific keywords first to avoid partial matches
-// Only icons confirmed working in this project's FA Pro build
-const SERVICE_ICON_RULES: Array<{keyword: string; icon: string}> = [
-    {keyword: 'hvac', icon: 'fas fa-temperature-arrow-up'},
-    {keyword: 'thermostat', icon: 'fas fa-temperature-arrow-up'},
-    {keyword: 'heating', icon: 'fas fa-fire'},
-    {keyword: 'cooling', icon: 'fas fa-snowflake'},
-    {keyword: 'valve', icon: 'fas fa-pipe-valve'},
-    {keyword: 'charger', icon: 'fas fa-charging-station'},
-    {keyword: 'evse', icon: 'fas fa-charging-station'},
-    {keyword: 'irrigation', icon: 'fas fa-faucet-drip'},
-    {keyword: 'fan', icon: 'fas fa-fan'},
-    {keyword: 'solar', icon: 'fas fa-solar-panel'},
-    {keyword: 'pump', icon: 'fas fa-faucet-drip'}
-];
+// Icon per backend-resolved category — no serviceType keyword scanning.
+// Only icons confirmed working in this project's FA Pro build.
+const SERVICE_CATEGORY_ICONS: Record<string, string> = {
+    hvac: 'fas fa-temperature-arrow-up',
+    valve: 'fas fa-pipe-valve',
+    ev_charger: 'fas fa-charging-station',
+    irrigation: 'fas fa-faucet-drip'
+};
 
 const serviceIcon = computed(() => {
-    const t = serviceProps.value.serviceType.toLowerCase();
-    for (const rule of SERVICE_ICON_RULES) {
-        if (t.includes(rule.keyword)) return rule.icon;
-    }
-    // Fallback: check entity components for hints about the device type
+    const icon = SERVICE_CATEGORY_ICONS[serviceProps.value.category];
+    if (icon) return icon;
+    // Generic services: entity components hint at the device type
     const components = serviceProps.value.components;
     if ('position' in components) return 'fas fa-pipe-valve';
     if (

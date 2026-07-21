@@ -11,7 +11,7 @@
  * tests without importing the full CommandSender class.
  */
 
-import {classifyTags, ENV_FIELD_PATTERNS} from '../../config/energy';
+import {classifyTags, ENV_ROLLUP_FIELD} from '../../config/energy';
 // Direct from leaf — config/index.ts barrel breaks tests that DI a fake repo.
 import {tuning} from '../../config/tuning';
 import {requireScopeRead} from '../../modules/authz/evaluator/scopeRead';
@@ -117,11 +117,16 @@ export async function handleEnergyQuery(
         );
     }
 
-    // Env tags have the stricter 30-day cap (device.status retention).
-    const maxRangeMs = envTags.length > 0 ? MAX_RANGE.MONTH : MAX_RANGE.YEAR;
+    // Env history now reads the forever rollup, so it shares the 1-year cap.
+    const maxRangeMs = MAX_RANGE.YEAR;
     const {from, to} = parseDateRange(validated.from, validated.to, maxRangeMs);
 
     const bucket: EnergyBucket = validated.bucket ?? '1 day';
+    // No default filter. Omitted commodity/source return every domain, each
+    // already its own row (the DB fn groups by domain), so nothing is hidden
+    // and AC/DC never mix in one value. A caller narrows by passing a filter.
+    const commodity = validated.commodity;
+    const electricalSource = validated.electricalSource;
     const perDevice = validated.perDevice ?? true;
     const perPhase = validated.perPhase ?? false;
     const paginated = validated.limit !== undefined;
@@ -145,6 +150,8 @@ export async function handleEnergyQuery(
             to,
             energyTags,
             bucket,
+            commodity,
+            electricalSource,
             perDevice,
             perPhase,
             {limit: dbLimit, offset}
@@ -178,12 +185,17 @@ export async function handleEnergyQuery(
                 to,
                 energyTags,
                 bucket,
+                commodity,
+                electricalSource,
                 perDevice,
                 perPhase,
                 {limit: ENERGY_QUERY_ROW_LIMIT + 1, offset: 0}
             )
         );
     }
+    // Env sent no bucket historically (the old DB fn hardcoded 1h); keep 1h as
+    // the env default so charts do not coarsen, but honor an explicit bucket.
+    const envBucket: EnergyBucket = validated.bucket ?? '1 hour';
     for (const envTag of envTags) {
         tasks.push(() =>
             queryEnvRows(
@@ -192,7 +204,10 @@ export async function handleEnergyQuery(
                 envTag,
                 from,
                 to,
-                sender.getOrganizationId() ?? null,
+                envBucket,
+                senderCanCrossOrganizations(sender)
+                    ? null
+                    : (sender.getOrganizationId() ?? null),
                 ENERGY_QUERY_ROW_LIMIT + 1
             )
         );
@@ -362,32 +377,27 @@ export async function resolveScope(
         return repo.resolveDevices(allowed);
     }
 
-    // Fleet scope: provider support gets the full fleet (cross-tenant);
-    // everyone else (including tenant admins) gets the fleet intersected
-    // with their device scope. dashboards.read is the only hard gate —
-    // an empty intersection returns empty results rather than
-    // Unauthorized, which would confuse legitimate users with no device
-    // grants yet.
-    if (senderCanCrossOrganizations(sender)) {
-        return repo.resolveFleetDevices();
-    }
+    // Global provider support keeps its cross-tenant live snapshot. Tenant
+    // history comes from PostgreSQL so offline devices remain queryable.
+    const canCrossOrganizations = senderCanCrossOrganizations(sender);
+    if (canCrossOrganizations) return repo.resolveFleetDevices();
+
     if (!canReadDashboardCollection(sender)) {
         throw RpcError.Domain('PermissionDenied');
     }
-    const fleet = repo.resolveFleetDevices();
-    const accessible = await sender.filterAccessibleDevices(
-        Object.values(fleet.idMap)
-    );
-    const internalIds: number[] = [];
-    const idMap: Record<number, string> = {};
-    for (const internalId of fleet.internalIds) {
-        const shellyID = fleet.idMap[internalId];
-        if (accessible.has(shellyID)) {
-            internalIds.push(internalId);
-            idMap[internalId] = shellyID;
-        }
-    }
-    return {internalIds, idMap};
+    const senderOrg = sender.getOrganizationId();
+    if (!senderOrg) throw RpcError.Unauthorized();
+
+    const shellyIDs = await repo.resolveScopeShellyIDs({
+        orgId: senderOrg,
+        scopeKind: 'fleet',
+        scopeId: null
+    });
+    if (!shellyIDs.length) return {internalIds: [], idMap: {}};
+    const accessible = await sender.filterAccessibleDevices(shellyIDs);
+    const allowed = shellyIDs.filter((id) => accessible.has(id));
+    if (!allowed.length) return {internalIds: [], idMap: {}};
+    return repo.resolveDevices(allowed);
 }
 
 function canReadDashboardCollection(sender: SenderCapabilities): boolean {
@@ -427,6 +437,8 @@ async function queryEnergyRows(
     to: Date,
     tags: string[],
     bucket: string,
+    commodity: string | undefined,
+    electricalSource: string | undefined,
     perDevice: boolean,
     perPhase: boolean,
     page: {limit: number; offset: number}
@@ -437,6 +449,8 @@ async function queryEnergyRows(
         to,
         tags,
         bucket,
+        commodity,
+        electricalSource,
         perDevice,
         limit: page.limit,
         offset: page.offset
@@ -449,6 +463,7 @@ async function queryEnergyRows(
             device: r.device,
             shellyID: scope.idMap[r.device] ?? null,
             tag: r.tag as EnergyQueryTag,
+            domain: r.domain ?? 'unspecified',
             value: scale(r.tag, r.agg_value),
             phase: r.phase
         }));
@@ -460,6 +475,7 @@ async function queryEnergyRows(
         device: r.device,
         shellyID: scope.idMap[r.device] ?? null,
         tag: r.tag as EnergyQueryTag,
+        domain: r.domain ?? 'unspecified',
         value: scale(r.tag, r.agg_value)
     }));
 }
@@ -473,21 +489,23 @@ async function queryEnvRows(
     envTag: string,
     from: Date,
     to: Date,
+    bucket: string,
     organizationId: string | null,
     dbLimit: number
 ): Promise<EnergyQueryRow[]> {
-    const fieldPattern = ENV_FIELD_PATTERNS[envTag];
-    if (!fieldPattern) {
+    const field = ENV_ROLLUP_FIELD[envTag];
+    if (!field) {
         // Defensive — classifyTags already vetted this. Surface the
         // tag loudly if it ever leaks past.
-        throw RpcError.InvalidParams(`no env field pattern for tag ${envTag}`);
+        throw RpcError.InvalidParams(`no env rollup field for tag ${envTag}`);
     }
     const rows = await repo.queryEnvironmental({
         organizationId,
         internalIds: scope.internalIds,
-        fieldPattern,
+        field,
         from,
         to,
+        bucket,
         limit: dbLimit
     });
     return rows.map((r) => ({
@@ -495,8 +513,12 @@ async function queryEnvRows(
         device: r.device_id,
         shellyID: scope.idMap[r.device_id] ?? null,
         tag: envTag as EnergyQueryTag,
+        // device_sensor readings carry no electrical domain — 'unspecified'
+        // satisfies the shared row shape.
+        domain: 'unspecified',
         value: Number(r.avg_value ?? 0),
         min: r.min_value == null ? null : Number(r.min_value),
-        max: r.max_value == null ? null : Number(r.max_value)
+        max: r.max_value == null ? null : Number(r.max_value),
+        source: r.source
     }));
 }

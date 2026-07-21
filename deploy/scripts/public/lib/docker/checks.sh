@@ -1,29 +1,7 @@
 # shellcheck shell=bash
 # Docker and prerequisite checks.
-
-check_port_available() {
-    local port="$1"
-
-    if command -v ss &>/dev/null; then
-        if ss -tlnH 2>/dev/null | awk '{print $4}' | grep -qE "(:|^)${port}$"; then
-            return 1
-        fi
-        return 0
-    fi
-
-    if command -v lsof &>/dev/null; then
-        if lsof -iTCP:"$port" -sTCP:LISTEN -P -n &>/dev/null 2>&1; then
-            return 1
-        fi
-        return 0
-    fi
-
-    if (echo >/dev/tcp/127.0.0.1/"$port") 2>/dev/null; then
-        return 1
-    fi
-
-    return 0
-}
+# shellcheck source=deploy/scripts/common/ports.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../common" && pwd)/ports.sh"
 
 check_required_ports() {
     local ports=()

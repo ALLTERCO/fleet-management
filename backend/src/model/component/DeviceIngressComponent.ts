@@ -88,6 +88,8 @@ import {canManageAuthz} from './authzPermissions';
 import CertificateComponent from './CertificateComponent';
 import Component from './Component';
 
+const DEVICE_INGRESS_COLLECTION = () => undefined;
+
 interface DeviceIngressDeps {
     repository: typeof repository;
     certificates: DeviceIngressCertificateIssuer;
@@ -166,7 +168,7 @@ export default class DeviceIngressComponent extends Component {
 
     @Component.NoAudit
     @Component.Expose('Profile.List')
-    @Component.CrudPermission('devices', 'read')
+    @Component.CrudPermission('devices', 'read', DEVICE_INGRESS_COLLECTION)
     listProfiles(params: unknown) {
         validateOrThrow<Record<string, never>>(
             params,
@@ -179,7 +181,7 @@ export default class DeviceIngressComponent extends Component {
     // accepts. Certificate is always false — stock Shelly WS has no client cert.
     @Component.NoAudit
     @Component.Expose('AuthMethods')
-    @Component.CrudPermission('devices', 'read')
+    @Component.CrudPermission('devices', 'read', DEVICE_INGRESS_COLLECTION)
     authMethods(params: unknown) {
         validateOrThrow<Record<string, never>>(
             params,
@@ -189,7 +191,7 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.Expose('Identity.Create')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
     @Component.RateLimit('expensive')
     async createIdentity(params: unknown, sender: CommandSender) {
         await this.limitMutation(sender, 'Identity.Create');
@@ -213,7 +215,7 @@ export default class DeviceIngressComponent extends Component {
 
     @Component.NoAudit
     @Component.Expose('Identity.Get')
-    @Component.CrudPermission('devices', 'read')
+    @Component.CrudPermission('devices', 'read', DEVICE_INGRESS_COLLECTION)
     async getIdentity(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<DeviceIngressIdentityGetParams>(
             params,
@@ -228,7 +230,7 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.Expose('Identity.Update')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
     async updateIdentity(params: unknown, sender: CommandSender) {
         await this.limitMutation(sender, 'Identity.Update');
         const p = validateOrThrow<DeviceIngressIdentityUpdateParams>(
@@ -251,7 +253,7 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.Expose('Identity.Disable')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
     async disableIdentity(params: unknown, sender: CommandSender) {
         await this.limitMutation(sender, 'Identity.Disable');
         const p = validateOrThrow<DeviceIngressIdentityGetParams>(
@@ -274,7 +276,7 @@ export default class DeviceIngressComponent extends Component {
 
     @Component.NoAudit
     @Component.Expose('Identity.List')
-    @Component.CrudPermission('devices', 'read')
+    @Component.CrudPermission('devices', 'read', DEVICE_INGRESS_COLLECTION)
     async listIdentities(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<DeviceIngressIdentityListParams>(
             params,
@@ -297,7 +299,7 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.Expose('Credential.CreateToken')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
     @Component.RateLimit('expensive')
     async createToken(params: unknown, sender: CommandSender) {
         await this.limitMutation(sender, 'Credential.CreateToken');
@@ -324,7 +326,7 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.Expose('EnrollmentToken.Create')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
     @Component.RateLimit('expensive')
     async mintEnrollmentToken(params: unknown, sender: CommandSender) {
         await this.limitMutation(sender, 'EnrollmentToken.Create');
@@ -354,7 +356,7 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.Expose('EnrollmentToken.List')
-    @Component.CrudPermission('devices', 'read')
+    @Component.CrudPermission('devices', 'read', DEVICE_INGRESS_COLLECTION)
     async listEnrollmentTokens(params: unknown, sender: CommandSender) {
         validateOrThrow<Record<string, never>>(
             params,
@@ -367,7 +369,7 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.Expose('EnrollmentToken.Revoke')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
     @Component.RateLimit('expensive')
     async revokeEnrollmentToken(params: unknown, sender: CommandSender) {
         await this.limitMutation(sender, 'EnrollmentToken.Revoke');
@@ -387,7 +389,7 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.Expose('Credential.Rotate')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
     @Component.RateLimit('expensive')
     async rotateCredential(params: unknown, sender: CommandSender) {
         await this.limitMutation(sender, 'Credential.Rotate');
@@ -424,7 +426,7 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.Expose('Credential.FinalizeRotation')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
     async finalizeRotation(params: unknown, sender: CommandSender) {
         await this.limitMutation(sender, 'Credential.FinalizeRotation');
         const p = validateOrThrow<DeviceIngressCredentialIdParams>(
@@ -446,7 +448,7 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.Expose('Credential.CancelRotation')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
     async cancelRotation(params: unknown, sender: CommandSender) {
         await this.limitMutation(sender, 'Credential.CancelRotation');
         const p = validateOrThrow<DeviceIngressCredentialIdParams>(
@@ -467,7 +469,7 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.Expose('Credential.Revoke')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
     async revokeCredential(params: unknown, sender: CommandSender) {
         await this.limitMutation(sender, 'Credential.Revoke');
         const p = validateOrThrow<DeviceIngressCredentialIdParams>(
@@ -489,7 +491,7 @@ export default class DeviceIngressComponent extends Component {
 
     @Component.NoAudit
     @Component.Expose('Connection.List')
-    @Component.CrudPermission('devices', 'read')
+    @Component.CrudPermission('devices', 'read', DEVICE_INGRESS_COLLECTION)
     async listConnections(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<DeviceIngressConnectionListParams>(
             params,
@@ -509,7 +511,7 @@ export default class DeviceIngressComponent extends Component {
 
     @Component.NoAudit
     @Component.Expose('Connection.Get')
-    @Component.CrudPermission('devices', 'read')
+    @Component.CrudPermission('devices', 'read', DEVICE_INGRESS_COLLECTION)
     async getConnection(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<DeviceIngressConnectionGetParams>(
             params,
@@ -526,7 +528,7 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.Expose('Connection.Disconnect')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
     async disconnectConnection(params: unknown, sender: CommandSender) {
         await this.limitMutation(sender, 'Connection.Disconnect');
         const p = validateOrThrow<DeviceIngressConnectionDisconnectParams>(
@@ -555,7 +557,7 @@ export default class DeviceIngressComponent extends Component {
 
     @Component.NoAudit
     @Component.Expose('Rejection.List')
-    @Component.CrudPermission('devices', 'read')
+    @Component.CrudPermission('devices', 'read', DEVICE_INGRESS_COLLECTION)
     async listRejections(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<DeviceIngressRejectionListParams>(
             params,
@@ -574,7 +576,7 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.Expose('Rejection.Resolve')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
     async resolveRejection(params: unknown, sender: CommandSender) {
         await this.limitMutation(sender, 'Rejection.Resolve');
         const p = validateOrThrow<DeviceIngressRejectionResolveParams>(
@@ -595,7 +597,7 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.Expose('Setup.Plan')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
     @Component.RateLimit('expensive')
     async planSetup(params: unknown, sender: CommandSender) {
         await this.limitMutation(sender, 'Setup.Plan');
@@ -628,7 +630,7 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.Expose('Setup.Bundle')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
     async setupBundle(params: unknown, sender: CommandSender) {
         await this.limitMutation(sender, 'Setup.Bundle');
         const p = validateOrThrow<DeviceIngressSetupBundleParams>(
@@ -661,7 +663,7 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.Expose('Setup.ReportApply')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
     async reportSetupApply(params: unknown, sender: CommandSender) {
         await this.limitMutation(sender, 'Setup.ReportApply');
         const p = validateOrThrow<DeviceIngressSetupReportApplyParams>(

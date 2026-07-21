@@ -7,6 +7,8 @@ export type DeviceKind =
     | 'composed'
     | 'connector';
 
+export type DeviceSource = 'shelly' | 'virtual' | 'bluetooth';
+
 export interface DeviceKindFlags {
     kind: DeviceKind;
     isPhysical: boolean;
@@ -17,18 +19,31 @@ export interface DeviceKindFlags {
 const VIRTUAL_PREFIX = /^vdev_/;
 const BLUETOOTH_PREFIX = /^blu_/;
 
-export function classifyExternalId(
-    externalId: string | null | undefined
-): DeviceKind {
+// Fallback for records that arrive without the backend source field.
+function classifyByIdPrefix(externalId: string | null | undefined): DeviceKind {
     if (!externalId) return 'physical';
     if (BLUETOOTH_PREFIX.test(externalId)) return 'bluetooth';
     if (VIRTUAL_PREFIX.test(externalId)) return 'composed';
     return 'physical';
 }
 
-export function useDeviceKind(externalId: MaybeRef<string | null | undefined>) {
+/** Backend-sent device.source is the classification; id prefix only as fallback. */
+export function classifyDevice(
+    source: DeviceSource | null | undefined,
+    externalId?: string | null
+): DeviceKind {
+    if (source === 'virtual') return 'composed';
+    if (source === 'bluetooth') return 'bluetooth';
+    if (source === 'shelly') return 'physical';
+    return classifyByIdPrefix(externalId);
+}
+
+export function useDeviceKind(
+    externalId: MaybeRef<string | null | undefined>,
+    source?: MaybeRef<DeviceSource | null | undefined>
+) {
     const kind = computed<DeviceKind>(() =>
-        classifyExternalId(unref(externalId))
+        classifyDevice(unref(source), unref(externalId))
     );
     const isPhysical = computed(() => kind.value === 'physical');
     const isBluetooth = computed(() => kind.value === 'bluetooth');

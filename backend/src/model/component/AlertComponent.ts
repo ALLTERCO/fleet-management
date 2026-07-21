@@ -11,6 +11,10 @@ import {
 import {clearAnomalyBandCacheForRule} from '../../modules/alert/evaluators/anomalyBand';
 import {clearChangeEventCacheForRule} from '../../modules/alert/evaluators/changeEvent';
 import {
+    hydratePublicAlertSubjects,
+    resolveDurableAlertSubjectId
+} from '../../modules/alert/logicalDeviceFingerprint';
+import {
     collectBluetoothComponentPaths,
     collectBluetoothMetrics,
     collectComponentPaths,
@@ -18,6 +22,10 @@ import {
 } from '../../modules/alert/metricCatalog';
 import {previewRuleAgainstOrg} from '../../modules/alert/rulePreview';
 import {rowToLoadedRule} from '../../modules/alert/ruleRow';
+import {
+    hydratePublicRuleScopes,
+    replaceRuleSubjectScope
+} from '../../modules/alert/ruleScopePersistence';
 import type {LoadedAlertRule} from '../../modules/alert/types';
 import {
     assertRuleHasRecipient,
@@ -627,18 +635,20 @@ export default class AlertComponent extends Component {
         );
     }
 
-    #requireRuleRow(
+    async #requireRuleRow(
         organizationId: string,
         id: number,
         txId?: number
     ): Promise<AlertRuleRow> {
-        return this.#requireRow<AlertRuleRow>(
+        const row = await this.#requireRow<AlertRuleRow>(
             'notifications.fn_alert_rule_get',
             'alert_rule',
             organizationId,
             id,
             txId
         );
+        await hydratePublicRuleScopes(organizationId, [row], txId);
+        return row;
     }
 
     // One reusable replacer for both recipient kinds; the strategy map holds the
@@ -676,18 +686,20 @@ export default class AlertComponent extends Component {
         );
     }
 
-    #requireInstanceRow(
+    async #requireInstanceRow(
         organizationId: string,
         id: number,
         txId?: number
     ): Promise<AlertInstanceRow> {
-        return this.#requireRow<AlertInstanceRow>(
+        const row = await this.#requireRow<AlertInstanceRow>(
             'notifications.fn_alert_instance_get',
             'alert_instance',
             organizationId,
             id,
             txId
         );
+        await hydratePublicAlertSubjects(organizationId, [row]);
+        return row;
     }
 
     async #applyInstanceAction(
@@ -717,7 +729,9 @@ export default class AlertComponent extends Component {
             }
         );
 
-        return result?.rows?.[0] as AlertInstanceRow | undefined;
+        const row = result?.rows?.[0] as AlertInstanceRow | undefined;
+        if (row) await hydratePublicAlertSubjects(organizationId, [row]);
+        return row;
     }
 
     // OWASP A09:2025 — every alert-instance state transition is logged with
@@ -958,6 +972,10 @@ export default class AlertComponent extends Component {
                 }
             );
             const rows = (result?.rows ?? []) as AlertRuleListRow[];
+            await hydratePublicRuleScopes(
+                organizationId,
+                rows as AlertRuleRow[]
+            );
             const total =
                 rows.length > 0 ? Number(rows[0].total_count ?? 0) : 0;
             const items: AlertRule[] = [];
@@ -1093,6 +1111,13 @@ export default class AlertComponent extends Component {
             const row = result?.rows?.[0] as AlertRuleRow | undefined;
             if (!row) throw RpcError.OperationFailed('Alert.Rule.Create');
 
+            await replaceRuleSubjectScope(
+                organizationId,
+                row.id,
+                spec.scope,
+                txId
+            );
+
             await this.#replaceRuleDestinations(
                 'groups',
                 organizationId,
@@ -1114,6 +1139,11 @@ export default class AlertComponent extends Component {
             ctx.onCommit(() => {
                 invalidateAlertRuleCache(organizationId);
                 invalidateAlertRecipientsCache(organizationId);
+                AlertEvents.emitAlertRuleCreated({
+                    organizationId,
+                    ruleId: created.id,
+                    name: created.name
+                });
                 if (created.enabled) {
                     scheduleInitialRuleEvaluation({
                         organizationId,
@@ -1277,6 +1307,15 @@ export default class AlertComponent extends Component {
                 const row = result?.rows?.[0] as AlertRuleRow | undefined;
                 if (!row) throw RpcError.NotFound('alert_rule', p.id);
 
+                if (patch.scope !== undefined) {
+                    await replaceRuleSubjectScope(
+                        organizationId,
+                        row.id,
+                        nextScope,
+                        txId
+                    );
+                }
+
                 if (nextDestinationGroupIds !== null) {
                     await this.#replaceRuleDestinations(
                         'groups',
@@ -1302,6 +1341,11 @@ export default class AlertComponent extends Component {
                 ctx.onCommit(() => {
                     invalidateAlertRuleCache(organizationId);
                     invalidateAlertRecipientsCache(organizationId);
+                    AlertEvents.emitAlertRuleUpdated({
+                        organizationId,
+                        ruleId: updated.id,
+                        name: updated.name
+                    });
                     // Window/field math lives in config; a config edit must
                     // drop stale evaluator state so the new tuning rebuilds
                     // its window instead of reusing the old samples.
@@ -1358,6 +1402,10 @@ export default class AlertComponent extends Component {
                 // its own — deleted rules must release it.
                 clearAnomalyBandCacheForRule(p.id);
                 clearChangeEventCacheForRule(p.id);
+                AlertEvents.emitAlertRuleDeleted({
+                    organizationId,
+                    ruleId: p.id
+                });
             }
             return {deleted, id: p.id};
         } catch (err: unknown) {
@@ -1456,6 +1504,10 @@ export default class AlertComponent extends Component {
                 }
             );
             const rows = (result?.rows ?? []) as AlertRuleFiringListRow[];
+            await hydratePublicAlertSubjects(
+                organizationId,
+                rows as AlertRuleFiringRow[]
+            );
             const total =
                 rows.length > 0 ? Number(rows[0].total_count ?? 0) : 0;
             const items: AlertRuleFiring[] = [];
@@ -1647,6 +1699,23 @@ export default class AlertComponent extends Component {
         return rowToAlertRuleTemplate(row);
     }
 
+    async #requireTemplateKind(
+        organizationId: string,
+        templateId: number
+    ): Promise<AlertRuleKind> {
+        const rows = await postgres.queryRows<{kind: StoredAlertRuleKind}>(
+            `SELECT kind
+               FROM notifications.alert_rule_templates
+              WHERE organization_id = $1 AND id = $2
+              LIMIT 1`,
+            [organizationId, templateId]
+        );
+        if (!rows[0]) {
+            throw RpcError.NotFound('alert_rule_template', templateId);
+        }
+        return publicAlertRuleKind(rows[0].kind);
+    }
+
     @Component.NoAudit
     @Component.Expose('Instance.List')
     @Component.CrudPermission('alerts', 'read')
@@ -1670,6 +1739,15 @@ export default class AlertComponent extends Component {
         const offset = p.offset ?? 0;
 
         try {
+            const sourceId =
+                (p.sourceType === 'device' || p.sourceType === 'component') &&
+                p.sourceId?.trim()
+                    ? await resolveDurableAlertSubjectId(
+                          organizationId,
+                          p.sourceType === 'component' ? 'entity' : 'device',
+                          p.sourceId.trim()
+                      )
+                    : p.sourceId?.trim() || null;
             const result = await postgres.callMethod(
                 'notifications.fn_alert_instance_list',
                 {
@@ -1680,7 +1758,7 @@ export default class AlertComponent extends Component {
                     p_source_type: p.sourceType
                         ? storedAlertScopeType(p.sourceType)
                         : null,
-                    p_source_id: p.sourceId?.trim() || null,
+                    p_source_id: sourceId,
                     p_location_ids: normalizeIntIds(p.locationIds),
                     p_group_ids: normalizeIntIds(p.groupIds),
                     p_tag_ids: normalizeIntIds(p.tagIds),
@@ -1690,6 +1768,10 @@ export default class AlertComponent extends Component {
                 }
             );
             const rows = (result?.rows ?? []) as AlertInstanceListRow[];
+            await hydratePublicAlertSubjects(
+                organizationId,
+                rows as AlertInstanceRow[]
+            );
             const total =
                 rows.length > 0 ? Number(rows[0].total_count ?? 0) : 0;
             const items: AlertInstance[] = [];
@@ -2129,6 +2211,7 @@ export default class AlertComponent extends Component {
         const organizationId = requireOrganizationId(sender, p);
         const actor = requireActionActor(sender);
         try {
+            const scope = validateSupportedScopeSelector(p.kind, p.scope ?? {});
             const result = await postgres.callMethod(
                 'notifications.fn_alert_rule_template_create',
                 {
@@ -2139,7 +2222,7 @@ export default class AlertComponent extends Component {
                     p_description: normalizeOptionalText(p.description),
                     p_kind: p.kind,
                     p_severity: p.severity,
-                    p_scope: p.scope ?? {},
+                    p_scope: scope,
                     p_config: normalizeAlertRuleConfig(p.kind, p.config),
                     p_dedupe_window_sec: p.dedupeWindowSec ?? 0,
                     p_cooldown_sec: p.cooldownSec ?? 0,
@@ -2185,6 +2268,13 @@ export default class AlertComponent extends Component {
         const organizationId = requireOrganizationId(sender, p);
         const actor = requireActionActor(sender);
         try {
+            const scope =
+                p.scope === undefined
+                    ? null
+                    : validateSupportedScopeSelector(
+                          await this.#requireTemplateKind(organizationId, p.id),
+                          p.scope
+                      );
             const result = await postgres.callMethod(
                 'notifications.fn_alert_rule_template_update',
                 {
@@ -2200,7 +2290,7 @@ export default class AlertComponent extends Component {
                             ? normalizeOptionalText(p.description)
                             : null,
                     p_severity: p.severity ?? null,
-                    p_scope: p.scope ?? null,
+                    p_scope: scope,
                     p_config: p.config ?? null,
                     p_dedupe_window_sec: p.dedupeWindowSec ?? null,
                     p_cooldown_sec: p.cooldownSec ?? null,

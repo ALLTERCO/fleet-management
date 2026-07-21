@@ -7,6 +7,7 @@ import PluginGeneratedComponent from '../../model/component/PluginGeneratedCompo
 import type {PluginData} from '../../types';
 import * as Commander from '../Commander';
 import * as Observability from '../Observability';
+import {guardListener} from '../util/faultGuard';
 import PluginNotifier from './PluginNotifier';
 import {isMethodAllowed} from './rpcAllowlist';
 import {
@@ -283,16 +284,19 @@ export default class Workers {
             );
         });
 
-        worker.on('exit', (code) => {
-            Workers.startingWorkers.delete(pluginName);
-            if (code !== 0)
-                Observability.incrementCounter('plugin_worker_crashes');
-            rejectAllWaiting(
-                new Error(`Plugin worker exited with code ${code}`)
-            );
-            Workers.pluginWorkers.delete(pluginName);
-            Workers.unregisterGeneratedComponents(pluginName);
-        });
+        worker.on(
+            'exit',
+            guardListener('plugin-worker-exit', (code: number) => {
+                Workers.startingWorkers.delete(pluginName);
+                if (code !== 0)
+                    Observability.incrementCounter('plugin_worker_crashes');
+                rejectAllWaiting(
+                    new Error(`Plugin worker exited with code ${code}`)
+                );
+                Workers.pluginWorkers.delete(pluginName);
+                Workers.unregisterGeneratedComponents(pluginName);
+            })
+        );
 
         // Send load signal AFTER message handler is registered
         // to avoid race condition where worker responds before we're listening

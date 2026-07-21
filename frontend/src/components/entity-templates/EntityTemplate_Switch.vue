@@ -465,7 +465,7 @@ import {computed, ref} from 'vue';
 import {useAccordion} from '@/composables/useAccordion';
 import {useResetCounters} from '@/composables/useResetCounters';
 import {useToggleAfter} from '@/composables/useToggleAfter';
-import {formatDuration} from '@/helpers/formatDuration';
+import {formatDuration} from '@/helpers/format';
 import {buildPowerMetrics, formatKwh} from '@/helpers/powerMetrics';
 import {formatSource} from '@/helpers/sourceLabels';
 import {sendRPC} from '@/tools/websocket';

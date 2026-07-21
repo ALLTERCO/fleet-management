@@ -36,9 +36,40 @@ keys=(
     FM_SECRET_ENCRYPTION_KEY_PREVIOUS
     FM_SECRET_ENCRYPTION_KEY_PREVIOUS_ID
     FM_SECRET_KDF_SALT
+    FM_DEVICE_INGRESS_TOKEN_PEPPER
+    FM_NOTIFICATION_RECEIPT_SIGNING_SECRET
+    JWT_SECRET
+    FM_JWT_KID_CURRENT
+    FM_JWT_SECRET_PREVIOUS
+    FM_JWT_KID_PREVIOUS
+    FM_NOTIFICATION_SMTP_PASSWORD
+    FM_ADMIN_PASSWORD
+    FM_PLATFORM_ADMIN_PASSWORD
+)
+
+required_keys=(
+    ZITADEL_MASTERKEY
+    ZITADEL_POSTGRES_PASSWORD
+    ZITADEL_DB_USER_PASSWORD
+    ZITADEL_ADMIN_PASSWORD
+    POSTGRES_PASSWORD
+    FM_SECRET_ENCRYPTION_KEY
+    FM_SECRET_ENCRYPTION_KEY_ID
+    FM_SECRET_KDF_SALT
+    FM_DEVICE_INGRESS_TOKEN_PEPPER
+    FM_NOTIFICATION_RECEIPT_SIGNING_SECRET
     JWT_SECRET
     FM_ADMIN_PASSWORD
     FM_PLATFORM_ADMIN_PASSWORD
+)
+
+preserved_optional_keys=(
+    FM_SECRET_ENCRYPTION_KEY_PREVIOUS
+    FM_SECRET_ENCRYPTION_KEY_PREVIOUS_ID
+    FM_JWT_KID_CURRENT
+    FM_JWT_SECRET_PREVIOUS
+    FM_JWT_KID_PREVIOUS
+    FM_NOTIFICATION_SMTP_PASSWORD
 )
 
 declare -A values
@@ -78,8 +109,34 @@ case "$backend" in
         echo "Unknown FM_VAULT_BACKEND: $backend" >&2; exit 1 ;;
 esac
 
-if [ "${#values[@]}" -eq 0 ]; then
-    echo "ERROR: no secrets resolved from backend=$backend" >&2
+missing=()
+for k in "${required_keys[@]}"; do
+    [ -n "${values[$k]:-}" ] || missing+=("$k")
+done
+if [ "${#missing[@]}" -gt 0 ]; then
+    echo "ERROR: backend=$backend did not return required secrets: ${missing[*]}" >&2
+    exit 1
+fi
+
+# A partial external response must never erase an active rotation overlap.
+if [ -f "$OUT" ]; then
+    for k in "${preserved_optional_keys[@]}"; do
+        if [ -z "${values[$k]:-}" ]; then
+            v=$(sed -n "s/^${k}=//p" "$OUT" | tail -1)
+            [ -n "$v" ] && values[$k]="$v"
+        fi
+    done
+fi
+
+if [ -n "${values[FM_SECRET_ENCRYPTION_KEY_PREVIOUS]:-}" ] &&
+   [ -z "${values[FM_SECRET_ENCRYPTION_KEY_PREVIOUS_ID]:-}" ]; then
+    echo "ERROR: encryption previous key and id must be supplied together" >&2
+    exit 1
+fi
+
+if [ -n "${values[FM_JWT_SECRET_PREVIOUS]:-}" ] &&
+   [ -z "${values[FM_JWT_KID_PREVIOUS]:-}" ]; then
+    echo "ERROR: JWT previous secret and kid must be supplied together" >&2
     exit 1
 fi
 

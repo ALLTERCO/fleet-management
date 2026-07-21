@@ -87,6 +87,21 @@ export const ACTION_KINDS = [
 
 export type ActionKind = (typeof ACTION_KINDS)[number];
 
+export type ActionCategory = 'control' | 'maintenance';
+
+// Maintenance verbs (housekeeping — reset/calibrate; from the Shelly method
+// names `Reset*`/`Calibrate`). Everything else commands an output = control.
+// One home; the split lets clients present control as controls and maintenance
+// as a quiet menu, and marks that a maintenance-only entity isn't controllable.
+const MAINTENANCE_ACTIONS: ReadonlySet<ActionKind> = new Set([
+    'calibrate',
+    'resetCounters'
+]);
+
+export function actionCategory(action: ActionKind): ActionCategory {
+    return MAINTENANCE_ACTIONS.has(action) ? 'maintenance' : 'control';
+}
+
 // --- Action parameter schemas -------------------------------------------
 
 /** Schema for a single action's `params` payload. Empty object = no params. */
@@ -612,6 +627,15 @@ const BUILDERS: Record<string, ActionBuilder> = {
         if (!component) {
             throw new Error(`No Shelly component mapping for '${entityType}'`);
         }
+        // The circuit breaker's relay uses `output` (not `on`) and toggles both
+        // ways. A safety-latched trip (status.safety) blocks remote re-engage;
+        // the device rejects it and the lever is reset by hand.
+        if (entityType === 'cb') {
+            return {
+                method: 'CB.Set',
+                params: {id: channelId, output: actionParams.on as boolean}
+            };
+        }
         return {
             method: `${component}.Set`,
             params: {id: channelId, on: actionParams.on as boolean}
@@ -966,7 +990,15 @@ const BUILDERS: Record<string, ActionBuilder> = {
                 `startRecording is not supported for '${entityType}'`
             );
         }
-        return {method: 'Camera.StartRecording', params: {id: channelId}};
+        // StartRecording requires duration + stream (verified on-device — an
+        // id-only call fails). Manual record captures the high-quality stream up
+        // to a cap; Stop ends it early.
+        const MAX_SECONDS = 300;
+        const HIGH_STREAM = 0;
+        return {
+            method: 'Camera.StartRecording',
+            params: {id: channelId, duration: MAX_SECONDS, stream: HIGH_STREAM}
+        };
     },
     stopRecording: ({entityType, channelId}) => {
         if (entityType !== 'camera') {

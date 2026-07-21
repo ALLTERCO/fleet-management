@@ -1,3 +1,4 @@
+import type {EnergyMeterRole} from '@api/energy';
 import {
     type BindingDraftItem,
     type CreateVirtualDeviceRequest,
@@ -22,16 +23,10 @@ import {
 } from '@/helpers/energyAssignment';
 import {humaniseLabel} from '@/helpers/partLabels';
 import {uploadVisualAsset} from '@/helpers/uploadVisualAsset';
-import {
-    manualVisual,
-    profileVisual
-} from '@/helpers/virtualDeviceTemplates';
-import {useDevicesStore} from '@/stores/devices';
-import {useEntityStore} from '@/stores/entities';
+import {manualVisual, profileVisual} from '@/helpers/virtualDeviceTemplates';
 import {useToastStore} from '@/stores/toast';
 import {listMeasurementPoints, saveLogicalMeter} from '@/tools/logicalMeters';
-import type {EnergyMeterRole} from '@api/energy';
-import type {ShellyDeviceExternal} from '@/types/device';
+import type {shelly_device_t} from '@/types/device';
 import type {entity_t} from '@/types/entities';
 
 const DEFAULT_ENERGY_METER_NAME = 'Main meter';
@@ -122,7 +117,6 @@ export const useVirtualDeviceDraftStore = defineStore(
         const previewState = ref<DraftPreviewResponse | null>(null);
         const previewLoading = ref(false);
         const previewError = ref<string | null>(null);
-        const previewEntityIds = ref<string[]>([]);
 
         const validation = ref<ValidationResult | null>(null);
 
@@ -157,15 +151,59 @@ export const useVirtualDeviceDraftStore = defineStore(
 
         const pickedParts = computed(() => roles.value);
 
-        const previewDevice = computed(
-            () => useDevicesStore().devices[PREVIEW_EXTERNAL_ID] ?? null
+        // Draft-local preview; never inserted into the global stores.
+        const previewEntities = computed<entity_t[]>(() => {
+            if (!isCustom.value) return [];
+            return roles.value
+                .filter((row) => row.source !== null)
+                .map(previewEntityForRole);
+        });
+
+        // Fallback so the preview pane renders before the user types a name.
+        const previewName = computed(
+            () =>
+                details.value.name.trim() || profile.value?.name || 'New device'
         );
 
-        const previewEntities = computed(() => {
-            const store = useEntityStore();
-            return previewEntityIds.value
-                .map((id) => store.entities[id])
-                .filter((entity): entity is entity_t => entity != null);
+        const previewDevice = computed<shelly_device_t | null>(() => {
+            if (!isCustom.value) return null;
+            const entities = previewEntities.value;
+            const status = Object.fromEntries(
+                entities.map((entity) => [
+                    `${entity.type}:${entity.properties.id}`,
+                    previewStatusFor(entity)
+                ])
+            );
+            return {
+                id: -1,
+                shellyID: PREVIEW_EXTERNAL_ID,
+                source: 'virtual',
+                info: {
+                    app: 'Virtual Device',
+                    name: previewName.value,
+                    model: details.value.typeKey,
+                    imageAssetId: details.value.imageAssetId
+                },
+                status: {
+                    sys: {unixtime: Math.floor(Date.now() / 1000)},
+                    ...status
+                },
+                settings: {},
+                online: true,
+                sleeping: false,
+                loading: false,
+                selected: false,
+                entities: entities.map((entity) => entity.id),
+                capabilities: {},
+                meta: {
+                    preview: true,
+                    virtualDevice: {visual: details.value.visual}
+                },
+                methods: [],
+                groupIds: details.value.groupIds,
+                locationId: details.value.locationId,
+                tagIds: details.value.tagIds
+            };
         });
 
         const partKey = (c: SourceComponentCandidate) =>
@@ -173,7 +211,10 @@ export const useVirtualDeviceDraftStore = defineStore(
 
         function mintRoleKey(componentType: string): string {
             let n = 1;
-            while (roles.value.some((r) => r.roleKey === `${componentType}_${n}`)) n++;
+            while (
+                roles.value.some((r) => r.roleKey === `${componentType}_${n}`)
+            )
+                n++;
             return `${componentType}_${n}`;
         }
 
@@ -191,7 +232,9 @@ export const useVirtualDeviceDraftStore = defineStore(
                 source: {
                     deviceExternalId: c.deviceExternalId,
                     componentKey: c.componentKey,
-                    ...(c.dynamicCategory ? {dynamicCategory: c.dynamicCategory} : {})
+                    ...(c.dynamicCategory
+                        ? {dynamicCategory: c.dynamicCategory}
+                        : {})
                 }
             });
             pickedKeys.value.set(partKey(c), roleKey);
@@ -209,7 +252,6 @@ export const useVirtualDeviceDraftStore = defineStore(
         }
 
         function reset() {
-            clearPreviewModel();
             kind.value = null;
             profile.value = null;
             manualMode.value = false;
@@ -229,6 +271,8 @@ export const useVirtualDeviceDraftStore = defineStore(
         function selectProfile(p: VirtualDeviceProfile | null) {
             profile.value = p;
             manualMode.value = p === null;
+            // Roles are rebuilt below — the picked-part index must not outlive them.
+            pickedKeys.value.clear();
             if (!p) {
                 roles.value = [];
                 details.value.typeKey = 'custom_device';
@@ -279,66 +323,6 @@ export const useVirtualDeviceDraftStore = defineStore(
             row.source = source;
         }
 
-        function syncPreviewModel(): void {
-            if (!isCustom.value || !details.value.name.trim()) {
-                clearPreviewModel();
-                return;
-            }
-
-            const bound = roles.value.filter((row) => row.source !== null);
-            const entities = bound.map(previewEntityForRole);
-            const status = Object.fromEntries(
-                entities.map((entity) => [
-                    `${entity.type}:${entity.properties.id}`,
-                    previewStatusFor(entity)
-                ])
-            );
-
-            previewEntityIds.value = entities.map((entity) => entity.id);
-            useEntityStore().upsertEntities(entities);
-            useDevicesStore().handleNewDevice({
-                id: -1,
-                presence: 'online',
-                shellyID: PREVIEW_EXTERNAL_ID,
-                source: 'virtual',
-                info: {
-                    app: 'Virtual Device',
-                    name: details.value.name.trim(),
-                    model: details.value.typeKey,
-                    imageAssetId: details.value.imageAssetId
-                },
-                status: {
-                    sys: {unixtime: Math.floor(Date.now() / 1000)},
-                    ...status
-                },
-                _statusTs: Date.now(),
-                settings: {},
-                _settingsTs: Date.now(),
-                selected: false,
-                kvs: {},
-                entities: previewEntityIds.value,
-                capabilities: {},
-                meta: {
-                    preview: true,
-                    virtualDevice: {visual: details.value.visual}
-                },
-                methods: [],
-                groupIds: details.value.groupIds,
-                locationId: details.value.locationId,
-                tagIds: details.value.tagIds
-            } satisfies ShellyDeviceExternal);
-        }
-
-        function clearPreviewModel(): void {
-            if (previewEntityIds.value.length > 0) {
-                useEntityStore().removeEntities(previewEntityIds.value);
-            }
-            previewEntityIds.value = [];
-            if (useDevicesStore().devices[PREVIEW_EXTERNAL_ID]) {
-                useDevicesStore().deviceDeleted(PREVIEW_EXTERNAL_ID);
-            }
-        }
-
         function previewEntityForRole(
             row: RoleDraftRow,
             index: number
@@ -387,7 +371,8 @@ export const useVirtualDeviceDraftStore = defineStore(
         }
 
         function fallbackEntityType(row: RoleDraftRow): string {
-            if (row.valueType === 'boolean') return row.writable ? 'switch' : 'input';
+            if (row.valueType === 'boolean')
+                return row.writable ? 'switch' : 'input';
             if (row.valueType === 'number') return 'number';
             if (row.valueType === 'event') return 'button';
             if (row.valueType === 'string') return 'text';
@@ -681,8 +666,6 @@ export const useVirtualDeviceDraftStore = defineStore(
             bindingItems,
             buildCreatePayload,
             refreshPreview,
-            syncPreviewModel,
-            clearPreviewModel,
             validateDraft,
             commit,
             addPart,

@@ -181,7 +181,7 @@ export class PostgresResolverDb implements ResolverDb {
                     subject_type,
                     subject_id::text,
                     persona_id::text,
-                    scope,
+                    organization.fn_assignment_scope_external(id, scope) AS scope,
                     expires_at::text,
                     created_by::text
                FROM organization.assignments
@@ -245,7 +245,7 @@ export class PostgresResolverDb implements ResolverDb {
                FROM organization.location_assignments la
                JOIN device.list dl
                  ON dl.organization_id = la.organization_id
-                AND dl.external_id = la.subject_id
+                AND dl.id = la.device_id
               WHERE la.organization_id = $1
                 AND la.subject_type = 'device'
                 AND la.location_id IN (SELECT id FROM loc_tree)
@@ -261,8 +261,11 @@ export class PostgresResolverDb implements ResolverDb {
     ): Promise<string[]> {
         if (deviceGroupIds.length === 0) return [];
         const rows = await store.queryRows<{id: string}>(
-            `SELECT DISTINCT gm.subject_id AS id
+            `SELECT DISTINCT dl.external_id AS id
                FROM organization.group_members gm
+               JOIN device.list dl
+                 ON dl.organization_id = gm.organization_id
+                AND dl.id = gm.device_id
               WHERE gm.organization_id = $1
                 AND gm.subject_type = 'device'
                 AND gm.group_id = ANY($2::int[])`,
@@ -277,9 +280,12 @@ export class PostgresResolverDb implements ResolverDb {
     ): Promise<string[]> {
         if (tags.length === 0) return [];
         const rows = await store.queryRows<{id: string}>(
-            `SELECT DISTINCT ta.subject_id AS id
+            `SELECT DISTINCT dl.external_id AS id
                FROM organization.tag_assignments ta
                JOIN organization.tags t ON t.id = ta.tag_id
+               JOIN device.list dl
+                 ON dl.organization_id = ta.organization_id
+                AND dl.id = ta.device_id
               WHERE ta.subject_type = 'device'
                 AND t.key = ANY($1::text[])
                 AND t.organization_id = $2`,

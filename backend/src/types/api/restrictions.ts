@@ -46,12 +46,14 @@ const b = new DescribeBuilder('restrictions', {
 });
 
 b.registerMethod('Get', {
+    safety: {operation: 'read'},
     params: RESTRICTIONS_GET_SCHEMA,
     response: RESP_RESTRICTIONS,
     permission: PERM,
     description: 'Restrictions.Get — current instance restrictions.'
 });
 b.registerMethod('Set', {
+    safety: {operation: 'update'},
     params: RESTRICTIONS_SET_SCHEMA,
     response: RESP_OK,
     permission: PERM,

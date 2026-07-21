@@ -240,7 +240,7 @@ watch(() => props.gatewayId, loadCandidates, {immediate: true});
 }
 .bis__heading {
     margin: 0;
-    font-size: var(--type-display);
+    font-size: var(--type-subheading);
     line-height: var(--leading-tight);
     color: var(--color-text-primary);
     font-weight: var(--font-semibold);

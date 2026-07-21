@@ -87,6 +87,12 @@ export const WAITING_ROOM_BULK_POLL_MS = intCfg('waitingRoomBulkPollMs', {
     envName: 'WAITING_ROOM_BULK_POLL_MS',
     defaultValue: 1000
 });
+// Max devices configured in parallel by the config-deploy modal. Caps the
+// Device.Call burst (one RPC per device in flight) on a large group.
+export const CONFIG_DEPLOY_CONCURRENCY = intCfg('configDeployConcurrency', {
+    envName: 'CONFIG_DEPLOY_CONCURRENCY',
+    defaultValue: 6
+});
 // Consecutive failed status polls tolerated before the job is treated as lost.
 export const WAITING_ROOM_BULK_POLL_MAX_FAILURES = intCfg(
     'waitingRoomBulkPollMaxFailures',
@@ -138,7 +144,7 @@ export const ORGANIZE_PATH = strCfg('organizePath', {
 });
 export const ALERTS_PATH = strCfg('alertsPath', {
     envName: 'ALERTS_PATH',
-    defaultValue: '/alerts'
+    defaultValue: '/settings/alerts'
 });
 export const GRAPHS_PATH = strCfg('graphsPath', {
     envName: 'GRAPHS_PATH',
@@ -148,21 +154,13 @@ export const AUTOMATIONS_PATH = strCfg('automationsPath', {
     envName: 'AUTOMATIONS_PATH',
     defaultValue: '/automations/actions'
 });
-export const FIRMWARE_PATH = strCfg('firmwarePath', {
-    envName: 'FIRMWARE_PATH',
-    defaultValue: '/firmware'
-});
-export const BACKUPS_PATH = strCfg('backupsPath', {
-    envName: 'BACKUPS_PATH',
-    defaultValue: '/backups'
-});
 export const OPERATIONS_PATH = strCfg('operationsPath', {
     envName: 'OPERATIONS_PATH',
     defaultValue: '/operations/jobs'
 });
 export const MONITORING_PATH = strCfg('monitoringPath', {
     envName: 'MONITORING_PATH',
-    defaultValue: '/monitoring'
+    defaultValue: '/settings/monitoring'
 });
 export const SETTINGS_PATH = strCfg('settingsPath', {
     envName: 'SETTINGS_PATH',
@@ -170,7 +168,7 @@ export const SETTINGS_PATH = strCfg('settingsPath', {
 });
 export const RPC_AUDIT_LOG_PATH = strCfg('rpcAuditLogPath', {
     envName: 'RPC_AUDIT_LOG_PATH',
-    defaultValue: '/monitoring/audit-log'
+    defaultValue: '/settings/monitoring/audit-log'
 });
 
 export const BG_OPS_SNAPSHOT_KEY = 'fm:bgops-jobs';

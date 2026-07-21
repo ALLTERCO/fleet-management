@@ -43,7 +43,7 @@ const appearance = computed(() => appearanceForDashboardType(props.type));
 }
 .dti--energy {
     background: var(--accent-energy-soft);
-    color: var(--accent-energy);
+    color: rgb(var(--accent-energy));
 }
 .dti--environment {
     background: var(--accent-environment-soft);

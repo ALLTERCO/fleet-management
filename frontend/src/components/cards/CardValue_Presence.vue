@@ -26,7 +26,6 @@
                 </div>
                 <div class="pz-mini-text">
                     <div class="pz-mini-label">{{ anyOccupied ? 'Occupied' : 'Empty' }}</div>
-                    <div class="pz-mini-sub">{{ totalPeople > 0 ? `${totalPeople} ${totalPeople === 1 ? 'person' : 'people'}` : 'No presence' }}</div>
                 </div>
                 <div v-if="illumination" class="pz-ill-pill" :class="`pz-ill--${illumination}`">
                     <i :class="illuminationIcon" />
@@ -74,9 +73,9 @@
                         <i class="fas fa-gauge ps-stat-icon" />
                         <span>{{ sensitivity }}</span>
                     </div>
-                    <div class="ps-stat">
-                        <i class="fas fa-sun ps-stat-icon" />
-                        <span>{{ lux != null ? `${lux} lx` : '—' }}</span>
+                    <div v-if="transmissionPower" class="ps-stat">
+                        <i class="fas fa-signal ps-stat-icon" />
+                        <span>{{ transmissionPower }}</span>
                     </div>
                 </div>
             </div>
@@ -104,40 +103,34 @@
     >
         <template #default>
             <div class="ps-full">
+                <!-- People: just the number when present, else "No presence" -->
                 <div class="ps-full-hero" :class="anyOccupied ? 'pz-state--on' : 'pz-state--off'">
-                    <div class="ps-full-count">{{ totalPeople > 0 ? totalPeople : '—' }}</div>
-                    <div class="ps-full-unit">{{ anyOccupied ? `${totalPeople} ${totalPeople === 1 ? 'person' : 'people'} detected` : 'No presence' }}</div>
+                    <div v-if="anyOccupied" class="ps-full-count">{{ totalPeople }}</div>
+                    <div v-else class="ps-full-empty">No presence</div>
                 </div>
-                <div class="ps-full-grid">
-                    <div class="ps-grid-item">
-                        <div class="ps-grid-v">
-                            <i v-if="illumination" :class="[illuminationIcon, `pz-ill-icon--${illumination}`]" />
-                            {{ illuminationLabel ?? '—' }}
-                        </div>
-                        <div class="ps-grid-l">Light</div>
-                    </div>
-                    <div class="ps-grid-item">
-                        <div class="ps-grid-v">{{ lux != null ? `${lux} lx` : '—' }}</div>
-                        <div class="ps-grid-l">Lux</div>
-                    </div>
-                    <div class="ps-grid-item">
-                        <div class="ps-grid-v">{{ detectionRange ?? '—' }}</div>
-                        <div class="ps-grid-l">Range</div>
-                    </div>
-                    <div class="ps-grid-item">
-                        <div class="ps-grid-v">{{ sensitivity }}</div>
-                        <div class="ps-grid-l">Sensitivity</div>
-                    </div>
+                <!-- Light badge -->
+                <div v-if="illumination" class="ps-light">
+                    <span class="pz-ill-pill" :class="`pz-ill--${illumination}`">
+                        <i :class="illuminationIcon" /> {{ illuminationLabel }}
+                    </span>
                 </div>
-                <!-- Zone summary -->
-                <div v-if="allZones.length" class="ps-zone-list">
-                    <div v-for="zone in allZones" :key="zone.id" class="ps-zone-row">
+                <!-- Zones -->
+                <div v-if="subZones.length" class="ps-zone-chips">
+                    <span v-for="zone in subZones" :key="zone.id" class="ps-zone-chip" :class="zone.occupied ? 'ps-zone-chip--on' : ''">
                         <span class="ps-zone-dot" :style="{background: zoneColor(zone.color)}" />
-                        <span class="ps-zone-name">{{ zone.name || `Zone ${zone.id}` }}</span>
-                        <span class="ps-zone-count" :class="zone.occupied && 'ps-zone-count--on'">
-                            {{ zone.occupied ? (zone.numObjects ?? 0) : 0 }} <i class="fas fa-person" />
-                        </span>
-                    </div>
+                        {{ zone.name || `Zone ${zone.id}` }}
+                        <b>{{ zone.occupied ? (zone.numObjects ?? 0) : 0 }}</b>
+                    </span>
+                </div>
+                <!-- Detection setup -->
+                <div class="ps-full-grid">
+                    <div class="ps-grid-item"><span class="ps-grid-l">Detect height</span><span class="ps-grid-v">{{ detectionRange ?? '—' }}</span></div>
+                    <div class="ps-grid-item"><span class="ps-grid-l">Sensitivity</span><span class="ps-grid-v ps-cap">{{ sensitivity }}</span></div>
+                    <div v-if="transmissionPower" class="ps-grid-item"><span class="ps-grid-l">Power</span><span class="ps-grid-v ps-cap">{{ transmissionPower }}</span></div>
+                    <div class="ps-grid-item"><span class="ps-grid-l">Mount</span><span class="ps-grid-v ps-cap">{{ sensorPosition }}</span></div>
+                    <div v-if="sensorHeight != null" class="ps-grid-item"><span class="ps-grid-l">Sensor height</span><span class="ps-grid-v">{{ sensorHeight }} m</span></div>
+                    <div v-if="sensorTilt != null" class="ps-grid-item"><span class="ps-grid-l">Tilt</span><span class="ps-grid-v">{{ sensorTilt }}°</span></div>
+                    <div v-if="maxPeople != null" class="ps-grid-item"><span class="ps-grid-l">Max people</span><span class="ps-grid-v">{{ maxPeople }}</span></div>
                 </div>
             </div>
         </template>
@@ -176,7 +169,6 @@
                 </div>
                 <div class="pz-mini-text">
                     <div class="pz-mini-label">{{ isOccupied ? 'Occupied' : 'Empty' }}</div>
-                    <div class="pz-mini-sub">{{ isOccupied && numObjects > 0 ? `${numObjects} ${numObjects === 1 ? 'person' : 'people'}` : 'No presence' }}</div>
                 </div>
                 <div v-if="illumination" class="pz-ill-pill" :class="`pz-ill--${illumination}`">
                     <i :class="illuminationIcon" />
@@ -258,7 +250,9 @@
                 />
                 <div class="pz-radar-meta">
                     <span class="pz-radar-range">0 – {{ detectionRangeMax }}m</span>
-                    <span class="pz-radar-zone">{{ zoneName }}</span>
+                    <span v-if="illumination" class="pz-radar-light">
+                        <i :class="[illuminationIcon, `pz-ill-icon--${illumination}`]" /> {{ illuminationLabel }}
+                    </span>
                     <span v-if="trackedObjects.length > 0" class="pz-radar-count">
                         {{ trackedObjects.length }} {{ trackedObjects.length === 1 ? 'person' : 'people' }}
                     </span>
@@ -270,29 +264,6 @@
             <CardBadges :is-offline="isOffline" :shelly-id="entity.source" />
         </template>
 
-        <template #footer>
-            <div class="ec-hero-info">
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ isOccupied && numObjects > 0 ? numObjects : '—' }}</div>
-                    <div class="ec-hero-stat-l">People</div>
-                </div>
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">
-                        <i v-if="illumination" :class="[illuminationIcon, `pz-ill-icon--${illumination}`]" />
-                        {{ illuminationLabel ?? '—' }}
-                    </div>
-                    <div class="ec-hero-stat-l">Light</div>
-                </div>
-                <div v-if="lux != null" class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ lux }} lx</div>
-                    <div class="ec-hero-stat-l">Lux</div>
-                </div>
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ detectionRange ?? '—' }}</div>
-                    <div class="ec-hero-stat-l">Range</div>
-                </div>
-            </div>
-        </template>
     </CardShell>
 </template>
 
@@ -358,7 +329,14 @@ const presenceConfig = computed(() => {
         zmin: number | null;
         zmax: number | null;
         main_zone?: string;
-        sensor: {sensitivity: string; position?: string};
+        num_tracks?: number;
+        sensor: {
+            sensitivity: string;
+            position?: string;
+            power?: string;
+            height?: number;
+            tilt?: number;
+        };
     } | null;
 });
 
@@ -395,6 +373,14 @@ const lux = computed(() => illuminanceStatus.value?.lux ?? null);
 const sensitivity = computed(
     () => presenceConfig.value?.sensor?.sensitivity ?? '—'
 );
+// Transmission power (sensor.power, e.g. "high"). Needs the backend to include
+// it in the slim presence settings before it shows on the dashboard.
+const transmissionPower = computed(
+    () => presenceConfig.value?.sensor?.power ?? null
+);
+const maxPeople = computed(() => presenceConfig.value?.num_tracks ?? null);
+const sensorHeight = computed(() => presenceConfig.value?.sensor?.height ?? null);
+const sensorTilt = computed(() => presenceConfig.value?.sensor?.tilt ?? null);
 const detectionRangeMax = computed(() => presenceConfig.value?.zmax ?? 3);
 const sensorPosition = computed(
     () => presenceConfig.value?.sensor?.position ?? 'center'
@@ -596,6 +582,8 @@ onUnmounted(stopLive);
     display: flex; flex-direction: column; align-items: center; gap: var(--space-0-5); text-align: center;
 }
 .pz-mini-label { font-size: var(--type-subheading); font-weight: 800; letter-spacing: -.5px; line-height: 1; }
+/* 1x1: breathing room between the state label and the light pill. */
+.pz-mini .pz-ill-pill { margin-top: var(--space-3); }
 .pz-mini-sub { font-size: var(--type-body); }
 .pz-state--on .pz-mini-sub { color: var(--color-text-tertiary); }
 .pz-state--off .pz-mini-sub { color: var(--color-text-disabled); opacity: .7; }
@@ -631,39 +619,55 @@ onUnmounted(stopLive);
 .ps-full {
     display: flex; flex-direction: column; height: 100%;
     padding: var(--space-4);
-    gap: var(--space-4);
+    gap: var(--space-3);
+    justify-content: flex-start;
+    position: relative;
+    container-type: inline-size;
 }
 .ps-full-hero {
-    display: flex; flex-direction: column; align-items: center; text-align: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+    margin-top: var(--space-4);
+    height: 6rem;          /* fixed so the big number never pushes content below */
+    flex-shrink: 0;
 }
-.ps-full-count { font-size: var(--type-body); font-weight: 800; line-height: 1; letter-spacing: -2px; }
+.ps-full-count { font-size: clamp(60px, 44cqi, 88px); font-weight: 800; line-height: 1; letter-spacing: -2px; }
 .ps-full-unit { font-size: var(--type-body); font-weight: 600; color: var(--color-text-tertiary); margin-top: var(--space-1); }
 
+/* Stats as a clean 2-column key/value list — lighter than boxed buttons,
+   hairline-separated so the four read as one block. */
 .ps-full-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2);
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--space-5);
 }
 .ps-grid-item {
-    display: flex; flex-direction: column; align-items: center; gap: var(--space-0-5);
-    padding: var(--space-2); border-radius: var(--radius-sm);
-    background: rgba(var(--color-chart-axis-rgb), .04);
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: var(--space-2); padding: var(--space-2) 0;
+    border-bottom: 1px solid rgba(var(--color-chart-axis-rgb), .07);
 }
 .ps-grid-v { font-size: var(--type-body); font-weight: 700; color: var(--color-text-primary); }
-.ps-grid-l { font-size: var(--type-body); font-weight: 600; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; }
+.ps-grid-l { font-size: var(--type-caption); font-weight: 600; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; }
+.ps-cap { text-transform: capitalize; }
+/* Light badge right-aligned, sitting just above the zones. */
+.ps-light { display: flex; justify-content: flex-end; margin-top: var(--space-2); }
+.ps-full-empty { font-size: var(--type-subheading); font-weight: 700; color: var(--color-text-tertiary); }
 
-.ps-zone-list {
-    display: flex; flex-direction: column; gap: var(--space-1);
+.ps-zone-chips {
+    display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: center; align-items: center;
     border-top: 1px solid rgba(var(--color-chart-axis-rgb), .06);
-    padding-top: var(--space-3);
+    border-bottom: 1px solid rgba(var(--color-chart-axis-rgb), .06);
+    margin-top: var(--space-2);
+    padding: var(--space-3) 0;
 }
-.ps-zone-row {
-    display: flex; align-items: center; gap: var(--space-2);
-    font-size: var(--type-body); color: var(--color-text-secondary);
+.ps-zone-chip {
+    display: inline-flex; align-items: center; gap: var(--space-1);
+    padding: var(--space-0-5) var(--space-2); border-radius: var(--radius-full);
+    background: rgba(var(--color-chart-axis-rgb), .06);
+    font-size: var(--type-caption); font-weight: 600; color: var(--color-text-secondary);
 }
+.ps-zone-chip--on { background: rgba(var(--color-success-rgb), .12); color: var(--color-text-primary); }
+.ps-zone-chip b { color: var(--color-text-tertiary); }
+.ps-zone-chip--on b { color: rgba(var(--color-success-rgb), .9); }
 .ps-zone-dot { width: 8px; height: 8px; border-radius: var(--radius-xs); flex-shrink: 0; }
-.ps-zone-name { flex: 1; font-weight: 600; }
-.ps-zone-count { font-size: var(--type-body); color: var(--color-text-tertiary); }
-.ps-zone-count--on { color: rgba(var(--color-success-rgb), 0.9); font-weight: 700; }
-.ps-zone-count i { font-size: var(--type-body); }
 
 /* ══════════════════════════════════════════
    Zone 2×1 — radar
@@ -699,6 +703,7 @@ onUnmounted(stopLive);
 .pz-radar-range { font-size: var(--type-body); color: var(--color-text-tertiary); }
 .pz-radar-zone { font-size: var(--type-body); color: var(--color-text-secondary); font-weight: 600; flex: 1; text-align: center; }
 .pz-radar-count { font-size: var(--type-body); color: rgb(var(--ar)); font-weight: 600; }
+.pz-radar-light { display: inline-flex; align-items: center; gap: var(--space-1); font-size: var(--type-body); color: var(--color-text-tertiary); white-space: nowrap; }
 
 /* ══════════════════════════════════════════
    Illumination pills

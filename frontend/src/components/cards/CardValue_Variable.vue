@@ -167,7 +167,7 @@ defineEmits<{
     text-align: center;
 }
 .vc-name {
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: -0.3px;
     color: var(--color-text-primary);

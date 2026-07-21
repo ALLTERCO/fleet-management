@@ -333,6 +333,22 @@ export const COUNTER_DEFS: Record<
     device_builds_slow: {
         help: 'Device builds that ran slower than the slow-build threshold',
         type: 'counter'
+    },
+    contained_faults: {
+        help: 'Unexpected faults in our code, contained instead of crashing (alert if > 0)',
+        type: 'counter'
+    },
+    peer_errors: {
+        help: 'Expected peer/network errors handled gracefully (resets, disconnects, bad frames)',
+        type: 'counter'
+    },
+    process_uncaught_exception_total: {
+        help: 'Uncaught exceptions reaching the process-level handler',
+        type: 'counter'
+    },
+    process_unhandled_rejection_total: {
+        help: 'Unhandled promise rejections reaching the process-level handler',
+        type: 'counter'
     }
 };
 

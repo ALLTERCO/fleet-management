@@ -8,6 +8,7 @@ import {DescribeBuilder, type DescribeOutput} from './_describe';
 import type {JsonSchema} from './_schema';
 import {DASHBOARD_SCOPE_SCHEMA, type DashboardScope} from './fleet';
 import {REPORT_SECTION_IDS, type ReportSectionId} from './reporttemplate';
+import {SENSOR_SOURCES, type SensorSource} from './sensor';
 
 // Named relative ranges; resolved to {from,to} at run time (see reportPeriod).
 export type ReportPeriod =
@@ -230,6 +231,90 @@ export const REPORT_GENERATE_ENERGY_PARAMS_SCHEMA: JsonSchema = {
     }
 };
 
+// --- GenerateEnvironmentReport -------------------------------------------
+
+// Toggleable environment report sections — the twin of REPORT_SECTION_IDS.
+// Summary + comfort are core (always rendered); these render only when both
+// their data is present AND (when an allowlist is given) they are listed.
+export const ENVIRONMENT_REPORT_SECTION_IDS = [
+    'air',
+    'light',
+    'weather',
+    'presence',
+    'safety',
+    'per_sensor',
+    'breaches',
+    'recommendations',
+    'data_quality'
+] as const;
+export type EnvironmentReportSectionId =
+    (typeof ENVIRONMENT_REPORT_SECTION_IDS)[number];
+
+// The environmental twin of the energy report. Same scope + window shape (pass
+// period OR from+to), but sourced from the device_sensor 15-minute rollup that
+// the environment dashboard uses — no tariff/PV/cost inputs.
+export interface ReportGenerateEnvironmentParams {
+    scope?: DashboardScope;
+    from?: string;
+    to?: string;
+    /** Named relative range resolved server-side in the org tz; pass this OR
+     *  from/to, not both. */
+    period?: ReportPeriod;
+    /** Billing-cycle reset day (1-28) for period='billing_period'. */
+    billing_day?: number;
+    granularity?: 'fifteen_minutes' | 'hour' | 'day' | 'month';
+    /** Reading-source filter (builtin/addon/blu/weather/internal). Omit for all
+     *  ambient sources — omitting drops chip temps (internal), matching the
+     *  dashboard; pass 'internal' explicitly to include them. */
+    source?: SensorSource;
+    /** IANA tz name anchoring period resolution; falls back to the org
+     *  timezone_default, then UTC. */
+    timezone?: string;
+    /** When the report belongs to a dashboard, gates cross-tenant reads and
+     *  reserves the seam for stored comfort/threshold settings. */
+    dashboardId?: number;
+    /** Explicit device allowlist (shellyIDs), access-filtered server-side.
+     *  Lets the dashboard export exactly what its on-screen filter shows; takes
+     *  precedence over `scope` when present. */
+    devices?: string[];
+    /** Allowlist for the optional sections. Empty/omitted renders every
+     *  data-present section; core (summary + comfort) always renders. */
+    sections_enabled?: EnvironmentReportSectionId[];
+}
+
+// from/to are intentionally NOT required: a caller may pass `period` instead.
+// engineHelpers.assertExactlyOneRange enforces exactly one of {period}/{from+to}.
+export const REPORT_GENERATE_ENVIRONMENT_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: [],
+    properties: {
+        scope: DASHBOARD_SCOPE_SCHEMA,
+        from: {type: 'string'},
+        to: {type: 'string'},
+        period: {type: 'string', enum: [...REPORT_PERIODS]},
+        billing_day: {type: 'integer', minimum: 1, maximum: 28},
+        granularity: {
+            type: 'string',
+            enum: ['fifteen_minutes', 'hour', 'day', 'month']
+        },
+        source: {type: 'string', enum: [...SENSOR_SOURCES]},
+        timezone: {type: 'string', maxLength: 64},
+        dashboardId: {type: 'integer', minimum: 1},
+        devices: {
+            type: 'array',
+            items: {type: 'string', minLength: 1},
+            maxItems: 500,
+            description:
+                'Access-filtered shellyID allowlist; takes precedence over scope.'
+        },
+        sections_enabled: {
+            type: 'array',
+            items: {type: 'string', enum: [...ENVIRONMENT_REPORT_SECTION_IDS]},
+            uniqueItems: true
+        }
+    }
+};
+
 // --- PurgeReports --------------------------------------------------------
 
 export const REPORT_PURGE_PARAMS_SCHEMA: JsonSchema = {
@@ -259,7 +344,9 @@ export const REPORT_PURGE_RESPONSE_SCHEMA: JsonSchema = {
 // 'energy_dump' = backwards-compat alias retained for existing tenants (e.g. t6)
 // whose integrations call the legacy per-phase 15-minute dump; it routes to the
 // per-phase interval engine (interval + per_phase=true).
-export type ReportKind = 'energy' | 'interval' | 'energy_dump';
+// 'environment' = the environmental report (temperature/humidity/air-quality/
+// light/weather from the device_sensor rollup) — the twin of 'energy'.
+export type ReportKind = 'energy' | 'interval' | 'energy_dump' | 'environment';
 
 export interface ReportGenerateUnifiedParams {
     kind: ReportKind;
@@ -274,7 +361,7 @@ export const REPORT_GENERATE_UNIFIED_PARAMS_SCHEMA: JsonSchema = {
     properties: {
         kind: {
             type: 'string',
-            enum: ['energy', 'interval', 'energy_dump']
+            enum: ['energy', 'interval', 'energy_dump', 'environment']
         },
         format: {type: 'string', enum: ['csv', 'html']}
     }
@@ -383,7 +470,11 @@ export const REPORT_DESCRIBE: DescribeOutput = new DescribeBuilder('report', {
             '15-minute, scope, tariff, currency, main_meter_ids, dashboardId; format ' +
             'html | csv) and `interval` (interval data / "load profile" — per-device ' +
             'readings of one or more metrics at a chosen granularity: metrics, from, ' +
-            'to, granularity, scope/devices, per_device; streamed CSV). ' +
+            'to, granularity, scope/devices, per_device; streamed CSV) and ' +
+            '`environment` (the environmental report — comfort, air quality, ' +
+            'light, weather, per-sensor breakdown, threshold breaches from the ' +
+            'device_sensor rollup; from, to, granularity, scope, source; format ' +
+            'html | csv). ' +
             'Use Energy.Query for live on-screen charts; use this for files to download.'
     })
     .registerMethod('GetReport', {
@@ -412,6 +503,7 @@ export const REPORT_DESCRIBE: DescribeOutput = new DescribeBuilder('report', {
             'Suggest the single best hour-to-hour load shift for the given device scope + window, scored against grid carbon intensity. Returns null when no useful shift can be proposed.'
     })
     .registerMethod('PurgeReports', {
+        safety: {operation: 'delete'},
         params: REPORT_PURGE_PARAMS_SCHEMA,
         response: REPORT_PURGE_RESPONSE_SCHEMA,
         permission: {

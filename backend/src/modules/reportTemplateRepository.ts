@@ -13,10 +13,14 @@ export interface ReportTemplateRepositoryDeps {
         sql: string,
         params?: readonly unknown[]
     ): Promise<Array<T>>;
+    withTransaction?<T>(
+        fn: (client: postgres.QueryTxClient) => Promise<T>
+    ): Promise<T>;
 }
 
 const defaultDeps: ReportTemplateRepositoryDeps = {
-    queryRows: postgres.queryRows
+    queryRows: postgres.queryRows,
+    withTransaction: postgres.withQueryTransaction
 };
 
 interface TemplateRow {
@@ -31,8 +35,17 @@ interface TemplateRow {
     updated_at: Date | string | null;
 }
 
-const COLUMNS =
-    'id, name, description, kind, params, sections_enabled, created_by, created_at, updated_at';
+const COLUMNS = `id, name, description, kind,
+    ui.fn_report_template_params_public(id, params) AS params,
+    sections_enabled, created_by, created_at, updated_at`;
+
+async function inTransaction<T>(
+    deps: ReportTemplateRepositoryDeps,
+    fn: (client: postgres.QueryTxClient) => Promise<T>
+): Promise<T> {
+    if (deps.withTransaction) return deps.withTransaction(fn);
+    return fn({query: deps.queryRows} as postgres.QueryTxClient);
+}
 
 function asIso(value: Date | string | null): string | null {
     if (value === null) return null;
@@ -81,26 +94,38 @@ export async function createReportTemplate(
     input: ReportTemplateCreateInput,
     deps: ReportTemplateRepositoryDeps = defaultDeps
 ): Promise<ReportTemplate> {
-    await deps.queryRows('SELECT organization.fn_profile_ensure($1)', [
-        organizationId
-    ]);
-    const rows = await deps.queryRows<TemplateRow>(
-        `INSERT INTO organization.report_templates
-            (organization_id, name, description, kind, params,
-             sections_enabled, created_by)
-         VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
-         RETURNING ${COLUMNS}`,
-        [
-            organizationId,
-            input.name,
-            input.description ?? null,
-            input.kind,
-            jsonbParam(input.params),
-            input.sectionsEnabled ?? null,
-            input.createdBy ?? null
-        ]
-    );
-    return toTemplate(rows[0]);
+    return inTransaction(deps, async (client) => {
+        await client.query('SELECT organization.fn_profile_ensure($1)', [
+            organizationId
+        ]);
+        const inserted = await client.query<{id: string}>(
+            `INSERT INTO organization.report_templates
+                (organization_id, name, description, kind, params,
+                 sections_enabled, created_by)
+             VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)
+             RETURNING id`,
+            [
+                organizationId,
+                input.name,
+                input.description ?? null,
+                input.kind,
+                jsonbParam(input.params),
+                input.sectionsEnabled ?? null,
+                input.createdBy ?? null
+            ]
+        );
+        const id = inserted[0]?.id;
+        await client.query(
+            'SELECT ui.fn_report_template_device_refs_replace($1, $2, $3::jsonb)',
+            [organizationId, id, jsonbParam(input.params)]
+        );
+        const rows = await client.query<TemplateRow>(
+            `SELECT ${COLUMNS} FROM organization.report_templates
+              WHERE organization_id = $1 AND id = $2`,
+            [organizationId, id]
+        );
+        return toTemplate(rows[0]);
+    });
 }
 
 export interface ReportTemplateUpdateInput {
@@ -118,28 +143,44 @@ export async function updateReportTemplate(
     patch: ReportTemplateUpdateInput,
     deps: ReportTemplateRepositoryDeps = defaultDeps
 ): Promise<ReportTemplate | null> {
-    const sets: string[] = ['updated_at = NOW()'];
-    const args: unknown[] = [organizationId, id];
-    const add = (col: string, value: unknown) => {
-        args.push(value);
-        sets.push(`${col} = $${args.length}`);
-    };
-    if (patch.name !== undefined) add('name', patch.name);
-    if (patch.description !== undefined) add('description', patch.description);
-    if (patch.params !== undefined) {
-        args.push(jsonbParam(patch.params));
-        sets.push(`params = $${args.length}::jsonb`);
-    }
-    if (patch.sectionsEnabled !== undefined) {
-        add('sections_enabled', patch.sectionsEnabled);
-    }
-    const rows = await deps.queryRows<TemplateRow>(
-        `UPDATE organization.report_templates SET ${sets.join(', ')}
-          WHERE organization_id = $1 AND id = $2
-          RETURNING ${COLUMNS}`,
-        args
-    );
-    return rows[0] ? toTemplate(rows[0]) : null;
+    return inTransaction(deps, async (client) => {
+        const sets: string[] = ['updated_at = NOW()'];
+        const args: unknown[] = [organizationId, id];
+        const add = (col: string, value: unknown) => {
+            args.push(value);
+            sets.push(`${col} = $${args.length}`);
+        };
+        if (patch.name !== undefined) add('name', patch.name);
+        if (patch.description !== undefined) {
+            add('description', patch.description);
+        }
+        if (patch.params !== undefined) {
+            args.push(jsonbParam(patch.params));
+            sets.push(`params = $${args.length}::jsonb`);
+        }
+        if (patch.sectionsEnabled !== undefined) {
+            add('sections_enabled', patch.sectionsEnabled);
+        }
+        const updated = await client.query<{id: string}>(
+            `UPDATE organization.report_templates SET ${sets.join(', ')}
+              WHERE organization_id = $1 AND id = $2
+              RETURNING id`,
+            args
+        );
+        if (!updated[0]) return null;
+        if (patch.params !== undefined) {
+            await client.query(
+                'SELECT ui.fn_report_template_device_refs_replace($1, $2, $3::jsonb)',
+                [organizationId, id, jsonbParam(patch.params)]
+            );
+        }
+        const rows = await client.query<TemplateRow>(
+            `SELECT ${COLUMNS} FROM organization.report_templates
+              WHERE organization_id = $1 AND id = $2`,
+            [organizationId, id]
+        );
+        return rows[0] ? toTemplate(rows[0]) : null;
+    });
 }
 
 export async function listReportTemplates(

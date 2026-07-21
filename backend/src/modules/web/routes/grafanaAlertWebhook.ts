@@ -6,6 +6,7 @@ import log4js from 'log4js';
 import {tuning} from '../../../config/tuning';
 import {type GrafanaAlertEvent, reportGrafanaAlert} from '../../AlertEngine';
 import * as Observability from '../../Observability';
+import * as PostgresProvider from '../../PostgresProvider';
 
 const logger = log4js.getLogger('grafana-alert-webhook');
 
@@ -30,10 +31,14 @@ export interface WebhookRouterDeps {
     rateLimiter: RateLimiter;
     onAlert(orgId: string, alert: GrafanaAlert): void | Promise<void>;
     maxBodyBytes: number;
+    // Defense-in-depth: reject a URL orgId that is not a real organization in
+    // this instance. One trusted Grafana per instance is by design, so this is
+    // input validation (drop garbage/unknown org strings), not a tenant gate.
+    orgExists?(orgId: string): Promise<boolean>;
 }
 
 export interface RateLimiter {
-    consume(now: number): boolean;
+    consume(now: number, key?: string): boolean;
 }
 
 export function createTokenBucket(
@@ -53,6 +58,23 @@ export function createTokenBucket(
             if (state.tokens < 1) return false;
             state.tokens -= 1;
             return true;
+        }
+    };
+}
+
+export function createTokenBucketMap(
+    capacity: number,
+    refillPerSec: number
+): RateLimiter {
+    const buckets = new Map<string, RateLimiter>();
+    return {
+        consume(now: number, key = 'global') {
+            let bucket = buckets.get(key);
+            if (!bucket) {
+                bucket = createTokenBucket(capacity, refillPerSec);
+                buckets.set(key, bucket);
+            }
+            return bucket.consume(now);
         }
     };
 }
@@ -147,16 +169,21 @@ function makeHandler(deps: WebhookRouterDeps) {
             res.status(403).json({error: 'Invalid webhook secret'});
             return;
         }
-        if (!deps.rateLimiter.consume(Date.now())) {
+        const orgId = req.params.orgId;
+        if (typeof orgId !== 'string' || !orgId) {
+            res.status(400).json({error: 'Missing orgId'});
+            return;
+        }
+        if (deps.orgExists && !(await deps.orgExists(orgId))) {
+            Observability.incrementCounter('grafana_alert_webhook_unknown_org');
+            res.status(404).json({error: 'Unknown organization'});
+            return;
+        }
+        if (!deps.rateLimiter.consume(Date.now(), orgId)) {
             Observability.incrementCounter(
                 'grafana_alert_webhook_rate_limited'
             );
             res.status(429).json({error: 'Too many alert webhooks'});
-            return;
-        }
-        const orgId = req.params.orgId;
-        if (typeof orgId !== 'string' || !orgId) {
-            res.status(400).json({error: 'Missing orgId'});
             return;
         }
         const alerts = parsePayload(req.body);
@@ -192,12 +219,19 @@ export function buildGrafanaAlertWebhookRouter(
 export function buildDefaultRouter(): express.Router {
     return buildGrafanaAlertWebhookRouter({
         secret: () => tuning.grafana.proxySecret,
-        rateLimiter: createTokenBucket(
+        rateLimiter: createTokenBucketMap(
             tuning.grafana.webhookRateCapacity,
             tuning.grafana.webhookRateRefillPerSec
         ),
         onAlert: (orgId, alert) =>
             reportGrafanaAlert(orgId, toGrafanaAlertEvent(alert)),
-        maxBodyBytes: tuning.grafana.webhookMaxBytes
+        maxBodyBytes: tuning.grafana.webhookMaxBytes,
+        orgExists: async (orgId) => {
+            const rows = await PostgresProvider.queryRows(
+                'SELECT 1 FROM organization.profile WHERE id = $1 LIMIT 1',
+                [orgId]
+            );
+            return rows.length > 0;
+        }
     });
 }

@@ -218,7 +218,7 @@ export async function servesByDevice(
         weight: number | string | null;
     }>(
         `SELECT source_device_id, target_kind, target_id, weight
-           FROM device.device_serves
+           FROM device.v_device_serves_api
           WHERE organization_id = $1 AND source_device_id = ANY($2::text[])`,
         [organizationId, [...shellyIDs]]
     );
@@ -997,6 +997,9 @@ export async function fetchPriorConsumptionByDevice(
                 p_tags: ['total_act_energy'],
                 p_bucket: bucket,
                 p_per_device: true,
+                // Reports aggregate AC-mains electricity; DC domains queried explicitly.
+                p_commodity: 'electricity',
+                p_electrical_source: 'ac_mains',
                 p_limit: tuning.report.maxRows + 1,
                 p_offset: 0
             }
@@ -1063,6 +1066,9 @@ export async function fetchEnergyStatsParallel(
         p_tags: allTags,
         p_bucket: bucket,
         p_per_device: true,
+        // Reports aggregate AC-mains electricity; DC domains queried explicitly.
+        p_commodity: 'electricity',
+        p_electrical_source: 'ac_mains',
         p_limit: rowCap,
         p_offset: 0
     };

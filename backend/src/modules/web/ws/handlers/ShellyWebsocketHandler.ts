@@ -6,6 +6,10 @@ import ShellyDeviceFactory from '../../../../model/ShellyDeviceFactory';
 import WebSocketTransport from '../../../../model/transport/WebsocketTransport';
 import * as AuditLogger from '../../../../modules/AuditLogger';
 import * as DeviceCollector from '../../../../modules/DeviceCollector';
+import {
+    claimDeviceRuntimeOwnership,
+    releaseDeviceRuntimeOwnership
+} from '../../../../modules/deviceIdentityRuntime';
 import {markConnectionDisconnected} from '../../../../modules/deviceIngress/deviceIngressRepository';
 import {
     dropGatheredData,
@@ -36,6 +40,7 @@ import {
 } from '../../../../modules/redis/waitingTtl';
 import {statusSelectivePush} from '../../../../modules/ShellyMessageHandler';
 import {sendRpcOverDeviceSocket} from '../../../../modules/util/deviceSocketRpc';
+import {guardListener} from '../../../../modules/util/faultGuard';
 import * as WaitingRoom from '../../../../modules/WaitingRoom';
 import {DeviceInitFailureTracker} from '../../../../modules/WaitingRoom/DeviceInitFailureTracker';
 import {gatelessDeviceOrg} from '../../../../modules/WaitingRoom/defaultOrg';
@@ -197,6 +202,8 @@ const defaultAdmissionDeps: AdmissionDeps = {
     auditLogger: AuditLogger,
     observability: Observability,
     statusSelectivePush,
+    claimRuntimeOwnership: claimDeviceRuntimeOwnership,
+    releaseRuntimeOwnership: releaseDeviceRuntimeOwnership,
     logger
 };
 
@@ -349,7 +356,9 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
             rateWindowMessages: 0,
             rateListener: () => {}
         };
-        session.rateListener = () => this.#recordMessageRate(session);
+        session.rateListener = guardListener('shelly-rate', () =>
+            this.#recordMessageRate(session)
+        );
         ws.on('message', session.rateListener);
         session.listener = (rawData) => {
             void this.#onMessage(session, rawData).catch((err) =>
@@ -1044,7 +1053,7 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
         try {
             ctx.session.listener &&
                 ctx.session.ws.removeListener('message', ctx.session.listener);
-            await performAdmittedRegistration(
+            const registered = await performAdmittedRegistration(
                 {
                     session: ctx.session,
                     admittedShellyID: ctx.shellyID,
@@ -1053,6 +1062,9 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
                 },
                 this.#admissionDeps
             );
+            if (!registered) {
+                throw new ApproveRejectedError(ctx.shellyID, 'register_failed');
+            }
         } catch (err) {
             deviceInitFailureTracker.recordFailure(ctx.shellyID);
             Observability.incrementCounter('device_inits_failed');

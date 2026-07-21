@@ -11,6 +11,7 @@ import {runOptimisticMutation} from '@/stores/optimisticMutation';
 import {debugWarn} from '@/tools/debug';
 import * as ws from '../tools/websocket';
 import {createRefreshCoordinator} from './refreshCoordinator';
+import {createStaleGuard} from './staleGuard';
 import {useToastStore} from './toast';
 
 export type {UserGroupResponse};
@@ -22,6 +23,26 @@ export const useUserGroupsStore = defineStore('userGroups', () => {
     const toast = useToastStore();
     const auth = useAuthStore();
 
+    // Bumped on every groups write; stale list refreshes are discarded.
+    const groupsGuard = createStaleGuard();
+    // Bumped on every members write; stale member fetches are discarded.
+    const membersGuard = createStaleGuard();
+
+    function upsertGroup(g: UserGroupResponse): void {
+        groups.value = {...groups.value, [g.id]: g};
+    }
+
+    // Mutation writes bump so in-flight stale reads bail; reads never bump.
+    function writeGroup(g: UserGroupResponse): void {
+        groupsGuard.bump();
+        upsertGroup(g);
+    }
+
+    function writeMembers(next: Record<string, string[]>): void {
+        membersGuard.bump();
+        members.value = next;
+    }
+
     let latestFetchAllResult: UserGroupResponse[] = [];
     const fetchAllRefresh = createRefreshCoordinator(refreshUserGroups);
 
@@ -32,12 +53,15 @@ export const useUserGroupsStore = defineStore('userGroups', () => {
 
     async function refreshUserGroups(): Promise<void> {
         loading.value = true;
+        const token = groupsGuard.current();
         try {
             const res = await ws.sendRPC<{items: UserGroupResponse[]}>(
                 'FLEET_MANAGER',
                 'user_group.list',
                 {}
             );
+            // A write landed mid-flight; replacing would overwrite newer state.
+            if (groupsGuard.isStale(token)) return;
             const next: Record<string, UserGroupResponse> = {};
             for (const g of res.items) next[g.id] = g;
             groups.value = next;
@@ -51,13 +75,15 @@ export const useUserGroupsStore = defineStore('userGroups', () => {
     }
 
     async function fetch(id: string): Promise<UserGroupResponse | null> {
+        // Read: snapshot before the RPC; a write mid-flight discards the merge.
+        const token = groupsGuard.current();
         try {
             const g = await ws.sendRPC<UserGroupResponse>(
                 'FLEET_MANAGER',
                 'user_group.get',
                 {id}
             );
-            groups.value = {...groups.value, [g.id]: g};
+            if (!groupsGuard.isStale(token)) upsertGroup(g);
             return g;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load user group');
@@ -74,7 +100,7 @@ export const useUserGroupsStore = defineStore('userGroups', () => {
                 'user_group.create',
                 params
             );
-            groups.value = {...groups.value, [g.id]: g};
+            writeGroup(g);
             return g;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to create user group');
@@ -91,7 +117,7 @@ export const useUserGroupsStore = defineStore('userGroups', () => {
                 'user_group.update',
                 params
             );
-            groups.value = {...groups.value, [g.id]: g};
+            writeGroup(g);
             return g;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to update user group');
@@ -102,12 +128,13 @@ export const useUserGroupsStore = defineStore('userGroups', () => {
     async function remove(id: string): Promise<boolean> {
         try {
             await ws.sendRPC('FLEET_MANAGER', 'user_group.delete', {id});
+            groupsGuard.bump();
             const next = {...groups.value};
             delete next[id];
             groups.value = next;
             const m = {...members.value};
             delete m[id];
-            members.value = m;
+            writeMembers(m);
             return true;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to delete user group');
@@ -115,15 +142,26 @@ export const useUserGroupsStore = defineStore('userGroups', () => {
         }
     }
 
+    // Backend row shape of user_group.listmembers (UserGroupComponent.listMembers).
+    interface UserGroupMemberRow {
+        user_id: string;
+        added_at: string;
+        added_by: string;
+    }
+
     async function fetchMembers(id: string): Promise<string[]> {
+        const token = membersGuard.current();
         try {
-            const res = await ws.sendRPC<{userIds: string[]}>(
+            const res = await ws.sendRPC<{items: UserGroupMemberRow[]}>(
                 'FLEET_MANAGER',
                 'user_group.listmembers',
                 {id}
             );
-            members.value = {...members.value, [id]: res.userIds};
-            return res.userIds;
+            const userIds = (res.items ?? []).map((row) => row.user_id);
+            // A write landed mid-flight; merging would overwrite newer state.
+            if (membersGuard.isStale(token)) return userIds;
+            members.value = {...members.value, [id]: userIds};
+            return userIds;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load group members');
             return [];
@@ -165,12 +203,12 @@ export const useUserGroupsStore = defineStore('userGroups', () => {
         if (input.userIds.length === 0) return true;
         try {
             await runOptimisticMutation({
-                snapshot: () => snapshotMembers(input.id),
                 apply: () => applyMemberMutation(input),
                 commit: () => commitMemberMutation(input),
-                rollback: (previous) => restoreMembers(input.id, previous),
+                // Rollback refetches server truth; snapshots erase concurrent commits.
+                rollback: () => reconcileMembers(input.id),
                 reconcile: async () => {
-                    await fetchMembers(input.id);
+                    await reconcileMembers(input.id);
                     await refreshCurrentUserAccessIfAffected(input.userIds);
                 },
                 onError: (err) =>
@@ -186,18 +224,8 @@ export const useUserGroupsStore = defineStore('userGroups', () => {
         }
     }
 
-    function snapshotMembers(id: string): string[] | undefined {
-        return members.value[id];
-    }
-
-    function restoreMembers(id: string, previous: string[] | undefined): void {
-        const next = {...members.value};
-        if (previous === undefined) {
-            delete next[id];
-        } else {
-            next[id] = previous;
-        }
-        members.value = next;
+    async function reconcileMembers(id: string): Promise<void> {
+        await fetchMembers(id);
     }
 
     function applyMemberMutation(input: {
@@ -206,13 +234,13 @@ export const useUserGroupsStore = defineStore('userGroups', () => {
         mode: MemberMutationMode;
     }): void {
         const current = members.value[input.id] ?? [];
-        members.value = {
+        writeMembers({
             ...members.value,
             [input.id]:
                 input.mode === 'add'
                     ? withAddedMembers(current, input.userIds)
                     : withoutRemovedMembers(current, input.userIds)
-        };
+        });
     }
 
     function withAddedMembers(current: string[], userIds: string[]): string[] {

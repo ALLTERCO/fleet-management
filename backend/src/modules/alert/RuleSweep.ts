@@ -34,6 +34,10 @@ import {synthesizeRateOfChangeMiss} from './evaluators/rateOfChange';
 import {ruleFieldKey} from './evaluators/ruleFieldCache';
 import {readNumber} from './evaluators/shared';
 import {synthesizeStuckSensorMiss} from './evaluators/stuckSensor';
+import {
+    canonicalizeAlertMatch,
+    type LogicalDeviceHint
+} from './logicalDeviceFingerprint';
 import {matchesScope} from './scope';
 import {
     type StoredPresenceRow,
@@ -108,14 +112,25 @@ const lastFire = new BoundedMap<string, number>({
 async function fireOnce(
     rule: LoadedAlertRule,
     match: MatchResult,
-    now: number
+    now: number,
+    device: LogicalDeviceHint
 ): Promise<void> {
+    const canonical = await canonicalizeAlertMatch(
+        rule.organizationId,
+        rule.id,
+        match,
+        device
+    );
     const windowSec =
         rule.dedupeWindowSec > 0 ? rule.dedupeWindowSec : RESEND_DEFAULT_SEC;
-    const prev = lastFire.get(match.fingerprintV2);
+    const prev = lastFire.get(canonical.fingerprintV2);
     if (prev !== undefined && now - prev < windowSec * 1000) return;
-    lastFire.set(match.fingerprintV2, now);
-    await ingestSweepMatch(rule, match);
+    lastFire.set(canonical.fingerprintV2, now);
+    await ingestSweepMatch(rule, canonical);
+}
+
+function deviceHint(device: AbstractDevice): LogicalDeviceHint {
+    return {deviceId: device.id, externalId: device.shellyID};
 }
 
 function noDataMatch(
@@ -200,13 +215,29 @@ async function evaluateStuck(
     if (value === null) return;
     const key = ruleFieldKey(
         rule.id,
-        device.shellyID,
+        String(device.id),
         cfg.component,
         cfg.field
     );
     const prior = stuckSamples.get(key);
     if (!prior || prior.value !== value) {
+        const cleared = prior !== undefined && prior.value !== value;
         stuckSamples.set(key, {value, changedAt: now});
+        // Sweep owns the clear; a changed reading resolves the stuck alert.
+        if (cleared && rule.autoResolve) {
+            await resolveFingerprint(
+                rule,
+                synthesizeStuckSensorMiss({
+                    ruleId: rule.id,
+                    ruleName: rule.name,
+                    shellyID: device.shellyID,
+                    component: cfg.component,
+                    field: cfg.field,
+                    notChangedForSec: cfg.notChangedForSec
+                }).fingerprintV2,
+                deviceHint(device)
+            );
+        }
         return;
     }
     if (!stuckFor(prior.changedAt, now, cfg.notChangedForSec)) return;
@@ -220,7 +251,8 @@ async function evaluateStuck(
             field: cfg.field,
             notChangedForSec: cfg.notChangedForSec
         }),
-        now
+        now,
+        deviceHint(device)
     );
 }
 
@@ -297,32 +329,53 @@ async function readConsumptionWindowKWh(
     from: Date,
     to: Date
 ): Promise<{consumptionKWh: number; sampleCount: number} | null> {
+    return (
+        (await readConsumptionWindowsKWh([shellyID], from, to)).get(shellyID) ??
+        null
+    );
+}
+
+async function readConsumptionWindowsKWh(
+    shellyIDs: readonly string[],
+    from: Date,
+    to: Date
+): Promise<Map<string, {consumptionKWh: number; sampleCount: number}>> {
+    if (shellyIDs.length === 0) return new Map();
     const rows = await attributeWindowRepo.queryContributors({
-        shellyIDs: [shellyID],
+        shellyIDs: [...new Set(shellyIDs)],
         from,
         to,
         bucket: pickAggregateBucket(to.getTime() - from.getTime()),
         metric: 'consumption',
         aggregation: 'sum'
     });
-    const row = rows.find((r) => r.shellyID === shellyID) ?? rows[0];
-    if (!row) return null;
-    return {
-        consumptionKWh: row.value,
-        sampleCount: row.sampleCount
-    };
+    const out = new Map<
+        string,
+        {consumptionKWh: number; sampleCount: number}
+    >();
+    for (const row of rows) {
+        out.set(row.shellyID, {
+            consumptionKWh: row.value,
+            sampleCount: row.sampleCount
+        });
+    }
+    return out;
 }
 
 async function evaluateEnergyConsumption(
     rule: LoadedAlertRule,
     device: AbstractDevice,
-    now: number
+    now: number,
+    preloadedReading?: {consumptionKWh: number; sampleCount: number} | null
 ): Promise<void> {
     const cfg = readEnergyConsumptionConfig(rule.config);
     if (!cfg) return;
     const to = new Date(now);
     const from = new Date(now - cfg.windowSec * 1000);
-    const reading = await readConsumptionWindowKWh(device.shellyID, from, to);
+    const reading =
+        preloadedReading === undefined
+            ? await readConsumptionWindowKWh(device.shellyID, from, to)
+            : preloadedReading;
     if (!reading) {
         await markEvaluationState(
             rule,
@@ -330,7 +383,9 @@ async function evaluateEnergyConsumption(
                 reason: 'missing_consumption_window',
                 windowSec: cfg.windowSec
             }),
-            'no_data'
+            'no_data',
+            false,
+            deviceHint(device)
         );
         return;
     }
@@ -343,13 +398,16 @@ async function evaluateEnergyConsumption(
                 sampleCount: reading.sampleCount,
                 minSamples: cfg.minSamples
             }),
-            'no_data'
+            'no_data',
+            false,
+            deviceHint(device)
         );
         return;
     }
     await resolveFingerprint(
         rule,
-        noDataMatch(rule, device.shellyID, {}).fingerprintV2
+        noDataMatch(rule, device.shellyID, {}).fingerprintV2,
+        deviceHint(device)
     );
     const fp = `rule:${rule.id}:device:${device.shellyID}`;
     const fireMatches = thresholdMatches(
@@ -364,7 +422,9 @@ async function evaluateEnergyConsumption(
         clearThreshold
     );
     if (!clearStillMatches) {
-        if (rule.autoResolve) await resolveFingerprint(rule, fp);
+        if (rule.autoResolve) {
+            await resolveFingerprint(rule, fp, deviceHint(device));
+        }
         return;
     }
     if (!fireMatches) return;
@@ -380,7 +440,8 @@ async function evaluateEnergyConsumption(
             windowSec: cfg.windowSec,
             sampleCount: reading.sampleCount
         }),
-        now
+        now,
+        deviceHint(device)
     );
 }
 
@@ -408,7 +469,7 @@ async function evaluateRate(
     if (value === null) return;
     const key = ruleFieldKey(
         rule.id,
-        device.shellyID,
+        String(device.id),
         cfg.component,
         cfg.field
     );
@@ -419,21 +480,30 @@ async function evaluateRate(
     const anchor = sampleAtOrBefore(history, now - cfg.windowSec * 1000);
     if (!anchor) return;
     const rate = computeRate(anchor, {value, ts: now});
-    if (rate === null || Math.abs(rate) < cfg.deltaValue) return;
-    await fireOnce(
-        rule,
-        synthesizeRateOfChangeMiss({
-            ruleId: rule.id,
-            ruleName: rule.name,
-            shellyID: device.shellyID,
-            component: cfg.component,
-            field: cfg.field,
-            rate,
-            deltaValue: cfg.deltaValue,
-            windowSec: cfg.windowSec
-        }),
-        now
-    );
+    if (rate === null) return;
+    const match = synthesizeRateOfChangeMiss({
+        ruleId: rule.id,
+        ruleName: rule.name,
+        shellyID: device.shellyID,
+        component: cfg.component,
+        field: cfg.field,
+        rate,
+        deltaValue: cfg.deltaValue,
+        windowSec: cfg.windowSec
+    });
+    // Sweep owns the clear (no event-driven clear); resolve when the rate
+    // falls back within delta, else it stays active forever.
+    if (Math.abs(rate) < cfg.deltaValue) {
+        if (rule.autoResolve) {
+            await resolveFingerprint(
+                rule,
+                match.fingerprintV2,
+                deviceHint(device)
+            );
+        }
+        return;
+    }
+    await fireOnce(rule, match, now, deviceHint(device));
 }
 
 // A sleeping device reports on its wakeup_period; judge against that so a
@@ -470,7 +540,8 @@ async function evaluateHeartbeat(
                 shellyID: device.shellyID,
                 expectedIntervalSec: interval
             }),
-            now
+            now,
+            deviceHint(device)
         );
         return;
     }
@@ -488,8 +559,66 @@ async function evaluateHeartbeat(
                 expectedIntervalSec: bluInterval,
                 component: t.component
             }),
-            now
+            now,
+            deviceHint(device)
         );
+    }
+}
+
+async function evaluateEnergyConsumptionBatch(
+    rule: LoadedAlertRule,
+    devices: readonly AbstractDevice[],
+    now: number
+): Promise<void> {
+    const cfg = readEnergyConsumptionConfig(rule.config);
+    if (!cfg) return;
+    const to = new Date(now);
+    const from = new Date(now - cfg.windowSec * 1000);
+    let readings: Map<string, {consumptionKWh: number; sampleCount: number}>;
+    try {
+        readings = await readConsumptionWindowsKWh(
+            devices.map((d) => d.shellyID),
+            from,
+            to
+        );
+    } catch (err) {
+        // Isolate a batch-query failure so it doesn't abort the whole tick.
+        for (const device of devices) {
+            await markEvaluationState(
+                rule,
+                evaluationErrorMatch(rule, device.shellyID, err),
+                'evaluation_error',
+                false,
+                deviceHint(device)
+            );
+            Observability.incrementCounter('alert_sweep_evaluation_errors');
+        }
+        return;
+    }
+    for (const device of devices) {
+        try {
+            await evaluateEnergyConsumption(
+                rule,
+                device,
+                now,
+                readings.get(device.shellyID) ?? null
+            );
+            await resolveFingerprint(
+                rule,
+                evaluationErrorMatch(rule, device.shellyID, '').fingerprintV2,
+                deviceHint(device)
+            );
+        } catch (err) {
+            await markEvaluationState(
+                rule,
+                evaluationErrorMatch(rule, device.shellyID, err),
+                'evaluation_error',
+                false,
+                deviceHint(device)
+            );
+            Observability.incrementCounter('alert_sweep_evaluation_errors');
+        }
+        Observability.incrementCounter('alert_sweep_evaluated');
     }
 }
 
@@ -508,6 +637,7 @@ async function evaluateDeviceOffline(
     now: number
 ): Promise<void> {
     const shellyID = row.external_id;
+    const hint = {deviceId: row.id, externalId: shellyID};
     const live = DeviceCollector.getDevice(shellyID);
     const fingerprint = buildDeviceOfflineMatch(
         rule.id,
@@ -517,7 +647,9 @@ async function evaluateDeviceOffline(
     ).fingerprintV2;
 
     if (live?.presence === 'online' || live?.online === true) {
-        if (rule.autoResolve) await resolveFingerprint(rule, fingerprint);
+        if (rule.autoResolve) {
+            await resolveFingerprint(rule, fingerprint, hint);
+        }
         return;
     }
 
@@ -542,7 +674,9 @@ async function evaluateDeviceOffline(
                     source: 'presence_store'
                 }
             ),
-            'no_data'
+            'no_data',
+            false,
+            hint
         );
         Observability.incrementCounter('alert_offline_no_last_seen');
         return;
@@ -567,10 +701,12 @@ async function evaluateDeviceOffline(
                         source: 'presence_store'
                     }
                 ),
-                'pending'
+                'pending',
+                false,
+                hint
             );
             await OutboxWorker.enqueueOfflineFire(
-                {organizationId, ruleId: rule.id, shellyID},
+                {organizationId, ruleId: rule.id, deviceId: row.id},
                 new Date(dueAt)
             );
             Observability.incrementCounter('alert_offline_pending_scheduled');
@@ -591,7 +727,8 @@ async function evaluateDeviceOffline(
                 source: 'presence_store'
             }
         ),
-        now
+        now,
+        hint
     );
 }
 
@@ -636,13 +773,16 @@ export async function runSweepForRules(
                     await resolveFingerprint(
                         rule,
                         evaluationErrorMatch(rule, row.external_id, '')
-                            .fingerprintV2
+                            .fingerprintV2,
+                        {deviceId: row.id, externalId: row.external_id}
                     );
                 } catch (err) {
                     await markEvaluationState(
                         rule,
                         evaluationErrorMatch(rule, row.external_id, err),
-                        'evaluation_error'
+                        'evaluation_error',
+                        false,
+                        {deviceId: row.id, externalId: row.external_id}
                     );
                     Observability.incrementCounter(
                         'alert_sweep_evaluation_errors'
@@ -652,6 +792,29 @@ export async function runSweepForRules(
             }
             continue;
         }
+        if (rule.kind === 'energy_consumption_threshold') {
+            const eligibleDevices: AbstractDevice[] = [];
+            for (const device of devices) {
+                try {
+                    if (await eligible(rule, device, organizationId)) {
+                        eligibleDevices.push(device);
+                    }
+                } catch (err) {
+                    await markEvaluationState(
+                        rule,
+                        evaluationErrorMatch(rule, device.shellyID, err),
+                        'evaluation_error',
+                        false,
+                        deviceHint(device)
+                    );
+                    Observability.incrementCounter(
+                        'alert_sweep_evaluation_errors'
+                    );
+                }
+            }
+            await evaluateEnergyConsumptionBatch(rule, eligibleDevices, now);
+            continue;
+        }
         for (const device of devices) {
             try {
                 if (!(await eligible(rule, device, organizationId))) continue;
@@ -659,13 +822,16 @@ export async function runSweepForRules(
                 await resolveFingerprint(
                     rule,
                     evaluationErrorMatch(rule, device.shellyID, '')
-                        .fingerprintV2
+                        .fingerprintV2,
+                    deviceHint(device)
                 );
             } catch (err) {
                 await markEvaluationState(
                     rule,
                     evaluationErrorMatch(rule, device.shellyID, err),
-                    'evaluation_error'
+                    'evaluation_error',
+                    false,
+                    deviceHint(device)
                 );
                 Observability.incrementCounter('alert_sweep_evaluation_errors');
             }

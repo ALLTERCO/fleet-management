@@ -2,6 +2,7 @@
 import * as log4js from 'log4js';
 import {tuning} from '../../config';
 import * as Observability from '../../modules/Observability';
+import {safeInterval} from '../../modules/util/faultGuard';
 import RpcError from '../../rpc/RpcError';
 import type {
     ShellyMessageData,
@@ -17,7 +18,10 @@ interface StoredMessage {
     req?: ShellyMessageData;
     resolve: (resp: ShellyMessageIncoming, req?: ShellyMessageData) => void;
     reject: (error: any) => void;
-    silent?: boolean;
+    // When true, the response is re-emitted as a 'message' event so the device
+    // handler processes it (used by the UI relay path). Default: response only
+    // resolves the caller's promise.
+    emitMessage?: boolean;
     startedTs: number;
     cleanup?: () => void;
 }
@@ -35,9 +39,9 @@ export default abstract class RpcTransport {
 
     constructor() {
         this._eventEmitter = new ShellyDeviceEmitter();
-        this.#intervalId = setInterval(() => {
-            this.#clearOldMessages();
-        }, 10 * 1000);
+        this.#intervalId = safeInterval('rpc-stale-cleanup', 10 * 1000, () =>
+            this.#clearOldMessages()
+        );
         // Stale-RPC cleanup is housekeeping — don't pin the event loop.
         this.#intervalId.unref?.();
     }
@@ -81,7 +85,7 @@ export default abstract class RpcTransport {
     public sendRPC(
         method: string,
         params: any = null,
-        silent = false,
+        emitMessage = false,
         signal?: AbortSignal
     ) {
         if (signal?.aborted) {
@@ -113,7 +117,14 @@ export default abstract class RpcTransport {
         // Register the response slot BEFORE sending: a synchronously-landing
         // reply (fast WS) would otherwise hit the orphan path and hang.
         const settled = new Promise<any>((resolve, reject) => {
-            this.#registerPending(id, message, silent, resolve, reject, signal);
+            this.#registerPending(
+                id,
+                message,
+                emitMessage,
+                resolve,
+                reject,
+                signal
+            );
         });
         try {
             this._sendRPC(toSend);
@@ -136,7 +147,7 @@ export default abstract class RpcTransport {
     #registerPending(
         id: number,
         message: ShellyMessageData,
-        silent: boolean,
+        emitMessage: boolean,
         resolve: (value: any) => void,
         reject: (error: any) => void,
         signal?: AbortSignal
@@ -156,7 +167,7 @@ export default abstract class RpcTransport {
             req: message,
             resolve,
             reject,
-            silent,
+            emitMessage,
             startedTs: Date.now(),
             cleanup: abortListener
                 ? () => signal?.removeEventListener('abort', abortListener!)
@@ -215,10 +226,9 @@ export default abstract class RpcTransport {
                 handler.resolve(message.result);
             }
         }
-        if (
-            typeof handler?.silent === 'undefined' ||
-            (typeof handler.silent === 'boolean' && handler.silent)
-        ) {
+        // Device notifications (no pending handler) always emit; RPC responses
+        // emit only when the caller opted in via emitMessage.
+        if (handler?.emitMessage !== false) {
             this._eventEmitter.emit('message', message, handler?.req);
         }
         return message;

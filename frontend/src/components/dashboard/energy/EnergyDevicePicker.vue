@@ -66,7 +66,7 @@ function toggle(shellyId: string) {
     padding: 9px 10px;
     border-radius: 9px;
     cursor: pointer;
-    font-size: 12.5px;
+    font-size: var(--type-caption);
 }
 .edp-row:hover {
     background: #181c23;
@@ -77,11 +77,11 @@ function toggle(shellyId: string) {
 }
 .edp-id {
     color: #5d646f;
-    font-size: 11px;
+    font-size: var(--type-caption);
     font-variant-numeric: tabular-nums;
 }
 .edp-empty {
-    font-size: 11.5px;
+    font-size: var(--type-caption);
     color: #5d646f;
     padding: 6px 10px;
 }

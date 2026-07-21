@@ -8,7 +8,7 @@
  * (at the repo root, NOT inside backend/).
  */
 
-import {execSync} from 'node:child_process';
+import {execSync, spawnSync} from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import ts from 'typescript';
@@ -195,6 +195,19 @@ export function writeOutputs(
     console.log(
         `[${baseName}] wrote ${relPath(jsonPath)} + ${relPath(mdPath)}`
     );
+}
+
+/** Format a generated file with biome so re-runs are byte-stable. Fail loud. */
+export function formatWithBiome(file: string): void {
+    const biome = path.join(BACKEND_ROOT, 'node_modules/.bin/biome');
+    const result = spawnSync(biome, ['check', '--write', file], {
+        stdio: 'inherit'
+    });
+    if (result.status !== 0) {
+        throw new Error(
+            `biome failed to format ${relPath(file)} (status ${result.status})`
+        );
+    }
 }
 
 export function gitSha(): string {

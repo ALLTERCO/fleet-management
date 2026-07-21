@@ -64,7 +64,9 @@ export function planChildReconcile(
 }
 
 export interface ChildReconcileActions {
-    reconcile: (gatewayExternalId: string) => void;
+    // Resolves true when the promote succeeded, false when it failed (so the
+    // caller can keep the prior state and retry instead of losing the child).
+    reconcile: (gatewayExternalId: string) => Promise<boolean>;
     demote: (gatewayExternalId: string, componentKey: string) => void;
 }
 
@@ -83,13 +85,13 @@ export function hasUnpromotedBluChild(
 // changed. Returns the new (fingerprint, keys) to remember. The decision is
 // synchronous; the promote/demote run in the background via `actions`, which
 // the caller injects — the promotion runtime for production, mocks for tests.
-export function reconcileBluChildren(
+export async function reconcileBluChildren(
     gatewayExternalId: string,
     config: Record<string, unknown>,
     prev: {fingerprint: string; keys: readonly string[]},
     actions: ChildReconcileActions,
     orgKnown = true
-): {fingerprint: string; keys: string[]} {
+): Promise<{fingerprint: string; keys: string[]}> {
     const plan = planChildReconcile(prev, config);
     if (!plan.changed) {
         return {fingerprint: prev.fingerprint, keys: [...prev.keys]};
@@ -99,7 +101,14 @@ export function reconcileBluChildren(
     if (!orgKnown) {
         return {fingerprint: prev.fingerprint, keys: [...prev.keys]};
     }
-    if (plan.currentKeys.length > 0) actions.reconcile(gatewayExternalId);
+    if (plan.currentKeys.length > 0) {
+        // Advance state only after the promote succeeds; on failure keep the
+        // prior state so the next persist retries, or the child is lost until
+        // the process restarts.
+        if (!(await actions.reconcile(gatewayExternalId))) {
+            return {fingerprint: prev.fingerprint, keys: [...prev.keys]};
+        }
+    }
     for (const key of plan.removedKeys) actions.demote(gatewayExternalId, key);
     return {fingerprint: plan.fingerprint, keys: plan.currentKeys};
 }
@@ -121,11 +130,11 @@ export function registerBluChildRuntime(runtime: BluChildRuntime): void {
 // Device-facing entry: reconcile using the registered runtime. Until the
 // runtime is wired the previous state is kept, so the next persist retries —
 // the same conservative behaviour used when a device's org is not yet mapped.
-export function reconcileBluChildrenForDevice(
+export async function reconcileBluChildrenForDevice(
     gatewayExternalId: string,
     config: Record<string, unknown>,
     prev: {fingerprint: string; keys: readonly string[]}
-): {fingerprint: string; keys: string[]} {
+): Promise<{fingerprint: string; keys: string[]}> {
     if (!activeRuntime) {
         return {fingerprint: prev.fingerprint, keys: [...prev.keys]};
     }

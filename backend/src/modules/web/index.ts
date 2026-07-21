@@ -62,19 +62,26 @@ import {
 import {getUserFromToken, UNAUTHORIZED_USER} from '../user';
 import {accessLogOptions} from './accessLog';
 import {selectHttpAuthToken} from './authToken';
+import deviceGuiOrigin, {
+    closeDeviceGuiConnections,
+    subscribeDeviceGuiRevocations
+} from './deviceGuiOrigin';
+import {mcpAudienceGate} from './mcpAudienceGate';
 import {buildIntrospectionOptions} from './oidcAuth';
 import {enforceRateLimit, httpRouteLimit} from './rateLimit';
 // import auth from './routes/auth';
-import apiDocs from './routes/apiDocs';
+import apiDocs, {llmsTxtRouter} from './routes/apiDocs';
 import assetUpload from './routes/assetUpload';
 import auditDownload from './routes/auditDownload';
 import authSession from './routes/authSession';
+import backupImport from './routes/backupImport';
 import deviceProxy from './routes/device-proxy';
 import emailAssets from './routes/emailAssets';
 import firmwareUpload from './routes/firmwareUpload';
 import floorPlanUpload from './routes/floorPlanUpload';
 import grafana from './routes/grafana';
 import {buildDefaultRouter as buildGrafanaAlertWebhookRouter} from './routes/grafanaAlertWebhook';
+import mcpRouter from './routes/mcp';
 import media from './routes/media';
 import nodeRedProxy, {
     NODE_RED_AUTH_COOKIE,
@@ -262,6 +269,7 @@ function registerMiddleware(app: express.Express) {
         cookieParser()
     ]);
     app.use(httpTokenAndUserMiddleware());
+    app.use(mcpAudienceGate());
 }
 
 // Counts requests + status codes for Prometheus. Mutates module-level maps.
@@ -726,13 +734,21 @@ function registerRouters(app: express.Express) {
     if (configRc.graphs?.grafana) {
         app.use('/api/grafana', buildGrafanaAlertWebhookRouter());
     }
+    // OAuth callback is intentionally unauthenticated — the state token in the
+    // query string is the CSRF + identity proof.
+    app.use('/api/oauth', oauthEmail);
+    // Zitadel Action callbacks are signed webhooks. They must run before the
+    // broad `/api` auth gate so external deletes/revocations can reach FM.
+    app.use('/api/zitadel/actions', zitadelActions);
+    // Session teardown is unauthenticated by design — only a server Set-Cookie
+    // can clear an httpOnly cookie for an already-expired session — and the API
+    // docs redirect an unauthenticated browser to login. Both must mount BEFORE
+    // the broad `/api` isLoggedIn gate below, which would otherwise 401 them.
+    app.use('/api/auth/session', authSession);
+    app.use('/api/docs', apiDocs);
     app.use('/api/notifications', isLoggedIn, emailAssets);
     app.use('/api/uploads', isLoggedIn, floorPlanUpload);
     app.use('/api', isLoggedIn, assetUpload);
-    // OAuth callback is intentionally unauthenticated — the state
-    // token in the query string is the CSRF + identity proof.
-    app.use('/api/oauth', oauthEmail);
-    app.use('/api/zitadel/actions', zitadelActions);
     if (configRc.graphs?.grafana) {
         app.use('/grafana', isLoggedIn, requireGrafanaPermission, grafana);
     }
@@ -748,12 +764,13 @@ function registerRouters(app: express.Express) {
             nodeRedProxy
         );
     }
-    app.use('/api/auth/session', authSession);
     app.use('/api/device-proxy', deviceProxy);
-    app.use('/api/docs', apiDocs);
+    app.use('/llms.txt', llmsTxtRouter);
+    app.use('/mcp', mcpRouter);
     app.use('/api', auditDownload);
     app.use('/media', media);
     app.use('/media', firmwareUpload);
+    app.use('/media', backupImport);
 
     registerHealthAdminRoutes(app);
     // Wall Display expects a Home Assistant-like auth flow response.
@@ -1061,6 +1078,7 @@ function attachFatalBindErrorHandler(
 }
 
 export async function stop(timeoutMs = 10_000): Promise<void> {
+    closeDeviceGuiConnections();
     const closes: Promise<void>[] = [];
     const closeServer = (srv: http.Server | https.Server | undefined) => {
         if (!srv) return;
@@ -1102,6 +1120,11 @@ export async function stop(timeoutMs = 10_000): Promise<void> {
 
 export async function start() {
     const app = express();
+
+    await subscribeDeviceGuiRevocations();
+
+    // Device GUI paths must be handled before the Fleet Manager SPA.
+    app.use(deviceGuiOrigin);
 
     // First middleware so it wraps every response, including static assets.
     if (tuning.http.compressionEnabled) {

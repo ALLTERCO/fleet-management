@@ -1,6 +1,6 @@
 ## Authorization and permissions
 
-![How access is granted — persona plus assignment plus scope becomes effective permissions, enforced on every call](diagrams/authorization.svg)
+![How access is granted: persona plus assignment plus scope becomes effective permissions, enforced on every call](diagrams/authorization.svg)
 
 Every operation declares the permission it needs, and the server enforces it
 before the call runs. A signed-in caller who lacks the permission gets

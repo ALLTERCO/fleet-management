@@ -3,6 +3,7 @@ import {
     bthomeObjectInfos,
     isBTHomeDeviceLevelObjectId
 } from '../config/BTHomeData';
+import {isWallDisplayInfo} from '../model/deviceCapabilities';
 import {getServiceClaim} from '../model/deviceInfo';
 import {extractComponentTypes} from '../model/deviceProfile';
 import {NON_COMPONENT_KEYS} from '../model/deviceStatusKeys';
@@ -49,11 +50,7 @@ const logger = Log4js.getLogger('ShellyComponents');
  * with standard devices.
  */
 function isWallDisplay(shelly: ShellyDevice): boolean {
-    return (
-        shelly.info.app === 'WallDisplayV2' ||
-        (typeof shelly.info.model === 'string' &&
-            shelly.info.model.startsWith('SAWD'))
-    );
+    return isWallDisplayInfo(shelly.info);
 }
 
 /** Resolve a service entity label, preferring whatever the device shipped
@@ -95,6 +92,25 @@ function heuristicServiceLabel(svcType: string): string {
     );
 }
 
+export type ServiceCategory =
+    | 'hvac'
+    | 'valve'
+    | 'ev_charger'
+    | 'irrigation'
+    | 'generic';
+
+// Category is the machine-readable sibling of the label heuristic above —
+// the frontend picks a card by category instead of regexing serviceType.
+function serviceCategory(svcType: string): ServiceCategory {
+    const lower = svcType.toLowerCase();
+    if (/hvac|thermostat|heat/.test(lower)) return 'hvac';
+    if (lower.includes('valve')) return 'valve';
+    if (lower.includes('charger') || lower.includes('evse'))
+        return 'ev_charger';
+    if (lower.includes('irrigation')) return 'irrigation';
+    return 'generic';
+}
+
 // Addon = component id ≥ 100 AND device sets sys.device.addon_type.
 function isAddonComponent(status: any, shelly?: ShellyDevice): boolean {
     return status?.id >= 100 && !!shelly?.config.sys?.device?.addon_type;
@@ -106,9 +122,12 @@ function isAddonComponent(status: any, shelly?: ShellyDevice): boolean {
 function annotateOwnership(
     entity: entity_t,
     componentConfig: unknown,
-    deviceShellyID: string
+    deviceEntityPrefix: string
 ): void {
-    const ownership = projectOwnership({componentConfig, deviceShellyID});
+    const ownership = projectOwnership({
+        componentConfig,
+        deviceShellyID: deviceEntityPrefix
+    });
     if (ownership.parent) {
         (entity.properties as Record<string, unknown>).parent =
             ownership.parent;
@@ -138,12 +157,13 @@ function serviceEntityFromGroup(
     )?._meta;
     return {
         name: serviceLabel(svcType, serviceMeta),
-        id: `${shelly.shellyID}_${svcIndex}:service`,
+        id: `${shelly.id}_${svcIndex}:service`,
         type: 'service',
         source: shelly.shellyID,
         properties: {
             id: Number.parseInt(svcIndex, 10) || 0,
             serviceType: svcType,
+            category: serviceCategory(svcType),
             serviceKey: group.serviceKey,
             productName,
             components: group.components
@@ -217,8 +237,12 @@ export function composeBTHomeControl(
 // ----------------------------------------------------------------------------------
 
 export function getBTHomeGatewayEventObjIds(gwVer: string): number[] {
+    // `ver` is typed string but comes straight from device firmware; a
+    // non-string value would make .split throw and abort device admission.
     const gwVerParts =
-        gwVer?.split('.').map((s: string) => Number.parseInt(s, 10) || 0) ?? [];
+        typeof gwVer === 'string'
+            ? gwVer.split('.').map((s: string) => Number.parseInt(s, 10) || 0)
+            : [];
     while (gwVerParts.length < 3) gwVerParts.push(0);
     const gwSupportsDeviceEvents =
         gwVerParts[0] > 1 || (gwVerParts[0] === 1 && gwVerParts[1] >= 6);
@@ -458,7 +482,11 @@ function composeVirtualEnum(
     deviceId: number,
     shellyID?: string
 ): virtual_text_entity {
-    const values = config.options;
+    // options may be absent on a partially-fetched enum; an empty list yields
+    // empty options rather than throwing and failing composition.
+    const values: string[] = Array.isArray(config.options)
+        ? config.options
+        : [];
     const labels = config.meta?.ui?.titles ?? {};
 
     const options: Record<string, string> = {};
@@ -601,7 +629,10 @@ export function composeDynamicComponent(
             );
 
         default:
-            logger.warn('Unknown virtual component type: %s', type);
+            logger.debug(
+                'No dynamic virtual/BTHome composer for type: %s',
+                type
+            );
             return null;
     }
 }
@@ -759,7 +790,7 @@ function composeVirtualComponents(shelly: ShellyDevice): entity_t[] {
                         const parentKey = addrToDeviceKey[config.addr];
                         if (parentKey) props.parentDeviceKey = parentKey;
                     }
-                    annotateOwnership(entity, config, shelly.shellyID);
+                    annotateOwnership(entity, config, String(shelly.id));
                     entities.push(entity);
                 }
             } catch (err) {
@@ -831,8 +862,15 @@ function composeComponents(
                   ? `${prefix}${title || type}`
                   : device_name || title || type;
 
-        // Pass device-reported errors through to the frontend
-        const errors: string[] = entity_status?.errors ?? [];
+        // Pass device-reported errors through to the frontend. The field is
+        // spec'd as string[], but coerce a bare value so one malformed device
+        // report can't throw here and unwind the whole device's admission.
+        const rawErrors = entity_status?.errors;
+        const errors: string[] = Array.isArray(rawErrors)
+            ? rawErrors
+            : rawErrors
+              ? [String(rawErrors)]
+              : [];
         if (errors.length) {
             logger.warn(
                 '%s: %s has errors: %s',
@@ -853,7 +891,7 @@ function composeComponents(
 
         const ownership = projectOwnership({
             componentConfig: entity_config,
-            deviceShellyID: shelly.shellyID
+            deviceShellyID: String(shelly.id)
         });
 
         // Generic factory across all native component types — variant fields
@@ -861,7 +899,7 @@ function composeComponents(
         // callers narrow on `type` keeps the union check at the use site.
         return {
             name,
-            id: `${shelly.shellyID}_${entity_status.id}:${suffix}`,
+            id: `${shelly.id}_${entity_status.id}:${suffix}`,
             type,
             source: shelly.shellyID,
             properties: {
@@ -887,12 +925,18 @@ function composeCovers(shelly: ShellyDevice): cover_entity[] {
     covers.forEach((cover) => {
         const key =
             cover.properties.id === 0 ? 'cover' : `cover${cover.properties.id}`;
+        // Optional chaining guards null/undefined but not a non-string value —
+        // a device reporting a numeric ui_data entry would make .split throw
+        // and abort the whole device's admission, so require a string first.
+        const raw = sysConfig?.ui_data?.[key];
         const favorites =
-            sysConfig.ui_data?.[key]
-                ?.split(',')
-                ?.map(Number)
-                ?.filter((x: number) => x >= 0 && x <= 100)
-                ?.sort((a: number, b: number) => a - b) ?? [];
+            typeof raw === 'string'
+                ? raw
+                      .split(',')
+                      .map(Number)
+                      .filter((x: number) => x >= 0 && x <= 100)
+                      .sort((a: number, b: number) => a - b)
+                : [];
 
         cover.properties.favorites = [...new Set<number>(favorites)];
     });
@@ -927,7 +971,7 @@ function composeCury(shelly: ShellyDevice): cury_entity[] {
                 entityConfig?.name ||
                 (curyKeys.length > 1 ? `${entityStatus.id}) ` : '') +
                     (deviceName || 'Scent Diffuser'),
-            id: `${shelly.shellyID}_${entityStatus.id}:cury`,
+            id: `${shelly.id}_${entityStatus.id}:cury`,
             type: 'cury' as const,
             source: shelly.shellyID,
             properties: {
@@ -955,7 +999,7 @@ function composeMedia(shelly: ShellyDevice): media_entity[] {
     return [
         {
             name: deviceName || 'Media',
-            id: `${shelly.shellyID}_0:media`,
+            id: `${shelly.id}_0:media`,
             type: 'media' as const,
             source: shelly.shellyID,
             properties: {
@@ -981,7 +1025,7 @@ function composeUi(shelly: ShellyDevice): ui_entity[] {
     return [
         {
             name: deviceName || 'Display',
-            id: `${shelly.shellyID}_0:ui`,
+            id: `${shelly.id}_0:ui`,
             type: 'ui' as const,
             source: shelly.shellyID,
             properties: {
@@ -1041,7 +1085,7 @@ function composeDevicepower(shelly: ShellyDevice): entity_t[] {
 
             return {
                 name,
-                id: `${shelly.shellyID}_${entity_status.id}:devicepower`,
+                id: `${shelly.id}_${entity_status.id}:devicepower`,
                 type: 'devicepower' as const,
                 source: shelly.shellyID,
                 properties: {
@@ -1068,7 +1112,7 @@ function composeMatter(shelly: ShellyDevice): matter_entity[] {
     return [
         {
             name: deviceName || 'Matter',
-            id: `${shelly.shellyID}_0:matter`,
+            id: `${shelly.id}_0:matter`,
             type: 'matter' as const,
             source: shelly.shellyID,
             properties: {
@@ -1114,7 +1158,7 @@ function composePresenceZone(
     const src = shellyID ?? String(deviceId);
     return {
         name,
-        id: `${src}_${componentId}:presencezone`,
+        id: `${deviceId}_${componentId}:presencezone`,
         type: 'presencezone' as const,
         source: src,
         properties: {
@@ -1138,7 +1182,7 @@ function composePresence(shelly: ShellyDevice): presence_entity[] {
     return [
         {
             name: deviceName || 'Presence',
-            id: `${shelly.shellyID}_0:presence`,
+            id: `${shelly.id}_0:presence`,
             type: 'presence' as const,
             source: shelly.shellyID,
             properties: {
@@ -1176,7 +1220,7 @@ function composeBluTrv(shelly: ShellyDevice): blutrv_entity[] {
 
         entities.push({
             name: deviceName,
-            id: `${shelly.shellyID}_${id}:blutrv`,
+            id: `${shelly.id}_${id}:blutrv`,
             type: 'blutrv' as const,
             source: shelly.shellyID,
             properties: {
@@ -1200,7 +1244,7 @@ function composeSchedule(shelly: ShellyDevice): schedule_entity {
     const deviceName = shelly.info.name as string;
     return {
         name: deviceName || 'Schedules',
-        id: `${shelly.shellyID}_0:schedule`,
+        id: `${shelly.id}_0:schedule`,
         type: 'schedule' as const,
         source: shelly.shellyID,
         properties: {
@@ -1228,6 +1272,28 @@ interface ComponentDef {
     ) => Record<string, any>;
     /** Custom compose function for complex types that can't use the generic loop */
     custom?: (shelly: ShellyDevice) => entity_t[];
+}
+
+// Shared source detection for standalone temperature/humidity sensors: BLU
+// (Wall Display ext_sensor_id) or a hardware add-on. Regular gateways create
+// bthomesensor:N entities instead.
+function bluAndAddonSensorSource(
+    _config: any,
+    status: any,
+    shelly?: ShellyDevice
+): Record<string, any> {
+    const props: Record<string, any> = {};
+    if (shelly && isWallDisplay(shelly)) {
+        const extId = shelly.config.sys?.ext_sensor_id;
+        if (extId) {
+            props.extSensorId = extId;
+            props.sensorSource = 'blu';
+        }
+    }
+    if (isAddonComponent(status, shelly)) {
+        props.sensorSource = 'addon';
+    }
+    return props;
 }
 
 const COMPONENT_REGISTRY: ComponentDef[] = [
@@ -1259,24 +1325,7 @@ const COMPONENT_REGISTRY: ComponentDef[] = [
         key: 'temperature',
         title: 'Temperature',
         idSuffix: 'temp',
-        parser: (_config, status, shelly) => {
-            const props: Record<string, any> = {};
-            // BLU detection: Wall Display with ext_sensor_id
-            // Only Wall Display feeds BLU data into standard temperature/humidity;
-            // regular gateways create bthomesensor:N entities instead.
-            if (shelly && isWallDisplay(shelly)) {
-                const extId = shelly.config.sys?.ext_sensor_id;
-                if (extId) {
-                    props.extSensorId = extId;
-                    props.sensorSource = 'blu';
-                }
-            }
-            // Add-on detection: component ID >= 100 AND device has an addon
-            if (isAddonComponent(status, shelly)) {
-                props.sensorSource = 'addon';
-            }
-            return props;
-        }
+        parser: bluAndAddonSensorSource
     },
     {key: 'em1', title: 'Energy Meter'},
     {key: 'em', title: 'Energy Meter'},
@@ -1300,22 +1349,7 @@ const COMPONENT_REGISTRY: ComponentDef[] = [
     {
         key: 'humidity',
         title: 'Humidity',
-        parser: (_config, status, shelly) => {
-            const props: Record<string, any> = {};
-            // BLU detection: Wall Display with ext_sensor_id
-            if (shelly && isWallDisplay(shelly)) {
-                const extId = shelly.config.sys?.ext_sensor_id;
-                if (extId) {
-                    props.extSensorId = extId;
-                    props.sensorSource = 'blu';
-                }
-            }
-            // Add-on detection: component ID >= 100 AND device has an addon
-            if (isAddonComponent(status, shelly)) {
-                props.sensorSource = 'addon';
-            }
-            return props;
-        }
+        parser: bluAndAddonSensorSource
     },
     {key: 'voltmeter', title: 'Voltmeter'},
     {
@@ -1329,6 +1363,7 @@ const COMPONENT_REGISTRY: ComponentDef[] = [
     {key: 'smoke', title: 'Smoke Sensor'},
     {key: 'devicepower', title: 'Battery', custom: composeDevicepower},
     {key: 'illuminance', title: 'Illuminance'},
+    {key: 'occupancy', title: 'Occupancy'},
     {
         key: 'thermostat',
         title: 'Thermostat',
@@ -1355,7 +1390,26 @@ const COMPONENT_REGISTRY: ComponentDef[] = [
     // NON_COMPONENT_KEYS and are not seen here. `object` is intentionally
     // absent — it dispatches through composeVirtualComponents already.
     {key: 'bm', title: 'Battery Monitor'},
-    {key: 'cb', title: 'Circuit Breaker'},
+    {
+        key: 'cb',
+        title: 'Circuit Breaker',
+        // Thresholds let the card flag each pole voltage against its limits.
+        // `poles` is structural: count voltmeter components from the full device
+        // so the card never guesses it from streaming live status.
+        parser: (config, _status, shelly) => ({
+            undervoltageLimit: config?.undervoltage_limit,
+            voltageLimit: config?.voltage_limit,
+            voltageThr: config?.voltage_thr,
+            poles: shelly
+                ? new Set(
+                      [
+                          ...Object.keys(shelly.config),
+                          ...Object.keys(shelly.status)
+                      ].filter((k) => /^voltmeter:\d+$/.test(k))
+                  ).size || undefined
+                : undefined
+        })
+    },
     {key: 'fan', title: 'Fan'},
     {key: 'lnm', title: 'Local Network Messaging'},
     {key: 'zigbee', title: 'Zigbee Bridge'},
@@ -1449,7 +1503,7 @@ export function proposeEntities(shelly: ShellyDevice): entity_t[] {
                 const device_name = shelly.info.name;
                 entities.push({
                     name: String(device_name || 'Temperature'),
-                    id: `${shelly.shellyID}_${id}:temp`,
+                    id: `${shelly.id}_${id}:temp`,
                     type: 'temperature',
                     source: shelly.shellyID,
                     properties: {

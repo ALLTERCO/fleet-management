@@ -38,68 +38,6 @@ declare module 'vue-router/auto-routes' {
       { path: ParamValue<false> },
       | never
     >,
-    '/alerts': RouteRecordInfo<
-      '/alerts',
-      '/alerts',
-      Record<never, never>,
-      Record<never, never>,
-      | '/alerts/'
-      | '/alerts/channels/'
-      | '/alerts/channels/[id]'
-      | '/alerts/destinations/[id]'
-      | '/alerts/rules/'
-      | '/alerts/rules/[id]'
-      | '/alerts/templates'
-    >,
-    '/alerts/': RouteRecordInfo<
-      '/alerts/',
-      '/alerts',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/alerts/channels/': RouteRecordInfo<
-      '/alerts/channels/',
-      '/alerts/channels',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/alerts/channels/[id]': RouteRecordInfo<
-      '/alerts/channels/[id]',
-      '/alerts/channels/:id',
-      { id: ParamValue<true> },
-      { id: ParamValue<false> },
-      | never
-    >,
-    '/alerts/destinations/[id]': RouteRecordInfo<
-      '/alerts/destinations/[id]',
-      '/alerts/destinations/:id',
-      { id: ParamValue<true> },
-      { id: ParamValue<false> },
-      | never
-    >,
-    '/alerts/rules/': RouteRecordInfo<
-      '/alerts/rules/',
-      '/alerts/rules',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/alerts/rules/[id]': RouteRecordInfo<
-      '/alerts/rules/[id]',
-      '/alerts/rules/:id',
-      { id: ParamValue<true> },
-      { id: ParamValue<false> },
-      | never
-    >,
-    '/alerts/templates': RouteRecordInfo<
-      '/alerts/templates',
-      '/alerts/templates',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
     '/auth/signinwin/zitadel': RouteRecordInfo<
       '/auth/signinwin/zitadel',
       '/auth/signinwin/zitadel',
@@ -167,14 +105,11 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | '/dash/'
       | '/dash/[id]'
-      | '/dash/analytics/[id]'
-      | '/dash/control/[id]'
       | '/dash/energy/[id]'
       | '/dash/environment/[id]'
       | '/dash/manage'
       | '/dash/map/[id]'
       | '/dash/overview/[id]'
-      | '/dash/safety/[id]'
     >,
     '/dash/': RouteRecordInfo<
       '/dash/',
@@ -186,20 +121,6 @@ declare module 'vue-router/auto-routes' {
     '/dash/[id]': RouteRecordInfo<
       '/dash/[id]',
       '/dash/:id',
-      { id: ParamValue<true> },
-      { id: ParamValue<false> },
-      | never
-    >,
-    '/dash/analytics/[id]': RouteRecordInfo<
-      '/dash/analytics/[id]',
-      '/dash/analytics/:id',
-      { id: ParamValue<true> },
-      { id: ParamValue<false> },
-      | never
-    >,
-    '/dash/control/[id]': RouteRecordInfo<
-      '/dash/control/[id]',
-      '/dash/control/:id',
       { id: ParamValue<true> },
       { id: ParamValue<false> },
       | never
@@ -239,13 +160,6 @@ declare module 'vue-router/auto-routes' {
       { id: ParamValue<false> },
       | never
     >,
-    '/dash/safety/[id]': RouteRecordInfo<
-      '/dash/safety/[id]',
-      '/dash/safety/:id',
-      { id: ParamValue<true> },
-      { id: ParamValue<false> },
-      | never
-    >,
     '/devices': RouteRecordInfo<
       '/devices',
       '/devices',
@@ -275,148 +189,6 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
-    '/monitoring': RouteRecordInfo<
-      '/monitoring',
-      '/monitoring',
-      Record<never, never>,
-      Record<never, never>,
-      | '/monitoring/'
-      | '/monitoring/activity'
-      | '/monitoring/audit-log'
-      | '/monitoring/commands'
-      | '/monitoring/connections'
-      | '/monitoring/control-panel'
-      | '/monitoring/database'
-      | '/monitoring/device-ingest'
-      | '/monitoring/events'
-      | '/monitoring/host'
-      | '/monitoring/investigate'
-      | '/monitoring/logs'
-      | '/monitoring/overview'
-      | '/monitoring/resources'
-      | '/monitoring/runtime'
-      | '/monitoring/services'
-      | '/monitoring/troubleshoot'
-    >,
-    '/monitoring/': RouteRecordInfo<
-      '/monitoring/',
-      '/monitoring',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/monitoring/activity': RouteRecordInfo<
-      '/monitoring/activity',
-      '/monitoring/activity',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/monitoring/audit-log': RouteRecordInfo<
-      '/monitoring/audit-log',
-      '/monitoring/audit-log',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/monitoring/commands': RouteRecordInfo<
-      '/monitoring/commands',
-      '/monitoring/commands',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/monitoring/connections': RouteRecordInfo<
-      '/monitoring/connections',
-      '/monitoring/connections',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/monitoring/control-panel': RouteRecordInfo<
-      '/monitoring/control-panel',
-      '/monitoring/control-panel',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/monitoring/database': RouteRecordInfo<
-      '/monitoring/database',
-      '/monitoring/database',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/monitoring/device-ingest': RouteRecordInfo<
-      '/monitoring/device-ingest',
-      '/monitoring/device-ingest',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/monitoring/events': RouteRecordInfo<
-      '/monitoring/events',
-      '/monitoring/events',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/monitoring/host': RouteRecordInfo<
-      '/monitoring/host',
-      '/monitoring/host',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/monitoring/investigate': RouteRecordInfo<
-      '/monitoring/investigate',
-      '/monitoring/investigate',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/monitoring/logs': RouteRecordInfo<
-      '/monitoring/logs',
-      '/monitoring/logs',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/monitoring/overview': RouteRecordInfo<
-      '/monitoring/overview',
-      '/monitoring/overview',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/monitoring/resources': RouteRecordInfo<
-      '/monitoring/resources',
-      '/monitoring/resources',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/monitoring/runtime': RouteRecordInfo<
-      '/monitoring/runtime',
-      '/monitoring/runtime',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/monitoring/services': RouteRecordInfo<
-      '/monitoring/services',
-      '/monitoring/services',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/monitoring/troubleshoot': RouteRecordInfo<
-      '/monitoring/troubleshoot',
-      '/monitoring/troubleshoot',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
     '/no-permissions': RouteRecordInfo<
       '/no-permissions',
       '/no-permissions',
@@ -431,9 +203,6 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | '/operations/'
       | '/operations/backups'
-      | '/operations/device-auth'
-      | '/operations/device-auth/'
-      | '/operations/device-auth/certificates'
       | '/operations/firmware'
       | '/operations/jobs'
     >,
@@ -447,28 +216,6 @@ declare module 'vue-router/auto-routes' {
     '/operations/backups': RouteRecordInfo<
       '/operations/backups',
       '/operations/backups',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/operations/device-auth': RouteRecordInfo<
-      '/operations/device-auth',
-      '/operations/device-auth',
-      Record<never, never>,
-      Record<never, never>,
-      | '/operations/device-auth/'
-      | '/operations/device-auth/certificates'
-    >,
-    '/operations/device-auth/': RouteRecordInfo<
-      '/operations/device-auth/',
-      '/operations/device-auth',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/operations/device-auth/certificates': RouteRecordInfo<
-      '/operations/device-auth/certificates',
-      '/operations/device-auth/certificates',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -548,6 +295,14 @@ declare module 'vue-router/auto-routes' {
       | '/settings/BrandingPolicySection'
       | '/settings/BrandingPrivacySection'
       | '/settings/BrandingRestrictionsSection'
+      | '/settings/alerts'
+      | '/settings/alerts/'
+      | '/settings/alerts/channels/'
+      | '/settings/alerts/channels/[id]'
+      | '/settings/alerts/destinations/[id]'
+      | '/settings/alerts/rules/'
+      | '/settings/alerts/rules/[id]'
+      | '/settings/alerts/templates'
       | '/settings/app'
       | '/settings/authz-simulator'
       | '/settings/branding'
@@ -557,8 +312,28 @@ declare module 'vue-router/auto-routes' {
       | '/settings/instance'
       | '/settings/log'
       | '/settings/mail'
+      | '/settings/monitoring'
+      | '/settings/monitoring/'
+      | '/settings/monitoring/activity'
+      | '/settings/monitoring/audit-log'
+      | '/settings/monitoring/commands'
+      | '/settings/monitoring/connections'
+      | '/settings/monitoring/control-panel'
+      | '/settings/monitoring/database'
+      | '/settings/monitoring/device-ingest'
+      | '/settings/monitoring/events'
+      | '/settings/monitoring/host'
+      | '/settings/monitoring/logs'
+      | '/settings/monitoring/overview'
+      | '/settings/monitoring/runtime'
+      | '/settings/monitoring/services'
+      | '/settings/monitoring/troubleshoot'
       | '/settings/personas'
       | '/settings/plugins'
+      | '/settings/security'
+      | '/settings/security/'
+      | '/settings/security/certificates'
+      | '/settings/security/credentials'
       | '/settings/user'
       | '/settings/user-groups'
       | '/settings/users'
@@ -566,6 +341,68 @@ declare module 'vue-router/auto-routes' {
     '/settings/': RouteRecordInfo<
       '/settings/',
       '/settings',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/alerts': RouteRecordInfo<
+      '/settings/alerts',
+      '/settings/alerts',
+      Record<never, never>,
+      Record<never, never>,
+      | '/settings/alerts/'
+      | '/settings/alerts/channels/'
+      | '/settings/alerts/channels/[id]'
+      | '/settings/alerts/destinations/[id]'
+      | '/settings/alerts/rules/'
+      | '/settings/alerts/rules/[id]'
+      | '/settings/alerts/templates'
+    >,
+    '/settings/alerts/': RouteRecordInfo<
+      '/settings/alerts/',
+      '/settings/alerts',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/alerts/channels/': RouteRecordInfo<
+      '/settings/alerts/channels/',
+      '/settings/alerts/channels',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/alerts/channels/[id]': RouteRecordInfo<
+      '/settings/alerts/channels/[id]',
+      '/settings/alerts/channels/:id',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
+      | never
+    >,
+    '/settings/alerts/destinations/[id]': RouteRecordInfo<
+      '/settings/alerts/destinations/[id]',
+      '/settings/alerts/destinations/:id',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
+      | never
+    >,
+    '/settings/alerts/rules/': RouteRecordInfo<
+      '/settings/alerts/rules/',
+      '/settings/alerts/rules',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/alerts/rules/[id]': RouteRecordInfo<
+      '/settings/alerts/rules/[id]',
+      '/settings/alerts/rules/:id',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
+      | never
+    >,
+    '/settings/alerts/templates': RouteRecordInfo<
+      '/settings/alerts/templates',
+      '/settings/alerts/templates',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -696,6 +533,132 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/settings/monitoring': RouteRecordInfo<
+      '/settings/monitoring',
+      '/settings/monitoring',
+      Record<never, never>,
+      Record<never, never>,
+      | '/settings/monitoring/'
+      | '/settings/monitoring/activity'
+      | '/settings/monitoring/audit-log'
+      | '/settings/monitoring/commands'
+      | '/settings/monitoring/connections'
+      | '/settings/monitoring/control-panel'
+      | '/settings/monitoring/database'
+      | '/settings/monitoring/device-ingest'
+      | '/settings/monitoring/events'
+      | '/settings/monitoring/host'
+      | '/settings/monitoring/logs'
+      | '/settings/monitoring/overview'
+      | '/settings/monitoring/runtime'
+      | '/settings/monitoring/services'
+      | '/settings/monitoring/troubleshoot'
+    >,
+    '/settings/monitoring/': RouteRecordInfo<
+      '/settings/monitoring/',
+      '/settings/monitoring',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/monitoring/activity': RouteRecordInfo<
+      '/settings/monitoring/activity',
+      '/settings/monitoring/activity',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/monitoring/audit-log': RouteRecordInfo<
+      '/settings/monitoring/audit-log',
+      '/settings/monitoring/audit-log',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/monitoring/commands': RouteRecordInfo<
+      '/settings/monitoring/commands',
+      '/settings/monitoring/commands',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/monitoring/connections': RouteRecordInfo<
+      '/settings/monitoring/connections',
+      '/settings/monitoring/connections',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/monitoring/control-panel': RouteRecordInfo<
+      '/settings/monitoring/control-panel',
+      '/settings/monitoring/control-panel',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/monitoring/database': RouteRecordInfo<
+      '/settings/monitoring/database',
+      '/settings/monitoring/database',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/monitoring/device-ingest': RouteRecordInfo<
+      '/settings/monitoring/device-ingest',
+      '/settings/monitoring/device-ingest',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/monitoring/events': RouteRecordInfo<
+      '/settings/monitoring/events',
+      '/settings/monitoring/events',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/monitoring/host': RouteRecordInfo<
+      '/settings/monitoring/host',
+      '/settings/monitoring/host',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/monitoring/logs': RouteRecordInfo<
+      '/settings/monitoring/logs',
+      '/settings/monitoring/logs',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/monitoring/overview': RouteRecordInfo<
+      '/settings/monitoring/overview',
+      '/settings/monitoring/overview',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/monitoring/runtime': RouteRecordInfo<
+      '/settings/monitoring/runtime',
+      '/settings/monitoring/runtime',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/monitoring/services': RouteRecordInfo<
+      '/settings/monitoring/services',
+      '/settings/monitoring/services',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/monitoring/troubleshoot': RouteRecordInfo<
+      '/settings/monitoring/troubleshoot',
+      '/settings/monitoring/troubleshoot',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/settings/personas': RouteRecordInfo<
       '/settings/personas',
       '/settings/personas',
@@ -706,6 +669,36 @@ declare module 'vue-router/auto-routes' {
     '/settings/plugins': RouteRecordInfo<
       '/settings/plugins',
       '/settings/plugins',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/security': RouteRecordInfo<
+      '/settings/security',
+      '/settings/security',
+      Record<never, never>,
+      Record<never, never>,
+      | '/settings/security/'
+      | '/settings/security/certificates'
+      | '/settings/security/credentials'
+    >,
+    '/settings/security/': RouteRecordInfo<
+      '/settings/security/',
+      '/settings/security',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/security/certificates': RouteRecordInfo<
+      '/settings/security/certificates',
+      '/settings/security/certificates',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/security/credentials': RouteRecordInfo<
+      '/settings/security/credentials',
+      '/settings/security/credentials',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -773,77 +766,6 @@ declare module 'vue-router/auto-routes' {
         | never
       pathParamNames:
         | 'path'
-    }
-    'src/pages/alerts.vue': {
-      routes:
-        | '/alerts'
-        | '/alerts/'
-        | '/alerts/channels/'
-        | '/alerts/channels/[id]'
-        | '/alerts/destinations/[id]'
-        | '/alerts/rules/'
-        | '/alerts/rules/[id]'
-        | '/alerts/templates'
-      views:
-        | 'default'
-      pathParamNames:
-        | never
-    }
-    'src/pages/alerts/index.vue': {
-      routes:
-        | '/alerts/'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/alerts/channels/index.vue': {
-      routes:
-        | '/alerts/channels/'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/alerts/channels/[id].vue': {
-      routes:
-        | '/alerts/channels/[id]'
-      views:
-        | never
-      pathParamNames:
-        | 'id'
-    }
-    'src/pages/alerts/destinations/[id].vue': {
-      routes:
-        | '/alerts/destinations/[id]'
-      views:
-        | never
-      pathParamNames:
-        | 'id'
-    }
-    'src/pages/alerts/rules/index.vue': {
-      routes:
-        | '/alerts/rules/'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/alerts/rules/[id].vue': {
-      routes:
-        | '/alerts/rules/[id]'
-      views:
-        | never
-      pathParamNames:
-        | 'id'
-    }
-    'src/pages/alerts/templates.vue': {
-      routes:
-        | '/alerts/templates'
-      views:
-        | never
-      pathParamNames:
-        | never
     }
     'src/pages/auth/signinwin/zitadel.vue': {
       routes:
@@ -919,14 +841,11 @@ declare module 'vue-router/auto-routes' {
         | '/dash'
         | '/dash/'
         | '/dash/[id]'
-        | '/dash/analytics/[id]'
-        | '/dash/control/[id]'
         | '/dash/energy/[id]'
         | '/dash/environment/[id]'
         | '/dash/manage'
         | '/dash/map/[id]'
         | '/dash/overview/[id]'
-        | '/dash/safety/[id]'
       views:
         | 'default'
       pathParamNames:
@@ -943,22 +862,6 @@ declare module 'vue-router/auto-routes' {
     'src/pages/dash/[id].vue': {
       routes:
         | '/dash/[id]'
-      views:
-        | never
-      pathParamNames:
-        | 'id'
-    }
-    'src/pages/dash/analytics/[id].vue': {
-      routes:
-        | '/dash/analytics/[id]'
-      views:
-        | never
-      pathParamNames:
-        | 'id'
-    }
-    'src/pages/dash/control/[id].vue': {
-      routes:
-        | '/dash/control/[id]'
       views:
         | never
       pathParamNames:
@@ -1004,14 +907,6 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | 'id'
     }
-    'src/pages/dash/safety/[id].vue': {
-      routes:
-        | '/dash/safety/[id]'
-      views:
-        | never
-      pathParamNames:
-        | 'id'
-    }
     'src/pages/devices.vue': {
       routes:
         | '/devices'
@@ -1046,167 +941,6 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
-    'src/pages/monitoring.vue': {
-      routes:
-        | '/monitoring'
-        | '/monitoring/'
-        | '/monitoring/activity'
-        | '/monitoring/audit-log'
-        | '/monitoring/commands'
-        | '/monitoring/connections'
-        | '/monitoring/control-panel'
-        | '/monitoring/database'
-        | '/monitoring/device-ingest'
-        | '/monitoring/events'
-        | '/monitoring/host'
-        | '/monitoring/investigate'
-        | '/monitoring/logs'
-        | '/monitoring/overview'
-        | '/monitoring/resources'
-        | '/monitoring/runtime'
-        | '/monitoring/services'
-        | '/monitoring/troubleshoot'
-      views:
-        | 'default'
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/index.vue': {
-      routes:
-        | '/monitoring/'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/activity.vue': {
-      routes:
-        | '/monitoring/activity'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/audit-log.vue': {
-      routes:
-        | '/monitoring/audit-log'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/commands.vue': {
-      routes:
-        | '/monitoring/commands'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/connections.vue': {
-      routes:
-        | '/monitoring/connections'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/control-panel.vue': {
-      routes:
-        | '/monitoring/control-panel'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/database.vue': {
-      routes:
-        | '/monitoring/database'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/device-ingest.vue': {
-      routes:
-        | '/monitoring/device-ingest'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/events.vue': {
-      routes:
-        | '/monitoring/events'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/host.vue': {
-      routes:
-        | '/monitoring/host'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/investigate.vue': {
-      routes:
-        | '/monitoring/investigate'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/logs.vue': {
-      routes:
-        | '/monitoring/logs'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/overview.vue': {
-      routes:
-        | '/monitoring/overview'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/resources.vue': {
-      routes:
-        | '/monitoring/resources'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/runtime.vue': {
-      routes:
-        | '/monitoring/runtime'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/services.vue': {
-      routes:
-        | '/monitoring/services'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/monitoring/troubleshoot.vue': {
-      routes:
-        | '/monitoring/troubleshoot'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
     'src/pages/no-permissions.vue': {
       routes:
         | '/no-permissions'
@@ -1220,9 +954,6 @@ declare module 'vue-router/auto-routes' {
         | '/operations'
         | '/operations/'
         | '/operations/backups'
-        | '/operations/device-auth'
-        | '/operations/device-auth/'
-        | '/operations/device-auth/certificates'
         | '/operations/firmware'
         | '/operations/jobs'
       views:
@@ -1241,32 +972,6 @@ declare module 'vue-router/auto-routes' {
     'src/pages/operations/backups.vue': {
       routes:
         | '/operations/backups'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/operations/device-auth.vue': {
-      routes:
-        | '/operations/device-auth'
-        | '/operations/device-auth/'
-        | '/operations/device-auth/certificates'
-      views:
-        | 'default'
-      pathParamNames:
-        | never
-    }
-    'src/pages/operations/device-auth/index.vue': {
-      routes:
-        | '/operations/device-auth/'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/operations/device-auth/certificates.vue': {
-      routes:
-        | '/operations/device-auth/certificates'
       views:
         | never
       pathParamNames:
@@ -1354,6 +1059,14 @@ declare module 'vue-router/auto-routes' {
         | '/settings/BrandingPolicySection'
         | '/settings/BrandingPrivacySection'
         | '/settings/BrandingRestrictionsSection'
+        | '/settings/alerts'
+        | '/settings/alerts/'
+        | '/settings/alerts/channels/'
+        | '/settings/alerts/channels/[id]'
+        | '/settings/alerts/destinations/[id]'
+        | '/settings/alerts/rules/'
+        | '/settings/alerts/rules/[id]'
+        | '/settings/alerts/templates'
         | '/settings/app'
         | '/settings/authz-simulator'
         | '/settings/branding'
@@ -1363,8 +1076,28 @@ declare module 'vue-router/auto-routes' {
         | '/settings/instance'
         | '/settings/log'
         | '/settings/mail'
+        | '/settings/monitoring'
+        | '/settings/monitoring/'
+        | '/settings/monitoring/activity'
+        | '/settings/monitoring/audit-log'
+        | '/settings/monitoring/commands'
+        | '/settings/monitoring/connections'
+        | '/settings/monitoring/control-panel'
+        | '/settings/monitoring/database'
+        | '/settings/monitoring/device-ingest'
+        | '/settings/monitoring/events'
+        | '/settings/monitoring/host'
+        | '/settings/monitoring/logs'
+        | '/settings/monitoring/overview'
+        | '/settings/monitoring/runtime'
+        | '/settings/monitoring/services'
+        | '/settings/monitoring/troubleshoot'
         | '/settings/personas'
         | '/settings/plugins'
+        | '/settings/security'
+        | '/settings/security/'
+        | '/settings/security/certificates'
+        | '/settings/security/credentials'
         | '/settings/user'
         | '/settings/user-groups'
         | '/settings/users'
@@ -1376,6 +1109,77 @@ declare module 'vue-router/auto-routes' {
     'src/pages/settings/index.vue': {
       routes:
         | '/settings/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/alerts.vue': {
+      routes:
+        | '/settings/alerts'
+        | '/settings/alerts/'
+        | '/settings/alerts/channels/'
+        | '/settings/alerts/channels/[id]'
+        | '/settings/alerts/destinations/[id]'
+        | '/settings/alerts/rules/'
+        | '/settings/alerts/rules/[id]'
+        | '/settings/alerts/templates'
+      views:
+        | 'default'
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/alerts/index.vue': {
+      routes:
+        | '/settings/alerts/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/alerts/channels/index.vue': {
+      routes:
+        | '/settings/alerts/channels/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/alerts/channels/[id].vue': {
+      routes:
+        | '/settings/alerts/channels/[id]'
+      views:
+        | never
+      pathParamNames:
+        | 'id'
+    }
+    'src/pages/settings/alerts/destinations/[id].vue': {
+      routes:
+        | '/settings/alerts/destinations/[id]'
+      views:
+        | never
+      pathParamNames:
+        | 'id'
+    }
+    'src/pages/settings/alerts/rules/index.vue': {
+      routes:
+        | '/settings/alerts/rules/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/alerts/rules/[id].vue': {
+      routes:
+        | '/settings/alerts/rules/[id]'
+      views:
+        | never
+      pathParamNames:
+        | 'id'
+    }
+    'src/pages/settings/alerts/templates.vue': {
+      routes:
+        | '/settings/alerts/templates'
       views:
         | never
       pathParamNames:
@@ -1525,6 +1329,149 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
+    'src/pages/settings/monitoring.vue': {
+      routes:
+        | '/settings/monitoring'
+        | '/settings/monitoring/'
+        | '/settings/monitoring/activity'
+        | '/settings/monitoring/audit-log'
+        | '/settings/monitoring/commands'
+        | '/settings/monitoring/connections'
+        | '/settings/monitoring/control-panel'
+        | '/settings/monitoring/database'
+        | '/settings/monitoring/device-ingest'
+        | '/settings/monitoring/events'
+        | '/settings/monitoring/host'
+        | '/settings/monitoring/logs'
+        | '/settings/monitoring/overview'
+        | '/settings/monitoring/runtime'
+        | '/settings/monitoring/services'
+        | '/settings/monitoring/troubleshoot'
+      views:
+        | 'default'
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/monitoring/index.vue': {
+      routes:
+        | '/settings/monitoring/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/monitoring/activity.vue': {
+      routes:
+        | '/settings/monitoring/activity'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/monitoring/audit-log.vue': {
+      routes:
+        | '/settings/monitoring/audit-log'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/monitoring/commands.vue': {
+      routes:
+        | '/settings/monitoring/commands'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/monitoring/connections.vue': {
+      routes:
+        | '/settings/monitoring/connections'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/monitoring/control-panel.vue': {
+      routes:
+        | '/settings/monitoring/control-panel'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/monitoring/database.vue': {
+      routes:
+        | '/settings/monitoring/database'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/monitoring/device-ingest.vue': {
+      routes:
+        | '/settings/monitoring/device-ingest'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/monitoring/events.vue': {
+      routes:
+        | '/settings/monitoring/events'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/monitoring/host.vue': {
+      routes:
+        | '/settings/monitoring/host'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/monitoring/logs.vue': {
+      routes:
+        | '/settings/monitoring/logs'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/monitoring/overview.vue': {
+      routes:
+        | '/settings/monitoring/overview'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/monitoring/runtime.vue': {
+      routes:
+        | '/settings/monitoring/runtime'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/monitoring/services.vue': {
+      routes:
+        | '/settings/monitoring/services'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/monitoring/troubleshoot.vue': {
+      routes:
+        | '/settings/monitoring/troubleshoot'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
     'src/pages/settings/personas.vue': {
       routes:
         | '/settings/personas'
@@ -1536,6 +1483,41 @@ declare module 'vue-router/auto-routes' {
     'src/pages/settings/plugins.vue': {
       routes:
         | '/settings/plugins'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/security.vue': {
+      routes:
+        | '/settings/security'
+        | '/settings/security/'
+        | '/settings/security/certificates'
+        | '/settings/security/credentials'
+      views:
+        | 'default'
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/security/index.vue': {
+      routes:
+        | '/settings/security/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/security/certificates.vue': {
+      routes:
+        | '/settings/security/certificates'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/security/credentials.vue': {
+      routes:
+        | '/settings/security/credentials'
       views:
         | never
       pathParamNames:

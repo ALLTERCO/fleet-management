@@ -20,13 +20,14 @@
                 <span
                     v-if="proxyMethod"
                     class="text-2xs px-1.5 py-0.5 rounded-full border cursor-help text-[var(--color-primary-text)] border-[var(--color-primary)] bg-[var(--color-primary-subtle)]"
-                    title="Direct LAN access — browser connects to device IP"
+                    :title="proxyMethod === 'server' ? 'Fleet Manager server proxy' : 'Direct LAN access'"
                 >
-                    LAN
+                    {{ proxyMethod === 'server' ? 'FM proxy' : 'LAN' }}
                 </span>
 
                 <span v-if="deviceIp" class="text-xs text-[var(--color-text-disabled)]">{{ deviceIp }}</span>
                 <span v-if="fwVersion" class="text-xs text-[var(--color-text-disabled)]">FW {{ fwVersion }}</span>
+                <span class="text-xs text-[var(--color-warning-text)]">Local network only</span>
 
                 <!-- URL bar (expandable) -->
                 <div v-if="guiUrl" class="flex-1 min-w-0 mx-2">
@@ -103,12 +104,12 @@
                     v-else-if="guiUrl"
                     ref="iframeRef"
                     :src="guiUrl"
-                    sandbox="allow-scripts allow-same-origin allow-forms"
+                    sandbox="allow-scripts allow-forms"
+                    referrerpolicy="no-referrer"
                     class="w-full h-full border-0 bg-white"
                     @load="onIframeLoad"
                     @error="onIframeError"
                 />
-
                 <!-- No GUI Available -->
                 <div
                     v-else
@@ -175,18 +176,26 @@
                             <span class="text-[var(--color-text-disabled)]">Device IP</span>
                             <span class="text-[var(--color-text-secondary)]">{{ diagResult.deviceIp || '—' }}</span>
 
-                            <!-- Browser → Device -->
-                            <span class="text-[var(--color-text-disabled)]">Browser → Device</span>
-                            <span v-if="browserProbe === null" class="text-[var(--color-text-disabled)]">—</span>
-                            <span v-else-if="browserProbe === 'probing'" class="text-[var(--color-text-disabled)]">probing...</span>
-                            <span v-else-if="browserProbe.elapsed === 0 && browserProbe.error?.startsWith('skipped')" class="text-[var(--color-warning-text)]">
-                                Skipped — mixed content (HTTPS → HTTP)
-                            </span>
-                            <span v-else :class="browserProbe.reachable ? 'text-[var(--color-success-text)]' : 'text-[var(--color-danger-text)]'">
-                                {{ browserProbe.reachable ? 'Reachable' : 'Unreachable' }}
-                                ({{ browserProbe.elapsed }}ms)
-                                <span v-if="browserProbe.error"> — {{ browserProbe.error }}</span>
-                            </span>
+                            <template v-if="proxyMethod === 'server'">
+                                <span class="text-[var(--color-text-disabled)]">Browser → FM</span>
+                                <span class="text-[var(--color-success-text)]">
+                                    Connected via {{ isHttpsPage ? 'HTTPS' : 'HTTP' }} (proxy session active)
+                                </span>
+                            </template>
+
+                            <template v-else-if="proxyMethod === 'direct'">
+                                <span class="text-[var(--color-text-disabled)]">Browser → Device</span>
+                                <span v-if="browserProbe === null" class="text-[var(--color-text-disabled)]">—</span>
+                                <span v-else-if="browserProbe === 'probing'" class="text-[var(--color-text-disabled)]">probing...</span>
+                                <span v-else-if="browserProbe.elapsed === 0 && browserProbe.error?.startsWith('skipped')" class="text-[var(--color-warning-text)]">
+                                    Skipped — mixed content (HTTPS → HTTP)
+                                </span>
+                                <span v-else :class="browserProbe.reachable ? 'text-[var(--color-success-text)]' : 'text-[var(--color-danger-text)]'">
+                                    {{ browserProbe.reachable ? 'Reachable' : 'Unreachable' }}
+                                    ({{ browserProbe.elapsed }}ms)
+                                    <span v-if="browserProbe.error"> — {{ browserProbe.error }}</span>
+                                </span>
+                            </template>
 
                             <!-- FM → Device -->
                             <span class="text-[var(--color-text-disabled)]">FM → Device</span>
@@ -202,11 +211,6 @@
                             </template>
                             <span v-else class="text-[var(--color-text-disabled)]">—</span>
 
-                            <!-- HTTPS warning -->
-                            <template v-if="diagResult.guiContext?.httpsWarning">
-                                <span class="text-[var(--color-text-disabled)]">Warning</span>
-                                <span class="text-[var(--color-warning-text)]">{{ diagResult.guiContext.httpsWarning }}</span>
-                            </template>
                         </div>
                     </div>
 
@@ -225,7 +229,7 @@
                             <span class="text-[var(--color-text-secondary)]">{{ diagResult.deviceHealth?.fw || '—' }}</span>
 
                             <span class="text-[var(--color-text-disabled)]">Uptime</span>
-                            <span class="text-[var(--color-text-secondary)]">{{ formatUptime(diagResult.deviceHealth?.uptime) }}</span>
+                            <span class="text-[var(--color-text-secondary)]">{{ diagResult.deviceHealth?.uptime != null ? formatDuration(diagResult.deviceHealth.uptime) : '—' }}</span>
 
                             <span class="text-[var(--color-text-disabled)]">RAM</span>
                             <span class="text-[var(--color-text-secondary)]">
@@ -390,7 +394,7 @@
 <script setup lang="ts">
 import {computed, onBeforeUnmount, ref, toRef, useId, watch} from 'vue';
 import {useFocusTrap} from '@/composables/useFocusTrap';
-import {formatTimeOfDay} from '@/helpers/format';
+import {formatDuration, formatTimeOfDay} from '@/helpers/format';
 import {getZitadelAuth} from '@/helpers/zitadelAuth';
 import {debug} from '@/tools/debug';
 import {getObsLevel, getRpcTimings, type ObsLevel } from '@/tools/observability';
@@ -401,6 +405,7 @@ import Spinner from '../core/Spinner.vue';
 const props = defineProps<{
     visible: boolean;
     shellyID: string;
+    deviceId?: number;
 }>();
 
 const emit = defineEmits<{
@@ -420,7 +425,7 @@ const error = ref<string | null>(null);
 const guiUrl = ref<string | null>(null);
 const deviceIp = ref<string | null>(null);
 const fwVersion = ref<string | null>(null);
-const proxyMethod = ref<'direct' | null>(null);
+const proxyMethod = ref<'direct' | 'server' | null>(null);
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 const copyLabel = ref('Copy');
 const diagLoading = ref(false);
@@ -507,6 +512,9 @@ async function loadGuiInfo() {
     loading.value = true;
     error.value = null;
     guiUrl.value = null;
+    deviceIp.value = null;
+    fwVersion.value = null;
+    proxyMethod.value = null;
 
     try {
         const token = await getAccessToken();
@@ -516,8 +524,33 @@ async function loadGuiInfo() {
 
         debug('[DeviceWebGuiModal] Fetching info for device:', props.shellyID);
 
+        if (props.deviceId && props.deviceId > 0) {
+            const proxyResponse = await fetch(
+                `/api/device-proxy/devices/${props.deviceId}/gui-session`,
+                {
+                    method: 'POST',
+                    headers: {Authorization: `Bearer ${token}`},
+                    signal: abortController?.signal
+                }
+            );
+            if (proxyResponse.ok) {
+                const launch = await proxyResponse.json();
+                guiUrl.value = launch.guiUrl;
+                deviceIp.value = new URL(launch.directUrl).hostname;
+                proxyMethod.value = 'server';
+                return;
+            }
+            if (![409, 502, 503].includes(proxyResponse.status)) {
+                const data = await proxyResponse.json().catch(() => ({}));
+                throw new Error(data.error || `HTTP ${proxyResponse.status}`);
+            }
+        }
+
+        const infoPath = props.deviceId
+            ? `/api/device-proxy/devices/${props.deviceId}/info`
+            : `/api/device-proxy/${props.shellyID}/info`;
         const response = await fetch(
-            `/api/device-proxy/${props.shellyID}/info`,
+            infoPath,
             {
                 headers: {
                     Authorization: `Bearer ${token}`
@@ -547,10 +580,8 @@ async function loadGuiInfo() {
             return;
         }
 
-        // Direct LAN access — browser connects to device IP.
-        // Works when FM and devices are on the same network (typical deployment).
-        // If accessed via domain name, verify the device is reachable first.
         const deviceUrl = `http://${data.deviceIp}/`;
+        proxyMethod.value = 'direct';
         const fmHost = window.location.hostname;
         const isPrivateIp =
             fmHost === 'localhost' ||
@@ -578,7 +609,6 @@ async function loadGuiInfo() {
         }
 
         guiUrl.value = deviceUrl;
-        proxyMethod.value = 'direct';
         debug(
             '[DeviceWebGuiModal] Opening device GUI (direct LAN):',
             guiUrl.value
@@ -598,16 +628,6 @@ function onIframeLoad() {
 
 function onIframeError() {
     error.value = 'Failed to load device GUI';
-}
-
-function formatUptime(seconds: number | null): string {
-    if (seconds == null) return '—';
-    const d = Math.floor(seconds / 86400);
-    const h = Math.floor((seconds % 86400) / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    if (d > 0) return `${d}d ${h}h ${m}m`;
-    if (h > 0) return `${h}h ${m}m`;
-    return `${m}m`;
 }
 
 const isHttpsPage = window.location.protocol === 'https:';
@@ -677,8 +697,8 @@ async function runDiagnostics(advanced = false) {
         const data = await response.json();
         diagResult.value = data;
 
-        // Run browser → device probe in parallel (non-blocking)
-        if (data.deviceIp && !advanced) {
+        // The browser only contacts the device during direct fallback.
+        if (proxyMethod.value === 'direct' && data.deviceIp && !advanced) {
             probeBrowserReachability(data.deviceIp);
         }
     } catch (e: any) {
@@ -703,14 +723,13 @@ function openDirectly() {
 // Focus trap / Esc / body-scroll lock live in useFocusTrap above.
 // This watch only owns the abort controller for in-flight RPCs.
 watch(
-    () => props.visible,
-    (newVisible) => {
-        if (newVisible && props.shellyID) {
+    () => [props.visible, props.shellyID, props.deviceId] as const,
+    ([newVisible, shellyID]) => {
+        abortController?.abort();
+        abortController = null;
+        if (newVisible && shellyID) {
             abortController = new AbortController();
-            loadGuiInfo();
-        } else if (abortController) {
-            abortController.abort();
-            abortController = null;
+            void loadGuiInfo();
         }
     },
     {immediate: true}

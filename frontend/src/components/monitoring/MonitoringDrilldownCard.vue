@@ -1,5 +1,5 @@
 <template>
-    <RouterLink :to="to" class="svc-card" :data-status="status">
+    <div class="svc-card" :data-status="status">
         <div class="svc-card__top">
             <div class="svc-card__icon">
                 <i :class="icon" aria-hidden="true" />
@@ -21,24 +21,19 @@
                 <span class="svc-card__metric-label">{{ item.label }}</span>
             </div>
         </div>
-
-        <div class="svc-card__foot">
-            <span>Open</span>
-            <i class="fas fa-arrow-right" aria-hidden="true" />
-        </div>
-    </RouterLink>
+    </div>
 </template>
 
 <script setup lang="ts">
 import {computed} from 'vue';
-import {RouterLink} from 'vue-router';
 import type {FlowStatus} from '@/stores/monitoring';
 import HealthDot from './HealthDot.vue';
 
+// Pure stat card. Navigation lives in the sidebar and cluster tab rows —
+// cards that also jumped elsewhere made the pages confusing.
 const props = defineProps<{
     title: string;
     icon: string;
-    to: string;
     status: FlowStatus;
     items: Array<{label: string; value: string | number}>;
     description?: string;
@@ -66,16 +61,6 @@ const statusLabel = computed(() => {
     border-radius: var(--radius-lg, 12px);
     background: var(--color-surface-1);
     color: inherit;
-    text-decoration: none;
-    transition:
-        border-color 0.15s ease,
-        box-shadow 0.15s ease,
-        transform 0.15s ease;
-}
-.svc-card:hover {
-    border-color: var(--color-primary);
-    box-shadow: var(--shadow-md, 0 6px 20px rgba(0, 0, 0, 0.18));
-    transform: translateY(-2px);
 }
 
 /* ── header row: icon tile + status pill ── */
@@ -128,7 +113,7 @@ const statusLabel = computed(() => {
 .svc-card__title {
     margin: 0;
     color: var(--color-text-primary);
-    font-size: var(--type-subtitle, var(--type-body));
+    font-size: var(--type-body);
     font-weight: var(--font-semibold);
 }
 .svc-card__desc {
@@ -164,21 +149,5 @@ const statusLabel = computed(() => {
 .svc-card__metric-label {
     color: var(--color-text-tertiary);
     font-size: var(--type-caption);
-}
-
-/* ── footer "Open →" ── */
-.svc-card__foot {
-    display: flex;
-    align-items: center;
-    gap: var(--gap-xs);
-    color: var(--color-primary-text, var(--color-primary));
-    font-size: var(--type-caption);
-    font-weight: var(--font-semibold);
-}
-.svc-card__foot i {
-    transition: transform 0.15s ease;
-}
-.svc-card:hover .svc-card__foot i {
-    transform: translateX(3px);
 }
 </style>

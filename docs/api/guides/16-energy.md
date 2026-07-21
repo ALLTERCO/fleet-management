@@ -1,8 +1,8 @@
 ## Energy model
 
-![Auto-detected facts become the meaning you set — device, measurement points, logical meter, role, group](diagrams/energy-model.svg)
+![Auto-detected facts become the meaning you set: device, meter parts, measurement points, logical meter, role, group](diagrams/energy-model.svg)
 
-![Energy storage tiers — live status, full-resolution stats, and 5-minute, 15-minute, and monthly rollups](diagrams/energy-storage.svg)
+![Energy storage: live status in memory, a one-month raw window, and the durable 15-minute rollup](diagrams/energy-storage.svg)
 
 The energy model follows one rule: **auto-detect facts, ask people for
 meaning.** Fleet Manager works out the physics from the device; you tell it what
@@ -34,8 +34,9 @@ The raw sources are real device components — `EM` (three-phase), `EM1`
 (single-phase), `PM1`, plus `EMData`/`EM1Data` for device-stored history. A
 logical meter sits on top: a **physical meter** sums its points; a **calculated
 meter** is a formula over other meters. Fleet Manager keeps raw readings at full
-resolution for about a year, with monthly, 5-minute, and 15-minute billing
-rollups on top.
+resolution for about a month as a hot window, and the durable long-term store is
+the 15-minute rollup (`device_em.energy_15min`), which holds all history and
+billing.
 
 ### Reading energy (`energy` namespace)
 

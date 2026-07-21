@@ -35,6 +35,19 @@ function safeBucket(bucket: string): string {
     return bucket;
 }
 
+// Injection boundary for inlined commodity/source literals — same shape as
+// safeTag. Values are lowercase letters + underscore (electricity, ac_mains, …).
+function safeFilter(value: string): string {
+    if (!/^[a-z_]+$/.test(value)) throw new Error(`unsafe filter: ${value}`);
+    return value;
+}
+
+// Inlined optional filter arg: NULL (all) when omitted, else the validated
+// literal. No hidden default — a water/heat export returns its rows.
+function filterArg(value: string | undefined): string {
+    return value === undefined ? 'NULL' : `'${safeFilter(value)}'`;
+}
+
 export interface ExportQueryParams {
     internalIds: readonly number[];
     from: Date;
@@ -42,6 +55,10 @@ export interface ExportQueryParams {
     tags: readonly string[];
     perDevice: boolean;
     bucket: string;
+    /** Commodity filter (electricity/water/heat). Omitted → all. */
+    commodity?: string;
+    /** Electrical-source filter (ac_mains/…). Omitted → all. */
+    electricalSource?: string;
 }
 
 /**
@@ -56,19 +73,23 @@ export function buildRawExportSql(p: ExportQueryParams): string {
         .join(',');
     const bucket = safeBucket(p.bucket);
     // 15 min+ reads the long-term rollup; finer reads raw (1-month window).
-    // Both functions share the same 8-arg signature.
+    // Both functions share the same signature (trailing p_commodity,
+    // p_electrical_source).
     const fn = bucketUsesRollup(bucket)
         ? 'fn_report_stats_rollup_paged'
         : 'fn_report_stats_paged';
+    // Order by domain so the interval pivot (keyed by domain) sees contiguous
+    // rows; AC+DC on one device would otherwise fragment.
     return (
-        `SELECT bucket, device, tag, agg_value FROM device_em.${fn}(` +
+        `SELECT bucket, device, tag, agg_value, domain FROM device_em.${fn}(` +
         `ARRAY[${ids}]::integer[],` +
         `'${p.from.toISOString()}'::timestamptz,` +
         `'${p.to.toISOString()}'::timestamptz,` +
         `ARRAY[${tags}]::varchar(30)[],` +
         `'${bucket}',` +
         `${p.perDevice ? 'true' : 'false'},` +
-        'NULL,0)'
+        `NULL,0,${filterArg(p.commodity)},${filterArg(p.electricalSource)}) ` +
+        `ORDER BY bucket, device, domain, tag`
     );
 }
 
@@ -168,7 +189,8 @@ export function buildFormattedExportSql(
         `'${p.from.toISOString()}'::timestamptz,` +
         `'${p.to.toISOString()}'::timestamptz,` +
         `ARRAY[${tagList}]::varchar(30)[],` +
-        `'${bucket}',${p.perDevice ? 'true' : 'false'},NULL,0) p ` +
+        `'${bucket}',${p.perDevice ? 'true' : 'false'},NULL,0,` +
+        `${filterArg(p.commodity)},${filterArg(p.electricalSource)}) p ` +
         `${join} GROUP BY p.bucket, p.device ORDER BY p.bucket, p.device`;
     return {sql, headerCols};
 }
@@ -196,7 +218,8 @@ export function buildExportTotalSql(
         `'${p.from.toISOString()}'::timestamptz,` +
         `'${p.to.toISOString()}'::timestamptz,` +
         `ARRAY['${tag}']::varchar(30)[],` +
-        `'${bucket}',${p.perDevice ? 'true' : 'false'},NULL,0)`
+        `'${bucket}',${p.perDevice ? 'true' : 'false'},NULL,0,` +
+        `${filterArg(p.commodity)},${filterArg(p.electricalSource)})`
     );
 }
 

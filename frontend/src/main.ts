@@ -54,15 +54,6 @@ async function init() {
     app.use(pinia);
     app.use(router);
     installCustomization(app, customization);
-    // Block first paint until the initial beforeEach redirect resolves.
-    await router.isReady();
-    app.mount('#app');
-
-    initWebVitals();
-    initSwUpdate();
-    initPwaInstall();
-    initLaunchSync();
-    initReportAnomalyToasts();
 
     // Shared IntersectionObserver for v-lazyload (one observer for all images)
     let lazyObserver: IntersectionObserver | null = null;
@@ -98,6 +89,16 @@ async function init() {
             getLazyObserver().unobserve(el);
         }
     });
+
+    // Block first paint until the initial beforeEach redirect resolves.
+    await router.isReady();
+    app.mount('#app');
+
+    initWebVitals();
+    initSwUpdate();
+    initPwaInstall();
+    initLaunchSync();
+    initReportAnomalyToasts();
 }
 
 if (!window.__FM_RUNTIME_CONFIG__?.devMode) {

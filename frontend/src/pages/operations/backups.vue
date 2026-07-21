@@ -34,12 +34,22 @@
                     @click="refreshBackups"
                 ><i class="fas fa-sync-alt" :class="{'fa-spin': loading}" /></Button>
                 <Button
+                    v-if="bkView === 'backups'"
                     type="blue-hollow"
                     size="sm"
-                    title="Export CSV"
-                    aria-label="Export CSV"
+                    :disabled="backupsList.length === 0"
+                    title="Export backups to CSV"
+                    aria-label="Export backups to CSV"
                     @click="exportBackups"
                 ><i class="fas fa-file-export" /></Button>
+                <Button
+                    v-if="bkView === 'backups'"
+                    type="green"
+                    size="sm"
+                    title="Import backup"
+                    aria-label="Import backup"
+                    @click="importModalVisible = true"
+                ><i class="fas fa-file-import" /> Import</Button>
             </template>
             <template #toggles>
                 <div class="route-tabs">
@@ -323,6 +333,14 @@
             @renamed="onRenameComplete"
         />
 
+        <!-- ================================================================ -->
+        <!-- Import Modal (upload a Shelly backup archive) -->
+        <!-- ================================================================ -->
+        <BackupImportModal
+            :visible="importModalVisible"
+            @close="importModalVisible = false"
+        />
+
         <FilterModal
             :visible="deviceFilterVisible"
             :sections="deviceFilterSections"
@@ -342,6 +360,7 @@
 import {storeToRefs} from 'pinia';
 import {computed, inject, onMounted, onUnmounted, reactive, ref, watch} from 'vue';
 import BackupDetailModal from '@/components/backups/BackupDetailModal.vue';
+import BackupImportModal from '@/components/backups/BackupImportModal.vue';
 import BackupRenameModal from '@/components/backups/BackupRenameModal.vue';
 import DeviceFleetCard from '@/components/cards/DeviceFleetCard.vue';
 import BasicBlock from '@/components/core/BasicBlock.vue';
@@ -369,7 +388,6 @@ import {
     BACKUP_CONTENT_LABELS,
     createEmptyBackupContents
 } from '@/helpers/backupContents';
-import {fwVersionAtLeast} from '@/helpers/device';
 import {downloadCsv} from '@/helpers/exportCsv';
 import {
     countByKey,
@@ -380,6 +398,7 @@ import {
     namedSection
 } from '@/helpers/filter-sections';
 import {formatBytes, formatDate} from '@/helpers/format';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {
     type BackupDeviceInfo,
     type BackupMetadata,
@@ -460,6 +479,7 @@ const {
 const CONTENT_LABELS = BACKUP_CONTENT_LABELS;
 
 const bkView = ref<'devices' | 'backups'>('devices');
+const importModalVisible = ref(false);
 const actionPanel = ref<'backup' | 'restore' | null>(null);
 const showFilters = ref(false);
 const deviceFilterVisible = ref(false);
@@ -615,7 +635,8 @@ function isSelected(shellyID: string) {
     return selectedDevices.value.has(shellyID);
 }
 
-// Restore panel helpers
+// Restore panel helpers — capabilities.restore is the device-advertised
+// restore-flow method set; no firmware-version guessing.
 const restoreCompatibleDevices = computed(() => {
     if (!restoreBackupData.value) return [];
     const model = restoreBackupData.value.model;
@@ -623,10 +644,9 @@ const restoreCompatibleDevices = computed(() => {
     return Object.values(devicesStore.devices).filter(
         (d) =>
             d.online &&
-            d.capabilities?.backup === true &&
+            d.capabilities?.restore === true &&
             d.info?.model === model &&
-            (!app || !d.info?.app || d.info.app === app) &&
-            fwVersionAtLeast(d.info?.ver || '0.0.0', 1, 8, 0)
+            (!app || !d.info?.app || d.info.app === app)
     );
 });
 
@@ -1021,7 +1041,7 @@ async function doDownload(backupId: string) {
         await backupsStore.downloadBackupFile(backupId);
         toastStore.success('Backup download started');
     } catch (error: any) {
-        toastStore.error(error?.message || 'Failed to download backup');
+        toastStore.error(rpcErrorMessage(error, 'Failed to download backup'));
     }
 }
 
@@ -1035,7 +1055,7 @@ function doDelete(backupId: string) {
             await backupsStore.deleteBackup(backupId);
             toastStore.success('Backup deleted');
         } catch (error: any) {
-            toastStore.error(error?.message || 'Failed to delete backup');
+            toastStore.error(rpcErrorMessage(error, 'Failed to delete backup'));
         }
     });
 }

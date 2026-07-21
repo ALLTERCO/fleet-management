@@ -34,6 +34,7 @@ const b = new DescribeBuilder('client', {
 });
 
 b.registerMethod('SetSubscription', {
+    safety: {operation: 'read'},
     params: CLIENT_SET_SUBSCRIPTION_SCHEMA,
     response: RESP_OK,
     permission: {note: 'session-scoped — affects only the calling socket'},

@@ -7,8 +7,11 @@
 import type {EmStatsQueue} from './emStatsQueue';
 import {
     type ClassificationResult,
+    type ClassifyInput,
     classify,
     classifyFromOverride,
+    componentUsesDomainDetection,
+    type DomainSignals,
     pickConfigClassifier
 } from './energyClassifier';
 import type {EnergyClassifierCache} from './energyClassifierCache';
@@ -54,6 +57,23 @@ export type ComponentConfigResolver = (
     componentKey: string
 ) => unknown | null;
 
+// Returns the component's latest freq/voltage from merged device status —
+// drives AC/DC domain detection. Null when the device isn't known yet.
+export type ComponentSignalResolver = (
+    shellyId: string,
+    componentKey: string
+) => DomainSignals | null;
+
+// Fired once per stored row with its resolved (component, tag, domain) so the
+// caller can meter domains and trace DC detection to a device. Injected, so
+// this module stays free of metrics/logging globals.
+export type ResolvedRowObserver = (row: {
+    shellyId: string;
+    componentKey: string;
+    tag: string;
+    domain: string;
+}) => void;
+
 export interface CaptureDeps {
     queue: EmStatsQueue;
     lifetimeQueue: LifetimeQueue;
@@ -61,6 +81,13 @@ export interface CaptureDeps {
     parity: ParitySink;
     classifierCache: EnergyClassifierCache;
     componentConfigResolver: ComponentConfigResolver;
+    // Freq/voltage for AC/DC domain detection (tier 2 metering components).
+    // Optional: without it, detection components fall back to their registry
+    // default domain (ac_mains) — the pre-detection behavior.
+    componentSignalResolver?: ComponentSignalResolver;
+    acMinVoltage?: number;
+    // Optional per-row observability hook (domain counters + DC trace).
+    onRowResolved?: ResolvedRowObserver;
     // Tier 1 — operator overrides. v2 path only; legacy stays legacy.
     overrideCache: EnergyOverrideCache;
 }
@@ -132,6 +159,12 @@ function emitIfValuePresent(ri: ResolvedInput, deps: CaptureDeps): void {
     const ctx: EmitContext = {...ri, value};
     enqueueStatsRow(ctx, deps.queue);
     recordCumulativeIfDelta(ctx, deps.lifetimeQueue);
+    deps.onRowResolved?.({
+        shellyId: ri.input.shellyId,
+        componentKey: ri.input.componentKey,
+        tag: ri.resolved.tag,
+        domain: ri.resolved.domain
+    });
 }
 
 function resolveViaClassifier(
@@ -141,15 +174,37 @@ function resolveViaClassifier(
     const tier1 = resolveOperatorOverride(input, deps);
     if (tier1) return toResolvedRow(tier1, input.componentKey);
 
-    const tier2 = classify({
-        componentKey: input.componentKey,
-        fieldName: input.fieldName
-    });
+    const tier2 = classify(buildClassifyInput(input, deps));
     if (tier2) return toResolvedRow(tier2, input.componentKey);
 
     const fallthrough = resolveConfigDependent(input, deps);
     if (fallthrough) return toResolvedRow(fallthrough, input.componentKey);
     return null;
+}
+
+// Tier 2 input. Only metering components whose domain is read-derived need
+// freq/voltage resolved — fixed-domain components skip the status lookup.
+function buildClassifyInput(
+    input: EnergyRowInput,
+    deps: CaptureDeps
+): ClassifyInput {
+    const base = {
+        componentKey: input.componentKey,
+        fieldName: input.fieldName
+    };
+    if (
+        !componentUsesDomainDetection(input.componentKey) ||
+        !deps.componentSignalResolver
+    ) {
+        return base;
+    }
+    return {
+        ...base,
+        signals:
+            deps.componentSignalResolver(input.shellyId, input.componentKey) ??
+            undefined,
+        acMinVoltage: deps.acMinVoltage
+    };
 }
 
 // Tier 1 lookup — pure cache read. If the operator has declared this
@@ -246,6 +301,7 @@ function recordCumulativeIfDelta(ctx: EmitContext, queue: LifetimeQueue): void {
         channel: ctx.resolved.channel,
         tag: ctx.resolved.tag,
         cumulativeWh: scaleValue(ctx.input.value, ctx.resolved.scale),
+        domain: ctx.resolved.domain,
         ts: Math.trunc(ctx.input.ts)
     });
 }

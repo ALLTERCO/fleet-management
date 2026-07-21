@@ -80,10 +80,12 @@
 import {computed, ref, watch} from 'vue';
 import Button from '@/components/core/Button.vue';
 import Spinner from '@/components/core/Spinner.vue';
+import {CONFIG_DEPLOY_CONCURRENCY} from '@/constants';
 import {
     fetchActionVariables,
     substituteVariablesSync
 } from '@/helpers/substituteVariables';
+import {runPool} from '@/tools/asyncPool';
 import {sendRPC} from '@/tools/websocket';
 import Modal from './Modal.vue';
 
@@ -172,14 +174,13 @@ async function startDeploy() {
     const vars = await fetchActionVariables();
     resolvedConfig = substituteVariablesSync(props.config, vars);
 
-    const devices = allDevices.value;
-    const promises = devices.map(async (shellyID) => {
+    // Bounded fan-out: at most CONFIG_DEPLOY_CONCURRENCY devices in flight so a
+    // large group does not fire one Device.Call per device in a single burst.
+    await runPool(allDevices.value, CONFIG_DEPLOY_CONCURRENCY, async (shellyID) => {
         const status = await deployToDevice(shellyID, resolvedConfig);
         results.value[shellyID] = status;
         completedCount.value++;
     });
-
-    await Promise.allSettled(promises);
     phase.value = 'results';
 }
 
@@ -190,13 +191,11 @@ async function retryFailed() {
     phase.value = 'deploying';
     completedCount.value = totalDevices.value - failed.length;
 
-    const promises = failed.map(async (shellyID) => {
+    await runPool(failed, CONFIG_DEPLOY_CONCURRENCY, async (shellyID) => {
         const status = await deployToDevice(shellyID, resolvedConfig);
         results.value[shellyID] = status;
         completedCount.value++;
     });
-
-    await Promise.allSettled(promises);
     phase.value = 'results';
 }
 

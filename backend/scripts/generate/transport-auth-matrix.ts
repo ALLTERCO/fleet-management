@@ -34,6 +34,7 @@ export type AuthBucket =
     | 'http-permission'
     | 'http-audit-view'
     | 'http-route-permission'
+    | 'http-session-capability'
     | 'http-unknown'
     | 'ws-authenticated'
     | 'ws-unauthenticated';
@@ -84,6 +85,8 @@ function httpBucket(model: string): AuthBucket {
             return 'http-audit-view';
         case 'requiresObservabilityAuth':
             return 'http-observability';
+        case 'device-gui-session':
+            return 'http-session-capability';
         case 'route-permission':
             return 'http-route-permission';
         case 'public':

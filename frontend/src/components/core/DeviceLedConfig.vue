@@ -73,13 +73,13 @@
         <div class="led-config__row">
             <span class="led-config__label">Enable</span>
             <Checkbox
-                :model-value="nightMode.enable"
+                :model-value="nightModeEnabled"
                 :disabled="!canExecute"
-                @update:model-value="(val) => setConfig({leds: {night_mode: {enable: val}}})"
+                @update:model-value="toggleNightMode"
             />
         </div>
 
-        <template v-if="nightMode.enable">
+        <template v-if="nightModeEnabled">
             <div class="led-config__row">
                 <span class="led-config__label">Brightness</span>
                 <div class="led-config__slider-row">
@@ -121,7 +121,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref} from 'vue';
+import {computed, ref, watch} from 'vue';
 import {useDevicesStore} from '@/stores/devices';
 import {useToastStore} from '@/stores/toast';
 import {sendRPC} from '@/tools/websocket';
@@ -177,6 +177,10 @@ const powerBrightness = computed(
 const nightMode = computed(
     () => config.value?.leds?.night_mode ?? {enable: false}
 );
+const nightModeEnableOverride = ref<boolean | null>(null);
+const nightModeEnabled = computed(
+    () => nightModeEnableOverride.value ?? nightMode.value.enable ?? false
+);
 const controls = computed(() => config.value?.controls ?? {});
 
 const switchColors = computed(() => {
@@ -230,18 +234,42 @@ function applyColor() {
     editingColor.value = null;
 }
 
-async function setConfig(update: Record<string, any>) {
-    if (!rpcNamespace.value) return;
+async function setConfig(update: Record<string, any>): Promise<boolean> {
+    if (!rpcNamespace.value) return false;
     try {
         await sendRPC('FLEET_MANAGER', 'Ui.Plug.SetConfig', {
             shellyID: props.shellyID,
             component: rpcNamespace.value,
             config: update
         });
+        return true;
     } catch (err: any) {
         toast.error(err?.message ?? 'Failed to update');
+        return false;
     }
 }
+
+async function toggleNightMode(value: boolean): Promise<void> {
+    nightModeEnableOverride.value = value;
+    const saved = await setConfig({leds: {night_mode: {enable: value}}});
+    if (!saved) nightModeEnableOverride.value = null;
+}
+
+watch(
+    () => nightMode.value.enable,
+    (fromStore) => {
+        if (fromStore === nightModeEnableOverride.value) {
+            nightModeEnableOverride.value = null;
+        }
+    }
+);
+
+watch(
+    () => props.shellyID,
+    () => {
+        nightModeEnableOverride.value = null;
+    }
+);
 
 function setNightSchedule(index: number, value: string) {
     const current = [...(nightMode.value.active_between ?? ['22:00', '06:00'])];

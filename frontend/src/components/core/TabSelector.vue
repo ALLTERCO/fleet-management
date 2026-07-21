@@ -3,13 +3,19 @@
         :tabs="props.tabs"
         :active="props.active"
         :scrollable="props.scrollable"
-        v-slots="forwardedSlots"
         @change="handleChange"
-    />
+    >
+        <template
+            v-for="fwd in slotForwards"
+            :key="fwd.to"
+            #[fwd.to]="scope"
+        >
+            <slot :name="fwd.from" v-bind="scope ?? {}" />
+        </template>
+    </DetailTabs>
 </template>
 
 <script setup lang="ts">
-import type {Slot} from 'vue';
 import {computed, useSlots} from 'vue';
 import DetailTabs from '@/components/core/DetailTabs.vue';
 
@@ -38,20 +44,20 @@ function legacySlotName(tab: string) {
     return tab.replace(/\s+/g, '');
 }
 
-const forwardedSlots = computed<Record<string, Slot>>(() => {
-    const mappedSlots: Record<string, Slot> = {};
+// DetailTabs renders its panel via <slot :name="normalizedId">. Forward each
+// caller slot — which may use the normalized, original, or space-stripped name —
+// under the normalized id DetailTabs expects.
+const slotForwards = computed(() => {
+    const forwards: {to: string; from: string}[] = [];
 
     for (const tab of props.tabs) {
-        const normalizedName = normalizeTabName(tab);
-        const slot =
-            slots[normalizedName] ?? slots[tab] ?? slots[legacySlotName(tab)];
+        const to = normalizeTabName(tab);
+        const from = [to, tab, legacySlotName(tab)].find((name) => slots[name]);
 
-        if (!slot) continue;
-
-        mappedSlots[normalizedName] = slot;
+        if (from) forwards.push({to, from});
     }
 
-    return mappedSlots;
+    return forwards;
 });
 
 function handleChange(tabId: string) {

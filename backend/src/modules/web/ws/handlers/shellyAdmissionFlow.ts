@@ -26,6 +26,7 @@ import {assessDeviceHealth} from '../../../../modules/deviceIngress/postAcceptHe
 import type * as Observability from '../../../../modules/Observability';
 import type {statusSelectivePush as StatusSelectivePush} from '../../../../modules/ShellyMessageHandler';
 import type {ShellyMessageIncoming} from '../../../../types';
+import {CLOSE_TRY_AGAIN_LATER} from '../closeCodes';
 import {
     checkAdmittedIdentity,
     type IdentityMismatchError,
@@ -57,6 +58,8 @@ export interface AdmissionDeps {
     >;
     statusSelectivePush: typeof StatusSelectivePush;
     logger: log4js.Logger;
+    claimRuntimeOwnership: (shellyID: string) => Promise<boolean>;
+    releaseRuntimeOwnership: (shellyID: string) => Promise<void>;
 }
 
 export interface AdmittedRegistrationInput {
@@ -71,11 +74,29 @@ export interface AdmittedRegistrationInput {
 export async function performAdmittedRegistration(
     input: AdmittedRegistrationInput,
     deps: AdmissionDeps
-): Promise<void> {
+): Promise<boolean> {
+    let ownershipHeld = false;
     try {
-        await runRegistration(input, deps);
+        ownershipHeld = await deps.claimRuntimeOwnership(
+            input.admittedShellyID
+        );
+        if (!ownershipHeld) {
+            throw new Error('device connection is owned by another server');
+        }
+        const registered = await runRegistration(input, deps);
+        if (!registered) {
+            await deps.releaseRuntimeOwnership(input.admittedShellyID);
+        }
+        return registered;
     } catch (err) {
+        if (ownershipHeld) {
+            await deps.releaseRuntimeOwnership(input.admittedShellyID);
+        }
         recordRegistrationFailure(input.admittedShellyID, err, deps);
+        if (input.session.ws.readyState === input.session.ws.OPEN) {
+            input.session.ws.close(CLOSE_TRY_AGAIN_LATER, 'register_failed');
+        }
+        return false;
     }
 }
 
@@ -85,7 +106,7 @@ export async function performAdmittedRegistration(
 async function runRegistration(
     input: AdmittedRegistrationInput,
     deps: AdmissionDeps
-): Promise<void> {
+): Promise<boolean> {
     const {session, admittedShellyID, message} = input;
     const initStart = Date.now();
     const initialStatus = initialStatusFor(message);
@@ -117,7 +138,7 @@ async function runRegistration(
     const mismatch = checkAdmittedIdentity(admittedShellyID, shelly.shellyID);
     if (mismatch !== null) {
         await refuseIdentityMismatch({session, err: mismatch, shelly}, deps);
-        return;
+        return false;
     }
 
     commitRegistration(
@@ -131,6 +152,7 @@ async function runRegistration(
     );
     input.setStage?.('post-register');
     await runPostRegisterTasks({shelly, message, initialStatus}, deps);
+    return true;
 }
 
 function commitRegistration(
@@ -266,12 +288,7 @@ function recordRegistrationFailure(
     err: unknown,
     deps: AdmissionDeps
 ): void {
-    deps.observability.incrementCounter('device_inits_failed');
     ingressDropped(admittedShellyID, 'register_failed');
-    deps.observability.recordInitFailure(
-        admittedShellyID,
-        err instanceof Error ? err.message : String(err)
-    );
     deps.logger.error(
         'Failed to register device shellyID:[%s]: %s',
         admittedShellyID,

@@ -25,7 +25,7 @@ import {
     markRejected,
     restoreClaimedPending
 } from './redisWaitingStore';
-import {sanitizePendingPayload} from './sanitize';
+import {sanitizePendingPayload, withResolvedDeviceModel} from './sanitize';
 import type {
     AddDeviceInput,
     AdmissionIntent,
@@ -1278,6 +1278,10 @@ export async function getDenied() {
         // external_id is the device identity; dev.id is an internal serial.
         const payload = sanitizePendingPayload(dev.jdoc);
         payload.shellyID = dev.external_id;
+        payload.status = withResolvedDeviceModel(
+            dev.external_id,
+            payload.status
+        ) as typeof payload.status;
         devices[dev.external_id] = payload;
     }
     return devices;

@@ -60,18 +60,21 @@ const b = new DescribeBuilder('login_text', {
 });
 
 b.registerMethod('GetText', {
+    safety: {operation: 'read'},
     params: LOGIN_TEXT_SCOPE_SCHEMA,
     response: RESP_TEXT,
     permission: PERM,
     description: 'login_text.GetText — current login UI strings per language.'
 });
 b.registerMethod('GetDefault', {
+    safety: {operation: 'read'},
     params: LOGIN_TEXT_GET_DEFAULT_SCHEMA,
     response: RESP_TEXT,
     permission: PERM,
     description: 'login_text.GetDefault — Zitadel factory-default UI strings.'
 });
 b.registerMethod('SetText', {
+    safety: {operation: 'update'},
     params: LOGIN_TEXT_SET_SCHEMA,
     response: RESP_OK,
     permission: PERM,
@@ -79,6 +82,7 @@ b.registerMethod('SetText', {
         'login_text.SetText — override login UI strings (any of ~30 screen blocks).'
 });
 b.registerMethod('Reset', {
+    safety: {operation: 'update'},
     params: LOGIN_TEXT_SCOPE_SCHEMA,
     response: RESP_OK,
     permission: PERM,

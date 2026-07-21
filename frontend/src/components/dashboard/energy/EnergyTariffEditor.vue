@@ -467,12 +467,12 @@ const SeasonalEditor = defineComponent({
     border-bottom: 1px solid rgba(255, 255, 255, 0.055);
 }
 .etf-hd h3 {
-    font-size: 15px;
+    font-size: var(--type-body);
     font-weight: 650;
     letter-spacing: -0.02em;
 }
 .etf-sub {
-    font-size: 11.5px;
+    font-size: var(--type-caption);
     color: #5d646f;
 }
 .etf-x {
@@ -483,7 +483,7 @@ const SeasonalEditor = defineComponent({
     border: none;
     color: #9aa1ac;
     cursor: pointer;
-    font-size: 15px;
+    font-size: var(--type-body);
 }
 .etf-x:hover {
     background: #181c23;
@@ -498,7 +498,7 @@ const SeasonalEditor = defineComponent({
 }
 .etf-field > label {
     display: block;
-    font-size: 10px;
+    font-size: var(--type-caption);
     font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -530,7 +530,7 @@ const SeasonalEditor = defineComponent({
     border-radius: 8px;
     background: #181c23;
     color: #9aa1ac;
-    font-size: 11px;
+    font-size: var(--type-caption);
     font-weight: 600;
 }
 .etf-seg {
@@ -562,13 +562,13 @@ const SeasonalEditor = defineComponent({
     font-weight: 600;
 }
 .etf-hint {
-    font-size: 11px;
+    font-size: var(--type-caption);
     color: #5d646f;
     line-height: 1.45;
     margin: 6px 2px 0;
 }
 .etf-subhead {
-    font-size: 11px;
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -591,7 +591,7 @@ const SeasonalEditor = defineComponent({
     margin-bottom: 10px;
 }
 .etf-season-lbl {
-    font-size: 11px;
+    font-size: var(--type-caption);
     font-weight: 600;
     color: #9aa1ac;
     margin-right: auto;
@@ -629,7 +629,7 @@ const SeasonalEditor = defineComponent({
     display: inline-flex;
     flex-direction: column;
     align-items: center;
-    font-size: 9px;
+    font-size: var(--type-caption);
     color: #5d646f;
     cursor: pointer;
     user-select: none;
@@ -652,7 +652,7 @@ const SeasonalEditor = defineComponent({
     border: 1px solid rgba(255, 255, 255, 0.1);
     color: #d16a6a;
     cursor: pointer;
-    font-size: 12px;
+    font-size: var(--type-caption);
 }
 .etf-del:hover {
     background: #1c1416;
@@ -680,7 +680,7 @@ const SeasonalEditor = defineComponent({
     margin-top: 6px;
 }
 .etf-push-title {
-    font-size: 11px;
+    font-size: var(--type-caption);
     font-weight: 700;
     color: #6cb2ff;
     margin-bottom: 8px;
@@ -693,7 +693,7 @@ const SeasonalEditor = defineComponent({
 }
 .etf-push-row > span {
     width: 42px;
-    font-size: 10px;
+    font-size: var(--type-caption);
     color: #5d646f;
     text-transform: uppercase;
 }
@@ -702,12 +702,12 @@ const SeasonalEditor = defineComponent({
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 11.5px;
+    font-size: var(--type-caption);
     color: #c9ced6;
 }
 .etf-error {
     color: #e5484d;
-    font-size: 12px;
+    font-size: var(--type-caption);
     margin-top: 10px;
 }
 .etf-ft {
@@ -747,7 +747,7 @@ const SeasonalEditor = defineComponent({
 }
 .etf-ghost--sm {
     padding: 5px 10px;
-    font-size: 11px;
+    font-size: var(--type-caption);
     border-radius: 8px;
 }
 </style>

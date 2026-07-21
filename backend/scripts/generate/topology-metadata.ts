@@ -1,4 +1,5 @@
 import ts from 'typescript';
+import {inferTopologyFlowsFromText} from '../../src/modules/observability/topologyFlowDefinitions.js';
 import {
     getBackendProgram,
     getBackendSourceFiles,
@@ -7,7 +8,6 @@ import {
     provenanceHeader,
     relPath
 } from './_shared.js';
-import {inferTopologyFlowsFromText} from '../../src/modules/observability/topologyFlowDefinitions.js';
 
 export interface TopologyMetadataModule {
     id: string;
@@ -90,7 +90,8 @@ export function generate(): TopologyMetadataInventory {
         totals: {
             modules: modules.length,
             withTopology: modules.filter((module) => module.hasTopology).length,
-            missingTopology: modules.filter((module) => !module.hasTopology).length,
+            missingTopology: modules.filter((module) => !module.hasTopology)
+                .length,
             edges: edges.length,
             flows: flows.length,
             zones: zones.length
@@ -209,7 +210,9 @@ function isRegisterModuleCall(node: ts.CallExpression): boolean {
     return ts.isIdentifier(expr) && expr.text === 'registerModule';
 }
 
-function topologyObject(arg: ts.Expression | undefined): ts.ObjectLiteralExpression | null {
+function topologyObject(
+    arg: ts.Expression | undefined
+): ts.ObjectLiteralExpression | null {
     if (!arg || !ts.isObjectLiteralExpression(arg)) return null;
     const topology = propertyValue(arg, 'topology');
     return topology && ts.isObjectLiteralExpression(topology) ? topology : null;
@@ -233,7 +236,10 @@ function propertyName(name: ts.PropertyName): string | null {
     return null;
 }
 
-function readString(object: ts.ObjectLiteralExpression | null, key: string): string | null {
+function readString(
+    object: ts.ObjectLiteralExpression | null,
+    key: string
+): string | null {
     return stringValue(propertyValue(object, key));
 }
 
@@ -261,7 +267,10 @@ function readStringArray(
 
 function stringValue(value: ts.Node | undefined | null): string | null {
     if (!value) return null;
-    if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) {
+    if (
+        ts.isStringLiteral(value) ||
+        ts.isNoSubstitutionTemplateLiteral(value)
+    ) {
         return value.text;
     }
     return null;
@@ -298,25 +307,23 @@ function collectFlows(
     edges: readonly TopologyMetadataEdge[]
 ): Array<{id: string; modules: string[]; edges: string[]}> {
     const flowIds = new Set(modules.flatMap((module) => module.participatesIn));
-    return [...flowIds]
-        .sort()
-        .map((id) => {
-            const flowModules = modules
-                .filter((module) => module.participatesIn.includes(id))
-                .map((module) => module.id);
-            const flowModuleIds = new Set(flowModules);
-            return {
-                id,
-                modules: flowModules,
-                edges: edges
-                    .filter(
-                        (edge) =>
-                            flowModuleIds.has(edge.from) &&
-                            flowModuleIds.has(edge.to)
-                    )
-                    .map((edge) => edge.id)
-            };
-        });
+    return [...flowIds].sort().map((id) => {
+        const flowModules = modules
+            .filter((module) => module.participatesIn.includes(id))
+            .map((module) => module.id);
+        const flowModuleIds = new Set(flowModules);
+        return {
+            id,
+            modules: flowModules,
+            edges: edges
+                .filter(
+                    (edge) =>
+                        flowModuleIds.has(edge.from) &&
+                        flowModuleIds.has(edge.to)
+                )
+                .map((edge) => edge.id)
+        };
+    });
 }
 
 function collectZones(
@@ -431,7 +438,9 @@ function renderMermaid(
     const lines = ['flowchart LR'];
     const moduleIds = new Set(modules.map((module) => module.id));
     for (const module of modules) {
-        lines.push(`  ${safeMermaidId(module.id)}["${escapeMermaidLabel(module.label)}"]`);
+        lines.push(
+            `  ${safeMermaidId(module.id)}["${escapeMermaidLabel(module.label)}"]`
+        );
     }
     for (const edge of edges) {
         const from = safeMermaidId(edge.from);

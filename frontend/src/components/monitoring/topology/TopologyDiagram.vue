@@ -845,7 +845,7 @@ watch(
     max-width: 360px;
     padding: var(--space-1) var(--space-3);
     border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-pill, 999px);
+    border-radius: var(--radius-full);
     background: var(--color-surface-2);
     color: var(--color-text-secondary);
     font-size: var(--type-caption);
@@ -929,7 +929,7 @@ watch(
     border-radius: 4px;
     background: var(--color-surface-1);
     color: var(--color-text-tertiary);
-    font-size: 9px;
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;

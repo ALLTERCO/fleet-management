@@ -1,13 +1,14 @@
 import * as http from 'node:http';
 import * as https from 'node:https';
 import * as net from 'node:net';
-import {type Duplex, finished} from 'node:stream';
+import {type Duplex, finished, pipeline} from 'node:stream';
 import * as tls from 'node:tls';
 import express from 'express';
 import log4js from 'log4js';
 import {tuning} from '../../../config/tuning';
 import type {user_t} from '../../../types';
 import * as Observability from '../../Observability';
+import {reportHandledPeerError} from '../../util/faultGuard';
 import {isNodeRedPath} from '../authToken';
 import {isSecureRequest} from '../utils/secureCookie';
 
@@ -303,7 +304,12 @@ router.use((req, res) => {
                 if (lower === 'set-cookie') continue;
                 if (value !== undefined) res.setHeader(key, value);
             }
-            proxyRes.pipe(res);
+            // pipeline (not pipe) so an upstream reset or client disconnect
+            // errors into the callback instead of an unhandled 'error'.
+            pipeline(proxyRes, res, (err) => {
+                if (err)
+                    logger.warn('Node-RED response stream failed: %s', err);
+            });
         }
     );
 
@@ -318,7 +324,9 @@ router.use((req, res) => {
     if (Buffer.isBuffer(rawBody)) {
         proxyReq.end(rawBody);
     } else {
-        req.pipe(proxyReq);
+        pipeline(req, proxyReq, (err) => {
+            if (err) logger.warn('Node-RED request stream failed: %s', err);
+        });
     }
 });
 
@@ -437,8 +445,21 @@ async function authorizeUpgrade(
 export function registerNodeRedUpgradeProxy(server: http.Server) {
     server.on('upgrade', (request, socket, head) => {
         if (!tuning.nodeRed.enabled || request.url === undefined) return;
-        const incoming = new URL(request.url, 'http://localhost');
+        let incoming: URL;
+        try {
+            incoming = new URL(request.url, 'http://localhost');
+        } catch {
+            return;
+        }
         if (!isNodeRedPath(incoming.pathname)) return;
+
+        // Guard the raw socket before the auth await; a peer reset in that
+        // window would otherwise emit an unhandled 'error'. Expected peer
+        // behaviour, handled quietly.
+        socket.on('error', (err) => {
+            reportHandledPeerError('nodered-upgrade', err);
+            if (!socket.destroyed) socket.destroy();
+        });
 
         void (async () => {
             try {

@@ -6,6 +6,12 @@ import {
     hasTenantAdminAuthority,
     isComponentPermissionAllowed
 } from '../../modules/authz/evaluator';
+import {
+    listReadableConfigurationProfileKeys,
+    readConfigurationProfile,
+    readReadableConfigurationProfiles,
+    requireConfigurationProfileAccess
+} from '../../modules/configurationProfiles';
 import * as Registry from '../../modules/Registry';
 import type {DescribeOutput} from '../../rpc/describe';
 import {buildListResponse} from '../../rpc/listResponse';
@@ -99,15 +105,10 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
             // do not grant via the ui registry.
             return;
         }
-        // Configs registry has arbitrary keys but is admin-managed global
-        // state; admin baseline matches current page behavior.
-        if (reg === 'configs' || k === 'configs') {
-            if (hasTenantAdminAuthority(sender)) return;
-            if (!sender.hasCrudPermission('configurations', operation)) {
-                throw RpcError.InvalidRequest(
-                    `No ${operation} permission on configurations`
-                );
-            }
+        // Configuration profiles are selected by their registry key.
+        if (reg === 'configs') {
+            if (!key) throw RpcError.InvalidParams('config key required');
+            requireConfigurationProfileAccess(sender, key, operation);
             return;
         }
         // Variables registry — file-backed but admin-managed via the
@@ -147,7 +148,15 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
         );
         const registry = (params.registry ?? 'memory').toLowerCase();
         const val = params.value as any;
-        const op = val?.id ? 'update' : 'create';
+        const op =
+            registry === 'configs'
+                ? (await Registry.getFromRegistry(registry, params.key)) ===
+                  null
+                    ? 'create'
+                    : 'update'
+                : val?.id
+                  ? 'update'
+                  : 'create';
         this.#checkRegistryWritePermission(
             sender,
             registry,
@@ -235,6 +244,9 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
 
         if (registry === 'memory') {
             return this.config.items[params.key] ?? null;
+        }
+        if (registry === 'configs') {
+            return readConfigurationProfile(sender, params.key);
         }
         try {
             const registryContent = await Registry.getFromRegistry(
@@ -325,13 +337,6 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
                 return result;
             }
 
-            if (registry === 'configs' || key === 'configs') {
-                if (!sender.hasCrudPermission('configurations', 'read')) {
-                    return {};
-                }
-                return registryContent;
-            }
-
             return registryContent;
         } catch (error) {
             this.logger.error(`Error accessing registry ${registry}:`, error);
@@ -342,7 +347,7 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
     @Component.NoAudit
     @Component.Expose('Keys')
     @Component.NoPermissions
-    keys(rawParams: unknown, sender: CommandSender) {
+    async keys(rawParams: unknown, sender: CommandSender) {
         const params = validateOrThrow<StorageKeysParams>(
             rawParams ?? {},
             STORAGE_KEYS_PARAMS
@@ -350,9 +355,11 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
         const registry = (params.registry ?? 'memory').toLowerCase();
         this.#assertRegistryReadable(sender, registry);
 
-        return registry === 'memory'
-            ? Object.keys(this.config.items)
-            : Registry.getRegistryKeys(registry);
+        if (registry === 'memory') return Object.keys(this.config.items);
+        if (registry === 'configs') {
+            return listReadableConfigurationProfileKeys(sender);
+        }
+        return Registry.getRegistryKeys(registry);
     }
 
     @Component.NoAudit
@@ -406,10 +413,7 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
         }
 
         if (registry === 'configs') {
-            if (!sender.hasCrudPermission('configurations', 'read')) {
-                return {};
-            }
-            return Registry.getAll(registry);
+            return readReadableConfigurationProfiles(sender);
         }
 
         if (registry === 'actions') {

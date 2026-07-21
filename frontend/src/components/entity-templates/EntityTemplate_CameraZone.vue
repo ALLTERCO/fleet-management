@@ -32,13 +32,28 @@
                         :value="rgbToHex(settings.color)"
                         @change="(e: Event) => setConfig({color: hexToRgb((e.target as HTMLInputElement).value)})" />
                 </div>
+                <div v-if="settings.type != null" class="et-cz__row">
+                    <span class="et-cz__label">Type</span>
+                    <button v-for="t in ['motion', 'privacy']" :key="t"
+                        class="et-cz__type-btn" :class="settings.type === t && 'et-cz__type-btn--on'"
+                        @click="setConfig({type: t})">
+                        {{ t === 'motion' ? 'Motion' : 'Privacy' }}
+                    </button>
+                </div>
             </template>
         </div>
 
-        <!-- Zone coordinates -->
-        <div v-if="settings?.coordinates?.length" class="et-cz__coords">
-            <span class="et-cz__coords-label">Coordinates</span>
-            <span class="et-cz__coords-value">[{{ settings.coordinates.join(', ') }}]</span>
+        <!-- Region editor (zones are rectangles; edges as % of the frame) -->
+        <div v-if="settings?.coordinates?.length" class="et-cz__section">
+            <div class="et-cz__section-header" style="cursor:default">
+                <i class="fas fa-vector-square" /> Region (% of frame)
+            </div>
+            <div v-for="edge in REGION_EDGES" :key="edge.key" class="et-cz__row">
+                <span class="et-cz__label">{{ edge.label }}</span>
+                <input type="number" min="0" max="100" class="et-cz__text" style="max-width:5rem"
+                    :value="region[edge.key]" :disabled="!canExecute"
+                    @change="(e: Event) => setRegionEdge(edge.key, Number((e.target as HTMLInputElement).value))" />
+            </div>
         </div>
 
         <!-- Delete (non-main zones) -->
@@ -69,6 +84,43 @@ const configError = ref<string | null>(null);
 const showSettings = ref(false);
 
 const hasMotion = computed(() => props.status?.motion === true);
+
+// Rectangle zones: user edits the four edges as % of the frame.
+const REGION_EDGES = [
+    {key: 'left', label: 'Left'},
+    {key: 'top', label: 'Top'},
+    {key: 'right', label: 'Right'},
+    {key: 'bottom', label: 'Bottom'}
+] as const;
+
+const GRID = 10000; // Shelly zone coordinate space is 0..10000.
+
+const region = computed<Record<string, number>>(() => {
+    const c = props.settings?.coordinates as number[] | undefined;
+    if (!c || c.length < 4) return {left: 0, top: 0, right: 100, bottom: 100};
+    const xs = c.filter((_, i) => i % 2 === 0);
+    const ys = c.filter((_, i) => i % 2 === 1);
+    const pct = (v: number) => Math.round((v / GRID) * 100);
+    return {
+        left: pct(Math.min(...xs)),
+        top: pct(Math.min(...ys)),
+        right: pct(Math.max(...xs)),
+        bottom: pct(Math.max(...ys))
+    };
+});
+
+function setRegionEdge(edge: string, value: number) {
+    const r = {...region.value, [edge]: Math.max(0, Math.min(100, value))};
+    const g = (p: number) => Math.round((p / 100) * GRID);
+    // Rectangle polygon, clockwise from top-left.
+    const coordinates = [
+        g(r.left), g(r.top),
+        g(r.right), g(r.top),
+        g(r.right), g(r.bottom),
+        g(r.left), g(r.bottom)
+    ];
+    setConfig({coordinates});
+}
 
 function rgbToHex(rgb: number[]): string {
     return `#${rgb.map((c) => c.toString(16).padStart(2, '0')).join('')}`;
@@ -101,9 +153,11 @@ async function deleteZone() {
     if (!window.confirm('Delete this detection zone?')) return;
     configError.value = null;
     try {
+        // Camera component id (single-camera device = 0) + the zone id.
         await sendRPC('FLEET_MANAGER', 'Camera.DeleteZone', {
             shellyID: props.shellyID,
-            id: props.status?.id ?? 200
+            id: 0,
+            zone_id: props.status?.id ?? 200
         });
     } catch (e: any) {
         configError.value = e.message || 'Failed to delete zone';
@@ -141,9 +195,13 @@ async function deleteZone() {
 .et-cz__toggle--on { color: var(--color-success-text); }
 .et-cz__color-swatch { width: 24px; height: 24px; border-radius: var(--radius-sm); border: 1px solid var(--color-border-default); }
 .et-cz__color-input { width: var(--touch-target-min); height: var(--touch-target-min); border: none; background: none; cursor: pointer; padding: 0; }
-.et-cz__coords { padding: var(--space-1-5) var(--space-2); border-radius: var(--radius-md); background-color: var(--color-surface-2); }
-.et-cz__coords-label { font-size: var(--type-body); color: var(--color-text-disabled); display: block; margin-bottom: var(--space-0-5); }
-.et-cz__coords-value { font-size: var(--type-body); font-family: monospace; color: var(--color-text-tertiary); }
+.et-cz__type-btn {
+    padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm);
+    border: 1px solid var(--color-border-default); background: var(--color-surface-2);
+    color: var(--color-text-tertiary); font-size: var(--type-body); font-weight: var(--font-medium);
+    cursor: pointer; margin-left: var(--space-1);
+}
+.et-cz__type-btn--on { border-color: var(--color-primary); background-color: var(--color-primary-subtle); color: var(--color-primary); }
 .et-cz__delete {
     display: flex; align-items: center; gap: var(--space-1); align-self: flex-start;
     padding: var(--space-1) 0.625rem; border-radius: var(--radius-sm);

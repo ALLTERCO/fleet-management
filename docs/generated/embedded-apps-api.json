@@ -1,0 +1,80 @@
+[
+  {
+    "app": "Node-RED",
+    "feature": "node-red",
+    "proxyBase": "/node-red/red",
+    "authExternal": "FM session or Bearer PAT with node-red access; FM injects x-fm-node-red-proxy-secret upstream",
+    "authInternal": "Direct to node-red:1880 with header x-fm-node-red-proxy-secret",
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/node-red/red/flows",
+        "purpose": "List all flows (+ rev)",
+        "example": "curl -H \"Authorization: Bearer <FM_PAT_with_node-red_access>\" https://<host>/node-red/red/flows"
+      },
+      {
+        "method": "POST",
+        "path": "/node-red/red/flow",
+        "purpose": "Create one flow (tab) -> {id}",
+        "example": "# Create one flow (tab)\ncurl -X POST https://<host>/node-red/red/flow \\\n  -H \"Authorization: Bearer <FM_PAT_with_node-red_access>\" -H \"Content-Type: application/json\" \\\n  -d '{\n    \"label\": \"Toggle switch\",\n    \"nodes\": [\n      {\"id\":\"inj1\",\"type\":\"inject\",\"name\":\"every 5s\",\"repeat\":\"5\",\"once\":false,\n       \"props\":[{\"p\":\"payload\"}],\"payloadType\":\"date\",\"wires\":[[\"rpc1\"]]},\n      {\"id\":\"rpc1\",\"type\":\"fm-rpc\",\"name\":\"toggle\",\"server\":\"fmserver1\",\n       \"operation\":\"entity.InvokeAction\",\"paramsSource\":\"config\",\n       \"paramsJson\":\"{\\\"id\\\":\\\"<entityId>\\\",\\\"action\\\":\\\"toggle\\\"}\",\"wires\":[[\"dbg1\"]]},\n      {\"id\":\"dbg1\",\"type\":\"debug\",\"name\":\"result\",\"wires\":[]}\n    ],\n    \"configs\": []\n  }'\n# -> {\"id\":\"a6d46e9613768438\"}\n# server \"fmserver1\" = the predefined fm-server node; else include it in configs."
+      },
+      {
+        "method": "PUT",
+        "path": "/node-red/red/flow/:id",
+        "purpose": "Update one flow",
+        "example": "# Update one flow (replace its tab)\ncurl -X PUT https://<host>/node-red/red/flow/<flowId> \\\n  -H \"Authorization: Bearer <FM_PAT_with_node-red_access>\" -H \"Content-Type: application/json\" \\\n  -d '{\"id\":\"<flowId>\",\"label\":\"Toggle switch (10s)\",\n       \"nodes\":[ ...updated nodes... ],\"configs\":[]}'"
+      },
+      {
+        "method": "DELETE",
+        "path": "/node-red/red/flow/:id",
+        "purpose": "Delete one flow",
+        "example": "curl -X DELETE https://<host>/node-red/red/flow/<flowId> -H \"Authorization: Bearer <FM_PAT_with_node-red_access>\""
+      },
+      {
+        "method": "POST",
+        "path": "/node-red/red/flows",
+        "purpose": "Replace all flows (full deploy)",
+        "example": "# Replace ALL flows at once (full deploy)\ncurl -X POST https://<host>/node-red/red/flows \\\n  -H \"Authorization: Bearer <FM_PAT_with_node-red_access>\" -H \"Content-Type: application/json\" \\\n  -H \"Node-RED-Deployment-Type: full\" \\\n  -d '[ {\"id\":\"tab1\",\"type\":\"tab\",\"label\":\"Main\"}, ...nodes and configs... ]'"
+      }
+    ]
+  },
+  {
+    "app": "Grafana",
+    "feature": "grafana",
+    "proxyBase": "/grafana/api",
+    "authExternal": "FM session with grafana access; FM injects X-WEBAUTH-USER upstream",
+    "authInternal": "Direct to grafana:3000 with header X-WEBAUTH-USER",
+    "endpoints": [
+      {
+        "method": "POST",
+        "path": "/grafana/api/dashboards/db",
+        "purpose": "Create or update a dashboard -> {uid,url}",
+        "example": "# Create OR update (same call; overwrite:true updates by uid/title)\ncurl -X POST https://<host>/grafana/api/dashboards/db -H \"Content-Type: application/json\" \\\n  -d '{\n    \"dashboard\": {\n      \"title\": \"Fleet Energy\",\n      \"schemaVersion\": 39,\n      \"panels\": [\n        {\"type\":\"timeseries\",\"title\":\"Energy by device (kWh)\",\n         \"datasource\":{\"type\":\"grafana-postgresql-datasource\",\"uid\":\"<fm-ds-uid>\"},\n         \"targets\":[{\"format\":\"time_series\",\"rawSql\":\"SELECT $__timeGroupAlias(bucket,$__interval), device, SUM(sum_val)/1000.0 FROM device_em.energy_15min WHERE tag='\\''total_act_energy'\\'' AND $__timeFilter(bucket) GROUP BY 1,2\"}]}\n      ]\n    },\n    \"overwrite\": true\n  }'\n# -> {\"uid\":\"...\",\"url\":\"/grafana/d/.../fleet-energy\",\"status\":\"success\"}\n# Query the curated views (device_em.energy_15min, mv__* aggregates), not raw tables."
+      },
+      {
+        "method": "GET",
+        "path": "/grafana/api/dashboards/uid/:uid",
+        "purpose": "Get a dashboard by uid",
+        "example": "curl https://<host>/grafana/api/dashboards/uid/<uid>"
+      },
+      {
+        "method": "GET",
+        "path": "/grafana/api/search",
+        "purpose": "List dashboards and folders",
+        "example": "curl \"https://<host>/grafana/api/search?type=dash-db\""
+      },
+      {
+        "method": "DELETE",
+        "path": "/grafana/api/dashboards/uid/:uid",
+        "purpose": "Delete a dashboard",
+        "example": "curl -X DELETE https://<host>/grafana/api/dashboards/uid/<uid>"
+      },
+      {
+        "method": "GET",
+        "path": "/grafana/api/datasources/name/fm",
+        "purpose": "The provisioned read-only fm datasource",
+        "example": "curl https://<host>/grafana/api/datasources/name/fm"
+      }
+    ]
+  }
+]

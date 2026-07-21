@@ -1,203 +1,236 @@
 <template>
-    <div class="mqtt-panel">
-        <div class="mqtt-panel__status-row">
-            <span class="mqtt-panel__status" :class="mqttConnected ? 'mqtt-panel__status--on' : 'mqtt-panel__status--off'">
-                {{ mqttConnected ? 'Connected' : 'Disconnected' }}
-            </span>
-        </div>
-
-        <form v-if="config" @submit.prevent autocomplete="off">
-            <!-- Enable -->
-            <div class="mqtt-panel__row">
-                <div class="mqtt-panel__row-label">
-                    <strong>Enable</strong>
-                </div>
-                <Checkbox v-model="local.enable" @update:model-value="markDirty" />
-            </div>
-
-            <!-- Server -->
-            <div class="mqtt-panel__row">
-                <div class="mqtt-panel__row-label">
-                    <strong>Server</strong>
-                </div>
-                <input
-                    v-model="local.server"
-                    class="mqtt-panel__input"
-                    placeholder="Eg: my-server.com:1883"
-                    @input="markDirty"
-                />
-            </div>
-
-            <!-- Client ID -->
-            <div class="mqtt-panel__row">
-                <div class="mqtt-panel__row-label">
-                    <strong>Client ID</strong>
-                </div>
-                <input
-                    v-model="local.client_id"
-                    class="mqtt-panel__input"
-                    placeholder="Eg: kitchen-lights"
-                    @input="markDirty"
-                />
-            </div>
-
-            <!-- Username -->
-            <div class="mqtt-panel__row">
-                <div class="mqtt-panel__row-label">
-                    <strong>Username</strong>
-                </div>
-                <input
-                    v-model="local.user"
-                    class="mqtt-panel__input"
-                    placeholder="(none)"
-                    @input="markDirty"
-                />
-            </div>
-
-            <!-- Password -->
-            <div class="mqtt-panel__row">
-                <div class="mqtt-panel__row-label">
-                    <strong>Password</strong>
-                </div>
-                <input
-                    v-model="local.pass"
-                    type="password"
-                    autocomplete="current-password"
-                    class="mqtt-panel__input"
-                    placeholder="••••••••"
-                    @input="markDirty"
-                />
-            </div>
-
-            <!-- Topic Prefix -->
-            <div class="mqtt-panel__row">
-                <div class="mqtt-panel__row-label">
-                    <strong>MQTT Prefix</strong>
-                </div>
-                <input
-                    v-model="local.topic_prefix"
-                    class="mqtt-panel__input"
-                    @input="markDirty"
-                />
-            </div>
-
-            <!-- Connection type -->
-            <div class="mqtt-panel__row">
-                <div class="mqtt-panel__row-label">
-                    <strong>Connection Type</strong>
-                </div>
-                <Dropdown
-                    :default="tlsModeLabel(local.ssl_ca)"
-                    :options="tlsModeOptions"
-                    @selected="(val) => { local.ssl_ca = tlsLabelToValue(val); markDirty(); }"
-                />
-            </div>
-
-            <!-- mTLS toggle (only if device supports client certs) -->
-            <div v-if="hasTlsClientCert" class="mqtt-panel__row">
-                <div class="mqtt-panel__row-label">
-                    <strong>Use client certificate for identification</strong>
-                </div>
-                <Checkbox v-model="local.use_client_cert" @update:model-value="markDirty" />
-            </div>
-
-            <!-- Certificate upload buttons (when TLS is configured) -->
-            <div v-if="local.ssl_ca && local.ssl_ca !== ''" class="mqtt-panel__cert-section">
-                <div class="mqtt-panel__section-label">Certificates</div>
-
-                <div v-if="hasTlsUserCA" class="mqtt-panel__row">
-                    <div class="mqtt-panel__row-label">
-                        <strong>Custom certificate authority (CA) PEM bundle</strong>
-                    </div>
-                    <div class="mqtt-panel__cert-actions">
-                        <Button type="blue" size="sm" @click="uploadCert('ca')">
-                            Upload
-                        </Button>
-                        <Button type="red" size="sm" @click="deleteCert('ca')">Clear</Button>
+    <div class="cfg-panel">
+        <form v-if="config" class="cfg-panel__form" @submit.prevent autocomplete="off">
+            <section class="cfg-panel__workspace-section" aria-label="Connection settings">
+                <div class="cfg-panel__toggle-grid">
+                    <div class="cfg-panel__toggle">
+                        <div class="cfg-panel__toggle-label">
+                            <strong>Enable MQTT</strong>
+                        </div>
+                        <CardToggle size="row"
+                            v-model="local.enable"
+                            aria-label="Enable MQTT"
+                            @update:model-value="markDirty"
+                        />
                     </div>
                 </div>
 
-                <template v-if="hasTlsClientCert && local.use_client_cert">
-                    <div class="mqtt-panel__row">
-                        <div class="mqtt-panel__row-label">
-                            <strong>Custom client certificate</strong>
+                <div class="cfg-panel__field-grid">
+                    <label class="cfg-panel__field cfg-panel__field--wide" for="mqtt-server">
+                        <strong>Server</strong>
+                        <input
+                            id="mqtt-server"
+                            v-model="local.server"
+                            class="cfg-panel__workspace-input"
+                            placeholder="Eg: my-server.com:1883"
+                            @input="markDirty"
+                        />
+                    </label>
+                    <label class="cfg-panel__field" for="mqtt-username">
+                        <strong>Username</strong>
+                        <input
+                            id="mqtt-username"
+                            v-model="local.user"
+                            class="cfg-panel__workspace-input"
+                            placeholder="(none)"
+                            autocomplete="username"
+                            @input="markDirty"
+                        />
+                    </label>
+                    <label class="cfg-panel__field" for="mqtt-password">
+                        <strong>Password</strong>
+                        <input
+                            id="mqtt-password"
+                            v-model="local.pass"
+                            type="password"
+                            autocomplete="current-password"
+                            class="cfg-panel__workspace-input"
+                            placeholder="••••••••"
+                            @input="markDirty"
+                        />
+                    </label>
+                </div>
+            </section>
+
+            <section class="cfg-panel__section cfg-panel__section--disclosure" aria-label="Advanced MQTT settings">
+                <Collapse class="cfg-panel__disclosure" title="Advanced settings">
+                    <div class="cfg-panel__toggle-grid">
+                        <div class="cfg-panel__toggle">
+                            <div class="cfg-panel__toggle-label">
+                                <strong>Enable MQTT control</strong>
+                            </div>
+                            <CardToggle size="row"
+                                v-model="local.enable_control"
+                                aria-label="Enable MQTT control"
+                                @update:model-value="markDirty"
+                            />
                         </div>
-                        <div class="mqtt-panel__cert-actions">
-                            <Button type="blue" size="sm" @click="uploadCert('client_cert')">
-                                Upload
-                            </Button>
-                            <Button type="red" size="sm" @click="deleteCert('client_cert')">Clear</Button>
+                        <div class="cfg-panel__toggle">
+                            <div class="cfg-panel__toggle-label">
+                                <strong>Enable RPC over MQTT</strong>
+                            </div>
+                            <CardToggle size="row"
+                                v-model="local.enable_rpc"
+                                aria-label="Enable RPC over MQTT"
+                                @update:model-value="markDirty"
+                            />
+                        </div>
+                        <div class="cfg-panel__toggle">
+                            <div class="cfg-panel__toggle-label">
+                                <strong>RPC status notifications</strong>
+                            </div>
+                            <CardToggle size="row"
+                                v-model="local.rpc_ntf"
+                                aria-label="RPC status notifications over MQTT"
+                                @update:model-value="markDirty"
+                            />
+                        </div>
+                        <div class="cfg-panel__toggle">
+                            <div class="cfg-panel__toggle-label">
+                                <strong>Generic status updates</strong>
+                            </div>
+                            <CardToggle size="row"
+                                v-model="local.status_ntf"
+                                aria-label="Generic status update over MQTT"
+                                @update:model-value="markDirty"
+                            />
+                        </div>
+                        <div v-if="hasTlsClientCert" class="cfg-panel__toggle">
+                            <div class="cfg-panel__toggle-label">
+                                <strong>Use client certificate</strong>
+                            </div>
+                            <CardToggle size="row"
+                                v-model="local.use_client_cert"
+                                aria-label="Use client certificate for identification"
+                                @update:model-value="markDirty"
+                            />
                         </div>
                     </div>
 
-                    <div class="mqtt-panel__row">
-                        <div class="mqtt-panel__row-label">
-                            <strong>Custom client key</strong>
-                        </div>
-                        <div class="mqtt-panel__cert-actions">
-                            <Button type="blue" size="sm" @click="uploadCert('client_key')">
-                                Upload
-                            </Button>
-                            <Button type="red" size="sm" @click="deleteCert('client_key')">Clear</Button>
-                        </div>
+                    <div class="cfg-panel__field-grid">
+                        <label class="cfg-panel__field" for="mqtt-client-id">
+                            <strong>Client ID</strong>
+                            <input
+                                id="mqtt-client-id"
+                                v-model="local.client_id"
+                                class="cfg-panel__workspace-input"
+                                placeholder="Eg: kitchen-lights"
+                                @input="markDirty"
+                            />
+                        </label>
+                        <label class="cfg-panel__field" for="mqtt-topic-prefix">
+                            <strong>MQTT prefix</strong>
+                            <input
+                                id="mqtt-topic-prefix"
+                                v-model="local.topic_prefix"
+                                class="cfg-panel__workspace-input"
+                                @input="markDirty"
+                            />
+                        </label>
                     </div>
-                </template>
-            </div>
 
-            <!-- Advanced toggles -->
-            <div class="mqtt-panel__section-label">Advanced</div>
+                    <div class="cfg-panel__group">
+                        <div class="cfg-panel__row">
+                            <div class="cfg-panel__row-label">
+                                <strong>Connection type</strong>
+                            </div>
+                            <div class="cfg-panel__control">
+                                <Dropdown
+                                    aria-label="TLS connection type"
+                                    :default="tlsModeLabel(local.ssl_ca)"
+                                    :options="tlsModeOptions"
+                                    @selected="(val) => { local.ssl_ca = tlsLabelToValue(val); markDirty(); }"
+                                />
+                            </div>
+                        </div>
 
-            <div class="mqtt-panel__row">
-                <div class="mqtt-panel__row-label"><strong>Enable 'MQTT Control'</strong></div>
-                <Checkbox v-model="local.enable_control" @update:model-value="markDirty" />
-            </div>
+                        <template v-if="local.ssl_ca">
+                            <div v-if="hasTlsUserCA" class="cfg-panel__row">
+                                <div class="cfg-panel__row-label">
+                                    <strong>Custom certificate authority (CA) PEM bundle</strong>
+                                </div>
+                                <div class="mqtt-panel__cert-actions">
+                                    <Button type="blue" size="sm" @click="uploadCert('ca')">
+                                        Upload
+                                    </Button>
+                                    <Button type="red" size="sm" @click="deleteCert('ca')">
+                                        Delete
+                                    </Button>
+                                </div>
+                            </div>
 
-            <div class="mqtt-panel__row">
-                <div class="mqtt-panel__row-label"><strong>Enable RPC over MQTT</strong></div>
-                <Checkbox v-model="local.enable_rpc" @update:model-value="markDirty" />
-            </div>
+                            <template v-if="hasTlsClientCert && local.use_client_cert">
+                                <div class="cfg-panel__row">
+                                    <div class="cfg-panel__row-label">
+                                        <strong>Custom client certificate</strong>
+                                    </div>
+                                    <div class="mqtt-panel__cert-actions">
+                                        <Button type="blue" size="sm" @click="uploadCert('client_cert')">
+                                            Upload
+                                        </Button>
+                                        <Button type="red" size="sm" @click="deleteCert('client_cert')">
+                                            Delete
+                                        </Button>
+                                    </div>
+                                </div>
 
-            <div class="mqtt-panel__row">
-                <div class="mqtt-panel__row-label"><strong>RPC status notifications over MQTT</strong></div>
-                <Checkbox v-model="local.rpc_ntf" @update:model-value="markDirty" />
-            </div>
+                                <div class="cfg-panel__row">
+                                    <div class="cfg-panel__row-label">
+                                        <strong>Custom client key</strong>
+                                    </div>
+                                    <div class="mqtt-panel__cert-actions">
+                                        <Button type="blue" size="sm" @click="uploadCert('client_key')">
+                                            Upload
+                                        </Button>
+                                        <Button type="red" size="sm" @click="deleteCert('client_key')">
+                                            Delete
+                                        </Button>
+                                    </div>
+                                </div>
+                            </template>
+                        </template>
+                    </div>
+                </Collapse>
+            </section>
 
-            <div class="mqtt-panel__row">
-                <div class="mqtt-panel__row-label"><strong>Generic status update over MQTT</strong></div>
-                <Checkbox v-model="local.status_ntf" @update:model-value="markDirty" />
-            </div>
-
-            <!-- Save / Reboot -->
-            <div v-if="dirty" class="mqtt-panel__footer">
-                <Button type="blue" size="sm" :loading="saving" @click="saveConfig">
-                    Save
-                </Button>
-                <p class="mqtt-panel__warn">
-                    <i class="fas fa-triangle-exclamation" /> MQTT changes require a device reboot.
-                </p>
-            </div>
-
-            <div v-if="needsReboot" class="mqtt-panel__reboot-banner">
-                <span><i class="fas fa-rotate" /> Reboot required to apply changes.</span>
-                <Button type="blue" size="sm" :loading="rebooting" @click="rebootDevice">Reboot Now</Button>
-            </div>
+            <ConfigPanelFooter
+                label="MQTT"
+                :dirty="dirty"
+                :saving="saving"
+                :restart-required="restartRequired"
+                :rebooting="rebooting"
+                :external-changed="externalConfigChanged"
+                @save="save"
+                @reboot="rebootDevice"
+                @refresh="reload"
+            />
         </form>
 
-        <div v-else class="mqtt-panel__error">
-            <p>Failed to load MQTT configuration.</p>
-            <Button type="blue-hollow" size="sm" @click="loadConfig">Retry</Button>
+        <div v-else-if="refetching" class="cfg-panel__loading">
+            Loading configuration…
         </div>
+        <div v-else class="cfg-panel__error">
+            <p>Failed to load MQTT configuration.</p>
+            <Button type="blue-hollow" size="sm" :loading="refetching" @click="refetch">Retry</Button>
+        </div>
+
+        <ConfirmationModal ref="certConfirm" />
     </div>
 </template>
 
 <script setup lang="ts">
-import {computed, onMounted, reactive, ref, watch} from 'vue';
+import {computed, ref} from 'vue';
+import {useDeviceConfigPanel} from '@/composables/useDeviceConfigPanel';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useDevicesStore} from '@/stores/devices';
 import {useToastStore} from '@/stores/toast';
 import {sendRPC} from '@/tools/websocket';
+import ConfirmationModal from '../modals/ConfirmationModal.vue';
 import Button from './Button.vue';
-import Checkbox from './Checkbox.vue';
+import Collapse from './Collapse.vue';
+import ConfigPanelFooter from './ConfigPanelFooter.vue';
 import Dropdown from './Dropdown.vue';
+import CardToggle from '../cards/CardToggle.vue';
 
 const CHUNK_SIZE = 4096;
 
@@ -208,31 +241,105 @@ const props = defineProps<{
 const deviceStore = useDevicesStore();
 const toast = useToastStore();
 
-const saving = ref(false);
-const rebooting = ref(false);
-const dirty = ref(false);
-const needsReboot = ref(false);
-const config = ref<any>(null);
+const certConfirm = ref<InstanceType<typeof ConfirmationModal> | null>(null);
 
-const local = reactive({
-    enable: false,
-    server: '',
-    client_id: '',
-    user: '',
-    pass: '',
-    ssl_ca: '',
-    topic_prefix: '',
-    rpc_ntf: true,
-    status_ntf: false,
-    use_client_cert: false,
-    enable_rpc: true,
-    enable_control: true
-});
+interface MqttConfig {
+    enable?: boolean;
+    server?: string | null;
+    client_id?: string | null;
+    user?: string | null;
+    pass?: string | null;
+    ssl_ca?: string | null;
+    topic_prefix?: string | null;
+    rpc_ntf?: boolean;
+    status_ntf?: boolean;
+    use_client_cert?: boolean;
+    enable_rpc?: boolean;
+    enable_control?: boolean;
+}
 
-// ── MQTT status ──
-const mqttConnected = computed(() => {
-    const dev = deviceStore.devices[props.shellyID];
-    return dev?.status?.mqtt?.connected === true;
+interface MqttLocalForm {
+    enable: boolean;
+    server: string;
+    client_id: string;
+    user: string;
+    pass: string;
+    ssl_ca: string;
+    topic_prefix: string;
+    rpc_ntf: boolean;
+    status_ntf: boolean;
+    use_client_cert: boolean;
+    enable_rpc: boolean;
+    enable_control: boolean;
+}
+
+const {
+    config,
+    local,
+    dirty,
+    saving,
+    restartRequired,
+    rebooting,
+    externalConfigChanged,
+    markDirty,
+    save,
+    rebootDevice,
+    refetch,
+    refetching,
+    reload
+} = useDeviceConfigPanel<MqttConfig, MqttLocalForm>({
+    shellyID: () => props.shellyID,
+    settingsKey: 'mqtt',
+    method: 'Mqtt.SetConfig',
+    initialLocal: {
+        enable: false,
+        server: '',
+        client_id: '',
+        user: '',
+        pass: '',
+        ssl_ca: '',
+        topic_prefix: '',
+        rpc_ntf: true,
+        status_ntf: false,
+        use_client_cert: false,
+        enable_rpc: true,
+        enable_control: true
+    },
+    mapToLocal: (c) => ({
+        enable: c.enable ?? false,
+        server: c.server ?? '',
+        client_id: c.client_id ?? '',
+        user: c.user ?? '',
+        pass: '',
+        ssl_ca: c.ssl_ca ?? '',
+        topic_prefix: c.topic_prefix ?? '',
+        rpc_ntf: c.rpc_ntf ?? true,
+        status_ntf: c.status_ntf ?? false,
+        use_client_cert: c.use_client_cert ?? false,
+        enable_rpc: c.enable_rpc ?? true,
+        enable_control: c.enable_control ?? true
+    }),
+    mapToUpdate: (l) => {
+        const update: MqttConfig = {
+            enable: l.enable,
+            server: l.server || null,
+            client_id: l.client_id || null,
+            user: l.user || null,
+            ssl_ca: l.ssl_ca || null,
+            topic_prefix: l.topic_prefix || null,
+            rpc_ntf: l.rpc_ntf,
+            status_ntf: l.status_ntf,
+            use_client_cert: l.use_client_cert,
+            enable_rpc: l.enable_rpc,
+            enable_control: l.enable_control
+        };
+        if (l.pass) update.pass = l.pass;
+        return update;
+    },
+    successToast: 'MQTT configuration saved',
+    onSaved: (l) => {
+        l.pass = '';
+    }
 });
 
 // ── TLS capability (derived from Shelly.ListMethods on device connect) ──
@@ -274,69 +381,6 @@ function tlsLabelToValue(label: string): string {
     return '';
 }
 
-function markDirty() {
-    dirty.value = true;
-}
-
-// ── Load config from store (already fetched on device connect) ──
-function loadConfig() {
-    const mqtt = deviceStore.devices[props.shellyID]?.settings?.mqtt;
-    if (!mqtt) {
-        config.value = null;
-        return;
-    }
-    config.value = mqtt;
-    Object.assign(local, {
-        enable: mqtt.enable ?? false,
-        server: mqtt.server ?? '',
-        client_id: mqtt.client_id ?? '',
-        user: mqtt.user ?? '',
-        pass: '',
-        ssl_ca: mqtt.ssl_ca ?? '',
-        topic_prefix: mqtt.topic_prefix ?? '',
-        rpc_ntf: mqtt.rpc_ntf ?? true,
-        status_ntf: mqtt.status_ntf ?? false,
-        use_client_cert: mqtt.use_client_cert ?? false,
-        enable_rpc: mqtt.enable_rpc ?? true,
-        enable_control: mqtt.enable_control ?? true
-    });
-    dirty.value = false;
-}
-
-// ── Save config ──
-async function saveConfig() {
-    saving.value = true;
-    try {
-        const update: Record<string, any> = {
-            enable: local.enable,
-            server: local.server || null,
-            client_id: local.client_id || null,
-            user: local.user || null,
-            ssl_ca: local.ssl_ca || null,
-            topic_prefix: local.topic_prefix || null,
-            rpc_ntf: local.rpc_ntf,
-            status_ntf: local.status_ntf,
-            use_client_cert: local.use_client_cert,
-            enable_rpc: local.enable_rpc,
-            enable_control: local.enable_control
-        };
-        if (local.pass) update.pass = local.pass;
-
-        await sendRPC('FLEET_MANAGER', 'Mqtt.SetConfig', {
-            shellyID: props.shellyID,
-            config: update
-        });
-        toast.success('MQTT configuration saved');
-        dirty.value = false;
-        needsReboot.value = true;
-        local.pass = '';
-    } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to save MQTT config');
-    } finally {
-        saving.value = false;
-    }
-}
-
 // ── Certificate upload ──
 async function uploadCert(type: 'ca' | 'client_cert' | 'client_key') {
     const input = document.createElement('input');
@@ -376,21 +420,30 @@ async function uploadCert(type: 'ca' | 'client_cert' | 'client_key') {
                 client_key: 'Client key'
             };
             toast.success(`${labels[type]} uploaded (${file.name})`);
-        } catch (err: any) {
-            toast.error(err?.message ?? 'Certificate upload failed');
+        } catch (err: unknown) {
+            toast.error(rpcErrorMessage(err));
         }
     };
     input.click();
 }
 
-async function deleteCert(type: 'ca' | 'client_cert' | 'client_key') {
-    const labels = {
-        ca: 'CA certificate',
-        client_cert: 'Client certificate',
-        client_key: 'Client key'
-    };
-    if (!confirm(`Delete ${labels[type]} from device?`)) return;
+const CERT_LABELS = {
+    ca: 'CA certificate',
+    client_cert: 'Client certificate',
+    client_key: 'Client key'
+} as const;
 
+function deleteCert(type: 'ca' | 'client_cert' | 'client_key'): void {
+    certConfirm.value?.storeAction(() => performCertDelete(type), {
+        title: `Delete ${CERT_LABELS[type]}?`,
+        message: 'This removes the certificate from the device.',
+        confirmLabel: 'Delete'
+    });
+}
+
+async function performCertDelete(
+    type: 'ca' | 'client_cert' | 'client_key'
+): Promise<void> {
     const method = {
         ca: 'Security.PutUserCA',
         client_cert: 'Security.PutTLSClientCert',
@@ -403,202 +456,26 @@ async function deleteCert(type: 'ca' | 'client_cert' | 'client_key') {
             data: null,
             append: false
         });
-        toast.info(`${labels[type]} deleted`);
-    } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to delete certificate');
+        toast.info(`${CERT_LABELS[type]} deleted`);
+    } catch (err: unknown) {
+        toast.error(rpcErrorMessage(err));
     }
 }
-
-// ── Reboot ──
-async function rebootDevice() {
-    rebooting.value = true;
-    try {
-        await sendRPC('FLEET_MANAGER', 'Shelly.Reboot', {
-            shellyID: props.shellyID
-        });
-        toast.info('Device rebooting…');
-        needsReboot.value = false;
-    } catch (err: any) {
-        toast.error(err?.message ?? 'Reboot failed');
-    } finally {
-        rebooting.value = false;
-    }
-}
-
-// ── Init ──
-onMounted(loadConfig);
-
-watch(
-    () => props.shellyID,
-    () => {
-        needsReboot.value = false;
-        dirty.value = false;
-        loadConfig();
-    }
-);
 </script>
 
 <style scoped>
-.mqtt-panel {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-}
-
-.mqtt-panel__status-row {
-    display: flex;
-    justify-content: flex-end;
-    padding-bottom: var(--space-1);
-}
-
-.mqtt-panel__status {
-    font-size: var(--type-body);
-    font-weight: var(--font-bold);
-    padding: var(--space-1) var(--space-3);
-    border-radius: var(--radius-2xl);
-    text-transform: none;
-    letter-spacing: 0.04em;
-}
-
-.mqtt-panel__status--on {
-    background: rgba(var(--color-status-on-rgb), 0.1);
-    color: var(--color-status-on);
-    border: 1px solid rgba(var(--color-status-on-rgb), 0.2);
-}
-
-.mqtt-panel__status--off {
-    background: rgba(240, 78, 94, 0.1);
-    color: var(--color-status-off);
-    border: 1px solid rgba(240, 78, 94, 0.2);
-}
-
-/* ── Rows ── */
-.mqtt-panel__row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 0.5px solid var(--color-border-default);
-    gap: var(--space-3);
-    transition: background var(--duration-fast);
-}
-
-.mqtt-panel__row:hover {
-    background: rgba(249, 250, 250, 0.04);
-}
-
-.mqtt-panel__row:last-child {
-    border-bottom: none;
-}
-
-.mqtt-panel__row-label {
-    flex: 1;
-    min-width: 0;
-}
-
-.mqtt-panel__row-label strong {
-    display: block;
-    font-size: var(--type-body);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-primary);
-}
-
-.mqtt-panel__row-label span {
-    display: block;
-    font-size: var(--type-body);
-    color: var(--color-frost);
-    opacity: 0.6;
-    margin-top: var(--space-0-5);
-}
-
-.mqtt-panel__input {
-    background: var(--color-surface-1);
-    border: 1px solid var(--color-border-default);
-    border-radius: var(--radius-md);
-    padding: var(--space-2) var(--space-3);
-    color: var(--color-text-primary);
-    font-size: var(--type-body);
-    font-family: inherit;
-    outline: none;
-    width: 220px;
-    transition: border-color var(--duration-fast);
-}
-
-.mqtt-panel__input:focus {
-    border-color: var(--color-primary);
-}
-
-.mqtt-panel__input::placeholder {
-    color: var(--color-frost);
-    opacity: 0.4;
-}
-
-/* ── Section label ── */
-.mqtt-panel__section-label {
-    font-size: var(--type-body);
-    font-weight: var(--font-black);
-    color: var(--color-text-disabled);
-    text-transform: none;
-    letter-spacing: normal;
-    padding: var(--space-2) var(--space-3) 0;
-}
-
-/* ── Certificate section ── */
-.mqtt-panel__cert-section {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-}
-
 .mqtt-panel__cert-actions {
     display: flex;
-    gap: var(--space-1);
+    justify-content: flex-end;
+    gap: var(--space-2);
     flex-shrink: 0;
 }
 
-/* ── Footer ── */
-.mqtt-panel__footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border-top: 1px solid var(--color-border-default);
-    margin-top: var(--space-1);
-}
-
-.mqtt-panel__warn {
-    font-size: var(--type-body);
-    color: var(--color-status-warn);
-}
-
-.mqtt-panel__warn i {
-    margin-right: var(--space-1);
-}
-
-/* ── Reboot banner ── */
-.mqtt-panel__reboot-banner {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-md);
-    background: rgba(var(--color-primary-rgb), 0.08);
-    border: 1px solid rgba(var(--color-primary-rgb), 0.2);
-    font-size: var(--type-body);
-    font-weight: var(--font-semibold);
-    color: var(--color-primary);
-}
-
-/* ── Misc ── */
-.mqtt-panel__error {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-3);
-    color: var(--color-text-disabled);
-    font-size: var(--type-body);
+/* Single modal-wide mobile breakpoint — keep in sync with the
+   device-settings shell in DeviceBoard.vue (767px). */
+@media (max-width: 767px) {
+    .mqtt-panel__cert-actions {
+        justify-content: flex-start;
+    }
 }
 </style>

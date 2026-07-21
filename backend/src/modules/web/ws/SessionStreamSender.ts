@@ -84,6 +84,13 @@ async function sendBatchAndAck(
         await inner.ack(group, [entry.id]);
         lastSentId = maxStreamId(lastSentId, entry.id);
         Observability.incrementLabeledCounter('event_xack_total', {kind});
+        // Bytes actually delivered to the client, per event kind — the "how
+        // much data" measure for the widget data contract's effect on payload.
+        Observability.incrementLabeledCounter(
+            'event_delivered_bytes',
+            {kind},
+            payload.length
+        );
     }
     return lastSentId;
 }

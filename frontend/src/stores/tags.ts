@@ -5,6 +5,7 @@ import {toastRpcError} from '@/helpers/domainErrors';
 import {type PagedEnvelope, paginate} from '@/helpers/pagination';
 import {subjectRefKey} from '@/helpers/subjectRefs';
 import {runOptimisticMutation} from '@/stores/optimisticMutation';
+import {createStaleGuard} from '@/stores/staleGuard';
 import * as ws from '../tools/websocket';
 import {useToastStore} from './toast';
 
@@ -22,9 +23,15 @@ export const useTagsStore = defineStore('tags', () => {
     const loading = ref(true);
     const toast = useToastStore();
 
+    // Writes bump so an in-flight read can't clobber them; reads never bump.
+    const tagsGuard = createStaleGuard();
+    const assignmentsGuard = createStaleGuard();
+
     async function fetchTags() {
         loading.value = true;
         try {
+            // List fetch: bump so the latest fetch wins between racing fetches.
+            const token = tagsGuard.bump();
             const items = await paginate<ApiTag>(
                 (offset) =>
                     ws.sendRPC<PagedEnvelope<ApiTag>>(
@@ -34,6 +41,7 @@ export const useTagsStore = defineStore('tags', () => {
                     ),
                 MAX_TAGS_PER_PAGE
             );
+            if (tagsGuard.isStale(token)) return;
             const next: Record<number, ApiTag> = {};
             for (const t of items) next[t.id] = t;
             tags.value = next;
@@ -45,12 +53,16 @@ export const useTagsStore = defineStore('tags', () => {
     }
 
     async function fetchTag(id: number): Promise<ApiTag | null> {
+        // Read: snapshot before the RPC; a write mid-flight discards the merge.
+        const token = tagsGuard.current();
         try {
             const tag = await ws.sendRPC<ApiTag>('FLEET_MANAGER', 'tag.get', {
                 id,
                 includeSummary: true
             });
-            tags.value = {...tags.value, [tag.id]: tag};
+            if (!tagsGuard.isStale(token)) {
+                tags.value = {...tags.value, [tag.id]: tag};
+            }
             return tag;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load tag');
@@ -73,6 +85,7 @@ export const useTagsStore = defineStore('tags', () => {
                 'tag.create',
                 params
             );
+            tagsGuard.bump();
             tags.value = {...tags.value, [tag.id]: tag};
             return tag;
         } catch (err) {
@@ -98,6 +111,7 @@ export const useTagsStore = defineStore('tags', () => {
                 'tag.update',
                 {id, patch}
             );
+            tagsGuard.bump();
             tags.value = {...tags.value, [tag.id]: tag};
             return tag;
         } catch (err) {
@@ -109,6 +123,8 @@ export const useTagsStore = defineStore('tags', () => {
     async function deleteTag(id: number): Promise<boolean> {
         try {
             await ws.sendRPC('FLEET_MANAGER', 'tag.delete', {id});
+            tagsGuard.bump();
+            assignmentsGuard.bump();
             const next = {...tags.value};
             delete next[id];
             tags.value = next;
@@ -124,6 +140,7 @@ export const useTagsStore = defineStore('tags', () => {
 
     async function fetchAssignments(id: number): Promise<TagAssignmentRef[]> {
         try {
+            const token = assignmentsGuard.current();
             const items = await paginate<TagAssignmentRef>(
                 (offset) =>
                     ws.sendRPC<PagedEnvelope<TagAssignmentRef>>(
@@ -133,6 +150,7 @@ export const useTagsStore = defineStore('tags', () => {
                     ),
                 MAX_ASSIGNMENTS_PER_PAGE
             );
+            if (assignmentsGuard.isStale(token)) return items;
             assignments.value = {...assignments.value, [id]: items};
             return items;
         } catch (err) {
@@ -177,13 +195,11 @@ export const useTagsStore = defineStore('tags', () => {
         if (input.subjects.length === 0) return true;
         try {
             await runOptimisticMutation({
-                snapshot: () => snapshotAssignments(input.id),
                 apply: () => applyAssignmentMutation(input),
                 commit: () => commitAssignmentMutation(input),
-                rollback: (previous) => restoreAssignments(input.id, previous),
-                reconcile: async () => {
-                    await fetchAssignments(input.id);
-                },
+                // Rollback refetches server truth; snapshots erase concurrent commits.
+                rollback: () => reconcileAssignments(input.id),
+                reconcile: () => reconcileAssignments(input.id),
                 onError: (err) =>
                     toastRpcError(toast, err, input.failureMessage)
             });
@@ -193,16 +209,8 @@ export const useTagsStore = defineStore('tags', () => {
         }
     }
 
-    function snapshotAssignments(id: number): TagAssignmentRef[] | undefined {
-        return assignments.value[id];
-    }
-
-    function restoreAssignments(
-        id: number,
-        previous: TagAssignmentRef[] | undefined
-    ): void {
-        if (!previous) return;
-        assignments.value = {...assignments.value, [id]: previous};
+    async function reconcileAssignments(id: number): Promise<void> {
+        await fetchAssignments(id);
     }
 
     function applyAssignmentMutation(input: {
@@ -215,6 +223,7 @@ export const useTagsStore = defineStore('tags', () => {
             input.mode === 'assign'
                 ? withAssignedSubjects(current, input.subjects)
                 : withoutAssignedSubjects(current, input.subjects);
+        assignmentsGuard.bump();
         assignments.value = {...assignments.value, [input.id]: next};
     }
 

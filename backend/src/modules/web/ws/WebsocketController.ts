@@ -2,7 +2,9 @@ import type * as http from 'node:http';
 import type {Duplex} from 'node:stream';
 import {getLogger} from 'log4js';
 import {DEV_MODE, tuning} from '../../../config';
+import {reportHandledPeerError} from '../../util/faultGuard';
 import {isNodeRedPath} from '../authToken';
+import {handleDeviceGuiUpgrade, isDeviceGuiUpgrade} from '../deviceGuiOrigin';
 import {isViteHmrUpgrade, proxyViteHmrUpgrade} from '../viteDevProxy';
 import type ClientWebsocketHandler from './handlers/ClientWebsocketHandler';
 import type ShellyWebsocketHandler from './handlers/ShellyWebsocketHandler';
@@ -61,11 +63,30 @@ export default class WebsocketController {
                 socket.destroy();
                 return;
             }
-            const {pathname} = new URL(request.url, 'http://localhost');
+            let pathname: string;
+            try {
+                pathname = new URL(request.url, 'http://localhost').pathname;
+            } catch {
+                socket.destroy();
+                return;
+            }
 
             if (tuning.nodeRed.enabled && isNodeRedPath(pathname)) {
                 return;
             }
+
+            if (isDeviceGuiUpgrade(request)) {
+                void handleDeviceGuiUpgrade(request, socket, head);
+                return;
+            }
+
+            // This controller now owns the socket. A peer reset during the async
+            // upgrade handoff emits 'error'; unhandled it would crash. Expected
+            // peer behaviour — handle it quietly and destroy the socket.
+            socket.on('error', (err) => {
+                reportHandledPeerError('ws-upgrade', err);
+                if (!socket.destroyed) socket.destroy();
+            });
 
             // /shelly — device WS endpoint. Open by construction: Shelly device
             // firmware has no field for outbound auth headers, so any shared-secret

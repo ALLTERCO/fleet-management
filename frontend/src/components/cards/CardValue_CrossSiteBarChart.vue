@@ -136,6 +136,9 @@ async function fetchEnergy() {
                 from: from.toISOString(),
                 to: to.toISOString(),
                 tags: ['total_act_energy'],
+                // AC grid electricity — exclude DC / other commodities.
+                commodity: 'electricity',
+                electricalSource: 'ac_mains',
                 bucket: '1 day',
                 devices: allDeviceIds.value,
                 perDevice: true,

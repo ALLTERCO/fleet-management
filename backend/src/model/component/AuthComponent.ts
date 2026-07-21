@@ -36,7 +36,7 @@ function rejectIfBoundedPat(sender: CommandSender): void {
 }
 
 function rejectIfUnauthenticated(sender: CommandSender): string {
-    const actorId = sender.getUser()?.username;
+    const actorId = sender.getUserId();
     if (!actorId) throw RpcError.Unauthorized();
     return actorId;
 }

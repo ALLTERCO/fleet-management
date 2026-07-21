@@ -273,7 +273,7 @@ async function reciprocalRows(
 ): Promise<unknown[]> {
     if (source.kind === 'device' && target.kind === 'device') {
         return await deps.queryRows(
-            `SELECT 1 FROM device.device_serves
+            `SELECT 1 FROM device.v_device_serves_api
               WHERE organization_id = $1
                 AND source_device_id = $2
                 AND target_kind = 'device'
@@ -334,12 +334,26 @@ async function upsertDeviceServes(
 ): Promise<ServesRow[]> {
     return await client.query<ServesRow>(
         `INSERT INTO device.device_serves
-            (organization_id, source_device_id, target_kind, target_id, relation, weight)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (organization_id, source_device_id, target_kind, target_id, relation)
-         DO UPDATE SET weight = EXCLUDED.weight, updated_at = NOW()
-         RETURNING id, 'device' AS source_kind, source_device_id AS source_id,
-                   target_kind, target_id, relation, weight, created_at, updated_at`,
+            (organization_id, source_device_id, target_kind, target_id,
+             source_device_ref, target_device_ref, relation, weight)
+         VALUES (
+             $1, $2, $3, $4,
+             organization.fn_resolve_device_id($1, $2),
+             CASE WHEN $3 = 'device'
+                  THEN organization.fn_resolve_device_id($1, $4)
+                  ELSE NULL END,
+             $5, $6
+         )
+         ON CONFLICT DO UPDATE
+         SET source_device_id = EXCLUDED.source_device_id,
+             target_id = EXCLUDED.target_id,
+             source_device_ref = EXCLUDED.source_device_ref,
+             target_device_ref = EXCLUDED.target_device_ref,
+             weight = EXCLUDED.weight,
+             updated_at = NOW()
+         RETURNING id, 'device' AS source_kind, $2::text AS source_id,
+                   target_kind, $4::text AS target_id, relation, weight,
+                   created_at, updated_at`,
         [
             input.organizationId,
             input.source.id,
@@ -388,9 +402,14 @@ async function deleteDeviceServes(
         `WITH deleted AS (
              DELETE FROM device.device_serves
               WHERE organization_id = $1
-                AND source_device_id = $2
+                AND source_device_ref = organization.fn_resolve_device_id($1, $2)
                 AND ($3::text IS NULL OR target_kind = $3)
-                AND ($4::text IS NULL OR target_id = $4)
+                AND (
+                    $4::text IS NULL
+                    OR ($3 = 'device' AND target_device_ref =
+                        organization.fn_resolve_device_id($1, $4))
+                    OR ($3 <> 'device' AND target_id = $4)
+                )
                 AND ($5::text IS NULL OR relation = $5)
               RETURNING 1
          )
@@ -440,7 +459,7 @@ async function listBySource(
         return await deps.queryRows<ServesRow>(
             `SELECT id, 'device' AS source_kind, source_device_id AS source_id,
                     target_kind, target_id, relation, weight, created_at, updated_at
-               FROM device.device_serves
+               FROM device.v_device_serves_api
               WHERE organization_id = $1 AND source_device_id = $2
               ORDER BY relation, target_kind, target_id
               LIMIT 500`,
@@ -478,7 +497,7 @@ async function listDeviceServesByTarget(
     return await deps.queryRows<ServesRow>(
         `SELECT id, 'device' AS source_kind, source_device_id AS source_id,
                 target_kind, target_id, relation, weight, created_at, updated_at
-           FROM device.device_serves
+           FROM device.v_device_serves_api
           WHERE organization_id = $1 AND target_kind = $2 AND target_id = $3
           ORDER BY relation, source_device_id
           LIMIT 500`,
@@ -512,7 +531,7 @@ async function getDeviceServesLink(
     return await deps.queryRows<ServesRow>(
         `SELECT id, 'device' AS source_kind, source_device_id AS source_id,
                 target_kind, target_id, relation, weight, created_at, updated_at
-           FROM device.device_serves
+           FROM device.v_device_serves_api
           WHERE organization_id = $1
             AND source_device_id = $2
             AND target_kind = $3

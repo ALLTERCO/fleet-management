@@ -12,7 +12,6 @@
         :has-active-filter="activeFilterCount > 0"
         :filter-count="activeFilterCount"
         @filter-click="filterModalVisible = true"
-        :scope="scope"
         :loading="store.loading && filteredTags.length === 0"
         :empty="filteredTags.length === 0 && !store.loading"
         :empty-title="nameFilter ? 'No tags match that search' : 'No tags yet'"
@@ -350,21 +349,6 @@ const headerStats = computed<StatItem[]>(() => {
     return [{value: total, label: total === 1 ? 'tag' : 'tags', status: 'on'}];
 });
 
-const scope = {
-    type: 'Tag',
-    icon: 'fas fa-tag',
-    items: sortedTags,
-    keys: ['name', 'key', 'description'] as const,
-    toHit: (t: ApiTag) => ({
-        id: `tag-${t.id}`,
-        label: t.name,
-        meta: t.key ?? '',
-        type: 'Tag',
-        icon: 'fas fa-tag',
-        route: `/organize/tags/${t.id}`
-    })
-};
-
 function openCreate() {
     createVisible.value = true;
 }
@@ -398,10 +382,13 @@ async function performBulkDelete() {
 </script>
 
 <style scoped>
-/* :deep so the rule reaches the .tag-grid rendered inside PageTemplate's
-   list renderer. Tag wall — content-width pills, Notion / GitHub label
-   pattern. */
-:deep(.tag-grid) {
+</style>
+
+<style>
+/* Tag wall — content-width pills (Notion / GitHub label pattern). The
+   .tag-grid class is emitted only by this page's PageTemplate slot; plain
+   block instead of scoped :deep (opaque to the CSS linter). */
+.tag-grid {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-3);

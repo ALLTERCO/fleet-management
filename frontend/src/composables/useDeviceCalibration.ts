@@ -7,6 +7,7 @@
  *  when the device-reported signal indicates completion or error. */
 
 import {onUnmounted, type Ref, ref} from 'vue';
+import {deviceActionErrorMessage} from '@/helpers/deviceActionError';
 import {useEntityStore} from '@/stores/entities';
 
 interface UseDeviceCalibrationOptions {
@@ -54,8 +55,8 @@ export function useDeviceCalibration(opts: UseDeviceCalibrationOptions) {
         }, ms);
         try {
             await entityStore.invokeAction(eid, 'calibrate');
-        } catch (e: any) {
-            opts.configError.value = e?.message || 'Calibration failed';
+        } catch (e: unknown) {
+            opts.configError.value = deviceActionErrorMessage(e, 'Calibration');
             finishCalibration();
         }
     }

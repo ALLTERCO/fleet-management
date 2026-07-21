@@ -27,7 +27,7 @@ const {online} = useNetworkStatus();
     padding: var(--space-2) var(--space-4);
     background: var(--color-status-warn);
     color: var(--color-surface-0);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     text-align: center;
 }

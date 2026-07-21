@@ -348,7 +348,7 @@ function tdClass(col: DataColumn<T>): string[] {
 }
 .dl-card__status { flex-shrink: 0; }
 .dl-card__sub {
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
     margin: 0;
 }
@@ -368,7 +368,7 @@ function tdClass(col: DataColumn<T>): string[] {
     gap: var(--gap-sm);
 }
 .dl-card__meta-row dt {
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
     text-transform: uppercase;
     letter-spacing: var(--tracking-caps);

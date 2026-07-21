@@ -105,6 +105,79 @@ export const bthomeObjectInfos: Record<
     242: {name: 'firmware_version', type: 'sensor', unit: ''}
 };
 
+// Door-like objects share open/closed semantics (state projection + kind).
+const BTHOME_DOOR_LIKE_OBJ_NAMES = new Set([
+    'opening',
+    'door',
+    'window',
+    'garage_door'
+]);
+
+export function isBTHomeDoorLikeObjectName(objName?: string): boolean {
+    return !!objName && BTHOME_DOOR_LIKE_OBJ_NAMES.has(objName);
+}
+
+export function isBTHomeDoorLikeObjectId(objId: number): boolean {
+    return isBTHomeDoorLikeObjectName(bthomeObjectInfos[objId]?.name);
+}
+
+/** Every obj_id whose catalog name matches one of `names`. Derives the id
+ *  groupings used for BTHome kind detection from the single obj_id->name source
+ *  of truth, so a new obj_id added to bthomeObjectInfos with a known name is
+ *  recognized automatically instead of needing a parallel hardcoded id list. */
+export function objIdsByName(...names: string[]): Set<number> {
+    const wanted = new Set(names);
+    const ids = new Set<number>();
+    for (const [id, info] of Object.entries(bthomeObjectInfos)) {
+        if (wanted.has(info.name)) {
+            ids.add(Number(id));
+        }
+    }
+    return ids;
+}
+
+export type BTHomeBinaryStateWords = {on: string; off: string};
+
+/** Display words for binary sensor states, keyed by objName.
+ *  Polarity follows the BTHome v2 spec (e.g. battery_status 1 = Low). */
+const BTHOME_BINARY_STATE_WORDS: Record<string, BTHomeBinaryStateWords> = {
+    generic_boolean: {on: 'Yes', off: 'No'},
+    power_status: {on: 'On', off: 'Off'},
+    opening: {on: 'Open', off: 'Closed'},
+    battery_status: {on: 'Low', off: 'OK'},
+    battery_charging: {on: 'Charging', off: 'Not Charging'},
+    carbon_monoxide: {on: 'Detected', off: 'Clear'},
+    cold: {on: 'Detected', off: 'Clear'},
+    connectivity: {on: 'Connected', off: 'Disconnected'},
+    door: {on: 'Open', off: 'Closed'},
+    garage_door: {on: 'Open', off: 'Closed'},
+    gas: {on: 'Detected', off: 'Clear'},
+    heat: {on: 'Detected', off: 'Clear'},
+    light: {on: 'On', off: 'Off'},
+    lock: {on: 'Locked', off: 'Unlocked'},
+    moisture: {on: 'Wet', off: 'Dry'},
+    motion: {on: 'Motion', off: 'Clear'},
+    moving: {on: 'Moving', off: 'Still'},
+    occupancy: {on: 'Occupied', off: 'Vacant'},
+    plug: {on: 'On', off: 'Off'},
+    presence: {on: 'Present', off: 'Away'},
+    problem: {on: 'Detected', off: 'Clear'},
+    running: {on: 'On', off: 'Off'},
+    safety: {on: 'Safe', off: 'Unsafe'},
+    smoke: {on: 'Alarm', off: 'Clear'},
+    sound: {on: 'Detected', off: 'Clear'},
+    tamper: {on: 'Alarm', off: 'Clear'},
+    vibration: {on: 'Detected', off: 'Clear'},
+    window: {on: 'Open', off: 'Closed'}
+};
+
+export function getBTHomeBinaryStateWords(
+    objName?: string
+): BTHomeBinaryStateWords | undefined {
+    if (!objName) return undefined;
+    return BTHOME_BINARY_STATE_WORDS[objName];
+}
+
 export function isBTHomeControlObjectId(objId: number): boolean {
     const info = bthomeObjectInfos[objId];
     return info?.type === 'button' || info?.type === 'dimmer';
@@ -149,8 +222,7 @@ type BLUDeviceInfo = {
      *  device can't broadcast this, so it lives here. Omitted = use the 6h
      *  universal keepalive. Source: docs-ble per-device pages. */
     reportCadenceSec?: number;
-    /** No cadence safe for a "stopped reporting" alert (event-only remote,
-     *  mains breaker, LTE-reported smoke) — excluded from heartbeat. */
+    /** No cadence is safe for a stopped-reporting alert. */
     noHeartbeat?: boolean;
 };
 
@@ -158,12 +230,13 @@ type BLUDeviceInfo = {
  *  every 6h (docs-ble/common.md) — the floor for any model without a tighter
  *  documented cadence. */
 export const BLU_UNIVERSAL_KEEPALIVE_SEC = 6 * 60 * 60;
+export const BLU_TRV_MODEL_ID = 'SBTR-001AEU';
 
 /**
  * Single source of truth for all Shelly BLU devices.
  * Key: stable model string. Value: device info.
  * All lookups are derived from this record — add a device here and everything updates.
- * Source: https://shelly-api-docs.shelly.cloud/docs-ble/common
+ * Sources: the BLU common model table and per-device documentation pages.
  */
 export const BLU_DEVICES: Record<string, BLUDeviceInfo> = {
     // BLU (BLE-only). Event devices fall back to the 6h keepalive.
@@ -199,15 +272,6 @@ export const BLU_DEVICES: Record<string, BLUDeviceInfo> = {
         modelId: 7,
         isRemote: true,
         reportCadenceSec: BLU_UNIVERSAL_KEEPALIVE_SEC
-    },
-    'SBMS-001A': {
-        productName: 'Shelly BLU Soil',
-        reportCadenceSec: 300 // periodic 5-min measurement; model_id not in docs
-    },
-    'SMSN-0031ZL': {
-        productName: 'Shelly Smoke LTE',
-        modelId: 6183,
-        noHeartbeat: true // LTE/MQTT-reported, no documented BLE cadence
     },
     // BLU ZB (BLE + Zigbee)
     'SBBT-102C': {
@@ -248,7 +312,7 @@ export const BLU_DEVICES: Record<string, BLUDeviceInfo> = {
         modelId: 19,
         reportCadenceSec: 900 // normal-mode beacon
     },
-    'SBTR-001AEU': {
+    [BLU_TRV_MODEL_ID]: {
         productName: 'Shelly BLU TRV',
         modelId: 8,
         reportCadenceSec: 8 // beacon always on
@@ -266,70 +330,105 @@ export const BLU_DEVICES: Record<string, BLUDeviceInfo> = {
     },
     'SBDI-003E': {
         productName: 'Shelly BLU Distance',
-        reportCadenceSec: 300 // max measure interval; model_id not in docs
-    },
-    // BLU MCB line (mains breakers — no battery, no documented cadence)
-    'SBCB-01PXNEUB6': {
-        productName: 'Shelly BLU MCB 1P+N B6 ZB',
-        modelId: 8218,
-        noHeartbeat: true
-    },
-    'SBCB-01PXNEUB10': {
-        productName: 'Shelly BLU MCB 1P+N B10 ZB',
-        modelId: 8219,
-        noHeartbeat: true
-    },
-    'SBCB-01PXNEUB13': {
-        productName: 'Shelly BLU MCB 1P+N B13 ZB',
-        modelId: 8220,
-        noHeartbeat: true
-    },
-    'SBCB-01PXNEUB16': {
-        productName: 'Shelly BLU MCB 1P+N B16 ZB',
-        modelId: 8221,
-        noHeartbeat: true
-    },
-    'SBCB-01PXNEUB20': {
-        productName: 'Shelly BLU MCB 1P+N B20 ZB',
-        modelId: 8222,
-        noHeartbeat: true
-    },
-    'SBCB-01PXNEUB25': {
-        productName: 'Shelly BLU MCB 1P+N B25 ZB',
-        modelId: 8223,
-        noHeartbeat: true
-    },
-    'SBCB-01PXNEUC6': {
-        productName: 'Shelly BLU MCB 1P+N C6 ZB',
-        modelId: 8250,
-        noHeartbeat: true
-    },
-    'SBCB-01PXNEUC10': {
-        productName: 'Shelly BLU MCB 1P+N C10 ZB',
-        modelId: 8251,
-        noHeartbeat: true
-    },
-    'SBCB-01PXNEUC13': {
-        productName: 'Shelly BLU MCB 1P+N C13 ZB',
-        modelId: 8252,
-        noHeartbeat: true
-    },
-    'SBCB-01PXNEUC16': {
-        productName: 'Shelly BLU MCB 1P+N C16 ZB',
-        modelId: 8253,
-        noHeartbeat: true
-    },
-    'SBCB-01PXNEUC20': {
-        productName: 'Shelly BLU MCB 1P+N C20 ZB',
-        modelId: 8254,
-        noHeartbeat: true
-    },
-    'SBCB-01PXNEUC25': {
-        productName: 'Shelly BLU MCB 1P+N C25 ZB',
-        modelId: 8255,
-        noHeartbeat: true
+        modelId: 4,
+        reportCadenceSec: 300 // maximum configured measurement interval
     }
 };
+
+interface BluDevicePresentation {
+    productName: string;
+    imageModel: string;
+}
+
+const BLU_PRESENTATIONS: Readonly<Record<string, BluDevicePresentation>> = {
+    'SBBT-002C:SBBT-002C-T-Ivr': {
+        productName: 'Shelly BLU Button Tough 1',
+        imageModel: 'SBBT-002C-T-Ivr'
+    }
+};
+
+/** A physical presentation may share its protocol identity with another BLU
+ *  product. Only known catalog pairs may select different display metadata. */
+export function resolveBluPresentation(
+    modelId: string | null | undefined,
+    requestedImageModel: string | null | undefined
+): BluDevicePresentation | undefined {
+    if (!modelId || !requestedImageModel) return undefined;
+    return BLU_PRESENTATIONS[`${modelId}:${requestedImageModel}`];
+}
+
+export function resolveBluPresentationImageModel(
+    modelId: string | null | undefined,
+    requestedImageModel: string | null | undefined
+): string | undefined {
+    return resolveBluPresentation(modelId, requestedImageModel)?.imageModel;
+}
+
+/**
+ * Per-model BTHome sensor kind overrides — for a model whose repeated use of
+ * one obj_id needs positional disambiguation, or whose generic obj_id meaning
+ * is wrong for that specific model. Keyed by the same model string as
+ * BLU_DEVICES so device knowledge stays in one file. `idx` is the sensor's
+ * position among repeats of the same obj_id in the device's fixed packet
+ * layout (BTHome.AddSensor's idx, carried on the bthomesensor:N config) —
+ * omitted means the override applies regardless of idx (single-occurrence
+ * obj_id). `excludeFromEnergy` keeps a reading that BTHOME_ENERGY_SPEC would
+ * otherwise classify as electrical (bthomeSpec.ts) out of the energy
+ * pipeline for this model.
+ */
+export interface BluSensorOverrideRule {
+    model: string;
+    objId: number;
+    idx?: number;
+    kind: string;
+    excludeFromEnergy?: boolean;
+}
+
+const BLU_SENSOR_OVERRIDES: readonly BluSensorOverrideRule[] = [
+    // WS90 sends both wind speed and gust speed as obj 0x44 ('speed'),
+    // disambiguated only by position in the packet: idx 0 = speed, idx 1 =
+    // gust (docs-ble/Devices/BLU_ZB/EcowittWS90WeatherStation.md, Packet
+    // Type 1, entries 3 and 4).
+    {model: 'SBWS-90CM', objId: 68, idx: 0, kind: 'wind_speed'},
+    {model: 'SBWS-90CM', objId: 68, idx: 1, kind: 'wind_gust'},
+    // WS90 reuses the generic moisture Wet/Dry object (0x20) to report
+    // raining/not-raining (same doc, Packet Type 1 entry 2: "rain status").
+    {model: 'SBWS-90CM', objId: 32, kind: 'rain'},
+    // WS90's own capacitor/solar charge (device health), riding the generic
+    // voltage object (0x0C) that bthomeSpec.ts otherwise treats as mains
+    // voltage for every other BTHome device — exclude it from the energy
+    // pipeline for this model only (same doc, Packet Type 2 entry 4).
+    {
+        model: 'SBWS-90CM',
+        objId: 12,
+        kind: 'capacitor_voltage',
+        excludeFromEnergy: true
+    },
+    // BLU TRV sends temperature (0x45) three times per packet, in this
+    // fixed order (docs-ble/Devices/BLU_ZB/BluTRV.mdx BTHome table): target,
+    // current, external.
+    {model: 'SBTR-001AEU', objId: 69, idx: 0, kind: 'target_temperature'},
+    {model: 'SBTR-001AEU', objId: 69, idx: 1, kind: 'current_temperature'},
+    {model: 'SBTR-001AEU', objId: 69, idx: 2, kind: 'external_temperature'}
+];
+
+/** Resolve the model-specific kind override for a BTHome sensor reading, or
+ *  null when none applies (caller falls back to the generic obj_id kind). */
+export function resolveBluSensorOverride(
+    model: string | undefined,
+    objId: number,
+    idx: number | undefined
+): BluSensorOverrideRule | null {
+    if (!model) return null;
+    return (
+        BLU_SENSOR_OVERRIDES.find(
+            (rule) =>
+                rule.model === model &&
+                rule.objId === objId &&
+                (rule.idx === undefined || rule.idx === idx)
+        ) ?? null
+    );
+}
 
 /** Seconds of silence below which a healthy BLU device of this model would
  *  false-fire a deadman alert, or null if it must not get a heartbeat at all.
@@ -403,7 +502,8 @@ export function resolveModelNumericId(
 
 export function resolveBluDeviceInfo(
     modelString: string | undefined,
-    modelNumericId?: number
+    modelNumericId?: number,
+    requestedImageModel?: string
 ): {
     modelId?: string;
     modelNumericId?: number;
@@ -419,10 +519,10 @@ export function resolveBluDeviceInfo(
         typeof modelNumericId === 'number'
             ? modelNumericId
             : resolveModelNumericId(normalizedModelId);
-    const productName = resolveBluDeviceName(
-        normalizedModelId,
-        resolvedNumericId
-    );
+    const productName =
+        resolveBluPresentation(normalizedModelId, requestedImageModel)
+            ?.productName ??
+        resolveBluDeviceName(normalizedModelId, resolvedNumericId);
     const isRemote = normalizedModelId
         ? (BLU_DEVICES[normalizedModelId]?.isRemote ?? false)
         : false;

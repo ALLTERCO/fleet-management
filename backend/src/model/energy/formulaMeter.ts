@@ -84,6 +84,8 @@ export function evaluateFormulaMeters(
                 device: 0,
                 shellyID: null,
                 tag: tag as EnergyQueryRow['tag'],
+                // Logical meters aggregate electric energy — ac_mains.
+                domain: 'ac_mains',
                 value
             });
         }

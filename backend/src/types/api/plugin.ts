@@ -66,6 +66,7 @@ export const PLUGIN_DESCRIBE: DescribeOutput = new DescribeBuilder('plugin', {
         'Manage server-side plugins: list, upload, and remove fleet-wide plugin code.'
 })
     .registerMethod('List', {
+        safety: {operation: 'read'},
         params: PLUGIN_LIST_PARAMS_SCHEMA,
         response: PLUGIN_LIST_RESPONSE_SCHEMA,
         permission: {note: 'authenticated; non-admin configs redacted'},
@@ -73,6 +74,7 @@ export const PLUGIN_DESCRIBE: DescribeOutput = new DescribeBuilder('plugin', {
             'List registered plugins with metadata + config (redacted for non-admins).'
     })
     .registerMethod('Upload', {
+        safety: {operation: 'create'},
         params: PLUGIN_UPLOAD_PARAMS_SCHEMA,
         response: PLUGIN_UPLOAD_RESPONSE_SCHEMA,
         permission: {
@@ -81,6 +83,7 @@ export const PLUGIN_DESCRIBE: DescribeOutput = new DescribeBuilder('plugin', {
         description: 'Upload a base64-encoded plugin zip (max 50 MB decoded).'
     })
     .registerMethod('Remove', {
+        safety: {operation: 'delete'},
         params: PLUGIN_REMOVE_PARAMS_SCHEMA,
         response: PLUGIN_REMOVE_RESPONSE_SCHEMA,
         permission: {

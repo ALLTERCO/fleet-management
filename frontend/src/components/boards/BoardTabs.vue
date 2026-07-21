@@ -7,6 +7,7 @@
         </div>
         <div class="board-tabs__frame">
             <div
+                v-if="showNav || inSubView || $slots.title"
                 class="board-tabs__title"
                 :class="{'board-tabs__title--nav': showNav}"
             >
@@ -36,6 +37,7 @@
                 <button
                     v-for="tab in tabs"
                     :key="tab.name"
+                    type="button"
                     class="board-tabs__tab"
                     :class="[activeTab === tab.name && 'board-tabs__tab--active']"
                     :data-track="'board_tab_' + tab.name"
@@ -147,22 +149,6 @@ function onBack() {
     border: 1px solid var(--color-border-default);
     border-radius: var(--radius-lg);
     overflow: hidden;
-}
-.board-tabs__back {
-    width: var(--space-8);
-    height: var(--space-8);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: var(--radius-md);
-    color: var(--color-text-tertiary);
-    transition: background-color var(--duration-fast) var(--ease-default),
-                color var(--duration-fast) var(--ease-default);
-    cursor: pointer;
-}
-.board-tabs__back:hover {
-    background-color: var(--color-surface-3);
-    color: var(--color-text-primary);
 }
 .board-tabs__title {
     flex-shrink: 0;

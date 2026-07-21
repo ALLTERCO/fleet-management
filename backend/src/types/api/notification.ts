@@ -1791,6 +1791,7 @@ export const NOTIFICATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
     }
 )
     .registerMethod('Subscribe', {
+        safety: {operation: 'create'},
         params: NOTIFICATION_SUBSCRIBE_PARAMS_SCHEMA,
         response: NOTIFICATION_SUBSCRIBE_RESPONSE_SCHEMA,
         permission: {
@@ -1800,6 +1801,7 @@ export const NOTIFICATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Register a push-notification token for the caller. Idempotent per (token, user_id).'
     })
     .registerMethod('ListTokens', {
+        safety: {operation: 'read'},
         params: NOTIFICATION_LIST_TOKENS_PARAMS_SCHEMA,
         response: NOTIFICATION_LIST_TOKENS_RESPONSE_SCHEMA,
         permission: {
@@ -2124,6 +2126,7 @@ export const NOTIFICATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'List uploaded email assets (binary images) for the caller org. Bytes are not returned — fetch via GET /api/notifications/email-assets/:id.'
     })
     .registerMethod('EmailAsset.CreateUploadTicket', {
+        safety: {operation: 'create'},
         params: EMPTY_PARAMS_SCHEMA,
         response: UPLOAD_TICKET_RESPONSE_SCHEMA,
         permission: {note: 'notifications:create or notifications:update'},

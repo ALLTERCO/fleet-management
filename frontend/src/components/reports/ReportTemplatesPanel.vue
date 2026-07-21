@@ -369,12 +369,12 @@ defineExpose({load});
 .rt-btn--primary {
     background: var(--color-primary);
     border-color: var(--color-primary);
-    color: var(--primitive-neutral-50);
+    color: var(--color-text-on-primary);
     font-weight: 600;
 }
 .rt-btn--primary:hover:not(:disabled) {
     background: var(--color-primary-hover);
-    color: var(--primitive-neutral-50);
+    color: var(--color-text-on-primary);
 }
 .rt-btn--danger:hover:not(:disabled) {
     background: color-mix(in srgb, var(--color-danger) 14%, transparent);

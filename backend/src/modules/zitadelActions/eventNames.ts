@@ -45,3 +45,22 @@ export const ZITADEL_TARGET_SUFFIXES = {
     userRemoved: '-user-removed',
     grantRemoved: '-grant-removed'
 } as const;
+
+export const ZITADEL_ACTION_BINDINGS = [
+    {
+        event: ZITADEL_USER_EVENTS.humanRemoved,
+        target: 'userRemoved'
+    },
+    {
+        event: ZITADEL_USER_EVENTS.grantChanged,
+        target: 'grantRemoved'
+    },
+    {
+        event: ZITADEL_USER_EVENTS.grantRemoved,
+        target: 'grantRemoved'
+    },
+    {
+        event: ZITADEL_USER_EVENTS.grantCascadeRemoved,
+        target: 'grantRemoved'
+    }
+] as const;

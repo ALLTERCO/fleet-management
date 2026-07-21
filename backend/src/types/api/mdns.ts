@@ -32,12 +32,14 @@ export const MDNS_DESCRIBE: DescribeOutput = new DescribeBuilder('mdns', {
         'Relay mDNS responder status and enable/disable config to a Shelly device.'
 })
     .registerMethod('GetStatus', {
+        safety: {operation: 'read'},
         params: {type: 'object'},
         response: STATUS_RESP,
         permission: {note: 'authenticated; viewer-visible'},
         description: 'Returns whether the mDNS responder is currently running.'
     })
     .registerMethod('GetConfig', {
+        safety: {operation: 'read'},
         params: {type: 'object'},
         response: {
             type: 'object',

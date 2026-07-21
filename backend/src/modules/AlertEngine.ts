@@ -28,11 +28,19 @@ import {buildDeviceOfflineMatch} from './alert/evaluators/deviceOffline';
 import {motionClearTimeoutSec} from './alert/evaluators/motionDetected';
 import {fieldFingerprintV2} from './alert/fingerprint';
 import {
+    canonicalAlertFingerprint,
+    canonicalizeAlertMatch,
+    findCurrentDeviceExternalId,
+    type LogicalDeviceHint,
+    resolveLogicalDeviceId
+} from './alert/logicalDeviceFingerprint';
+import {
     clearNotifiedFallback,
     getNotifiedFallbackMs,
     recordNotifiedFallback
 } from './alert/notifiedFallback';
 import {type RuleRowShape, rowToLoadedRule} from './alert/ruleRow';
+import {hydratePublicRuleScopes} from './alert/ruleScopePersistence';
 import {matchesScope} from './alert/scope';
 import {resolveSubjectForEvent} from './alert/subjectForEvent';
 import {renderTemplate} from './alert/templateRenderer';
@@ -92,6 +100,7 @@ async function loadRulesForOrg(
         {p_organization_id: organizationId}
     );
     const rows = (result?.rows ?? []) as RuleRowShape[];
+    await hydratePublicRuleScopes(organizationId, rows);
     return rows.map(rowToLoadedRule);
 }
 
@@ -146,6 +155,13 @@ interface UpsertedInstance {
     last_notified_at?: string | null;
     silenced_until?: string | null;
     was_created: boolean;
+    changed: boolean;
+}
+
+// Only an explicit changed=false suppresses — absent (pre-6936 row shape)
+// fails open to the emit.
+function rowChanged(instance: UpsertedInstance): boolean {
+    return instance.changed !== false;
 }
 
 type EvaluationInstanceState =
@@ -156,8 +172,18 @@ type EvaluationInstanceState =
 
 async function upsertInstance(
     rule: LoadedAlertRule,
-    match: MatchResult
+    match: MatchResult,
+    isCanonical = false,
+    device?: LogicalDeviceHint
 ): Promise<UpsertedInstance | undefined> {
+    const persistedMatch = isCanonical
+        ? match
+        : await canonicalizeAlertMatch(
+              rule.organizationId,
+              rule.id,
+              match,
+              device
+          );
     const policy = groupPolicy();
     const result = await PostgresProvider.callMethod(
         'notifications.fn_alert_instance_upsert',
@@ -165,13 +191,13 @@ async function upsertInstance(
             p_organization_id: rule.organizationId,
             p_rule_id: rule.id,
             p_rule_kind: storedAlertRuleKind(rule.kind),
-            p_severity: match.severity ?? rule.severity,
-            p_subject_type: match.subject.type,
-            p_subject_id: match.subject.id,
-            p_title: match.title,
-            p_message: match.message,
-            p_fingerprint_v2: match.fingerprintV2,
-            p_context: JSON.stringify(match.context ?? {}),
+            p_severity: persistedMatch.severity ?? rule.severity,
+            p_subject_type: persistedMatch.subject.type,
+            p_subject_id: persistedMatch.subject.id,
+            p_title: persistedMatch.title,
+            p_message: persistedMatch.message,
+            p_fingerprint_v2: persistedMatch.fingerprintV2,
+            p_context: JSON.stringify(persistedMatch.context ?? {}),
             p_default_floor_standard: policy.severityFloorByType.standard,
             p_default_floor_operational: policy.severityFloorByType.operational,
             p_default_floor_critical: policy.severityFloorByType.critical,
@@ -185,8 +211,18 @@ async function upsertInstance(
 export async function markEvaluationState(
     rule: LoadedAlertRule,
     match: MatchResult,
-    state: EvaluationInstanceState
+    state: EvaluationInstanceState,
+    isCanonical = false,
+    device?: LogicalDeviceHint
 ): Promise<UpsertedInstance | undefined> {
+    const persistedMatch = isCanonical
+        ? match
+        : await canonicalizeAlertMatch(
+              rule.organizationId,
+              rule.id,
+              match,
+              device
+          );
     const policy = groupPolicy();
     const result = await PostgresProvider.callMethod(
         'notifications.fn_alert_instance_mark_evaluation_state',
@@ -195,14 +231,14 @@ export async function markEvaluationState(
             p_rule_id: rule.id,
             p_rule_kind: storedAlertRuleKind(rule.kind),
             p_state: state,
-            p_severity: match.severity ?? rule.severity,
-            p_subject_type: match.subject.type,
-            p_subject_id: match.subject.id,
-            p_title: match.title,
-            p_message: match.message,
-            p_fingerprint_v2: match.fingerprintV2,
+            p_severity: persistedMatch.severity ?? rule.severity,
+            p_subject_type: persistedMatch.subject.type,
+            p_subject_id: persistedMatch.subject.id,
+            p_title: persistedMatch.title,
+            p_message: persistedMatch.message,
+            p_fingerprint_v2: persistedMatch.fingerprintV2,
             p_context: JSON.stringify({
-                ...(match.context ?? {}),
+                ...(persistedMatch.context ?? {}),
                 lifecycleState: state
             }),
             p_default_floor_standard: policy.severityFloorByType.standard,
@@ -213,10 +249,12 @@ export async function markEvaluationState(
     );
     const instance = result?.rows?.[0] as UpsertedInstance | undefined;
     if (!instance) return undefined;
-    emitAlertWs(
-        instance.was_created ? 'Alert.Created' : 'Alert.Updated',
-        instance
-    );
+    if (rowChanged(instance)) {
+        emitAlertWs(
+            instance.was_created ? 'Alert.Created' : 'Alert.Updated',
+            instance
+        );
+    }
     return instance;
 }
 
@@ -344,15 +382,38 @@ async function subjectForEvent(event: NormalizedEvent) {
     return resolveSubjectForEvent(event, PostgresProvider.callMethod);
 }
 
+async function logicalDeviceHint(input: {
+    organizationId: string;
+    externalId: string;
+    device?: AbstractDevice;
+}): Promise<LogicalDeviceHint> {
+    const deviceId =
+        input.device && Number.isInteger(input.device.id) && input.device.id > 0
+            ? input.device.id
+            : await resolveLogicalDeviceId(
+                  input.organizationId,
+                  input.externalId
+              );
+    return {deviceId, externalId: input.externalId};
+}
+
 async function onTrigger(
     rule: LoadedAlertRule,
     evaluator: Evaluator,
     event: NormalizedEvent
 ): Promise<void> {
+    const device =
+        'shellyID' in event
+            ? await logicalDeviceHint({
+                  organizationId: event.organizationId,
+                  externalId: event.shellyID,
+                  device: 'device' in event ? event.device : undefined
+              })
+            : undefined;
     for (const match of await collectMatches(rule, evaluator, event)) {
-        if (await maybeDeferOfflineFire(rule, event, match)) continue;
-        if (await maybeScheduleStateHold(rule, match)) continue;
-        await fireMatch(rule, match);
+        if (await maybeDeferOfflineFire(rule, event, match, device)) continue;
+        if (await maybeScheduleStateHold(rule, match, device)) continue;
+        await fireMatch(rule, match, false, device);
     }
 }
 
@@ -381,13 +442,17 @@ async function evaluateCompositeRule(
     if (!tree) return null;
     const leafIds = collectLeafRuleIds(tree);
     if (leafIds.length === 0) return null;
+    const deviceId = await resolveLogicalDeviceId(
+        event.organizationId,
+        event.shellyID
+    );
     const {rows} = await PostgresProvider.callMethod(
         'notifications.fn_alert_instance_states_for_rules',
         {
             p_organization_id: event.organizationId,
             p_rule_ids: leafIds,
             p_subject_type: 'device',
-            p_subject_id: event.shellyID
+            p_subject_id: String(deviceId)
         }
     );
     const states = new Map<number, LeafState>();
@@ -417,7 +482,7 @@ export async function ingestSweepMatch(
     rule: LoadedAlertRule,
     match: MatchResult
 ): Promise<void> {
-    await fireMatch(rule, match);
+    await fireMatch(rule, match, true);
 }
 
 /** Enabled rules for an org (cached) — exposed for the RuleSweep. */
@@ -446,12 +511,31 @@ export function scheduleInitialRuleEvaluation(input: {
     });
 }
 
+// K device admissions fire K scope_changed requests. A queued or in-flight
+// org run absorbs them; a request landing mid-run books ONE trailing rerun,
+// so post-run state is never stale. SingleFlight tracks the in-flight run.
+const orgEvalInflight = new SingleFlight<string, void>('alert_org_eval');
+const orgEvalQueued = new Set<string>();
+const orgEvalRerunPending = new Set<string>();
+
 export function scheduleOrganizationRuleEvaluation(input: {
     organizationId: string;
     reason: 'scope_changed' | 'startup';
 }): void {
+    const org = input.organizationId;
+    if (orgEvalQueued.has(org)) {
+        Observability.incrementCounter('alert_org_eval_coalesced');
+        return;
+    }
+    if (orgEvalInflight.peek(org)) {
+        Observability.incrementCounter('alert_org_eval_coalesced');
+        orgEvalRerunPending.add(org);
+        return;
+    }
+    orgEvalQueued.add(org);
     setImmediate(() => {
-        void evaluateInitialRulesForOrg(input).catch((err) => {
+        orgEvalQueued.delete(org);
+        void runCoalescedOrgEvaluation(input).catch((err) => {
             if (isPostgresNotReady(err)) {
                 logger.debug(
                     'organization alert evaluation skipped org=%s reason=%s: postgres not ready',
@@ -471,6 +555,21 @@ export function scheduleOrganizationRuleEvaluation(input: {
     });
 }
 
+async function runCoalescedOrgEvaluation(input: {
+    organizationId: string;
+    reason: 'scope_changed' | 'startup';
+}): Promise<void> {
+    try {
+        await orgEvalInflight.run(input.organizationId, () =>
+            evaluateInitialRulesForOrg(input)
+        );
+    } finally {
+        if (orgEvalRerunPending.delete(input.organizationId)) {
+            scheduleOrganizationRuleEvaluation(input);
+        }
+    }
+}
+
 registerOrganizationRuleEvaluator(scheduleOrganizationRuleEvaluation);
 
 function isPostgresNotReady(err: unknown): boolean {
@@ -486,7 +585,25 @@ async function evaluateInitialRulesForOrg(input: {
     reason: 'scope_changed' | 'startup';
 }): Promise<void> {
     for (const rule of await rulesFor(input.organizationId)) {
+        await evaluateLoadedRuleInitialIsolated(rule);
+    }
+}
+
+// One failing rule must not abort the rest of the org rerun; DB-down still does.
+async function evaluateLoadedRuleInitialIsolated(
+    rule: LoadedAlertRule
+): Promise<void> {
+    try {
         await evaluateLoadedRuleInitial(rule);
+    } catch (err) {
+        if (isPostgresNotReady(err)) throw err;
+        Observability.incrementCounter('alert_org_eval_rule_failed');
+        logger.error(
+            'initial evaluation failed rule=%d (%s): %s',
+            rule.id,
+            rule.kind,
+            String(err)
+        );
     }
 }
 
@@ -546,17 +663,23 @@ async function evaluateCurrentStatusRule(rule: LoadedAlertRule): Promise<void> {
             status: (device.status ?? {}) as Record<string, unknown>,
             device
         };
+        const hint = await logicalDeviceHint({
+            organizationId: rule.organizationId,
+            externalId: device.shellyID,
+            device
+        });
         await resolveFingerprint(
             rule,
-            noDataMatchForRule(rule, device.shellyID, {}).fingerprintV2
+            noDataMatchForRule(rule, device.shellyID, {}).fingerprintV2,
+            hint
         );
         const subject = await subjectForEvent(event);
         if (!matchesScope(rule.scope, subject)) continue;
         const matches = await collectMatches(rule, evaluator, event);
         if (matches.length > 0) {
             for (const match of matches) {
-                if (await maybeScheduleStateHold(rule, match)) continue;
-                await fireMatch(rule, match);
+                if (await maybeScheduleStateHold(rule, match, hint)) continue;
+                await fireMatch(rule, match, false, hint);
             }
             continue;
         }
@@ -568,6 +691,7 @@ async function evaluateCurrentStatusRule(rule: LoadedAlertRule): Promise<void> {
     for (const row of await storedDeviceSnapshots(rule.organizationId)) {
         if (seen.has(row.external_id)) continue;
         const snapshot = deviceSnapshotFromStoredRow(row);
+        const hint = {deviceId: row.id, externalId: row.external_id};
         const status = snapshot.status;
         const event: NormalizedEvent = {
             kind: 'device_status_changed',
@@ -585,19 +709,22 @@ async function evaluateCurrentStatusRule(rule: LoadedAlertRule): Promise<void> {
                     reason: 'missing_latest_status',
                     source: 'device.list'
                 }),
-                'no_data'
+                'no_data',
+                false,
+                hint
             );
             continue;
         }
         await resolveFingerprint(
             rule,
-            noDataMatchForRule(rule, row.external_id, {}).fingerprintV2
+            noDataMatchForRule(rule, row.external_id, {}).fingerprintV2,
+            hint
         );
         const matches = await collectMatches(rule, evaluator, event);
         if (matches.length > 0) {
             for (const match of matches) {
-                if (await maybeScheduleStateHold(rule, match)) continue;
-                await fireMatch(rule, match);
+                if (await maybeScheduleStateHold(rule, match, hint)) continue;
+                await fireMatch(rule, match, false, hint);
             }
             continue;
         }
@@ -608,6 +735,7 @@ async function evaluateCurrentStatusRule(rule: LoadedAlertRule): Promise<void> {
 }
 
 interface StoredDeviceSnapshotRow {
+    id: number;
     external_id: string;
     jdoc: Record<string, unknown> | null;
 }
@@ -616,7 +744,7 @@ async function storedDeviceSnapshots(
     organizationId: string
 ): Promise<StoredDeviceSnapshotRow[]> {
     return PostgresProvider.queryRows<StoredDeviceSnapshotRow>(
-        `SELECT external_id, jdoc
+        `SELECT id, external_id, jdoc
            FROM device.list
           WHERE organization_id = $1
             AND external_id IS NOT NULL`,
@@ -633,6 +761,7 @@ function deviceSnapshotFromStoredRow(
             : {};
     return {
         ...jdoc,
+        id: row.id,
         shellyID: row.external_id,
         status:
             jdoc.status &&
@@ -666,17 +795,29 @@ function noDataMatchForRule(
 
 async function fireMatch(
     rule: LoadedAlertRule,
-    match: MatchResult
+    match: MatchResult,
+    isCanonical = false,
+    device?: LogicalDeviceHint
 ): Promise<void> {
     const enrichedMatch = await enrichVirtualAlertMatch(
         rule.organizationId,
         match
     );
     const templatedMatch = applyRuleTemplates(rule, enrichedMatch);
-    const instance = await upsertInstance(rule, templatedMatch);
+    const instance = await upsertInstance(
+        rule,
+        templatedMatch,
+        isCanonical,
+        device
+    );
     if (!instance) return;
-    const kind = instance.was_created ? 'alert_created' : 'alert_updated';
-    await addInboxItems(rule, instance, kind);
+    // Unchanged re-fire: no inbox add, no WS emit. Delivery stays
+    // cooldown-gated below — re-notification semantics are untouched.
+    const changed = rowChanged(instance);
+    if (changed) {
+        const kind = instance.was_created ? 'alert_created' : 'alert_updated';
+        await addInboxItems(rule, instance, kind);
+    }
     if (
         shouldDeliverAfterCooldown(
             rule,
@@ -689,10 +830,12 @@ async function fireMatch(
     } else {
         Observability.incrementCounter('alert_delivery_suppressed_by_cooldown');
     }
-    emitAlertWs(
-        instance.was_created ? 'Alert.Created' : 'Alert.Updated',
-        instance
-    );
+    if (changed) {
+        emitAlertWs(
+            instance.was_created ? 'Alert.Created' : 'Alert.Updated',
+            instance
+        );
+    }
     await scheduleMotionClearIfApplicable(rule, match.fingerprintV2);
 }
 
@@ -738,7 +881,8 @@ export function applyRuleTemplates(
 }
 
 // First fire always notifies. Re-fires notify only when cooldownSec has
-// elapsed since last_notified_at — history still records every trigger.
+// elapsed since last_notified_at — history records material changes only
+// (7313): an identical re-fire bumps last_triggered_at without a row.
 // fallbackMs covers the window where the DB write of last_notified_at
 // failed: an in-memory delivery time still gates the cooldown.
 export function shouldDeliverAfterCooldown(
@@ -798,7 +942,8 @@ async function recordNotified(instanceId: number): Promise<void> {
 async function maybeDeferOfflineFire(
     rule: LoadedAlertRule,
     event: NormalizedEvent,
-    _match: MatchResult
+    _match: MatchResult,
+    device?: LogicalDeviceHint
 ): Promise<boolean> {
     if (rule.kind !== 'device_offline') return false;
     if (event.kind !== 'device_offline') return false;
@@ -806,11 +951,18 @@ async function maybeDeferOfflineFire(
     if (seconds === null) return false;
     const runAt = new Date(Date.now() + seconds * 1000);
     try {
+        const logical =
+            device ??
+            (await logicalDeviceHint({
+                organizationId: rule.organizationId,
+                externalId: event.shellyID,
+                device: event.device
+            }));
         await OutboxWorker.enqueueOfflineFire(
             {
                 organizationId: rule.organizationId,
                 ruleId: rule.id,
-                shellyID: event.shellyID
+                deviceId: logical.deviceId
             },
             runAt
         );
@@ -833,12 +985,30 @@ export function offlineForSecOf(rule: LoadedAlertRule): number | null {
 }
 
 // Runs when a deferred device_offline fire elapses.
-async function handleOfflineFire(payload: {
-    organizationId: string;
-    ruleId: number;
-    shellyID: string;
-}): Promise<void> {
-    const live = DeviceCollector.getDevice(payload.shellyID);
+async function normalizeOfflineFirePayload(
+    payload: OutboxWorker.OfflineFireTaskPayload
+): Promise<OutboxWorker.OfflineFirePayload> {
+    if ('deviceId' in payload) return payload;
+    return {
+        organizationId: payload.organizationId,
+        ruleId: payload.ruleId,
+        deviceId: await resolveLogicalDeviceId(
+            payload.organizationId,
+            payload.shellyID
+        )
+    };
+}
+
+export async function handleOfflineFire(
+    rawPayload: OutboxWorker.OfflineFireTaskPayload
+): Promise<void> {
+    const payload = await normalizeOfflineFirePayload(rawPayload);
+    const externalId = await findCurrentDeviceExternalId(
+        payload.organizationId,
+        payload.deviceId
+    );
+    if (!externalId) return;
+    const live = DeviceCollector.getDevice(externalId);
     if (live?.presence === 'online' || live?.online === true) return;
     const rule =
         (await rulesFor(payload.organizationId)).find(
@@ -849,11 +1019,14 @@ async function handleOfflineFire(payload: {
     const match = buildDeviceOfflineMatch(
         rule.id,
         rule.name,
-        payload.shellyID,
+        externalId,
         live?.info?.name as string | undefined,
         {offlineForSec: offlineForSecOf(rule)}
     );
-    await fireMatch(rule, match);
+    await fireMatch(rule, match, false, {
+        deviceId: payload.deviceId,
+        externalId
+    });
 }
 
 // Motion rarely publishes "clear" — schedule auto-resolve when rule.autoResolve
@@ -931,7 +1104,8 @@ function forSecOf(rule: LoadedAlertRule): number | null {
 // when a hold is pending (so the caller suppresses the immediate fire).
 async function maybeScheduleStateHold(
     rule: LoadedAlertRule,
-    match: MatchResult
+    match: MatchResult,
+    deviceHint?: LogicalDeviceHint
 ): Promise<boolean> {
     if (
         rule.kind !== 'component_state' &&
@@ -950,32 +1124,46 @@ async function maybeScheduleStateHold(
     ) {
         return false;
     }
-    if (stateHoldPending.has(match.fingerprintV2)) return true;
+    const device =
+        deviceHint?.externalId === shellyID
+            ? deviceHint
+            : await logicalDeviceHint({
+                  organizationId: rule.organizationId,
+                  externalId: shellyID
+              });
+    const canonicalMatch = await canonicalizeAlertMatch(
+        rule.organizationId,
+        rule.id,
+        match,
+        device
+    );
+    if (stateHoldPending.has(canonicalMatch.fingerprintV2)) return true;
     await markEvaluationState(
         rule,
         {
-            ...match,
-            title: `${match.title} pending`,
-            message: `${match.message} Waiting ${forSec} seconds before firing.`,
+            ...canonicalMatch,
+            title: `${canonicalMatch.title} pending`,
+            message: `${canonicalMatch.message} Waiting ${forSec} seconds before firing.`,
             context: {
-                ...(match.context ?? {}),
+                ...(canonicalMatch.context ?? {}),
                 pendingReason: 'forSec',
                 requiredForSec: forSec,
                 pendingSince: new Date().toISOString()
             }
         },
-        'pending'
+        'pending',
+        true
     );
     const payload: OutboxWorker.StateHoldPayload = {
         organizationId: rule.organizationId,
         ruleId: rule.id,
-        shellyID,
+        deviceId: device.deviceId,
         component,
         field,
-        fingerprintV2: match.fingerprintV2,
+        fingerprintV2: canonicalMatch.fingerprintV2,
         equals: rule.config.equals as boolean | string | number
     };
-    stateHoldPending.set(match.fingerprintV2, payload);
+    stateHoldPending.set(canonicalMatch.fingerprintV2, payload);
     await OutboxWorker.enqueueStateHold(
         payload,
         new Date(Date.now() + forSec * 1000)
@@ -984,13 +1172,23 @@ async function maybeScheduleStateHold(
 }
 
 // Cancel a pending hold when the state leaves target before forSec elapses.
-async function cancelStateHoldForFingerprint(fp: string): Promise<void> {
-    const payload = stateHoldPending.get(fp);
+async function cancelStateHoldForFingerprint(
+    rule: LoadedAlertRule,
+    fp: string,
+    device: LogicalDeviceHint
+): Promise<void> {
+    const canonical = await canonicalAlertFingerprint(
+        rule.organizationId,
+        rule.id,
+        fp,
+        device
+    );
+    const payload = stateHoldPending.get(canonical);
     if (!payload) return;
-    stateHoldPending.delete(fp);
+    stateHoldPending.delete(canonical);
     await OutboxWorker.cancelStateHold(
         payload.ruleId,
-        payload.shellyID,
+        payload.deviceId,
         payload.component,
         payload.field
     );
@@ -1009,28 +1207,59 @@ export function stateHoldDeviceRetry(
     return {retry: nextAttempt <= maxRetries, nextAttempt};
 }
 
+async function normalizeStateHoldPayload(
+    payload: OutboxWorker.StateHoldTaskPayload
+): Promise<OutboxWorker.StateHoldPayload> {
+    if ('deviceId' in payload) return payload;
+    return {
+        organizationId: payload.organizationId,
+        ruleId: payload.ruleId,
+        deviceId: await resolveLogicalDeviceId(
+            payload.organizationId,
+            payload.shellyID
+        ),
+        component: payload.component,
+        field: payload.field,
+        fingerprintV2: payload.fingerprintV2,
+        equals: payload.equals,
+        attempt: payload.attempt
+    };
+}
+
 // Re-checks the live state still holds before firing, so a missed cancel or a
 // flap during the window can never produce a false fire. Exported as the
 // OutboxWorker hold handler (registered at start).
 export async function handleStateHold(
-    payload: OutboxWorker.StateHoldPayload
+    rawPayload: OutboxWorker.StateHoldTaskPayload
 ): Promise<void> {
-    const fp =
+    const payload = await normalizeStateHoldPayload(rawPayload);
+    const externalId = await findCurrentDeviceExternalId(
+        payload.organizationId,
+        payload.deviceId
+    );
+    if (!externalId) return;
+    const rawFingerprint =
         payload.fingerprintV2 ??
         fieldFingerprintV2({
             ruleId: payload.ruleId,
             subjectType: 'device',
-            subjectId: payload.shellyID,
+            subjectId: String(payload.deviceId),
             component: payload.component,
             field: payload.field
         });
+    const fp = await canonicalAlertFingerprint(
+        payload.organizationId,
+        payload.ruleId,
+        rawFingerprint,
+        {deviceId: payload.deviceId, externalId}
+    );
     stateHoldPending.delete(fp);
     const rule =
         (await rulesFor(payload.organizationId)).find(
             (r) => r.id === payload.ruleId
         ) ?? null;
     if (!rule) return;
-    const device = DeviceCollector.getDevice(payload.shellyID);
+    const device = DeviceCollector.getDevice(externalId);
     if (!device) {
         const {retry, nextAttempt} = stateHoldDeviceRetry(
             payload.attempt,
@@ -1046,17 +1275,18 @@ export async function handleStateHold(
                 rule,
                 {
                     fingerprintV2: fp,
-                    title: `${payload.shellyID} has no data`,
+                    title: `${externalId} has no data`,
                     message: `Rule "${rule.name}" could not evaluate because required data is missing.`,
-                    subject: {type: 'device', id: payload.shellyID},
+                    subject: {type: 'device', id: String(payload.deviceId)},
                     context: {
-                        shellyID: payload.shellyID,
+                        shellyID: externalId,
                         reason: 'device_missing_for_hold',
                         component: payload.component,
                         field: payload.field
                     }
                 },
-                'no_data'
+                'no_data',
+                true
             );
         }
         return;
@@ -1066,24 +1296,37 @@ export async function handleStateHold(
     const event: NormalizedEvent = {
         kind: 'device_status_changed',
         organizationId: payload.organizationId,
-        shellyID: payload.shellyID,
+        shellyID: externalId,
         status: device.status as Record<string, unknown>,
         device
     };
-    const match = (await collectMatches(rule, evaluator, event)).find(
-        (m) => m.fingerprintV2 === fp
+    const matches = await Promise.all(
+        (await collectMatches(rule, evaluator, event)).map((match) =>
+            canonicalizeAlertMatch(rule.organizationId, rule.id, match, {
+                deviceId: payload.deviceId,
+                externalId
+            })
+        )
     );
+    const match = matches.find((candidate) => candidate.fingerprintV2 === fp);
     if (!match) {
-        await resolveFingerprint(rule, fp);
+        await resolveFingerprint(rule, fp, {
+            deviceId: payload.deviceId,
+            externalId
+        });
         return;
     }
-    await fireMatch(rule, {
-        ...match,
-        context: {
-            ...(match.context ?? {}),
-            heldForSec: forSecOf(rule) ?? undefined
-        }
-    });
+    await fireMatch(
+        rule,
+        {
+            ...match,
+            context: {
+                ...(match.context ?? {}),
+                heldForSec: forSecOf(rule) ?? undefined
+            }
+        },
+        true
+    );
 }
 
 async function onClear(
@@ -1093,12 +1336,22 @@ async function onClear(
 ): Promise<void> {
     await cancelPendingOfflineFireIfApplicable(rule, event);
     const fingerprints = clearFingerprints(evaluator, event, rule);
+    const device =
+        'shellyID' in event
+            ? await logicalDeviceHint({
+                  organizationId: event.organizationId,
+                  externalId: event.shellyID,
+                  device: 'device' in event ? event.device : undefined
+              })
+            : undefined;
     for (const fingerprint of fingerprints) {
-        await cancelStateHoldForFingerprint(fingerprint);
+        if (device) {
+            await cancelStateHoldForFingerprint(rule, fingerprint, device);
+        }
     }
     if (!rule.autoResolve) return;
     for (const fingerprint of fingerprints) {
-        await resolveFingerprint(rule, fingerprint);
+        await resolveFingerprint(rule, fingerprint, device);
     }
 }
 
@@ -1116,14 +1369,21 @@ function clearFingerprints(
 
 export async function resolveFingerprint(
     rule: LoadedAlertRule,
-    fingerprintV2: string
+    fingerprintV2: string,
+    device?: LogicalDeviceHint
 ): Promise<void> {
+    const persistedFingerprint = await canonicalAlertFingerprint(
+        rule.organizationId,
+        rule.id,
+        fingerprintV2,
+        device
+    );
     const result = await PostgresProvider.callMethod(
         'notifications.fn_alert_instance_auto_resolve',
         {
             p_organization_id: rule.organizationId,
             p_rule_id: rule.id,
-            p_fingerprint_v2: fingerprintV2
+            p_fingerprint_v2: persistedFingerprint
         }
     );
     const instance = result?.rows?.[0] as UpsertedInstance | undefined;
@@ -1156,7 +1416,12 @@ async function cancelPendingOfflineFireIfApplicable(
     if (rule.kind !== 'device_offline') return;
     if (event.kind !== 'device_online') return;
     if (offlineForSecOf(rule) === null) return;
-    await OutboxWorker.cancelOfflineFire(rule.id, event.shellyID);
+    const device = await logicalDeviceHint({
+        organizationId: event.organizationId,
+        externalId: event.shellyID,
+        device: event.device
+    });
+    await OutboxWorker.cancelOfflineFire(rule.id, device.deviceId);
 }
 
 // --- Group flush --------------------------------------------------------
@@ -1707,6 +1972,8 @@ export function stop(): void {
     deviceEventUnsubscribe?.();
     deviceEventUnsubscribe = undefined;
     rulesByOrg.clear();
+    orgEvalQueued.clear();
+    orgEvalRerunPending.clear();
     started = false;
     logger.info('AlertEngine stopped');
 }

@@ -10,12 +10,13 @@ destinations, and a per-kind `config`.
 
 There are 20 kinds, grouped by how they evaluate:
 
-- **Threshold** — `component_threshold`, `energy_consumption_threshold`,
-  `battery_below`.
+- **Threshold** — `component_threshold`, `component_state`,
+  `energy_consumption_threshold`, `battery_below`.
 - **Inactivity** — `device_offline`, `heartbeat`.
 - **Delta** — `rate_of_change`, `stuck_sensor`.
-- **Event** — `smoke_alarm`, `flood_alarm`, `motion_detected`, `device_event`,
-  `change_event`.
+- **Event** — `device_back_online`, `smoke_alarm`, `flood_alarm`,
+  `motion_detected`, `firmware_operation_failed`, `backup_operation_failed`,
+  `automation_run_failed`, `grafana_alert`, `change_event`, `device_event`.
 - **Anomaly / composite** — `anomaly_band`, `composite` (AND/OR/NOT over other
   rules).
 
@@ -70,7 +71,7 @@ When a rule matches, Fleet Manager upserts an alert instance (idempotent by
 fingerprint), writes inbox items, and — subject to the cooldown — creates
 delivery jobs that an outbox worker sends through channel adapters:
 `email_smtp`, `generic_webhook`, `slack_webhook`, `teams_workflow_webhook`,
-`telegram_bot`, and `webhook_signed`.
+`telegram_bot`, `push_fcm`, `sms_twilio`, `voice_twilio`, and `webhook_signed`.
 Wording comes from the rule's inline `summaryTemplate`/`messageTemplate` or a
 reusable message template (per-channel bodies plus a fallback). `deliveryMode`
 is `instant` or `digest`; failed sends retry with a capped attempt count before

@@ -244,6 +244,7 @@
             </p>
             </template>
         </div>
+        <ConfirmationModal ref="confirmModal" />
     </PageTemplate>
 </template>
 
@@ -260,8 +261,10 @@ import {
 import {RouterLink} from 'vue-router';
 import BasicBlock from '@/components/core/BasicBlock.vue';
 import PageTemplate from '@/components/core/PageTemplate.vue';
+import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
 import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useAuthStore} from '@/stores/auth';
+import {useToastStore} from '@/stores/toast';
 import {sendRPC} from '@/tools/websocket';
 import type {RouteTab} from '@/types/page-template';
 
@@ -314,6 +317,10 @@ const jwt = ref<JwtIntentSettings | null>(null);
 const rotateResult = ref<RotateResult | null>(null);
 const error = ref<string | null>(null);
 const busy = ref(false);
+const toast = useToastStore();
+const confirmModal = ref<InstanceType<typeof ConfirmationModal> | null>(
+    null
+);
 const loading = ref(true);
 const fetchFailed = ref(false);
 
@@ -414,6 +421,7 @@ async function onAddIdp(): Promise<void> {
             autoCreation: true
         });
         await refresh();
+        toast.success('Identity provider added');
     } catch (err) {
         error.value = rpcErrorMessage(err, 'Request failed');
     } finally {
@@ -421,42 +429,56 @@ async function onAddIdp(): Promise<void> {
     }
 }
 
-async function onDeleteIdp(id: string): Promise<void> {
-    if (!confirm('Remove this identity provider?')) return;
-    busy.value = true;
-    error.value = null;
-    try {
-        await sendRPC('FLEET_MANAGER', 'Identity.DeleteIdentityProvider', {id});
-        await refresh();
-    } catch (err) {
-        error.value = rpcErrorMessage(err, 'Request failed');
-    } finally {
-        busy.value = false;
-    }
+function onDeleteIdp(id: string): void {
+    confirmModal.value?.storeAction(
+        async () => {
+            busy.value = true;
+            error.value = null;
+            try {
+                await sendRPC('FLEET_MANAGER', 'Identity.DeleteIdentityProvider', {
+                    id
+                });
+                await refresh();
+                toast.success('Identity provider removed');
+            } catch (err) {
+                error.value = rpcErrorMessage(err, 'Request failed');
+            } finally {
+                busy.value = false;
+            }
+        },
+        {
+            title: 'Remove identity provider',
+            message: 'Users signing in through this provider lose access.',
+            confirmLabel: 'Remove'
+        }
+    );
 }
 
-async function onRotate(): Promise<void> {
-    if (
-        !confirm(
-            'Rotate Action V2 signing keys? Previous keys stay valid for the replay window so in-flight events keep verifying. No redeploy needed.'
-        )
-    ) {
-        return;
-    }
-    busy.value = true;
-    error.value = null;
-    rotateResult.value = null;
-    try {
-        rotateResult.value = await sendRPC<RotateResult>(
-            'FLEET_MANAGER',
-            'Identity.RotateActionSigningKeys',
-            {}
-        );
-    } catch (err) {
-        error.value = rpcErrorMessage(err, 'Request failed');
-    } finally {
-        busy.value = false;
-    }
+function onRotate(): void {
+    confirmModal.value?.storeAction(
+        async () => {
+            busy.value = true;
+            error.value = null;
+            rotateResult.value = null;
+            try {
+                rotateResult.value = await sendRPC<RotateResult>(
+                    'FLEET_MANAGER',
+                    'Identity.RotateActionSigningKeys',
+                    {}
+                );
+            } catch (err) {
+                error.value = rpcErrorMessage(err, 'Request failed');
+            } finally {
+                busy.value = false;
+            }
+        },
+        {
+            title: 'Rotate signing keys',
+            message:
+                'Previous keys stay valid for the replay window so in-flight events keep verifying. No redeploy needed.',
+            confirmLabel: 'Rotate'
+        }
+    );
 }
 
 async function onToggleScim(enabled: boolean): Promise<void> {
@@ -470,6 +492,7 @@ async function onToggleScim(enabled: boolean): Promise<void> {
             {}
         );
         scim.value = fresh;
+        toast.success(enabled ? 'SCIM enabled' : 'SCIM disabled');
     } catch (err) {
         error.value = rpcErrorMessage(err, 'Request failed');
     } finally {
@@ -489,13 +512,13 @@ onMounted(() => void refresh());
 
 .ip-hint {
     color: var(--color-text-tertiary);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     margin-top: var(--space-2);
 }
 
 .ip-row {
     margin: var(--space-1) 0;
-    font-size: var(--type-card-body);
+    font-size: var(--type-body);
 }
 
 .ip-row .ok {
@@ -510,7 +533,7 @@ onMounted(() => void refresh());
     margin: 0;
     padding: var(--space-2);
     font-family: var(--font-mono);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     color: var(--color-text-primary);
     background: var(--color-surface-2);
     border-radius: var(--radius-sm);
@@ -554,7 +577,7 @@ onMounted(() => void refresh());
 
 .ip-empty {
     color: var(--color-text-tertiary);
-    font-size: var(--type-card-body);
+    font-size: var(--type-body);
 }
 
 .ip-add-idp {
@@ -572,7 +595,7 @@ onMounted(() => void refresh());
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
 }
 

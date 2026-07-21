@@ -359,18 +359,18 @@ watch(
 }
 .ap-row__scope {
     color: var(--color-text-tertiary);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
 }
 .ap-row__usage {
     margin-top: var(--space-0-5);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
 }
 .ap-filter {
     display: flex;
     align-items: center;
     gap: var(--space-2);
     color: var(--color-text-tertiary);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     cursor: pointer;
     user-select: none;
 }

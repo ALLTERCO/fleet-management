@@ -7,6 +7,7 @@ import {StageTimer} from '../modules/util/stageTimer';
 import RpcError from '../rpc/RpcError';
 import type {DeviceCapabilities} from '../types';
 import type {LedStripCatalog, LedStripUiField} from '../types/api/ledstrip';
+import {deriveCapabilities} from './deviceCapabilities';
 import {buildEventCatalog, type DeviceEventCatalog} from './deviceEventCatalog';
 import ShellyDevice from './ShellyDevice';
 import type HttpTransport from './transport/HttpTransport';
@@ -39,7 +40,12 @@ const FALLBACK_METHODS_BY_SETTINGS_KEY: Record<string, string[]> = {
         'Wifi.SavedNetworks.Delete'
     ],
     eth: ['Eth.GetConfig', 'Eth.GetStatus', 'Eth.SetConfig', 'Eth.ListClients'],
-    modbus: ['Modbus.GetConfig', 'Modbus.GetStatus', 'Modbus.SetConfig']
+    modbus: ['Modbus.GetConfig', 'Modbus.GetStatus', 'Modbus.SetConfig'],
+    ws: ['WS.GetConfig', 'WS.GetStatus', 'WS.SetConfig'],
+    serial: ['Serial.GetConfig', 'Serial.SetConfig'],
+    script: ['Script.List', 'Script.GetConfig', 'Script.GetStatus'],
+    ledstrip: ['LedStrip.GetConfig', 'LedStrip.SetConfig'],
+    sys: ['Sys.GetConfig', 'Sys.GetStatus', 'Sys.SetConfig']
 };
 
 const EM_FALLBACK_METHODS = [
@@ -76,30 +82,10 @@ function deriveMethodsFromSettings(settings: unknown): string[] {
     return Array.from(out);
 }
 
-/**
- * Derive a compact capabilities object from the raw Shelly.ListMethods array.
- * Only the booleans travel to the frontend — not the full 70+ method list.
- */
-function deriveCapabilities(methods: string[]): DeviceCapabilities {
-    const set = new Set(methods);
-    return {
-        backup:
-            set.has('Sys.CreateBackup') &&
-            set.has('Sys.DownloadBackup') &&
-            set.has('Sys.RestoreBackup'),
-        firmwareUpdate: set.has('Shelly.Update'),
-        firmwareCheck: set.has('Shelly.CheckForUpdate'),
-        otaCommit: set.has('OTA.Commit') && set.has('OTA.Revert'),
-        matter: set.has('Matter.GetConfig'),
-        tlsUserCA: set.has('Shelly.PutUserCA'),
-        tlsClientCert:
-            set.has('Shelly.PutTLSClientCert') &&
-            set.has('Shelly.PutTLSClientKey'),
-        xmod: set.has('XMOD.GetInfo'),
-        service: set.has('Service.GetResources'),
-        serviceResetCounters: set.has('Service.ResetCounters'),
-        virtualComponents: set.has('Virtual.Add') && set.has('Virtual.Delete')
-    };
+export function shouldProbeVirtualComponents(methods: string[]): boolean {
+    // Ask any device that can list its components. The advertised method list
+    // is the single source of truth — no firmware-version or capability guess.
+    return methods.includes('Shelly.GetComponents');
 }
 
 export default class ShellyDeviceFactory {
@@ -244,14 +230,8 @@ export default class ShellyDeviceFactory {
             await ShellyDeviceFactory.getData(transport);
         timer.mark('probe');
 
-        // check the firmware version if supports virtual components
-        const ver = info.ver;
-        const [major, minor] = ver
-            .split('.')
-            .map((z: string) => Number.parseInt(z, 10));
-        // minimum supported version is 1.2.0
         let componentPages = 0;
-        if (major > 1 || (major === 1 && minor >= 2)) {
+        if (shouldProbeVirtualComponents(methods)) {
             componentPages = await addVirtualComponents(
                 transport,
                 status,

@@ -1,6 +1,6 @@
 ## Virtual devices
 
-![A composed device binds roles to source components on real devices](diagrams/virtual-devices.svg)
+![One device built from parts of other real devices: a Fireplace made from a relay, a sensor, and a meter](diagrams/virtual-devices.svg)
 
 A **virtual device** is a first-class device in Fleet Manager that isn't a
 single physical Shelly. It lets you represent non-Shelly or logical equipment,

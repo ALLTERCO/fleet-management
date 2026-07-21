@@ -29,17 +29,30 @@ function readKeyId(envVar: string, fallback: string): string {
 // → legacy JWT_SECRET). Throws when no source is configured — boot must fail
 // loud rather than silently degrade to no encryption.
 export function secretEncryptionKey(override?: string): string {
-    const material =
-        override?.trim() ||
-        envOptionalStr('FM_SECRET_ENCRYPTION_KEY') ||
-        envOptionalStr('JWT_SECRET') ||
-        '';
-    if (!material) {
-        throw new Error(
-            'Secret encryption key is not configured. Set FM_SECRET_ENCRYPTION_KEY or JWT_SECRET.'
-        );
+    // Explicit sources: a caller-supplied override (rotation tooling / tests
+    // vouch for their own material) or the dedicated FM_SECRET_ENCRYPTION_KEY
+    // (its entropy floor is gated at boot by describeSecretsMisconfiguration).
+    const explicit =
+        override?.trim() || envOptionalStr('FM_SECRET_ENCRYPTION_KEY');
+    if (explicit) {
+        return explicit;
     }
-    return material;
+    // Legacy fallback: JWT_SECRET doubles as the AES key. Unlike the dedicated
+    // key this path has no boot gate, so enforce the same >=32 entropy floor
+    // here — a short JWT_SECRET must not silently become a weak 256-bit
+    // at-rest encryption key for every stored credential.
+    const jwtFallback = envOptionalStr('JWT_SECRET');
+    if (jwtFallback) {
+        if (jwtFallback.length < MIN_SECRET_KEY_LENGTH) {
+            throw new Error(
+                `JWT_SECRET is too short to reuse as the at-rest encryption key — use at least ${MIN_SECRET_KEY_LENGTH} random characters (256-bit), or set a dedicated FM_SECRET_ENCRYPTION_KEY.`
+            );
+        }
+        return jwtFallback;
+    }
+    throw new Error(
+        'Secret encryption key is not configured. Set FM_SECRET_ENCRYPTION_KEY or JWT_SECRET.'
+    );
 }
 
 export function secretEncryptionKeyId(): string {

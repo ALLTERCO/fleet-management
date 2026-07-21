@@ -9,6 +9,7 @@ import {defineStore} from 'pinia';
 import {ref} from 'vue';
 import {toastRpcError} from '@/helpers/domainErrors';
 import * as ws from '../tools/websocket';
+import {createStaleGuard, type StaleGuard} from './staleGuard';
 import {useToastStore} from './toast';
 
 export type {
@@ -26,11 +27,29 @@ export const useAssignmentsStore = defineStore('assignments', () => {
     const byPersona = ref<Record<string, AssignmentResponse[]>>({});
     const loading = ref(false);
     const toast = useToastStore();
+    // Latest-wins per list key: an older same-key fetch discards itself.
+    const subjectGuards = new Map<string, StaleGuard>();
+    const personaGuards = new Map<string, StaleGuard>();
+
+    function guardFor(
+        guards: Map<string, StaleGuard>,
+        key: string
+    ): StaleGuard {
+        let guard = guards.get(key);
+        if (!guard) {
+            guard = createStaleGuard();
+            guards.set(key, guard);
+        }
+        return guard;
+    }
 
     async function listForSubject(
         subjectType: AssignmentSubjectType,
         subjectId: string
     ): Promise<AssignmentResponse[]> {
+        const key = subjectKey(subjectType, subjectId);
+        const guard = guardFor(subjectGuards, key);
+        const token = guard.bump();
         loading.value = true;
         try {
             const res = await ws.sendRPC<{items: AssignmentResponse[]}>(
@@ -38,10 +57,12 @@ export const useAssignmentsStore = defineStore('assignments', () => {
                 'assignment.listforsubject',
                 {subjectType, subjectId}
             );
-            bySubject.value = {
-                ...bySubject.value,
-                [subjectKey(subjectType, subjectId)]: res.items
-            };
+            if (!guard.isStale(token)) {
+                bySubject.value = {
+                    ...bySubject.value,
+                    [key]: res.items
+                };
+            }
             return res.items;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load assignments');
@@ -54,13 +75,17 @@ export const useAssignmentsStore = defineStore('assignments', () => {
     async function listForPersona(
         personaId: string
     ): Promise<AssignmentResponse[]> {
+        const guard = guardFor(personaGuards, personaId);
+        const token = guard.bump();
         try {
             const res = await ws.sendRPC<{items: AssignmentResponse[]}>(
                 'FLEET_MANAGER',
                 'assignment.listforpersona',
                 {personaId}
             );
-            byPersona.value = {...byPersona.value, [personaId]: res.items};
+            if (!guard.isStale(token)) {
+                byPersona.value = {...byPersona.value, [personaId]: res.items};
+            }
             return res.items;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load persona assignments');
@@ -123,6 +148,9 @@ export const useAssignmentsStore = defineStore('assignments', () => {
                 persNext[k] = v.filter((a) => a.id !== id);
             }
             byPersona.value = persNext;
+            // Delete touches every key: in-flight lists must not resurrect it.
+            for (const guard of subjectGuards.values()) guard.bump();
+            for (const guard of personaGuards.values()) guard.bump();
             return true;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to delete assignment');

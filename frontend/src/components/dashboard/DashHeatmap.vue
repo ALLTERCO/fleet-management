@@ -14,6 +14,8 @@ import echarts from '@/tools/echarts';
 const props = defineProps<{
     data: [number, number, number][]; // [hour, dayOfWeek, value]
     max: number;
+    // Tooltip unit. Defaults to kWh for energy; pass e.g. "°C" for reuse.
+    unit?: string;
     loading?: boolean;
 }>();
 
@@ -88,7 +90,7 @@ const option = computed(() => {
                 for (const p of items) {
                     if (p.value == null) continue;
                     const color = p.color ?? primary;
-                    html += `<div class="dash-tooltip__row"><span class="dash-tooltip__dot" style="background:${color}"></span><span class="dash-tooltip__value">${escapeHtml(String(p.seriesName))}: ${p.value.toFixed(1)} kWh</span></div>`;
+                    html += `<div class="dash-tooltip__row"><span class="dash-tooltip__dot" style="background:${color}"></span><span class="dash-tooltip__value">${escapeHtml(String(p.seriesName))}: ${p.value.toFixed(1)} ${props.unit ?? 'kWh'}</span></div>`;
                 }
                 return `${html}</div>`;
             }

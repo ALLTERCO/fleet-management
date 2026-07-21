@@ -1,6 +1,7 @@
 <template>
-    <div class="map-dash">
+    <div class="map-dash" :class="{'map-dash--list': viewMode === 'list'}">
         <WorldMap
+            v-if="viewMode === 'map'"
             ref="worldMapRef"
             class="map-dash__map"
             :pins="visiblePins"
@@ -14,31 +15,48 @@
             @pin-hover="onPinHover"
         />
 
-        <MapPinTooltip :pin="hoveredPin" :position="hoveredPinPos" />
+        <MapPinTooltip v-if="viewMode === 'map'" :pin="hoveredPin" :position="hoveredPinPos" />
 
         <ReconnectBanner />
 
         <div class="map-dash__top-bar">
             <MapPulseStrip :stats="fleetStats" />
-            <div class="map-dash__filters">
-                <MapFilterChip
-                    v-model="showFilter"
-                    label="Show"
-                    :options="SHOW_OPTIONS"
-                />
-                <MapFilterChip
-                    v-if="LAYER_OPTIONS.length > 1"
-                    v-model="layerFilter"
-                    label="Layer"
-                    :options="LAYER_OPTIONS"
-                />
+            <div class="map-dash__viewtoggle" role="group" aria-label="View mode">
+                <button
+                    type="button"
+                    class="mdv-btn"
+                    :class="{'mdv-btn--on': viewMode === 'map'}"
+                    @click="viewMode = 'map'"
+                ><i class="fas fa-map-location-dot" /> Map</button>
+                <button
+                    type="button"
+                    class="mdv-btn"
+                    :class="{'mdv-btn--on': viewMode === 'list'}"
+                    @click="viewMode = 'list'"
+                ><i class="fas fa-list-ul" /> List</button>
             </div>
-            <div class="map-dash__top-right">
-                <MapTimeChips v-model="timeRange" :options="TIME_OPTIONS" />
-                <MapSearchBox v-model="searchQuery" placeholder="Search sites…" />
-            </div>
+            <template v-if="viewMode === 'map'">
+                <div class="map-dash__filters">
+                    <MapFilterChip
+                        v-model="showFilter"
+                        label="Show"
+                        :options="SHOW_OPTIONS"
+                    />
+                    <MapFilterChip
+                        v-if="LAYER_OPTIONS.length > 1"
+                        v-model="layerFilter"
+                        label="Layer"
+                        :options="LAYER_OPTIONS"
+                    />
+                </div>
+                <div class="map-dash__top-right">
+                    <MapTimeChips v-model="timeRange" :options="TIME_OPTIONS" />
+                    <MapSearchBox v-model="searchQuery" placeholder="Search sites…" />
+                </div>
+            </template>
         </div>
 
+        <template v-if="viewMode === 'map'">
         <MapAlertBell
             v-model:open="alertRailOpen"
             class="map-dash__bell"
@@ -101,11 +119,43 @@
             @close="buildingLocationId = null"
             @open-floor="onOpenFloor"
         />
+        </template>
+
+        <div v-else class="map-dash__list-view">
+            <div v-if="sitePanelGroups.length === 0" class="mdl-empty">
+                No sites yet. Add locations to your sites to see them here.
+            </div>
+            <section
+                v-for="group in sitePanelGroups"
+                :key="group.countryCode || '__unspec'"
+                class="mdl-group"
+            >
+                <header class="mdl-country">
+                    <span class="mdl-country-label">{{ group.countryLabel }}</span>
+                    <span class="mdl-country-count">{{ group.rows.length }}</span>
+                    <span v-if="group.totalAlerts > 0" class="mdl-country-alerts">
+                        {{ group.totalAlerts }} alerts
+                    </span>
+                </header>
+                <button
+                    v-for="row in group.rows"
+                    :key="row.id"
+                    type="button"
+                    class="mdl-row"
+                    @click="onListRowSelect(row)"
+                >
+                    <span class="mdl-pip" :class="`mdl-pip--${row.status}`" />
+                    <span class="mdl-name">{{ row.name }}</span>
+                    <span class="mdl-meta">{{ row.online }}/{{ row.total }} online</span>
+                    <span v-if="row.alertCount > 0" class="mdl-alerts">{{ row.alertCount }}</span>
+                </button>
+            </section>
+        </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import {computed, onBeforeUnmount, onMounted, ref, watch} from 'vue';
+import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import WorldMap from '@/components/core/maps/WorldMap.vue';
 import MapAlertBell from '@/components/dashboard/map/MapAlertBell.vue';
@@ -147,12 +197,12 @@ import {
     useSitePanelRows
 } from '@/composables/useSitePanelRows';
 import {useTimelinePlayback} from '@/composables/useTimelinePlayback';
+import {fetchDashboardRecordSummary} from '@/helpers/dashboardRecord';
 import {locationMapState} from '@/helpers/locationMapState';
 import {filterPinsByQuery, filterPinsByStatus} from '@/helpers/mapPinFilter';
 import {useAlertsStore} from '@/stores/alerts';
 import {useLocationsStore} from '@/stores/locations';
 import {trackInteraction} from '@/tools/observability';
-import * as ws from '@/tools/websocket';
 import type {MapPin, MapStatusFilter} from '@/types/map';
 
 const SHOW_OPTIONS: readonly FilterChipOption[] = [
@@ -189,6 +239,7 @@ const showFilter = ref<MapStatusFilter>('all');
 const layerFilter = ref('status');
 const timeRange = ref<string>('live');
 const searchQuery = ref('');
+const viewMode = ref<'map' | 'list'>('map');
 const alertRailOpen = ref(false);
 const scrubberOpen = ref(false);
 
@@ -354,6 +405,11 @@ function onSiteRowSelect(row: SitePanelRow): void {
     void onPinClick({id: String(row.id)});
 }
 
+function onListRowSelect(row: SitePanelRow): void {
+    viewMode.value = 'map';
+    void nextTick(() => onSiteRowSelect(row));
+}
+
 function onAlertSelect(alert: {
     source: {subjectType: string; subjectId: string};
 }): void {
@@ -416,19 +472,8 @@ function onEscape(event: KeyboardEvent): void {
     if (closeTopMostOverlay()) event.preventDefault();
 }
 
-interface StoredDashboard {
-    readonly id: number;
-    readonly name?: string;
-}
-
 async function loadDashboardName(id: number): Promise<string | null> {
-    const stored = await ws.sendRPC<StoredDashboard[]>(
-        'FLEET_MANAGER',
-        'Storage.GetItem',
-        {registry: 'ui', key: 'dashboards'}
-    );
-    if (!Array.isArray(stored)) return null;
-    const record = stored.find((d) => d.id === id);
+    const record = await fetchDashboardRecordSummary(id);
     return record?.name ?? null;
 }
 
@@ -542,6 +587,126 @@ onBeforeUnmount(() => {
     bottom: var(--space-4);
     left: var(--space-4);
     z-index: 5;
+}
+
+.map-dash__viewtoggle {
+    display: inline-flex;
+    gap: var(--space-0-5);
+    padding: var(--space-0-5);
+    border-radius: var(--radius-md);
+    background: var(--glass-2-bg);
+    border: 1px solid var(--glass-border);
+    flex-shrink: 0;
+}
+.mdv-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1-5);
+    padding: var(--space-1) var(--space-3);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    cursor: pointer;
+}
+.mdv-btn--on {
+    background: var(--color-primary);
+    color: var(--color-text-on-primary);
+}
+
+.map-dash__list-view {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    padding: calc(var(--space-4) * 2 + 40px) var(--space-4) var(--space-8);
+    background: var(--color-surface-bg);
+}
+.mdl-group {
+    max-width: 880px;
+    margin: 0 auto var(--space-5);
+}
+.mdl-country {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) 0;
+    font-size: var(--type-caption);
+    font-weight: var(--font-bold);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-tertiary);
+    border-bottom: 1px solid var(--color-border-default);
+}
+.mdl-country-count {
+    color: var(--color-text-quaternary);
+}
+.mdl-country-alerts {
+    margin-left: auto;
+    color: var(--color-danger-text);
+    text-transform: none;
+    letter-spacing: 0;
+}
+.mdl-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    padding: var(--space-3) var(--space-2);
+    border: none;
+    border-bottom: 1px solid var(--color-border-subtle);
+    background: transparent;
+    color: var(--color-text-primary);
+    font-size: var(--type-body);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--duration-fast) var(--ease-default);
+}
+.mdl-row:hover {
+    background: var(--glass-hover);
+}
+.mdl-pip {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--color-text-quaternary);
+}
+.mdl-pip--online,
+.mdl-pip--ok {
+    background: var(--color-status-on);
+}
+.mdl-pip--offline {
+    background: var(--color-status-off);
+}
+.mdl-pip--warning,
+.mdl-pip--warn {
+    background: var(--color-status-warn);
+}
+.mdl-name {
+    font-weight: var(--font-medium);
+}
+.mdl-meta {
+    margin-left: auto;
+    font-size: var(--type-caption);
+    color: var(--color-text-tertiary);
+    font-variant-numeric: tabular-nums;
+}
+.mdl-alerts {
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-full);
+    background: color-mix(in srgb, var(--color-danger) 16%, transparent);
+    color: var(--color-danger-text);
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+}
+.mdl-empty {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: var(--space-6) var(--space-4);
+    color: var(--color-text-tertiary);
+    text-align: center;
 }
 
 </style>

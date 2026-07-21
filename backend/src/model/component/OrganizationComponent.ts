@@ -1,4 +1,5 @@
 import * as log4js from 'log4js';
+import {invalidateMcpPolicyCache} from '../../modules/ai/mcpTenantPolicy';
 import * as EventDistributor from '../../modules/EventDistributor';
 import {
     buildOrganizationScopeModel,
@@ -75,6 +76,8 @@ export default class OrganizationComponent extends Component {
                 localeDefault?: string | null;
                 currencyDefault?: string | null;
                 unitSystemDefault?: 'metric' | 'imperial' | null;
+                brandInitials?: string | null;
+                brandColor?: string | null;
                 metadata?: Record<string, unknown>;
             };
         }>(params, ORGANIZATION_SET_PROFILE_PARAMS);
@@ -86,6 +89,8 @@ export default class OrganizationComponent extends Component {
         const clearLocale = patch.localeDefault === null;
         const clearCurrency = patch.currencyDefault === null;
         const clearUnitSystem = patch.unitSystemDefault === null;
+        const clearBrandInitials = patch.brandInitials === null;
+        const clearBrandColor = patch.brandColor === null;
 
         try {
             const result = await postgres.callMethod(
@@ -112,6 +117,14 @@ export default class OrganizationComponent extends Component {
                         ? null
                         : (patch.unitSystemDefault ?? null),
                     p_clear_unit_system: clearUnitSystem,
+                    p_brand_initials: clearBrandInitials
+                        ? null
+                        : (patch.brandInitials ?? null),
+                    p_clear_brand_initials: clearBrandInitials,
+                    p_brand_color: clearBrandColor
+                        ? null
+                        : (patch.brandColor ?? null),
+                    p_clear_brand_color: clearBrandColor,
                     p_metadata: patch.metadata ?? null
                 }
             );
@@ -119,6 +132,9 @@ export default class OrganizationComponent extends Component {
                 | Parameters<typeof rowToOrganizationProfile>[0]
                 | undefined;
             if (!row) throw RpcError.OperationFailed('organization setProfile');
+            // The profile bag holds mcpPolicy; drop the cached copy so a tenant
+            // enable/disable or read-only change is enforced on the next call.
+            invalidateMcpPolicyCache(orgId);
             EventDistributor.emitOrganizationProfileUpdated(orgId);
             return rowToOrganizationProfile(row);
         } catch (err: unknown) {

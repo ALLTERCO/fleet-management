@@ -10,7 +10,6 @@
             </div>
             <div class="runtime-summary__actions">
                 <button type="button" title="Refresh" aria-label="Refresh" @click="refresh"><i class="fas fa-sync-alt" /></button>
-                <RouterLink to="/monitoring/runtime">Open Runtime</RouterLink>
             </div>
         </header>
 
@@ -209,8 +208,7 @@ async function refresh(): Promise<void> {
     justify-content: flex-end;
     gap: var(--gap-xs);
 }
-.runtime-summary__actions button,
-.runtime-summary__actions a {
+.runtime-summary__actions button {
     padding: var(--gap-xs) var(--gap-sm);
     border: 1px solid var(--color-border-subtle);
     border-radius: var(--radius-sm);

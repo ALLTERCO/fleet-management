@@ -7,6 +7,7 @@ import type {
 import {defineStore} from 'pinia';
 import {ref} from 'vue';
 import {toastRpcError} from '@/helpers/domainErrors';
+import {createStaleGuard} from '@/stores/staleGuard';
 import * as ws from '../tools/websocket';
 import {useToastStore} from './toast';
 
@@ -17,14 +18,20 @@ export const usePersonasStore = defineStore('personas', () => {
     const loading = ref(false);
     const toast = useToastStore();
 
+    // Writes bump so an in-flight read can't clobber them; reads never bump.
+    const personasGuard = createStaleGuard();
+
     async function fetchAll(includeSystem = true): Promise<PersonaResponse[]> {
         loading.value = true;
         try {
+            // List fetch: bump so the latest fetch wins between racing fetches.
+            const token = personasGuard.bump();
             const res = await ws.sendRPC<{items: PersonaResponse[]}>(
                 'FLEET_MANAGER',
                 'persona.list',
                 {includeSystem}
             );
+            if (personasGuard.isStale(token)) return res.items;
             const next: Record<string, PersonaResponse> = {};
             for (const p of res.items) next[p.id] = p;
             personas.value = next;
@@ -38,13 +45,17 @@ export const usePersonasStore = defineStore('personas', () => {
     }
 
     async function fetch(id: string): Promise<PersonaResponse | null> {
+        // Read: snapshot before the RPC; a write mid-flight discards the merge.
+        const token = personasGuard.current();
         try {
             const p = await ws.sendRPC<PersonaResponse>(
                 'FLEET_MANAGER',
                 'persona.get',
                 {id}
             );
-            personas.value = {...personas.value, [p.id]: p};
+            if (!personasGuard.isStale(token)) {
+                personas.value = {...personas.value, [p.id]: p};
+            }
             return p;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load persona');
@@ -61,6 +72,7 @@ export const usePersonasStore = defineStore('personas', () => {
                 'persona.create',
                 params
             );
+            personasGuard.bump();
             personas.value = {...personas.value, [p.id]: p};
             return p;
         } catch (err) {
@@ -78,6 +90,7 @@ export const usePersonasStore = defineStore('personas', () => {
                 'persona.update',
                 params
             );
+            personasGuard.bump();
             personas.value = {...personas.value, [p.id]: p};
             return p;
         } catch (err) {
@@ -89,6 +102,7 @@ export const usePersonasStore = defineStore('personas', () => {
     async function remove(id: string): Promise<boolean> {
         try {
             await ws.sendRPC('FLEET_MANAGER', 'persona.delete', {id});
+            personasGuard.bump();
             const next = {...personas.value};
             delete next[id];
             personas.value = next;

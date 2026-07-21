@@ -4,6 +4,7 @@ import type {useLogStore} from '@/stores/console';
 // websocket → stores/devices → stores/entities → websocket
 import type {useDevicesStore} from '@/stores/devices';
 import type {useEntityStore} from '@/stores/entities';
+import {applyPatch} from '@/tools/patch';
 import type {
     entity_t,
     json_rpc_event,
@@ -11,12 +12,14 @@ import type {
     ShellyEvent
 } from '@/types';
 import {WS_URL} from '../constants';
+import {createBatchCoalescer, createTrailingCoalescer} from './coalesce';
 import {debug} from './debug';
 import {sendRPC as httpSendRPC} from './http';
 import {
     getObsLevel,
     isObservabilityEnabled,
     isWsTelemetryEnabled,
+    recordComponentSubscription,
     recordDroppedFrame,
     recordPatchBufferDepth,
     recordRafFrameTime,
@@ -28,6 +31,33 @@ import {
     recordWsMessage,
     setPendingRpcCount
 } from './observability';
+import {
+    buildComponentSubscriptionRequest,
+    type DeviceComponentSub
+} from './statusSubscription';
+import {
+    ALERT_EVENT,
+    BTHOME_EVENT,
+    CERTIFICATE_EVENT,
+    CHANNEL_EVENT,
+    CONSOLE_EVENT,
+    CREDENTIAL_EVENT,
+    DESTINATION_EVENT,
+    DEVICE_CHANGE_EVENT,
+    DEVICE_EVENT,
+    DEVICE_NOTIFY,
+    DIRECT_PUSH_EVENT,
+    GROUP_EVENT,
+    ORGANIZATION_EVENT,
+    PERSONA_EVENT,
+    SHELLY_DEVICE_EVENT_PREFIX,
+    SHELLY_EVENT,
+    TAG_EVENT,
+    USER_GROUP_EVENT,
+    WAITING_ROOM_EVENT,
+    WS_PREFIX,
+    WS_SUBSCRIBED_EVENTS
+} from './wsEvents';
 import {isRecoverableReconnectError} from './wsReconnectErrors';
 
 let connected = false;
@@ -63,6 +93,7 @@ const resyncRequiredListeners = new Set<
 const locationEventListeners = new Set<(e: NamespacedEvent) => void>();
 const dashboardEventListeners = new Set<(e: NamespacedEvent) => void>();
 const reportEventListeners = new Set<(e: NamespacedEvent) => void>();
+const variablesEventListeners = new Set<(e: NamespacedEvent) => void>();
 const deviceRelationshipEventListeners = new Set<
     (e: DeviceRelationshipChangedEvent) => void
 >();
@@ -90,7 +121,7 @@ export interface DeviceEventPayload {
 }
 
 export interface DeviceRelationshipChangedEvent {
-    method: 'Device.RelationshipsChanged';
+    method: typeof DEVICE_EVENT.RELATIONSHIPS_CHANGED;
     params: {
         reason: string;
         externalId?: string;
@@ -278,6 +309,13 @@ export function onReportEvent(cb: (e: NamespacedEvent) => void): () => void {
     reportEventListeners.add(cb);
     return () => {
         reportEventListeners.delete(cb);
+    };
+}
+
+export function onVariablesEvent(cb: (e: NamespacedEvent) => void): () => void {
+    variablesEventListeners.add(cb);
+    return () => {
+        variablesEventListeners.delete(cb);
     };
 }
 
@@ -723,7 +761,7 @@ function isUnauthorizedRpcError(error: unknown): boolean {
 type PatchEntry =
     | {type: 'connect'; shellyID: string; data: any; emittedAt?: number}
     | {type: 'disconnect'; shellyID: string; data: null; emittedAt?: number}
-    | {type: 'status'; shellyID: string; data: any}
+    | {type: 'status'; shellyID: string; data: any; partial?: boolean}
     | {type: 'info'; shellyID: string; data: any}
     | {type: 'settings'; shellyID: string; data: any}
     | {type: 'presence'; shellyID: string; data: any};
@@ -828,7 +866,11 @@ function applyPatchBatch(
                     }
                     break;
                 case 'status':
-                    devicesStore.patchStatus(entry.shellyID, entry.data);
+                    devicesStore.patchStatus(
+                        entry.shellyID,
+                        entry.data,
+                        entry.partial
+                    );
                     break;
                 case 'info':
                     devicesStore.patchInfo(entry.shellyID, entry.data);
@@ -862,7 +904,7 @@ function handleShellyEvents(
     switch (method) {
         // Batched connect/disconnect — during reconnects hundreds arrive at once;
         // processing each immediately blocks the main thread for seconds.
-        case 'Shelly.Connect': {
+        case SHELLY_EVENT.CONNECT: {
             recordShellyConnectReceived();
             const connectEvent = event as ShellyEvent.Connect;
             // Connect wins over any pending disconnect for the same device
@@ -877,7 +919,7 @@ function handleShellyEvents(
             schedulePatchFlush(devicesStore);
             break;
         }
-        case 'Shelly.Disconnect': {
+        case SHELLY_EVENT.DISCONNECT: {
             recordShellyDisconnectReceived();
             const disconnectEvent = event as ShellyEvent.Disconnect;
             // If a connect is already pending for this device, skip the disconnect
@@ -892,7 +934,7 @@ function handleShellyEvents(
             schedulePatchFlush(devicesStore);
             break;
         }
-        case 'Shelly.Delete': {
+        case SHELLY_EVENT.DELETE: {
             // Purge any pending patches for this device to prevent resurrection
             for (const key of pendingPatches.keys()) {
                 if (key.startsWith(`${shellyID}:`)) {
@@ -904,17 +946,28 @@ function handleShellyEvents(
         }
 
         // Batched events — high-frequency updates coalesced per animation frame
-        case 'Shelly.Status': {
+        case SHELLY_EVENT.STATUS: {
             const statusEvent = event as ShellyEvent.Status;
-            pendingPatches.set(`${shellyID}:status`, {
-                type: 'status',
-                shellyID,
-                data: statusEvent.params.status
-            });
+            const key = `${shellyID}:status`;
+            // Path-filtered (dashboard) status: merge, don't reconcile-and-prune.
+            const isPartial = statusEvent.params.partial === true;
+            const pending = pendingPatches.get(key);
+            if (isPartial && pending?.type === 'status') {
+                // Fold into whatever's queued this frame — into a full it keeps
+                // the full's prune, into a partial it keeps both subsets.
+                applyPatch(pending.data, statusEvent.params.status);
+            } else {
+                pendingPatches.set(key, {
+                    type: 'status',
+                    shellyID,
+                    data: statusEvent.params.status,
+                    partial: isPartial
+                });
+            }
             schedulePatchFlush(devicesStore);
             break;
         }
-        case 'Shelly.Info': {
+        case SHELLY_EVENT.INFO: {
             const infoEvent = event as ShellyEvent.Info;
             pendingPatches.set(`${shellyID}:info`, {
                 type: 'info',
@@ -924,7 +977,7 @@ function handleShellyEvents(
             schedulePatchFlush(devicesStore);
             break;
         }
-        case 'Shelly.Settings': {
+        case SHELLY_EVENT.SETTINGS: {
             const settingsEvent = event as ShellyEvent.Settings;
             pendingPatches.set(`${shellyID}:settings`, {
                 type: 'settings',
@@ -934,7 +987,7 @@ function handleShellyEvents(
             schedulePatchFlush(devicesStore);
             break;
         }
-        case 'Shelly.Presence': {
+        case SHELLY_EVENT.PRESENCE: {
             const presenceEvent = event as ShellyEvent.Presence;
             pendingPatches.set(`${shellyID}:presence`, {
                 type: 'presence',
@@ -945,7 +998,7 @@ function handleShellyEvents(
             break;
         }
 
-        case 'Shelly.PresenceTrack': {
+        case SHELLY_EVENT.PRESENCE_TRACK: {
             const trackEvent = event as ShellyEvent.PresenceTrack;
             const listeners = presenceTrackListeners.get(
                 trackEvent.params.shellyID
@@ -958,7 +1011,7 @@ function handleShellyEvents(
             break;
         }
 
-        case 'Shelly.KVS':
+        case SHELLY_EVENT.KVS:
             // do nothing
             break;
 
@@ -975,7 +1028,7 @@ function handleConsoleEvents(
     const method = event.method;
 
     switch (method) {
-        case 'Console.Log': {
+        case CONSOLE_EVENT.LOG: {
             if (event.params.batch) {
                 for (const entry of event.params.batch) {
                     logStore.addLog(
@@ -1011,7 +1064,11 @@ function handleEntityEvents(
 
     switch (true) {
         case /\.added$/i.test(method): {
-            entitiesStore.addEntity(entityId);
+            // Entity.Added carries the full entity — use it directly (0 RPC).
+            // Fallback to a fetch only if an older backend omits the payload.
+            const entity = (event.params as {entity?: entity_t}).entity;
+            if (entity) entitiesStore.upsertEntities([entity]);
+            else entitiesStore.addEntity(entityId);
 
             break;
         }
@@ -1042,9 +1099,340 @@ function handleEntityEvents(
     }
 }
 
+// Single-flight loader — concurrent events must share one module load.
+let websocketStoresLoad:
+    | Promise<typeof import('./websocketStores')>
+    | undefined;
+function loadWebsocketStores(): Promise<typeof import('./websocketStores')> {
+    websocketStoresLoad ??= import('./websocketStores');
+    return websocketStoresLoad;
+}
+
+// Burst-prone events (per-mutation emission under bulk ops / alert sweeps)
+// collapse to one refetch per quiet gap; distinct ids collected per burst.
+const LIVENESS_QUIET_MS = 400;
+// Cap so a sustained burst (events < quietMs apart) still flushes at least
+// this often instead of the trailing timer starving for the whole storm.
+const LIVENESS_MAX_WAIT_MS = 2000;
+// Small bursts fetch instances individually; larger ones use one list call.
+const MAX_SINGLE_ALERT_FETCHES = 3;
+
+const alertInstanceRefetch = createBatchCoalescer<number>(
+    (ids) => {
+        void refetchAlertInstances(ids);
+    },
+    LIVENESS_QUIET_MS,
+    LIVENESS_MAX_WAIT_MS
+);
+
+async function refetchAlertInstances(ids: number[]): Promise<void> {
+    const {getLivenessStores} = await loadWebsocketStores();
+    const {alertsStore} = getLivenessStores();
+    if (!alertsStore) return;
+    if (ids.length <= MAX_SINGLE_ALERT_FETCHES) {
+        await Promise.all(ids.map((id) => alertsStore.fetchInstance(id)));
+        return;
+    }
+    await alertsStore.fetchInstances();
+}
+
+const groupMembersRefetch = createBatchCoalescer<number>(
+    (ids) => {
+        void (async () => {
+            const {getLivenessStores} = await loadWebsocketStores();
+            const {groupsStore} = getLivenessStores();
+            if (!groupsStore) return;
+            await Promise.all(ids.map((id) => groupsStore.fetchGroup(id)));
+        })();
+    },
+    LIVENESS_QUIET_MS,
+    LIVENESS_MAX_WAIT_MS
+);
+
+const tagAssignmentRefetch = createBatchCoalescer<number>(
+    (ids) => {
+        void (async () => {
+            const {getLivenessStores} = await loadWebsocketStores();
+            const {tagsStore} = getLivenessStores();
+            if (!tagsStore) return;
+            await Promise.all(ids.map((id) => tagsStore.fetchTag(id)));
+        })();
+    },
+    LIVENESS_QUIET_MS,
+    LIVENESS_MAX_WAIT_MS
+);
+
+const userGroupMembersRefetch = createBatchCoalescer<string>(
+    (ids) => {
+        void (async () => {
+            const {getLivenessStores} = await loadWebsocketStores();
+            const {userGroupsStore} = getLivenessStores();
+            if (!userGroupsStore) return;
+            await Promise.all(
+                ids.map((id) => userGroupsStore.fetchMembers(id))
+            );
+        })();
+    },
+    LIVENESS_QUIET_MS,
+    LIVENESS_MAX_WAIT_MS
+);
+
+const destinationMembersRefetch = createBatchCoalescer<number>(
+    (ids) => {
+        void (async () => {
+            const {getLivenessStores} = await loadWebsocketStores();
+            const {destinationsStore} = getLivenessStores();
+            if (!destinationsStore) return;
+            await Promise.all(
+                ids.map((id) => destinationsStore.fetchMembers(id))
+            );
+        })();
+    },
+    LIVENESS_QUIET_MS,
+    LIVENESS_MAX_WAIT_MS
+);
+
+// Group/Tag CRUD and Channel health events are rare; refetch through the
+// lazily imported stores (same pattern as NotifyAuthChanged). WS-triggered
+// refetches are reads — the stores' stale guards keep them latest-wins.
+async function handleGroupEvent(event: json_rpc_event): Promise<void> {
+    const id = event.params.id;
+    // Member events burst under bulk ops — coalesce per group id.
+    if (
+        (event.method === GROUP_EVENT.MEMBERS_ADDED ||
+            event.method === GROUP_EVENT.MEMBERS_REMOVED) &&
+        typeof id === 'number'
+    ) {
+        groupMembersRefetch.schedule(id);
+        return;
+    }
+    const {getLivenessStores} = await loadWebsocketStores();
+    const {groupsStore} = getLivenessStores();
+    if (!groupsStore) return;
+    // Deleted: refetch the list — group.get on a deleted id would 404-toast.
+    if (event.method !== GROUP_EVENT.DELETED && typeof id === 'number') {
+        await groupsStore.fetchGroup(id);
+        return;
+    }
+    await groupsStore.fetchGroups();
+}
+
+async function handleTagEvent(event: json_rpc_event): Promise<void> {
+    const id = event.params.id;
+    // Assign/unassign events burst under bulk tagging — coalesce per tag id.
+    if (
+        (event.method === TAG_EVENT.ASSIGNED ||
+            event.method === TAG_EVENT.UNASSIGNED) &&
+        typeof id === 'number'
+    ) {
+        tagAssignmentRefetch.schedule(id);
+        return;
+    }
+    const {getLivenessStores} = await loadWebsocketStores();
+    const {tagsStore} = getLivenessStores();
+    if (!tagsStore) return;
+    // Deleted: refetch the list — tag.get on a deleted id would 404-toast.
+    if (event.method !== TAG_EVENT.DELETED && typeof id === 'number') {
+        await tagsStore.fetchTag(id);
+        return;
+    }
+    await tagsStore.fetchTags();
+}
+
+async function handleChannelEvent(event: json_rpc_event): Promise<void> {
+    const {getLivenessStores} = await loadWebsocketStores();
+    const {channelsStore, toastStore} = getLivenessStores();
+    if (!channelsStore) return;
+    // Deleted: refetch the list — channel.get on a deleted id would 404-toast.
+    if (event.method === CHANNEL_EVENT.DELETED) {
+        await channelsStore.fetchChannels();
+        return;
+    }
+    // CRUD lifecycle carries id; the health events carry endpointId.
+    const id = event.params.id;
+    if (
+        (event.method === CHANNEL_EVENT.CREATED ||
+            event.method === CHANNEL_EVENT.UPDATED) &&
+        typeof id === 'number'
+    ) {
+        await channelsStore.fetchChannel(id);
+        return;
+    }
+    const endpointId = event.params.endpointId;
+    if (typeof endpointId !== 'number') return;
+    const channel = await channelsStore.fetchChannel(endpointId);
+    if (event.method !== CHANNEL_EVENT.AUTO_DISABLED) return;
+    const label = channel?.name ? `"${channel.name}"` : `#${endpointId}`;
+    toastStore?.warning(
+        `Channel ${label} was disabled after repeated failures`
+    );
+}
+
+// Certificate CRUD: the store's only read is the guarded list fetch.
+async function handleCertificateCrudEvent(): Promise<void> {
+    const {getLivenessStores} = await loadWebsocketStores();
+    const {certificatesStore} = getLivenessStores();
+    if (!certificatesStore) return;
+    await certificatesStore.fetchAll();
+}
+
+// A filtered per-device fetch would clobber the full map — refresh the list.
+async function handleCredentialChangedEvent(): Promise<void> {
+    const {getLivenessStores} = await loadWebsocketStores();
+    const {credentialsStore} = getLivenessStores();
+    if (!credentialsStore) return;
+    await credentialsStore.fetchAll();
+}
+
+async function handleAlertRuleEvent(event: json_rpc_event): Promise<void> {
+    const {getLivenessStores} = await loadWebsocketStores();
+    const {alertsStore} = getLivenessStores();
+    if (!alertsStore) return;
+    const ruleId = event.params.ruleId;
+    // RuleDeleted: refetch the list — rule.get on a deleted id would 404-toast.
+    if (
+        event.method !== ALERT_EVENT.RULE_DELETED &&
+        typeof ruleId === 'number'
+    ) {
+        await alertsStore.fetchRule(ruleId);
+        return;
+    }
+    await alertsStore.fetchRules();
+}
+
+async function handlePersonaEvent(event: json_rpc_event): Promise<void> {
+    const {getLivenessStores} = await loadWebsocketStores();
+    const {personasStore} = getLivenessStores();
+    if (!personasStore) return;
+    const id = event.params.id;
+    // Deleted: refetch the list — persona.get on a deleted id would 404-toast.
+    if (event.method !== PERSONA_EVENT.DELETED && typeof id === 'string') {
+        await personasStore.fetch(id);
+        return;
+    }
+    await personasStore.fetchAll();
+}
+
+async function handleUserGroupEvent(event: json_rpc_event): Promise<void> {
+    const id = event.params.id;
+    // Member events burst under bulk ops — coalesce per group id.
+    if (
+        (event.method === USER_GROUP_EVENT.MEMBERS_ADDED ||
+            event.method === USER_GROUP_EVENT.MEMBERS_REMOVED) &&
+        typeof id === 'string'
+    ) {
+        userGroupMembersRefetch.schedule(id);
+        return;
+    }
+    const {getLivenessStores} = await loadWebsocketStores();
+    const {userGroupsStore} = getLivenessStores();
+    if (!userGroupsStore) return;
+    // Deleted: refetch the list — user_group.get on a deleted id would 404-toast.
+    if (event.method !== USER_GROUP_EVENT.DELETED && typeof id === 'string') {
+        await userGroupsStore.fetch(id);
+        return;
+    }
+    await userGroupsStore.fetchAll();
+}
+
+// User events carry userId only; the store's single read is the coalesced list.
+async function handleUserEvent(): Promise<void> {
+    const {getLivenessStores} = await loadWebsocketStores();
+    const {usersStore} = getLivenessStores();
+    if (!usersStore) return;
+    await usersStore.fetchUsers();
+}
+
+// Brand or defaults changed — refetch the caller-org profile (guarded read).
+async function handleOrganizationProfileEvent(): Promise<void> {
+    const {getLivenessStores} = await loadWebsocketStores();
+    const {organizationStore} = getLivenessStores();
+    if (!organizationStore) return;
+    await organizationStore.refetchProfile();
+}
+
+async function handleDestinationEvent(event: json_rpc_event): Promise<void> {
+    const id = event.params.id;
+    // Member events burst under bulk ops — coalesce per destination id.
+    if (
+        (event.method === DESTINATION_EVENT.MEMBERS_ADDED ||
+            event.method === DESTINATION_EVENT.MEMBERS_REMOVED) &&
+        typeof id === 'number'
+    ) {
+        destinationMembersRefetch.schedule(id);
+        return;
+    }
+    const {getLivenessStores} = await loadWebsocketStores();
+    const {destinationsStore} = getLivenessStores();
+    if (!destinationsStore) return;
+    // Deleted: refetch the list — destination.get on a deleted id would 404-toast.
+    if (event.method !== DESTINATION_EVENT.DELETED && typeof id === 'number') {
+        await destinationsStore.fetchDestination(id);
+        return;
+    }
+    await destinationsStore.fetchDestinations();
+}
+
 /** Opaque handle for a temporary status subscription. */
 export interface TemporarySubscription {
     unsubscribe(): Promise<void>;
+}
+
+// Registry of live temporary subscriptions. The server drops per-connection
+// subscriptions on close, so onConnect() re-issues every registered entry —
+// consumers keep their handle and never notice the reconnect.
+interface TempSubEntry {
+    events: string[];
+    // Full System.Subscribe options payload (shellyIDs and, for the widget
+    // data contract, per-event deny/paths). Re-issued verbatim on reconnect.
+    options: Record<string, unknown>;
+    ids: number[];
+    issuing: boolean;
+}
+const temporarySubscriptions = new Set<TempSubEntry>();
+
+async function issueTemporarySubscription(entry: TempSubEntry): Promise<void> {
+    entry.issuing = true;
+    try {
+        const response = await sendWebSocketRPC<{ids: number[]}>(
+            'FLEET_MANAGER',
+            'System.Subscribe',
+            {events: entry.events, options: entry.options}
+        );
+        if (!temporarySubscriptions.has(entry)) {
+            // Consumer unsubscribed mid-flight — release the fresh server ids.
+            void sendServerUnsubscribe(response.ids);
+            return;
+        }
+        entry.ids = [...response.ids];
+    } finally {
+        entry.issuing = false;
+    }
+}
+
+async function sendServerUnsubscribe(ids: number[]): Promise<void> {
+    if (ids.length === 0) return;
+    // A closed connection already dropped its subscriptions server-side.
+    if (client?.readyState !== WebSocket.OPEN) return;
+    await sendWebSocketRPC('FLEET_MANAGER', 'System.Unsubscribe', {ids});
+}
+
+// Server-side listener ids died with the connection — forget them so a
+// late unsubscribe can't release a fresh connection's ids.
+function invalidateTemporarySubscriptions(): void {
+    for (const entry of temporarySubscriptions) entry.ids = [];
+}
+
+function restoreTemporarySubscriptions(): void {
+    for (const entry of temporarySubscriptions) {
+        if (entry.issuing || entry.ids.length > 0) continue;
+        issueTemporarySubscription(entry).catch((err) => {
+            logRecoverableFailure(
+                '[WS] temporary subscription restore failed:',
+                err
+            );
+        });
+    }
 }
 
 // Per-handle ownership replaces the previous module-level Set so two
@@ -1052,25 +1440,99 @@ export interface TemporarySubscription {
 // clobber each other's subscriptions.
 export async function addTemporarySubscription(
     shellyIDs: string[],
-    events: string[] = ['Shelly.Status']
+    events: string[] = [SHELLY_EVENT.STATUS]
 ): Promise<TemporarySubscription> {
-    const response = await sendWebSocketRPC<{ids: number[]}>(
-        'FLEET_MANAGER',
-        'System.Subscribe',
-        {events, options: {shellyIDs}}
-    );
-    const ids = [...response.ids];
-    let disposed = false;
+    const entry: TempSubEntry = {
+        events: [...events],
+        options: {shellyIDs: [...shellyIDs]},
+        ids: [],
+        issuing: false
+    };
+    temporarySubscriptions.add(entry);
+    try {
+        await issueTemporarySubscription(entry);
+    } catch (err) {
+        temporarySubscriptions.delete(entry);
+        throw err;
+    }
     return {
         async unsubscribe() {
-            if (disposed || ids.length === 0) return;
-            disposed = true;
-            if (client?.readyState !== WebSocket.OPEN) return;
-            await sendWebSocketRPC('FLEET_MANAGER', 'System.Unsubscribe', {
-                ids
-            });
+            if (!temporarySubscriptions.delete(entry)) return;
+            const ids = entry.ids;
+            entry.ids = [];
+            await sendServerUnsubscribe(ids);
         }
     };
+}
+
+// ── Widget data contract: the dashboard's scoped STATUS subscription ──
+// A single managed temp-subscription that opens up live power/consumption for
+// the on-screen devices and components, alongside the always-on baseline
+// STATUS feed. It updates as the visible cards change (debounced) and, being a
+// TempSubEntry, is auto-restored on reconnect.
+let deviceComponentEntry: TempSubEntry | null = null;
+let pendingComponentSub: DeviceComponentSub | null = null;
+
+function applyDeviceComponentSubscription(): void {
+    const sub = pendingComponentSub;
+    // No components on screen → drop the scoped sub; baseline STATUS remains.
+    if (!sub || sub.paths.length === 0) {
+        removeDeviceComponentEntry();
+        recordComponentSubscription(0, 0);
+        return;
+    }
+    recordComponentSubscription(sub.shellyIDs.length, sub.paths.length);
+    debug(
+        '[WS] component subscription: devices=%d paths=%d',
+        sub.shellyIDs.length,
+        sub.paths.length
+    );
+    const req = buildComponentSubscriptionRequest(sub);
+    const nextOptions = JSON.stringify(req.options);
+    // Unchanged union → don't churn the server subscription.
+    if (
+        deviceComponentEntry &&
+        JSON.stringify(deviceComponentEntry.options) === nextOptions
+    ) {
+        return;
+    }
+    removeDeviceComponentEntry();
+    const entry: TempSubEntry = {
+        events: req.events,
+        options: req.options,
+        ids: [],
+        issuing: false
+    };
+    deviceComponentEntry = entry;
+    temporarySubscriptions.add(entry);
+    issueTemporarySubscription(entry).catch((err) => {
+        logRecoverableFailure(
+            '[WS] device-component subscription failed:',
+            err
+        );
+    });
+}
+
+function removeDeviceComponentEntry(): void {
+    if (!deviceComponentEntry) return;
+    const entry = deviceComponentEntry;
+    deviceComponentEntry = null;
+    temporarySubscriptions.delete(entry);
+    void sendServerUnsubscribe(entry.ids);
+}
+
+const scheduleDeviceComponentSub = createTrailingCoalescer(
+    applyDeviceComponentSubscription,
+    250
+);
+
+/** Point the scoped STATUS subscription at the currently visible devices and
+ *  components. Pass null (or empty paths) to drop it. Debounced. */
+export function setDeviceComponentSubscription(
+    sub: DeviceComponentSub | null
+): void {
+    pendingComponentSub = sub;
+    scheduleDeviceComponentSub.schedule();
 }
 
 const CONN_ID_KEY = 'fm:ws:connectionId';
@@ -1152,31 +1614,12 @@ function getConnectionParams() {
         ...(currentLastSeenStreamId
             ? {lastSeenStreamId: currentLastSeenStreamId}
             : {}),
-        events: [
-            'Shelly.Connect',
-            'Shelly.Disconnect',
-            'Shelly.Delete',
-            'Shelly.Status',
-            'Shelly.Settings',
-            'Shelly.KVS',
-            'Shelly.Info',
-            'Shelly.Presence',
-            'Shelly.PresenceTrack',
-            'Entity.Added',
-            'Entity.Removed',
-            'Entity.Event',
-            'NotifyStatus',
-            'NotifyEvent',
-            'Shelly.OtaProgress',
-            'BTHome.DiscoveryResult',
-            'BTHome.DiscoveryDone',
-            'BTHome.ControlLearning',
-            'BTHome.ControlsUpdated',
-            'Console.Log'
-        ],
+        // Backend delivers only exact subscribed names — wsEvents.ts is the
+        // single source of truth for the list.
+        events: [...WS_SUBSCRIBED_EVENTS],
         options: {
             events: {
-                'Shelly.Status': {
+                [SHELLY_EVENT.STATUS]: {
                     deny: [
                         '*:aenergy',
                         '*:consumption',
@@ -1232,7 +1675,13 @@ export async function connect(): Promise<void> {
             connecting = false;
             return;
         }
-        const user = await zitadelAuth.oidcAuth.mgr.getUser();
+        // A rejected getUser() (transient OIDC/network failure) must not leave
+        // `connecting` stuck true, or the guard above turns every later
+        // connect()/reconnect into a no-op until a full page reload.
+        const user = await zitadelAuth.oidcAuth.mgr.getUser().catch((err) => {
+            console.error('[WS] token fetch failed:', err);
+            return null;
+        });
         token = user?.access_token ?? null;
     }
 
@@ -1242,8 +1691,17 @@ export async function connect(): Promise<void> {
         return;
     }
 
-    const {getConnectStores} = await import('./websocketStores');
-    const connectStores = getConnectStores();
+    // A failed dynamic import (e.g. a stale chunk 404 after a deploy) must also
+    // reset `connecting`; otherwise reconnection wedges until a page reload.
+    const stores = await import('./websocketStores').catch((err) => {
+        console.error('[WS] websocketStores import failed:', err);
+        return null;
+    });
+    if (!stores) {
+        connecting = false;
+        return;
+    }
+    const connectStores = stores.getConnectStores();
     if (!connectStores.pinia) {
         console.warn('[WS] Pinia not ready, delaying websocket connect');
         connecting = false;
@@ -1337,27 +1795,27 @@ export async function connect(): Promise<void> {
                 const {method} = parsed;
 
                 switch (true) {
-                    case method === 'Shelly.OtaProgress':
+                    case method === SHELLY_EVENT.OTA_PROGRESS:
                         for (const cb of otaListeners)
                             cb(parsed.params as OtaEvent);
                         break;
 
-                    case method === 'BTHome.DiscoveryResult':
+                    case method === BTHOME_EVENT.DISCOVERY_RESULT:
                         for (const cb of bthDiscoveryListeners)
                             cb(parsed.params as BTHomeDiscoveryEvent);
                         break;
 
-                    case method === 'BTHome.DiscoveryDone':
+                    case method === BTHOME_EVENT.DISCOVERY_DONE:
                         for (const cb of bthDoneListeners)
                             cb(parsed.params as BTHomeDoneEvent);
                         break;
 
-                    case method === 'BTHome.ControlLearning':
+                    case method === BTHOME_EVENT.CONTROL_LEARNING:
                         for (const cb of bthControlLearningListeners)
                             cb(parsed.params as BTHomeControlLearningEvent);
                         break;
 
-                    case method === 'BTHome.ControlsUpdated':
+                    case method === BTHOME_EVENT.CONTROLS_UPDATED:
                         for (const cb of bthControlsUpdatedListeners)
                             cb(parsed.params as BTHomeControlsUpdatedEvent);
                         break;
@@ -1367,11 +1825,11 @@ export async function connect(): Promise<void> {
                     // no listener is registered. Ordered before the
                     // generic Shelly.* matcher so these don't fall into
                     // handleShellyEvents' default "unknown event" path.
-                    case method.startsWith('Shelly.Event.'):
+                    case method.startsWith(SHELLY_DEVICE_EVENT_PREFIX):
                         handleDeviceEvent(parsed);
                         break;
 
-                    case method.startsWith('Shelly.'):
+                    case method.startsWith(WS_PREFIX.SHELLY):
                         handleShellyEvents(parsed, devicesStore);
                         break;
 
@@ -1380,12 +1838,12 @@ export async function connect(): Promise<void> {
                     // device was already connected pre-accept), so refresh
                     // the devices store directly here instead of waiting
                     // on the 5s Mobile.SyncDelta debounce.
-                    case method === 'DeviceEvent.Change':
+                    case method === DEVICE_CHANGE_EVENT:
                         for (const cb of deviceChangeListeners)
                             cb(parsed as NamespacedEvent);
                         break;
 
-                    case method === 'WaitingRoomEvent.Accepted':
+                    case method === WAITING_ROOM_EVENT.ACCEPTED:
                         devicesStore.refreshDevicesInBackground(
                             'WS waiting-room'
                         );
@@ -1393,7 +1851,7 @@ export async function connect(): Promise<void> {
 
                     // Server lost our event stream mid-session and recreated it
                     // at the live tail — refetch full state to close the gap.
-                    case method === 'Session.ResyncRequired':
+                    case method === DIRECT_PUSH_EVENT.SESSION_RESYNC_REQUIRED:
                         notifyResyncRequired(
                             (parsed.params as {reason?: ResyncRequiredReason})
                                 ?.reason ?? 'stream_expired'
@@ -1404,11 +1862,11 @@ export async function connect(): Promise<void> {
                         handleEntityEvents(parsed, entitiesStore);
                         break;
 
-                    case method === 'NotifyEvent':
+                    case method === DEVICE_NOTIFY.EVENT:
                         handleComponentEvents(parsed);
                         break;
 
-                    case method === 'NotifyStatus': {
+                    case method === DEVICE_NOTIFY.STATUS: {
                         const params = parsed.params;
                         for (const [comp, listeners] of statusListeners) {
                             if (params[comp]) {
@@ -1418,65 +1876,116 @@ export async function connect(): Promise<void> {
                         break;
                     }
 
-                    case method === 'NotifyAuthChanged':
-                        // Backend tells us this user's roles / permissions
-                        // changed (grant, revoke, deactivate, PAT revoke).
-                        // Pull a fresh shape so UI gates flip immediately.
-                        void (async () => {
-                            const {getResyncStores} = await import(
-                                './websocketStores'
-                            );
-                            await getResyncStores().authStore?.fetchUserPermissions(
-                                {rerunIfBusy: true}
-                            );
-                        })();
+                    case method === DIRECT_PUSH_EVENT.AUTH_CHANGED:
+                        // Tenant-wide broadcast — coalesce bursts into one refetch.
+                        authChangedRefetch.schedule();
                         break;
 
-                    case method.startsWith('Console.'):
+                    case method.startsWith(WS_PREFIX.CONSOLE):
                         handleConsoleEvents(parsed, logStore);
                         break;
 
-                    case method.startsWith('Alert.'):
+                    // Rule CRUD routes to the alerts store, not the
+                    // instance listeners — ordered before the Alert. fan-out.
+                    case method === ALERT_EVENT.RULE_CREATED:
+                    case method === ALERT_EVENT.RULE_UPDATED:
+                    case method === ALERT_EVENT.RULE_DELETED:
+                        void handleAlertRuleEvent(parsed);
+                        break;
+
+                    case method.startsWith(WS_PREFIX.ALERT): {
+                        // Sweep bursts collapse into one coalesced refetch.
+                        const alertId = parsed.params?.alertId;
+                        if (typeof alertId === 'number')
+                            alertInstanceRefetch.schedule(alertId);
                         for (const cb of alertEventListeners)
                             cb(parsed as NamespacedEvent);
                         break;
+                    }
 
-                    case method.startsWith('Notification.'):
+                    case method.startsWith(WS_PREFIX.NOTIFICATION):
                         for (const cb of notificationEventListeners)
                             cb(parsed as NamespacedEvent);
                         break;
 
-                    case method.startsWith('Certificate.'):
+                    case method === CERTIFICATE_EVENT.CREATED:
+                    case method === CERTIFICATE_EVENT.UPDATED:
+                    case method === CERTIFICATE_EVENT.DELETED:
+                        void handleCertificateCrudEvent();
+                        break;
+
+                    case method.startsWith(WS_PREFIX.CERTIFICATE):
                         for (const cb of certificateEventListeners)
                             cb(parsed as NamespacedEvent);
                         break;
 
-                    case method.startsWith('Credential.'):
+                    case method === CREDENTIAL_EVENT.CHANGED:
+                        void handleCredentialChangedEvent();
+                        break;
+
+                    case method.startsWith(WS_PREFIX.CREDENTIAL):
                         for (const cb of credentialEventListeners)
                             cb(parsed as NamespacedEvent);
                         break;
 
-                    case method.startsWith('Job.'):
+                    case method.startsWith(WS_PREFIX.JOB):
                         for (const cb of jobEventListeners)
                             cb(parsed as NamespacedEvent);
                         break;
 
-                    case method.startsWith('Location.'):
+                    case method.startsWith(WS_PREFIX.LOCATION):
                         for (const cb of locationEventListeners)
                             cb(parsed as NamespacedEvent);
                         break;
 
-                    case method.startsWith('Dashboard.'):
+                    case method.startsWith(WS_PREFIX.DASHBOARD):
                         for (const cb of dashboardEventListeners)
                             cb(parsed as NamespacedEvent);
                         break;
 
-                    case method.startsWith('Report.'):
+                    case method.startsWith(WS_PREFIX.REPORT):
                         for (const cb of reportEventListeners)
                             cb(parsed as NamespacedEvent);
                         break;
 
-                    case method === 'Device.RelationshipsChanged':
+                    case method.startsWith(WS_PREFIX.VARIABLES):
+                        for (const cb of variablesEventListeners)
+                            cb(parsed as NamespacedEvent);
+                        break;
+
+                    case method.startsWith(WS_PREFIX.GROUP):
+                        void handleGroupEvent(parsed);
+                        break;
+
+                    case method.startsWith(WS_PREFIX.TAG):
+                        void handleTagEvent(parsed);
+                        break;
+
+                    case method.startsWith(WS_PREFIX.CHANNEL):
+                        void handleChannelEvent(parsed);
+                        break;
+
+                    case method.startsWith(WS_PREFIX.PERSONA):
+                        void handlePersonaEvent(parsed);
+                        break;
+
+                    case method.startsWith(WS_PREFIX.USER_GROUP):
+                        void handleUserGroupEvent(parsed);
+                        break;
+
+                    case method.startsWith(WS_PREFIX.USER):
+                        void handleUserEvent();
+                        break;
+
+                    case method.startsWith(WS_PREFIX.DESTINATION):
+                        void handleDestinationEvent(parsed);
+                        break;
+
+                    case method === ORGANIZATION_EVENT.PROFILE_UPDATED:
+                        void handleOrganizationProfileEvent();
+                        break;
+
+                    case method === DEVICE_EVENT.RELATIONSHIPS_CHANGED:
                         for (const cb of deviceRelationshipEventListeners)
                             cb(parsed as DeviceRelationshipChangedEvent);
                         break;
@@ -1583,59 +2092,62 @@ export function getRegistry(name: string) {
 
 const DEVICE_PAGE_SIZE = 1000;
 
-export async function listDevicesChunked(
-    onChunk: (devices: ShellyDeviceExternal[]) => void
-): Promise<void> {
-    // First chunk: get total count
-    const first = await sendRPC<{items: ShellyDeviceExternal[]; total: number}>(
+interface DeviceListPage {
+    items: ShellyDeviceExternal[];
+    total: number;
+}
+
+function requireDeviceListPage(
+    value: unknown,
+    expectedTotal?: number
+): DeviceListPage {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error('Device.List returned an invalid page');
+    }
+    const page = value as Partial<DeviceListPage>;
+    if (!Array.isArray(page.items) || !Number.isInteger(page.total) || page.total! < 0) {
+        throw new Error('Device.List returned an invalid page');
+    }
+    if (expectedTotal !== undefined && page.total !== expectedTotal) {
+        throw new Error('Device.List changed during pagination');
+    }
+    return page as DeviceListPage;
+}
+
+export async function listDevicesSnapshot(): Promise<ShellyDeviceExternal[]> {
+    const firstResult = await sendRPC<DeviceListPage | ShellyDeviceExternal[]>(
         'FLEET_MANAGER',
         'device.list',
         {limit: DEVICE_PAGE_SIZE, offset: 0}
     );
 
-    if (!first || !Array.isArray(first.items)) {
-        // Fallback: backend returned old format (plain array)
-        if (Array.isArray(first)) {
-            onChunk(first as unknown as ShellyDeviceExternal[]);
-        }
-        return;
+    if (Array.isArray(firstResult)) {
+        return firstResult;
     }
 
-    if (first.items.length > 0) {
-        onChunk(first.items);
-    }
-
-    // Fire all remaining chunks in parallel
-    const remaining = first.total - first.items.length;
-    if (remaining <= 0) return;
-
-    const chunkPromises: Promise<void>[] = [];
+    const first = requireDeviceListPage(firstResult);
+    const pagePromises: Promise<DeviceListPage>[] = [];
     for (
         let offset = DEVICE_PAGE_SIZE;
         offset < first.total;
         offset += DEVICE_PAGE_SIZE
     ) {
-        chunkPromises.push(
-            sendRPC<{items: ShellyDeviceExternal[]; total: number}>(
+        pagePromises.push(
+            sendRPC<DeviceListPage>(
                 'FLEET_MANAGER',
                 'device.list',
                 {limit: DEVICE_PAGE_SIZE, offset}
-            )
-                .then((res) => {
-                    if (res?.items?.length > 0) {
-                        onChunk(res.items);
-                    }
-                })
-                .catch((err) => {
-                    if (import.meta.env.DEV)
-                        console.warn(
-                            `[listDevicesChunked] Chunk at offset ${offset} failed:`,
-                            err
-                        );
-                })
+            ).then((page) => requireDeviceListPage(page, first.total))
         );
     }
-    await Promise.all(chunkPromises);
+
+    const pages = await Promise.all(pagePromises);
+    const devices = [first, ...pages].flatMap((page) => page.items);
+    const ids = new Set(devices.map((device) => device.shellyID));
+    if (devices.length !== first.total || ids.size !== first.total) {
+        throw new Error('Device.List returned an incomplete snapshot');
+    }
+    return devices;
 }
 
 export async function listEntities(): Promise<Record<string, entity_t>> {
@@ -1795,6 +2307,27 @@ function cancelConnectLoads() {
     }
 }
 
+// Each NotifyAuthChanged re-arms this; one refetch runs after the quiet gap.
+const AUTH_CHANGED_QUIET_MS = 2000;
+const authChangedRefetch = createTrailingCoalescer(() => {
+    void (async () => {
+        const {getResyncStores} = await loadWebsocketStores();
+        await getResyncStores().authStore?.fetchUserPermissions({
+            rerunIfBusy: true
+        });
+    })();
+}, AUTH_CHANGED_QUIET_MS);
+
+// A stale refetch timer must not fire into the next session.
+function cancelCoalescedRefetches() {
+    authChangedRefetch.cancel();
+    alertInstanceRefetch.cancel();
+    groupMembersRefetch.cancel();
+    tagAssignmentRefetch.cancel();
+    userGroupMembersRefetch.cancel();
+    destinationMembersRefetch.cancel();
+}
+
 let resyncInProgress = false;
 
 function scheduleResync() {
@@ -1829,15 +2362,15 @@ async function runResync() {
         resyncFailCount = 0;
     } catch (e) {
         resyncFailCount++;
-        logResyncFailure('periodic', e);
+        logRecoverableFailure('[WS] periodic device re-sync failed:', e);
     } finally {
         resyncInProgress = false;
         if (connected) scheduleResync();
     }
 }
 
-function logResyncFailure(source: string, error: unknown): void {
-    const message = `[WS] ${source} device re-sync failed:`;
+// Reconnect blips are expected — warn; anything else is a real error.
+function logRecoverableFailure(message: string, error: unknown): void {
     if (isRecoverableReconnectError(error)) {
         console.warn(message, error);
         return;
@@ -1871,14 +2404,21 @@ function onConnect() {
         void (async () => {
             try {
                 const {getResyncStores} = await import('./websocketStores');
-                const {authStore, jobsStore} = getResyncStores();
+                const {authStore, jobsStore, alertsStore, notificationsStore} =
+                    getResyncStores();
                 await authStore?.fetchUserPermissions();
                 await jobsStore?.restoreActive();
+                // Alerts and inbox move while disconnected; both fetches
+                // are guarded latest-wins reads.
+                await alertsStore?.fetchInstances();
+                await notificationsStore?.fetchInbox();
             } catch (err) {
                 console.warn('[WS] reconnect restore failed:', err);
             }
         })();
     }
+    // Server dropped per-connection temp subs on close — re-issue them.
+    restoreTemporarySubscriptions();
     // Preload small registries FIRST — they complete in <100ms and make
     // page navigation instant. Must fire before heavy device/entity loads
     // which saturate the WS pipe for 2-3 seconds.
@@ -1931,6 +2471,9 @@ const MAX_AUTH_RETRIES = 1;
 
 async function handleAuthRejection() {
     cancelConnectLoads();
+    cancelCoalescedRefetches();
+    // 4401/4001 closes bypass onClose() — the server ids are dead here too.
+    invalidateTemporarySubscriptions();
     lastDisconnectTs = Date.now();
 
     // Reject pending RPCs — they won't get responses
@@ -2017,9 +2560,11 @@ function scheduleReconnect() {
 
 function onClose() {
     cancelConnectLoads();
+    cancelCoalescedRefetches();
     stopResyncInterval();
-    // Subscriptions are per-handle now; on disconnect the server already
-    // drops them, and the per-component handle becomes a no-op on dispose.
+    // The server drops per-connection subscriptions on close; the registry
+    // re-issues every live temp sub in onConnect() after the reconnect.
+    invalidateTemporarySubscriptions();
     preloadCache.clear();
     lastDisconnectTs = Date.now();
     // Reject all pending RPCs immediately — they can never receive a response
@@ -2068,7 +2613,7 @@ if (typeof document !== 'undefined') {
             if (!authStore.loggedIn) return;
             await devicesStore.fetchDevices();
         } catch (e) {
-            logResyncFailure('visible-tab', e);
+            logRecoverableFailure('[WS] visible-tab device re-sync failed:', e);
         } finally {
             resyncInProgress = false;
         }

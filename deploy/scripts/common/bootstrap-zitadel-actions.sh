@@ -167,9 +167,19 @@ ensure_target "Grant" "$GRANT_TARGET_NAME" "$GRANT_WEBHOOK_ENDPOINT" \
     CACHED_GRANT_TARGET_ID CACHED_GRANT_SIGNING_KEY \
     GRANT_TARGET_ID GRANT_SIGNING_KEY
 
-bind_event_execution "$ZITADEL_EVT_USER_REMOVED" "$GDPR_TARGET_ID"
-bind_event_execution "$ZITADEL_EVT_USER_GRANT_REMOVED" "$GRANT_TARGET_ID"
-bind_event_execution "$ZITADEL_EVT_USER_GRANT_CASCADE_REMOVED" "$GRANT_TARGET_ID"
+for binding in "${ZITADEL_ACTION_BINDINGS[@]}"; do
+    lane="${binding%%:*}"
+    event="${binding#*:}"
+    case "$lane" in
+        gdpr) target_id="$GDPR_TARGET_ID" ;;
+        grant) target_id="$GRANT_TARGET_ID" ;;
+        *)
+            echo "ERROR: unknown Action V2 binding lane: $lane" >&2
+            exit 1
+            ;;
+    esac
+    bind_event_execution "$event" "$target_id"
+done
 
 # Persist target IDs + signing keys to the existing zitadel.env state file
 # (replaces lines if present, appends if absent).

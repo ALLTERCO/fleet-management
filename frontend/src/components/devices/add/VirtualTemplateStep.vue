@@ -36,10 +36,9 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onMounted} from 'vue';
 import type {VirtualDeviceProfile} from '@host/virtualDevices';
+import {computed, onMounted} from 'vue';
 import Spinner from '@/components/core/Spinner.vue';
-import {useVirtualDeviceDraftStore} from '@/stores/virtualDeviceDraftStore';
 import {
     MANUAL_TEMPLATE,
     MANUAL_TEMPLATE_KEY,
@@ -49,6 +48,7 @@ import {
     templateMeta,
     type VirtualTemplateMeta
 } from '@/helpers/virtualDeviceTemplates';
+import {useVirtualDeviceDraftStore} from '@/stores/virtualDeviceDraftStore';
 
 interface TemplateItem {
     key: string;
@@ -116,7 +116,7 @@ function accentStyle(accent: string): Record<string, string> {
 }
 
 .vts__head h4 {
-    font-size: var(--type-title);
+    font-size: var(--type-subheading);
     color: var(--color-text-primary);
 }
 

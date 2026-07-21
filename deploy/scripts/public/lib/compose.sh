@@ -153,6 +153,12 @@ compose_cmd() {
     done
     debug "Compose files: ${file_names}"
 
+    # FM_SKIP_IMAGE_PULL reuses local images: skip registry pulls entirely.
+    if [ "${FM_SKIP_IMAGE_PULL:-}" = "true" ] && [ "${1:-}" = "pull" ]; then
+        debug "Skipping compose pull (FM_SKIP_IMAGE_PULL=true)"
+        return 0
+    fi
+
     docker compose \
         -p "$COMPOSE_PROJECT_NAME" \
         "${env_args[@]}" \

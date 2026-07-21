@@ -111,7 +111,7 @@ function ariaAttrs(value: ChannelType): {
     }
 
     .ctp__label {
-        font-size: var(--type-micro);
+        font-size: var(--type-caption);
     }
 }
 </style>

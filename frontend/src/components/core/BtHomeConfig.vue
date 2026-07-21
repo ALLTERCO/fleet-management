@@ -4,7 +4,7 @@
         <div v-if="loading" class="bth__loading"><Spinner size="sm" /></div>
 
         <div v-else-if="pairedDevices.length > 0" class="bth__section">
-            <div class="bth__section-header">Paired Devices ({{ pairedDevices.length }})</div>
+            <div class="bth__section-header">Paired devices ({{ pairedDevices.length }})</div>
             <div class="bth__list">
                 <div v-for="dev in pairedDevices" :key="dev.id" class="bth__device">
                     <div class="bth__device-row" @click="toggleExpand(dev.id)">
@@ -83,11 +83,15 @@
                 </div>
             </div>
         </div>
-        <div v-else class="bth__empty">No paired BLE devices.</div>
+        <div v-else class="cfg-panel__empty">
+            <i class="fab fa-bluetooth-b" aria-hidden="true" />
+            <strong>No devices assigned yet</strong>
+            <span>Pair nearby Bluetooth sensors and remotes to this device.</span>
+        </div>
 
         <!-- Add device -->
         <div class="bth__section">
-            <div class="bth__section-header">Add Device</div>
+            <div class="bth__section-header">Add device</div>
             <div class="bth__add-row">
                 <input
                     v-model="newDeviceAddr"
@@ -98,16 +102,41 @@
                 <Button type="blue" size="sm" :loading="addingDevice" @click="addDevice">
                     Pair
                 </Button>
+                <Button type="blue-hollow" size="sm" :loading="scanning" :disabled="scanning" @click="startScan">
+                    <template v-if="scanning">Scanning...</template>
+                    <template v-else>Scan for devices</template>
+                </Button>
             </div>
 
-            <Button type="blue-hollow" size="sm" :loading="scanning" :disabled="scanning" @click="startScan">
-                <template v-if="scanning">Scanning...</template>
-                <template v-else>Scan for BLE Devices</template>
-            </Button>
+            <!-- Discovered devices from scan -->
+            <div v-if="discoveredDevices.length > 0" class="bth__discovered">
+                <div class="bth__section-header">Discovered ({{ discoveredDevices.length }})</div>
+                <div class="bth__list">
+                    <div v-for="dev in discoveredDevices" :key="dev.mac" class="bth__device">
+                        <div class="bth__device-row">
+                            <i class="fab fa-bluetooth-b bth__bt-icon bth__bt-icon--discovered" />
+                            <div class="bth__device-info">
+                                <span class="bth__device-name">{{ getDiscoveredDeviceTitle(dev) }}</span>
+                                <span class="bth__device-addr">{{ getDiscoveredDeviceDetails(dev) }}</span>
+                            </div>
+                            <span v-if="dev.isRemote" class="bth__device-badge" title="Supports BLE Controls learning">
+                                <i class="fas fa-graduation-cap" /> Controls
+                            </span>
+                            <span v-if="dev.rssi != null" class="bth__device-badge" :title="`RSSI: ${dev.rssi} dBm`">
+                                <i class="fas fa-signal" /> {{ dev.rssi }}
+                            </span>
+                            <Button type="blue" size="sm" :loading="pairingMac === dev.mac" :disabled="!!pairingMac" @click="pairDiscovered(dev.mac)">
+                                Pair
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
             <!-- BLE Controls: learned remote bindings + learn new -->
             <div v-if="deviceInputs.length > 0 && (hasRemoteDevices || controlBindings.length > 0)" class="bth__section">
-                <div class="bth__section-header">BLE Controls</div>
+                <div class="bth__section-header">BLE controls</div>
 
                 <!-- Existing bindings from device -->
                 <div v-if="loadingControls" class="bth__loading"><Spinner size="sm" /></div>
@@ -164,36 +193,12 @@
                 </div>
             </div>
 
-            <!-- Discovered devices from scan -->
-            <div v-if="discoveredDevices.length > 0" class="bth__discovered">
-                <div class="bth__section-header">Discovered ({{ discoveredDevices.length }})</div>
-                <div class="bth__list">
-                    <div v-for="dev in discoveredDevices" :key="dev.mac" class="bth__device">
-                        <div class="bth__device-row">
-                            <i class="fab fa-bluetooth-b bth__bt-icon bth__bt-icon--discovered" />
-                            <div class="bth__device-info">
-                                <span class="bth__device-name">{{ getDiscoveredDeviceTitle(dev) }}</span>
-                                <span class="bth__device-addr">{{ getDiscoveredDeviceDetails(dev) }}</span>
-                            </div>
-                            <span v-if="dev.isRemote" class="bth__device-badge" title="Supports BLE Controls learning">
-                                <i class="fas fa-graduation-cap" /> Controls
-                            </span>
-                            <span v-if="dev.rssi != null" class="bth__device-badge" :title="`RSSI: ${dev.rssi} dBm`">
-                                <i class="fas fa-signal" /> {{ dev.rssi }}
-                            </span>
-                            <Button type="blue" size="sm" :loading="pairingMac === dev.mac" :disabled="!!pairingMac" @click="pairDiscovered(dev.mac)">
-                                Pair
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
     </div>
 </template>
 
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, ref, watch} from 'vue';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {bluetoothDevices} from '@/shell/template-host';
 import {useDevicesStore} from '@/stores/devices';
 import {useEntityStore} from '@/stores/entities';
@@ -497,7 +502,7 @@ async function refreshExpandedObjects(id: number) {
         }));
     } catch (err: any) {
         if (requestId !== expandRequestId) return;
-        toast.error(err?.message ?? 'Failed to load objects');
+        toast.error(rpcErrorMessage(err, 'Failed to load objects'));
         knownObjects.value = [];
     } finally {
         if (requestId === expandRequestId) loadingObjects.value = false;
@@ -531,7 +536,7 @@ async function addDevice() {
         await waitForSettingsUpdate();
         await loadPairedDevices();
     } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to pair device');
+        toast.error(rpcErrorMessage(err, 'Failed to pair device'));
     } finally {
         addingDevice.value = false;
     }
@@ -555,7 +560,7 @@ async function deleteDevice(id: number) {
         // Optimistic removal — Shelly.Settings event doesn't fire for component_removed
         pairedDevices.value = pairedDevices.value.filter((d) => d.id !== id);
     } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to remove device');
+        toast.error(rpcErrorMessage(err, 'Failed to remove device'));
         // Reload to restore the correct state
         await loadPairedDevices();
     }
@@ -574,7 +579,7 @@ async function renameDevice(dev: PairedDevice) {
         await waitForSettingsUpdate();
         await loadPairedDevices();
     } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to rename device');
+        toast.error(rpcErrorMessage(err, 'Failed to rename device'));
     }
 }
 
@@ -616,7 +621,7 @@ async function addAllSensors(dev: PairedDevice) {
             toast.error(firstError);
         }
     } catch (err: any) {
-        toast.error(err?.message ?? `Failed after adding ${added} sensors`);
+        toast.error(rpcErrorMessage(err, `Failed after adding ${added} sensors`));
         if (added > 0) {
             await refreshExpandedObjects(dev.id);
             dev.sensorCount += added;
@@ -676,7 +681,7 @@ async function deleteSensor(obj: KnownObj) {
         if (parentDev)
             parentDev.sensorCount = Math.max(0, parentDev.sensorCount - 1);
     } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to remove sensor');
+        toast.error(rpcErrorMessage(err, 'Failed to remove sensor'));
         // Refresh to restore correct state
         if (expandedDevice.value != null)
             await refreshExpandedObjects(expandedDevice.value);
@@ -761,7 +766,7 @@ async function startLearning() {
         // No local state change — backend emits BTHome.ControlLearning which
         // our subscription below picks up and drives the UI.
     } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to start learning');
+        toast.error(rpcErrorMessage(err, 'Failed to start learning'));
     } finally {
         learningStarting.value = false;
     }
@@ -773,7 +778,7 @@ async function stopLearning() {
             shellyID: props.shellyID
         });
     } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to stop learning');
+        toast.error(rpcErrorMessage(err, 'Failed to stop learning'));
     }
 }
 
@@ -824,7 +829,7 @@ async function deleteControl(id: number) {
         toast.info('Control binding removed');
         await loadControls();
     } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to remove control');
+        toast.error(rpcErrorMessage(err, 'Failed to remove control'));
     }
 }
 
@@ -844,7 +849,7 @@ async function setDeviceKey(dev: PairedDevice) {
         });
         toast.success('Encryption key updated');
     } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to set key');
+        toast.error(rpcErrorMessage(err, 'Failed to set key'));
     }
 }
 
@@ -936,7 +941,7 @@ async function startScan() {
             }
         }, 12000);
     } catch (err: any) {
-        toast.error(err?.message ?? 'Scan failed');
+        toast.error(rpcErrorMessage(err, 'Scan failed'));
         scanning.value = false;
         stopDiscoveryListeners();
         if (scanTimer) {
@@ -977,7 +982,7 @@ async function pairDiscovered(mac: string) {
             await loadPairedDevices();
         }
     } catch (err: any) {
-        toast.error(err?.message ?? 'Failed to pair device');
+        toast.error(rpcErrorMessage(err, 'Failed to pair device'));
     } finally {
         pairingMac.value = null;
     }
@@ -1084,18 +1089,21 @@ watch(
     gap: var(--space-3);
 }
 
+/* Section cards — same rounded-card language as the other settings pages. */
 .bth__section {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+    padding: var(--space-2) var(--space-4) var(--space-3);
+    border: var(--space-px) solid var(--color-border-default);
+    border-radius: var(--radius-xl);
+    background: var(--color-surface-0);
 }
 
 .bth__section-header {
     font-size: var(--type-body);
-    font-weight: var(--font-black);
-    color: var(--color-text-disabled);
-    text-transform: none;
-    letter-spacing: normal;
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
 }
 
 .bth__list {

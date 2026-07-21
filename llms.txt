@@ -1,0 +1,24 @@
+# Shelly Fleet Manager AI Context
+
+Use this file as the small entrypoint before reading large docs.
+
+## Start Here
+
+- ai-index: docs/generated/ai-index.json — Start here before reading large generated files.
+- openapi: docs/generated/api.openapi.json — Use for exact params, responses, operation ids, and Scalar/MCP API tooling.
+- api-catalog: docs/generated/api-catalog.json — Use get_api_method (MCP) for one method; read this file only for bulk analysis.
+- host-contract: frontend/src/shell/template-host/generated/contract.ts — Use when building UI/template calls so the UI depends on the host layer, not raw backend details.
+- host-sdk: frontend/src/shell/template-host/index.ts — Use to discover the supported UI-facing domains and helpers.
+- host-sdk-index: docs/generated/host-sdk-index.json — Use to find the right @host domain before touching UI/template code.
+- ai-and-mcp-reference: docs/reference/ai-and-mcp.md — Use before UI, docs, or MCP work so agents follow the right contract layer.
+- deployment-guide: deploy/public/deployment.md — Use for Fleet Manager install/deploy commands and deploy.sh parameters.
+- separate-ui-host-sdk-guide: docs/reference/separate-ui-host-sdk.md — Use before building a separate UI, BM template UI, or Host SDK adapter.
+- docs-readme: docs/README.md — Use before creating or moving documentation.
+
+## Main Rule
+
+Use Host SDK for UI/multi-UI work; use backend RPC/OpenAPI for backend/API contracts.
+
+## MCP Direction
+
+Fleet Manager MCP provides local read-only documentation over stdio and authenticated, governed operations through POST /mcp on a running instance.

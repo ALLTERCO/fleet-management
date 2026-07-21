@@ -169,7 +169,7 @@ function select(key: string) {
     align-items: center;
     justify-content: center;
     color: var(--color-danger-text);
-    font-size: var(--icon-size-2xs);
+    font-size: var(--type-caption);
 }
 
 .mtr__badge {

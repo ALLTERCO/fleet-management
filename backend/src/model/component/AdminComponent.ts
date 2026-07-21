@@ -3,17 +3,20 @@
  * belong to any domain component:
  *   - Admin.ListCommands — enumerate every registered RPC surface
  *   - Admin.PostgresCall — allowlisted DB function dispatcher (admin)
+ *   - Admin.ReconcileDevices — register store devices not yet in memory
  *
  * Permissions: `mapLegacyComponentName('admin')` returns null so every
- * method carries an explicit decorator. PostgresCall requires admin;
- * ListCommands is @ReadOnly.
+ * method carries an explicit decorator. PostgresCall requires platform
+ * admin; ReconcileDevices requires tenant admin; ListCommands is @ReadOnly.
  *
  * Device RPC relay lives on `Device.Call` — Admin.SendRPC was removed.
  */
 
 import {
+    canCrossOrganizationBoundary,
     canUseAuthenticatedRead,
-    canUsePlatformAdmin
+    canUsePlatformAdmin,
+    canUseTenantAdmin
 } from '../../modules/authz/evaluator';
 import * as Commander from '../../modules/Commander';
 import * as PostgresProvider from '../../modules/PostgresProvider';
@@ -25,9 +28,12 @@ import {
     ADMIN_DESCRIBE,
     ADMIN_LIST_COMMANDS_PARAMS_SCHEMA,
     ADMIN_POSTGRES_CALL_PARAMS_SCHEMA,
+    ADMIN_RECONCILE_DEVICES_PARAMS_SCHEMA,
     type AdminListCommandsParams,
-    type AdminPostgresCallParams
+    type AdminPostgresCallParams,
+    type AdminReconcileDevicesParams
 } from '../../types/api/admin';
+import type CommandSender from '../CommandSender';
 import Component from './Component';
 
 const ALLOWED_POSTGRES_PROVIDER_METHODS = new Set([
@@ -108,5 +114,29 @@ export default class AdminComponent extends Component {
         } catch (err: unknown) {
             throw RpcError.OperationFailed(`PostgresCall "${v.name}"`, err);
         }
+    }
+
+    // Register saved devices not yet in memory. A running FM only loads
+    // devices from the store at boot, so rows inserted out-of-band (demo
+    // seed, admin tooling) stay invisible until a restart; this picks them
+    // up live without disturbing already-connected devices.
+    @Component.Expose('ReconcileDevices')
+    @Component.CheckPermissions(canUseTenantAdmin)
+    async reconcileDevices(params: unknown, sender: CommandSender) {
+        validateOrThrow<AdminReconcileDevicesParams>(
+            params,
+            ADMIN_RECONCILE_DEVICES_PARAMS_SCHEMA
+        );
+        // Scope to the caller's org so a tenant admin cannot register another
+        // tenant's devices. Only a cross-org-privileged caller reconciles the
+        // whole store (falling back to the deployment pin when unset).
+        const orgId = canCrossOrganizationBoundary(sender)
+            ? undefined
+            : sender.getOrganizationId();
+        const registered = await PostgresProvider.loadSavedDevices({
+            skipRegistered: true,
+            orgId
+        });
+        return {registered};
     }
 }

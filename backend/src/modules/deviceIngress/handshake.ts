@@ -1,3 +1,4 @@
+import type {WaitingAuthMethod} from '../../modules/redis/ports';
 import type {
     DeviceIngressProfileId,
     DeviceIngressRejectionReason,
@@ -31,6 +32,10 @@ export interface WaitingRoomCandidate {
     reportedExternalId: string;
     observedTransport: DeviceIngressTransport;
     securityModel: DeviceIngressSecurityModel;
+    // What the device actually presented at handshake — 'none' for a
+    // credential-less device. Distinct from securityModel (the model it will
+    // use once approved): a gate-less device is 'direct_token' but 'none' here.
+    authMethod: WaitingAuthMethod;
     riskLevel: DeviceIngressRiskLevel;
     // Layer 2: cert chains to the FM CA — flag for one-click approve.
     trustedCa: boolean;
@@ -217,6 +222,7 @@ function enrollmentWaitingRoom(
             reportedExternalId: fallbackId(input),
             observedTransport: input.observedTransport,
             securityModel: 'direct_token',
+            authMethod: 'token',
             riskLevel: riskForIngress({
                 securityModel: 'direct_token',
                 transport: input.observedTransport
@@ -317,6 +323,7 @@ async function trustedCaEvaluation(
             reportedExternalId: fallbackId(input),
             observedTransport: input.observedTransport,
             securityModel: 'certificate',
+            authMethod: 'certificate',
             riskLevel: 'strong',
             trustedCa: true,
             organizationId
@@ -403,6 +410,7 @@ function unknownCredentialEvaluation(
             reportedExternalId: fallbackId(input),
             observedTransport: input.observedTransport,
             securityModel: 'direct_token',
+            authMethod: 'none',
             riskLevel: riskForIngress({
                 securityModel: 'direct_token',
                 transport: input.observedTransport

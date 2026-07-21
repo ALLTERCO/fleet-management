@@ -95,9 +95,13 @@ const emptySub = computed(() => {
 function filterDevice(device: shelly_device_t) {
     if (!isDiscovered(device.shellyID)) return false;
     if (nameFilter.value.length > 1) {
-        return device.info.name
-            .toLowerCase()
-            .includes(nameFilter.value.toLowerCase());
+        // A freshly-discovered device commonly has no name yet; guard the
+        // string access so a search doesn't crash the list render.
+        const name = device.info?.name;
+        return (
+            typeof name === 'string' &&
+            name.toLowerCase().includes(nameFilter.value.toLowerCase())
+        );
     }
     return true;
 }

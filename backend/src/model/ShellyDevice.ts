@@ -2,30 +2,26 @@ import * as log4js from 'log4js';
 import {tuning} from '../config';
 import {
     BLU_DEVICES,
-    type BTHomeControlKind,
     type BTHomeSensorSample,
     bthomeObjectInfos,
     collectBTHomeKnownObjectSamples,
     findConfiguredBTHomeSensor,
-    formatBTHomeChannelLabel,
     formatBTHomeControlLabel,
-    formatBTHomeEventName,
     formatBTHomeEventSummary,
     getBTHomeControlKind,
-    getBTHomeEventSourceLabel,
-    isBTHomeControlObjectId,
     isBTHomeDeviceLevelObjectId,
     normalizeBTHomeComponentConfig,
     normalizeBTHomeComponentConfigs,
     pickBTHomeSensorComponentId,
     pickFreeReservedBTHomeId,
     resolveBluDeviceInfo,
-    resolveBluDeviceName,
+    resolveBluSensorOverride,
     resolveBTHomeSensorSample,
     resolveModelNumericId,
     rememberBTHomeSensorSample as storeBTHomeSensorSample
 } from '../config/BTHomeData';
 import {BoundedMap} from '../modules/boundedMap';
+import {lookupBTHomeEnergy} from '../modules/bthomeSpec';
 import {
     appendDeviceSnapshot,
     appendDeviceSnapshotBestEffort
@@ -37,12 +33,30 @@ import {
     getBTHomeGatewayEventObjIds,
     proposeEntities
 } from '../modules/EntityComposer';
-import {getDeviceOrg} from '../modules/EventDistributor';
+import {
+    getBluetoothInventoryVersion,
+    getDeviceOrg
+} from '../modules/EventDistributor';
 import * as Observability from '../modules/Observability';
-import {store} from '../modules/PostgresProvider';
+import {rawCall, store} from '../modules/PostgresProvider';
 import * as ShellyEvents from '../modules/ShellyEvents';
-import {handleMessage} from '../modules/ShellyMessageHandler';
+import {
+    enqueueStatusValues,
+    handleMessage,
+    routeEnergyRow,
+    type StatusValueInput
+} from '../modules/ShellyMessageHandler';
+import {
+    appendEvents,
+    appendNumeric,
+    classifyBthomeObj,
+    type EventRow,
+    type NumericRow,
+    type SensorSource
+} from '../modules/sensorCapture';
+import {fireAndForget} from '../modules/util/fireAndForget';
 import {runBoundedParallel} from '../modules/util/runBoundedParallel';
+import {resolveBluetoothSourceTargets} from '../modules/virtualDevice/bluetoothProvenance';
 import type {
     BTHomeControlBinding,
     BTHomeLearningState,
@@ -59,24 +73,78 @@ import {
     hasUnpromotedBluChild,
     reconcileBluChildrenForDevice
 } from './bluChildReconcile';
+import {
+    type BTHomeActionEvent,
+    type BTHomeChildSensor,
+    type BTHomeRuntimeEvent,
+    buildBTHomeOverview,
+    firstNonEmptyString,
+    formatBTHomeSensorDisplayValue,
+    type NormalizedBTHomeControl,
+    normalizeBTHomeChannel
+} from './bthome/bthomeOverview';
 import type RpcTransport from './transport/RpcTransport';
 
 const logger = log4js.getLogger('device');
 
 const BTHOME_ACTIVE_EVENT_WINDOW_MS = 4000;
+const BTHOME_TELEMETRY_TARGET_CACHE_TTL_MS = 5 * 60 * 1000;
+
+// Ecowitt WS90 — the one BLU model that gets its own telemetry source tag
+// instead of generic 'blu' (stable model string, BTHomeData.BLU_DEVICES).
+const WEATHER_STATION_MODEL_ID = 'SBWS-90CM';
+
+// BTHomeSensor.GetStatus reports binary values as boolean; numeric 0/1
+// accepted in case firmware ever reports pre-coerced. Anything else (a
+// 'text'/'raw' BTHome object routed here by mistake) isn't a valid binary
+// reading — skip rather than guess.
+function toBTHomeBinaryState(value: unknown): number | null {
+    if (typeof value === 'boolean') return value ? 1 : 0;
+    if (value === 0 || value === 1) return value;
+    return null;
+}
+
+// Where one BTHome sensor reading goes: the energy pipeline (device_em, for
+// MCB/electrical obj_ids), the device_sensor store (with the resolved kind +
+// store), or nowhere (unclassifiable). Pure — no device access — so the
+// per-model overrides (WS90, TRV) are unit-testable without a live device.
+export type BTHomeSensorCaptureDecision =
+    | {route: 'energy'}
+    | {route: 'sensor'; kind: string; store: 'numeric' | 'events'}
+    | {route: 'skip'};
+
+export function decideBTHomeSensorCapture(
+    objId: number,
+    model: string | undefined,
+    idx: number | undefined
+): BTHomeSensorCaptureDecision {
+    const override = resolveBluSensorOverride(model, objId, idx);
+    // Electrical readings (MCB voltage/current/power/energy) belong to the
+    // energy pipeline, the single home for electrical data — never
+    // device_sensor. A model override can pull a specific obj_id back out
+    // (WS90's own capacitor voltage rides the generic voltage obj_id).
+    if (!override?.excludeFromEnergy && lookupBTHomeEnergy(objId)) {
+        return {route: 'energy'};
+    }
+    // An override only renames the kind — the store (numeric vs. event) is
+    // still the obj_id's own real type, so it stays in one home
+    // (bthomeObjectInfos) rather than being redeclared per override.
+    const hit = override
+        ? {kind: override.kind, store: bthomeSensorStore(objId)}
+        : classifyBthomeObj(objId);
+    return hit
+        ? {route: 'sensor', kind: hit.kind, store: hit.store}
+        : {route: 'skip'};
+}
+
+function bthomeSensorStore(objId: number): 'numeric' | 'events' {
+    return bthomeObjectInfos[objId]?.type === 'binary_sensor'
+        ? 'events'
+        : 'numeric';
+}
 
 // Pair-flow timing lives in the tuning config (FM_BTHOME_PAIR_* env vars)
 // so ops can raise timeouts in noisy-BLE environments without a code change.
-type BTHomeActionEvent =
-    | 'single_push'
-    | 'double_push'
-    | 'triple_push'
-    | 'long_push'
-    | 'long_double_push'
-    | 'long_triple_push'
-    | 'rotate_left'
-    | 'rotate_right'
-    | 'hold_press'; // BLU Wall EU/US 4-button devices, fw 1.0.23+
 
 type BTHomeDiscoveryRecord = {
     addr: string;
@@ -89,21 +157,28 @@ type BTHomeDiscoveryRecord = {
     ts?: number;
 };
 
-type BTHomeRuntimeEvent = {
-    event: BTHomeActionEvent;
-    idx: number | null;
-    channel: number | null;
-    ts: number | null;
-    activeUntilMs: number;
+type BTHomeEventSensor = {
+    id?: number;
+    value?: any;
+    last_updated_ts?: number;
 };
 
-function normalizeBTHomeChannel(value: unknown): number | null {
-    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-        return null;
-    }
+type BTHomeTelemetryFact = {
+    bthomeDeviceKey: string;
+    sensor: BTHomeEventSensor;
+    objId: number;
+    idx: number;
+    previousValue: unknown;
+    sourceComponentKey: string;
+};
 
-    return Math.trunc(value);
-}
+type BTHomeCaptureContext = {
+    objId: number;
+    idx: number;
+    deviceId: number;
+    deviceShellyID: string;
+    previousValue: unknown;
+};
 
 export default class ShellyDevice extends AbstractDevice {
     #persistTimer?: ReturnType<typeof setTimeout>;
@@ -117,6 +192,18 @@ export default class ShellyDevice extends AbstractDevice {
     // spoofed discovery broadcasts can't grow it without limit.
     #bthomeDiscovery = new BoundedMap<string, BTHomeDiscoveryRecord>({
         maxSize: tuning.bthome.discoveryCacheMax
+    });
+    #bthomeTelemetryTargetIds = new BoundedMap<
+        string,
+        {
+            version: number;
+            deviceId: number;
+            externalId: string;
+            organizationId: string;
+        }
+    >({
+        maxSize: tuning.bthome.discoveryCacheMax,
+        ttlMs: BTHOME_TELEMETRY_TARGET_CACHE_TTL_MS
     });
     #bthomeRuntimeEvents = new Map<string, BTHomeRuntimeEvent>();
     #bthomeRuntimeTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -158,6 +245,7 @@ export default class ShellyDevice extends AbstractDevice {
 
         stripPersistedBTHomeRuntimeStatus(this.status);
         this.hydrateBTHomeSensorSamplesInMemory();
+        this.hydrateBTHomeSensorDisplayValues();
         this.hydrateBTHomeOverviewsInMemory();
         if (transport) {
             // Label the socket so post-onboard slow-command timings name the device.
@@ -183,15 +271,18 @@ export default class ShellyDevice extends AbstractDevice {
                 clearTimeout(this.#persistTimer);
                 this.#persistTimer = undefined;
             }
-            void this.#persistState().finally(() => {
-                this.#bluFastPersistPending = false;
-            });
+            fireAndForget(
+                'device-persist',
+                this.#persistState().finally(() => {
+                    this.#bluFastPersistPending = false;
+                })
+            );
             return;
         }
         if (this.#persistTimer) return;
         this.#persistTimer = setTimeout(() => {
             this.#persistTimer = undefined;
-            this.#persistState();
+            fireAndForget('device-persist', this.#persistState());
         }, tuning.dashboard.persistDebounceMs);
     }
 
@@ -239,13 +330,25 @@ export default class ShellyDevice extends AbstractDevice {
         }
     }
 
-    // Auto-promote newly bound BLU children to first-class devices and demote
-    // unbound ones. Fire-and-forget: promotion must never block persistence.
-    reconcilePersistedBluetoothChildren() {
-        const next = reconcileBluChildrenForDevice(this.shellyID, this.config, {
-            fingerprint: this.#lastBluFingerprint,
-            keys: this.#lastBluChildKeys
-        });
+    // Promote bound BLU children, demote unbound. Detached so it never blocks
+    // persistence. Uses persistedConfig (what storage has), not live config.
+    reconcilePersistedBluetoothChildren(
+        persistedConfig: Record<string, unknown> = this.config
+    ): void {
+        void this.#reconcileBluChildren(persistedConfig);
+    }
+
+    async #reconcileBluChildren(
+        persistedConfig: Record<string, unknown>
+    ): Promise<void> {
+        const next = await reconcileBluChildrenForDevice(
+            this.shellyID,
+            persistedConfig,
+            {
+                fingerprint: this.#lastBluFingerprint,
+                keys: this.#lastBluChildKeys
+            }
+        );
         this.#lastBluFingerprint = next.fingerprint;
         this.#lastBluChildKeys = next.keys;
     }
@@ -257,6 +360,7 @@ export default class ShellyDevice extends AbstractDevice {
         handleMessage(this, message, request);
 
         if (message.method === 'NotifyEvent') {
+            const telemetryFacts: BTHomeTelemetryFact[] = [];
             for (const eventBody of (message?.params?.events ?? []) as {
                 event?: string;
                 component?: string;
@@ -268,15 +372,16 @@ export default class ShellyDevice extends AbstractDevice {
                         model_id: number;
                     };
                 };
-                sensors?: Record<
-                    string,
-                    Array<{
-                        id?: number;
-                        value?: any;
-                        last_updated_ts?: number;
-                    }>
-                >;
+                sensors?: Record<string, BTHomeEventSensor[]>;
             }[]) {
+                // Devices can send null/array event slots — skip them.
+                if (
+                    eventBody === null ||
+                    typeof eventBody !== 'object' ||
+                    Array.isArray(eventBody)
+                ) {
+                    continue;
+                }
                 if (
                     typeof eventBody.component === 'string' &&
                     eventBody.component.startsWith('bthomedevice:')
@@ -291,54 +396,338 @@ export default class ShellyDevice extends AbstractDevice {
                         });
                     }
 
-                    const sensors = eventBody.sensors as Record<
-                        string,
-                        Array<{
-                            id?: number;
-                            value?: any;
-                            last_updated_ts?: number;
-                        }>
-                    >;
+                    const sensors = eventBody.sensors;
                     if (sensors && typeof sensors === 'object') {
-                        this.rememberBTHomeDeviceSensorSamples(
-                            eventBody.component,
+                        const deviceConfig = this.config[eventBody.component];
+                        const addr =
+                            typeof deviceConfig?.addr === 'string'
+                                ? deviceConfig.addr
+                                : null;
+                        for (const [objIdKey, sensorArray] of Object.entries(
                             sensors
-                        );
-                        for (const sensorArray of Object.values(sensors)) {
-                            for (const sensor of sensorArray) {
-                                if (typeof sensor?.id !== 'number') continue;
-                                this.setComponentStatus(
-                                    `bthomesensor:${sensor.id}`,
-                                    {
-                                        id: sensor.id,
-                                        value: sensor.value,
-                                        last_updated_ts: sensor.last_updated_ts
-                                    }
+                        )) {
+                            const objId = Number.parseInt(objIdKey, 10);
+                            if (
+                                !Number.isFinite(objId) ||
+                                !Array.isArray(sensorArray)
+                            ) {
+                                continue;
+                            }
+                            for (const [
+                                fallbackIdx,
+                                sensor
+                            ] of sensorArray.entries()) {
+                                if (!sensor || sensor.value === undefined) {
+                                    continue;
+                                }
+                                const idx = this.resolveBTHomeEventSensorIndex(
+                                    addr,
+                                    objId,
+                                    fallbackIdx,
+                                    sensor.id
                                 );
+                                if (addr) {
+                                    this.rememberBTHomeSensorSample({
+                                        addr,
+                                        objId,
+                                        idx,
+                                        value: sensor.value,
+                                        lastUpdatedTs:
+                                            typeof sensor.last_updated_ts ===
+                                            'number'
+                                                ? sensor.last_updated_ts
+                                                : null
+                                    });
+                                }
+                                if (typeof sensor?.id !== 'number') continue;
+                                const sensorKey = `bthomesensor:${sensor.id}`;
+                                telemetryFacts.push({
+                                    bthomeDeviceKey: eventBody.component,
+                                    sensor,
+                                    objId,
+                                    idx,
+                                    previousValue:
+                                        this.status[sensorKey]?.value,
+                                    sourceComponentKey: sensorKey
+                                });
+                                const statusPatch =
+                                    this.buildBTHomeEventSensorStatus(
+                                        sensorKey,
+                                        sensor,
+                                        sensor.id,
+                                        objId,
+                                        idx,
+                                        addr
+                                    );
+                                this.setComponentStatus(sensorKey, statusPatch);
                             }
                         }
                     }
                 }
             }
+            if (telemetryFacts.length > 0) {
+                fireAndForget(
+                    'bthome-telemetry-capture',
+                    this.captureBTHomeTelemetryBatch(telemetryFacts)
+                );
+            }
         }
     }
 
+    private async captureBTHomeTelemetryBatch(
+        facts: readonly BTHomeTelemetryFact[]
+    ): Promise<void> {
+        const sourceComponentKeys = [
+            ...new Set(facts.map((fact) => fact.sourceComponentKey))
+        ];
+        const inventoryVersion = getBluetoothInventoryVersion();
+        const targets = new Map<
+            string,
+            {deviceId: number; externalId: string; organizationId: string}
+        >();
+        const unresolvedSourceKeys: string[] = [];
+        for (const sourceComponentKey of sourceComponentKeys) {
+            const cached =
+                this.#bthomeTelemetryTargetIds.get(sourceComponentKey);
+            if (!cached || cached.version !== inventoryVersion) {
+                unresolvedSourceKeys.push(sourceComponentKey);
+            } else {
+                targets.set(sourceComponentKey, cached);
+            }
+        }
+        if (unresolvedSourceKeys.length > 0) {
+            try {
+                const resolved = await resolveBluetoothSourceTargets(
+                    unresolvedSourceKeys.map((componentKey) => ({
+                        sourceDeviceListId: this.id,
+                        componentKey
+                    }))
+                );
+                for (const target of resolved) {
+                    const value = {
+                        deviceId: target.blu_device_list_id,
+                        externalId: target.bluetooth_external_id,
+                        organizationId: target.organization_id
+                    };
+                    targets.set(target.component_key, value);
+                    this.#bthomeTelemetryTargetIds.set(target.component_key, {
+                        ...value,
+                        version: inventoryVersion
+                    });
+                }
+            } catch (error) {
+                Observability.incrementCounter(
+                    'bthome_telemetry_target_resolve_failed'
+                );
+                logger.warn(
+                    'BTHome telemetry target resolution failed gateway=%s: %s',
+                    this.shellyID,
+                    error instanceof Error ? error.message : String(error)
+                );
+            }
+        }
+
+        const numericRows: NumericRow[] = [];
+        const eventRows: EventRow[] = [];
+        const statusValues: StatusValueInput[] = [];
+        for (const fact of facts) {
+            const target = targets.get(fact.sourceComponentKey);
+            if (
+                typeof fact.sensor.value === 'number' &&
+                Number.isFinite(fact.sensor.value)
+            ) {
+                statusValues.push({
+                    ts:
+                        typeof fact.sensor.last_updated_ts === 'number'
+                            ? fact.sensor.last_updated_ts
+                            : Date.now() / 1000,
+                    deviceId: target?.deviceId ?? this.id,
+                    shellyId: target?.externalId ?? this.shellyID,
+                    organizationId:
+                        target?.organizationId ?? getDeviceOrg(this.shellyID),
+                    field: `${fact.sourceComponentKey}.value`,
+                    value: fact.sensor.value,
+                    previousValue: fact.previousValue
+                });
+            }
+            this.captureBTHomeSensorTelemetry(
+                fact.bthomeDeviceKey,
+                fact.sensor,
+                numericRows,
+                eventRows,
+                {
+                    objId: fact.objId,
+                    idx: fact.idx,
+                    deviceId: target?.deviceId ?? this.id,
+                    deviceShellyID: target?.externalId ?? this.shellyID,
+                    previousValue: fact.previousValue
+                }
+            );
+        }
+        enqueueStatusValues(statusValues);
+        await Promise.all([
+            appendNumeric(numericRows, {callDb: rawCall}),
+            appendEvents(eventRows, {callDb: rawCall})
+        ]);
+    }
+
+    // Classifies one BTHome sensor reading — electrical readings (MCB
+    // voltage/current/power/energy) go to the energy pipeline; everything
+    // else is numeric (forever rollup) or binary/button (event on change),
+    // appended to the batch. Live events supply obj_id + idx; direct callers
+    // may fall back to configured sensor metadata. Malformed readings are
+    // dropped without affecting status updates.
+    private captureBTHomeSensorTelemetry(
+        bthomeDeviceKey: string,
+        sensor: BTHomeEventSensor,
+        numericRows: NumericRow[],
+        eventRows: EventRow[],
+        context?: BTHomeCaptureContext
+    ): void {
+        const sensorKey = `bthomesensor:${sensor.id}`;
+        const objId = context?.objId ?? this.config[sensorKey]?.obj_id;
+        if (typeof objId !== 'number') return;
+
+        const model = this.config[bthomeDeviceKey]?.meta?.modelId;
+        const idx = context?.idx ?? this.config[sensorKey]?.idx;
+        const decision = decideBTHomeSensorCapture(objId, model, idx);
+        if (decision.route === 'skip') return;
+
+        const ts =
+            typeof sensor.last_updated_ts === 'number'
+                ? sensor.last_updated_ts
+                : Date.now() / 1000;
+
+        if (decision.route === 'energy') {
+            this.captureBTHomeEnergyReading(sensorKey, sensor, ts, context);
+            return;
+        }
+
+        const channel = sensor.id as number;
+        const source = this.resolveBTHomeSensorSource(bthomeDeviceKey);
+
+        if (decision.store === 'numeric') {
+            const val = sensor.value;
+            if (typeof val !== 'number' || !Number.isFinite(val)) return;
+            numericRows.push({
+                device: context?.deviceId ?? this.id,
+                source,
+                kind: decision.kind,
+                channel,
+                ts,
+                val
+            });
+            return;
+        }
+
+        const state = toBTHomeBinaryState(sensor.value);
+        if (state === null) return;
+        // Buttons store every push (Phase B scope — none of the sensors
+        // routed through this bthomesensor loop can be a button in
+        // practice: BTHome.AddSensor rejects device-level objects, and
+        // button/dimmer are device-level — see isBTHomeDeviceLevelObjectId).
+        // Binary sensors store on change only.
+        if (decision.kind !== 'button') {
+            const prevState = toBTHomeBinaryState(
+                context?.previousValue ?? this.status[sensorKey]?.value
+            );
+            if (prevState === state) return;
+        }
+        eventRows.push({
+            device: context?.deviceId ?? this.id,
+            source,
+            kind: decision.kind,
+            channel,
+            ts,
+            state
+        });
+    }
+
+    // Routes an MCB electrical reading (or any future BTHome device sharing
+    // these obj_ids) into the energy pipeline through the exact entry point
+    // the native EM path uses (ShellyMessageHandler.routeEnergyRow) —
+    // BTHOME_ENERGY_SPEC (bthomeSpec.ts) supplies tag/domain/scale via the
+    // classifier's own BTHome tier, so this never re-maps obj_ids itself.
+    // componentKey/fieldName match what the tier-3 classifier expects from a
+    // Shelly.GetConfig-shaped bthomesensor:N entry — the same shape the
+    // measurement-point enumerator (measurementPoints.ts) already reads.
+    private captureBTHomeEnergyReading(
+        sensorKey: string,
+        sensor: {value?: any},
+        ts: number,
+        context?: BTHomeCaptureContext
+    ): void {
+        const value = sensor.value;
+        if (typeof value !== 'number' || !Number.isFinite(value)) return;
+        routeEnergyRow({
+            componentKey: sensorKey,
+            fieldName: 'value',
+            deviceId: context?.deviceId ?? this.id,
+            shellyId: context?.deviceShellyID ?? this.shellyID,
+            value,
+            lastValue: context?.previousValue ?? this.status[sensorKey]?.value,
+            ts
+        });
+    }
+
+    // Weather station (Ecowitt WS90 / SBWS-90CM) tags its own readings
+    // 'weather' so the dashboard can split it from a room BLU sensor; every
+    // other paired BLU sensor is 'blu'. Model comes from the parent
+    // bthomedevice's meta.modelId, set once by syncSingleBTHomeDeviceMeta
+    // after the device's first broadcast.
+    private resolveBTHomeSensorSource(bthomeDeviceKey: string): SensorSource {
+        return this.config[bthomeDeviceKey]?.meta?.modelId ===
+            WEATHER_STATION_MODEL_ID
+            ? 'weather'
+            : 'blu';
+    }
+
     override setComponentStatus(key: string, status: any) {
+        if (key.startsWith('bthomesensor:')) {
+            status = this.stampBTHomeSensorDisplay(key, status);
+        }
+        // super.setComponentStatus emits Shelly.Status with the component
+        // changes — that is the only path the UI needs. Entity status is
+        // read from the device store (keyed by component), so no separate
+        // per-entity status event is emitted here.
         super.setComponentStatus(key, status);
         if (key.startsWith('bthomesensor:')) {
             this.rememberConfiguredBTHomeSensorSample(key);
-        }
-        const entity = this.findEntity(key);
-        if (entity) {
-            ShellyEvents.emitEntityStatusChange(entity, status);
         }
         this.refreshAffectedBTHomeOverviews([key]);
     }
 
     override batchSetComponentStatus(data: Record<string, any>): PathChange[] {
+        for (const key of Object.keys(data)) {
+            if (key.startsWith('bthomesensor:')) {
+                data[key] = this.stampBTHomeSensorDisplay(key, data[key]);
+            }
+        }
         const changes = super.batchSetComponentStatus(data);
         this.refreshAffectedBTHomeOverviews(Object.keys(data));
         return changes;
+    }
+
+    // One durable reading per sensor: the overview's formatter, stamped on the
+    // sensor status so every surface reads it without re-deriving units. Merges
+    // patch over current status so it reflects the full sensor state.
+    private stampBTHomeSensorDisplay(
+        key: string,
+        patch: Record<string, any>
+    ): Record<string, any> {
+        const config = this.config[key];
+        const objId = config?.obj_id;
+        if (typeof objId !== 'number' || !patch || typeof patch !== 'object') {
+            return patch;
+        }
+        const child: BTHomeChildSensor = {
+            key,
+            id: config.id,
+            objId,
+            config,
+            status: {...(this.status[key] ?? {}), ...patch}
+        };
+        return {...patch, displayValue: formatBTHomeSensorDisplayValue(child)};
     }
 
     override setComponentConfig(key: string, config: any) {
@@ -367,14 +756,28 @@ export default class ShellyDevice extends AbstractDevice {
             this.shellyID
         );
 
-        if (!entity) {
-            logger.error('Error composing entity for %s:%s', type, id);
+        if (entity) {
+            logger.info('Composed entity %s:%s', type, id);
+            this.addEntity(entity);
             return;
         }
 
-        logger.info('Composed entity %s:%s', type, id);
-
-        this.addEntity(entity);
+        // Native component types (switch, cover, temperature, ...) aren't
+        // handled by composeDynamicComponent (virtual/BTHome only). Recompose
+        // via the full registry path and add any entity that newly appeared —
+        // addEntity dedups by id, so existing entities are untouched.
+        const existingIds = new Set(this.entities.map((e) => e.id));
+        const added = this.generateEntities().filter(
+            (e) => !existingIds.has(e.id)
+        );
+        if (added.length === 0) {
+            logger.error('Error composing entity for %s:%s', type, id);
+            return;
+        }
+        for (const e of added) {
+            logger.info('Composed entity %s', e.id);
+            this.addEntity(e);
+        }
     }
 
     private findParentBTHomeDeviceKey(addr: string): string | null {
@@ -677,12 +1080,10 @@ export default class ShellyDevice extends AbstractDevice {
         const runtimePatch = statusPatch
             ? {...statusPatch, overview}
             : {overview};
+        // setRuntimeComponentStatus emits Shelly.Status with the overview
+        // patch; the UI reads entity status from the device store, so no
+        // separate Entity.StatusChange event is needed.
         this.setRuntimeComponentStatus(key, runtimePatch, key);
-
-        const entity = this.findEntity(key);
-        if (entity) {
-            ShellyEvents.emitEntityStatusChange(entity, runtimePatch);
-        }
     }
 
     private hydrateBTHomeSensorSamplesInMemory() {
@@ -729,56 +1130,53 @@ export default class ShellyDevice extends AbstractDevice {
         });
     }
 
-    private rememberBTHomeDeviceSensorSamples(
-        componentKey: string,
-        sensors: Record<
-            string,
-            Array<{
-                id?: number;
-                value?: any;
-                last_updated_ts?: number;
-            }>
-        >
-    ) {
-        const addr = this.config[componentKey]?.addr;
-        if (!addr) return;
+    private resolveBTHomeEventSensorIndex(
+        addr: string | null,
+        objId: number,
+        fallbackIdx: number,
+        sensorId: number | undefined
+    ): number {
+        if (!addr || typeof sensorId !== 'number') return fallbackIdx;
+        const sensorConfig = normalizeBTHomeComponentConfig(
+            `bthomesensor:${sensorId}`,
+            this.config[`bthomesensor:${sensorId}`]
+        );
+        return sensorConfig?.addr === addr &&
+            sensorConfig?.obj_id === objId &&
+            typeof sensorConfig?.idx === 'number'
+            ? sensorConfig.idx
+            : fallbackIdx;
+    }
 
-        for (const [objIdKey, sensorArray] of Object.entries(sensors)) {
-            const objId = Number.parseInt(objIdKey, 10);
-            if (!Number.isFinite(objId) || !Array.isArray(sensorArray)) {
-                continue;
-            }
-
-            for (const [fallbackIdx, sensor] of sensorArray.entries()) {
-                if (!sensor || sensor.value === undefined) continue;
-
-                let idx = fallbackIdx;
-                if (typeof sensor.id === 'number') {
-                    const sensorConfig = normalizeBTHomeComponentConfig(
-                        `bthomesensor:${sensor.id}`,
-                        this.config[`bthomesensor:${sensor.id}`]
-                    );
-                    if (
-                        sensorConfig?.addr === addr &&
-                        sensorConfig?.obj_id === objId &&
-                        typeof sensorConfig?.idx === 'number'
-                    ) {
-                        idx = sensorConfig.idx;
-                    }
-                }
-
-                this.rememberBTHomeSensorSample({
-                    addr,
-                    objId,
-                    idx,
-                    value: sensor.value,
-                    lastUpdatedTs:
-                        typeof sensor.last_updated_ts === 'number'
-                            ? sensor.last_updated_ts
-                            : null
-                });
-            }
-        }
+    private buildBTHomeEventSensorStatus(
+        sensorKey: string,
+        sensor: BTHomeEventSensor,
+        sensorId: number,
+        objId: number,
+        idx: number,
+        addr: string | null
+    ): Record<string, any> {
+        const patch = {
+            id: sensorId,
+            value: sensor.value,
+            last_updated_ts: sensor.last_updated_ts
+        };
+        const configured = this.config[sensorKey];
+        const config =
+            typeof configured?.obj_id === 'number'
+                ? configured
+                : {id: sensorId, addr, obj_id: objId, idx};
+        const child: BTHomeChildSensor = {
+            key: sensorKey,
+            id: sensorId,
+            objId,
+            config,
+            status: {...(this.status[sensorKey] ?? {}), ...patch}
+        };
+        return {
+            ...patch,
+            displayValue: formatBTHomeSensorDisplayValue(child)
+        };
     }
 
     private rememberBTHomeKnownObjectSamples(
@@ -834,6 +1232,18 @@ export default class ShellyDevice extends AbstractDevice {
         });
     }
 
+    // Re-stamp on load so a device that hasn't broadcast since restart
+    // still has a reading.
+    private hydrateBTHomeSensorDisplayValues() {
+        for (const key of Object.keys(this.status)) {
+            if (!key.startsWith('bthomesensor:')) continue;
+            this.status[key] = this.stampBTHomeSensorDisplay(
+                key,
+                this.status[key] ?? {}
+            );
+        }
+    }
+
     private hydrateBTHomeOverviewsInMemory() {
         for (const key of Object.keys(this.config)) {
             if (!key.startsWith('bthomedevice:')) continue;
@@ -875,7 +1285,8 @@ export default class ShellyDevice extends AbstractDevice {
             resolveModelNumericId(resolvedModelString);
         const identity = resolveBluDeviceInfo(
             resolvedModelString,
-            resolvedNumericModelId
+            resolvedNumericModelId,
+            firstNonEmptyString(existingMeta.visual?.imageModel)
         );
         const nextMeta = {...existingMeta};
         let changed = false;
@@ -971,8 +1382,14 @@ export default class ShellyDevice extends AbstractDevice {
                 nextMeta.controls = controls;
                 changed = true;
             }
-        } catch {
-            // Non-critical — device might not support GetKnownObjects yet
+        } catch (error) {
+            // Non-critical — device might not support GetKnownObjects yet.
+            logger.debug(
+                'BTHomeDevice.GetKnownObjects failed for %s on %s: %s',
+                key,
+                this.shellyID,
+                error instanceof Error ? error.message : String(error)
+            );
         }
 
         if (!changed) return false;
@@ -985,8 +1402,14 @@ export default class ShellyDevice extends AbstractDevice {
                     meta: nextMeta
                 }
             });
-        } catch {
-            // Non-critical — device might not support SetConfig meta
+        } catch (error) {
+            // Non-critical — device might not support SetConfig meta.
+            logger.debug(
+                'BTHomeDevice.SetConfig meta failed for %s on %s: %s',
+                key,
+                this.shellyID,
+                error instanceof Error ? error.message : String(error)
+            );
         }
 
         this.setComponentConfig(key, {
@@ -1587,15 +2010,15 @@ export default class ShellyDevice extends AbstractDevice {
 }
 
 const SWITCH_CONSUMPTION_KEYS = ['current', 'apower', 'voltage'];
-function findMessageReason(key: string, value: Record<string, any>) {
+export function findMessageReason(key: string, value: Record<string, any>) {
     const separatorIndex = key.indexOf(':');
     const core = separatorIndex > -1 ? key.slice(0, separatorIndex) : key;
     const valueKeys = Object.keys(value);
 
-    if (valueKeys.includes('aenergy')) {
-        return `${core}:aenergy`;
-    }
-
+    // A metered switch update carries output + apower/voltage/current AND
+    // aenergy together. Label it by the meaningful change, not aenergy —
+    // otherwise the dashboard's aenergy deny drops the whole event and live
+    // power never updates.
     if (key.startsWith('switch')) {
         if (valueKeys.includes('output')) {
             return `${core}:output`;
@@ -1605,6 +2028,10 @@ function findMessageReason(key: string, value: Record<string, any>) {
         ) {
             return `${core}:consumption`;
         }
+    }
+
+    if (valueKeys.includes('aenergy')) {
+        return `${core}:aenergy`;
     }
 
     return `${core}:generic`;
@@ -1620,92 +2047,6 @@ export function parseComponentKey(key: string): {type: string; id?: number} {
         ...(Number.isFinite(id) ? {id} : {})
     };
 }
-
-type BTHomeOverview = {
-    addr: string;
-    displayName: string;
-    productName: string;
-    modelId: string;
-    modelNumericId?: number;
-    localName?: string;
-    isRemote: boolean;
-    kind:
-        | 'door_window'
-        | 'button'
-        | 'remote_controller'
-        | 'motion_sensor'
-        | 'climate_sensor'
-        | 'distance_sensor'
-        | 'weather_station'
-        | 'trv'
-        | 'sensor';
-    summary?: string;
-    state?: 'open' | 'closed';
-    paired: boolean;
-    battery?: number | null;
-    rssi?: number | null;
-    activeChannel?: number | null;
-    activeChannelLabel?: string;
-    lastEvent?: string;
-    lastEventLabel?: string;
-    lastEventSummary?: string;
-    lastUpdatedTs?: number | null;
-    childSensorCount: number;
-    controls: BTHomeOverviewControl[];
-    sensors: BTHomeOverviewSensor[];
-};
-
-type BTHomeOverviewControl = {
-    objId: number;
-    idx: number;
-    kind: BTHomeControlKind;
-    label: string;
-    active: boolean;
-    status: string;
-};
-
-type BTHomeOverviewSensor = {
-    componentKey: string;
-    id: number;
-    objId: number;
-    objName: string;
-    label: string;
-    sensorType: string;
-    unit: string;
-    displayValue: string;
-    lastUpdatedTs: number | null;
-};
-
-type BTHomeChildSensor = {
-    key: string;
-    id: number;
-    objId: number;
-    config: Record<string, any>;
-    status: Record<string, any>;
-};
-
-const BTHOME_DOOR_OBJ_IDS = new Set([17, 26, 45]);
-const BTHOME_MOTION_OBJ_IDS = new Set([33, 34, 35, 37]);
-const BTHOME_TEMPERATURE_OBJ_IDS = new Set([2, 69, 87, 88]);
-const BTHOME_HUMIDITY_OBJ_IDS = new Set([3, 46]);
-const BTHOME_ILLUMINANCE_OBJ_IDS = new Set([5, 100]);
-const BTHOME_DISTANCE_OBJ_IDS = new Set([64, 65]);
-const BTHOME_WEATHER_OBJ_IDS = new Set([68, 94, 95]);
-const BTHOME_BUTTON_EVENT_OBJ_IDS = new Set([58, 60, 63, 96]);
-const BUTTON_MODEL_IDS = new Set(['SBBT-002C', 'SBBT-102C']);
-const TRV_MODEL_IDS = new Set(['SBTR-001AEU']);
-const REMOTE_MODEL_IDS = new Set([
-    'SBRC-005B',
-    'SBBT-004CEU',
-    'SBBT-004CUS',
-    'SBBT-104CEU',
-    'SBBT-104CUS'
-]);
-const CLIMATE_MODEL_IDS = new Set(['SBHT-003C', 'SBHT-103C', 'SBHT-203C']);
-const WEATHER_MODEL_IDS = new Set(['SBWS-90CM']);
-const DISTANCE_MODEL_IDS = new Set(['SBDI-003E']);
-const MOTION_MODEL_IDS = new Set(['SBMO-003Z']);
-const DOOR_MODEL_IDS = new Set(['SBDW-002C']);
 
 function resolveModelStringFromMeta(options: {
     existingModelId?: string;
@@ -1725,17 +2066,6 @@ function resolveModelStringFromMeta(options: {
         return options.discoveredModelId;
     }
     return resolveBluDeviceInfo(undefined, options.numericModelId).modelId;
-}
-
-function firstNonEmptyString(
-    ...values: Array<string | null | undefined>
-): string | undefined {
-    for (const value of values) {
-        if (typeof value === 'string' && value.trim()) {
-            return value.trim();
-        }
-    }
-    return undefined;
 }
 
 function isAutoGeneratedBTHomeDeviceName(options: {
@@ -1794,519 +2124,6 @@ function isBTHomeDynamicComponentKey(key: string): boolean {
     );
 }
 
-function getBTHomeChildrenForAddr(
-    allConfig: Record<string, any>,
-    allStatus: Record<string, any>,
-    addr: string
-): BTHomeChildSensor[] {
-    const children: BTHomeChildSensor[] = [];
-    for (const [key, config] of Object.entries(allConfig)) {
-        if (!key.startsWith('bthomesensor:')) continue;
-        if (config?.addr !== addr || typeof config?.obj_id !== 'number')
-            continue;
-        const statusKey = `bthomesensor:${config.id}`;
-        children.push({
-            key,
-            id: config.id,
-            objId: config.obj_id,
-            config,
-            status: allStatus[statusKey] ?? {}
-        });
-    }
-    return children;
-}
-
-type NormalizedBTHomeControl = {
-    objId: number;
-    idx: number;
-    kind: BTHomeControlKind;
-    label: string;
-};
-
-function normalizeBTHomeControls(controls: unknown): NormalizedBTHomeControl[] {
-    if (!Array.isArray(controls)) return [];
-
-    return controls
-        .flatMap((control): NormalizedBTHomeControl[] => {
-            if (
-                typeof control?.objId !== 'number' ||
-                typeof control?.idx !== 'number' ||
-                control.idx < 0
-            ) {
-                return [];
-            }
-            const kind = getBTHomeControlKind(control.objId);
-            if (!kind) return [];
-            const label =
-                typeof control.label === 'string' && control.label.trim()
-                    ? control.label
-                    : formatBTHomeControlLabel(control.objId, control.idx);
-            return [{objId: control.objId, idx: control.idx, kind, label}];
-        })
-        .sort((a, b) => a.idx - b.idx || a.objId - b.objId);
-}
-
-function buildBTHomeControlStates(
-    controls: NormalizedBTHomeControl[],
-    eventName?: string,
-    eventIdx?: number | null,
-    isActive = false
-): BTHomeOverviewControl[] {
-    const formattedEvent =
-        typeof eventName === 'string' && eventName.trim()
-            ? formatBTHomeEventName(eventName)
-            : 'Ready';
-    const activeKind: BTHomeControlKind =
-        typeof eventName === 'string' && eventName.startsWith('rotate_')
-            ? 'dimmer'
-            : 'button';
-
-    return controls.map((control) => {
-        const active =
-            isActive &&
-            typeof eventIdx === 'number' &&
-            eventIdx === control.idx &&
-            control.kind === activeKind;
-
-        return {
-            objId: control.objId,
-            idx: control.idx,
-            kind: control.kind,
-            label: control.label,
-            active,
-            status: active ? formattedEvent : 'Ready'
-        };
-    });
-}
-
-function getChildStatusTimestamp(status: Record<string, any>): number {
-    const ts = status?.last_updated_ts ?? status?.last_event_ts ?? 0;
-    return typeof ts === 'number' ? ts : 0;
-}
-
-function findLatestChild(
-    children: BTHomeChildSensor[],
-    matcher: (objId: number) => boolean
-): BTHomeChildSensor | null {
-    let match: BTHomeChildSensor | null = null;
-    let matchTs = -1;
-
-    for (const child of children) {
-        if (!matcher(child.objId)) continue;
-        const ts = getChildStatusTimestamp(child.status);
-        if (ts >= matchTs) {
-            match = child;
-            matchTs = ts;
-        }
-    }
-
-    return match;
-}
-
-function formatBTHomeMetric(objId: number, value: number): string {
-    const unit = bthomeObjectInfos[objId]?.unit ?? '';
-    const text = Number.isInteger(value) ? String(value) : value.toFixed(1);
-    return unit ? `${text} ${unit}` : text;
-}
-
-function formatBTHomeSensorLabel(child: BTHomeChildSensor): string {
-    const customName = firstNonEmptyString(child.config?.name);
-    if (customName) return customName;
-
-    const objName = bthomeObjectInfos[child.objId]?.name;
-    if (objName) return formatBTHomeEventName(objName);
-
-    return `Sensor ${child.id}`;
-}
-
-function formatBTHomeSensorDisplayValue(child: BTHomeChildSensor): string {
-    const objName = bthomeObjectInfos[child.objId]?.name ?? '';
-    const eventName =
-        typeof child.status?.last_event === 'string'
-            ? child.status.last_event
-            : undefined;
-    if (eventName) {
-        return formatBTHomeEventName(eventName);
-    }
-
-    const value = child.status?.value;
-    if (value == null) {
-        return isBTHomeControlObjectId(child.objId) ? 'No events' : '—';
-    }
-
-    if (typeof value === 'number') {
-        if (child.objId === 96) {
-            return formatBTHomeChannelLabel(value);
-        }
-        return formatBTHomeMetric(child.objId, value);
-    }
-
-    if (typeof value === 'boolean') {
-        if (BTHOME_DOOR_OBJ_IDS.has(child.objId)) {
-            return value ? 'Open' : 'Closed';
-        }
-        if (BTHOME_MOTION_OBJ_IDS.has(child.objId) || objName === 'motion') {
-            return value ? 'Detected' : 'Clear';
-        }
-        return value ? 'Yes' : 'No';
-    }
-
-    if (typeof value === 'string') {
-        return formatBTHomeEventName(value);
-    }
-
-    return String(value);
-}
-
-function buildBTHomeSensorOverview(
-    children: BTHomeChildSensor[]
-): BTHomeOverviewSensor[] {
-    return children
-        .filter((child) => !isBTHomeDeviceLevelObjectId(child.objId))
-        .sort((a, b) => {
-            const aBattery = a.objId === 1 ? 1 : 0;
-            const bBattery = b.objId === 1 ? 1 : 0;
-            if (aBattery !== bBattery) return aBattery - bBattery;
-
-            const aLabel = formatBTHomeSensorLabel(a).toLowerCase();
-            const bLabel = formatBTHomeSensorLabel(b).toLowerCase();
-            if (aLabel !== bLabel) return aLabel.localeCompare(bLabel);
-
-            return a.id - b.id;
-        })
-        .map((child) => {
-            const info = bthomeObjectInfos[child.objId] ?? {};
-            return {
-                componentKey: child.key,
-                id: child.id,
-                objId: child.objId,
-                objName: info.name ?? '',
-                label: formatBTHomeSensorLabel(child),
-                sensorType:
-                    typeof info.type === 'string' && info.type
-                        ? info.type
-                        : 'sensor',
-                unit:
-                    typeof info.unit === 'string' && info.unit ? info.unit : '',
-                displayValue: formatBTHomeSensorDisplayValue(child),
-                lastUpdatedTs:
-                    typeof child.status?.last_updated_ts === 'number'
-                        ? child.status.last_updated_ts
-                        : null
-            };
-        });
-}
-
-function inferKindFromModelId(
-    modelId: string | undefined,
-    isRemote: boolean
-): BTHomeOverview['kind'] | undefined {
-    if (!modelId) return undefined;
-    if (TRV_MODEL_IDS.has(modelId)) return 'trv';
-    if (DOOR_MODEL_IDS.has(modelId)) return 'door_window';
-    if (MOTION_MODEL_IDS.has(modelId)) return 'motion_sensor';
-    if (CLIMATE_MODEL_IDS.has(modelId)) return 'climate_sensor';
-    if (DISTANCE_MODEL_IDS.has(modelId)) return 'distance_sensor';
-    if (WEATHER_MODEL_IDS.has(modelId)) return 'weather_station';
-    if (REMOTE_MODEL_IDS.has(modelId)) return 'remote_controller';
-    if (BUTTON_MODEL_IDS.has(modelId)) return 'button';
-    if (isRemote) return 'remote_controller';
-    return undefined;
-}
-
-function detectBTHomeOverviewKind(options: {
-    objIds: Set<number>;
-    modelId?: string;
-    isRemote: boolean;
-}): BTHomeOverview['kind'] {
-    const {objIds, modelId, isRemote} = options;
-
-    // TRVs use a proprietary protocol (not standard BTHome) and may report
-    // temperature objects from their integrated sensor — detect by model first
-    // so they don't get mis-classified as climate_sensor.
-    if (modelId && TRV_MODEL_IDS.has(modelId)) {
-        return 'trv';
-    }
-
-    if (Array.from(objIds).some((objId) => BTHOME_DOOR_OBJ_IDS.has(objId))) {
-        return 'door_window';
-    }
-    if (Array.from(objIds).some((objId) => BTHOME_MOTION_OBJ_IDS.has(objId))) {
-        return 'motion_sensor';
-    }
-    if (
-        Array.from(objIds).some((objId) => BTHOME_DISTANCE_OBJ_IDS.has(objId))
-    ) {
-        return 'distance_sensor';
-    }
-    if (Array.from(objIds).some((objId) => BTHOME_WEATHER_OBJ_IDS.has(objId))) {
-        return 'weather_station';
-    }
-    if (
-        Array.from(objIds).some(
-            (objId) =>
-                BTHOME_TEMPERATURE_OBJ_IDS.has(objId) ||
-                BTHOME_HUMIDITY_OBJ_IDS.has(objId)
-        )
-    ) {
-        return 'climate_sensor';
-    }
-    if (
-        Array.from(objIds).some((objId) =>
-            BTHOME_BUTTON_EVENT_OBJ_IDS.has(objId)
-        )
-    ) {
-        if (objIds.has(63) || objIds.has(96) || isRemote) {
-            return 'remote_controller';
-        }
-        return 'button';
-    }
-
-    return inferKindFromModelId(modelId, isRemote) ?? 'sensor';
-}
-
-function buildBTHomeOverview(options: {
-    config: Record<string, any>;
-    status: Record<string, any>;
-    allConfig: Record<string, any>;
-    allStatus: Record<string, any>;
-    runtimeEvent?: BTHomeRuntimeEvent;
-}): BTHomeOverview {
-    const {config, status, allConfig, allStatus, runtimeEvent} = options;
-    const controls = normalizeBTHomeControls(config?.meta?.controls);
-    const modelId = firstNonEmptyString(config?.meta?.modelId) ?? '';
-    const modelNumericId =
-        typeof config?.meta?.modelNumericId === 'number'
-            ? config.meta.modelNumericId
-            : resolveModelNumericId(modelId);
-    const productName =
-        firstNonEmptyString(
-            config?.meta?.productName,
-            resolveBluDeviceName(modelId || undefined, modelNumericId)
-        ) ?? '';
-    const localName = firstNonEmptyString(config?.meta?.localName);
-    const isRemote =
-        config?.meta?.isRemote === true ||
-        (modelId ? (BLU_DEVICES[modelId]?.isRemote ?? false) : false);
-    const displayName =
-        firstNonEmptyString(
-            config?.name,
-            productName,
-            localName,
-            config?.addr
-        ) ?? 'BLE Device';
-    const children = getBTHomeChildrenForAddr(
-        allConfig,
-        allStatus,
-        config.addr
-    );
-    const objIds = new Set(children.map((child) => child.objId));
-    const eventName =
-        runtimeEvent?.event ??
-        (typeof status?.last_event === 'string'
-            ? status.last_event
-            : undefined);
-    const eventIdx =
-        runtimeEvent?.idx ??
-        (typeof status?.last_event_idx === 'number' &&
-        status.last_event_idx >= 0
-            ? status.last_event_idx
-            : null);
-    const channelChild = findLatestChild(children, (objId) => objId === 96);
-    const activeChannel =
-        normalizeBTHomeChannel(channelChild?.status?.value) ??
-        normalizeBTHomeChannel(status?.channel) ??
-        runtimeEvent?.channel ??
-        null;
-    const activeChannelLabel =
-        activeChannel != null
-            ? formatBTHomeChannelLabel(activeChannel)
-            : undefined;
-    const lastEvent = eventName ? formatBTHomeEventName(eventName) : undefined;
-    const lastEventLabel = eventName
-        ? getBTHomeEventSourceLabel({
-              event: eventName,
-              idx: eventIdx,
-              controls
-          })
-        : undefined;
-    const lastEventSummary = eventName
-        ? formatBTHomeEventSummary(
-              eventName,
-              eventIdx,
-              controls,
-              normalizeBTHomeChannel(status?.channel) ??
-                  runtimeEvent?.channel ??
-                  activeChannel
-          )
-        : undefined;
-    const controlStates = buildBTHomeControlStates(
-        controls,
-        eventName,
-        eventIdx,
-        isActiveRuntimeEvent(runtimeEvent)
-    );
-    const sensors = buildBTHomeSensorOverview(children);
-    const batteryChild = findLatestChild(
-        children,
-        (objId) => objId === 1 && typeof objId === 'number'
-    );
-    const battery =
-        typeof batteryChild?.status?.value === 'number'
-            ? batteryChild.status.value
-            : typeof status?.battery === 'number'
-              ? status.battery
-              : null;
-    const doorChild = findLatestChild(children, (objId) =>
-        BTHOME_DOOR_OBJ_IDS.has(objId)
-    );
-    const motionChild = findLatestChild(children, (objId) =>
-        BTHOME_MOTION_OBJ_IDS.has(objId)
-    );
-    const temperatureChild = findLatestChild(children, (objId) =>
-        BTHOME_TEMPERATURE_OBJ_IDS.has(objId)
-    );
-    const humidityChild = findLatestChild(children, (objId) =>
-        BTHOME_HUMIDITY_OBJ_IDS.has(objId)
-    );
-    const illuminanceChild = findLatestChild(children, (objId) =>
-        BTHOME_ILLUMINANCE_OBJ_IDS.has(objId)
-    );
-    const distanceChild = findLatestChild(children, (objId) =>
-        BTHOME_DISTANCE_OBJ_IDS.has(objId)
-    );
-    const windChild = findLatestChild(children, (objId) => objId === 68);
-    const directionChild = findLatestChild(children, (objId) => objId === 94);
-    const rainChild = findLatestChild(children, (objId) => objId === 95);
-    const kind = detectBTHomeOverviewKind({objIds, modelId, isRemote});
-
-    let state: BTHomeOverview['state'];
-    if (
-        kind === 'door_window' &&
-        typeof doorChild?.status?.value === 'boolean'
-    ) {
-        state = doorChild.status.value ? 'open' : 'closed';
-    }
-    if (
-        kind === 'motion_sensor' &&
-        typeof motionChild?.status?.value === 'boolean'
-    ) {
-        state = motionChild.status.value ? 'open' : 'closed';
-    }
-
-    const summaryParts: string[] = [];
-    if (temperatureChild && typeof temperatureChild.status.value === 'number') {
-        summaryParts.push(
-            formatBTHomeMetric(
-                temperatureChild.objId,
-                temperatureChild.status.value
-            )
-        );
-    }
-    if (humidityChild && typeof humidityChild.status.value === 'number') {
-        summaryParts.push(
-            formatBTHomeMetric(humidityChild.objId, humidityChild.status.value)
-        );
-    }
-
-    let summary: string | undefined;
-    switch (kind) {
-        case 'climate_sensor':
-            summary = summaryParts.filter(Boolean).join(' · ') || undefined;
-            break;
-        case 'distance_sensor':
-            if (
-                distanceChild &&
-                typeof distanceChild.status.value === 'number'
-            ) {
-                summary = formatBTHomeMetric(
-                    distanceChild.objId,
-                    distanceChild.status.value
-                );
-            }
-            break;
-        case 'weather_station': {
-            const weatherParts: string[] = [];
-            if (windChild && typeof windChild.status.value === 'number') {
-                weatherParts.push(
-                    `Wind ${formatBTHomeMetric(windChild.objId, windChild.status.value)}`
-                );
-            }
-            if (
-                directionChild &&
-                typeof directionChild.status.value === 'number'
-            ) {
-                weatherParts.push(
-                    `Dir ${formatBTHomeMetric(directionChild.objId, directionChild.status.value)}`
-                );
-            }
-            if (rainChild && typeof rainChild.status.value === 'number') {
-                weatherParts.push(
-                    `Rain ${formatBTHomeMetric(rainChild.objId, rainChild.status.value)}`
-                );
-            }
-            summary = weatherParts.join(' · ') || undefined;
-            break;
-        }
-        case 'motion_sensor':
-            if (illuminanceChild) {
-                const displayValue =
-                    formatBTHomeSensorDisplayValue(illuminanceChild);
-                if (displayValue !== '—') {
-                    summary = `${formatBTHomeSensorLabel(illuminanceChild)} ${displayValue}`;
-                }
-            }
-            break;
-        case 'button':
-            summary = lastEventSummary ?? 'No recent events';
-            break;
-        case 'remote_controller':
-            summary =
-                lastEventSummary ?? activeChannelLabel ?? 'No recent events';
-            break;
-        default:
-            summary = undefined;
-            break;
-    }
-
-    return {
-        addr: config.addr,
-        displayName,
-        productName,
-        modelId,
-        ...(typeof modelNumericId === 'number' ? {modelNumericId} : {}),
-        ...(localName ? {localName} : {}),
-        isRemote,
-        kind,
-        ...(summary ? {summary} : {}),
-        ...(state ? {state} : {}),
-        paired: status?.paired === true,
-        battery,
-        rssi: typeof status?.rssi === 'number' ? status.rssi : null,
-        ...(activeChannel != null ? {activeChannel} : {}),
-        ...(activeChannelLabel ? {activeChannelLabel} : {}),
-        ...(lastEvent ? {lastEvent} : {}),
-        ...(lastEventLabel ? {lastEventLabel} : {}),
-        ...(lastEventSummary ? {lastEventSummary} : {}),
-        lastUpdatedTs:
-            typeof status?.last_updated_ts === 'number'
-                ? Math.max(status.last_updated_ts, runtimeEvent?.ts ?? 0) ||
-                  null
-                : (runtimeEvent?.ts ?? null),
-        childSensorCount: sensors.length,
-        controls: controlStates,
-        sensors
-    };
-}
-
-function isActiveRuntimeEvent(runtimeEvent?: BTHomeRuntimeEvent): boolean {
-    return (
-        !!runtimeEvent &&
-        typeof runtimeEvent.activeUntilMs === 'number' &&
-        runtimeEvent.activeUntilMs > Date.now()
-    );
-}
-
 function omitBTHomeRuntimeFields(
     value: Record<string, any>
 ): Record<string, any> {
@@ -2321,12 +2138,34 @@ function omitBTHomeRuntimeFields(
     return persistedValue;
 }
 
+// displayValue is derived and rebuilt on load — never persist it (like overview).
+function omitBTHomeSensorRuntimeFields(
+    value: Record<string, any>
+): Record<string, any> {
+    const {displayValue: _displayValue, ...persistedValue} = value;
+    return persistedValue;
+}
+
+// Strip derived runtime fields (bthomedevice overview/last_event, bthomesensor
+// displayValue) — rebuilt on load, never stored.
+function stripBTHomeRuntimeFields(
+    key: string,
+    value: Record<string, any>
+): Record<string, any> {
+    if (key.startsWith('bthomedevice:')) return omitBTHomeRuntimeFields(value);
+    if (key.startsWith('bthomesensor:')) {
+        return omitBTHomeSensorRuntimeFields(value);
+    }
+    return value;
+}
+
 function stripPersistedBTHomeRuntimeStatus(status: Record<string, any>) {
     for (const [key, value] of Object.entries(status)) {
-        if (!key.startsWith('bthomedevice:')) continue;
         if (!value || typeof value !== 'object') continue;
-
-        status[key] = omitBTHomeRuntimeFields(value as Record<string, any>);
+        status[key] = stripBTHomeRuntimeFields(
+            key,
+            value as Record<string, any>
+        );
     }
 }
 
@@ -2336,16 +2175,10 @@ export function buildPersistableDeviceSnapshot(
     const status: Record<string, any> = {};
 
     for (const [key, value] of Object.entries(device.status ?? {})) {
-        if (
-            !key.startsWith('bthomedevice:') ||
-            !value ||
-            typeof value !== 'object'
-        ) {
-            status[key] = value;
-            continue;
-        }
-
-        status[key] = omitBTHomeRuntimeFields(value as Record<string, any>);
+        status[key] =
+            value && typeof value === 'object'
+                ? stripBTHomeRuntimeFields(key, value as Record<string, any>)
+                : value;
     }
 
     return {

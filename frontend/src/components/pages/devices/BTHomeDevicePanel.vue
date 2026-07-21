@@ -393,7 +393,7 @@ function formatTimestamp(ts: number | null | undefined): string {
 
 .bth-board__eyebrow {
     display: block;
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     letter-spacing: var(--tracking-wider);
     text-transform: uppercase;
@@ -411,7 +411,7 @@ function formatTimestamp(ts: number | null | undefined): string {
 
 .bth-board__sub {
     margin: var(--space-1) 0 0;
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
     word-break: break-word;
 }
@@ -438,7 +438,7 @@ function formatTimestamp(ts: number | null | undefined): string {
     display: flex;
     align-items: center;
     gap: var(--space-1-5);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     letter-spacing: var(--tracking-wide);
     text-transform: uppercase;
@@ -467,13 +467,13 @@ function formatTimestamp(ts: number | null | undefined): string {
 }
 
 .bth-board__meta-label {
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
     flex-shrink: 0;
 }
 
 .bth-board__meta-value {
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     font-weight: var(--font-medium);
     color: var(--color-text-primary);
     text-align: right;
@@ -509,7 +509,7 @@ function formatTimestamp(ts: number | null | undefined): string {
 }
 
 .bth-board__control-label {
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
 }
 
@@ -546,7 +546,7 @@ function formatTimestamp(ts: number | null | undefined): string {
 }
 
 .bth-board__sensor-label {
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     font-weight: var(--font-medium);
     color: var(--color-text-secondary);
 }
@@ -561,12 +561,12 @@ function formatTimestamp(ts: number | null | undefined): string {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
 }
 
 .bth-board__empty {
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
     padding: var(--space-2) var(--space-3);
 }

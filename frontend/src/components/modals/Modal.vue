@@ -71,7 +71,15 @@
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, onMounted, ref, useId, watch} from 'vue';
+import {
+    computed,
+    nextTick,
+    onBeforeUnmount,
+    onMounted,
+    ref,
+    useId,
+    watch
+} from 'vue';
 import {
     lockBodyScroll,
     releaseModalDepth,
@@ -83,8 +91,13 @@ import {getObsLevel, trackInteraction} from '@/tools/observability';
 const props = defineProps<{
     visible: boolean;
     wide?: boolean;
+    large?: boolean;
     huge?: boolean;
     compact?: boolean;
+    /** Adds a comfortable min-height on top of the width variant. */
+    tall?: boolean;
+    /** Uses the entire viewport for long task flows on small screens. */
+    fullScreenMobile?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -97,31 +110,68 @@ const focusableSelector =
     'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 let previouslyFocused: HTMLElement | null = null;
+let ownsBodyLock = false;
 
-const panelClass = computed(() => {
-    if (props.compact) {
-        return 'modal-panel--compact';
-    }
-
-    if (props.huge) {
-        return 'modal-panel--huge';
-    }
-
-    if (props.wide) {
-        return 'modal-panel--wide';
-    }
-
+const sizeClass = computed(() => {
+    if (props.compact) return 'modal-panel--compact';
+    if (props.huge) return 'modal-panel--huge';
+    if (props.large) return 'modal-panel--large';
+    if (props.wide) return 'modal-panel--wide';
     return 'modal-panel--default';
 });
 
+const panelClass = computed(() => [
+    sizeClass.value,
+    props.tall && 'modal-panel--tall',
+    props.fullScreenMobile && 'modal-panel--mobile-full'
+]);
+
 function getFocusableElements() {
-    return (
+    const candidates = Array.from(
         panelRef.value?.querySelectorAll<HTMLElement>(focusableSelector) ?? []
+    );
+    return candidates.filter(isFocusable);
+}
+
+function isElementVisible(element: HTMLElement): boolean {
+    let current: HTMLElement | null = element;
+    while (current && current !== panelRef.value) {
+        const style = window.getComputedStyle(current);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+            return false;
+        }
+        current = current.parentElement;
+    }
+    return true;
+}
+
+function isDisabledByFieldset(element: HTMLElement): boolean {
+    let current = element.parentElement;
+    while (current && current !== panelRef.value) {
+        if (current.tagName === 'FIELDSET' && current.hasAttribute('disabled')) {
+            const firstLegend = Array.from(current.children).find(
+                (child) => child.tagName === 'LEGEND'
+            );
+            if (!firstLegend?.contains(element)) return true;
+        }
+        current = current.parentElement;
+    }
+    return false;
+}
+
+function isFocusable(element: HTMLElement): boolean {
+    return (
+        !element.matches(':disabled') &&
+        !isDisabledByFieldset(element) &&
+        !element.closest('[inert]') &&
+        isElementVisible(element)
     );
 }
 
 function handleKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
         emit('close');
         return;
     }
@@ -192,6 +242,7 @@ async function onOpened() {
     if (getObsLevel() >= 2) trackInteraction('modal', 'open', titleId);
     stackDepth.value = reserveModalDepth();
     lockBodyScroll();
+    ownsBodyLock = true;
     previouslyFocused = document.activeElement as HTMLElement;
     await nextTick();
     focusFirstInPanel();
@@ -200,7 +251,8 @@ async function onOpened() {
 function onClosed() {
     if (stackDepth.value > 0) releaseModalDepth(stackDepth.value);
     stackDepth.value = 0;
-    unlockBodyScroll();
+    if (ownsBodyLock) unlockBodyScroll();
+    ownsBodyLock = false;
     restorePreviousFocus();
 }
 
@@ -218,6 +270,8 @@ onMounted(() => {
     if (props.visible) void onOpened();
 });
 
+onBeforeUnmount(onClosed);
+
 function bgClicked() {
     emit('close');
 }
@@ -227,13 +281,13 @@ function bgClicked() {
 .modal-root {
     position: fixed;
     inset: 0;
-    z-index: var(--z-modal);
+    z-index: calc(var(--z-modal) + var(--modal-depth, 0) * 10);
 }
 
 .modal-overlay {
     position: fixed;
     inset: 0;
-    z-index: calc(var(--z-modal) + var(--modal-depth, 0) * 10);
+    z-index: 0;
     background-color: var(--modal-overlay);
     /* Frosted backdrop — glass-3 modal tier. */
     backdrop-filter: var(--glass-3-filter);
@@ -244,7 +298,7 @@ function bgClicked() {
     position: fixed;
     left: 0;
     bottom: 0;
-    z-index: calc(var(--z-modal) + var(--modal-depth, 0) * 10 + 1);
+    z-index: 1;
     display: flex;
     width: 100%;
     /* Leave room for mobile bottom nav bar (4rem) + inset */
@@ -255,6 +309,14 @@ function bgClicked() {
     background-color: var(--glass-3-bg);
     box-shadow: var(--card-shadow-hover), inset 0 1px 0 var(--glass-highlight);
     outline: none;
+}
+
+.modal-panel--mobile-full {
+    top: 0;
+    bottom: 0;
+    min-height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
 }
 
 /* Variant heights apply on desktop only. On mobile the panel is a
@@ -328,6 +390,11 @@ function bgClicked() {
         border-radius: var(--radius-xl);
     }
 
+    .modal-panel--mobile-full {
+        top: auto;
+        min-height: 0;
+    }
+
     /* At lg+ (1024px) there is no mobile bottom bar — restore full height */
     @media (min-width: 1024px) {
         .modal-panel {
@@ -343,8 +410,32 @@ function bgClicked() {
         );
     }
 
+    /* Additive to any width variant — gives short forms a comfortable floor. */
+    .modal-panel--tall {
+        min-height: min(
+            calc(100vh - var(--modal-mobile-inset)),
+            var(--modal-min-height-tall)
+        );
+    }
+
+    /* Lift compact's 80vh cap so long forms grow instead of clipping. */
+    .modal-panel--compact.modal-panel--tall {
+        max-height: min(
+            calc(100vh - var(--modal-mobile-inset)),
+            var(--modal-max-height-tall)
+        );
+    }
+
     .modal-panel--default {
         width: var(--modal-width-default);
+        max-height: min(
+            calc(100vh - var(--modal-mobile-inset)),
+            var(--modal-max-height-default)
+        );
+    }
+
+    .modal-panel--large {
+        width: min(94vw, var(--modal-width-default-lg));
         max-height: min(
             calc(100vh - var(--modal-mobile-inset)),
             var(--modal-max-height-default)

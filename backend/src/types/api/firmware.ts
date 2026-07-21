@@ -294,6 +294,81 @@ export const FIRMWARE_START_UPDATE_JOB_RESPONSE_SCHEMA: JsonSchema = {
     }
 };
 
+// One version offer as reported by Shelly.CheckForUpdate (stable/beta blocks).
+const FIRMWARE_VERSION_OFFER_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['version'],
+    additionalProperties: false,
+    properties: {
+        version: {type: 'string', minLength: 1},
+        build_id: {type: 'string'}
+    }
+};
+
+export interface FirmwareVersionOffer {
+    version: string;
+    build_id?: string;
+}
+
+export interface FirmwareCheckForUpdateResult {
+    shellyID: string;
+    // checked = device answered; offline = not connected; error = call failed.
+    status: 'checked' | 'offline' | 'error';
+    stable?: FirmwareVersionOffer;
+    beta?: FirmwareVersionOffer;
+    error?: string;
+}
+
+export interface FirmwareCheckForUpdateBulkParams {
+    shellyIDs: string[];
+}
+
+export interface FirmwareCheckForUpdateBulkResponse {
+    items: FirmwareCheckForUpdateResult[];
+}
+
+export const FIRMWARE_CHECK_FOR_UPDATE_BULK_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['shellyIDs'],
+    additionalProperties: false,
+    properties: {
+        // Capped: the check fans out server-side. The frontend chunks below
+        // this, so one call stays well under the WS timeout.
+        shellyIDs: {
+            type: 'array',
+            items: {type: 'string', minLength: 1},
+            minItems: 1,
+            maxItems: 500
+        }
+    }
+};
+
+export const FIRMWARE_CHECK_FOR_UPDATE_BULK_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['items'],
+    additionalProperties: false,
+    properties: {
+        items: {
+            type: 'array',
+            items: {
+                type: 'object',
+                required: ['shellyID', 'status'],
+                additionalProperties: false,
+                properties: {
+                    shellyID: {type: 'string', minLength: 1},
+                    status: {
+                        type: 'string',
+                        enum: ['checked', 'offline', 'error']
+                    },
+                    stable: FIRMWARE_VERSION_OFFER_SCHEMA,
+                    beta: FIRMWARE_VERSION_OFFER_SCHEMA,
+                    error: {type: 'string'}
+                }
+            }
+        }
+    }
+};
+
 export interface FirmwareSetAutoUpdateParams {
     shellyID: string;
     enabled: boolean;
@@ -506,23 +581,35 @@ export const FIRMWARE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     }
 )
     .registerMethod('RegisterManualUpdate', {
+        safety: {operation: 'create'},
         params: FIRMWARE_REGISTER_MANUAL_UPDATE_PARAMS_SCHEMA,
         response: ACK,
         permission: {note: 'per-device execute or admin'},
         description: 'Register a manual update for one or more devices.'
     })
     .registerMethod('UnregisterManualUpdate', {
+        safety: {operation: 'delete'},
         params: FIRMWARE_UNREGISTER_MANUAL_UPDATE_PARAMS_SCHEMA,
         response: ACK,
         permission: {note: 'per-device execute or admin'},
         description: 'Cancel a previously registered manual update.'
     })
     .registerMethod('StartUpdateJob', {
+        safety: {operation: 'execute'},
         params: FIRMWARE_START_UPDATE_JOB_PARAMS_SCHEMA,
         response: FIRMWARE_START_UPDATE_JOB_RESPONSE_SCHEMA,
         permission: {note: 'per-device execute or admin'},
         description:
             'Start a backend-owned firmware update job for one or more devices.'
+    })
+    .registerMethod('CheckForUpdateBulk', {
+        safety: {operation: 'read'},
+        params: FIRMWARE_CHECK_FOR_UPDATE_BULK_PARAMS_SCHEMA,
+        response: FIRMWARE_CHECK_FOR_UPDATE_BULK_RESPONSE_SCHEMA,
+        permission: {note: 'per-device execute; inaccessible devices skipped'},
+        description:
+            'Check for firmware updates on many devices in one call. Fans out ' +
+            'server-side and returns a per-device result (checked/offline/error).'
     })
     .registerMethod('GetAutoUpdateDevices', {
         params: FIRMWARE_GET_AUTO_UPDATE_DEVICES_PARAMS_SCHEMA,
@@ -573,12 +660,14 @@ export const FIRMWARE_DESCRIBE: DescribeOutput = new DescribeBuilder(
         description: 'Bulk set the auto-update mode for a list of devices.'
     })
     .registerMethod('GetAutoUpdateChannel', {
+        safety: {operation: 'read'},
         params: FIRMWARE_GET_AUTO_UPDATE_CHANNEL_PARAMS_SCHEMA,
         response: ACK,
         permission: {note: 'provider-support-only'},
         description: 'Return the global default firmware channel (stable/beta).'
     })
     .registerMethod('SetAutoUpdateChannel', {
+        safety: {operation: 'update'},
         params: FIRMWARE_SET_AUTO_UPDATE_CHANNEL_PARAMS_SCHEMA,
         response: ACK,
         permission: {note: 'provider-support-only'},
@@ -592,6 +681,7 @@ export const FIRMWARE_DESCRIBE: DescribeOutput = new DescribeBuilder(
         description: 'Return metadata for the most recent scheduler run.'
     })
     .registerMethod('TriggerAutoUpdate', {
+        safety: {operation: 'execute'},
         params: FIRMWARE_TRIGGER_AUTO_UPDATE_PARAMS_SCHEMA,
         response: FIRMWARE_TRIGGER_AUTO_UPDATE_RESPONSE_SCHEMA,
         permission: {note: 'provider-support-only'},
@@ -606,6 +696,7 @@ export const FIRMWARE_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'List firmware library entries (uploaded binaries + metadata).'
     })
     .registerMethod('CreateUploadTicket', {
+        safety: {operation: 'create'},
         params: FIRMWARE_LIST_LIBRARY_PARAMS_SCHEMA,
         response: UPLOAD_TICKET_RESPONSE_SCHEMA,
         permission: {note: 'provider-support-only'},
@@ -619,12 +710,14 @@ export const FIRMWARE_DESCRIBE: DescribeOutput = new DescribeBuilder(
         description: 'Mint a 1-hour download URL for a library entry.'
     })
     .registerMethod('UpdateLibraryEntry', {
+        safety: {operation: 'update'},
         params: FIRMWARE_UPDATE_LIBRARY_ENTRY_PARAMS_SCHEMA,
         response: FIRMWARE_UPDATE_LIBRARY_ENTRY_RESPONSE_SCHEMA,
         permission: {note: 'provider-support-only'},
         description: 'Patch metadata on a library entry.'
     })
     .registerMethod('DeleteLibraryEntry', {
+        safety: {operation: 'delete'},
         params: FIRMWARE_DELETE_LIBRARY_ENTRY_PARAMS_SCHEMA,
         response: FIRMWARE_DELETE_LIBRARY_ENTRY_RESPONSE_SCHEMA,
         permission: {note: 'provider-support-only'},

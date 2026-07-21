@@ -55,6 +55,49 @@ const UNIT_TO_TAG: Readonly<
     '°F': {tag: 'temperature_f', isDelta: false, scale: 1}
 };
 
+// Battery health where the tag is in the name, not the unit (SoC/SoH share '%'
+// with generic percentages; cycles has no unit). Always dc_battery.
+const BATTERY_NAME_TAGS: ReadonlyArray<{re: RegExp; tag: EnergyTag}> = [
+    {re: /state[\s_-]*of[\s_-]*charge|\bsoc\b/i, tag: 'soc'},
+    {re: /state[\s_-]*of[\s_-]*health|\bsoh\b/i, tag: 'soh'},
+    {re: /\bcycles\b|cycle[\s_-]*count/i, tag: 'cycles'}
+];
+
+// Ah cumulative counters. "Consumed Ah" is left out on purpose — it's a resetting
+// gauge, not a monotonic total, so a delta tag would be garbage on reset.
+function classifyAmpHours(name: string): VcHeuristicResult | null {
+    if (/dischar/i.test(name)) return ampHourTag('discharge_ah');
+    if (/charg/i.test(name)) return ampHourTag('charge_ah');
+    return null;
+}
+
+function ampHourTag(tag: EnergyTag): VcHeuristicResult {
+    return {tag, domain: 'dc_battery', isDelta: true, scale: 1};
+}
+
+// Battery telemetry the unit alone can't place. Runs before the unit path.
+function classifyBatteryMetric(
+    input: VcHeuristicInput
+): VcHeuristicResult | null {
+    const name = input.name;
+    if (!name) return null;
+    if (input.unit === 'Ah') {
+        const ah = classifyAmpHours(name);
+        if (ah) return ah;
+    }
+    for (const row of BATTERY_NAME_TAGS) {
+        if (row.re.test(name)) {
+            return {
+                tag: row.tag,
+                domain: 'dc_battery',
+                isDelta: false,
+                scale: 1
+            };
+        }
+    }
+    return null;
+}
+
 // Each row tested in order — first match wins. PV/solar comes before
 // generic battery in case a script names a component "PV Battery
 // Bank" (rare but real on hybrid inverters). No-match → unspecified
@@ -64,12 +107,25 @@ const NAME_KEYWORDS: ReadonlyArray<{re: RegExp; domain: EnergyDomain}> = [
     {re: /batter|\bsoc\b|bms|bank|cell/i, domain: 'dc_battery'},
     {re: /grid|\bac\b|mains|\bl[123]\b/i, domain: 'ac_mains'},
     {re: /dc\s*bus|busbar/i, domain: 'dc_bus'},
-    {re: /heat|thermal|district|hydronic|underfloor|boiler/i, domain: 'thermal'}
+    {
+        re: /heat|thermal|district|hydronic|underfloor|boiler/i,
+        domain: 'thermal'
+    },
+    // Gas vs water can't be read from a volume unit; the name is the only
+    // signal. domain='gas' → fn_commodity_for maps it to commodity=gas.
+    {
+        re: /\bgas\b|methane|\bch4\b|propane|butane|\blpg\b|\blng\b/i,
+        domain: 'gas'
+    }
 ];
 
 export function classifyVcConfig(
     input: VcHeuristicInput
 ): VcHeuristicResult | null {
+    // Name-driven battery health first — the unit path would mislabel % and drop
+    // cycles/Ah.
+    const battery = classifyBatteryMetric(input);
+    if (battery) return battery;
     if (!input.unit) return null;
     const mapping = UNIT_TO_TAG[input.unit];
     if (!mapping) return null;

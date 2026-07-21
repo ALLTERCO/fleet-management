@@ -22,7 +22,7 @@ export interface AuthContextResolutionSuccess {
 
 export interface AuthContextResolutionFailure {
     ok: false;
-    reason: 'org_mismatch' | 'no_fm_access';
+    reason: 'org_mismatch';
 }
 
 export type AuthContextResolution =
@@ -73,17 +73,17 @@ export async function resolveAuthContext(input: {
         organizationId: input.authOrgId,
         pinnedOrgId: input.topology.clientOrgId
     });
-    if (
-        !(await hasFleetManagerAccess({
-            userId: input.userId,
-            tenantId: effectiveOrgId,
-            roles,
-            isPlatformAdmin,
-            hasFineGrainedAccess: input.hasFineGrainedAccess
-        }))
-    ) {
-        return {ok: false, reason: 'no_fm_access'};
-    }
+    // A valid, org-matched user with no Fleet Manager access is still admitted,
+    // with an empty permission set — the app routes them to /no-permissions
+    // instead of failing the login. Wrong-org tokens are already rejected by the
+    // organization checks above.
+    const hasAccess = await hasFleetManagerAccess({
+        userId: input.userId,
+        tenantId: effectiveOrgId,
+        roles,
+        isPlatformAdmin,
+        hasFineGrainedAccess: input.hasFineGrainedAccess
+    });
     return {
         ok: true,
         roleSource: roleResolution.roleSource,
@@ -91,7 +91,7 @@ export async function resolveAuthContext(input: {
             userId: input.userId,
             authOrgId: input.authOrgId,
             effectiveOrgId,
-            roles,
+            roles: hasAccess ? roles : [],
             isPlatformAdmin,
             tenantPinned: input.topology.clientOrgId !== undefined
         }

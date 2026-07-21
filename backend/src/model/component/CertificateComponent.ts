@@ -11,6 +11,7 @@ import {
 import {parseCertificateChain} from '../../modules/certificate/parser';
 import {preflight} from '../../modules/certificate/preflight';
 import {resolvePushTargetDevices} from '../../modules/certificate/targetResolver';
+import * as EventDistributor from '../../modules/EventDistributor';
 import {
     createCertificateJob,
     enqueueCertificateTargets
@@ -25,7 +26,7 @@ import {
     decryptStringSecret,
     encryptStringSecret
 } from '../../modules/secretCrypto';
-import {buildListResponse} from '../../rpc/listResponse';
+import {buildListResponse, totalFromRows} from '../../rpc/listResponse';
 import RpcError from '../../rpc/RpcError';
 import {requireOrganizationId} from '../../rpc/scope';
 import {validateOrThrow} from '../../rpc/validateOrThrow';
@@ -140,6 +141,14 @@ async function callCertRows(
     return (result?.rows ?? []) as CertificateResponse[];
 }
 
+// List fns emit COUNT(*) OVER() AS total_count on every row.
+type Counted<T> = T & {total_count?: number};
+
+// Strip total_count so items keep their wire shape.
+function withoutTotalCount<T>(rows: Array<Counted<T>>): T[] {
+    return rows.map(({total_count: _, ...item}) => item as T);
+}
+
 export default class CertificateComponent extends Component<Config> {
     constructor() {
         super('certificate', {viewer_visible: false});
@@ -181,7 +190,7 @@ export default class CertificateComponent extends Component<Config> {
         const orgId = requireOrganizationId(sender);
         const limit = p.limit ?? 100;
         const offset = p.offset ?? 0;
-        const rows = await callCertRows('organization.fn_certificate_list', {
+        const rows = (await callCertRows('organization.fn_certificate_list', {
             p_tenant_id: orgId,
             p_kind: p.kind ?? null,
             p_source: p.source ?? null,
@@ -191,8 +200,13 @@ export default class CertificateComponent extends Component<Config> {
             p_expiring_within_days: p.expiringWithinDays ?? null,
             p_limit: limit,
             p_offset: offset
-        });
-        return buildListResponse(rows, rows.length, limit, offset);
+        })) as Array<Counted<CertificateResponse>>;
+        return buildListResponse(
+            withoutTotalCount(rows),
+            totalFromRows(rows),
+            limit,
+            offset
+        );
     }
 
     // Audited (no @NoAudit): Get can disclose the cert PEM, so it needs a
@@ -280,6 +294,16 @@ export default class CertificateComponent extends Component<Config> {
             hasPrivateKey: encryptedKey !== null,
             wasExisting
         });
+        // Re-import of an existing cert changes the row, not the list.
+        if (wasExisting) {
+            EventDistributor.emitCertificateUpdated(rows[0].id, orgId);
+        } else {
+            EventDistributor.emitCertificateCreated(
+                rows[0].id,
+                rows[0].name,
+                orgId
+            );
+        }
         return rows[0];
     }
 
@@ -306,6 +330,7 @@ export default class CertificateComponent extends Component<Config> {
             certificateId: p.id,
             name: p.name
         });
+        EventDistributor.emitCertificateUpdated(p.id, orgId);
         return rows[0];
     }
 
@@ -338,6 +363,7 @@ export default class CertificateComponent extends Component<Config> {
             operation: 'delete',
             certificateId: p.id
         });
+        EventDistributor.emitCertificateDeleted(p.id, orgId);
         return {success: true};
     }
 
@@ -371,6 +397,7 @@ export default class CertificateComponent extends Component<Config> {
             | {id: string; tags: string[]}
             | undefined;
         if (!row) throw RpcError.NotFound('certificate');
+        EventDistributor.emitCertificateUpdated(row.id, orgId);
         return {id: row.id, tags: row.tags};
     }
 
@@ -409,6 +436,7 @@ export default class CertificateComponent extends Component<Config> {
         const row = result?.rows?.[0] as
             | {fn_certificate_set_groups: number[]}
             | undefined;
+        EventDistributor.emitCertificateUpdated(p.id, orgId);
         return {
             id: p.id,
             device_group_ids: row?.fn_certificate_set_groups ?? []
@@ -559,7 +587,9 @@ export default class CertificateComponent extends Component<Config> {
                 p_device_compatible: meta.device_compatible,
                 p_incompat_reasons: meta.incompat_reasons,
                 p_source: 'fm-issued',
-                p_created_by: actorId
+                p_created_by: actorId,
+                p_metadata: meta.metadata,
+                p_tags: []
             }
         );
         const rows = (result?.rows ?? []) as CertificateResponse[];
@@ -574,6 +604,7 @@ export default class CertificateComponent extends Component<Config> {
             serial: issued.serial,
             validityDays: p.validityDays
         });
+        EventDistributor.emitCertificateCreated(rows[0].id, name, orgId);
         return rows[0];
     }
 
@@ -670,6 +701,7 @@ export default class CertificateComponent extends Component<Config> {
             serial: signed.serial,
             validityDays: p.validityDays
         });
+        EventDistributor.emitCertificateCreated(rows[0].id, name, orgId);
         return rows[0];
     }
 
@@ -817,8 +849,13 @@ export default class CertificateComponent extends Component<Config> {
                 p_offset: offset
             }
         );
-        const rows = (result?.rows ?? []) as CertificatePushRow[];
-        return buildListResponse(rows, rows.length, limit, offset);
+        const rows = (result?.rows ?? []) as Array<Counted<CertificatePushRow>>;
+        return buildListResponse(
+            withoutTotalCount(rows),
+            totalFromRows(rows),
+            limit,
+            offset
+        );
     }
 
     protected override getDefaultConfig(): Config {

@@ -104,21 +104,42 @@ export interface MotionClearPayload {
 }
 
 // Deferred device_offline fire (rule.config.offlineForSec window).
-export type OfflineFireHandler = (params: {
+export interface OfflineFirePayload {
+    organizationId: string;
+    ruleId: number;
+    deviceId: number;
+}
+
+export interface LegacyOfflineFirePayload {
     organizationId: string;
     ruleId: number;
     shellyID: string;
-}) => Promise<void>;
+}
+
+export type OfflineFireTaskPayload =
+    | OfflineFirePayload
+    | LegacyOfflineFirePayload;
+export type OfflineFireHandler = (
+    params: OfflineFireTaskPayload
+) => Promise<void>;
 let offlineFireHandler: OfflineFireHandler | null = null;
 
 export function registerOfflineFireHandler(h: OfflineFireHandler): void {
     offlineFireHandler = h;
 }
 
+async function runOfflineFireTask(payload: unknown): Promise<void> {
+    if (!offlineFireHandler) {
+        logger.warn('device_offline_fire_pending fired without handler');
+        return;
+    }
+    await offlineFireHandler(payload as OfflineFireTaskPayload);
+}
+
 export interface StateHoldPayload {
     organizationId: string;
     ruleId: number;
-    shellyID: string;
+    deviceId: number;
     component: string;
     field: string;
     fingerprintV2?: string;
@@ -127,7 +148,12 @@ export interface StateHoldPayload {
     // (e.g. right after a restart). Bounds the reschedule so it can't loop.
     attempt?: number;
 }
-export type StateHoldHandler = (p: StateHoldPayload) => Promise<void>;
+export interface LegacyStateHoldPayload
+    extends Omit<StateHoldPayload, 'deviceId'> {
+    shellyID: string;
+}
+export type StateHoldTaskPayload = StateHoldPayload | LegacyStateHoldPayload;
+export type StateHoldHandler = (p: StateHoldTaskPayload) => Promise<void>;
 let stateHoldHandler: StateHoldHandler | null = null;
 
 export function registerStateHoldHandler(h: StateHoldHandler): void {
@@ -142,13 +168,7 @@ async function runStateHoldTask(payload: unknown): Promise<void> {
         logger.warn('entity_state_hold fired without handler');
         return;
     }
-    await stateHoldHandler(payload as StateHoldPayload);
-}
-
-export interface OfflineFirePayload {
-    organizationId: string;
-    ruleId: number;
-    shellyID: string;
+    await stateHoldHandler(payload as StateHoldTaskPayload);
 }
 
 export interface DeliveryGroupFlushPayload {
@@ -351,8 +371,8 @@ export async function cancelMotionClear(
     }
 }
 
-function offlineFireJobKey(ruleId: number, shellyID: string): string {
-    return `device_offline_fire:${ruleId}:${shellyID}`;
+function offlineFireJobKey(ruleId: number, deviceId: number): string {
+    return `device_offline_fire:${ruleId}:${deviceId}`;
 }
 
 // jobKeyMode='replace' so a second disconnect resets the timer.
@@ -369,27 +389,27 @@ export async function enqueueOfflineFire(
     }
     await runner.addJob(TASK_OFFLINE_FIRE, payload, {
         runAt,
-        jobKey: offlineFireJobKey(payload.ruleId, payload.shellyID),
+        jobKey: offlineFireJobKey(payload.ruleId, payload.deviceId),
         jobKeyMode: 'replace'
     });
 }
 
 export async function cancelOfflineFire(
     ruleId: number,
-    shellyID: string
+    deviceId: number
 ): Promise<boolean> {
     try {
         await PostgresProvider.callMethod(
             'notifications.fn_cancel_scheduled_worker_job',
-            {p_key: offlineFireJobKey(ruleId, shellyID)}
+            {p_key: offlineFireJobKey(ruleId, deviceId)}
         );
         return true;
     } catch (err) {
         Observability.incrementCounter('outbox_offline_fire_cancel_errors');
         logger.error(
-            'cancelOfflineFire rule=%d shellyID=%s failed — deferred fire may still arrive: %s',
+            'cancelOfflineFire rule=%d deviceId=%d failed — deferred fire may still arrive: %s',
             ruleId,
-            shellyID,
+            deviceId,
             formatError(err)
         );
         return false;
@@ -399,11 +419,11 @@ export async function cancelOfflineFire(
 // Per (rule, device, component.field) so each relay holds independently.
 function stateHoldJobKey(
     ruleId: number,
-    shellyID: string,
+    deviceId: number,
     component: string,
     field: string
 ): string {
-    return `entity_state_hold:${ruleId}:${shellyID}:${component}.${field}`;
+    return `entity_state_hold:${ruleId}:${deviceId}:${component}.${field}`;
 }
 
 // jobKeyMode='replace' so re-entering the target state resets the hold timer.
@@ -422,7 +442,7 @@ export async function enqueueStateHold(
         runAt,
         jobKey: stateHoldJobKey(
             payload.ruleId,
-            payload.shellyID,
+            payload.deviceId,
             payload.component,
             payload.field
         ),
@@ -432,22 +452,22 @@ export async function enqueueStateHold(
 
 export async function cancelStateHold(
     ruleId: number,
-    shellyID: string,
+    deviceId: number,
     component: string,
     field: string
 ): Promise<boolean> {
     try {
         await PostgresProvider.callMethod(
             'notifications.fn_cancel_scheduled_worker_job',
-            {p_key: stateHoldJobKey(ruleId, shellyID, component, field)}
+            {p_key: stateHoldJobKey(ruleId, deviceId, component, field)}
         );
         return true;
     } catch (err) {
         Observability.incrementCounter('outbox_state_hold_cancel_errors');
         logger.error(
-            'cancelStateHold rule=%d shellyID=%s %s.%s failed: %s',
+            'cancelStateHold rule=%d deviceId=%d %s.%s failed: %s',
             ruleId,
-            shellyID,
+            deviceId,
             component,
             field,
             formatError(err)
@@ -523,15 +543,7 @@ export async function start(
                 }
                 await motionClearHandler(payload as MotionClearPayload);
             },
-            [TASK_OFFLINE_FIRE]: async (payload) => {
-                if (!offlineFireHandler) {
-                    logger.warn(
-                        'device_offline_fire_pending fired without handler'
-                    );
-                    return;
-                }
-                await offlineFireHandler(payload as OfflineFirePayload);
-            },
+            [TASK_OFFLINE_FIRE]: runOfflineFireTask,
             [TASK_STATE_HOLD]: runStateHoldTask,
             [TASK_GROUP_FLUSH]: async (payload) => {
                 if (!groupFlushHandler) {
@@ -1508,6 +1520,10 @@ export function __setRunnerForTests(
 // graphile-worker runner and prove enqueue → schedule → fire end to end.
 export function __stateHoldTaskListForTests(): TaskList {
     return {[TASK_STATE_HOLD]: runStateHoldTask};
+}
+
+export function __offlineFireTaskListForTests(): TaskList {
+    return {[TASK_OFFLINE_FIRE]: runOfflineFireTask};
 }
 
 export async function __reconcileRecordForTests(

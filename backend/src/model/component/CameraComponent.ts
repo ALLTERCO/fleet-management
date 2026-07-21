@@ -20,10 +20,10 @@ import {
     CAMERA_STORAGE_GET_STATUS_PARAMS_SCHEMA,
     CAMERA_STORAGE_LIST_SCHEMA,
     CAMERA_STORAGE_SET_CONFIG_SCHEMA,
-    CAMERA_STORAGE_UPLOAD_PARAMS_SCHEMA,
     CAMERA_STREAMER_ANSWER_PARAMS_SCHEMA,
     CAMERA_STREAMER_OFFER_PARAMS_SCHEMA,
     CAMERA_STREAMER_SET_STREAM_SOURCE_PARAMS_SCHEMA,
+    CAMERA_STREAMER_STOP_PARAMS_SCHEMA,
     CAMERA_ZONE_GET_CONFIG_PARAMS_SCHEMA,
     CAMERA_ZONE_GET_STATUS_PARAMS_SCHEMA,
     CAMERA_ZONE_SET_CONFIG_SCHEMA,
@@ -43,10 +43,10 @@ import {
     type CameraStorageGetStatusParams,
     type CameraStorageListParams,
     type CameraStorageSetConfigParams,
-    type CameraStorageUploadParams,
     type CameraStreamerAnswerParams,
     type CameraStreamerOfferParams,
     type CameraStreamerSetStreamSourceParams,
+    type CameraStreamerStopParams,
     type CameraZoneGetConfigParams,
     type CameraZoneGetStatusParams,
     type CameraZoneSetConfigParams
@@ -151,23 +151,6 @@ export default class CameraComponent extends Component {
         });
     }
 
-    @Component.Expose('Storage.Upload')
-    @Component.CrudPermission('devices', 'update', (p) => p?.shellyID)
-    async storageUpload(params: unknown) {
-        const v = validateOrThrow<CameraStorageUploadParams>(
-            params,
-            CAMERA_STORAGE_UPLOAD_PARAMS_SCHEMA
-        );
-        const payload: Record<string, unknown> = {
-            id: v.id ?? 0,
-            name: v.name,
-            data: v.data
-        };
-        if (v.offset !== undefined) payload.offset = v.offset;
-        if (v.last !== undefined) payload.last = v.last;
-        return this.callDevice(v.shellyID, 'Storage.Upload', payload);
-    }
-
     @Component.Expose('GetCapabilities')
     @Component.CrudPermission('devices', 'read', (p) => p?.shellyID)
     async getCapabilities(params: unknown) {
@@ -187,7 +170,9 @@ export default class CameraComponent extends Component {
             params,
             CAMERA_CAPTURE_IMAGE_SCHEMA
         );
-        return this.callDevice(v.shellyID, 'Camera.CaptureImage', {id: v.id});
+        const p: Record<string, unknown> = {id: v.id};
+        if (v.stream !== undefined) p.stream = v.stream;
+        return this.callDevice(v.shellyID, 'Camera.CaptureImage', p);
     }
 
     @Component.Expose('StartRecording')
@@ -197,7 +182,11 @@ export default class CameraComponent extends Component {
             params,
             CAMERA_START_RECORDING_SCHEMA
         );
-        return this.callDevice(v.shellyID, 'Camera.StartRecording', {id: v.id});
+        return this.callDevice(v.shellyID, 'Camera.StartRecording', {
+            id: v.id,
+            duration: v.duration,
+            stream: v.stream
+        });
     }
 
     @Component.Expose('StopRecording')
@@ -207,7 +196,9 @@ export default class CameraComponent extends Component {
             params,
             CAMERA_STOP_RECORDING_SCHEMA
         );
-        return this.callDevice(v.shellyID, 'Camera.StopRecording', {id: v.id});
+        const p: Record<string, unknown> = {id: v.id};
+        if (v.rec_id !== undefined) p.rec_id = v.rec_id;
+        return this.callDevice(v.shellyID, 'Camera.StopRecording', p);
     }
 
     @Component.Expose('AddZone')
@@ -217,10 +208,15 @@ export default class CameraComponent extends Component {
             params,
             CAMERA_ADD_ZONE_SCHEMA
         );
-        return this.callDevice(v.shellyID, 'Camera.AddZone', {
+        const payload: Record<string, unknown> = {
             id: v.id,
-            config: v.config
-        });
+            enable: v.enable,
+            type: v.type,
+            coordinates: v.coordinates
+        };
+        if (v.color !== undefined) payload.color = v.color;
+        if (v.name !== undefined) payload.name = v.name;
+        return this.callDevice(v.shellyID, 'Camera.AddZone', payload);
     }
 
     @Component.Expose('DeleteZone')
@@ -230,7 +226,10 @@ export default class CameraComponent extends Component {
             params,
             CAMERA_DELETE_ZONE_SCHEMA
         );
-        return this.callDevice(v.shellyID, 'Camera.DeleteZone', {id: v.id});
+        return this.callDevice(v.shellyID, 'Camera.DeleteZone', {
+            id: v.id,
+            zone_id: v.zone_id
+        });
     }
 
     @Component.Expose('Zone.SetConfig')
@@ -253,7 +252,9 @@ export default class CameraComponent extends Component {
             params,
             CAMERA_STORAGE_LIST_SCHEMA
         );
-        return this.callDevice(v.shellyID, 'Storage.List', {id: v.id ?? 0});
+        const p: Record<string, unknown> = {id: v.id ?? 0};
+        if (v.offset !== undefined) p.offset = v.offset;
+        return this.callDevice(v.shellyID, 'Storage.List', p);
     }
 
     @Component.Expose('Storage.Delete')
@@ -265,7 +266,7 @@ export default class CameraComponent extends Component {
         );
         return this.callDevice(v.shellyID, 'Storage.Delete', {
             id: v.id ?? 0,
-            name: v.name
+            media_id: v.media_id
         });
     }
 
@@ -352,6 +353,18 @@ export default class CameraComponent extends Component {
         return this.callDevice(v.shellyID, 'Streamer.SetStreamSource', {
             session_id: v.session_id,
             stream_id: v.stream_id
+        });
+    }
+
+    @Component.Expose('Streamer.StopStream')
+    @Component.CrudPermission('devices', 'execute', (p) => p?.shellyID)
+    async streamerStop(params: unknown) {
+        const v = validateOrThrow<CameraStreamerStopParams>(
+            params,
+            CAMERA_STREAMER_STOP_PARAMS_SCHEMA
+        );
+        return this.callDevice(v.shellyID, 'Streamer.StopStream', {
+            session_id: v.session_id
         });
     }
 }

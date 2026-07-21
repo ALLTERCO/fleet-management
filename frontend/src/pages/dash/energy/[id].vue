@@ -24,12 +24,14 @@
             :key="renderKey"
             :d="voltaineData"
             :initial-tab="activeTab"
+            :refresh-interval="store.settings?.refreshInterval ?? 0"
             @open-filter="filterOpen = true"
             @open-settings="openSettings"
             @refresh="load"
             @pick-range="onPickRange"
             @generate-report="onGenerateReport"
             @tab-change="onTabChange"
+            @set-interval="onSetInterval"
         />
 
         <!-- Real, functional settings (tariff editor, device/meter picker, scope, PV, carbon) -->
@@ -57,24 +59,35 @@
             @close="filterOpen = false"
             @apply-generic="applyEnergyFilters"
         />
+
+        <DashRenameModal
+            :visible="renameVisible"
+            :name="renameName"
+            :saving="renameSaving"
+            @save="saveRename"
+            @close="renameVisible = false"
+        />
     </div>
 </template>
 
 <script setup lang="ts">
-import {computed, onMounted, onUnmounted, ref, watch, watchEffect} from 'vue';
+import {PHASE_ACTIVE_POWER_FIELDS} from '@api/componentPower';
+import {computed, onMounted, onUnmounted, ref, watch} from 'vue';
 import {useRoute} from 'vue-router';
-import DashboardState from '@/components/dashboard/DashboardState.vue';
-import EnergySettingsPanel from '@/components/dashboard/energy/EnergySettingsPanel.vue';
 import FilterModal, {type FilterSection} from '@/components/core/FilterModal.vue';
+import DashboardState from '@/components/dashboard/DashboardState.vue';
+import DashRenameModal from '@/components/dashboard/DashRenameModal.vue';
+import EnergySettingsPanel from '@/components/dashboard/energy/EnergySettingsPanel.vue';
 import EnergyVoltaine from '@/components/dashboard/energy/EnergyVoltaine.vue';
 import {buildEnergyDashboardData} from '@/components/dashboard/energy/energyDashboard.mapper';
 import {averageByTag, countVoltageEvents, deltaLabel, hourlyProfile, roleKwh} from '@/components/dashboard/energy/energyLive.helpers';
-import {useDashboardNavigation} from '@/composables/useDashboardNavigation';
 import {useDashboardScope} from '@/composables/useDashboardScope';
+import {useDomainDashboardChrome} from '@/composables/useDomainDashboardChrome';
 import {useReportProgress} from '@/composables/useReportProgress';
 import {currencySymbol as currencySymbolFor} from '@/helpers/currencies';
-import {normaliseDashboardSettings} from '@/helpers/dashboardSettings';
+import {fetchDashboardRecordSummary} from '@/helpers/dashboardRecord';
 import {filterByScope} from '@/helpers/dashboardScopeFilter';
+import {normaliseDashboardSettings} from '@/helpers/dashboardSettings';
 import {
     DEVICE_TYPE_LABELS,
     DEVICE_TYPES,
@@ -83,6 +96,12 @@ import {
     filterByDeviceType
 } from '@/helpers/deviceTypeFilter';
 import {readEnvNumber} from '@/helpers/env';
+import {tariffLocalTime} from '@/helpers/liveMetrics';
+import {
+    dayRateFraction,
+    isDayRateHour,
+    resolveTouRate
+} from '@/helpers/tariffBands';
 import {logSettledRejections, resolveOptional} from '@/helpers/promiseUtils';
 import {
     generateReportFile,
@@ -115,7 +134,6 @@ import type {
 
 const isKiosk = document.body.classList.contains('kiosk');
 const route = useRoute();
-const {goToManage} = useDashboardNavigation();
 const store = useEnergyDashboardStore();
 const groupsStore = useGroupsStore();
 const tagsStore = useTagsStore();
@@ -286,12 +304,15 @@ const voltageRange = computed(() => ({min: liveStats.value.voltage.min, max: liv
 const powerFactorRange = computed(() => ({min: liveStats.value.pf.min, max: liveStats.value.pf.max}));
 const frequencyRange = computed(() => ({min: liveStats.value.freq.min, max: liveStats.value.freq.max}));
 
-// Per-phase load from 3-phase EM status (em:0 carries a_/b_/c_ legs).
+// Per-phase load from 3-phase EM status. A Shelly 3-phase EM reports one
+// em:0 component carrying a_/b_/c_ per-phase fields (Shelly API + the tested
+// componentPower.ts). Read the active-power field name from that SSOT so the
+// a_act_power/b_act_power/c_act_power mapping is defined in one home.
 const PHASE_LEGS = [
     {name: 'L1', key: 'a'},
     {name: 'L2', key: 'b'},
     {name: 'L3', key: 'c'}
-];
+] as const;
 const phaseLines = computed(() => {
     const watts = [0, 0, 0];
     const volts: number[][] = [[], [], []];
@@ -304,7 +325,7 @@ const phaseLines = computed(() => {
             const em = status[`em:${m}`];
             if (!em) continue;
             PHASE_LEGS.forEach((leg, i) => {
-                const p = em[`${leg.key}_act_power`];
+                const p = em[PHASE_ACTIVE_POWER_FIELDS[leg.key]];
                 const v = em[`${leg.key}_voltage`];
                 const a = em[`${leg.key}_current`];
                 if (typeof p === 'number') {
@@ -411,18 +432,24 @@ function resolveRate(bucket: string): number {
     const s = store.settings;
     if (!s) return 0;
     if (s.tariffMode === 'single') return s.tariff ?? 0;
+    if (s.tariffMode === 'tou') {
+        // Price by the time-of-use window covering this bucket's local time;
+        // fall back to the flat tariff when no window matches.
+        const {hhmm} = tariffLocalTime(bucket, s.tariffTimezone);
+        return resolveTouRate(s, new Date(bucket), hhmm) ?? s.tariff ?? 0;
+    }
     const dayRate = s.dayRate ?? s.tariff ?? 0;
     const nightRate = s.nightRate ?? s.tariff ?? 0;
     const dayStartH = Number.parseInt(s.dayStart?.slice(0, 2) ?? '7', 10);
     const dayEndH = Number.parseInt(s.dayEnd?.slice(0, 2) ?? '23', 10);
-    // Hourly buckets classify by their hour (UTC, matching the backend). Day/month
-    // buckets sit at 00:00 and span both windows, so blend by the day-hour share —
-    // classifying a whole day by getUTCHours()===0 would price everything at night.
+    // Hourly buckets classify by their local wall-clock hour in the tariff zone.
+    // Day/month buckets sit at 00:00 and span both windows, so blend by the
+    // day-hour share — classifying a whole day by hour 0 would price it at night.
     if (granularity.value === 'hour') {
-        const hour = new Date(bucket).getUTCHours();
-        return hour >= dayStartH && hour < dayEndH ? dayRate : nightRate;
+        const hour = tariffLocalTime(bucket, s.tariffTimezone).hour;
+        return isDayRateHour(hour, dayStartH, dayEndH) ? dayRate : nightRate;
     }
-    const dayFraction = Math.max(0, Math.min(24, dayEndH - dayStartH)) / 24;
+    const dayFraction = dayRateFraction(dayStartH, dayEndH);
     return dayFraction * dayRate + (1 - dayFraction) * nightRate;
 }
 
@@ -489,10 +516,9 @@ const hourlyBreakdown = ref<number[]>(new Array(24).fill(0));
 function buildFromPoints(points: any[]) {
     const hours = new Array(24).fill(0);
     const matrix: Record<string, number> = {};
+    const tz = store.settings?.tariffTimezone;
     for (const point of points) {
-        const d = new Date(point.bucket);
-        const h = d.getUTCHours();
-        const day = d.getUTCDay();
+        const {hour: h, day} = tariffLocalTime(point.bucket, tz);
         const val = Number(point.value ?? 0);
         hours[h] += val;
         const key = `${day}-${h}`;
@@ -525,6 +551,9 @@ async function fetchHourlyBreakdown() {
             from,
             to,
             tags: ['total_act_energy'],
+            // AC grid electricity — exclude DC / other commodities.
+            commodity: 'electricity',
+            electricalSource: 'ac_mains',
             bucket: '1 hour'
         };
         const result = groupId.value
@@ -700,6 +729,9 @@ async function fetchHistoricalMetrics() {
             from,
             to,
             tags: [metricToTag[metric]],
+            // AC grid electricity — exclude DC / other commodities.
+            commodity: 'electricity',
+            electricalSource: 'ac_mains',
             bucket
         };
         return groupId.value
@@ -772,16 +804,17 @@ const dayNightSplit = computed(() => {
     if (!data.length || !s) return {day: 0, night: 0};
     const dayStartH = Number.parseInt(s.dayStart?.slice(0, 2) ?? '7', 10);
     const dayEndH = Number.parseInt(s.dayEnd?.slice(0, 2) ?? '23', 10);
-    const dayFraction = Math.max(0, Math.min(24, dayEndH - dayStartH)) / 24;
+    const dayFraction = dayRateFraction(dayStartH, dayEndH);
     const hourly = granularity.value === 'hour';
     let day = 0;
     let night = 0;
     for (const point of data) {
-        // Hourly buckets classify exactly; day/month buckets span both windows and
-        // are split by the day-hour share (else 00:00 buckets read as all-night).
+        // Hourly buckets classify exactly by local wall-clock hour; day/month
+        // buckets span both windows and split by the day-hour share (else 00:00
+        // buckets read as all-night).
         if (hourly) {
-            const hour = new Date(point.bucket).getUTCHours();
-            if (hour >= dayStartH && hour < dayEndH) day += point.value;
+            const hour = tariffLocalTime(point.bucket, s.tariffTimezone).hour;
+            if (isDayRateHour(hour, dayStartH, dayEndH)) day += point.value;
             else night += point.value;
         } else {
             day += point.value * dayFraction;
@@ -887,17 +920,10 @@ const meterTableRows = computed((): DashDeviceRow[] => {
 // ── Data fetching ──
 
 async function fetchDashboardRecord() {
-    const dashboards = await ws.sendRPC<any[]>(
-        'FLEET_MANAGER',
-        'Storage.GetItem',
-        {registry: 'ui', key: 'dashboards'}
-    );
-    const dashboard = (dashboards ?? []).find(
-        (d: any) => d.id === dashboardId.value
-    );
+    const dashboard = await fetchDashboardRecordSummary(dashboardId.value);
     if (dashboard) {
         dashboardName.value = dashboard.name ?? 'Energy';
-        groupId.value = dashboard.scope?.groupId ?? null;
+        groupId.value = dashboard.groupId;
     }
 }
 
@@ -1002,6 +1028,9 @@ async function fetchEnergyGroups() {
                   from: dateRange.value.from,
                   to: dateRange.value.to,
                   tags: ['total_act_energy'],
+                  // AC grid electricity — exclude DC / other commodities.
+                  commodity: 'electricity',
+                  electricalSource: 'ac_mains',
                   bucket: '1 day',
                   perDevice: false
               })
@@ -1070,6 +1099,9 @@ async function fetchPriorPeriod() {
             from: priorFrom,
             to: dateRange.value.from,
             tags: ['total_act_energy'],
+            // AC grid electricity — exclude DC / other commodities.
+            commodity: 'electricity',
+            electricalSource: 'ac_mains',
             bucket: '1 day',
             perDevice: true
         })
@@ -1119,8 +1151,9 @@ const weekdaySplit = computed(() => {
     let weekendKwh = 0;
     let weekdayDays = 0;
     let weekendDays = 0;
+    const tz = store.settings?.tariffTimezone;
     for (const p of consumptionChartData.value) {
-        const dow = new Date(p.bucket).getUTCDay();
+        const dow = tariffLocalTime(p.bucket, tz).day;
         if (dow === 0 || dow === 6) {
             weekendKwh += p.value;
             weekendDays++;
@@ -1540,6 +1573,21 @@ function startRefresh() {
     }, interval);
 }
 
+function restartRefresh() {
+    if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+    }
+    startRefresh();
+}
+
+// Header refresh-interval dropdown (Off / 30s / 1m). Persist to settings, then
+// restart the live-refresh timer against the new cadence.
+async function onSetInterval(ms: number): Promise<void> {
+    await saveSettings({refreshInterval: ms});
+    restartRefresh();
+}
+
 onMounted(async () => {
     await load();
     startRefresh();
@@ -1554,25 +1602,18 @@ onUnmounted(() => {
     chrome.clear();
 });
 
+// Refresh + settings live in the Energy header (EnergyVoltaine toolbar), not the
+// shell ⋮ — the shell only carries rename / set-default / lifecycle.
 const chrome = useDashboardChromeStore();
-watchEffect(() => {
-    chrome.register({
-        onRefresh: () => {
-            void load();
-        },
-        onShare: () => {},
-        onToggleEdit: () => {},
-        onAddWidget: () => {},
-        onOpenManage: goToManage,
-        onOpenSettings: () => {
-            void openSettings();
-        },
-        settingsLabel: 'Energy settings',
-        canEdit: false,
-        canShare: false,
-        loading: store.loading
+const {renameVisible, renameSaving, renameName, saveRename} =
+    useDomainDashboardChrome({
+        dashboardId: () => dashboardId.value,
+        loading: () => store.loading,
+        currentName: () => dashboardName.value,
+        onRenamed: (name) => {
+            dashboardName.value = name;
+        }
     });
-});
 
 // ── Producer side of the energy dashboard SSOT contract ──
 // buildEnergyDashboardData is the single mapper from the live energy layer to the
@@ -1679,7 +1720,7 @@ const voltaineData = computed(() =>
 </script>
 
 <style scoped>
-/* Frosted-glass panel (app's --glass-1 surface), full width/height */
+/* Transparent — the shared /dash .dash-surface panel provides the frost now. */
 .energy-dash {
     display: flex;
     flex-direction: column;
@@ -1687,11 +1728,6 @@ const voltaineData = computed(() =>
     width: 100%;
     box-sizing: border-box;
     padding: var(--space-4);
-    background: var(--glass-1-bg);
-    backdrop-filter: var(--glass-1-filter);
-    -webkit-backdrop-filter: var(--glass-1-filter);
-    border: 1px solid var(--glass-border);
-    border-radius: var(--radius-xl);
 }
 
 /* Header */
@@ -2017,7 +2053,7 @@ const voltaineData = computed(() =>
     margin-top: var(--space-3);
 }
 .ed-report-phase {
-    font-size: var(--type-small);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
     margin-top: var(--space-1);
 }

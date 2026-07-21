@@ -1,28 +1,24 @@
 <template>
-    <Modal :visible="visible" wide @close="emit('close')">
+    <Modal :visible="visible" large @close="emit('close')">
         <template #title>Upload Firmware</template>
 
         <div class="fw-upload">
             <!-- File selection — primary action, first -->
             <div class="fw-upload__file">
-                <input
-                    ref="fileInputRef"
-                    type="file"
-                    class="hidden"
+                <FileUploadField
+                    variant="dropzone"
                     accept=".zip,.bin,.ota,.sfu,.swu"
-                    aria-label="Upload firmware file"
-                    @change="handleFileChange"
+                    upload-label="Click to choose .bin, .zip, .ota file"
+                    :file-name="selectedFile?.name"
+                    :show-delete="false"
+                    @upload="handleFileChange"
                 />
-                <button type="button" class="fw-upload__drop" @click="fileInputRef?.click()">
-                    <i class="fas fa-cloud-upload-alt fw-upload__drop-icon" />
-                    <span v-if="selectedFile" class="fw-upload__drop-name">{{ selectedFile.name }}</span>
-                    <span v-else class="fw-upload__drop-hint">Click to choose .bin, .zip, .ota file</span>
-                </button>
             </div>
 
             <!-- Retention toggle — only show when devices are selected -->
             <div v-if="hasSelectedDevices" class="fw-upload__mode">
                 <button
+                    type="button"
                     class="fw-upload__mode-btn"
                     :class="{ 'fw-upload__mode-btn--active': retention === 'temporary' }"
                     @click="retention = 'temporary'"
@@ -30,6 +26,7 @@
                     Flash &amp; Discard
                 </button>
                 <button
+                    type="button"
                     class="fw-upload__mode-btn"
                     :class="{ 'fw-upload__mode-btn--active': retention === 'library' }"
                     @click="retention = 'library'"
@@ -84,6 +81,7 @@
 <script setup lang="ts">
 import {reactive, ref, watch} from 'vue';
 import Button from '@/components/core/Button.vue';
+import FileUploadField from '@/components/core/FileUploadField.vue';
 import FormField from '@/components/core/FormField.vue';
 import Input from '@/components/core/Input.vue';
 import Modal from '@/components/modals/Modal.vue';
@@ -98,7 +96,6 @@ const emit = defineEmits<{
     upload: [formData: FormData];
 }>();
 
-const fileInputRef = ref<HTMLInputElement | null>(null);
 const selectedFile = ref<File | null>(null);
 const retention = ref<'temporary' | 'library'>('temporary');
 
@@ -458,7 +455,6 @@ function resetState() {
     selectedFile.value = null;
     retention.value = props.hasSelectedDevices ? 'temporary' : 'library';
     Object.assign(form, defaultForm);
-    if (fileInputRef.value) fileInputRef.value.value = '';
 }
 
 watch(
@@ -485,38 +481,6 @@ watch(
     display: flex;
     flex-direction: column;
     gap: var(--space-5);
-}
-
-/* Drop zone */
-.fw-upload__drop {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-8);
-    border: 2px dashed var(--color-border-medium);
-    border-radius: var(--btn-radius);
-    background: var(--color-surface-3);
-    cursor: pointer;
-    transition: border-color var(--duration-fast), background var(--duration-fast);
-}
-.fw-upload__drop:hover {
-    border-color: var(--color-text-tertiary);
-    background: color-mix(in srgb, var(--color-surface-3) 80%, var(--color-surface-4));
-}
-.fw-upload__drop-icon {
-    font-size: var(--type-subheading); /* subheading */
-    color: var(--color-text-tertiary);
-}
-.fw-upload__drop-name {
-    font-size: var(--type-body);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-primary);
-}
-.fw-upload__drop-hint {
-    font-size: var(--type-body);
-    color: var(--color-text-disabled);
 }
 
 /* Retention toggle */

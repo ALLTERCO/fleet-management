@@ -34,11 +34,26 @@ export type get_resp_t = {
     id: number;
 };
 
+// One row of the retired ("trash") device list.
+export type RetiredDeviceRow = {
+    id: number;
+    external_id: string;
+    organization_id: string;
+    kind: string | null;
+    deleted_at: Date;
+};
+
 export const ACCESS_CONTROL = {
     PENDING: 1,
     DENIED: 2,
     ALLOWED: 3
 } as const;
+
+// node-pg serializes a top-level JS array as a Postgres array literal,
+// not JSON, so a jsonb param rejects it. Bind as JSON text instead.
+export function asJsonbParam(value: unknown): string {
+    return JSON.stringify(value);
+}
 
 // make sure we hoist that and make it accessible everywhere
 let callDbMethod: <T = any>(
@@ -339,7 +354,10 @@ export async function resolveDeviceIds(shellyIDs: string[]): Promise<{
     idMap: Record<number, string>;
 }> {
     if (shellyIDs.length === 0) return {internalIds: [], idMap: {}};
-    const rows = await getBatch(shellyIDs);
+    if (!callDbMethod) throw new Error('Database not ready');
+    const {rows} = await callDbMethod('device.fn_resolve_ids', {
+        p_external_ids: shellyIDs
+    });
     const internalIds: number[] = [];
     const idMap: Record<number, string> = {};
     for (const row of rows) {
@@ -406,7 +424,7 @@ export async function admitBatch(
         jdoc: jdoc ?? null
     }));
     const result = await callDbMethod('device.fn_admit_batch', {
-        p_admissions: JSON.stringify(payload),
+        p_admissions: asJsonbParam(payload),
         p_control_access: controlAccess,
         p_organization_id: organizationId
     });
@@ -481,6 +499,36 @@ export async function deviceDelete(shellyID: string) {
     });
 }
 
+// Soft delete: hide the device but keep its id and history (reversible).
+export async function deviceRetire(shellyID: string) {
+    const device = (await get(shellyID))[0];
+    if (!device) throw new Error(`Device ${shellyID} not found`);
+    return await callDbMethod<void>('device.fn_retire', {p_id: device.id});
+}
+
+export async function deviceRestore(shellyID: string) {
+    const device = (await get(shellyID))[0];
+    if (!device) throw new Error(`Device ${shellyID} not found`);
+    return await callDbMethod<void>('device.fn_restore', {p_id: device.id});
+}
+
+export async function listRetiredDevices(organizationId: string) {
+    return await callDbMethod<{rows: RetiredDeviceRow[]}>(
+        'device.fn_list_retired',
+        {p_organization_id: organizationId}
+    );
+}
+
+// External ids of every retired device — loaded once at boot to seed the
+// in-memory retired set that hides them from live device lists.
+export async function loadRetiredExternalIds(): Promise<string[]> {
+    const result = await callDbMethod<{rows: {external_id: string}[]}>(
+        'device.fn_list_retired_all',
+        {}
+    );
+    return (result?.rows ?? []).map((row) => row.external_id);
+}
+
 export async function store(shellyID: string, data: any, txId?: number) {
     if (!callDbMethod) throw new Error('Database not ready');
     return await callDbMethod(
@@ -499,10 +547,12 @@ export async function storeBatch(
     return await callDbMethod(
         'device.fn_add_batch',
         {
-            p_entries: entries.map((entry) => ({
-                external_id: entry.externalId,
-                jdoc: entry.jdoc
-            }))
+            p_entries: asJsonbParam(
+                entries.map((entry) => ({
+                    external_id: entry.externalId,
+                    jdoc: entry.jdoc
+                }))
+            )
         },
         txId
     );
@@ -588,6 +638,11 @@ async function runMigrationsUnderLock(
     config: NonNullable<config_rc_t['internalStorage']>
 ): Promise<void> {
     const lockClient = new Client(config.connection);
+    // A dropped connection while idle-holding the advisory lock emits 'error';
+    // with no listener node-postgres throws it as an uncaughtException.
+    lockClient.on('error', (err) =>
+        logger.warn('migration lock client error: %s', err)
+    );
     try {
         await lockClient.connect();
         await lockClient.query(
@@ -1163,14 +1218,29 @@ async function runBoundedBackfills(
     return written;
 }
 
-export async function loadSavedDevices() {
-    const pinnedOrg = getDeploymentTopology().clientOrgId;
+/**
+ * Register saved devices from the store into the in-memory collector.
+ *
+ * Boot calls it with no options to register every saved device. With
+ * `skipRegistered`, rows already present in the collector are left untouched
+ * (never torn down and replaced), so a running FM can pick up devices inserted
+ * out-of-band without a restart. Returns the number of devices newly
+ * registered.
+ */
+export async function loadSavedDevices(options?: {
+    skipRegistered?: boolean;
+    orgId?: string;
+}): Promise<number> {
+    // A caller-supplied org scopes the reconcile to that tenant so it cannot
+    // register another org's rows; otherwise fall back to the deployment pin.
+    // Boot passes neither and loads every saved device.
+    const scopeOrg = options?.orgId ?? getDeploymentTopology().clientOrgId;
     let allowedSet: Set<string> | null = null;
-    if (pinnedOrg) {
-        allowedSet = new Set(await listOrgDevices(pinnedOrg));
+    if (scopeOrg) {
+        allowedSet = new Set(await listOrgDevices(scopeOrg));
         logger.info(
-            'FM pinned to org %s — boot loading %d device(s)',
-            pinnedOrg,
+            'loadSavedDevices scoped to org %s — %d device(s)',
+            scopeOrg,
             allowedSet.size
         );
     }
@@ -1178,6 +1248,7 @@ export async function loadSavedDevices() {
     logger.info('found %s saved devices', devices.length);
     let registered = 0;
     let skippedForeign = 0;
+    let skippedRegistered = 0;
     const ShellyDeviceFactory = unwrapDefaultExport<
         typeof ShellyDeviceFactoryType
     >(await import('../model/ShellyDeviceFactory.js'));
@@ -1190,6 +1261,16 @@ export async function loadSavedDevices() {
         if (allowedSet && !allowedSet.has(external.external_id)) {
             skippedForeign++;
             continue;
+        }
+        if (options?.skipRegistered) {
+            const shellyID = (external.jdoc as {shellyID?: unknown})?.shellyID;
+            if (
+                typeof shellyID === 'string' &&
+                DeviceCollector.getDevice(shellyID)
+            ) {
+                skippedRegistered++;
+                continue;
+            }
         }
         try {
             const device = ShellyDeviceFactory.fromDatabase(external);
@@ -1226,10 +1307,10 @@ export async function loadSavedDevices() {
         );
     }
 
-    if (registered < devices.length - skippedForeign) {
+    if (registered < devices.length - skippedForeign - skippedRegistered) {
         logger.warn(
             'failed to load %s saved devices',
-            devices.length - registered - skippedForeign
+            devices.length - registered - skippedForeign - skippedRegistered
         );
     }
     if (skippedForeign > 0) {
@@ -1238,6 +1319,14 @@ export async function loadSavedDevices() {
             skippedForeign
         );
     }
+    if (skippedRegistered > 0) {
+        logger.info(
+            'reconcile: %s device(s) already registered, %s newly registered',
+            skippedRegistered,
+            registered
+        );
+    }
+    return registered;
 }
 
 /** Build a libpq connection string from the storage config. */

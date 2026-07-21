@@ -27,6 +27,10 @@ export function hashIngressToken(token: string): string {
         .digest('hex');
 }
 
+export function assertIngressTokenPepperConfigured(): void {
+    tokenPepper();
+}
+
 export function tokenPrefix(token: string): string {
     return token.length <= 9 ? token : token.slice(0, 9);
 }

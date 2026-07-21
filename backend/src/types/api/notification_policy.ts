@@ -41,12 +41,14 @@ const b = new DescribeBuilder('notification_policy', {
 });
 
 b.registerMethod('GetPolicy', {
+    safety: {operation: 'read'},
     params: NOTIFICATION_POLICY_SCOPE_SCHEMA,
     response: RESP_POLICY,
     permission: PERM,
     description: 'notification_policy.GetPolicy — current notification policy.'
 });
 b.registerMethod('SetPolicy', {
+    safety: {operation: 'update'},
     params: NOTIFICATION_POLICY_SET_SCHEMA,
     response: RESP_OK,
     permission: PERM,
@@ -54,6 +56,7 @@ b.registerMethod('SetPolicy', {
         'notification_policy.SetPolicy — toggle "notify user on password change".'
 });
 b.registerMethod('Reset', {
+    safety: {operation: 'update'},
     params: NOTIFICATION_POLICY_SCOPE_SCHEMA,
     response: RESP_OK,
     permission: PERM,

@@ -147,7 +147,7 @@
                 <span class="et__kpi-label">Voltage</span>
             </li>
             <li v-if="status?.current != null" class="et__kpi">
-                <span class="et__kpi-value">{{ formatCurrent(status.current) }} A</span>
+                <span class="et__kpi-value">{{ metricText(formatCurrent(status.current)) }}</span>
                 <span class="et__kpi-label">Current</span>
             </li>
             <li v-if="status?.aenergy?.total != null" class="et__kpi">
@@ -645,8 +645,8 @@ import HorizontalSlider from '@/components/core/HorizontalSlider.vue';
 import {useAccordion} from '@/composables/useAccordion';
 import {useNightMode} from '@/composables/useNightMode';
 import {useToggleAfter} from '@/composables/useToggleAfter';
-import {formatDuration} from '@/helpers/formatDuration';
-import {formatCurrent} from '@/helpers/powerMetrics';
+import {formatDuration} from '@/helpers/format';
+import {formatCurrent, metricText} from '@/helpers/powerMetrics';
 import {formatSource} from '@/helpers/sourceLabels';
 import {useLightControl} from './useLightControl';
 

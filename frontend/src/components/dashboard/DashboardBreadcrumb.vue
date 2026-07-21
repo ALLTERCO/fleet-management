@@ -1,7 +1,7 @@
 <template>
     <div v-if="locationId !== null" class="dash-bc">
         <router-link :to="clearContextTo" class="dash-bc-link">
-            <i class="fas fa-layer-group" style="font-size:9px;margin-right:var(--space-1);" />Fleet
+            <i class="fas fa-layer-group" style="font-size:var(--type-caption);margin-right:var(--space-1);" />Fleet
         </router-link>
         <template v-for="crumb in breadcrumbs" :key="crumb.id">
             <span class="dash-bc-sep">›</span>

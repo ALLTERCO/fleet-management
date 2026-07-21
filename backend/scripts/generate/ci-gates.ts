@@ -371,15 +371,14 @@ function gateSocketClose(): GateResult {
         return {
             gate: 'socket-close-ownership',
             passed: true,
-            message:
-                "ConnectionContext is the sole owner of socket.on/once('close')."
+            message: 'Direct socket close listeners stay in lifecycle owners.'
         };
     } catch (err: unknown) {
         const out = (err as {stdout?: Buffer}).stdout?.toString() ?? '';
         return {
             gate: 'socket-close-ownership',
             passed: false,
-            message: `Direct socket close listeners detected outside ConnectionContext.\n${out}`
+            message: `Direct socket close listeners detected outside lifecycle owners.\n${out}`
         };
     }
 }

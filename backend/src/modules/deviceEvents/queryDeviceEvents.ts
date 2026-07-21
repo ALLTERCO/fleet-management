@@ -6,6 +6,7 @@ import * as PostgresProvider from '../PostgresProvider';
 export interface DeviceEventRow {
     ts: Date;
     received_ts: Date;
+    device_id: number;
     shelly_id: string;
     organization_id: string | null;
     component: string;

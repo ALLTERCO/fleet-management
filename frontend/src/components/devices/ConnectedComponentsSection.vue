@@ -9,10 +9,9 @@
             <span>{{ stateMessage.text }}</span>
         </div>
 
-        <!-- One flat grid — no category sub-sections. -->
-        <div class="connected-components__grid">
+        <div v-if="visibleItems.length" class="connected-components__grid">
             <article
-                v-for="item in flatItems"
+                v-for="item in visibleItems"
                 :key="item.key"
                 class="connected-components__item"
             >
@@ -83,14 +82,6 @@ interface SectionItem {
     chips: Chip[];
 }
 
-interface SectionGroup {
-    key: ComponentCategory;
-    label: string;
-    icon: string;
-    items: SectionItem[];
-    count: number;
-}
-
 interface StateMessage {
     icon: string;
     text: string;
@@ -113,18 +104,6 @@ const CATEGORY_ORDER: ComponentCategory[] = [
     'virtual',
     'diagnostics'
 ];
-
-const CATEGORY_META: Record<
-    ComponentCategory,
-    {label: string; icon: string}
-> = {
-    controls: {label: 'Controls', icon: 'fas fa-sliders'},
-    sensors: {label: 'Sensors', icon: 'fas fa-gauge-high'},
-    energy: {label: 'Energy', icon: 'fas fa-bolt'},
-    bluetooth: {label: 'Bluetooth', icon: 'fab fa-bluetooth-b'},
-    virtual: {label: 'Virtual roles', icon: 'fas fa-layer-group'},
-    diagnostics: {label: 'Diagnostics', icon: 'fas fa-circle-info'}
-};
 
 const CONTROL_TYPES = new Set([
     'switch',
@@ -195,14 +174,12 @@ const graphLoading = ref(false);
 let unsubscribeRelationshipChanged: (() => void) | null = null;
 let graphRequestId = 0;
 
-const visibleGroups = computed<SectionGroup[]>(() =>
-    CATEGORY_ORDER.map((category) => sectionGroup(category)).filter(
-        (group) => group.items.length > 0
+// Flat list, still ordered by category so related items stay together.
+const visibleItems = computed<SectionItem[]>(() =>
+    CATEGORY_ORDER.flatMap((category) =>
+        sectionItems.value.filter((item) => item.category === category)
     )
 );
-
-// Flattened across categories — rendered as one grid, no sub-headers.
-const flatItems = computed(() => visibleGroups.value.flatMap((g) => g.items));
 
 const totalItems = computed(
     () => props.entities.length + props.groups.length
@@ -308,20 +285,6 @@ function isCurrentGraphRequest(requestId: number): boolean {
     return requestId === graphRequestId;
 }
 
-function sectionGroup(category: ComponentCategory): SectionGroup {
-    const meta = CATEGORY_META[category];
-    const items = sectionItems.value.filter(
-        (item) => item.category === category
-    );
-    return {
-        key: category,
-        label: meta.label,
-        icon: meta.icon,
-        items,
-        count: items.length
-    };
-}
-
 const sectionItems = computed<SectionItem[]>(() => [
     ...props.entities.map(entityItem),
     ...props.groups.map(groupItem)
@@ -349,28 +312,15 @@ function groupItem(group: ConnectedSensorGroup): SectionItem {
 
 function chipsForEntity(entity: entity_t): Chip[] {
     return compactChips([
-        roleChip(entity),
-        sourceChip(entity),
-        relationshipChip(entity),
+        props.relationshipContext ? roleChip(entity) : null,
+        props.relationshipContext ? sourceChip(entity) : null,
+        props.relationshipContext ? relationshipChip(entity) : null,
         availabilityChip(entity)
     ]);
 }
 
-function chipsForGroup(group: ConnectedSensorGroup): Chip[] {
-    const kind =
-        group.type === 'ble'
-            ? 'BLU group'
-            : group.type === 'virtual'
-              ? 'virtual group'
-              : 'add-on';
-    return [
-        {
-            key: `group:${group.key}`,
-            label: kind,
-            icon: group.icon,
-            tone: 'neutral'
-        }
-    ];
+function chipsForGroup(_group: ConnectedSensorGroup): Chip[] {
+    return [];
 }
 
 function roleChip(entity: entity_t): Chip | null {
@@ -525,7 +475,6 @@ function humanize(value: string): string {
 }
 
 .connected-components__header,
-.connected-components__group-header,
 .connected-components__health,
 .connected-components__chips,
 .connected-components__state {
@@ -550,8 +499,7 @@ function humanize(value: string): string {
     font-weight: var(--font-semibold);
 }
 
-.connected-components__header small,
-.connected-components__group-header small {
+.connected-components__header small {
     color: var(--color-text-tertiary);
     font-size: var(--type-caption);
 }
@@ -630,27 +578,6 @@ function humanize(value: string): string {
     color: var(--color-danger-text);
 }
 
-.connected-components__group {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: var(--space-2);
-}
-
-.connected-components__group-header {
-    justify-content: space-between;
-    gap: var(--space-2);
-}
-
-.connected-components__group-header span {
-    display: inline-flex;
-    min-width: 0;
-    align-items: center;
-    gap: var(--space-2);
-    color: var(--color-text-secondary);
-    font-size: var(--type-body);
-    font-weight: var(--font-semibold);
-}
 
 .connected-components__grid {
     display: grid;

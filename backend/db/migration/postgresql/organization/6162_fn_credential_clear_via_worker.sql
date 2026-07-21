@@ -1,4 +1,5 @@
 --------------UP
+-- LINT-IGNORE: additive-only (deliberate legacy function removal)
 -- Clear-via-worker: ha1_new_hex IS NULL in credential_pushes signals
 -- "disable auth on this device". Worker calls Shelly.SetAuth all-null
 -- and on success the row is deleted via fn_credential_finalize_cleared.

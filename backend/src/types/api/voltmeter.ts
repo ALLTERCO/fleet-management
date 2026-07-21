@@ -59,12 +59,12 @@ export interface VoltmeterGetStatusParams {
 }
 export const VOLTMETER_GET_STATUS_PARAMS_SCHEMA = P_ID;
 
-// Voltmeter.CheckExpression — evaluate a JS expression with x = inputs[i].
-// Spec: {expr: string, inputs: number[]} — up to 5 inputs per spec.
+// CheckExpression evaluates expr with x = inputs[i]. Spec: max 5 inputs,
+// each may be null.
 export interface VoltmeterCheckExpressionParams {
     shellyID: string;
     expr: string;
-    inputs: number[];
+    inputs: (number | null)[];
 }
 export const VOLTMETER_CHECK_EXPRESSION_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
@@ -72,8 +72,8 @@ export const VOLTMETER_CHECK_EXPRESSION_PARAMS_SCHEMA: JsonSchema = {
     additionalProperties: false,
     properties: {
         shellyID: SHELLY_ID,
-        expr: {type: 'string'},
-        inputs: {type: 'array', items: {type: 'number'}}
+        expr: {type: 'string', maxLength: 100},
+        inputs: {type: 'array', maxItems: 5, items: {type: ['number', 'null']}}
     }
 };
 

@@ -4,6 +4,7 @@ import {UI_CONFIG} from '@/config/ui';
 import {isDiscovered} from '@/helpers/device';
 import {debug} from '@/tools/debug';
 import {trackInteraction} from '@/tools/observability';
+import {applyPatch, applySnapshot} from '@/tools/patch';
 import type {
     DeviceCapabilities,
     presence,
@@ -13,84 +14,7 @@ import type {
 import * as ws from '../tools/websocket';
 import {useEntityStore} from './entities';
 import {createRefreshCoordinator} from './refreshCoordinator';
-
-/**
- * Apply a patch to a reactive target object in place.
- * Only changed leaf values trigger Vue reactivity updates.
- * Arrays and primitives are replaced entirely; nested objects are recursed.
- */
-function applyPatch(target: any, patch: any): void {
-    if (!target || typeof target !== 'object' || Array.isArray(target)) return;
-    if (!patch || typeof patch !== 'object' || Array.isArray(patch)) return;
-    for (const key of Object.keys(patch)) {
-        if (key === '__proto__' || key === 'constructor' || key === 'prototype')
-            continue;
-        const patchVal = patch[key];
-        const targetVal = target[key];
-        if (
-            patchVal &&
-            typeof patchVal === 'object' &&
-            !Array.isArray(patchVal) &&
-            targetVal &&
-            typeof targetVal === 'object' &&
-            !Array.isArray(targetVal)
-        ) {
-            applyPatch(targetVal, patchVal);
-        } else if (targetVal !== patchVal) {
-            target[key] = patchVal;
-        }
-    }
-}
-
-/**
- * Reconcile a reactive object with a full snapshot.
- * Missing keys are removed, nested objects are synced recursively,
- * arrays/primitives are replaced.
- */
-function applySnapshot(target: any, snapshot: any): void {
-    if (
-        !target ||
-        typeof target !== 'object' ||
-        Array.isArray(target) ||
-        !snapshot ||
-        typeof snapshot !== 'object' ||
-        Array.isArray(snapshot)
-    ) {
-        return;
-    }
-
-    for (const key of Object.keys(target)) {
-        if (
-            key === '__proto__' ||
-            key === 'constructor' ||
-            key === 'prototype'
-        ) {
-            continue;
-        }
-        if (!(key in snapshot)) {
-            delete target[key];
-        }
-    }
-
-    for (const key of Object.keys(snapshot)) {
-        if (key === '__proto__' || key === 'constructor' || key === 'prototype')
-            continue;
-        const snapshotVal = snapshot[key];
-        const targetVal = target[key];
-        if (
-            snapshotVal &&
-            typeof snapshotVal === 'object' &&
-            !Array.isArray(snapshotVal) &&
-            targetVal &&
-            typeof targetVal === 'object' &&
-            !Array.isArray(targetVal)
-        ) {
-            applySnapshot(targetVal, snapshotVal);
-        } else if (targetVal !== snapshotVal) {
-            target[key] = snapshotVal;
-        }
-    }
-}
+import {createStaleGuard} from './staleGuard';
 
 function isBTHomeComponentKey(key: string): boolean {
     return (
@@ -140,13 +64,34 @@ export const useDevicesStore = defineStore('devices', () => {
     const devices = reactive<Record<string, shelly_device_t>>({});
     const loadingTimers = new Map<string, ReturnType<typeof setTimeout>>();
     const initialLoadComplete = ref(false);
-    const sensorDataVersion = ref(0);
     const devicesVersion = ref(0);
     const onlineCount = ref(0);
     const idToShellyMap = new Map<number, string>();
     let _bulkLoading = false;
     let _batchMode = false;
     let _batchDirty = false;
+
+    // Monotonic live-event clock — snapshot merges must not regress newer
+    // WS presence/status applied while the chunked list was collecting.
+    const liveEventClock = createStaleGuard();
+    const liveEventSeqByDevice = new Map<string, number>();
+
+    function markLiveDeviceEvent(shellyID: string) {
+        liveEventSeqByDevice.set(shellyID, liveEventClock.bump());
+    }
+
+    function hasLiveEventAfter(shellyID: string, seq: number): boolean {
+        return (liveEventSeqByDevice.get(shellyID) ?? 0) > seq;
+    }
+
+    interface DeviceSnapshotGuard {
+        shellyID: string;
+        liveEventSeq: number;
+    }
+
+    function captureDeviceSnapshotGuard(shellyID: string): DeviceSnapshotGuard {
+        return {shellyID, liveEventSeq: liveEventClock.current()};
+    }
 
     /** Clear all pending loading timers — prevents stale timers from a previous
      *  connection marking devices offline after a reconnect. */
@@ -285,14 +230,17 @@ export const useDevicesStore = defineStore('devices', () => {
     }
 
     const rpcResponses = ref<Record<string, any>>({});
+    // Guards rpcResponses: a batch clear bumps, stale device replies discard themselves.
+    const rpcBatchGuard = createStaleGuard();
 
     function clearRpcResponses() {
         rpcResponses.value = {};
+        rpcBatchGuard.bump();
     }
 
     function sendTemplateRpc(method: string, params?: object) {
         // Clear old results
-        rpcResponses.value = {};
+        clearRpcResponses();
         // Send commands
         for (const dev of selectedDevices.value) {
             sendTemplateRpcToDevice({
@@ -308,18 +256,35 @@ export const useDevicesStore = defineStore('devices', () => {
         method: string;
         params?: object;
     }): Promise<void> {
+        const token = rpcBatchGuard.current();
         try {
-            rpcResponses.value[input.shellyID] = await ws.sendRPC(
+            const res = await ws.sendRPC(
                 input.shellyID,
                 input.method,
                 input.params
             );
+            if (rpcBatchGuard.isStale(token)) return;
+            rpcResponses.value[input.shellyID] = res;
         } catch (error) {
-            debug('[sendTemplateRpc] RPC failed', {
-                shellyID: input.shellyID,
-                error
-            });
+            if (rpcBatchGuard.isStale(token)) return;
+            // Failure entry renders in the Responses stage like a reply.
+            rpcResponses.value[input.shellyID] = rpcErrorEntry(error);
         }
+    }
+
+    function rpcErrorEntry(error: unknown): {
+        error: {code: number | null; message: string};
+    } {
+        const e = error as {code?: unknown; message?: unknown};
+        return {
+            error: {
+                code: typeof e?.code === 'number' ? e.code : null,
+                message:
+                    typeof e?.message === 'string' && e.message
+                        ? e.message
+                        : String(error)
+            }
+        };
     }
 
     const selectedDevices = computed(() =>
@@ -344,12 +309,8 @@ export const useDevicesStore = defineStore('devices', () => {
         clearAllLoadingTimers();
         debug('[fetchDevices] fetching device list from server (chunked)...');
         const t0 = performance.now();
-        // Collect all chunks first (parallel network), then process in one synchronous pass
-        // This avoids 8 separate Vue reactive cascades (one per chunk arrival)
-        const allDevices: import('@/types').ShellyDeviceExternal[] = [];
-        await ws.listDevicesChunked((chunk) => {
-            allDevices.push(...chunk);
-        });
+        const snapshotSeq = liveEventClock.current();
+        const allDevices = await ws.listDevicesSnapshot();
         debug(
             '[fetchDevices] network done:',
             allDevices.length,
@@ -359,10 +320,26 @@ export const useDevicesStore = defineStore('devices', () => {
         );
         // Suppress per-device version bumps & loading timers during bulk insert
         _bulkLoading = true;
-        for (const device of allDevices) {
-            handleNewDevice(device);
+        try {
+            for (const device of allDevices) {
+                handleNewDevice(device, {
+                    keepLiveState: hasLiveEventAfter(
+                        device.shellyID,
+                        snapshotSeq
+                    )
+                });
+            }
+            // Keep local discoveries and newer live arrivals.
+            const present = new Set(allDevices.map((d) => d.shellyID));
+            for (const shellyID of Object.keys(devices)) {
+                if (present.has(shellyID)) continue;
+                if (isDiscovered(shellyID)) continue;
+                if (hasLiveEventAfter(shellyID, snapshotSeq)) continue;
+                deviceDeleted(shellyID);
+            }
+        } finally {
+            _bulkLoading = false;
         }
-        _bulkLoading = false;
         // Single version bump for the entire batch
         bumpVersion();
         initialLoadComplete.value = true;
@@ -430,12 +407,17 @@ export const useDevicesStore = defineStore('devices', () => {
         if (!isDiscovered(shelly.shellyID)) addDeviceEntities(shelly.entities);
     }
 
-    function updateExistingDevice(existing: any, shelly: ShellyDeviceExternal) {
+    function updateExistingDevice(
+        existing: any,
+        shelly: ShellyDeviceExternal,
+        keepLiveStatus = false
+    ) {
         debug('[handleNewDevice] UPDATE', shelly.shellyID);
         const source = normalizedDeviceSource(shelly.source);
         if (source) existing.source = source;
         if (shelly.info) applyPatch(existing.info, shelly.info);
-        if (shelly.status) applyPatch(existing.status, shelly.status);
+        if (shelly.status && !keepLiveStatus)
+            applyPatch(existing.status, shelly.status);
         if (shelly.settings) applyPatch(existing.settings, shelly.settings);
         if (shelly.entities !== undefined) {
             syncEntityStore(existing.entities ?? [], shelly.entities);
@@ -466,9 +448,13 @@ export const useDevicesStore = defineStore('devices', () => {
         d.loading = false;
     }
 
-    function handleNewDevice(shelly: ShellyDeviceExternal) {
+    function handleNewDevice(
+        shelly: ShellyDeviceExternal,
+        opts?: {keepLiveState?: boolean}
+    ) {
         const existing = devices[shelly.shellyID];
-        if (existing) updateExistingDevice(existing, shelly);
+        const keepLiveState = opts?.keepLiveState === true && !!existing;
+        if (existing) updateExistingDevice(existing, shelly, keepLiveState);
         else insertNewDevice(shelly);
 
         const d = devices[shelly.shellyID];
@@ -482,6 +468,11 @@ export const useDevicesStore = defineStore('devices', () => {
             d.info = {};
         }
 
+        // Device got WS presence/status mid-snapshot — its live state is newer.
+        if (keepLiveState) {
+            d.loading = false;
+            return;
+        }
         applySleepState(d, shelly);
     }
 
@@ -491,6 +482,7 @@ export const useDevicesStore = defineStore('devices', () => {
         status: ShellyDeviceExternal['status']
     ): void {
         if (devices[shellyID]) return; // never clobber a real/known device
+        markLiveDeviceEvent(shellyID);
         const sys = (status?.sys ?? {}) as {
             gen?: number;
             device?: {model?: string};
@@ -550,17 +542,144 @@ export const useDevicesStore = defineStore('devices', () => {
         const newSet = new Set(newEntityIds);
         const removed = [...oldSet].filter((id) => !newSet.has(id));
         if (removed.length) entityStore().removeEntities(removed);
-        addDeviceEntities(newEntityIds, oldSet);
+        addDeviceEntities(newEntityIds);
     }
 
-    function addDeviceEntities(
-        entityIds: string[],
-        knownEntityIds = new Set<string>()
-    ) {
-        for (const id of entityIds) {
-            if (!knownEntityIds.has(id) || !entityStore().entities[id]) {
-                entityStore().addEntity(id);
+    function addDeviceEntities(entityIds: string[]) {
+        // An entity missing from the store means the bulk list has not landed
+        // yet (boot race) or a device just gained one. Trigger the single
+        // coalesced bulk load, never one entity.get per id — the refresh
+        // coordinator dedupes concurrent calls, so a fleet-wide boot burst
+        // collapses to one entity.list instead of N entity.get.
+        const hasGap = entityIds.some((id) => !entityStore().entities[id]);
+        if (hasGap) void entityStore().fetchEntities();
+    }
+
+    type DeviceRecordSnapshotField =
+        | 'info'
+        | 'status'
+        | 'settings'
+        | 'capabilities'
+        | 'meta';
+
+    function replaceDeviceRecordSnapshot(input: {
+        device: shelly_device_t;
+        field: DeviceRecordSnapshotField;
+        snapshot: unknown;
+    }): void {
+        const owner = input.device as unknown as Record<string, any>;
+        const current = owner[input.field];
+        const snapshot =
+            input.snapshot &&
+            typeof input.snapshot === 'object' &&
+            !Array.isArray(input.snapshot)
+                ? input.snapshot
+                : {};
+
+        if (current && typeof current === 'object' && !Array.isArray(current)) {
+            applySnapshot(current, snapshot);
+        } else {
+            owner[input.field] = snapshot;
+        }
+    }
+
+    function replaceArrayContents<T>(target: T[], snapshot?: T[]): void {
+        target.splice(0, target.length, ...(snapshot ?? []));
+    }
+
+    function replaceDeviceIdMapping(
+        device: shelly_device_t,
+        snapshot: ShellyDeviceExternal
+    ): void {
+        if (snapshot.id === undefined || snapshot.id === null) return;
+
+        for (const [id, shellyID] of idToShellyMap) {
+            if (shellyID === device.shellyID && id !== snapshot.id) {
+                idToShellyMap.delete(id);
             }
+        }
+        device.id = snapshot.id;
+        idToShellyMap.set(snapshot.id, snapshot.shellyID);
+    }
+
+    /** Reconcile a full Device.Get response, pruning state absent from it. */
+    function replaceDeviceSnapshot(
+        snapshot: ShellyDeviceExternal,
+        guard?: DeviceSnapshotGuard
+    ): void {
+        const nextEntities = snapshot.entities ?? [];
+        const existing = devices[snapshot.shellyID];
+        const keepLiveState =
+            !!existing &&
+            guard?.shellyID === snapshot.shellyID &&
+            hasLiveEventAfter(snapshot.shellyID, guard.liveEventSeq);
+
+        beginBatch();
+        try {
+            if (!existing) {
+                insertDevice({
+                    shellyID: snapshot.shellyID,
+                    source: normalizedDeviceSource(snapshot.source),
+                    info: {},
+                    status: {},
+                    settings: {},
+                    entities: [],
+                    capabilities: {},
+                    meta: {},
+                    methods: [],
+                    id: snapshot.id,
+                    groupIds: [],
+                    locationId: null,
+                    tagIds: []
+                });
+            }
+
+            const device = devices[snapshot.shellyID];
+            if (!device) return;
+
+            if (!keepLiveState) clearOverlayFor(snapshot.shellyID);
+            const source = normalizedDeviceSource(snapshot.source);
+            if (source) device.source = source;
+
+            for (const field of [
+                'info',
+                'status',
+                'settings',
+                'capabilities',
+                'meta'
+            ] as const) {
+                if (field === 'status' && keepLiveState) continue;
+                replaceDeviceRecordSnapshot({
+                    device,
+                    field,
+                    snapshot: snapshot[field]
+                });
+            }
+
+            syncEntityStore(device.entities, nextEntities);
+            replaceArrayContents(device.entities, nextEntities);
+            replaceArrayContents(device.methods, snapshot.methods);
+            replaceArrayContents(
+                device.groupIds ?? (device.groupIds = []),
+                snapshot.groupIds
+            );
+            replaceArrayContents(
+                device.tagIds ?? (device.tagIds = []),
+                snapshot.tagIds
+            );
+            device.locationId = snapshot.locationId ?? null;
+            replaceDeviceIdMapping(device, snapshot);
+
+            const timer = loadingTimers.get(snapshot.shellyID);
+            if (timer) {
+                clearTimeout(timer);
+                loadingTimers.delete(snapshot.shellyID);
+            }
+            if (keepLiveState) device.loading = false;
+            else applySleepState(device, snapshot);
+            bumpVersion();
+        } finally {
+            endBatch();
         }
     }
 
@@ -571,6 +690,7 @@ export const useDevicesStore = defineStore('devices', () => {
             'presence:',
             shelly.presence
         );
+        markLiveDeviceEvent(shelly.shellyID);
         beginBatch();
         try {
             const device = devices[shelly.shellyID];
@@ -595,6 +715,7 @@ export const useDevicesStore = defineStore('devices', () => {
         clearOverlayFor(shellyID);
         const device = devices[shellyID];
         if (!device) return;
+        markLiveDeviceEvent(shellyID);
 
         const sleepOnline = isSleepingDeviceOnline(device);
         if (sleepOnline !== undefined) {
@@ -623,6 +744,7 @@ export const useDevicesStore = defineStore('devices', () => {
         }
 
         clearOverlayFor(shellyID);
+        liveEventSeqByDevice.delete(shellyID);
 
         const device = devices[shellyID];
         if (device) {
@@ -645,44 +767,6 @@ export const useDevicesStore = defineStore('devices', () => {
         return ws.sendRPC(shellyID, method, params, options);
     }
 
-    interface SwitchOutputCommand {
-        shellyID: string;
-        id: number;
-    }
-
-    async function toggleSwitchOutput(command: SwitchOutputCommand) {
-        const statusKey = switchStatusKey(command.id);
-        const handle = predictedSwitchToggle(command.shellyID, statusKey);
-        try {
-            return await ws.sendRPC('FLEET_MANAGER', 'Switch.Toggle', command);
-        } catch (err) {
-            if (handle && shouldIgnoreOptimisticFailure(handle)) return;
-            handle?.revert();
-            throw err;
-        }
-    }
-
-    function switchStatusKey(id: number): string {
-        return `switch:${id}`;
-    }
-
-    function predictedSwitchToggle(
-        shellyID: string,
-        statusKey: string
-    ): OptimisticHandle | null {
-        const current = statusOf(shellyID, statusKey);
-        if (!current || typeof current.output !== 'boolean') {
-            return null;
-        }
-        return applyOptimistic(shellyID, statusKey, {
-            output: !current.output
-        });
-    }
-
-    function getSelected() {
-        return Object.values(devices).filter((dev) => dev.selected);
-    }
-
     function patchInfo(shellyID: string, info: any) {
         const device = devices[shellyID];
         if (device !== undefined) {
@@ -691,37 +775,30 @@ export const useDevicesStore = defineStore('devices', () => {
         }
     }
 
-    let _sensorBumpTimer: ReturnType<typeof setTimeout> | undefined;
-    function scheduleSensorBump() {
-        if (_sensorBumpTimer) return;
-        _sensorBumpTimer = setTimeout(() => {
-            _sensorBumpTimer = undefined;
-            sensorDataVersion.value++;
-        }, 100);
-    }
-
     function patchDeviceField(
         shellyID: string,
         field: 'status' | 'settings',
-        data: any
+        data: any,
+        partial = false
     ) {
         const device = devices[shellyID];
         if (!device) return;
         debug(`[patch${field[0].toUpperCase() + field.slice(1)}]`, shellyID);
         const previousBTHomeKeys = getBTHomeKeySet(device[field]);
-        applySnapshot(device[field], data);
+        // Partial (dashboard) update: merge so unlisted components survive.
+        // Full snapshot: reconcile and prune stale components.
+        if (partial) applyPatch(device[field], data);
+        else applySnapshot(device[field], data);
         const nextBTHomeKeys = getBTHomeKeySet(device[field]);
 
-        if (nextBTHomeKeys.size > 0 || previousBTHomeKeys.size > 0) {
-            scheduleSensorBump();
-        }
         if (didTopLevelKeysChange(previousBTHomeKeys, nextBTHomeKeys)) {
             bumpVersion();
         }
     }
 
-    function patchStatus(shellyID: string, status: any) {
-        patchDeviceField(shellyID, 'status', status);
+    function patchStatus(shellyID: string, status: any, partial = false) {
+        if (devices[shellyID]) markLiveDeviceEvent(shellyID);
+        patchDeviceField(shellyID, 'status', status, partial);
         // Clear overlay only on confirming echo; stale echoes are ignored.
         if (status && typeof status === 'object' && !Array.isArray(status)) {
             const bucket = optimisticOverlay[shellyID];
@@ -910,10 +987,6 @@ export const useDevicesStore = defineStore('devices', () => {
         };
     }
 
-    function shouldIgnoreOptimisticFailure(handle: OptimisticHandle): boolean {
-        return handle.isConfirmed() || handle.isSuperseded();
-    }
-
     // Real + overlay merged view — use this anywhere optimistic UI is desired.
     function statusOf(shellyID: string, statusKey: string): any {
         const real = devices[shellyID]?.status?.[statusKey];
@@ -935,6 +1008,7 @@ export const useDevicesStore = defineStore('devices', () => {
     function patchPresence(shellyID: string, presence: presence) {
         const device = devices[shellyID];
         if (!device) return;
+        markLiveDeviceEvent(shellyID);
 
         if (presence === 'online') {
             device.sleeping = false;
@@ -981,11 +1055,9 @@ export const useDevicesStore = defineStore('devices', () => {
         applyOptimistic,
         hasPendingOverlay,
         statusOf,
-        toggleSwitchOutput,
         // patchKVS,
         patchPresence,
         sendRPC,
-        getSelected,
         selectedDevices,
         rpcResponses,
         clearRpcResponses,
@@ -994,10 +1066,11 @@ export const useDevicesStore = defineStore('devices', () => {
         beginBatch,
         endBatch,
         handleNewDevice,
+        captureDeviceSnapshotGuard,
+        replaceDeviceSnapshot,
         addOptimisticDevice,
         devices,
         initialLoadComplete,
-        sensorDataVersion,
         devicesVersion,
         onlineCount,
         idToShellyMap

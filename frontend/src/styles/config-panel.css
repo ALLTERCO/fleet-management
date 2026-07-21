@@ -1,34 +1,301 @@
-/* Shared skeleton for device-config panels (Cloud / BLE / Wifi / Eth / Modbus / …). */
+/* Shared flat layout for generic device configuration panels. */
 
 .cfg-panel {
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: var(--space-4);
+    width: 100%;
 }
 
-.cfg-panel__status-row {
+.cfg-panel__form {
     display: flex;
-    justify-content: flex-end;
-    padding-bottom: var(--space-1);
+    flex-direction: column;
+    gap: var(--space-4);
+    width: 100%;
 }
 
-.cfg-panel__status {
+/* Sections are rounded cards — hairlines live inside a card, never in
+   open space (the Shelly app's grouped-list language). */
+.cfg-panel__workspace-section {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding: var(--space-2) var(--space-4);
+    border: var(--space-px) solid var(--color-border-default);
+    border-radius: var(--radius-xl);
+    background: var(--color-surface-0);
+}
+
+.cfg-panel__workspace-section + .cfg-panel__workspace-section {
+    margin-top: var(--space-2);
+}
+
+/* Visible card heading — sections should not rely on aria-label alone. */
+.cfg-panel__section-title {
+    margin: 0;
+    padding: var(--space-2) 0;
+    color: var(--color-text-primary);
     font-size: var(--type-body);
-    font-weight: var(--font-bold);
-    padding: var(--space-px) var(--space-3);
-    border-radius: var(--radius-2xl);
+    font-weight: var(--font-semibold);
 }
 
-.cfg-panel__status--on {
-    background: rgba(var(--color-success-rgb), 0.12);
-    color: var(--color-success-text);
-    border: 1px solid rgba(var(--color-success-rgb), 0.25);
+.cfg-panel__toggle-grid,
+.cfg-panel__field-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
 }
 
-.cfg-panel__status--off {
-    background: rgba(var(--color-danger-rgb), 0.12);
+.cfg-panel__toggle {
+    display: flex;
+    min-width: 0;
+    min-height: var(--touch-target-min);
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border-bottom: var(--space-px) solid var(--color-border-default);
+}
+
+/* No vertical divider between the two columns — whitespace groups them;
+   dividers are budgeted to the horizontal rhythm only (Material guidance). */
+
+/* The last row's toggles drop their bottom border so the grid's own
+   bottom hairline doesn't double up. */
+.cfg-panel__toggle:last-child,
+.cfg-panel__toggle:nth-last-child(2):nth-child(odd) {
+    border-bottom: 0;
+}
+
+/* A single toggle spans the full grid — no half-empty checkerboard cell. */
+.cfg-panel__toggle:only-child {
+    grid-column: 1 / -1;
+}
+
+.cfg-panel__toggle-label {
+    flex: 1;
+    min-width: 0;
+}
+
+.cfg-panel__toggle-label strong {
+    display: block;
+    color: var(--color-text-primary);
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+}
+
+.cfg-panel__field-grid {
+    gap: var(--space-3);
+    padding: var(--space-3);
+}
+
+.cfg-panel__field {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.cfg-panel__field--wide {
+    grid-column: 1 / -1;
+}
+
+.cfg-panel__field > strong {
+    color: var(--color-text-primary);
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+}
+
+.cfg-panel__field-help {
+    margin-top: calc(-1 * var(--space-1));
+    color: var(--color-text-tertiary);
+    font-size: var(--type-caption);
+}
+
+.cfg-panel__workspace-input {
+    width: 100%;
+    min-height: var(--touch-target-min);
+    padding: var(--input-padding) var(--space-3);
+    border: var(--space-px) solid var(--input-border);
+    border-radius: var(--input-radius);
+    background: var(--input-bg);
+    color: var(--color-text-primary);
+    font-family: inherit;
+    font-size: var(--type-body);
+    outline: none;
+    transition: border-color var(--duration-fast) var(--ease-default);
+}
+
+.cfg-panel__workspace-input:hover {
+    border-color: var(--input-border-hover);
+}
+
+.cfg-panel__workspace-input:focus-visible {
+    border-color: var(--input-focus-ring);
+    box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring-color);
+}
+
+.cfg-panel__workspace-input::placeholder {
+    color: var(--input-placeholder);
+}
+
+.cfg-panel__readonly-value {
+    min-height: var(--touch-target-min);
+    padding: var(--input-padding) var(--space-3);
+    border: var(--space-px) solid var(--color-border-default);
+    border-radius: var(--input-radius);
+    background: var(--color-surface-2);
+    color: var(--color-text-secondary);
+    overflow-wrap: anywhere;
+}
+
+.cfg-panel__workspace-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: var(--z-raised);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    min-height: var(--touch-target-min);
+    margin-top: var(--space-4);
+    padding: var(--space-3);
+    border-top: var(--space-px) solid var(--color-border-strong);
+    background: var(--modal-bg);
+}
+
+.cfg-panel__workspace-footer-copy {
+    color: var(--color-text-secondary);
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+}
+
+.cfg-panel__section {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    padding: var(--space-2) var(--space-4);
+    border: var(--space-px) solid var(--color-border-default);
+    border-radius: var(--radius-xl);
+    background: var(--color-surface-0);
+}
+
+/* Disclosure sections: the Collapse renders its own card — no double box. */
+.cfg-panel__section--disclosure {
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+/* Segmented sub-tabs inside a panel (Wi-Fi, Bluetooth) — one spec for all. */
+.cfg-panel__tabs {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+    padding: var(--space-2);
+    background: var(--color-surface-1);
+    border: var(--space-px) solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+}
+
+.cfg-panel__tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-width: 0;
+    min-height: var(--touch-target-min);
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-text-tertiary);
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    cursor: pointer;
+    transition:
+        color var(--motion-state),
+        background-color var(--motion-state);
+}
+
+.cfg-panel__tab:hover {
+    color: var(--color-text-primary);
+    background: var(--color-surface-3);
+}
+
+.cfg-panel__tab--active {
+    color: var(--color-primary-text);
+    background: var(--color-primary-subtle);
+}
+
+.cfg-panel__tab:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+}
+
+.cfg-panel__tab i {
+    width: var(--icon-size-sm);
+    flex: 0 0 var(--icon-size-sm);
+    text-align: center;
+}
+
+.cfg-panel__tab > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* First-run / empty list state — an invitation, not an error. */
+.cfg-panel__empty {
+    display: grid;
+    justify-items: center;
+    gap: var(--space-2);
+    padding: var(--space-6) var(--space-4);
+    text-align: center;
+}
+
+.cfg-panel__empty > i {
+    color: var(--color-text-quaternary);
+    font-size: var(--icon-size-lg);
+}
+
+.cfg-panel__empty strong {
+    color: var(--color-text-primary);
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+}
+
+.cfg-panel__empty span {
+    color: var(--color-text-tertiary);
+    font-size: var(--type-caption);
+}
+
+/* View-only gating: fieldset[disabled] only reaches native form elements,
+   and the row toggle (CardToggle) is a div — disable it by hand. */
+fieldset[disabled] .ec-switch {
+    opacity: 0.3;
+    cursor: not-allowed;
+    pointer-events: none;
+    filter: saturate(0);
+}
+
+/* Automatic first fetch in progress — no failure copy until a real failure. */
+.cfg-panel__loading {
+    padding: var(--space-4) var(--space-3);
+    color: var(--color-text-tertiary);
+    font-size: var(--type-body);
+}
+
+/* Inline field validation — error at the field, not in a banner or toast. */
+.cfg-panel__input--error,
+.cfg-panel__workspace-input--error {
+    border-color: var(--color-input-error);
+}
+
+.cfg-panel__field-error {
     color: var(--color-danger-text);
-    border: 1px solid rgba(var(--color-danger-rgb), 0.25);
+    font-size: var(--type-caption);
 }
 
 .cfg-panel__row {
@@ -36,16 +303,31 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--color-border-subtle);
+    width: 100%;
+    min-height: var(--touch-target-min);
+    /* Roomier than the old space-2 — rows breathe like the Shelly app's. */
+    padding: var(--space-3);
+    border-bottom: var(--space-px) solid var(--color-border-subtle);
     transition: background-color var(--motion-hover);
+}
+
+/* Drilldown rows — the whole row opens an editor; the chevron says so. */
+.cfg-panel__row--link {
+    cursor: pointer;
+}
+
+.cfg-panel__row-chevron {
+    color: var(--color-text-quaternary);
+    font-size: var(--icon-size-xs);
 }
 
 .cfg-panel__row:hover {
     background: var(--state-hover-bg);
 }
 
-.cfg-panel__row:last-child {
+.cfg-panel__section > .cfg-panel__row:last-of-type,
+.cfg-panel__group > .cfg-panel__row:last-of-type,
+.cfg-panel > .cfg-panel__row:last-of-type {
     border-bottom: none;
 }
 
@@ -54,9 +336,11 @@
     min-width: 0;
 }
 
+/* Body-size labels — DESIGN_SYSTEM.md section 3 puts form labels at body;
+   this matches the Wi-Fi, MQTT and DeviceBoard rows so one voice remains. */
 .cfg-panel__row-label strong {
     display: block;
-    font-size: var(--type-caption);
+    font-size: var(--type-body);
     font-weight: var(--font-semibold);
     color: var(--color-text-primary);
 }
@@ -68,12 +352,36 @@
     margin-top: var(--space-px);
 }
 
+.cfg-panel__control {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: var(--floating-w-xs);
+    max-width: 100%;
+}
+
+.cfg-panel__control > * {
+    max-width: 100%;
+}
+
+/* Dropdowns stretch to the control column (Dropdown renders its own
+   anchor/trigger wrappers — no scoped :deep needed at call sites). */
+.cfg-panel__control .dropdown-anchor,
+.cfg-panel__control .dropdown-trigger {
+    width: 100%;
+}
+
+.cfg-panel__control > code {
+    width: 100%;
+}
+
 .cfg-panel__input {
     width: var(--floating-w-xs);
     max-width: 100%;
+    min-height: var(--touch-target-min);
     padding: var(--input-padding) var(--space-3);
     background: var(--input-bg);
-    border: 1px solid var(--input-border);
+    border: var(--space-px) solid var(--input-border);
     border-radius: var(--input-radius);
     color: var(--color-text-primary);
     font-size: var(--input-font-size);
@@ -107,16 +415,17 @@
 .cfg-panel__group {
     display: flex;
     flex-direction: column;
+    width: 100%;
 }
 
 .cfg-panel__footer {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
-    border-top: 1px solid var(--color-border-default);
-    margin-top: var(--space-1);
+    border-top: var(--space-px) solid var(--color-border-default);
+    margin-top: 0;
 }
 
 .cfg-panel__warn {
@@ -134,9 +443,9 @@
     justify-content: space-between;
     gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-md);
     background: rgba(var(--color-primary-rgb), 0.08);
-    border: 1px solid rgba(var(--color-primary-rgb), 0.2);
+    border-top: var(--space-px) solid rgba(var(--color-primary-rgb), 0.2);
+    border-bottom: var(--space-px) solid rgba(var(--color-primary-rgb), 0.2);
     font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     color: var(--color-primary-text);
@@ -153,16 +462,127 @@
 }
 
 .cfg-panel__notice {
+    width: 100%;
+    margin: 0;
     padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-md);
     background: rgba(var(--color-warning-rgb), 0.1);
-    border: 1px solid rgba(var(--color-warning-rgb), 0.25);
+    border-top: var(--space-px) solid rgba(var(--color-warning-rgb), 0.25);
+    border-bottom: var(--space-px) solid rgba(var(--color-warning-rgb), 0.25);
     color: var(--color-warning-text);
     font-size: var(--type-caption);
 }
 
 .cfg-panel__notice--error {
     background: rgba(var(--color-danger-rgb), 0.1);
-    border-color: rgba(var(--color-danger-rgb), 0.25);
+    border-top-color: rgba(var(--color-danger-rgb), 0.25);
+    border-bottom-color: rgba(var(--color-danger-rgb), 0.25);
     color: var(--color-danger-text);
+}
+
+.cfg-panel__notice--split {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+}
+
+/* Row-list panels (schedules, webhooks): count header, actions, mono values. */
+.cfg-panel__list-count {
+    flex: 1;
+    color: var(--color-text-tertiary);
+    font-size: var(--type-caption);
+}
+
+.cfg-panel__list-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.cfg-panel__list-mono {
+    font-family: var(--font-mono);
+    font-size: var(--type-caption);
+}
+
+/* The Advanced disclosure wears the same rounded card as every other
+   section — one design language across MQTT, System and Wi-Fi. */
+.cfg-panel .cfg-panel__disclosure.collapse-box {
+    margin: 0;
+    padding: var(--space-2) var(--space-4);
+    border: var(--space-px) solid var(--color-border-default);
+    border-radius: var(--radius-xl);
+    background: var(--color-surface-0);
+}
+
+.cfg-panel .cfg-panel__disclosure .box-body {
+    padding-right: 0;
+    padding-bottom: 0;
+    padding-left: 0;
+}
+
+/* Single modal-wide mobile breakpoint — keep in sync with the
+   device-settings shell in DeviceBoard.vue (767px). */
+@media (max-width: 767px) {
+    .cfg-panel,
+    .cfg-panel__form {
+        gap: var(--space-3);
+    }
+
+    .cfg-panel__status-row,
+    .cfg-panel__row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--space-2);
+        padding: var(--space-3);
+    }
+
+    .cfg-panel__status {
+        align-self: flex-start;
+    }
+
+    .cfg-panel__control,
+    .cfg-panel__input {
+        width: 100%;
+    }
+
+    .cfg-panel__control {
+        justify-content: flex-start;
+    }
+
+    .cfg-panel__control > code {
+        text-align: left;
+    }
+
+    .cfg-panel__footer {
+        padding: var(--space-3);
+    }
+
+    .cfg-panel__footer > * {
+        width: 100%;
+    }
+
+    .cfg-panel__toggle-grid,
+    .cfg-panel__field-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cfg-panel__field--wide {
+        grid-column: auto;
+    }
+
+    .cfg-panel__workspace-footer,
+    .cfg-panel__notice--split,
+    .cfg-panel__reboot-banner {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .cfg-panel__tabs {
+        gap: 0;
+    }
+
+    .cfg-panel__tab {
+        padding-inline: var(--space-1);
+    }
 }

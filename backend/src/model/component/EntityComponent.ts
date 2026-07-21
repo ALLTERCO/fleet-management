@@ -8,16 +8,21 @@ import {
 } from '../../modules/authz/evaluator';
 import * as DeviceCollector from '../../modules/DeviceCollector';
 import * as PostgresProvider from '../../modules/PostgresProvider';
-import {getBluetoothDevice} from '../../modules/virtualDevice/bluetoothRepository';
+import {
+    getBluetoothDevice,
+    listBluetoothDevices
+} from '../../modules/virtualDevice/bluetoothRepository';
 import {invokeVirtualDeviceRoleCommand} from '../../modules/virtualDevice/commandRouter';
 import {
     bluetoothEntityGetResponse,
+    bluetoothEntityListItems,
     bluetoothEntityStatusFrom,
     parseBluetoothEntityId
 } from '../../modules/virtualDevice/deviceListEntry';
 import {
     bluetoothDeviceSnapshot,
-    createDeviceCollectorSnapshotFetcher
+    createDeviceCollectorSnapshotFetcher,
+    enrichBluetoothDeviceWithGatewayStatus
 } from '../../modules/virtualDevice/deviceListIntegration';
 import {
     isVirtualEntityId,
@@ -51,6 +56,8 @@ import {
 } from '../../types/api/entity';
 import type CommandSender from '../CommandSender';
 import {
+    type ActionKind,
+    actionCategory,
     actionParamsSchemaFor,
     actionsForEntityType,
     shellyMethodForAction,
@@ -176,13 +183,29 @@ async function resolveExecutableVirtualEntity(
     return entity;
 }
 
+// One home for the capability shape — splits actions into control (rendered as
+// controls) and maintenance (rendered quietly). maintenanceActions is derived
+// from actionCategory, never hand-listed.
+function capabilityResponse(
+    type: string,
+    actions: readonly ActionKind[]
+): EntityCapabilityResponse {
+    return {
+        type,
+        actions: [...actions],
+        maintenanceActions: actions.filter(
+            (a) => actionCategory(a) === 'maintenance'
+        )
+    };
+}
+
 function virtualCapabilities(
     entity: VirtualEntityResolution
 ): EntityCapabilityResponse {
-    return {
-        type: entity.entity.type,
-        actions: [...supportedVirtualActions(entity)]
-    };
+    return capabilityResponse(
+        entity.entity.type,
+        supportedVirtualActions(entity)
+    );
 }
 
 function assertVirtualActionSupported(
@@ -316,11 +339,82 @@ function virtualEntityListItem(
     };
 }
 
+async function readableBluetoothEntities(
+    sender: CommandSender,
+    organizationId: string
+): Promise<Array<entity_t & {source: string; online: boolean}>> {
+    const result = await listBluetoothDevices(organizationId, {limit: 0});
+    if (result.items.length === 0) return [];
+    const allowed = canCrossOrganizationBoundary(sender)
+        ? new Set(result.items.map((device) => device.externalId))
+        : await sender.filterAccessibleDevices(
+              result.items.map((device) => device.externalId)
+          );
+    const physicalSnapshot =
+        createDeviceCollectorSnapshotFetcher(DeviceCollector);
+    return result.items.flatMap((device) => {
+        if (!allowed.has(device.externalId)) return [];
+        const gatewayExternalId =
+            device.primaryTransport?.shellyDeviceExternalId;
+        const gateway = gatewayExternalId
+            ? physicalSnapshot(gatewayExternalId)
+            : null;
+        const enriched = enrichBluetoothDeviceWithGatewayStatus(
+            device,
+            gateway
+        );
+        const snapshot = bluetoothDeviceSnapshot({
+            device: enriched,
+            gateway
+        });
+        return bluetoothEntityListItems(
+            enriched,
+            gateway?.presence ?? null,
+            snapshot.presence === 'online'
+        ) as Array<entity_t & {source: string; online: boolean}>;
+    });
+}
+
 function statusRecord(value: unknown): Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
         return value === null || value === undefined ? {} : {value};
     }
     return value as Record<string, unknown>;
+}
+
+function physicalEntityStatus(
+    entity: entity_t,
+    device: any
+): Record<string, any> {
+    const embeddedIn = (entity.properties as {embeddedIn?: unknown})
+        ?.embeddedIn;
+    if (entity.type === 'temperature' && typeof embeddedIn === 'string') {
+        return statusRecord(device.status[embeddedIn]?.temperature) as Record<
+            string,
+            any
+        >;
+    }
+    return device.status[`${entity.type}:${entity.properties.id}`] ?? {};
+}
+
+function physicalEntityConfig(
+    entity: entity_t,
+    device: any
+): Record<string, any> {
+    const embeddedIn = (entity.properties as {embeddedIn?: unknown})
+        ?.embeddedIn;
+    if (entity.type === 'temperature' && typeof embeddedIn === 'string') {
+        return statusRecord(device.config[embeddedIn]?.temperature) as Record<
+            string,
+            any
+        >;
+    }
+    return device.config[`${entity.type}:${entity.properties.id}`] ?? {};
+}
+
+function addAuditShellyId(params: unknown, shellyID: string): void {
+    if (!params || typeof params !== 'object' || Array.isArray(params)) return;
+    (params as Record<string, unknown>).shellyID = shellyID;
 }
 
 export async function canInvokeEntityAction(
@@ -386,7 +480,7 @@ export default class EntityComponent extends Component<any> {
         const bundle = DeviceCollector.findEntityAndDevice(params.id);
         if (!bundle) return {};
         const {entity, device} = bundle;
-        return device.status[`${entity.type}:${entity.properties.id}`] ?? {};
+        return physicalEntityStatus(entity, device);
     }
 
     override getConfig(params?: any): Record<string, any> {
@@ -394,7 +488,7 @@ export default class EntityComponent extends Component<any> {
         const bundle = DeviceCollector.findEntityAndDevice(params.id);
         if (!bundle) return {};
         const {entity, device} = bundle;
-        return device.config[`${entity.type}:${entity.properties.id}`] ?? {};
+        return physicalEntityConfig(entity, device);
     }
 
     // Sender-aware variants wired into addDefaultMethods.
@@ -435,7 +529,7 @@ export default class EntityComponent extends Component<any> {
         if (!(await canReadDeviceFieldAsync(sender, device.shellyID))) {
             return {};
         }
-        return device.status[`${entity.type}:${entity.properties.id}`] ?? {};
+        return physicalEntityStatus(entity, device);
     }
 
     async #getConfigForSender(
@@ -449,7 +543,7 @@ export default class EntityComponent extends Component<any> {
         if (!(await canReadDeviceFieldAsync(sender, device.shellyID))) {
             return {};
         }
-        return device.config[`${entity.type}:${entity.properties.id}`] ?? {};
+        return physicalEntityConfig(entity, device);
     }
 
     async #filterDevicesBySender(
@@ -507,7 +601,7 @@ export default class EntityComponent extends Component<any> {
             // BLU sensors are read-only telemetry — no actions. Controls
             // (buttons/TRVs) will add actions once InvokeAction supports BLU.
             const bluetooth = await loadBluetoothEntity(sender, validated.id);
-            if (bluetooth) return {type: bluetooth.parsed.type, actions: []};
+            if (bluetooth) return capabilityResponse(bluetooth.parsed.type, []);
             throw RpcError.NotFound('entity', validated.id);
         }
         await assertDeviceReadAccessAsync(
@@ -530,10 +624,7 @@ export default class EntityComponent extends Component<any> {
                       return method !== null && deviceMethods.includes(method);
                   })
                 : candidateActions;
-        return {
-            type: bundle.entity.type,
-            actions: [...actions]
-        };
+        return capabilityResponse(bundle.entity.type, actions);
     }
 
     @Component.Expose('GetActionSchema')
@@ -652,6 +743,7 @@ export default class EntityComponent extends Component<any> {
             if (!virtualEntity) throw RpcError.NotFound('entity', validated.id);
             return invokeVirtualEntityAction(sender, validated, virtualEntity);
         }
+        addAuditShellyId(params, bundle.device.shellyID as string);
 
         // Reject unsupported actions up front (translateAction's
         // "no builder" branch otherwise blames a backend bug)
@@ -661,6 +753,9 @@ export default class EntityComponent extends Component<any> {
                 details: {action: validated.action, type: bundle.entity.type}
             });
         }
+        // The device is the authority on what it accepts. Dispatch and surface
+        // its real refusal reason; Shelly.ListMethods omits service-owned
+        // virtual namespaces (XT1), so gating on it wrongly blocks control.
 
         // Validate the action's params against its per-action schema
         const actionSchema = actionParamsSchemaFor(
@@ -746,6 +841,10 @@ export default class EntityComponent extends Component<any> {
             (sum, owner) => sum + owner.entityCount,
             0
         );
+        const bluetoothEntities = organizationId
+            ? await readableBluetoothEntities(sender, organizationId)
+            : [];
+        const bluetoothTotal = bluetoothEntities.length;
 
         // Single pass: count all, collect only [offset, pageEnd).
         // Avoids materializing the full N-entity array before slicing.
@@ -787,7 +886,20 @@ export default class EntityComponent extends Component<any> {
         for (const virtualEntity of virtualEntities) {
             page.push(virtualEntityListItem(virtualEntity));
         }
-        total = physicalTotal + virtualTotal;
+        const bluetoothOffset = Math.max(
+            0,
+            offset - physicalTotal - virtualTotal
+        );
+        const bluetoothLimit = Number.isFinite(limit)
+            ? Math.max(0, limit - page.length)
+            : bluetoothTotal;
+        page.push(
+            ...bluetoothEntities.slice(
+                bluetoothOffset,
+                bluetoothOffset + bluetoothLimit
+            )
+        );
+        total = physicalTotal + virtualTotal + bluetoothTotal;
 
         return buildListResponse(page, total, rawLimit, offset);
     }

@@ -71,10 +71,34 @@ export const devices = {
     async delete(shellyID: string): Promise<{deleted: string}> {
         return callMethod('device.delete', {shellyID});
     },
+    // Soft delete: hides the device but keeps its id and history. Reversible.
+    async retire(shellyID: string): Promise<{retired: string}> {
+        return callMethod('device.retire', {shellyID});
+    },
+    async restore(shellyID: string): Promise<{restored: string}> {
+        return callMethod('device.restore', {shellyID});
+    },
+    async listRetired(): Promise<HostResult<'device.listretired'>> {
+        return callMethod('device.listretired', {});
+    },
+    // Hardware swap: keeps id + history. checkReplacement, then replaceHardware.
+    async checkReplacement(
+        input: HostParams<'device.checkreplacement'>
+    ): Promise<HostResult<'device.checkreplacement'>> {
+        return callMethod('device.checkreplacement', input);
+    },
+    async replaceHardware(
+        input: HostParams<'device.replacehardware'>
+    ): Promise<HostResult<'device.replacehardware'>> {
+        return callMethod('device.replacehardware', input);
+    },
     async setKind(
         input: HostParams<'device.setkind'>
     ): Promise<HostResult<'device.setkind'>> {
         return callMethod('device.setkind', input);
+    },
+    async getKind(shellyID: string): Promise<HostResult<'device.getkind'>> {
+        return callMethod('device.getkind', {shellyID});
     },
     async setImage(
         input: HostParams<'device.setimage'>

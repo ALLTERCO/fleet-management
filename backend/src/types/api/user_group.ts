@@ -132,30 +132,35 @@ export const USER_GROUP_DESCRIBE: DescribeOutput = new DescribeBuilder(
         description: 'Component metadata.'
     })
     .registerMethod('List', {
+        safety: {operation: 'read'},
         params: USER_GROUP_LIST_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,
         description: 'List user groups in current tenant.'
     })
     .registerMethod('Get', {
+        safety: {operation: 'read'},
         params: USER_GROUP_GET_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,
         description: 'Fetch a user group by id.'
     })
     .registerMethod('Create', {
+        safety: {operation: 'create'},
         params: USER_GROUP_CREATE_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
         description: 'Create a new user group.'
     })
     .registerMethod('Update', {
+        safety: {operation: 'update'},
         params: USER_GROUP_UPDATE_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
         description: 'Update user group metadata.'
     })
     .registerMethod('Delete', {
+        safety: {operation: 'delete'},
         params: USER_GROUP_DELETE_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
@@ -163,18 +168,21 @@ export const USER_GROUP_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Delete user group (cascades memberships, refuses if assignments reference).'
     })
     .registerMethod('ListMembers', {
+        safety: {operation: 'read'},
         params: USER_GROUP_LIST_MEMBERS_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,
         description: 'List user IDs that belong to this user group.'
     })
     .registerMethod('AddMembers', {
+        safety: {operation: 'update'},
         params: USER_GROUP_ADD_MEMBERS_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
         description: 'Add users to user group. Idempotent.'
     })
     .registerMethod('RemoveMembers', {
+        safety: {operation: 'update'},
         params: USER_GROUP_REMOVE_MEMBERS_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,

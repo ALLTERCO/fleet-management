@@ -8,8 +8,11 @@ export interface AuditBatchRow {
     ts: string | null;
     event_type: string;
     username: string | null;
+    actor_user_id: string | null;
     shelly_id: string | null;
     shelly_ids: string[] | null;
+    device_id: number | null;
+    device_ids: number[] | null;
     method: string | null;
     params: Record<string, unknown> | null;
     success: boolean;
@@ -24,26 +27,42 @@ export const REDACTED_PLACEHOLDER = '[REDACTED]';
 // cleartext. Specific names — not a bare 'key', which would redact pubkey etc.
 const SENSITIVE_KEY_SUBSTRINGS = [
     'password',
+    'passphrase',
     'secret',
     'token',
     'authorization',
+    'bearer',
+    'credential',
+    'dkim',
     'apikey',
     'api_key',
     'privatekey',
     'private_key',
     'accesskey',
-    'access_key'
+    'access_key',
+    'encryptionkey',
+    'encryption_key',
+    'masterkey',
+    'signingkey'
 ];
 
-// SSOT predicate for "this key may carry a secret" — substring, case-insensitive.
+// Exact-match keys too short/ambiguous to be substrings (e.g. 'pat' is a
+// substring of 'path'/'update'; 'pass' is the Wi-Fi/AP PSK and MQTT password
+// relayed via SetConfig — Shelly names the field `pass`, not `password`; 'psk'
+// is the pre-shared key). Exact match so 'passthrough' etc. stay untouched.
+const SENSITIVE_KEY_EXACT = new Set(['pat', 'pass', 'psk']);
+
+// SSOT predicate for "this key may carry a secret" — case-insensitive.
 export function isSensitiveParamKey(key: string): boolean {
     const lower = key.toLowerCase();
+    if (SENSITIVE_KEY_EXACT.has(lower)) return true;
     return SENSITIVE_KEY_SUBSTRINGS.some((needle) => lower.includes(needle));
 }
 
 // Recursively redact values under secret-looking keys. Returns the original
 // reference (allocation-free) when nothing was scrubbed; never mutates input.
-function scrubSensitiveValues(value: unknown): unknown {
+// Exported as the single home for deep param redaction (audit + WS debug log).
+export function scrubSensitiveValues(value: unknown): unknown {
     if (Array.isArray(value)) {
         let changed = false;
         const out = value.map((item) => {
@@ -92,10 +111,16 @@ export function entryToBatchRow(
         ts: entry.ts || null,
         event_type: entry.eventType,
         username: entry.username || null,
+        actor_user_id: entry.actorUserId || null,
         shelly_id: entry.shellyId || null,
         shelly_ids:
             entry.shellyIds && entry.shellyIds.length > 0
                 ? entry.shellyIds
+                : null,
+        device_id: entry.deviceId ?? null,
+        device_ids:
+            entry.deviceIds && entry.deviceIds.length > 0
+                ? entry.deviceIds
                 : null,
         method: entry.method || null,
         params: entry.params

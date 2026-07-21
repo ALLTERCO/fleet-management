@@ -16,7 +16,7 @@
     >
         <div class="ml">
             <div v-if="!visibleItems.length" class="ml-empty">
-                <i class="fas fa-circle-check" style="font-size:14px;margin-bottom:var(--space-1);" />
+                <i class="fas fa-circle-check" style="font-size:var(--type-caption);margin-bottom:var(--space-1);" />
                 <span>No issues</span>
             </div>
             <div v-else class="ml-list">

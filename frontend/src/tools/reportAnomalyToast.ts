@@ -3,6 +3,7 @@
 
 import {useToastStore} from '@/stores/toast';
 import {onReportEvent} from '@/tools/websocket';
+import {REPORT_EVENT} from '@/tools/wsEvents';
 
 interface AnomalyParams {
     readonly kind?: string;
@@ -14,7 +15,7 @@ interface AnomalyParams {
 export function initReportAnomalyToasts(): void {
     const toast = useToastStore();
     onReportEvent((event) => {
-        if (event.method !== 'Report.Anomaly') return;
+        if (event.method !== REPORT_EVENT.ANOMALY) return;
         showAnomalyToast(toast, event.params as AnomalyParams);
     });
 }

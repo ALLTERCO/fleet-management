@@ -57,9 +57,9 @@ const descriptor = computed<Descriptor>(() => {
     box-shadow: 0 0 6px currentColor;
 }
 
-.csb--verified { color: var(--state-on); }
-.csb--pending  { color: var(--state-warn); }
-.csb--failed   { color: var(--state-off); }
+.csb--verified { color: var(--color-status-on); }
+.csb--pending  { color: var(--color-status-warn); }
+.csb--failed   { color: var(--color-status-off); }
 .csb--disabled { color: var(--color-text-tertiary); }
 .csb--unknown  { color: var(--color-text-tertiary); }
 

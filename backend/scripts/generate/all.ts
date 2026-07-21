@@ -11,6 +11,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {GENERATED_DIR, writeOutputs} from './_shared.js';
 import {writeAiIndex} from './ai-index.js';
+import {
+    generate as genApiCatalog,
+    renderMarkdown as renderApiCatalog
+} from './api-catalog.js';
 import {generate as genApiDocs} from './api-docs.js';
 import {generate as genApiOpenapi} from './api-openapi.js';
 import {buildHtml as buildApiScalar} from './api-scalar.js';
@@ -44,6 +48,7 @@ import {
     renderMarkdown as renderFrontend
 } from './frontend-backend-dependencies.js';
 import {generate as genHostContract} from './host-contract.js';
+import {generate as genHostMethodMetadata} from './host-method-metadata.js';
 import {
     generate as genHostSdk,
     renderMarkdown as renderHostSdk
@@ -100,6 +105,10 @@ async function main() {
     writeOutputs('node-red-catalog', nodeRed, renderNodeRed(nodeRed));
     writePackageCatalog(nodeRed);
 
+    const apiCatalog = await genApiCatalog({rpc, auth});
+    console.log('· api-catalog... ok');
+    writeOutputs('api-catalog', apiCatalog, renderApiCatalog(apiCatalog));
+
     const embeddedApps = step('embedded-apps-api', genEmbeddedApps);
     writeOutputs(
         'embedded-apps-api',
@@ -140,6 +149,12 @@ async function main() {
         '· host-contract... ok (%d namespaces, %d methods)',
         hostContract.namespaces,
         hostContract.methods
+    );
+
+    const methodMetadata = await genHostMethodMetadata({catalog: apiCatalog});
+    console.log(
+        '· host-method-metadata... ok (%d methods)',
+        methodMetadata.methods
     );
 
     const hostSdk = step('host-sdk-index', genHostSdk);
@@ -194,6 +209,9 @@ async function main() {
     console.log(`  Auth matrix rows: ${auth.totals.rows}`);
     console.log(
         `  Node-RED catalog: ${nodeRed.nodes.length} nodes, ${nodeRed.methods.length} methods`
+    );
+    console.log(
+        `  API catalog: ${apiCatalog.summary.namespaces} namespaces, ${apiCatalog.summary.methods} methods`
     );
     console.log(
         `  Entity capabilities: ${capabilities.totals.entityTypes} types, ${capabilities.totals.actionCount} actions`

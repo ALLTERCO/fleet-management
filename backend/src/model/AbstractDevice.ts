@@ -10,6 +10,8 @@ import type {
     ShellyDeviceExternal,
     shelly_presence_t
 } from '../types';
+import {applyStatusProjection} from './curyVialProjection';
+import {enrichCapabilities} from './deviceCapabilities';
 import type {DeviceEventCatalog} from './deviceEventCatalog';
 import type {DeviceInfo} from './deviceInfo';
 import {buildProfile, type DeviceProfile} from './deviceProfile';
@@ -68,6 +70,17 @@ function normalizeComponentKeys(
     return result;
 }
 
+// Resolved-field projections (e.g. cury vials) run wherever status is stored,
+// so every payload and broadcast carries them without per-caller wiring.
+function projectAllComponentStatus(
+    status: Record<string, any>
+): Record<string, any> {
+    for (const key in status) {
+        status[key] = applyStatusProjection(key, status[key]);
+    }
+    return status;
+}
+
 export default abstract class AbstractDevice {
     public readonly shellyID: string;
     public readonly id: number;
@@ -90,6 +103,9 @@ export default abstract class AbstractDevice {
     // invalidated by the same #currentVersion bump as toJSON.
     #profileCache: DeviceProfile | null = null;
     #profileVersion = 0;
+    // Wire capabilities cache — same version-based invalidation.
+    #wireCapabilitiesCache: DeviceCapabilities | null = null;
+    #wireCapabilitiesVersion = 0;
     // Event catalog — populated by ShellyDeviceFactory on admission +
     // reconnect via Webhook.ListAllSupported. Undefined for legacy firmware.
     #eventCatalog: DeviceEventCatalog | undefined;
@@ -111,7 +127,9 @@ export default abstract class AbstractDevice {
         this.id = id;
         this.#presence = presence;
         this.#info = info;
-        this.#status = normalizeComponentKeys(status);
+        this.#status = projectAllComponentStatus(
+            normalizeComponentKeys(status)
+        );
         this.#config = normalizeComponentKeys(config);
         this.#reconnected = reconnected;
         this.#capabilities = capabilities ?? {};
@@ -130,17 +148,23 @@ export default abstract class AbstractDevice {
     // Remote Procedure Call logic
     // ----------------------------------------------------
 
+    // emitMessage: when true, the device's response is also re-emitted as a
+    // 'message' event so onMessage processes it (the UI relay path). Default
+    // false — the response only resolves the caller's promise.
     sendRPC(
         method: string,
         params?: any,
-        silent?: boolean,
+        emitMessage?: boolean,
         signal?: AbortSignal
     ): Promise<any> {
         if (!this.#transport) {
-            throw RpcError.DeviceNotFound();
+            // Typed Promise<any>: reject instead of throwing synchronously so
+            // await/.catch() callers see the failure through the declared
+            // contract, not as an uncaught throw on the calling stack.
+            return Promise.reject(RpcError.DeviceNotFound());
         }
 
-        return this.#transport.sendRPC(method, params, silent, signal);
+        return this.#transport.sendRPC(method, params, emitMessage, signal);
     }
 
     sendUnsafe(message: any) {
@@ -253,7 +277,7 @@ export default abstract class AbstractDevice {
             status,
             key
         );
-        this.#status[key] = merged;
+        this.#status[key] = applyStatusProjection(key, merged);
         this.#currentVersion++;
 
         // Emit the whole status for each component update in order to have the correct reason
@@ -273,7 +297,7 @@ export default abstract class AbstractDevice {
             status,
             key
         );
-        this.#status[key] = merged;
+        this.#status[key] = applyStatusProjection(key, merged);
         this.#currentVersion++;
 
         ShellyEvents.emitShellyStatus(
@@ -301,7 +325,7 @@ export default abstract class AbstractDevice {
                 key,
                 allChanges
             );
-            this.#status[key] = merged;
+            this.#status[key] = applyStatusProjection(key, merged);
             reasons.push(this.findMessageReason(key, normalized[key]));
         }
         this.#currentVersion++;
@@ -417,7 +441,7 @@ export default abstract class AbstractDevice {
                 key,
                 allChanges
             );
-            this.#status[key] = merged;
+            this.#status[key] = applyStatusProjection(key, merged);
         }
         this.#currentVersion++;
         this.onStateChange();
@@ -477,7 +501,7 @@ export default abstract class AbstractDevice {
             presence: this.#presence,
             settings: this.#config,
             entities: this.#entities.map((entity) => entity.id),
-            capabilities: this.#capabilities,
+            capabilities: this.wireCapabilities,
             methods: this.#methods,
             meta: {lastReportTs: this.#lastReportTs},
             profile: this.profile,
@@ -504,13 +528,13 @@ export default abstract class AbstractDevice {
                 id: this.id,
                 source: this.transport?.name || 'offline',
                 info: this.#info,
-                status: this.#status,
+                status: {...this.#status},
                 presence: this.#presence,
                 settings: details.has('settings')
-                    ? this.#config
+                    ? {...this.#config}
                     : this.#buildSlimSettings(),
                 entities: this.#entities.map((entity) => entity.id),
-                capabilities: this.#capabilities,
+                capabilities: this.wireCapabilities,
                 methods: this.#methods,
                 meta: {lastReportTs: this.#lastReportTs},
                 ...(this.#lastSeenSleepingMs !== undefined
@@ -541,6 +565,23 @@ export default abstract class AbstractDevice {
         }
         // Battery level (non-indexed key)
         if (status.devicepower) slimStatus.devicepower = status.devicepower;
+
+        // Connectivity summary — the settings modal shows per-transport state
+        // (nav dots, section badges) before the full device payload loads.
+        const wifi = status.wifi;
+        if (wifi) {
+            slimStatus.wifi = {};
+            if (wifi.status != null) slimStatus.wifi.status = wifi.status;
+            if (wifi.sta_ip != null) slimStatus.wifi.sta_ip = wifi.sta_ip;
+            if (wifi.ssid != null) slimStatus.wifi.ssid = wifi.ssid;
+            if (wifi.rssi != null) slimStatus.wifi.rssi = wifi.rssi;
+        }
+        if (status.eth?.ip != null) slimStatus.eth = {ip: status.eth.ip};
+        for (const key of ['cloud', 'mqtt', 'ws'] as const) {
+            if (status[key]?.connected != null) {
+                slimStatus[key] = {connected: status[key].connected};
+            }
+        }
 
         // All component status (switch:0, light:0, cover:0, devicepower:0, etc.)
         // Keyed with "type:id" — needed by dashboard/entity widgets for controls
@@ -573,7 +614,7 @@ export default abstract class AbstractDevice {
                 ? this.#config
                 : this.#buildSlimSettings(),
             entities: this.#entities.map((entity) => entity.id),
-            capabilities: this.#capabilities,
+            capabilities: this.wireCapabilities,
             methods: this.#methods,
             meta: {lastReportTs: this.#lastReportTs},
             profile: this.profile,
@@ -649,13 +690,17 @@ export default abstract class AbstractDevice {
                 const c = config[key];
                 slim[key] = {
                     enable: c?.enable,
+                    num_tracks: c?.num_tracks,
                     zmin: c?.zmin,
                     zmax: c?.zmax,
                     main_zone: c?.main_zone,
                     sensor: c?.sensor
                         ? {
                               position: c.sensor.position,
-                              sensitivity: c.sensor.sensitivity
+                              sensitivity: c.sensor.sensitivity,
+                              power: c.sensor.power,
+                              height: c.sensor.height,
+                              tilt: c.sensor.tilt
                           }
                         : undefined
                 };
@@ -703,6 +748,28 @@ export default abstract class AbstractDevice {
 
     get capabilities(): DeviceCapabilities {
         return this.#capabilities;
+    }
+
+    /** Capabilities as sent on the wire — base RPC-derived caps enriched
+     *  with fields the device announces (restore method set, addon services,
+     *  UI feature flags). Cached per #currentVersion. */
+    get wireCapabilities(): DeviceCapabilities {
+        if (
+            this.#wireCapabilitiesCache &&
+            this.#wireCapabilitiesVersion === this.#currentVersion
+        ) {
+            return this.#wireCapabilitiesCache;
+        }
+        const built = enrichCapabilities({
+            base: this.#capabilities,
+            info: this.#info,
+            status: this.#status,
+            config: this.#config,
+            methods: this.#methods
+        });
+        this.#wireCapabilitiesCache = built;
+        this.#wireCapabilitiesVersion = this.#currentVersion;
+        return built;
     }
 
     setCapabilities(capabilities: DeviceCapabilities) {

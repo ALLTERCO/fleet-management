@@ -8,6 +8,7 @@ import {tuning} from '../../config/tuning';
 import * as AuditLogger from '../../modules/AuditLogger';
 import {canCrossOrganizationBoundary} from '../../modules/authz/evaluator';
 import * as postgres from '../../modules/PostgresProvider';
+import {captureStreamError} from '../../modules/util/faultGuard';
 import {bestEffort} from '../../modules/util/fireAndForget';
 import type {DescribeOutput} from '../../rpc/describe';
 import {buildListResponse} from '../../rpc/listResponse';
@@ -352,6 +353,12 @@ export default class AuditComponent extends Component<AuditLogConfig> {
         const filename = `audit-log-${tenantSegment}-${timestamp}-${nonce}.csv`;
         const filePath = path.join(AUDIT_EXPORTS_PATH, filename);
         const csvStream = fs.createWriteStream(filePath, {encoding: 'utf-8'});
+        // Capture async fd errors (e.g. disk full) so they surface at the next
+        // await instead of crashing the process during a DB paging gap.
+        const throwIfWriteFailed = captureStreamError(
+            csvStream,
+            'audit-export-write'
+        );
         let rowCount = 0;
 
         // Build CSV content
@@ -375,6 +382,7 @@ export default class AuditComponent extends Component<AuditLogConfig> {
                 to: effectiveTo,
                 eventTypes: params.eventTypes as AuditLogger.AuditEventType[]
             });
+            throwIfWriteFailed();
             csvStream.end();
             await finished(csvStream);
         } catch (error) {

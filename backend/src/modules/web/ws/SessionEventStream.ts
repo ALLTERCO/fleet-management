@@ -66,9 +66,9 @@ export class SessionEventStream {
         await this.#stream.ensureGroup(this.#group, startId);
     }
 
-    /** Keep the stream alive while the session socket is connected. The TTL key
-     *  is shared, so use the writer stream — same key append() refreshes. No-op
-     *  once dropped, so a late heartbeat can't resurrect a deleted key. */
+    /** Sole owner of the stream TTL: armed at attach, slid by the sender's
+     *  periodic heartbeat, re-armed at close. append() never refreshes it.
+     *  No-op once dropped, so a late heartbeat can't resurrect a deleted key. */
     async touch(): Promise<void> {
         if (this.#destroyed) return;
         await this.#stream.touch(tuning.ws.streamTtlMs);
@@ -96,11 +96,12 @@ export class SessionEventStream {
     async append(kind: string, payload: string): Promise<void> {
         if (this.#destroyed) return;
         try {
+            // No ttlMs here on purpose: the periodic touch() owns the TTL,
+            // so the hot append path stays a single XADD round trip.
             const id = await this.#stream.append(
                 {kind, payload},
                 {
                     maxlen: tuning.ws.streamMaxlen,
-                    ttlMs: tuning.ws.streamTtlMs,
                     rateCheck: this.#rateCheck,
                     rateLabel: 'ws'
                 }

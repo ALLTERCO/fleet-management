@@ -62,18 +62,21 @@ const b = new DescribeBuilder('privacy', {
 });
 
 b.registerMethod('GetPolicy', {
+    safety: {operation: 'read'},
     params: PRIVACY_SCOPE_PARAMS_SCHEMA,
     response: RESP_POLICY,
     permission: PERM,
     description: 'Privacy.GetPolicy — current legal-link policy.'
 });
 b.registerMethod('SetPolicy', {
+    safety: {operation: 'update'},
     params: PRIVACY_SET_POLICY_PARAMS_SCHEMA,
     response: RESP_OK,
     permission: PERM,
     description: 'Privacy.SetPolicy — ToS / privacy / support / help links.'
 });
 b.registerMethod('Reset', {
+    safety: {operation: 'update'},
     params: PRIVACY_SCOPE_PARAMS_SCHEMA,
     response: RESP_OK,
     permission: PERM,

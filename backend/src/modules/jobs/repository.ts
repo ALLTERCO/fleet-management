@@ -1,5 +1,7 @@
 import * as store from '../PostgresProvider';
 import {
+    type BackupDeviceOwnership,
+    type BackupDeviceOwnershipProbe,
     type BackupQueuedUnit,
     type BackupUnitCounts,
     type CreatedBackupJob,
@@ -11,6 +13,8 @@ import {
 } from './repositoryFactory';
 
 export type {
+    BackupDeviceOwnership,
+    BackupDeviceOwnershipProbe,
     BackupQueuedUnit,
     BackupUnitCounts,
     CreatedBackupJob,
@@ -35,6 +39,9 @@ export const markBackupUnitDone = defaultRepository.markBackupUnitDone;
 export const markBackupUnitFailed = defaultRepository.markBackupUnitFailed;
 export const getBackupUnitCounts = defaultRepository.getBackupUnitCounts;
 export const backupCaptureOrgs = defaultRepository.backupCaptureOrgs;
+export const backupCaptureOwners = defaultRepository.backupCaptureOwners;
+export const resolveBackupDeviceOwners =
+    defaultRepository.resolveBackupDeviceOwners;
 export const reclaimStaleBackupUnits =
     defaultRepository.reclaimStaleBackupUnits;
 export const listQueuedFirmwareUnits =

@@ -9,13 +9,19 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import type {
+    DescribeOutput,
+    NamespaceKind
+} from '../../src/types/api/_describe';
 import {loadAllDescribes} from './_describes.js';
 import {
-    GENERATED_DIR,
-    provenanceHeader,
-    REPO_ROOT,
-    writeOutputs
-} from './_shared.js';
+    type AuthInventory,
+    type AuthRow,
+    authIndex,
+    readGeneratedJson,
+    rpcIndex
+} from './_inventories.js';
+import {provenanceHeader, REPO_ROOT, writeOutputs} from './_shared.js';
 import type {RpcInventory, RpcMethod} from './backend-rpc-inventory.js';
 
 type NodeKey =
@@ -48,38 +54,11 @@ type NodeKey =
     | 'fm-notification'
     | 'fm-audit';
 
-interface DescribeMethod {
-    name: string;
-    params: unknown;
-    response: unknown;
-    permission: unknown;
-    description?: string;
-}
-
-interface DescribeContract {
-    namespace: string;
-    methods: Record<string, DescribeMethod>;
-    limits?: Record<string, number>;
-    tags?: readonly string[];
-    errors?: unknown[];
-}
-
-interface AuthRow {
-    transport: string;
-    surface: string;
-    authBucket: string;
-    detail: string;
-    sourceFile: string;
-    sourceLine: number;
-}
-
-interface AuthInventory {
-    rows: AuthRow[];
-}
-
 export interface NodeRedCatalogMethod {
     id: string;
     namespace: string;
+    namespaceKind: NamespaceKind;
+    namespaceDescription: string;
     method: string;
     fullMethod: string;
     nodeKeys: NodeKey[];
@@ -361,37 +340,6 @@ const COMPONENT_NAMESPACES = new Set([
 const STATE_METHOD_PATTERN =
     /^(describe|get|list|read|status|config|find|children|path|topology|capabilities|metrics|history|timeline)/i;
 
-function readJson<T>(file: string): T {
-    return JSON.parse(fs.readFileSync(file, 'utf8')) as T;
-}
-
-async function readDescribeContracts(): Promise<DescribeContract[]> {
-    // Read the live _DESCRIBE (single source) — same as api-openapi/host-contract.
-    return (await loadAllDescribes()) as unknown as DescribeContract[];
-}
-
-function readGeneratedJson<T>(name: string): T {
-    return readJson<T>(path.join(GENERATED_DIR, name));
-}
-
-function authIndex(auth: AuthInventory): Map<string, AuthRow> {
-    const out = new Map<string, AuthRow>();
-    for (const row of auth.rows ?? []) {
-        if (row.transport !== 'rpc') continue;
-        out.set(row.surface.toLowerCase(), row);
-    }
-    return out;
-}
-
-function rpcIndex(rpc: RpcInventory): Map<string, RpcMethod> {
-    const out = new Map<string, RpcMethod>();
-    for (const method of rpc.methods) {
-        if (method.env !== 'production') continue;
-        out.set(`${method.namespace}.${method.method}`.toLowerCase(), method);
-    }
-    return out;
-}
-
 function componentNodeKeys(method: string): NodeKey[] {
     if (method === 'Describe') return ['fm-component-catalog'];
     if (STATE_METHOD_PATTERN.test(method)) return ['fm-component-state'];
@@ -434,7 +382,7 @@ function nodeKeysFor(namespace: string, method: string): NodeKey[] {
 }
 
 function catalogMethods(
-    describes: DescribeContract[],
+    describes: DescribeOutput[],
     rpc: RpcInventory,
     auth: AuthInventory
 ): NodeRedCatalogMethod[] {
@@ -442,6 +390,10 @@ function catalogMethods(
     const authByMethod = authIndex(auth);
     const out: NodeRedCatalogMethod[] = [];
     for (const contract of describes) {
+        if (!contract.kind) {
+            // gated by apiDescribeMeta.test.ts — never emit without a kind
+            throw new Error(`${contract.namespace}: namespace kind missing`);
+        }
         for (const method of Object.values(contract.methods)) {
             const fullMethod = `${contract.namespace}.${method.name}`;
             const lookup = fullMethod.toLowerCase();
@@ -450,6 +402,8 @@ function catalogMethods(
             out.push({
                 id: lookup,
                 namespace: contract.namespace,
+                namespaceKind: contract.kind,
+                namespaceDescription: contract.description ?? '',
                 method: method.name,
                 fullMethod,
                 nodeKeys: [
@@ -516,7 +470,7 @@ export async function generate(inputs?: {
     const auth =
         inputs?.auth ??
         readGeneratedJson<AuthInventory>('transport-auth-matrix.json');
-    const methods = catalogMethods(await readDescribeContracts(), rpc, auth);
+    const methods = catalogMethods(await loadAllDescribes(), rpc, auth);
     return {
         generator: 'node-red-catalog',
         version: 1,

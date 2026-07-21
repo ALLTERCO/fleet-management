@@ -1,4 +1,5 @@
 --------------UP
+-- LINT-IGNORE: additive-only (deliberate legacy function removal)
 -- 6418 added a 2-arg overload that collides with 6417's 3-arg variant
 -- (whose third arg has DEFAULT NULL → callable with 2 args). PostgreSQL
 -- raises "function ... is not unique" on every Integration.Endpoint.Create.

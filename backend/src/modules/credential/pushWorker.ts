@@ -12,6 +12,7 @@ import {
     markCredentialUnit,
     markJobRunning
 } from '../jobs/repository';
+import {LOGICAL_DEVICE_LOCK_NAMESPACE} from '../jobs/repositoryFactory';
 import * as store from '../PostgresProvider';
 import {formatError} from '../util/formatError';
 import {runBoundedParallel} from '../util/runBoundedParallel';
@@ -26,6 +27,7 @@ interface QueuedRow {
     id: number;
     job_id: string;
     tenant_id: string;
+    logical_device_id: number;
     device_id: string;
     ha1_old_hex: string | null;
     // null ha1_new_hex + password_encrypted = clear-auth push.
@@ -68,22 +70,77 @@ async function reclaimStaleInFlight(): Promise<void> {
 
 async function selectQueued(limit: number): Promise<QueuedRow[]> {
     return (await store.queryRows(
-        `UPDATE organization.credential_pushes p
-            SET status='in_progress',
-                picked_up_at=now()
-           FROM (
-               SELECT id FROM organization.credential_pushes
-                WHERE status='queued'
-                ORDER BY id ASC
-                LIMIT $1
-                FOR UPDATE SKIP LOCKED
-           ) sub
-          WHERE p.id = sub.id
-      RETURNING p.id, p.job_id::text, p.tenant_id::text,
-                p.device_id, p.ha1_old_hex, p.ha1_new_hex,
-                p.password_encrypted, p.requested_by`,
+        `WITH candidates AS MATERIALIZED (
+             SELECT push.id, push.logical_device_id
+               FROM organization.credential_pushes push
+              WHERE push.status='queued'
+                AND push.logical_device_id IS NOT NULL
+              ORDER BY push.id ASC
+              LIMIT $1
+         ), bound AS MATERIALIZED (
+             SELECT candidates.id,
+                    candidates.logical_device_id,
+                    device.external_id
+               FROM candidates
+               JOIN device.list device
+                 ON device.id = candidates.logical_device_id
+               JOIN organization.credential_pushes push
+                 ON push.id = candidates.id
+                AND device.organization_id = push.tenant_id
+              ORDER BY candidates.logical_device_id, candidates.id
+              FOR UPDATE OF device
+         ), locked AS MATERIALIZED (
+             SELECT bound.*,
+                    pg_advisory_xact_lock(
+                        ${LOGICAL_DEVICE_LOCK_NAMESPACE},
+                        bound.logical_device_id
+                    ) AS identity_lock
+               FROM bound
+              ORDER BY bound.logical_device_id, bound.id
+         ), claimable AS MATERIALIZED (
+             SELECT push.id,
+                    locked.logical_device_id,
+                    locked.external_id
+               FROM locked
+               JOIN organization.credential_pushes push
+                 ON push.id = locked.id
+              WHERE push.status='queued'
+              FOR UPDATE OF push SKIP LOCKED
+         ), claimed AS (
+             UPDATE organization.credential_pushes push
+                SET status='in_progress',
+                    picked_up_at=now()
+               FROM claimable
+              WHERE push.id = claimable.id
+          RETURNING push.id,
+                    push.job_id,
+                    push.tenant_id,
+                    push.ha1_old_hex,
+                    push.ha1_new_hex,
+                    push.password_encrypted,
+                    push.requested_by,
+                    claimable.logical_device_id,
+                    claimable.external_id
+         )
+         SELECT claimed.id,
+                claimed.job_id::text,
+                claimed.tenant_id::text,
+                claimed.logical_device_id,
+                claimed.external_id AS device_id,
+                claimed.ha1_old_hex,
+                claimed.ha1_new_hex,
+                claimed.password_encrypted,
+                claimed.requested_by
+           FROM claimed
+          ORDER BY claimed.id`,
         [limit]
     )) as unknown as QueuedRow[];
+}
+
+export async function __claimQueuedForTests(
+    limit: number
+): Promise<QueuedRow[]> {
+    return selectQueued(limit);
 }
 
 // orgId-tagged so only same-tenant listeners receive the push event.

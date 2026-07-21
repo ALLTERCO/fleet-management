@@ -279,6 +279,7 @@
 <script setup lang="ts">
 import {computed, onMounted, ref, watch} from 'vue';
 import HorizontalSlider from '@/components/core/HorizontalSlider.vue';
+import {formatDuration} from '@/helpers/format';
 import {useDevicesStore} from '@/stores/devices';
 import {useEntityStore} from '@/stores/entities';
 import {sendRPC} from '@/tools/websocket';
@@ -373,12 +374,6 @@ const hasOverride = computed(() => !!trvStatus.value?.override);
 const overrideTarget = computed(() =>
     hasOverride.value ? trvStatus.value.target_C : null
 );
-
-function formatDuration(seconds: number): string {
-    if (seconds < 60) return `${seconds}s`;
-    if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-    return `${(seconds / 3600).toFixed(1)}h`;
-}
 
 const boostRemaining = computed(() => {
     const b = trvStatus.value?.boost;

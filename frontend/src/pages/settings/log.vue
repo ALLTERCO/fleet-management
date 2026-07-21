@@ -3,6 +3,6 @@ import {useRouter} from 'vue-router';
 import Spinner from '@/components/core/Spinner.vue';
 
 const router = useRouter();
-router.replace('/monitoring/logs');
+router.replace('/settings/monitoring/logs');
 </script>
 <template><div class="flex items-center justify-center gap-2 py-8 text-sm text-[var(--color-text-tertiary)]"><Spinner size="xs" /> Redirecting...</div></template>

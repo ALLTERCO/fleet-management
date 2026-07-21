@@ -2,7 +2,6 @@
 
 import * as log4js from 'log4js';
 import {tuning} from '../../config';
-import {dashboardDefaults} from '../../config/dashboardDefaults';
 import * as DashboardActivityStore from '../../modules/DashboardActivityStore';
 import * as DashboardRegistry from '../../modules/DashboardRegistry';
 import {createDashboardScoped} from '../../modules/DashboardRegistry';
@@ -71,48 +70,13 @@ import {resolveCanonicalOrder} from '../dashboard/canonicalOrder';
 import {
     rowToDashboard,
     rowToDashboardItem,
-    rowToDashboardTemplate
+    rowToDashboardTemplate,
+    rowToSettings
 } from '../dashboard/rowTransform';
 import {stripIgnoredTariffFields} from '../dashboard/tariffStripping';
 import {validateTariffSettings} from '../dashboard/tariffValidation';
 import {pvRefsOverlap, pvRefsSelfOverlap} from '../report/pvEnergy';
 import Component from './Component';
-
-function _isAddItem(params: any) {
-    return (
-        params &&
-        typeof params === 'object' &&
-        typeof params.dashboard === 'number' &&
-        typeof params.type === 'number' &&
-        typeof params.item === 'number' &&
-        (params.order === undefined || typeof params.order === 'number') &&
-        (params.sub_item === undefined ||
-            typeof params.sub_item === 'string' ||
-            params.sub_item === null)
-    );
-}
-
-function _isRemoveWidget(params: any) {
-    return (
-        params &&
-        typeof params === 'object' &&
-        typeof params.dashboard === 'number' &&
-        typeof params.itemId === 'number'
-    );
-}
-
-function _isReorderItems(params: any) {
-    return (
-        params &&
-        typeof params === 'object' &&
-        typeof params.dashboard === 'number' &&
-        Array.isArray(params.itemIds) &&
-        params.itemIds.length > 0 &&
-        params.itemIds.length <= 500 &&
-        params.itemIds.every((id: any) => typeof id === 'number') &&
-        new Set(params.itemIds).size === params.itemIds.length
-    );
-}
 
 // Pulls numeric ids for one ref kind out of a batch, dedup + skip nulls.
 function collectRefIds<
@@ -314,7 +278,7 @@ export default class DashboardComponent extends Component {
             'ui.fn_dashboard_fetch_v2',
             {
                 p_organization_id: orgId,
-                p_user_id: sender.getUser()?.username ?? null
+                p_user_id: sender.getUserId() ?? null
             }
         );
         const items = (res?.rows ?? []).map(rowToDashboard);
@@ -335,7 +299,7 @@ export default class DashboardComponent extends Component {
             'ui.fn_dashboard_fetch_v2',
             {
                 p_organization_id: orgId,
-                p_user_id: sender.getUser()?.username ?? null
+                p_user_id: sender.getUserId() ?? null
             }
         );
         const row = (res?.rows ?? []).find((r: any) => r.id === p.id);
@@ -364,32 +328,11 @@ export default class DashboardComponent extends Component {
 
         const settings = res?.rows?.[0];
         if (!settings) {
-            return DASHBOARD_SETTINGS_DEFAULTS(dashboardId);
+            return {dashboardId, ...rowToSettings(null)};
         }
 
-        return {
-            dashboardId,
-            tariff: settings.tariff,
-            currency: settings.currency,
-            defaultRange: settings.default_range,
-            refreshInterval: settings.refresh_interval,
-            enabledMetrics: settings.enabled_metrics,
-            chartSettings: settings.chart_settings,
-            tariffMode: settings.tariff_mode ?? 'single',
-            dayRate:
-                settings.day_rate !== null ? Number(settings.day_rate) : null,
-            nightRate:
-                settings.night_rate !== null
-                    ? Number(settings.night_rate)
-                    : null,
-            dayStart: settings.day_start ?? '07:00:00',
-            dayEnd: settings.day_end ?? '23:00:00',
-            tariffId: settings.tariff_id ?? null,
-            peakDeviceIds: settings.peak_device_ids ?? null,
-            pvMode: settings.pv_mode ?? null,
-            pvGridRefs: settings.pv_grid_refs ?? null,
-            pvGenerationRefs: settings.pv_generation_refs ?? null
-        };
+        // Same transform as dashboard.Get so the two paths never drift.
+        return {dashboardId, ...rowToSettings(settings)};
     }
 
     @Component.Expose('SetSettings')
@@ -581,7 +524,7 @@ export default class DashboardComponent extends Component {
             await this.#recordActivity({
                 dashboardId: row.id,
                 organizationId: orgId,
-                actorUserId: sender.getUser()?.username ?? null,
+                actorUserId: sender.getUserId() ?? null,
                 eventKind: 'created',
                 detail: {name: row.name}
             });
@@ -628,7 +571,7 @@ export default class DashboardComponent extends Component {
         await this.#recordActivity({
             dashboardId: fresh.id,
             organizationId: orgId,
-            actorUserId: sender.getUser()?.username ?? null,
+            actorUserId: sender.getUserId() ?? null,
             eventKind: 'updated',
             detail: {name: fresh.name}
         });
@@ -690,7 +633,7 @@ export default class DashboardComponent extends Component {
             'ui.fn_dashboard_fetch_v2',
             {
                 p_organization_id: requireOrganizationId(sender),
-                p_user_id: sender.getUser()?.username ?? null
+                p_user_id: sender.getUserId() ?? null
             }
         );
         return (res?.rows ?? []).find((r: any) => r.id === id);
@@ -807,7 +750,7 @@ export default class DashboardComponent extends Component {
             rawParams,
             DASHBOARD_REORDER_PARAMS_SCHEMA
         );
-        const userId = sender.getUser()?.username;
+        const userId = sender.getUserId();
         if (!userId) throw RpcError.Unauthorized();
         const orgId = requireOrganizationId(sender);
         const canonicalIds = await this.#resolveCanonicalOrder(orgId, ids);
@@ -857,7 +800,7 @@ export default class DashboardComponent extends Component {
             'ui.fn_dashboard_fetch_v2',
             {
                 p_organization_id: requireOrganizationId(sender),
-                p_user_id: sender.getUser()?.username ?? null
+                p_user_id: sender.getUserId() ?? null
             }
         );
         const row = (res?.rows ?? []).find((r: any) => r.id === p.dashboardId);
@@ -1330,7 +1273,7 @@ export default class DashboardComponent extends Component {
             params ?? {},
             DASHBOARD_LIST_PINNED_PARAMS_SCHEMA
         );
-        const userId = sender.getUser()?.username;
+        const userId = sender.getUserId();
         if (!userId) throw RpcError.Unauthorized();
         const res = await PostgresProvider.callMethod(
             'ui.fn_dashboard_list_pinned',
@@ -1353,7 +1296,7 @@ export default class DashboardComponent extends Component {
             DASHBOARD_PIN_PARAMS_SCHEMA
         );
         await this.#assertOwnedBySenderOrg(p.id, sender);
-        const userId = sender.getUser()?.username;
+        const userId = sender.getUserId();
         if (!userId) throw RpcError.Unauthorized();
         const countRes = await PostgresProvider.callMethod(
             'ui.fn_dashboard_list_pinned',
@@ -1379,7 +1322,7 @@ export default class DashboardComponent extends Component {
             params,
             DASHBOARD_UNPIN_PARAMS_SCHEMA
         );
-        const userId = sender.getUser()?.username;
+        const userId = sender.getUserId();
         if (!userId) throw RpcError.Unauthorized();
         await PostgresProvider.callMethod('ui.fn_dashboard_unpin', {
             p_user_id: userId,
@@ -1395,7 +1338,7 @@ export default class DashboardComponent extends Component {
             params,
             DASHBOARD_REORDER_PINS_PARAMS_SCHEMA
         );
-        const userId = sender.getUser()?.username;
+        const userId = sender.getUserId();
         if (!userId) throw RpcError.Unauthorized();
         await PostgresProvider.callMethod('ui.fn_dashboard_reorder_pins', {
             p_user_id: userId,
@@ -1499,7 +1442,7 @@ export default class DashboardComponent extends Component {
             await this.#recordActivity({
                 dashboardId: newId,
                 organizationId: orgId,
-                actorUserId: sender.getUser()?.username ?? null,
+                actorUserId: sender.getUserId() ?? null,
                 eventKind: 'cloned',
                 detail: {sourceId: p.id, name: p.name.trim()}
             });
@@ -1551,26 +1494,3 @@ export default class DashboardComponent extends Component {
 }
 
 const activityLogger = log4js.getLogger('DashboardActivity');
-
-function DASHBOARD_SETTINGS_DEFAULTS(dashboardId: number) {
-    const d = dashboardDefaults();
-    return {
-        dashboardId,
-        tariff: d.tariff,
-        currency: d.currency,
-        defaultRange: d.defaultRange,
-        refreshInterval: d.refreshIntervalMs,
-        enabledMetrics: [...d.enabledMetrics],
-        chartSettings: {},
-        tariffMode: 'single',
-        dayRate: null,
-        nightRate: null,
-        dayStart: '07:00:00',
-        dayEnd: '23:00:00',
-        tariffId: null,
-        peakDeviceIds: null,
-        pvMode: null,
-        pvGridRefs: null,
-        pvGenerationRefs: null
-    };
-}

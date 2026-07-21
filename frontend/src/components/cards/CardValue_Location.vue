@@ -224,11 +224,11 @@ const healthBarClass = computed(() => {
 }
 .lc-icon {
     color: var(--color-text-tertiary);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
 }
 .lc-kind {
     flex: 1;
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
     text-transform: uppercase;
     letter-spacing: var(--tracking-caps);
@@ -238,7 +238,7 @@ const healthBarClass = computed(() => {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
     padding: var(--space-0-5) var(--space-2);
     border-radius: var(--radius-full);
@@ -250,7 +250,7 @@ const healthBarClass = computed(() => {
     color: var(--color-text-primary);
 }
 .lc-addr {
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
 }
 
@@ -281,7 +281,7 @@ const healthBarClass = computed(() => {
 }
 .lc-tile-body .lc-hdr {
     color: var(--color-text-tertiary);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
 }
 .lc-tile-icon {
@@ -314,7 +314,7 @@ const healthBarClass = computed(() => {
 .lc-hdot--off { background: var(--color-status-off); }
 .lc-stat-icon {
     color: var(--color-text-tertiary);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
 }
 .lc-stat-v {
     font-size: var(--type-body);
@@ -323,7 +323,7 @@ const healthBarClass = computed(() => {
     color: var(--color-text-primary);
 }
 .lc-stat-l {
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
     text-transform: uppercase;
     letter-spacing: var(--tracking-caps);

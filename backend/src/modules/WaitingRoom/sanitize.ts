@@ -1,3 +1,4 @@
+import {modelFromShellyIdPrefix} from '../../config/shellyIdPrefixModels';
 import {tuning} from '../../config/tuning';
 import type {DeviceInfoEnrichment, SanitizedStatusShape} from './types';
 
@@ -221,6 +222,25 @@ export function sanitizeDeviceInfo(raw: unknown): DeviceInfoEnrichment {
         result.xt1SvcType = xt1Services[lowestKey];
     }
     return result;
+}
+
+// The record may predate any Shelly.GetDeviceInfo probe, so it can lack
+// sys.device.model; the shellyID prefix identifies a representative model.
+export function withResolvedDeviceModel(
+    shellyID: string,
+    status: unknown
+): unknown {
+    if (!isRecord(status)) return status;
+    const sys = getRecord(status, 'sys');
+    const device = getRecord(sys, 'device');
+    const reported = getString(device, 'model');
+    if (reported !== undefined && reported.length > 0) return status;
+    const resolved = modelFromShellyIdPrefix(shellyID);
+    if (resolved === undefined) return status;
+    return {
+        ...status,
+        sys: {...(sys ?? {}), device: {...(device ?? {}), model: resolved}}
+    };
 }
 
 export function mergeDeviceInfo(

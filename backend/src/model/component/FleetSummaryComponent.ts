@@ -62,19 +62,39 @@ export default class FleetSummaryComponent extends Component {
             FLEET_SUMMARY_GET_ENERGY_PARAMS
         );
         const orgId = requireOrganizationId(sender, p);
+        const unrestricted = sender.hasUnrestrictedDeviceRead();
 
         const now = Date.now();
-        const cached = this.#cache.get(orgId);
-        if (cached && cached.expiresAt > now) return cached.value;
+        // Only an unrestricted caller sees the org-wide total, so only they may
+        // read or write the shared per-org cache. A scope-restricted caller
+        // bypasses it and aggregates over its own accessible subset (mirrors a
+        // row-secured query skipping shared acceleration).
+        if (unrestricted) {
+            const cached = this.#cache.get(orgId);
+            if (cached && cached.expiresAt > now) return cached.value;
+        }
 
         const shellyIDs = await resolveScopeShellyIDs(orgId, 'fleet', null);
-        const devices = shellyIDs
+        // Filter-then-aggregate: a restricted viewer sees a total over the
+        // devices they may see; an unrestricted caller sees every org device.
+        const visible = unrestricted
+            ? shellyIDs
+            : [...(await sender.filterAccessibleDevices(shellyIDs))];
+        const devices = visible
             .map((s) => DeviceCollector.getDevice(s))
             .filter((d): d is NonNullable<typeof d> => d != null);
         const repo = this.#repoOverride ?? (await defaultEnergyRepository());
         const liveLoadWatts = sumLiveLoad(devices);
-        const energyTodayWh = await sumEnergyToday(repo, devices);
-        const solarTodayWh = sumSolarToday(devices);
+        const energyTodayWh = await sumEnergyTagToday(
+            repo,
+            devices,
+            'total_act_energy'
+        );
+        const solarTodayWh = await sumEnergyTagToday(
+            repo,
+            devices,
+            'total_act_ret_energy'
+        );
 
         const value: FleetSummaryEnergy = {
             liveLoadWatts,
@@ -82,16 +102,19 @@ export default class FleetSummaryComponent extends Component {
             solarTodayWh,
             asOf: new Date(now).toISOString()
         };
-        this.#cache.set(orgId, {value, expiresAt: now + CACHE_TTL_MS});
+        if (unrestricted) {
+            this.#cache.set(orgId, {value, expiresAt: now + CACHE_TTL_MS});
+        }
         return value;
     }
 }
 
 // ── helpers ───────────────────────────────────────────────────
 
-async function sumEnergyToday(
+async function sumEnergyTagToday(
     repo: EnergyRepository,
-    devices: readonly AbstractDevice[]
+    devices: readonly AbstractDevice[],
+    tag: 'total_act_energy' | 'total_act_ret_energy'
 ): Promise<number> {
     if (devices.length === 0) return 0;
     try {
@@ -99,17 +122,19 @@ async function sumEnergyToday(
             devices.map((d) => d.shellyID)
         );
         if (internalIds.length === 0) return 0;
-        // One batched rollup read for the whole fleet instead of a query
-        // per device. bucket '1 day' routes to the 15-min rollup; today's
-        // total_act_energy is already summed there, in Wh.
+        // Read the existing 15-minute energy buckets for today and sum them.
+        // Do not request or create a daily rollup here.
         const todayStart = new Date();
         todayStart.setUTCHours(0, 0, 0, 0);
         const rows = await repo.queryEnergyStats({
             internalIds,
             from: todayStart,
             to: new Date(),
-            tags: ['total_act_energy'],
-            bucket: '1 day',
+            tags: [tag],
+            bucket: '15 minutes',
+            // Fleet total is AC-mains electricity; DC domains never mix in.
+            commodity: 'electricity',
+            electricalSource: 'ac_mains',
             perDevice: false
         });
         let wh = 0;
@@ -119,18 +144,11 @@ async function sumEnergyToday(
         // Keep the rest of the summary alive; surface the energy gap via a
         // metric + log rather than failing the whole org-wide read.
         Observability.incrementCounter('fleet_summary_energy_failures', 1);
-        logger.warn('fleet energy-today rollup read failed', err);
+        logger.warn('fleet energy-today rollup read failed tag=%s', tag, err);
         return 0;
     }
 }
 
 function toNumber(v: unknown): number {
     return typeof v === 'number' ? v : Number(v ?? 0);
-}
-
-// Solar/PV detection: devices flagged via `pv:` component prefix OR
-// a `generation` mode marker on em channels. Returns 0 if none found.
-function sumSolarToday(_devices: readonly AbstractDevice[]): number {
-    // TODO: surface from explicit PV device metadata + per-channel mode.
-    return 0;
 }

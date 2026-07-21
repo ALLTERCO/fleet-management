@@ -20,6 +20,10 @@ export interface OrganizationProfile {
     localeDefault: string | null;
     currencyDefault: string | null;
     unitSystemDefault: 'metric' | 'imperial' | null;
+    /** 1-3 letters/digits shown as the sidebar mark; null = product default. */
+    brandInitials: string | null;
+    /** Palette token key (e.g. 'teal') or #RRGGBB hex; null = default accent. */
+    brandColor: string | null;
     metadata: Record<string, unknown>;
 }
 
@@ -83,6 +87,16 @@ const UNIT_SYSTEM_SCHEMA: JsonSchema = {
     type: ['string', 'null'],
     enum: ['metric', 'imperial', null]
 };
+// Sidebar mark: 1-3 letters/digits, or null for the product default.
+const BRAND_INITIALS_SCHEMA: JsonSchema = {
+    type: ['string', 'null'],
+    pattern: '^[A-Za-z0-9]{1,3}$'
+};
+// Palette token key (e.g. 'teal') or #RRGGBB hex — same rule as tag color.
+const BRAND_COLOR_SCHEMA: JsonSchema = {
+    type: ['string', 'null'],
+    pattern: '^(#[0-9a-fA-F]{6}|[a-z][a-z0-9_-]{0,63})$'
+};
 
 // Exported so system.Bootstrap reuses the exact same org-profile shape instead
 // of keeping a second copy that drifts.
@@ -96,6 +110,8 @@ export const PROFILE_SCHEMA: JsonSchema = {
         'localeDefault',
         'currencyDefault',
         'unitSystemDefault',
+        'brandInitials',
+        'brandColor',
         'metadata'
     ],
     properties: {
@@ -106,6 +122,8 @@ export const PROFILE_SCHEMA: JsonSchema = {
         localeDefault: {type: ['string', 'null']},
         currencyDefault: CURRENCY_SCHEMA,
         unitSystemDefault: UNIT_SYSTEM_SCHEMA,
+        brandInitials: BRAND_INITIALS_SCHEMA,
+        brandColor: BRAND_COLOR_SCHEMA,
         metadata: METADATA_SCHEMA
     }
 };
@@ -267,6 +285,8 @@ export const ORGANIZATION_SET_PROFILE_PARAMS: JsonSchema = {
                 localeDefault: LOCALE_SCHEMA,
                 currencyDefault: CURRENCY_SCHEMA,
                 unitSystemDefault: UNIT_SYSTEM_SCHEMA,
+                brandInitials: BRAND_INITIALS_SCHEMA,
+                brandColor: BRAND_COLOR_SCHEMA,
                 metadata: METADATA_SCHEMA
             }
         }
@@ -282,6 +302,7 @@ export const ORGANIZATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
     }
 )
     .registerMethod('GetProfile', {
+        safety: {operation: 'read'},
         params: ORGANIZATION_GET_PROFILE_PARAMS,
         response: PROFILE_SCHEMA,
         permission: {note: 'authenticated — scoped to caller organization'},
@@ -295,6 +316,7 @@ export const ORGANIZATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Partial-update the caller organization profile. Null field = clear.'
     })
     .registerMethod('GetDefaults', {
+        safety: {operation: 'read'},
         params: ORGANIZATION_GET_DEFAULTS_PARAMS,
         response: DEFAULTS_SCHEMA,
         permission: {note: 'authenticated — scoped to caller organization'},
@@ -302,6 +324,7 @@ export const ORGANIZATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
             "Return the caller organization's default timezone + locale."
     })
     .registerMethod('GetScopeModel', {
+        safety: {operation: 'read'},
         params: ORGANIZATION_GET_SCOPE_MODEL_PARAMS,
         response: SCOPE_MODEL_SCHEMA,
         permission: {note: 'authenticated'},

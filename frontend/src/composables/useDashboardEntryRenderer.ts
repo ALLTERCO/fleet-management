@@ -31,8 +31,9 @@ import DeviceWidget from '@/components/widgets/DeviceWidget.vue';
 import EntityWidget from '@/components/widgets/EntityWidget.vue';
 import ClockWidget from '@/components/widgets/IntegratedWidgets/ClockWidget.vue';
 import {resolveEntityCard} from '@/composables/useEntityCardResolver';
-import type {SensorVariant} from '@/config/bthome';
-import {getBThomeVariant} from '@/config/bthome';
+import type {SensorVariant} from '@/config/bthome-presentation';
+import {getBThomeVariant} from '@/config/bthome-presentation';
+import {clampSizeForEntity} from '@/helpers/widgetCatalog';
 import type {action_t, entity_t} from '@/types';
 import type {DashboardEntry, UiWidgetId} from '@/types/dashboard-entry';
 
@@ -53,6 +54,8 @@ export interface ResolverContext {
     group: (id: number) => unknown | undefined;
     /** Action lookup by id (action_t.id is a string). */
     action: (id: string) => action_t | undefined;
+    /** Resolve the durable database id to the current hardware id. */
+    deviceExternalId: (id: number) => string | undefined;
 }
 
 /** Component + props pair the consumer renders with `<component :is>`. */
@@ -75,6 +78,7 @@ export interface MissingCard {
 
 export type MissingReason =
     | 'entity-not-loaded'
+    | 'device-not-found'
     | 'group-not-found'
     | 'action-not-found'
     | 'widget-broken'
@@ -128,7 +132,10 @@ export function resolveDashboardEntry(
                     component: mapping.component,
                     props: {
                         entity: cached.entity,
-                        size,
+                        // Downgrade a size the entity no longer allows (e.g. a
+                        // battery tile saved at 2x2 before the cap) — self-heals
+                        // old layouts on render, no migration.
+                        size: clampSizeForEntity(size, cached.entity),
                         editMode,
                         ...extra
                     }
@@ -158,18 +165,33 @@ export function resolveDashboardEntry(
             };
         }
 
-        case 'device':
+        case 'device': {
             // New entries (mapItem) store the device id at `data.id`; legacy
             // entries used `data.shellyID`. Read both for back-compat.
+            const deviceRef = entry.data?.id ?? entry.data?.shellyID;
+            const deviceId =
+                typeof deviceRef === 'number'
+                    ? ctx.deviceExternalId(deviceRef)
+                    : deviceRef;
+            if (!deviceId) {
+                return {
+                    kind: 'missing',
+                    reason: 'device-not-found',
+                    title: 'Device not available',
+                    hint: String(deviceRef ?? ''),
+                    size
+                };
+            }
             return {
                 kind: 'component',
                 component: DeviceWidget,
                 props: {
-                    deviceId: entry.data?.id ?? entry.data?.shellyID,
+                    deviceId,
                     size,
                     editMode
                 }
             };
+        }
 
         case 'group': {
             const group = ctx.group(entry.data.id);

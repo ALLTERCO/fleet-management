@@ -9,6 +9,7 @@
  *   - UI toggle in Settings > Log
  */
 
+import {shallowRef} from 'vue';
 import {sendRPC} from './websocket';
 
 export type ObsLevel = 0 | 1 | 2 | 3;
@@ -164,14 +165,34 @@ let prevCounterSnapshot: Record<string, number> = {};
 let prevCounterSnapshotTs = 0;
 const counterRates: Record<string, number> = {}; // per-minute rates
 
+// Single source of truth for per-minute counter rates. Used by the live
+// polling path (computeCounterRates) and by history reconstruction in the
+// monitoring store, so both derive rates identically.
+export function counterRatesBetween(
+    prevCounters: Record<string, number>,
+    currentCounters: Record<string, number>,
+    elapsedMin: number
+): Record<string, number> {
+    const rates: Record<string, number> = {};
+    if (elapsedMin <= 0) return rates;
+    for (const [key, val] of Object.entries(currentCounters)) {
+        const prev = prevCounters[key] ?? val;
+        rates[key] = Math.round((val - prev) / elapsedMin);
+    }
+    return rates;
+}
+
 export function computeCounterRates(currentCounters: Record<string, number>) {
     const now = Date.now();
-    const elapsedMin = (now - prevCounterSnapshotTs) / 60000;
-    if (prevCounterSnapshotTs > 0 && elapsedMin > 0) {
-        for (const [key, val] of Object.entries(currentCounters)) {
-            const prev = prevCounterSnapshot[key] ?? val;
-            counterRates[key] = Math.round((val - prev) / elapsedMin);
-        }
+    if (prevCounterSnapshotTs > 0) {
+        Object.assign(
+            counterRates,
+            counterRatesBetween(
+                prevCounterSnapshot,
+                currentCounters,
+                (now - prevCounterSnapshotTs) / 60000
+            )
+        );
     }
     prevCounterSnapshot = {...currentCounters};
     prevCounterSnapshotTs = now;
@@ -251,6 +272,20 @@ const interactionCounts: Record<string, number> = {};
 const clickEvents: (ClickEvent | undefined)[] = new Array(CLICK_RING_SIZE);
 let clickEventsIdx = 0;
 let clickEventsCount = 0;
+// True click total — the ring fill above caps at the ring size, so it
+// cannot serve as a counter.
+let clickTotal = 0;
+
+// One reactivity signal for every interaction read. Writers bump it,
+// getters read it — Vue consumers (control panel, debug report) recompute
+// on change without polling or duplicated state.
+const interactionsTick = shallowRef(0);
+
+// Flush cursor — the batch sender reports only what happened since the
+// last flush. The cumulative stores above stay the single source of truth
+// for the UI; the cursor never leaves this module.
+const flushedInteractionCounts: Record<string, number> = {};
+let flushedClickTotal = 0;
 
 export function trackInteraction(
     category: string,
@@ -269,6 +304,7 @@ export function trackInteraction(
 
     const key = `${category}.${action}`;
     interactionCounts[key] = (interactionCounts[key] || 0) + 1;
+    interactionsTick.value++;
 }
 
 export function trackClick(event: MouseEvent, page: string) {
@@ -286,9 +322,13 @@ export function trackClick(event: MouseEvent, page: string) {
     };
     clickEventsIdx++;
     if (clickEventsCount < CLICK_RING_SIZE) clickEventsCount++;
+    clickTotal++;
+    interactionsTick.value++;
 }
 
 export function getClickEvents(): readonly ClickEvent[] {
+    // Touch the tick so Vue computeds calling this stay live.
+    void interactionsTick.value;
     if (clickEventsCount === 0) return [];
     if (clickEventsCount < CLICK_RING_SIZE) {
         return clickEvents.slice(0, clickEventsCount) as ClickEvent[];
@@ -301,6 +341,8 @@ export function getClickEvents(): readonly ClickEvent[] {
 }
 
 export function getInteractions(): readonly InteractionEvent[] {
+    // Touch the tick so Vue computeds calling this stay live.
+    void interactionsTick.value;
     if (interactionsCount === 0) return [];
     if (interactionsCount < INTERACTION_RING_SIZE) {
         return interactions.slice(0, interactionsCount) as InteractionEvent[];
@@ -313,6 +355,8 @@ export function getInteractions(): readonly InteractionEvent[] {
 }
 
 export function getInteractionCounts(): Readonly<Record<string, number>> {
+    // Touch the tick so Vue computeds calling this stay live.
+    void interactionsTick.value;
     return interactionCounts;
 }
 
@@ -320,11 +364,28 @@ export function getInteractionCounts(): Readonly<Record<string, number>> {
 
 let batchInterval: ReturnType<typeof setInterval> | undefined;
 
-function flushTelemetryBatch() {
+// What happened since the last flush. The backend increments Prometheus
+// counters by the submitted values, so each batch must carry deltas —
+// resending cumulative totals would double-count.
+function telemetryDeltas() {
+    const counts: Record<string, number> = {};
+    for (const [key, total] of Object.entries(interactionCounts)) {
+        const delta = total - (flushedInteractionCounts[key] ?? 0);
+        if (delta > 0) counts[key] = delta;
+    }
+    return {counts, clicks: clickTotal - flushedClickTotal};
+}
+
+function markTelemetryFlushed() {
+    Object.assign(flushedInteractionCounts, interactionCounts);
+    flushedClickTotal = clickTotal;
+}
+
+export function flushTelemetryBatch() {
     // Batch runs when either obs level ≥ 2 (interaction counts) OR
     // the WS telemetry opt-in is on (perf-attack snapshot).
     if (level < 2 && !wsTelemetryEnabled) return;
-    const counts = {...interactionCounts};
+    const {counts, clicks} = telemetryDeltas();
     const ws = wsTelemetryEnabled ? getWsTelemetry() : null;
     const hasWs = !!(
         ws &&
@@ -332,14 +393,18 @@ function flushTelemetryBatch() {
             ws.droppedFrameCount > 0 ||
             ws.rafFrameTimeMaxMs > 0)
     );
-    if (Object.keys(counts).length === 0 && clickEventsCount === 0 && !hasWs) {
-        return;
-    }
+    const hasCounts = Object.keys(counts).length > 0;
+    // Nothing new — no RPC. An idle window is not an event.
+    if (!hasCounts && clicks === 0 && !hasWs) return;
+    // Snapshot-then-send, same lossy best-effort semantics as
+    // getWsTelemetry — a failed send drops one window of metrics.
+    markTelemetryFlushed();
     // Fire-and-forget RPC; backend maps keys into Prometheus counters
-    // under the `ui_*` prefix via SystemComponent.
+    // under the `ui_*` prefix via SystemComponent. The schema wants each
+    // field only when it carries a value (clicks ≥ 1).
     sendRPC('FLEET_MANAGER', 'System.SubmitTelemetry', {
-        counts,
-        clicks: clickEventsCount,
+        ...(hasCounts ? {counts} : {}),
+        ...(clicks > 0 ? {clicks} : {}),
         ...(hasWs ? {wsTelemetry: ws} : {})
     }).catch(() => {
         /* silent — telemetry is best-effort */
@@ -416,6 +481,10 @@ let rafFrameTimeMaxMs = 0;
 // Cumulative: compare to backend `shelly_*_emitted` counters to detect lost events.
 let shellyConnectReceived = 0;
 let shellyDisconnectReceived = 0;
+// Widget data contract: current scoped-subscription size (devices/components
+// the visible dashboard declared). Gauges — reflect the latest subscription.
+let componentSubDevices = 0;
+let componentSubPaths = 0;
 
 // End-to-end latency reservoirs (ms): backend emit timestamp → frontend patch apply.
 // Fixed-capacity ring buffer — O(1) push, no array shifts under disconnect storms.
@@ -496,6 +565,13 @@ export function recordShellyDisconnectReceived() {
     shellyDisconnectReceived++;
 }
 
+/** Record the widget data contract's current scoped-subscription size. */
+export function recordComponentSubscription(devices: number, paths: number) {
+    if (!wsTelemetryEnabled) return;
+    componentSubDevices = devices;
+    componentSubPaths = paths;
+}
+
 export function recordShellyConnectLatency(ms: number) {
     if (!wsTelemetryEnabled) return;
     if (ms < 0 || ms > 600_000) return; // skip clock-skew or stale samples
@@ -516,6 +592,8 @@ export function getWsTelemetry() {
         rafFrameTimeMaxMs: Math.round(rafFrameTimeMaxMs * 100) / 100,
         shellyConnectReceived,
         shellyDisconnectReceived,
+        componentSubDevices,
+        componentSubPaths,
         shellyConnectLatencyMs: summarize(connectLatency),
         shellyDisconnectLatencyMs: summarize(disconnectLatency)
     };

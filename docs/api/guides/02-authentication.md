@@ -1,6 +1,6 @@
 ## Authentication
 
-![Ways in — browser, server, and device, and the endpoint and auth each uses](diagrams/connection.svg)
+![Ways in — browser, mobile app, server, and device, and the endpoint and auth each uses](diagrams/connection.svg)
 
 Every connection must sign in. There are two main ways for clients: a person
 signing in through a browser, and tokens for servers and scripts. (Devices sign

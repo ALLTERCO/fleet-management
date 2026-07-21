@@ -119,7 +119,7 @@ watch(() => props.userId, refresh, {immediate: true});
 .amp-h {
     margin: 0;
     color: var(--color-text-primary);
-    font-size: var(--type-h4, 1rem);
+    font-size: var(--type-body);
 }
 .amp-list {
     list-style: none;
@@ -134,7 +134,7 @@ watch(() => props.userId, refresh, {immediate: true});
     border: 1px solid var(--color-primary-text);
     border-radius: var(--radius-sm);
     color: var(--color-primary-text);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
 }
 .amp-mute {
     color: var(--color-text-quaternary);

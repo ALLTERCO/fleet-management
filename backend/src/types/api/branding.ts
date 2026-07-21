@@ -172,24 +172,28 @@ const b = new DescribeBuilder('branding', {
 const PERM = {note: 'admin-only — proxies Zitadel label policy'};
 
 b.registerMethod('GetPolicy', {
+    safety: {operation: 'read'},
     params: BRANDING_GET_POLICY_PARAMS_SCHEMA,
     response: RESP_POLICY,
     permission: PERM,
     description: 'Branding.GetPolicy — current (live) label policy.'
 });
 b.registerMethod('GetPreview', {
+    safety: {operation: 'read'},
     params: BRANDING_GET_POLICY_PARAMS_SCHEMA,
     response: RESP_POLICY,
     permission: PERM,
     description: 'Branding.GetPreview — unsaved draft policy (before activate).'
 });
 b.registerMethod('GetDefault', {
+    safety: {operation: 'read'},
     params: BRANDING_GET_DEFAULT_PARAMS_SCHEMA,
     response: RESP_POLICY,
     permission: PERM,
     description: 'Branding.GetDefault — Zitadel factory-default policy.'
 });
 b.registerMethod('SetPolicy', {
+    safety: {operation: 'update'},
     params: BRANDING_SET_POLICY_PARAMS_SCHEMA,
     response: RESP_OK,
     permission: PERM,
@@ -197,6 +201,7 @@ b.registerMethod('SetPolicy', {
         'Branding.SetPolicy — write the draft label policy. Activate to publish.'
 });
 b.registerMethod('Activate', {
+    safety: {operation: 'update'},
     params: BRANDING_GET_POLICY_PARAMS_SCHEMA,
     response: RESP_OK,
     permission: PERM,
@@ -204,6 +209,7 @@ b.registerMethod('Activate', {
         'Branding.Activate — promote the draft policy to live on the login page.'
 });
 b.registerMethod('Reset', {
+    safety: {operation: 'update'},
     params: BRANDING_GET_POLICY_PARAMS_SCHEMA,
     response: RESP_OK,
     permission: PERM,
@@ -211,42 +217,49 @@ b.registerMethod('Reset', {
         'Branding.Reset — drop the org override; instance default applies.'
 });
 b.registerMethod('SetLogo', {
+    safety: {operation: 'update'},
     params: BRANDING_SET_LOGO_PARAMS_SCHEMA,
     response: RESP_OK,
     permission: PERM,
     description: 'Branding.SetLogo — base64 PNG/SVG/JPEG/WebP, light or dark.'
 });
 b.registerMethod('DeleteLogo', {
+    safety: {operation: 'delete'},
     params: BRANDING_DELETE_LOGO_PARAMS_SCHEMA,
     response: RESP_OK,
     permission: PERM,
     description: 'Branding.DeleteLogo — drop the uploaded logo.'
 });
 b.registerMethod('SetIcon', {
+    safety: {operation: 'update'},
     params: BRANDING_SET_ICON_PARAMS_SCHEMA,
     response: RESP_OK,
     permission: PERM,
     description: 'Branding.SetIcon — favicon-class image, light or dark.'
 });
 b.registerMethod('DeleteIcon', {
+    safety: {operation: 'delete'},
     params: BRANDING_DELETE_LOGO_PARAMS_SCHEMA,
     response: RESP_OK,
     permission: PERM,
     description: 'Branding.DeleteIcon — drop the uploaded icon.'
 });
 b.registerMethod('SetFont', {
+    safety: {operation: 'update'},
     params: BRANDING_SET_FONT_PARAMS_SCHEMA,
     response: RESP_OK,
     permission: PERM,
     description: 'Branding.SetFont — base64 TTF font for login screens.'
 });
 b.registerMethod('DeleteFont', {
+    safety: {operation: 'delete'},
     params: BRANDING_GET_POLICY_PARAMS_SCHEMA,
     response: RESP_OK,
     permission: PERM,
     description: 'Branding.DeleteFont — drop the uploaded custom font.'
 });
 b.registerMethod('GetMailTemplate', {
+    safety: {operation: 'read'},
     params: BRANDING_GET_POLICY_PARAMS_SCHEMA,
     response: {type: 'object', additionalProperties: true},
     permission: PERM,
@@ -255,6 +268,7 @@ b.registerMethod('GetMailTemplate', {
         'every transactional email into. Returns {template, isDefault}.'
 });
 b.registerMethod('SetMailTemplate', {
+    safety: {operation: 'update'},
     params: BRANDING_SET_MAIL_TEMPLATE_PARAMS_SCHEMA,
     response: RESP_OK,
     permission: PERM,
@@ -263,6 +277,7 @@ b.registerMethod('SetMailTemplate', {
         'Use Go-template placeholders (e.g. {{.Title}}, {{.URL}}).'
 });
 b.registerMethod('ResetMailTemplate', {
+    safety: {operation: 'update'},
     params: BRANDING_GET_POLICY_PARAMS_SCHEMA,
     response: RESP_OK,
     permission: PERM,

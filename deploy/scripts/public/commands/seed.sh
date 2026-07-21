@@ -19,12 +19,12 @@ cmd_seed() {
         esac
     done
 
+    load_deploy_meta
     seed_load_base_url "$dev"
     if [ "$dev" = "true" ]; then
         seed_load_token_dev
-        # Synthetic device + telemetry synth keys off ENV_NAME — without
-        # this, the energy dashboard stays empty after seed --dev.
-        export ENV_NAME="${ENV_NAME:-local}"
+        FM_ENVIRONMENT_ID=dev
+        export FM_ENVIRONMENT_ID
     else
         seed_load_token_zitadel
     fi

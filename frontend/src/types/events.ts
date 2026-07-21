@@ -1,3 +1,4 @@
+import type {ENTITY_EVENT, SHELLY_EVENT} from '@/tools/wsEvents';
 import type {presence, ShellyDeviceExternal} from './device';
 import type {
     json_rpc_event,
@@ -30,7 +31,7 @@ export namespace ShellyEvent {
         };
     }
     export interface Connect extends Basic {
-        method: 'Shelly.Connect';
+        method: typeof SHELLY_EVENT.CONNECT;
         params: {
             shellyID: string;
             device: ShellyDeviceExternal;
@@ -39,7 +40,7 @@ export namespace ShellyEvent {
         };
     }
     export interface Disconnect extends Basic {
-        method: 'Shelly.Disconnect';
+        method: typeof SHELLY_EVENT.DISCONNECT;
         params: {
             shellyID: string;
             /** ms epoch — backend emit time. */
@@ -47,21 +48,24 @@ export namespace ShellyEvent {
         };
     }
     export interface Info extends Basic {
-        method: 'Shelly.Info';
+        method: typeof SHELLY_EVENT.INFO;
         params: {
             shellyID: string;
             info: any;
         };
     }
     export interface Status extends Basic {
-        method: 'Shelly.Status';
+        method: typeof SHELLY_EVENT.STATUS;
         params: {
             shellyID: string;
             status: any;
+            // Set on path-filtered (dashboard) pushes — the client merges,
+            // doesn't reconcile-and-prune.
+            partial?: boolean;
         };
     }
     export interface Settings extends Basic {
-        method: 'Shelly.Settings';
+        method: typeof SHELLY_EVENT.SETTINGS;
         params: {
             shellyID: string;
             settings: any;
@@ -76,7 +80,7 @@ export namespace ShellyEvent {
         };
     }
     export interface KVS extends Basic {
-        method: 'Shelly.KVS';
+        method: typeof SHELLY_EVENT.KVS;
         params: {
             shellyID: string;
             kvs: Record<string, string>;
@@ -84,14 +88,14 @@ export namespace ShellyEvent {
     }
 
     export interface Presence extends Basic {
-        method: 'Shelly.Presence';
+        method: typeof SHELLY_EVENT.PRESENCE;
         params: {
             shellyID: string;
             presence: presence;
         };
     }
     export interface PresenceTrack extends Basic {
-        method: 'Shelly.PresenceTrack';
+        method: typeof SHELLY_EVENT.PRESENCE_TRACK;
         params: {
             shellyID: string;
             objects: Array<{
@@ -116,24 +120,16 @@ export namespace EntityEvent {
     }
 
     export interface Added extends Basic {
-        method: 'Entity.Added';
+        method: typeof ENTITY_EVENT.ADDED;
         params: {
             entityId: string;
         };
     }
 
     export interface Removed extends Basic {
-        method: 'Entity.Removed';
+        method: typeof ENTITY_EVENT.REMOVED;
         params: {
             entityId: string;
-        };
-    }
-
-    export interface StatusChange extends Basic {
-        method: 'Entity.StatusChange';
-        params: {
-            entityId: string;
-            status: any;
         };
     }
 }

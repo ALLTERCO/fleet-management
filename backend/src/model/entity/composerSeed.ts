@@ -106,7 +106,8 @@ const SEED: readonly ComposerEntry[] = [
 
     // `:N` instance form only — bare device singletons stay in NON_COMPONENT_KEYS.
     {
-        role: 'actuator',
+        // Meter, not a control device — namespace only routes BM.ResetCounters.
+        role: 'sensor',
         componentType: 'bm',
         title: 'Battery Monitor',
         shellyNamespace: 'BM'

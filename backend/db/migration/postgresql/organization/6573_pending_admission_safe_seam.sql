@@ -1,4 +1,5 @@
 --------------UP
+-- LINT-IGNORE: additive-only (deliberate legacy function removal)
 -- Reserve/finalize seam + cross-org guard for pending_admission.
 
 SET search_path TO organization;

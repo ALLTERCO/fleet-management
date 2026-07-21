@@ -1,10 +1,10 @@
 
 
 <template>
-    <BoardTabs v-if="entity && device" :show-back="!!fromDevice" @back="goBackToDevice">
+    <BoardTabs v-if="resolvedEntity && device" :show-back="!!fromDevice" @back="goBackToDevice">
         <template #title>
             <div class="eb-name">
-                <span class="text-lg font-semibold line-clamp-2">{{ entity.name }}</span>
+                <span class="text-[length:var(--type-subheading)] font-semibold line-clamp-2">{{ resolvedEntity.name }}</span>
                 <button
                     v-if="isVirtualEntity"
                     type="button"
@@ -18,44 +18,44 @@
             </div>
         </template>
         <template #info>
-            <div class="flex flex-col gap-3 items-center pt-3">
-                <figure class="w-20 h-20 rounded-full border-2 flex items-center justify-center" :class="[
-                    device.online && !device.loading && 'border-[var(--color-border-strong)]',
-                    !device.online && !device.loading && 'border-[var(--color-danger)]',
-                    device.loading && 'border-[var(--color-warning)]',
-                ]">
-                    <i class="text-2xl" :class="getPredefinedImageForEntity(entity.type, entity.properties)"></i>
-                </figure>
-                <span class="text-[var(--color-text-tertiary)] text-xs">{{ entity.type }} - {{ device.info?.app }}</span>
+            <div class="eb-detail">
+                <header class="eb-summary">
+                    <figure class="eb-summary__icon">
+                        <i :class="getPredefinedImageForEntity(resolvedEntity.type, resolvedEntity.properties)" />
+                    </figure>
+                    <div class="eb-summary__body">
+                        <strong>{{ entityTypeLabel }}</strong>
+                        <span>{{ deviceLabel }}</span>
+                        <div class="eb-summary__pills">
+                            <span v-if="device.loading" class="eb-status eb-status--loading">
+                                <Spinner /> Connecting
+                            </span>
+                            <span v-else-if="device.online" class="eb-status eb-status--online">
+                                Ready
+                            </span>
+                            <span v-else class="eb-status eb-status--offline">
+                                Offline
+                            </span>
 
-                <div v-if="device.loading" class="flex flex-col items-center gap-1">
-                    <Spinner />
-                    <span class="text-sm font-semibold text-[var(--color-warning-text)] animate-pulse">Loading</span>
-                </div>
+                            <span v-if="isInternalTemp" class="eb-source eb-source--internal">
+                                <i class="fas fa-microchip" /> Internal
+                            </span>
+                            <span v-if="sensorSource" class="eb-source" :class="`eb-source--${sensorSource}`">
+                                <i :class="sensorSource === 'blu' ? 'fab fa-bluetooth-b' : 'fas fa-puzzle-piece'" />
+                                {{ sensorSource === 'blu' ? 'BLU Sensor' : 'Add-on' }}
+                            </span>
+                        </div>
+                    </div>
+                </header>
 
-                <span v-if="!device.online && !device.loading" class="text-sm font-semibold text-[var(--color-danger-text)]">Offline</span>
-
-                <div v-if="entity.properties?.errors?.length && !entityTemplate" class="w-full rounded-md bg-[var(--color-surface-1)] p-3 text-sm text-[var(--color-warning-text)]">
+                <div v-if="resolvedEntity.properties?.errors?.length && !entityTemplate" class="eb-errors">
                     <i class="fas fa-exclamation-triangle mr-1" />
-                    <span v-for="(err, i) in entity.properties.errors" :key="i">
-                        {{ err }}<template v-if="i < entity.properties.errors.length - 1">; </template>
+                    <span v-for="(err, i) in resolvedEntity.properties.errors" :key="i">
+                        {{ err }}<template v-if="i < resolvedEntity.properties.errors.length - 1">; </template>
                     </span>
                 </div>
 
-                <div class="w-full flex flex-col gap-2">
-                    <!-- Internal temperature badge -->
-                    <div v-if="isInternalTemp" class="eb-source eb-source--internal">
-                        <i class="fas fa-microchip" />
-                        <span>Internal</span>
-                    </div>
-
-                    <!-- Sensor source badge (BLU / Add-on) with gateway name -->
-                    <div v-if="sensorSource" class="eb-source" :class="`eb-source--${sensorSource}`">
-                        <i :class="sensorSource === 'blu' ? 'fab fa-bluetooth-b' : 'fas fa-puzzle-piece'" />
-                        <span>{{ sensorSource === 'blu' ? 'BLU Sensor' : 'Add-on' }}</span>
-                        <span v-if="gatewayName" class="eb-source__gateway">via {{ gatewayName }}</span>
-                    </div>
-
+                <section class="eb-controls" :aria-label="`${resolvedEntity.name} controls`">
                     <!-- Entity-type template — events dispatched via registry -->
                     <component
                         :is="entityTemplate"
@@ -68,13 +68,13 @@
                     />
 
                     <!-- Fallback: generic tags for types without a dedicated template -->
-                    <EntityWidget v-if="!entityTemplate" vertical :entity="entity" />
-                </div>
+                    <EntityWidget v-if="!entityTemplate" vertical :entity="resolvedEntity" />
+                </section>
             </div>
         </template>
         <template #debug>
             <Collapse title="Info">
-                <JSONViewer :data="entity" />
+                <JSONViewer :data="resolvedEntity" />
             </Collapse>
 
             <Collapse title="Status">
@@ -92,9 +92,9 @@
     </div>
 
     <VirtualEditModal
-        v-if="isVirtualEntity && entity && device"
+        v-if="isVirtualEntity && resolvedEntity && device"
         :visible="showDetails"
-        :shelly-i-d="entity.source"
+        :shelly-i-d="resolvedEntity.source"
         :component-key="virtualComponentKey"
         @close="showDetails = false"
         @deleted="showDetails = false"
@@ -114,7 +114,7 @@ import {
     getEntityTemplate
 } from '@/config/entity-registry';
 import {DeviceBoard} from '@/helpers/components';
-import {getPredefinedImageForEntity} from '@/helpers/device';
+import {getDeviceName, getPredefinedImageForEntity} from '@/helpers/device';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
 import {useEntityStore} from '@/stores/entities';
@@ -156,16 +156,26 @@ function goBackToDevice() {
 }
 
 // Fetch entity from store to get reactive updates when name changes
-const entity = computed(
+const resolvedEntity = computed(
     () => entityStore.entities[entityId.value] ?? props.entity
 );
 
-const device = computed(() => deviceStore.devices[entity.value.source]);
+const device = computed(() => deviceStore.devices[resolvedEntity.value.source]);
+const entityTypeLabel = computed(() =>
+    resolvedEntity.value.type
+        .split(/[_-]/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ')
+);
+const deviceLabel = computed(() =>
+    getDeviceName(device.value?.info, resolvedEntity.value.source)
+);
 const entityStatus = computed(() => {
     const st = device.value?.status;
     if (!st) return undefined;
     // Embedded temperature: data lives inside the parent component's status
-    const e = entity.value;
+    const e = resolvedEntity.value;
     if (e.type === 'temperature' && e.properties.embeddedIn) {
         return st[e.properties.embeddedIn]?.temperature;
     }
@@ -174,32 +184,34 @@ const entityStatus = computed(() => {
 
 const authStore = useAuthStore();
 const canExecute = computed(() =>
-    authStore.canExecuteDevice(entity.value.source)
+    authStore.canExecuteDevice(resolvedEntity.value.source)
 );
 
-const deviceProfile = computed(() => entity.value.properties.deviceProfile);
+const deviceProfile = computed(
+    () => resolvedEntity.value.properties.deviceProfile
+);
 
 const entityTemplate = computed(() =>
-    getEntityTemplate(entity.value.type, deviceProfile.value)
+    getEntityTemplate(resolvedEntity.value.type, deviceProfile.value)
 );
 
 const entitySettings = computed(
     () =>
         device.value?.settings?.[
-            `${entity.value.type}:${entity.value.properties.id}`
+            `${resolvedEntity.value.type}:${resolvedEntity.value.properties.id}`
         ]
 );
 
 const statusKey = computed(() => {
-    if (entity.value.properties.id != null) {
-        return `${entity.value.type}:${entity.value.properties.id}`;
+    if (resolvedEntity.value.properties.id != null) {
+        return `${resolvedEntity.value.type}:${resolvedEntity.value.properties.id}`;
     }
 
-    return entity.value.type;
+    return resolvedEntity.value.type;
 });
 
 const isVirtualEntity = computed(() =>
-    VIRTUAL_ENTITY_TYPES.has(entity.value.type)
+    VIRTUAL_ENTITY_TYPES.has(resolvedEntity.value.type)
 );
 
 const virtualComponentKey = computed(() => statusKey.value);
@@ -209,7 +221,7 @@ const showDetails = ref(false);
 // Fetch full device data (including settings) — the initial list load
 // uses toListJSON() which strips settings for performance.
 onMounted(() => {
-    const shellyID = entity.value.source;
+    const shellyID = resolvedEntity.value.source;
     void loadEntityDeviceDetails(shellyID);
 });
 
@@ -234,7 +246,7 @@ async function dispatchAction(call: {
 }) {
     try {
         await entityStore.invokeAction(
-            entity.value.id,
+            resolvedEntity.value.id,
             call.action,
             call.params
         );
@@ -255,8 +267,11 @@ async function dispatchAction(call: {
 
 /** Extra props — resolved with profile override, plus device-level data for profiles */
 const templateExtraProps = computed(() => {
-    const fn = getEntityExtraProps(entity.value.type, deviceProfile.value);
-    const base = fn?.(entity.value) ?? {};
+    const fn = getEntityExtraProps(
+        resolvedEntity.value.type,
+        deviceProfile.value
+    );
+    const base = fn?.(resolvedEntity.value) ?? {};
 
     // Profile-specific device-level data injection
     if (deviceProfile.value === 'dali' && device.value) {
@@ -268,7 +283,7 @@ const templateExtraProps = computed(() => {
     }
 
     // Camera: inject storage status + camera zones from device
-    if (entity.value.type === 'camera' && device.value) {
+    if (resolvedEntity.value.type === 'camera' && device.value) {
         const zones: Array<{
             id: number;
             motion?: boolean;
@@ -294,36 +309,32 @@ const templateExtraProps = computed(() => {
 
 /** Internal temperature: embedded temperature entities (PCB temp from switch/light/cover) */
 const isInternalTemp = computed(() => {
-    const e = entity.value;
+    const e = resolvedEntity.value;
     return e.type === 'temperature' && !!e.properties.embeddedIn;
 });
 
 /** Sensor source (BLU / Add-on) from entity properties, or implicit for bthomesensor */
 const sensorSource = computed(() => {
-    if (entity.value.type === 'bthomesensor') return 'blu';
-    return (entity.value.properties as Record<string, any>)?.sensorSource as
+    if (resolvedEntity.value.type === 'bthomesensor') return 'blu';
+    return (resolvedEntity.value.properties as Record<string, any>)
+        ?.sensorSource as
         | string
         | undefined;
 });
 
-/** Gateway device name for BT/add-on entities */
-const gatewayName = computed(() => {
-    if (!sensorSource.value) return null;
-    const d = device.value;
-    if (!d) return null;
-    return d.info?.name || d.info?.app || d.shellyID;
-});
-
 /** Event listeners — resolved with profile override (profile actions merge on top) */
 const templateListeners = computed(() => {
-    const actions = getEntityActions(entity.value.type, deviceProfile.value);
+    const actions = getEntityActions(
+        resolvedEntity.value.type,
+        deviceProfile.value
+    );
     if (!actions) return {};
 
     const listeners: Record<string, (...args: any[]) => void> = {};
     for (const [eventName, handler] of Object.entries(actions)) {
         listeners[eventName] = (...args: any[]) => {
             const call = handler(
-                entity.value.properties.id,
+                resolvedEntity.value.properties.id,
                 entityStatus.value,
                 ...args
             );
@@ -358,12 +369,109 @@ const templateListeners = computed(() => {
     background-color: var(--color-surface-1);
 }
 
+.eb-detail {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding-top: var(--space-2);
+}
+.eb-summary {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: var(--space-16) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-3);
+    padding-bottom: var(--space-4);
+    border-bottom: var(--space-px) solid var(--color-border-subtle);
+}
+.eb-summary__icon {
+    display: inline-flex;
+    width: var(--space-16);
+    height: var(--space-16);
+    align-items: center;
+    justify-content: center;
+    border: var(--space-px) solid var(--color-border-default);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-2);
+    color: var(--color-text-secondary);
+    font-size: var(--icon-size-lg);
+}
+.eb-summary__body {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--space-1);
+}
+.eb-summary__body strong {
+    color: var(--color-text-primary);
+    font-size: var(--type-caption);
+}
+.eb-summary__body > span {
+    overflow: hidden;
+    color: var(--color-text-tertiary);
+    font-size: var(--type-caption);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.eb-summary__pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    margin-top: var(--space-1);
+}
+.eb-status {
+    display: inline-flex;
+    min-height: var(--space-6);
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-full);
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+}
+.eb-status--online::before,
+.eb-status--offline::before {
+    width: var(--space-1-5);
+    height: var(--space-1-5);
+    border-radius: var(--radius-full);
+    background: currentColor;
+    content: '';
+}
+.eb-status--online {
+    background: var(--color-success-subtle);
+    color: var(--color-success-text);
+}
+.eb-status--loading {
+    background: var(--color-warning-subtle);
+    color: var(--color-warning-text);
+}
+.eb-status--offline {
+    background: var(--color-danger-subtle);
+    color: var(--color-danger-text);
+}
+.eb-errors {
+    border: var(--space-px) solid var(--color-alert-warning-border);
+    border-radius: var(--radius-md);
+    background: var(--color-warning-subtle);
+    padding: var(--space-3);
+    color: var(--color-warning-text);
+    font-size: var(--type-body);
+}
+.eb-controls {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
 .eb-source {
     display: flex;
     align-items: center;
     gap: var(--space-1-5);
-    padding: var(--space-1) 0.625rem;
-    border-radius: var(--radius-md);
+    min-height: var(--space-6);
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-full);
     font-size: var(--type-body);
     font-weight: var(--font-medium);
     width: fit-content;
@@ -379,9 +487,5 @@ const templateListeners = computed(() => {
 .eb-source--internal {
     background-color: color-mix(in srgb, var(--color-warning) 15%, transparent);
     color: var(--color-warning-text);
-}
-.eb-source__gateway {
-    opacity: 0.7;
-    font-size: var(--type-body);
 }
 </style>

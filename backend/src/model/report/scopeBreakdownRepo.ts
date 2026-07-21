@@ -26,20 +26,30 @@ const LOCATION: ScopeSource = {
     label: 'location',
     nodeSql: `SELECT id, name, parent_location_id AS parent_id
               FROM organization.locations WHERE organization_id = $1`,
-    assignSql: `SELECT location_id AS node_id, subject_id
-                FROM organization.location_assignments
-                WHERE organization_id = $1 AND subject_type = 'device'
-                  AND subject_id = ANY($2)`
+    assignSql: `SELECT assignment.location_id AS node_id,
+                       device.external_id AS subject_id
+                  FROM organization.location_assignments assignment
+                  JOIN device.list device
+                    ON device.organization_id = assignment.organization_id
+                   AND device.id = assignment.device_id
+                 WHERE assignment.organization_id = $1
+                   AND assignment.subject_type = 'device'
+                   AND device.external_id = ANY($2)`
 };
 
 const GROUP: ScopeSource = {
     label: 'group',
     nodeSql: `SELECT id, name, parent_group_id AS parent_id
               FROM organization.groups WHERE organization_id = $1`,
-    assignSql: `SELECT group_id AS node_id, subject_id
-                FROM organization.group_members
-                WHERE organization_id = $1 AND subject_type = 'device'
-                  AND subject_id = ANY($2)`
+    assignSql: `SELECT member.group_id AS node_id,
+                       device.external_id AS subject_id
+                  FROM organization.group_members member
+                  JOIN device.list device
+                    ON device.organization_id = member.organization_id
+                   AND device.id = member.device_id
+                 WHERE member.organization_id = $1
+                   AND member.subject_type = 'device'
+                   AND device.external_id = ANY($2)`
 };
 
 // Tags are flat — no parent.
@@ -47,10 +57,15 @@ const TAG: ScopeSource = {
     label: 'tag',
     nodeSql: `SELECT id, name, NULL::integer AS parent_id
               FROM organization.tags WHERE organization_id = $1`,
-    assignSql: `SELECT tag_id AS node_id, subject_id
-                FROM organization.tag_assignments
-                WHERE organization_id = $1 AND subject_type = 'device'
-                  AND subject_id = ANY($2)`
+    assignSql: `SELECT assignment.tag_id AS node_id,
+                       device.external_id AS subject_id
+                  FROM organization.tag_assignments assignment
+                  JOIN device.list device
+                    ON device.organization_id = assignment.organization_id
+                   AND device.id = assignment.device_id
+                 WHERE assignment.organization_id = $1
+                   AND assignment.subject_type = 'device'
+                   AND device.external_id = ANY($2)`
 };
 
 // Best-effort: a breakdown lookup must never fail the whole report.

@@ -3,6 +3,7 @@
 // listeners receive it (provider support + trusted senders cross).
 
 import type {AlertRuleKind, AlertSeverity} from '../types/api/alert';
+import type {DestinationMemberRef} from '../types/api/notification';
 import * as EventDistributor from './EventDistributor';
 
 export interface AlertWsParams {
@@ -102,6 +103,126 @@ export function emitEndpointHealthReset(
 ): void {
     EventDistributor.processAndNotifyAll(
         {method: 'Channel.HealthReset', params},
+        {organizationId: params.organizationId}
+    );
+}
+
+export interface AlertRuleLifecycleParams {
+    organizationId: string;
+    ruleId: number;
+    name: string;
+}
+
+export function emitAlertRuleCreated(params: AlertRuleLifecycleParams): void {
+    EventDistributor.processAndNotifyAll(
+        {method: 'Alert.RuleCreated', params},
+        {organizationId: params.organizationId}
+    );
+}
+
+export function emitAlertRuleUpdated(params: AlertRuleLifecycleParams): void {
+    EventDistributor.processAndNotifyAll(
+        {method: 'Alert.RuleUpdated', params},
+        {organizationId: params.organizationId}
+    );
+}
+
+export function emitAlertRuleDeleted(params: {
+    organizationId: string;
+    ruleId: number;
+}): void {
+    EventDistributor.processAndNotifyAll(
+        {method: 'Alert.RuleDeleted', params},
+        {organizationId: params.organizationId}
+    );
+}
+
+export interface ChannelLifecycleParams {
+    organizationId: string;
+    id: number;
+    name: string;
+}
+
+export function emitChannelCreated(params: ChannelLifecycleParams): void {
+    EventDistributor.processAndNotifyAll(
+        {method: 'Channel.Created', params},
+        {organizationId: params.organizationId}
+    );
+}
+
+export function emitChannelUpdated(params: ChannelLifecycleParams): void {
+    EventDistributor.processAndNotifyAll(
+        {method: 'Channel.Updated', params},
+        {organizationId: params.organizationId}
+    );
+}
+
+export function emitChannelDeleted(params: {
+    organizationId: string;
+    id: number;
+}): void {
+    EventDistributor.processAndNotifyAll(
+        {method: 'Channel.Deleted', params},
+        {organizationId: params.organizationId}
+    );
+}
+
+export interface DestinationLifecycleParams {
+    organizationId: string;
+    id: number;
+    name: string;
+}
+
+export function emitDestinationCreated(
+    params: DestinationLifecycleParams
+): void {
+    EventDistributor.processAndNotifyAll(
+        {method: 'Destination.Created', params},
+        {organizationId: params.organizationId}
+    );
+}
+
+export function emitDestinationUpdated(
+    params: DestinationLifecycleParams
+): void {
+    EventDistributor.processAndNotifyAll(
+        {method: 'Destination.Updated', params},
+        {organizationId: params.organizationId}
+    );
+}
+
+export function emitDestinationDeleted(params: {
+    organizationId: string;
+    id: number;
+}): void {
+    EventDistributor.processAndNotifyAll(
+        {method: 'Destination.Deleted', params},
+        {organizationId: params.organizationId}
+    );
+}
+
+export interface DestinationMembersParams {
+    organizationId: string;
+    id: number;
+    members: DestinationMemberRef[];
+}
+
+export function emitDestinationMembersAdded(
+    params: DestinationMembersParams
+): void {
+    if (params.members.length === 0) return;
+    EventDistributor.processAndNotifyAll(
+        {method: 'Destination.MembersAdded', params},
+        {organizationId: params.organizationId}
+    );
+}
+
+export function emitDestinationMembersRemoved(
+    params: DestinationMembersParams
+): void {
+    if (params.members.length === 0) return;
+    EventDistributor.processAndNotifyAll(
+        {method: 'Destination.MembersRemoved', params},
         {organizationId: params.organizationId}
     );
 }

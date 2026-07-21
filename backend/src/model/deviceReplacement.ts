@@ -58,18 +58,29 @@ export interface CheckReplacementInput {
 export async function checkReplacement(
     input: CheckReplacementInput
 ): Promise<DeviceReplacementCheckResult> {
+    return (await inspectReplacement(input)).check;
+}
+
+async function inspectReplacement(input: CheckReplacementInput): Promise<{
+    check: DeviceReplacementCheckResult;
+    requirementsFingerprint: string;
+}> {
     const {oldRow, newRow} = await loadReplacementRows(input);
-    const requirements = await loadRequirements(oldRow.id);
+    const requirementsSnapshot = await loadRequirements(oldRow.id);
+    const {requirements} = requirementsSnapshot;
     const available = await loadAvailablePoints(newRow, input);
     const compared = compareReplacementPoints(requirements, available);
     return {
-        oldShellyID: input.oldShellyID,
-        newShellyID: input.newShellyID,
-        oldDeviceId: oldRow.id,
-        newDeviceId: newRow.id,
-        requirements,
-        available,
-        ...compared
+        check: {
+            oldShellyID: input.oldShellyID,
+            newShellyID: input.newShellyID,
+            oldDeviceId: oldRow.id,
+            newDeviceId: newRow.id,
+            requirements,
+            available,
+            ...compared
+        },
+        requirementsFingerprint: requirementsSnapshot.fingerprint
     };
 }
 
@@ -84,7 +95,8 @@ export async function replaceHardware(input: ReplaceHardwareInput): Promise<{
     newShellyID: string;
     auditId: number;
 }> {
-    const check = await checkReplacement(input);
+    const inspection = await inspectReplacement(input);
+    const {check} = inspection;
     if (check.compatibility === 'incompatible') {
         throw new Error('replacement is incompatible');
     }
@@ -102,14 +114,23 @@ export async function replaceHardware(input: ReplaceHardwareInput): Promise<{
             input.confirmedMapping
         );
     }
-    const result = (await callMethod('device.fn_replace_hardware', {
-        p_organization_id: input.organizationId,
-        p_old_external_id: input.oldShellyID,
-        p_new_external_id: input.newShellyID,
-        p_confirmed_by: input.confirmedBy ?? null,
-        p_compatibility: check.compatibility,
-        p_mapping: JSON.stringify(normalizedMapping)
-    })) as DbResult;
+    const {withDeviceIdentityChange} = await import(
+        '../modules/deviceIdentityRuntime.js'
+    );
+    const result = await withDeviceIdentityChange(
+        input.oldShellyID,
+        input.newShellyID,
+        async () =>
+            (await callMethod('device.fn_replace_hardware', {
+                p_organization_id: input.organizationId,
+                p_old_external_id: input.oldShellyID,
+                p_new_external_id: input.newShellyID,
+                p_confirmed_by: input.confirmedBy ?? null,
+                p_compatibility: check.compatibility,
+                p_mapping: JSON.stringify(normalizedMapping),
+                p_requirements_fingerprint: inspection.requirementsFingerprint
+            })) as DbResult
+    );
     const row = result.rows?.[0] as
         | {
               device_id: number;
@@ -119,6 +140,10 @@ export async function replaceHardware(input: ReplaceHardwareInput): Promise<{
           }
         | undefined;
     if (!row) throw new Error('replacement did not return an audit row');
+    const {invalidateDefaultEnergyRepository} = await import(
+        '../modules/repositories/EnergyRepository.js'
+    );
+    await invalidateDefaultEnergyRepository();
     return {
         deviceId: row.device_id,
         oldShellyID: row.old_external_id,
@@ -197,42 +222,40 @@ async function loadReplacementRows(input: CheckReplacementInput): Promise<{
     return {oldRow, newRow};
 }
 
-async function loadRequirements(
-    oldDeviceId: number
-): Promise<DeviceReplacementRequirement[]> {
-    const rows = await queryRows<
-        DeviceReplacementRequirement & {
-            logical_meter_id: number;
-            logical_meter_name: string;
-            utility_type: string;
-            electrical_domain: EnergyDomain | null;
-        }
-    >(
-        `SELECT
-             p.channel,
-             p.phase,
-             p.tag,
-             p.electrical_domain,
-             m.id AS logical_meter_id,
-             m.name AS logical_meter_name,
-             m.utility_type,
-             m.role
-           FROM fm.logical_meter_point p
-           JOIN fm.logical_meter m ON m.id = p.logical_meter_id
-          WHERE p.device = $1
-          ORDER BY m.id, p.channel, p.phase, p.tag`,
+async function loadRequirements(oldDeviceId: number): Promise<{
+    requirements: DeviceReplacementRequirement[];
+    fingerprint: string;
+}> {
+    const rows = await queryRows<{
+        requirements: DeviceReplacementRequirement[];
+        fingerprint: string;
+    }>(
+        `WITH requirements AS (
+             SELECT jsonb_build_object(
+                        'channel', p.channel,
+                        'phase', p.phase,
+                        'tag', p.tag,
+                        'electricalDomain', p.electrical_domain,
+                        'logicalMeterId', m.id,
+                        'logicalMeterName', m.name,
+                        'utilityType', m.utility_type,
+                        'role', m.role
+                    ) AS requirement
+               FROM fm.logical_meter_point p
+               JOIN fm.logical_meter m ON m.id = p.logical_meter_id
+              WHERE p.device = $1
+              ORDER BY m.id, p.channel, p.phase, p.tag
+         )
+         SELECT COALESCE(jsonb_agg(requirement), '[]'::jsonb) AS requirements,
+                device.fn_hardware_requirements_fingerprint($1) AS fingerprint
+           FROM requirements`,
         [oldDeviceId]
     );
-    return rows.map((row) => ({
-        channel: row.channel,
-        phase: row.phase,
-        tag: row.tag,
-        electricalDomain: row.electrical_domain,
-        logicalMeterId: Number(row.logical_meter_id),
-        logicalMeterName: row.logical_meter_name,
-        utilityType: row.utility_type,
-        role: row.role
-    }));
+    const snapshot = rows[0];
+    if (!snapshot?.fingerprint) {
+        throw new Error('could not snapshot hardware replacement requirements');
+    }
+    return snapshot;
 }
 
 async function loadAvailablePoints(

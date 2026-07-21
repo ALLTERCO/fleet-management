@@ -6,24 +6,6 @@ import {VitePWA} from 'vite-plugin-pwa';
 import {defineConfig} from 'vitest/config';
 import VueRouter from 'vue-router/unplugin/vite';
 
-// Paths the SPA doesn't own (proxied apps + backend) — the SW must never cache
-// these. Shared by the navigation denylist and the navigate rule.
-const NON_SPA_PATHS: RegExp[] = [
-    /^\/api/,
-    /^\/health/,
-    /^\/rpc/,
-    /^\/node-red/,
-    /^\/grafana/,
-    /^\/alexa/,
-    /^\/media/,
-    /^\/uploads/,
-    // Zitadel OIDC — must reach the server, not the SW cache
-    /^\/oauth\//,
-    /^\/oidc\//,
-    /^\/ui\//,
-    /^\/\.well-known\//
-];
-
 // Read version from package.json (works in both local and Docker)
 function getVersion(): string {
     // npm_package_version is set when running via npm scripts
@@ -183,8 +165,6 @@ export default defineConfig(({mode}) => {
                     // Disable navigateFallback (it requires index.html in precache).
                     // Navigation is handled by the NetworkFirst runtime rule below.
                     navigateFallback: null,
-                    // Never serve index.html for these routes
-                    navigateFallbackDenylist: NON_SPA_PATHS,
                     // Don't cache API/backend routes - always go to network
                     runtimeCaching: [
                         {
@@ -192,9 +172,21 @@ export default defineConfig(({mode}) => {
                             // (3s). Skips non-SPA paths so the SW never caches them.
                             urlPattern: ({request, url}) =>
                                 request.mode === 'navigate' &&
-                                !NON_SPA_PATHS.some((re) =>
-                                    re.test(url.pathname)
-                                ),
+                                ![
+                                    /^\/api/,
+                                    /^\/health/,
+                                    /^\/rpc/,
+                                    /^\/node-red/,
+                                    /^\/grafana/,
+                                    /^\/alexa/,
+                                    /^\/media/,
+                                    /^\/uploads/,
+                                    // Zitadel OIDC — must reach the server, not SW cache
+                                    /^\/oauth\//,
+                                    /^\/oidc\//,
+                                    /^\/ui\//,
+                                    /^\/\.well-known\//
+                                ].some((re) => re.test(url.pathname)),
                             handler: 'NetworkFirst',
                             options: {
                                 cacheName: 'html-navigation',

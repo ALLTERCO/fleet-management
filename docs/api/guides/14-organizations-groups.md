@@ -1,6 +1,6 @@
 ## Organizations, groups, and tags
 
-![An organization owns its devices; groups, locations, and tags organize and scope them](diagrams/organizations.svg)
+![An organization owns everything; location is the top-level place hierarchy, with groups and tags as other ways to reach a device](diagrams/organizations.svg)
 
 Fleet Manager organizes a fleet along a few independent axes. Understanding them
 makes the device, permission, and dashboard APIs fall into place.

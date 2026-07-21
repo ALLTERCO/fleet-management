@@ -1,5 +1,5 @@
 <template>
-    <div class="dash-bar">
+    <div ref="barRef" class="dash-bar">
         <!-- Pills navigate between dashboards; the active page IS the
              tabpanel (the whole route renders below). Without an explicit
              tabpanel element to bind aria-controls to, the toggle-button
@@ -21,40 +21,51 @@
                 :key="dash.id"
                 type="button"
                 class="dash-pill"
-                :class="{ active: dash.id === activeId }"
+                :class="{active: dash.id === activeId}"
                 :aria-pressed="dash.id === activeId"
                 @click="$emit('select', dash.id)"
             >
                 <div
+                    v-if="dotStyle(dash.color)"
                     class="dot"
                     :style="dotStyle(dash.color)"
                 />
                 {{ dash.name }}
+                <i
+                    v-if="dash.isDefault"
+                    class="fas fa-star dash-pill__star"
+                    aria-label="Default dashboard"
+                    title="Default dashboard"
+                />
             </button>
         </div>
 
-        <!-- Single management trigger — opens the dashboard palette,
-             which absorbs the previous dropdown + modal. -->
+        <!-- Full-screen / present mode — puts the whole dash surface into the
+             browser's fullscreen so the dashboard fills the display. -->
         <button
             type="button"
             class="dash-more"
-            title="All dashboards (⌘K)"
-            aria-label="Open dashboard switcher"
-            @click="$emit('open-palette')"
+            :title="isFullscreen ? 'Exit full screen' : 'Full screen'"
+            :aria-label="isFullscreen ? 'Exit full screen' : 'Enter full screen'"
+            :aria-pressed="isFullscreen"
+            @click="toggleFullscreen"
         >
-            <i class="fas fa-bars" aria-hidden="true" />
+            <i
+                class="fas"
+                :class="isFullscreen ? 'fa-compress' : 'fa-expand'"
+                aria-hidden="true"
+            />
         </button>
 
-        <!-- Per-dashboard view-mode actions live inline next to the
-             hamburger. Pages register handlers via the chrome store. -->
-        <DashViewActions
-            v-if="chrome.actions"
-            :actions="chrome.actions"
-        />
+        <!-- Overflow (⋮): always present for Create / Manage. Pages register
+             per-dashboard actions (edit / set default / duplicate) via the
+             chrome store; the menu contents branch on dashboard kind. -->
+        <DashViewActions :actions="chrome.actions" />
     </div>
 </template>
 
 <script setup lang="ts">
+import {onBeforeUnmount, onMounted, ref} from 'vue';
 import DashViewActions from '@/components/dashboard/DashViewActions.vue';
 import {useDashboardChromeStore} from '@/stores/dashboardChrome';
 
@@ -63,6 +74,7 @@ export interface DashPillItem {
     name: string;
     color?: string;
     subtitle?: string;
+    isDefault?: boolean;
 }
 
 withDefaults(
@@ -78,8 +90,7 @@ withDefaults(
 const chrome = useDashboardChromeStore();
 
 defineEmits<{
-    (e: 'select', id: number | string): void;
-    (e: 'open-palette'): void;
+    select: [id: number | string];
 }>();
 
 // Block style injection via the color prop.
@@ -92,4 +103,41 @@ function dotStyle(color: string | undefined): string {
     if (!isSafeColor(color)) return '';
     return `background:${color};color:${color}`;
 }
+
+// ── Full screen / present mode ──
+// Target the whole dash surface (this bar is its header), not the bar alone.
+const barRef = ref<HTMLElement | null>(null);
+const isFullscreen = ref(false);
+
+function surfaceEl(): Element | null {
+    return barRef.value?.closest('.dash-surface') ?? null;
+}
+
+async function toggleFullscreen(): Promise<void> {
+    const el = surfaceEl();
+    if (!el) return;
+    // The Fullscreen API rejects when the browser blocks the request (no user
+    // gesture, permissions policy); surface it instead of leaving an unhandled
+    // promise rejection.
+    try {
+        if (document.fullscreenElement) {
+            await document.exitFullscreen();
+        } else {
+            await el.requestFullscreen?.();
+        }
+    } catch (err) {
+        console.warn('[DashPillBar] full-screen toggle failed', err);
+    }
+}
+
+function onFullscreenChange(): void {
+    isFullscreen.value = Boolean(document.fullscreenElement);
+}
+
+onMounted(() =>
+    document.addEventListener('fullscreenchange', onFullscreenChange)
+);
+onBeforeUnmount(() =>
+    document.removeEventListener('fullscreenchange', onFullscreenChange)
+);
 </script>

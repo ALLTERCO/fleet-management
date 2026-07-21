@@ -216,6 +216,7 @@ b.registerMethod('Stop', {
     description: 'Script.Stop — halt execution. Returns {was_running}.'
 });
 b.registerMethod('Eval', {
+    safety: {effectDependsOnInput: true},
     params: SCRIPT_EVAL_PARAMS_SCHEMA,
     response: RESP_EVAL,
     permission: PERM_EXECUTE,

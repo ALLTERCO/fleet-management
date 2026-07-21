@@ -1,17 +1,8 @@
 <template>
-    <!-- Browsing: create, refresh, then start a selection. Hidden once a
-         selection is active so the bar stays focused on the bulk task. -->
+    <!-- Browsing: refresh, then start a selection. Hidden once a selection
+         is active so the bar stays focused on the bulk task. Adding devices
+         lives on the Devices tab — the waiting room only triages arrivals. -->
     <template v-if="!hasSelection">
-        <Button
-            v-if="mode === 'pending' && canAccept"
-            type="green"
-            size="sm"
-            title="Add device"
-            aria-label="Add device"
-            @click="generateVisible = true"
-        >
-            <i class="fas fa-plus" />
-        </Button>
         <Button
             type="blue-hollow"
             size="sm"
@@ -64,20 +55,18 @@
         </Button>
     </template>
 
-    <QuickTokenModal :visible="generateVisible" @close="onGenerateClosed" />
 </template>
 
 <script setup lang="ts">
-import {computed, ref} from 'vue';
+import {computed} from 'vue';
 import Button from '@/components/core/Button.vue';
-import QuickTokenModal from '@/components/ingress/QuickTokenModal.vue';
 import type {
     WaitingRoomListState,
     WaitingRoomMode
 } from '@/composables/useWaitingRoomList';
 
-// Shared bulk-action bar for the Waiting Room page and the add-device lane —
-// one set of buttons + one generate modal driven by the shared composable.
+// Shared bulk-action bar for the Waiting Room page — refresh, select,
+// bulk accept/reject, driven by the shared composable.
 const props = defineProps<{
     state: WaitingRoomListState;
     mode: WaitingRoomMode;
@@ -86,16 +75,15 @@ const props = defineProps<{
 }>();
 
 const NO_WRITE_TITLE = 'You do not have permission to perform this action';
-const generateVisible = ref(false);
 
 // One selection drives the whole bar: browsing actions vs. bulk actions.
 const hasSelection = computed(() => props.state.selected.value.length > 0);
 // Bulk accept/reject only matter for 2+ — a single device uses its card buttons.
 const multiSelected = computed(() => props.state.selected.value.length > 1);
 
-// "Accept" for pending, "Allow" for the denied tab; everything else shared.
+// One verb for taking devices in — "Accept" — on both tabs.
 const acceptLabel = computed(() => {
-    const verb = props.mode === 'pending' ? 'Accept' : 'Allow';
+    const verb = 'Accept';
     const n = props.state.selected.value.length;
     if (n === 0) return verb;
     if (props.state.allSelected.value) return `${verb} All`;
@@ -108,9 +96,4 @@ const rejectLabel = computed(() => {
     if (props.state.allSelected.value) return 'Reject All';
     return `Reject (${n})`;
 });
-
-function onGenerateClosed(): void {
-    generateVisible.value = false;
-    props.state.refresh();
-}
 </script>

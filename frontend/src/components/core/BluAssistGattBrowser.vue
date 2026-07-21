@@ -181,14 +181,17 @@
 </template>
 
 <script setup lang="ts">
-import {onBeforeUnmount, reactive, ref} from 'vue';
+import {onBeforeUnmount, onMounted, reactive, ref} from 'vue';
 import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useToastStore} from '@/stores/toast';
 import {
-    type DeviceEventPayload, 
+    addTemporarySubscription,
+    type DeviceEventPayload,
     onDeviceEvent,
-    sendRPC
+    sendRPC,
+    type TemporarySubscription
 } from '@/tools/websocket';
+import {deviceEventMethod} from '@/tools/wsEvents';
 
 interface CharNorm {
     key: string;
@@ -326,8 +329,28 @@ for (const component of COMPONENT_KEYS) {
     }
 }
 
+// Shelly.Event.* names are dynamic and never in the static subscribe list —
+// subscribe them here; the temp-sub registry re-issues them on reconnect.
+let gattEventSub: TemporarySubscription | null = null;
+
+onMounted(async () => {
+    const events = COMPONENT_KEYS.flatMap((component) =>
+        EVENT_KEYS.map((event) => deviceEventMethod(component, event))
+    );
+    try {
+        gattEventSub = await addTemporarySubscription(
+            [props.shellyID],
+            events
+        );
+    } catch (err) {
+        toast.error(rpcErrorMessage(err, 'Live notifications unavailable'));
+    }
+});
+
 onBeforeUnmount(() => {
-    // Tear down listeners.
+    // Tear down listeners and the server-side event subscription.
+    void gattEventSub?.unsubscribe();
+    gattEventSub = null;
     for (const off of eventUnsubs) off();
     eventUnsubs.length = 0;
     // Best-effort: unsubscribe all active notifications on the device so

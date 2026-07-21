@@ -2,14 +2,17 @@
     <div class="pt-root" :class="{ 'pt-root--fill': fill }">
         <ErrorBoundary>
             <div class="pt-page">
-                <!-- ═══ TOP BAR — page title (left) + user/settings menu (right) ═══ -->
-                <header class="pt-topbar">
+                <!-- ═══ TOP BAR — page title (left) + user/settings menu (right).
+                     The settings shell renders one topbar for the whole area,
+                     so pages inside it skip theirs. ═══ -->
+                <header v-if="!inSettingsShell" class="pt-topbar">
                     <div class="dp-header__left">
                         <slot name="title">
                             <h1 class="dp-header__title">{{ headerTitle }}</h1>
                         </slot>
                     </div>
 
+                    <AlertBell class="pt-topbar__bell" />
                     <PageTopMenu class="pt-topbar__menu" />
                 </header>
 
@@ -173,8 +176,9 @@
 
 <script setup lang="ts" generic="T">
 import '@/styles/device-page.css';
-import {computed, type Ref, ref, useSlots, watch} from 'vue';
+import {computed, inject, type Ref, ref, useSlots, watch} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
+import AlertBell from '@/components/core/AlertBell.vue';
 import EmptyBlock from '@/components/core/EmptyBlock.vue';
 import ErrorBoundary from '@/components/core/ErrorBoundary.vue';
 import GlassShell from '@/components/core/GlassShell.vue';
@@ -189,7 +193,6 @@ import type {
 } from '@/composables/useListSource';
 import {useListSource} from '@/composables/useListSource';
 import {useReactiveListSource} from '@/composables/useReactiveListSource';
-import type {PageScope} from '@/composables/useUniversalSearch';
 import {FLEET_MANAGER_HTTP} from '@/constants';
 import {sectionForPath} from '@/helpers/sections';
 import type {RouteTab, StatItem} from '@/types/page-template';
@@ -212,14 +215,10 @@ const props = withDefaults(
          *  Investigate drill-downs highlight the Investigate tab instead of
          *  defaulting to the first tab). */
         activePath?: string;
-        /** Mount <UniversalSearch> in the header center slot. */
+        /** Mount the local filter pill in the header center slot. */
         searchable?: boolean;
         /** Placeholder for the centered search. */
         searchPlaceholder?: string;
-        /** Scope passed to UniversalSearch (preferred name). */
-        searchScope?: PageScope<T>;
-        /** Scope passed to UniversalSearch (backwards-compat alias from PageLayout). */
-        scope?: PageScope<T>;
         /** Show the filter funnel inside the search pill. */
         filterable?: boolean;
         /** Indicates an active filter is applied (tints the funnel). */
@@ -270,7 +269,6 @@ const props = withDefaults(
         searchable: false,
         searchPlaceholder: 'Search…',
         searchScope: undefined,
-        scope: undefined,
         filterable: false,
         hasActiveFilter: false,
         filterCount: undefined,
@@ -299,6 +297,9 @@ const emit = defineEmits<{
     'filter-click': [];
     'tab-click': [path: string];
 }>();
+
+// True when rendered inside the settings shell, which owns the topbar.
+const inSettingsShell = inject('settingsShellChrome', false);
 
 const searchModel = defineModel<string>('search', {default: ''});
 
@@ -411,8 +412,6 @@ const headerTitle = computed(
 );
 const router = useRouter();
 
-// Accept either `search-scope` (preferred) or `scope` (backwards-compat with PageLayout).
-const effectiveScope = computed(() => props.searchScope ?? props.scope);
 
 const slots = useSlots();
 
@@ -435,7 +434,6 @@ const toolbarProps = computed(() => ({
     activeTabIndex: activeTabIndex.value,
     searchable: props.searchable,
     searchPlaceholder: props.searchPlaceholder,
-    scope: effectiveScope.value,
     filterable: props.filterable,
     hasActiveFilter: props.hasActiveFilter,
     filterCount: props.filterCount,
@@ -448,7 +446,7 @@ const activeTabIndex = computed(() => {
     // Investigate drill-downs). Otherwise match the current route.
     const matchPath = props.activePath ?? route.path;
     // Prefer exact match; fall back to longest-prefix so nested routes
-    // (e.g. /operations/device-auth/pushes) highlight their parent tab.
+    // (e.g. /settings/security/credentials) highlight their parent tab.
     const exact = props.tabs.findIndex((t) => t.path === matchPath);
     if (exact >= 0) return exact;
     let bestIdx = -1;
@@ -514,9 +512,9 @@ function externalTabUrl(path: string): string {
 /* ── Top bar — title block (left) + user/settings menu (right) ── */
 .pt-topbar {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: var(--gap-md);
-    padding: var(--gap-sm) var(--gap-md) 0;
+    padding: var(--gap-xs) var(--gap-md) 0;
 }
 .pt-topbar .dp-header__left {
     flex: 1 1 auto;

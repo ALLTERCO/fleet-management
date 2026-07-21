@@ -7,6 +7,7 @@
         :last-seen="lastSeenTs"
         :battery="batteryPercent"
         :accent-color="accentColor"
+        :class="sizeClass"
         v-if="showNormalWidget"
         :editMode="editMode"
     >
@@ -42,7 +43,7 @@
         </template>
     </Widget>
 
-    <Widget :loading="device?.loading" :selected :online="false" accent-color="#F04E5E" v-else>
+    <Widget :loading="device?.loading" :selected :online="false" accent-color="#F04E5E" :class="sizeClass" v-else>
         <template #upper-corner>
             Device
         </template>
@@ -63,6 +64,7 @@ import {
     getLogo,
     handleDeviceImgError
 } from '@/helpers/device';
+import type {CardSize} from '@/helpers/widgetCatalog';
 import {useDevicesStore} from '@/stores/devices';
 import Spinner from '../core/Spinner.vue';
 import Widget from './WidgetsTemplates/DeviceWidget.vue';
@@ -71,11 +73,13 @@ type props_t = {
     deviceId: string;
     editMode?: boolean;
     selected?: boolean;
+    size?: CardSize;
 };
 
 const props = withDefaults(defineProps<props_t>(), {
     editMode: false,
-    selected: false
+    selected: false,
+    size: '1x1'
 });
 
 const emit = defineEmits<{
@@ -111,6 +115,11 @@ const batteryPercent = computed(() => {
     const level = getLevelIndicator(device.value);
     return level.type === 'battery' ? level.value : null;
 });
+
+const sizeClass = computed(() => ({
+    'device-card--wide': props.size === '2x1',
+    'device-card--hero': props.size === '2x2'
+}));
 
 function handleImgError(e: Event) {
     handleDeviceImgError(e, device.value?.info?.model);

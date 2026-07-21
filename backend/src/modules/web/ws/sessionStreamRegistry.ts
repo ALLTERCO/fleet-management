@@ -1,12 +1,15 @@
 // Lazily attaches a session sink (Redis-backed or in-memory fallback)
 // to a ConnectionContext.
 import {randomUUID} from 'node:crypto';
-import type {Redis} from 'ioredis';
+import type {Redis, RedisOptions} from 'ioredis';
 import log4js from 'log4js';
 import type WebSocket from 'ws';
 import {tuning} from '../../../config';
 import * as Observability from '../../Observability';
-import {getSharedRedis} from '../../redis/RedisClients';
+import {
+    buildBlockingDuplicateOverride,
+    getSharedRedis
+} from '../../redis/RedisClients';
 import type {ConsumerLoopHandle} from '../../redis/streamConsumerLoop';
 import {SingleFlight} from '../../singleFlight';
 import type {ConnectionContext} from './ConnectionContext';
@@ -26,7 +29,6 @@ interface SessionBinding {
     sink: SessionSink;
     sender?: ConsumerLoopHandle;
     connectionId: string;
-    writerClient?: Redis;
     readerClient?: Redis;
 }
 
@@ -106,14 +108,17 @@ async function attachRedisStream(
 ): Promise<SessionStreamResult> {
     const userId = ctx.sender.getUserId() ?? 'anonymous';
     const {cmd} = getSharedRedis();
-    const writerClient = duplicateRedisClient(cmd, 'writer');
-    const readerClient = duplicateRedisClient(cmd, 'reader');
+    // Writer ops are all fast and non-blocking — they ride the shared cmd
+    // client. Only the reader gets a dedicated connection: it runs
+    // XREADGROUP BLOCK, which must never queue ahead of request-path
+    // commands on a shared connection.
+    const readerClient = duplicateBlockingReader(cmd);
     try {
         let connectionId = req.connectionId ?? randomUUID();
         let stream = new SessionEventStream({
             userId,
             connectionId,
-            client: writerClient,
+            client: cmd,
             readerClient
         });
         let resyncRequired: SessionStreamResult['resyncRequired'];
@@ -126,7 +131,7 @@ async function attachRedisStream(
                 stream = new SessionEventStream({
                     userId,
                     connectionId,
-                    client: writerClient,
+                    client: cmd,
                     readerClient
                 });
             } else if (req.lastSeenStreamId) {
@@ -149,6 +154,10 @@ async function attachRedisStream(
             ? undefined
             : req.lastSeenStreamId;
         await stream.ensureGroup(lastSeenStreamId ?? '$');
+        // XGROUP MKSTREAM creates the key with no TTL and append() no longer
+        // refreshes it — arm it now so a session whose socket never opens
+        // cannot leak the key.
+        await stream.touch();
         const sender = startSessionSender({
             socket: ctx.socket,
             stream,
@@ -163,7 +172,6 @@ async function attachRedisStream(
             sink,
             sender,
             connectionId,
-            writerClient: writerClient === cmd ? undefined : writerClient,
             readerClient: readerClient === cmd ? undefined : readerClient
         };
         bindings.set(ctx.socket, binding);
@@ -173,29 +181,34 @@ async function attachRedisStream(
             forgetConnectionId(ctx.socket);
             binding.sender?.stop();
             await waitForSessionSenderDone(binding);
-            await closeRedisClient(binding.writerClient, 'writer');
+            // A late XADD can recreate an expired key with no TTL — re-arm
+            // before abandoning the stream to TTL cleanup.
+            await stream.touch();
             await closeRedisClient(binding.readerClient, 'reader');
             // Stream retained — TTL handles cleanup so reconnect can resume.
         });
         return {sink, connectionId, resyncRequired, mode: 'redis'};
     } catch (error) {
-        if (writerClient !== cmd)
-            await closeRedisClient(writerClient, 'writer');
         if (readerClient !== cmd)
             await closeRedisClient(readerClient, 'reader');
         throw error;
     }
 }
 
-function duplicateRedisClient(
-    client: Redis,
-    label: 'writer' | 'reader'
-): Redis {
-    const duplicate = (client as {duplicate?: () => Redis}).duplicate;
+// Duplicate the shared client into this session's dedicated blocking reader.
+// Never attaches listeners to the source client — per-session listeners on
+// the shared cmd client would accumulate across sessions.
+function duplicateBlockingReader(client: Redis): Redis {
+    const duplicate = (
+        client as {duplicate?: (override?: Partial<RedisOptions>) => Redis}
+    ).duplicate;
     if (typeof duplicate !== 'function') return client;
-    const duplicateClient = duplicate.call(client);
+    const duplicateClient = duplicate.call(
+        client,
+        buildBlockingDuplicateOverride()
+    );
     duplicateClient.on('error', (err) =>
-        logger.warn('session %s redis error: %s', label, err)
+        logger.warn('session reader redis error: %s', err)
     );
     return duplicateClient;
 }

@@ -3,8 +3,10 @@
 import {MOBILE_RESUME_THRESHOLD_MS, MOBILE_SYNC_DEBOUNCE_MS} from '@/constants';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
+import {createTrailingCoalescer} from '@/tools/coalesce';
 import {sendRPC} from '@/tools/http';
 import {onAlertEvent, onWaitingRoomUpdated} from '@/tools/websocket';
+import {ALERT_EVENT} from '@/tools/wsEvents';
 import {isRecoverableReconnectError} from '@/tools/wsReconnectErrors';
 import type {ShellyDeviceExternal} from '@/types';
 
@@ -22,24 +24,14 @@ interface SyncDeltaResponse {
 let hiddenAt: number | null = null;
 let lastSyncIso: string | null = null;
 let inflight = false;
-let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-let waitingRoomCountTimer: ReturnType<typeof setTimeout> | null = null;
 
-function scheduleSync(): void {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-        debounceTimer = null;
-        void runSyncDelta();
-    }, MOBILE_SYNC_DEBOUNCE_MS);
-}
+const syncDelta = createTrailingCoalescer(() => {
+    void runSyncDelta();
+}, MOBILE_SYNC_DEBOUNCE_MS);
 
-function scheduleWaitingRoomCountSync(): void {
-    if (waitingRoomCountTimer) clearTimeout(waitingRoomCountTimer);
-    waitingRoomCountTimer = setTimeout(() => {
-        waitingRoomCountTimer = null;
-        void refreshWaitingRoomCount();
-    }, MOBILE_SYNC_DEBOUNCE_MS);
-}
+const waitingRoomCountSync = createTrailingCoalescer(() => {
+    void refreshWaitingRoomCount();
+}, MOBILE_SYNC_DEBOUNCE_MS);
 
 async function runSyncDelta(): Promise<void> {
     if (inflight) return;
@@ -98,13 +90,9 @@ async function refreshWaitingRoomCount(): Promise<void> {
     }
 }
 
-const ALERT_LIFECYCLE_EVENTS = new Set([
-    'Alert.Created',
-    'Alert.Updated',
-    'Alert.Resolved',
-    'Alert.Acked',
-    'Alert.Silenced'
-]);
+// Created/Updated/Resolved are the only emitted lifecycle events —
+// ack/silence transitions arrive as Alert.Updated.
+const ALERT_LIFECYCLE_EVENTS = new Set<string>(Object.values(ALERT_EVENT));
 
 export function initLaunchSync(): void {
     if (typeof document === 'undefined') return;
@@ -119,8 +107,8 @@ export function initLaunchSync(): void {
         if (idle >= MOBILE_RESUME_THRESHOLD_MS) void runSyncDelta();
     });
 
-    onWaitingRoomUpdated(scheduleWaitingRoomCountSync);
+    onWaitingRoomUpdated(() => waitingRoomCountSync.schedule());
     onAlertEvent((e) => {
-        if (ALERT_LIFECYCLE_EVENTS.has(e.method)) scheduleSync();
+        if (ALERT_LIFECYCLE_EVENTS.has(e.method)) syncDelta.schedule();
     });
 }

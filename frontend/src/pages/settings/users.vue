@@ -154,6 +154,7 @@
             v-model:scoped="patScoped"
             v-model:scope-all="patScopeAll"
             v-model:purpose="patPurpose"
+            v-model:mcp-level="patMcpLevel"
             v-model:scope-picked="patScopePicked"
             :visible="patCreateVisible"
             :creating="patCreating"
@@ -276,6 +277,7 @@ import UsersListPatsModal, {
 import {ZITADEL_PASSWORD_MIN_LENGTH} from '@/constants';
 import apiClient from '@/helpers/axios';
 import {profilePictureFormData} from '@/helpers/profilePictureUpload';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useRpcPermissions} from '@/helpers/rpcPermissions';
 import type {ScopeSelection} from '@/helpers/scopeDimensions';
 import {
@@ -915,7 +917,7 @@ async function createServiceUser() {
         // List refresh runs behind the modal; it self-handles its own errors.
         await loadServiceUsers();
     } catch (e: any) {
-        toastStore.error(e?.message ?? 'Failed to create service user');
+        toastStore.error(rpcErrorMessage(e, 'Failed to create service user'));
     } finally {
         if (epoch === serviceEpoch.value) svcCreating.value = false;
     }
@@ -946,6 +948,8 @@ const patName = ref('');
 const patScoped = ref(false);
 const patScopeAll = ref(true);
 const patPurpose = ref('');
+// '' = key is not for MCP; else the level the scoped key carries (mcp:<level>).
+const patMcpLevel = ref('');
 type ScopedPatPreview = {
     usable: boolean;
     effectiveStatementCount: number;
@@ -973,6 +977,7 @@ function resetScopedPatFields() {
     patScoped.value = false;
     patScopeAll.value = true;
     patPurpose.value = '';
+    patMcpLevel.value = '';
     patScopePicked.value = {};
     scopedPatPreview.value = null;
 }
@@ -998,6 +1003,11 @@ async function generatePAT() {
             scopeAll: patScopeAll.value,
             pickedScope: patScopePicked.value,
             purpose: patPurpose.value,
+            mcpLevel: (patMcpLevel.value || undefined) as
+                | 'read'
+                | 'write'
+                | 'full'
+                | undefined,
             name: patName.value
         });
         if (plan.kind === 'fm_scoped_pat') {
@@ -1026,7 +1036,7 @@ async function generatePAT() {
         toastStore.success('Token generated — copy it now');
         await loadServiceUsers();
     } catch (e: any) {
-        toastStore.error(e?.message ?? 'Failed to generate token');
+        toastStore.error(rpcErrorMessage(e, 'Failed to generate token'));
     } finally {
         if (epoch === serviceEpoch.value) patCreating.value = false;
     }
@@ -1102,7 +1112,7 @@ function revokeScopedPATConfirm(tokenId: string) {
             if (patTargetUser.value) await openListPATs(patTargetUser.value);
         } catch (e: any) {
             if (epoch !== serviceEpoch.value) return;
-            toastStore.error(e?.message ?? 'Failed to revoke scoped token');
+            toastStore.error(rpcErrorMessage(e, 'Failed to revoke scoped token'));
         }
     });
 }
@@ -1124,7 +1134,7 @@ function revokePATConfirm(tokenId: string) {
             await loadServiceUsers();
         } catch (e: any) {
             if (epoch !== serviceEpoch.value) return;
-            toastStore.error(e?.message ?? 'Failed to revoke token');
+            toastStore.error(rpcErrorMessage(e, 'Failed to revoke token'));
         }
     });
 }
@@ -1184,7 +1194,7 @@ async function rotatePAT(tokenId: string) {
         if (patTargetUser.value) await openListPATs(patTargetUser.value);
     } catch (e: any) {
         if (epoch !== serviceEpoch.value) return;
-        toastStore.error(e?.message ?? 'Failed to rotate token');
+        toastStore.error(rpcErrorMessage(e, 'Failed to rotate token'));
     } finally {
         if (epoch === serviceEpoch.value) patBusy.value = false;
     }
@@ -1230,7 +1240,7 @@ async function bulkRotatePATs() {
         if (patTargetUser.value) await openListPATs(patTargetUser.value);
     } catch (e: any) {
         if (epoch !== serviceEpoch.value) return;
-        toastStore.error(e?.message ?? 'Failed to bulk-rotate tokens');
+        toastStore.error(rpcErrorMessage(e, 'Failed to bulk-rotate tokens'));
     } finally {
         if (epoch === serviceEpoch.value) patBusy.value = false;
     }
@@ -1593,7 +1603,7 @@ onMounted(() => {
 }
 .usr-password-rules__item i {
     width: 1rem;
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
 }
 .usr-password-rules__item--ok {
     color: var(--color-success-text);
@@ -1640,7 +1650,7 @@ onMounted(() => {
 }
 .svc-credential-mode small {
     color: var(--color-text-tertiary);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
 }
 .svc-pat-hint { font-size: var(--type-body); color: var(--color-text-tertiary); }
 .svc-token-model {
@@ -1673,7 +1683,7 @@ onMounted(() => {
     color: var(--color-warning-text);
 }
 .svc-pat-result { display: flex; flex-direction: column; gap: var(--gap-sm); margin-top: var(--gap-sm); }
-.svc-pat-result__meta { font-size: var(--type-card-footer); color: var(--color-text-quaternary); font-family: var(--font-mono); }
+.svc-pat-result__meta { font-size: var(--type-caption); color: var(--color-text-quaternary); font-family: var(--font-mono); }
 .svc-pat-sections { display: flex; flex-direction: column; gap: var(--gap-sm); }
 .svc-pat-list { display: flex; flex-direction: column; gap: var(--gap-xs); }
 .svc-pat-item {
@@ -1683,7 +1693,7 @@ onMounted(() => {
 }
 .svc-pat-item__info { display: flex; flex-direction: column; gap: var(--space-0-5); }
 .svc-pat-item__id { font-family: var(--font-mono); font-size: var(--type-body); color: var(--color-text-primary); }
-.svc-pat-item__exp { font-size: var(--type-card-footer); color: var(--color-text-quaternary); }
+.svc-pat-item__exp { font-size: var(--type-caption); color: var(--color-text-quaternary); }
 .svc-pat-item__actions { display: flex; gap: var(--space-2); }
 .svc-pat-toolbar { display: flex; justify-content: flex-end; margin-bottom: var(--space-2); }
 .svc-pat-rotated {
@@ -1693,6 +1703,6 @@ onMounted(() => {
 }
 .svc-pat-rotated__list { list-style: none; margin: var(--space-2) 0 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
 .svc-pat-rotated__row { display: flex; gap: var(--space-2); align-items: center; }
-.svc-pat-rotated__replaced { font-size: var(--type-card-footer); color: var(--color-text-quaternary); flex: 0 0 220px; }
+.svc-pat-rotated__replaced { font-size: var(--type-caption); color: var(--color-text-quaternary); flex: 0 0 220px; }
 .svc-pat-rotated__token { font-family: var(--font-mono); background: var(--color-surface-2); padding: var(--space-px) var(--space-2); border-radius: var(--radius-sm); word-break: break-all; flex: 1; }
 </style>

@@ -31,7 +31,7 @@ export interface ChartDataPoint {
 // voltage/current historically merged min/max, which the new contract
 // expresses via optional min/max fields on the env rows (and raw
 // aggregation only on the energy rows, so min/max collapse away cleanly).
-const METRIC_TO_TAG: Record<ChartMetric, string> = {
+export const METRIC_TO_TAG: Record<ChartMetric, string> = {
     consumption: 'total_act_energy',
     returned_energy: 'total_act_ret_energy',
     voltage: 'voltage',
@@ -51,7 +51,7 @@ interface EnergyQueryResponse {
     }>;
 }
 
-function rangeToParams(range: ChartRange): {
+export function rangeToParams(range: ChartRange): {
     from: string;
     to: string;
     bucket: '1 hour' | '1 day';

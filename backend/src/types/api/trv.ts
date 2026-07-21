@@ -157,6 +157,7 @@ b.registerMethod('Delete', {
     description: 'BluTrv.Delete.'
 });
 b.registerMethod('Call', {
+    safety: {effectDependsOnInput: true},
     params: TRV_CALL_PARAMS_SCHEMA,
     response: RESP_OPAQUE,
     permission: PERM_EXECUTE,

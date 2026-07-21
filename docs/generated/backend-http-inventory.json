@@ -1,0 +1,924 @@
+{
+  "generator": "backend-http-inventory",
+  "version": 1,
+  "totals": {
+    "routes": 68,
+    "mounts": 27,
+    "byAuthModel": {
+      "public": 28,
+      "isLoggedIn": 18,
+      "requiresAuditView": 1,
+      "requiresAdmin": 7,
+      "device-gui-session": 1,
+      "route-permission": 4,
+      "requiresPermission": 3,
+      "requiresPlatformAdmin": 5,
+      "requiresObservabilityAuth": 1
+    }
+  },
+  "mounts": [
+    {
+      "prefix": "/",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 1022
+    },
+    {
+      "prefix": "/admin",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 964
+    },
+    {
+      "prefix": "/admin/assets",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 956
+    },
+    {
+      "prefix": "/api",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 730
+    },
+    {
+      "prefix": "/api",
+      "middleware": [
+        "isLoggedIn"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 751
+    },
+    {
+      "prefix": "/api",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 770
+    },
+    {
+      "prefix": "/api/auth/session",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 747
+    },
+    {
+      "prefix": "/api/device-proxy",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 767
+    },
+    {
+      "prefix": "/api/docs",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 748
+    },
+    {
+      "prefix": "/api/grafana",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 735
+    },
+    {
+      "prefix": "/api/notifications",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 731
+    },
+    {
+      "prefix": "/api/notifications",
+      "middleware": [
+        "isLoggedIn"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 749
+    },
+    {
+      "prefix": "/api/oauth",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 739
+    },
+    {
+      "prefix": "/api/uploads",
+      "middleware": [
+        "isLoggedIn"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 750
+    },
+    {
+      "prefix": "/api/zitadel/actions",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 742
+    },
+    {
+      "prefix": "/assets",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 982
+    },
+    {
+      "prefix": "/grafana",
+      "middleware": [
+        "isLoggedIn",
+        "requireGrafanaPermission"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 753
+    },
+    {
+      "prefix": "/images",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 1012
+    },
+    {
+      "prefix": "/images/devices",
+      "middleware": [
+        "express.static(path.join(clientPath, 'images/devices'), { ma"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 995
+    },
+    {
+      "prefix": "/llms.txt",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 768
+    },
+    {
+      "prefix": "/mcp",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 769
+    },
+    {
+      "prefix": "/media",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 771
+    },
+    {
+      "prefix": "/media",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 772
+    },
+    {
+      "prefix": "/media",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 773
+    },
+    {
+      "prefix": "/node-red",
+      "middleware": [
+        "isLoggedIn",
+        "isNotDefaultUser",
+        "requireNodeRedPermission"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 759
+    },
+    {
+      "prefix": "/plugins/:plugin/public",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 671
+    },
+    {
+      "prefix": "/uploads/floor-plans",
+      "middleware": [
+        "isLoggedIn",
+        "uploadAccessGate(extractFloorPlanAccess)",
+        "svgInlineHardeningMiddleware()"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 657
+    }
+  ],
+  "routes": [
+    {
+      "method": "DELETE",
+      "path": "/",
+      "middleware": [
+        "httpRouteLimit(SESSION_LIMIT)"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/authSession.ts",
+      "sourceLine": 37,
+      "authModel": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/",
+      "middleware": [
+        "isLoggedInOrRedirect",
+        "docsRateLimit"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/apiDocs.ts",
+      "sourceLine": 115,
+      "authModel": "isLoggedIn"
+    },
+    {
+      "method": "GET",
+      "path": "/",
+      "middleware": [
+        "isLoggedIn",
+        "mcpRateLimit"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/mcp.ts",
+      "sourceLine": 280,
+      "authModel": "isLoggedIn"
+    },
+    {
+      "method": "POST",
+      "path": "/",
+      "middleware": [
+        "httpRouteLimit(SESSION_LIMIT)",
+        "isLoggedIn"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/authSession.ts",
+      "sourceLine": 27,
+      "authModel": "isLoggedIn"
+    },
+    {
+      "method": "POST",
+      "path": "/",
+      "middleware": [
+        "isLoggedIn",
+        "requireMcpAccess",
+        "mcpRateLimit",
+        "express.json()"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/mcp.ts",
+      "sourceLine": 272,
+      "authModel": "isLoggedIn"
+    },
+    {
+      "method": "GET",
+      "path": "/*splat",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 1040,
+      "authModel": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/*splat",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 969,
+      "authModel": "public"
+    },
+    {
+      "method": "POST",
+      "path": "/alert-webhook/:orgId",
+      "middleware": [
+        "express.json({limit: deps.maxBodyBytes})"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/grafanaAlertWebhook.ts",
+      "sourceLine": 211,
+      "authModel": "public"
+    },
+    {
+      "method": "POST",
+      "path": "/audit-log/download-ticket/:filename",
+      "middleware": [
+        "requiresAuditView",
+        "httpRouteLimit({ name: 'audit-log-download-ticket', capacity"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/auditDownload.ts",
+      "sourceLine": 120,
+      "authModel": "requiresAuditView",
+      "mount": "/api"
+    },
+    {
+      "method": "GET",
+      "path": "/audit-log/download/:filename",
+      "middleware": [
+        "httpRouteLimit({ name: 'audit-log-download', capacityPerMin:"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/auditDownload.ts",
+      "sourceLine": 69,
+      "authModel": "public",
+      "mount": "/api"
+    },
+    {
+      "method": "GET",
+      "path": "/api/control-plane/deploy-manifest",
+      "middleware": [
+        "httpRouteLimit({ name: 'control-plane-deploy-manifest', capa",
+        "requiresAdmin"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 578,
+      "authModel": "requiresAdmin"
+    },
+    {
+      "method": "GET",
+      "path": "/api/control-plane/device-usage",
+      "middleware": [
+        "httpRouteLimit({ name: 'control-plane-device-usage', capacit",
+        "requiresAdmin"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 595,
+      "authModel": "requiresAdmin"
+    },
+    {
+      "method": "ALL",
+      "path": "/api/device-gui/:sessionId/{*devicePath}",
+      "middleware": [
+        "requireDeviceGuiSession"
+      ],
+      "sourceFile": "backend/src/modules/web/deviceGuiOrigin.ts",
+      "sourceLine": 512,
+      "authModel": "device-gui-session"
+    },
+    {
+      "method": "GET",
+      "path": "/:shellyID/camera/:componentId/snapshot",
+      "middleware": [
+        "httpRouteLimit({ name: 'device-proxy-camera-snapshot', capac",
+        "validateDeviceAccess()"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/device-proxy.ts",
+      "sourceLine": 417,
+      "authModel": "route-permission",
+      "mount": "/api/device-proxy"
+    },
+    {
+      "method": "POST",
+      "path": "/:shellyID/camera/streamer/stop",
+      "middleware": [
+        "express.json()",
+        "httpRouteLimit({ name: 'device-proxy-camera-streamer-stop', ",
+        "validateDeviceAccess()"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/device-proxy.ts",
+      "sourceLine": 450,
+      "authModel": "route-permission",
+      "mount": "/api/device-proxy"
+    },
+    {
+      "method": "GET",
+      "path": "/:shellyID/gui-debug",
+      "middleware": [
+        "httpRouteLimit({ name: 'device-proxy-gui-debug', capacityPer",
+        "validateDeviceAccess({requireDevice: false})"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/device-proxy.ts",
+      "sourceLine": 691,
+      "authModel": "route-permission",
+      "mount": "/api/device-proxy"
+    },
+    {
+      "method": "GET",
+      "path": "/:shellyID/info",
+      "middleware": [
+        "httpRouteLimit({ name: 'device-proxy-info', capacityPerMin: ",
+        "validateDeviceAccess()"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/device-proxy.ts",
+      "sourceLine": 305,
+      "authModel": "route-permission",
+      "mount": "/api/device-proxy"
+    },
+    {
+      "method": "POST",
+      "path": "/devices/:deviceId/gui-session",
+      "middleware": [
+        "httpRouteLimit({ name: 'device-gui-session', capacityPerMin:",
+        "isLoggedIn"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/device-proxy.ts",
+      "sourceLine": 123,
+      "authModel": "isLoggedIn",
+      "mount": "/api/device-proxy"
+    },
+    {
+      "method": "GET",
+      "path": "/devices/:deviceId/info",
+      "middleware": [
+        "httpRouteLimit({ name: 'device-gui-info', capacityPerMin: tu",
+        "isLoggedIn"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/device-proxy.ts",
+      "sourceLine": 102,
+      "authModel": "isLoggedIn",
+      "mount": "/api/device-proxy"
+    },
+    {
+      "method": "GET",
+      "path": "/exports/download/:filename",
+      "middleware": [
+        "isLoggedIn",
+        "httpRouteLimit({ name: 'exports-download', capacityPerMin: t"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/auditDownload.ts",
+      "sourceLine": 172,
+      "authModel": "isLoggedIn",
+      "mount": "/api"
+    },
+    {
+      "method": "POST",
+      "path": "/email-assets",
+      "middleware": [
+        "isLoggedIn",
+        "requiresAnyPermission('notifications:create', 'notifications",
+        "httpRouteLimit({ name: 'email-asset-upload', capacityPerMin:",
+        "upload.single('file')"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/emailAssets.ts",
+      "sourceLine": 67,
+      "authModel": "requiresPermission",
+      "mount": "/api/notifications"
+    },
+    {
+      "method": "GET",
+      "path": "/email-assets/:id",
+      "middleware": [
+        "isLoggedIn",
+        "requiresAnyPermission('notifications:read')",
+        "httpRouteLimit({ name: 'email-asset-download', capacityPerMi"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/emailAssets.ts",
+      "sourceLine": 150,
+      "authModel": "requiresPermission",
+      "mount": "/api/notifications"
+    },
+    {
+      "method": "GET",
+      "path": "/callback/email",
+      "middleware": [
+        "httpRouteLimit({ name: 'oauth-email-callback', // Callback i"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/oauthEmail.ts",
+      "sourceLine": 38,
+      "authModel": "public",
+      "mount": "/api/oauth"
+    },
+    {
+      "method": "GET",
+      "path": "/reports/download/:filename",
+      "middleware": [
+        "isLoggedIn",
+        "httpRouteLimit({ name: 'reports-download', capacityPerMin: t"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/auditDownload.ts",
+      "sourceLine": 160,
+      "authModel": "isLoggedIn",
+      "mount": "/api"
+    },
+    {
+      "method": "POST",
+      "path": "/floor-plan",
+      "middleware": [
+        "isLoggedIn",
+        "httpRouteLimit({ name: 'floor-plan-upload', capacityPerMin: ",
+        "upload.single('file')"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/floorPlanUpload.ts",
+      "sourceLine": 33,
+      "authModel": "isLoggedIn",
+      "mount": "/api/uploads"
+    },
+    {
+      "method": "GET",
+      "path": "/assets/:id",
+      "middleware": [
+        "httpRouteLimit({ name: 'asset-get', capacityPerMin: tuning.h"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/assetUpload.ts",
+      "sourceLine": 182,
+      "authModel": "public"
+    },
+    {
+      "method": "POST",
+      "path": "/auth/login_flow",
+      "middleware": [
+        "httpRouteLimit({ name: 'login-flow', capacityPerMin: tuning."
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 778,
+      "authModel": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/embedded-apps",
+      "middleware": [
+        "isLoggedInOrRedirect",
+        "docsRateLimit"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/apiDocs.ts",
+      "sourceLine": 140,
+      "authModel": "isLoggedIn"
+    },
+    {
+      "method": "POST",
+      "path": "/grant-removed",
+      "middleware": [
+        "httpRouteLimit({ name: 'zitadel-webhook', capacityPerMin: tu"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/zitadelActions.ts",
+      "sourceLine": 34,
+      "authModel": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 552,
+      "authModel": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/health/components/coverage",
+      "middleware": [
+        "requiresAdmin"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 881,
+      "authModel": "requiresAdmin"
+    },
+    {
+      "method": "GET",
+      "path": "/health/db-writes",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 618,
+      "authModel": "public"
+    },
+    {
+      "method": "POST",
+      "path": "/health/db-writes",
+      "middleware": [
+        "requiresPlatformAdmin",
+        "express.json()"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 815,
+      "authModel": "requiresPlatformAdmin"
+    },
+    {
+      "method": "GET",
+      "path": "/health/debug-report",
+      "middleware": [
+        "isLoggedIn"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 800,
+      "authModel": "isLoggedIn"
+    },
+    {
+      "method": "GET",
+      "path": "/health/full",
+      "middleware": [
+        "requiresAdmin"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 795,
+      "authModel": "requiresAdmin"
+    },
+    {
+      "method": "GET",
+      "path": "/health/live",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 556,
+      "authModel": "public"
+    },
+    {
+      "method": "POST",
+      "path": "/health/log-level",
+      "middleware": [
+        "requiresPlatformAdmin",
+        "express.json()"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 860,
+      "authModel": "requiresPlatformAdmin"
+    },
+    {
+      "method": "GET",
+      "path": "/health/log-levels",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 626,
+      "authModel": "public"
+    },
+    {
+      "method": "POST",
+      "path": "/health/observability",
+      "middleware": [
+        "requiresPlatformAdmin",
+        "express.json()"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 835,
+      "authModel": "requiresPlatformAdmin"
+    },
+    {
+      "method": "POST",
+      "path": "/health/observability/reset",
+      "middleware": [
+        "requiresPlatformAdmin"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 851,
+      "authModel": "requiresPlatformAdmin"
+    },
+    {
+      "method": "GET",
+      "path": "/health/ready",
+      "middleware": [
+        "httpRouteLimit({name: 'health-ready', capacityPerMin: 120})"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 560,
+      "authModel": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/health/redis",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 622,
+      "authModel": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/health/streams",
+      "middleware": [
+        "isLoggedIn"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 806,
+      "authModel": "isLoggedIn"
+    },
+    {
+      "method": "GET",
+      "path": "/healthz",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/routes/zitadelActions.ts",
+      "sourceLine": 10,
+      "authModel": "public"
+    },
+    {
+      "method": "POST",
+      "path": "/importBackup",
+      "middleware": [
+        "requiresAnyPermission('devices:update')",
+        "httpRouteLimit({ name: 'backup-import', capacityPerMin: tuni",
+        "uploadBackupFile.single('backup')"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/backupImport.ts",
+      "sourceLine": 27,
+      "authModel": "requiresPermission"
+    },
+    {
+      "method": "GET",
+      "path": "/deleteBackground",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/routes/media.ts",
+      "sourceLine": 281,
+      "authModel": "public",
+      "mount": "/media"
+    },
+    {
+      "method": "POST",
+      "path": "/deleteBackground",
+      "middleware": [
+        "requiresAdmin"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/media.ts",
+      "sourceLine": 265,
+      "authModel": "requiresAdmin",
+      "mount": "/media"
+    },
+    {
+      "method": "GET",
+      "path": "/media/firmware-file/:token",
+      "middleware": [
+        "httpRouteLimit({ name: 'firmware-file-download', capacityPer"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 690,
+      "authModel": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/getAllBackgrounds",
+      "middleware": [
+        "isLoggedIn",
+        "httpRouteLimit({ name: 'media-list-backgrounds', capacityPer"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/media.ts",
+      "sourceLine": 98,
+      "authModel": "isLoggedIn",
+      "mount": "/media"
+    },
+    {
+      "method": "GET",
+      "path": "/getAllReportImages",
+      "middleware": [
+        "isLoggedIn",
+        "httpRouteLimit({ name: 'media-list-report-images', capacityP"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/media.ts",
+      "sourceLine": 285,
+      "authModel": "isLoggedIn",
+      "mount": "/media"
+    },
+    {
+      "method": "POST",
+      "path": "/uploadBackground",
+      "middleware": [
+        "requiresAdmin",
+        "httpRouteLimit({ name: 'media-upload-background', capacityPe",
+        "upload.single('image')"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/media.ts",
+      "sourceLine": 116,
+      "authModel": "requiresAdmin",
+      "mount": "/media"
+    },
+    {
+      "method": "POST",
+      "path": "/uploadFirmwareFile",
+      "middleware": [
+        "requiresPlatformAdmin",
+        "httpRouteLimit({ name: 'media-upload-firmware', capacityPerM",
+        "uploadFirmwareFile.single('firmware')"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/firmwareUpload.ts",
+      "sourceLine": 35,
+      "authModel": "requiresPlatformAdmin",
+      "mount": "/media"
+    },
+    {
+      "method": "POST",
+      "path": "/uploadProfilePic",
+      "middleware": [
+        "isLoggedIn",
+        "httpRouteLimit({ name: 'media-upload-profile-pic', capacityP",
+        "upload.single('image')"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/media.ts",
+      "sourceLine": 198,
+      "authModel": "isLoggedIn",
+      "mount": "/media"
+    },
+    {
+      "method": "POST",
+      "path": "/uploadReportImage",
+      "middleware": [
+        "requiresAdmin",
+        "httpRouteLimit({ name: 'media-upload-report-image', capacity",
+        "uploadReportImage.single('image')"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/media.ts",
+      "sourceLine": 305,
+      "authModel": "requiresAdmin",
+      "mount": "/media"
+    },
+    {
+      "method": "GET",
+      "path": "/metrics",
+      "middleware": [
+        "httpRouteLimit({ name: 'metrics', capacityPerMin: tuning.htt",
+        "requireObsAuth"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 635,
+      "authModel": "requiresObservabilityAuth"
+    },
+    {
+      "method": "GET",
+      "path": "/openapi.json",
+      "middleware": [
+        "isLoggedInOrRedirect",
+        "docsRateLimit"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/apiDocs.ts",
+      "sourceLine": 92,
+      "authModel": "isLoggedIn"
+    },
+    {
+      "method": "POST",
+      "path": "/provider-receipts/:provider",
+      "middleware": [
+        "httpRouteLimit({name: 'provider-receipts', capacityPerMin: 1"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/providerReceipts.ts",
+      "sourceLine": 12,
+      "authModel": "public"
+    },
+    {
+      "method": "POST",
+      "path": "/rpc",
+      "middleware": [
+        "scopedTokenAuthMiddleware",
+        "rpcBodyAuth"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 503,
+      "authModel": "isLoggedIn"
+    },
+    {
+      "method": "GET",
+      "path": "/rpc/:method",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 483,
+      "authModel": "public"
+    },
+    {
+      "method": "POST",
+      "path": "/rpc/:method",
+      "middleware": [
+        "scopedTokenAuthMiddleware",
+        "isLoggedIn"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 497,
+      "authModel": "isLoggedIn"
+    },
+    {
+      "method": "POST",
+      "path": "/session",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/routes/nodeRedProxy.ts",
+      "sourceLine": 242,
+      "authModel": "public"
+    },
+    {
+      "method": "POST",
+      "path": "/tariff/live/:token",
+      "middleware": [
+        "httpRouteLimit({name: 'tariff-live-push', capacityPerMin: 12"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/tariffLivePush.ts",
+      "sourceLine": 14,
+      "authModel": "public"
+    },
+    {
+      "method": "POST",
+      "path": "/uploads/asset",
+      "middleware": [
+        "httpRouteLimit({ name: 'asset-upload', capacityPerMin: tunin",
+        "upload.single('file')"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/assetUpload.ts",
+      "sourceLine": 100,
+      "authModel": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/uploads/backgrounds/*assetPath",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/routes/uploadAssets.ts",
+      "sourceLine": 114,
+      "authModel": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/uploads/profilePics/*assetPath",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/routes/uploadAssets.ts",
+      "sourceLine": 118,
+      "authModel": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/uploads/reportImages/*assetPath",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/routes/uploadAssets.ts",
+      "sourceLine": 122,
+      "authModel": "public"
+    },
+    {
+      "method": "POST",
+      "path": "/user-removed",
+      "middleware": [
+        "httpRouteLimit({ name: 'zitadel-webhook', capacityPerMin: tu"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/zitadelActions.ts",
+      "sourceLine": 17,
+      "authModel": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/version",
+      "middleware": [
+        "httpRouteLimit({name: 'version', capacityPerMin: 120})"
+      ],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 569,
+      "authModel": "public"
+    }
+  ]
+}

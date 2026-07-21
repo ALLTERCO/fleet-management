@@ -261,6 +261,7 @@ export const CREDENTIAL_DESCRIBE: DescribeOutput = new DescribeBuilder(
         description: 'Component metadata.'
     })
     .registerMethod('List', {
+        safety: {operation: 'read'},
         params: CREDENTIAL_LIST_PARAMS_SCHEMA,
         response: LIST_RESPONSE,
         permission: READ_PERM,
@@ -268,6 +269,7 @@ export const CREDENTIAL_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'List per-device credentials (no plaintext). Filters by device or last_rotation_status.'
     })
     .registerMethod('Get', {
+        safety: {operation: 'read'},
         params: CREDENTIAL_GET_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,
@@ -281,6 +283,7 @@ export const CREDENTIAL_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Admin-only plaintext reveal. Audited every call, rate-limited via FM_CREDENTIAL_REVEAL_PER_ADMIN_PER_DAY.'
     })
     .registerMethod('Rotate', {
+        safety: {operation: 'execute'},
         params: CREDENTIAL_ROTATE_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
@@ -288,6 +291,7 @@ export const CREDENTIAL_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Operator-initiated rotation. Generates a strong random password and pushes via Shelly.SetAuth. Failed devices excluded from bulk by default; pass includeFlagged=true to override.'
     })
     .registerMethod('Set', {
+        safety: {operation: 'execute'},
         params: CREDENTIAL_SET_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
@@ -295,6 +299,7 @@ export const CREDENTIAL_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Set a specific password on a single device. Plaintext returned once in response.'
     })
     .registerMethod('Clear', {
+        safety: {operation: 'execute'},
         params: CREDENTIAL_CLEAR_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
@@ -302,6 +307,7 @@ export const CREDENTIAL_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Disable Web UI auth on the target devices via Shelly.SetAuth ha1=null.'
     })
     .registerMethod('Retry', {
+        safety: {operation: 'execute'},
         params: CREDENTIAL_RETRY_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
@@ -309,6 +315,7 @@ export const CREDENTIAL_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Retry a failed push using the stored new ha1. Recovers from transient device errors.'
     })
     .registerMethod('ConfirmOld', {
+        safety: {operation: 'update'},
         params: CREDENTIAL_CONFIRM_OLD_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: ADMIN_PERM,
@@ -316,12 +323,14 @@ export const CREDENTIAL_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Operator confirms a failed push left the device on its previous password — clears the flag without retrying.'
     })
     .registerMethod('ListFailed', {
+        safety: {operation: 'read'},
         params: CREDENTIAL_LIST_FAILED_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,
         description: 'List devices whose last rotation failed (action surface).'
     })
     .registerMethod('PushStatus', {
+        safety: {operation: 'read'},
         params: CREDENTIAL_PUSH_STATUS_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,
@@ -329,6 +338,7 @@ export const CREDENTIAL_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Polling fallback for credential push job state and per-device rows.'
     })
     .registerMethod('ListPushes', {
+        safety: {operation: 'read'},
         params: CREDENTIAL_LIST_PUSHES_PARAMS_SCHEMA,
         response: ANY_RESPONSE,
         permission: READ_PERM,

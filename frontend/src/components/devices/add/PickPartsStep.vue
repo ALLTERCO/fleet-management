@@ -114,16 +114,24 @@
                         @click="toggleGroup(group.deviceExternalId)"
                     >
                         <div class="pps__devphoto">
+                            <i
+                                v-if="group.logo.kind === 'icon'"
+                                class="pps__devglyph"
+                                :class="group.logo.faClass"
+                                :style="deviceGlyphStyle(group.logo)"
+                                :aria-label="group.displayName"
+                            />
                             <img
-                                :src="logoFor(group.deviceExternalId)"
-                                :alt="group.deviceName"
+                                v-else
+                                :src="group.logo.src"
+                                :alt="group.displayName"
                                 class="pps__devimg"
                                 loading="lazy"
                                 @error="onLogoError"
                             />
                         </div>
                         <div class="pps__devinfo">
-                            <span class="pps__devname">{{ group.deviceName }}</span>
+                            <span class="pps__devname">{{ group.displayName }}</span>
                             <span class="pps__devmeta">
                                 {{ group.parts.length }} part{{ group.parts.length === 1 ? '' : 's' }}
                             </span>
@@ -192,11 +200,12 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onBeforeUnmount, onMounted, ref} from 'vue';
 import {type SourceComponentCandidate, virtualDevices} from '@host/virtualDevices';
+import {computed, onBeforeUnmount, ref, watch} from 'vue';
 import Spinner from '@/components/core/Spinner.vue';
 import SourceComponentPicker from '@/components/devices/add/SourceComponentPicker.vue';
-import {getLogoFromShellyID} from '@/helpers/device';
+import {useDeviceIdentity} from '@/composables/useDeviceIdentity';
+import {type DeviceLogo, deviceGlyphStyle} from '@/helpers/deviceLogo';
 import {humaniseLabel, partVisual} from '@/helpers/partLabels';
 import {roleMatchesCandidate} from '@/helpers/virtualDeviceTemplates';
 import {useVirtualDeviceDraftStore} from '@/stores/virtualDeviceDraftStore';
@@ -207,7 +216,13 @@ interface DeviceGroup {
     parts: SourceComponentCandidate[];
 }
 
+interface DeviceGroupView extends DeviceGroup {
+    logo: DeviceLogo;
+    displayName: string;
+}
+
 const draft = useVirtualDeviceDraftStore();
+const {deviceLogoById, deviceNameById} = useDeviceIdentity();
 
 const loading = ref(false);
 const error = ref<string | null>(null);
@@ -241,10 +256,6 @@ function iconTileStyle(componentType: string): Record<string, string> {
     };
 }
 
-function logoFor(deviceExternalId: string): string {
-    return getLogoFromShellyID(deviceExternalId);
-}
-
 function onLogoError(e: Event): void {
     (e.target as HTMLImageElement).src = GENERIC_DEVICE_IMG;
 }
@@ -265,11 +276,19 @@ const distinctTypes = computed(() => {
     return [...seen.values()].sort((a, b) => a.label.localeCompare(b.label));
 });
 
-const visibleGroups = computed<DeviceGroup[]>(() => {
-    if (activeType.value === null) return groups.value;
-    return groups.value
-        .map((g) => ({...g, parts: g.parts.filter((p) => p.componentType === activeType.value)}))
-        .filter((g) => g.parts.length > 0);
+const visibleGroups = computed<DeviceGroupView[]>(() => {
+    const base =
+        activeType.value === null
+            ? groups.value
+            : groups.value
+                  .map((g) => ({...g, parts: g.parts.filter((p) => p.componentType === activeType.value)}))
+                  .filter((g) => g.parts.length > 0);
+    // Identity via the shared grid pipeline, not the raw backend fields.
+    return base.map((g) => ({
+        ...g,
+        logo: deviceLogoById(g.deviceExternalId),
+        displayName: deviceNameById(g.deviceExternalId, g.deviceName)
+    }));
 });
 
 const pickedLabel = computed(() => {
@@ -376,9 +395,14 @@ function loadMore(): void {
     void loadParts(query.value, true);
 }
 
-onMounted(() => {
-    if (draft.manualMode || !draft.profile) void loadParts();
-});
+// KeepAlive caches this step, so load on mode — template→custom must refetch.
+watch(
+    () => draft.manualMode || !draft.profile,
+    (manual) => {
+        if (manual) void loadParts(query.value);
+    },
+    {immediate: true}
+);
 
 onBeforeUnmount(() => {
     if (debounceTimer) clearTimeout(debounceTimer);
@@ -405,7 +429,7 @@ onBeforeUnmount(() => {
     margin: 0;
 }
 .pps__role-head h4 {
-    font-size: var(--type-title);
+    font-size: var(--type-heading);
     color: var(--color-text-primary);
 }
 .pps__role-head p {
@@ -520,7 +544,7 @@ onBeforeUnmount(() => {
     background: var(--color-primary);
     border-radius: var(--radius-full);
     color: var(--color-text-on-primary);
-    font-size: 10px;
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     line-height: 16px;
     text-align: center;
@@ -564,7 +588,7 @@ onBeforeUnmount(() => {
     width: 16px;
     text-align: center;
     color: var(--color-text-tertiary);
-    font-size: 12px;
+    font-size: var(--type-caption);
 }
 .pps__section-label {
     margin: 0;
@@ -626,6 +650,10 @@ onBeforeUnmount(() => {
     height: 40px;
     object-fit: contain;
 }
+.pps__devglyph {
+    font-size: var(--type-subheading);
+    color: var(--color-text-secondary);
+}
 .pps__devinfo {
     flex: 1;
     display: flex;
@@ -645,7 +673,7 @@ onBeforeUnmount(() => {
     color: var(--color-text-tertiary);
 }
 .pps__chevron {
-    font-size: 12px;
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
     flex-shrink: 0;
 }
@@ -707,7 +735,7 @@ onBeforeUnmount(() => {
     box-shadow: 0 0 0 3px rgba(var(--brand-blue-rgb), 0.25);
 }
 .pps__chk-icon {
-    font-size: 10px;
+    font-size: var(--type-caption);
     color: #fff;
 }
 .pps__addall {

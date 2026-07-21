@@ -3,9 +3,9 @@
         <div class="personas-layout">
             <h2 class="sr-only">Personas</h2>
 
-            <BasicBlock darker title="Personas">
-                <div class="personas-toolbar">
-                    <div class="search-pill">
+            <div class="personas-panel">
+                <div class="personas-panel__head">
+                    <div class="search-pill personas-search">
                         <i class="fas fa-search search-pill__icon" />
                         <input
                             v-model.trim="search"
@@ -75,7 +75,7 @@
                         </button>
                     </template>
                 </DataList>
-            </BasicBlock>
+            </div>
         </div>
 
         <template #modals>
@@ -339,7 +339,6 @@ import {
     reactive,
     ref
 } from 'vue';
-import BasicBlock from '@/components/core/BasicBlock.vue';
 import Button from '@/components/core/Button.vue';
 import Checkbox from '@/components/core/Checkbox.vue';
 import ChipInput from '@/components/core/ChipInput.vue';
@@ -700,16 +699,26 @@ function summarize(stmts: PersonaStatement[]): string {
     gap: var(--space-3);
     padding-top: var(--space-3);
 }
-.personas-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--space-3);
-    margin-bottom: var(--space-3);
+/* Same panel language as the Users page — head row with the search
+   centered and the action on the right, no title header. */
+.personas-panel {
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-lg);
+    background-color: var(--color-surface-1);
+    overflow: hidden;
 }
-.personas-toolbar .search-pill {
-    flex: 1 1 var(--floating-w-xs);
-    max-width: var(--floating-w-md);
+.personas-panel__head {
+    display: flex;
+    align-items: center;
+    padding: var(--gap-xs) var(--gap-sm);
+    min-height: var(--touch-target-min);
+    border-bottom: 1px solid var(--color-border-default);
+    background-color: var(--color-surface-2);
+}
+.personas-search {
+    margin: 0 auto;
+    max-width: 240px;
+    min-width: 140px;
 }
 .persona-kind {
     display: inline-block;

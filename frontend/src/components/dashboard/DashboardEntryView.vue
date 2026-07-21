@@ -50,6 +50,7 @@ import {
     ENTITY_CACHE_KEY
 } from '@/composables/dashboardInjectionKeys';
 import {resolveDashboardEntry} from '@/composables/useDashboardEntryRenderer';
+import {useDevicesStore} from '@/stores/devices';
 import {useEntityStore} from '@/stores/entities';
 import {useGroupsStore} from '@/stores/groups';
 import type {DashboardEntry} from '@/types/dashboard-entry';
@@ -77,6 +78,7 @@ const emit = defineEmits<{
 const injectedCache = inject(ENTITY_CACHE_KEY, null);
 const injectedActions = inject(ACTIONS_LIST_KEY, null);
 
+const devicesStore = useDevicesStore();
 const entityStore = useEntityStore();
 const groupsStore = useGroupsStore();
 
@@ -88,7 +90,8 @@ const resolved = computed(() =>
             rawEntity: (id) => entityStore.entities[id],
             group: (id) => groupsStore.groups[id],
             action: (id) =>
-                injectedActions?.value.find((a) => a.id === id)
+                injectedActions?.value.find((a) => a.id === id),
+            deviceExternalId: (id) => devicesStore.idToShellyMap.get(id)
         },
         {editMode: props.editMode}
     )

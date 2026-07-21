@@ -71,6 +71,9 @@
                         <span class="gp__stat-label">subgroup{{ totalSubgroupCount === 1 ? '' : 's' }}</span>
                     </div>
                 </div>
+                <div v-if="!isEmpty && liveMetricsError" class="gp__unresolved">
+                    Live metrics unavailable — {{ liveMetricsError }}
+                </div>
 
                 <!-- Metadata — near name, describes identity -->
                 <div v-if="metadataEntries.length > 0" class="gp__meta">
@@ -259,7 +262,8 @@ const {
 const {
     totalPower: livePower,
     avgTemperature: liveTemp,
-    avgHumidity: liveHumidity
+    avgHumidity: liveHumidity,
+    error: liveMetricsError
 } = useGroupLiveMetrics(activeId);
 
 const metadataEntries = computed(() => {

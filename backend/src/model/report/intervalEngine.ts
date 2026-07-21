@@ -37,6 +37,11 @@ interface TagFormat {
     precision: number;
 }
 
+// The load-profile export is NOT commodity-filtered: each tag is its own CSV
+// column and the pivot keys by domain, so commodities and AC/DC sources can
+// never collide or drop. Commodity classification stays the DB single source of
+// truth (fn_commodity_for) — deliberately not re-derived here.
+
 // Union the tags of every selected metric, keeping first-seen order and
 // each tag's shaping. A tag shared by two metrics maps once.
 function tagFormats(
@@ -163,7 +168,10 @@ export async function generateIntervalReport(
                     fmt.precision
                 );
                 const bucketDate = new Date(r.bucket);
-                const key = `${bucketDate.toISOString()}::${r.device}`;
+                // Key by domain too: a device can carry the same tag under two
+                // domains (e.g. AC + DC power), and a mixed-commodity report is
+                // unfiltered — keying bucket::device only would overwrite one.
+                const key = `${bucketDate.toISOString()}::${r.device}::${r.domain}`;
                 if (key !== currentKey) {
                     if (currentRow) await finalizeRow(currentRow);
                     currentRow = {bucket: bucketDate, device: String(r.device)};

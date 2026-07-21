@@ -109,7 +109,18 @@ export async function assertTagSubjectBelongsToOrg(
     let shellyID = subject.subjectId;
     if (subject.subjectType === 'entity') {
         const ref = DeviceCollector.findEntityAndDevice(subject.subjectId);
-        if (!ref) throw RpcError.NotFound('entity', subject.subjectId);
+        if (!ref) {
+            const rows = await postgres.queryRows(
+                `SELECT 1
+                   FROM organization.fn_normalize_entity_subject($1, $2)
+                  WHERE device_id IS NOT NULL`,
+                [orgId, subject.subjectId]
+            );
+            if (rows.length === 0) {
+                throw RpcError.NotFound('entity', subject.subjectId);
+            }
+            return;
+        }
         shellyID = ref.device.shellyID;
     }
     const rows = await postgres.queryRows(

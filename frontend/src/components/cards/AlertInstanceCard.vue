@@ -71,6 +71,7 @@ import {computed, onBeforeUnmount} from 'vue';
 import AlertSeverityBadge from '@/components/core/AlertSeverityBadge.vue';
 import {useNowTicker} from '@/composables/useNowTicker';
 import {UI_CONFIG} from '@/config/ui';
+import {formatRelative} from '@/helpers/format';
 import {describeRuleKind} from '@/helpers/ruleKinds';
 
 const props = withDefaults(
@@ -116,12 +117,8 @@ function minutesBetween(iso: string, ref: number): number {
 }
 
 const ageLabel = computed(() => {
-    const mins = minutesBetween(props.instance.lastTriggeredAt, now.value);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hours = Math.round(mins / 60);
-    if (hours < 24) return `${hours}h ago`;
-    return `${Math.round(hours / 24)}d ago`;
+    const t = new Date(props.instance.lastTriggeredAt).getTime();
+    return Number.isFinite(t) ? formatRelative(t, now.value) : '—';
 });
 
 const isSilenced = computed(() => {

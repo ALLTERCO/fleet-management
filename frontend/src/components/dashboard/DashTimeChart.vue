@@ -180,7 +180,8 @@ const option = computed(() => {
         mainSeries.markArea = {
             silent: true,
             data: [[{yAxis: props.markArea.min}, {yAxis: props.markArea.max}]],
-            itemStyle: {color: 'rgba(var(--color-success-rgb),0.04)'},
+            // Resolve to a concrete color; canvas fillStyle can't parse var().
+            itemStyle: {color: hexToRgba(chartColors.success, 0.06)},
             animationDuration: 600
         };
     }
@@ -411,7 +412,7 @@ watch(
     align-items: center;
     gap: var(--space-1);
     padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-pill);
+    border-radius: var(--radius-full);
     border: 1px solid var(--color-border-default);
     background: var(--color-surface-2);
     color: var(--color-text-secondary);

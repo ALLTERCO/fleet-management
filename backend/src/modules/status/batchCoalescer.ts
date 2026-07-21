@@ -1,6 +1,7 @@
 // Concatenates multiple status_push_queue payloads into a single PG batch.
 
 import type {StreamEntry} from '../redis/RedisStream';
+import {toEpochSeconds} from '../util/epochSeconds';
 
 export interface StatusBatch {
     p_ts: number[];
@@ -19,6 +20,13 @@ export interface CoalescedBatch {
 export interface CoalesceResult {
     batches: CoalescedBatch[];
     poisonIds: string[];
+}
+
+export function statusBatchTimestampToIso(seconds: number): string | null {
+    if (typeof seconds !== 'number' || !Number.isFinite(seconds)) return null;
+    const date = new Date(seconds * 1000);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toISOString();
 }
 
 const COLUMN_KEYS: ReadonlyArray<keyof StatusBatch> = [
@@ -78,7 +86,10 @@ function parseEntryBatch(entry: StreamEntry): StatusBatch | null {
     try {
         const obj = JSON.parse(raw);
         if (!isStatusBatch(obj)) return null;
-        return obj;
+        return {
+            ...obj,
+            p_ts: obj.p_ts.map((seconds) => toEpochSeconds(seconds, 0))
+        };
     } catch {
         return null;
     }
@@ -95,11 +106,14 @@ function appendBatch(into: StatusBatch, from: StatusBatch): void {
 function isStatusBatch(value: unknown): value is StatusBatch {
     if (typeof value !== 'object' || value === null) return false;
     const b = value as Partial<StatusBatch>;
-    const len = b.p_ts?.length;
-    if (typeof len !== 'number') return false;
+    const timestamps = b.p_ts;
+    if (!Array.isArray(timestamps)) return false;
+    const len = timestamps.length;
     for (const key of COLUMN_KEYS) {
         const arr = b[key];
         if (!Array.isArray(arr) || arr.length !== len) return false;
     }
-    return true;
+    return timestamps.every(
+        (seconds) => typeof seconds === 'number' && Number.isFinite(seconds)
+    );
 }

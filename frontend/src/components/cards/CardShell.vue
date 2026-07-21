@@ -16,7 +16,7 @@
             <div class="card-overlay">
                 <!-- Control buttons (top-right) -->
                 <div class="card-edit-controls">
-                    <button class="card-ctrl" title="Change size" aria-label="Change size" @click.stop="toggleSizePicker">
+                    <button v-if="canResize" class="card-ctrl" title="Change size" aria-label="Change size" @click.stop="toggleSizePicker">
                         <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="12" height="12">
                             <rect x="1" y="1" width="14" height="14" rx="2" />
                             <path d="M8 1v14M1 8h14" opacity=".3" />
@@ -43,7 +43,7 @@
                         @click.stop
                     >
                         <div
-                            v-for="opt in sizeOptions"
+                            v-for="opt in visibleSizeOptions"
                             :key="opt.value"
                             class="size-opt"
                             :class="{active: size === opt.value}"
@@ -58,6 +58,7 @@
                      the top-right grid icon does. The icon was the only entry
                      point and was missed by users clicking the badge directly. -->
                 <button
+                    v-if="canResize"
                     type="button"
                     class="card-size-badge"
                     :aria-label="`Change size, currently ${size}`"
@@ -65,7 +66,7 @@
                     @click.stop="toggleSizePicker"
                 >{{ size }}</button>
                 <!-- Resize grip (bottom-right) -->
-                <div class="card-grip" @pointerdown.stop.prevent="startResize" @dragstart.stop.prevent />
+                <div v-if="canResize" class="card-grip" @pointerdown.stop.prevent="startResize" @dragstart.stop.prevent />
             </div>
         </template>
 
@@ -77,11 +78,15 @@
         <!-- Status badges (battery, offline) -->
         <slot name="badges" />
 
-        <!-- Value zone — type-specific content (hero cards skip ec-val wrapper) -->
+        <!-- Value zone — type-specific content. 1x1/2x1 use .ec-val; the 2x2
+             hero uses .ec-hero-body. Both are flex:1 clip regions so the card
+             name below always keeps its space and never gets pushed out. -->
         <div v-if="size !== '2x2'" class="ec-val" :class="[{'ec-val-center': size === '1x1'}, valClass]">
             <slot />
         </div>
-        <slot v-else />
+        <div v-else class="ec-hero-body">
+            <slot />
+        </div>
 
         <!-- Button zone (ON/OFF toggle) -->
         <div class="ec-btn-zone" v-if="$slots.toggle && !editMode">
@@ -118,6 +123,9 @@ const props = withDefaults(
         extraClass?: string | Record<string, boolean>;
         valClass?: string | Record<string, boolean>;
         cardStyle?: Record<string, string>;
+        /** Sizes this card may take — the size popover shows only these. When
+         *  omitted, all three are offered. Source: allowedSizesForEntity. */
+        allowedSizes?: ('1x1' | '2x1' | '2x2')[];
     }>(),
     {
         size: '1x1',
@@ -178,6 +186,15 @@ const sizeOptions: {
     {value: '2x2', label: '2\u00d72', boxW: 28, boxH: 28}
 ];
 
+// Only the sizes this card allows (falls back to all three).
+const visibleSizeOptions = computed(() =>
+    props.allowedSizes
+        ? sizeOptions.filter((o) => props.allowedSizes?.includes(o.value))
+        : sizeOptions
+);
+// One allowed size → nothing to resize; hide the resize affordances.
+const canResize = computed(() => visibleSizeOptions.value.length > 1);
+
 function toggleSizePicker() {
     sizePickerOpen.value = !sizePickerOpen.value;
 }
@@ -218,7 +235,7 @@ onBeforeUnmount(() => {
     resizeCleanup?.();
 });
 
-function calcResizeTarget(
+function rawResizeTarget(
     dx: number,
     dy: number,
     current: string
@@ -234,6 +251,19 @@ function calcResizeTarget(
         if (dx < -60 || dy < -60) return '2x1';
     }
     return current as '1x1' | '2x1' | '2x2';
+}
+
+function calcResizeTarget(
+    dx: number,
+    dy: number,
+    current: string
+): '1x1' | '2x1' | '2x2' {
+    const target = rawResizeTarget(dx, dy, current);
+    // Never resize past what the size rule allows for this card.
+    if (props.allowedSizes && !props.allowedSizes.includes(target)) {
+        return current as '1x1' | '2x1' | '2x2';
+    }
+    return target;
 }
 
 function startResize(e: PointerEvent) {

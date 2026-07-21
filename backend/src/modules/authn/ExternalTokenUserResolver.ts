@@ -1,6 +1,6 @@
 import {getLogger} from 'log4js';
 import passport from 'passport';
-import {configRc} from '../../config';
+import {configRc, tuning} from '../../config';
 import {oidcUserinfoEndpoint} from '../../config/oidcEndpoints';
 import type {user_t} from '../../types';
 import type {FleetRole} from '../../types/api/authzCatalog';
@@ -25,6 +25,7 @@ import {
 } from '../user/cache';
 import {userHasPresenceInTenant} from '../user/tokenStore';
 import {truncateErrorForLog} from '../util/truncateErrorForLog';
+import {withTimeout} from '../util/withTimeout';
 import {buildAuthenticatedIdentity} from './TokenAuthenticator';
 import {assertFleetTokenBinding} from './TokenBinding';
 
@@ -42,7 +43,15 @@ export async function authenticateExternalOidcToken(
     // mid-introspection bumps this, fencing off the late write.
     const evictionGeneration = currentEvictionGeneration();
     try {
-        return await runIntrospection(token, evictionGeneration);
+        // Bound the Zitadel round-trip: passport's introspection has no timeout
+        // of its own, so a hung IdP would otherwise stall every fresh auth
+        // forever. On timeout this rejects, taking the same failure path the
+        // caller already handles for any other introspection error.
+        return await withTimeout(
+            () => runIntrospection(token, evictionGeneration),
+            tuning.zitadel.introspectionTimeoutMs,
+            'zitadel-introspection'
+        );
     } finally {
         Observability.noteRpcCompletion({
             method: 'Auth.Introspect',
@@ -166,6 +175,7 @@ async function buildUserFromClaims(
         Observability.incrementCounter('auth_successes');
         logFirstLogin({
             token,
+            userId: identity.userId,
             username: identity.username,
             organizationId: roleContext.effectiveOrganizationId
         });
@@ -340,19 +350,10 @@ async function resolveRoles({
 }
 
 function rejectAuthContextFailure(input: {
-    reason: 'org_mismatch' | 'no_fm_access';
+    reason: 'org_mismatch';
     organizationId: string;
 }): never {
     const topology = getDeploymentTopology();
-    if (input.reason === 'no_fm_access') {
-        logger.warn(
-            'JWT authenticated but no Fleet Manager access was granted for org %s; rejecting',
-            input.organizationId
-        );
-        Observability.incrementCounter('auth_failures');
-        throw new Error('no_fm_access');
-    }
-
     logger.warn(
         'JWT org mismatch — pinned to %s, got %s; rejecting',
         topology.clientOrgId,
@@ -392,7 +393,7 @@ async function fetchUserinfoWithCache(
     return userinfo;
 }
 
-async function fetchUserinfo(
+export async function fetchUserinfo(
     userinfoUrl: string,
     accessToken: string
 ): Promise<Record<string, unknown> | null> {
@@ -402,7 +403,10 @@ async function fetchUserinfo(
             headers: {
                 Authorization: `Bearer ${accessToken}`,
                 Accept: 'application/json'
-            }
+            },
+            // Bound a hung IdP so an unresponsive userinfo endpoint can't stall
+            // the auth request forever.
+            signal: AbortSignal.timeout(tuning.zitadel.userinfoFetchTimeoutMs)
         });
         if (!response.ok) {
             logger.warn('Failed to fetch userinfo: %d', response.status);
@@ -435,6 +439,7 @@ function logSuccessfulAuthentication(input: {
 
 function logFirstLogin(input: {
     token: string;
+    userId: string;
     username: string;
     organizationId: string;
 }): void {
@@ -444,7 +449,8 @@ function logFirstLogin(input: {
         undefined,
         true,
         undefined,
-        input.organizationId
+        input.organizationId,
+        input.userId
     );
 }
 
@@ -454,6 +460,9 @@ function cacheAuthenticatedUser(
     expiresAt: number | undefined,
     evictionGeneration: number
 ): void {
-    if (user.roles?.[0] === 'none') return;
+    // Don't cache no-access identities — 'none' or an empty role set. A later
+    // grant (group/assignment) must take effect without waiting for the
+    // introspection cache to expire.
+    if (!user.roles?.length || user.roles[0] === 'none') return;
     cacheUser(token, user, expiresAt, {evictionGeneration});
 }

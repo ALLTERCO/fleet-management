@@ -6,6 +6,7 @@ import {
     computeHa1,
     generatePassword
 } from '../../modules/credential/passwordGen';
+import * as EventDistributor from '../../modules/EventDistributor';
 import {createCredentialJob} from '../../modules/jobs/repository';
 import * as store from '../../modules/PostgresProvider';
 import {
@@ -17,7 +18,7 @@ import {
     encryptStringSecret
 } from '../../modules/secretCrypto';
 import {runBoundedParallel} from '../../modules/util/runBoundedParallel';
-import {buildListResponse} from '../../rpc/listResponse';
+import {buildListResponse, totalFromRows} from '../../rpc/listResponse';
 import RpcError from '../../rpc/RpcError';
 import {requireOrganizationId} from '../../rpc/scope';
 import {validateOrThrow} from '../../rpc/validateOrThrow';
@@ -97,6 +98,14 @@ async function callCredRows(
     return (result?.rows ?? []) as DeviceCredentialResponse[];
 }
 
+// List fns emit COUNT(*) OVER() AS total_count on every row.
+type Counted<T> = T & {total_count?: number};
+
+// Strip total_count so items keep their wire shape.
+function withoutTotalCount<T>(rows: Array<Counted<T>>): T[] {
+    return rows.map(({total_count: _, ...item}) => item as T);
+}
+
 export default class CredentialComponent extends Component<Config> {
     constructor() {
         super('credential', {viewer_visible: false});
@@ -120,14 +129,19 @@ export default class CredentialComponent extends Component<Config> {
         const orgId = requireOrganizationId(sender);
         const limit = p.limit ?? 100;
         const offset = p.offset ?? 0;
-        const rows = await callCredRows('organization.fn_credential_list', {
+        const rows = (await callCredRows('organization.fn_credential_list', {
             p_tenant_id: orgId,
             p_device_id: p.deviceId ?? null,
             p_status: p.status ?? null,
             p_limit: limit,
             p_offset: offset
-        });
-        return buildListResponse(rows, rows.length, limit, offset);
+        })) as Array<Counted<DeviceCredentialResponse>>;
+        return buildListResponse(
+            withoutTotalCount(rows),
+            totalFromRows(rows),
+            limit,
+            offset
+        );
     }
 
     @Component.NoAudit
@@ -333,6 +347,7 @@ export default class CredentialComponent extends Component<Config> {
             targetId: p.deviceId,
             jobId
         });
+        EventDistributor.emitCredentialChanged(p.deviceId, orgId);
         return {
             jobId,
             pushId,
@@ -431,6 +446,9 @@ export default class CredentialComponent extends Component<Config> {
             jobId,
             deviceCount: ids.length
         });
+        for (const r of results) {
+            EventDistributor.emitCredentialChanged(r.deviceId, orgId);
+        }
         return {jobId, results};
     }
 
@@ -486,6 +504,9 @@ export default class CredentialComponent extends Component<Config> {
             jobId,
             deviceCount: ids.length
         });
+        for (const r of results) {
+            EventDistributor.emitCredentialChanged(r.deviceId, orgId);
+        }
         return {jobId, results};
     }
 
@@ -575,11 +596,16 @@ export default class CredentialComponent extends Component<Config> {
         const orgId = requireOrganizationId(sender);
         const limit = p.limit ?? 100;
         const offset = p.offset ?? 0;
-        const rows = await callCredRows(
+        const rows = (await callCredRows(
             'organization.fn_credential_list_failed',
             {p_tenant_id: orgId, p_limit: limit, p_offset: offset}
+        )) as Array<Counted<DeviceCredentialResponse>>;
+        return buildListResponse(
+            withoutTotalCount(rows),
+            totalFromRows(rows),
+            limit,
+            offset
         );
-        return buildListResponse(rows, rows.length, limit, offset);
     }
 
     @Component.NoAudit
@@ -627,8 +653,13 @@ export default class CredentialComponent extends Component<Config> {
                 p_offset: offset
             }
         );
-        const rows = (result?.rows ?? []) as CredentialPushRow[];
-        return buildListResponse(rows, rows.length, limit, offset);
+        const rows = (result?.rows ?? []) as Array<Counted<CredentialPushRow>>;
+        return buildListResponse(
+            withoutTotalCount(rows),
+            totalFromRows(rows),
+            limit,
+            offset
+        );
     }
 
     protected override getDefaultConfig(): Config {

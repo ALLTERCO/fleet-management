@@ -91,7 +91,7 @@ const stateClass = computed(() => {
 }
 .metric-tile__value {
     font-family: var(--font-mono);
-    font-size: var(--type-title, 1.25rem);
+    font-size: var(--type-heading);
     font-weight: var(--font-semibold);
     line-height: 1.1;
 }

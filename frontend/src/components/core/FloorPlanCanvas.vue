@@ -16,6 +16,14 @@
                 Upload a PNG, SVG, or JPG to start placing devices on the plan.
             </p>
         </div>
+        <div v-else-if="planLoadError" class="fpc-empty">
+            <i class="fas fa-triangle-exclamation" />
+            <p>Floor plan failed to load</p>
+            <p class="fpc-empty-sub">
+                The plan image could not be loaded. Re-upload the file or try
+                again.
+            </p>
+        </div>
         <div v-if="editMode && !unsupported" class="fpc-edit-badge">
             <i class="fas fa-pen" /> Edit mode — drag devices to place
         </div>
@@ -35,7 +43,10 @@ import type {
 } from '@/types/floor-plan';
 
 export interface FloorPlanDevice {
+    /** Current external ID used for device interaction. */
     id: string;
+    /** Permanent device.list.id used as the placement JSON key. */
+    placementId?: string;
     label: string;
     color: number;
     /** Device reachability. False = grey, no emissive. */
@@ -81,7 +92,7 @@ const editRef = toRef(props, 'editMode');
 const drawingRef = toRef(props, 'drawingZone');
 const layerVisibilityRef = toRef(props, 'layerVisibility');
 
-const {unsupported} = useFloorPlanStage(hostRef, {
+const {unsupported, planLoadError} = useFloorPlanStage(hostRef, {
     plan: planRef,
     zones: zonesRef,
     placements: placementsRef,

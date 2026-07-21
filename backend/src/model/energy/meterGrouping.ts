@@ -32,6 +32,16 @@ export function meterMetric(utilityType: string): {
     return {tags: ['total_act_energy'], unit: 'kWh'};
 }
 
+// Display unit per measurement tag. Volume keeps its real unit (m3 vs l) so
+// meters reporting different volume units never fold into one slot and sum as
+// if identical (5 m3 + 3000 l must not become 3005).
+const TAG_DISPLAY_UNIT: Record<string, string> = {
+    volume_m3: 'm3',
+    volume_l: 'l',
+    thermal_energy_kwh: 'kWh',
+    total_act_energy: 'kWh'
+};
+
 interface Slot {
     bucket: string;
     key: string;
@@ -124,23 +134,25 @@ function foldIntoDimension(
         const meter = included.get(entry.meterId);
         if (!meter) continue;
         const metric = meterMetric(meter.utilityType);
-        const value = firstTagValue(entry.byTag, metric.tags);
-        if (value === undefined) continue;
+        const match = firstTagMatch(entry.byTag, metric.tags);
+        if (match === undefined) continue;
         const group = dimensionOf(meter, dimension);
         if (group === null) continue;
         const bucket = totalsBucket ?? entry.bucket;
-        addToSlot(slots, bucket, metric.unit, group, value);
+        // Unit follows the actual matched tag, so unlike volume units never sum.
+        const unit = TAG_DISPLAY_UNIT[match.tag] ?? metric.unit;
+        addToSlot(slots, bucket, unit, group, match.value);
     }
     return slots;
 }
 
-function firstTagValue(
+function firstTagMatch(
     byTag: ReadonlyMap<string, number>,
     tags: readonly string[]
-): number | undefined {
+): {tag: string; value: number} | undefined {
     for (const tag of tags) {
         const value = byTag.get(tag);
-        if (value !== undefined) return value;
+        if (value !== undefined) return {tag, value};
     }
     return undefined;
 }

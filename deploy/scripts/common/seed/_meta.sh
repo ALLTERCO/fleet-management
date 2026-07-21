@@ -34,6 +34,8 @@ _seed_meta_tags() {
 
 _seed_meta_groups() {
     info "Creating device groups..."
+    local existing
+    existing=$(_seed_rpc 'Group.List' '{}')
     # name | description | group kind (id from GROUP_KIND_CATALOG)
     for row in \
         "Office Lighting|Lights in office spaces|lighting_zone" \
@@ -46,6 +48,11 @@ _seed_meta_groups() {
         kind="${row##*|}"
         rest="${row#*|}"
         desc="${rest%|*}"
+        if echo "$existing" | jq -e --arg n "$name" \
+            '.items[]? | select(.name == $n)' >/dev/null; then
+            info "  group $name ($kind)"
+            continue
+        fi
         body=$(jq -cn --arg n "$name" --arg d "$desc" --arg k "$kind" \
             '{name:$n,description:$d,kind:$k}')
         _seed_rpc_log 'group.create' "$body" "  group $name ($kind)"

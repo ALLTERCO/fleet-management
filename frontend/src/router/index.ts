@@ -32,8 +32,31 @@ function isOidcCallback(toPath: string, fromPath: string): boolean {
     );
 }
 
+// One release generation of aliases only: paths that existed in the
+// previous release redirect to their new home; older aliases are gone.
 function guardLegacyRouteAliases(toPath: string): string | null {
-    if (toPath === '/settings/authz-audit') return '/monitoring/audit-log';
+    // Alerts and Monitoring moved under Settings — old links and bookmarks
+    // keep working.
+    if (toPath === '/alerts' || toPath.startsWith('/alerts/')) {
+        return `/settings${toPath}`;
+    }
+    if (toPath === '/monitoring' || toPath.startsWith('/monitoring/')) {
+        return `/settings${toPath}`;
+    }
+    // Device Auth moved under Settings > Security.
+    if (toPath === '/operations/device-auth') {
+        return '/settings/security/credentials';
+    }
+    if (toPath === '/operations/device-auth/certificates') {
+        return '/settings/security/certificates';
+    }
+    // The launcher hubs were removed — land on the nearest real page.
+    if (toPath === '/settings/monitoring/investigate') {
+        return '/settings/monitoring/logs';
+    }
+    if (toPath === '/settings/monitoring/resources') {
+        return '/settings/monitoring/runtime';
+    }
     return null;
 }
 
@@ -48,31 +71,35 @@ function guardPermissions(
     return null;
 }
 
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, from) => {
     if (isOidcCallback(to.path, from.path)) {
-        next();
-        return;
+        return true;
     }
 
     // SW update: full reload to pick up new assets
     if (isUpdatePending() && to.path !== from.path) {
-        if (tryActivateUpdate(to.fullPath)) return;
+        if (tryActivateUpdate(to.fullPath)) return false;
+    }
+
+    // Legacy aliases need no auth state at all — rewrite first so cold
+    // loads to old URLs never hit the 404 catch-all.
+    const legacyRedirect = guardLegacyRouteAliases(to.path);
+    if (legacyRedirect) {
+        return legacyRedirect;
     }
 
     const authStore = useAuthStore();
 
     if (authStore.status === 'booting') {
-        if (to.path === '/organize') next(ORGANIZE_PATH);
-        else if (to.path === '/') next(DEVICES_PATH);
-        else next();
-        return;
+        if (to.path === '/organize') return ORGANIZE_PATH;
+        if (to.path === '/') return DEVICES_PATH;
+        return true;
     }
 
     // Not logged in — only allow /login
     if (!authStore.loggedIn) {
-        if (to.path === LOGIN_PATH) next();
-        else next(LOGIN_PATH);
-        return;
+        if (to.path === LOGIN_PATH) return true;
+        return LOGIN_PATH;
     }
 
     // Logged in but permissions still loading — allow navigation, block /login.
@@ -81,86 +108,41 @@ router.beforeEach((to, from, next) => {
     // the brief window between login and permissionsLoaded. Once permissions
     // finish loading, resolveDefaultPage uses the shared page-access registry.
     if (!authStore.permissionsLoaded) {
-        if (to.path === LOGIN_PATH) next('/');
-        else if (to.path === '/organize') next(ORGANIZE_PATH);
-        else if (to.path === '/') next(DEVICES_PATH);
-        else next();
-        return;
+        if (to.path === LOGIN_PATH) return '/';
+        if (to.path === '/organize') return ORGANIZE_PATH;
+        if (to.path === '/') return DEVICES_PATH;
+        return true;
     }
 
     // Permission guards
     const permRedirect = guardPermissions(to.path, authStore);
     if (permRedirect) {
-        next(permRedirect);
-        return;
-    }
-
-    const legacyRedirect = guardLegacyRouteAliases(to.path);
-    if (legacyRedirect) {
-        next(legacyRedirect);
-        return;
+        return permRedirect;
     }
 
     const pageRedirect = redirectForPageAccess(to.path, authStore);
     if (pageRedirect) {
-        next(pageRedirect);
-        return;
+        return pageRedirect;
     }
 
-    // Legacy URL redirects — keep old bookmarks working
-    if (to.path === '/firmware') {
-        next('/operations/firmware');
-        return;
-    }
-    if (to.path === '/backups') {
-        next('/operations/backups');
-        return;
-    }
-    // Device Auth workspace absorbs the three legacy sibling pages.
-    if (
-        to.path === '/settings/certificates' ||
-        to.path === '/operations/certificates'
-    ) {
-        next('/operations/device-auth/certificates');
-        return;
-    }
-    if (
-        to.path === '/settings/credentials' ||
-        to.path === '/operations/credentials'
-    ) {
-        next('/operations/device-auth');
-        return;
-    }
-    if (to.path === '/operations/credential-pushes') {
-        next('/operations/device-auth');
-        return;
-    }
-    if (to.path === '/settings/action_variables') {
-        next('/automations/variables');
-        return;
-    }
     if (to.path === '/organize') {
-        next(ORGANIZE_PATH);
-        return;
+        return ORGANIZE_PATH;
     }
 
     // Node-RED route gated on FM_NODE_RED_ENABLED → runtime config.
     if (to.path.startsWith('/automations/node-red') && !NODE_RED_ENABLED) {
-        next('/automations/actions');
-        return;
+        return '/automations/actions';
     }
 
     // Redirect /login → / and / → dash or devices
     if (to.path === LOGIN_PATH) {
-        next('/');
-        return;
+        return '/';
     }
     if (!IS_CLIENT_BUILD && to.path === '/') {
-        next(resolveDefaultPage(authStore));
-        return;
+        return resolveDefaultPage(authStore);
     }
 
-    next();
+    return true;
 });
 
 // Stale tabs 404 on old hashed chunks after deploy — reload once to refetch the chunk map.

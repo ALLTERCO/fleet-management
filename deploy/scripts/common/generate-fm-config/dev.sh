@@ -11,6 +11,18 @@ generate_dev_config() {
     local db_name="${POSTGRES_DB:-fleet}"
     local fm_port="${FLEET_MANAGER_PORT:-7011}"
 
+    # Migration dirs + linked schemas come from the single source of truth
+    # (backend/db/migration/migration-layout.json), the same file the backend
+    # reads in migrationLayout.ts — so this generator can never drift from it.
+    local layout_file="$REPO_ROOT/backend/db/migration/migration-layout.json"
+    if [ ! -f "$layout_file" ]; then
+        echo "ERROR: migration layout not found: $layout_file" >&2
+        return 1
+    fi
+    local cwd_json schemas_json
+    cwd_json="$(jq -c '.migrationDirs' "$layout_file")" || return 1
+    schemas_json="$(jq -c '.linkedSchemas' "$layout_file")" || return 1
+
     cat > "$rc_file" <<RCEOF
 {
   "dev-mode": true,
@@ -28,18 +40,9 @@ generate_dev_config() {
       "allowExitOnIdle": true
     },
     "schema": "migration",
-    "cwd": [
-      "./db/migration/postgresql/logging",
-      "./db/migration/postgresql/organization",
-      "./db/migration/postgresql/user",
-      "./db/migration/postgresql/ui",
-      "./db/migration/postgresql/device",
-      "./db/migration/postgresql/device/groups",
-      "./db/migration/postgresql/device/em",
-      "./db/migration/postgresql/notifications"
-    ],
+    "cwd": ${cwd_json},
     "link": {
-      "schemas": ["device", "user", "ui", "organization", "device_em", "logging", "notifications"]
+      "schemas": ${schemas_json}
     }
   },
   "components": {

@@ -31,8 +31,8 @@ import {
 import {canUsePlatformAdmin} from '../authz/evaluator';
 import {zitadelService} from '../zitadel/ZitadelService';
 import {
-    ZITADEL_TARGET_SUFFIXES,
-    ZITADEL_USER_EVENTS
+    ZITADEL_ACTION_BINDINGS,
+    ZITADEL_TARGET_SUFFIXES
 } from '../zitadelActions/eventNames';
 import {
     getRotatedAt,
@@ -123,19 +123,17 @@ export default class IdentityComponent extends Component {
             rotatedAt
         });
 
+        const targetIds = {
+            userRemoved: newGdpr.id,
+            grantRemoved: newGrant.id
+        };
         // FM dual-key verifier covers the brief swap window.
-        await zitadelService.bindEventExecution(
-            ZITADEL_USER_EVENTS.humanRemoved,
-            newGdpr.id
-        );
-        await zitadelService.bindEventExecution(
-            ZITADEL_USER_EVENTS.grantRemoved,
-            newGrant.id
-        );
-        await zitadelService.bindEventExecution(
-            ZITADEL_USER_EVENTS.grantCascadeRemoved,
-            newGrant.id
-        );
+        for (const binding of ZITADEL_ACTION_BINDINGS) {
+            await zitadelService.bindEventExecution(
+                binding.event,
+                targetIds[binding.target]
+            );
+        }
 
         // Best-effort cleanup; new bindings already won.
         const stale = [

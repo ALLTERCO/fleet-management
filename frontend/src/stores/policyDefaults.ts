@@ -9,6 +9,7 @@ import {defineStore} from 'pinia';
 import {ref} from 'vue';
 import {toastRpcError} from '@/helpers/domainErrors';
 import * as ws from '../tools/websocket';
+import {createStaleGuard} from './staleGuard';
 import {useToastStore} from './toast';
 
 export interface SetDefaultPatch {
@@ -24,21 +25,26 @@ export const usePolicyDefaultsStore = defineStore('policyDefaults', () => {
     const items = ref<GroupTypePolicy[]>([]);
     const envFallback = ref<PolicyDefaults['envFallback'] | null>(null);
     const loading = ref(true);
+    // Guards items: an upsert bump invalidates an in-flight bulk fetch.
+    const itemsGuard = createStaleGuard();
 
     function upsertItem(row: GroupTypePolicy) {
         const idx = items.value.findIndex((r) => r.groupType === row.groupType);
         if (idx >= 0) items.value[idx] = row;
         else items.value.push(row);
+        itemsGuard.bump();
     }
 
     async function fetchDefaults() {
         loading.value = true;
+        const token = itemsGuard.bump();
         try {
             const res = await ws.sendRPC<PolicyDefaults>(
                 'FLEET_MANAGER',
                 'policy.getdefaults',
                 {}
             );
+            if (itemsGuard.isStale(token)) return;
             items.value = res.items;
             envFallback.value = res.envFallback;
         } catch (err) {

@@ -1370,6 +1370,7 @@ export const DASHBOARD_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Persist per-user dashboard ordering. Server filters unknown ids and appends visible ids the caller omitted.'
     })
     .registerMethod('GetUIConfig', {
+        safety: {operation: 'read'},
         params: DASHBOARD_GET_UI_CONFIG_PARAMS_SCHEMA,
         response: DASHBOARD_GET_UI_CONFIG_RESPONSE_SCHEMA,
         permission: {

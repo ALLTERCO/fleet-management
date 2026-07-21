@@ -1,5 +1,5 @@
 <template>
-    <router-link :to="to" class="block h-full">
+    <div class="block h-full">
         <div
             class="flow-card p-4 rounded-lg border transition-colors h-full"
             :class="cardClass"
@@ -30,7 +30,7 @@
                 />
             </div>
         </div>
-    </router-link>
+    </div>
 </template>
 
 <script setup lang="ts">
@@ -39,11 +39,12 @@ import type {FlowStatus} from '@/stores/monitoring';
 import HealthDot from './HealthDot.vue';
 import SparkLine from './SparkLine.vue';
 
+// Pure stat card. Navigation lives in the sidebar and cluster tab rows —
+// cards that also jumped elsewhere made the pages confusing.
 const props = defineProps<{
     title: string;
     icon: string;
     status: FlowStatus;
-    to: string;
     metrics: Array<{label: string; value: string | number}>;
     sparkData: number[];
     sparkColor: string;
@@ -65,7 +66,6 @@ const cardClass = computed(() => {
 </script>
 
 <style scoped>
-.flow-card:hover { border-color: color-mix(in srgb, var(--color-primary-text) 40%, transparent); }
 .flow-card__title { color: var(--color-text-primary); }
 .flow-card__icon  { color: var(--color-text-disabled); }
 .flow-card__metric { color: var(--color-text-tertiary); }

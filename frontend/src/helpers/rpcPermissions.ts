@@ -15,6 +15,7 @@ export type RpcAccessContext = {
     canAccessPlatformAdmin: boolean;
     canReadPolicies: boolean;
     canViewAuditLog: boolean;
+    canManageOrganizationSettings: boolean;
     userId?: string;
 };
 
@@ -28,6 +29,10 @@ type RpcPermissionRule = {
 const PROVIDER_SUPPORT_ONLY_RPCS: ReadonlySet<string> = new Set([
     'User.GetInstanceInfo',
     'User.DeleteSession',
+    // canCrossOrganizationBoundary — reassigns a service user's org.
+    'User.SetServiceUserOrg',
+    // canUsePlatformAdmin — same family as the System.* debug toggles below.
+    'User.SetAllowDebug',
     // Identity namespace — instance-wide Zitadel admin API.
     'Identity.ListIdentityProviders',
     'Identity.AddOidcProvider',
@@ -76,20 +81,6 @@ const ADMIN_ONLY_RPCS: ReadonlySet<string> = new Set([
     'User.AttachCustomPersona',
     'permission.GrantRoles',
     'permission.RevokeRoles',
-    // User lifecycle (Zitadel admin RPCs)
-    'User.CreateZitadelUser',
-    'User.UpdateZitadelUser',
-    'User.DeactivateUser',
-    'User.ReactivateUser',
-    'User.SendPasswordReset',
-    'User.ListServiceUsers',
-    'User.CreateServiceUser',
-    'User.CreatePAT',
-    'User.RotatePAT',
-    'User.RevokePAT',
-    'User.BulkRotatePATs',
-    'User.CreateScopedPAT',
-    'User.RevokeScopedPAT',
     // Branding + identity policies
     'Branding.SetPolicy',
     'Branding.Activate',
@@ -118,6 +109,28 @@ const ADMIN_ONLY_RPCS: ReadonlySet<string> = new Set([
     'Media.Background.Delete'
 ]);
 
+// Backend: `@Component.CheckPermissions(canManageOrganizationSettings)`.
+// This mirrors the backend's organizations:update capability instead of
+// widening every organization manager into a frontend "admin".
+const ORGANIZATION_SETTINGS_RPCS: ReadonlySet<string> = new Set([
+    'User.CreateZitadelUser',
+    'User.UpdateZitadelUser',
+    'User.DeleteZitadelUser',
+    'User.DeactivateUser',
+    'User.ReactivateUser',
+    'User.SendPasswordReset',
+    'User.CreateServiceUser',
+    'User.DeleteServiceUser',
+    'User.CreatePAT',
+    'User.RotatePAT',
+    'User.RevokePAT',
+    'User.BulkRotatePATs',
+    'User.CreateScopedPAT',
+    'User.RevokeScopedPAT',
+    'User.RevokeAllUserPATs',
+    'User.RotateScopedPAT'
+]);
+
 // Backend: `@Component.CheckPermissions(canReadPolicies)` — admin OR auditor.
 const POLICY_READABLE_RPCS: ReadonlySet<string> = new Set([
     'assignment.list',
@@ -131,6 +144,7 @@ const POLICY_READABLE_RPCS: ReadonlySet<string> = new Set([
     'user_group.get',
     'user_group.listmembers',
     'User.ListZitadelUsers',
+    'User.ListServiceUsers',
     'User.ListPATs',
     'User.ListScopedPATs',
     'authz_audit.list'
@@ -155,6 +169,10 @@ const RPC_PERMISSION_RULES: readonly RpcPermissionRule[] = [
         (access) => access.canAccessPlatformAdmin
     ),
     roleRule(ADMIN_ONLY_RPCS, (access) => access.isAdmin),
+    roleRule(
+        ORGANIZATION_SETTINGS_RPCS,
+        (access) => access.canManageOrganizationSettings
+    ),
     roleRule(POLICY_READABLE_RPCS, (access) => access.canReadPolicies),
     roleRule(AUDIT_VIEWABLE_RPCS, (access) => access.canViewAuditLog),
     adminOrSelfRule()
@@ -232,6 +250,10 @@ function authAccessContext(
         canAccessPlatformAdmin: auth.canAccessPlatformAdmin,
         canReadPolicies: auth.canReadPolicies,
         canViewAuditLog: auth.canViewAuditLog,
+        canManageOrganizationSettings: auth.canPerformComponent(
+            'organizations',
+            'update'
+        ),
         userId: auth.zitadelUser?.sub
     };
 }

@@ -19,6 +19,7 @@
             @add-widget="modals.addWidget = true"
             @undo="history.undo()"
             @redo="history.redo()"
+            @rename="renameVisible = true"
             @save="saveEdit"
             @cancel="cancelEdit"
         />
@@ -87,6 +88,13 @@
             @save="saveWidgetConfig"
         />
         <AddWidgetModal @added="widgetAdded" />
+        <DashRenameModal
+            :visible="renameVisible"
+            :name="dashboard?.name ?? ''"
+            :saving="renameSaving"
+            @save="saveRename"
+            @close="renameVisible = false"
+        />
         <ShareDialog
             v-if="dashboard"
             :visible="shareVisible"
@@ -144,6 +152,7 @@ import Spinner from '@/components/core/Spinner.vue';
 import DashboardBreadcrumb from '@/components/dashboard/DashboardBreadcrumb.vue';
 import DashboardEntryView from '@/components/dashboard/DashboardEntryView.vue';
 import DashEditToolbar from '@/components/dashboard/DashEditToolbar.vue';
+import DashRenameModal from '@/components/dashboard/DashRenameModal.vue';
 import WidgetConfigPanel from '@/components/dashboard/WidgetConfigPanel.vue';
 import AddWidgetModal from '@/components/modals/AddWidgetModal.vue';
 import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
@@ -155,14 +164,17 @@ import {
 import type {DashboardContext} from '@/composables/useDashboardContext';
 import {DASHBOARD_CONTEXT_KEY} from '@/composables/useDashboardContext';
 import {useDashboardHistory} from '@/composables/useDashboardHistory';
-import {useDashboardNavigation} from '@/composables/useDashboardNavigation';
 import useInfiniteScroll from '@/composables/useInfiniteScroll';
 import useRegistry from '@/composables/useRegistry';
+import {
+    unionComponents,
+    unionToSub
+} from '@/composables/useVisibleDeviceComponents';
 import {registerShortcut} from '@/config/shortcuts';
 import {DASHBOARDS_PATH} from '@/constants';
 import {ActionBoard} from '@/helpers/components';
-import {useRpcPermissions} from '@/helpers/rpcPermissions';
 import {dashboardEditMode, modals} from '@/helpers/ui';
+import {nextSizeForEntity} from '@/helpers/widgetCatalog';
 import {useAuthStore} from '@/stores/auth';
 import {useDashboardChromeStore} from '@/stores/dashboardChrome';
 import {type DashboardItem, useDashboardsStore} from '@/stores/dashboards';
@@ -171,7 +183,11 @@ import {useEntityStore} from '@/stores/entities';
 import {useGroupsStore} from '@/stores/groups';
 import {useRightSideMenuStore} from '@/stores/right-side';
 import {useToastStore} from '@/stores/toast';
-import {getRegistry, sendRPC} from '@/tools/websocket';
+import {
+    getRegistry,
+    sendRPC,
+    setDeviceComponentSubscription
+} from '@/tools/websocket';
 import type {action_t, entity_t} from '@/types';
 import type {CardSize, DashboardEntry} from '@/types/dashboard-entry';
 
@@ -181,9 +197,6 @@ import type {CardSize, DashboardEntry} from '@/types/dashboard-entry';
 
 const toast = useToastStore();
 const authStore = useAuthStore();
-const rpc = useRpcPermissions();
-const canShare = computed(() => rpc.canCall('assignment.create'));
-const canRevokeShare = computed(() => rpc.canCall('assignment.delete'));
 
 const modalRefDelete = ref<InstanceType<typeof ConfirmationModal>>();
 
@@ -205,21 +218,33 @@ const loading = computed(() => dashboardsStore.loading);
 const error = ref(false);
 const hasAttemptedDashboardLoad = ref(false);
 
-function refresh() {
-    return dashboardsStore.fetchAll();
+// Bento rename — the ⋮ "Edit dashboard" enters layout mode; the toolbar's
+// Rename button opens this modal so a bento (incl. the default) can be renamed.
+const renameVisible = ref(false);
+const renameSaving = ref(false);
+
+async function saveRename(name: string): Promise<void> {
+    const target = Number(dashboard.value?.id ?? id.value);
+    if (!Number.isFinite(target)) return;
+    renameSaving.value = true;
+    try {
+        const updated = await dashboardsStore.update(target, {name});
+        if (updated) {
+            if (dashboard.value) dashboard.value.name = updated.name ?? name;
+            renameVisible.value = false;
+        }
+    } finally {
+        renameSaving.value = false;
+    }
 }
 
-function onRefresh(): void {
-    void refresh();
-    loadItems();
-    chartRefreshSignal.value++;
+function refresh() {
+    return dashboardsStore.fetchAll();
 }
 
 function enterEditMode(): void {
     dashboardEditMode.value = true;
 }
-
-const {goToManage} = useDashboardNavigation();
 
 const canEditDashboard = computed(() => {
     const dashId = Number(dashboard.value?.id ?? id.value);
@@ -466,6 +491,19 @@ const entityCache = computed<Map<string, {entity: entity_t; type: string}>>(
 
 provide(ENTITY_CACHE_KEY, entityCache);
 
+// Widget data contract: tell the backend which device components this
+// dashboard shows, so it streams live values (incl. power/consumption) for
+// exactly these devices and components. Debounced + auto-restored on reconnect
+// inside setDeviceComponentSubscription.
+watch(
+    entityCache,
+    (cache) => {
+        const entities = Array.from(cache.values(), (c) => c.entity);
+        setDeviceComponentSubscription(unionToSub(unionComponents(entities)));
+    },
+    {immediate: true}
+);
+
 // Scale page size to screen: ~2x visible grid capacity so first scroll is instant,
 // but don't over-allocate on small screens like Wall Display X2i (1440×720).
 const pageSize = Math.max(
@@ -499,10 +537,6 @@ watch(
 );
 
 const editMode = dashboardEditMode;
-const shareVisible = ref(false);
-function onShared(): void {
-    /* Dialog refreshes its own share list internally on @shared. */
-}
 const selectedCards = ref(new Set<number>());
 
 function deleteEntry(index: number) {
@@ -727,13 +761,18 @@ async function updateDetailSize(newSize: CardSize) {
     }
 }
 
-const SIZE_CYCLE: CardSize[] = ['1x1', '2x1', '2x2'];
+// Entity behind an entry, when it is an entity tile — drives the size rule
+// (battery tiles cap at 2x1). Other entry kinds have no single entity.
+function entityForEntry(entry: DashboardEntry): entity_t | undefined {
+    if (entry.type !== 'entity') return undefined;
+    return entityStore.entities[entry.data?.id];
+}
 
 function cycleEntrySize(index: number) {
     const entry = dashboard.value?.items[index];
     if (!entry) return;
     const curr = (entry.size as CardSize) || '1x1';
-    const next = SIZE_CYCLE[(SIZE_CYCLE.indexOf(curr) + 1) % SIZE_CYCLE.length];
+    const next = nextSizeForEntity(curr, entityForEntry(entry));
 
     history.execute({
         type: 'resize',
@@ -1107,22 +1146,51 @@ onUnmounted(() => {
     detailEntity.value = null;
     rightSideStore.clearInspector();
     chrome.clear();
+    // Drop this dashboard's scoped component subscription.
+    setDeviceComponentSubscription(null);
 });
 
 const chrome = useDashboardChromeStore();
+const canCreateDashboard = computed(() =>
+    authStore.hasComponentPermission('dashboards', 'create')
+);
+const isDefaultDash = computed(() =>
+    Boolean(dashboardsStore.dashboards[Number(id.value)]?.isDefault)
+);
+
+async function setAsDefault(): Promise<void> {
+    const dashId = Number(id.value);
+    if (Number.isFinite(dashId)) await dashboardsStore.setDefault(dashId);
+}
+
+// Duplicate copies the layout into a fresh classic dashboard, then opens it.
+async function duplicateDashboard(): Promise<void> {
+    const dash = dashboard.value;
+    if (!dash) return;
+    const copy = await dashboardsStore.clone(dash.id, `${dash.name} copy`);
+    if (copy) router.push({name: '/dash/[id]', params: {id: copy.id}});
+}
+
+const shareVisible = ref(false);
+function onShared(): void {
+    // The dialog refreshes its own "Shared with" list on @shared.
+}
+
 watchEffect(() => {
     chrome.register({
-        onRefresh,
+        kind: 'bento',
+        onEdit: enterEditMode,
+        onSetDefault: () => void setAsDefault(),
+        onDuplicate: canCreateDashboard.value
+            ? () => void duplicateDashboard()
+            : undefined,
+        // Manage-capable users can share; the server gates the actual grant.
         onShare: () => {
             shareVisible.value = true;
         },
-        onToggleEdit: enterEditMode,
-        onAddWidget: () => {
-            modals.addWidget = true;
-        },
-        onOpenManage: goToManage,
         canEdit: canEditDashboard.value,
-        canShare: canShare.value,
+        canShare: canEditDashboard.value,
+        isDefault: isDefaultDash.value,
         loading: loading.value
     });
 });

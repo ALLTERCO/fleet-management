@@ -14,6 +14,9 @@ export interface BTHomeEnergySpec {
     // Multiplier from the BTHome wire value to the storage unit
     // (e.g. kWh → Wh = 1000). 1 means no scaling.
     scale: number;
+    // Tag for a second instance (idx >= 1): an energy object sent twice is
+    // consumed then returned (BLU MCB obj 0x4D).
+    retTag?: EnergyTag;
 }
 
 // Domain defaults follow the BLU MCB / BLU energy product line — those
@@ -23,6 +26,7 @@ export interface BTHomeEnergySpec {
 export const BTHOME_ENERGY_SPEC: Readonly<Record<number, BTHomeEnergySpec>> = {
     10: {
         tag: 'total_act_energy',
+        retTag: 'total_act_ret_energy',
         domain: 'ac_mains',
         isDelta: true,
         scale: 1000
@@ -53,6 +57,7 @@ export const BTHOME_ENERGY_SPEC: Readonly<Record<number, BTHomeEnergySpec>> = {
     76: {tag: 'volume_m3', domain: 'unspecified', isDelta: true, scale: 1},
     77: {
         tag: 'total_act_energy',
+        retTag: 'total_act_ret_energy',
         domain: 'ac_mains',
         isDelta: true,
         scale: 1000

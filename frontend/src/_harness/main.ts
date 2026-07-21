@@ -35,7 +35,7 @@ Object.assign(alerts, {
     fetchRules: noop,
     fetchInstances: noop,
     fetchTemplates: noop,
-    checkDuplicate: async () => null
+    checkDuplicate: async () => ({status: 'ok', duplicate: null})
 });
 (alerts as never as {templates: unknown}).templates = {
     1: {

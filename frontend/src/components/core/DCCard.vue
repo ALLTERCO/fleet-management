@@ -18,9 +18,14 @@
         @keydown.space.prevent="emit('click', $event)"
     >
         <div class="dc-head">
-            <slot name="status" />
+            <div class="dc-head-left">
+                <slot name="status" />
+            </div>
+            <div v-if="hasState" class="dc-head-state">
+                <slot name="state" />
+            </div>
         </div>
-        <div class="dc-img">
+        <div class="dc-img" :class="{'dc-img--glyph': logo?.kind === 'icon'}">
             <i
                 v-if="logo?.kind === 'icon'"
                 :class="['dc-glyph', logo.faClass]"
@@ -69,6 +74,7 @@ const emit = defineEmits<{
 
 const slots = useSlots();
 const hasFooter = computed(() => !!slots.footer);
+const hasState = computed(() => !!slots.state);
 
 const cardStyle = computed<Record<string, string> | undefined>(() =>
     props.accentColor ? {'--dc-accent': props.accentColor} : undefined

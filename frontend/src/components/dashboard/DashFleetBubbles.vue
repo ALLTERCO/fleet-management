@@ -179,7 +179,7 @@ function bubbleLabel(device: DashFleetBubbleDevice): string {
 
 .dfb__value {
     fill: var(--color-text-primary);
-    font-size: 11px;
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     font-variant-numeric: tabular-nums;
     pointer-events: none;

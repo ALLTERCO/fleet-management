@@ -137,19 +137,19 @@ function formatEvidenceValue(key: string, value: unknown): string {
 
 function routeForNode(node: TopologyNode): string {
     if (node.route) return node.route;
-    if (node.zone === 'storage') return '/monitoring/resources';
-    if (node.zone === 'device_data_pipeline') return '/monitoring/activity';
-    if (node.zone === 'auth_security') return '/monitoring/investigate';
-    if (node.zone === 'runtime') return '/monitoring/runtime';
-    if (node.zone === 'observability') return '/monitoring/investigate';
-    return '/monitoring/overview';
+    if (node.zone === 'storage') return '/settings/monitoring/database';
+    if (node.zone === 'device_data_pipeline') return '/settings/monitoring/activity';
+    if (node.zone === 'auth_security') return '/settings/monitoring/audit-log';
+    if (node.zone === 'runtime') return '/settings/monitoring/runtime';
+    if (node.zone === 'observability') return '/settings/monitoring/logs';
+    return '/settings/monitoring/overview';
 }
 
 function routeForEdge(edge: TopologyEdge): string {
-    if (edge.kind === 'storage') return '/monitoring/resources';
-    if (edge.kind === 'auth') return '/monitoring/investigate';
-    if (edge.kind === 'deploy') return '/monitoring/runtime';
-    return '/monitoring/overview';
+    if (edge.kind === 'storage') return '/settings/monitoring/database';
+    if (edge.kind === 'auth') return '/settings/monitoring/audit-log';
+    if (edge.kind === 'deploy') return '/settings/monitoring/runtime';
+    return '/settings/monitoring/overview';
 }
 
 function isProblem(status: string): status is TopologyIncidentSeverity {

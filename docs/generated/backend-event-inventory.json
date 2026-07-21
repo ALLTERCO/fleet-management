@@ -1,0 +1,939 @@
+{
+  "generator": "backend-event-inventory",
+  "version": 1,
+  "totals": {
+    "events": 91,
+    "uniqueNames": 89
+  },
+  "events": [
+    {
+      "emitFunction": "emitAlertCreated",
+      "eventName": "Alert.Created",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 18,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitAlertResolved",
+      "eventName": "Alert.Resolved",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 32,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitAlertRuleCreated",
+      "eventName": "Alert.RuleCreated",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 116,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitAlertRuleDeleted",
+      "eventName": "Alert.RuleDeleted",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 130,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitAlertRuleUpdated",
+      "eventName": "Alert.RuleUpdated",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 123,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitAlertUpdated",
+      "eventName": "Alert.Updated",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 25,
+      "frontendListeners": 2
+    },
+    {
+      "emitFunction": "emitBTHomeControlLearning",
+      "eventName": "BTHome.ControlLearning",
+      "paramsKeys": [
+        "shellyID",
+        "state"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 436,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitBTHomeControlsUpdated",
+      "eventName": "BTHome.ControlsUpdated",
+      "paramsKeys": [
+        "shellyID"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 447,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitShellyDiscoveryDone",
+      "eventName": "BTHome.DiscoveryDone",
+      "paramsKeys": [
+        "shellyID",
+        "discoveredDevicesCount"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 425,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitBTHomeDiscoveryResult",
+      "eventName": "BTHome.DiscoveryResult",
+      "paramsKeys": [
+        "type",
+        "mac",
+        "shellyID",
+        "name",
+        "productName",
+        "modelString",
+        "isRemote",
+        "modelId",
+        "localName",
+        "rssi"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 370,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitCertificateCreated",
+      "eventName": "Certificate.Created",
+      "paramsKeys": [
+        "id",
+        "name"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 655,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitCertificateDeleted",
+      "eventName": "Certificate.Deleted",
+      "paramsKeys": [
+        "id"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 673,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitWarnNotification",
+      "eventName": "Certificate.Expiring",
+      "paramsKeys": [
+        "tenantId",
+        "certificateId",
+        "name",
+        "fingerprint_sha256",
+        "subject_cn",
+        "source",
+        "threshold",
+        "daysLeft",
+        "severity"
+      ],
+      "sourceFile": "backend/src/modules/certificate/expiryMonitor.ts",
+      "sourceLine": 70,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitJobUpdated",
+      "eventName": "Certificate.JobUpdated",
+      "paramsKeys": [
+        "job"
+      ],
+      "sourceFile": "backend/src/modules/certificate/pushEvents.ts",
+      "sourceLine": 27,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitPushRow",
+      "eventName": "Certificate.PushRow",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/certificate/pushEvents.ts",
+      "sourceLine": 15,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitCertificateUpdated",
+      "eventName": "Certificate.Updated",
+      "paramsKeys": [
+        "id"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 666,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitEndpointAutoDisabled",
+      "eventName": "Channel.AutoDisabled",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 92,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitChannelCreated",
+      "eventName": "Channel.Created",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 146,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitChannelDeleted",
+      "eventName": "Channel.Deleted",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 160,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitEndpointHealthReset",
+      "eventName": "Channel.HealthReset",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 101,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitChannelUpdated",
+      "eventName": "Channel.Updated",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 153,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitConsoleLog",
+      "eventName": "Console.Log",
+      "paramsKeys": [
+        "coloredPart",
+        "log",
+        "color",
+        "category"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 454,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitConsoleLogBatch",
+      "eventName": "Console.Log",
+      "paramsKeys": [
+        "batch"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 467,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitCredentialChanged",
+      "eventName": "Credential.Changed",
+      "paramsKeys": [
+        "deviceId"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 681,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitPushRow",
+      "eventName": "Credential.PushRow",
+      "paramsKeys": [
+        "jobId",
+        "row"
+      ],
+      "sourceFile": "backend/src/modules/credential/pushWorker.ts",
+      "sourceLine": 147,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitDashboardCreated",
+      "eventName": "Dashboard.Created",
+      "paramsKeys": [
+        "id",
+        "name"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 856,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitDashboardDeleted",
+      "eventName": "Dashboard.Deleted",
+      "paramsKeys": [
+        "id"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 870,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitDashboardItemsChanged",
+      "eventName": "Dashboard.ItemsChanged",
+      "paramsKeys": [
+        "id"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 877,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitDashboardOrderChanged",
+      "eventName": "Dashboard.OrderChanged",
+      "paramsKeys": [
+        "userId",
+        "ids"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 894,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitDashboardSettingsChanged",
+      "eventName": "Dashboard.SettingsChanged",
+      "paramsKeys": [
+        "id"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 884,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitDashboardUpdated",
+      "eventName": "Dashboard.Updated",
+      "paramsKeys": [
+        "id",
+        "name"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 863,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitDestinationCreated",
+      "eventName": "Destination.Created",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 176,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitDestinationDeleted",
+      "eventName": "Destination.Deleted",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 194,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitDestinationMembersAdded",
+      "eventName": "Destination.MembersAdded",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 210,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitDestinationMembersRemoved",
+      "eventName": "Destination.MembersRemoved",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 220,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitDestinationUpdated",
+      "eventName": "Destination.Updated",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 185,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitDeviceRelationshipChanged",
+      "eventName": "Device.RelationshipsChanged",
+      "paramsKeys": [
+        "reason"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 841,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitDeviceChange",
+      "eventName": "DeviceEvent.Change",
+      "paramsKeys": [
+        "shellyId",
+        "changes"
+      ],
+      "sourceFile": "backend/src/modules/DeviceEventLogger.ts",
+      "sourceLine": 228,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitEntityAdded",
+      "eventName": "Entity.Added",
+      "paramsKeys": [
+        "entityId",
+        "entity"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 327,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitEntityEvent",
+      "eventName": "Entity.Event",
+      "paramsKeys": [
+        "entityId",
+        "event"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 347,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitEntityRemoved",
+      "eventName": "Entity.Removed",
+      "paramsKeys": [
+        "entityId"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 337,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitGroupCreated",
+      "eventName": "Group.Created",
+      "paramsKeys": [
+        "id",
+        "name"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 510,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitGroupDeleted",
+      "eventName": "Group.Deleted",
+      "paramsKeys": [
+        "id"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 524,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitGroupMembersAdded",
+      "eventName": "Group.MembersAdded",
+      "paramsKeys": [
+        "id",
+        "members"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 528,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitGroupMembersRemoved",
+      "eventName": "Group.MembersRemoved",
+      "paramsKeys": [
+        "id",
+        "members"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 540,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitGroupUpdated",
+      "eventName": "Group.Updated",
+      "paramsKeys": [
+        "id",
+        "name"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 517,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitJobUnitUpdated",
+      "eventName": "Job.UnitUpdated",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/jobs/events.ts",
+      "sourceLine": 23,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitJobUpdated",
+      "eventName": "Job.Updated",
+      "paramsKeys": [
+        "job"
+      ],
+      "sourceFile": "backend/src/modules/jobs/events.ts",
+      "sourceLine": 16,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitLocationAssignmentRemoved",
+      "eventName": "Location.AssignmentRemoved",
+      "paramsKeys": [
+        "subjectType",
+        "subjectId",
+        "locationId"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 920,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitLocationAssignmentSet",
+      "eventName": "Location.AssignmentSet",
+      "paramsKeys": [
+        "subjectType",
+        "subjectId",
+        "locationId"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 905,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitLocationAssignmentsSet",
+      "eventName": "Location.AssignmentsSet",
+      "paramsKeys": [
+        "locationId"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 937,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitLocationCreated",
+      "eventName": "Location.Created",
+      "paramsKeys": [
+        "id",
+        "name"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 626,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitLocationDeleted",
+      "eventName": "Location.Deleted",
+      "paramsKeys": [
+        "id"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 640,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitLocationUpdated",
+      "eventName": "Location.Updated",
+      "paramsKeys": [
+        "id",
+        "name"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 633,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitNotificationCreated",
+      "eventName": "Notification.Created",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 47,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitNotificationDeliveryUpdated",
+      "eventName": "Notification.DeliveryUpdated",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 78,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitNotificationReadStateChanged",
+      "eventName": "Notification.ReadStateChanged",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/AlertEvents.ts",
+      "sourceLine": 62,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitOrganizationProfileUpdated",
+      "eventName": "Organization.ProfileUpdated",
+      "paramsKeys": [
+        "id"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 648,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitPersonaCreated",
+      "eventName": "Persona.Created",
+      "paramsKeys": [
+        "id",
+        "name"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 688,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitPersonaDeleted",
+      "eventName": "Persona.Deleted",
+      "paramsKeys": [
+        "id"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 702,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitPersonaUpdated",
+      "eventName": "Persona.Updated",
+      "paramsKeys": [
+        "id",
+        "name"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 695,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitReportAnomaly",
+      "eventName": "Report.Anomaly",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 568,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitReportProgress",
+      "eventName": "Report.Progress",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 580,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitReportReady",
+      "eventName": "Report.Ready",
+      "paramsKeys": [],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 605,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitShellyConnected",
+      "eventName": "Shelly.Connect",
+      "paramsKeys": [
+        "shellyID",
+        "device",
+        "emittedAt"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 66,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitShellyDeleted",
+      "eventName": "Shelly.Delete",
+      "paramsKeys": [
+        "shellyID"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 111,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitShellyDisconnected",
+      "eventName": "Shelly.Disconnect",
+      "paramsKeys": [
+        "shellyID",
+        "emittedAt"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 90,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitShellyDeviceInfo",
+      "eventName": "Shelly.Info",
+      "paramsKeys": [
+        "shellyID",
+        "info"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 125,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitShellyMessage",
+      "eventName": "Shelly.Message",
+      "paramsKeys": [
+        "shellyID",
+        "message",
+        "req"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 286,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitShellyOtaProgress",
+      "eventName": "Shelly.OtaProgress",
+      "paramsKeys": [
+        "shellyID",
+        "event",
+        "progress_percent",
+        "msg"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 407,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitShellyPresence",
+      "eventName": "Shelly.Presence",
+      "paramsKeys": [
+        "shellyID",
+        "presence"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 318,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitShellyPresenceTrack",
+      "eventName": "Shelly.PresenceTrack",
+      "paramsKeys": [
+        "shellyID",
+        "objects",
+        "ts"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 299,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitShellySettings",
+      "eventName": "Shelly.Settings",
+      "paramsKeys": [
+        "shellyID",
+        "settings"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 277,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitShellyStatus",
+      "eventName": "Shelly.Status",
+      "paramsKeys": [
+        "shellyID",
+        "status"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 134,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitTagAssigned",
+      "eventName": "Tag.Assigned",
+      "paramsKeys": [
+        "id",
+        "subjects"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 975,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitTagCreated",
+      "eventName": "Tag.Created",
+      "paramsKeys": [
+        "id",
+        "key",
+        "name"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 947,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitTagDeleted",
+      "eventName": "Tag.Deleted",
+      "paramsKeys": [
+        "id"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 971,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitTagUnassigned",
+      "eventName": "Tag.Unassigned",
+      "paramsKeys": [
+        "id",
+        "subjects"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 987,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitTagUpdated",
+      "eventName": "Tag.Updated",
+      "paramsKeys": [
+        "id",
+        "key",
+        "name"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 959,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitUserCreated",
+      "eventName": "User.Created",
+      "paramsKeys": [
+        "userId"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 754,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitUserDeleted",
+      "eventName": "User.Deleted",
+      "paramsKeys": [
+        "userId"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 768,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitUserUpdated",
+      "eventName": "User.Updated",
+      "paramsKeys": [
+        "userId"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 761,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitUserGroupCreated",
+      "eventName": "UserGroup.Created",
+      "paramsKeys": [
+        "id",
+        "name"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 709,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitUserGroupDeleted",
+      "eventName": "UserGroup.Deleted",
+      "paramsKeys": [
+        "id"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 723,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitUserGroupMembersAdded",
+      "eventName": "UserGroup.MembersAdded",
+      "paramsKeys": [
+        "id",
+        "userIds"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 730,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitUserGroupMembersRemoved",
+      "eventName": "UserGroup.MembersRemoved",
+      "paramsKeys": [
+        "id",
+        "userIds"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 742,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitUserGroupUpdated",
+      "eventName": "UserGroup.Updated",
+      "paramsKeys": [
+        "id",
+        "name"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 716,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitVariablesChanged",
+      "eventName": "Variables.Changed",
+      "paramsKeys": [
+        "key",
+        "operation"
+      ],
+      "sourceFile": "backend/src/modules/EventDistributor.ts",
+      "sourceLine": 1001,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitWaitingRoomAccepted",
+      "eventName": "WaitingRoomEvent.Accepted",
+      "paramsKeys": [
+        "id"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 482,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitWaitingRoomAcceptedBatch",
+      "eventName": "WaitingRoomEvent.Accepted",
+      "paramsKeys": [
+        "ids"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 494,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitWaitingRoomDenied",
+      "eventName": "WaitingRoomEvent.Denied",
+      "paramsKeys": [
+        "id"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 503,
+      "frontendListeners": 0
+    }
+  ]
+}

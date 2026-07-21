@@ -1,6 +1,9 @@
 // Leaf module: kept import-light so tests skip the config barrel.
 
-const REDACT_PATTERNS = /secret|password|token|masterkey|key/i;
+// Boot-config logging is deliberately more aggressive than param redaction:
+// a bare 'key' is fine here (no user data to false-positive on).
+const REDACT_PATTERNS =
+    /secret|password|passwd|passphrase|token|credential|masterkey|key|dkim|bearer|authorization/i;
 
 export function redactSecretsForLog(obj: unknown): unknown {
     return JSON.parse(

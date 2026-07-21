@@ -14,8 +14,14 @@
             <span v-if="status?.motion" class="et-camera__badge et-camera__badge--motion">
                 <i class="fas fa-person-walking" /> Motion
             </span>
-            <span v-if="status?.recording" class="et-camera__badge et-camera__badge--recording">
+            <span v-if="isRecording" class="et-camera__badge et-camera__badge--recording">
                 <i class="fas fa-circle" /> Recording
+            </span>
+            <span v-if="status?.streamer && status.streamer !== 'running'" class="et-camera__badge et-camera__badge--privacy">
+                <i class="fas fa-video-slash" /> Streamer: {{ status.streamer }}
+            </span>
+            <span v-for="err in streamerErrors" :key="err" class="et-camera__badge et-camera__badge--recording">
+                <i class="fas fa-triangle-exclamation" /> {{ err }}
             </span>
         </div>
 
@@ -43,11 +49,11 @@
             </button>
             <button
                 class="et-camera__ctrl-btn"
-                :class="status?.recording && 'et-camera__ctrl-btn--rec'"
+                :class="isRecording && 'et-camera__ctrl-btn--rec'"
                 @click="toggleRecording"
             >
-                <i :class="status?.recording ? 'fas fa-stop' : 'fas fa-circle'" />
-                <span>{{ status?.recording ? 'Stop Rec' : 'Record' }}</span>
+                <i :class="isRecording ? 'fas fa-stop' : 'fas fa-circle'" />
+                <span>{{ isRecording ? 'Stop Rec' : 'Record' }}</span>
             </button>
         </div>
 
@@ -55,7 +61,7 @@
         <div v-if="snapshotUrl" class="et-camera__snapshot">
             <div class="et-camera__section-header">
                 <i class="fas fa-image" /> Snapshot
-                <button class="et-camera__snapshot-close" @click="snapshotUrl = null">
+                <button class="et-camera__snapshot-close" @click="closeSnapshot">
                     <i class="fas fa-xmark" />
                 </button>
             </div>
@@ -141,6 +147,12 @@
             <HorizontalSlider :value="videoConfig.sharpness ?? 50" :min="0" :max="100" @change="(v: number) => setVideoSetting('sharpness', v)">
                 <template #title>Sharpness ({{ videoConfig.sharpness ?? 50 }})</template>
             </HorizontalSlider>
+            <HorizontalSlider :value="videoConfig.tint ?? 0" :min="-256" :max="256" @change="(v: number) => setVideoSetting('tint', v)">
+                <template #title>Tint ({{ videoConfig.tint ?? 0 }})</template>
+            </HorizontalSlider>
+            <HorizontalSlider :value="videoConfig.temperature ?? 0" :min="-256" :max="256" @change="(v: number) => setVideoSetting('temperature', v)">
+                <template #title>Color Temp ({{ videoConfig.temperature ?? 0 }})</template>
+            </HorizontalSlider>
             <div class="et-camera__toggle-row">
                 <span class="et-camera__toggle-label">Flip</span>
                 <button class="et-camera__toggle-btn" :class="videoConfig.flip && 'et-camera__toggle-btn--on'" @click="setVideoSetting('flip', !videoConfig.flip)">
@@ -150,6 +162,12 @@
                 <button class="et-camera__toggle-btn" :class="videoConfig.mirror && 'et-camera__toggle-btn--on'" @click="setVideoSetting('mirror', !videoConfig.mirror)">
                     {{ videoConfig.mirror ? 'ON' : 'OFF' }}
                 </button>
+                <template v-if="ledConfig">
+                    <span class="et-camera__toggle-label">Status LED</span>
+                    <button class="et-camera__toggle-btn" :class="ledConfig.enable && 'et-camera__toggle-btn--on'" @click="setCameraConfig({led: {enable: !ledConfig.enable}})">
+                        {{ ledConfig.enable ? 'ON' : 'OFF' }}
+                    </button>
+                </template>
             </div>
         </div>
         <!-- Video Settings (read-only when no execute permission) -->
@@ -168,8 +186,8 @@
         <div v-if="audioConfig && canExecute" class="et-camera__section">
             <div class="et-camera__section-header">
                 <i class="fas fa-volume-high" /> Audio
-                <button class="et-camera__toggle-btn" :class="audioConfig.enable && 'et-camera__toggle-btn--on'" style="margin-left:auto" @click="setCameraConfig({audio: {enable: !audioConfig.enable}})">
-                    {{ audioConfig.enable ? 'ON' : 'OFF' }}
+                <button class="et-camera__toggle-btn" :class="audioConfig.input?.enable && 'et-camera__toggle-btn--on'" style="margin-left:auto" @click="setCameraConfig({audio: {input: {enable: !audioConfig.input?.enable}}})">
+                    {{ audioConfig.input?.enable ? 'ON' : 'OFF' }}
                 </button>
             </div>
             <HorizontalSlider
@@ -184,7 +202,7 @@
         <div v-else-if="audioConfig" class="et-camera__section">
             <div class="et-camera__section-header"><i class="fas fa-volume-high" /> Audio</div>
             <div class="et-camera__kv-grid">
-                <div class="et-camera__kv"><span>Enabled</span><span>{{ audioConfig.enable ? 'Yes' : 'No' }}</span></div>
+                <div class="et-camera__kv"><span>Enabled</span><span>{{ audioConfig.input?.enable ? 'Yes' : 'No' }}</span></div>
                 <div v-if="audioConfig.output?.volume != null" class="et-camera__kv"><span>Volume</span><span>{{ audioConfig.output.volume }}%</span></div>
             </div>
         </div>
@@ -231,6 +249,9 @@
             <div class="et-camera__section-header">
                 <i class="fas fa-sd-card" /> Storage
             </div>
+            <div v-if="storageErrors.length" class="et-camera__error-msg">
+                <i class="fas fa-triangle-exclamation" /> Storage: {{ storageErrors.join(', ') }}
+            </div>
             <div v-if="storageStatus && !storageStatus.present" class="et-camera__storage-empty">
                 <i class="fas fa-sd-card" /> <span>No card inserted</span>
             </div>
@@ -272,10 +293,10 @@
                     </button>
                 </div>
                 <div v-if="storageFiles.length" class="et-camera__file-list">
-                    <div v-for="file in storageFiles" :key="file.name" class="et-camera__file-row">
-                        <span class="et-camera__file-name">{{ file.name }}</span>
-                        <span class="et-camera__file-size">{{ formatBytes(file.size ?? 0) }}</span>
-                        <button v-if="canExecute" class="et-camera__zone-del" @click="deleteFile(file.name)">
+                    <div v-for="file in storageFiles" :key="file.media_id" class="et-camera__file-row">
+                        <span class="et-camera__file-name">{{ (file.type || 'clip') }} · {{ formatFileTs(file.ts) }}</span>
+                        <span class="et-camera__file-size">{{ formatBytes(file.size ?? 0, 0) }}</span>
+                        <button v-if="canExecute" class="et-camera__zone-del" @click="deleteFile(file.media_id)">
                             <i class="fas fa-trash" />
                         </button>
                     </div>
@@ -338,18 +359,28 @@
                 <button
                     v-for="mode in ['auto', 'on', 'off']" :key="mode"
                     class="et-camera__nv-btn"
-                    :class="nightVisionConfig.mode === mode && 'et-camera__nv-btn--active'"
+                    :class="nightVisionMode === mode && 'et-camera__nv-btn--active'"
                     @click="setNightVision(mode)"
                 >
                     <i :class="mode === 'auto' ? 'fas fa-wand-magic-sparkles' : mode === 'on' ? 'fas fa-moon' : 'fas fa-sun'" />
                     {{ mode.charAt(0).toUpperCase() + mode.slice(1) }}
                 </button>
             </div>
+            <div class="et-camera__nv-modes" style="margin-top:0.5rem">
+                <button
+                    v-for="p in NV_SENSITIVITY_PRESETS" :key="p.value"
+                    class="et-camera__nv-btn"
+                    :class="nightVisionConfig.sensitivity === p.value && 'et-camera__nv-btn--active'"
+                    @click="setNightVisionSensitivity(p.value)"
+                >
+                    {{ p.label }} sensitivity
+                </button>
+            </div>
         </div>
         <div v-else-if="nightVisionConfig" class="et-camera__section">
             <div class="et-camera__section-header"><i class="fas fa-moon" /> Night Vision</div>
             <div class="et-camera__kv-grid">
-                <div class="et-camera__kv"><span>Mode</span><span>{{ nightVisionConfig.mode ?? '—' }}</span></div>
+                <div class="et-camera__kv"><span>Mode</span><span>{{ nightVisionMode }}</span></div>
             </div>
         </div>
 
@@ -366,14 +397,16 @@
                     {{ motionConfig.enable !== false ? 'ON' : 'OFF' }}
                 </button>
             </div>
-            <HorizontalSlider
-                v-if="motionConfig.enable !== false && motionConfig.sensitivity != null"
-                :value="motionConfig.sensitivity"
-                :min="0" :max="100"
-                @change="(v: number) => setMotionSensitivity(v)"
-            >
-                <template #title>Sensitivity ({{ motionConfig.sensitivity }})</template>
-            </HorizontalSlider>
+            <div v-if="motionConfig.enable !== false" class="et-camera__nv-modes">
+                <button
+                    v-for="preset in MOTION_SENSITIVITY_PRESETS" :key="preset"
+                    class="et-camera__nv-btn"
+                    :class="motionConfig.sensitivity === preset && 'et-camera__nv-btn--active'"
+                    @click="setMotionSensitivity(preset)"
+                >
+                    {{ preset.replace('_', ' ') }}
+                </button>
+            </div>
         </div>
         <div v-else-if="motionConfig" class="et-camera__section">
             <div class="et-camera__section-header"><i class="fas fa-person-walking" /> Motion Detection</div>
@@ -394,6 +427,8 @@
 import {computed, onBeforeUnmount, onMounted, ref, toRef} from 'vue';
 import HorizontalSlider from '@/components/core/HorizontalSlider.vue';
 import {useWebRtcStream} from '@/composables/useWebRtcStream';
+import apiClient from '@/helpers/axios';
+import {formatBytes} from '@/helpers/format';
 import {useDevicesStore} from '@/stores/devices';
 import {sendRPC} from '@/tools/websocket';
 
@@ -431,13 +466,22 @@ const storageError = ref<string | null>(null);
 const zoneError = ref<string | null>(null);
 const storageLoading = ref(false);
 const newZoneName = ref('');
-const storageFiles = ref<{name: string; size?: number}[]>([]);
+const storageFiles = ref<
+    {
+        media_id: string;
+        type?: string;
+        ts?: number;
+        size?: number;
+        duration?: number;
+    }[]
+>([]);
 const filesLoading = ref(false);
 const filesLoaded = ref(false);
 const capabilities = ref<Record<string, any> | null>(null);
 const activeStreamId = ref(0);
 const streamConfigSaved = ref(false);
 const snapshotUrl = ref<string | null>(null);
+let snapshotObjectUrl: string | null = null;
 const capturing = ref(false);
 
 const nfsHost = ref('');
@@ -446,13 +490,37 @@ const nfsPath = ref('');
 // -- Computed --
 const isArmed = computed(() => props.settings?.arm ?? false);
 const isPrivacy = computed(() => props.settings?.privacy ?? false);
+// Status carries `recordings` (object keyed by rec_id), not a boolean `recording`.
+const isRecording = computed(() => {
+    const r = props.status?.recordings;
+    return !!r && typeof r === 'object' && Object.keys(r).length > 0;
+});
+const streamerErrors = computed<string[]>(() =>
+    Array.isArray(props.status?.errors) ? props.status.errors : []
+);
 const videoConfig = computed(() => props.settings?.video ?? null);
 const audioConfig = computed(() => props.settings?.audio ?? null);
 const storageStatus = computed(() => props.storageStatus ?? null);
+const storageErrors = computed<string[]>(() =>
+    Array.isArray(storageStatus.value?.errors) ? storageStatus.value.errors : []
+);
 const cameraZones = computed(() => props.cameraZones ?? []);
 
 const nightVisionConfig = computed(() => props.settings?.night_vision ?? null);
-const motionConfig = computed(() => props.settings?.motion_detection ?? null);
+const motionConfig = computed(() => props.settings?.motion ?? null);
+const ledConfig = computed(() => props.settings?.led ?? null);
+
+// Device motion presets (from Camera.SetConfig allowed values).
+const MOTION_SENSITIVITY_PRESETS = ['very_low', 'low', 'medium', 'high', 'very_high'];
+
+// The device models night vision as {auto, ir_leds}; the UI shows one of three
+// modes. Derive the active mode so the buttons reflect real device state.
+const nightVisionMode = computed(() => {
+    const nv = nightVisionConfig.value;
+    if (!nv) return 'off';
+    if (nv.auto) return 'auto';
+    return nv.ir_leds ? 'on' : 'off';
+});
 
 const streams = computed(() => {
     const s = props.settings?.streams;
@@ -525,42 +593,66 @@ function restartStream() {
 
 // -- Snapshot & Recording --
 
+// Show the current live frame via FM's snapshot proxy. CaptureImage returns a
+// cloud/SD media_id (not bytes); saving a still to storage is Phase 2.
 async function captureSnapshot() {
     if (!props.shellyID || capturing.value) return;
     capturing.value = true;
     try {
-        const result = await sendRPC<{url?: string}>(
-            'FLEET_MANAGER',
-            'Camera.CaptureImage',
-            {shellyID: props.shellyID, id: props.status?.id ?? 0}
+        const res = await apiClient.get(
+            `/api/device-proxy/${props.shellyID}/camera/${props.status?.id ?? 0}/snapshot`,
+            {responseType: 'blob'}
         );
-        if (result?.url) {
-            snapshotUrl.value = result.url;
-        }
+        closeSnapshot();
+        snapshotObjectUrl = URL.createObjectURL(res.data);
+        snapshotUrl.value = snapshotObjectUrl;
     } catch (e: any) {
         configError.value = e.message || 'Failed to capture snapshot';
     }
     capturing.value = false;
 }
 
+function closeSnapshot() {
+    if (snapshotObjectUrl) {
+        URL.revokeObjectURL(snapshotObjectUrl);
+        snapshotObjectUrl = null;
+    }
+    snapshotUrl.value = null;
+}
+
 function toggleRecording() {
-    if (props.status?.recording) {
+    if (isRecording.value) {
         emit('stop-recording');
     } else {
         emit('start-recording');
     }
 }
 
+// Map the three UI modes onto the device's {auto, ir_leds} fields.
 function setNightVision(mode: string) {
-    setCameraConfig({night_vision: {mode}});
+    if (mode === 'auto') setCameraConfig({night_vision: {auto: true}});
+    else if (mode === 'on')
+        setCameraConfig({night_vision: {auto: false, ir_leds: true}});
+    else setCameraConfig({night_vision: {auto: false, ir_leds: false}});
 }
 
-function setMotionSensitivity(sensitivity: number) {
-    setCameraConfig({motion_detection: {sensitivity}});
+function setMotionSensitivity(sensitivity: string) {
+    setCameraConfig({motion: {sensitivity}});
+}
+
+// Night-vision sensitivity presets = the device's day/night threshold tables
+// (verified allowed values). Progressively fewer thresholds = higher sensitivity.
+const NV_SENSITIVITY_PRESETS = [
+    {label: 'Low', value: 'low:6000:1200,medium:3000:600,high:1500:300'},
+    {label: 'Medium', value: 'medium:3000:600,high:1500:300'},
+    {label: 'High', value: 'high:1500:300'}
+];
+function setNightVisionSensitivity(sensitivity: string) {
+    setCameraConfig({night_vision: {sensitivity}});
 }
 
 function toggleMotionDetection(enable: boolean) {
-    setCameraConfig({motion_detection: {enable}});
+    setCameraConfig({motion: {enable}});
 }
 
 async function setZoneConfig(zoneId: number, config: Record<string, any>) {
@@ -583,7 +675,8 @@ async function deleteZone(zoneId: number) {
     try {
         await sendRPC('FLEET_MANAGER', 'Camera.DeleteZone', {
             shellyID: props.shellyID,
-            id: zoneId
+            id: props.status?.id ?? 0,
+            zone_id: zoneId
         });
     } catch (e: any) {
         zoneError.value = e.message || 'Failed to delete zone';
@@ -597,11 +690,10 @@ async function addZone() {
         await sendRPC('FLEET_MANAGER', 'Camera.AddZone', {
             shellyID: props.shellyID,
             id: props.status?.id ?? 0,
-            config: {
-                name: newZoneName.value,
-                enable: true,
-                coordinates: [0, 0, 0, 10000, 10000, 10000, 10000, 0]
-            }
+            enable: true,
+            type: 'motion',
+            coordinates: [0, 0, 0, 10000, 10000, 10000, 10000, 0],
+            name: newZoneName.value
         });
         newZoneName.value = '';
     } catch (e: any) {
@@ -614,11 +706,17 @@ async function loadFiles() {
     filesLoading.value = true;
     storageError.value = null;
     try {
-        const result = await sendRPC<{items?: Array<{name: string}>}>(
-            'FLEET_MANAGER',
-            'Camera.Storage.List',
-            {shellyID: props.shellyID}
-        );
+        const result = await sendRPC<{
+            items?: Array<{
+                media_id: string;
+                type?: string;
+                ts?: number;
+                size?: number;
+                duration?: number;
+            }>;
+        }>('FLEET_MANAGER', 'Camera.Storage.List', {
+            shellyID: props.shellyID
+        });
         storageFiles.value = result?.items ?? [];
         filesLoaded.value = true;
     } catch (e: any) {
@@ -628,16 +726,18 @@ async function loadFiles() {
     }
 }
 
-async function deleteFile(name: string) {
+async function deleteFile(mediaId: string) {
     if (!props.shellyID) return;
-    if (!window.confirm(`Delete recording "${name}"?`)) return;
+    if (!window.confirm('Delete this recording?')) return;
     storageError.value = null;
     try {
         await sendRPC('FLEET_MANAGER', 'Camera.Storage.Delete', {
             shellyID: props.shellyID,
-            name
+            media_id: mediaId
         });
-        storageFiles.value = storageFiles.value.filter((f) => f.name !== name);
+        storageFiles.value = storageFiles.value.filter(
+            (f) => f.media_id !== mediaId
+        );
     } catch (e: any) {
         storageError.value = e.message || 'Failed to delete file';
     }
@@ -683,6 +783,7 @@ async function saveNfsConfig() {
 onBeforeUnmount(() => {
     if (savedFlashTimer !== undefined) clearTimeout(savedFlashTimer);
     if (restartTimer !== undefined) clearTimeout(restartTimer);
+    if (snapshotObjectUrl) URL.revokeObjectURL(snapshotObjectUrl);
 });
 
 onMounted(async () => {
@@ -711,6 +812,10 @@ onMounted(async () => {
     } catch {
         // Non-critical — NFS fields stay empty
     }
+
+    // The detail is opened to watch — auto-start live at high quality, no
+    // manual button. The device session is freed on unmount (composable stop).
+    startStream(0);
 });
 
 // -- Helpers --
@@ -719,13 +824,9 @@ function formatBitrate(kbps: number): string {
     return `${kbps} Kbps`;
 }
 
-function formatBytes(bytes: number): string {
-    if (bytes === 0) return '0 B';
-    const gb = bytes / (1024 * 1024 * 1024);
-    if (gb >= 1) return `${gb.toFixed(1)} GB`;
-    const mb = bytes / (1024 * 1024);
-    if (mb >= 1) return `${mb.toFixed(0)} MB`;
-    return `${(bytes / 1024).toFixed(0)} KB`;
+function formatFileTs(ts?: number): string {
+    if (!ts) return '—';
+    return new Date(ts * 1000).toLocaleString();
 }
 
 function zoneColor(rgb?: number[]): string {

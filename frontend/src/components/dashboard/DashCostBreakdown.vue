@@ -37,6 +37,7 @@
 <script setup lang="ts">
 import {computed} from 'vue';
 import {currencySymbol as currencySymbolFor} from '@/helpers/currencies';
+import {tariffLocalTime} from '@/helpers/liveMetrics';
 import type {ConsumptionDataPoint} from '@/stores/energyDashboard';
 import type {DashboardSettings} from '@/types/dashboard';
 
@@ -77,7 +78,7 @@ const costs = computed(() => {
     if (!s || !props.periodData?.length) return {day: 0, night: 0, total: 0};
 
     for (const point of props.periodData) {
-        const hour = new Date(point.bucket).getUTCHours();
+        const hour = tariffLocalTime(point.bucket, s.tariffTimezone).hour;
         const isDay = hour >= dayStartH.value && hour < dayEndH.value;
         if (s.tariffMode === 'single' || !s.tariffMode) {
             totalCostSum += point.value * (s.tariff ?? 0);

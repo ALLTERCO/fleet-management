@@ -1,11 +1,13 @@
 import {flattie} from 'flattie';
 import * as log4js from 'log4js';
 import {tuning} from '../config';
-import {floats} from '../config/shelly.dataTypes';
+import {statusFieldGroup} from '../config/shelly.dataTypes';
+import type {BTHomeActionEvent} from '../model/bthome/bthomeOverview';
 import {
     findComponentEvent,
     type ResolvedEvent
 } from '../model/component/componentEvents';
+import {isWallDisplayInfo} from '../model/deviceCapabilities';
 import type ShellyDevice from '../model/ShellyDevice';
 import {parseComponentKey} from '../model/ShellyDevice';
 import type {
@@ -13,6 +15,10 @@ import type {
     ShellyMessageData,
     ShellyMessageIncoming
 } from '../types';
+import {
+    SINGLE_FREQ_FIELD,
+    SINGLE_VOLTAGE_FIELD
+} from '../types/api/componentPower';
 import {boundedLogDedupeSet} from './boundedLogDedupeSet';
 import * as DeviceCollector from './DeviceCollector';
 import * as DeviceEventLogger from './DeviceEventLogger';
@@ -20,9 +26,12 @@ import {getDeviceOrg} from './EventDistributor';
 import {emStatsQueue} from './emStatsQueue';
 import {
     type ComponentConfigResolver,
+    type ComponentSignalResolver,
     captureEnergyRow,
-    type EnergyRowInput
+    type EnergyRowInput,
+    type ResolvedRowObserver
 } from './energyCapture';
+import {domainContradictsSignals} from './energyClassifier';
 import {energyClassifierCache} from './energyClassifierCache';
 import {energyOverrideCache} from './energyOverrideCache';
 import {appendEmStats} from './energyRollup';
@@ -35,9 +44,18 @@ import {InitEm} from './ShellyEmHandler';
 import type {NotifyEventEnvelope} from './ShellyEvents';
 import * as ShellyEvents from './ShellyEvents';
 import {
+    appendEvents,
+    appendNumeric,
+    classifyNativeNumeric,
+    type EventRow,
+    type NumericRow,
+    type SensorSource
+} from './sensorCapture';
+import {
     appendStatusBatch,
     appendStatusBatchBestEffort
 } from './status/StatusStream';
+import {projectPersistedStatusBatch} from './status/statusProjection';
 import {toEpochSeconds} from './util/epochSeconds';
 import {isPlainObject} from './util/isPlainObject';
 
@@ -84,6 +102,10 @@ function toDeviceEventDescriptor(
 // noisy device payload can't bloat the log line.
 const SECRET_KEY_RE = /secret|password|token|key/i;
 const RAW_EVENT_MAX_CHARS = 2048;
+// A presence sensor reports one entry per tracked object; cap the forwarded
+// array so a malformed or hostile device can't amplify a huge payload to every
+// org UI. Real sensors report a handful.
+const PRESENCE_TRACK_MAX_OBJECTS = 128;
 function safeStringifyRawEvent(raw: Record<string, unknown>): string {
     const json = JSON.stringify(raw, (key, value) =>
         SECRET_KEY_RE.test(key) && typeof value === 'string' ? '***' : value
@@ -149,12 +171,6 @@ function broadcastUmbrellaDeviceEvent(
     });
 }
 
-// O(1) field→group lookup (replaces O(n) indexOf on every field)
-const floatFieldMap = new Map<string, string>();
-for (let i = 0; i < floats.raw.length; i++) {
-    floatFieldMap.set(floats.raw[i], floats.group[i]);
-}
-
 let statusDrops = 0;
 function emptyStatusPushQueue(): t_intermid_1 {
     return {
@@ -191,6 +207,16 @@ export type PendingMessage = {
 };
 const pendingMessages: PendingMessage[] = [];
 
+export interface StatusValueInput {
+    ts: number;
+    deviceId: number;
+    shellyId: string;
+    organizationId?: string;
+    field: string;
+    value: number;
+    previousValue?: unknown;
+}
+
 // Spill batches to the DLQ stream with explicit error logging — the
 // status-flush hot path used to fire-and-forget with `void`, which left
 // Redis outages as silent unhandledRejection warnings.
@@ -199,6 +225,51 @@ function spillBatchSafely(
     organizationIds: readonly string[] = []
 ): void {
     void appendStatusBatchBestEffort({batch, organizationIds});
+}
+
+export function enqueueStatusValues(values: readonly StatusValueInput[]): void {
+    const batch = emptyStatusPushQueue();
+    const organizationIds = new Set<string>();
+    for (const input of values) {
+        const group = statusFieldGroup(input.field);
+        if (!group || !Number.isFinite(input.value)) continue;
+        batch.p_ts.push(
+            toEpochSeconds(input.ts, Math.round(Date.now() / 1000))
+        );
+        batch.p_id.push(input.deviceId);
+        batch.p_field.push(input.field);
+        batch.p_field_group.push(group);
+        batch.p_value.push(input.value);
+        batch.p_prev_value.push(
+            typeof input.previousValue === 'number' &&
+                Number.isFinite(input.previousValue)
+                ? input.previousValue
+                : input.value
+        );
+        const organizationId =
+            input.organizationId ?? getDeviceOrg(input.shellyId);
+        if (organizationId) organizationIds.add(organizationId);
+    }
+    if (batch.p_ts.length === 0) return;
+    if (
+        status_push_queue.p_ts.length + batch.p_ts.length >
+        tuning.status.queueMax
+    ) {
+        Observability.incrementCounter('status_queue_spilled');
+        spillBatchSafely(batch, [...organizationIds]);
+        return;
+    }
+    for (let i = 0; i < batch.p_ts.length; i++) {
+        status_push_queue.p_ts.push(batch.p_ts[i]);
+        status_push_queue.p_id.push(batch.p_id[i]);
+        status_push_queue.p_field.push(batch.p_field[i]);
+        status_push_queue.p_field_group.push(batch.p_field_group[i]);
+        status_push_queue.p_value.push(batch.p_value[i]);
+        status_push_queue.p_prev_value.push(batch.p_prev_value[i]);
+    }
+    for (const organizationId of organizationIds) {
+        statusQueueOrgIds.add(organizationId);
+    }
 }
 
 function takeStatusQueue(): {
@@ -252,7 +323,7 @@ function pendingMessageToStatusBatch(msg: PendingMessage): t_intermid_1 {
     const tsSec = toEpochSeconds(rawTs, msg.receivedAtSec);
     const flat = flattie(components);
     for (const k of Object.keys(flat)) {
-        const group = floatFieldMap.get(k);
+        const group = statusFieldGroup(k);
         if (group === undefined) continue;
         const v = flat[k];
         if (typeof v !== 'number' || !Number.isFinite(v)) continue;
@@ -329,6 +400,15 @@ async function flushStatusQueueOnce(): Promise<void> {
     try {
         logger.info('---->>> Syncing status, length %d', sl);
         await rawCall('device.fn_status_push', toFlush);
+        try {
+            await projectPersistedStatusBatch(toFlush);
+        } catch (error) {
+            Observability.incrementCounter('virtual_projection_drain_errors');
+            logger.warn(
+                'status projection failed (non-fatal): %s',
+                error instanceof Error ? error.message : String(error)
+            );
+        }
         const flushElapsed = performance.now() - flushStart;
         lastFlushMs = flushElapsed;
         Observability.recordDbTiming('status_flush', flushElapsed);
@@ -347,14 +427,19 @@ async function flushStatusQueueOnce(): Promise<void> {
 // Deferred start — tuning is not available at module load time due to import order.
 function startStatusFlushInterval() {
     statusFlushTimer = setInterval(() => {
-        if (inFlightStatusFlush) return;
-        inFlightStatusFlush = flushStatusQueueOnce().finally(() => {
-            inFlightStatusFlush = null;
-        });
+        void runStatusFlush();
     }, tuning.status.flushIntervalMs);
     statusFlushTimer.unref?.();
 }
 process.nextTick(startStatusFlushInterval);
+
+async function runStatusFlush(): Promise<void> {
+    if (inFlightStatusFlush) return inFlightStatusFlush;
+    inFlightStatusFlush = flushStatusQueueOnce().finally(() => {
+        inFlightStatusFlush = null;
+    });
+    return inFlightStatusFlush;
+}
 
 // device_em.stats + device_em.lifetime_counters flushes use the same
 // drain→flush→retry-on-failure→drop-on-overflow loop. Cadence (2 min)
@@ -388,10 +473,15 @@ const lifetimeFlusher = createQueueFlusher({
 // Called from onShutdown after device frames stop, before the PG pool closes.
 export async function flushPendingOnShutdown(): Promise<void> {
     if (statusFlushTimer) clearInterval(statusFlushTimer);
-    if (inFlightStatusFlush) await inFlightStatusFlush;
-    await flushStatusQueueOnce();
+    await runStatusFlush();
     await emStatsFlusher.stop();
     await lifetimeFlusher.stop();
+}
+
+export async function flushBeforeDeviceIdentityChange(): Promise<void> {
+    await runStatusFlush();
+    await emStatsFlusher.flushNow();
+    await lifetimeFlusher.flushNow();
 }
 
 // Match energy-related fields from flattened NotifyStatus.
@@ -453,7 +543,10 @@ type shelly_event_t =
     | 'ota_progress' // firmware update progress (has progress_percent)
     | 'ota_success' // firmware update completed, device will reboot
     | 'ota_error' // firmware update failed
-    | 'sleep'; // battery device about to sleep; ts marker for read paths
+    | 'sleep' // battery device about to sleep; ts marker for read paths
+    | 'media_ready' // camera: image/video finalized on device
+    | 'upload_complete' // camera: media uploaded to cloud
+    | 'upload_failed'; // camera: media upload to cloud failed
 
 // Catalog cache must drop when firmware republishes its event vocabulary.
 const priorCfgRev = new WeakMap<ShellyDevice, number>();
@@ -462,6 +555,286 @@ function resolveDiscoveryRssi(event: any): number | undefined {
     if (typeof event?.rssi === 'number') return event.rssi;
     if (typeof event?.device?.rssi === 'number') return event.device.rssi;
     return undefined;
+}
+
+// Resolved context handed to every per-family NotifyEvent handler. `event` is
+// the firmware-shaped payload — untyped like the raw NotifyEvent frame the
+// switch read directly, so field access stays cast-free.
+interface DeviceEventContext {
+    shelly: ShellyDevice;
+    component: string;
+    evt: shelly_event_t;
+    event: any;
+    resolved: ResolvedEvent | undefined;
+}
+
+type DeviceEventHandler = (ctx: DeviceEventContext) => void;
+
+// The nine BTHome action events share one handler. Kept as a set so the same
+// list narrows the type (isButtonEvent) and populates the dispatch map.
+const BUTTON_EVENTS: ReadonlySet<BTHomeActionEvent> = new Set([
+    'single_push',
+    'double_push',
+    'triple_push',
+    'long_push',
+    'long_double_push',
+    'long_triple_push',
+    'rotate_left',
+    'rotate_right',
+    'hold_press'
+]);
+
+function isButtonEvent(evt: shelly_event_t): evt is BTHomeActionEvent {
+    return (BUTTON_EVENTS as ReadonlySet<string>).has(evt);
+}
+
+function handleConfigChangedEvent({
+    shelly,
+    component,
+    event
+}: DeviceEventContext): void {
+    onConfigChange(shelly, component, event.data);
+}
+
+function handleComponentLifecycle({
+    shelly,
+    evt,
+    event
+}: DeviceEventContext): void {
+    if (evt === 'component_added') {
+        // Non-string target would throw and abort sibling events.
+        if (typeof event.target !== 'string') {
+            logger.warn(
+                'component_added with non-string target from %s — skipped',
+                shelly.shellyID
+            );
+            return;
+        }
+        logger.info('Component added', event.target);
+        // Fire-and-forget probe: surface a probe/compose
+        // failure instead of leaking an unhandled rejection.
+        Promise.resolve(shelly.fetchComponent(event.target)).catch((err) => {
+            logger.warn(
+                'fetchComponent failed for %s on %s: %s',
+                event.target,
+                shelly.shellyID,
+                err instanceof Error ? err.message : String(err)
+            );
+        });
+        return;
+    }
+    // component_removed
+    if (typeof event.target !== 'string') {
+        logger.warn(
+            'component_removed with non-string target from %s — skipped',
+            shelly.shellyID
+        );
+        return;
+    }
+    shelly.removeComponent(event.target);
+}
+
+function handleButtonEvent({
+    shelly,
+    component,
+    evt,
+    event
+}: DeviceEventContext): void {
+    // The map only routes the nine BTHome action events here.
+    if (!isButtonEvent(evt)) return;
+    shelly.forwardComponentEvent(component, evt);
+    if (
+        typeof component === 'string' &&
+        component.startsWith('bthomedevice:')
+    ) {
+        shelly.rememberBTHomeRuntimeEvent(
+            component,
+            evt,
+            event.idx ?? null,
+            event.channel ?? null,
+            event.ts ?? null
+        );
+    } else {
+        shelly.setComponentStatus(component, {
+            last_event: evt,
+            last_event_idx: event.idx ?? 0,
+            last_event_ts: event.ts
+        });
+    }
+}
+
+function handlePresenceTrack({
+    shelly,
+    component,
+    evt,
+    event
+}: DeviceEventContext): void {
+    if (evt === 'track') {
+        if (component === 'presence') {
+            const objects = Array.isArray(event.object)
+                ? event.object.slice(0, PRESENCE_TRACK_MAX_OBJECTS)
+                : [];
+            ShellyEvents.emitShellyPresenceTrack(
+                shelly,
+                objects,
+                event.ts ?? 0
+            );
+        }
+        return;
+    }
+    // no_track
+    if (component === 'presence') {
+        ShellyEvents.emitShellyPresenceTrack(shelly, [], event.ts ?? 0);
+    }
+}
+
+function handleBthomeDiscovery({shelly, evt, event}: DeviceEventContext): void {
+    if (evt === 'device_discovered') {
+        const addr = event?.device?.addr;
+        if (typeof addr !== 'string') return;
+        const rssi = resolveDiscoveryRssi(event);
+        shelly.rememberBTHomeDiscovery({
+            addr,
+            localName: event.device.local_name ?? 'unknown',
+            modelNumericId: event.device.shelly_mfdata?.model_id,
+            rssi,
+            ts: event.ts
+        });
+        ShellyEvents.emitBTHomeDiscoveryResult(
+            event.device.local_name ?? 'unknown',
+            addr,
+            shelly.shellyID,
+            event.device.shelly_mfdata?.model_id,
+            rssi
+        );
+        logger.info(
+            'BTHome device discovered %s (%s) model_id:%s from %s',
+            event.device.local_name ?? 'unknown',
+            addr,
+            event.device.shelly_mfdata?.model_id ?? 'n/a',
+            shelly.shellyID
+        );
+        return;
+    }
+    // discovery_done
+    // {"component":"bthome","event":"discovery_done","device_count":1,"ts":1733001388.36}
+    logger.info(
+        'BTHome discovery done',
+        event.device_count,
+        'for',
+        shelly.shellyID
+    );
+    ShellyEvents.emitShellyDiscoveryDone(shelly.shellyID, event.device_count);
+}
+
+function handleDaliEvent({shelly, evt, event}: DeviceEventContext): void {
+    if (evt === 'scan_complete') {
+        // {"component":"dali","event":"scan_complete","cg_count":2,"ts":...}
+        logger.info(
+            'DALI scan complete on %s, cg_count: %d',
+            shelly.shellyID,
+            event.cg_count
+        );
+        shelly.setComponentStatus('dali', {cg_count: event.cg_count});
+        return;
+    }
+    // ping_complete: {"component":"dali","event":"ping_complete","ts":...}
+    logger.info('DALI ping complete on %s', shelly.shellyID);
+    // Patch status so frontend can detect completion reactively
+    shelly.setComponentStatus('dali', {ping_complete_ts: event.ts});
+}
+
+function handleOta({shelly, evt, event}: DeviceEventContext): void {
+    if (evt === 'ota_success') {
+        handleOtaSuccess(shelly, event);
+        return;
+    }
+    // ota_begin | ota_progress | ota_error — live progress broadcast.
+    if (evt === 'ota_begin' || evt === 'ota_progress' || evt === 'ota_error') {
+        ShellyEvents.emitShellyOtaProgress(
+            shelly,
+            evt,
+            event.progress_percent,
+            event.msg
+        );
+    }
+}
+
+function handleSleepEvent({shelly, event}: DeviceEventContext): void {
+    handleSleep(shelly, event);
+}
+
+function handleCameraMedia({
+    shelly,
+    component,
+    evt,
+    event,
+    resolved
+}: DeviceEventContext): void {
+    patchCameraMedia(shelly, component, evt, event);
+    // Keep UI/bus parity with the old default-branch route.
+    ShellyEvents.emitDeviceEvent({
+        device: shelly,
+        raw: event,
+        descriptor: toDeviceEventDescriptor(resolved)
+    });
+}
+
+// Default arm: forward any event kind not in the dispatch map, counting the
+// firehose and diagnosing genuinely-unknown (unresolved) events once.
+function handleUnknownEvent({
+    shelly,
+    component,
+    evt,
+    event,
+    resolved
+}: DeviceEventContext): void {
+    // Firehose volume — every event hitting default.
+    // Replaces the old meaning of unknown_device_event.
+    Observability.incrementCounter('device_event_default_route');
+    if (!resolved) {
+        // Genuinely-unknown volume; resolved events
+        // are forwarded silently.
+        Observability.incrementCounter('unknown_device_event');
+        const dedupeKey = unknownEventKey(component, evt);
+        if (!loggedUnknownEvents.has(dedupeKey)) {
+            loggedUnknownEvents.record(dedupeKey);
+            logUnknownEventDiagnostic(shelly, component, evt, event);
+        }
+    }
+    ShellyEvents.emitDeviceEvent({
+        device: shelly,
+        raw: event,
+        descriptor: toDeviceEventDescriptor(resolved)
+    });
+}
+
+// Strategy map: NotifyEvent kind -> per-family handler. Kinds absent here fall
+// through to handleUnknownEvent — the same set the old switch's default arm
+// caught. Button events are registered from BUTTON_EVENTS so the list has a
+// single home.
+const deviceEventHandlers: Partial<Record<shelly_event_t, DeviceEventHandler>> =
+    {
+        config_changed: handleConfigChangedEvent,
+        component_added: handleComponentLifecycle,
+        component_removed: handleComponentLifecycle,
+        track: handlePresenceTrack,
+        no_track: handlePresenceTrack,
+        device_discovered: handleBthomeDiscovery,
+        discovery_done: handleBthomeDiscovery,
+        scan_complete: handleDaliEvent,
+        ping_complete: handleDaliEvent,
+        ota_begin: handleOta,
+        ota_progress: handleOta,
+        ota_error: handleOta,
+        ota_success: handleOta,
+        sleep: handleSleepEvent,
+        media_ready: handleCameraMedia,
+        upload_complete: handleCameraMedia,
+        upload_failed: handleCameraMedia
+    };
+for (const action of BUTTON_EVENTS) {
+    deviceEventHandlers[action] = handleButtonEvent;
 }
 
 export function handleMessage(
@@ -492,7 +865,11 @@ export function handleMessage(
             Array.isArray(res.params.events)
         ) {
             for (const event of res.params.events) {
-                if (typeof event !== 'object') {
+                if (
+                    event === null ||
+                    typeof event !== 'object' ||
+                    Array.isArray(event)
+                ) {
                     continue;
                 }
 
@@ -506,207 +883,13 @@ export function handleMessage(
                 const resolved = resolveEvent(shelly, component, evt);
 
                 // Backend-internal fan-out for every event. UI traffic
-                // still flows via the per-method default-branch emission.
+                // still flows via the per-family default-branch emission.
                 broadcastUmbrellaDeviceEvent(shelly, event, resolved);
 
-                switch (evt) {
-                    case 'config_changed':
-                        onConfigChange(shelly, component, event.data);
-                        break;
-
-                    case 'component_added':
-                        // Non-string target would throw and abort sibling events.
-                        if (typeof event.target !== 'string') {
-                            logger.warn(
-                                'component_added with non-string target from %s — skipped',
-                                shelly.shellyID
-                            );
-                            break;
-                        }
-                        logger.info('Component added', event.target);
-                        shelly.fetchComponent(event.target);
-                        break;
-
-                    case 'component_removed':
-                        if (typeof event.target !== 'string') {
-                            logger.warn(
-                                'component_removed with non-string target from %s — skipped',
-                                shelly.shellyID
-                            );
-                            break;
-                        }
-                        shelly.removeComponent(event.target);
-                        break;
-
-                    case 'single_push':
-                    case 'double_push':
-                    case 'triple_push':
-                    case 'long_push':
-                    case 'long_double_push':
-                    case 'long_triple_push':
-                    case 'rotate_left':
-                    case 'rotate_right':
-                    // hold_press: BLU Wall EU/US 4-button devices fw 1.0.23+
-                    // per BTHomeControl.mdx cross-ref.
-                    case 'hold_press':
-                        shelly.forwardComponentEvent(component, evt);
-                        if (
-                            typeof component === 'string' &&
-                            component.startsWith('bthomedevice:')
-                        ) {
-                            shelly.rememberBTHomeRuntimeEvent(
-                                component,
-                                evt,
-                                event.idx ?? null,
-                                event.channel ?? null,
-                                event.ts ?? null
-                            );
-                        } else {
-                            shelly.setComponentStatus(component, {
-                                last_event: evt,
-                                last_event_idx: event.idx ?? 0,
-                                last_event_ts: event.ts
-                            });
-                        }
-                        break;
-
-                    case 'track':
-                        if (component === 'presence') {
-                            ShellyEvents.emitShellyPresenceTrack(
-                                shelly,
-                                event.object ?? [],
-                                event.ts ?? 0
-                            );
-                        }
-                        break;
-
-                    case 'no_track':
-                        if (component === 'presence') {
-                            ShellyEvents.emitShellyPresenceTrack(
-                                shelly,
-                                [],
-                                event.ts ?? 0
-                            );
-                        }
-                        break;
-
-                    case 'device_discovered': {
-                        const addr = event?.device?.addr;
-                        if (typeof addr !== 'string') break;
-                        const rssi = resolveDiscoveryRssi(event);
-                        shelly.rememberBTHomeDiscovery({
-                            addr,
-                            localName: event.device.local_name ?? 'unknown',
-                            modelNumericId:
-                                event.device.shelly_mfdata?.model_id,
-                            rssi,
-                            ts: event.ts
-                        });
-                        ShellyEvents.emitBTHomeDiscoveryResult(
-                            event.device.local_name ?? 'unknown',
-                            addr,
-                            shelly.shellyID,
-                            event.device.shelly_mfdata?.model_id,
-                            rssi
-                        );
-                        logger.info(
-                            'BTHome device discovered %s (%s) model_id:%s from %s',
-                            event.device.local_name ?? 'unknown',
-                            addr,
-                            event.device.shelly_mfdata?.model_id ?? 'n/a',
-                            shelly.shellyID
-                        );
-                        break;
-                    }
-
-                    case 'discovery_done':
-                        // {"component":"bthome","event":"discovery_done","device_count":1,"ts":1733001388.36}
-                        logger.info(
-                            'BTHome discovery done',
-                            event.device_count,
-                            'for',
-                            shelly.shellyID
-                        );
-                        ShellyEvents.emitShellyDiscoveryDone(
-                            shelly.shellyID,
-                            event.device_count
-                        );
-                        break;
-
-                    case 'scan_complete':
-                        // {"component":"dali","event":"scan_complete","cg_count":2,"ts":...}
-                        logger.info(
-                            'DALI scan complete on %s, cg_count: %d',
-                            shelly.shellyID,
-                            event.cg_count
-                        );
-                        shelly.setComponentStatus('dali', {
-                            cg_count: event.cg_count
-                        });
-                        break;
-
-                    case 'ping_complete':
-                        // {"component":"dali","event":"ping_complete","ts":...}
-                        logger.info(
-                            'DALI ping complete on %s',
-                            shelly.shellyID
-                        );
-                        // Patch status so frontend can detect completion reactively
-                        shelly.setComponentStatus('dali', {
-                            ping_complete_ts: event.ts
-                        });
-                        break;
-
-                    case 'ota_begin':
-                    case 'ota_progress':
-                    case 'ota_error':
-                        ShellyEvents.emitShellyOtaProgress(
-                            shelly,
-                            evt,
-                            event.progress_percent,
-                            event.msg
-                        );
-                        break;
-
-                    case 'ota_success':
-                        handleOtaSuccess(shelly, event);
-                        break;
-
-                    case 'sleep':
-                        handleSleep(shelly, event);
-                        break;
-
-                    default: {
-                        // Firehose volume — every event hitting default.
-                        // Replaces the old meaning of unknown_device_event.
-                        Observability.incrementCounter(
-                            'device_event_default_route'
-                        );
-                        if (!resolved) {
-                            // Genuinely-unknown volume; resolved events
-                            // are forwarded silently.
-                            Observability.incrementCounter(
-                                'unknown_device_event'
-                            );
-                            const dedupeKey = unknownEventKey(component, evt);
-                            if (!loggedUnknownEvents.has(dedupeKey)) {
-                                loggedUnknownEvents.record(dedupeKey);
-                                logUnknownEventDiagnostic(
-                                    shelly,
-                                    component,
-                                    evt,
-                                    event
-                                );
-                            }
-                        }
-                        ShellyEvents.emitDeviceEvent({
-                            device: shelly,
-                            raw: event,
-                            descriptor: toDeviceEventDescriptor(resolved)
-                        });
-                        continue;
-                    }
-                }
+                // Dispatch each kind to its family handler; unmapped kinds
+                // fall through to the default forwarder.
+                const handler = deviceEventHandlers[evt] ?? handleUnknownEvent;
+                handler({shelly, component, evt, event, resolved});
             }
         }
     }
@@ -797,7 +980,7 @@ export async function processPendingMessages(batch: PendingMessage[]) {
         const flat = flattie(components);
         const perField = prevByDevice.get(msg.deviceId)!;
         for (const k of Object.keys(flat)) {
-            if (floatFieldMap.get(k) === undefined) continue;
+            if (statusFieldGroup(k) === undefined) continue;
             if (perField.get(k) !== undefined) continue;
             let s = seedNeeded.get(msg.deviceId);
             if (!s) {
@@ -843,6 +1026,8 @@ export async function processPendingMessages(batch: PendingMessage[]) {
 
     // Now walk every message and push to the flush queue using the
     // resolved prev values.
+    const numericRows: NumericRow[] = [];
+    const eventRows: EventRow[] = [];
     for (const msg of batch) {
         const {ts: rawTs, ...components} = msg.params;
         const tsSec = toEpochSeconds(rawTs, msg.receivedAtSec);
@@ -850,7 +1035,7 @@ export async function processPendingMessages(batch: PendingMessage[]) {
         const perField = prevByDevice.get(msg.deviceId)!;
         try {
             for (const k of Object.keys(d)) {
-                const group = floatFieldMap.get(k);
+                const group = statusFieldGroup(k);
                 if (group === undefined) continue;
 
                 const v = d[k];
@@ -884,14 +1069,127 @@ export async function processPendingMessages(batch: PendingMessage[]) {
                     ts: tsSec
                 });
 
+                // Forever sensor rollup (temperature/humidity today; more
+                // native kinds land as classifyNativeNumeric grows), captured
+                // here like energy so it is independent of the flush mode
+                // (direct or redis-first).
+                const numeric = classifyNativeNumeric(k);
+                if (numeric) {
+                    numericRows.push({
+                        device: msg.deviceId,
+                        source: resolveNativeSensorSource(
+                            msg.shellyId,
+                            numeric.channel,
+                            numeric.embedded
+                        ),
+                        kind: numeric.kind,
+                        channel: numeric.channel,
+                        ts: tsSec,
+                        val: v
+                    });
+                }
+
                 // Keep perField current for any later messages from the
                 // same device in this same batch — successive messages
                 // see "previous" as the most-recent v.
                 perField.set(k, v);
             }
+            // Native binary sensors (flood/smoke/occupancy): msg.changes is
+            // this exact message's merge diff (AbstractDevice.mergeStatusAndDiff),
+            // so "this leaf is a binary sensor and appears in the diff" IS the
+            // edge — no separate change-tracking needed, and it can't false-fire
+            // on a resend of an unchanged sibling field in the same component.
+            captureNativeBinaryEvents(msg, tsSec, eventRows);
         } catch (e) {
             logger.error('Collect device status: ', e);
         }
+    }
+    // Isolated: appendNumeric/appendEvents never throw, so they cannot affect the status flush.
+    void appendNumeric(numericRows, {callDb: rawCall});
+    void appendEvents(eventRows, {callDb: rawCall});
+}
+
+// Native sensorSource — mirrors EntityComposer's per-component parsers
+// (temperature/humidity/devicepower): Wall Display + config.sys.ext_sensor_id
+// is a paired BLU sensor; component id >= 100 with an addon board attached is
+// an addon; everything else is the device's own sensor. `embedded` (a
+// switch/light/cover's own chip temperature) is always internal, no lookup
+// needed. Wall Display detection reuses the real exported helper; the addon
+// check is mirrored (not exported) because this task keeps the diff to
+// ShellyMessageHandler.ts/ShellyDevice.ts — EntityComposer.ts owns the SSOT.
+function resolveNativeSensorSource(
+    shellyId: string,
+    componentId: number,
+    embedded: boolean
+): SensorSource {
+    if (embedded) return 'internal';
+    const device = DeviceCollector.getDevice(shellyId);
+    if (
+        device &&
+        isWallDisplayInfo(device.info) &&
+        device.config.sys?.ext_sensor_id
+    ) {
+        return 'blu';
+    }
+    const isAddon =
+        componentId >= 100 && !!device?.config.sys?.device?.addon_type;
+    return isAddon ? 'addon' : 'builtin';
+}
+
+// Native binary leaf -> event kind. Field names confirmed against the Shelly
+// API docs (Flood.GetStatus.alarm, Smoke.GetStatus.alarm) and FM's own
+// occupancy:N.value (Wall Display binary presence — see types.ts
+// occupancy_entity; Presence.GetStatus has no binary field, only live_track
+// metadata, so it is intentionally not wired here).
+const NATIVE_BINARY_LEAF: Record<string, {kind: string; leaf: string}> = {
+    flood: {kind: 'flood', leaf: 'alarm'},
+    smoke: {kind: 'smoke', leaf: 'alarm'},
+    occupancy: {kind: 'occupancy', leaf: 'value'}
+};
+
+function classifyNativeBinary(
+    field: string
+): {kind: string; channel: number} | null {
+    const m = /^([a-z]+):(\d+)\.([a-zA-Z]+)$/.exec(field);
+    if (!m) return null;
+    const def = NATIVE_BINARY_LEAF[m[1]];
+    if (!def || def.leaf !== m[3]) return null;
+    return {kind: def.kind, channel: Number(m[2])};
+}
+
+// Native binary fields are booleans on the wire; numeric 0/1 accepted in
+// case firmware ever reports pre-coerced. Anything else isn't a valid
+// reading (skip rather than guess).
+function toNativeBinaryState(value: unknown): number | null {
+    if (typeof value === 'boolean') return value ? 1 : 0;
+    if (value === 0 || value === 1) return value;
+    return null;
+}
+
+// One message's merge diff already says exactly which leaves flipped —
+// walk it instead of re-deriving change detection over the flattened status.
+function captureNativeBinaryEvents(
+    msg: PendingMessage,
+    tsSec: number,
+    eventRows: EventRow[]
+): void {
+    for (const change of msg.changes) {
+        const binary = classifyNativeBinary(change.path);
+        if (!binary) continue;
+        const state = toNativeBinaryState(change.next);
+        if (state === null) continue;
+        eventRows.push({
+            device: msg.deviceId,
+            source: resolveNativeSensorSource(
+                msg.shellyId,
+                binary.channel,
+                false
+            ),
+            kind: binary.kind,
+            channel: binary.channel,
+            ts: tsSec,
+            state
+        });
     }
 }
 
@@ -954,14 +1252,80 @@ const componentConfigResolver: ComponentConfigResolver = (
     );
 };
 
-function routeEnergyRow(row: EnergyRowInput): void {
+// Latest freq/voltage for the component from merged status (not the partial
+// frame), so AC/DC detection sees current values even when a NotifyStatus
+// omits them. Null when the device or component isn't known yet.
+const componentSignalResolver: ComponentSignalResolver = (
+    shellyId,
+    componentKey
+) => {
+    const device = DeviceCollector.getDevice(shellyId);
+    if (!device) return null;
+    const status = (device.status as Record<string, unknown> | undefined)?.[
+        componentKey
+    ];
+    if (!status || typeof status !== 'object') return null;
+    const s = status as Record<string, unknown>;
+    const freq = s[SINGLE_FREQ_FIELD];
+    const voltage = s[SINGLE_VOLTAGE_FIELD];
+    return {
+        freq: typeof freq === 'number' ? freq : undefined,
+        voltage: typeof voltage === 'number' ? voltage : undefined
+    };
+};
+
+// Domain observability — count DC classifications and trace each to the exact
+// device once, so a mis-detected domain is pinpointed without flooding the hot
+// path. Redis-shadow saturation is observed separately in StatusStream.
+const energyDomainTraced = boundedLogDedupeSet();
+function traceOnce(key: string, emit: () => void): void {
+    if (energyDomainTraced.has(key)) return;
+    energyDomainTraced.record(key);
+    emit();
+}
+const onEnergyRowResolved: ResolvedRowObserver = (row) => {
+    if (!row.domain.startsWith('dc_')) return;
+    Observability.incrementCounter('energy_domain_dc');
+    // Physical-consistency check: a dc_* row on a component reporting a real AC
+    // frequency is almost certainly misclassified. Count + WARN once per point.
+    const signals = componentSignalResolver(row.shellyId, row.componentKey);
+    if (signals && domainContradictsSignals(row.domain, signals)) {
+        Observability.incrementCounter('energy_domain_contradiction');
+        traceOnce(`contradiction|${row.shellyId}|${row.componentKey}`, () =>
+            logger.warn(
+                'energy domain contradiction: %s %s tagged %s but reports freq=%d Hz — DC has no frequency',
+                row.shellyId,
+                row.componentKey,
+                row.domain,
+                signals.freq
+            )
+        );
+    }
+    traceOnce(`${row.shellyId}|${row.componentKey}|${row.domain}`, () =>
+        logger.debug(
+            'energy domain %s: %s %s tag=%s',
+            row.domain,
+            row.shellyId,
+            row.componentKey,
+            row.tag
+        )
+    );
+};
+
+// Exported so the BTHome capture hook (ShellyDevice.ts) can route an
+// MCB electrical reading through the exact same entry point as the
+// native EM path — one home for energy-row dispatch.
+export function routeEnergyRow(row: EnergyRowInput): void {
     captureEnergyRow(row, tuning.energyClassifier, {
         queue: emStatsQueue,
         lifetimeQueue,
+        onRowResolved: onEnergyRowResolved,
         legacyResolve,
         parity: observabilityParitySink,
         classifierCache: energyClassifierCache,
         componentConfigResolver,
+        componentSignalResolver,
+        acMinVoltage: tuning.energyClassifier.acMinVoltage,
         overrideCache: energyOverrideCache
     });
 }
@@ -1004,6 +1368,27 @@ async function refreshDeviceInfo(shelly: ShellyDevice): Promise<void> {
         logger.error('Error getting device info -> %s', error);
     }
     invalidateEventCatalogOnCfgRevJump(shelly);
+}
+
+// Camera media lifecycle. Stamp the latest media onto camera status so the UI
+// reacts to a new still/clip. Persisting a searchable recording history is a
+// separate feature (needs a media store plus a reader) and lands with that work.
+function patchCameraMedia(
+    shelly: ShellyDevice,
+    component: string,
+    evt: string,
+    event: Record<string, unknown>
+): void {
+    if (!component.startsWith('camera:')) return;
+    shelly.setComponentStatus(component, {
+        last_media: {
+            event: evt,
+            rec_id: event.rec_id ?? null,
+            media_id: event.media_id ?? null,
+            mime_type: event.mime_type ?? null,
+            ts: event.ts ?? null
+        }
+    });
 }
 
 function handleOtaSuccess(

@@ -7,6 +7,7 @@ import {crossReference} from './scanLan';
 const FW_MIN_MAJOR = 0;
 const FW_MIN_MINOR = 11;
 const DEFAULT_HTTP_TIMEOUT_MS = 5_000;
+const MAX_DEVICE_INFO_BYTES = 64 * 1024;
 
 export interface ShellyDeviceInfo {
     id: string;
@@ -47,7 +48,10 @@ async function rpcGet(
 ): Promise<Record<string, unknown>> {
     let response: Response;
     try {
-        response = await fetch(url, {signal: AbortSignal.timeout(timeoutMs)});
+        response = await fetch(url, {
+            redirect: 'error',
+            signal: AbortSignal.timeout(timeoutMs)
+        });
     } catch (err) {
         throw new HttpUnreachable(
             err instanceof Error ? err.message : String(err)
@@ -57,7 +61,33 @@ async function rpcGet(
         throw new HttpUnreachable(`HTTP ${response.status} from ${url}`);
     }
     try {
-        return (await response.json()) as Record<string, unknown>;
+        const declaredLength = Number(
+            response.headers.get('content-length') ?? 0
+        );
+        if (
+            Number.isFinite(declaredLength) &&
+            declaredLength > MAX_DEVICE_INFO_BYTES
+        ) {
+            throw new Error('Device info response is too large');
+        }
+        if (!response.body) throw new Error('Device info response is empty');
+        const reader = response.body.getReader();
+        const chunks: Buffer[] = [];
+        let bytes = 0;
+        for (;;) {
+            const {done, value} = await reader.read();
+            if (done) break;
+            bytes += value.byteLength;
+            if (bytes > MAX_DEVICE_INFO_BYTES) {
+                await reader.cancel();
+                throw new Error('Device info response is too large');
+            }
+            chunks.push(Buffer.from(value));
+        }
+        return JSON.parse(Buffer.concat(chunks).toString()) as Record<
+            string,
+            unknown
+        >;
     } catch (err) {
         throw new HttpBadPayload(
             err instanceof Error ? err.message : String(err)
@@ -67,11 +97,13 @@ async function rpcGet(
 
 export async function fetchDeviceInfoOrUnavailable(
     target: DeviceHostTarget,
-    timeoutMs: number
+    timeoutMs: number,
+    port = 80
 ): Promise<ShellyDeviceInfo> {
     try {
+        const authority = port === 80 ? target.ip : `${target.ip}:${port}`;
         return (await rpcGet(
-            `http://${target.ip}/rpc/Shelly.GetDeviceInfo`,
+            `http://${authority}/rpc/Shelly.GetDeviceInfo`,
             timeoutMs
         )) as unknown as ShellyDeviceInfo;
     } catch (err) {

@@ -1,7 +1,7 @@
 /**
  * Search pill — shared visual atom.
  * Renamed from .dp-search* (formerly in device-page.css).
- * Used by UniversalSearch.vue and any page that needs an inline search pill.
+ * Used by FilterPill.vue and any page that needs an inline search pill.
  */
 
 /* ── Search bar ── */
@@ -18,10 +18,20 @@
     color: var(--color-text-disabled);
     pointer-events: none;
 }
+
+/* The global :focus-visible rule raises the focused input to
+   var(--z-raised); the pill overlays must stay above it or they vanish
+   the moment the field is focused. */
+.search-pill__icon,
+.search-pill__clear,
+.search-pill__filter {
+    z-index: calc(var(--z-raised) + 1);
+}
 .search-pill__input {
     width: 100%;
     min-height: var(--touch-target-min);
-    padding: var(--gap-xs) var(--gap-xl) var(--gap-xs) var(--gap-lg);
+    padding: var(--gap-xs) calc(var(--gap-xl) + var(--gap-lg)) var(--gap-xs)
+        var(--gap-lg);
     background: var(--color-surface-3);
     border: 1px solid
         color-mix(in srgb, var(--color-primary) 20%, var(--color-border-medium));
@@ -41,14 +51,28 @@
 }
 .search-pill__clear {
     position: absolute;
-    right: 34px; /* golden */
+    right: 44px; /* funnel box + 2px — icon-button convention */
     top: 50%;
     transform: translateY(-50%);
+    display: flex;
+    width: 34px; /* golden — same box as the funnel */
+    height: 34px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
     background: none;
     border: none;
+    border-radius: calc(var(--btn-radius) - 3px);
     color: var(--color-text-disabled);
     cursor: pointer;
-    padding: 8px;
+    transition: all var(--duration-fast);
+}
+/* Without the funnel, the clear button takes its place at the edge. */
+.search-pill__clear:last-child {
+    right: 8px;
+}
+.search-pill__clear:hover {
+    background: color-mix(in srgb, var(--color-text-tertiary) 8%, transparent);
 }
 .search-pill__clear:hover {
     color: var(--color-text-primary);
@@ -80,9 +104,11 @@
     background: color-mix(in srgb, var(--color-primary) 15%, transparent);
 }
 /* Expand hit area to 48px */
+/* Expanded hit areas — vertical generosity, horizontal restraint so the
+   two adjacent buttons never swallow each other's clicks. */
 .search-pill__clear::after,
 .search-pill__filter::after {
     content: "";
     position: absolute;
-    inset: -8px;
+    inset: -5px -1px;
 }

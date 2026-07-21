@@ -15,6 +15,7 @@
             >
                 <span class="sidemenu-mobile__icon">
                     <img v-if="item.iconUrl" :src="item.iconUrl" :alt="item.name" />
+                    <ShellyDeviceGlyph v-else-if="item.icon === 'glyph:shelly-device'" />
                     <i v-else-if="item.icon" :class="item.icon" />
                     <span
                         v-if="item.link?.startsWith('/operations') && activeOperationsCount > 0"
@@ -54,9 +55,6 @@
         }"
         @mouseleave="peek = false"
     >
-        <!-- Logo (collapsed = compact mark only) -->
-        <div class="nav-logo">FM</div>
-
         <nav class="nav-links">
             <template v-for="entry in menuItems" :key="entry.name ?? entry.type">
                 <!-- Nav item -->
@@ -75,6 +73,7 @@
                 >
                     <span class="nav-icon">
                         <img v-if="entry.iconUrl" :src="entry.iconUrl" class="nav-icon-img" :alt="entry.name" />
+                        <ShellyDeviceGlyph v-else-if="entry.icon === 'glyph:shelly-device'" />
                         <i v-else-if="entry.icon" :class="entry.icon" />
                         <span
                             v-if="badgeFor(entry.link) > 0"
@@ -104,6 +103,7 @@ import {breakpointsTailwind, useBreakpoints} from '@vueuse/core';
 import {storeToRefs} from 'pinia';
 import {computed, ref} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
+import ShellyDeviceGlyph from '@/components/core/ShellyDeviceGlyph.vue';
 import {ALERTS_PATH, DEVICES_PATH} from '@/constants';
 import {sectionForPath} from '@/helpers/sections';
 import {useSidebarState} from '@/helpers/ui';
@@ -119,6 +119,7 @@ const bgOpsStore = useBackgroundOpsStore();
 const generalStore = useGeneralStore();
 const jobsStore = useJobsStore();
 const {sidebarGlass} = storeToRefs(generalStore);
+
 const activeOperationsCount = computed(
     () => bgOpsStore.activeJobCount + jobsStore.activeJobCount
 );
@@ -278,7 +279,7 @@ function isActive(link: string) {
     object-fit: contain;
 }
 .sidemenu-mobile__label {
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     color: var(--color-text-tertiary);
     white-space: nowrap;
@@ -369,27 +370,6 @@ function isActive(link: string) {
 .scrim-enter-from,
 .scrim-leave-to {
     opacity: 0;
-}
-
-/* ── Logo ── */
-.nav-sidebar .nav-logo {
-    padding: 0 var(--space-5) var(--space-5);
-    font-size: var(--type-body);
-    font-weight: var(--font-black);
-    letter-spacing: -0.6px;
-    color: var(--color-text-primary);
-    white-space: nowrap;
-    overflow: hidden;
-    margin-bottom: var(--space-3);
-}
-.nav-sidebar .nav-logo span {
-    color: var(--color-text-tertiary);
-}
-.nav-sidebar--collapsed .nav-logo {
-    text-align: center;
-    padding: 0 0 var(--space-3);
-    font-size: var(--type-body);
-    letter-spacing: 0;
 }
 
 /* ── Section toggles (sidebar) ── */
@@ -514,6 +494,14 @@ function isActive(link: string) {
     justify-content: center;
     font-size: var(--type-subheading);
     position: relative;
+}
+/* Custom glyph: em-sized like FA siblings, +15% optical compensation —
+   outline drawings read lighter than FA's filled glyphs at equal box size. */
+.nav-item .nav-icon svg {
+    width: 1.15em;
+    height: 1.15em;
+    /* The wrapper already applies the nav dimming; don't double it. */
+    opacity: 1;
 }
 .nav-badge {
     position: absolute;

@@ -3,6 +3,7 @@
         <div class="dva__menu-wrap">
             <button
                 ref="menuTriggerRef"
+                type="button"
                 class="dva__btn"
                 :class="{'dva__btn--active': menuOpen}"
                 aria-label="More actions"
@@ -14,63 +15,71 @@
             </button>
 
             <div v-if="menuOpen" ref="menuRef" class="dva__menu" role="menu">
+                <!-- Dashboard-specific actions (only when a page registered chrome) -->
                 <button
+                    v-if="actions?.canEdit"
+                    type="button"
                     class="dva__menu-item"
-                    :disabled="loading"
                     role="menuitem"
-                    aria-label="Refresh dashboard"
-                    @click="onMenuChoice('refresh')"
+                    @click="onMenuChoice('edit')"
                 >
-                    <i
-                        class="fas fa-arrows-rotate"
-                        :class="{'fa-spin': loading}"
-                        aria-hidden="true"
-                    />
-                    Refresh dashboard
+                    <i class="fas fa-pen-to-square" aria-hidden="true" />
+                    Edit dashboard
                 </button>
                 <button
-                    v-if="actions.canShare"
+                    v-if="actions?.canEdit"
+                    type="button"
                     class="dva__menu-item"
                     role="menuitem"
-                    aria-label="Share dashboard"
+                    :disabled="actions.isDefault"
+                    @click="onMenuChoice('set-default')"
+                >
+                    <i class="fas fa-star" aria-hidden="true" />
+                    Set as default
+                    <i
+                        v-if="actions.isDefault"
+                        class="fas fa-check dva__menu-check"
+                        aria-hidden="true"
+                    />
+                </button>
+                <button
+                    v-if="canDuplicate"
+                    type="button"
+                    class="dva__menu-item"
+                    role="menuitem"
+                    @click="onMenuChoice('duplicate')"
+                >
+                    <i class="fas fa-clone" aria-hidden="true" />
+                    Duplicate
+                </button>
+                <button
+                    v-if="actions?.canShare"
+                    type="button"
+                    class="dva__menu-item"
+                    role="menuitem"
                     @click="onMenuChoice('share')"
                 >
                     <i class="fas fa-share-nodes" aria-hidden="true" />
                     Share dashboard
                 </button>
+
+                <hr v-if="hasDashboardActions" class="dva__menu-sep" />
+
+                <!-- Global lifecycle / navigation -->
                 <button
-                    v-if="actions.onOpenSettings"
+                    type="button"
                     class="dva__menu-item"
                     role="menuitem"
-                    @click="onMenuChoice('open-settings')"
-                >
-                    <i class="fas fa-gear" aria-hidden="true" />
-                    {{ actions.settingsLabel ?? 'Dashboard settings' }}
-                </button>
-                <hr class="dva__menu-sep" />
-                <button
-                    v-if="actions.canEdit"
-                    class="dva__menu-item"
-                    role="menuitem"
-                    @click="onMenuChoice('toggle-edit')"
-                >
-                    <i class="fas fa-pen-ruler" aria-hidden="true" />
-                    Edit dashboard
-                </button>
-                <button
-                    v-if="actions.canEdit"
-                    class="dva__menu-item"
-                    role="menuitem"
-                    @click="onMenuChoice('add-widget')"
+                    @click="onMenuChoice('create')"
                 >
                     <i class="fas fa-plus" aria-hidden="true" />
-                    Add widget
+                    Create dashboard
                 </button>
-                <hr v-if="actions.canEdit" class="dva__menu-sep" />
                 <button
+                    type="button"
                     class="dva__menu-item"
                     role="menuitem"
-                    @click="onMenuChoice('open-manage')"
+                    @click="onMenuChoice('manage')"
                 >
                     <i class="fas fa-table-cells-large" aria-hidden="true" />
                     Manage dashboards
@@ -81,29 +90,46 @@
 </template>
 
 <script setup lang="ts">
-import {computed, onBeforeUnmount, ref, watch} from 'vue';
+import {computed, inject, onBeforeUnmount, ref, watch} from 'vue';
+import {OPEN_DASHBOARD_PALETTE_KEY} from '@/helpers/dashboardKeys';
 import type {DashChromeActions} from '@/stores/dashboardChrome';
 
-const props = defineProps<{actions: DashChromeActions}>();
-const loading = computed(() => props.actions.loading);
+// Nullable: pages that don't register chrome (map, analytics) still get the
+// ⋮ with Create / Manage — only the dashboard-specific items are page-gated.
+const props = defineProps<{actions: DashChromeActions | null}>();
+
+// Provided by the /dash shell (pages/dash.vue). Opens the dashboard palette in
+// list mode ("Manage dashboards") or create mode ("Create dashboard").
+const openPalette = inject(OPEN_DASHBOARD_PALETTE_KEY);
+
 const menuOpen = ref(false);
 const menuRef = ref<HTMLElement | null>(null);
 const menuTriggerRef = ref<HTMLElement | null>(null);
 
+const canDuplicate = computed(
+    () => props.actions?.kind === 'bento' && !!props.actions.onDuplicate
+);
+const hasDashboardActions = computed(
+    () =>
+        Boolean(props.actions?.canEdit) ||
+        canDuplicate.value ||
+        Boolean(props.actions?.canShare)
+);
+
 type MenuChoice =
-    | 'refresh'
+    | 'edit'
+    | 'set-default'
+    | 'duplicate'
     | 'share'
-    | 'open-settings'
-    | 'toggle-edit'
-    | 'add-widget'
-    | 'open-manage';
+    | 'create'
+    | 'manage';
 const MENU_HANDLERS: Record<MenuChoice, () => void> = {
-    refresh: () => props.actions.onRefresh(),
-    share: () => props.actions.onShare(),
-    'open-settings': () => props.actions.onOpenSettings?.(),
-    'toggle-edit': () => props.actions.onToggleEdit(),
-    'add-widget': () => props.actions.onAddWidget(),
-    'open-manage': () => props.actions.onOpenManage()
+    edit: () => props.actions?.onEdit(),
+    'set-default': () => props.actions?.onSetDefault(),
+    duplicate: () => props.actions?.onDuplicate?.(),
+    share: () => props.actions?.onShare?.(),
+    create: () => openPalette?.({mode: 'create'}),
+    manage: () => openPalette?.({mode: 'list'})
 };
 
 function onMenuChoice(choice: MenuChoice): void {
@@ -187,7 +213,7 @@ onBeforeUnmount(() => {
     background: var(--color-surface-2);
     border: 1px solid var(--color-border-medium);
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-card);
+    box-shadow: var(--shadow-md);
     padding: var(--space-1);
     z-index: var(--z-overlay);
     display: flex;
@@ -215,6 +241,10 @@ onBeforeUnmount(() => {
 }
 .dva__menu-item:disabled:hover {
     background: transparent;
+}
+.dva__menu-check {
+    margin-left: auto;
+    color: var(--color-primary);
 }
 .dva__menu-sep {
     border: 0;

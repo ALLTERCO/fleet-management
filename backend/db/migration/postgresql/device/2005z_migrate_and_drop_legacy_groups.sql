@@ -1,4 +1,5 @@
 --------------UP
+-- LINT-IGNORE: additive-only (deliberate legacy function removal)
 -- Legacy `device.groups` replaced by `organization.groups` + `organization.group_members`.
 INSERT INTO organization.profile (id, name, display_name, metadata, created_at, updated_at)
 SELECT

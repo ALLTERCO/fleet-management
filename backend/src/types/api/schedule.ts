@@ -180,7 +180,10 @@ const CREATE_RESPONSE_SCHEMA: JsonSchema = {
 };
 
 const PERM_DEVICE_READ = {component: 'devices', operation: 'read'} as const;
-const PERM_DEVICE_EXEC = {component: 'devices', operation: 'execute'} as const;
+const PERM_DEVICE_UPDATE = {
+    component: 'devices',
+    operation: 'update'
+} as const;
 
 export const SCHEDULE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     'schedule',
@@ -199,25 +202,25 @@ export const SCHEDULE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('Create', {
         params: SCHEDULE_CREATE_PARAMS_SCHEMA,
         response: CREATE_RESPONSE_SCHEMA,
-        permission: PERM_DEVICE_EXEC,
+        permission: PERM_DEVICE_UPDATE,
         description: 'Add a new schedule job; returns the device-assigned id.'
     })
     .registerMethod('Update', {
         params: SCHEDULE_UPDATE_PARAMS_SCHEMA,
         response: SUCCESS_SCHEMA,
-        permission: PERM_DEVICE_EXEC,
+        permission: PERM_DEVICE_UPDATE,
         description: 'Partial-update an existing schedule job by id.'
     })
     .registerMethod('Delete', {
         params: SCHEDULE_DELETE_PARAMS_SCHEMA,
         response: SUCCESS_SCHEMA,
-        permission: PERM_DEVICE_EXEC,
+        permission: PERM_DEVICE_UPDATE,
         description: 'Remove a schedule job by id.'
     })
     .registerMethod('DeleteAll', {
         params: SCHEDULE_DELETE_ALL_PARAMS_SCHEMA,
         response: SUCCESS_SCHEMA,
-        permission: PERM_DEVICE_EXEC,
+        permission: PERM_DEVICE_UPDATE,
         description: 'Wipe every schedule job on the target device.'
     })
     .build();

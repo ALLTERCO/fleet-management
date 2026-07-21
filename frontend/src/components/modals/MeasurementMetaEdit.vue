@@ -168,7 +168,7 @@ watch(
 }
 .mme__label {
     color: var(--color-text-secondary);
-    font-size: var(--type-small, 0.85rem);
+    font-size: var(--type-caption);
     font-weight: 600;
 }
 .mme__select,

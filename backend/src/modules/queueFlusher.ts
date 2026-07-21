@@ -45,6 +45,8 @@ interface FlushAttempt<TBatch> {
 }
 
 export interface QueueFlusherHandle {
+    // Flushes the current batch without stopping the periodic worker.
+    flushNow(): Promise<void>;
     // Stops the timer and flushes any remaining batch once, so a graceful
     // shutdown doesn't drop buffered rows.
     stop(): Promise<void>;
@@ -58,14 +60,21 @@ export function createQueueFlusher<TBatch>(
         logger: log4js.getLogger(`${spec.name}-flusher`)
     };
     let flushSeq = 0;
+    let inFlight: Promise<void> = Promise.resolve();
+    const flush = (): Promise<void> => {
+        const next = inFlight.then(() => tick(ctx, ++flushSeq));
+        inFlight = next.catch(() => undefined);
+        return next;
+    };
     const timer = setInterval(() => {
-        void tick(ctx, ++flushSeq);
+        void flush();
     }, spec.intervalMs);
     timer.unref?.();
     return {
+        flushNow: flush,
         async stop() {
             clearInterval(timer);
-            await tick(ctx, ++flushSeq);
+            await flush();
         }
     };
 }

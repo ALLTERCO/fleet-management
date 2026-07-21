@@ -1,5 +1,5 @@
 <template>
-    <!-- 1×1: state display + mode subtitle -->
+    <!-- 1×1: one centered fact per input mode -->
     <CardShell
         v-if="size === '1x1'"
         type="input"
@@ -9,52 +9,44 @@
         :is-on="isActive"
         :is-offline="isOffline" :is-sleeping="isSleeping"
         :edit-mode="editMode"
+        :allowed-sizes="allowedSizes"
         @open-detail="$emit('open-detail')"
         @delete="$emit('delete')" @cycle-size="$emit('cycle-size')"
+        @resize="(s: string) => $emit('resize', s)"
     >
         <template #default>
-            <div v-if="isAnalog" class="ec-hv-wrap">
-                <span class="ec-hv">{{ analogDisplay }}</span>
-                <span class="ec-hu">{{ analogUnit }}</span>
-            </div>
-            <div v-else-if="isCount" class="ec-hv-wrap">
-                <span class="ec-hv">{{ countDisplay }}</span>
-                <span class="ec-hu">cnt</span>
-            </div>
-            <!-- Switch: toggle visual -->
-            <template v-else-if="inputMode === 'switch'">
-                <svg width="64" height="34" viewBox="0 0 64 34" fill="none">
-                    <rect x="1" y="1" width="62" height="32" rx="16" :stroke="isActive ? 'rgba(26,217,178,.3)' : 'rgba(148,163,184,.2)'" stroke-width="1.5" :fill="isActive ? 'rgba(26,217,178,.06)' : 'rgba(148,163,184,.04)'" />
-                    <circle :cx="isActive ? 46 : 18" cy="17" r="12" :fill="isActive ? 'var(--color-status-on)' : 'var(--color-frost)'" :opacity="isActive ? 1 : 0.6" />
-                    <path v-if="isActive" d="M41 17l3 3 6-6" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
-                </svg>
-                <div role="status" class="ec-state ec-state-lg" :class="isActive ? 's-on' : ''">{{ isActive ? 'Closed' : 'Open' }}</div>
+            <!-- Switch: open/closed contact state -->
+            <template v-if="inputMode === 'switch'">
+                <div role="status" class="ec-state-lg" :class="isActive ? 's-closed' : 's-open'">{{ switchStateWord }}</div>
+                <div class="ec-sub ec-sub--sensor">{{ modeLabel }}</div>
             </template>
-            <!-- Button: ripple circles + event text -->
+            <!-- Button: last gesture + when -->
             <template v-else-if="inputMode === 'button'">
-                <div class="ec-input-ripple" :class="lastEvent === 'long_push' ? 'ec-input-ripple--warn' : ''">
-                    <div class="ec-input-ring ec-input-ring--outer" />
-                    <div class="ec-input-ring ec-input-ring--mid" />
-                    <div class="ec-input-ring ec-input-ring--inner">
-                        <span v-if="lastEvent === 'single_push'" class="ec-input-press">1&times;</span>
-                        <span v-else-if="lastEvent === 'double_push'" class="ec-input-press">2&times;</span>
-                        <span v-else-if="lastEvent === 'long_push'" class="ec-input-press ec-input-press--hold">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="6" x2="12" y2="12" /><line x1="12" y1="16" x2="12" y2="16.01" /></svg>
-                        </span>
-                        <span v-else class="ec-input-press ec-input-press--idle">&mdash;</span>
-                    </div>
-                </div>
-                <div role="status" class="ec-state ec-state-lg s-accent">{{ buttonStateDisplay }}</div>
+                <div role="status" class="in-gesture">{{ lastGesture ?? 'Ready' }}</div>
+                <div class="ec-sub ec-sub--sensor">{{ lastGestureAgo || modeLabel }}</div>
             </template>
-            <div v-else role="status" class="ec-state ec-state-lg s-accent">{{ buttonStateDisplay }}</div>
-            <div class="ec-sub ec-sub--sensor">{{ inputTypeWithMode }}</div>
+            <!-- Analog: calibrated value -->
+            <template v-else-if="isAnalog">
+                <div class="ec-hv-wrap"><span class="ec-hv in-hv">{{ analogDisplay }}</span><span class="ec-hu">{{ analogUnit }}</span></div>
+                <div class="ec-sub ec-sub--sensor">{{ modeLabel }}</div>
+            </template>
+            <!-- Count: total pulses + live rate -->
+            <template v-else-if="isCount">
+                <div class="ec-hv-wrap"><span class="ec-hv in-hv">{{ countDisplay }}</span></div>
+                <div class="ec-sub ec-sub--sensor">{{ countFreqDisplay !== '—' ? `${countFreqDisplay} Hz` : 'Pulses' }}</div>
+            </template>
+            <!-- Unknown mode -->
+            <template v-else>
+                <div role="status" class="ec-state-lg s-off">{{ buttonStateDisplay }}</div>
+                <div class="ec-sub ec-sub--sensor">Input</div>
+            </template>
         </template>
         <template #badges>
             <CardBadges :is-offline="isOffline" :shelly-id="entity.source" />
         </template>
     </CardShell>
 
-    <!-- 2×1: accent state + event history + counters -->
+    <!-- 2×1: the same fact, centered, with one line of context -->
     <CardShell
         v-else-if="size === '2x1'"
         type="input"
@@ -64,141 +56,52 @@
         :is-on="isActive"
         :is-offline="isOffline" :is-sleeping="isSleeping"
         :edit-mode="editMode"
+        :allowed-sizes="allowedSizes"
         @open-detail="$emit('open-detail')"
         @delete="$emit('delete')" @cycle-size="$emit('cycle-size')"
+        @resize="(s: string) => $emit('resize', s)"
     >
         <template #default>
-            <div class="ec-wide-row">
-                <div class="ec-wl">
-                    <div v-if="isAnalog" class="ec-hv-wrap">
-                        <span class="ec-hv">{{ analogDisplay }}</span>
-                        <span class="ec-hu">{{ analogUnit }}</span>
-                    </div>
-                    <div v-else-if="isCount" class="ec-hv-wrap">
-                        <span class="ec-hv">{{ countDisplay }}</span>
-                        <span class="ec-hu">cnt</span>
-                    </div>
-                    <div v-else class="ec-hv-wrap">
-                        <span class="ec-hv ec-hv--accent">{{ buttonStateInline }}</span>
-                    </div>
-                    <div class="ec-sub ec-sub--static">{{ inputTypeWithMode }}</div>
-                </div>
-                <div class="ec-wr">
-                    <div class="ec-input-events">
-                        <template v-if="eventHistory.length">
-                            <div v-for="(ev, i) in eventHistory.slice(0, 3)" :key="i" class="ec-input-ev">
-                                <span class="ec-input-ts">{{ formatEventTime(ev.ts) }}</span>
-                                <span class="ec-input-act" :style="{color: isLongPush(ev.type) ? 'var(--color-status-warn)' : 'var(--a-button)'}">{{ formatEventType(ev.type) }}</span>
-                            </div>
-                        </template>
-                        <div v-else class="ec-input-ev">
-                            <span class="ec-input-ts">—</span>
-                            <span class="ec-input-act ec-input-act--waiting">Waiting for events</span>
-                        </div>
-                    </div>
-                    <div class="ec-tl-stats">
-                        <div class="ec-tl-stat"><b>{{ todayEventCount || '—' }}</b> session</div>
-                        <div class="ec-tl-stat"><b>{{ eventHistory.length }}</b> captured</div>
-                    </div>
-                </div>
+            <!-- Switch: state + wiring -->
+            <div v-if="inputMode === 'switch'" class="in-2x1">
+                <div role="status" class="ec-state-lg" :class="isActive ? 's-closed' : 's-open'">{{ switchStateWord }}</div>
+                <div class="in-meta">Switch input · {{ isInverted ? 'Inverted' : 'Normal' }} signal</div>
             </div>
-        </template>
-        <template #badges>
-            <CardBadges :is-offline="isOffline" :shelly-id="entity.source" />
-        </template>
-    </CardShell>
 
-    <!-- 2×2: hero state + event timeline + event log + stats -->
-    <CardShell
-        v-else
-        type="input"
-        :name="entity.name"
-        icon="fas fa-toggle-on"
-        size="2x2"
-        :is-on="isActive"
-        :is-offline="isOffline" :is-sleeping="isSleeping"
-        :edit-mode="editMode"
-        @open-detail="$emit('open-detail')"
-        @delete="$emit('delete')" @cycle-size="$emit('cycle-size')"
-    >
-        <template #default>
-            <div class="ec-hero-top ec-hero-top--right">
-                <div>
-                    <div v-if="isAnalog" class="ec-hv-wrap">
-                        <span class="ec-hv">{{ analogDisplay }}</span>
-                        <span class="ec-hu">{{ analogUnit }}</span>
-                    </div>
-                    <div v-else-if="isCount" class="ec-hv-wrap">
-                        <span class="ec-hv">{{ countDisplay }}</span>
-                        <span class="ec-hu">count</span>
-                    </div>
-                    <div v-else role="status" class="ec-state s-open ec-state-lg s-accent ec-state--hero-accent">{{ buttonStateInline }}</div>
-                    <div class="ec-hero-top-u">{{ isAnalog ? analogRawDisplay : lastEventDetail }}</div>
+            <!-- Analog: value + level bar -->
+            <div v-else-if="isAnalog" class="in-2x1">
+                <div class="ec-hv-wrap"><span class="ec-hv">{{ analogDisplay }}</span><span class="ec-hu">{{ analogUnit }}</span></div>
+                <div class="in-bar"><div class="in-bar-fill" :style="{width: `${analogBarPct}%`}" /></div>
+                <div class="in-meta">Analog input · raw {{ analogBarPct }}%</div>
+            </div>
+
+            <!-- Count: total + live rate -->
+            <div v-else-if="isCount" class="in-2x1">
+                <div class="ec-hv-wrap"><span class="ec-hv">{{ countDisplay }}</span></div>
+                <div class="in-meta">{{ countFreqDisplay }} Hz · {{ countByMinute[0] ?? '—' }} last min · pulses</div>
+            </div>
+
+            <!-- Button: last gesture + when -->
+            <div v-else class="in-2x1">
+                <template v-if="lastGesture">
+                    <div role="status" class="in-gesture">{{ lastGesture }}</div>
+                    <div class="in-meta">{{ lastGestureAgo }} · {{ eventHistory.length }} recent {{ eventHistory.length === 1 ? 'press' : 'presses' }}</div>
+                </template>
+                <div v-else class="in-idle">
+                    <i class="fas fa-hand-pointer" aria-hidden="true" />
+                    <span>No presses yet</span>
                 </div>
             </div>
         </template>
         <template #badges>
             <CardBadges :is-offline="isOffline" :shelly-id="entity.source" />
-        </template>
-        <template #footer>
-            <!-- Event timeline -->
-            <div class="ec-tl-wrap">
-                <div class="ec-tl-bar ec-tl-bar--6">
-                    <div class="ec-tl-seg ec-tl-seg--f2 ec-tl-seg--empty"></div>
-                    <div class="ec-tl-seg ec-tl-seg--f1 ec-tl-seg--full"></div>
-                    <div class="ec-tl-seg ec-tl-seg--f3 ec-tl-seg--empty"></div>
-                    <div class="ec-tl-seg ec-tl-seg--f1 ec-tl-seg--full"></div>
-                    <div class="ec-tl-seg ec-tl-seg--f1 ec-tl-seg--empty"></div>
-                    <div class="ec-tl-seg ec-tl-seg--f1 ec-tl-seg--warn"></div>
-                    <div class="ec-tl-seg ec-tl-seg--f2 ec-tl-seg--empty"></div>
-                    <div class="ec-tl-seg ec-tl-seg--f1 ec-tl-seg--full"></div>
-                    <div class="ec-tl-seg ec-tl-seg--f1 ec-tl-seg--full"></div>
-                    <div class="ec-tl-seg ec-tl-seg--f4 ec-tl-seg--empty"></div>
-                    <div class="ec-tl-seg ec-tl-seg--f1 ec-tl-seg--full"></div>
-                    <div class="ec-tl-seg ec-tl-seg--f6 ec-tl-seg--empty"></div>
-                </div>
-                <div class="ec-tl-axis"><span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>24h</span></div>
-            </div>
-            <!-- Recent events log -->
-            <div class="ec-input-log">
-                <template v-if="eventHistory.length">
-                    <div v-for="(ev, i) in eventHistory.slice(0, 5)" :key="i" class="ec-input-ev">
-                        <span class="ec-input-ts">{{ formatEventTime(ev.ts) }}</span>
-                        <span class="ec-input-act" :style="{color: isLongPush(ev.type) ? 'var(--color-status-warn)' : 'var(--a-button)'}">{{ formatEventType(ev.type) }}</span>
-                        <span class="ec-input-detail">{{ ev.type }}</span>
-                    </div>
-                </template>
-                <div v-else class="ec-input-ev">
-                    <span class="ec-input-ts">—</span>
-                    <span class="ec-input-act ec-input-act--waiting">Waiting for events</span>
-                    <span class="ec-input-detail">Press a button to see events</span>
-                </div>
-            </div>
-            <!-- Hero stats -->
-            <div class="ec-hero-info">
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ isAnalog ? analogRawPct : String(todayEventCount) }}</div>
-                    <div class="ec-hero-stat-l">{{ isAnalog ? 'Raw %' : 'Session' }}</div>
-                </div>
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ isAnalog ? analogUnit : String(eventHistory.length) }}</div>
-                    <div class="ec-hero-stat-l">{{ isAnalog ? 'Unit' : 'Captured' }}</div>
-                </div>
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ inputTypeShort }}</div>
-                    <div class="ec-hero-stat-l">Type</div>
-                </div>
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ inputModeShort }}</div>
-                    <div class="ec-hero-stat-l">Mode</div>
-                </div>
-            </div>
         </template>
     </CardShell>
 </template>
 
 <script setup lang="ts">
 import {computed, onBeforeUnmount, onMounted, ref} from 'vue';
+import {allowedSizesForEntity} from '@/helpers/widgetCatalog';
 import {useDevicesStore} from '@/stores/devices';
 import {useEntityStore} from '@/stores/entities';
 import type {entity_t} from '@/types';
@@ -218,7 +121,11 @@ defineEmits<{
     'open-detail': [];
     delete: [];
     'cycle-size': [];
+    resize: [size: string];
 }>();
+
+// Wired inputs cap at 1x1/2x1 — no 2x2 (see allowedSizesForEntity).
+const allowedSizes = computed(() => allowedSizesForEntity(props.entity));
 
 const deviceStore = useDevicesStore();
 const entitiesStore = useEntityStore();
@@ -226,7 +133,9 @@ const device = computed(() => deviceStore.devices[props.entity.source]);
 const isOffline = computed(() => !device.value?.online);
 const isSleeping = computed(() => !!device.value?.sleeping);
 
-// ── Event History (client-side ring buffer) ─────────────────────────────
+// ── Event history (client-side ring buffer) ─────────────────────────────
+// Buttons are stateless on the device — presses arrive only as live events, so
+// the last gesture comes from here, not from status.
 interface InputEvent {
     type: string;
     ts: number;
@@ -250,9 +159,9 @@ onBeforeUnmount(() => {
 });
 
 const EVENT_LABELS: Record<string, string> = {
-    single_push: '1\u00d7 Press',
-    double_push: '2\u00d7 Press',
-    triple_push: '3\u00d7 Press',
+    single_push: 'Single',
+    double_push: 'Double',
+    triple_push: 'Triple',
     long_push: 'Hold',
     btn_down: 'Down',
     btn_up: 'Up'
@@ -270,17 +179,6 @@ function formatEventTime(ts: number): string {
     return `${Math.floor(diff / 3600)}h ago`;
 }
 
-function isLongPush(type: string): boolean {
-    return type === 'long_push';
-}
-
-const todayEventCount = computed(() => {
-    const midnight = new Date();
-    midnight.setHours(0, 0, 0, 0);
-    const ms = midnight.getTime();
-    return eventHistory.value.filter((e) => e.ts >= ms).length;
-});
-
 const status = computed(() => {
     if (!device.value) return null;
     const e = props.entity;
@@ -293,26 +191,29 @@ const settings = computed(() => {
     return device.value.settings?.[`${e.type}:${e.properties.id}`] ?? null;
 });
 
-const inputMode = computed(() => {
-    // Input mode from entity properties or settings
-    const mode = props.entity.properties.type ?? settings.value?.type;
-    return mode ?? '—';
-});
+const inputMode = computed(
+    () => props.entity.properties.type ?? settings.value?.type ?? '—'
+);
 
 const isAnalog = computed(() => inputMode.value === 'analog');
 const isCount = computed(() => inputMode.value === 'count');
-const lastEvent = computed(
-    () => status.value?.last_event as string | undefined
+
+const latestEvent = computed(() => eventHistory.value[0] ?? null);
+const lastGesture = computed(() =>
+    latestEvent.value ? formatEventType(latestEvent.value.type) : null
+);
+const lastGestureAgo = computed(() =>
+    latestEvent.value ? formatEventTime(latestEvent.value.ts) : ''
 );
 
 const isActive = computed(() => {
     if (isAnalog.value) return (status.value?.percent ?? 0) > 0;
-    if (isCount.value) return (status.value?.count ?? 0) > 0;
-    // Switch-type input: device sends "state" field (boolean)
+    if (isCount.value) return (status.value?.counts?.total ?? 0) > 0;
+    // Switch-type input: device sends a boolean "state" field.
     return !!status.value?.state;
 });
 
-// Analog: prefer xpercent (calibrated) value, fall back to raw percent
+// Analog: prefer xpercent (calibrated), fall back to raw percent.
 const analogDisplay = computed(() => {
     const xp = status.value?.xpercent;
     if (xp != null)
@@ -320,80 +221,112 @@ const analogDisplay = computed(() => {
     const v = status.value?.percent;
     return v != null ? String(Math.round(v)) : '—';
 });
-
 const analogUnit = computed(() => props.entity.properties.unit || '%');
+// Raw 0-100% for the bar fill, independent of the calibrated value.
+const analogBarPct = computed(() =>
+    Math.max(0, Math.min(100, Math.round(status.value?.percent ?? 0)))
+);
 
-// Raw percentage (before xpercent transformation) — shown in 2x2 stats
-const analogRawPct = computed(() => {
-    const v = status.value?.percent;
-    return v != null ? `${Math.round(v)}%` : '—';
-});
-
-// Subtitle for 2x2 analog: show raw vs calibrated relationship
-const analogRawDisplay = computed(() => {
-    const raw = status.value?.percent;
-    if (raw == null) return '—';
-    return `Raw: ${Math.round(raw)}%`;
-});
-
+// Count: device reports counts.total / freq / by_minute (Shelly Input docs).
 const countDisplay = computed(() => {
-    const c = status.value?.count;
-    return c != null ? String(c) : '—';
+    const c = status.value?.counts?.total;
+    return typeof c === 'number' ? String(c) : '—';
+});
+const countFreqDisplay = computed(() => {
+    const f = status.value?.freq;
+    if (typeof f !== 'number') return '—';
+    return f < 10 ? f.toFixed(1) : String(Math.round(f));
+});
+const countByMinute = computed<number[]>(() => {
+    const bm = status.value?.counts?.by_minute;
+    return Array.isArray(bm) ? bm.slice(0, 3) : [];
 });
 
-// Button state display for 1x1 (multiline-friendly)
-const buttonStateDisplay = computed(() => {
-    if (inputMode.value === 'button') {
-        const last = status.value?.last_event;
-        if (last === 'single_push') return '1\u00d7 Press';
-        if (last === 'double_push') return '2\u00d7 Press';
-        if (last === 'long_push') return 'Hold';
-        return 'Button';
-    }
-    return isActive.value ? 'ON' : 'OFF';
-});
+// Switch: open/closed wording (closed contact = active), plus config context.
+const switchStateWord = computed(() => (isActive.value ? 'Closed' : 'Open'));
+const isInverted = computed(() => !!settings.value?.invert);
 
-// Button state display inline (single line for 2x1 / 2x2)
-const buttonStateInline = computed(() => {
-    if (inputMode.value === 'button') {
-        const last = status.value?.last_event;
-        if (last === 'single_push') return '1\u00d7 Press';
-        if (last === 'double_push') return '2\u00d7 Press';
-        if (last === 'long_push') return 'Hold';
-        return 'Button';
-    }
-    return isActive.value ? 'ON' : 'OFF';
-});
+// The input's configured mode — the useful label under the 1x1 state.
+const MODE_LABELS: Record<string, string> = {
+    switch: 'Switch mode',
+    button: 'Button mode',
+    analog: 'Analog mode',
+    count: 'Counter mode'
+};
+const modeLabel = computed(() => MODE_LABELS[inputMode.value] ?? 'Input');
 
-const inputTypeShort = computed(() => {
-    const mode = inputMode.value;
-    if (mode === 'button') return 'Button';
-    if (mode === 'switch') return 'Switch';
-    if (mode === 'analog') return 'Analog';
-    if (mode === 'count') return 'Counter';
-    return '—';
-});
-
-const inputModeShort = computed(() => {
-    // Linked output determines "detached" vs mode name
-    const linked = settings.value?.linked_output;
-    if (linked == null) return 'Detach';
-    return 'Linked';
-});
-
-const inputTypeWithMode = computed(() => {
-    const parts = [inputTypeShort.value];
-    const linked = settings.value?.linked_output;
-    if (linked == null) {
-        parts.push('Detached');
-    } else {
-        parts.push('Linked');
-    }
-    return parts.join(' \u00b7 ');
-});
-
-const lastEventDetail = computed(() => {
-    const last = status.value?.last_event;
-    return last ? `${last}` : '—';
-});
+// Unknown mode fallback — a clean on/off word, never the raw type name.
+const buttonStateDisplay = computed(() => (isActive.value ? 'ON' : 'OFF'));
 </script>
+
+<style scoped>
+/* 2x1 — one centered stack per input mode (the value zone is top-aligned at
+   this size, so center it here). */
+.in-2x1 {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1-5);
+    text-align: center;
+}
+
+/* 1x1 analog/count value — numbers can fill the whole tile, so take the display
+   size (word heroes stay smaller, capped by their width). */
+.in-hv {
+    font-size: var(--type-display);
+    line-height: 0.95;
+}
+
+/* Button gesture — single-word hero at the same heading size as the other
+   modes (fits: same length as the switch "Closed"). */
+.in-gesture {
+    font-size: var(--type-heading);
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    line-height: 1;
+    color: var(--color-text-primary);
+    text-align: center;
+}
+
+/* Context line under the hero. */
+.in-meta {
+    font-size: var(--type-caption);
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    letter-spacing: -0.2px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Analog level bar. */
+.in-bar {
+    width: 72%;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: var(--color-surface-2);
+    overflow: hidden;
+}
+.in-bar-fill {
+    height: 100%;
+    border-radius: var(--radius-full);
+    background: linear-gradient(90deg, var(--color-primary), var(--a-button));
+    transition: width var(--duration-normal) ease;
+}
+
+/* Button idle — one clean centered state. */
+.in-idle {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--color-text-tertiary);
+}
+.in-idle i {
+    font-size: var(--type-subheading);
+    opacity: 0.55;
+}
+.in-idle span {
+    font-size: var(--type-body);
+}
+</style>

@@ -1,3 +1,4 @@
+import {deviceActionErrorMessage} from '@/helpers/deviceActionError';
 import {useEntityStore} from '@/stores/entities';
 import {useToastStore} from '@/stores/toast';
 
@@ -14,9 +15,13 @@ export function useCardRpc() {
         params?: Record<string, unknown>,
         context?: string
     ): Promise<void> {
-        return entityStore.invokeAction(entityId, action, params).catch(() => {
-            toastStore.error(context ? `${context} failed` : 'Command failed');
-        });
+        return entityStore
+            .invokeAction(entityId, action, params)
+            .catch((err) => {
+                // Show the device's actual reason (e.g. "Output not
+                // calibrated"), not a generic "Command failed".
+                toastStore.error(deviceActionErrorMessage(err, context));
+            });
     }
 
     return {invokeAction};

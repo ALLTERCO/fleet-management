@@ -1,4 +1,5 @@
 import {type Ref, ref, watch} from 'vue';
+import {formatRpcError} from '@/helpers/domainErrors';
 import * as ws from '@/tools/websocket';
 
 interface MetricValues {
@@ -20,6 +21,8 @@ export function useGroupLiveMetrics(groupId: Ref<number | null | undefined>) {
     const avgTemperature = ref<number | null>(null);
     const avgHumidity = ref<number | null>(null);
     const loading = ref(false);
+    // Non-null when the metrics fetch failed — nulls then mean "unknown", not "no data".
+    const error = ref<string | null>(null);
 
     function metricTotal(m: MetricValues | undefined): number | null {
         if (!m) return null;
@@ -34,6 +37,7 @@ export function useGroupLiveMetrics(groupId: Ref<number | null | undefined>) {
             totalPower.value = null;
             avgTemperature.value = null;
             avgHumidity.value = null;
+            error.value = null;
             return;
         }
         loading.value = true;
@@ -51,15 +55,17 @@ export function useGroupLiveMetrics(groupId: Ref<number | null | undefined>) {
                     : null;
             avgHumidity.value =
                 typeof m.humidity?.avg === 'number' ? m.humidity.avg : null;
-        } catch {
+            error.value = null;
+        } catch (err) {
             totalPower.value = null;
             avgTemperature.value = null;
             avgHumidity.value = null;
+            error.value = formatRpcError(err, 'Failed to load live metrics');
         } finally {
             loading.value = false;
         }
     }
 
     watch(groupId, refresh, {immediate: true});
-    return {totalPower, avgTemperature, avgHumidity, loading, refresh};
+    return {totalPower, avgTemperature, avgHumidity, loading, error, refresh};
 }

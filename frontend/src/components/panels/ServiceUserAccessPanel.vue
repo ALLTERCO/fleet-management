@@ -363,7 +363,7 @@ onMounted(async () => {
 .suap__head span,
 .suap__hint {
     color: var(--color-text-tertiary);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
 }
 .suap__choices,
 .suap__preview-list {
@@ -409,6 +409,6 @@ onMounted(async () => {
 }
 .suap__error {
     color: var(--color-danger-text);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
 }
 </style>

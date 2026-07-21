@@ -1,4 +1,5 @@
 --------------UP
+-- LINT-IGNORE: additive-only (deliberate legacy function removal)
 -- Retire dead energy-classification SQL. The preset RPC methods and the
 -- DeleteClassification method are gone; SetPointOverride keeps only
 -- upsert (6000) + list (6002). These four functions have no caller left.

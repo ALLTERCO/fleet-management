@@ -73,6 +73,13 @@ export const DEVICE_SHELLY_ONLY_PARAMS_SCHEMA: JsonSchema = {
     properties: {shellyID: SHELLY_ID_SCHEMA}
 };
 
+// ListRetired takes no arguments; the empty schema rejects stray params.
+export const DEVICE_NO_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {}
+};
+
 export interface DeviceCheckReplacementParams {
     oldShellyID: string;
     newShellyID: string;
@@ -103,15 +110,17 @@ export const DEVICE_REPLACE_HARDWARE_PARAMS_SCHEMA: JsonSchema = {
 };
 
 export interface DeviceGetSetupParams {
-    shellyID: string;
+    shellyID?: string;
     mode?: 'json' | 'rpc';
 }
 export const DEVICE_GET_SETUP_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
-    required: ['shellyID'],
     additionalProperties: false,
     properties: {
-        shellyID: SHELLY_ID_SCHEMA,
+        shellyID: {
+            ...SHELLY_ID_SCHEMA,
+            description: 'Ignored compatibility field for older clients'
+        },
         mode: {type: 'string', enum: ['json', 'rpc'], default: 'json'}
     }
 };
@@ -563,7 +572,8 @@ b.registerMethod('List', {
     params: DEVICE_LIST_PARAMS_SCHEMA,
     response: RESP_LIST_ENVELOPE,
     permission: PERM_NONE,
-    description: 'Paginated slim device list (capability-filtered per user).'
+    description: 'Paginated slim device list (capability-filtered per user).',
+    safety: {operation: 'read'}
 });
 
 b.registerMethod('GetInfo', {
@@ -593,14 +603,15 @@ b.registerMethod('GetSetup', {
         description: 'Config profiles keyed by profile name'
     },
     permission: {
-        component: 'devices',
+        component: 'configurations',
         operation: 'read',
-        note: 'also requires configurations.read'
+        note: 'filtered by configuration_keys; independent of device admission'
     },
     description: 'Device configuration profiles.'
 });
 
 b.registerMethod('Call', {
+    safety: {effectDependsOnInput: true},
     params: DEVICE_CALL_PARAMS_SCHEMA,
     response: RESP_OPAQUE,
     permission: PERM_EXECUTE,
@@ -630,7 +641,60 @@ b.registerMethod('Delete', {
         properties: {deleted: {type: 'string'}}
     },
     permission: PERM_DELETE,
-    description: 'Remove device from fleet.'
+    description:
+        'Permanently purge a device and all its history. Irreversible — the everyday delete should use Retire.'
+});
+
+b.registerMethod('Retire', {
+    params: DEVICE_SHELLY_ONLY_PARAMS_SCHEMA,
+    response: {
+        type: 'object',
+        required: ['retired'],
+        properties: {retired: {type: 'string'}}
+    },
+    permission: PERM_DELETE,
+    description:
+        'Retire (soft-delete) a device: hide it from fleet lists but keep its id and history. Reversible via Restore.'
+});
+
+b.registerMethod('Restore', {
+    params: DEVICE_SHELLY_ONLY_PARAMS_SCHEMA,
+    response: {
+        type: 'object',
+        required: ['restored'],
+        properties: {restored: {type: 'string'}}
+    },
+    permission: PERM_DELETE,
+    // Reversible: destroys nothing, idempotent.
+    safety: {destructive: false, idempotent: true},
+    description: 'Restore a retired device with its full history.'
+});
+
+b.registerMethod('ListRetired', {
+    params: DEVICE_NO_PARAMS_SCHEMA,
+    response: {
+        type: 'object',
+        required: ['devices'],
+        properties: {
+            devices: {
+                type: 'array',
+                items: {
+                    type: 'object',
+                    properties: {
+                        id: {type: 'integer'},
+                        external_id: {type: 'string'},
+                        organization_id: {type: 'string'},
+                        kind: {type: ['string', 'null']},
+                        deleted_at: {type: 'string'}
+                    }
+                }
+            }
+        }
+    },
+    permission: PERM_READ,
+    description:
+        'List retired devices (the trash) available to restore or purge.',
+    safety: {operation: 'read'}
 });
 
 const DEVICE_KIND_RESPONSE: JsonSchema = {

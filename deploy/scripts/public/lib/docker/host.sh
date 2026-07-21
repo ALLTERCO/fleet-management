@@ -1,5 +1,13 @@
 # shellcheck shell=bash
 # Host OS, architecture, and IP detection.
+#
+# IP detection is shared with the private deploy path via
+# deploy/scripts/common/host-ip.sh (one exclusion list that drops docker,
+# bridge, loopback, link-local, and VPN/tunnel interfaces). detect_all_ips /
+# detect_ip below are thin public-facing wrappers over the shared detectors.
+_DOCKER_HOST_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=deploy/scripts/common/host-ip.sh
+source "$_DOCKER_HOST_LIB_DIR/../../../common/host-ip.sh"
 
 detect_os() {
     local os="" distro="" arch=""
@@ -52,48 +60,15 @@ detect_os() {
     ARCH="$arch"
 }
 
+# All usable host IPv4s, sorted and de-duplicated for display and the
+# multi-interface picker. Delegates to the shared detector so the public path
+# uses the same docker/bridge/VPN exclusion list as the private path.
 detect_all_ips() {
-    local ips=""
-
-    if command -v ip &>/dev/null; then
-        ips=$(ip -4 addr show scope global 2>/dev/null \
-            | awk '/^[0-9]+:/ { iface=$2 } /inet / { print iface, $2 }' \
-            | grep -vE '^(docker[0-9]*|br-|veth)' \
-            | awk '{sub(/\/.*/, "", $2); print $2}' \
-            | sort -u || true)
-    fi
-
-    if [ -z "$ips" ] && command -v ifconfig &>/dev/null; then
-        ips=$(ifconfig 2>/dev/null \
-            | grep 'inet ' | grep -v '127.0.0.1' \
-            | awk '{print $2}' | sort -u || true)
-    fi
-
-    echo "$ips"
+    detect_all_host_ips | sort -u
 }
 
+# Single host IP for hostname/URL derivation. Never fails: falls back to
+# "localhost" so callers can print a value unconditionally.
 detect_ip() {
-    local ip=""
-
-    if command -v ip &>/dev/null; then
-        ip=$(ip route get 1.1.1.1 2>/dev/null | sed -n 's/.*src \([0-9.]*\).*/\1/p' | head -1 2>/dev/null || true)
-    fi
-
-    if [ -z "$ip" ] && command -v hostname &>/dev/null; then
-        ip=$(hostname -I 2>/dev/null | awk '{print $1}' || true)
-    fi
-
-    if [ -z "$ip" ] && command -v ifconfig &>/dev/null; then
-        ip=$(ifconfig 2>/dev/null | grep 'inet ' | grep -v '127.0.0.1' | awk '{print $2}' | head -1 || true)
-    fi
-
-    if [ -z "$ip" ] && command -v route &>/dev/null; then
-        local iface
-        iface=$(route -n get default 2>/dev/null | grep 'interface:' | awk '{print $2}' || true)
-        if [ -n "$iface" ]; then
-            ip=$(ifconfig "$iface" 2>/dev/null | grep 'inet ' | awk '{print $2}' || true)
-        fi
-    fi
-
-    echo "${ip:-localhost}"
+    detect_host_ip 2>/dev/null || echo "localhost"
 }

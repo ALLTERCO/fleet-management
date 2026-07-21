@@ -1,6 +1,6 @@
 {
     "name": "@fleet-management/backend",
-    "version": "1.9.0",
+    "version": "1.91.0",
     "description": "",
     "main": "index.js",
     "scripts": {
@@ -70,6 +70,7 @@
     "devDependencies": {
         "@biomejs/biome": "2.4.15",
         "@scalar/api-reference": "^1.62.0",
+        "@terrastruct/d2": "^0.1.33",
         "@testcontainers/postgresql": "^12.0.3",
         "@types/adm-zip": "^0.5.8",
         "@types/compression": "^1.8.1",

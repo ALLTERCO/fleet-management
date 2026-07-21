@@ -3,6 +3,7 @@ import {api} from './api';
 import {audit, authzAudit} from './audit';
 import {backups} from './backups';
 import {bluetoothDevices} from './bluetoothDevices';
+import {channels} from './channels';
 import {configurations} from './configurations';
 import {auth} from './currentUser';
 import {dashboards} from './dashboards';
@@ -11,7 +12,6 @@ import {metrics} from './energy';
 import {entities} from './entities';
 import {firmware} from './firmware';
 import {groups} from './groups';
-import {integrations} from './integrations';
 import {locations} from './locations';
 import {navigation} from './navigation';
 import {notificationPolicies, notifications} from './notifications';
@@ -79,6 +79,12 @@ export type {
     HostResult
 } from './typed';
 export {callMethod, HOST_NAMESPACE_GUIDE} from './typed';
+export {
+    HOST_ESCAPE_HATCHES,
+    HOST_METHOD_METADATA,
+    type HostEscapeHatch,
+    type HostMethodMetadata
+} from './generated/method-metadata';
 export type {
     HostAction,
     HostAsyncState,
@@ -95,6 +101,7 @@ export {
     authzAudit,
     backups,
     bluetoothDevices,
+    channels,
     configurations,
     dashboards,
     devices,
@@ -102,7 +109,6 @@ export {
     entities,
     firmware,
     groups,
-    integrations,
     locations,
     metrics,
     navigation,
@@ -127,6 +133,7 @@ export const host = {
     auth,
     backups,
     bluetoothDevices,
+    channels,
     configurations,
     dashboards,
     devices,
@@ -134,7 +141,6 @@ export const host = {
     entities,
     firmware,
     groups,
-    integrations,
     locations,
     metrics,
     navigation,

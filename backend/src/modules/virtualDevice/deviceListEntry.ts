@@ -232,6 +232,9 @@ function bluetoothDeviceStatus(
     health: BluetoothTransportHealth,
     projectedStatus: Record<string, unknown>
 ): Record<string, unknown> {
+    const projectedDevice = recordValue(projectedStatus.bluetoothdevice) ?? {};
+    const componentStatus = {...projectedStatus};
+    delete componentStatus.bluetoothdevice;
     const status = {
         sys: {available_updates: []},
         bluetoothdevice: {
@@ -240,14 +243,15 @@ function bluetoothDeviceStatus(
             capability: device.capability,
             keyRefSet: device.keyRefSet,
             componentCount: device.components.length,
-            transportHealth: health
+            transportHealth: health,
+            ...projectedDevice
         }
     };
-    if (details?.has('status')) return {...status, ...projectedStatus};
+    if (details?.has('status')) return {...status, ...componentStatus};
     return {
         sys: status.sys,
         bluetoothdevice: status.bluetoothdevice,
-        ...projectedStatus
+        ...componentStatus
     };
 }
 
@@ -384,6 +388,18 @@ export function bluetoothEntityGetResponse(
         online,
         properties
     };
+}
+
+export function bluetoothEntityListItems(
+    device: BluetoothDeviceDto,
+    gatewayPresence: string | null,
+    online: boolean
+) {
+    const health = bluetoothTransportHealth(device, gatewayPresence);
+    return bluetoothDeviceEntityIds(device, health).flatMap((entityId) => {
+        const entity = bluetoothEntityGetResponse(entityId, device, online);
+        return entity ? [entity] : [];
+    });
 }
 
 // Status for one promoted-BLU component, pulled from the gateway-projected

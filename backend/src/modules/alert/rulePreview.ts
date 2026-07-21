@@ -52,20 +52,6 @@ function offlineForSec(rule: LoadedAlertRule): number | null {
     return typeof v === 'number' && v > 0 ? v : null;
 }
 
-async function buildGroupsByDevice(
-    organizationId: string
-): Promise<Map<string, number[]>> {
-    const rows =
-        await PostgresProvider.listGroupDeviceMemberships(organizationId);
-    const map = new Map<string, number[]>();
-    for (const {group_id, subject_id} of rows) {
-        const ids = map.get(subject_id);
-        if (ids) ids.push(group_id);
-        else map.set(subject_id, [group_id]);
-    }
-    return map;
-}
-
 interface PreviewInputs {
     organizationId: string;
     rule: LoadedAlertRule;
@@ -118,10 +104,10 @@ export async function previewRuleAgainstOrg(
     let scanned = 0;
     let truncated = false;
 
-    const ruleUsesGroups = (rule.scope.groupIds?.length ?? 0) > 0;
-    const groupsByDevice = ruleUsesGroups
-        ? await buildGroupsByDevice(organizationId)
-        : undefined;
+    const ruleUsesMemberships =
+        (rule.scope.groupIds?.length ?? 0) > 0 ||
+        (rule.scope.locationIds?.length ?? 0) > 0 ||
+        (rule.scope.tagIds?.length ?? 0) > 0;
 
     for (const device of DeviceCollector.getAll()) {
         if (scanned >= maxDevices) {
@@ -139,46 +125,61 @@ export async function previewRuleAgainstOrg(
         }
         scanned++;
 
-        const entityIds = collectEntityIds(device);
-        const groupIds = groupsByDevice?.get(device.shellyID);
+        // Resolve the full membership axes (group + location + tag) the same
+        // way the live and device_offline paths do, so location/tag-scoped
+        // rules preview correctly. Skip the lookup when the rule needs no
+        // membership axis (device/component/wildcard scope) — resolver is
+        // cached, so repeat previews stay cheap.
+        const subject = ruleUsesMemberships
+            ? await resolveSubjectForEvent(
+                  {
+                      kind: 'device_status_changed',
+                      organizationId,
+                      shellyID: device.shellyID,
+                      device,
+                      status: (device as AbstractDevice).status ?? {}
+                  },
+                  PostgresProvider.callMethod
+              )
+            : {
+                  shellyID: device.shellyID,
+                  entityIds: collectEntityIds(device)
+              };
 
-        if (
-            !matchesScope(rule.scope, {
-                shellyID: device.shellyID,
-                entityIds,
-                groupIds
-            })
-        ) {
+        if (!matchesScope(rule.scope, subject)) {
             continue;
         }
 
-        const result = evaluator.match(
-            {
-                kind: 'device_status_changed',
-                organizationId,
-                shellyID: device.shellyID,
-                device,
-                status: (device as AbstractDevice).status ?? {}
-            },
-            rule,
-            {preview: true}
-        );
-        if (!result) continue;
-        if (seenFingerprints.has(result.fingerprintV2)) continue;
-        seenFingerprints.add(result.fingerprintV2);
-        matchCount++;
+        const event = {
+            kind: 'device_status_changed' as const,
+            organizationId,
+            shellyID: device.shellyID,
+            device,
+            status: (device as AbstractDevice).status ?? {}
+        };
+        const results = evaluator.matchAll
+            ? evaluator.matchAll(event, rule)
+            : [evaluator.match(event, rule, {preview: true})].filter(
+                  (m): m is NonNullable<typeof m> => m !== null
+              );
 
-        if (matches.length < maxMatches) {
-            matches.push({
-                subject: result.subject,
-                title: result.title,
-                message: result.message,
-                severity: result.severity ?? rule.severity,
-                fingerprint: result.fingerprintV2,
-                context: result.context ?? {}
-            });
-        } else {
-            truncated = true;
+        for (const result of results) {
+            if (seenFingerprints.has(result.fingerprintV2)) continue;
+            seenFingerprints.add(result.fingerprintV2);
+            matchCount++;
+
+            if (matches.length < maxMatches) {
+                matches.push({
+                    subject: result.subject,
+                    title: result.title,
+                    message: result.message,
+                    severity: result.severity ?? rule.severity,
+                    fingerprint: result.fingerprintV2,
+                    context: result.context ?? {}
+                });
+            } else {
+                truncated = true;
+            }
         }
     }
 

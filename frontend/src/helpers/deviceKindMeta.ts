@@ -14,32 +14,33 @@ type ConcreteKind = Exclude<WizardKind, null>;
 export const DEVICE_KIND_META: Record<ConcreteKind, DeviceKindMeta> = {
     physical: {
         label: 'Real device',
-        icon: 'fas fa-network-wired',
+        // Resolved to ShellyDeviceGlyph.vue by icon renderers.
+        icon: 'glyph:shelly-device',
         hint: 'A Shelly on your network',
         idleMessage: 'Pick a device on the network or enter its IP.'
     },
     bluetooth: {
         label: 'Bluetooth device',
         icon: 'fab fa-bluetooth-b',
-        hint: 'BLU / BTHome sensor via a gateway',
+        hint: 'A BLU sensor via a gateway',
         idleMessage: 'Pick a gateway, then scan for nearby sensors.'
     },
     composed: {
         label: 'Custom device',
         icon: 'fas fa-layer-group',
-        hint: 'Combine components from devices you have',
+        hint: 'Build from devices you have',
         idleMessage: 'Pick a profile and bind components to see the preview.'
     },
     extracted: {
         label: 'Extracted device',
         icon: 'fas fa-up-right-from-square',
-        hint: 'Promoted from a host device group',
+        hint: 'Turn a group into a device',
         idleMessage: 'Pick a host device to extract a group from.'
     },
     connector: {
         label: 'Connector',
         icon: 'fas fa-plug',
-        hint: 'Modbus · BACnet · OPC UA — coming next',
+        hint: 'Modbus · OPC UA',
         idleMessage: 'Coming soon.',
         disabled: true,
         badge: 'Soon'

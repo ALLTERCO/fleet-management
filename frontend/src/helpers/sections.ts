@@ -5,13 +5,12 @@
 // under it rather than its own sidebar entry.
 
 import {
-    ALERTS_PATH,
     AUTOMATIONS_PATH,
     DASHBOARDS_PATH,
     DEVICES_PATH,
-    MONITORING_PATH,
     OPERATIONS_PATH,
     ORGANIZE_PATH,
+    SETTINGS_PATH,
     WAITING_ROOM_PATH
 } from '@/constants';
 
@@ -32,17 +31,36 @@ function sectionRoot(path: string): string {
 }
 
 export const APP_SECTIONS: AppSection[] = [
-    {title: 'Dashboards', link: DASHBOARDS_PATH, paths: [sectionRoot(DASHBOARDS_PATH)]},
+    {
+        title: 'Dashboards',
+        link: DASHBOARDS_PATH,
+        paths: [sectionRoot(DASHBOARDS_PATH)]
+    },
     {
         title: 'Devices',
         link: DEVICES_PATH,
         paths: [sectionRoot(DEVICES_PATH), sectionRoot(WAITING_ROOM_PATH)]
     },
-    {title: 'Organize', link: ORGANIZE_PATH, paths: [sectionRoot(ORGANIZE_PATH)]},
-    {title: 'Alerts', link: ALERTS_PATH, paths: [sectionRoot(ALERTS_PATH)]},
-    {title: 'Automations', link: AUTOMATIONS_PATH, paths: [sectionRoot(AUTOMATIONS_PATH)]},
-    {title: 'Operations', link: OPERATIONS_PATH, paths: [sectionRoot(OPERATIONS_PATH)]},
-    {title: 'Monitoring', link: MONITORING_PATH, paths: [sectionRoot(MONITORING_PATH)]}
+    {
+        title: 'Organize',
+        link: ORGANIZE_PATH,
+        paths: [sectionRoot(ORGANIZE_PATH)]
+    },
+    {
+        title: 'Automations',
+        link: AUTOMATIONS_PATH,
+        paths: [sectionRoot(AUTOMATIONS_PATH)]
+    },
+    {
+        title: 'Operations',
+        link: OPERATIONS_PATH,
+        paths: [sectionRoot(OPERATIONS_PATH)]
+    },
+    {
+        title: 'Settings',
+        link: SETTINGS_PATH,
+        paths: [sectionRoot(SETTINGS_PATH)]
+    }
 ];
 
 function routeInSection(routePath: string, section: AppSection): boolean {

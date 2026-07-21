@@ -148,7 +148,7 @@ ensure_project() {
         echo "  Creating project..."
         create_response=$(zitadel_api "POST" "/zitadel.project.v2.ProjectService/CreateProject" \
             "$(jq -cn --arg organizationId "$ORGANIZATION_ID" --arg name "$PROJECT_NAME" \
-                '{organizationId:$organizationId,name:$name,projectRoleAssertion:true,authorizationRequired:true,projectAccessRequired:true,privateLabelingSetting:"PRIVATE_LABELING_SETTING_ALLOW_LOGIN_USER_RESOURCE_OWNER_POLICY"}')" \
+                '{organizationId:$organizationId,name:$name,projectRoleAssertion:true,authorizationRequired:false,projectAccessRequired:false,privateLabelingSetting:"PRIVATE_LABELING_SETTING_ALLOW_LOGIN_USER_RESOURCE_OWNER_POLICY"}')" \
             "$TOKEN" "$ZITADEL_URL")
         PROJECT_ID=$(echo "$create_response" | jq -r '.projectId // empty')
         if [ -z "$PROJECT_ID" ]; then
@@ -159,10 +159,10 @@ ensure_project() {
         echo "  Created project: $PROJECT_ID (org: $ORGANIZATION_ID)"
     fi
 
-    echo "  Updating project settings (role assertion enabled)..."
+    echo "  Updating project settings (Fleet Manager owns authorization)..."
     project_update_response=$(zitadel_api "POST" "/zitadel.project.v2.ProjectService/UpdateProject" \
         "$(jq -cn --arg projectId "$PROJECT_ID" --arg name "$PROJECT_NAME" \
-            '{projectId:$projectId,name:$name,projectRoleAssertion:true,authorizationRequired:true,projectAccessRequired:true,privateLabelingSetting:"PRIVATE_LABELING_SETTING_ALLOW_LOGIN_USER_RESOURCE_OWNER_POLICY"}')" \
+            '{projectId:$projectId,name:$name,projectRoleAssertion:true,authorizationRequired:false,projectAccessRequired:false,privateLabelingSetting:"PRIVATE_LABELING_SETTING_ALLOW_LOGIN_USER_RESOURCE_OWNER_POLICY"}')" \
         "$TOKEN" "$ZITADEL_URL")
     if ! echo "$project_update_response" | jq -e '.changeDate' >/dev/null 2>&1 && \
        ! echo "$project_update_response" | is_zitadel_no_change; then

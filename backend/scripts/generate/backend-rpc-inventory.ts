@@ -25,6 +25,7 @@ import {
     lineOf,
     mdEscape,
     nodeText,
+    type ParsedDecorator,
     provenanceHeader,
     readFile,
     readStringArg,
@@ -32,6 +33,28 @@ import {
     walkFiles,
     writeOutputs
 } from './_shared.js';
+
+const PERMISSION_DECORATOR_NAMES = new Set([
+    'NoPermissions',
+    'ReadOnly',
+    'WriteOperation',
+    'CrudPermission',
+    'CheckPermissions'
+]);
+
+// One permission decorator per method — last-wins would silently
+// under-report enforcement in the inventory, catalog, and drift gate.
+export function pickPermissionDecorator(
+    method: string,
+    perms: ParsedDecorator[]
+): ParsedDecorator | undefined {
+    if (perms.length > 1) {
+        throw new Error(
+            `${method}: stacked permission decorators are not supported — extend the permission model before adding a second one`
+        );
+    }
+    return perms[0];
+}
 
 // --- Types ---------------------------------------------------------------
 
@@ -195,33 +218,33 @@ function extractExplicitMethods(
         if (decorators.length === 0) continue;
 
         let methodName: string | undefined;
-        let permission: PermissionKind = 'inherited-fallback';
-        let permissionArgs: string | undefined;
         let hasCheckParams = false;
+        const permissionDecorators: ParsedDecorator[] = [];
 
         for (const dec of decorators) {
             if (dec.namespace !== 'Component') continue;
-            switch (dec.name) {
-                case 'Expose':
-                    methodName = readStringArg(dec.args[0]);
-                    break;
-                case 'NoPermissions':
-                case 'ReadOnly':
-                case 'WriteOperation':
-                    permission = dec.name as PermissionKind;
-                    break;
-                case 'CrudPermission':
-                case 'CheckPermissions':
-                    permission = dec.name as PermissionKind;
-                    permissionArgs = summarizeArgs(dec.args, source);
-                    break;
-                case 'CheckParams':
-                    hasCheckParams = true;
-                    break;
+            if (dec.name === 'Expose') {
+                methodName = readStringArg(dec.args[0]);
+            } else if (dec.name === 'CheckParams') {
+                hasCheckParams = true;
+            } else if (PERMISSION_DECORATOR_NAMES.has(dec.name)) {
+                permissionDecorators.push(dec);
             }
         }
 
         if (!methodName) continue;
+        const permDecorator = pickPermissionDecorator(
+            `${namespace}.${methodName}`,
+            permissionDecorators
+        );
+        const permission: PermissionKind =
+            (permDecorator?.name as PermissionKind) ?? 'inherited-fallback';
+        const permissionArgs =
+            permDecorator &&
+            (permDecorator.name === 'CrudPermission' ||
+                permDecorator.name === 'CheckPermissions')
+                ? summarizeArgs(permDecorator.args, source)
+                : undefined;
         out.push({
             namespace,
             method: methodName,
@@ -401,11 +424,14 @@ export function generate(): RpcInventory {
     const program = getBackendProgram();
     const allSources = getBackendSourceFiles(program);
 
-    // Only scan files under model/component/ and modules/user/ for Component classes
+    // Scan model/component/ plus any modules/<x>/*Component.ts (user, mobile,
+    // identity, ...) so components living outside model/component are not
+    // silently dropped from the inventory.
     const componentSources = allSources.filter(
         (sf) =>
             sf.fileName.includes(path.join('model', 'component')) ||
-            sf.fileName.includes(path.join('modules', 'user'))
+            (sf.fileName.includes(`${path.sep}modules${path.sep}`) &&
+                sf.fileName.endsWith('Component.ts'))
     );
 
     const registrations = findRegistrationSites(program);

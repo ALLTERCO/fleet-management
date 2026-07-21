@@ -70,8 +70,8 @@ An event arrives as an id-less frame — `method`, `params`, and a `streamId`:
 Keep the `streamId` of the last frame you processed — you need it to resume
 after a reconnect.
 
-There are 63 event names. Common ones: `Shelly.Connect`, `Shelly.Status`,
-`Shelly.Disconnect`, `Entity.StatusChange`, `Alert.Created`,
+There are many event names. Common ones: `Shelly.Connect`, `Shelly.Status`,
+`Shelly.Disconnect`, `Entity.Added`, `Alert.Created`,
 `Notification.Created`, `WaitingRoomEvent.Accepted`. Raw device notifications
 (`NotifyStatus`, `NotifyEvent`) reach you wrapped inside `Shelly.Message`.
 

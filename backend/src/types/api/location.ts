@@ -6,6 +6,7 @@
 import {DescribeBuilder, type DescribeOutput} from './_describe';
 import type {JsonSchema} from './_schema';
 import {
+    MAX_BATCH_SIZE,
     NAME_SCHEMA,
     ORG_ID_SCHEMA,
     SUMMARY_COUNTS_SCHEMA,
@@ -476,6 +477,41 @@ export const LOCATION_SET_ASSIGNMENT_PARAMS: JsonSchema = {
     }
 };
 
+// Batch: assign many subjects to ONE location in one atomic call.
+export const LOCATION_SET_ASSIGNMENTS_PARAMS: JsonSchema = {
+    type: 'object',
+    required: ['locationId', 'subjects'],
+    additionalProperties: false,
+    properties: {
+        organizationId: ORG_ID_SCHEMA,
+        locationId: {type: 'integer'},
+        subjects: {
+            type: 'array',
+            minItems: 1,
+            maxItems: MAX_BATCH_SIZE,
+            items: {
+                type: 'object',
+                required: ['subjectType', 'subjectId'],
+                additionalProperties: false,
+                properties: {
+                    subjectType: SUBJECT_TYPE_SCHEMA,
+                    subjectId: SUBJECT_ID_SCHEMA
+                }
+            }
+        }
+    }
+};
+
+export const LOCATION_SET_ASSIGNMENTS_RESPONSE: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['locationId', 'assigned'],
+    properties: {
+        locationId: {type: 'integer'},
+        assigned: {type: 'array', items: ASSIGNMENT_SCHEMA}
+    }
+};
+
 export const LOCATION_REMOVE_ASSIGNMENT_PARAMS: JsonSchema = {
     type: 'object',
     required: ['subjectType', 'subjectId'],
@@ -890,6 +926,7 @@ export const LOCATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
         description: 'Breadcrumb from root to the given location.'
     })
     .registerMethod('ListKinds', {
+        safety: {operation: 'read'},
         params: LOCATION_LIST_KINDS_PARAMS,
         response: LIST_KINDS_RESPONSE,
         permission: {note: 'authenticated'},
@@ -904,6 +941,7 @@ export const LOCATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'Typeahead place lookup over GeoNames (countries, admin, cities) with Nominatim fallback.'
     })
     .registerMethod('ListCountries', {
+        safety: {operation: 'read'},
         params: LOCATION_LIST_COUNTRIES_PARAMS,
         response: LOCATION_LIST_COUNTRIES_RESPONSE,
         permission: {note: 'authenticated'},
@@ -911,6 +949,7 @@ export const LOCATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'All countries from the GeoNames reference. Cached at boot.'
     })
     .registerMethod('ListRegions', {
+        safety: {operation: 'read'},
         params: LOCATION_LIST_REGIONS_PARAMS,
         response: LOCATION_LIST_REGIONS_RESPONSE,
         permission: {note: 'authenticated'},
@@ -950,6 +989,13 @@ export const LOCATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
         response: ASSIGNMENT_SCHEMA,
         permission: {component: 'locations', operation: 'update'},
         description: 'Upsert primary location assignment for a device/entity.'
+    })
+    .registerMethod('SetAssignments', {
+        params: LOCATION_SET_ASSIGNMENTS_PARAMS,
+        response: LOCATION_SET_ASSIGNMENTS_RESPONSE,
+        permission: {component: 'locations', operation: 'update'},
+        description:
+            'Assign many subjects to one location in a single atomic call.'
     })
     .registerMethod('RemoveAssignment', {
         params: LOCATION_REMOVE_ASSIGNMENT_PARAMS,

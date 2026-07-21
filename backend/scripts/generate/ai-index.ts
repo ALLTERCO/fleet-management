@@ -36,6 +36,12 @@ interface AiIndexMcpResource {
     safeMode: 'read-only' | 'read-write-deferred';
 }
 
+interface AiIndexMcpSearchResource {
+    id: string;
+    source: string;
+    role: string;
+}
+
 export interface AiIndex {
     generator: 'ai-index';
     version: 1;
@@ -47,6 +53,7 @@ export interface AiIndex {
     surfaces: AiIndexSurface[];
     resources: AiIndexResource[];
     mcpResources: AiIndexMcpResource[];
+    mcpSearchResources: AiIndexMcpSearchResource[];
     workflows: Array<{
         task: string;
         read: string[];
@@ -89,6 +96,16 @@ const RESOURCE_INPUTS: ResourceInput[] = [
         readFirst: true
     },
     {
+        id: 'api-catalog',
+        rel: 'docs/generated/api-catalog.json',
+        audience: 'ai-agents',
+        kind: 'generated-contract',
+        format: 'json',
+        role: 'Agent-facing method catalog: namespaceKind, descriptions, schemas, permissions, safety hints, recommended Host SDK wrappers.',
+        aiUse: 'Use get_api_method (MCP) for one method; read this file only for bulk analysis.',
+        readFirst: true
+    },
+    {
         id: 'host-contract',
         rel: 'frontend/src/shell/template-host/generated/contract.ts',
         audience: 'frontend-agents',
@@ -107,6 +124,15 @@ const RESOURCE_INPUTS: ResourceInput[] = [
         role: 'Host SDK public entrypoint exposed to templates and alternate UIs.',
         aiUse: 'Use to discover the supported UI-facing domains and helpers.',
         readFirst: true
+    },
+    {
+        id: 'host-method-metadata',
+        rel: 'frontend/src/shell/template-host/generated/method-metadata.ts',
+        audience: 'frontend-agents',
+        kind: 'generated-contract',
+        format: 'typescript',
+        role: 'SDK-side per-method metadata: namespaceKind, risk flags, recommended wrapper, escape hatches.',
+        aiUse: 'Use in UI code via the HOST_METHOD_METADATA export to pick safe calls without leaving @host.'
     },
     {
         id: 'host-sdk-index',
@@ -130,7 +156,7 @@ const RESOURCE_INPUTS: ResourceInput[] = [
     },
     {
         id: 'deployment-guide',
-        rel: 'docs/reference/deployment.md',
+        rel: 'deploy/public/deployment.md',
         audience: 'operators',
         kind: 'stable-doc',
         format: 'markdown',
@@ -247,16 +273,6 @@ const RESOURCE_INPUTS: ResourceInput[] = [
         role: 'Docs folder convention and audience rules.',
         aiUse: 'Use before creating or moving documentation.',
         readFirst: true
-    },
-    {
-        id: 'claude-rules',
-        rel: 'CLAUDE.md',
-        audience: 'ai-agents',
-        kind: 'stable-doc',
-        format: 'markdown',
-        role: 'Repo-wide agent rules, ownership, clean-code rules, and commit rules.',
-        aiUse: 'Use before any code or doc change.',
-        readFirst: true
     }
 ];
 
@@ -328,8 +344,14 @@ function mcpResources(): AiIndexMcpResource[] {
             safeMode: 'read-only'
         },
         {
+            uri: 'fm://api/api-catalog',
+            source: 'docs/generated/api-catalog.json',
+            role: 'Agent-facing method catalog with namespaceKind, safety hints, and Host SDK wrappers.',
+            safeMode: 'read-only'
+        },
+        {
             uri: 'fm://ui/host-contract',
-            source: 'frontend/src/shell/template-host/generated/contract.ts',
+            source: 'docs/generated/host-contract.ts',
             role: 'Typed Host SDK contract for multi-UI work.',
             safeMode: 'read-only'
         },
@@ -366,6 +388,46 @@ function mcpResources(): AiIndexMcpResource[] {
     ];
 }
 
+function mcpSearchResources(): AiIndexMcpSearchResource[] {
+    return [
+        {
+            id: 'ai-and-mcp-reference',
+            source: 'docs/reference/ai-and-mcp.md',
+            role: 'MCP and Host SDK entrypoint.'
+        },
+        {
+            id: 'ai-mcp-operations',
+            source: 'docs/reference/ai-mcp-operations.md',
+            role: 'Governed MCP operation workflow.'
+        },
+        {
+            id: 'separate-ui-host-sdk-guide',
+            source: 'docs/reference/separate-ui-host-sdk.md',
+            role: 'Separate UI and template Host SDK guide.'
+        },
+        {
+            id: 'deployment-guide',
+            source: 'deploy/public/deployment.md',
+            role: 'Public installation and deployment guide.'
+        },
+        {
+            id: 'deploy-reference',
+            source: 'docs/architecture/deploy-reference.md',
+            role: 'Deployment architecture reference.'
+        },
+        {
+            id: 'docs-readme',
+            source: 'docs/README.md',
+            role: 'Documentation map and conventions.'
+        },
+        {
+            id: 'doc-drift-report',
+            source: 'docs/generated/doc-drift-report.md',
+            role: 'Generated documentation drift report.'
+        }
+    ];
+}
+
 function workflows(): AiIndex['workflows'] {
     return [
         {
@@ -381,12 +443,16 @@ function workflows(): AiIndex['workflows'] {
         },
         {
             task: 'Install or deploy Fleet Manager',
-            read: ['deployment-guide', 'deploy-reference', 'ai-and-mcp-reference'],
+            read: [
+                'deployment-guide',
+                'deploy-reference',
+                'ai-and-mcp-reference'
+            ],
             reason: 'The deploy docs define deploy.sh commands, flags, environments, modes, and routing behavior.'
         },
         {
             task: 'Change backend RPC contract',
-            read: ['claude-rules', 'rpc-inventory', 'openapi', 'auth-matrix'],
+            read: ['api-catalog', 'rpc-inventory', 'openapi', 'auth-matrix'],
             reason: 'Backend contract changes must preserve params, responses, and permission boundaries.'
         },
         {
@@ -399,12 +465,13 @@ function workflows(): AiIndex['workflows'] {
             read: [
                 'ai-and-mcp-reference',
                 'ai-index',
+                'api-catalog',
                 'openapi',
                 'rpc-inventory',
                 'deployment-guide',
                 'host-contract'
             ],
-            reason: 'Use read-only MCP resources for retrieval; live RPC execution is deferred.'
+            reason: 'Use read-only resources for context, then authenticated live tools for governed Fleet Manager operations.'
         }
     ];
 }
@@ -418,11 +485,12 @@ export function generate(): AiIndex {
                 'Route AI agents to the smallest correct source of truth before reading large generated files.',
             rule: 'Use Host SDK for UI/multi-UI work; use backend RPC/OpenAPI for backend/API contracts.',
             mcpStatus:
-                'Repo ships a local read-only Fleet Manager docs MCP. Live RPC execution is deferred until auth, permissions, audit logs, and rate limits are designed.'
+                'Fleet Manager MCP provides local read-only documentation over stdio and authenticated, governed operations through POST /mcp on a running instance.'
         },
         surfaces: SURFACES,
         resources: RESOURCE_INPUTS.map(resource),
         mcpResources: mcpResources(),
+        mcpSearchResources: mcpSearchResources(),
         workflows: workflows()
     };
 }
@@ -479,6 +547,15 @@ export function renderMarkdown(index: AiIndex): string {
                 `| \`${mdEscape(item.uri)}\` | \`${mdEscape(item.source)}\` | ${item.safeMode} | ${mdEscape(item.role)} |`
         ),
         '',
+        '## MCP Search Corpus',
+        '',
+        '| ID | Source | Role |',
+        '|---|---|---|',
+        ...index.mcpSearchResources.map(
+            (item) =>
+                `| \`${mdEscape(item.id)}\` | \`${mdEscape(item.source)}\` | ${mdEscape(item.role)} |`
+        ),
+        '',
         '## Workflows',
         '',
         ...index.workflows.flatMap((item) => [
@@ -525,7 +602,10 @@ export function writeAiIndex(): AiIndex {
         path.join(GENERATED_DIR, 'ai-index.md'),
         renderMarkdown(index)
     );
+    // Two outputs, one source: repo root for GitHub convention, and
+    // docs/generated for the Docker image (which only ships that folder).
     fs.writeFileSync(ROOT_LLMS_PATH, renderLlms(index));
+    fs.writeFileSync(path.join(GENERATED_DIR, 'llms.txt'), renderLlms(index));
     console.log(
         `[ai-index] wrote ${relPath(path.join(GENERATED_DIR, 'ai-index.json'))} + ${relPath(path.join(GENERATED_DIR, 'ai-index.md'))} + ${relPath(ROOT_LLMS_PATH)}`
     );

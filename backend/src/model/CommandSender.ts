@@ -457,6 +457,17 @@ export default class CommandSender {
         return this.isPlatformAdmin() && !this.tenantPinned;
     }
 
+    /**
+     * True when the caller can read every device in its organization, so an
+     * org-wide aggregate is theirs to see and a shared per-org cache of that
+     * aggregate is reusable. Conservative: a non-admin holding an all-devices
+     * grant returns false and takes the correct filter-then-aggregate path, just
+     * without the cache fast path — never the reverse (no over-disclosure).
+     */
+    hasUnrestrictedDeviceRead(): boolean {
+        return this.canCrossOrganizations() || this.isAdmin();
+    }
+
     // Read access exists, write does not.
     isViewer(): boolean {
         if (this.isAdmin()) return false;

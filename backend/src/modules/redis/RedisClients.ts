@@ -49,6 +49,13 @@ export function buildBlockingRedisOptions(
     return {...base, maxRetriesPerRequest: null};
 }
 
+/** The same two blocking-connection rules as `buildBlockingRedisOptions`,
+ *  shaped as a `duplicate()` override — turns a copy of an existing client
+ *  into a blocking-read connection without rebuilding its base options. */
+export function buildBlockingDuplicateOverride(): Partial<RedisOptions> {
+    return {maxRetriesPerRequest: null, commandTimeout: undefined};
+}
+
 export class RedisClients {
     readonly cmd: Redis;
     readonly sub: Redis;

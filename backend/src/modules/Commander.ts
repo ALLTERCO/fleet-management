@@ -121,8 +121,10 @@ function recordConnectionEvent(
 
 interface RpcCaller {
     username: string | undefined;
+    userId: string | undefined;
     organizationId: string | undefined;
     senderType: PrincipalType;
+    sourceIp: string | undefined;
 }
 
 function recordSuccess(
@@ -143,14 +145,14 @@ function recordSuccess(
     }
     Observability.incrementCounter('rpc_success');
     if (shouldAudit) {
-        AuditLogger.logRpc(
-            caller.username,
-            resolved.auditMethod,
+        AuditLogger.logRpc({
+            username: caller.username,
+            actorUserId: caller.userId,
+            method: resolved.auditMethod,
             params,
-            true,
-            undefined,
-            caller.organizationId
-        );
+            organizationId: caller.organizationId,
+            ipAddress: caller.sourceIp
+        });
     }
 }
 
@@ -174,14 +176,16 @@ function recordFailure(
     Observability.incrementCounter('rpc_errors');
     const message = errorMessageOf(error);
     Observability.recordRpcError(resolved.method, message);
-    AuditLogger.logRpc(
-        caller.username,
-        resolved.auditMethod,
+    AuditLogger.logRpc({
+        username: caller.username,
+        actorUserId: caller.userId,
+        method: resolved.auditMethod,
         params,
-        false,
-        message,
-        caller.organizationId
-    );
+        success: false,
+        errorMessage: message,
+        organizationId: caller.organizationId,
+        ipAddress: caller.sourceIp
+    });
 }
 
 interface ErrorContext {
@@ -314,8 +318,10 @@ export async function exec(
     const resolved = resolveMethodAlias(method);
     const caller: RpcCaller = {
         username: sender.getUser()?.username,
+        userId: sender.getUserId(),
         organizationId: sender.getOrganizationId(),
-        senderType: sender.getPrincipalType()
+        senderType: sender.getPrincipalType(),
+        sourceIp: sender.getSourceIp()
     };
     const t0 = Observability.isEnabled() ? performance.now() : 0;
     const requestId = makeRequestId();

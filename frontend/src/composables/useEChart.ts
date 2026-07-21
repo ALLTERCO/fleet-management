@@ -17,40 +17,45 @@ export function useEChart(
     let ro: ResizeObserver | null = null;
 
     function initChart() {
-        if (chart.value || !containerRef.value) return;
-        chart.value = echarts.init(containerRef.value, 'fleet', {renderer});
-        chart.value.setOption({
-            ...optionRef.value,
-            animation: !isKiosk
-        });
-
-        // Replace any prior observer so consecutive initChart calls (e.g.
-        // container ref churn from v-if) don't leak observers.
-        ro?.disconnect();
-        ro = new ResizeObserver(() => {
-            if (
-                chart.value &&
-                !chart.value.isDisposed() &&
-                containerRef.value &&
-                containerRef.value.offsetWidth > 0
-            ) {
-                chart.value.resize();
-            }
-        });
-        ro.observe(containerRef.value);
+        const el = containerRef.value;
+        if (chart.value || !el) return;
+        chart.value = echarts.init(el, 'fleet', {renderer});
+        chart.value.setOption({...optionRef.value, animation: !isKiosk});
     }
 
-    onMounted(initChart);
+    // Init is driven by the ResizeObserver, never synchronously on mount: the
+    // RO fires only after layout, so the container always has its real size.
+    // Initialising at 0×0 — or on a stale size when a v-if tab remounts into
+    // the same slot — makes ECharts build a grid with no extent and then warn
+    // "cartesian2d cannot be found" as the series lays out.
+    function observe() {
+        const el = containerRef.value;
+        if (!el) return;
+        ro?.disconnect();
+        ro = new ResizeObserver(() => {
+            const node = containerRef.value;
+            if (!node || node.offsetWidth === 0 || node.offsetHeight === 0)
+                return;
+            if (!chart.value) initChart();
+            else if (!chart.value.isDisposed()) chart.value.resize();
+        });
+        ro.observe(el);
+    }
 
-    // Handle v-if/v-else: container may appear after onMounted
+    onMounted(observe);
+
+    // Handle v-if/v-else: container may appear/change after onMounted.
     watch(containerRef, (el) => {
-        if (el && !chart.value) initChart();
+        if (el) observe();
     });
 
     watch(optionRef, (newOpt) => {
+        // Not yet init'd (container still 0-size); the RO init picks up the
+        // latest option, so nothing is lost here.
         if (!chart.value || chart.value.isDisposed()) return;
-        chart.value.clear();
-        chart.value.setOption(newOpt);
+        // Atomic full replace: no intermediate empty render (the old
+        // clear()+setOption briefly left a series with no coordinate system).
+        chart.value.setOption(newOpt, {notMerge: true});
     });
 
     onUnmounted(() => {

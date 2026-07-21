@@ -1,6 +1,8 @@
 // Pill peripheral mode discovery.
 
 import {onMounted, ref, watch} from 'vue';
+import {domainErrorKind, toastRpcError} from '@/helpers/domainErrors';
+import {useToastStore} from '@/stores/toast';
 import {sendRPC} from '@/tools/websocket';
 
 const FALLBACK_MODES = [
@@ -123,11 +125,29 @@ export function usePillModes(
     const modes = ref<string[]>([]);
     const loading = ref(false);
     const fromFirmware = ref(false);
+    const toast = useToastStore();
+    let loadErrorToasted = false;
 
     function ensureCurrent(list: string[]): string[] {
         const cur = currentMode();
         if (cur && !list.includes(cur)) return [...list, cur];
         return list;
+    }
+
+    function fallbackModeList(): string[] {
+        const list = [...FALLBACK_MODES];
+        if (isBetaUartFw(fwVersion())) list.push('uart');
+        return list;
+    }
+
+    // Old fw without Shelly.GetComponents surfaces as the stable
+    // UnsupportedOperation domain code (backend maps device 404 to it) —
+    // expected, fall back silently. Anything else gets one toast.
+    function reportUnexpectedLoadError(err: unknown): void {
+        if (domainErrorKind(err) === 'UnsupportedOperation') return;
+        if (loadErrorToasted) return;
+        loadErrorToasted = true;
+        toastRpcError(toast, err, 'Failed to read Pill modes from the device');
     }
 
     async function load(): Promise<void> {
@@ -167,11 +187,9 @@ export function usePillModes(
                 list.push('uart');
             modes.value = ensureCurrent(list);
             fromFirmware.value = false;
-        } catch {
-            // Older fw rejects the call.
-            const list = [...FALLBACK_MODES];
-            if (isBetaUartFw(fwVersion())) list.push('uart');
-            modes.value = ensureCurrent(list);
+        } catch (err) {
+            reportUnexpectedLoadError(err);
+            modes.value = ensureCurrent(fallbackModeList());
             fromFirmware.value = false;
         } finally {
             loading.value = false;

@@ -913,6 +913,42 @@ export async function getPrometheusMetrics(): Promise<string> {
             ws_client_backpressure_total: {
                 help: 'Browser WS clients hitting send backpressure, by action (paused|dropped)'
             },
+            ws_connection_events_total: {
+                help: 'WebSocket connection lifecycle events by traffic class and outcome'
+            },
+            ws_compression_total: {
+                help: 'WebSocket connections by traffic class and offered and negotiated compression state'
+            },
+            ws_message_bytes_total: {
+                help: 'Decoded inbound WebSocket message bytes by traffic class, format, and negotiated extension state'
+            },
+            ws_message_size_bucket_total: {
+                help: 'Inbound WebSocket messages by traffic class, format, size bucket, and negotiated extension state'
+            },
+            ws_wire_bytes_total: {
+                help: 'WebSocket TCP wire bytes by traffic class, direction, and negotiated extension state'
+            },
+            ws_closes_total: {
+                help: 'WebSocket closes by traffic class, negotiated extension state, and bounded close code'
+            },
+            device_gui_events_total: {
+                help: 'Device GUI proxy lifecycle events by stage and outcome'
+            },
+            device_gui_bytes_total: {
+                help: 'Device GUI proxy bytes by transport and direction'
+            },
+            device_gui_duration_ms_total: {
+                help: 'Cumulative Device GUI operation duration in milliseconds by stage and outcome'
+            },
+            device_gui_duration_samples_total: {
+                help: 'Device GUI operation duration samples by stage and outcome'
+            },
+            device_gui_http_responses_total: {
+                help: 'Device GUI proxy HTTP responses by status class'
+            },
+            device_gui_websocket_compression_total: {
+                help: 'Device GUI WebSocket connections by offered and negotiated compression state'
+            },
             waiting_room_evicted: {
                 help: 'Total pending devices evicted from waiting room'
             },
@@ -973,6 +1009,9 @@ export async function getPrometheusMetrics(): Promise<string> {
         };
 
         const labeledGaugeDefs: Record<string, {help: string}> = {
+            ws_active_connections: {
+                help: 'Current WebSocket connections by traffic class'
+            },
             stream_length: {
                 help: 'Current XLEN of a monitored Redis Stream, by stream label'
             },

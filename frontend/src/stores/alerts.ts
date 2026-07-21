@@ -18,6 +18,7 @@ import {defineStore} from 'pinia';
 import {ref} from 'vue';
 import {toastRpcError} from '@/helpers/domainErrors';
 import {type PagedEnvelope, paginate} from '@/helpers/pagination';
+import {createStaleGuard} from '@/stores/staleGuard';
 import * as ws from '../tools/websocket';
 import {useToastStore} from './toast';
 
@@ -117,12 +118,14 @@ export const useAlertsStore = defineStore('alerts', () => {
         return kinds.value;
     }
 
-    // Seq guards so a stale (older) response can't overwrite a newer one.
-    let rulesSeq = 0;
-    let instancesSeq = 0;
+    // List fetches bump for latest-wins; mutation writes bump so stale reads bail.
+    const rulesGuard = createStaleGuard();
+    const instancesGuard = createStaleGuard();
+    const templatesGuard = createStaleGuard();
+    const transitionsGuard = createStaleGuard();
 
     async function fetchRules() {
-        const seq = ++rulesSeq;
+        const token = rulesGuard.bump();
         rulesLoading.value = true;
         try {
             const items = await paginate<AlertRule>(
@@ -134,25 +137,27 @@ export const useAlertsStore = defineStore('alerts', () => {
                     ),
                 MAX_PER_PAGE
             );
-            if (seq !== rulesSeq) return;
+            if (rulesGuard.isStale(token)) return;
             const next: Record<number, AlertRule> = {};
             for (const r of items) next[r.id] = r;
             rules.value = next;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load alert rules');
         } finally {
-            if (seq === rulesSeq) rulesLoading.value = false;
+            rulesLoading.value = false;
         }
     }
 
     async function fetchRule(id: number): Promise<AlertRule | null> {
+        // Read: snapshot before the RPC; a write mid-flight discards the merge.
+        const token = rulesGuard.current();
         try {
             const rule = await ws.sendRPC<AlertRule>(
                 'FLEET_MANAGER',
                 'alert.rule.get',
                 {id}
             );
-            upsertRule(rule);
+            if (!rulesGuard.isStale(token)) upsertRule(rule);
             return rule;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load rule');
@@ -169,6 +174,7 @@ export const useAlertsStore = defineStore('alerts', () => {
                 'alert.rule.create',
                 params
             );
+            rulesGuard.bump();
             upsertRule(rule);
             return rule;
         } catch (err) {
@@ -187,6 +193,7 @@ export const useAlertsStore = defineStore('alerts', () => {
                 'alert.rule.update',
                 {id, patch}
             );
+            rulesGuard.bump();
             upsertRule(rule);
             return rule;
         } catch (err) {
@@ -198,6 +205,7 @@ export const useAlertsStore = defineStore('alerts', () => {
     async function deleteRule(id: number): Promise<boolean> {
         try {
             await ws.sendRPC('FLEET_MANAGER', 'alert.rule.delete', {id});
+            rulesGuard.bump();
             const next = {...rules.value};
             delete next[id];
             rules.value = next;
@@ -209,7 +217,7 @@ export const useAlertsStore = defineStore('alerts', () => {
     }
 
     async function fetchInstances(filters: InstanceFilters = {}) {
-        const seq = ++instancesSeq;
+        const token = instancesGuard.bump();
         instancesLoading.value = true;
         try {
             const items = await paginate<AlertInstance>(
@@ -221,7 +229,7 @@ export const useAlertsStore = defineStore('alerts', () => {
                     ),
                 MAX_PER_PAGE
             );
-            if (seq !== instancesSeq) return;
+            if (instancesGuard.isStale(token)) return;
             // Merge rather than replace — list is filtered by state; other instances
             // may still be valid to display from earlier fetches.
             const next = {...instances.value};
@@ -230,18 +238,20 @@ export const useAlertsStore = defineStore('alerts', () => {
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load alert instances');
         } finally {
-            if (seq === instancesSeq) instancesLoading.value = false;
+            instancesLoading.value = false;
         }
     }
 
     async function fetchInstance(id: number): Promise<AlertInstance | null> {
+        // Read: snapshot before the RPC; an ack/write mid-flight discards the merge.
+        const token = instancesGuard.current();
         try {
             const inst = await ws.sendRPC<AlertInstance>(
                 'FLEET_MANAGER',
                 'alert.instance.get',
                 {id}
             );
-            upsertInstance(inst);
+            if (!instancesGuard.isStale(token)) upsertInstance(inst);
             return inst;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load alert instance');
@@ -250,6 +260,8 @@ export const useAlertsStore = defineStore('alerts', () => {
     }
 
     async function fetchTransitions(id: number): Promise<AlertTransition[]> {
+        // List fetch: bump so the latest fetch wins between racing fetches.
+        const token = transitionsGuard.bump();
         try {
             const items = await paginate<AlertTransition>(
                 (offset) =>
@@ -260,6 +272,7 @@ export const useAlertsStore = defineStore('alerts', () => {
                     ),
                 MAX_PER_PAGE
             );
+            if (transitionsGuard.isStale(token)) return items;
             transitions.value = {...transitions.value, [id]: items};
             return items;
         } catch (err) {
@@ -275,6 +288,7 @@ export const useAlertsStore = defineStore('alerts', () => {
                 'alert.instance.ack',
                 {id}
             );
+            instancesGuard.bump();
             upsertInstance(inst);
             return true;
         } catch (err) {
@@ -290,6 +304,7 @@ export const useAlertsStore = defineStore('alerts', () => {
                 'alert.instance.unack',
                 {id}
             );
+            instancesGuard.bump();
             upsertInstance(inst);
             return true;
         } catch (err) {
@@ -309,6 +324,7 @@ export const useAlertsStore = defineStore('alerts', () => {
                 'alert.instance.silence',
                 {id, until, ...(reason ? {reason} : {})}
             );
+            instancesGuard.bump();
             upsertInstance(inst);
             return true;
         } catch (err) {
@@ -324,6 +340,7 @@ export const useAlertsStore = defineStore('alerts', () => {
                 'alert.instance.unsilence',
                 {id}
             );
+            instancesGuard.bump();
             upsertInstance(inst);
             return true;
         } catch (err) {
@@ -339,6 +356,7 @@ export const useAlertsStore = defineStore('alerts', () => {
                 'alert.instance.resolvemanual',
                 {id}
             );
+            instancesGuard.bump();
             upsertInstance(inst);
             return true;
         } catch (err) {
@@ -347,14 +365,10 @@ export const useAlertsStore = defineStore('alerts', () => {
         }
     }
 
-    // Live updates — backend emits lightweight {alertId, ...} payloads;
-    // refetch the full instance to pick up the current state.
-    ws.onAlertEvent((e) => {
-        const alertId = e.params.alertId as number | undefined;
-        if (typeof alertId !== 'number') return;
-        void fetchInstance(alertId);
-    });
+    // Live instance updates arrive via the WS dispatcher's coalesced
+    // refetch (websocket.ts), which calls fetchInstance/fetchInstances here.
 
+    // Discriminated so callers can tell "check failed" from "no duplicate".
     async function checkDuplicate(spec: {
         kind: AlertRuleKind;
         severity: AlertSeverity;
@@ -363,14 +377,17 @@ export const useAlertsStore = defineStore('alerts', () => {
         cooldownSec?: number;
         config?: Record<string, unknown>;
         excludeId?: number;
-    }): Promise<{id: number; name: string} | null> {
+    }): Promise<
+        | {status: 'ok'; duplicate: {id: number; name: string} | null}
+        | {status: 'error'}
+    > {
         try {
             const res = await ws.sendRPC<{
                 duplicate: {id: number; name: string} | null;
             }>('FLEET_MANAGER', 'alert.rule.checkduplicate', spec);
-            return res.duplicate;
+            return {status: 'ok', duplicate: res.duplicate};
         } catch {
-            return null;
+            return {status: 'error'};
         }
     }
 
@@ -409,6 +426,7 @@ export const useAlertsStore = defineStore('alerts', () => {
                 'alert.rule.createfromtemplate',
                 params
             );
+            rulesGuard.bump();
             upsertRule(rule);
             return rule;
         } catch (err) {
@@ -507,14 +525,18 @@ export const useAlertsStore = defineStore('alerts', () => {
     async function fetchTemplates(): Promise<MessageTemplate[]> {
         templatesLoading.value = true;
         try {
+            // List fetch: bump so the latest fetch wins between racing fetches.
+            const token = templatesGuard.bump();
             const res = await ws.sendRPC<{items: MessageTemplate[]}>(
                 'FLEET_MANAGER',
                 'notification.template.list',
                 {}
             );
-            const next: Record<number, MessageTemplate> = {};
-            for (const t of res.items ?? []) next[t.id] = t;
-            templates.value = next;
+            if (!templatesGuard.isStale(token)) {
+                const next: Record<number, MessageTemplate> = {};
+                for (const t of res.items ?? []) next[t.id] = t;
+                templates.value = next;
+            }
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load templates');
         } finally {
@@ -532,6 +554,7 @@ export const useAlertsStore = defineStore('alerts', () => {
                 'notification.template.create',
                 draft
             );
+            templatesGuard.bump();
             upsertTemplate(t);
             return t;
         } catch (err) {
@@ -550,6 +573,7 @@ export const useAlertsStore = defineStore('alerts', () => {
                 'notification.template.update',
                 {id, patch}
             );
+            templatesGuard.bump();
             upsertTemplate(t);
             return t;
         } catch (err) {
@@ -563,6 +587,7 @@ export const useAlertsStore = defineStore('alerts', () => {
             await ws.sendRPC('FLEET_MANAGER', 'notification.template.delete', {
                 id
             });
+            templatesGuard.bump();
             const next = {...templates.value};
             delete next[id];
             templates.value = next;

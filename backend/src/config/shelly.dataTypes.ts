@@ -28,7 +28,11 @@ const floatsData = [
     'temperature:100.tF',
     'temperature:0.id',
     'temperature:0.tC',
-    'temperature:0.tF'
+    'temperature:0.tF',
+    'humidity:100.id',
+    'humidity:100.rh',
+    'humidity:0.id',
+    'humidity:0.rh'
 ]
     .concat(x({prefix: 'cover:0.aenergy.by_minute.'}))
     .concat(x({prefix: 'cover:1.aenergy.by_minute.'}))
@@ -166,6 +170,25 @@ const floatsData = [
     .concat(x({prefix: 'emdata:', repeat: 5, suffix: '.id'}))
     .concat(x({prefix: 'emdata:', repeat: 5, suffix: '.total_act'}))
     .concat(x({prefix: 'emdata:', repeat: 5, suffix: '.total_act_ret'}))
+    // Battery monitor (bm) — must be listed or the capture loop drops it before
+    // routeEnergyRow. Mirrors energyClassifier BM_FIELDS.
+    .concat(x({prefix: 'bm:', repeat: 2, suffix: '.voltage'}))
+    .concat(x({prefix: 'bm:', repeat: 2, suffix: '.current'}))
+    .concat(x({prefix: 'bm:', repeat: 2, suffix: '.power'}))
+    .concat(x({prefix: 'bm:', repeat: 2, suffix: '.soc'}))
+    .concat(x({prefix: 'bm:', repeat: 2, suffix: '.soh'}))
+    .concat(x({prefix: 'bm:', repeat: 2, suffix: '.cycles'}))
+    .concat(x({prefix: 'bm:', repeat: 2, suffix: '.energy_ch.total'}))
+    .concat(x({prefix: 'bm:', repeat: 2, suffix: '.energy_disch.total'}))
+    // bm per-cell voltage/temperature (PowerTrack up to 4 battery channels)
+    .concat(
+        x({prefix: 'bm:', repeat: 2, suffix: ''}).flatMap((v) =>
+            [1, 2, 3, 4].flatMap((c) => [
+                `${v}.batteries.B${c}.voltage`,
+                `${v}.batteries.B${c}.tC`
+            ])
+        )
+    )
     .concat(
         x({prefix: '', repeat: 5, suffix: ''}).reduce((a: string[], v) => {
             return a.concat(
@@ -253,3 +276,16 @@ export const floats = {
         v.replace(/:\d+/i, ':*').replace(/\.\d+/i, '.*')
     )
 };
+
+const floatFieldGroups = new Map(
+    floats.raw.map((field, index) => [field, floats.group[index]])
+);
+const bluetoothStatusField =
+    /^(bthomedevice|bthomesensor|bthomecontrol|blutrv):\d+\..+$/;
+
+export function statusFieldGroup(field: string): string | undefined {
+    return (
+        floatFieldGroups.get(field) ??
+        (bluetoothStatusField.test(field) ? 'bluetooth' : undefined)
+    );
+}

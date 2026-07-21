@@ -1,5 +1,6 @@
 // Notification destination groups + their member references.
 
+import * as AlertEvents from '../../../modules/AlertEvents';
 import {
     authzAuditActor,
     authzAuditWriter
@@ -193,6 +194,11 @@ export async function destinationCreate(
             destinationId: row.id,
             name: row.name ?? p.name
         });
+        AlertEvents.emitDestinationCreated({
+            organizationId: orgId,
+            id: row.id,
+            name: row.name ?? p.name
+        });
         return rowToDestinationGroup(row);
     } catch (err: unknown) {
         throw translateDestinationError(err, 'create');
@@ -242,6 +248,11 @@ export async function destinationUpdate(
             destinationId: row.id,
             name: row.name ?? undefined
         });
+        AlertEvents.emitDestinationUpdated({
+            organizationId: orgId,
+            id: row.id,
+            name: row.name
+        });
         return rowToDestinationGroup(row);
     } catch (err: unknown) {
         if (err instanceof RpcError) throw err;
@@ -271,6 +282,10 @@ export async function destinationDelete(
                 actorId: authzAuditActor(sender.getUser?.()),
                 operation: 'delete',
                 destinationId: p.id
+            });
+            AlertEvents.emitDestinationDeleted({
+                organizationId: orgId,
+                id: p.id
             });
         }
         return {deleted: !!row?.id, id: p.id};
@@ -345,7 +360,13 @@ export async function destinationAddMembers(
             destinationId: p.id,
             added: rows.length
         });
-        return {id: p.id, added: rows.map(rowToMemberRef)};
+        const added = rows.map(rowToMemberRef);
+        AlertEvents.emitDestinationMembersAdded({
+            organizationId: orgId,
+            id: p.id,
+            members: added
+        });
+        return {id: p.id, added};
     } catch (err: unknown) {
         throw translateDestinationError(err, 'addMembers');
     }
@@ -384,7 +405,13 @@ export async function destinationRemoveMembers(
             destinationId: p.id,
             removed: rows.length
         });
-        return {id: p.id, removed: rows.map(rowToMemberRef)};
+        const removed = rows.map(rowToMemberRef);
+        AlertEvents.emitDestinationMembersRemoved({
+            organizationId: orgId,
+            id: p.id,
+            members: removed
+        });
+        return {id: p.id, removed};
     } catch (err: unknown) {
         throw translateDestinationError(err, 'removeMembers');
     }

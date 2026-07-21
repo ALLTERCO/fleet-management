@@ -1,14 +1,27 @@
 <template>
     <BasicLayout>
-        <a href="#main-content" class="skip-to-content">Skip to content</a>
-        <OfflineBanner />
+        <div
+            :inert="isInspectorOpen"
+            :aria-hidden="isInspectorOpen ? 'true' : undefined"
+        >
+            <a href="#main-content" class="skip-to-content">Skip to content</a>
+            <OfflineBanner />
+        </div>
         <div class="layout-shell">
-            <SideMenu />
+            <div
+                class="layout-navigation"
+                :inert="isInspectorOpen"
+                :aria-hidden="isInspectorOpen ? 'true' : undefined"
+            >
+                <SideMenu />
+            </div>
             <div class="layout-frame">
                 <main
                     id="main-content"
                     class="layout-main"
-                    :style="!smaller ? { marginLeft: sidebarWidth + 'px' } : undefined"
+                    :style="!smaller ? { marginLeft: `${sidebarWidth}px` } : undefined"
+                    :inert="isInspectorOpen"
+                    :aria-hidden="isInspectorOpen ? 'true' : undefined"
                     data-scroll-owner="page"
                     tabindex="-1"
                 >
@@ -27,7 +40,7 @@
         <div
             v-if="rightSideStore.hasSelection && !smaller"
             class="layout-dim"
-            :style="{ left: sidebarWidth + 'px' }"
+            :style="{ left: `${sidebarWidth}px` }"
             @click="rightSideStore.clearInspector()"
         />
         <!-- Shared host for teleported dropdowns, popovers, and future inspector overlays. -->
@@ -56,6 +69,11 @@ const {sidebarWidth} = useSidebarState();
 
 const rightSideStore = useRightSideMenuStore();
 const shortcutsVisible = ref(false);
+const isInspectorOpen = computed(
+    () =>
+        rightSideStore.hasSelection &&
+        (!smaller.value || rightSideStore.isInspectorDrawerOpen)
+);
 
 // An open inspector renders .layout-dim as a full-bleed overlay with
 // pointer-events: auto. Leaving the inspector mounted after route
@@ -138,6 +156,9 @@ function bgClicked() {
     max-height: 100vh;
     overflow: hidden;
 }
+.layout-navigation {
+    display: contents;
+}
 .layout-frame {
     display: flex;
     flex: 1;
@@ -177,14 +198,16 @@ function bgClicked() {
     bottom: 0;
     /* left is set dynamically via :style to respect sidebar width */
     z-index: var(--z-dropdown);
-    background-color: color-mix(in srgb, var(--color-surface-0) 40%, transparent);
+    background-color: var(--color-overlay-heavy);
+    backdrop-filter: blur(var(--scrim-blur));
+    -webkit-backdrop-filter: blur(var(--scrim-blur));
     pointer-events: auto;
     transition: left var(--duration-normal) ease;
 }
 .floating-ui-root {
     position: fixed;
     inset: 0;
-    z-index: calc(var(--z-modal) + 10);
+    z-index: var(--z-tooltip);
     pointer-events: none;
     isolation: isolate;
 }
@@ -192,13 +215,6 @@ function bgClicked() {
     .layout-main {
         padding-bottom: var(--space-2);
         transition: margin-left var(--duration-normal) ease;
-    }
-    .layout-inspector {
-        position: relative;
-        z-index: calc(var(--z-dropdown) + 1);
-        width: var(--inspector-desktop-width);
-        min-width: var(--inspector-desktop-min-width);
-        max-width: var(--inspector-desktop-max-width);
     }
 }
 @media (prefers-reduced-motion: reduce) {

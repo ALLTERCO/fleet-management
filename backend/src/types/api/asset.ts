@@ -202,6 +202,7 @@ export const ASSET_DESCRIBE: DescribeOutput = new DescribeBuilder('asset', {
             'Remove an asset. Refuses (AssetInUse) if any device or group still references it.'
     })
     .registerMethod('MigrateImages', {
+        safety: {operation: 'execute'},
         params: ASSET_MIGRATE_IMAGES_PARAMS_SCHEMA,
         response: ASSET_MIGRATE_IMAGES_RESPONSE,
         permission: {note: 'tenant-admin only'},

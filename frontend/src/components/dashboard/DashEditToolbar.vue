@@ -6,6 +6,7 @@
         </div>
 
         <button
+            type="button"
             class="det__btn det__btn--primary"
             aria-label="Add widget"
             @click="$emit('add-widget')"
@@ -15,6 +16,7 @@
         </button>
 
         <button
+            type="button"
             class="det__btn"
             :disabled="!canUndo"
             aria-label="Undo"
@@ -25,6 +27,7 @@
             <span class="det__label">Undo</span>
         </button>
         <button
+            type="button"
             class="det__btn"
             :disabled="!canRedo"
             aria-label="Redo"
@@ -35,12 +38,31 @@
             <span class="det__label">Redo</span>
         </button>
 
+        <button
+            type="button"
+            class="det__btn"
+            aria-label="Rename dashboard"
+            title="Rename dashboard"
+            @click="$emit('rename')"
+        >
+            <i class="fas fa-pen" aria-hidden="true" />
+            <span class="det__label">Rename</span>
+        </button>
+
         <span class="det__spacer" />
 
-        <button class="det__btn det__btn--ghost" @click="$emit('cancel')">
+        <button
+            type="button"
+            class="det__btn det__btn--ghost"
+            @click="$emit('cancel')"
+        >
             Cancel
         </button>
-        <button class="det__btn det__btn--save" @click="$emit('save')">
+        <button
+            type="button"
+            class="det__btn det__btn--save"
+            @click="$emit('save')"
+        >
             <i class="fas fa-check" aria-hidden="true" />
             <span class="det__label">Save</span>
         </button>
@@ -60,6 +82,7 @@ defineEmits<{
     (e: 'add-widget'): void;
     (e: 'undo'): void;
     (e: 'redo'): void;
+    (e: 'rename'): void;
     (e: 'save'): void;
     (e: 'cancel'): void;
 }>();

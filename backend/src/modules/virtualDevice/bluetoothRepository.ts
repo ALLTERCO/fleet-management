@@ -1,5 +1,15 @@
 import {randomUUID} from 'node:crypto';
 import {
+    BLU_TRV_MODEL_ID,
+    isBTHomeControlObjectId,
+    resolveBluDeviceInfo,
+    resolveBluPresentationImageModel
+} from '../../config/BTHomeData';
+import {
+    bluStableIdFromAddress,
+    normalizeBleAddress
+} from '../../model/bluIdentity';
+import {
     buildListResponse,
     type ListResponse,
     paginateAndBuild
@@ -86,6 +96,11 @@ interface GatewayCandidateRow {
 
 interface BluetoothCandidateQuery extends BluetoothDeviceCandidateListParams {
     componentKey?: string;
+}
+
+interface BluetoothPromotionCandidate {
+    candidate: BluetoothDeviceCandidateDto;
+    imageModel?: string;
 }
 
 const defaultDeps: RepositoryDeps = {
@@ -269,8 +284,13 @@ export async function promoteBluetoothFromGateway(
     deps: RepositoryDeps = defaultDeps
 ): Promise<BluetoothDeviceDto> {
     return deps.withTransaction(async (tx) => {
-        const candidate = await readGatewayCandidate(tx, organizationId, input);
-        const promoted = await upsertBluetoothDevice(tx, candidate);
+        const promotion = await readGatewayCandidate(tx, organizationId, input);
+        const {candidate} = promotion;
+        const promoted = await upsertBluetoothDevice(
+            tx,
+            candidate,
+            promotion.imageModel
+        );
         await upsertGatewayTransport(tx, {
             candidate,
             bluetoothDeviceListId: promoted.device.deviceListId,
@@ -701,12 +721,17 @@ function rowToBluetoothCandidate(
 ): BluetoothDeviceCandidateDto | null {
     const config = asRecord(row.config);
     const bleAddress = stringValue(config.addr);
-    const stableId = stableIdFromAddress(bleAddress);
+    const stableId = bluStableIdFromAddress(bleAddress);
     if (!stableId) return null;
     const allConfig = asRecord(row.all_config);
     if (isDuplicateTrvBthomeCandidate(row.component_key, bleAddress, allConfig))
         return null;
     const meta = asRecord(config.meta);
+    const modelId =
+        stringValue(meta.modelId) ??
+        stringValue(config.model) ??
+        (row.component_key.startsWith('blutrv:') ? BLU_TRV_MODEL_ID : null);
+    const identity = resolveBluDeviceInfo(modelId ?? undefined);
     const components = collectBluetoothSourceComponents(
         row.component_key,
         config,
@@ -719,8 +744,12 @@ function rowToBluetoothCandidate(
         stableId,
         bleAddress: normalizeBleAddress(bleAddress ?? ''),
         name: stringValue(config.name),
-        productName: stringValue(meta.productName),
-        modelId: stringValue(meta.modelId),
+        productName:
+            stringValue(meta.productName) ??
+            (identity.productName === 'BLE Device'
+                ? null
+                : identity.productName),
+        modelId,
         capability: capabilityFromSourceComponents(config, components),
         components,
         alreadyPromoted: row.bluetooth_external_id !== null,
@@ -732,7 +761,7 @@ async function readGatewayCandidate(
     tx: QueryClient,
     organizationId: string,
     input: BluetoothPromoteFromGatewayParams
-): Promise<BluetoothDeviceCandidateDto> {
+): Promise<BluetoothPromotionCandidate> {
     const rows = await tx.query<GatewayCandidateRow>(
         `${bluetoothCandidateSql({
             gatewayExternalId: input.gatewayExternalId,
@@ -744,12 +773,21 @@ async function readGatewayCandidate(
     const candidate = rows[0] ? rowToBluetoothCandidate(rows[0]) : null;
     if (!candidate)
         throw RpcError.NotFound('bluetooth_candidate', input.componentKey);
-    return candidate;
+    const meta = asRecord(asRecord(rows[0]?.config).meta);
+    const visual = asRecord(meta.visual);
+    return {
+        candidate,
+        imageModel: resolveBluPresentationImageModel(
+            candidate.modelId,
+            stringValue(visual.imageModel)
+        )
+    };
 }
 
 async function upsertBluetoothDevice(
     tx: QueryClient,
-    candidate: BluetoothDeviceCandidateDto
+    candidate: BluetoothDeviceCandidateDto,
+    imageModel?: string
 ): Promise<{device: BluetoothDeviceDto; created: boolean}> {
     const existing = await findBluetoothDeviceByStableId(
         tx,
@@ -760,7 +798,8 @@ async function upsertBluetoothDevice(
         await updateBluetoothDeviceMetadata(
             tx,
             existing.deviceListId,
-            candidate
+            candidate,
+            imageModel
         );
         return {
             device: await requireBluetoothDevice(
@@ -783,7 +822,8 @@ async function upsertBluetoothDevice(
     const resurrected = await resurrectTombstonedBluetoothDevice(
         tx,
         organizationId,
-        candidate
+        candidate,
+        imageModel
     );
     if (resurrected) return {device: resurrected, created: false};
     // blu_<MAC> is global; a duplicate insert here means another org owns it.
@@ -821,9 +861,10 @@ async function upsertBluetoothDevice(
             product_name,
             model_id,
             capability,
-            source_components_json
+            source_components_json,
+            visual_json
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb)`,
         [
             deviceListId,
             organizationId,
@@ -832,7 +873,8 @@ async function upsertBluetoothDevice(
             candidate.productName ?? candidate.name,
             candidate.modelId,
             candidate.capability,
-            jsonbParam(candidate.components)
+            jsonbParam(candidate.components),
+            jsonbParam(imageModel ? {imageModel} : {})
         ]
     );
     return {
@@ -846,7 +888,8 @@ async function upsertBluetoothDevice(
 async function resurrectTombstonedBluetoothDevice(
     tx: QueryClient,
     organizationId: string,
-    candidate: BluetoothDeviceCandidateDto
+    candidate: BluetoothDeviceCandidateDto,
+    imageModel?: string
 ): Promise<BluetoothDeviceDto | null> {
     const rows = await tx.query<{device_list_id: number; external_id: string}>(
         `UPDATE device.blu_device bd
@@ -861,7 +904,12 @@ async function resurrectTombstonedBluetoothDevice(
     );
     const row = rows[0];
     if (!row) return null;
-    await updateBluetoothDeviceMetadata(tx, row.device_list_id, candidate);
+    await updateBluetoothDeviceMetadata(
+        tx,
+        row.device_list_id,
+        candidate,
+        imageModel
+    );
     return requireBluetoothDevice(tx, organizationId, row.external_id);
 }
 
@@ -888,7 +936,8 @@ async function findBluetoothDeviceByStableId(
 async function updateBluetoothDeviceMetadata(
     tx: QueryClient,
     deviceListId: number,
-    candidate: BluetoothDeviceCandidateDto
+    candidate: BluetoothDeviceCandidateDto,
+    imageModel?: string
 ): Promise<void> {
     await tx.query(
         `UPDATE device.blu_device
@@ -897,6 +946,11 @@ async function updateBluetoothDeviceMetadata(
                 model_id = COALESCE($4, model_id),
                 capability = $5,
                 source_components_json = $6::jsonb,
+                visual_json = CASE
+                    WHEN COALESCE(visual_json, '{}'::jsonb) = '{}'::jsonb
+                    THEN $7::jsonb
+                    ELSE visual_json
+                END,
                 updated_at = NOW()
           WHERE device_list_id = $1`,
         [
@@ -905,7 +959,8 @@ async function updateBluetoothDeviceMetadata(
             candidate.productName ?? candidate.name,
             candidate.modelId,
             candidate.capability,
-            jsonbParam(candidate.components)
+            jsonbParam(candidate.components),
+            jsonbParam(imageModel ? {imageModel} : {})
         ]
     );
 }
@@ -923,7 +978,33 @@ async function upsertGatewayTransport(
         tx,
         input.candidate.gatewayDeviceListId
     );
-    if (input.makePrimary) {
+    let makePrimary = input.makePrimary;
+    if (!makePrimary) {
+        const rows = await tx.query<{needs_primary: boolean}>(
+            `WITH stale AS (
+                UPDATE device.blu_transport
+                   SET enabled = FALSE,
+                       is_primary = FALSE,
+                       updated_at = NOW()
+                 WHERE organization_id = $1
+                   AND blu_device_list_id = $2
+                   AND mode = 'bthome_gateway'
+                   AND shelly_device_list_id IS NULL
+                 RETURNING id
+            )
+            SELECT NOT EXISTS (
+                SELECT 1
+                  FROM device.blu_transport
+                 WHERE organization_id = $1
+                   AND blu_device_list_id = $2
+                   AND enabled IS TRUE
+                   AND is_primary IS TRUE
+            ) AS needs_primary`,
+            [organizationId, input.bluetoothDeviceListId]
+        );
+        makePrimary = rows[0]?.needs_primary === true;
+    }
+    if (makePrimary) {
         await tx.query(
             `UPDATE device.blu_transport
                 SET is_primary = FALSE,
@@ -962,7 +1043,7 @@ async function upsertGatewayTransport(
                 organizationId,
                 input.bluetoothDeviceListId,
                 existing[0].id,
-                input.makePrimary,
+                makePrimary,
                 canWrite
             ]
         );
@@ -984,7 +1065,7 @@ async function upsertGatewayTransport(
             input.transportId,
             input.bluetoothDeviceListId,
             organizationId,
-            input.makePrimary,
+            makePrimary,
             input.candidate.gatewayDeviceListId,
             candidateTransportCanWrite(input.candidate)
         ]
@@ -1168,12 +1249,12 @@ function capabilityFromSourceComponents(
     if (components.some((component) => component.role === 'event_control')) {
         return 'event_only';
     }
-    if (components.some((component) => component.role === 'telemetry')) {
-        return 'telemetry_only';
-    }
     const meta = asRecord(config.meta);
     const controls = Array.isArray(meta.controls) ? meta.controls : [];
     if (controls.length > 0 || meta.isRemote === true) return 'event_only';
+    if (components.some((component) => component.role === 'telemetry')) {
+        return 'telemetry_only';
+    }
     return 'telemetry_only';
 }
 
@@ -1250,7 +1331,12 @@ function sourceComponentRole(
 ): BluetoothSourceComponentDto['role'] {
     if (kind === 'device') return 'identity';
     if (kind === 'trv') return 'writable_control';
-    if (kind === 'sensor') return 'telemetry';
+    if (kind === 'sensor') {
+        const objectId = numberValue(config.obj_id);
+        return objectId !== null && isBTHomeControlObjectId(objectId)
+            ? 'event_control'
+            : 'telemetry';
+    }
     return config.can_write === true || config.writable === true
         ? 'writable_control'
         : 'event_control';
@@ -1276,8 +1362,8 @@ function childKind(componentKey: string): 'sensor' | 'control' {
 }
 
 function sameBleAddress(left: string | null, right: string | null): boolean {
-    const stableLeft = stableIdFromAddress(left);
-    const stableRight = stableIdFromAddress(right);
+    const stableLeft = bluStableIdFromAddress(left);
+    const stableRight = bluStableIdFromAddress(right);
     return !!stableLeft && stableLeft === stableRight;
 }
 
@@ -1332,18 +1418,6 @@ function isSourceRole(
         value === 'event_control' ||
         value === 'writable_control'
     );
-}
-
-function stableIdFromAddress(value: string | null): string | null {
-    if (!value) return null;
-    const stableId = value.replace(/[^0-9a-f]/gi, '').toLowerCase();
-    return stableId.length === 12 ? stableId : null;
-}
-
-function normalizeBleAddress(value: string): string {
-    const stableId = stableIdFromAddress(value);
-    if (!stableId || stableId.length !== 12) return value.toLowerCase();
-    return stableId.match(/.{1,2}/g)?.join(':') ?? value.toLowerCase();
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

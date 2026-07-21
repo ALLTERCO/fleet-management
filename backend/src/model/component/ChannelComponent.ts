@@ -474,6 +474,11 @@ export default class ChannelComponent extends Component {
                 endpointId: created.id,
                 provider: created.full.provider
             });
+            AlertEvents.emitChannelCreated({
+                organizationId,
+                id: created.id,
+                name: created.full.name
+            });
             return rowToEndpoint(created.full);
         } catch (err: unknown) {
             throw translateIntegrationError(err, 'create');
@@ -586,6 +591,11 @@ export default class ChannelComponent extends Component {
                 endpointId: updated.id,
                 provider: updated.full.provider
             });
+            AlertEvents.emitChannelUpdated({
+                organizationId,
+                id: updated.id,
+                name: updated.full.name
+            });
             return rowToEndpoint(updated.full);
         } catch (err: unknown) {
             throw translateIntegrationError(err, 'update');
@@ -629,6 +639,7 @@ export default class ChannelComponent extends Component {
                     endpointId: p.id,
                     provider: current.provider
                 });
+                AlertEvents.emitChannelDeleted({organizationId, id: p.id});
             }
             return {deleted: row?.id != null, id: p.id};
         } catch (err: unknown) {

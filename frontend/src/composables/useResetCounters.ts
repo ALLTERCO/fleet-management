@@ -3,6 +3,7 @@
  *  into the caller's configError ref. */
 
 import type {Ref} from 'vue';
+import {deviceActionErrorMessage} from '@/helpers/deviceActionError';
 import {useEntityStore} from '@/stores/entities';
 
 interface UseResetCountersOptions {
@@ -19,8 +20,11 @@ export function useResetCounters(opts: UseResetCountersOptions) {
         opts.configError.value = null;
         try {
             await entityStore.invokeAction(eid, 'resetCounters');
-        } catch (e: any) {
-            opts.configError.value = e?.message || 'Failed to reset counters';
+        } catch (e: unknown) {
+            opts.configError.value = deviceActionErrorMessage(
+                e,
+                'Reset counters'
+            );
         }
     }
 

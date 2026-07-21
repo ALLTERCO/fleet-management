@@ -1,3 +1,39 @@
+function asRecord(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === 'object'
+        ? (value as Record<string, unknown>)
+        : null;
+}
+
+function parsePayload(value: unknown): Record<string, unknown> | null {
+    const record = asRecord(value);
+    if (record) return record;
+    if (typeof value !== 'string' || value.length === 0) return null;
+    try {
+        return asRecord(JSON.parse(value));
+    } catch {
+        return null;
+    }
+}
+
+function payloadUserId(value: unknown): string | null {
+    const payload = parsePayload(value);
+    const userId = payload?.userId ?? payload?.user_id;
+    return typeof userId === 'string' && userId.length > 0 ? userId : null;
+}
+
+function findNestedUserId(value: unknown, depth = 0): string | null {
+    if (depth > 6) return null;
+    const direct = payloadUserId(value);
+    if (direct) return direct;
+    const record = parsePayload(value);
+    if (!record) return null;
+    for (const child of Object.values(record)) {
+        const nested = findNestedUserId(child, depth + 1);
+        if (nested) return nested;
+    }
+    return null;
+}
+
 // Tries event payload, userinfo, and aggregate shapes in turn.
 export function extractUserId(parsed: unknown): string | null {
     if (!parsed || typeof parsed !== 'object') {
@@ -15,10 +51,16 @@ export function extractUserId(parsed: unknown): string | null {
     ) {
         return userinfoBlock.sub;
     }
-    const payload = root.payload as Record<string, unknown> | undefined;
-    if (typeof payload?.userId === 'string' && payload.userId.length > 0) {
-        return payload.userId;
+    for (const candidate of [
+        root.payload,
+        asRecord(root.event)?.payload,
+        asRecord(root.data)?.payload
+    ]) {
+        const userId = payloadUserId(candidate);
+        if (userId) return userId;
     }
+    const nestedUserId = findNestedUserId(root);
+    if (nestedUserId) return nestedUserId;
     if (typeof root.userId === 'string' && root.userId.length > 0) {
         return root.userId;
     }

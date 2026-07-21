@@ -20,19 +20,36 @@ export interface CameraSetConfigParams extends CameraShellyTarget {
 
 export interface CameraGetCapabilitiesParams extends CameraShellyTarget {}
 
-export interface CameraCaptureImageParams extends CameraShellyTarget {}
-
-export interface CameraStartRecordingParams extends CameraShellyTarget {}
-
-export interface CameraStopRecordingParams extends CameraShellyTarget {}
-
-export interface CameraAddZoneParams extends CameraShellyTarget {
-    config: Record<string, unknown>;
+export interface CameraCaptureImageParams extends CameraShellyTarget {
+    stream?: number;
 }
 
+// duration + stream are required — an id-only StartRecording fails on-device.
+export interface CameraStartRecordingParams extends CameraShellyTarget {
+    duration: number;
+    stream: number;
+}
+
+export interface CameraStopRecordingParams extends CameraShellyTarget {
+    rec_id?: string; // omit to stop all active recordings
+}
+
+// AddZone params are flat (not wrapped in `config`) per the CameraZone doc and
+// verified on-device — a `config`-wrapped payload fails with "too few coordinates".
+export interface CameraAddZoneParams extends CameraShellyTarget {
+    enable: boolean;
+    type: string; // 'motion' | 'privacy'
+    coordinates: number[]; // normalized 0..10000 grid, >= 2 points (4 values)
+    color?: number[]; // [r,g,b] 0..255
+    name?: string;
+}
+
+// DeleteZone needs the camera `id` AND the `zone_id`; the device rejects a
+// single-id payload ("Missing or bad argument 'id'!").
 export interface CameraDeleteZoneParams {
     shellyID: string;
-    id: number;
+    id: number; // camera component id
+    zone_id: number; // zone to delete
 }
 
 export interface CameraZoneSetConfigParams {
@@ -44,12 +61,13 @@ export interface CameraZoneSetConfigParams {
 export interface CameraStorageListParams {
     shellyID: string;
     id?: number;
+    offset?: number; // pagination — Storage.List returns a page from this index
 }
 
 export interface CameraStorageDeleteParams {
     shellyID: string;
     id?: number;
-    name: string;
+    media_id: string; // per Storage doc; List rows are keyed by media_id
 }
 
 export interface CameraStorageFormatParams {
@@ -101,9 +119,36 @@ export const CAMERA_SET_CONFIG_SCHEMA: JsonSchema = {
 };
 
 export const CAMERA_GET_CAPABILITIES_SCHEMA = SHELLY_AND_ID;
-export const CAMERA_CAPTURE_IMAGE_SCHEMA = SHELLY_AND_ID;
-export const CAMERA_START_RECORDING_SCHEMA = SHELLY_AND_ID;
-export const CAMERA_STOP_RECORDING_SCHEMA = SHELLY_AND_ID;
+
+export const CAMERA_CAPTURE_IMAGE_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['shellyID', 'id'],
+    additionalProperties: false,
+    properties: {shellyID: SHELLY_ID, id: CHANNEL_ID, stream: CHANNEL_ID}
+};
+
+export const CAMERA_START_RECORDING_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['shellyID', 'id', 'duration', 'stream'],
+    additionalProperties: false,
+    properties: {
+        shellyID: SHELLY_ID,
+        id: CHANNEL_ID,
+        duration: {type: 'integer', minimum: 1},
+        stream: CHANNEL_ID
+    }
+};
+
+export const CAMERA_STOP_RECORDING_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['shellyID', 'id'],
+    additionalProperties: false,
+    properties: {
+        shellyID: SHELLY_ID,
+        id: CHANNEL_ID,
+        rec_id: {type: 'string', minLength: 1, maxLength: 64}
+    }
+};
 
 export interface CameraGetConfigParams extends CameraShellyTarget {}
 export const CAMERA_GET_CONFIG_PARAMS_SCHEMA: JsonSchema = SHELLY_AND_ID;
@@ -124,36 +169,34 @@ export interface CameraStorageGetStatusParams {
 export const CAMERA_STORAGE_GET_STATUS_PARAMS_SCHEMA: JsonSchema =
     SHELLY_AND_OPTIONAL_ID;
 
-export interface CameraStorageUploadParams {
-    shellyID: string;
-    id?: number;
-    name: string;
-    data: string;
-    offset?: number;
-    last?: boolean;
-}
-export const CAMERA_STORAGE_UPLOAD_PARAMS_SCHEMA: JsonSchema = {
+export const CAMERA_ADD_ZONE_SCHEMA: JsonSchema = {
     type: 'object',
-    required: ['shellyID', 'name', 'data'],
+    required: ['shellyID', 'id', 'enable', 'type', 'coordinates'],
     additionalProperties: false,
     properties: {
         shellyID: SHELLY_ID,
         id: CHANNEL_ID,
-        name: {type: 'string', minLength: 1, maxLength: 256},
-        data: {type: 'string'},
-        offset: {type: 'integer', minimum: 0},
-        last: {type: 'boolean'}
+        enable: {type: 'boolean'},
+        type: {type: 'string', enum: ['motion', 'privacy']},
+        coordinates: {type: 'array', items: {type: 'number'}, minItems: 4},
+        color: {
+            type: 'array',
+            items: {type: 'integer', minimum: 0, maximum: 255}
+        },
+        name: {type: 'string', maxLength: 64}
     }
 };
 
-export const CAMERA_ADD_ZONE_SCHEMA: JsonSchema = {
+export const CAMERA_DELETE_ZONE_SCHEMA: JsonSchema = {
     type: 'object',
-    required: ['shellyID', 'id', 'config'],
+    required: ['shellyID', 'id', 'zone_id'],
     additionalProperties: false,
-    properties: {shellyID: SHELLY_ID, id: CHANNEL_ID, config: CONFIG_OBJECT}
+    properties: {
+        shellyID: SHELLY_ID,
+        id: CHANNEL_ID,
+        zone_id: {type: 'integer', minimum: 0}
+    }
 };
-
-export const CAMERA_DELETE_ZONE_SCHEMA = SHELLY_AND_ID;
 
 export const CAMERA_ZONE_SET_CONFIG_SCHEMA: JsonSchema = {
     type: 'object',
@@ -162,19 +205,28 @@ export const CAMERA_ZONE_SET_CONFIG_SCHEMA: JsonSchema = {
     properties: {shellyID: SHELLY_ID, id: CHANNEL_ID, config: CONFIG_OBJECT}
 };
 
-export const CAMERA_STORAGE_LIST_SCHEMA = SHELLY_AND_OPTIONAL_ID;
+export const CAMERA_STORAGE_LIST_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['shellyID'],
+    additionalProperties: false,
+    properties: {
+        shellyID: SHELLY_ID,
+        id: CHANNEL_ID,
+        offset: {type: 'integer', minimum: 0}
+    }
+};
 export const CAMERA_STORAGE_FORMAT_SCHEMA = SHELLY_AND_OPTIONAL_ID;
 export const CAMERA_STORAGE_EJECT_SCHEMA = SHELLY_AND_OPTIONAL_ID;
 export const CAMERA_STORAGE_GET_CONFIG_SCHEMA = SHELLY_AND_OPTIONAL_ID;
 
 export const CAMERA_STORAGE_DELETE_SCHEMA: JsonSchema = {
     type: 'object',
-    required: ['shellyID', 'name'],
+    required: ['shellyID', 'media_id'],
     additionalProperties: false,
     properties: {
         shellyID: SHELLY_ID,
         id: CHANNEL_ID,
-        name: {type: 'string', minLength: 1, maxLength: 256}
+        media_id: {type: 'string', minLength: 1, maxLength: 64}
     }
 };
 
@@ -201,6 +253,10 @@ export interface CameraStreamerSetStreamSourceParams {
     shellyID: string;
     session_id: string;
     stream_id: number;
+}
+export interface CameraStreamerStopParams {
+    shellyID: string;
+    session_id: string;
 }
 export const CAMERA_STREAMER_OFFER_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
@@ -240,6 +296,16 @@ export const CAMERA_STREAMER_SET_STREAM_SOURCE_PARAMS_SCHEMA: JsonSchema = {
         shellyID: SHELLY_ID,
         session_id: {type: 'string'},
         stream_id: {type: 'integer'}
+    }
+};
+
+export const CAMERA_STREAMER_STOP_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['shellyID', 'session_id'],
+    additionalProperties: false,
+    properties: {
+        shellyID: SHELLY_ID,
+        session_id: {type: 'string'}
     }
 };
 
@@ -287,12 +353,6 @@ export const CAMERA_DESCRIBE: DescribeOutput = new DescribeBuilder('camera', {
         response: ACK,
         permission: {component: 'devices', operation: 'read'},
         description: 'Storage.GetStatus.'
-    })
-    .registerMethod('Storage.Upload', {
-        params: CAMERA_STORAGE_UPLOAD_PARAMS_SCHEMA,
-        response: ACK,
-        permission: {component: 'devices', operation: 'update'},
-        description: 'Storage.Upload — chunked file upload.'
     })
     .registerMethod('GetCapabilities', {
         params: CAMERA_GET_CAPABILITIES_SCHEMA,
@@ -396,5 +456,12 @@ export const CAMERA_DESCRIBE: DescribeOutput = new DescribeBuilder('camera', {
         response: ACK,
         permission: {component: 'devices', operation: 'execute'},
         description: 'Streamer.SetStreamSource — switch active stream.'
+    })
+    .registerMethod('Streamer.StopStream', {
+        params: CAMERA_STREAMER_STOP_PARAMS_SCHEMA,
+        response: ACK,
+        permission: {component: 'devices', operation: 'execute'},
+        description:
+            'Streamer.StopStream — end a WebRTC session and free the device stream slot.'
     })
     .build();

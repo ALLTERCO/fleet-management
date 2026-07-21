@@ -7,6 +7,7 @@ import {
 } from 'node:perf_hooks';
 import * as log4js from 'log4js';
 import {tuning} from '../../config/tuning';
+import {safeInterval} from '../util/faultGuard';
 import {liveGauge} from './processMetrics';
 import type {ObsLevel} from './types';
 import {percentile} from './util/percentile';
@@ -243,7 +244,7 @@ function startDiskUsageSampling(): void {
 function startLagMeasurement(): void {
     let lastHr = process.hrtime.bigint();
     let tick = 0;
-    lagInterval = setInterval(() => {
+    lagInterval = safeInterval('obs-lag', 1000, () => {
         const now = process.hrtime.bigint();
         const elapsed = Number(now - lastHr) / 1e6;
         lagMs = Math.max(0, elapsed - 1000);
@@ -255,7 +256,7 @@ function startLagMeasurement(): void {
             sampleHeapTrend();
             sampleCpuDelta();
         }
-    }, 1000);
+    });
     lagInterval.unref();
 
     elHistogram = monitorEventLoopDelay({resolution: 20});
@@ -324,7 +325,7 @@ function stopLagMeasurement(): void {
 }
 
 function startSnapshotInterval(): void {
-    snapshotInterval = setInterval(() => {
+    snapshotInterval = safeInterval('obs-snapshot', 5000, () => {
         const m = snapshotProducer();
         if (!m) return;
         pushRing(
@@ -332,7 +333,7 @@ function startSnapshotInterval(): void {
             {ts: Date.now(), metrics: m},
             tuning.observability.historyRingSize
         );
-    }, 5000);
+    });
     snapshotInterval.unref();
 }
 

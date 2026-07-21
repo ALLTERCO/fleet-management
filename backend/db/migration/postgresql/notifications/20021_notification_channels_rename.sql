@@ -1,4 +1,5 @@
 --------------UP
+-- LINT-IGNORE: additive-only (deliberate legacy function removal)
 DO $$
 DECLARE
     legacy_count BIGINT;

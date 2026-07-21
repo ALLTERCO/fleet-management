@@ -33,12 +33,8 @@ run_bootstrap() {
     export ZITADEL_URL="http://localhost:8080"
     # Host header for NAT hairpin — strip default ports (443/HTTPS, 80/HTTP)
     # because Zitadel uses exact Host match for instance lookup
-    local _host_header="${hostname}:${ZITADEL_EXTERNALPORT}"
-    if [ "${ZITADEL_EXTERNALSECURE:-false}" = "true" ]; then
-        _host_header="${_host_header%:443}"
-    else
-        _host_header="${_host_header%:80}"
-    fi
+    local _host_header
+    _host_header="$(zitadel_host_header "${hostname}:${ZITADEL_EXTERNALPORT}" "${ZITADEL_EXTERNALSECURE:-false}")"
     export ZITADEL_HOST_HEADER="$_host_header"
     export MACHINEKEY_PATH="$STATE_DIR/machinekey/zitadel-admin-sa.json"
     export STATE_FILE="$STATE_DIR/zitadel.env"
@@ -71,13 +67,20 @@ run_bootstrap() {
 # run AFTER FM is up because Zitadel resolves the endpoint via DNS at create.
 run_actions_bootstrap() {
     step "Registering Zitadel Action V2 webhook"
-    if run_quiet "Action V2 bootstrap" \
+    export ZITADEL_URL="${ZITADEL_URL:-http://localhost:8080}"
+    export MACHINEKEY_PATH="${MACHINEKEY_PATH:-$STATE_DIR/machinekey/zitadel-admin-sa.json}"
+    export STATE_FILE="${STATE_FILE:-$STATE_DIR/zitadel.env}"
+    if ! run_quiet "Action V2 bootstrap" \
         bash "$DEPLOY_DIR/scripts/common/bootstrap-zitadel-actions.sh"; then
-        ok "Action V2 webhook registered"
-        return 0
+        error "Action V2 registration failed; user deletion/access revocation hooks are not safe"
+        return 1
     fi
-    warn "Action V2 registration failed — webhook deliveries will be unverified"
-    return 1
+    if ! run_quiet "Action V2 verification" \
+        bash "$DEPLOY_DIR/scripts/common/check-zitadel-actions.sh" --quiet; then
+        error "Action V2 verification failed after registration"
+        return 1
+    fi
+    ok "Action V2 webhook registered"
 }
 
 generate_fm_config() {

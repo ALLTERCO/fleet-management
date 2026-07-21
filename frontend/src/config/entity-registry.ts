@@ -6,6 +6,7 @@ import EntityTemplate_BthomeSensor from '@/components/entity-templates/EntityTem
 import EntityTemplate_Bulb from '@/components/entity-templates/EntityTemplate_Bulb.vue';
 import EntityTemplate_Camera from '@/components/entity-templates/EntityTemplate_Camera.vue';
 import EntityTemplate_CameraZone from '@/components/entity-templates/EntityTemplate_CameraZone.vue';
+import EntityTemplate_CB from '@/components/entity-templates/EntityTemplate_CB.vue';
 import EntityTemplate_Cover from '@/components/entity-templates/EntityTemplate_Cover.vue';
 import EntityTemplate_Cury from '@/components/entity-templates/EntityTemplate_Cury.vue';
 import EntityTemplate_DaliLight from '@/components/entity-templates/EntityTemplate_DaliLight.vue';
@@ -30,7 +31,7 @@ import EntityTemplate_Thermostat from '@/components/entity-templates/EntityTempl
 import EntityTemplate_Ui from '@/components/entity-templates/EntityTemplate_Ui.vue';
 import EntityTemplate_VirtualButton from '@/components/entity-templates/EntityTemplate_VirtualButton.vue';
 import BTHomeDeviceEntityView from '@/components/pages/devices/BTHomeDeviceEntityView.vue';
-import {getBThomeIcon} from '@/config/bthome';
+import {getBThomeIcon} from '@/config/bthome-presentation';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -101,7 +102,8 @@ export type LightProfile = 'light' | 'cct' | 'rgb' | 'rgbw' | 'rgbcct';
 /** Dimmer actions — backend Light.* namespace. */
 function dimmerActions(_profile: LightProfile): Record<string, ActionHandler> {
     return {
-        toggle: () => entityAction('toggle'),
+        toggle: (_id, status) =>
+            entityAction('setOutput', {on: !status?.output}),
         setBrightness: (_id, _s, value) =>
             value === 0
                 ? entityAction('setOutput', {on: false})
@@ -119,7 +121,8 @@ function dimmerActions(_profile: LightProfile): Record<string, ActionHandler> {
 /** Smart bulb / LED controller — backend-owned action surface. */
 function bulbActions(_profile: LightProfile): Record<string, ActionHandler> {
     return {
-        toggle: () => entityAction('toggle'),
+        toggle: (_id, status) =>
+            entityAction('setOutput', {on: !status?.output}),
         setRgb: (_id, _s, rgb) => entityAction('setColor', {rgb}),
         setWhite: (_id, _s, value) => entityAction('setWhite', {white: value}),
         setBrightness: (_id, _s, value) =>
@@ -141,50 +144,42 @@ function bulbActions(_profile: LightProfile): Record<string, ActionHandler> {
 // Tag helpers
 // ---------------------------------------------------------------------------
 
+// Backend cury projection: status.vials[] resolves vial presence and level;
+// raw slot fields still carry name/on/intensity/boost.
+type ProjectedCuryVial = {
+    slot: 'left' | 'right';
+    present: boolean;
+    level: number | null;
+    stillReading: boolean;
+};
+
 function curyTags(status: any): Tag[] {
     const tags: Tag[] = [];
-    const leftSlot = status.slots?.left;
-    const rightSlot = status.slots?.right;
-    const leftHasVial =
-        leftSlot?.vial?.serial && leftSlot.vial.serial !== '0000000000000000';
-    const rightHasVial =
-        rightSlot?.vial?.serial && rightSlot.vial.serial !== '0000000000000000';
+    const vials: ProjectedCuryVial[] = Array.isArray(status.vials)
+        ? status.vials
+        : [];
+    const present = vials.filter((vial) => vial.present);
 
-    if (leftHasVial) {
-        const name = leftSlot.vial.name || 'L';
-        if (leftSlot.on)
+    for (const vial of present) {
+        const slot = status.slots?.[vial.slot];
+        const name = slot?.vial?.name || (vial.slot === 'left' ? 'L' : 'R');
+        if (slot?.on)
             tags.push({
-                text: `${name}: ${leftSlot.intensity}%`,
+                text: `${name}: ${slot.intensity}%`,
                 icon: 'fas fa-spray-can'
             });
-        if (leftSlot.boost)
+        if (slot?.boost)
             tags.push({text: `${name} Boost`, icon: 'fas fa-rocket'});
     }
-    if (rightHasVial) {
-        const name = rightSlot.vial.name || 'R';
-        if (rightSlot.on)
-            tags.push({
-                text: `${name}: ${rightSlot.intensity}%`,
-                icon: 'fas fa-spray-can'
-            });
-        if (rightSlot.boost)
-            tags.push({text: `${name} Boost`, icon: 'fas fa-rocket'});
-    }
+
     if (status.away_mode)
         tags.push({text: 'Away', icon: 'fas fa-plane-departure'});
 
-    if (
-        leftHasVial &&
-        typeof leftSlot.vial.level === 'number' &&
-        leftSlot.vial.level >= 0
-    )
-        tags.push({text: `L:${leftSlot.vial.level}%`, icon: 'fas fa-vial'});
-    if (
-        rightHasVial &&
-        typeof rightSlot.vial.level === 'number' &&
-        rightSlot.vial.level >= 0
-    )
-        tags.push({text: `R:${rightSlot.vial.level}%`, icon: 'fas fa-vial'});
+    for (const vial of present) {
+        if (vial.level === null) continue;
+        const label = vial.slot === 'left' ? 'L' : 'R';
+        tags.push({text: `${label}:${vial.level}%`, icon: 'fas fa-vial'});
+    }
 
     if (status.errors?.length > 0)
         tags.push({
@@ -207,7 +202,8 @@ function cameraTags(status: any): Tag[] {
     const tags: Tag[] = [];
     if (status?.motion)
         tags.push({text: 'Motion', icon: 'fas fa-person-walking'});
-    if (status?.recording)
+    // `recordings` is an object keyed by rec_id (present only while recording).
+    if (status?.recordings && Object.keys(status.recordings).length > 0)
         tags.push({text: 'Recording', icon: 'fas fa-circle'});
     return tags;
 }
@@ -310,7 +306,8 @@ export const ENTITY_REGISTRY: Record<string, EntityDef> = {
         icon: 'fas fa-toggle-on',
         template: EntityTemplate_Switch,
         actions: {
-            toggle: () => entityAction('toggle'),
+            toggle: (_id, status) =>
+                entityAction('setOutput', {on: !status?.output}),
             toggleAfter: (_id, status, seconds) =>
                 entityAction('toggleAfter', {
                     on: !status?.output,
@@ -561,6 +558,14 @@ export const ENTITY_REGISTRY: Record<string, EntityDef> = {
         template: EntityTemplate_Illuminance,
         extraProps: (entity) => ({shellyID: entity.source}),
         tags: () => []
+    },
+    occupancy: {
+        icon: 'fas fa-person-walking',
+        template: EntityTemplate_Sensor,
+        tags: (status) =>
+            status?.value
+                ? [{text: 'Occupied', icon: 'fas fa-person-walking'}]
+                : []
     },
     thermostat: {
         icon: 'fas fa-temperature-arrow-up',
@@ -830,6 +835,102 @@ export const ENTITY_REGISTRY: Record<string, EntityDef> = {
             entityProperties: entity.properties
         }),
         tags: () => []
+    },
+
+    // --- Backend-composed types without a bespoke board template ---
+    // These mirror the backend COMPONENT_REGISTRY generic pass-throughs and
+    // the `object` virtual component (backend/src/modules/EntityComposer.ts).
+    // Each is a real Shelly component; the entry gives the device board a
+    // meaningful icon and the generic EntityWidget tag builder instead of the
+    // default 'fas fa-power-off' fallback. template:null → generic widget
+    // (same pattern as `group` / `bthomecontrol`). No actions are declared —
+    // these expose no controllable surface here.
+
+    // Virtual Object component — structured JSON container (e.g. XT1 /
+    // EV-charger phase_info). Shelly Gen2+ virtual component "Object".
+    object: {
+        icon: 'fas fa-cube',
+        template: null
+    },
+    // Battery Monitor — SOC, SOH, voltage, errors (Shelly BM.* component).
+    bm: {
+        icon: 'fas fa-car-battery',
+        template: null
+    },
+    // Circuit Breaker (Shelly CB.* component). Two-way relay: CB.Set output
+    // true/false. A safety-latched trip blocks remote re-engage (reset lever).
+    cb: {
+        icon: 'fas fa-bolt-slash',
+        template: EntityTemplate_CB,
+        actions: {
+            setOutput: (_id, _status, on: boolean) =>
+                entityAction('setOutput', {on})
+        },
+        extraProps: (entity) => ({
+            shellyID: entity.source,
+            entityId: entity.id
+        }),
+        tags: (status): Tag[] => {
+            const t: Tag[] = [];
+            if (status?.output === true)
+                t.push({text: 'On', icon: 'fas fa-bolt'});
+            else if (status?.output === false)
+                t.push({text: 'Off', icon: 'fas fa-bolt-slash'});
+            if (status?.safety || (status?.errors?.length ?? 0) > 0)
+                t.push({
+                    text: 'Safety trip',
+                    icon: 'fas fa-triangle-exclamation'
+                });
+            return t;
+        }
+    },
+    // Fan — on/off + speed (Shelly Fan.* component).
+    fan: {
+        icon: 'fas fa-fan',
+        template: null
+    },
+    // Local Network Messaging — device-to-device messaging instances
+    // (Shelly LNM.* preview component; tx/rx stats).
+    lnm: {
+        icon: 'fas fa-message-lines',
+        template: null
+    },
+    // Zigbee bridge — Gen4 native Zigbee mesh (Shelly Zigbee.* component).
+    zigbee: {
+        icon: 'fas fa-share-nodes',
+        template: null
+    },
+    // The Pill — USB-C peripheral hub (onewire temp/humidity + analog;
+    // Shelly Pill.* component).
+    pill: {
+        icon: 'fas fa-microchip',
+        template: null
+    },
+    // DALI fixture/group — standalone DALI lighting bus component
+    // (Shelly DALI.* component; the dimmer profile is handled under `light`).
+    dali: {
+        icon: 'fas fa-lightbulb',
+        template: null
+    },
+    // Modbus connector — device-side Modbus TCP/RTU (Shelly Modbus.* component).
+    modbus: {
+        icon: 'fas fa-plug',
+        template: null
+    },
+    // Script — mJS scripting on Gen2+ devices (Shelly Script.* component).
+    script: {
+        icon: 'fas fa-code',
+        template: null
+    },
+    // Triphase energy meter historical data (Shelly EMData.* component).
+    emdata: {
+        icon: 'fas fa-chart-column',
+        template: null
+    },
+    // Monophase energy meter historical data (Shelly EM1Data.* component).
+    em1data: {
+        icon: 'fas fa-chart-column',
+        template: null
     }
 };
 

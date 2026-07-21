@@ -145,8 +145,8 @@ function formatNumber(n: number): string {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: var(--touch-min);
-    height: var(--touch-min);
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
     border-radius: var(--radius-md);
     background: transparent;
     border: 1px solid transparent;

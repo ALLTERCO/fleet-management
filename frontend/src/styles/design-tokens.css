@@ -143,6 +143,12 @@
     /* --- Borders (white-based) --- */
     --color-border-default: rgba(249, 250, 250, 0.07); /* standard borders */
     --color-border-subtle: rgba(249, 250, 250, 0.04); /* subtle separators */
+    --color-border-muted: rgba(
+        249,
+        250,
+        250,
+        0.055
+    ); /* quiet borders between subtle and default */
     --color-border-medium: rgba(249, 250, 250, 0.1); /* moderate borders */
     --color-border-strong: rgba(249, 250, 250, 0.14); /* emphasized borders */
     --color-border-focus: var(--primitive-blue-500); /* focus rings */
@@ -494,7 +500,6 @@
     /* --- Domain accent semantics ---
        Bind primitive hues to domain meaning once so components never
        reach into the primitive palette directly. */
-    --accent-energy: var(--primitive-amber-500);
     --accent-energy-soft: color-mix(
         in srgb,
         var(--primitive-amber-500) 18%,
@@ -532,30 +537,14 @@
     --font-mono:
         "JetBrains Mono", "Fira Code", ui-monospace, "Cascadia Code", monospace;
 
-    /* --- Font Size Scale (legacy aliases → golden ratio 4-size system) ---
-     * Design system: body 16, subheading 26, heading 42, display 68.
-     * Weight and color create hierarchy, NOT size differences. */
-    --text-2xs: var(--type-body); /* was 11px → 16px */
-    --text-xs: var(--type-body); /* was 12px → 16px */
-    --text-sm: var(--type-body); /* was 13px → 16px */
-    --text-base: var(--type-body); /* 16px (unchanged) */
-    --text-lg: var(--type-subheading); /* was 20px → 26px */
-    --text-xl: var(--type-subheading); /* was 22px → 26px */
-    --text-2xl: var(--type-subheading); /* was 28px → 26px */
-    --text-3xl: var(--type-heading); /* was 34px → 42px */
-
     /* --- Type scale: body anchors at 16, scale rolls up by golden ratio (×1.618).
      * Caption (13px) is a Fibonacci-pragmatic exception below body — used only for
      * supporting metadata (table mono cells, badges, breadcrumbs, footnotes). */
     --type-caption: 0.8125rem; /* 13px — metadata only */
     --type-body: 1rem; /* 16px — body baseline */
     --type-subheading: 1.625rem; /* 26px = 16 × 1.618 */
-    --type-title: 2.25rem; /* 36px — page titles, a step below heading */
     --type-heading: 2.625rem; /* 42px = 26 × 1.618 */
     --type-display: 4.25rem; /* 68px = 42 × 1.618 */
-    --type-card-footer: var(
-        --type-caption
-    ); /* deprecated alias — migrate to --type-caption */
 
     /* --- Golden Ratio Spacing (8 × 1.618 each step) --- */
     --gap-xs: 8px;
@@ -598,10 +587,12 @@
     --space-1: 0.25rem; /*  4px */
     --space-1-5: 0.375rem; /*  6px */
     --space-2: 0.5rem; /*  8px — base rhythm */
+    --space-2-5: 0.625rem; /* 10px — half-step, matches --space-0-5/--space-1-5 */
     --space-3: 0.75rem; /* 12px */
     --space-4: 1rem; /* 16px */
     --space-5: 1.25rem; /* 20px */
     --space-6: 1.5rem; /* 24px */
+    --space-7: 1.75rem; /* 28px */
     --space-8: 2rem; /* 32px */
     --space-10: 2.5rem; /* 40px */
     --space-12: 3rem; /* 48px */
@@ -625,7 +616,6 @@
     --radius-md: 8px; /* medium — buttons, inputs, toasts */
     --radius-lg: 10px; /* large — modals, dropdowns, settings groups */
     --radius-xl: 14px; /* XL — entity/device cards (ref --r:14px) */
-    --radius-card: 18px; /* device/entity/group/action cards */
     --radius-2xl: 20px; /* oversized — hero cards, login form */
     --radius-full: 9999px; /* pills, avatars, badges */
 
@@ -777,8 +767,8 @@
     ); /* 10px — between inputs (8px) and cards (14px) */
     --btn-font-weight: var(--font-semibold);
     --btn-font-size: 1rem; /* 16px — modular scale body */
-    --btn-font-size-xs: var(--text-xs);
-    --btn-font-size-lg: var(--text-lg);
+    --btn-font-size-xs: var(--type-body);
+    --btn-font-size-lg: var(--type-subheading);
     --btn-padding-y: var(--space-2);
     --btn-padding-x: var(--space-4);
     --btn-padding-sm-y: var(--space-2);
@@ -794,7 +784,7 @@
     --input-border-hover: rgba(var(--color-primary-rgb), 0.4);
     --input-radius: var(--radius-md);
     --input-padding: var(--space-2);
-    --input-font-size: var(--text-sm);
+    --input-font-size: var(--type-body);
     --input-focus-ring: var(--color-border-focus);
     --input-placeholder: var(--color-text-disabled);
 
@@ -821,7 +811,11 @@
     --modal-width-xl-fluid: 96vw;
     --modal-max-height-compact: 80vh;
     --modal-max-height-default: 85vh;
+    --modal-min-height-tall: 30rem; /* opt-in floor for short forms (Modal `tall`) */
+    --modal-max-height-tall: 92vh; /* compact+tall ceiling — grow with content */
     --modal-max-height-wide: 92vh;
+    --device-settings-workspace-height: 72vh;
+    --device-settings-preview-size: 6rem;
     --modal-max-height-xl: 94vh;
     --modal-header-padding-top: var(--space-4);
     --modal-header-padding-top-md: var(--space-5);
@@ -975,6 +969,7 @@
     --icon-size-md: 1.25rem; /* 20px */
     --icon-size-lg: 1.5rem; /* 24px */
     --icon-size-xl: 2rem; /* 32px */
+    --icon-size-row: 2.75rem; /* 44px — icon spanning a two-line menu row */
     --icon-size-2xl: 3.5rem; /* 56px — oversized glyph / device-image stand-in */
 
     /* --- Focus ring --- */
@@ -986,6 +981,9 @@
     --selection-ring-rgb: 96, 165, 250;
     --selection-ring-width: 3px;
     --selection-ring-offset: 2px;
+    /* Selection glow — shared halo (.is-selected, menu-item hover). */
+    --selection-glow: 0 0 5px rgba(var(--selection-ring-rgb), 0.5);
+    --selection-glow-hover: 0 0 8px rgba(var(--selection-ring-rgb), 0.65);
 
     /* --- Skeleton loading --- */
     --skeleton-bg: var(--color-surface-3);
@@ -1118,6 +1116,8 @@
  */
 :root {
     --accent-switch: 68, 149, 209; /* blue */
+    --accent-cb:
+        120, 144, 170; /* breaker steel-blue — state colour (green/red) carries on/trip */
     --accent-dimmer: 242, 199, 68; /* warm yellow */
     --accent-rgbw: 242, 199, 68; /* warm yellow */
     --accent-cover: 139, 157, 182; /* slate */
@@ -1233,10 +1233,22 @@
     *,
     *::before,
     *::after {
-        animation-duration: 0.01ms;
-        animation-iteration-count: 1;
-        transition-duration: 0.01ms;
-        scroll-behavior: auto;
+        /* !important so class-based animations in the same @layer (spinners,
+           shimmer, pulses in components.css) can't out-specify this reset —
+           a universal (0,0,0) selector loses to any class rule otherwise. */
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* Windows High Contrast / forced-colors mode drops author box-shadows, so the
+   box-shadow-only focus ring below vanishes. Restore a real outline. */
+@media (forced-colors: active) {
+    :focus-visible {
+        outline: 2px solid CanvasText;
+        outline-offset: 2px;
     }
 }
 
@@ -1336,7 +1348,7 @@
     padding: var(--space-2, 8px) var(--space-4, 16px);
     background: var(--color-primary);
     color: #fff;
-    font-size: var(--text-xs, 12px);
+    font-size: var(--type-body);
     font-weight: 700;
     border-radius: var(--radius-md);
     text-decoration: none;
@@ -1576,18 +1588,13 @@
    13. FOCUS-VISIBLE — Global keyboard focus indicator
    ========================================================================== */
 
+/* Single home for the keyboard focus ring — do not redeclare elsewhere.
+   No forced radius: the ring follows each element's own shape. */
 :focus-visible {
     outline: none;
     box-shadow:
-        0 0 0 2px rgba(68, 149, 209, 0.45),
-        0 0 12px rgba(68, 149, 209, 0.18);
-    border-radius: var(--radius-sm);
-}
-button:focus-visible {
-    outline: none;
-    box-shadow:
-        0 0 0 2px rgba(68, 149, 209, 0.45),
-        0 0 12px rgba(68, 149, 209, 0.18);
+        0 0 0 var(--focus-ring-width) rgba(var(--color-primary-rgb), 0.45),
+        0 0 12px rgba(var(--color-primary-rgb), 0.18);
 }
 
 /* ==========================================================================
@@ -1632,26 +1639,26 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
    ========================================================================== */
 
 .heading-page {
-    font-size: var(--text-2xl);
+    font-size: var(--type-subheading);
     font-weight: var(--font-bold);
     line-height: var(--leading-tight);
     letter-spacing: var(--tracking-tight);
     color: var(--color-text-primary);
 }
 .heading-section {
-    font-size: var(--text-xl);
+    font-size: var(--type-subheading);
     font-weight: var(--font-semibold);
     line-height: var(--leading-tight);
     color: var(--color-text-primary);
 }
 .heading-card {
-    font-size: var(--text-lg);
+    font-size: var(--type-subheading);
     font-weight: var(--font-semibold);
     line-height: var(--leading-snug);
     color: var(--color-text-primary);
 }
 .heading-label {
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     font-weight: var(--font-semibold);
     line-height: var(--leading-normal);
     letter-spacing: normal;
@@ -1698,7 +1705,7 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
 
 /* Stat block: large value + small label, weight-differentiated */
 .stat-value-lg {
-    font-size: var(--text-2xl);
+    font-size: var(--type-subheading);
     font-weight: var(--font-thin);
     line-height: var(--leading-tight);
     letter-spacing: -1px;
@@ -1706,7 +1713,7 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
     color: var(--color-text-primary);
 }
 .stat-label {
-    font-size: var(--text-xs);
+    font-size: var(--type-body);
     font-weight: var(--font-medium);
     letter-spacing: var(--tracking-wide);
     color: var(--color-text-tertiary);
@@ -1787,21 +1794,6 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
     border-color: var(--color-border-default);
 }
 
-/* Offline / not-found — same aesthetic as device-card--offline */
-.widget-card--offline {
-    background: var(--dcard-bg-off);
-    border: 1px solid var(--dcard-border-off);
-    box-shadow: var(--dcard-shadow-off);
-}
-.widget-card--offline .widget-image-bg {
-    opacity: 0.25;
-    filter: grayscale(1);
-}
-.widget-card--offline .widget-avatar {
-    opacity: 0.35;
-    filter: grayscale(1);
-}
-
 /* Circular avatar thumbnail */
 .widget-avatar {
     border-color: var(--color-border-strong);
@@ -1815,6 +1807,21 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
         var(--color-surface-0),
         transparent 70%
     );
+}
+
+/* Offline / not-found — same aesthetic as device-card--offline */
+.widget-card--offline {
+    background: var(--dcard-bg-off);
+    border: 1px solid var(--dcard-border-off);
+    box-shadow: var(--dcard-shadow-off);
+}
+.widget-card--offline .widget-image-bg {
+    opacity: 0.25;
+    filter: grayscale(1);
+}
+.widget-card--offline .widget-avatar {
+    opacity: 0.35;
+    filter: grayscale(1);
 }
 
 /* Frosted glass badge (replaces old bg-black/60) */
@@ -1837,7 +1844,7 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
     gap: var(--space-1);
     padding: 3px var(--space-2);
     border-radius: var(--radius-md);
-    font-size: 11.5px;
+    font-size: var(--type-caption);
     font-weight: var(--font-medium);
     line-height: 1.3;
     color: var(--color-text-primary);
@@ -1846,7 +1853,7 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
     white-space: nowrap;
 }
 .entity-tag__icon {
-    font-size: 10px;
+    font-size: var(--type-caption);
     opacity: 0.7;
 }
 .entity-card__pill-error {
@@ -1855,12 +1862,12 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
     gap: 3px;
     padding: 2px 7px;
     border-radius: 20px;
-    background: rgba(240, 78, 94, 0.15);
-    border: 1px solid rgba(240, 78, 94, 0.4);
-    font-size: 9px;
+    background: rgba(var(--color-status-off-rgb), 0.15);
+    border: 1px solid rgba(var(--color-status-off-rgb), 0.4);
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: 0.04em;
-    color: #f04e5e;
+    color: var(--color-status-off);
     white-space: nowrap;
     max-width: 120px;
     overflow: hidden;
@@ -1880,6 +1887,16 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
         border-color var(--duration-normal) var(--ease-out-expo),
         background 0.35s var(--ease-out-expo);
 }
+.device-card--wide {
+    grid-column: span 2;
+    width: 100%;
+}
+.device-card--hero {
+    grid-column: span 2;
+    grid-row: span 2;
+    width: 100%;
+    height: 100%;
+}
 .device-card:hover {
     border-color: var(--color-border-medium);
     background: rgba(249, 250, 250, 0.04);
@@ -1897,17 +1914,12 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
     background: var(--dcard-bg);
     border: 1px solid rgba(245, 158, 11, 0.22);
 }
-.device-card--pending .device-card__dot,
-.device-card--pending .device-card__pill-off {
-    display: none;
-}
 .device-card--denied {
     background: var(--dcard-bg-off);
     border: 1px solid var(--dcard-border-off);
 }
-.device-card--denied .device-card__dot,
-.device-card--denied .device-card__pill-off {
-    display: none;
+.device-card__accent {
+    height: 1.5px;
 }
 .device-card--selected {
     border-color: var(--color-primary);
@@ -1934,9 +1946,6 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
         inset 0 0 24px -8px
         color-mix(in srgb, var(--color-primary) 18%, transparent);
 }
-.device-card__accent {
-    height: 1.5px;
-}
 .device-card__head {
     display: flex;
     align-items: center;
@@ -1944,7 +1953,7 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
     padding: 8px 10px 0;
 }
 .device-card__type {
-    font-size: 9px;
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: none;
@@ -1986,7 +1995,7 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
     height: 16px;
 }
 .device-card__dot--sleep i {
-    font-size: 8px;
+    font-size: var(--type-caption);
     color: rgba(139, 92, 246, 0.9);
     line-height: 1;
 }
@@ -2009,12 +2018,19 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
     gap: 3px;
     padding: 2px 7px;
     border-radius: 20px;
-    background: rgba(240, 78, 94, 0.12);
-    border: 1px solid rgba(240, 78, 94, 0.35);
-    font-size: 9px;
+    background: rgba(var(--color-status-off-rgb), 0.12);
+    border: 1px solid rgba(var(--color-status-off-rgb), 0.35);
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: 0.04em;
     color: var(--dcard-pill-color);
+}
+/* Pending/denied cards hide the status dot and offline pill entirely. */
+.device-card--pending .device-card__dot,
+.device-card--pending .device-card__pill-off,
+.device-card--denied .device-card__dot,
+.device-card--denied .device-card__pill-off {
+    display: none;
 }
 .device-card__pill-dot {
     width: 4px;
@@ -2036,7 +2052,7 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
     border-radius: 20px;
     background: rgba(139, 92, 246, 0.12);
     border: 1px solid rgba(139, 92, 246, 0.35);
-    font-size: 9px;
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: 0.04em;
     color: #a78bfa;
@@ -2049,7 +2065,7 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
     border-radius: 20px;
     background: rgba(34, 211, 160, 0.1);
     border: 1px solid rgba(34, 211, 160, 0.3);
-    font-size: 9px;
+    font-size: var(--type-caption);
     font-weight: 700;
     letter-spacing: 0.04em;
     color: #22d3a0;
@@ -2060,9 +2076,9 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
     color: #f59e0b;
 }
 .device-card__pill-battery--red {
-    background: rgba(240, 78, 94, 0.12);
-    border-color: rgba(240, 78, 94, 0.35);
-    color: #f04e5e;
+    background: rgba(var(--color-status-off-rgb), 0.12);
+    border-color: rgba(var(--color-status-off-rgb), 0.35);
+    color: var(--color-status-off);
 }
 .device-card__img {
     display: flex;
@@ -2115,7 +2131,7 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
     border-top-color: var(--dcard-name-border-off);
 }
 .device-card__subtitle {
-    font-size: 10.5px;
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
     margin-top: 2px;
     line-height: 1.2;

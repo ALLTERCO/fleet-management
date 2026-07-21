@@ -318,7 +318,7 @@ function badgeLabel(b: Badge): string {
 .psf__badge {
     font-size: var(--type-caption);
     padding: var(--space-0-5) var(--space-2);
-    border-radius: var(--radius-pill);
+    border-radius: var(--radius-full);
     white-space: nowrap;
 }
 .psf__badge--verified {
@@ -345,8 +345,8 @@ function badgeLabel(b: Badge): string {
 }
 .psf__attribution {
     margin: var(--space-1) 0 0 0;
-    font-size: var(--type-caption-sm, 0.7rem);
-    color: var(--color-text-muted, var(--color-text-secondary));
+    font-size: var(--type-caption);
+    color: var(--color-text-secondary);
     opacity: 0.7;
 }
 .psf__attribution a {

@@ -1,53 +1,61 @@
 <template>
-    <div class="cfg-panel">
-        <div class="cfg-panel__status-row">
-            <span
-                class="cfg-panel__status"
-                :class="cloudConnected
-                    ? 'cfg-panel__status--on'
-                    : 'cfg-panel__status--off'"
-            >
-                {{ cloudConnected ? 'Connected' : 'Disconnected' }}
-            </span>
-        </div>
-
-        <form v-if="config" @submit.prevent autocomplete="off">
-            <div class="cfg-panel__row">
-                <div class="cfg-panel__row-label">
-                    <strong>Enable Shelly Cloud</strong>
-                    <span>Connection to Shelly Cloud for remote control</span>
+    <div class="cfg-panel cloud-panel">
+        <form
+            v-if="config"
+            class="cfg-panel__form"
+            @submit.prevent
+            autocomplete="off"
+        >
+            <section class="cfg-panel__workspace-section" aria-label="Cloud settings">
+                <div class="cfg-panel__toggle-grid">
+                    <div class="cfg-panel__toggle">
+                        <div class="cfg-panel__toggle-label">
+                            <strong>Enable Shelly Cloud</strong>
+                        </div>
+                        <CardToggle size="row"
+                            v-model="local.enable"
+                            aria-label="Enable Shelly Cloud"
+                            @update:model-value="markDirty"
+                        />
+                    </div>
                 </div>
-                <Checkbox v-model="local.enable" @update:model-value="markDirty" />
-            </div>
 
-            <div v-if="config.server" class="cfg-panel__row">
-                <div class="cfg-panel__row-label">
-                    <strong>Server</strong>
-                    <span>Read-only — provisioned by firmware</span>
+                <div v-if="config.server" class="cfg-panel__field-grid">
+                    <div class="cfg-panel__field cfg-panel__field--wide">
+                        <strong>Server</strong>
+                        <code class="cfg-panel__readonly-value cloud-panel__server">{{ config.server }}</code>
+                    </div>
                 </div>
-                <code class="cloud-panel__server">{{ config.server }}</code>
-            </div>
 
-            <div v-if="dirty" class="cfg-panel__footer">
-                <Button type="blue" size="sm" :loading="saving" @click="save">
-                    Save
-                </Button>
-            </div>
+                <ConfigPanelFooter
+                    label="Cloud"
+                    :dirty="dirty"
+                    :saving="saving"
+                    :restart-required="restartRequired"
+                    :rebooting="rebooting"
+                    :external-changed="externalConfigChanged"
+                    @save="save"
+                    @reboot="rebootDevice"
+                    @refresh="reload"
+                />
+            </section>
         </form>
 
+        <div v-else-if="refetching" class="cfg-panel__loading">
+            Loading configuration…
+        </div>
         <div v-else class="cfg-panel__error">
             <p>Failed to load Cloud configuration.</p>
-            <Button type="blue-hollow" size="sm" @click="reload">Retry</Button>
+            <Button type="blue-hollow" size="sm" :loading="refetching" @click="refetch">Retry</Button>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import {computed} from 'vue';
 import {useDeviceConfigPanel} from '@/composables/useDeviceConfigPanel';
-import {useDevicesStore} from '@/stores/devices';
+import CardToggle from '../cards/CardToggle.vue';
 import Button from './Button.vue';
-import Checkbox from './Checkbox.vue';
+import ConfigPanelFooter from './ConfigPanelFooter.vue';
 
 interface CloudConfig {
     enable?: boolean;
@@ -55,10 +63,22 @@ interface CloudConfig {
 }
 
 const props = defineProps<{shellyID: string}>();
-const deviceStore = useDevicesStore();
 
-const {config, local, dirty, saving, markDirty, save, reload} =
-    useDeviceConfigPanel<CloudConfig, {enable: boolean}>({
+const {
+    config,
+    local,
+    dirty,
+    saving,
+    restartRequired,
+    rebooting,
+    externalConfigChanged,
+    markDirty,
+    save,
+    rebootDevice,
+    refetch,
+    refetching,
+    reload
+} = useDeviceConfigPanel<CloudConfig, {enable: boolean}>({
         shellyID: () => props.shellyID,
         settingsKey: 'cloud',
         method: 'Cloud.SetConfig',
@@ -68,17 +88,10 @@ const {config, local, dirty, saving, markDirty, save, reload} =
         successToast: 'Cloud configuration saved'
     });
 
-const cloudConnected = computed(
-    () => deviceStore.devices[props.shellyID]?.status?.cloud?.connected === true
-);
 </script>
 
 <style scoped>
 .cloud-panel__server {
     font-family: var(--font-mono);
-    font-size: var(--type-caption);
-    color: var(--color-text-tertiary);
-    word-break: break-all;
-    text-align: right;
 }
 </style>

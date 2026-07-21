@@ -106,7 +106,7 @@ onMounted(() => void refresh());
 
 .inst-hint {
     color: var(--color-text-tertiary);
-    font-size: var(--type-card-footer);
+    font-size: var(--type-caption);
     margin-bottom: var(--space-3);
 }
 

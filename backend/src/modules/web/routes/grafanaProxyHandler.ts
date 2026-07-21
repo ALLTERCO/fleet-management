@@ -2,6 +2,7 @@ import type express from 'express';
 import log4js from 'log4js';
 import {grafanaAuthProxyHeaders} from '../../../config/grafanaApi';
 import * as Observability from '../../Observability';
+import {reportHandledPeerError} from '../../util/faultGuard';
 import {bestEffort} from '../../util/fireAndForget';
 
 const logger = log4js.getLogger('grafana-proxy');
@@ -110,8 +111,16 @@ async function streamBodyWithCap(
     }
     let bytesWritten = 0;
     let exceeded = false;
+    // A client disconnect mid-response is normal, but a write to the closed
+    // socket emits 'error' on res — with no listener that crashes the process.
+    let clientGone = false;
+    res.on('error', (err) => {
+        clientGone = true;
+        reportHandledPeerError('grafana-client', err);
+    });
     try {
         for await (const chunk of readChunks(reader)) {
+            if (clientGone || res.destroyed) break;
             bytesWritten += chunk.byteLength ?? chunk.length ?? 0;
             if (bytesWritten > maxBytes) {
                 exceeded = true;

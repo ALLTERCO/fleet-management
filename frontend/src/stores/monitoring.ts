@@ -15,6 +15,7 @@ import {
 } from '@/helpers/monitoring-thresholds';
 import {isDebugEnabled, setDebug} from '@/tools/debug';
 import {
+    counterRatesBetween,
     fetchBackendMetrics,
     getCounterRates,
     getObsLevel,
@@ -29,6 +30,7 @@ import {
     setWsTelemetry
 } from '@/tools/observability';
 import {sendRPC} from '@/tools/websocket';
+import {createStaleGuard} from './staleGuard';
 import {useToastStore} from './toast';
 
 export type FlowStatus = 'healthy' | 'warning' | 'critical' | 'unknown';
@@ -152,8 +154,14 @@ function computeAvgMs(timings: any): number {
     if (!timings) return 0;
     const entries = Object.values(timings) as any[];
     if (entries.length === 0) return 0;
+    // A timing entry from an older or partial backend shape may lack avgMs;
+    // treat it as 0 so one gap can't poison the whole average to NaN.
     return Math.round(
-        entries.reduce((s: number, e: any) => s + e.avgMs, 0) / entries.length
+        entries.reduce(
+            (s: number, e: any) =>
+                s + (Number.isFinite(e?.avgMs) ? e.avgMs : 0),
+            0
+        ) / entries.length
     );
 }
 
@@ -194,7 +202,9 @@ function labeledGaugeValue(
 ): number {
     return (
         labeledMetricEntries(metrics, 'labeledGauges', name).find((entry) =>
-            Object.entries(labels).every(([key, value]) => entry.labels[key] === value)
+            Object.entries(labels).every(
+                ([key, value]) => entry.labels[key] === value
+            )
         )?.value ?? 0
     );
 }
@@ -266,13 +276,11 @@ function extractSnapshot(
         dbRuntimeCheckedAt: dbRuntime.checkedAt ?? '',
         dbRuntimeCheckAgeSec: dbRuntime.checkAgeSeconds ?? -1,
         dbRuntimeLastSuccessfulAt: dbRuntime.lastSuccessfulAt ?? '',
-        dbRuntimeLastSuccessfulAgeSec:
-            dbRuntime.lastSuccessfulAgeSeconds ?? -1,
+        dbRuntimeLastSuccessfulAgeSec: dbRuntime.lastSuccessfulAgeSeconds ?? -1,
         dbRuntimePostgresVersion: dbRuntime.postgresVersion ?? '',
         dbRuntimePostgresMajor: dbRuntime.postgresMajor ?? -1,
         dbRuntimeTimescaleVersion: dbRuntime.timescaleVersion ?? '',
-        dbRuntimeExpectedTimescaleImage:
-            dbRuntime.expectedTimescaleImage ?? '',
+        dbRuntimeExpectedTimescaleImage: dbRuntime.expectedTimescaleImage ?? '',
         dbRuntimeExpectedTimescaleVersion:
             dbRuntime.expectedTimescaleVersion ?? '',
         dbRuntimeError: dbRuntime.error ?? '',
@@ -298,8 +306,7 @@ function extractSnapshot(
         emSyncRowsWrittenPerMin: rates.em_sync_buffer_rows_written ?? 0,
         emSyncLastWriteRows: gauges.em_sync_last_write_rows ?? 0,
         emSyncLastWriteMs: gauges.em_sync_last_write_ms ?? 0,
-        emSyncLastWriteRowsPerSec:
-            gauges.em_sync_last_write_rows_per_sec ?? 0,
+        emSyncLastWriteRowsPerSec: gauges.em_sync_last_write_rows_per_sec ?? 0,
         emSyncLastRpcFetchMs: gauges.em_sync_last_rpc_fetch_ms ?? 0,
         emSyncLastRpcRecords: gauges.em_sync_last_rpc_records ?? 0,
         emSyncLastPassBlocks: gauges.em_sync_last_pass_blocks ?? 0,
@@ -353,6 +360,8 @@ export const useMonitoringStore = defineStore('monitoring', () => {
     const pendingRpcCount = ref(0);
     const polling = ref(false);
     const logLevels = ref<Record<string, string>>({});
+    // Guards logLevels: a setLogLevel bump invalidates an in-flight list fetch.
+    const logLevelGuard = createStaleGuard();
     const frontendDebug = ref(isDebugEnabled());
     const dbWritesDisabled = ref(false);
     const wsTelemetryEnabled = ref(isWsTelemetryEnabled());
@@ -512,22 +521,53 @@ export const useMonitoringStore = defineStore('monitoring', () => {
                 history?: Array<{ts: number; metrics: unknown}>;
             }>('FLEET_MANAGER', 'System.Health.GetHistory', {});
             if (Array.isArray(data?.history)) {
-                const snapshots = data.history.map((entry) =>
-                    extractSnapshot(entry.metrics, {})
-                );
+                // Reconstruct per-minute counter rates from consecutive history
+                // points via the same shared helper the live path uses, so the
+                // rate-backed fields show real historical values instead of a
+                // fabricated flat zero. The first point has no predecessor.
+                let prevCounters: Record<string, number> | null = null;
+                let prevTs = 0;
+                const snapshots = data.history.map((entry) => {
+                    const counters =
+                        ((entry.metrics as any)?.counters as Record<
+                            string,
+                            number
+                        >) ?? {};
+                    const rates = prevCounters
+                        ? counterRatesBetween(
+                              prevCounters,
+                              counters,
+                              (entry.ts - prevTs) / 60000
+                          )
+                        : {};
+                    prevCounters = counters;
+                    prevTs = entry.ts;
+                    return extractSnapshot(entry.metrics, rates);
+                });
                 history.value = snapshots.slice(-HISTORY_SIZE);
                 _historyGen++;
                 _historyFieldCache.clear();
             }
-        } catch {
-            // Backend history not available, start from scratch
+        } catch (err) {
+            // Fail loud: a rejected RPC or a malformed history payload (an array
+            // whose entries fail to parse) is a real fault — not the benign "no
+            // history yet" case, which returns a non-array and never reaches
+            // here. Surface it and re-throw so the failure is visible instead of
+            // masquerading as empty history.
+            console.error('Failed to load monitoring history', err);
+            toastRpcError(toast, err, 'Failed to load monitoring history');
+            throw err;
         }
     }
 
     function startPolling() {
         if (polling.value) return;
         polling.value = true;
-        loadHistory().then(() => fetchAndRecord());
+        // loadHistory surfaces its own error; swallow here only to keep polling
+        // live metrics when historical backfill fails.
+        loadHistory()
+            .catch(() => {})
+            .then(() => fetchAndRecord());
         const POLL_INTERVAL_HIGH = 2000;
         const POLL_INTERVAL_DEFAULT = 5000;
         const interval =
@@ -581,12 +621,14 @@ export const useMonitoringStore = defineStore('monitoring', () => {
 
     // ── Log level management ─────────────────────────────────────────
     async function fetchLogLevels() {
+        const token = logLevelGuard.bump();
         try {
             const data = await sendRPC<{levels?: Record<string, string>}>(
                 'FLEET_MANAGER',
                 'System.Log.ListLevels',
                 {}
             );
+            if (logLevelGuard.isStale(token)) return;
             logLevels.value = data.levels ?? {};
         } catch {
             // Endpoint may not be available
@@ -599,6 +641,7 @@ export const useMonitoringStore = defineStore('monitoring', () => {
             level
         });
         logLevels.value[category] = level;
+        logLevelGuard.bump();
     }
 
     async function setAllLogLevels(level: string) {

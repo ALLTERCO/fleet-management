@@ -151,6 +151,34 @@ export function deleteDevice(shellyID: string) {
     logger.debug('disconnected & removed cached data for device', shellyID);
 }
 
+export function disconnectForIdentityChange(
+    shellyIDs: readonly string[]
+): void {
+    let changed = false;
+    for (const shellyID of new Set(shellyIDs)) {
+        if (!shellyID) continue;
+        const device = devices.get(shellyID);
+        if (!device) continue;
+        changed = true;
+        devices.delete(shellyID);
+        energyClassifierCache.invalidateDevice(shellyID);
+        energyOverrideCache.invalidateDevice(device.id);
+        clearAnomalyBandCacheForDevice(shellyID);
+        clearChangeEventCacheForDevice(shellyID);
+        device.destroy({skipDeleteEvent: true});
+        EventDistributor.clearDeviceOrg(shellyID);
+        bluAssistConnectionTracker.clearDevice(shellyID);
+        Observability.incrementCounter('devices_disconnected');
+        logger.info(
+            'closed device connection for identity change: %s',
+            shellyID
+        );
+    }
+    if (!changed) return;
+    invalidateEntityIndex();
+    collectorVersion++;
+}
+
 // O(1) entity lookup. The index is invalidated by register/deleteDevice
 // and by Entity.Added/Entity.Removed bus events (see start...Listeners),
 // so a cache hit is always consistent without a per-call staleness check.

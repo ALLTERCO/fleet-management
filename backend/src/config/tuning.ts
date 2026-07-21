@@ -9,6 +9,7 @@
 // surface moved from `tuning.<flatKey>` to `tuning.<namespace>.<field>`.
 
 import type {ObsLevel} from '../modules/observability/types';
+import {AC_MIN_VOLTAGE_DEFAULT} from '../types/api/componentPower';
 import {peekDeploymentMode} from './deploymentMode';
 import {
     envBool,
@@ -56,6 +57,18 @@ export interface TuningConfig {
         sweepEnabled: boolean;
         /** Grace added to a heartbeat window before a miss (default 15s). */
         sweepEvalDelaySec: number;
+    };
+    mcp: {
+        /** CSV allowlist of X-MCP-Client names; empty means allow all. */
+        readonly allowedClients: string;
+        /** Per-user MCP read budget per minute (default 60). */
+        readonly readsPerMin: number;
+        /** Per-user MCP write budget per minute (default 10). */
+        readonly writesPerMin: number;
+        /** fm_read array row cap (default 200). */
+        readonly readMaxRows: number;
+        /** fm_read envelope byte cap (default 262144). */
+        readonly readMaxBytes: number;
     };
     audit: {
         /** Audit log batch flush interval in ms (default: 2000) */
@@ -144,6 +157,9 @@ export interface TuningConfig {
         restoreChunkTimeoutMs: number;
         /** Wait before retrying after a failed chunk in ms. */
         restoreRetryDelayMs: number;
+        /** Max bytes accepted for an uploaded backup import (default 50MB —
+         *  mirrors the GetFile download cap). */
+        importMaxBytes: number;
     };
     bthome: {
         /** BTHome pair: timeout waiting for bthomedevice:N after BTHome.AddDevice (default: 5000) */
@@ -291,6 +307,8 @@ export interface TuningConfig {
         cacheTtlMs: number;
         /** Device HTTP probe timeout in ms — /api/device-proxy health check (default: 5000) */
         probeTimeoutMs: number;
+        /** Camera snapshot proxy fetch timeout in ms — the JPEG is larger than a HEAD probe (default: 8000) */
+        cameraSnapshotTimeoutMs: number;
         /** shellyID→groups cache max entries, LRU (default: 10000) */
         groupsCacheMax: number;
         /** device.list DB-side page cap (default: 500) */
@@ -571,6 +589,8 @@ export interface TuningConfig {
         rateLimitAuthSessionPerMin: number;
         /** GET /media/firmware-file/:token per-caller cap/min (default: 60) */
         rateLimitFirmwareDownloadPerMin: number;
+        /** POST /media/importBackup per-caller cap/min (default: 10) */
+        rateLimitBackupImportPerMin: number;
         /** Enable gzip for compressible HTTP responses. */
         compressionEnabled: boolean;
         /** Compress responses at or above this size in bytes. */
@@ -888,6 +908,8 @@ export interface TuningConfig {
         version: 'v1' | 'v2';
         /** When v1 active: also run v2 in shadow and record parity counters. */
         parallelWrite: boolean;
+        /** AC-mains detection threshold (V): with no frequency, a reading at/above this stays AC, below it is DC. Default 90 (covers US 120 V / EU 230 V). */
+        acMinVoltage: number;
     };
     upload: {
         /** One-time upload ticket TTL in ms (default: 300000) */
@@ -1012,6 +1034,10 @@ export interface TuningConfig {
         tokenRejectionCacheMax: number;
         /** Introspected-user cache TTL in ms — skip Zitadel for fresh tokens (default: 30000). */
         introspectedUserTtlMs: number;
+        /** OIDC userinfo fetch timeout in ms — bounds a hung IdP on the auth path (default: 5000). */
+        userinfoFetchTimeoutMs: number;
+        /** OIDC token introspection timeout in ms — bounds a hung IdP so fresh auth fails fast instead of stalling (default: 5000). */
+        introspectionTimeoutMs: number;
         /** Scoped-PAT user cache TTL in ms — tunable independent of Zitadel introspection. Default 30000. */
         scopedPatCacheTtlMs: number;
         /** User.BulkRotatePATs concurrency cap (default 5). */
@@ -1026,6 +1052,8 @@ export interface TuningConfig {
         enabled: boolean;
         /** Fetch interval in ms (default: 21600000 = 6 h). */
         intervalMs: number;
+        /** ENTSO-E HTTP fetch timeout in ms (default: 20000). */
+        fetchTimeoutMs: number;
     };
 }
 
@@ -1046,7 +1074,10 @@ const DEFAULT_RATE_LIMIT_EXPENSIVE_METHODS = [
     'User.CreateScopedPAT',
     'User.RotateToken',
     'Location.SearchPlaces',
-    'Location.BackfillGeo'
+    'Location.BackfillGeo',
+    // Fans out to up to 500 device round-trips per call — keep it off the
+    // general pool so it can't be used to amplify load.
+    'Firmware.CheckForUpdateBulk'
 ] as const;
 
 function readNodeRedCookieSameSite(): 'strict' | 'lax' | 'none' {
@@ -1057,15 +1088,32 @@ function readNodeRedCookieSameSite(): 'strict' | 'lax' | 'none' {
     return 'strict';
 }
 
-function readDeviceIngressEnforcementMode():
-    | 'record_only'
-    | 'enforce_new'
-    | 'enforce_all' {
+// SSOT for the ingress enforcement enum. record_only is the safe default;
+// enforce_new grandfathers already-approved devices; enforce_all admits no one
+// without a live credential.
+const DEVICE_INGRESS_ENFORCEMENT_MODES = [
+    'record_only',
+    'enforce_new',
+    'enforce_all'
+] as const;
+
+type DeviceIngressEnforcementMode =
+    (typeof DEVICE_INGRESS_ENFORCEMENT_MODES)[number];
+
+// Fail loud on an explicitly-set unrecognized value: silently falling back to
+// record_only would disable device mTLS ingress enforcement — a security
+// control — without any signal. Unset/empty still resolves to the documented
+// default via envStr.
+export function readDeviceIngressEnforcementMode(): DeviceIngressEnforcementMode {
     const raw = envStr('FM_DEVICE_INGRESS_ENFORCEMENT_MODE', 'record_only')
         .trim()
         .toLowerCase();
-    if (raw === 'enforce_new' || raw === 'enforce_all') return raw;
-    return 'record_only';
+    if ((DEVICE_INGRESS_ENFORCEMENT_MODES as readonly string[]).includes(raw)) {
+        return raw as DeviceIngressEnforcementMode;
+    }
+    throw new Error(
+        `FM_DEVICE_INGRESS_ENFORCEMENT_MODE (${raw}) must be one of: ${DEVICE_INGRESS_ENFORCEMENT_MODES.join(', ')}`
+    );
 }
 
 function readDeviceIngressShellyWsTransport(): 'ws' | 'wss' {
@@ -1155,6 +1203,25 @@ function readTuning(): TuningConfig {
                 25,
                 2
             )
+        },
+        // Live getters: hot-readable so ops can flip a limit mid-process
+        // (incident response). Parsing/default still live here.
+        mcp: {
+            get allowedClients() {
+                return envStr('FM_MCP_ALLOWED_CLIENTS', '');
+            },
+            get readsPerMin() {
+                return envInt('FM_MCP_READS_PER_MIN', 60);
+            },
+            get writesPerMin() {
+                return envInt('FM_MCP_WRITES_PER_MIN', 10);
+            },
+            get readMaxRows() {
+                return envInt('FM_MCP_READ_MAX_ROWS', 200);
+            },
+            get readMaxBytes() {
+                return envInt('FM_MCP_READ_MAX_BYTES', 256 * 1024);
+            }
         },
         audit: {
             persistedErrorMessageMaxChars: envInt(
@@ -1279,6 +1346,11 @@ function readTuning(): TuningConfig {
                 'FM_BACKUP_RESTORE_RETRY_DELAY_MS',
                 5_000,
                 100
+            ),
+            importMaxBytes: envInt(
+                'FM_BACKUP_IMPORT_MAX_BYTES',
+                50 * 1024 * 1024,
+                1024
             )
         },
         bthome: {
@@ -1541,6 +1613,11 @@ function readTuning(): TuningConfig {
             ),
             cacheTtlMs: envInt('FM_DEVICE_CACHE_TTL_MS', 5_000, 100),
             probeTimeoutMs: envInt('FM_DEVICE_PROBE_TIMEOUT_MS', 5_000, 500),
+            cameraSnapshotTimeoutMs: envInt(
+                'FM_DEVICE_CAMERA_SNAPSHOT_TIMEOUT_MS',
+                8_000,
+                500
+            ),
             groupsCacheMax: envInt('FM_DEVICE_GROUPS_CACHE_MAX', 10_000, 100),
             listDbPageMax: envInt('FM_DEVICE_LIST_DB_PAGE_MAX', 500, 10),
             relationshipQueryDefaultLimit: envInt(
@@ -1953,11 +2030,11 @@ function readTuning(): TuningConfig {
             )
         },
         http: {
-            rateLimitGeneralRpm: envInt('FM_RATE_LIMIT_GENERAL_RPM', 240, 10),
+            rateLimitGeneralRpm: envInt('FM_RATE_LIMIT_GENERAL_RPM', 600, 10),
             rateLimitExpensiveRpm: envInt('FM_RATE_LIMIT_EXPENSIVE_RPM', 30, 5),
             rateLimitOrgGeneralRpm: envInt(
                 'FM_RATE_LIMIT_ORG_GENERAL_RPM',
-                2_400,
+                6_000,
                 10
             ),
             rateLimitOrgExpensiveRpm: envInt(
@@ -2028,6 +2105,11 @@ function readTuning(): TuningConfig {
             rateLimitFirmwareDownloadPerMin: envInt(
                 'FM_HTTP_RATELIMIT_FIRMWARE_DOWNLOAD_PER_MIN',
                 60,
+                1
+            ),
+            rateLimitBackupImportPerMin: envInt(
+                'FM_HTTP_RATELIMIT_BACKUP_IMPORT_PER_MIN',
+                10,
                 1
             ),
             compressionEnabled: envBool('FM_HTTP_COMPRESSION_ENABLED', true),
@@ -2444,7 +2526,15 @@ function readTuning(): TuningConfig {
         energyClassifier: {
             version:
                 envStr('FM_ENERGY_CLASSIFIER', 'v1') === 'v2' ? 'v2' : 'v1',
-            parallelWrite: envBool('FM_ENERGY_CLASSIFIER_PARALLEL_WRITE', false)
+            parallelWrite: envBool(
+                'FM_ENERGY_CLASSIFIER_PARALLEL_WRITE',
+                false
+            ),
+            acMinVoltage: envInt(
+                'FM_ENERGY_AC_MIN_VOLTAGE',
+                AC_MIN_VOLTAGE_DEFAULT,
+                1
+            )
         },
         upload: {
             ticketTtlMs: envInt('FM_UPLOAD_TICKET_TTL_MS', 300_000, 10_000),
@@ -2632,6 +2722,16 @@ function readTuning(): TuningConfig {
                 30_000,
                 1_000
             ),
+            userinfoFetchTimeoutMs: envInt(
+                'FM_OIDC_USERINFO_TIMEOUT_MS',
+                5_000,
+                100
+            ),
+            introspectionTimeoutMs: envInt(
+                'FM_OIDC_INTROSPECTION_TIMEOUT_MS',
+                5_000,
+                100
+            ),
             scopedPatCacheTtlMs: envInt(
                 'FM_SCOPED_PAT_CACHE_TTL_MS',
                 30_000,
@@ -2654,6 +2754,11 @@ function readTuning(): TuningConfig {
                 'FM_TARIFF_PULL_INTERVAL_MS',
                 6 * 60 * 60_000,
                 60_000
+            ),
+            fetchTimeoutMs: envInt(
+                'FM_TARIFF_PULL_FETCH_TIMEOUT_MS',
+                20_000,
+                1_000
             )
         }
     };

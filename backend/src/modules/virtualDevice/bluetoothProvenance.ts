@@ -16,7 +16,7 @@ export interface BluetoothStatusBatchEntry {
     ts: string;
 }
 
-interface BluetoothSourceTarget {
+export interface BluetoothSourceTarget {
     sourceDeviceListId: number;
     componentKey: string;
 }
@@ -29,11 +29,15 @@ interface BluetoothSourceSample extends BluetoothSourceTarget {
 
 interface BluetoothWritableSample extends BluetoothSourceSample {
     bluDeviceListId: number;
+    bluetoothExternalId: string;
+    organizationId: string;
     transportId: string;
 }
 
-interface BluetoothTransportSourceRow {
+export interface BluetoothSourceTargetRow {
     blu_device_list_id: number;
+    bluetooth_external_id: string;
+    organization_id: string;
     component_key: string;
     transport_id: string;
     source_device_list_id: number;
@@ -43,6 +47,7 @@ export interface BluetoothProvenanceResult {
     recorded: number;
     skipped: number;
     statusRows: BluetoothProjectedStatusRow[];
+    organizationIds: string[];
 }
 
 export interface BluetoothProjectedStatusRow {
@@ -67,7 +72,12 @@ export async function recordBluetoothGatewayStatusBatch(
     if (samples.length === 0) return emptyResult();
     const writable = await loadWritableBluetoothSamples({samples, deps});
     if (writable.length === 0) {
-        return {recorded: 0, skipped: samples.length, statusRows: []};
+        return {
+            recorded: 0,
+            skipped: samples.length,
+            statusRows: [],
+            organizationIds: []
+        };
     }
     const recorded = await insertBluetoothProvenanceRows({
         samples: writable,
@@ -88,7 +98,7 @@ interface LoadWritableSamplesInput {
 async function loadWritableBluetoothSamples(
     input: LoadWritableSamplesInput
 ): Promise<BluetoothWritableSample[]> {
-    const transports = await loadBluetoothTransportsForSamples(
+    const transports = await resolveBluetoothSourceTargets(
         input.samples,
         input.deps
     );
@@ -98,13 +108,15 @@ async function loadWritableBluetoothSamples(
 
 function writableSamplesFromTransportSources(
     samples: readonly BluetoothSourceSample[],
-    transports: readonly BluetoothTransportSourceRow[]
+    transports: readonly BluetoothSourceTargetRow[]
 ): BluetoothWritableSample[] {
     const indexed = indexTransportSources(transports);
     return samples.flatMap((sample) =>
         (indexed.get(sampleKey(sample)) ?? []).map((transport) => ({
             ...sample,
             bluDeviceListId: transport.blu_device_list_id,
+            bluetoothExternalId: transport.bluetooth_external_id,
+            organizationId: transport.organization_id,
             transportId: transport.transport_id
         }))
     );
@@ -178,9 +190,11 @@ function bluetoothProvenanceResult(
 ): BluetoothProvenanceResult {
     return {
         recorded: input.recorded,
-        skipped: Math.max(0, input.sampleCount - input.recorded),
-        statusRows:
-            input.recorded > 0 ? projectedStatusRows(input.writable) : []
+        skipped: Math.max(0, input.sampleCount - input.writable.length),
+        statusRows: projectedStatusRows(input.writable),
+        organizationIds: [
+            ...new Set(input.writable.map((sample) => sample.organizationId))
+        ]
     };
 }
 
@@ -199,7 +213,7 @@ export function bluetoothProjectedStatusBatch(
 }
 
 function emptyResult(): BluetoothProvenanceResult {
-    return {recorded: 0, skipped: 0, statusRows: []};
+    return {recorded: 0, skipped: 0, statusRows: [], organizationIds: []};
 }
 
 function provenanceInputRows(
@@ -276,13 +290,13 @@ function epochSeconds(value: string): number | null {
     return Math.trunc(millis / 1000);
 }
 
-async function loadBluetoothTransportsForSamples(
+export async function resolveBluetoothSourceTargets(
     samples: readonly BluetoothSourceTarget[],
-    deps: BluetoothProvenanceDeps
-): Promise<BluetoothTransportSourceRow[]> {
+    deps: BluetoothProvenanceDeps = defaultDeps
+): Promise<BluetoothSourceTargetRow[]> {
     const targets = uniqueTargets(samples);
     if (targets.length === 0) return [];
-    return deps.queryRows<BluetoothTransportSourceRow>(
+    return deps.queryRows<BluetoothSourceTargetRow>(
         `WITH targets AS (
             SELECT *
               FROM UNNEST($1::integer[], $2::varchar[])
@@ -290,6 +304,8 @@ async function loadBluetoothTransportsForSamples(
         )
         SELECT
             bd.device_list_id AS blu_device_list_id,
+            target_device.external_id AS bluetooth_external_id,
+            bd.organization_id,
             component->>'componentKey' AS component_key,
             bt.id AS transport_id,
             bt.shelly_device_list_id AS source_device_list_id
@@ -299,6 +315,9 @@ async function loadBluetoothTransportsForSamples(
            AND bt.organization_id = bd.organization_id
            AND bt.mode = 'bthome_gateway'
            AND bt.enabled IS TRUE
+          JOIN device.list target_device
+            ON target_device.id = bd.device_list_id
+           AND target_device.organization_id = bd.organization_id
           JOIN targets t
             ON t.source_device_list_id = bt.shelly_device_list_id
           CROSS JOIN LATERAL jsonb_array_elements(
@@ -324,9 +343,9 @@ function uniqueTargets(
 }
 
 function indexTransportSources(
-    rows: readonly BluetoothTransportSourceRow[]
-): Map<string, BluetoothTransportSourceRow[]> {
-    const out = new Map<string, BluetoothTransportSourceRow[]>();
+    rows: readonly BluetoothSourceTargetRow[]
+): Map<string, BluetoothSourceTargetRow[]> {
+    const out = new Map<string, BluetoothSourceTargetRow[]>();
     for (const row of rows) {
         const key = sampleKey({
             sourceDeviceListId: row.source_device_list_id,

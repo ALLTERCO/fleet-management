@@ -64,6 +64,7 @@ export const PERMISSION_DESCRIBE: DescribeOutput = new DescribeBuilder(
     }
 )
     .registerMethod('GetRoles', {
+        safety: {operation: 'read'},
         params: USER_ID_PARAM,
         response: RESP_ANY,
         permission: ADMIN,
@@ -71,6 +72,7 @@ export const PERMISSION_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'permission.GetRoles — return Zitadel built-in role keys held by a user.'
     })
     .registerMethod('GrantRoles', {
+        safety: {operation: 'update'},
         params: PERMISSION_GRANT_ROLES_PARAMS,
         response: RESP_OK,
         permission: ADMIN,
@@ -78,6 +80,7 @@ export const PERMISSION_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'permission.GrantRoles — grant one or more Zitadel built-in roles to a user.'
     })
     .registerMethod('RevokeRoles', {
+        safety: {operation: 'update'},
         params: PERMISSION_REVOKE_ROLES_PARAMS,
         response: RESP_OK,
         permission: ADMIN,
@@ -85,6 +88,7 @@ export const PERMISSION_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'permission.RevokeRoles — remove one or more Zitadel built-in roles from a user. Deletes the project authorization entirely when no roles remain.'
     })
     .registerMethod('ListAdministrators', {
+        safety: {operation: 'read'},
         params: EMPTY_PARAMS,
         response: RESP_ANY,
         permission: SUPER_ADMIN,
@@ -92,6 +96,7 @@ export const PERMISSION_DESCRIBE: DescribeOutput = new DescribeBuilder(
             'permission.ListAdministrators — list users with administrator role on the resolved organization.'
     })
     .registerMethod('GetIdentityPolicies', {
+        safety: {operation: 'read'},
         params: EMPTY_PARAMS,
         response: RESP_ANY,
         permission: SUPER_ADMIN,

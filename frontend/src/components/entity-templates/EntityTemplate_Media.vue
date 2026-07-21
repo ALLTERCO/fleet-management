@@ -180,6 +180,7 @@
 <script setup lang="ts">
 import {computed, onBeforeUnmount, onMounted, ref} from 'vue';
 import HorizontalSlider from '@/components/core/HorizontalSlider.vue';
+import {formatBytes} from '@/helpers/format';
 import {sendRPC} from '@/tools/websocket';
 
 const props = defineProps<{
@@ -264,14 +265,6 @@ const extras = computed(() => {
     }
     return out;
 });
-
-function formatBytes(bytes: number): string {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024)
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
 
 // Tracked debounce-release timer — shared across doAction / playFavourite /
 // playMediaItem so unmount mid-action clears it instead of writing to a dead ref.

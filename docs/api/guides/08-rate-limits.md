@@ -5,9 +5,9 @@ method. There are two pools: a general pool and a smaller "expensive" pool for
 heavier operations.
 
 Defaults, per minute, all configurable per deployment:
-- Per user — 240 general, 30 expensive (`FM_RATE_LIMIT_GENERAL_RPM`,
+- Per user — 600 general, 30 expensive (`FM_RATE_LIMIT_GENERAL_RPM`,
   `FM_RATE_LIMIT_EXPENSIVE_RPM`).
-- Per organization — 2400 general, 300 expensive
+- Per organization — 6000 general, 300 expensive
   (`FM_RATE_LIMIT_ORG_GENERAL_RPM`, `FM_RATE_LIMIT_ORG_EXPENSIVE_RPM`).
 
 Which methods count as expensive is set per deployment

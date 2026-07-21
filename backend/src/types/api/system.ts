@@ -896,6 +896,7 @@ export const SYSTEM_DESCRIBE: DescribeOutput = new DescribeBuilder('system', {
         'Fleet-manager runtime: bootstrap, subscriptions, health, and observability.'
 })
     .registerMethod('GetVariables', {
+        safety: {operation: 'read'},
         params: SYSTEM_GET_VARIABLES_PARAMS_SCHEMA,
         response: SYSTEM_GET_VARIABLES_RESPONSE_SCHEMA,
         permission: {note: 'public compatibility'},
@@ -903,12 +904,14 @@ export const SYSTEM_DESCRIBE: DescribeOutput = new DescribeBuilder('system', {
             'Compatibility runtime variables for clients that have not moved to System.Bootstrap.'
     })
     .registerMethod('SubmitTelemetry', {
+        safety: {operation: 'read'},
         params: SYSTEM_SUBMIT_TELEMETRY_PARAMS_SCHEMA,
         response: NULL_RESPONSE,
         permission: {note: 'authenticated'},
         description: 'Submit frontend interaction counters for observability.'
     })
     .registerMethod('Subscribe', {
+        safety: {operation: 'read'},
         params: SYSTEM_SUBSCRIBE_PARAMS_SCHEMA,
         response: {
             type: 'object',
@@ -927,12 +930,14 @@ export const SYSTEM_DESCRIBE: DescribeOutput = new DescribeBuilder('system', {
             'Omit paths to receive today’s full payload (back-compat).'
     })
     .registerMethod('Unsubscribe', {
+        safety: {operation: 'read'},
         params: SYSTEM_UNSUBSCRIBE_PARAMS_SCHEMA,
         response: NULL_RESPONSE,
         permission: {note: 'authenticated'},
         description: 'Remove websocket event subscriptions by id.'
     })
     .registerMethod('Bootstrap', {
+        safety: {operation: 'read'},
         params: SYSTEM_BOOTSTRAP_PARAMS_SCHEMA,
         response: SYSTEM_BOOTSTRAP_RESPONSE_SCHEMA,
         permission: {note: 'authenticated'},
@@ -946,30 +951,35 @@ export const SYSTEM_DESCRIBE: DescribeOutput = new DescribeBuilder('system', {
             'Return aggregate runtime contract discovery across public namespaces.'
     })
     .registerMethod('Health.GetFull', {
+        safety: {operation: 'read'},
         params: EMPTY_PARAMS,
         response: SYSTEM_HEALTH_FULL_RESPONSE_SCHEMA,
         permission: {note: 'admin-only'},
         description: 'Return rich instance health and authz runtime status.'
     })
     .registerMethod('Health.GetDebugReport', {
+        safety: {operation: 'read'},
         params: EMPTY_PARAMS,
         response: SYSTEM_GENERIC_OBJECT_RESPONSE_SCHEMA,
         permission: {note: 'authenticated'},
         description: 'Return the current in-memory debug report.'
     })
     .registerMethod('Health.GetStreams', {
+        safety: {operation: 'read'},
         params: EMPTY_PARAMS,
         response: SYSTEM_GENERIC_OBJECT_RESPONSE_SCHEMA,
         permission: {note: 'authenticated'},
         description: 'Return Redis stream and ingest overflow health.'
     })
     .registerMethod('Health.GetHistory', {
+        safety: {operation: 'read'},
         params: EMPTY_PARAMS,
         response: SYSTEM_GENERIC_OBJECT_RESPONSE_SCHEMA,
         permission: {note: 'authenticated'},
         description: 'Return recent in-memory runtime metric history.'
     })
     .registerMethod('GetTopology', {
+        safety: {operation: 'read'},
         params: EMPTY_PARAMS,
         response: SYSTEM_TOPOLOGY_RESPONSE_SCHEMA,
         permission: {note: 'admin-only'},
@@ -977,6 +987,7 @@ export const SYSTEM_DESCRIBE: DescribeOutput = new DescribeBuilder('system', {
             'Return the auto-derived module topology for the monitoring diagram.'
     })
     .registerMethod('GetSlowRpcs', {
+        safety: {operation: 'read'},
         params: SYSTEM_GET_SLOW_RPCS_PARAMS_SCHEMA,
         response: SYSTEM_SLOW_RPCS_RESPONSE_SCHEMA,
         permission: {note: 'admin-only'},
@@ -984,6 +995,7 @@ export const SYSTEM_DESCRIBE: DescribeOutput = new DescribeBuilder('system', {
             'Return slow RPC calls (above P95 + 100ms) in the requested time window.'
     })
     .registerMethod('GetSlowBuilds', {
+        safety: {operation: 'read'},
         params: SYSTEM_GET_SLOW_BUILDS_PARAMS_SCHEMA,
         response: SYSTEM_SLOW_BUILDS_RESPONSE_SCHEMA,
         permission: {note: 'admin-only'},
@@ -991,6 +1003,7 @@ export const SYSTEM_DESCRIBE: DescribeOutput = new DescribeBuilder('system', {
             'Return slow device builds (probe + compose) with their per-stage breakdown in the requested window.'
     })
     .registerMethod('GetSlowDeviceCommands', {
+        safety: {operation: 'read'},
         params: SYSTEM_GET_SLOW_DEVICE_COMMANDS_PARAMS_SCHEMA,
         response: SYSTEM_SLOW_DEVICE_COMMANDS_RESPONSE_SCHEMA,
         permission: {note: 'admin-only'},
@@ -998,6 +1011,7 @@ export const SYSTEM_DESCRIBE: DescribeOutput = new DescribeBuilder('system', {
             'Return slow device commands (FM→device RPCs) with method and round-trip ms in the requested window.'
     })
     .registerMethod('GetSlowClients', {
+        safety: {operation: 'read'},
         params: SYSTEM_GET_SLOW_CLIENTS_PARAMS_SCHEMA,
         response: SYSTEM_SLOW_CLIENTS_RESPONSE_SCHEMA,
         permission: {note: 'admin-only'},
@@ -1005,6 +1019,7 @@ export const SYSTEM_DESCRIBE: DescribeOutput = new DescribeBuilder('system', {
             'Return browser WS clients that hit send backpressure (paused or dropped) in the requested window.'
     })
     .registerMethod('GetModuleHistory', {
+        safety: {operation: 'read'},
         params: SYSTEM_GET_MODULE_HISTORY_PARAMS_SCHEMA,
         response: SYSTEM_MODULE_HISTORY_RESPONSE_SCHEMA,
         permission: {note: 'admin-only'},
@@ -1012,12 +1027,14 @@ export const SYSTEM_DESCRIBE: DescribeOutput = new DescribeBuilder('system', {
             'Return per-module stats samples within the requested time window.'
     })
     .registerMethod('ListConnections', {
+        safety: {operation: 'read'},
         params: EMPTY_PARAMS,
         response: SYSTEM_LIST_CONNECTIONS_RESPONSE_SCHEMA,
         permission: {note: 'admin-only'},
         description: 'Return active WebSocket connection summaries.'
     })
     .registerMethod('GetConnectionInspector', {
+        safety: {operation: 'read'},
         params: SYSTEM_GET_CONNECTION_INSPECTOR_PARAMS_SCHEMA,
         response: SYSTEM_CONNECTION_INSPECTOR_RESPONSE_SCHEMA,
         permission: {note: 'admin-only'},
@@ -1025,6 +1042,7 @@ export const SYSTEM_DESCRIBE: DescribeOutput = new DescribeBuilder('system', {
             'Return recent events and metadata for a single WebSocket connection.'
     })
     .registerMethod('GetTopologyDiff', {
+        safety: {operation: 'read'},
         params: SYSTEM_GET_TOPOLOGY_DIFF_PARAMS_SCHEMA,
         response: SYSTEM_TOPOLOGY_DIFF_RESPONSE_SCHEMA,
         permission: {note: 'admin-only'},
@@ -1032,24 +1050,28 @@ export const SYSTEM_DESCRIBE: DescribeOutput = new DescribeBuilder('system', {
             'Return notable edge throughput + node status changes over the requested window.'
     })
     .registerMethod('DbWrites.Get', {
+        safety: {operation: 'read'},
         params: EMPTY_PARAMS,
         response: SYSTEM_DB_WRITES_RESPONSE_SCHEMA,
         permission: {note: 'authenticated'},
         description: 'Return whether diagnostic DB writes are disabled.'
     })
     .registerMethod('DbWrites.Set', {
+        safety: {operation: 'update'},
         params: SYSTEM_DB_WRITES_SET_PARAMS_SCHEMA,
         response: SYSTEM_DB_WRITES_RESPONSE_SCHEMA,
         permission: {note: 'provider-support-only'},
         description: 'Set the instance-wide diagnostic DB write toggle.'
     })
     .registerMethod('Observability.Set', {
+        safety: {operation: 'update'},
         params: SYSTEM_OBSERVABILITY_SET_PARAMS_SCHEMA,
         response: SYSTEM_OBSERVABILITY_RESPONSE_SCHEMA,
         permission: {note: 'provider-support-only'},
         description: 'Set runtime observability level.'
     })
     .registerMethod('Observability.Reset', {
+        safety: {operation: 'update'},
         params: EMPTY_PARAMS,
         response: {
             type: 'object',
@@ -1061,12 +1083,14 @@ export const SYSTEM_DESCRIBE: DescribeOutput = new DescribeBuilder('system', {
         description: 'Reset runtime observability timings and counters.'
     })
     .registerMethod('Log.ListLevels', {
+        safety: {operation: 'read'},
         params: EMPTY_PARAMS,
         response: SYSTEM_LOG_LEVELS_RESPONSE_SCHEMA,
         permission: {note: 'authenticated'},
         description: 'Return runtime log levels for known categories.'
     })
     .registerMethod('Log.SetLevel', {
+        safety: {operation: 'update'},
         params: SYSTEM_LOG_SET_LEVEL_PARAMS_SCHEMA,
         response: SYSTEM_LOG_SET_LEVEL_RESPONSE_SCHEMA,
         permission: {note: 'provider-support-only'},

@@ -265,13 +265,15 @@ const b = new DescribeBuilder('identity', {
     description: 'Administer signing keys, identity providers, SCIM, and SMTP.'
 });
 b.registerMethod('RotateActionSigningKeys', {
+    safety: {operation: 'update'},
     params: IDENTITY_ROTATE_SCHEMA,
     response: IDENTITY_ROTATE_RESPONSE,
     permission: PERM,
     description:
-        'Identity.RotateActionSigningKeys — recreate Action V2 GDPR + grant-removed targets. Old keys move to _PREVIOUS slots; FM keeps both verifying through the replay window.'
+        'Identity.RotateActionSigningKeys — recreate Action V2 GDPR + grant-change targets. Old keys move to _PREVIOUS slots; FM keeps both verifying through the replay window.'
 });
 b.registerMethod('ListIdentityProviders', {
+    safety: {operation: 'read'},
     params: IDENTITY_LIST_IDPS_SCHEMA,
     response: IDP_RESP,
     permission: PERM,
@@ -279,6 +281,7 @@ b.registerMethod('ListIdentityProviders', {
         'Identity.ListIdentityProviders — list configured external IdPs (OIDC, SAML, social).'
 });
 b.registerMethod('AddOidcProvider', {
+    safety: {operation: 'create'},
     params: IDENTITY_ADD_OIDC_IDP_SCHEMA,
     response: RESP_OK,
     permission: PERM,
@@ -286,12 +289,14 @@ b.registerMethod('AddOidcProvider', {
         'identity.AddOidcProvider — register a generic OIDC IdP at instance scope.'
 });
 b.registerMethod('DeleteIdentityProvider', {
+    safety: {operation: 'delete'},
     params: IDENTITY_DELETE_IDP_SCHEMA,
     response: RESP_OK,
     permission: PERM,
     description: 'Identity.DeleteIdentityProvider — remove an IdP by id.'
 });
 b.registerMethod('GetScimSettings', {
+    safety: {operation: 'read'},
     params: IDENTITY_GET_SCIM_SCHEMA,
     response: SCIM_RESP,
     permission: PERM,
@@ -299,6 +304,7 @@ b.registerMethod('GetScimSettings', {
         'Identity.GetScimSettings — current SCIM v2 inbound provisioning state + endpoint URL.'
 });
 b.registerMethod('SetScimEnabled', {
+    safety: {operation: 'update'},
     params: IDENTITY_SET_SCIM_SCHEMA,
     response: RESP_OK,
     permission: PERM,
@@ -306,6 +312,7 @@ b.registerMethod('SetScimEnabled', {
         'Identity.SetScimEnabled — flip Zitadel SCIM endpoint on/off via FM_ZITADEL_SCIM_ENABLED.'
 });
 b.registerMethod('GetJwtIntentSettings', {
+    safety: {operation: 'read'},
     params: IDENTITY_GET_JWT_INTENT_SCHEMA,
     response: JWT_INTENT_RESP,
     permission: PERM,
@@ -313,6 +320,7 @@ b.registerMethod('GetJwtIntentSettings', {
         'Identity.GetJwtIntentSettings — JWT IdP intent (urn:ietf:params:oauth:grant-type:jwt-bearer) endpoint + docs link.'
 });
 b.registerMethod('GetSmtpSettings', {
+    safety: {operation: 'read'},
     params: IDENTITY_GET_SMTP_SETTINGS_SCHEMA,
     response: SMTP_SETTINGS_RESP,
     permission: PERM,
@@ -320,6 +328,7 @@ b.registerMethod('GetSmtpSettings', {
         'Identity.GetSmtpSettings — instance-wide Zitadel identity-email SMTP provider, with secrets redacted. Platform/provider-support only; tenant admins manage notification channels instead.'
 });
 b.registerMethod('SetSmtpSettings', {
+    safety: {operation: 'update'},
     params: IDENTITY_SET_SMTP_SETTINGS_SCHEMA,
     response: RESP_OK,
     permission: PERM,
@@ -327,6 +336,7 @@ b.registerMethod('SetSmtpSettings', {
         'Identity.SetSmtpSettings — create/update/deactivate the instance-wide Zitadel identity-email SMTP provider for login/reset/verification/invite mail. Platform/provider-support only; not tenant/org-scoped.'
 });
 b.registerMethod('TestSmtpSettings', {
+    safety: {operation: 'execute'},
     params: IDENTITY_TEST_SMTP_SETTINGS_SCHEMA,
     response: RESP_OK,
     permission: PERM,

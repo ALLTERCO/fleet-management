@@ -1,12 +1,17 @@
+import type {FirmwareCheckForUpdateBulkResponse} from '@api/firmware';
 import {defineStore} from 'pinia';
 import {computed, reactive, ref} from 'vue';
 import {useDeviceSelection} from '@/composables/useDeviceSelection';
 import {getDeviceName} from '@/helpers/device';
+import {toastRpcError} from '@/helpers/domainErrors';
 import {clearObject} from '@/helpers/objects';
 import {trackInteraction} from '@/tools/observability';
 import * as ws from '../tools/websocket';
+import {JOB_EVENT} from '../tools/wsEvents';
 import {useDevicesStore} from './devices';
 import {useJobsStore} from './jobs';
+import {createStaleGuard} from './staleGuard';
+import {useToastStore} from './toast';
 
 export interface FirmwareVersion {
     version: string;
@@ -45,7 +50,10 @@ export interface FirmwareDeviceInfo {
     sawOtaSuccess?: boolean;
 }
 
-const FIRMWARE_CHECK_BATCH_SIZE = 5;
+// Devices per Firmware.CheckForUpdateBulk call. Chunked so each call returns
+// under the WS timeout and one slow chunk can't fail the whole check.
+const FIRMWARE_CHECK_BULK_CHUNK = 150;
+const FIRMWARE_CHECK_BULK_TIMEOUT_MS = 60_000;
 const FIRMWARE_UPDATE_SESSION_KEY = 'fm:firmware-update-session';
 const FIRMWARE_UPDATE_SESSION_MAX_AGE_MS = 30 * 60 * 1000;
 
@@ -138,6 +146,7 @@ function parsePersistedUpdateSession(
 
 export const useFirmwareStore = defineStore('firmware', () => {
     const devicesStore = useDevicesStore();
+    const toast = useToastStore();
 
     // Only show devices that support high-level OTA.
     const selection = useDeviceSelection(
@@ -169,6 +178,8 @@ export const useFirmwareStore = defineStore('firmware', () => {
     const isUpdating = ref(false);
     const isCheckingFirmware = ref(false);
     const autoUpdateModes = ref<Record<string, AutoUpdateMode>>({});
+    // Guards autoUpdateModes: user toggles bump, a stale bulk fetch discards itself.
+    const autoUpdateGuard = createStaleGuard();
     const currentUpdateRequest = ref<UpdateRequest | null>(null);
     // Snapshot of device IDs committed to an update — survives device
     // going offline during reboot so progress rows don't disappear.
@@ -407,32 +418,40 @@ export const useFirmwareStore = defineStore('firmware', () => {
         }
     }
 
+    // One home for the firmware-info row so the selected and all-devices
+    // initializers cannot drift.
+    function buildFirmwareInfo(
+        device: any,
+        shellyID: string
+    ): FirmwareDeviceInfo {
+        const cachedUpdates = readCachedAvailableUpdates(device);
+        return {
+            shellyID,
+            deviceName: getDeviceName(device.info, shellyID) || shellyID,
+            currentVersion: device.info?.ver || 'Unknown',
+            currentFwId:
+                typeof device.info?.fw_id === 'string'
+                    ? device.info.fw_id
+                    : undefined,
+            autoUpdateMode: autoUpdateModes.value[shellyID] ?? 'off',
+            checkStatus:
+                device.status?.sys?.available_updates != null
+                    ? 'checked'
+                    : 'pending',
+            updateStatus: 'idle',
+            progressPercent: 0,
+            availableStable: cachedUpdates.stable,
+            availableBeta: cachedUpdates.beta,
+            sawOtaSuccess: false
+        };
+    }
+
     // Initialize firmware info for selected devices
     function initializeFirmwareInfo() {
         for (const shellyID of selectedDevices.value) {
             const device = devicesStore.devices[shellyID];
             if (!device) continue;
-
-            const cachedUpdates = readCachedAvailableUpdates(device);
-            firmwareInfo[shellyID] = {
-                shellyID,
-                deviceName: getDeviceName(device.info, shellyID) || shellyID,
-                currentVersion: device.info?.ver || 'Unknown',
-                currentFwId:
-                    typeof device.info?.fw_id === 'string'
-                        ? device.info.fw_id
-                        : undefined,
-                autoUpdateMode: autoUpdateModes.value[shellyID] ?? 'off',
-                checkStatus:
-                    device.status?.sys?.available_updates != null
-                        ? 'checked'
-                        : 'pending',
-                updateStatus: 'idle',
-                progressPercent: 0,
-                availableStable: cachedUpdates.stable,
-                availableBeta: cachedUpdates.beta,
-                sawOtaSuccess: false
-            };
+            firmwareInfo[shellyID] = buildFirmwareInfo(device, shellyID);
         }
     }
 
@@ -442,27 +461,7 @@ export const useFirmwareStore = defineStore('firmware', () => {
         for (const device of devices) {
             const shellyID = device.shellyID as string;
             if (firmwareInfo[shellyID]) continue;
-
-            const cachedUpdates = readCachedAvailableUpdates(device);
-            firmwareInfo[shellyID] = {
-                shellyID,
-                deviceName: getDeviceName(device.info, shellyID) || shellyID,
-                currentVersion: device.info?.ver || 'Unknown',
-                currentFwId:
-                    typeof device.info?.fw_id === 'string'
-                        ? device.info.fw_id
-                        : undefined,
-                autoUpdateMode: autoUpdateModes.value[shellyID] ?? 'off',
-                checkStatus:
-                    device.status?.sys?.available_updates != null
-                        ? 'checked'
-                        : 'pending',
-                updateStatus: 'idle',
-                progressPercent: 0,
-                availableStable: cachedUpdates.stable,
-                availableBeta: cachedUpdates.beta,
-                sawOtaSuccess: false
-            };
+            firmwareInfo[shellyID] = buildFirmwareInfo(device, shellyID);
         }
     }
 
@@ -544,11 +543,7 @@ export const useFirmwareStore = defineStore('firmware', () => {
             }
         );
 
-        for (let i = 0; i < shellyIDs.length; i += FIRMWARE_CHECK_BATCH_SIZE) {
-            const batch = shellyIDs.slice(i, i + FIRMWARE_CHECK_BATCH_SIZE);
-            await Promise.all(batch.map((shellyID) => checkFirmware(shellyID)));
-        }
-
+        await checkFirmwareBulk(shellyIDs);
         isCheckingFirmware.value = false;
     }
 
@@ -564,11 +559,7 @@ export const useFirmwareStore = defineStore('firmware', () => {
                 return firmwareInfo[shellyID]?.checkStatus !== 'checked';
             });
 
-        for (let i = 0; i < shellyIDs.length; i += FIRMWARE_CHECK_BATCH_SIZE) {
-            const batch = shellyIDs.slice(i, i + FIRMWARE_CHECK_BATCH_SIZE);
-            await Promise.all(batch.map((shellyID) => checkFirmware(shellyID)));
-        }
-
+        await checkFirmwareBulk(shellyIDs);
         isCheckingFirmware.value = false;
     }
 
@@ -576,54 +567,77 @@ export const useFirmwareStore = defineStore('firmware', () => {
         return typeof shellyID === 'string' && shellyID.length > 0;
     }
 
-    async function queryFirmwareUpdate(shellyID: string) {
-        if (!isValidShellyID(shellyID)) return null;
-        return ws.sendRPC('FLEET_MANAGER', 'Shelly.CheckForUpdate', {shellyID});
-    }
-
-    /** Command: check firmware for a single device and update state. */
-    async function checkFirmware(shellyID: string) {
-        if (!firmwareInfo[shellyID]) return;
-
-        applyCachedAvailableUpdates(shellyID);
-        firmwareInfo[shellyID].error = undefined;
-        firmwareInfo[shellyID].checkStatus = 'checking';
-
-        const device = devicesStore.devices[shellyID];
-        if (!device?.capabilities?.firmwareCheck) {
+    // Check many devices in a few chunked FLEET_MANAGER RPCs instead of one per
+    // device. Shelly.CheckForUpdate is a per-device API we proxy, so the backend
+    // still loops device-by-device; the win is fewer browser round-trips. The
+    // fleet is chunked so each call returns under the WS timeout and one slow
+    // chunk never sinks the rest (partial progress survives). Devices with no
+    // device-side check resolve from cache (no RPC), same as the single path.
+    async function checkFirmwareBulk(shellyIDs: string[]) {
+        const capable: string[] = [];
+        for (const shellyID of shellyIDs) {
+            const info = firmwareInfo[shellyID];
+            if (!info) continue;
             applyCachedAvailableUpdates(shellyID);
-            if (firmwareInfo[shellyID].checkStatus === 'checking') {
-                firmwareInfo[shellyID].checkStatus = 'checked';
+            info.error = undefined;
+            if (devicesStore.devices[shellyID]?.capabilities?.firmwareCheck) {
+                info.checkStatus = 'checking';
+                capable.push(shellyID);
+            } else {
+                info.checkStatus = 'checked';
             }
-            return;
         }
 
-        try {
-            const response = await queryFirmwareUpdate(shellyID);
-
-            firmwareInfo[shellyID].checkStatus = 'checked';
-
-            if (response?.stable) {
-                firmwareInfo[shellyID].availableStable = {
-                    version: response.stable.version,
-                    build_id: response.stable.build_id
-                };
-            } else {
-                firmwareInfo[shellyID].availableStable = undefined;
+        for (let i = 0; i < capable.length; i += FIRMWARE_CHECK_BULK_CHUNK) {
+            const slice = capable.slice(i, i + FIRMWARE_CHECK_BULK_CHUNK);
+            try {
+                const resp =
+                    await ws.sendRPC<FirmwareCheckForUpdateBulkResponse>(
+                        'FLEET_MANAGER',
+                        'Firmware.CheckForUpdateBulk',
+                        {shellyIDs: slice},
+                        {timeoutMs: FIRMWARE_CHECK_BULK_TIMEOUT_MS}
+                    );
+                const byId = new Map(resp.items.map((r) => [r.shellyID, r]));
+                for (const shellyID of slice) {
+                    const info = firmwareInfo[shellyID];
+                    if (!info) continue;
+                    const r = byId.get(shellyID);
+                    if (r?.status === 'checked') {
+                        info.checkStatus = 'checked';
+                        info.availableStable = r.stable
+                            ? {
+                                  version: r.stable.version,
+                                  build_id: r.stable.build_id
+                              }
+                            : undefined;
+                        info.availableBeta = r.beta
+                            ? {
+                                  version: r.beta.version,
+                                  build_id: r.beta.build_id
+                              }
+                            : undefined;
+                    } else {
+                        // offline / error / missing — keep cache, not checked.
+                        info.checkStatus = 'error';
+                        info.error =
+                            r?.status === 'offline'
+                                ? 'Device offline'
+                                : (r?.error ?? 'Firmware check failed');
+                        applyCachedAvailableUpdates(shellyID, {
+                            markChecked: false
+                        });
+                    }
+                }
+            } catch (error: any) {
+                for (const shellyID of slice) {
+                    const info = firmwareInfo[shellyID];
+                    if (!info) continue;
+                    info.checkStatus = 'error';
+                    info.error = error?.message || String(error);
+                    applyCachedAvailableUpdates(shellyID, {markChecked: false});
+                }
             }
-
-            if (response?.beta) {
-                firmwareInfo[shellyID].availableBeta = {
-                    version: response.beta.version,
-                    build_id: response.beta.build_id
-                };
-            } else {
-                firmwareInfo[shellyID].availableBeta = undefined;
-            }
-        } catch (error: any) {
-            firmwareInfo[shellyID].checkStatus = 'error';
-            firmwareInfo[shellyID].error = error?.message || String(error);
-            applyCachedAvailableUpdates(shellyID, {markChecked: false});
         }
     }
 
@@ -681,11 +695,11 @@ export const useFirmwareStore = defineStore('firmware', () => {
     }
 
     function applyFirmwareJobEvent(event: ws.NamespacedEvent): void {
-        if (event.method === 'Job.UnitUpdated') {
+        if (event.method === JOB_EVENT.UNIT_UPDATED) {
             applyFirmwareUnitEvent(event.params);
             return;
         }
-        if (event.method === 'Job.Updated') {
+        if (event.method === JOB_EVENT.UPDATED) {
             applyFirmwareTerminalEvent(event.params);
         }
     }
@@ -879,10 +893,12 @@ export const useFirmwareStore = defineStore('firmware', () => {
 
     // Auto-update management
     async function fetchAutoUpdateModes() {
+        const token = autoUpdateGuard.bump();
         try {
             const response = await ws.sendRPC<{
                 items: Array<{shellyID: string; mode: AutoUpdateMode}>;
             }>('FLEET_MANAGER', 'Firmware.GetAutoUpdateModes', {});
+            if (autoUpdateGuard.isStale(token)) return;
             const nextModes: Record<string, AutoUpdateMode> = {};
             const items =
                 response?.items ?? (Array.isArray(response) ? response : []);
@@ -898,7 +914,9 @@ export const useFirmwareStore = defineStore('firmware', () => {
                     autoUpdateModes.value[shellyID] ?? 'off';
             }
         } catch (error) {
-            console.error('Failed to fetch auto-update modes:', error);
+            // Superseded fetch: the newer one owns the outcome (and the toast).
+            if (autoUpdateGuard.isStale(token)) return;
+            toastRpcError(toast, error, 'Failed to load auto-update modes');
         }
     }
 
@@ -917,6 +935,7 @@ export const useFirmwareStore = defineStore('firmware', () => {
             if (firmwareInfo[shellyID]) {
                 firmwareInfo[shellyID].autoUpdateMode = mode;
             }
+            autoUpdateGuard.bump();
         } catch (error) {
             console.error('Failed to set auto-update mode:', error);
             throw error;
@@ -946,6 +965,7 @@ export const useFirmwareStore = defineStore('firmware', () => {
                 }
             }
             autoUpdateModes.value = nextModes;
+            autoUpdateGuard.bump();
         } catch (error) {
             console.error('Failed to bulk set auto-update mode:', error);
             throw error;
@@ -1007,7 +1027,6 @@ export const useFirmwareStore = defineStore('firmware', () => {
         initializeAllFirmwareInfo,
         checkFirmwareForSelected,
         checkFirmwareForAll,
-        checkFirmware,
         updateSelected,
         updateSelectedByUrl,
         updateDeviceIdsByUrl,

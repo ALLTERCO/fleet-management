@@ -11,6 +11,7 @@ import {
 import {demoteAllChildren} from '../../modules/BluetoothAutoPromoter';
 import {BoundedMap} from '../../modules/boundedMap';
 import * as Commander from '../../modules/Commander';
+import {readReadableConfigurationProfiles} from '../../modules/configurationProfiles';
 import * as DeviceCollector from '../../modules/DeviceCollector';
 import {
     getDeviceCostCenter,
@@ -43,6 +44,11 @@ import {
 } from '../../modules/groupVersion';
 import {incrementCounter} from '../../modules/Observability';
 import * as PostgresProvider from '../../modules/PostgresProvider';
+import {
+    excludeRetired,
+    markRestored,
+    markRetired
+} from '../../modules/retiredDevices';
 import {
     getBluetoothDevice,
     listBluetoothDevices,
@@ -92,6 +98,7 @@ import {
     DEVICE_GET_STATUS_HISTORY_PARAMS_SCHEMA,
     DEVICE_GET_STATUS_TIMELINE_PARAMS_SCHEMA,
     DEVICE_LIST_PARAMS_SCHEMA,
+    DEVICE_NO_PARAMS_SCHEMA,
     DEVICE_RELATIONSHIPS_GET_PARAMS_SCHEMA,
     DEVICE_RELATIONSHIPS_QUERY_PARAMS_SCHEMA,
     DEVICE_REPLACE_HARDWARE_PARAMS_SCHEMA,
@@ -132,6 +139,7 @@ import {
     parseIncludeSet,
     sliceForPage
 } from './deviceListHelpers';
+import {hideExtractedSourceComponents} from './deviceListSourceVisibility';
 import {canReadDeviceFieldAsync} from './entityPermissions';
 
 const logger = log4js.getLogger('DeviceComponent');
@@ -249,7 +257,9 @@ async function loadAccessibleDevices(
         if (cached) return cached;
     }
 
-    let devices: AbstractDevice[] = DeviceCollector.getAll();
+    // Hide retired (soft-deleted) devices from every fleet list. They stay in
+    // the collector while reporting, so this is the chokepoint that hides them.
+    let devices: AbstractDevice[] = excludeRetired(DeviceCollector.getAll());
     if (hasFilters && filters) devices = applyFilters(devices, filters);
 
     // Only provider support sees DeviceCollector unfiltered. Org admin must
@@ -449,7 +459,7 @@ async function serializeDeviceListEntries(
             .map((entry) => entry.device)
     );
     return entries.map((entry) => {
-        const row =
+        let row =
             entry.kind === 'physical'
                 ? entry.device.toListJSON(detailSet)
                 : entry.kind === 'virtual'
@@ -464,7 +474,7 @@ async function serializeDeviceListEntries(
                         detailSet
                     );
         if (entry.kind === 'physical') {
-            hideExtractedSourceComponents(
+            row = hideExtractedSourceComponents(
                 row,
                 hiddenSourceKeys.get(row.shellyID)
             );
@@ -690,30 +700,6 @@ async function withMemberships(
         ...row,
         ...(memberships.get(row.shellyID) ?? NO_MEMBERSHIPS)
     };
-}
-
-function hideExtractedSourceComponents(
-    row: ShellyDeviceExternal,
-    hiddenKeys: Set<string> | undefined
-): void {
-    if (!hiddenKeys || hiddenKeys.size === 0) return;
-    for (const key of hiddenKeys) {
-        delete row.status?.[key];
-        delete row.settings?.[key];
-    }
-    if (!Array.isArray(row.entities)) return;
-    const hiddenEntityIds = new Set(
-        [...hiddenKeys].map((key) => sourceKeyToEntityId(row, key))
-    );
-    row.entities = row.entities.filter((entityId) => {
-        return typeof entityId !== 'string' || !hiddenEntityIds.has(entityId);
-    });
-}
-
-function sourceKeyToEntityId(row: ShellyDeviceExternal, key: string): string {
-    const [type, id] = key.split(':');
-    if (type === 'service') return `${row.shellyID}_${id}:service`;
-    return `${row.id}_${id}:${type}`;
 }
 
 // Validate a device kind; on rejection, count it before rethrowing so the
@@ -1047,29 +1033,14 @@ export default class DeviceComponent extends Component<any> {
     }
 
     @Component.Expose('GetSetup')
-    @Component.CrudPermission('devices', 'read', (params) => params?.shellyID)
+    @Component.CrudPermission('configurations', 'read', () => undefined)
     async getSetup(rawParams: unknown, sender: CommandSender) {
         const {mode = 'json'} = validateOrThrow<DeviceGetSetupParams>(
             rawParams,
             DEVICE_GET_SETUP_PARAMS_SCHEMA
         );
 
-        // Also requires configurations.read to access config profiles
-        if (
-            !hasTenantAdminAuthority(sender) &&
-            !sender.hasCrudPermission('configurations', 'read')
-        ) {
-            throw RpcError.InvalidRequest(
-                'No read permission on configurations'
-            );
-        }
-
-        const setup: Record<
-            string,
-            Record<string, any>
-        > = await Commander.execInternal('Storage.GetAll', {
-            registry: 'configs'
-        });
+        const setup = await readReadableConfigurationProfiles(sender);
 
         if (mode === 'rpc') {
             let id = 1000;
@@ -1202,6 +1173,62 @@ export default class DeviceComponent extends Component<any> {
             });
         }
         return {deleted: shellyID};
+    }
+
+    // Soft delete: hide the device, keep its id and history. Reversible via
+    // Restore. The everyday "Delete" in the UI maps here; Delete above is the
+    // deliberate hard purge.
+    @Component.Expose('Retire')
+    @Component.CrudPermission('devices', 'delete')
+    async retire(rawParams: unknown, sender: CommandSender) {
+        const {shellyID} = validateOrThrow<DeviceShellyOnlyParams>(
+            rawParams,
+            DEVICE_SHELLY_ONLY_PARAMS_SCHEMA
+        );
+        const rec = await PostgresProvider.accessControl(shellyID);
+        if (!rec?.id) {
+            throw RpcError.InvalidParams(
+                `Could not resolve internal id for ${shellyID}`
+            );
+        }
+        await PostgresProvider.deviceRetire(shellyID);
+        markRetired(shellyID);
+        // Bumps the group version, which is part of the device-list cache key,
+        // so the next list rebuilds without this device.
+        const orgId = sender.getOrganizationId();
+        if (orgId) invalidateGroupCache(orgId);
+        return {retired: shellyID};
+    }
+
+    @Component.Expose('Restore')
+    @Component.CrudPermission('devices', 'delete')
+    async restore(rawParams: unknown, sender: CommandSender) {
+        const {shellyID} = validateOrThrow<DeviceShellyOnlyParams>(
+            rawParams,
+            DEVICE_SHELLY_ONLY_PARAMS_SCHEMA
+        );
+        await PostgresProvider.deviceRestore(shellyID);
+        markRestored(shellyID);
+        const orgId = sender.getOrganizationId();
+        // Re-register in case it was retired while offline and dropped from the
+        // collector; already-present devices are skipped.
+        await PostgresProvider.loadSavedDevices({orgId, skipRegistered: true});
+        if (orgId) invalidateGroupCache(orgId);
+        return {restored: shellyID};
+    }
+
+    @Component.NoAudit
+    @Component.Expose('ListRetired')
+    @Component.CrudPermission('devices', 'read')
+    async listRetired(rawParams: unknown, sender: CommandSender) {
+        validateOrThrow<Record<string, never>>(
+            rawParams ?? {},
+            DEVICE_NO_PARAMS_SCHEMA
+        );
+        const orgId = sender.getOrganizationId();
+        if (!orgId) throw RpcError.Unauthorized();
+        const result = await PostgresProvider.listRetiredDevices(orgId);
+        return {devices: result?.rows ?? []};
     }
 
     @Component.NoAudit
@@ -1354,6 +1381,22 @@ export default class DeviceComponent extends Component<any> {
             current: number | null;
         }[] = [];
 
+        const addEm1Channel = (channel: number, reading: any): void => {
+            em1Channels.push({
+                channel,
+                act_power:
+                    typeof reading.act_power === 'number'
+                        ? reading.act_power
+                        : null,
+                voltage:
+                    typeof reading.voltage === 'number'
+                        ? reading.voltage
+                        : null,
+                current:
+                    typeof reading.current === 'number' ? reading.current : null
+            });
+        };
+
         for (let i = 0; i < 5; i++) {
             const em = status[`em:${i}`];
             if (em) {
@@ -1366,19 +1409,7 @@ export default class DeviceComponent extends Component<any> {
                 });
             }
             const em1 = status[`em1:${i}`];
-            if (em1) {
-                em1Channels.push({
-                    channel: i,
-                    act_power:
-                        typeof em1.act_power === 'number'
-                            ? em1.act_power
-                            : null,
-                    voltage:
-                        typeof em1.voltage === 'number' ? em1.voltage : null,
-                    current:
-                        typeof em1.current === 'number' ? em1.current : null
-                });
-            }
+            if (em1) addEm1Channel(i, em1);
         }
         return {emChannels, em1Channels};
     }

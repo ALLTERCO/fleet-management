@@ -21,8 +21,10 @@ import type {
 function defaultSettings(): DashboardSettings {
     const d = dashboardDefaults();
     return {
-        tariff: null,
-        currency: null,
+        // Tariff is always a number (0 = free), currency always a string, both
+        // from ENV defaults — a cost calc must never see null/NaN.
+        tariff: d.tariff,
+        currency: d.currency,
         defaultRange: d.defaultRange,
         refreshInterval: d.refreshIntervalMs,
         enabledMetrics: [...d.enabledMetrics],
@@ -85,7 +87,7 @@ function rowToScope(row: any): DashboardScope {
     return scope;
 }
 
-function rowToSettings(raw: unknown): DashboardSettings {
+export function rowToSettings(raw: unknown): DashboardSettings {
     const def = defaultSettings();
     if (!raw || typeof raw !== 'object') return def;
     const r = raw as Record<string, unknown>;
@@ -115,8 +117,8 @@ function rowToSettings(raw: unknown): DashboardSettings {
             : {};
     };
     return {
-        tariff: num('tariff'),
-        currency: typeof r.currency === 'string' ? r.currency : null,
+        tariff: num('tariff') ?? def.tariff,
+        currency: typeof r.currency === 'string' ? r.currency : def.currency,
         defaultRange: str('default_range', def.defaultRange),
         refreshInterval:
             typeof r.refresh_interval === 'number'

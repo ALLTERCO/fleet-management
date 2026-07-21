@@ -2,10 +2,17 @@
     <span
         v-if="show"
         class="gkb"
-        :class="[`gkb--cat-${category}`, {'gkb--pill': pill}]"
+        :class="[
+            `gkb--cat-${category}`,
+            {'gkb--pill': pill && !plain, 'gkb--plain': plain}
+        ]"
         :title="title"
     >
-        <i v-if="iconClass" :class="['gkb__icon', iconClass]" aria-hidden="true" />
+        <i
+            v-if="iconClass && !plain"
+            :class="['gkb__icon', iconClass]"
+            aria-hidden="true"
+        />
         <span class="gkb__label">{{ label }}</span>
     </span>
 </template>
@@ -21,8 +28,10 @@ const props = withDefaults(
         hideManual?: boolean;
         /** Render as a full pill (icon + label) vs. icon-only chip. */
         pill?: boolean;
+        /** Label-only text, no chrome — typography inherits from the host. */
+        plain?: boolean;
     }>(),
-    {hideManual: true, pill: true}
+    {hideManual: true, pill: true, plain: false}
 );
 
 const {byId, ensureLoaded} = useGroupKinds();
@@ -70,6 +79,18 @@ function prettyCategory(c: string): string {
     white-space: nowrap;
 }
 .gkb--pill { gap: var(--space-2); padding: var(--space-1) var(--space-2-5); }
+.gkb--plain {
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+}
+.gkb--plain .gkb__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
 .gkb__icon { font-size: 0.95em; }
 .gkb__label { letter-spacing: var(--tracking-tight); }
 

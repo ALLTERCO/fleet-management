@@ -1,5 +1,7 @@
 ## Entities
 
+![Anatomy of an entity: the shape (id, name, type, source, online, properties), then discover its actions with GetCapabilities, then run one with InvokeAction](diagrams/entities.svg)
+
 An **entity** is Fleet Manager's normalized, typed view of one controllable or
 observable part of a device — a switch, a cover, a light, a sensor, a meter. It
 lets you drive a mixed fleet through one shape instead of learning each device's

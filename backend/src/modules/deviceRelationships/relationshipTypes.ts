@@ -143,7 +143,8 @@ export interface AlertRuleRow {
     kind: string;
     enabled: boolean;
     severity: string;
-    scope: unknown;
+    targets_center_device: boolean;
+    target_entity_ids: string[];
 }
 
 export interface EnergyClassificationRow {

@@ -10,7 +10,7 @@
                     Fleet Manager's own connection.
                 </p>
 
-                <DeviceSelector v-model="selectedDevices" />
+                <DeviceSelector v-if="!presetDevices" v-model="selectedDevices" />
                 <p v-if="errors.devices" class="spw__error">{{ errors.devices }}</p>
 
                 <div v-if="selectedDevices.length > 1" class="spw__mode">
@@ -33,17 +33,19 @@
                 </div>
 
                 <FormField
-                    v-if="mode === 'shared'"
+                    v-if="effectiveMode === 'shared'"
                     label="Password"
                     :error="errors.password"
                     hint="8–200 characters (Fleet Manager's rule)."
                 >
                     <div class="spw__pw">
-                        <Input
-                            v-model="password"
-                            :type="show ? 'text' : 'password'"
-                            placeholder="Type a password, or generate one"
-                        />
+                        <div class="spw__pw-field">
+                            <Input
+                                v-model="password"
+                                :type="show ? 'text' : 'password'"
+                                placeholder="Type a password, or generate one"
+                            />
+                        </div>
                         <button
                             type="button"
                             class="spw__icon-btn"
@@ -62,6 +64,9 @@
                     the full list once it's done.
                 </p>
 
+                <p v-if="errors.submit" class="spw__error">
+                    {{ errors.submit }}
+                </p>
                 <div class="spw__actions">
                     <Button type="blue-hollow" @click="emit('close')">Cancel</Button>
                     <Button
@@ -77,7 +82,11 @@
 
             <template v-if="results">
                 <template v-if="resultMode === 'shared'">
-                    <SecretReveal :token="results[0].password" copy-label="Copy password" />
+                    <SecretReveal
+                        :token="results[0].password"
+                        copy-label="Copy password"
+                        @copy="copySharedPassword"
+                    />
                     <p class="spw__hint">
                         Set on <b>{{ results.length }}</b> device{{ results.length === 1 ? '' : 's' }}. Shown once — copy it now.
                     </p>
@@ -87,15 +96,18 @@
                         Set on <b>{{ results.length }}</b> devices, each with its own
                         password. Download the list now — it is shown only once.
                     </p>
+                    <PasswordResultList :rows="results" />
+                </template>
+                <template v-if="failures.length > 0">
+                    <p class="spw__error">
+                        Failed on <b>{{ failures.length }}</b> device{{ failures.length === 1 ? '' : 's' }} — the old password is still in place there:
+                    </p>
                     <div class="spw__list">
-                        <div v-for="r in results" :key="r.deviceId" class="spw__row">
-                            <span class="spw__row-id">{{ r.deviceId }}</span>
-                            <span class="spw__row-pw">{{ r.password }}</span>
+                        <div v-for="f in failures" :key="f.deviceId" class="spw__row">
+                            <span class="spw__row-id">{{ f.deviceId }}</span>
+                            <span class="spw__row-err">{{ f.error }}</span>
                         </div>
                     </div>
-                    <Button type="blue-hollow" size="sm" @click="downloadCsv">
-                        <i class="fas fa-download" /> Download CSV
-                    </Button>
                 </template>
                 <div class="spw__actions">
                     <Button type="green" @click="emit('close')">Done</Button>
@@ -106,28 +118,45 @@
 </template>
 
 <script setup lang="ts">
-import {reactive, ref, watch} from 'vue';
+import {computed, reactive, ref, watch} from 'vue';
 import Button from '@/components/core/Button.vue';
 import DeviceSelector from '@/components/core/DeviceSelector.vue';
 import FormField from '@/components/core/FormField.vue';
 import Input from '@/components/core/Input.vue';
 import SecretReveal from '@/components/core/SecretReveal.vue';
 import Modal from '@/components/modals/Modal.vue';
-import {useCredentialsStore} from '@/stores/credentials';
+import PasswordResultList from '@/components/pages/device-auth/PasswordResultList.vue';
+import {copyText} from '@/helpers/clipboard';
+import {
+    type CredentialSetFailure,
+    useCredentialsStore
+} from '@/stores/credentials';
+import {useToastStore} from '@/stores/toast';
 
-const props = defineProps<{visible: boolean}>();
+const props = defineProps<{
+    visible: boolean;
+    /** Locks the target list to these devices and hides the selector. */
+    presetDevices?: string[];
+}>();
 const emit = defineEmits<{close: []; saved: []}>();
 
 const store = useCredentialsStore();
+const toast = useToastStore();
 
 const selectedDevices = ref<string[]>([]);
 const mode = ref<'shared' | 'unique'>('shared');
 const password = ref('');
 const show = ref(false);
 const saving = ref(false);
-const errors = reactive({devices: '', password: ''});
+const errors = reactive({devices: '', password: '', submit: ''});
 const results = ref<Array<{deviceId: string; password: string}> | null>(null);
+const failures = ref<CredentialSetFailure[]>([]);
 const resultMode = ref<'shared' | 'unique'>('shared');
+
+// One device: nothing to share, so the flow is always 'shared'.
+const effectiveMode = computed<'shared' | 'unique'>(() =>
+    selectedDevices.value.length <= 1 ? 'shared' : mode.value
+);
 
 // Client-side strong password using the Web Crypto API. Shelly imposes no
 // length limit (SetAuth stores a SHA256 ha1, not the plaintext); 24 chars.
@@ -152,57 +181,61 @@ function generate(): void {
 async function submit(): Promise<void> {
     errors.devices = '';
     errors.password = '';
+    errors.submit = '';
     if (selectedDevices.value.length === 0) {
         errors.devices = 'Pick at least one device.';
         return;
     }
-    const single = selectedDevices.value.length === 1;
-    const useMode = single ? 'shared' : mode.value;
     if (
-        useMode === 'shared' &&
+        effectiveMode.value === 'shared' &&
         (password.value.length < 8 || password.value.length > 200)
     ) {
         errors.password = 'Password must be 8–200 characters.';
         return;
     }
 
+    const items = selectedDevices.value.map((deviceId) => ({
+        deviceId,
+        password:
+            effectiveMode.value === 'shared'
+                ? password.value
+                : generatePassword(GEN_LENGTH)
+    }));
+
     saving.value = true;
-    const out: Array<{deviceId: string; password: string}> = [];
-    for (const deviceId of selectedDevices.value) {
-        const pw = useMode === 'shared' ? password.value : generatePassword(GEN_LENGTH);
-        const r = await store.setOne({deviceId, password: pw});
-        if (r) out.push({deviceId: r.deviceId, password: r.password});
-    }
+    const {succeeded, failed} = await store.setMany(items);
     saving.value = false;
 
-    if (out.length > 0) {
-        resultMode.value = useMode;
-        results.value = out;
-        emit('saved');
+    if (succeeded.length === 0) {
+        errors.submit =
+            failed.length === 1
+                ? failed[0].error
+                : `Failed on all ${failed.length} devices — no passwords were changed.`;
+        return;
     }
+    resultMode.value = effectiveMode.value;
+    results.value = succeeded.map((r) => ({
+        deviceId: r.deviceId,
+        password: r.password
+    }));
+    failures.value = failed;
+    emit('saved');
 }
 
-function csvCell(v: string): string {
-    return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
-}
-function downloadCsv(): void {
-    if (!results.value) return;
-    const rows = [
-        ['device', 'password'],
-        ...results.value.map((r) => [r.deviceId, r.password])
-    ];
-    const csv = rows.map((r) => r.map(csvCell).join(',')).join('\n');
-    const url = URL.createObjectURL(new Blob([csv], {type: 'text/csv'}));
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'device-passwords.csv';
-    a.click();
-    URL.revokeObjectURL(url);
+async function copySharedPassword(): Promise<void> {
+    if (!results.value?.length) return;
+    const ok = await copyText(results.value[0].password);
+    if (ok) toast.info('Password copied.');
+    else toast.error('Could not copy — select and copy it manually.');
 }
 
 watch(
     () => props.visible,
     (open) => {
+        if (open && props.presetDevices) {
+            selectedDevices.value = [...props.presetDevices];
+            return;
+        }
         if (!open) {
             selectedDevices.value = [];
             mode.value = 'shared';
@@ -210,8 +243,10 @@ watch(
             show.value = false;
             saving.value = false;
             results.value = null;
+            failures.value = [];
             errors.devices = '';
             errors.password = '';
+            errors.submit = '';
         }
     }
 );
@@ -260,8 +295,8 @@ watch(
     align-items: center;
     gap: var(--space-2);
 }
-.spw__pw :deep(.form-input),
-.spw__pw :deep(input) {
+.spw__pw-field {
+    min-width: 0;
     flex: 1;
 }
 .spw__icon-btn {
@@ -303,6 +338,10 @@ watch(
 }
 .spw__row-pw {
     color: var(--color-text-primary);
+}
+.spw__row-err {
+    color: var(--color-danger-text);
+    text-align: right;
 }
 .spw__actions {
     display: flex;

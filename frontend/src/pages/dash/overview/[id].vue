@@ -140,11 +140,19 @@
             state="loading"
             title="Loading overview"
         />
+
+        <DashRenameModal
+            :visible="renameVisible"
+            :name="renameName"
+            :saving="renameSaving"
+            @save="saveRename"
+            @close="renameVisible = false"
+        />
     </div>
 </template>
 
 <script setup lang="ts">
-import {computed, onMounted, onUnmounted, ref, watch, watchEffect} from 'vue';
+import {computed, onMounted, onUnmounted, ref, watch} from 'vue';
 import {useRoute} from 'vue-router';
 import DashboardScopePicker from '@/components/dashboard/DashboardScopePicker.vue';
 import DashboardState from '@/components/dashboard/DashboardState.vue';
@@ -157,14 +165,17 @@ import DashInsights from '@/components/dashboard/DashInsights.vue';
 import DashKpiStrip from '@/components/dashboard/DashKpiStrip.vue';
 import DashPeriodComparison from '@/components/dashboard/DashPeriodComparison.vue';
 import DashPowerBar from '@/components/dashboard/DashPowerBar.vue';
+import DashRenameModal from '@/components/dashboard/DashRenameModal.vue';
 import DashStatusDonut from '@/components/dashboard/DashStatusDonut.vue';
 import DashTimeChart from '@/components/dashboard/DashTimeChart.vue';
-import {useDashboardNavigation} from '@/composables/useDashboardNavigation';
 import {useDashboardScope} from '@/composables/useDashboardScope';
+import {useDomainDashboardChrome} from '@/composables/useDomainDashboardChrome';
 import {useRollingBuffer} from '@/composables/useRollingBuffer';
 import {chartColors} from '@/helpers/chartUtils';
+import {fetchDashboardRecordSummary} from '@/helpers/dashboardRecord';
 import {filterByScope} from '@/helpers/dashboardScopeFilter';
-import {classifyDeviceType, formatUptime} from '@/helpers/dashboardUtils';
+import {classifyDeviceType} from '@/helpers/dashboardUtils';
+import {formatDuration} from '@/helpers/format';
 import {buildLiveMetricsFromDevices} from '@/helpers/liveMetrics';
 import {logSettledRejections} from '@/helpers/promiseUtils';
 import {useAuthStore} from '@/stores/auth';
@@ -186,7 +197,6 @@ import type {
 
 const isKiosk = document.body.classList.contains('kiosk');
 const route = useRoute();
-const {goToManage} = useDashboardNavigation();
 const groupsStore = useGroupsStore();
 const tagsStore = useTagsStore();
 const authStore = useAuthStore();
@@ -220,7 +230,7 @@ const hasData = computed(
 
 const metrics = computed(() => liveMetrics.value?.metrics ?? {});
 const allLiveDevices = computed(
-    (): {id: number; shellyID: string; name: string}[] =>
+    (): {id: number; shellyID: string; name: string; online?: boolean}[] =>
         liveMetrics.value?.devices ?? []
 );
 
@@ -245,7 +255,9 @@ function membershipOf(shellyID: string) {
     };
 }
 
-const onlineCount = computed(() => devices.value.length);
+const onlineCount = computed(
+    () => devices.value.filter((device) => device.online).length
+);
 
 // Rolling history of online-device count — feeds the header fleet-pulse.
 const {buffer: onlineBuffer, push: pushOnline} = useRollingBuffer(60);
@@ -304,7 +316,7 @@ const fleetBubbleDevices = computed(() => {
         id: d.id,
         name: d.name,
         metric: powerMap.get(d.id) ?? 0,
-        status: 'online' as const
+        status: d.online ? ('online' as const) : ('offline' as const)
     }));
 });
 
@@ -456,13 +468,13 @@ const deviceRows = computed((): DashDeviceRow[] => {
             id: d.id,
             shellyId: d.shellyID,
             name: d.name,
-            online: true,
+            online: d.online ?? false,
             livePower: powerMap.get(d.id) ?? null,
             voltage: voltageMap.get(d.id) ?? null,
             temperature: tempMap.get(d.id) ?? null,
             humidity: humMap.get(d.id) ?? null,
             uptimeFormatted:
-                uptimeVal !== null ? formatUptime(uptimeVal) : '\u2014',
+                uptimeVal !== null ? formatDuration(uptimeVal) : '\u2014',
             _uptimeSeconds: uptimeVal ?? 0
         };
     });
@@ -494,17 +506,10 @@ const uptimeGauge = computed((): DashGaugeConfig => {
 // ── Data fetching ──
 
 async function fetchDashboardRecord() {
-    const dashboards = await ws.sendRPC<any[]>(
-        'FLEET_MANAGER',
-        'Storage.GetItem',
-        {registry: 'ui', key: 'dashboards'}
-    );
-    const dashboard = (dashboards ?? []).find(
-        (d: any) => d.id === dashboardId.value
-    );
+    const dashboard = await fetchDashboardRecordSummary(dashboardId.value);
     if (dashboard) {
         dashboardName.value = dashboard.name ?? 'Overview';
-        groupId.value = dashboard.scope?.groupId ?? null;
+        groupId.value = dashboard.groupId;
     }
 }
 
@@ -547,6 +552,9 @@ async function fetchHistorical() {
             from,
             to,
             tags: [metricToTag[metric]],
+            // AC grid electricity — exclude DC / other commodities.
+            commodity: 'electricity',
+            electricalSource: 'ac_mains',
             bucket: granToBucket[g]
         };
         return groupId.value
@@ -677,18 +685,15 @@ onUnmounted(() => {
 });
 
 const chrome = useDashboardChromeStore();
-watchEffect(() => {
-    chrome.register({
-        onRefresh: () => { void load(); },
-        onShare: () => {},
-        onToggleEdit: () => {},
-        onAddWidget: () => {},
-        onOpenManage: goToManage,
-        canEdit: false,
-        canShare: false,
-        loading: loading.value
+const {renameVisible, renameSaving, renameName, saveRename} =
+    useDomainDashboardChrome({
+        dashboardId: () => dashboardId.value,
+        loading: () => loading.value,
+        currentName: () => dashboardName.value,
+        onRenamed: (name) => {
+            dashboardName.value = name;
+        }
     });
-});
 </script>
 
 <style scoped>

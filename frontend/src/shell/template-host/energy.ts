@@ -187,6 +187,9 @@ export type MetricHistoryOptions = ScopeSelector & {
     bucket?: QueryParams['bucket'];
     perDevice?: boolean;
     perPhase?: boolean;
+    /** Commodity filter — defaults to AC-mains electricity for a metric widget. */
+    commodity?: QueryParams['commodity'];
+    electricalSource?: QueryParams['electricalSource'];
     /** Fetch on creation. Default true. */
     immediate?: boolean;
 };
@@ -222,7 +225,11 @@ export function useMetricHistory(options: MetricHistoryOptions): MetricHistory {
                     : {}),
                 ...(options.perPhase !== undefined
                     ? {perPhase: options.perPhase}
-                    : {})
+                    : {}),
+                // Default a metric widget to AC-mains electricity so DC never
+                // mixes into a power/voltage chart; caller can override either.
+                commodity: options.commodity ?? 'electricity',
+                electricalSource: options.electricalSource ?? 'ac_mains'
             });
             data.value = res;
             error.value = null;

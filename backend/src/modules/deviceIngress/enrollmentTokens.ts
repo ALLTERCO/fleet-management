@@ -31,13 +31,18 @@ export async function createEnrollmentToken(input: {
     createdBy: string | null;
     repository: CreateEnrollmentTokenRepository;
 }): Promise<CreatedEnrollmentToken> {
+    const publicWsBaseUrl = requirePublicWsBaseUrl();
     const raw = createRawIngressToken();
     const token = await insertEnrollmentToken({
         input,
         tokenHash: hashIngressToken(raw.token),
         tokenPrefix: raw.prefix
     });
-    return {token, tokenOnce: raw.token, url: enrollmentUrl(raw.token)};
+    return {
+        token,
+        tokenOnce: raw.token,
+        url: enrollmentUrl(publicWsBaseUrl, raw.token)
+    };
 }
 
 async function insertEnrollmentToken(params: {
@@ -88,8 +93,8 @@ function activeCapError(): RpcError {
 
 // No device id — the device is unknown until it connects. Same public WS base
 // the provisioning plan uses (SSOT), token-only query.
-function enrollmentUrl(token: string): string {
-    return `${requirePublicWsBaseUrl()}?token=${encodeURIComponent(token)}`;
+function enrollmentUrl(publicWsBaseUrl: string, token: string): string {
+    return `${publicWsBaseUrl}?token=${encodeURIComponent(token)}`;
 }
 
 function expiresAt(validityMinutes: number): Date {

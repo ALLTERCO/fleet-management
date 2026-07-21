@@ -141,7 +141,7 @@ async function setConfig(config: Record<string, any>) {
 }
 .et-illum__icon { font-size: var(--type-subheading); color: var(--color-warning-text); }
 .et-illum__value { font-size: var(--type-subheading); font-weight: var(--font-bold); color: var(--color-text-primary); }
-.et-illum__unit { font-size: var(--type-body); color: var(--color-text-tertiary); }
+.et-illum__unit { font-size: var(--type-caption); color: var(--color-text-tertiary); }
 .et-illum__state {
     display: flex; align-items: center; justify-content: center; gap: var(--space-2);
     padding: var(--space-3); border-radius: var(--radius-md); font-weight: var(--font-semibold); font-size: var(--type-body);
@@ -150,11 +150,11 @@ async function setConfig(config: Record<string, any>) {
 .et-illum__state--bright { background-color: var(--color-warning-subtle); color: var(--color-warning-text); }
 .et-illum__bar-track { height: 6px; border-radius: var(--radius-xs); background-color: var(--color-surface-3); overflow: hidden; }
 .et-illum__bar-fill { height: 100%; border-radius: var(--radius-xs); background: linear-gradient(90deg, var(--color-warning), var(--color-warning-text)); transition: width 0.3s ease; }
-.et-illum__bar-labels { display: flex; justify-content: space-between; font-size: var(--type-body); color: var(--color-text-disabled); }
+.et-illum__bar-labels { display: flex; justify-content: space-between; font-size: var(--type-caption); color: var(--color-text-disabled); }
 .et-illum__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: var(--space-1-5); }
 .et-illum__card { display: flex; flex-direction: column; align-items: center; padding: var(--space-2); border-radius: var(--radius-md); background-color: var(--color-surface-2); }
 .et-illum__card-value { font-size: var(--type-body); font-weight: var(--font-bold); color: var(--color-text-primary); }
-.et-illum__card-label { font-size: var(--type-body); color: var(--color-text-disabled); text-align: center; }
+.et-illum__card-label { font-size: var(--type-caption); color: var(--color-text-disabled); text-align: center; }
 .et-illum__section {
     display: flex; flex-direction: column; gap: var(--space-1-5);
     border: 1px solid var(--color-border-default); border-radius: var(--radius-md); padding: var(--space-2);
@@ -164,7 +164,7 @@ async function setConfig(config: Record<string, any>) {
     font-weight: var(--font-semibold); color: var(--color-text-tertiary); cursor: pointer; user-select: none;
 }
 .et-illum__row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-1) 0; }
-.et-illum__label { font-size: var(--type-body); color: var(--color-text-disabled); flex-shrink: 0; }
+.et-illum__label { font-size: var(--type-caption); color: var(--color-text-disabled); flex-shrink: 0; }
 .et-illum__text {
     flex: 1; min-width: 0; font-size: var(--type-body); color: var(--color-text-primary);
     background-color: var(--color-surface-2); border: 1px solid var(--color-border-default);

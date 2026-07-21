@@ -24,7 +24,7 @@
             <CardBadges :is-offline="isOffline" :shelly-id="entity.source" />
         </template>
         <template #toggle>
-            <CardToggle :is-on="isOn" :disabled="!canExecute" @toggle="toggle" />
+            <CardToggle :is-on="isOn" :disabled="!isOperable" @toggle="toggle" />
         </template>
     </CardShell>
 
@@ -43,6 +43,11 @@
         @delete="$emit('delete')" @cycle-size="$emit('cycle-size')"
     >
         <template #default>
+            <!-- Same RGB/CCT mode pill as the 2x2, top-left; swaps warmth↔colour. -->
+            <div class="bulb-mode-pill">
+                <button class="bulb-mp" :class="{act: !isCCT}" :disabled="!isOperable" @click.stop="setMode('rgb')">RGB</button>
+                <button class="bulb-mp" :class="{act: isCCT}" :disabled="!isOperable" @click.stop="setMode('cct')">CCT</button>
+            </div>
             <div class="ec-wide-row">
                 <div class="ec-wl">
                     <div role="status" class="ec-dpct ec-dpct--flush">{{ brightnessDisplay }}<span>%</span></div>
@@ -50,32 +55,44 @@
                     <div v-else class="ec-sub--power">{{ isCCT ? ctDisplay + 'K' : hexColor }}</div>
                 </div>
                 <div class="ec-wr">
-                    <!-- CCT mode: CCT slider + brightness slider -->
-                    <template v-if="isCCT">
-                        <div class="ec-clr-track">
-                            <input
-                                type="range"
-                                class="sld-r sld-cct"
-                                min="0" max="100"
-                                :value="cctSliderValue"
-                                :disabled="!canExecute"
-                                @change="onCctSliderChange"
-                                @click.stop
-                            />
-                        </div>
-                    </template>
+                    <!-- Top slider: warmth (CCT) or hue (Color) depending on mode -->
+                    <div class="ec-clr-track">
+                        <input
+                            v-if="isCCT"
+                            type="range"
+                            class="sld-r sld-cct"
+                            min="0" max="100"
+                            :value="displayCct"
+                            :disabled="!isOperable"
+                            @input="onCctInput"
+                            @change="onCctChange"
+                            @click.stop
+                        />
+                        <input
+                            v-else
+                            type="range"
+                            class="sld-r sld-hue"
+                            min="0" max="360"
+                            :value="displayHue"
+                            :disabled="!isOperable"
+                            @input="onHueInput"
+                            @change="onHueChange"
+                            @click.stop
+                        />
+                    </div>
                     <div class="ec-clr-track">
                         <input
                             type="range"
                             class="sld-r sld-bri"
                             min="0" max="100"
-                            :value="brightness"
-                            :disabled="!canExecute"
-                            @change="onBriSliderChange"
+                            :value="displayBrightness"
+                            :disabled="controlsDisabled || isOffline"
+                            @input="onBriInput"
+                            @change="onBriChange"
                             @click.stop
                         />
                     </div>
-                    <CardToggle :is-on="isOn" :disabled="!canExecute" @toggle="toggle" />
+                    <CardToggle :is-on="isOn" :disabled="!isOperable" @toggle="toggle" />
                 </div>
             </div>
         </template>
@@ -101,8 +118,8 @@
         <template #default>
             <!-- Mode toggle pill — top left -->
             <div class="bulb-mode-pill">
-                <button class="bulb-mp" :class="{act: !isCCT}" :disabled="!canExecute" @click.stop="setMode('rgb')">RGB</button>
-                <button class="bulb-mp" :class="{act: isCCT}" :disabled="!canExecute" @click.stop="setMode('cct')">CCT</button>
+                <button class="bulb-mp" :class="{act: !isCCT}" :disabled="!isOperable" @click.stop="setMode('rgb')">RGB</button>
+                <button class="bulb-mp" :class="{act: isCCT}" :disabled="!isOperable" @click.stop="setMode('cct')">CCT</button>
             </div>
 
             <!-- Arc area — both arcs, only one visible at a time -->
@@ -142,17 +159,27 @@
                 </div>
             </div>
 
-            <!-- Brightness slider -->
+            <!-- Brightness slider (or Calibrate prompt when uncalibrated) -->
             <div class="ec-clr-sliders">
-                <div class="ec-clr-srow">
+                <div v-if="needsCalibration || isCalibrating" class="dh-calibrate">
+                    <button
+                        v-if="!isCalibrating"
+                        class="dh-cal-btn"
+                        :disabled="!isOperable"
+                        @click.stop="calibrate"
+                    >Calibrate light</button>
+                    <span v-else class="dh-cal-progress">Calibrating… {{ calibrationProgress }}%</span>
+                </div>
+                <div v-else class="ec-clr-srow">
                     <div class="ec-clr-track">
                         <input
                             type="range"
                             class="sld-r sld-bri"
                             min="0" max="100"
-                            :value="brightness"
-                            :disabled="!canExecute"
-                            @change="onBriSliderChange"
+                            :value="displayBrightness"
+                            :disabled="controlsDisabled || isOffline"
+                            @input="onBriInput"
+                            @change="onBriChange"
                             @click.stop
                         />
                     </div>
@@ -179,7 +206,7 @@
                     class="ec-cct-pre"
                     :class="{'ec-cct-pre--active': isNearCCT(preset.kelvin)}"
                     :style="{'--cct-c': preset.color}"
-                    :disabled="!canExecute"
+                    :disabled="!isOperable"
                     @click.stop="setCCT(preset.kelvin)"
                 >{{ preset.label }}</button>
             </div>
@@ -188,25 +215,13 @@
             <CardBadges :is-offline="isOffline" :shelly-id="entity.source" />
         </template>
         <template #toggle>
-            <CardToggle :is-on="isOn" :disabled="!canExecute" @toggle="toggle" />
+            <CardToggle :is-on="isOn" :disabled="!isOperable" @toggle="toggle" />
         </template>
         <template #footer>
-            <div class="ec-hero-info">
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ isCCT ? ctDisplay + 'K' : hexColor }}</div>
-                    <div class="ec-hero-stat-l">{{ isCCT ? 'CCT' : 'Color' }}</div>
-                </div>
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ powerDisplay }} {{ powerUnit }}</div>
-                    <div class="ec-hero-stat-l">Power</div>
-                </div>
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ tempDisplay }}</div>
-                    <div class="ec-hero-stat-l">Temp</div>
-                </div>
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ energyDisplay }} kWh</div>
-                    <div class="ec-hero-stat-l">Today</div>
+            <!-- Values only. Colour temp first; electrical metrics if reported. -->
+            <div v-if="footerStats.length" class="ec-hero-info ec-hero-info--values">
+                <div v-for="stat in footerStats" :key="stat.key" class="ec-hero-stat">
+                    <div class="ec-hero-stat-v">{{ stat.text }}</div>
                 </div>
             </div>
         </template>
@@ -264,17 +279,27 @@
                 </div>
             </div>
 
-            <!-- Brightness slider -->
+            <!-- Brightness slider (or Calibrate prompt when uncalibrated) -->
             <div class="ec-clr-sliders">
-                <div class="ec-clr-srow">
+                <div v-if="needsCalibration || isCalibrating" class="dh-calibrate">
+                    <button
+                        v-if="!isCalibrating"
+                        class="dh-cal-btn"
+                        :disabled="!isOperable"
+                        @click.stop="calibrate"
+                    >Calibrate light</button>
+                    <span v-else class="dh-cal-progress">Calibrating… {{ calibrationProgress }}%</span>
+                </div>
+                <div v-else class="ec-clr-srow">
                     <div class="ec-clr-track">
                         <input
                             type="range"
                             class="sld-r sld-bri"
                             min="0" max="100"
-                            :value="brightness"
-                            :disabled="!canExecute"
-                            @change="onBriSliderChange"
+                            :value="displayBrightness"
+                            :disabled="controlsDisabled || isOffline"
+                            @input="onBriInput"
+                            @change="onBriChange"
                             @click.stop
                         />
                     </div>
@@ -301,7 +326,7 @@
                     class="ec-cct-pre"
                     :class="{'ec-cct-pre--active': isNearCCT(preset.kelvin)}"
                     :style="{'--cct-c': preset.color}"
-                    :disabled="!canExecute"
+                    :disabled="!isOperable"
                     @click.stop="setCCT(preset.kelvin)"
                 >{{ preset.label }}</button>
             </div>
@@ -310,25 +335,13 @@
             <CardBadges :is-offline="isOffline" :shelly-id="entity.source" />
         </template>
         <template #toggle>
-            <CardToggle :is-on="isOn" :disabled="!canExecute" @toggle="toggle" />
+            <CardToggle :is-on="isOn" :disabled="!isOperable" @toggle="toggle" />
         </template>
         <template #footer>
-            <div class="ec-hero-info">
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ isCCT ? ctDisplay + 'K' : hexColor }}</div>
-                    <div class="ec-hero-stat-l">{{ isCCT ? 'CCT' : 'Color' }}</div>
-                </div>
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ powerDisplay }} {{ powerUnit }}</div>
-                    <div class="ec-hero-stat-l">Power</div>
-                </div>
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ tempDisplay }}</div>
-                    <div class="ec-hero-stat-l">Temp</div>
-                </div>
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ energyDisplay }} kWh</div>
-                    <div class="ec-hero-stat-l">Today</div>
+            <!-- Values only. Colour temp first; electrical metrics if reported. -->
+            <div v-if="footerStats.length" class="ec-hero-info ec-hero-info--values">
+                <div v-for="stat in footerStats" :key="stat.key" class="ec-hero-stat">
+                    <div class="ec-hero-stat-v">{{ stat.text }}</div>
                 </div>
             </div>
         </template>
@@ -336,10 +349,19 @@
 </template>
 
 <script setup lang="ts">
-import {computed} from 'vue';
+import {computed, onMounted, ref} from 'vue';
 import {useCardRpc} from '@/composables/useCardRpc';
+import {useLightCalibration} from '@/composables/useLightCalibration';
+import {useOptimisticSlider} from '@/composables/useOptimisticSlider';
+import {
+    formatCurrent,
+    formatEnergy,
+    formatPower,
+    formatVoltage
+} from '@/helpers/powerMetrics';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
+import {loadDailyEnergy} from '@/tools/dailyEnergyLoader';
 import type {entity_t} from '@/types';
 import CardBadges from './CardBadges.vue';
 import CardShell from './CardShell.vue';
@@ -370,6 +392,9 @@ const isSleeping = computed(() => !!device.value?.sleeping);
 const canExecute = computed(() =>
     authStore.canExecuteDevice(props.entity.source)
 );
+// A command only lands if we're allowed AND the device is reachable — gate the
+// controls on this so an offline light shows disabled controls, not dead taps.
+const isOperable = computed(() => canExecute.value && !isOffline.value);
 
 const status = computed(() => {
     if (!device.value) return null;
@@ -384,6 +409,15 @@ const config = computed(() => {
     const e = props.entity;
     return device.value.settings?.[`${e.type}:${e.properties.id}`] ?? null;
 });
+
+// Calibration lock (shared with the dimmer). A dimmable colour light rejects
+// brightness until calibrated; lock the brightness control until then.
+const {needsCalibration, isCalibrating, calibrationProgress, controlsDisabled} =
+    useLightCalibration(status, canExecute);
+
+function calibrate() {
+    rpc.invokeAction(props.entity.id, 'calibrate', {}, 'Calibrate');
+}
 
 // CT range from device config — falls back to standard range
 const ctMin = computed(() => (config.value as any)?.ct_range?.[0] ?? 2700);
@@ -433,7 +467,14 @@ const rgbcStyle = computed(() => {
     return {'--rgb-c': '255,208,138'};
 });
 
-const brightnessDisplay = computed(() => String(brightness.value));
+// Brightness slider follows the finger while dragging, the device when idle.
+const {
+    display: displayBrightness,
+    onInput: onBriInput,
+    onChange: onBriChange
+} = useOptimisticSlider(brightness, setBrightness);
+
+const brightnessDisplay = computed(() => String(displayBrightness.value));
 
 const hexColor = computed(() => {
     const rgb = status.value?.rgb;
@@ -462,15 +503,42 @@ const powerUnit = computed(() => {
     return w != null && w >= 1000 ? 'kW' : 'W';
 });
 
-const tempDisplay = computed(() => {
-    const t = status.value?.temperature?.tC;
-    return t != null ? `${t.toFixed(1)}°C` : '—';
+// "Today" is the real 1-day rollup, like the dimmer, not lifetime aenergy.total.
+const dailyEnergy = ref<{today: number; yesterday: number} | null>(null);
+onMounted(async () => {
+    if (!hasPM.value || props.size !== '2x2') return;
+    try {
+        dailyEnergy.value = await loadDailyEnergy(props.entity.source);
+    } catch {
+        /* device may have no energy history yet */
+    }
 });
+const todayMetric = computed(() =>
+    formatEnergy(dailyEnergy.value ? dailyEnergy.value.today * 1000 : null)
+);
 
-const energyDisplay = computed(() => {
-    const total = status.value?.aenergy?.total;
-    if (total == null) return '—';
-    return (total / 1000).toFixed(1);
+// Footer mirrors the dimmer: values only. Colour temp (kelvin) first; electrical
+// metrics appear only when the device reports them.
+const footerStats = computed<{key: string; text: string}[]>(() => {
+    const s = status.value;
+    const out: {key: string; text: string}[] = [
+        {key: 'ct', text: isCCT.value ? `${ctDisplay.value}K` : hexColor.value}
+    ];
+    if (hasPM.value) {
+        const p = formatPower(s?.apower);
+        out.push({key: 'power', text: `${p.value} ${p.unit}`});
+        if (s?.current != null) {
+            const c = formatCurrent(s.current);
+            out.push({key: 'current', text: `${c.value} ${c.unit}`});
+        }
+        if (s?.voltage != null) {
+            const v = formatVoltage(s.voltage);
+            out.push({key: 'voltage', text: `${v.value} ${v.unit}`});
+        }
+        const e = todayMetric.value;
+        out.push({key: 'today', text: `${e.value} ${e.unit}`});
+    }
+    return out;
 });
 
 // CCT slider: maps ct range to 0-100
@@ -479,6 +547,45 @@ const cctSliderValue = computed(() => {
     if (ct == null) return 35;
     return Math.round(((ct - ctMin.value) / (ctMax.value - ctMin.value)) * 100);
 });
+
+// Colour-temperature slider works in percent; committing converts to kelvin.
+const {
+    display: displayCct,
+    onInput: onCctInput,
+    onChange: onCctChange
+} = useOptimisticSlider(cctSliderValue, (pct) =>
+    setCCT(Math.round(ctMin.value + (pct / 100) * (ctMax.value - ctMin.value)))
+);
+
+// Hue slider (Color mode): 0-360°; committing sets a full-saturation colour.
+const hue = computed(() => status.value?.hue ?? 0);
+function hueToRgb(h: number): {r: number; g: number; b: number} {
+    const c = 1;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    if (h < 60) [r, g, b] = [c, x, 0];
+    else if (h < 120) [r, g, b] = [x, c, 0];
+    else if (h < 180) [r, g, b] = [0, c, x];
+    else if (h < 240) [r, g, b] = [0, x, c];
+    else if (h < 300) [r, g, b] = [x, 0, c];
+    else [r, g, b] = [c, 0, x];
+    return {
+        r: Math.round(r * 255),
+        g: Math.round(g * 255),
+        b: Math.round(b * 255)
+    };
+}
+function setHue(h: number) {
+    const {r, g, b} = hueToRgb(h);
+    setColor({r, g, b});
+}
+const {
+    display: displayHue,
+    onInput: onHueInput,
+    onChange: onHueChange
+} = useOptimisticSlider(hue, setHue);
 
 // Arc pointer positions (SVG coordinates on the semicircular arc)
 function arcPosition(fraction: number): {x: number; y: number} {
@@ -576,7 +683,7 @@ function isNearCCT(kelvin: number): boolean {
 }
 
 function toggle() {
-    rpc.invokeAction(props.entity.id, 'toggle');
+    rpc.invokeAction(props.entity.id, 'setOutput', {on: !isOn.value});
 }
 
 function setBrightness(value: number) {
@@ -597,18 +704,84 @@ function setMode(mode: 'rgb' | 'cct') {
     if (!canExecute.value) return;
     rpc.invokeAction(props.entity.id, 'setMode', {mode});
 }
-
-function onBriSliderChange(e: Event) {
-    const target = e.target as HTMLInputElement;
-    setBrightness(Number(target.value));
-}
-
-function onCctSliderChange(e: Event) {
-    const target = e.target as HTMLInputElement;
-    const pct = Number(target.value);
-    const kelvin = Math.round(
-        ctMin.value + (pct / 100) * (ctMax.value - ctMin.value)
-    );
-    setCCT(kelvin);
-}
 </script>
+
+<style scoped>
+/* Lift the arc and % so the arc feet clear the brightness slider line.
+   flex:0 0 auto pins the arc panel to its own height, so switching RGB↔CCT
+   can't resize it and shove the slider + presets up the card. Without this the
+   flex column re-divides the space (the CCT presets carry an extra bottom
+   margin), moving everything below the arc by ~18px on every toggle. */
+.ec-cct-wrap {
+    flex: 0 0 auto;
+    transform: translateY(-10px);
+}
+/* Bigger brightness readout; keep the % proportional to the number. Scale
+   nudges it past --type-display without adding an off-scale font size. */
+.ec-cct-pct {
+    font-size: var(--type-display);
+    transform: scale(1.12);
+    transform-origin: center;
+}
+.ec-cct-pct span {
+    font-size: var(--type-heading);
+}
+
+/* Breathing room between the presets and the ON/OFF switch, matched across both
+   modes so the buttons never sit right on top of the switch. The transform lifts
+   the buttons a few px toward the slider; the switch drops to match (below). */
+.ec-clr-presets,
+.ec-cct-presets {
+    margin-bottom: var(--space-6);
+    transform: translateY(-4px);
+}
+/* Drop the switch a few px so it sits balanced between the presets and footer
+   (2×2 only — the switch lives in CardShell's button zone). */
+.ec-hero :deep(.ec-btn-zone) {
+    transform: translateY(4px);
+}
+
+/* Nudge the arc down a few pixels toward the divider. */
+.ec-cct-arc {
+    transform: translateY(6px);
+}
+
+
+/* Subtle frosted glass on the CCT buttons; bright text keeps them readable.
+   backdrop-blur is static and only composites while the card is on-screen. */
+.bulb-cct-row .ec-cct-pre {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px) saturate(150%);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 var(--glass-highlight);
+    color: var(--color-text-primary);
+}
+.bulb-cct-row .ec-cct-pre--active {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* 2x1 (wide): centered bigger value with W + kelvin below; the two sliders
+   spaced out and the switch pushed lower. */
+.ec-wide .bulb-mode-pill {
+    flex-direction: row;
+}
+.ec-wide .ec-wl {
+    text-align: center;
+    align-items: center;
+    justify-content: center;
+    /* drop the value + units so the watts/kelvin line bottom-aligns
+       with the switch on the right. */
+    transform: translateY(20px);
+}
+.ec-wide .ec-dpct {
+    font-size: var(--type-display);
+}
+.ec-wide .ec-wr {
+    gap: var(--space-5);
+}
+.ec-wide .ec-wr .ec-switch {
+    margin-top: var(--space-3);
+}
+</style>

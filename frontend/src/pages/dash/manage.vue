@@ -183,7 +183,7 @@ const dashboardsStore = useDashboardsStore();
 const authStore = useAuthStore();
 const toast = useToastStore();
 
-const ROUTED_TYPES = new Set<string>(['analytics', ...DOMAIN_TYPES]);
+const ROUTED_TYPES = new Set<string>([...DOMAIN_TYPES]);
 
 const openPalette =
     inject(OPEN_DASHBOARD_PALETTE_KEY) ??
@@ -510,7 +510,10 @@ onMounted(async () => {
     background: var(--color-surface-1);
     border: 1px solid var(--color-border-default);
     border-radius: var(--radius-lg);
+    /* Clip vertically for the rounded corners; scroll sideways on
+       narrow screens instead of cutting columns off. */
     overflow: hidden;
+    overflow-x: auto;
 }
 
 .dm__table {

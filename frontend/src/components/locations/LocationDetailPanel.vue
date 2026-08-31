@@ -128,6 +128,25 @@ const locationGeo = computed(() =>
     location.value ? locationGeoLatLng(location.value) : null
 );
 
+// Location rollups and the Devices tab derive their contents from the
+// assignment store. A fresh Organize session only loads the location tree,
+// so fetch assignments for the selected location and every descendant before
+// rendering those views. The store de-duplicates pages and protects concurrent
+// reads from overwriting a newer assignment mutation.
+watch(
+    () => rollups.subtreeIds.value.join(','),
+    async () => {
+        const ids = [...rollups.subtreeIds.value];
+        const missing = ids.filter(
+            (id) => locations.assignmentsByLocation[id] == null
+        );
+        if (missing.length > 0) {
+            await locations.fetchAssignmentsBulk(missing);
+        }
+    },
+    {immediate: true}
+);
+
 const path = ref<LocationBreadcrumbEntry[]>([]);
 
 watch(

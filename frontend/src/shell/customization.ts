@@ -22,6 +22,13 @@ export class CustomizationError extends Error {
     }
 }
 
+class CustomizationUnavailableError extends Error {
+    constructor(cause: unknown) {
+        super('customization.json is temporarily unavailable', {cause});
+        this.name = 'CustomizationUnavailableError';
+    }
+}
+
 function cssVarName(key: string): string {
     return `--fm-template-${key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}`;
 }
@@ -34,10 +41,15 @@ export function applyThemeTokens(theme: ThemeTokens = {}): void {
 }
 
 async function fetchCustomization(): Promise<unknown> {
-    const response = await fetch('/customization.json', {
-        cache: 'no-store',
-        headers: {Accept: 'application/json'}
-    });
+    let response: Response;
+    try {
+        response = await fetch('/customization.json', {
+            cache: 'no-store',
+            headers: {Accept: 'application/json'}
+        });
+    } catch (err) {
+        throw new CustomizationUnavailableError(err);
+    }
     if (!response.ok) {
         throw new CustomizationError(
             `customization.json failed with HTTP ${response.status}`
@@ -59,8 +71,11 @@ export async function loadCustomization(): Promise<Readonly<ProjectOverrides>> {
         applyThemeTokens(customization.theme);
         return customization;
     } catch (err) {
-        if (import.meta.env.DEV) {
-            console.error('[customization] using dev defaults:', err);
+        if (
+            import.meta.env.DEV ||
+            err instanceof CustomizationUnavailableError
+        ) {
+            console.error('[customization] using defaults:', err);
             applyThemeTokens(DEFAULT_CUSTOMIZATION.theme);
             return DEFAULT_CUSTOMIZATION;
         }

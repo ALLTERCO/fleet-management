@@ -201,7 +201,16 @@ export default defineConfig(({mode}) => {
                         {
                             urlPattern: ({url}) =>
                                 url.pathname === '/customization.json',
-                            handler: 'NetworkOnly'
+                            // Keep the latest valid customization available
+                            // during a transient network/service-worker error.
+                            // The application also falls back to its built-in
+                            // defaults on a first-load network failure.
+                            handler: 'NetworkFirst',
+                            options: {
+                                cacheName: 'runtime-customization',
+                                networkTimeoutSeconds: 3,
+                                cacheableResponse: {statuses: [200]}
+                            }
                         },
                         {
                             urlPattern: ({url}) =>

@@ -1,6 +1,7 @@
 export type DeviceIngressAuditKind =
     | 'identity_created'
     | 'identity_updated'
+    | 'identity_enabled'
     | 'identity_disabled'
     | 'identity_quarantined'
     | 'credential_created'

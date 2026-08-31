@@ -103,8 +103,8 @@ interface LocationRow {
     emergency_contact: Record<string, unknown> | null;
     environmental_setpoint: Record<string, unknown> | null;
     custom_fields: LocationCustomFields | null;
-    /** Free-form JSONB sidecar. Currently holds .viz with floorPlan,
-     *  devicePlacements, zones — surfaced under kindFields by buildKindFields. */
+    /** Free-form JSONB sidecar. Holds .viz plus .locationDetails for native
+     *  tags/notes — both surfaced under kindFields by buildKindFields. */
     metadata: Record<string, unknown> | null;
     created_at: Date | string;
     updated_at: Date | string | null;
@@ -163,6 +163,25 @@ function buildKindFields(row: LocationRow): LocationKindFields {
         if (v.floorPlan) out.floorPlan = v.floorPlan;
         if (v.devicePlacements) out.devicePlacements = v.devicePlacements;
         if (v.zones) out.zones = v.zones;
+    }
+
+    // Persist native location tags and notes in the metadata sidecar. These
+    // fields are part of every official kind schema, but Fleet 1.91.0 did not
+    // map them to a typed column or metadata, so a successful update silently
+    // disappeared on the next read.
+    const locationDetails =
+        row.metadata && typeof row.metadata === 'object'
+            ? (row.metadata as Record<string, unknown>).locationDetails
+            : null;
+    if (locationDetails && typeof locationDetails === 'object') {
+        const details = locationDetails as Record<string, unknown>;
+        if (
+            Array.isArray(details.tags) &&
+            details.tags.every((tag) => typeof tag === 'string')
+        ) {
+            out.tags = details.tags as string[];
+        }
+        if (typeof details.notes === 'string') out.notes = details.notes;
     }
     return out;
 }

@@ -877,6 +877,13 @@ b.registerMethod('Identity.Update', {
     permission: PERM_WRITE,
     description: 'Update operator-editable ingress identity metadata.'
 });
+b.registerMethod('Identity.Enable', {
+    params: DEVICE_INGRESS_IDENTITY_GET_PARAMS_SCHEMA,
+    response: {type: 'object', description: 'enabled identity'},
+    permission: PERM_WRITE,
+    description:
+        'Enable a pending or disabled ingress identity. Active identities are returned unchanged.'
+});
 b.registerMethod('Identity.Disable', {
     params: DEVICE_INGRESS_IDENTITY_GET_PARAMS_SCHEMA,
     response: {type: 'object', description: 'disabled identity'},

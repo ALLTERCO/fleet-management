@@ -252,6 +252,46 @@ export default class DeviceIngressComponent extends Component {
         return identity;
     }
 
+    @Component.Expose('Identity.Enable')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
+    async enableIdentity(params: unknown, sender: CommandSender) {
+        await this.limitMutation(sender, 'Identity.Enable');
+        const p = validateOrThrow<DeviceIngressIdentityGetParams>(
+            params,
+            DEVICE_INGRESS_IDENTITY_GET_PARAMS_SCHEMA
+        );
+        const current = await this.deps.repository.getIdentity({
+            organizationId: requireOrganizationId(sender),
+            id: p.id
+        });
+        if (!current) throw RpcError.NotFound('deviceIngress.identity', p.id);
+        if (current.status === 'active') {
+            return {success: true, identity: current};
+        }
+        if (current.status === 'quarantined' || current.status === 'deleted') {
+            throw RpcError.Domain('ResourceConflict', {
+                message: `Cannot enable ${current.status} ingress identity`,
+                details: {
+                    resourceType: 'deviceIngress.identity',
+                    identifier: p.id,
+                    status: current.status
+                }
+            });
+        }
+        const identity = await this.deps.repository.updateIdentityStatus({
+            organizationId: requireOrganizationId(sender),
+            id: p.id,
+            status: 'active'
+        });
+        if (!identity) throw RpcError.NotFound('deviceIngress.identity', p.id);
+        await invalidateIdentity(identity.id);
+        await this.audit(sender, 'identity_enabled', identity.id, {
+            previousStatus: current.status,
+            status: identity.status
+        });
+        return {success: true, identity};
+    }
+
     @Component.Expose('Identity.Disable')
     @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
     async disableIdentity(params: unknown, sender: CommandSender) {

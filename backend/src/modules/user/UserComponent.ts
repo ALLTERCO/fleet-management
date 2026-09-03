@@ -19,6 +19,7 @@ import {AUTHZ_SYSTEM_PERSONA_KEYS} from '../../types/api/authzCatalog';
 import {USERNAME_UPLOAD_TICKET_PARAMS_SCHEMA} from '../../types/api/upload';
 import {USER_DESCRIBE} from '../../types/api/user';
 import * as AuditLogger from '../AuditLogger';
+import {assertKnownAuthzAction} from '../authz/actionMap';
 import {createAssignmentGrant, loadAttachablePersona} from '../authz/admin';
 import {
     canCrossOrganizationBoundary,
@@ -418,6 +419,19 @@ export default class UserComponent extends Component<UserComponentConfig> {
         if (!params?.userId || !params.action || !params.resourceType) {
             throw RpcError.InvalidParams(
                 'userId, action, resourceType required'
+            );
+        }
+        // The action has to be one the policy vocabulary actually contains.
+        // Without this check an unrecognised string — an RPC method name, a
+        // typo — is still matched against the target's statements, and a
+        // persona holding a wildcard grant answers "allowed" for an action
+        // that does not exist. That is the opposite of what this endpoint is
+        // for: it exists to explain why an assignment does or does not apply.
+        try {
+            assertKnownAuthzAction(params.action);
+        } catch (err) {
+            throw RpcError.InvalidParams(
+                err instanceof Error ? err.message : String(err)
             );
         }
         const tenantId = sender.getOrganizationId();

@@ -23,6 +23,25 @@ export function authzAction(
     return `${resourceType}:${operation}`;
 }
 
+/**
+ * Throws unless `action` is one this policy vocabulary can actually emit.
+ *
+ * Callers that take an action from a client (the authz simulator) need this:
+ * an unrecognised string is not "denied", it is unanswerable. Matched against
+ * a persona holding a wildcard grant it comes back allowed, which is worse
+ * than no answer at all.
+ */
+export function assertKnownAuthzAction(action: string): void {
+    const vocabulary = enumerateActionVocabulary();
+    if (vocabulary.has(action)) return;
+    // Name a few real actions — the usual mistake is passing an RPC method
+    // name (`admin.PostgresCall`) where a policy action (`device:read`) goes.
+    const sample = [...vocabulary].slice(0, 3).join(', ');
+    throw new Error(
+        `unknown authz action '${action}' — expected a policy action such as ${sample}`
+    );
+}
+
 // Actions authzAction() emits. Devices: read/execute/write only.
 let cachedRealActions: Set<string> | undefined;
 

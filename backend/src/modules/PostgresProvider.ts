@@ -1286,16 +1286,23 @@ export async function loadSavedDevices(options?: {
                     });
                 }
             } else {
-                logger.warn(
-                    'Cannot create device from db entry id=[%s]',
+                // Error, not warn: the row is valid as far as the database is
+                // concerned, so nothing else will report this device missing.
+                logger.error(
+                    'Cannot create device from db entry id=[%s] — it will be absent from every list until the next restart or Admin.ReconcileDevices',
                     external.external_id
                 );
             }
         } catch (error) {
-            logger.warn(
+            // Same reason, plus the stack: a device that fails here is
+            // invisible application-wide while its row stays healthy, so this
+            // line is the only evidence of what went wrong.
+            logger.error(
                 'failed to load saved device id=[%s] err=[%s]',
                 external.external_id,
-                String(error)
+                error instanceof Error
+                    ? (error.stack ?? error.message)
+                    : String(error)
             );
         }
     }
@@ -1307,10 +1314,20 @@ export async function loadSavedDevices(options?: {
         );
     }
 
-    if (registered < devices.length - skippedForeign - skippedRegistered) {
-        logger.warn(
-            'failed to load %s saved devices',
-            devices.length - registered - skippedForeign - skippedRegistered
+    // Every row that was neither registered nor deliberately skipped is a
+    // device the application cannot see while its row sits healthy in
+    // device.list. Report it at error with both counts, so the gap is
+    // greppable and the numbers can be compared without reconstructing them.
+    const unaccounted =
+        devices.length - registered - skippedForeign - skippedRegistered;
+    if (unaccounted > 0) {
+        logger.error(
+            'device load gap: %s of %s row(s) did not reach the collector (registered=%s, skippedForeign=%s, skippedRegistered=%s) — those devices are absent from every list until the next restart or Admin.ReconcileDevices',
+            unaccounted,
+            devices.length,
+            registered,
+            skippedForeign,
+            skippedRegistered
         );
     }
     if (skippedForeign > 0) {

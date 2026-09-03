@@ -1152,6 +1152,15 @@ function fireDenySideEffects(
             if (kind === 'quarantine') device.onQuarantine();
             else device.onDeny();
         }
+        // Logged whether or not a device object was present — the removal
+        // happens either way, and an unexplained disappearance is the thing
+        // this trail exists to rule out.
+        logger.info(
+            'post-%s: removing %s from the collector (device object present: %s)',
+            kind,
+            shellyID,
+            Boolean(device)
+        );
         DeviceCollector.deleteDevice(shellyID);
     } catch (err) {
         logger.warn(
@@ -1264,8 +1273,12 @@ export async function denyDevice(id: number, username?: string) {
         reconnectLimiter.clear(externalId);
         device.onDeny();
         Observability.incrementCounter('waiting_room_denied');
-        logAudit((audit) => audit.logDeviceDelete(externalId, username));
     }
+    // Outside the `if`, alongside the removal it records. A device that never
+    // loaded into the collector has no `device` object, and that is exactly
+    // the case where an operator later needs the audit trail to explain where
+    // it went.
+    logAudit((audit) => audit.logDeviceDelete(externalId, username));
     DeviceCollector.deleteDevice(externalId);
     debouncedNotifyWaitingRoom();
     return !!device;

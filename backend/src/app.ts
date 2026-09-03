@@ -237,6 +237,7 @@ import {
 } from './modules/user/cache';
 import * as PatRevokeWorker from './modules/user/patRevokeWorker';
 import {startScopedPatRetentionSweep} from './modules/user/tokenStore';
+import {safeInterval} from './modules/util/faultGuard';
 import {fireAndForget} from './modules/util/fireAndForget';
 import {armForceExit} from './modules/util/forceExitWatchdog';
 import * as WaitingRoom from './modules/WaitingRoom';
@@ -963,8 +964,39 @@ async function initRedisAndDrainers(): Promise<void> {
     startScopedPatRetentionSweep();
 }
 
+// A device that fails to load at boot is skipped and stays absent from every
+// list until someone restarts or calls Admin.ReconcileDevices — neither of
+// which happens, because nothing reports it missing. This re-runs the loader
+// on an interval, registering only what the collector does not already hold.
+//
+// skipRegistered is load-bearing, not an optimisation: register() destroys and
+// replaces an existing entry, so re-registering a live device would tear down
+// its transport and swap it for an offline snapshot from the database.
+function startCollectorReconcileSweep(): void {
+    const everyMs = tuning.device.collectorReconcileMs;
+    if (everyMs <= 0) return;
+    const timer = safeInterval('collector-reconcile', everyMs, async () => {
+        const registered = await postgres.loadSavedDevices({
+            skipRegistered: true
+        });
+        if (registered > 0) {
+            logger.error(
+                'collector reconcile recovered %d device(s) that were missing from memory — they were invisible application-wide until now',
+                registered
+            );
+            Observability.incrementCounter(
+                'device_collector_reconcile_recovered',
+                registered
+            );
+        }
+    });
+    // Housekeeping — must not hold the process open on shutdown.
+    timer.unref?.();
+}
+
 async function loadDevicesAndIngestReplay(): Promise<void> {
     await postgres.loadSavedDevices();
+    startCollectorReconcileSweep();
     // Seed the retired-device set so soft-deleted devices stay hidden on boot.
     await seedRetiredDevices();
     // Device ingest drainer — opt-in. Replays Phase E captured frames after a

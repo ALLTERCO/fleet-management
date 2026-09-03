@@ -287,6 +287,8 @@ export interface TuningConfig {
         initSlotMaxHoldMs: number;
         /** Init-slot watchdog sweep interval in ms (default 10000). */
         initSlotWatchdogIntervalMs: number;
+        /** Collector reconcile sweep interval in ms; 0 disables (default 300000). */
+        collectorReconcileMs: number;
         /** A build slower than this is counted slow and logged (default 3000). */
         buildSlowLogMs: number;
         /** Min gap between slow-build log lines, so a storm can't flood (default 2000). */
@@ -1577,6 +1579,11 @@ function readTuning(): TuningConfig {
                 'FM_DEVICE_INIT_SLOT_MAX_HOLD_MS',
                 90_000,
                 1_000
+            ),
+            collectorReconcileMs: envInt(
+                'FM_DEVICE_COLLECTOR_RECONCILE_MS',
+                300_000,
+                0
             ),
             initSlotWatchdogIntervalMs: envInt(
                 'FM_DEVICE_INIT_SLOT_WATCHDOG_INTERVAL_MS',

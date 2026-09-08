@@ -34,6 +34,22 @@ enable_debug_mode() {
     set -x
 }
 
+diagnose_run_failure() {
+    # Docker Hub reports an exhausted pull quota as `toomanyrequests` inside the
+    # output of whatever command triggered the pull. The caller only sees a
+    # non-zero exit and names its own step — "Starting database containers
+    # failed" — which reads as if the images themselves were broken. This is
+    # the one place that still holds the captured output, so say what actually
+    # happened here.
+    local log_file="$1"
+
+    if grep -qiE 'toomanyrequests|pull rate limit|429 Too Many Requests' "$log_file"; then
+        warn "Docker Hub rate limit reached — the images are fine, the registry is throttling this IP."
+        info "Raise the quota with 'docker login', or wait for the window to reset and re-run."
+        info "Images already cached locally are reused untouched; only missing ones are fetched."
+    fi
+}
+
 run_quiet() {
     local label="$1"
     shift
@@ -53,6 +69,7 @@ run_quiet() {
         [ -n "$label" ] && error "$label failed"
         if [ -s "$log_file" ]; then
             sed 's/^/    /' "$log_file" >&2
+            diagnose_run_failure "$log_file"
         fi
     fi
     rm -f "$log_file"

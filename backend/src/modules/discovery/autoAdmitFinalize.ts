@@ -40,16 +40,27 @@ export function __setAutoAdmitFinalizeDepsForTests(
     activeDeps = overrides ? {...defaultDeps, ...overrides} : defaultDeps;
 }
 
-// false → caller must skip approve + audit (device not actually bound).
+/**
+ * Why this is three answers and not a boolean.
+ *
+ * The bind matches zero rows for two completely different reasons. Either the write failed, or
+ * Fleet has simply never seen this device - which is the ordinary state of a brand-new Shelly
+ * being admitted for the first time, and is what create_new_device approval exists to end.
+ * Collapsing both into false made the caller skip approve, so the row that would have made the
+ * bind succeed was never created and the intent survived to fail the same way on the next
+ * reconnect. Only 'failed' is a reason to stop.
+ */
+export type AutoAdmitBindResult = 'bound' | 'device-unknown' | 'failed';
+
 export async function bindAutoAdmittedDeviceOrg(
     shellyID: string,
     intent: AdmissionIntent
-): Promise<boolean> {
+): Promise<AutoAdmitBindResult> {
     const bound = await bindDeviceOrg(shellyID, intent.organization_id);
-    if (!bound) return false;
+    if (bound !== 'bound') return bound;
     activeDeps.invalidateGroupCache(intent.organization_id);
     await addToGroupSafe(shellyID, intent);
-    return true;
+    return 'bound';
 }
 
 export function recordAutoAdmitAudit(
@@ -67,19 +78,21 @@ export function recordAutoAdmitAudit(
 async function bindDeviceOrg(
     shellyID: string,
     organizationId: string
-): Promise<boolean> {
+): Promise<AutoAdmitBindResult> {
     const matched = await runBindBatch(shellyID, organizationId);
-    if (matched === null) return false;
+    if (matched === null) return 'failed';
     if (matched.length === 0) {
-        logger.error(
-            'auto-admit bind matched zero rows for %s org=%s — device unknown to FM',
+        // Not an error: a device Fleet holds no row for yet is exactly what a first admission
+        // looks like. Approve creates the row, and the caller binds against it.
+        logger.info(
+            'auto-admit bind matched zero rows for %s org=%s - device not yet known to FM, approving first',
             shellyID,
             organizationId
         );
-        return false;
+        return 'device-unknown';
     }
     for (const ext of matched) activeDeps.setDeviceOrg(ext, organizationId);
-    return true;
+    return 'bound';
 }
 
 async function runBindBatch(

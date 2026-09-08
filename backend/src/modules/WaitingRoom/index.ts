@@ -6,6 +6,7 @@ import {
     readAccessControlCached
 } from '../deviceIngress/deviceTrustCache';
 import {ingressStage} from '../deviceIngress/ingressTrace';
+import type {AutoAdmitBindResult} from '../discovery/autoAdmitFinalize';
 import {
     finalizePendingAdmission as defaultFinalize,
     reservePendingAdmission as defaultReserve
@@ -109,7 +110,7 @@ export interface AutoAdmitHooks {
     preApproveBind: (
         shellyID: string,
         intent: AdmissionIntent
-    ) => Promise<boolean>;
+    ) => Promise<AutoAdmitBindResult>;
     postFinalizeAudit: (shellyID: string, intent: AdmissionIntent) => void;
 }
 let autoAdmitHooks: AutoAdmitHooks | null = null;
@@ -128,10 +129,26 @@ async function tryAutoAdmit(
         shellyID,
         intent.organization_id
     );
+    // Bind first so Shelly.Connect observes the org link. A device Fleet holds no row for yet
+    // cannot be bound to anything, and that is the ordinary first admission rather than a
+    // failure: approve creates the row, and the bind then has something to match. Anything
+    // else leaves the intent for the next reconnect, exactly as before.
     const bound = await runPreApproveBindSafe(shellyID, intent);
-    if (!bound) return false;
+    if (bound === 'failed') return false;
     const approveOk = await runApproveSafe(shellyID, onApprove, intent);
     if (!approveOk) return false;
+    if (bound === 'device-unknown') {
+        const afterApprove = await runPreApproveBindSafe(shellyID, intent);
+        if (afterApprove !== 'bound') {
+            // Registered, but not filed under its organization. The intent stays, and the next
+            // reconnect finds the row this approve created and binds against it.
+            logger.warn(
+                'auto-admit %s was approved but its organization bind still did not match; leaving the intent',
+                shellyID
+            );
+            return false;
+        }
+    }
     const consumed = await finalizeIntentSafe(shellyID, intent);
     if (!consumed) return false;
     runPostFinalizeAuditSafe(shellyID, intent);
@@ -181,8 +198,8 @@ function fireOnApproveSafe(onApprove: ApproveCallback, shellyID: string): void {
 async function runPreApproveBindSafe(
     shellyID: string,
     intent: AdmissionIntent
-): Promise<boolean> {
-    if (!autoAdmitHooks) return true;
+): Promise<AutoAdmitBindResult> {
+    if (!autoAdmitHooks) return 'bound';
     try {
         return await autoAdmitHooks.preApproveBind(shellyID, intent);
     } catch (err) {
@@ -191,7 +208,7 @@ async function runPreApproveBindSafe(
             shellyID,
             err
         );
-        return false;
+        return 'failed';
     }
 }
 

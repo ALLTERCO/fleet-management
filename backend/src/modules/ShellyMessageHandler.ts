@@ -951,6 +951,42 @@ export function statusSelectivePush(
     pendingMessages.push(message);
 }
 
+/**
+ * Which fields of one message genuinely need a database seed for their previous value.
+ *
+ * A field the message carries but the diff does not mention is not one of them. The merge emits
+ * a change only when the value actually differs (`statusMerge`: `if (original !== patch)`), so
+ * an unmentioned field still holds the value it already held — its previous value is the one in
+ * this very message, and asking the database would return exactly that. Those are recorded here
+ * directly, which is what the seed would have produced, without the round-trip.
+ *
+ * Seeding them was what turned a documented cold-start path into permanent load: most fields of
+ * a steady meter are unchanged in any given message, so nearly every message asked for a seed,
+ * and the quieter the fleet the more of them there were. Measured at ~600 ms per call and a full
+ * core of database time on an otherwise idle system (issue #29).
+ *
+ * Mutates `perField` for the unchanged fields it resolves, and returns only what is left over.
+ */
+export function selectSeedFields(
+    flat: Record<string, unknown>,
+    changes: readonly {path: string}[],
+    perField: Map<string, unknown>
+): string[] {
+    const changed = new Set(changes.map((c) => c.path));
+    const needed: string[] = [];
+    for (const k of Object.keys(flat)) {
+        if (statusFieldGroup(k) === undefined) continue;
+        if (perField.get(k) !== undefined) continue;
+        if (!changed.has(k)) {
+            const held = flat[k];
+            if (typeof held === 'number' && Number.isFinite(held)) perField.set(k, held);
+            continue;
+        }
+        needed.push(k);
+    }
+    return needed;
+}
+
 // Cold path: process buffered messages into flush queue (runs in 250ms
 // interval).
 //
@@ -974,14 +1010,22 @@ export async function processPendingMessages(batch: PendingMessage[]) {
 
     // Identify (device, field) pairs we'd need a cold-start PG seed for —
     // fields the flush cares about whose prev is undefined in the diff.
+    //
+    // A field the message carries but the diff does not mention is not one of them. The merge
+    // emits a change only when the value actually differs (statusMerge: `if (original !==
+    // patch)`), so an unmentioned field holds the value it already held — its previous value is
+    // the one in this very message, and asking the database would return exactly that.
+    //
+    // Seeding those was what turned a documented cold-start path into permanent load. Most
+    // fields of a steady meter are unchanged in any given message, so nearly every message
+    // asked for a seed, and the quieter the fleet the more of them there were: measured at
+    // ~600 ms per call and a full core of database time on an otherwise idle system.
     const seedNeeded = new Map<number, Set<string>>();
     for (const msg of batch) {
         const {ts: _ts, ...components} = msg.params;
         const flat = flattie(components);
         const perField = prevByDevice.get(msg.deviceId)!;
-        for (const k of Object.keys(flat)) {
-            if (statusFieldGroup(k) === undefined) continue;
-            if (perField.get(k) !== undefined) continue;
+        for (const k of selectSeedFields(flat, msg.changes, perField)) {
             let s = seedNeeded.get(msg.deviceId);
             if (!s) {
                 s = new Set();

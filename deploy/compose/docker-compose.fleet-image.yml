@@ -347,6 +347,12 @@ services:
       FM_AUTHZ_INIT_RETRY_MS: "${FM_AUTHZ_INIT_RETRY_MS:-}"
       FM_AUTHZ_VERSION_TTL_SECONDS: "${FM_AUTHZ_VERSION_TTL_SECONDS:-}"
       FM_DEVICE_INGRESS_ALLOW_PLAIN_WS: "${FM_DEVICE_INGRESS_ALLOW_PLAIN_WS:-}"
+      # The transport the ingress gate treats as observed on /shelly. Behind a
+      # TLS-terminating proxy the decrypted hop looks plain, so a fleet that
+      # connects over wss:// needs "wss" here or its identities are rejected as
+      # wrong_transport. Every other FM_DEVICE_INGRESS_* value is forwarded; this
+      # one was not, so setting it in the env files had no effect.
+      FM_DEVICE_INGRESS_SHELLY_WS_TRANSPORT: "${FM_DEVICE_INGRESS_SHELLY_WS_TRANSPORT:-}"
       FM_DEVICE_INGRESS_ENFORCEMENT_MODE: "${FM_DEVICE_INGRESS_ENFORCEMENT_MODE:-}"
       FM_DEVICE_INGRESS_HANDSHAKES_PER_IP_PER_MINUTE: "${FM_DEVICE_INGRESS_HANDSHAKES_PER_IP_PER_MINUTE:-}"
       FM_DEVICE_INGRESS_HANDSHAKES_PER_ORG_PER_MINUTE: "${FM_DEVICE_INGRESS_HANDSHAKES_PER_ORG_PER_MINUTE:-}"

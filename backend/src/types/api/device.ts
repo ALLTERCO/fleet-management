@@ -59,7 +59,17 @@ export const DEVICE_LIST_PARAMS_SCHEMA: JsonSchema = {
             description: '0 = unlimited, default 500'
         },
         offset: {type: 'integer', minimum: 0},
-        include: {type: 'array', items: {type: 'string'}}
+        include: {
+            type: 'array',
+            items: {type: 'string'},
+            description:
+                'Extra sections to add to each row, which is otherwise a slim projection. ' +
+                "'status' returns the whole status object and 'settings' the whole settings " +
+                "object; 'sys' returns the full sys section instead of its three list fields. " +
+                'Any other value is read as a status key and returned whole, so ' +
+                "include: ['eth'] answers with that device's complete eth section — its ip6 " +
+                'list included, where the slim row carries only ip.'
+        }
     }
 };
 

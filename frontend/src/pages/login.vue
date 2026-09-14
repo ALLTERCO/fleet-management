@@ -135,6 +135,14 @@ function returnToTarget(): string | undefined {
 }
 const year = new Date().getFullYear();
 
+// A self-hosted operator reading "contact your administrator" is the
+// administrator — issue #17. Name what is missing and the two ways out,
+// mirroring the backend's own diagnosis in config/index.ts.
+const NO_AUTH_CONFIGURED =
+    'No identity provider is configured, so there is nothing to sign in against. ' +
+    'Run deploy/deploy-public.sh to set up Zitadel, or start the backend with ' +
+    'FM_DEV_MODE=true for local login.';
+
 const zitadelAuth = computed(() => getZitadelAuth());
 
 const username = ref('');
@@ -153,7 +161,7 @@ const currentError = computed(() => {
     if (ssoError.value) return ssoError.value;
     if (authStore.loginError) return authStore.loginError;
     if (!authStore.devMode && !zitadelAuth.value) {
-        return 'Authentication is not configured. Please contact your administrator.';
+        return NO_AUTH_CONFIGURED;
     }
     return '';
 });
@@ -193,8 +201,7 @@ async function signIn() {
     ssoError.value = null;
     const authInstance = getZitadelAuth();
     if (!authInstance) {
-        ssoError.value =
-            'Authentication is not configured. Please contact your administrator.';
+        ssoError.value = NO_AUTH_CONFIGURED;
         return;
     }
     if (requiresKeychainTrust()) {

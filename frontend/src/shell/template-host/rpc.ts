@@ -1,26 +1,20 @@
-import {call, listAll} from './api';
+// Fully-qualified-method helpers. Thin bindings over the core RPC access.
+
+import {hostRpcAccess} from './api';
 
 export function hostRpc<TResult = unknown>(
     method: string,
     params: object = {}
 ): Promise<TResult> {
-    const [namespace, ...methodPath] = method.split('.');
-    if (!namespace || methodPath.length === 0) {
-        throw new Error(`Invalid host RPC method: ${method}`);
-    }
-    return call<TResult>(namespace, methodPath, params);
+    return hostRpcAccess.rpc<TResult>(method, params);
 }
 
-export async function hostListAll<T>(
+export function hostListAll<T>(
     method: string,
     params: object = {},
     pageSize?: number
 ): Promise<T[]> {
-    const [namespace, ...methodPath] = method.split('.');
-    if (!namespace || methodPath.length === 0) {
-        throw new Error(`Invalid host list method: ${method}`);
-    }
-    return listAll<T>(namespace, methodPath, params, pageSize);
+    return hostRpcAccess.rpcListAll<T>(method, params, pageSize);
 }
 
 export function useTemplateRpc<T = unknown>(

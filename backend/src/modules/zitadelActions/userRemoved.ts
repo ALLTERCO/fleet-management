@@ -1,12 +1,12 @@
 import log4js from 'log4js';
-import * as auditLog from '../AuditLogger';
-import * as PostgresProvider from '../PostgresProvider';
-import {evictUserSessionEverywhere} from '../user/evictUserSession';
+import * as Observability from '../Observability';
+import {type QueryTxClient, withQueryTransaction} from '../PostgresProvider';
 import {
     activeKeys,
     zitadelGdprSigningKey,
     zitadelGdprSigningKeyPrevious
 } from './config';
+import {enqueueZitadelAction} from './inbox';
 import {
     type RawRequestLike,
     verifyZitadelWebhook,
@@ -37,34 +37,65 @@ export async function handleUserRemoved(
     );
     const result = await verifyZitadelWebhook(req, 'user.removed', signingKeys);
     if ('outcome' in result) return result.outcome;
-    const {userId, parsed} = result.verified;
-    const username = extractUsername(parsed);
+    const {eventKey, userId, parsed} = result.verified;
 
+    try {
+        const queued = await enqueueZitadelAction({
+            eventKey,
+            action: 'user.removed',
+            userId,
+            payload: parsed,
+            sourceIp: req.ip
+        });
+        Observability.incrementLabeledCounter(
+            queued.inserted
+                ? 'zitadel_webhook_enqueued_total'
+                : 'zitadel_webhook_duplicate_total',
+            {action: 'user.removed'}
+        );
+        return {status: 200, body: {ok: true, queued: queued.inserted}};
+    } catch (err) {
+        logger.error('Failed to persist user removal for %s: %s', userId, err);
+        return {status: 503, body: {error: 'callback persistence failed'}};
+    }
+}
+
+export async function processUserRemoved(
+    userId: string,
+    parsed: unknown,
+    ip?: string
+): Promise<void> {
+    const username = extractUsername(parsed);
     try {
         const cascade = await runCascade(userId, username);
         // V-6: drop cached identity + force live WS sessions to re-auth +
         // notify peers. Without this a deleted user's still-valid token
         // keeps working until the introspection cache naturally TTLs.
+        const {evictUserSessionEverywhere} = await import(
+            '../user/evictUserSession.js'
+        );
         evictUserSessionEverywhere(userId, 'user.removed', {
             disconnect: true,
             reason: 'user-deleted'
         });
-        void auditLog.log({
-            eventType: 'user_gdpr_erasure',
-            username: 'zitadel-action',
-            method: 'user.removed',
-            params: {
-                assignmentsDeleted: cascade.assignmentsDeleted,
-                membershipsDeleted: cascade.membershipsDeleted,
-                personalRowsDeleted: cascade.personalRowsDeleted,
-                ownerRefsCleared: cascade.ownerRefsCleared,
-                historyRowsAnonymized: cascade.historyRowsAnonymized,
-                auditRowsAnonymized: cascade.auditRowsAnonymized,
-                userListRowDropped: cascade.userListRowDropped
-            },
-            success: true,
-            ipAddress: req.ip
-        });
+        void import('../AuditLogger.js').then((auditLog) =>
+            auditLog.log({
+                eventType: 'user_gdpr_erasure',
+                username: 'zitadel-action',
+                method: 'user.removed',
+                params: {
+                    assignmentsDeleted: cascade.assignmentsDeleted,
+                    membershipsDeleted: cascade.membershipsDeleted,
+                    personalRowsDeleted: cascade.personalRowsDeleted,
+                    ownerRefsCleared: cascade.ownerRefsCleared,
+                    historyRowsAnonymized: cascade.historyRowsAnonymized,
+                    auditRowsAnonymized: cascade.auditRowsAnonymized,
+                    userListRowDropped: cascade.userListRowDropped
+                },
+                success: true,
+                ipAddress: ip
+            })
+        );
         logger.warn(
             'GDPR erasure for %s — assignments:%d memberships:%d personal:%d audit:%d',
             userId,
@@ -73,19 +104,20 @@ export async function handleUserRemoved(
             cascade.personalRowsDeleted,
             cascade.auditRowsAnonymized
         );
-        return {status: 200, body: {ok: true}};
     } catch (err) {
         logger.error('GDPR cascade failed for %s: %s', userId, err);
-        void auditLog.log({
-            eventType: 'webhook_failure',
-            username: username ?? userId,
-            method: 'user.removed',
-            params: {userId},
-            success: false,
-            errorMessage: String(err),
-            ipAddress: req.ip
-        });
-        return {status: 500, body: {error: 'cascade failed'}};
+        void import('../AuditLogger.js').then((auditLog) =>
+            auditLog.log({
+                eventType: 'webhook_failure',
+                username: username ?? userId,
+                method: 'user.removed',
+                params: {userId},
+                success: false,
+                errorMessage: String(err),
+                ipAddress: ip
+            })
+        );
+        throw err;
     }
 }
 
@@ -99,14 +131,28 @@ interface CascadeResult {
     userListRowDropped: number;
 }
 
-type QueryRows = typeof PostgresProvider.queryRows;
+type QueryRows = QueryTxClient['query'];
 
+// A caller-supplied queryRows must run inside an open transaction (fence lock).
 export async function runCascade(
     userId: string,
     username: string | null,
-    queryRows: QueryRows = PostgresProvider.queryRows
+    queryRows?: QueryRows
 ): Promise<CascadeResult> {
-    const rows = await queryRows<{
+    if (queryRows) return eraseUser(userId, username, queryRows);
+    return withQueryTransaction((tx) =>
+        eraseUser(userId, username, (sql, params) => tx.query(sql, params))
+    );
+}
+
+async function eraseUser(
+    userId: string,
+    username: string | null,
+    execute: QueryRows
+): Promise<CascadeResult> {
+    // Own statement, so the erasure's snapshot sees inserts that held the lock.
+    await execute(AUDIT_ACTOR_FENCE_SQL, [userId, username]);
+    const rows = await execute<{
         assignments_deleted: number;
         memberships_deleted: number;
         personal_rows_deleted: number;
@@ -127,6 +173,9 @@ export async function runCascade(
         userListRowDropped: Number(row.user_list_row_dropped)
     };
 }
+
+const AUDIT_ACTOR_FENCE_SQL =
+    'SELECT logging.fn_audit_actor_fence($1::VARCHAR, $2::VARCHAR)';
 
 const USER_ERASURE_SQL = `
 WITH

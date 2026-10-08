@@ -13,8 +13,13 @@ import {toastRpcError} from '@/helpers/domainErrors';
 import {collectDescendants} from '@/helpers/locationTree';
 import {type PagedEnvelope, paginate} from '@/helpers/pagination';
 import {subjectRefKey} from '@/helpers/subjectRefs';
+import {
+    type CursorPage,
+    paginateByCursor
+} from '@/shell/template-host/core/pagination';
 import {runOptimisticMutation} from '@/stores/optimisticMutation';
 import {createBatchCoalescer} from '../tools/coalesce';
+import {deferWhileHidden} from '../tools/hiddenTabDeferral';
 import * as ws from '../tools/websocket';
 import {LOCATION_EVENT} from '../tools/wsEvents';
 import {createRefreshCoordinator} from './refreshCoordinator';
@@ -322,33 +327,32 @@ export const useLocationsStore = defineStore('locations', () => {
         }
     }
 
-    // Delete a location together with its whole subtree. The backend refuses
-    // to delete a node that still has children (LocationDeleteBlockedHasChildren),
-    // so we delete deepest-first: descendants ordered by depth desc, then the
-    // node itself. Any single failure (e.g. a descendant still holds device
-    // assignments) stops the cascade and surfaces via deleteLocation's toast.
+    // The backend owns the subtree transaction. The store only reconciles the
+    // returned ids into its local snapshot.
     async function deleteLocationCascade(id: number): Promise<boolean> {
-        const depthOf = (n: number): number => {
-            let depth = 0;
-            let cursor: number | null = n;
-            const seen = new Set<number>();
-            while (cursor != null && !seen.has(cursor)) {
-                seen.add(cursor);
-                const parent: number | null =
-                    locations.value[cursor]?.parentLocationId ?? null;
-                if (parent == null) break;
-                depth += 1;
-                cursor = parent;
+        try {
+            const result = await ws.sendRPC<{deletedIds: number[]}>(
+                'FLEET_MANAGER',
+                'location.deletesubtree',
+                {id}
+            );
+            const deleted = new Set(result.deletedIds);
+            const next = {...locations.value};
+            const nextAssignments = {...assignmentsByLocation.value};
+            for (const deletedId of deleted) {
+                delete next[deletedId];
+                delete nextAssignments[deletedId];
             }
-            return depth;
-        };
-        const ids = [id, ...collectDescendants(id, locations.value)];
-        ids.sort((a, b) => depthOf(b) - depthOf(a));
-        for (const target of ids) {
-            const ok = await deleteLocation(target);
-            if (!ok) return false;
+            writeLocations(
+                next,
+                rootIds.value.filter((rootId) => !deleted.has(rootId))
+            );
+            writeAssignments(nextAssignments, [...deleted]);
+            return true;
+        } catch (err) {
+            toastRpcError(toast, err, 'Failed to delete location subtree');
+            return false;
         }
-        return true;
     }
 
     async function setAssignment(
@@ -625,28 +629,99 @@ export const useLocationsStore = defineStore('locations', () => {
         locationId?: number;
         locationIds?: number[];
     }): Promise<LocationAssignment[]> {
-        return paginate<LocationAssignment>(
-            (offset) =>
-                ws.sendRPC<PagedEnvelope<LocationAssignment>>(
-                    'FLEET_MANAGER',
-                    'location.listassignments',
-                    {...params, limit: PAGE_MAX, offset}
-                ),
-            PAGE_MAX
+        // Cursor pages: offset paging stops at the server's offset cap.
+        const pass = await paginateByCursor((cursor) =>
+            ws.sendRPC<CursorPage<LocationAssignment>>(
+                'FLEET_MANAGER',
+                'location.listassignments',
+                {...params, limit: PAGE_MAX, ...(cursor ? {cursor} : {})}
+            )
         );
+        return pass.items;
     }
 
-    // Assignment events arrive one-per-subject during a bulk assign. Coalesce
-    // the per-event refetch into one bulk read per location so N events become
-    // one location.listassignments, not N (SSOT: mirrors the tag/group member
-    // refetch coalescers in tools/websocket.ts).
+    // Only the batch-assign event lacks its rows. A burst becomes one bulk
+    // read of the loaded locations it names; none while the tab is hidden.
+    const staleAssignmentIds = new Set<number>();
+    const staleAssignmentsRefresh = deferWhileHidden(() => {
+        const ids = [...staleAssignmentIds];
+        staleAssignmentIds.clear();
+        void fetchAssignmentsBulk(ids);
+    });
     const assignmentRefetch = createBatchCoalescer<number>(
         (ids) => {
-            void fetchAssignmentsBulk(ids);
+            for (const id of ids) staleAssignmentIds.add(id);
+            staleAssignmentsRefresh.request();
         },
         400,
         2000
     );
+
+    function isAssignmentLoaded(locationId: number): boolean {
+        return assignmentsByLocation.value[locationId] !== undefined;
+    }
+
+    function readAssignmentEvent(params: Record<string, unknown>): {
+        subjectType: LocationSubjectType;
+        subjectId: string;
+        locationId: number;
+    } | null {
+        const {subjectType, subjectId, locationId} = params;
+        if (typeof subjectType !== 'string') return null;
+        if (typeof subjectId !== 'string') return null;
+        if (typeof locationId !== 'number') return null;
+        return {
+            subjectType: subjectType as LocationSubjectType,
+            subjectId,
+            locationId
+        };
+    }
+
+    // A batch event, or one without the subject, rereads that location.
+    function scheduleAssignmentRead(params: Record<string, unknown>): void {
+        const locationId = params.locationId;
+        if (typeof locationId !== 'number') return;
+        if (isAssignmentLoaded(locationId)) {
+            assignmentRefetch.schedule(locationId);
+        }
+    }
+
+    // The event names the subject and its new location: patch loaded rows.
+    function applyAssignmentSetEvent(params: Record<string, unknown>): void {
+        const input = readAssignmentEvent(params);
+        if (!input) {
+            scheduleAssignmentRead(params);
+            return;
+        }
+        const key = subjectRefKey(input);
+        const target = assignmentsByLocation.value[input.locationId];
+        if (target?.some((item) => subjectRefKey(item) === key)) return;
+        const touched = locationsHoldingSubject(input);
+        if (!isAssignmentLoaded(input.locationId)) {
+            if (touched.length === 0) return;
+            writeAssignments(
+                removeSubjectFromLocations(touched, input),
+                touched
+            );
+            return;
+        }
+        applyLocationAssignment(input, [...touched, input.locationId]);
+    }
+
+    function applyAssignmentRemovedEvent(
+        params: Record<string, unknown>
+    ): void {
+        const input = readAssignmentEvent(params);
+        if (!input) {
+            scheduleAssignmentRead(params);
+            return;
+        }
+        if (!isAssignmentLoaded(input.locationId)) return;
+        writeAssignments(
+            removeSubjectFromLocations([input.locationId], input),
+            [input.locationId]
+        );
+    }
 
     ws.onLocationEvent((e) => {
         const id = e.params.id as number | undefined;
@@ -664,30 +739,53 @@ export const useLocationsStore = defineStore('locations', () => {
             }
             return;
         }
-        if (
-            e.method === LOCATION_EVENT.ASSIGNMENT_SET ||
-            e.method === LOCATION_EVENT.ASSIGNMENT_REMOVED ||
-            e.method === LOCATION_EVENT.ASSIGNMENTS_SET
-        ) {
-            const locationId = e.params.locationId as number | undefined;
-            if (typeof locationId === 'number') {
-                assignmentRefetch.schedule(locationId);
-            }
+        if (e.method === LOCATION_EVENT.ASSIGNMENT_SET) {
+            applyAssignmentSetEvent(e.params);
+            return;
+        }
+        if (e.method === LOCATION_EVENT.ASSIGNMENT_REMOVED) {
+            applyAssignmentRemovedEvent(e.params);
+            return;
+        }
+        if (e.method === LOCATION_EVENT.ASSIGNMENTS_SET) {
+            scheduleAssignmentRead(e.params);
             return;
         }
         if (typeof id === 'number') void fetchLocation(id);
     });
 
+    // location_assignments holds devices, entities and groups in one table, so
+    // one write path serves all three. assignDevices/assignGroups only name the
+    // subject type for their caller.
     async function assignDevices(
         deviceIds: string[],
         locationId: number
     ): Promise<{ok: boolean; succeeded: string[]; failed: string[]}> {
-        const ids = [...new Set(deviceIds)];
+        return assignSubjectsOfType('device', deviceIds, locationId);
+    }
+
+    async function assignGroups(
+        groupIds: number[],
+        locationId: number
+    ): Promise<{ok: boolean; succeeded: string[]; failed: string[]}> {
+        return assignSubjectsOfType(
+            'group',
+            groupIds.map((id) => String(id)),
+            locationId
+        );
+    }
+
+    async function assignSubjectsOfType(
+        subjectType: LocationSubjectType,
+        subjectIds: string[],
+        locationId: number
+    ): Promise<{ok: boolean; succeeded: string[]; failed: string[]}> {
+        const ids = [...new Set(subjectIds)];
         if (ids.length === 0) {
             return {ok: true, succeeded: [], failed: []};
         }
         const subjects = ids.map((id) => ({
-            subjectType: 'device' as LocationSubjectType,
+            subjectType,
             subjectId: id
         }));
         try {
@@ -720,7 +818,11 @@ export const useLocationsStore = defineStore('locations', () => {
                     await fetchAssignments(locationId);
                 },
                 onError: (err) =>
-                    toastRpcError(toast, err, 'Failed to assign devices')
+                    toastRpcError(
+                        toast,
+                        err,
+                        `Failed to assign ${subjectType === 'group' ? 'groups' : 'devices'}`
+                    )
             });
             // Atomic: all landed, or the mutation threw and rolled back.
             return {ok: true, succeeded: ids, failed: []};
@@ -751,6 +853,7 @@ export const useLocationsStore = defineStore('locations', () => {
         removeAssignment,
         fetchAssignments,
         fetchAssignmentsBulk,
-        assignDevices
+        assignDevices,
+        assignGroups
     };
 });

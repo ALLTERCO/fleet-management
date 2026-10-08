@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
+import {convertPdfToSvg, PDF_CONTENT_TYPE} from './floorPlanPdf';
 import {sanitizeSvg} from './svgSanitize';
 
 export const ALLOWED_MIME = new Set([
@@ -13,15 +14,19 @@ export const ALLOWED_MIME = new Set([
     'image/jpeg',
     'image/jpg',
     'image/webp',
-    'image/svg+xml'
+    'image/svg+xml',
+    PDF_CONTENT_TYPE
 ]);
 
+// PDF is converted before it is written, so it stores as .svg like any other
+// vector plan — the extension describes the stored asset, not the upload.
 const MIME_EXT: Record<string, string> = {
     'image/png': 'png',
     'image/jpeg': 'jpg',
     'image/jpg': 'jpg',
     'image/webp': 'webp',
-    'image/svg+xml': 'svg'
+    'image/svg+xml': 'svg',
+    [PDF_CONTENT_TYPE]: 'svg'
 };
 
 const UPLOAD_ROOT = path.resolve(__dirname, '../../uploads/floor-plans');
@@ -33,6 +38,8 @@ export interface SavedFloorPlan {
     heightPx: number;
     sha256: string;
     sizeBytes: number;
+    /** MIME of the *stored* asset, which is not always what was uploaded —
+     *  a PDF is stored as SVG. Callers describe the file on disk. */
     contentType: string;
 }
 
@@ -53,9 +60,19 @@ export async function saveFloorPlan(opts: {
     let widthPx: number;
     let heightPx: number;
 
-    if (contentType === 'image/svg+xml') {
+    // A PDF becomes SVG first and then follows the SVG path exactly — same
+    // sanitize, same dimension probe. Converter output is not trusted input:
+    // it goes through sanitizeSvg like anything else a user sent us.
+    const svgBytes =
+        contentType === PDF_CONTENT_TYPE
+            ? await convertPdfToSvg(bytes)
+            : contentType === 'image/svg+xml'
+              ? bytes
+              : null;
+
+    if (svgBytes) {
         // Strip XSS payloads before write.
-        const clean = sanitizeSvg(bytes);
+        const clean = sanitizeSvg(svgBytes);
         const meta = await sharp(clean).metadata();
         widthPx = meta.width ?? 0;
         heightPx = meta.height ?? 0;
@@ -86,7 +103,7 @@ export async function saveFloorPlan(opts: {
         heightPx,
         sha256,
         sizeBytes: finalBytes.byteLength,
-        contentType
+        contentType: svgBytes ? 'image/svg+xml' : contentType
     };
 }
 

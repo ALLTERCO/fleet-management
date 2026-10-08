@@ -7,12 +7,16 @@
 //     org / be accessible. Checks are injected so callers wire them from the
 //     sender + repositories and tests pass fakes.
 
+import {commodityForTag, type EnergyTag} from '../../modules/energyClassifier';
 import RpcError from '../../rpc/RpcError';
 import {
     type EnergyLogicalMeterPoint,
     type EnergySaveLogicalMeterParams,
+    meterTagsForUtility,
     rolesForUtility
 } from '../../types/api/energy';
+import {currentTypeForLegacySource} from './energyAxes';
+import {meterMetric} from './meterGrouping';
 import {meterPointKey} from './meterOwnership';
 
 // The grain a meter owns: (device, channel, tag) — the shared ownership key.
@@ -25,14 +29,29 @@ export function pointKey(p: EnergyLogicalMeterPoint): string {
 
 export function assertMeterShape(params: EnergySaveLogicalMeterParams): void {
     assertRoleMatchesUtility(params);
+    assertUtilityMatchesPoints(params);
+    assertEnergySourceMatchesUtility(params);
+    assertCurrentTypeMatchesLegacyDomain(params);
     assertFormulaPointsExclusive(params);
     assertNotOwnParent(params);
+}
+
+function assertEnergySourceMatchesUtility(
+    params: EnergySaveLogicalMeterParams
+): void {
+    if (params.energySource == null || params.utilityType === 'electric')
+        return;
+    throw RpcError.InvalidParams(
+        `energySource is only valid for an electric logical meter; ` +
+            `'${params.utilityType}' describes the flowing commodity itself`
+    );
 }
 
 export interface MeterReferenceChecks {
     canAccessDevice: (deviceId: number) => Promise<boolean>;
     isOrgMeter: (meterId: number) => boolean;
     isOrgKind: (kindId: string) => Promise<boolean>;
+    isOrgEnergySource: (sourceId: string) => Promise<boolean>;
     isOrgGroup: (groupId: number) => Promise<boolean>;
     isOrgLocation: (locationId: number) => Promise<boolean>;
     // Id of another org meter already holding this exact point, or null.
@@ -48,8 +67,32 @@ export async function assertMeterReferences(
     assertParentInOrg(params, checks);
     assertFormulaMetersInOrg(params, checks);
     await assertKindInOrg(params, checks);
+    await assertEnergySourceInOrg(params, checks);
     await assertGroupInOrg(params, checks);
     await assertLocationInOrg(params, checks);
+}
+
+function assertCurrentTypeMatchesLegacyDomain(
+    params: EnergySaveLogicalMeterParams
+): void {
+    for (const point of params.points ?? []) {
+        if (point.currentType == null) continue;
+        const derived = currentTypeForLegacySource(point.electricalDomain);
+        if (derived === point.currentType) continue;
+        const label = point.componentKey ?? `channel ${point.channel ?? 0}`;
+        if (derived === null) {
+            throw RpcError.InvalidParams(
+                `${label} on device ${point.deviceId} cannot declare ` +
+                    `currentType '${point.currentType}' for legacy ` +
+                    `electricalDomain '${point.electricalDomain}'`
+            );
+        }
+        throw RpcError.InvalidParams(
+            `${label} on device ${point.deviceId} declares currentType ` +
+                `'${point.currentType}' but legacy electricalDomain ` +
+                `'${point.electricalDomain}' means '${derived}'`
+        );
+    }
 }
 
 // A point belongs to one meter; reassigning it is a clean error, not raw 23505.
@@ -67,6 +110,92 @@ function assertPointsUnowned(
             );
         }
     }
+}
+
+// utilityType decides which tags the meter may fold (meterGrouping.meterMetric).
+// Choosing one its points cannot supply used to be silent: the meter simply
+// never matched a tag and dropped out of every grouping, and where the tag was
+// a volume it was counted as electricity instead. Say so at the save.
+function assertUtilityMatchesPoints(
+    params: EnergySaveLogicalMeterParams
+): void {
+    const allowedTags = meterTagsForUtility(params.utilityType);
+    const utility = utilityCommodity(params.utilityType);
+    if (utility === null) return;
+    const gasDirections = new Set<'import' | 'export'>();
+    for (const point of params.points ?? []) {
+        const label = point.componentKey ?? `channel ${point.channel ?? 0}`;
+        if (!allowedTags.includes(point.tag)) {
+            throw RpcError.InvalidParams(
+                `${label} on device ${point.deviceId} reports tag '${point.tag}', ` +
+                    `which cannot back a '${params.utilityType}' logical meter`
+            );
+        }
+        if (
+            (point.tag === 'volume_m3' ||
+                point.tag === 'volume_returned_m3' ||
+                point.tag === 'volume_l') &&
+            ((params.utilityType === 'gas' &&
+                point.electricalDomain !== 'gas') ||
+                (params.utilityType === 'water' &&
+                    point.electricalDomain === 'gas'))
+        ) {
+            throw RpcError.InvalidParams(
+                `${label} on device ${point.deviceId} is classified as ` +
+                    `'${point.electricalDomain ?? 'unclassified'}', not '${params.utilityType}'`
+            );
+        }
+        if (params.utilityType === 'gas') {
+            const expectedDirection =
+                point.tag === 'volume_returned_m3' ? 'export' : 'import';
+            gasDirections.add(expectedDirection);
+            if (
+                point.directionHint != null &&
+                point.directionHint !== expectedDirection
+            ) {
+                throw RpcError.InvalidParams(
+                    `${label} on device ${point.deviceId} measures gas ${expectedDirection}, ` +
+                        `but directionHint is '${point.directionHint}'`
+                );
+            }
+            if (
+                point.tag === 'volume_returned_m3' &&
+                point.directionHint !== 'export'
+            ) {
+                throw RpcError.InvalidParams(
+                    `${label} on device ${point.deviceId} is returned gas and requires ` +
+                        "directionHint 'export'"
+                );
+            }
+        }
+        const implied = commodityForTag(point.tag);
+        if (implied === null || implied === utility) continue;
+        // Volume cannot tell water from gas, so either reading is acceptable.
+        if (isVolumeCommodityPair(implied, utility)) continue;
+        throw RpcError.InvalidParams(
+            `${label} on device ${point.deviceId} measures ${implied}, ` +
+                `which a '${params.utilityType}' meter cannot count`
+        );
+    }
+    if (gasDirections.size > 1) {
+        throw RpcError.InvalidParams(
+            'one gas logical meter cannot mix consumed volume_m3/volume_l with ' +
+                'returned volume_returned_m3; save separate import and injection meters'
+        );
+    }
+}
+
+// Derived from meterMetric, which already owns which tags a utility folds, so
+// there is no second utility->commodity table to drift.
+function utilityCommodity(utilityType: string): string | null {
+    const [primaryTag] = meterMetric(utilityType).tags;
+    return primaryTag ? commodityForTag(primaryTag as EnergyTag) : null;
+}
+
+// Volume cannot tell water from gas, so meterMetric answers both with a volume
+// tag and commodityForTag resolves both to water. Treat them as one.
+function isVolumeCommodityPair(a: string, b: string): boolean {
+    return (a === 'water' || a === 'gas') && (b === 'water' || b === 'gas');
 }
 
 function assertRoleMatchesUtility(params: EnergySaveLogicalMeterParams): void {
@@ -186,6 +315,18 @@ async function assertKindInOrg(
     if (!(await checks.isOrgKind(params.kindId))) {
         throw RpcError.InvalidParams(
             `kindId '${params.kindId}' is not available to your organization`
+        );
+    }
+}
+
+async function assertEnergySourceInOrg(
+    params: EnergySaveLogicalMeterParams,
+    checks: MeterReferenceChecks
+): Promise<void> {
+    if (params.energySource == null) return;
+    if (!(await checks.isOrgEnergySource(params.energySource))) {
+        throw RpcError.InvalidParams(
+            `energySource '${params.energySource}' is not available to your organization`
         );
     }
 }

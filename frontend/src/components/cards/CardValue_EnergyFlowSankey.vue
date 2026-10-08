@@ -26,7 +26,7 @@
                         :key="src.entityId"
                         class="efs-node"
                     >
-                        <div class="efs-node-bar" :style="{background: src.color || '#10b981', height: nodeHeight(src.power, maxPower) + 'px'}" />
+                        <div class="efs-node-bar" :style="{background: src.color || chartColors.chart4, height: nodeHeight(src.power, maxPower) + 'px'}" />
                         <span class="efs-node-label">{{ src.label }}</span>
                         <span v-if="config.showValues" class="efs-node-val">{{ fmtW(src.power) }}</span>
                     </div>
@@ -62,7 +62,7 @@
                         :key="ld.entityId"
                         class="efs-node efs-node--load"
                     >
-                        <div class="efs-node-bar" :style="{background: ld.color || '#f59e0b', height: nodeHeight(ld.power, maxPower) + 'px'}" />
+                        <div class="efs-node-bar" :style="{background: ld.color || chartColors.chart2, height: nodeHeight(ld.power, maxPower) + 'px'}" />
                         <span class="efs-node-label">{{ ld.label }}</span>
                         <span v-if="config.showValues" class="efs-node-val">{{ fmtW(ld.power) }}</span>
                     </div>
@@ -74,6 +74,9 @@
 
 <script setup lang="ts">
 import {computed, getCurrentInstance} from 'vue';
+import {chartColors} from '@/helpers/chartUtils';
+import {componentActivePower} from '@api/componentPower';
+import {useDevicesStore} from '@/stores/devices';
 import {useEntityStore} from '@/stores/entities';
 import CardShell from './CardShell.vue';
 
@@ -111,18 +114,23 @@ defineEmits<{
 }>();
 
 const entityStore = useEntityStore();
+const devicesStore = useDevicesStore();
 // Unique prefix per instance so SVG gradient IDs don't collide when multiple Sankey widgets coexist
 const uid = getCurrentInstance()?.uid ?? Math.random().toString(36).slice(2);
 
+// Live power via the shared field rule; clamp to 0 so charging/export (negative)
+// never makes a negative SVG bar height.
 function getLivePower(entityId: string): number {
-    const entity = entityStore.entities[entityId] as any;
-    if (!entity?.status) return 0;
-    // Try common power fields; clamp to 0 — negative values (e.g. battery charging, grid export)
-    // would produce negative SVG heights and broken arc geometry.
-    const s = entity.status;
+    const entity = entityStore.entities[entityId];
+    if (!entity) return 0;
+    const status =
+        devicesStore.devices[entity.source]?.status?.[
+            `${entity.type}:${entity.properties.id}`
+        ];
+    if (!status) return 0;
     return Math.max(
         0,
-        +(s.apower ?? s.power ?? s.act_power ?? s.total_act_power ?? 0)
+        componentActivePower(status as Record<string, unknown>) ?? 0
     );
 }
 
@@ -197,8 +205,8 @@ const flows = computed(() => {
 
             result.push({
                 d: `M 0 ${y1} C 20 ${y1}, 20 ${y2}, 40 ${y2} L 40 ${y2 + flowH} C 20 ${y2 + flowH}, 20 ${y1 + flowH}, 0 ${y1 + flowH} Z`,
-                srcColor: src.color || '#10b981',
-                dstColor: ld.color || '#f59e0b'
+                srcColor: src.color || chartColors.chart4,
+                dstColor: ld.color || chartColors.chart2
             });
         }
         srcY += srcH + 2;

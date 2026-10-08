@@ -40,7 +40,7 @@
                             <span v-if="isInternalTemp" class="eb-source eb-source--internal">
                                 <i class="fas fa-microchip" /> Internal
                             </span>
-                            <span v-if="sensorSource" class="eb-source" :class="`eb-source--${sensorSource}`">
+                            <span v-if="sensorSource && !isInternalTemp" class="eb-source" :class="`eb-source--${sensorSource}`">
                                 <i :class="sensorSource === 'blu' ? 'fab fa-bluetooth-b' : 'fas fa-puzzle-piece'" />
                                 {{ sensorSource === 'blu' ? 'BLU Sensor' : 'Add-on' }}
                             </span>
@@ -115,6 +115,7 @@ import {
 } from '@/config/entity-registry';
 import {DeviceBoard} from '@/helpers/components';
 import {getDeviceName, getPredefinedImageForEntity} from '@/helpers/device';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
 import {useEntityStore} from '@/stores/entities';
@@ -251,7 +252,7 @@ async function dispatchAction(call: {
             call.params
         );
     } catch (error) {
-        const msg = error instanceof Error ? error.message : String(error);
+        const msg = rpcErrorMessage(error);
         if (msg.includes('timeout')) {
             toastStore.error(`${call.action} timed out — device may be busy`);
         } else {
@@ -307,13 +308,7 @@ const templateExtraProps = computed(() => {
     return base;
 });
 
-/** Internal temperature: embedded temperature entities (PCB temp from switch/light/cover) */
-const isInternalTemp = computed(() => {
-    const e = resolvedEntity.value;
-    return e.type === 'temperature' && !!e.properties.embeddedIn;
-});
-
-/** Sensor source (BLU / Add-on) from entity properties, or implicit for bthomesensor */
+/** Which sensor produced the reading. Implicit for bthomesensor (always BLU). */
 const sensorSource = computed(() => {
     if (resolvedEntity.value.type === 'bthomesensor') return 'blu';
     return (resolvedEntity.value.properties as Record<string, any>)
@@ -321,6 +316,9 @@ const sensorSource = computed(() => {
         | string
         | undefined;
 });
+
+/** The device's own chip temperature — health, not the air around it. */
+const isInternalTemp = computed(() => sensorSource.value === 'internal');
 
 /** Event listeners — resolved with profile override (profile actions merge on top) */
 const templateListeners = computed(() => {

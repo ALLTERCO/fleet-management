@@ -1,4 +1,4 @@
-// Shortcut registry. Bindings from env (FM_UI_SHORTCUT_*). See docs/env-reference.md.
+// Shortcut registry. Bindings from env (FM_UI_SHORTCUT_*). See docs/public/reference/env-reference.md.
 
 import {computed, type Ref, ref} from 'vue';
 import {UI_CONFIG} from '@/config/ui';

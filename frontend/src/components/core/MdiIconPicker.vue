@@ -50,6 +50,7 @@ import {loadMdiCatalog, type MdiIcon, searchMdi} from '@/api/mdiCatalog';
 import FormField from '@/components/core/FormField.vue';
 import Input from '@/components/core/Input.vue';
 import Spinner from '@/components/core/Spinner.vue';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 
 const props = defineProps<{selected?: string | null}>();
 const emit = defineEmits<{pick: [iconClass: string]}>();
@@ -115,7 +116,7 @@ onMounted(async () => {
     try {
         catalog.value = await loadMdiCatalog();
     } catch (err) {
-        loadError.value = err instanceof Error ? err.message : String(err);
+        loadError.value = rpcErrorMessage(err);
     } finally {
         loading.value = false;
     }

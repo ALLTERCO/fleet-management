@@ -1,0 +1,60 @@
+[
+    {
+        "id": "flow-power",
+        "type": "tab",
+        "label": "Switch off on high power",
+        "disabled": false,
+        "info": "When switch:0 of a device draws more than 2000 W for 30 seconds, turn that switch off."
+    },
+    {
+        "id": "fm-server-power",
+        "type": "fm-server",
+        "name": "Fleet Manager",
+        "baseUrl": "",
+        "wsUrl": ""
+    },
+    {
+        "id": "power-high",
+        "type": "fm-trigger-threshold",
+        "z": "flow-power",
+        "name": "Power above 2000 W for 30 s",
+        "server": "fm-server-power",
+        "path": "switch:0.apower",
+        "operator": "above",
+        "limit": "2000",
+        "forSeconds": 30,
+        "fireOnStart": false,
+        "scopeType": "all",
+        "deviceIds": "",
+        "groupId": "",
+        "locationId": "",
+        "refreshMinutes": 5,
+        "x": 200,
+        "y": 200,
+        "wires": [["switch-off-params"], []]
+    },
+    {
+        "id": "switch-off-params",
+        "type": "function",
+        "z": "flow-power",
+        "name": "Build switch.Set params",
+        "func": "msg.params = {shellyID: msg.payload.shellyID, id: 0, on: false};\nreturn msg;",
+        "outputs": 1,
+        "x": 450,
+        "y": 200,
+        "wires": [["switch-off"]]
+    },
+    {
+        "id": "switch-off",
+        "type": "fm-component-action",
+        "z": "flow-power",
+        "name": "Switch off",
+        "server": "fm-server-power",
+        "operation": "switch.Set",
+        "paramsSource": "msg.params",
+        "paramsJson": "{}",
+        "x": 660,
+        "y": 200,
+        "wires": [[]]
+    }
+]

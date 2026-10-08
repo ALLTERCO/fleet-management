@@ -9,17 +9,18 @@ Regenerate with `cd backend && npm run generate`.
 
 ## Totals
 
-- Rows across all transports: **1285**
+- Rows across all transports: **1447**
 - By auth bucket:
-  - `crud-decorator`: **829**
-  - `fine-grained-decorator`: **232**
-  - `public`: **180**
-  - `http-logged-in`: **18**
+  - `crud-decorator`: **935**
+  - `fine-grained-decorator`: **261**
+  - `public`: **207**
+  - `http-logged-in`: **16**
   - `http-admin`: **7**
   - `http-platform-admin`: **5**
   - `http-route-permission`: **4**
-  - `ws-unauthenticated`: **4**
+  - `http-mcp-credential`: **3**
   - `http-permission`: **3**
+  - `ws-unauthenticated`: **3**
   - `http-session-capability`: **1**
   - `http-observability`: **1**
   - `http-audit-view`: **1**
@@ -29,80 +30,85 @@ Regenerate with `cd backend && npm run generate`.
 > / `ws-authenticated` / `http-logged-in` represents a surface whose auth
 > contract is legacy, implicit, or intentionally public.
 
-## `http` — 68 rows
+## `http` — 73 rows
 
 | Surface | Auth bucket | Detail | Source |
 |---|---|---|---|
-| `ALL /api/device-gui/:sessionId/{*devicePath}` | `http-session-capability` | requireDeviceGuiSession | [backend/src/modules/web/deviceGuiOrigin.ts:512](../../backend/src/modules/web/deviceGuiOrigin.ts#L512) |
+| `ALL /api/device-gui/:sessionId/{*devicePath}` | `http-session-capability` | requireDeviceGuiSession | [backend/src/modules/web/deviceGuiOrigin.ts:517](../../backend/src/modules/web/deviceGuiOrigin.ts#L517) |
 | `DELETE /` | `public` | httpRouteLimit(SESSION_LIMIT) | [backend/src/modules/web/routes/authSession.ts:37](../../backend/src/modules/web/routes/authSession.ts#L37) |
-| `GET /` | `http-logged-in` | isLoggedInOrRedirect + docsRateLimit | [backend/src/modules/web/routes/apiDocs.ts:115](../../backend/src/modules/web/routes/apiDocs.ts#L115) |
-| `GET /` | `http-logged-in` | isLoggedIn + mcpRateLimit | [backend/src/modules/web/routes/mcp.ts:280](../../backend/src/modules/web/routes/mcp.ts#L280) |
-| `GET /*splat` | `public` | (no middleware) | [backend/src/modules/web/index.ts:1040](../../backend/src/modules/web/index.ts#L1040) |
-| `GET /admin/*splat` | `public` | (no middleware) | [backend/src/modules/web/index.ts:969](../../backend/src/modules/web/index.ts#L969) |
-| `GET /api/audit-log/download/:filename` | `public` | httpRouteLimit({ name: 'audit-log-download', capacityPerMin: | [backend/src/modules/web/routes/auditDownload.ts:69](../../backend/src/modules/web/routes/auditDownload.ts#L69) |
-| `GET /api/control-plane/deploy-manifest` | `http-admin` | httpRouteLimit({ name: 'control-plane-deploy-manifest', capa + requiresAdmin | [backend/src/modules/web/index.ts:578](../../backend/src/modules/web/index.ts#L578) |
-| `GET /api/control-plane/device-usage` | `http-admin` | httpRouteLimit({ name: 'control-plane-device-usage', capacit + requiresAdmin | [backend/src/modules/web/index.ts:595](../../backend/src/modules/web/index.ts#L595) |
+| `DELETE /` | `http-mcp-credential` | refuseStatelessStreamMethods + requireMcpBearer + requireMcpAccess + mcpRateLimit | [backend/src/modules/web/routes/mcp.ts:2372](../../backend/src/modules/web/routes/mcp.ts#L2372) |
+| `DELETE /node-red/session` | `public` | (no middleware) | [backend/src/modules/web/index.ts:821](../../backend/src/modules/web/index.ts#L821) |
+| `GET /` | `http-logged-in` | isLoggedInOrRedirect + docsRateLimit | [backend/src/modules/web/routes/apiDocs.ts:116](../../backend/src/modules/web/routes/apiDocs.ts#L116) |
+| `GET /` | `http-mcp-credential` | refuseStatelessStreamMethods + requireMcpBearer + requireMcpAccess + mcpRateLimit | [backend/src/modules/web/routes/mcp.ts:2357](../../backend/src/modules/web/routes/mcp.ts#L2357) |
+| `GET /*splat` | `public` | (no middleware) | [backend/src/modules/web/index.ts:1121](../../backend/src/modules/web/index.ts#L1121) |
+| `GET /admin/*splat` | `public` | (no middleware) | [backend/src/modules/web/index.ts:1050](../../backend/src/modules/web/index.ts#L1050) |
+| `GET /api/audit-log/download/:filename` | `public` | httpRouteLimit({ name: 'audit-log-download', capacityPerMin: | [backend/src/modules/web/routes/auditDownload.ts:79](../../backend/src/modules/web/routes/auditDownload.ts#L79) |
+| `GET /api/control-plane/deploy-manifest` | `http-admin` | httpRouteLimit({ name: 'control-plane-deploy-manifest', capa + requiresAdmin | [backend/src/modules/web/index.ts:635](../../backend/src/modules/web/index.ts#L635) |
+| `GET /api/control-plane/device-usage` | `http-admin` | httpRouteLimit({ name: 'control-plane-device-usage', capacit + requiresAdmin | [backend/src/modules/web/index.ts:652](../../backend/src/modules/web/index.ts#L652) |
 | `GET /api/device-proxy/:shellyID/camera/:componentId/snapshot` | `http-route-permission` | httpRouteLimit({ name: 'device-proxy-camera-snapshot', capac + validateDeviceAccess() | [backend/src/modules/web/routes/device-proxy.ts:417](../../backend/src/modules/web/routes/device-proxy.ts#L417) |
 | `GET /api/device-proxy/:shellyID/gui-debug` | `http-route-permission` | httpRouteLimit({ name: 'device-proxy-gui-debug', capacityPer + validateDeviceAccess({requireDevice: false}) | [backend/src/modules/web/routes/device-proxy.ts:691](../../backend/src/modules/web/routes/device-proxy.ts#L691) |
 | `GET /api/device-proxy/:shellyID/info` | `http-route-permission` | httpRouteLimit({ name: 'device-proxy-info', capacityPerMin:  + validateDeviceAccess() | [backend/src/modules/web/routes/device-proxy.ts:305](../../backend/src/modules/web/routes/device-proxy.ts#L305) |
 | `GET /api/device-proxy/devices/:deviceId/info` | `http-logged-in` | httpRouteLimit({ name: 'device-gui-info', capacityPerMin: tu + isLoggedIn | [backend/src/modules/web/routes/device-proxy.ts:102](../../backend/src/modules/web/routes/device-proxy.ts#L102) |
-| `GET /api/exports/download/:filename` | `http-logged-in` | isLoggedIn + httpRouteLimit({ name: 'exports-download', capacityPerMin: t | [backend/src/modules/web/routes/auditDownload.ts:172](../../backend/src/modules/web/routes/auditDownload.ts#L172) |
-| `GET /api/notifications/email-assets/:id` | `http-permission` | isLoggedIn + requiresAnyPermission('notifications:read') + httpRouteLimit({ name: 'email-asset-download', capacityPerMi | [backend/src/modules/web/routes/emailAssets.ts:150](../../backend/src/modules/web/routes/emailAssets.ts#L150) |
+| `GET /api/exports/download/:filename` | `http-logged-in` | isLoggedIn + httpRouteLimit({ name: 'exports-download', capacityPerMin: t | [backend/src/modules/web/routes/auditDownload.ts:182](../../backend/src/modules/web/routes/auditDownload.ts#L182) |
+| `GET /api/notifications/email-assets/:id` | `http-permission` | isLoggedIn + requiresAnyPermission('notifications:read') + httpRouteLimit({ name: 'email-asset-download', capacityPerMi | [backend/src/modules/web/routes/emailAssets.ts:129](../../backend/src/modules/web/routes/emailAssets.ts#L129) |
 | `GET /api/oauth/callback/email` | `public` | httpRouteLimit({ name: 'oauth-email-callback', // Callback i | [backend/src/modules/web/routes/oauthEmail.ts:38](../../backend/src/modules/web/routes/oauthEmail.ts#L38) |
-| `GET /api/reports/download/:filename` | `http-logged-in` | isLoggedIn + httpRouteLimit({ name: 'reports-download', capacityPerMin: t | [backend/src/modules/web/routes/auditDownload.ts:160](../../backend/src/modules/web/routes/auditDownload.ts#L160) |
-| `GET /assets/:id` | `public` | httpRouteLimit({ name: 'asset-get', capacityPerMin: tuning.h | [backend/src/modules/web/routes/assetUpload.ts:182](../../backend/src/modules/web/routes/assetUpload.ts#L182) |
-| `GET /embedded-apps` | `http-logged-in` | isLoggedInOrRedirect + docsRateLimit | [backend/src/modules/web/routes/apiDocs.ts:140](../../backend/src/modules/web/routes/apiDocs.ts#L140) |
-| `GET /health` | `public` | (no middleware) | [backend/src/modules/web/index.ts:552](../../backend/src/modules/web/index.ts#L552) |
-| `GET /health/components/coverage` | `http-admin` | requiresAdmin | [backend/src/modules/web/index.ts:881](../../backend/src/modules/web/index.ts#L881) |
-| `GET /health/db-writes` | `public` | (no middleware) | [backend/src/modules/web/index.ts:618](../../backend/src/modules/web/index.ts#L618) |
-| `GET /health/debug-report` | `http-logged-in` | isLoggedIn | [backend/src/modules/web/index.ts:800](../../backend/src/modules/web/index.ts#L800) |
-| `GET /health/full` | `http-admin` | requiresAdmin | [backend/src/modules/web/index.ts:795](../../backend/src/modules/web/index.ts#L795) |
-| `GET /health/live` | `public` | (no middleware) | [backend/src/modules/web/index.ts:556](../../backend/src/modules/web/index.ts#L556) |
-| `GET /health/log-levels` | `public` | (no middleware) | [backend/src/modules/web/index.ts:626](../../backend/src/modules/web/index.ts#L626) |
-| `GET /health/ready` | `public` | httpRouteLimit({name: 'health-ready', capacityPerMin: 120}) | [backend/src/modules/web/index.ts:560](../../backend/src/modules/web/index.ts#L560) |
-| `GET /health/redis` | `public` | (no middleware) | [backend/src/modules/web/index.ts:622](../../backend/src/modules/web/index.ts#L622) |
-| `GET /health/streams` | `http-logged-in` | isLoggedIn | [backend/src/modules/web/index.ts:806](../../backend/src/modules/web/index.ts#L806) |
-| `GET /healthz` | `public` | (no middleware) | [backend/src/modules/web/routes/zitadelActions.ts:10](../../backend/src/modules/web/routes/zitadelActions.ts#L10) |
-| `GET /media/deleteBackground` | `public` | (no middleware) | [backend/src/modules/web/routes/media.ts:281](../../backend/src/modules/web/routes/media.ts#L281) |
-| `GET /media/firmware-file/:token` | `public` | httpRouteLimit({ name: 'firmware-file-download', capacityPer | [backend/src/modules/web/index.ts:690](../../backend/src/modules/web/index.ts#L690) |
-| `GET /media/getAllBackgrounds` | `http-logged-in` | isLoggedIn + httpRouteLimit({ name: 'media-list-backgrounds', capacityPer | [backend/src/modules/web/routes/media.ts:98](../../backend/src/modules/web/routes/media.ts#L98) |
-| `GET /media/getAllReportImages` | `http-logged-in` | isLoggedIn + httpRouteLimit({ name: 'media-list-report-images', capacityP | [backend/src/modules/web/routes/media.ts:285](../../backend/src/modules/web/routes/media.ts#L285) |
-| `GET /metrics` | `http-observability` | httpRouteLimit({ name: 'metrics', capacityPerMin: tuning.htt + requireObsAuth | [backend/src/modules/web/index.ts:635](../../backend/src/modules/web/index.ts#L635) |
-| `GET /openapi.json` | `http-logged-in` | isLoggedInOrRedirect + docsRateLimit | [backend/src/modules/web/routes/apiDocs.ts:92](../../backend/src/modules/web/routes/apiDocs.ts#L92) |
-| `GET /rpc/:method` | `public` | (no middleware) | [backend/src/modules/web/index.ts:483](../../backend/src/modules/web/index.ts#L483) |
+| `GET /api/reports/download/:filename` | `http-logged-in` | isLoggedIn + httpRouteLimit({ name: 'reports-download', capacityPerMin: t | [backend/src/modules/web/routes/auditDownload.ts:170](../../backend/src/modules/web/routes/auditDownload.ts#L170) |
+| `GET /assets/:id` | `public` | httpRouteLimit({ name: 'asset-get', capacityPerMin: tuning.h | [backend/src/modules/web/routes/assetUpload.ts:183](../../backend/src/modules/web/routes/assetUpload.ts#L183) |
+| `GET /automation-hooks/:hookId` | `public` | httpRouteLimit(hookLimit()) | [backend/src/modules/web/routes/automationHooks.ts:204](../../backend/src/modules/web/routes/automationHooks.ts#L204) |
+| `GET /embedded-apps` | `http-logged-in` | isLoggedInOrRedirect + docsRateLimit | [backend/src/modules/web/routes/apiDocs.ts:141](../../backend/src/modules/web/routes/apiDocs.ts#L141) |
+| `GET /health` | `public` | (no middleware) | [backend/src/modules/web/index.ts:609](../../backend/src/modules/web/index.ts#L609) |
+| `GET /health/components/coverage` | `http-admin` | requiresAdmin | [backend/src/modules/web/index.ts:946](../../backend/src/modules/web/index.ts#L946) |
+| `GET /health/db-writes` | `public` | (no middleware) | [backend/src/modules/web/index.ts:675](../../backend/src/modules/web/index.ts#L675) |
+| `GET /health/debug-report` | `http-logged-in` | isLoggedIn | [backend/src/modules/web/index.ts:865](../../backend/src/modules/web/index.ts#L865) |
+| `GET /health/full` | `http-admin` | requiresAdmin | [backend/src/modules/web/index.ts:860](../../backend/src/modules/web/index.ts#L860) |
+| `GET /health/live` | `public` | (no middleware) | [backend/src/modules/web/index.ts:613](../../backend/src/modules/web/index.ts#L613) |
+| `GET /health/log-levels` | `public` | (no middleware) | [backend/src/modules/web/index.ts:683](../../backend/src/modules/web/index.ts#L683) |
+| `GET /health/ready` | `public` | httpRouteLimit({name: 'health-ready', capacityPerMin: 120}) | [backend/src/modules/web/index.ts:617](../../backend/src/modules/web/index.ts#L617) |
+| `GET /health/redis` | `public` | (no middleware) | [backend/src/modules/web/index.ts:679](../../backend/src/modules/web/index.ts#L679) |
+| `GET /health/streams` | `http-logged-in` | isLoggedIn | [backend/src/modules/web/index.ts:871](../../backend/src/modules/web/index.ts#L871) |
+| `GET /healthz` | `public` | (no middleware) | [backend/src/modules/web/routes/zitadelActions.ts:8](../../backend/src/modules/web/routes/zitadelActions.ts#L8) |
+| `GET /media/deleteBackground` | `public` | (no middleware) | [backend/src/modules/web/routes/media.ts:246](../../backend/src/modules/web/routes/media.ts#L246) |
+| `GET /media/firmware-file/:token` | `public` | httpRouteLimit({ name: 'firmware-file-download', capacityPer | [backend/src/modules/web/index.ts:747](../../backend/src/modules/web/index.ts#L747) |
+| `GET /media/getAllBackgrounds` | `http-logged-in` | isLoggedIn + httpRouteLimit({ name: 'media-list-backgrounds', capacityPer | [backend/src/modules/web/routes/media.ts:90](../../backend/src/modules/web/routes/media.ts#L90) |
+| `GET /media/getAllReportImages` | `http-logged-in` | isLoggedIn + httpRouteLimit({ name: 'media-list-report-images', capacityP | [backend/src/modules/web/routes/media.ts:250](../../backend/src/modules/web/routes/media.ts#L250) |
+| `GET /metrics` | `http-observability` | httpRouteLimit({ name: 'metrics', capacityPerMin: tuning.htt + requireObsAuth | [backend/src/modules/web/index.ts:692](../../backend/src/modules/web/index.ts#L692) |
+| `GET /openapi.json` | `http-logged-in` | isLoggedInOrRedirect + docsRateLimit | [backend/src/modules/web/routes/apiDocs.ts:93](../../backend/src/modules/web/routes/apiDocs.ts#L93) |
+| `GET /rpc/:method` | `public` | (no middleware) | [backend/src/modules/web/index.ts:540](../../backend/src/modules/web/index.ts#L540) |
 | `GET /uploads/backgrounds/*assetPath` | `public` | (no middleware) | [backend/src/modules/web/routes/uploadAssets.ts:114](../../backend/src/modules/web/routes/uploadAssets.ts#L114) |
 | `GET /uploads/profilePics/*assetPath` | `public` | (no middleware) | [backend/src/modules/web/routes/uploadAssets.ts:118](../../backend/src/modules/web/routes/uploadAssets.ts#L118) |
 | `GET /uploads/reportImages/*assetPath` | `public` | (no middleware) | [backend/src/modules/web/routes/uploadAssets.ts:122](../../backend/src/modules/web/routes/uploadAssets.ts#L122) |
-| `GET /version` | `public` | httpRouteLimit({name: 'version', capacityPerMin: 120}) | [backend/src/modules/web/index.ts:569](../../backend/src/modules/web/index.ts#L569) |
+| `GET /version` | `public` | httpRouteLimit({name: 'version', capacityPerMin: 120}) | [backend/src/modules/web/index.ts:626](../../backend/src/modules/web/index.ts#L626) |
 | `POST /` | `http-logged-in` | httpRouteLimit(SESSION_LIMIT) + isLoggedIn | [backend/src/modules/web/routes/authSession.ts:27](../../backend/src/modules/web/routes/authSession.ts#L27) |
-| `POST /` | `http-logged-in` | isLoggedIn + requireMcpAccess + mcpRateLimit + express.json() | [backend/src/modules/web/routes/mcp.ts:272](../../backend/src/modules/web/routes/mcp.ts#L272) |
+| `POST /` | `http-mcp-credential` | requireMcpBearer + requireMcpAccess + mcpRateLimit + express.json({limit: '4mb'}) | [backend/src/modules/web/routes/mcp.ts:2349](../../backend/src/modules/web/routes/mcp.ts#L2349) |
 | `POST /alert-webhook/:orgId` | `public` | express.json({limit: deps.maxBodyBytes}) | [backend/src/modules/web/routes/grafanaAlertWebhook.ts:211](../../backend/src/modules/web/routes/grafanaAlertWebhook.ts#L211) |
-| `POST /api/audit-log/download-ticket/:filename` | `http-audit-view` | requiresAuditView + httpRouteLimit({ name: 'audit-log-download-ticket', capacity | [backend/src/modules/web/routes/auditDownload.ts:120](../../backend/src/modules/web/routes/auditDownload.ts#L120) |
+| `POST /api/audit-log/download-ticket/:filename` | `http-audit-view` | requiresAuditView + httpRouteLimit({ name: 'audit-log-download-ticket', capacity | [backend/src/modules/web/routes/auditDownload.ts:130](../../backend/src/modules/web/routes/auditDownload.ts#L130) |
 | `POST /api/device-proxy/:shellyID/camera/streamer/stop` | `http-route-permission` | express.json() + httpRouteLimit({ name: 'device-proxy-camera-streamer-stop',  + validateDeviceAccess() | [backend/src/modules/web/routes/device-proxy.ts:450](../../backend/src/modules/web/routes/device-proxy.ts#L450) |
 | `POST /api/device-proxy/devices/:deviceId/gui-session` | `http-logged-in` | httpRouteLimit({ name: 'device-gui-session', capacityPerMin: + isLoggedIn | [backend/src/modules/web/routes/device-proxy.ts:123](../../backend/src/modules/web/routes/device-proxy.ts#L123) |
-| `POST /api/notifications/email-assets` | `http-permission` | isLoggedIn + requiresAnyPermission('notifications:create', 'notifications + httpRouteLimit({ name: 'email-asset-upload', capacityPerMin: + upload.single('file') | [backend/src/modules/web/routes/emailAssets.ts:67](../../backend/src/modules/web/routes/emailAssets.ts#L67) |
-| `POST /api/uploads/floor-plan` | `http-logged-in` | isLoggedIn + httpRouteLimit({ name: 'floor-plan-upload', capacityPerMin:  + upload.single('file') | [backend/src/modules/web/routes/floorPlanUpload.ts:33](../../backend/src/modules/web/routes/floorPlanUpload.ts#L33) |
-| `POST /auth/login_flow` | `public` | httpRouteLimit({ name: 'login-flow', capacityPerMin: tuning. | [backend/src/modules/web/index.ts:778](../../backend/src/modules/web/index.ts#L778) |
-| `POST /grant-removed` | `public` | httpRouteLimit({ name: 'zitadel-webhook', capacityPerMin: tu | [backend/src/modules/web/routes/zitadelActions.ts:34](../../backend/src/modules/web/routes/zitadelActions.ts#L34) |
-| `POST /health/db-writes` | `http-platform-admin` | requiresPlatformAdmin + express.json() | [backend/src/modules/web/index.ts:815](../../backend/src/modules/web/index.ts#L815) |
-| `POST /health/log-level` | `http-platform-admin` | requiresPlatformAdmin + express.json() | [backend/src/modules/web/index.ts:860](../../backend/src/modules/web/index.ts#L860) |
-| `POST /health/observability` | `http-platform-admin` | requiresPlatformAdmin + express.json() | [backend/src/modules/web/index.ts:835](../../backend/src/modules/web/index.ts#L835) |
-| `POST /health/observability/reset` | `http-platform-admin` | requiresPlatformAdmin | [backend/src/modules/web/index.ts:851](../../backend/src/modules/web/index.ts#L851) |
-| `POST /importBackup` | `http-permission` | requiresAnyPermission('devices:update') + httpRouteLimit({ name: 'backup-import', capacityPerMin: tuni + uploadBackupFile.single('backup') | [backend/src/modules/web/routes/backupImport.ts:27](../../backend/src/modules/web/routes/backupImport.ts#L27) |
-| `POST /media/deleteBackground` | `http-admin` | requiresAdmin | [backend/src/modules/web/routes/media.ts:265](../../backend/src/modules/web/routes/media.ts#L265) |
-| `POST /media/uploadBackground` | `http-admin` | requiresAdmin + httpRouteLimit({ name: 'media-upload-background', capacityPe + upload.single('image') | [backend/src/modules/web/routes/media.ts:116](../../backend/src/modules/web/routes/media.ts#L116) |
-| `POST /media/uploadFirmwareFile` | `http-platform-admin` | requiresPlatformAdmin + httpRouteLimit({ name: 'media-upload-firmware', capacityPerM + uploadFirmwareFile.single('firmware') | [backend/src/modules/web/routes/firmwareUpload.ts:35](../../backend/src/modules/web/routes/firmwareUpload.ts#L35) |
-| `POST /media/uploadProfilePic` | `http-logged-in` | isLoggedIn + httpRouteLimit({ name: 'media-upload-profile-pic', capacityP + upload.single('image') | [backend/src/modules/web/routes/media.ts:198](../../backend/src/modules/web/routes/media.ts#L198) |
-| `POST /media/uploadReportImage` | `http-admin` | requiresAdmin + httpRouteLimit({ name: 'media-upload-report-image', capacity + uploadReportImage.single('image') | [backend/src/modules/web/routes/media.ts:305](../../backend/src/modules/web/routes/media.ts#L305) |
+| `POST /api/notifications/email-assets` | `http-permission` | isLoggedIn + requiresAnyPermission('notifications:create', 'notifications + httpRouteLimit({ name: 'email-asset-upload', capacityPerMin: + upload.single('file') | [backend/src/modules/web/routes/emailAssets.ts:62](../../backend/src/modules/web/routes/emailAssets.ts#L62) |
+| `POST /api/uploads/floor-plan` | `http-logged-in` | isLoggedIn + httpRouteLimit({ name: 'floor-plan-upload', capacityPerMin:  + upload.single('file') | [backend/src/modules/web/routes/floorPlanUpload.ts:35](../../backend/src/modules/web/routes/floorPlanUpload.ts#L35) |
+| `POST /auth/login_flow` | `public` | httpRouteLimit({ name: 'login-flow', capacityPerMin: tuning. | [backend/src/modules/web/index.ts:843](../../backend/src/modules/web/index.ts#L843) |
+| `POST /automation-hooks/:hookId` | `public` | httpRouteLimit(hookLimit()) | [backend/src/modules/web/routes/automationHooks.ts:205](../../backend/src/modules/web/routes/automationHooks.ts#L205) |
+| `POST /grant-removed` | `public` | (no middleware) | [backend/src/modules/web/routes/zitadelActions.ts:24](../../backend/src/modules/web/routes/zitadelActions.ts#L24) |
+| `POST /health/db-writes` | `http-platform-admin` | requiresPlatformAdmin + express.json() | [backend/src/modules/web/index.ts:880](../../backend/src/modules/web/index.ts#L880) |
+| `POST /health/log-level` | `http-platform-admin` | requiresPlatformAdmin + express.json() | [backend/src/modules/web/index.ts:925](../../backend/src/modules/web/index.ts#L925) |
+| `POST /health/observability` | `http-platform-admin` | requiresPlatformAdmin + express.json() | [backend/src/modules/web/index.ts:900](../../backend/src/modules/web/index.ts#L900) |
+| `POST /health/observability/reset` | `http-platform-admin` | requiresPlatformAdmin | [backend/src/modules/web/index.ts:916](../../backend/src/modules/web/index.ts#L916) |
+| `POST /importBackup` | `http-permission` | requiresAnyPermission('devices:update') + httpRouteLimit({ name: 'backup-import', capacityPerMin: tuni + uploadBackupFile.single('backup') | [backend/src/modules/web/routes/backupImport.ts:26](../../backend/src/modules/web/routes/backupImport.ts#L26) |
+| `POST /media/deleteBackground` | `http-admin` | requiresAdmin | [backend/src/modules/web/routes/media.ts:230](../../backend/src/modules/web/routes/media.ts#L230) |
+| `POST /media/uploadBackground` | `http-admin` | requiresAdmin + httpRouteLimit({ name: 'media-upload-background', capacityPe + upload.single('image') | [backend/src/modules/web/routes/media.ts:108](../../backend/src/modules/web/routes/media.ts#L108) |
+| `POST /media/uploadFirmwareFile` | `http-platform-admin` | requiresPlatformAdmin + httpRouteLimit({ name: 'media-upload-firmware', capacityPerM + uploadFirmwareFile.single('firmware') | [backend/src/modules/web/routes/firmwareUpload.ts:22](../../backend/src/modules/web/routes/firmwareUpload.ts#L22) |
+| `POST /media/uploadProfilePic` | `http-logged-in` | isLoggedIn + httpRouteLimit({ name: 'media-upload-profile-pic', capacityP + upload.single('image') | [backend/src/modules/web/routes/media.ts:163](../../backend/src/modules/web/routes/media.ts#L163) |
+| `POST /media/uploadReportImage` | `http-admin` | requiresAdmin + httpRouteLimit({ name: 'media-upload-report-image', capacity + uploadReportImage.single('image') | [backend/src/modules/web/routes/media.ts:270](../../backend/src/modules/web/routes/media.ts#L270) |
+| `POST /node-red/session` | `public` | (no middleware) | [backend/src/modules/web/index.ts:819](../../backend/src/modules/web/index.ts#L819) |
 | `POST /provider-receipts/:provider` | `public` | httpRouteLimit({name: 'provider-receipts', capacityPerMin: 1 | [backend/src/modules/web/routes/providerReceipts.ts:12](../../backend/src/modules/web/routes/providerReceipts.ts#L12) |
-| `POST /rpc` | `http-logged-in` | scopedTokenAuthMiddleware + rpcBodyAuth | [backend/src/modules/web/index.ts:503](../../backend/src/modules/web/index.ts#L503) |
-| `POST /rpc/:method` | `http-logged-in` | scopedTokenAuthMiddleware + isLoggedIn | [backend/src/modules/web/index.ts:497](../../backend/src/modules/web/index.ts#L497) |
-| `POST /session` | `public` | (no middleware) | [backend/src/modules/web/routes/nodeRedProxy.ts:242](../../backend/src/modules/web/routes/nodeRedProxy.ts#L242) |
+| `POST /rpc` | `http-logged-in` | scopedTokenAuthMiddleware + rpcBodyAuth | [backend/src/modules/web/index.ts:560](../../backend/src/modules/web/index.ts#L560) |
+| `POST /rpc/:method` | `http-logged-in` | scopedTokenAuthMiddleware + isLoggedIn | [backend/src/modules/web/index.ts:554](../../backend/src/modules/web/index.ts#L554) |
 | `POST /tariff/live/:token` | `public` | httpRouteLimit({name: 'tariff-live-push', capacityPerMin: 12 | [backend/src/modules/web/routes/tariffLivePush.ts:14](../../backend/src/modules/web/routes/tariffLivePush.ts#L14) |
-| `POST /uploads/asset` | `public` | httpRouteLimit({ name: 'asset-upload', capacityPerMin: tunin + upload.single('file') | [backend/src/modules/web/routes/assetUpload.ts:100](../../backend/src/modules/web/routes/assetUpload.ts#L100) |
-| `POST /user-removed` | `public` | httpRouteLimit({ name: 'zitadel-webhook', capacityPerMin: tu | [backend/src/modules/web/routes/zitadelActions.ts:17](../../backend/src/modules/web/routes/zitadelActions.ts#L17) |
+| `POST /uploads/asset` | `public` | httpRouteLimit({ name: 'asset-upload', capacityPerMin: tunin + upload.single('file') | [backend/src/modules/web/routes/assetUpload.ts:101](../../backend/src/modules/web/routes/assetUpload.ts#L101) |
+| `POST /user-removed` | `public` | (no middleware) | [backend/src/modules/web/routes/zitadelActions.ts:14](../../backend/src/modules/web/routes/zitadelActions.ts#L14) |
+| `PUT /automation-hooks/:hookId` | `public` | httpRouteLimit(hookLimit()) | [backend/src/modules/web/routes/automationHooks.ts:206](../../backend/src/modules/web/routes/automationHooks.ts#L206) |
 
-## `rpc` — 1213 rows
+## `rpc` — 1371 rows
 
 | Surface | Auth bucket | Detail | Source |
 |---|---|---|---|
@@ -120,46 +126,49 @@ Regenerate with `cd backend && npm run generate`.
 | `admin.ListCommands` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/AdminComponent.ts:74](../../backend/src/model/component/AdminComponent.ts#L74) |
 | `admin.PostgresCall` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/AdminComponent.ts:91](../../backend/src/model/component/AdminComponent.ts#L91) |
 | `admin.ReconcileDevices` | `fine-grained-decorator` | canUseTenantAdmin | [backend/src/model/component/AdminComponent.ts:123](../../backend/src/model/component/AdminComponent.ts#L123) |
-| `alert.Describe` | `public` | NoPermissions | [backend/src/model/component/AlertComponent.ts:588](../../backend/src/model/component/AlertComponent.ts#L588) |
-| `alert.Instance.Ack` | `crud-decorator` | 'alerts', 'update', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:1850](../../backend/src/model/component/AlertComponent.ts#L1850) |
-| `alert.Instance.Annotate` | `crud-decorator` | 'alerts', 'update', (p) => p?.alertInstanceId | [backend/src/model/component/AlertComponent.ts:2064](../../backend/src/model/component/AlertComponent.ts#L2064) |
-| `alert.Instance.DeleteAnnotation` | `crud-decorator` | 'alerts', 'update', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:2164](../../backend/src/model/component/AlertComponent.ts#L2164) |
-| `alert.Instance.EditAnnotation` | `crud-decorator` | 'alerts', 'update', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:2121](../../backend/src/model/component/AlertComponent.ts#L2121) |
-| `alert.Instance.Get` | `crud-decorator` | 'alerts', 'read', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:1790](../../backend/src/model/component/AlertComponent.ts#L1790) |
-| `alert.Instance.List` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:1719](../../backend/src/model/component/AlertComponent.ts#L1719) |
-| `alert.Instance.ListAnnotations` | `crud-decorator` | 'alerts', 'read', (p) => p?.alertInstanceId | [backend/src/model/component/AlertComponent.ts:2098](../../backend/src/model/component/AlertComponent.ts#L2098) |
-| `alert.Instance.ListTransitions` | `crud-decorator` | 'alerts', 'read', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:1809](../../backend/src/model/component/AlertComponent.ts#L1809) |
-| `alert.Instance.ResolveManual` | `crud-decorator` | 'alerts', 'update', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:2012](../../backend/src/model/component/AlertComponent.ts#L2012) |
-| `alert.Instance.Silence` | `crud-decorator` | 'alerts', 'update', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:1930](../../backend/src/model/component/AlertComponent.ts#L1930) |
-| `alert.Instance.Unack` | `crud-decorator` | 'alerts', 'update', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:1896](../../backend/src/model/component/AlertComponent.ts#L1896) |
-| `alert.Instance.Unsilence` | `crud-decorator` | 'alerts', 'update', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:1975](../../backend/src/model/component/AlertComponent.ts#L1975) |
-| `alert.Rule.CheckDuplicate` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:1418](../../backend/src/model/component/AlertComponent.ts#L1418) |
-| `alert.Rule.Create` | `crud-decorator` | 'alerts', 'create' | [backend/src/model/component/AlertComponent.ts:1013](../../backend/src/model/component/AlertComponent.ts#L1013) |
-| `alert.Rule.CreateFromTemplate` | `crud-decorator` | 'alerts', 'create' | [backend/src/model/component/AlertComponent.ts:1617](../../backend/src/model/component/AlertComponent.ts#L1617) |
-| `alert.Rule.Delete` | `crud-decorator` | 'alerts', 'delete', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:1375](../../backend/src/model/component/AlertComponent.ts#L1375) |
-| `alert.Rule.Get` | `crud-decorator` | 'alerts', 'read', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:994](../../backend/src/model/component/AlertComponent.ts#L994) |
-| `alert.Rule.List` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:946](../../backend/src/model/component/AlertComponent.ts#L946) |
-| `alert.Rule.ListComponentPaths` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:886](../../backend/src/model/component/AlertComponent.ts#L886) |
-| `alert.Rule.ListEligibleDevices` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:904](../../backend/src/model/component/AlertComponent.ts#L904) |
-| `alert.Rule.ListFirings` | `crud-decorator` | 'alerts', 'read', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:1478](../../backend/src/model/component/AlertComponent.ts#L1478) |
-| `alert.Rule.ListKinds` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:761](../../backend/src/model/component/AlertComponent.ts#L761) |
-| `alert.Rule.ListMetricPaths` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:867](../../backend/src/model/component/AlertComponent.ts#L867) |
-| `alert.Rule.ListTemplates` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:1456](../../backend/src/model/component/AlertComponent.ts#L1456) |
-| `alert.Rule.Preview` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:1531](../../backend/src/model/component/AlertComponent.ts#L1531) |
-| `alert.Rule.Template.Create` | `crud-decorator` | 'alerts', 'create' | [backend/src/model/component/AlertComponent.ts:2192](../../backend/src/model/component/AlertComponent.ts#L2192) |
-| `alert.Rule.Template.Delete` | `crud-decorator` | 'alerts', 'delete', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:2324](../../backend/src/model/component/AlertComponent.ts#L2324) |
-| `alert.Rule.Template.Update` | `crud-decorator` | 'alerts', 'update', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:2251](../../backend/src/model/component/AlertComponent.ts#L2251) |
-| `alert.Rule.Update` | `crud-decorator` | 'alerts', 'update', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:1159](../../backend/src/model/component/AlertComponent.ts#L1159) |
+| `alert.Describe` | `public` | NoPermissions | [backend/src/model/component/AlertComponent.ts:1042](../../backend/src/model/component/AlertComponent.ts#L1042) |
+| `alert.Instance.Ack` | `crud-decorator` | 'alerts', 'update', NOT_A_RULE_ID | [backend/src/model/component/AlertComponent.ts:2549](../../backend/src/model/component/AlertComponent.ts#L2549) |
+| `alert.Instance.Annotate` | `crud-decorator` | 'alerts', 'update', NOT_A_RULE_ID | [backend/src/model/component/AlertComponent.ts:2778](../../backend/src/model/component/AlertComponent.ts#L2778) |
+| `alert.Instance.DeleteAnnotation` | `crud-decorator` | 'alerts', 'update', NOT_A_RULE_ID | [backend/src/model/component/AlertComponent.ts:2895](../../backend/src/model/component/AlertComponent.ts#L2895) |
+| `alert.Instance.EditAnnotation` | `crud-decorator` | 'alerts', 'update', NOT_A_RULE_ID | [backend/src/model/component/AlertComponent.ts:2847](../../backend/src/model/component/AlertComponent.ts#L2847) |
+| `alert.Instance.Get` | `crud-decorator` | 'alerts', 'read', NOT_A_RULE_ID | [backend/src/model/component/AlertComponent.ts:2479](../../backend/src/model/component/AlertComponent.ts#L2479) |
+| `alert.Instance.GetMany` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:2448](../../backend/src/model/component/AlertComponent.ts#L2448) |
+| `alert.Instance.List` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:2408](../../backend/src/model/component/AlertComponent.ts#L2408) |
+| `alert.Instance.ListAnnotations` | `crud-decorator` | 'alerts', 'read', NOT_A_RULE_ID | [backend/src/model/component/AlertComponent.ts:2818](../../backend/src/model/component/AlertComponent.ts#L2818) |
+| `alert.Instance.ListTransitions` | `crud-decorator` | 'alerts', 'read', NOT_A_RULE_ID | [backend/src/model/component/AlertComponent.ts:2503](../../backend/src/model/component/AlertComponent.ts#L2503) |
+| `alert.Instance.ResolveManual` | `crud-decorator` | 'alerts', 'update', NOT_A_RULE_ID | [backend/src/model/component/AlertComponent.ts:2719](../../backend/src/model/component/AlertComponent.ts#L2719) |
+| `alert.Instance.Silence` | `crud-decorator` | 'alerts', 'update', NOT_A_RULE_ID | [backend/src/model/component/AlertComponent.ts:2633](../../backend/src/model/component/AlertComponent.ts#L2633) |
+| `alert.Instance.Unack` | `crud-decorator` | 'alerts', 'update', NOT_A_RULE_ID | [backend/src/model/component/AlertComponent.ts:2597](../../backend/src/model/component/AlertComponent.ts#L2597) |
+| `alert.Instance.Unsilence` | `crud-decorator` | 'alerts', 'update', NOT_A_RULE_ID | [backend/src/model/component/AlertComponent.ts:2680](../../backend/src/model/component/AlertComponent.ts#L2680) |
+| `alert.Rule.CheckDuplicate` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:2094](../../backend/src/model/component/AlertComponent.ts#L2094) |
+| `alert.Rule.Create` | `crud-decorator` | 'alerts', 'create' | [backend/src/model/component/AlertComponent.ts:1650](../../backend/src/model/component/AlertComponent.ts#L1650) |
+| `alert.Rule.CreateFromTemplate` | `crud-decorator` | 'alerts', 'create' | [backend/src/model/component/AlertComponent.ts:2296](../../backend/src/model/component/AlertComponent.ts#L2296) |
+| `alert.Rule.Delete` | `crud-decorator` | 'alerts', 'delete', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:2025](../../backend/src/model/component/AlertComponent.ts#L2025) |
+| `alert.Rule.Get` | `crud-decorator` | 'alerts', 'read', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:1631](../../backend/src/model/component/AlertComponent.ts#L1631) |
+| `alert.Rule.List` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:1580](../../backend/src/model/component/AlertComponent.ts#L1580) |
+| `alert.Rule.ListComponentPaths` | `crud-decorator` | 'alerts', 'read', NOT_A_RULE_ID | [backend/src/model/component/AlertComponent.ts:1448](../../backend/src/model/component/AlertComponent.ts#L1448) |
+| `alert.Rule.ListEligibleDevices` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:1476](../../backend/src/model/component/AlertComponent.ts#L1476) |
+| `alert.Rule.ListFirings` | `crud-decorator` | 'alerts', 'read', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:2154](../../backend/src/model/component/AlertComponent.ts#L2154) |
+| `alert.Rule.ListKinds` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:1265](../../backend/src/model/component/AlertComponent.ts#L1265) |
+| `alert.Rule.ListMetricPaths` | `crud-decorator` | 'alerts', 'read', NOT_A_RULE_ID | [backend/src/model/component/AlertComponent.ts:1424](../../backend/src/model/component/AlertComponent.ts#L1424) |
+| `alert.Rule.ListTemplates` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:2132](../../backend/src/model/component/AlertComponent.ts#L2132) |
+| `alert.Rule.Preview` | `crud-decorator` | 'alerts', 'read' | [backend/src/model/component/AlertComponent.ts:2207](../../backend/src/model/component/AlertComponent.ts#L2207) |
+| `alert.Rule.Template.Create` | `crud-decorator` | 'alerts', 'create' | [backend/src/model/component/AlertComponent.ts:2928](../../backend/src/model/component/AlertComponent.ts#L2928) |
+| `alert.Rule.Template.Delete` | `crud-decorator` | 'alerts', 'delete', NOT_A_RULE_ID | [backend/src/model/component/AlertComponent.ts:3084](../../backend/src/model/component/AlertComponent.ts#L3084) |
+| `alert.Rule.Template.Update` | `crud-decorator` | 'alerts', 'update', NOT_A_RULE_ID | [backend/src/model/component/AlertComponent.ts:2997](../../backend/src/model/component/AlertComponent.ts#L2997) |
+| `alert.Rule.Update` | `crud-decorator` | 'alerts', 'update', (p) => p?.id | [backend/src/model/component/AlertComponent.ts:1802](../../backend/src/model/component/AlertComponent.ts#L1802) |
 | `alexa.Describe` | `public` | NoPermissions | [backend/src/model/component/AlexaComponent.ts:64](../../backend/src/model/component/AlexaComponent.ts#L64) |
 | `alexa.Disable` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/AlexaComponent.ts:29](../../backend/src/model/component/AlexaComponent.ts#L29) |
 | `alexa.Enable` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/AlexaComponent.ts:49](../../backend/src/model/component/AlexaComponent.ts#L49) |
 | `analytics.AttributeWindow` | `crud-decorator` | 'analytics', 'read' | [backend/src/model/component/AnalyticsComponent.ts:41](../../backend/src/model/component/AnalyticsComponent.ts#L41) |
 | `analytics.Describe` | `public` | NoPermissions | [backend/src/model/component/AnalyticsComponent.ts:34](../../backend/src/model/component/AnalyticsComponent.ts#L34) |
-| `asset.Delete` | `crud-decorator` | 'devices', 'delete' | [backend/src/model/component/AssetComponent.ts:92](../../backend/src/model/component/AssetComponent.ts#L92) |
-| `asset.Describe` | `public` | NoPermissions | [backend/src/model/component/AssetComponent.ts:49](../../backend/src/model/component/AssetComponent.ts#L49) |
-| `asset.List` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/AssetComponent.ts:56](../../backend/src/model/component/AssetComponent.ts#L56) |
-| `asset.MigrateImages` | `fine-grained-decorator` | canUseTenantAdmin | [backend/src/model/component/AssetComponent.ts:116](../../backend/src/model/component/AssetComponent.ts#L116) |
-| `asset.SetLabel` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/AssetComponent.ts:76](../../backend/src/model/component/AssetComponent.ts#L76) |
+| `asset.Delete` | `crud-decorator` | 'devices', 'delete', () => undefined | [backend/src/model/component/AssetComponent.ts:143](../../backend/src/model/component/AssetComponent.ts#L143) |
+| `asset.Describe` | `public` | NoPermissions | [backend/src/model/component/AssetComponent.ts:58](../../backend/src/model/component/AssetComponent.ts#L58) |
+| `asset.List` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/AssetComponent.ts:107](../../backend/src/model/component/AssetComponent.ts#L107) |
+| `asset.MigrateImages` | `fine-grained-decorator` | canUseTenantAdmin | [backend/src/model/component/AssetComponent.ts:167](../../backend/src/model/component/AssetComponent.ts#L167) |
+| `asset.ReadChunk` | `crud-decorator` | 'devices', 'read', () => undefined | [backend/src/model/component/AssetComponent.ts:88](../../backend/src/model/component/AssetComponent.ts#L88) |
+| `asset.SetLabel` | `crud-decorator` | 'devices', 'update', () => undefined | [backend/src/model/component/AssetComponent.ts:127](../../backend/src/model/component/AssetComponent.ts#L127) |
+| `asset.Upload` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/AssetComponent.ts:65](../../backend/src/model/component/AssetComponent.ts#L65) |
 | `assignment.Create` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/AssignmentComponent.ts:102](../../backend/src/model/component/AssignmentComponent.ts#L102) |
 | `assignment.Delete` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/AssignmentComponent.ts:163](../../backend/src/model/component/AssignmentComponent.ts#L163) |
 | `assignment.Describe` | `public` | NoPermissions | [backend/src/model/component/AssignmentComponent.ts:95](../../backend/src/model/component/AssignmentComponent.ts#L95) |
@@ -167,27 +176,46 @@ Regenerate with `cd backend && npm run generate`.
 | `assignment.ListForResource` | `fine-grained-decorator` | canReadPolicies | [backend/src/model/component/AssignmentComponent.ts:215](../../backend/src/model/component/AssignmentComponent.ts#L215) |
 | `assignment.ListForSubject` | `fine-grained-decorator` | canReadPolicies | [backend/src/model/component/AssignmentComponent.ts:179](../../backend/src/model/component/AssignmentComponent.ts#L179) |
 | `assignment.ListUnused` | `fine-grained-decorator` | canReadPolicies | [backend/src/model/component/AssignmentComponent.ts:250](../../backend/src/model/component/AssignmentComponent.ts#L250) |
-| `audit.Describe` | `public` | NoPermissions | [backend/src/model/component/AuditComponent.ts:268](../../backend/src/model/component/AuditComponent.ts#L268) |
-| `audit.Export` | `fine-grained-decorator` | canViewAuditLog | [backend/src/model/component/AuditComponent.ts:315](../../backend/src/model/component/AuditComponent.ts#L315) |
-| `audit.Query` | `fine-grained-decorator` | canViewAuditLog | [backend/src/model/component/AuditComponent.ts:275](../../backend/src/model/component/AuditComponent.ts#L275) |
-| `auth.Describe` | `public` | NoPermissions | [backend/src/model/component/AuthComponent.ts:63](../../backend/src/model/component/AuthComponent.ts#L63) |
-| `auth.MintScopedToken` | `public` | NoPermissions | [backend/src/model/component/AuthComponent.ts:72](../../backend/src/model/component/AuthComponent.ts#L72) |
+| `audit.Describe` | `public` | NoPermissions | [backend/src/model/component/AuditComponent.ts:269](../../backend/src/model/component/AuditComponent.ts#L269) |
+| `audit.Export` | `fine-grained-decorator` | canViewAuditLog | [backend/src/model/component/AuditComponent.ts:313](../../backend/src/model/component/AuditComponent.ts#L313) |
+| `audit.Query` | `fine-grained-decorator` | canViewAuditLog | [backend/src/model/component/AuditComponent.ts:276](../../backend/src/model/component/AuditComponent.ts#L276) |
+| `auth.Describe` | `public` | NoPermissions | [backend/src/model/component/AuthComponent.ts:82](../../backend/src/model/component/AuthComponent.ts#L82) |
+| `auth.MintScopedToken` | `public` | NoPermissions | [backend/src/model/component/AuthComponent.ts:92](../../backend/src/model/component/AuthComponent.ts#L92) |
 | `authz_audit.Describe` | `public` | NoPermissions | [backend/src/model/component/AuthzAuditComponent.ts:40](../../backend/src/model/component/AuthzAuditComponent.ts#L40) |
 | `authz_audit.List` | `fine-grained-decorator` | canViewAuditLog | [backend/src/model/component/AuthzAuditComponent.ts:47](../../backend/src/model/component/AuthzAuditComponent.ts#L47) |
-| `backup.Delete` | `fine-grained-decorator` | canDeleteDeviceBackups | [backend/src/model/component/BackupComponent.ts:1439](../../backend/src/model/component/BackupComponent.ts#L1439) |
-| `backup.Describe` | `public` | NoPermissions | [backend/src/model/component/BackupComponent.ts:643](../../backend/src/model/component/BackupComponent.ts#L643) |
-| `backup.DownloadFromDevice` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BackupComponent.ts:766](../../backend/src/model/component/BackupComponent.ts#L766) |
-| `backup.Get` | `fine-grained-decorator` | canReadDeviceBackups | [backend/src/model/component/BackupComponent.ts:743](../../backend/src/model/component/BackupComponent.ts#L743) |
-| `backup.GetFile` | `fine-grained-decorator` | canReadDeviceBackups | [backend/src/model/component/BackupComponent.ts:1886](../../backend/src/model/component/BackupComponent.ts#L1886) |
-| `backup.List` | `fine-grained-decorator` | canReadDeviceBackups | [backend/src/model/component/BackupComponent.ts:653](../../backend/src/model/component/BackupComponent.ts#L653) |
-| `backup.Rename` | `fine-grained-decorator` | canUpdateDeviceBackups | [backend/src/model/component/BackupComponent.ts:1364](../../backend/src/model/component/BackupComponent.ts#L1364) |
-| `backup.RestoreToDevice` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BackupComponent.ts:1496](../../backend/src/model/component/BackupComponent.ts#L1496) |
-| `backup.StartDownloadJob` | `fine-grained-decorator` | async (sender, params) => await canUpdateBackupTargets(sender, params) | [backend/src/model/component/BackupComponent.ts:799](../../backend/src/model/component/BackupComponent.ts#L799) |
-| `backup.StartRestoreJob` | `fine-grained-decorator` | async (sender, params) => await canUpdateBackupRestoreTarget(sender, params) | [backend/src/model/component/BackupComponent.ts:839](../../backend/src/model/component/BackupComponent.ts#L839) |
-| `bill.Delete` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/BillActualComponent.ts:83](../../backend/src/model/component/BillActualComponent.ts#L83) |
-| `bill.Describe` | `public` | NoPermissions | [backend/src/model/component/BillActualComponent.ts:43](../../backend/src/model/component/BillActualComponent.ts#L43) |
+| `automation.Create` | `fine-grained-decorator` | canManageThisNodeRed | [backend/src/model/component/AutomationComponent.ts:559](../../backend/src/model/component/AutomationComponent.ts#L559) |
+| `automation.Delete` | `fine-grained-decorator` | canManageThisNodeRed | [backend/src/model/component/AutomationComponent.ts:678](../../backend/src/model/component/AutomationComponent.ts#L678) |
+| `automation.Describe` | `public` | NoPermissions | [backend/src/model/component/AutomationComponent.ts:279](../../backend/src/model/component/AutomationComponent.ts#L279) |
+| `automation.Get` | `fine-grained-decorator` | canManageThisNodeRed | [backend/src/model/component/AutomationComponent.ts:378](../../backend/src/model/component/AutomationComponent.ts#L378) |
+| `automation.GetActivity` | `fine-grained-decorator` | canManageThisNodeRed | [backend/src/model/component/AutomationComponent.ts:328](../../backend/src/model/component/AutomationComponent.ts#L328) |
+| `automation.GetStatus` | `fine-grained-decorator` | canManageThisNodeRed | [backend/src/model/component/AutomationComponent.ts:339](../../backend/src/model/component/AutomationComponent.ts#L339) |
+| `automation.Graph.Create` | `fine-grained-decorator` | canManageThisNodeRed | [backend/src/model/component/AutomationComponent.ts:481](../../backend/src/model/component/AutomationComponent.ts#L481) |
+| `automation.Graph.Delete` | `fine-grained-decorator` | canManageThisNodeRed | [backend/src/model/component/AutomationComponent.ts:537](../../backend/src/model/component/AutomationComponent.ts#L537) |
+| `automation.Graph.Get` | `fine-grained-decorator` | canManageThisNodeRed | [backend/src/model/component/AutomationComponent.ts:404](../../backend/src/model/component/AutomationComponent.ts#L404) |
+| `automation.Graph.ReadPage` | `fine-grained-decorator` | canManageThisNodeRed | [backend/src/model/component/AutomationComponent.ts:418](../../backend/src/model/component/AutomationComponent.ts#L418) |
+| `automation.Graph.Update` | `fine-grained-decorator` | canManageThisNodeRed | [backend/src/model/component/AutomationComponent.ts:506](../../backend/src/model/component/AutomationComponent.ts#L506) |
+| `automation.Graph.Validate` | `fine-grained-decorator` | canManageThisNodeRed | [backend/src/model/component/AutomationComponent.ts:450](../../backend/src/model/component/AutomationComponent.ts#L450) |
+| `automation.List` | `fine-grained-decorator` | canManageThisNodeRed | [backend/src/model/component/AutomationComponent.ts:286](../../backend/src/model/component/AutomationComponent.ts#L286) |
+| `automation.ListEngines` | `fine-grained-decorator` | canManageThisNodeRed | [backend/src/model/component/AutomationComponent.ts:350](../../backend/src/model/component/AutomationComponent.ts#L350) |
+| `automation.ReportActivity` | `fine-grained-decorator` | isThisNodeRedService | [backend/src/model/component/AutomationComponent.ts:316](../../backend/src/model/component/AutomationComponent.ts#L316) |
+| `automation.SetEnabled` | `fine-grained-decorator` | canManageThisNodeRed | [backend/src/model/component/AutomationComponent.ts:654](../../backend/src/model/component/AutomationComponent.ts#L654) |
+| `automation.Update` | `fine-grained-decorator` | canManageThisNodeRed | [backend/src/model/component/AutomationComponent.ts:600](../../backend/src/model/component/AutomationComponent.ts#L600) |
+| `backup.Delete` | `fine-grained-decorator` | canDeleteDeviceBackups | [backend/src/model/component/BackupComponent.ts:1444](../../backend/src/model/component/BackupComponent.ts#L1444) |
+| `backup.Describe` | `public` | NoPermissions | [backend/src/model/component/BackupComponent.ts:644](../../backend/src/model/component/BackupComponent.ts#L644) |
+| `backup.DownloadFromDevice` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BackupComponent.ts:767](../../backend/src/model/component/BackupComponent.ts#L767) |
+| `backup.Get` | `fine-grained-decorator` | canReadDeviceBackups | [backend/src/model/component/BackupComponent.ts:744](../../backend/src/model/component/BackupComponent.ts#L744) |
+| `backup.GetFile` | `fine-grained-decorator` | canReadDeviceBackups | [backend/src/model/component/BackupComponent.ts:1891](../../backend/src/model/component/BackupComponent.ts#L1891) |
+| `backup.List` | `fine-grained-decorator` | canReadDeviceBackups | [backend/src/model/component/BackupComponent.ts:654](../../backend/src/model/component/BackupComponent.ts#L654) |
+| `backup.Rename` | `fine-grained-decorator` | canUpdateDeviceBackups | [backend/src/model/component/BackupComponent.ts:1369](../../backend/src/model/component/BackupComponent.ts#L1369) |
+| `backup.RestoreToDevice` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BackupComponent.ts:1501](../../backend/src/model/component/BackupComponent.ts#L1501) |
+| `backup.StartDownloadJob` | `fine-grained-decorator` | async (sender, params) => await canUpdateBackupTargets(sender, params) | [backend/src/model/component/BackupComponent.ts:800](../../backend/src/model/component/BackupComponent.ts#L800) |
+| `backup.StartRestoreJob` | `fine-grained-decorator` | async (sender, params) => await canUpdateBackupRestoreTarget(sender, params) | [backend/src/model/component/BackupComponent.ts:842](../../backend/src/model/component/BackupComponent.ts#L842) |
+| `bill.Delete` | `crud-decorator` | 'reports', 'update', NOT_A_REPORT_ID | [backend/src/model/component/BillActualComponent.ts:102](../../backend/src/model/component/BillActualComponent.ts#L102) |
+| `bill.Describe` | `public` | NoPermissions | [backend/src/model/component/BillActualComponent.ts:55](../../backend/src/model/component/BillActualComponent.ts#L55) |
+| `bill.Import` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/BillActualComponent.ts:85](../../backend/src/model/component/BillActualComponent.ts#L85) |
 | `bill.List` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/BillActualComponent.ts:73](../../backend/src/model/component/BillActualComponent.ts#L73) |
-| `bill.Set` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/BillActualComponent.ts:50](../../backend/src/model/component/BillActualComponent.ts#L50) |
+| `bill.Quote` | `public` | NoPermissions | [backend/src/model/component/BillActualComponent.ts:116](../../backend/src/model/component/BillActualComponent.ts#L116) |
+| `bill.Set` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/BillActualComponent.ts:62](../../backend/src/model/component/BillActualComponent.ts#L62) |
 | `ble.CloudRelay.List` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BleComponent.ts:158](../../backend/src/model/component/BleComponent.ts#L158) |
 | `ble.CloudRelay.ListInfos` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BleComponent.ts:171](../../backend/src/model/component/BleComponent.ts#L171) |
 | `ble.DeletePairedDevice` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BleComponent.ts:145](../../backend/src/model/component/BleComponent.ts#L145) |
@@ -235,40 +263,41 @@ Regenerate with `cd backend && npm run generate`.
 | `branding.SetLogo` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/model/component/BrandingComponent.ts:126](../../backend/src/model/component/BrandingComponent.ts#L126) |
 | `branding.SetMailTemplate` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/model/component/BrandingComponent.ts:213](../../backend/src/model/component/BrandingComponent.ts#L213) |
 | `branding.SetPolicy` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/model/component/BrandingComponent.ts:89](../../backend/src/model/component/BrandingComponent.ts#L89) |
-| `bthome.Control.Create` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:673](../../backend/src/model/component/BTHomeComponent.ts#L673) |
-| `bthome.Control.Delete` | `crud-decorator` | 'devices', 'delete', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:471](../../backend/src/model/component/BTHomeComponent.ts#L471) |
-| `bthome.Control.Enumerate` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:706](../../backend/src/model/component/BTHomeComponent.ts#L706) |
-| `bthome.Control.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:631](../../backend/src/model/component/BTHomeComponent.ts#L631) |
-| `bthome.Control.GetLearningState` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:460](../../backend/src/model/component/BTHomeComponent.ts#L460) |
-| `bthome.Control.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:644](../../backend/src/model/component/BTHomeComponent.ts#L644) |
-| `bthome.Control.List` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:446](../../backend/src/model/component/BTHomeComponent.ts#L446) |
-| `bthome.Control.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:657](../../backend/src/model/component/BTHomeComponent.ts#L657) |
-| `bthome.Control.StartLearning` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:419](../../backend/src/model/component/BTHomeComponent.ts#L419) |
-| `bthome.Control.StopLearning` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:434](../../backend/src/model/component/BTHomeComponent.ts#L434) |
-| `bthome.Control.Update` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:689](../../backend/src/model/component/BTHomeComponent.ts#L689) |
-| `bthome.Describe` | `public` | NoPermissions | [backend/src/model/component/BTHomeComponent.ts:146](../../backend/src/model/component/BTHomeComponent.ts#L146) |
-| `bthome.Device.AddManual` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:190](../../backend/src/model/component/BTHomeComponent.ts#L190) |
-| `bthome.Device.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:543](../../backend/src/model/component/BTHomeComponent.ts#L543) |
-| `bthome.Device.GetKnownObjects` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:241](../../backend/src/model/component/BTHomeComponent.ts#L241) |
-| `bthome.Device.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:556](../../backend/src/model/component/BTHomeComponent.ts#L556) |
-| `bthome.Device.Remove` | `crud-decorator` | 'devices', 'delete', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:215](../../backend/src/model/component/BTHomeComponent.ts#L215) |
-| `bthome.Device.Rename` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:227](../../backend/src/model/component/BTHomeComponent.ts#L227) |
-| `bthome.Device.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:569](../../backend/src/model/component/BTHomeComponent.ts#L569) |
-| `bthome.Device.SetKey` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:310](../../backend/src/model/component/BTHomeComponent.ts#L310) |
-| `bthome.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:489](../../backend/src/model/component/BTHomeComponent.ts#L489) |
-| `bthome.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:502](../../backend/src/model/component/BTHomeComponent.ts#L502) |
-| `bthome.ListGateways` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/BTHomeComponent.ts:153](../../backend/src/model/component/BTHomeComponent.ts#L153) |
-| `bthome.Object.ListInfos` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:337](../../backend/src/model/component/BTHomeComponent.ts#L337) |
-| `bthome.ResetEncryptionCounter` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:528](../../backend/src/model/component/BTHomeComponent.ts#L528) |
-| `bthome.Sensor.Add` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:369](../../backend/src/model/component/BTHomeComponent.ts#L369) |
-| `bthome.Sensor.Delete` | `crud-decorator` | 'devices', 'delete', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:405](../../backend/src/model/component/BTHomeComponent.ts#L405) |
-| `bthome.Sensor.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:587](../../backend/src/model/component/BTHomeComponent.ts#L587) |
-| `bthome.Sensor.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:600](../../backend/src/model/component/BTHomeComponent.ts#L600) |
-| `bthome.Sensor.Pair` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:350](../../backend/src/model/component/BTHomeComponent.ts#L350) |
-| `bthome.Sensor.Rename` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:391](../../backend/src/model/component/BTHomeComponent.ts#L391) |
-| `bthome.Sensor.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:613](../../backend/src/model/component/BTHomeComponent.ts#L613) |
-| `bthome.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:515](../../backend/src/model/component/BTHomeComponent.ts#L515) |
-| `bthome.StartDiscovery` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:175](../../backend/src/model/component/BTHomeComponent.ts#L175) |
+| `bthome.Control.Create` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:697](../../backend/src/model/component/BTHomeComponent.ts#L697) |
+| `bthome.Control.Delete` | `crud-decorator` | 'devices', 'delete', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:495](../../backend/src/model/component/BTHomeComponent.ts#L495) |
+| `bthome.Control.Enumerate` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:730](../../backend/src/model/component/BTHomeComponent.ts#L730) |
+| `bthome.Control.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:655](../../backend/src/model/component/BTHomeComponent.ts#L655) |
+| `bthome.Control.GetLearningState` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:484](../../backend/src/model/component/BTHomeComponent.ts#L484) |
+| `bthome.Control.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:668](../../backend/src/model/component/BTHomeComponent.ts#L668) |
+| `bthome.Control.List` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:470](../../backend/src/model/component/BTHomeComponent.ts#L470) |
+| `bthome.Control.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:681](../../backend/src/model/component/BTHomeComponent.ts#L681) |
+| `bthome.Control.StartLearning` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:443](../../backend/src/model/component/BTHomeComponent.ts#L443) |
+| `bthome.Control.StopLearning` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:458](../../backend/src/model/component/BTHomeComponent.ts#L458) |
+| `bthome.Control.Update` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:713](../../backend/src/model/component/BTHomeComponent.ts#L713) |
+| `bthome.Describe` | `public` | NoPermissions | [backend/src/model/component/BTHomeComponent.ts:159](../../backend/src/model/component/BTHomeComponent.ts#L159) |
+| `bthome.Device.AddManual` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:214](../../backend/src/model/component/BTHomeComponent.ts#L214) |
+| `bthome.Device.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:567](../../backend/src/model/component/BTHomeComponent.ts#L567) |
+| `bthome.Device.GetKnownObjects` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:265](../../backend/src/model/component/BTHomeComponent.ts#L265) |
+| `bthome.Device.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:580](../../backend/src/model/component/BTHomeComponent.ts#L580) |
+| `bthome.Device.Remove` | `crud-decorator` | 'devices', 'delete', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:239](../../backend/src/model/component/BTHomeComponent.ts#L239) |
+| `bthome.Device.Rename` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:251](../../backend/src/model/component/BTHomeComponent.ts#L251) |
+| `bthome.Device.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:593](../../backend/src/model/component/BTHomeComponent.ts#L593) |
+| `bthome.Device.SetKey` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:334](../../backend/src/model/component/BTHomeComponent.ts#L334) |
+| `bthome.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:513](../../backend/src/model/component/BTHomeComponent.ts#L513) |
+| `bthome.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:526](../../backend/src/model/component/BTHomeComponent.ts#L526) |
+| `bthome.ListDiscovered` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:203](../../backend/src/model/component/BTHomeComponent.ts#L203) |
+| `bthome.ListGateways` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/BTHomeComponent.ts:166](../../backend/src/model/component/BTHomeComponent.ts#L166) |
+| `bthome.Object.ListInfos` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:361](../../backend/src/model/component/BTHomeComponent.ts#L361) |
+| `bthome.ResetEncryptionCounter` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:552](../../backend/src/model/component/BTHomeComponent.ts#L552) |
+| `bthome.Sensor.Add` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:393](../../backend/src/model/component/BTHomeComponent.ts#L393) |
+| `bthome.Sensor.Delete` | `crud-decorator` | 'devices', 'delete', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:429](../../backend/src/model/component/BTHomeComponent.ts#L429) |
+| `bthome.Sensor.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:611](../../backend/src/model/component/BTHomeComponent.ts#L611) |
+| `bthome.Sensor.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:624](../../backend/src/model/component/BTHomeComponent.ts#L624) |
+| `bthome.Sensor.Pair` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:374](../../backend/src/model/component/BTHomeComponent.ts#L374) |
+| `bthome.Sensor.Rename` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:415](../../backend/src/model/component/BTHomeComponent.ts#L415) |
+| `bthome.Sensor.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:637](../../backend/src/model/component/BTHomeComponent.ts#L637) |
+| `bthome.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:539](../../backend/src/model/component/BTHomeComponent.ts#L539) |
+| `bthome.StartDiscovery` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/BTHomeComponent.ts:188](../../backend/src/model/component/BTHomeComponent.ts#L188) |
 | `button.Describe` | `public` | NoPermissions | [backend/src/model/component/ButtonComponent.ts:24](../../backend/src/model/component/ButtonComponent.ts#L24) |
 | `button.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/ButtonComponent.ts:57](../../backend/src/model/component/ButtonComponent.ts#L57) |
 | `button.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/ButtonComponent.ts:70](../../backend/src/model/component/ButtonComponent.ts#L70) |
@@ -298,6 +327,13 @@ Regenerate with `cd backend && npm run generate`.
 | `camera.Zone.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/CameraComponent.ts:122](../../backend/src/model/component/CameraComponent.ts#L122) |
 | `camera.Zone.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/CameraComponent.ts:132](../../backend/src/model/component/CameraComponent.ts#L132) |
 | `camera.Zone.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/CameraComponent.ts:235](../../backend/src/model/component/CameraComponent.ts#L235) |
+| `carbon.AddEmissionFactor` | `crud-decorator` | 'reports', 'create', NOT_A_REPORT_ID | [backend/src/model/component/CarbonComponent.ts:65](../../backend/src/model/component/CarbonComponent.ts#L65) |
+| `carbon.AddPrice` | `crud-decorator` | 'reports', 'create', NOT_A_REPORT_ID | [backend/src/model/component/CarbonComponent.ts:93](../../backend/src/model/component/CarbonComponent.ts#L93) |
+| `carbon.Calculate` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/CarbonComponent.ts:107](../../backend/src/model/component/CarbonComponent.ts#L107) |
+| `carbon.CalculateBreakdown` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/CarbonComponent.ts:121](../../backend/src/model/component/CarbonComponent.ts#L121) |
+| `carbon.Describe` | `public` | NoPermissions | [backend/src/model/component/CarbonComponent.ts:44](../../backend/src/model/component/CarbonComponent.ts#L44) |
+| `carbon.ListEmissionFactors` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/CarbonComponent.ts:51](../../backend/src/model/component/CarbonComponent.ts#L51) |
+| `carbon.ListPrices` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/CarbonComponent.ts:79](../../backend/src/model/component/CarbonComponent.ts#L79) |
 | `cb.Describe` | `public` | NoPermissions | [backend/src/model/component/CbComponent.ts:23](../../backend/src/model/component/CbComponent.ts#L23) |
 | `cb.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/CbComponent.ts:41](../../backend/src/model/component/CbComponent.ts#L41) |
 | `cb.GetLog` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/CbComponent.ts:76](../../backend/src/model/component/CbComponent.ts#L76) |
@@ -313,31 +349,31 @@ Regenerate with `cd backend && npm run generate`.
 | `cct.Set` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/CctComponent.ts:40](../../backend/src/model/component/CctComponent.ts#L40) |
 | `cct.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/CctComponent.ts:66](../../backend/src/model/component/CctComponent.ts#L66) |
 | `cct.Toggle` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/CctComponent.ts:53](../../backend/src/model/component/CctComponent.ts#L53) |
-| `certificate.Delete` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:337](../../backend/src/model/component/CertificateComponent.ts#L337) |
-| `certificate.Describe` | `public` | NoPermissions | [backend/src/model/component/CertificateComponent.ts:157](../../backend/src/model/component/CertificateComponent.ts#L157) |
-| `certificate.Export` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:446](../../backend/src/model/component/CertificateComponent.ts#L446) |
-| `certificate.Get` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CertificateComponent.ts:214](../../backend/src/model/component/CertificateComponent.ts#L214) |
-| `certificate.GetIssueDefaults` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CertificateComponent.ts:490](../../backend/src/model/component/CertificateComponent.ts#L490) |
-| `certificate.Import` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:232](../../backend/src/model/component/CertificateComponent.ts#L232) |
-| `certificate.IssueDeviceCert` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:504](../../backend/src/model/component/CertificateComponent.ts#L504) |
-| `certificate.List` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CertificateComponent.ts:182](../../backend/src/model/component/CertificateComponent.ts#L182) |
-| `certificate.ListPushes` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CertificateComponent.ts:830](../../backend/src/model/component/CertificateComponent.ts#L830) |
-| `certificate.PreflightPush` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CertificateComponent.ts:708](../../backend/src/model/component/CertificateComponent.ts#L708) |
-| `certificate.PushStatus` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CertificateComponent.ts:796](../../backend/src/model/component/CertificateComponent.ts#L796) |
-| `certificate.PushToDevices` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:730](../../backend/src/model/component/CertificateComponent.ts#L730) |
-| `certificate.SetGroups` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:404](../../backend/src/model/component/CertificateComponent.ts#L404) |
-| `certificate.SetTags` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:370](../../backend/src/model/component/CertificateComponent.ts#L370) |
-| `certificate.SignCsr` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:611](../../backend/src/model/component/CertificateComponent.ts#L611) |
-| `certificate.Update` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:310](../../backend/src/model/component/CertificateComponent.ts#L310) |
-| `channel.Create` | `crud-decorator` | 'notifications', 'create' | [backend/src/model/component/ChannelComponent.ts:413](../../backend/src/model/component/ChannelComponent.ts#L413) |
-| `channel.Delete` | `crud-decorator` | 'notifications', 'delete', (p) => p?.id | [backend/src/model/component/ChannelComponent.ts:605](../../backend/src/model/component/ChannelComponent.ts#L605) |
-| `channel.Describe` | `public` | NoPermissions | [backend/src/model/component/ChannelComponent.ts:224](../../backend/src/model/component/ChannelComponent.ts#L224) |
-| `channel.Get` | `crud-decorator` | 'notifications', 'read', (p) => p?.id | [backend/src/model/component/ChannelComponent.ts:393](../../backend/src/model/component/ChannelComponent.ts#L393) |
-| `channel.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/ChannelComponent.ts:349](../../backend/src/model/component/ChannelComponent.ts#L349) |
-| `channel.ListProviders` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/ChannelComponent.ts:338](../../backend/src/model/component/ChannelComponent.ts#L338) |
-| `channel.ResetHealth` | `crud-decorator` | 'notifications', 'update', (p) => p?.id | [backend/src/model/component/ChannelComponent.ts:745](../../backend/src/model/component/ChannelComponent.ts#L745) |
-| `channel.Test` | `crud-decorator` | 'notifications', 'update', (p) => p?.id | [backend/src/model/component/ChannelComponent.ts:650](../../backend/src/model/component/ChannelComponent.ts#L650) |
-| `channel.Update` | `crud-decorator` | 'notifications', 'update', (p) => p?.id | [backend/src/model/component/ChannelComponent.ts:488](../../backend/src/model/component/ChannelComponent.ts#L488) |
+| `certificate.Delete` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:341](../../backend/src/model/component/CertificateComponent.ts#L341) |
+| `certificate.Describe` | `public` | NoPermissions | [backend/src/model/component/CertificateComponent.ts:161](../../backend/src/model/component/CertificateComponent.ts#L161) |
+| `certificate.Export` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:450](../../backend/src/model/component/CertificateComponent.ts#L450) |
+| `certificate.Get` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CertificateComponent.ts:221](../../backend/src/model/component/CertificateComponent.ts#L221) |
+| `certificate.GetIssueDefaults` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CertificateComponent.ts:494](../../backend/src/model/component/CertificateComponent.ts#L494) |
+| `certificate.Import` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:238](../../backend/src/model/component/CertificateComponent.ts#L238) |
+| `certificate.IssueDeviceCert` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:508](../../backend/src/model/component/CertificateComponent.ts#L508) |
+| `certificate.List` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CertificateComponent.ts:186](../../backend/src/model/component/CertificateComponent.ts#L186) |
+| `certificate.ListPushes` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CertificateComponent.ts:835](../../backend/src/model/component/CertificateComponent.ts#L835) |
+| `certificate.PreflightPush` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CertificateComponent.ts:712](../../backend/src/model/component/CertificateComponent.ts#L712) |
+| `certificate.PushStatus` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CertificateComponent.ts:801](../../backend/src/model/component/CertificateComponent.ts#L801) |
+| `certificate.PushToDevices` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:734](../../backend/src/model/component/CertificateComponent.ts#L734) |
+| `certificate.SetGroups` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:408](../../backend/src/model/component/CertificateComponent.ts#L408) |
+| `certificate.SetTags` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:374](../../backend/src/model/component/CertificateComponent.ts#L374) |
+| `certificate.SignCsr` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:615](../../backend/src/model/component/CertificateComponent.ts#L615) |
+| `certificate.Update` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CertificateComponent.ts:314](../../backend/src/model/component/CertificateComponent.ts#L314) |
+| `channel.Create` | `crud-decorator` | 'notifications', 'create' | [backend/src/model/component/ChannelComponent.ts:475](../../backend/src/model/component/ChannelComponent.ts#L475) |
+| `channel.Delete` | `crud-decorator` | 'integrations', 'delete', (p) => p?.id | [backend/src/model/component/ChannelComponent.ts:667](../../backend/src/model/component/ChannelComponent.ts#L667) |
+| `channel.Describe` | `public` | NoPermissions | [backend/src/model/component/ChannelComponent.ts:268](../../backend/src/model/component/ChannelComponent.ts#L268) |
+| `channel.Get` | `crud-decorator` | 'integrations', 'read', (p) => p?.id | [backend/src/model/component/ChannelComponent.ts:443](../../backend/src/model/component/ChannelComponent.ts#L443) |
+| `channel.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/ChannelComponent.ts:393](../../backend/src/model/component/ChannelComponent.ts#L393) |
+| `channel.ListProviders` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/ChannelComponent.ts:382](../../backend/src/model/component/ChannelComponent.ts#L382) |
+| `channel.ResetHealth` | `crud-decorator` | 'integrations', 'update', (p) => p?.id | [backend/src/model/component/ChannelComponent.ts:834](../../backend/src/model/component/ChannelComponent.ts#L834) |
+| `channel.Test` | `crud-decorator` | 'notifications', 'update', NOT_A_DESTINATION_GROUP_ID | [backend/src/model/component/ChannelComponent.ts:715](../../backend/src/model/component/ChannelComponent.ts#L715) |
+| `channel.Update` | `crud-decorator` | 'integrations', 'update', (p) => p?.id | [backend/src/model/component/ChannelComponent.ts:550](../../backend/src/model/component/ChannelComponent.ts#L550) |
 | `client.Describe` | `public` | NoPermissions | [backend/src/model/component/ClientComponent.ts:34](../../backend/src/model/component/ClientComponent.ts#L34) |
 | `client.SetSubscription` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/ClientComponent.ts:45](../../backend/src/model/component/ClientComponent.ts#L45) |
 | `cloud.Describe` | `public` | NoPermissions | [backend/src/model/component/CloudComponent.ts:22](../../backend/src/model/component/CloudComponent.ts#L22) |
@@ -354,18 +390,19 @@ Regenerate with `cd backend && npm run generate`.
 | `cover.ResetCounters` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/CoverComponent.ts:124](../../backend/src/model/component/CoverComponent.ts#L124) |
 | `cover.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/CoverComponent.ts:111](../../backend/src/model/component/CoverComponent.ts#L111) |
 | `cover.Stop` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/CoverComponent.ts:66](../../backend/src/model/component/CoverComponent.ts#L66) |
-| `credential.Clear` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CredentialComponent.ts:455](../../backend/src/model/component/CredentialComponent.ts#L455) |
-| `credential.ConfirmOld` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CredentialComponent.ts:547](../../backend/src/model/component/CredentialComponent.ts#L547) |
-| `credential.Describe` | `public` | NoPermissions | [backend/src/model/component/CredentialComponent.ts:114](../../backend/src/model/component/CredentialComponent.ts#L114) |
-| `credential.Get` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CredentialComponent.ts:147](../../backend/src/model/component/CredentialComponent.ts#L147) |
-| `credential.List` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CredentialComponent.ts:121](../../backend/src/model/component/CredentialComponent.ts#L121) |
-| `credential.ListFailed` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CredentialComponent.ts:588](../../backend/src/model/component/CredentialComponent.ts#L588) |
-| `credential.ListPushes` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CredentialComponent.ts:634](../../backend/src/model/component/CredentialComponent.ts#L634) |
-| `credential.PushStatus` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CredentialComponent.ts:611](../../backend/src/model/component/CredentialComponent.ts#L611) |
-| `credential.Retry` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CredentialComponent.ts:513](../../backend/src/model/component/CredentialComponent.ts#L513) |
-| `credential.Reveal` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CredentialComponent.ts:164](../../backend/src/model/component/CredentialComponent.ts#L164) |
-| `credential.Rotate` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CredentialComponent.ts:361](../../backend/src/model/component/CredentialComponent.ts#L361) |
-| `credential.Set` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CredentialComponent.ts:300](../../backend/src/model/component/CredentialComponent.ts#L300) |
+| `credential.Clear` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CredentialComponent.ts:495](../../backend/src/model/component/CredentialComponent.ts#L495) |
+| `credential.ConfirmOld` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CredentialComponent.ts:588](../../backend/src/model/component/CredentialComponent.ts#L588) |
+| `credential.Describe` | `public` | NoPermissions | [backend/src/model/component/CredentialComponent.ts:127](../../backend/src/model/component/CredentialComponent.ts#L127) |
+| `credential.Get` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CredentialComponent.ts:164](../../backend/src/model/component/CredentialComponent.ts#L164) |
+| `credential.GetMany` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CredentialComponent.ts:181](../../backend/src/model/component/CredentialComponent.ts#L181) |
+| `credential.List` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CredentialComponent.ts:134](../../backend/src/model/component/CredentialComponent.ts#L134) |
+| `credential.ListFailed` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CredentialComponent.ts:629](../../backend/src/model/component/CredentialComponent.ts#L629) |
+| `credential.ListPushes` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CredentialComponent.ts:675](../../backend/src/model/component/CredentialComponent.ts#L675) |
+| `credential.PushStatus` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/CredentialComponent.ts:652](../../backend/src/model/component/CredentialComponent.ts#L652) |
+| `credential.Retry` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CredentialComponent.ts:554](../../backend/src/model/component/CredentialComponent.ts#L554) |
+| `credential.Reveal` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CredentialComponent.ts:202](../../backend/src/model/component/CredentialComponent.ts#L202) |
+| `credential.Rotate` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CredentialComponent.ts:400](../../backend/src/model/component/CredentialComponent.ts#L400) |
+| `credential.Set` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/CredentialComponent.ts:338](../../backend/src/model/component/CredentialComponent.ts#L338) |
 | `cury.Boost` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/CuryComponent.ts:120](../../backend/src/model/component/CuryComponent.ts#L120) |
 | `cury.Describe` | `public` | NoPermissions | [backend/src/model/component/CuryComponent.ts:32](../../backend/src/model/component/CuryComponent.ts#L32) |
 | `cury.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/CuryComponent.ts:39](../../backend/src/model/component/CuryComponent.ts#L39) |
@@ -386,94 +423,103 @@ Regenerate with `cd backend && npm run generate`.
 | `dali.PingKnownDevices` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/DaliComponent.ts:108](../../backend/src/model/component/DaliComponent.ts#L108) |
 | `dali.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/DaliComponent.ts:69](../../backend/src/model/component/DaliComponent.ts#L69) |
 | `dali.StartScan` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/DaliComponent.ts:95](../../backend/src/model/component/DaliComponent.ts#L95) |
-| `dashboard.Activity.List` | `crud-decorator` | 'dashboards', 'read', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:1459](../../backend/src/model/component/DashboardComponent.ts#L1459) |
-| `dashboard.AddItem` | `crud-decorator` | 'dashboards', 'update', (params) => params?.dashboard | [backend/src/model/component/DashboardComponent.ts:648](../../backend/src/model/component/DashboardComponent.ts#L648) |
-| `dashboard.ClearDefault` | `crud-decorator` | 'dashboards', 'update' | [backend/src/model/component/DashboardComponent.ts:1254](../../backend/src/model/component/DashboardComponent.ts#L1254) |
-| `dashboard.Clone` | `crud-decorator` | 'dashboards', 'create', (p) => p?.id | [backend/src/model/component/DashboardComponent.ts:1414](../../backend/src/model/component/DashboardComponent.ts#L1414) |
-| `dashboard.Create` | `crud-decorator` | 'dashboards', 'create' | [backend/src/model/component/DashboardComponent.ts:498](../../backend/src/model/component/DashboardComponent.ts#L498) |
-| `dashboard.Delete` | `crud-decorator` | 'dashboards', 'delete', (p) => p?.id | [backend/src/model/component/DashboardComponent.ts:581](../../backend/src/model/component/DashboardComponent.ts#L581) |
-| `dashboard.DeleteBulk` | `crud-decorator` | 'dashboards', 'delete' | [backend/src/model/component/DashboardComponent.ts:604](../../backend/src/model/component/DashboardComponent.ts#L604) |
-| `dashboard.Describe` | `public` | NoPermissions | [backend/src/model/component/DashboardComponent.ts:149](../../backend/src/model/component/DashboardComponent.ts#L149) |
-| `dashboard.Export` | `crud-decorator` | 'dashboards', 'read', (p) => p?.id | [backend/src/model/component/DashboardComponent.ts:1352](../../backend/src/model/component/DashboardComponent.ts#L1352) |
-| `dashboard.Get` | `crud-decorator` | 'dashboards', 'read', (p) => p?.id | [backend/src/model/component/DashboardComponent.ts:288](../../backend/src/model/component/DashboardComponent.ts#L288) |
-| `dashboard.GetDefault` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/DashboardComponent.ts:1219](../../backend/src/model/component/DashboardComponent.ts#L1219) |
-| `dashboard.GetSettings` | `crud-decorator` | 'dashboards', 'read', (params) => params?.dashboardId | [backend/src/model/component/DashboardComponent.ts:310](../../backend/src/model/component/DashboardComponent.ts#L310) |
-| `dashboard.GetUIConfig` | `public` | NoPermissions | [backend/src/model/component/DashboardComponent.ts:778](../../backend/src/model/component/DashboardComponent.ts#L778) |
-| `dashboard.Import` | `crud-decorator` | 'dashboards', 'create' | [backend/src/model/component/DashboardComponent.ts:1367](../../backend/src/model/component/DashboardComponent.ts#L1367) |
-| `dashboard.Item.Add` | `crud-decorator` | 'dashboards', 'update', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:812](../../backend/src/model/component/DashboardComponent.ts#L812) |
-| `dashboard.Item.AddBulk` | `crud-decorator` | 'dashboards', 'update', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:855](../../backend/src/model/component/DashboardComponent.ts#L855) |
-| `dashboard.Item.List` | `crud-decorator` | 'dashboards', 'read', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:790](../../backend/src/model/component/DashboardComponent.ts#L790) |
-| `dashboard.Item.Remove` | `crud-decorator` | 'dashboards', 'update', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:923](../../backend/src/model/component/DashboardComponent.ts#L923) |
-| `dashboard.Item.Reorder` | `crud-decorator` | 'dashboards', 'update', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:942](../../backend/src/model/component/DashboardComponent.ts#L942) |
-| `dashboard.Item.SetAll` | `crud-decorator` | 'dashboards', 'update', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:959](../../backend/src/model/component/DashboardComponent.ts#L959) |
-| `dashboard.Item.Update` | `crud-decorator` | 'dashboards', 'update', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:888](../../backend/src/model/component/DashboardComponent.ts#L888) |
-| `dashboard.List` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/DashboardComponent.ts:264](../../backend/src/model/component/DashboardComponent.ts#L264) |
-| `dashboard.ListPinned` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/DashboardComponent.ts:1268](../../backend/src/model/component/DashboardComponent.ts#L1268) |
-| `dashboard.Pin` | `crud-decorator` | 'dashboards', 'read', (p) => p?.id | [backend/src/model/component/DashboardComponent.ts:1291](../../backend/src/model/component/DashboardComponent.ts#L1291) |
-| `dashboard.RemoveItem` | `crud-decorator` | 'dashboards', 'update', (params) => params?.dashboard | [backend/src/model/component/DashboardComponent.ts:707](../../backend/src/model/component/DashboardComponent.ts#L707) |
-| `dashboard.Reorder` | `crud-decorator` | 'dashboards', 'update' | [backend/src/model/component/DashboardComponent.ts:746](../../backend/src/model/component/DashboardComponent.ts#L746) |
-| `dashboard.ReorderItems` | `crud-decorator` | 'dashboards', 'update', (params) => params?.dashboard | [backend/src/model/component/DashboardComponent.ts:725](../../backend/src/model/component/DashboardComponent.ts#L725) |
-| `dashboard.ReorderPins` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/DashboardComponent.ts:1334](../../backend/src/model/component/DashboardComponent.ts#L1334) |
-| `dashboard.SetDefault` | `crud-decorator` | 'dashboards', 'update', (p) => p?.id | [backend/src/model/component/DashboardComponent.ts:1236](../../backend/src/model/component/DashboardComponent.ts#L1236) |
-| `dashboard.SetSettings` | `crud-decorator` | 'dashboards', 'update', (params) => params?.dashboardId | [backend/src/model/component/DashboardComponent.ts:338](../../backend/src/model/component/DashboardComponent.ts#L338) |
-| `dashboard.Template.Create` | `crud-decorator` | 'dashboards', 'create' | [backend/src/model/component/DashboardComponent.ts:1058](../../backend/src/model/component/DashboardComponent.ts#L1058) |
-| `dashboard.Template.Delete` | `crud-decorator` | 'dashboards', 'delete' | [backend/src/model/component/DashboardComponent.ts:1119](../../backend/src/model/component/DashboardComponent.ts#L1119) |
-| `dashboard.Template.Get` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/DashboardComponent.ts:1025](../../backend/src/model/component/DashboardComponent.ts#L1025) |
-| `dashboard.Template.List` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/DashboardComponent.ts:1004](../../backend/src/model/component/DashboardComponent.ts#L1004) |
-| `dashboard.Template.Preview` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/DashboardComponent.ts:1038](../../backend/src/model/component/DashboardComponent.ts#L1038) |
-| `dashboard.Template.SaveFromDashboard` | `crud-decorator` | 'dashboards', 'create', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:1140](../../backend/src/model/component/DashboardComponent.ts#L1140) |
-| `dashboard.Template.Update` | `crud-decorator` | 'dashboards', 'update' | [backend/src/model/component/DashboardComponent.ts:1090](../../backend/src/model/component/DashboardComponent.ts#L1090) |
-| `dashboard.Unpin` | `crud-decorator` | 'dashboards', 'read', (p) => p?.id | [backend/src/model/component/DashboardComponent.ts:1318](../../backend/src/model/component/DashboardComponent.ts#L1318) |
-| `dashboard.Update` | `crud-decorator` | 'dashboards', 'update', (p) => p?.id | [backend/src/model/component/DashboardComponent.ts:538](../../backend/src/model/component/DashboardComponent.ts#L538) |
-| `dashboard.UpdateItemSize` | `crud-decorator` | 'dashboards', 'update', (params) => params?.dashboard | [backend/src/model/component/DashboardComponent.ts:684](../../backend/src/model/component/DashboardComponent.ts#L684) |
-| `device.Call` | `crud-decorator` | 'devices', 'execute', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1073](../../backend/src/model/component/DeviceComponent.ts#L1073) |
-| `device.CheckReplacement` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/DeviceComponent.ts:1234](../../backend/src/model/component/DeviceComponent.ts#L1234) |
-| `device.Delete` | `crud-decorator` | 'devices', 'delete' | [backend/src/model/component/DeviceComponent.ts:1145](../../backend/src/model/component/DeviceComponent.ts#L1145) |
-| `device.Describe` | `public` | NoPermissions | [backend/src/model/component/DeviceComponent.ts:857](../../backend/src/model/component/DeviceComponent.ts#L857) |
-| `device.Get` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1106](../../backend/src/model/component/DeviceComponent.ts#L1106) |
-| `device.GetDeviceChannels` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1359](../../backend/src/model/component/DeviceComponent.ts#L1359) |
-| `device.GetImage` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1342](../../backend/src/model/component/DeviceComponent.ts#L1342) |
-| `device.GetInfo` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1011](../../backend/src/model/component/DeviceComponent.ts#L1011) |
-| `device.GetKind` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1275](../../backend/src/model/component/DeviceComponent.ts#L1275) |
-| `device.GetSetup` | `crud-decorator` | 'configurations', 'read', () => undefined | [backend/src/model/component/DeviceComponent.ts:1035](../../backend/src/model/component/DeviceComponent.ts#L1035) |
-| `device.GetStatusHistory` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1454](../../backend/src/model/component/DeviceComponent.ts#L1454) |
-| `device.GetStatusTimeline` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1417](../../backend/src/model/component/DeviceComponent.ts#L1417) |
-| `device.List` | `public` | NoPermissions | [backend/src/model/component/DeviceComponent.ts:955](../../backend/src/model/component/DeviceComponent.ts#L955) |
-| `device.ListRetired` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/DeviceComponent.ts:1220](../../backend/src/model/component/DeviceComponent.ts#L1220) |
-| `device.Relationships.Get` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:919](../../backend/src/model/component/DeviceComponent.ts#L919) |
-| `device.Relationships.Query` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/DeviceComponent.ts:937](../../backend/src/model/component/DeviceComponent.ts#L937) |
-| `device.ReplaceHardware` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/DeviceComponent.ts:1252](../../backend/src/model/component/DeviceComponent.ts#L1252) |
-| `device.Restore` | `crud-decorator` | 'devices', 'delete' | [backend/src/model/component/DeviceComponent.ts:1203](../../backend/src/model/component/DeviceComponent.ts#L1203) |
-| `device.Retire` | `crud-decorator` | 'devices', 'delete' | [backend/src/model/component/DeviceComponent.ts:1181](../../backend/src/model/component/DeviceComponent.ts#L1181) |
-| `device.SetImage` | `crud-decorator` | 'devices', 'update', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1313](../../backend/src/model/component/DeviceComponent.ts#L1313) |
-| `device.SetKind` | `crud-decorator` | 'devices', 'update', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1290](../../backend/src/model/component/DeviceComponent.ts#L1290) |
-| `device.Topology` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/DeviceComponent.ts:864](../../backend/src/model/component/DeviceComponent.ts#L864) |
+| `dashboard.Activity.List` | `crud-decorator` | 'dashboards', 'read', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:1507](../../backend/src/model/component/DashboardComponent.ts#L1507) |
+| `dashboard.AddItem` | `crud-decorator` | 'dashboards', 'update', (params) => params?.dashboard | [backend/src/model/component/DashboardComponent.ts:675](../../backend/src/model/component/DashboardComponent.ts#L675) |
+| `dashboard.ClearDefault` | `crud-decorator` | 'dashboards', 'update' | [backend/src/model/component/DashboardComponent.ts:1298](../../backend/src/model/component/DashboardComponent.ts#L1298) |
+| `dashboard.Clone` | `crud-decorator` | 'dashboards', 'create' | [backend/src/model/component/DashboardComponent.ts:1467](../../backend/src/model/component/DashboardComponent.ts#L1467) |
+| `dashboard.Create` | `crud-decorator` | 'dashboards', 'create' | [backend/src/model/component/DashboardComponent.ts:528](../../backend/src/model/component/DashboardComponent.ts#L528) |
+| `dashboard.Delete` | `crud-decorator` | 'dashboards', 'delete', (p) => p?.id | [backend/src/model/component/DashboardComponent.ts:605](../../backend/src/model/component/DashboardComponent.ts#L605) |
+| `dashboard.DeleteBulk` | `public` | NoPermissions | [backend/src/model/component/DashboardComponent.ts:628](../../backend/src/model/component/DashboardComponent.ts#L628) |
+| `dashboard.Describe` | `public` | NoPermissions | [backend/src/model/component/DashboardComponent.ts:166](../../backend/src/model/component/DashboardComponent.ts#L166) |
+| `dashboard.Export` | `crud-decorator` | 'dashboards', 'read', (p) => p?.id | [backend/src/model/component/DashboardComponent.ts:1409](../../backend/src/model/component/DashboardComponent.ts#L1409) |
+| `dashboard.Get` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/DashboardComponent.ts:314](../../backend/src/model/component/DashboardComponent.ts#L314) |
+| `dashboard.GetDefault` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/DashboardComponent.ts:1256](../../backend/src/model/component/DashboardComponent.ts#L1256) |
+| `dashboard.GetSettings` | `crud-decorator` | 'dashboards', 'read', (params) => params?.dashboardId | [backend/src/model/component/DashboardComponent.ts:340](../../backend/src/model/component/DashboardComponent.ts#L340) |
+| `dashboard.GetUIConfig` | `public` | NoPermissions | [backend/src/model/component/DashboardComponent.ts:815](../../backend/src/model/component/DashboardComponent.ts#L815) |
+| `dashboard.Import` | `crud-decorator` | 'dashboards', 'create' | [backend/src/model/component/DashboardComponent.ts:1424](../../backend/src/model/component/DashboardComponent.ts#L1424) |
+| `dashboard.Item.Add` | `crud-decorator` | 'dashboards', 'update', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:849](../../backend/src/model/component/DashboardComponent.ts#L849) |
+| `dashboard.Item.AddBulk` | `crud-decorator` | 'dashboards', 'update', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:892](../../backend/src/model/component/DashboardComponent.ts#L892) |
+| `dashboard.Item.List` | `crud-decorator` | 'dashboards', 'read', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:827](../../backend/src/model/component/DashboardComponent.ts#L827) |
+| `dashboard.Item.Remove` | `crud-decorator` | 'dashboards', 'update', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:960](../../backend/src/model/component/DashboardComponent.ts#L960) |
+| `dashboard.Item.Reorder` | `crud-decorator` | 'dashboards', 'update', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:979](../../backend/src/model/component/DashboardComponent.ts#L979) |
+| `dashboard.Item.SetAll` | `crud-decorator` | 'dashboards', 'update', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:996](../../backend/src/model/component/DashboardComponent.ts#L996) |
+| `dashboard.Item.Update` | `crud-decorator` | 'dashboards', 'update', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:925](../../backend/src/model/component/DashboardComponent.ts#L925) |
+| `dashboard.List` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/DashboardComponent.ts:281](../../backend/src/model/component/DashboardComponent.ts#L281) |
+| `dashboard.ListPinned` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/DashboardComponent.ts:1312](../../backend/src/model/component/DashboardComponent.ts#L1312) |
+| `dashboard.Pin` | `crud-decorator` | 'dashboards', 'read', (p) => p?.id | [backend/src/model/component/DashboardComponent.ts:1348](../../backend/src/model/component/DashboardComponent.ts#L1348) |
+| `dashboard.RemoveItem` | `crud-decorator` | 'dashboards', 'update', (params) => params?.dashboard | [backend/src/model/component/DashboardComponent.ts:734](../../backend/src/model/component/DashboardComponent.ts#L734) |
+| `dashboard.Reorder` | `crud-decorator` | 'dashboards', 'update' | [backend/src/model/component/DashboardComponent.ts:773](../../backend/src/model/component/DashboardComponent.ts#L773) |
+| `dashboard.ReorderItems` | `crud-decorator` | 'dashboards', 'update', (params) => params?.dashboard | [backend/src/model/component/DashboardComponent.ts:752](../../backend/src/model/component/DashboardComponent.ts#L752) |
+| `dashboard.ReorderPins` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/DashboardComponent.ts:1391](../../backend/src/model/component/DashboardComponent.ts#L1391) |
+| `dashboard.SetDefault` | `crud-decorator` | 'dashboards', 'update', (p) => p?.id | [backend/src/model/component/DashboardComponent.ts:1280](../../backend/src/model/component/DashboardComponent.ts#L1280) |
+| `dashboard.SetSettings` | `crud-decorator` | 'dashboards', 'update', (params) => params?.dashboardId | [backend/src/model/component/DashboardComponent.ts:368](../../backend/src/model/component/DashboardComponent.ts#L368) |
+| `dashboard.Template.Create` | `crud-decorator` | 'dashboards', 'create' | [backend/src/model/component/DashboardComponent.ts:1095](../../backend/src/model/component/DashboardComponent.ts#L1095) |
+| `dashboard.Template.Delete` | `crud-decorator` | 'dashboards', 'delete' | [backend/src/model/component/DashboardComponent.ts:1156](../../backend/src/model/component/DashboardComponent.ts#L1156) |
+| `dashboard.Template.Get` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/DashboardComponent.ts:1062](../../backend/src/model/component/DashboardComponent.ts#L1062) |
+| `dashboard.Template.List` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/DashboardComponent.ts:1041](../../backend/src/model/component/DashboardComponent.ts#L1041) |
+| `dashboard.Template.Preview` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/DashboardComponent.ts:1075](../../backend/src/model/component/DashboardComponent.ts#L1075) |
+| `dashboard.Template.SaveFromDashboard` | `crud-decorator` | 'dashboards', 'create', (p) => p?.dashboardId | [backend/src/model/component/DashboardComponent.ts:1177](../../backend/src/model/component/DashboardComponent.ts#L1177) |
+| `dashboard.Template.Update` | `crud-decorator` | 'dashboards', 'update' | [backend/src/model/component/DashboardComponent.ts:1127](../../backend/src/model/component/DashboardComponent.ts#L1127) |
+| `dashboard.Unpin` | `crud-decorator` | 'dashboards', 'read', (p) => p?.id | [backend/src/model/component/DashboardComponent.ts:1375](../../backend/src/model/component/DashboardComponent.ts#L1375) |
+| `dashboard.Update` | `crud-decorator` | 'dashboards', 'update', (p) => p?.id | [backend/src/model/component/DashboardComponent.ts:562](../../backend/src/model/component/DashboardComponent.ts#L562) |
+| `dashboard.UpdateItemSize` | `crud-decorator` | 'dashboards', 'update', (params) => params?.dashboard | [backend/src/model/component/DashboardComponent.ts:711](../../backend/src/model/component/DashboardComponent.ts#L711) |
+| `device.Call` | `crud-decorator` | 'devices', 'execute', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1283](../../backend/src/model/component/DeviceComponent.ts#L1283) |
+| `device.CallMany` | `crud-decorator` | 'devices', 'execute', () => undefined | [backend/src/model/component/DeviceComponent.ts:1329](../../backend/src/model/component/DeviceComponent.ts#L1329) |
+| `device.CheckReplacement` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/DeviceComponent.ts:1565](../../backend/src/model/component/DeviceComponent.ts#L1565) |
+| `device.Delete` | `crud-decorator` | 'devices', 'delete' | [backend/src/model/component/DeviceComponent.ts:1455](../../backend/src/model/component/DeviceComponent.ts#L1455) |
+| `device.Describe` | `public` | NoPermissions | [backend/src/model/component/DeviceComponent.ts:1082](../../backend/src/model/component/DeviceComponent.ts#L1082) |
+| `device.Get` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1412](../../backend/src/model/component/DeviceComponent.ts#L1412) |
+| `device.GetDeviceChannels` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1786](../../backend/src/model/component/DeviceComponent.ts#L1786) |
+| `device.GetEmLiveDebug` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1717](../../backend/src/model/component/DeviceComponent.ts#L1717) |
+| `device.GetImage` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1769](../../backend/src/model/component/DeviceComponent.ts#L1769) |
+| `device.GetInfo` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1221](../../backend/src/model/component/DeviceComponent.ts#L1221) |
+| `device.GetKind` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1632](../../backend/src/model/component/DeviceComponent.ts#L1632) |
+| `device.GetSetup` | `crud-decorator` | 'configurations', 'read', () => undefined | [backend/src/model/component/DeviceComponent.ts:1245](../../backend/src/model/component/DeviceComponent.ts#L1245) |
+| `device.GetStatusHistory` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1881](../../backend/src/model/component/DeviceComponent.ts#L1881) |
+| `device.GetStatusTimeline` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1844](../../backend/src/model/component/DeviceComponent.ts#L1844) |
+| `device.List` | `public` | NoPermissions | [backend/src/model/component/DeviceComponent.ts:1180](../../backend/src/model/component/DeviceComponent.ts#L1180) |
+| `device.ListRetired` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/DeviceComponent.ts:1551](../../backend/src/model/component/DeviceComponent.ts#L1551) |
+| `device.Relationships.Get` | `crud-decorator` | 'devices', 'read', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1144](../../backend/src/model/component/DeviceComponent.ts#L1144) |
+| `device.Relationships.Query` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/DeviceComponent.ts:1162](../../backend/src/model/component/DeviceComponent.ts#L1162) |
+| `device.ReplaceHardware` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/DeviceComponent.ts:1596](../../backend/src/model/component/DeviceComponent.ts#L1596) |
+| `device.Restore` | `crud-decorator` | 'devices', 'delete' | [backend/src/model/component/DeviceComponent.ts:1534](../../backend/src/model/component/DeviceComponent.ts#L1534) |
+| `device.Retire` | `crud-decorator` | 'devices', 'delete' | [backend/src/model/component/DeviceComponent.ts:1512](../../backend/src/model/component/DeviceComponent.ts#L1512) |
+| `device.SetEmLiveDebug` | `crud-decorator` | 'devices', 'update', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1692](../../backend/src/model/component/DeviceComponent.ts#L1692) |
+| `device.SetImage` | `crud-decorator` | 'devices', 'update', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1740](../../backend/src/model/component/DeviceComponent.ts#L1740) |
+| `device.SetJournalDebug` | `crud-decorator` | 'devices', 'update', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1670](../../backend/src/model/component/DeviceComponent.ts#L1670) |
+| `device.SetKind` | `crud-decorator` | 'devices', 'update', (params) => params?.shellyID | [backend/src/model/component/DeviceComponent.ts:1647](../../backend/src/model/component/DeviceComponent.ts#L1647) |
+| `device.Topology` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/DeviceComponent.ts:1089](../../backend/src/model/component/DeviceComponent.ts#L1089) |
 | `deviceevents.Describe` | `public` | NoPermissions | [backend/src/model/component/DeviceEventComponent.ts:43](../../backend/src/model/component/DeviceEventComponent.ts#L43) |
 | `deviceevents.Query` | `fine-grained-decorator` | canViewAuditLog | [backend/src/model/component/DeviceEventComponent.ts:50](../../backend/src/model/component/DeviceEventComponent.ts#L50) |
-| `deviceIngress.AuthMethods` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:182](../../backend/src/model/component/DeviceIngressComponent.ts#L182) |
-| `deviceIngress.Connection.Disconnect` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:530](../../backend/src/model/component/DeviceIngressComponent.ts#L530) |
-| `deviceIngress.Connection.Get` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:512](../../backend/src/model/component/DeviceIngressComponent.ts#L512) |
-| `deviceIngress.Connection.List` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:492](../../backend/src/model/component/DeviceIngressComponent.ts#L492) |
-| `deviceIngress.Credential.CancelRotation` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:450](../../backend/src/model/component/DeviceIngressComponent.ts#L450) |
-| `deviceIngress.Credential.CreateToken` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:301](../../backend/src/model/component/DeviceIngressComponent.ts#L301) |
-| `deviceIngress.Credential.FinalizeRotation` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:428](../../backend/src/model/component/DeviceIngressComponent.ts#L428) |
-| `deviceIngress.Credential.Revoke` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:471](../../backend/src/model/component/DeviceIngressComponent.ts#L471) |
-| `deviceIngress.Credential.Rotate` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:391](../../backend/src/model/component/DeviceIngressComponent.ts#L391) |
-| `deviceIngress.Describe` | `public` | NoPermissions | [backend/src/model/component/DeviceIngressComponent.ts:162](../../backend/src/model/component/DeviceIngressComponent.ts#L162) |
-| `deviceIngress.EnrollmentToken.Create` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:328](../../backend/src/model/component/DeviceIngressComponent.ts#L328) |
-| `deviceIngress.EnrollmentToken.List` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:358](../../backend/src/model/component/DeviceIngressComponent.ts#L358) |
-| `deviceIngress.EnrollmentToken.Revoke` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:371](../../backend/src/model/component/DeviceIngressComponent.ts#L371) |
-| `deviceIngress.Identity.Create` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:193](../../backend/src/model/component/DeviceIngressComponent.ts#L193) |
-| `deviceIngress.Identity.Disable` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:255](../../backend/src/model/component/DeviceIngressComponent.ts#L255) |
-| `deviceIngress.Identity.Get` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:216](../../backend/src/model/component/DeviceIngressComponent.ts#L216) |
-| `deviceIngress.Identity.List` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:277](../../backend/src/model/component/DeviceIngressComponent.ts#L277) |
-| `deviceIngress.Identity.Update` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:232](../../backend/src/model/component/DeviceIngressComponent.ts#L232) |
-| `deviceIngress.Profile.List` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:169](../../backend/src/model/component/DeviceIngressComponent.ts#L169) |
-| `deviceIngress.Rejection.List` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:558](../../backend/src/model/component/DeviceIngressComponent.ts#L558) |
-| `deviceIngress.Rejection.Resolve` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:578](../../backend/src/model/component/DeviceIngressComponent.ts#L578) |
-| `deviceIngress.Setup.Bundle` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:632](../../backend/src/model/component/DeviceIngressComponent.ts#L632) |
-| `deviceIngress.Setup.Plan` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:599](../../backend/src/model/component/DeviceIngressComponent.ts#L599) |
-| `deviceIngress.Setup.ReportApply` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:665](../../backend/src/model/component/DeviceIngressComponent.ts#L665) |
+| `deviceIngress.AuthMethods` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:210](../../backend/src/model/component/DeviceIngressComponent.ts#L210) |
+| `deviceIngress.Connection.Disconnect` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:620](../../backend/src/model/component/DeviceIngressComponent.ts#L620) |
+| `deviceIngress.Connection.Get` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:602](../../backend/src/model/component/DeviceIngressComponent.ts#L602) |
+| `deviceIngress.Connection.List` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:582](../../backend/src/model/component/DeviceIngressComponent.ts#L582) |
+| `deviceIngress.Credential.CancelRotation` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:521](../../backend/src/model/component/DeviceIngressComponent.ts#L521) |
+| `deviceIngress.Credential.CreateToken` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:372](../../backend/src/model/component/DeviceIngressComponent.ts#L372) |
+| `deviceIngress.Credential.FinalizeRotation` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:499](../../backend/src/model/component/DeviceIngressComponent.ts#L499) |
+| `deviceIngress.Credential.ListExpiring` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:563](../../backend/src/model/component/DeviceIngressComponent.ts#L563) |
+| `deviceIngress.Credential.Revoke` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:542](../../backend/src/model/component/DeviceIngressComponent.ts#L542) |
+| `deviceIngress.Credential.Rotate` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:462](../../backend/src/model/component/DeviceIngressComponent.ts#L462) |
+| `deviceIngress.Describe` | `public` | NoPermissions | [backend/src/model/component/DeviceIngressComponent.ts:190](../../backend/src/model/component/DeviceIngressComponent.ts#L190) |
+| `deviceIngress.EnrollmentToken.Create` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:399](../../backend/src/model/component/DeviceIngressComponent.ts#L399) |
+| `deviceIngress.EnrollmentToken.List` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:429](../../backend/src/model/component/DeviceIngressComponent.ts#L429) |
+| `deviceIngress.EnrollmentToken.Revoke` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:442](../../backend/src/model/component/DeviceIngressComponent.ts#L442) |
+| `deviceIngress.Identity.Create` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:227](../../backend/src/model/component/DeviceIngressComponent.ts#L227) |
+| `deviceIngress.Identity.Disable` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:326](../../backend/src/model/component/DeviceIngressComponent.ts#L326) |
+| `deviceIngress.Identity.Enable` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:289](../../backend/src/model/component/DeviceIngressComponent.ts#L289) |
+| `deviceIngress.Identity.Get` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:250](../../backend/src/model/component/DeviceIngressComponent.ts#L250) |
+| `deviceIngress.Identity.List` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:348](../../backend/src/model/component/DeviceIngressComponent.ts#L348) |
+| `deviceIngress.Identity.Update` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:266](../../backend/src/model/component/DeviceIngressComponent.ts#L266) |
+| `deviceIngress.Profile.List` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:197](../../backend/src/model/component/DeviceIngressComponent.ts#L197) |
+| `deviceIngress.Rejection.List` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:648](../../backend/src/model/component/DeviceIngressComponent.ts#L648) |
+| `deviceIngress.Rejection.Resolve` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:668](../../backend/src/model/component/DeviceIngressComponent.ts#L668) |
+| `deviceIngress.Rotation.Cancel` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:849](../../backend/src/model/component/DeviceIngressComponent.ts#L849) |
+| `deviceIngress.Rotation.List` | `crud-decorator` | 'devices', 'read', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:829](../../backend/src/model/component/DeviceIngressComponent.ts#L829) |
+| `deviceIngress.Rotation.Start` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:786](../../backend/src/model/component/DeviceIngressComponent.ts#L786) |
+| `deviceIngress.Setup.Bundle` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:722](../../backend/src/model/component/DeviceIngressComponent.ts#L722) |
+| `deviceIngress.Setup.Plan` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:689](../../backend/src/model/component/DeviceIngressComponent.ts#L689) |
+| `deviceIngress.Setup.ReportApply` | `crud-decorator` | 'devices', 'update', DEVICE_INGRESS_COLLECTION | [backend/src/model/component/DeviceIngressComponent.ts:755](../../backend/src/model/component/DeviceIngressComponent.ts#L755) |
 | `devicepower.Describe` | `public` | NoPermissions | [backend/src/model/component/DevicePowerComponent.ts:25](../../backend/src/model/component/DevicePowerComponent.ts#L25) |
 | `devicepower.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/DevicePowerComponent.ts:48](../../backend/src/model/component/DevicePowerComponent.ts#L48) |
 | `devicepower.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/DevicePowerComponent.ts:61](../../backend/src/model/component/DevicePowerComponent.ts#L61) |
@@ -520,24 +566,39 @@ Regenerate with `cd backend && npm run generate`.
 | `emdata.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/EmDataComponent.ts:77](../../backend/src/model/component/EmDataComponent.ts#L77) |
 | `emdata.ResetCounters` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/EmDataComponent.ts:132](../../backend/src/model/component/EmDataComponent.ts#L132) |
 | `emdata.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/EmDataComponent.ts:55](../../backend/src/model/component/EmDataComponent.ts#L55) |
-| `energy.Current` | `public` | NoPermissions | [backend/src/model/component/EnergyComponent.ts:192](../../backend/src/model/component/EnergyComponent.ts#L192) |
-| `energy.DeleteLogicalMeter` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/EnergyComponent.ts:297](../../backend/src/model/component/EnergyComponent.ts#L297) |
-| `energy.DeleteMeterConnection` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/EnergyComponent.ts:342](../../backend/src/model/component/EnergyComponent.ts#L342) |
-| `energy.Describe` | `public` | NoPermissions | [backend/src/model/component/EnergyComponent.ts:163](../../backend/src/model/component/EnergyComponent.ts#L163) |
-| `energy.GetResetAudit` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/EnergyComponent.ts:246](../../backend/src/model/component/EnergyComponent.ts#L246) |
-| `energy.ListLogicalMeters` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/EnergyComponent.ts:259](../../backend/src/model/component/EnergyComponent.ts#L259) |
-| `energy.ListMeasurementPoints` | `public` | NoPermissions | [backend/src/model/component/EnergyComponent.ts:212](../../backend/src/model/component/EnergyComponent.ts#L212) |
-| `energy.ListMeterConnections` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/EnergyComponent.ts:316](../../backend/src/model/component/EnergyComponent.ts#L316) |
-| `energy.Query` | `public` | NoPermissions | [backend/src/model/component/EnergyComponent.ts:170](../../backend/src/model/component/EnergyComponent.ts#L170) |
-| `energy.SaveLogicalMeter` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/EnergyComponent.ts:278](../../backend/src/model/component/EnergyComponent.ts#L278) |
-| `energy.SaveMeterConnection` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/EnergyComponent.ts:329](../../backend/src/model/component/EnergyComponent.ts#L329) |
-| `energy.SetPointOverride` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/EnergyComponent.ts:229](../../backend/src/model/component/EnergyComponent.ts#L229) |
-| `entity.Describe` | `public` | NoPermissions | [backend/src/model/component/EntityComponent.ts:568](../../backend/src/model/component/EntityComponent.ts#L568) |
-| `entity.Get` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/EntityComponent.ts:679](../../backend/src/model/component/EntityComponent.ts#L679) |
-| `entity.GetActionSchema` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/EntityComponent.ts:630](../../backend/src/model/component/EntityComponent.ts#L630) |
-| `entity.GetCapabilities` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/EntityComponent.ts:582](../../backend/src/model/component/EntityComponent.ts#L582) |
-| `entity.InvokeAction` | `fine-grained-decorator` | canInvokeEntityAction | [backend/src/model/component/EntityComponent.ts:726](../../backend/src/model/component/EntityComponent.ts#L726) |
-| `entity.List` | `public` | NoPermissions | [backend/src/model/component/EntityComponent.ts:812](../../backend/src/model/component/EntityComponent.ts#L812) |
+| `energy.ApplyCommodityRepair` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/EnergyComponent.ts:466](../../backend/src/model/component/EnergyComponent.ts#L466) |
+| `energy.ApplyLogicalMeterMeaningChange` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/EnergyComponent.ts:703](../../backend/src/model/component/EnergyComponent.ts#L703) |
+| `energy.Baseline` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/EnergyComponent.ts:493](../../backend/src/model/component/EnergyComponent.ts#L493) |
+| `energy.Current` | `public` | NoPermissions | [backend/src/model/component/EnergyComponent.ts:324](../../backend/src/model/component/EnergyComponent.ts#L324) |
+| `energy.DeleteBaselineExclusion` | `crud-decorator` | 'devices', 'update', NOT_A_DEVICE_ID | [backend/src/model/component/EnergyComponent.ts:568](../../backend/src/model/component/EnergyComponent.ts#L568) |
+| `energy.DeleteLogicalMeter` | `crud-decorator` | 'devices', 'update', NOT_A_DEVICE_ID | [backend/src/model/component/EnergyComponent.ts:632](../../backend/src/model/component/EnergyComponent.ts#L632) |
+| `energy.DeleteMeterConnection` | `crud-decorator` | 'devices', 'update', NOT_A_DEVICE_ID | [backend/src/model/component/EnergyComponent.ts:753](../../backend/src/model/component/EnergyComponent.ts#L753) |
+| `energy.Describe` | `public` | NoPermissions | [backend/src/model/component/EnergyComponent.ts:295](../../backend/src/model/component/EnergyComponent.ts#L295) |
+| `energy.GetResetAudit` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/EnergyComponent.ts:480](../../backend/src/model/component/EnergyComponent.ts#L480) |
+| `energy.ListBaselineExclusions` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/EnergyComponent.ts:529](../../backend/src/model/component/EnergyComponent.ts#L529) |
+| `energy.ListLogicalMeterMeaningHistory` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/EnergyComponent.ts:670](../../backend/src/model/component/EnergyComponent.ts#L670) |
+| `energy.ListLogicalMeterMeaningReviewQueue` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/EnergyComponent.ts:653](../../backend/src/model/component/EnergyComponent.ts#L653) |
+| `energy.ListLogicalMeters` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/EnergyComponent.ts:585](../../backend/src/model/component/EnergyComponent.ts#L585) |
+| `energy.ListMeasurementPoints` | `public` | NoPermissions | [backend/src/model/component/EnergyComponent.ts:414](../../backend/src/model/component/EnergyComponent.ts#L414) |
+| `energy.ListMeterConnections` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/EnergyComponent.ts:720](../../backend/src/model/component/EnergyComponent.ts#L720) |
+| `energy.OvernightBaseline` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/EnergyComponent.ts:511](../../backend/src/model/component/EnergyComponent.ts#L511) |
+| `energy.PreviewCommodityRepair` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/EnergyComponent.ts:448](../../backend/src/model/component/EnergyComponent.ts#L448) |
+| `energy.PreviewLogicalMeterMeaningChange` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/EnergyComponent.ts:686](../../backend/src/model/component/EnergyComponent.ts#L686) |
+| `energy.Projection` | `public` | NoPermissions | [backend/src/model/component/EnergyComponent.ts:344](../../backend/src/model/component/EnergyComponent.ts#L344) |
+| `energy.Query` | `public` | NoPermissions | [backend/src/model/component/EnergyComponent.ts:302](../../backend/src/model/component/EnergyComponent.ts#L302) |
+| `energy.RejectedSyncBlocks` | `public` | NoPermissions | [backend/src/model/component/EnergyComponent.ts:374](../../backend/src/model/component/EnergyComponent.ts#L374) |
+| `energy.RequeueRejectedSyncBlock` | `crud-decorator` | 'devices', 'update', NOT_A_DEVICE_ID | [backend/src/model/component/EnergyComponent.ts:393](../../backend/src/model/component/EnergyComponent.ts#L393) |
+| `energy.SaveBaselineExclusion` | `crud-decorator` | 'devices', 'update', NOT_A_DEVICE_ID | [backend/src/model/component/EnergyComponent.ts:545](../../backend/src/model/component/EnergyComponent.ts#L545) |
+| `energy.SaveLogicalMeter` | `crud-decorator` | 'devices', 'update', NOT_A_DEVICE_ID | [backend/src/model/component/EnergyComponent.ts:605](../../backend/src/model/component/EnergyComponent.ts#L605) |
+| `energy.SaveMeterConnection` | `crud-decorator` | 'devices', 'update', NOT_A_DEVICE_ID | [backend/src/model/component/EnergyComponent.ts:733](../../backend/src/model/component/EnergyComponent.ts#L733) |
+| `energy.SetPointOverride` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/EnergyComponent.ts:431](../../backend/src/model/component/EnergyComponent.ts#L431) |
+| `energy.SyncStatus` | `public` | NoPermissions | [backend/src/model/component/EnergyComponent.ts:358](../../backend/src/model/component/EnergyComponent.ts#L358) |
+| `entity.Describe` | `public` | NoPermissions | [backend/src/model/component/EntityComponent.ts:704](../../backend/src/model/component/EntityComponent.ts#L704) |
+| `entity.Get` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/EntityComponent.ts:815](../../backend/src/model/component/EntityComponent.ts#L815) |
+| `entity.GetActionSchema` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/EntityComponent.ts:766](../../backend/src/model/component/EntityComponent.ts#L766) |
+| `entity.GetCapabilities` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/EntityComponent.ts:718](../../backend/src/model/component/EntityComponent.ts#L718) |
+| `entity.InvokeAction` | `fine-grained-decorator` | canInvokeEntityAction | [backend/src/model/component/EntityComponent.ts:862](../../backend/src/model/component/EntityComponent.ts#L862) |
+| `entity.List` | `public` | NoPermissions | [backend/src/model/component/EntityComponent.ts:948](../../backend/src/model/component/EntityComponent.ts#L948) |
 | `eth.Describe` | `public` | NoPermissions | [backend/src/model/component/EthComponent.ts:24](../../backend/src/model/component/EthComponent.ts#L24) |
 | `eth.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/EthComponent.ts:44](../../backend/src/model/component/EthComponent.ts#L44) |
 | `eth.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/EthComponent.ts:57](../../backend/src/model/component/EthComponent.ts#L57) |
@@ -548,56 +609,70 @@ Regenerate with `cd backend && npm run generate`.
 | `fan.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/FanComponent.ts:28](../../backend/src/model/component/FanComponent.ts#L28) |
 | `fan.Set` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/FanComponent.ts:61](../../backend/src/model/component/FanComponent.ts#L61) |
 | `fan.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/FanComponent.ts:50](../../backend/src/model/component/FanComponent.ts#L50) |
-| `firmware.CheckForUpdateBulk` | `fine-grained-decorator` | canExecuteFirmwareDevices | [backend/src/model/component/FirmwareComponent.ts:810](../../backend/src/model/component/FirmwareComponent.ts#L810) |
-| `firmware.CreateLibraryDownloadUrl` | `fine-grained-decorator` | canUpdateFirmwareDevices | [backend/src/model/component/FirmwareComponent.ts:1852](../../backend/src/model/component/FirmwareComponent.ts#L1852) |
-| `firmware.CreateUploadTicket` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/model/component/FirmwareComponent.ts:1836](../../backend/src/model/component/FirmwareComponent.ts#L1836) |
-| `firmware.DeleteLibraryEntry` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/model/component/FirmwareComponent.ts:1931](../../backend/src/model/component/FirmwareComponent.ts#L1931) |
-| `firmware.Describe` | `public` | NoPermissions | [backend/src/model/component/FirmwareComponent.ts:601](../../backend/src/model/component/FirmwareComponent.ts#L601) |
-| `firmware.GetAutoUpdateChannel` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/model/component/FirmwareComponent.ts:1341](../../backend/src/model/component/FirmwareComponent.ts#L1341) |
-| `firmware.GetAutoUpdateDevices` | `fine-grained-decorator` | canReadFirmwareDevices | [backend/src/model/component/FirmwareComponent.ts:869](../../backend/src/model/component/FirmwareComponent.ts#L869) |
-| `firmware.GetAutoUpdateMode` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/FirmwareComponent.ts:983](../../backend/src/model/component/FirmwareComponent.ts#L983) |
-| `firmware.GetAutoUpdateModes` | `fine-grained-decorator` | canReadFirmwareDevices | [backend/src/model/component/FirmwareComponent.ts:890](../../backend/src/model/component/FirmwareComponent.ts#L890) |
-| `firmware.GetAutoUpdateStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/FirmwareComponent.ts:973](../../backend/src/model/component/FirmwareComponent.ts#L973) |
-| `firmware.GetLastAutoUpdateRun` | `fine-grained-decorator` | canReadFirmwareDevices | [backend/src/model/component/FirmwareComponent.ts:1370](../../backend/src/model/component/FirmwareComponent.ts#L1370) |
-| `firmware.ListLibrary` | `fine-grained-decorator` | canUpdateFirmwareDevices | [backend/src/model/component/FirmwareComponent.ts:1819](../../backend/src/model/component/FirmwareComponent.ts#L1819) |
-| `firmware.RegisterManualUpdate` | `fine-grained-decorator` | async (sender, params) => { const shellyIDs = Array.isArray(params?.shellyIDs) ? params.shellyIDs : []; return ( shellyIDs.length > 0 && ( a | [backend/src/model/component/FirmwareComponent.ts:608](../../backend/src/model/component/FirmwareComponent.ts#L608) |
-| `firmware.SetAutoUpdate` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/FirmwareComponent.ts:909](../../backend/src/model/component/FirmwareComponent.ts#L909) |
-| `firmware.SetAutoUpdateBulk` | `fine-grained-decorator` | canUpdateFirmwareDevices | [backend/src/model/component/FirmwareComponent.ts:933](../../backend/src/model/component/FirmwareComponent.ts#L933) |
-| `firmware.SetAutoUpdateChannel` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/model/component/FirmwareComponent.ts:1351](../../backend/src/model/component/FirmwareComponent.ts#L1351) |
-| `firmware.SetAutoUpdateMode` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/FirmwareComponent.ts:1285](../../backend/src/model/component/FirmwareComponent.ts#L1285) |
-| `firmware.SetAutoUpdateModeBulk` | `fine-grained-decorator` | canUpdateFirmwareDevices | [backend/src/model/component/FirmwareComponent.ts:1302](../../backend/src/model/component/FirmwareComponent.ts#L1302) |
-| `firmware.StartUpdateJob` | `fine-grained-decorator` | async (sender, params) => { const shellyIDs = Array.isArray(params?.shellyIDs) ? params.shellyIDs : []; return ( shellyIDs.length > 0 && ( a | [backend/src/model/component/FirmwareComponent.ts:736](../../backend/src/model/component/FirmwareComponent.ts#L736) |
-| `firmware.TriggerAutoUpdate` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/model/component/FirmwareComponent.ts:1699](../../backend/src/model/component/FirmwareComponent.ts#L1699) |
-| `firmware.UnregisterManualUpdate` | `fine-grained-decorator` | async (sender, params) => { const shellyIDs = Array.isArray(params?.shellyIDs) ? params.shellyIDs : []; return ( shellyIDs.length > 0 && ( a | [backend/src/model/component/FirmwareComponent.ts:682](../../backend/src/model/component/FirmwareComponent.ts#L682) |
-| `firmware.UpdateLibraryEntry` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/model/component/FirmwareComponent.ts:1876](../../backend/src/model/component/FirmwareComponent.ts#L1876) |
-| `fleet.GetCapabilities` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/FleetComponent.ts:63](../../backend/src/model/component/FleetComponent.ts#L63) |
-| `fleet.GetMetrics` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/FleetComponent.ts:42](../../backend/src/model/component/FleetComponent.ts#L42) |
-| `fleetMap.GetAlertSnapshot` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/FleetMapComponent.ts:139](../../backend/src/model/component/FleetMapComponent.ts#L139) |
-| `fleetMap.GetEnergySnapshot` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/FleetMapComponent.ts:71](../../backend/src/model/component/FleetMapComponent.ts#L71) |
-| `fleetMap.GetSignalSnapshot` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/FleetMapComponent.ts:105](../../backend/src/model/component/FleetMapComponent.ts#L105) |
+| `fileTransfer.Begin` | `fine-grained-decorator` | canBeginTransfer | [backend/src/model/component/FileTransferComponent.ts:198](../../backend/src/model/component/FileTransferComponent.ts#L198) |
+| `fileTransfer.Cancel` | `fine-grained-decorator` | canUseAuthenticatedWrite | [backend/src/model/component/FileTransferComponent.ts:247](../../backend/src/model/component/FileTransferComponent.ts#L247) |
+| `fileTransfer.Describe` | `public` | NoPermissions | [backend/src/model/component/FileTransferComponent.ts:191](../../backend/src/model/component/FileTransferComponent.ts#L191) |
+| `fileTransfer.Finalize` | `fine-grained-decorator` | canFinalizeTransfer | [backend/src/model/component/FileTransferComponent.ts:235](../../backend/src/model/component/FileTransferComponent.ts#L235) |
+| `fileTransfer.Get` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/FileTransferComponent.ts:222](../../backend/src/model/component/FileTransferComponent.ts#L222) |
+| `fileTransfer.ReadChunk` | `fine-grained-decorator` | canReadTransfer | [backend/src/model/component/FileTransferComponent.ts:259](../../backend/src/model/component/FileTransferComponent.ts#L259) |
+| `fileTransfer.WriteChunk` | `fine-grained-decorator` | canUseAuthenticatedWrite | [backend/src/model/component/FileTransferComponent.ts:210](../../backend/src/model/component/FileTransferComponent.ts#L210) |
+| `firmware.CheckForUpdateBulk` | `fine-grained-decorator` | canExecuteFirmwareDevices | [backend/src/model/component/FirmwareComponent.ts:822](../../backend/src/model/component/FirmwareComponent.ts#L822) |
+| `firmware.CreateLibraryDownloadUrl` | `fine-grained-decorator` | canUpdateFirmwareDevices | [backend/src/model/component/FirmwareComponent.ts:1878](../../backend/src/model/component/FirmwareComponent.ts#L1878) |
+| `firmware.CreateUploadTicket` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/model/component/FirmwareComponent.ts:1862](../../backend/src/model/component/FirmwareComponent.ts#L1862) |
+| `firmware.DeleteLibraryEntry` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/model/component/FirmwareComponent.ts:1957](../../backend/src/model/component/FirmwareComponent.ts#L1957) |
+| `firmware.Describe` | `public` | NoPermissions | [backend/src/model/component/FirmwareComponent.ts:610](../../backend/src/model/component/FirmwareComponent.ts#L610) |
+| `firmware.GetAutoUpdateChannel` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/model/component/FirmwareComponent.ts:1363](../../backend/src/model/component/FirmwareComponent.ts#L1363) |
+| `firmware.GetAutoUpdateDevices` | `fine-grained-decorator` | canReadFirmwareDevices | [backend/src/model/component/FirmwareComponent.ts:881](../../backend/src/model/component/FirmwareComponent.ts#L881) |
+| `firmware.GetAutoUpdateMode` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/FirmwareComponent.ts:995](../../backend/src/model/component/FirmwareComponent.ts#L995) |
+| `firmware.GetAutoUpdateModes` | `fine-grained-decorator` | canReadFirmwareDevices | [backend/src/model/component/FirmwareComponent.ts:902](../../backend/src/model/component/FirmwareComponent.ts#L902) |
+| `firmware.GetAutoUpdateStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/FirmwareComponent.ts:985](../../backend/src/model/component/FirmwareComponent.ts#L985) |
+| `firmware.GetLastAutoUpdateRun` | `fine-grained-decorator` | canReadFirmwareDevices | [backend/src/model/component/FirmwareComponent.ts:1392](../../backend/src/model/component/FirmwareComponent.ts#L1392) |
+| `firmware.ListLibrary` | `fine-grained-decorator` | canUpdateFirmwareDevices | [backend/src/model/component/FirmwareComponent.ts:1845](../../backend/src/model/component/FirmwareComponent.ts#L1845) |
+| `firmware.RegisterManualUpdate` | `fine-grained-decorator` | async (sender, params) => { const shellyIDs = Array.isArray(params?.shellyIDs) ? params.shellyIDs : []; return ( shellyIDs.length > 0 && ( a | [backend/src/model/component/FirmwareComponent.ts:617](../../backend/src/model/component/FirmwareComponent.ts#L617) |
+| `firmware.SetAutoUpdate` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/FirmwareComponent.ts:921](../../backend/src/model/component/FirmwareComponent.ts#L921) |
+| `firmware.SetAutoUpdateBulk` | `fine-grained-decorator` | canUpdateFirmwareDevices | [backend/src/model/component/FirmwareComponent.ts:945](../../backend/src/model/component/FirmwareComponent.ts#L945) |
+| `firmware.SetAutoUpdateChannel` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/model/component/FirmwareComponent.ts:1373](../../backend/src/model/component/FirmwareComponent.ts#L1373) |
+| `firmware.SetAutoUpdateMode` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/FirmwareComponent.ts:1307](../../backend/src/model/component/FirmwareComponent.ts#L1307) |
+| `firmware.SetAutoUpdateModeBulk` | `fine-grained-decorator` | canUpdateFirmwareDevices | [backend/src/model/component/FirmwareComponent.ts:1324](../../backend/src/model/component/FirmwareComponent.ts#L1324) |
+| `firmware.StartUpdateJob` | `fine-grained-decorator` | async (sender, params) => { const shellyIDs = Array.isArray(params?.shellyIDs) ? params.shellyIDs : []; return ( shellyIDs.length > 0 && ( a | [backend/src/model/component/FirmwareComponent.ts:745](../../backend/src/model/component/FirmwareComponent.ts#L745) |
+| `firmware.TriggerAutoUpdate` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/model/component/FirmwareComponent.ts:1725](../../backend/src/model/component/FirmwareComponent.ts#L1725) |
+| `firmware.UnregisterManualUpdate` | `fine-grained-decorator` | async (sender, params) => { const shellyIDs = Array.isArray(params?.shellyIDs) ? params.shellyIDs : []; return ( shellyIDs.length > 0 && ( a | [backend/src/model/component/FirmwareComponent.ts:691](../../backend/src/model/component/FirmwareComponent.ts#L691) |
+| `firmware.UpdateLibraryEntry` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/model/component/FirmwareComponent.ts:1902](../../backend/src/model/component/FirmwareComponent.ts#L1902) |
+| `fleet.GetCapabilities` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/FleetComponent.ts:78](../../backend/src/model/component/FleetComponent.ts#L78) |
+| `fleet.GetMetrics` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/FleetComponent.ts:57](../../backend/src/model/component/FleetComponent.ts#L57) |
+| `fleetMap.GetAlertSnapshot` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/FleetMapComponent.ts:146](../../backend/src/model/component/FleetMapComponent.ts#L146) |
+| `fleetMap.GetEnergySnapshot` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/FleetMapComponent.ts:72](../../backend/src/model/component/FleetMapComponent.ts#L72) |
+| `fleetMap.GetSignalSnapshot` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/FleetMapComponent.ts:109](../../backend/src/model/component/FleetMapComponent.ts#L109) |
 | `fleetSummary.GetEnergy` | `crud-decorator` | 'dashboards', 'read' | [backend/src/model/component/FleetSummaryComponent.ts:53](../../backend/src/model/component/FleetSummaryComponent.ts#L53) |
 | `flood.Describe` | `public` | NoPermissions | [backend/src/model/component/FloodComponent.ts:25](../../backend/src/model/component/FloodComponent.ts#L25) |
 | `flood.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/FloodComponent.ts:48](../../backend/src/model/component/FloodComponent.ts#L48) |
 | `flood.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/FloodComponent.ts:61](../../backend/src/model/component/FloodComponent.ts#L61) |
 | `flood.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/FloodComponent.ts:32](../../backend/src/model/component/FloodComponent.ts#L32) |
+| `gasConversion.AddCalorificValue` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/GasConversionComponent.ts:124](../../backend/src/model/component/GasConversionComponent.ts#L124) |
+| `gasConversion.Describe` | `public` | NoPermissions | [backend/src/model/component/GasConversionComponent.ts:50](../../backend/src/model/component/GasConversionComponent.ts#L50) |
+| `gasConversion.ListCalorificValues` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/GasConversionComponent.ts:173](../../backend/src/model/component/GasConversionComponent.ts#L173) |
+| `gasConversion.ListProfiles` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/GasConversionComponent.ts:154](../../backend/src/model/component/GasConversionComponent.ts#L154) |
+| `gasConversion.ListZones` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/GasConversionComponent.ts:141](../../backend/src/model/component/GasConversionComponent.ts#L141) |
+| `gasConversion.UpsertProfile` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/GasConversionComponent.ts:69](../../backend/src/model/component/GasConversionComponent.ts#L69) |
+| `gasConversion.UpsertZone` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/GasConversionComponent.ts:56](../../backend/src/model/component/GasConversionComponent.ts#L56) |
 | `grafana.Describe` | `public` | NoPermissions | [backend/src/model/component/GrafanaComponent.ts:24](../../backend/src/model/component/GrafanaComponent.ts#L24) |
 | `grafana.GetConfig` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/GrafanaComponent.ts:31](../../backend/src/model/component/GrafanaComponent.ts#L31) |
 | `grafana.GetDashboard` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/GrafanaComponent.ts:47](../../backend/src/model/component/GrafanaComponent.ts#L47) |
-| `group.AddMembers` | `crud-decorator` | 'groups', 'update', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:807](../../backend/src/model/component/GroupComponent.ts#L807) |
-| `group.Children` | `crud-decorator` | 'groups', 'read', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:612](../../backend/src/model/component/GroupComponent.ts#L612) |
-| `group.Create` | `crud-decorator` | 'groups', 'create' | [backend/src/model/component/GroupComponent.ts:390](../../backend/src/model/component/GroupComponent.ts#L390) |
-| `group.Delete` | `crud-decorator` | 'groups', 'delete', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:506](../../backend/src/model/component/GroupComponent.ts#L506) |
-| `group.Describe` | `public` | NoPermissions | [backend/src/model/component/GroupComponent.ts:383](../../backend/src/model/component/GroupComponent.ts#L383) |
-| `group.Get` | `crud-decorator` | 'groups', 'read', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:535](../../backend/src/model/component/GroupComponent.ts#L535) |
-| `group.Kind.Get` | `crud-decorator` | 'groups', 'read' | [backend/src/model/component/GroupComponent.ts:903](../../backend/src/model/component/GroupComponent.ts#L903) |
-| `group.Kind.List` | `crud-decorator` | 'groups', 'read' | [backend/src/model/component/GroupComponent.ts:887](../../backend/src/model/component/GroupComponent.ts#L887) |
-| `group.List` | `crud-decorator` | 'groups', 'read' | [backend/src/model/component/GroupComponent.ts:562](../../backend/src/model/component/GroupComponent.ts#L562) |
-| `group.ListActivity` | `crud-decorator` | 'groups', 'read', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:720](../../backend/src/model/component/GroupComponent.ts#L720) |
-| `group.ListDeviceMemberships` | `crud-decorator` | 'groups', 'read' | [backend/src/model/component/GroupComponent.ts:781](../../backend/src/model/component/GroupComponent.ts#L781) |
-| `group.ListMembers` | `crud-decorator` | 'groups', 'read', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:682](../../backend/src/model/component/GroupComponent.ts#L682) |
-| `group.Path` | `crud-decorator` | 'groups', 'read', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:655](../../backend/src/model/component/GroupComponent.ts#L655) |
-| `group.RemoveMembers` | `crud-decorator` | 'groups', 'update', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:847](../../backend/src/model/component/GroupComponent.ts#L847) |
-| `group.Update` | `crud-decorator` | 'groups', 'update', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:431](../../backend/src/model/component/GroupComponent.ts#L431) |
+| `group.AddMembers` | `crud-decorator` | 'groups', 'update', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:846](../../backend/src/model/component/GroupComponent.ts#L846) |
+| `group.Children` | `crud-decorator` | 'groups', 'read', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:649](../../backend/src/model/component/GroupComponent.ts#L649) |
+| `group.Create` | `crud-decorator` | 'groups', 'create' | [backend/src/model/component/GroupComponent.ts:427](../../backend/src/model/component/GroupComponent.ts#L427) |
+| `group.Delete` | `crud-decorator` | 'groups', 'delete', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:543](../../backend/src/model/component/GroupComponent.ts#L543) |
+| `group.Describe` | `public` | NoPermissions | [backend/src/model/component/GroupComponent.ts:420](../../backend/src/model/component/GroupComponent.ts#L420) |
+| `group.Get` | `crud-decorator` | 'groups', 'read', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:572](../../backend/src/model/component/GroupComponent.ts#L572) |
+| `group.Kind.Get` | `crud-decorator` | 'groups', 'read', NOT_A_GROUP_ID | [backend/src/model/component/GroupComponent.ts:943](../../backend/src/model/component/GroupComponent.ts#L943) |
+| `group.Kind.List` | `crud-decorator` | 'groups', 'read' | [backend/src/model/component/GroupComponent.ts:927](../../backend/src/model/component/GroupComponent.ts#L927) |
+| `group.List` | `crud-decorator` | 'groups', 'read' | [backend/src/model/component/GroupComponent.ts:599](../../backend/src/model/component/GroupComponent.ts#L599) |
+| `group.ListActivity` | `crud-decorator` | 'groups', 'read', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:759](../../backend/src/model/component/GroupComponent.ts#L759) |
+| `group.ListDeviceMemberships` | `crud-decorator` | 'groups', 'read' | [backend/src/model/component/GroupComponent.ts:820](../../backend/src/model/component/GroupComponent.ts#L820) |
+| `group.ListMembers` | `crud-decorator` | 'groups', 'read', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:719](../../backend/src/model/component/GroupComponent.ts#L719) |
+| `group.Path` | `crud-decorator` | 'groups', 'read', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:692](../../backend/src/model/component/GroupComponent.ts#L692) |
+| `group.RemoveMembers` | `crud-decorator` | 'groups', 'update', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:887](../../backend/src/model/component/GroupComponent.ts#L887) |
+| `group.Update` | `crud-decorator` | 'groups', 'update', (p) => p?.id | [backend/src/model/component/GroupComponent.ts:468](../../backend/src/model/component/GroupComponent.ts#L468) |
 | `http.Describe` | `public` | NoPermissions | [backend/src/model/component/HttpComponent.ts:30](../../backend/src/model/component/HttpComponent.ts#L30) |
 | `http.GET` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/HttpComponent.ts:37](../../backend/src/model/component/HttpComponent.ts#L37) |
 | `http.POST` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/HttpComponent.ts:50](../../backend/src/model/component/HttpComponent.ts#L50) |
@@ -628,15 +703,44 @@ Regenerate with `cd backend && npm run generate`.
 | `input.ResetCounters` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/InputComponent.ts:75](../../backend/src/model/component/InputComponent.ts#L75) |
 | `input.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/InputComponent.ts:62](../../backend/src/model/component/InputComponent.ts#L62) |
 | `input.Trigger` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/InputComponent.ts:47](../../backend/src/model/component/InputComponent.ts#L47) |
-| `job.Describe` | `public` | NoPermissions | [backend/src/model/component/JobComponent.ts:31](../../backend/src/model/component/JobComponent.ts#L31) |
-| `job.Get` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/JobComponent.ts:55](../../backend/src/model/component/JobComponent.ts#L55) |
-| `job.ListActive` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/JobComponent.ts:38](../../backend/src/model/component/JobComponent.ts#L38) |
-| `kind.Create` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/KindComponent.ts:104](../../backend/src/model/component/KindComponent.ts#L104) |
-| `kind.Delete` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/KindComponent.ts:144](../../backend/src/model/component/KindComponent.ts#L144) |
-| `kind.Describe` | `public` | NoPermissions | [backend/src/model/component/KindComponent.ts:73](../../backend/src/model/component/KindComponent.ts#L73) |
-| `kind.Get` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/KindComponent.ts:92](../../backend/src/model/component/KindComponent.ts#L92) |
-| `kind.List` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/KindComponent.ts:80](../../backend/src/model/component/KindComponent.ts#L80) |
-| `kind.Update` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/KindComponent.ts:126](../../backend/src/model/component/KindComponent.ts#L126) |
+| `ir.AddDevice` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/IrComponent.ts:74](../../backend/src/model/component/IrComponent.ts#L74) |
+| `ir.DeleteDevice` | `crud-decorator` | 'devices', 'delete', (p) => p?.shellyID | [backend/src/model/component/IrComponent.ts:87](../../backend/src/model/component/IrComponent.ts#L87) |
+| `ir.Describe` | `public` | NoPermissions | [backend/src/model/component/IrComponent.ts:28](../../backend/src/model/component/IrComponent.ts#L28) |
+| `ir.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/IrComponent.ts:35](../../backend/src/model/component/IrComponent.ts#L35) |
+| `ir.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/IrComponent.ts:48](../../backend/src/model/component/IrComponent.ts#L48) |
+| `ir.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/IrComponent.ts:61](../../backend/src/model/component/IrComponent.ts#L61) |
+| `ircode.Describe` | `public` | NoPermissions | [backend/src/model/component/IrCodeComponent.ts:29](../../backend/src/model/component/IrCodeComponent.ts#L29) |
+| `ircode.Emit` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/IrCodeComponent.ts:75](../../backend/src/model/component/IrCodeComponent.ts#L75) |
+| `ircode.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/IrCodeComponent.ts:36](../../backend/src/model/component/IrCodeComponent.ts#L36) |
+| `ircode.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/IrCodeComponent.ts:49](../../backend/src/model/component/IrCodeComponent.ts#L49) |
+| `ircode.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/IrCodeComponent.ts:62](../../backend/src/model/component/IrCodeComponent.ts#L62) |
+| `irdevice.DeleteCode` | `crud-decorator` | 'devices', 'delete', (p) => p?.shellyID | [backend/src/model/component/IrDeviceComponent.ts:93](../../backend/src/model/component/IrDeviceComponent.ts#L93) |
+| `irdevice.Describe` | `public` | NoPermissions | [backend/src/model/component/IrDeviceComponent.ts:31](../../backend/src/model/component/IrDeviceComponent.ts#L31) |
+| `irdevice.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/IrDeviceComponent.ts:38](../../backend/src/model/component/IrDeviceComponent.ts#L38) |
+| `irdevice.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/IrDeviceComponent.ts:51](../../backend/src/model/component/IrDeviceComponent.ts#L51) |
+| `irdevice.LearnCode` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/IrDeviceComponent.ts:77](../../backend/src/model/component/IrDeviceComponent.ts#L77) |
+| `irdevice.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/IrDeviceComponent.ts:64](../../backend/src/model/component/IrDeviceComponent.ts#L64) |
+| `irlibrary.CatalogList` | `crud-decorator` | 'configurations', 'read' | [backend/src/model/component/IrLibraryComponent.ts:507](../../backend/src/model/component/IrLibraryComponent.ts#L507) |
+| `irlibrary.Delete` | `crud-decorator` | 'configurations', 'delete', NOT_A_CONFIGURATION_KEY | [backend/src/model/component/IrLibraryComponent.ts:408](../../backend/src/model/component/IrLibraryComponent.ts#L408) |
+| `irlibrary.Describe` | `public` | NoPermissions | [backend/src/model/component/IrLibraryComponent.ts:274](../../backend/src/model/component/IrLibraryComponent.ts#L274) |
+| `irlibrary.ImportCatalog` | `crud-decorator` | 'configurations', 'create' | [backend/src/model/component/IrLibraryComponent.ts:527](../../backend/src/model/component/IrLibraryComponent.ts#L527) |
+| `irlibrary.ImportFile` | `crud-decorator` | 'configurations', 'create' | [backend/src/model/component/IrLibraryComponent.ts:441](../../backend/src/model/component/IrLibraryComponent.ts#L441) |
+| `irlibrary.List` | `crud-decorator` | 'configurations', 'read' | [backend/src/model/component/IrLibraryComponent.ts:281](../../backend/src/model/component/IrLibraryComponent.ts#L281) |
+| `irlibrary.PushToDevice` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/IrLibraryComponent.ts:586](../../backend/src/model/component/IrLibraryComponent.ts#L586) |
+| `irlibrary.Save` | `crud-decorator` | 'configurations', 'create' | [backend/src/model/component/IrLibraryComponent.ts:317](../../backend/src/model/component/IrLibraryComponent.ts#L317) |
+| `irlibrary.Update` | `crud-decorator` | 'configurations', 'update', NOT_A_CONFIGURATION_KEY | [backend/src/model/component/IrLibraryComponent.ts:355](../../backend/src/model/component/IrLibraryComponent.ts#L355) |
+| `job.Cancel` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/JobComponent.ts:201](../../backend/src/model/component/JobComponent.ts#L201) |
+| `job.Capabilities` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/JobComponent.ts:189](../../backend/src/model/component/JobComponent.ts#L189) |
+| `job.Describe` | `public` | NoPermissions | [backend/src/model/component/JobComponent.ts:46](../../backend/src/model/component/JobComponent.ts#L46) |
+| `job.Get` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/JobComponent.ts:70](../../backend/src/model/component/JobComponent.ts#L70) |
+| `job.ListActive` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/JobComponent.ts:53](../../backend/src/model/component/JobComponent.ts#L53) |
+| `job.Resume` | `fine-grained-decorator` | canViewAuthz | [backend/src/model/component/JobComponent.ts:225](../../backend/src/model/component/JobComponent.ts#L225) |
+| `kind.Create` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/KindComponent.ts:109](../../backend/src/model/component/KindComponent.ts#L109) |
+| `kind.Delete` | `crud-decorator` | 'devices', 'update', NOT_A_DEVICE_ID | [backend/src/model/component/KindComponent.ts:150](../../backend/src/model/component/KindComponent.ts#L150) |
+| `kind.Describe` | `public` | NoPermissions | [backend/src/model/component/KindComponent.ts:77](../../backend/src/model/component/KindComponent.ts#L77) |
+| `kind.Get` | `crud-decorator` | 'devices', 'read', NOT_A_DEVICE_ID | [backend/src/model/component/KindComponent.ts:96](../../backend/src/model/component/KindComponent.ts#L96) |
+| `kind.List` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/KindComponent.ts:84](../../backend/src/model/component/KindComponent.ts#L84) |
+| `kind.Update` | `crud-decorator` | 'devices', 'update', NOT_A_DEVICE_ID | [backend/src/model/component/KindComponent.ts:131](../../backend/src/model/component/KindComponent.ts#L131) |
 | `knx.Describe` | `public` | NoPermissions | [backend/src/model/component/KnxComponent.ts:29](../../backend/src/model/component/KnxComponent.ts#L29) |
 | `knx.GetComponentConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/KnxComponent.ts:75](../../backend/src/model/component/KnxComponent.ts#L75) |
 | `knx.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/KnxComponent.ts:49](../../backend/src/model/component/KnxComponent.ts#L49) |
@@ -681,26 +785,32 @@ Regenerate with `cd backend && npm run generate`.
 | `lnm.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/LnmComponent.ts:42](../../backend/src/model/component/LnmComponent.ts#L42) |
 | `lnm.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/LnmComponent.ts:31](../../backend/src/model/component/LnmComponent.ts#L31) |
 | `lnm.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/LnmComponent.ts:53](../../backend/src/model/component/LnmComponent.ts#L53) |
-| `location.BackfillGeo` | `crud-decorator` | 'locations', 'update' | [backend/src/model/component/LocationComponent.ts:664](../../backend/src/model/component/LocationComponent.ts#L664) |
-| `location.Children` | `crud-decorator` | 'locations', 'read', (p) => p?.id | [backend/src/model/component/LocationComponent.ts:555](../../backend/src/model/component/LocationComponent.ts#L555) |
-| `location.Create` | `crud-decorator` | 'locations', 'create' | [backend/src/model/component/LocationComponent.ts:258](../../backend/src/model/component/LocationComponent.ts#L258) |
-| `location.Delete` | `crud-decorator` | 'locations', 'delete', (p) => p?.id | [backend/src/model/component/LocationComponent.ts:379](../../backend/src/model/component/LocationComponent.ts#L379) |
-| `location.Describe` | `public` | NoPermissions | [backend/src/model/component/LocationComponent.ts:233](../../backend/src/model/component/LocationComponent.ts#L233) |
-| `location.EventReplay` | `crud-decorator` | 'locations', 'read' | [backend/src/model/component/LocationComponent.ts:736](../../backend/src/model/component/LocationComponent.ts#L736) |
-| `location.FloorPlan.CreateUploadTicket` | `crud-decorator` | 'locations', 'update', (p) => p?.locationId | [backend/src/model/component/LocationComponent.ts:240](../../backend/src/model/component/LocationComponent.ts#L240) |
-| `location.Get` | `crud-decorator` | 'locations', 'read', (p) => p?.id | [backend/src/model/component/LocationComponent.ts:408](../../backend/src/model/component/LocationComponent.ts#L408) |
-| `location.List` | `crud-decorator` | 'locations', 'read' | [backend/src/model/component/LocationComponent.ts:478](../../backend/src/model/component/LocationComponent.ts#L478) |
-| `location.ListAssignments` | `crud-decorator` | 'locations', 'read' | [backend/src/model/component/LocationComponent.ts:905](../../backend/src/model/component/LocationComponent.ts#L905) |
-| `location.ListCountries` | `public` | NoPermissions | [backend/src/model/component/LocationComponent.ts:635](../../backend/src/model/component/LocationComponent.ts#L635) |
-| `location.ListKinds` | `public` | NoPermissions | [backend/src/model/component/LocationComponent.ts:608](../../backend/src/model/component/LocationComponent.ts#L608) |
-| `location.ListRegions` | `public` | NoPermissions | [backend/src/model/component/LocationComponent.ts:647](../../backend/src/model/component/LocationComponent.ts#L647) |
-| `location.Path` | `crud-decorator` | 'locations', 'read', (p) => p?.id | [backend/src/model/component/LocationComponent.ts:579](../../backend/src/model/component/LocationComponent.ts#L579) |
-| `location.RemoveAssignment` | `crud-decorator` | 'locations', 'update' | [backend/src/model/component/LocationComponent.ts:867](../../backend/src/model/component/LocationComponent.ts#L867) |
-| `location.SearchPlaces` | `crud-decorator` | 'locations', 'read' | [backend/src/model/component/LocationComponent.ts:619](../../backend/src/model/component/LocationComponent.ts#L619) |
-| `location.SetAssignment` | `crud-decorator` | 'locations', 'update', (p) => p?.locationId | [backend/src/model/component/LocationComponent.ts:767](../../backend/src/model/component/LocationComponent.ts#L767) |
-| `location.SetAssignments` | `crud-decorator` | 'locations', 'update', (p) => p?.locationId | [backend/src/model/component/LocationComponent.ts:815](../../backend/src/model/component/LocationComponent.ts#L815) |
-| `location.SignalHeatmap` | `crud-decorator` | 'locations', 'read' | [backend/src/model/component/LocationComponent.ts:681](../../backend/src/model/component/LocationComponent.ts#L681) |
-| `location.Update` | `crud-decorator` | 'locations', 'update', (p) => p?.id | [backend/src/model/component/LocationComponent.ts:310](../../backend/src/model/component/LocationComponent.ts#L310) |
+| `location.BackfillGeo` | `crud-decorator` | 'locations', 'update' | [backend/src/model/component/LocationComponent.ts:890](../../backend/src/model/component/LocationComponent.ts#L890) |
+| `location.BackfillGeography` | `crud-decorator` | 'locations', 'create' | [backend/src/model/component/LocationComponent.ts:907](../../backend/src/model/component/LocationComponent.ts#L907) |
+| `location.Children` | `crud-decorator` | 'locations', 'read', (p) => p?.id | [backend/src/model/component/LocationComponent.ts:724](../../backend/src/model/component/LocationComponent.ts#L724) |
+| `location.ConfigureDeviceAssignment` | `crud-decorator` | 'locations', 'update', (p) => p?.locationId | [backend/src/model/component/LocationComponent.ts:1114](../../backend/src/model/component/LocationComponent.ts#L1114) |
+| `location.Create` | `crud-decorator` | 'locations', 'create' | [backend/src/model/component/LocationComponent.ts:301](../../backend/src/model/component/LocationComponent.ts#L301) |
+| `location.Delete` | `crud-decorator` | 'locations', 'delete', (p) => p?.id | [backend/src/model/component/LocationComponent.ts:438](../../backend/src/model/component/LocationComponent.ts#L438) |
+| `location.DeleteSubtree` | `crud-decorator` | 'locations', 'delete', (p) => p?.id | [backend/src/model/component/LocationComponent.ts:467](../../backend/src/model/component/LocationComponent.ts#L467) |
+| `location.Descendants` | `crud-decorator` | 'locations', 'read', (p) => p?.id | [backend/src/model/component/LocationComponent.ts:752](../../backend/src/model/component/LocationComponent.ts#L752) |
+| `location.Describe` | `public` | NoPermissions | [backend/src/model/component/LocationComponent.ts:276](../../backend/src/model/component/LocationComponent.ts#L276) |
+| `location.EventReplay` | `crud-decorator` | 'locations', 'read' | [backend/src/model/component/LocationComponent.ts:983](../../backend/src/model/component/LocationComponent.ts#L983) |
+| `location.FloorPlan.CreateUploadTicket` | `crud-decorator` | 'locations', 'update', (p) => p?.locationId | [backend/src/model/component/LocationComponent.ts:283](../../backend/src/model/component/LocationComponent.ts#L283) |
+| `location.Get` | `crud-decorator` | 'locations', 'read', (p) => p?.id | [backend/src/model/component/LocationComponent.ts:559](../../backend/src/model/component/LocationComponent.ts#L559) |
+| `location.List` | `crud-decorator` | 'locations', 'read' | [backend/src/model/component/LocationComponent.ts:629](../../backend/src/model/component/LocationComponent.ts#L629) |
+| `location.ListAssignments` | `crud-decorator` | 'locations', 'read' | [backend/src/model/component/LocationComponent.ts:1223](../../backend/src/model/component/LocationComponent.ts#L1223) |
+| `location.ListCountries` | `public` | NoPermissions | [backend/src/model/component/LocationComponent.ts:861](../../backend/src/model/component/LocationComponent.ts#L861) |
+| `location.ListDeviceAssignmentProfiles` | `crud-decorator` | 'locations', 'read' | [backend/src/model/component/LocationComponent.ts:1272](../../backend/src/model/component/LocationComponent.ts#L1272) |
+| `location.ListKinds` | `public` | NoPermissions | [backend/src/model/component/LocationComponent.ts:823](../../backend/src/model/component/LocationComponent.ts#L823) |
+| `location.ListRegions` | `public` | NoPermissions | [backend/src/model/component/LocationComponent.ts:873](../../backend/src/model/component/LocationComponent.ts#L873) |
+| `location.Path` | `crud-decorator` | 'locations', 'read', (p) => p?.id | [backend/src/model/component/LocationComponent.ts:788](../../backend/src/model/component/LocationComponent.ts#L788) |
+| `location.RemoveAssignment` | `crud-decorator` | 'locations', 'update' | [backend/src/model/component/LocationComponent.ts:1177](../../backend/src/model/component/LocationComponent.ts#L1177) |
+| `location.ReverseGeocode` | `crud-decorator` | 'locations', 'read' | [backend/src/model/component/LocationComponent.ts:850](../../backend/src/model/component/LocationComponent.ts#L850) |
+| `location.SearchPlaces` | `crud-decorator` | 'locations', 'read' | [backend/src/model/component/LocationComponent.ts:834](../../backend/src/model/component/LocationComponent.ts#L834) |
+| `location.SetAssignment` | `crud-decorator` | 'locations', 'update', (p) => p?.locationId | [backend/src/model/component/LocationComponent.ts:1014](../../backend/src/model/component/LocationComponent.ts#L1014) |
+| `location.SetAssignments` | `crud-decorator` | 'locations', 'update', (p) => p?.locationId | [backend/src/model/component/LocationComponent.ts:1062](../../backend/src/model/component/LocationComponent.ts#L1062) |
+| `location.SignalHeatmap` | `crud-decorator` | 'locations', 'read' | [backend/src/model/component/LocationComponent.ts:928](../../backend/src/model/component/LocationComponent.ts#L928) |
+| `location.Update` | `crud-decorator` | 'locations', 'update', (p) => p?.id | [backend/src/model/component/LocationComponent.ts:358](../../backend/src/model/component/LocationComponent.ts#L358) |
 | `login_text.Describe` | `public` | NoPermissions | [backend/src/model/component/LoginTextComponent.ts:35](../../backend/src/model/component/LoginTextComponent.ts#L35) |
 | `login_text.GetDefault` | `fine-grained-decorator` | canReadOrganizationSettings | [backend/src/model/component/LoginTextComponent.ts:53](../../backend/src/model/component/LoginTextComponent.ts#L53) |
 | `login_text.GetText` | `fine-grained-decorator` | canReadOrganizationSettings | [backend/src/model/component/LoginTextComponent.ts:42](../../backend/src/model/component/LoginTextComponent.ts#L42) |
@@ -725,38 +835,42 @@ Regenerate with `cd backend && npm run generate`.
 | `mbrtuclient.WriteCoils` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/MbRtuClientComponent.ts:192](../../backend/src/model/component/MbRtuClientComponent.ts#L192) |
 | `mbrtuclient.WriteHoldingRegisters` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/MbRtuClientComponent.ts:156](../../backend/src/model/component/MbRtuClientComponent.ts#L156) |
 | `mbrtuclient.WriteSingleRegister` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/MbRtuClientComponent.ts:174](../../backend/src/model/component/MbRtuClientComponent.ts#L174) |
+| `mcp_approval.Describe` | `public` | NoPermissions | [backend/src/model/component/McpApprovalComponent.ts:93](../../backend/src/model/component/McpApprovalComponent.ts#L93) |
+| `mcp_approval.List` | `fine-grained-decorator` | canList | [backend/src/model/component/McpApprovalComponent.ts:100](../../backend/src/model/component/McpApprovalComponent.ts#L100) |
+| `mcp_approval.Revoke` | `fine-grained-decorator` | canReachOwnApprovals | [backend/src/model/component/McpApprovalComponent.ts:119](../../backend/src/model/component/McpApprovalComponent.ts#L119) |
 | `mdns.Describe` | `public` | NoPermissions | [backend/src/model/component/MdnsComponent.ts:15](../../backend/src/model/component/MdnsComponent.ts#L15) |
-| `media.Background.CreateUploadTicket` | `fine-grained-decorator` | canManageSharedMediaAssets | [backend/src/model/component/MediaComponent.ts:123](../../backend/src/model/component/MediaComponent.ts#L123) |
-| `media.Background.Delete` | `fine-grained-decorator` | canManageSharedMediaAssets | [backend/src/model/component/MediaComponent.ts:139](../../backend/src/model/component/MediaComponent.ts#L139) |
-| `media.Background.List` | `fine-grained-decorator` | canViewSharedMediaAssets | [backend/src/model/component/MediaComponent.ts:111](../../backend/src/model/component/MediaComponent.ts#L111) |
-| `media.DecreaseVolume` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:239](../../backend/src/model/component/MediaComponent.ts#L239) |
-| `media.Delete` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:477](../../backend/src/model/component/MediaComponent.ts#L477) |
-| `media.Describe` | `public` | NoPermissions | [backend/src/model/component/MediaComponent.ts:104](../../backend/src/model/component/MediaComponent.ts#L104) |
-| `media.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:187](../../backend/src/model/component/MediaComponent.ts#L187) |
-| `media.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:200](../../backend/src/model/component/MediaComponent.ts#L200) |
-| `media.IncreaseVolume` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:226](../../backend/src/model/component/MediaComponent.ts#L226) |
-| `media.List` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:505](../../backend/src/model/component/MediaComponent.ts#L505) |
-| `media.ListAudioAlbums` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:330](../../backend/src/model/component/MediaComponent.ts#L330) |
-| `media.ListAudioArtists` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:343](../../backend/src/model/component/MediaComponent.ts#L343) |
-| `media.Player.Next` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:304](../../backend/src/model/component/MediaComponent.ts#L304) |
-| `media.Player.Pause` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:265](../../backend/src/model/component/MediaComponent.ts#L265) |
-| `media.Player.Play` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:252](../../backend/src/model/component/MediaComponent.ts#L252) |
-| `media.Player.PlayAlert` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:412](../../backend/src/model/component/MediaComponent.ts#L412) |
-| `media.Player.PlayAudioClip` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:464](../../backend/src/model/component/MediaComponent.ts#L464) |
-| `media.Player.PlayOrPause` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:278](../../backend/src/model/component/MediaComponent.ts#L278) |
-| `media.Player.PlayRingtone` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:451](../../backend/src/model/component/MediaComponent.ts#L451) |
-| `media.Player.Previous` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:317](../../backend/src/model/component/MediaComponent.ts#L317) |
-| `media.Player.Stop` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:291](../../backend/src/model/component/MediaComponent.ts#L291) |
-| `media.PutMedia` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:395](../../backend/src/model/component/MediaComponent.ts#L395) |
-| `media.Radio.ListFavourites` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:438](../../backend/src/model/component/MediaComponent.ts#L438) |
-| `media.Radio.PlayFavourite` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:425](../../backend/src/model/component/MediaComponent.ts#L425) |
-| `media.Radio.PlayNextFavourite` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:369](../../backend/src/model/component/MediaComponent.ts#L369) |
-| `media.Radio.PlayPreviousFavourite` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:382](../../backend/src/model/component/MediaComponent.ts#L382) |
-| `media.Radio.Stop` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:356](../../backend/src/model/component/MediaComponent.ts#L356) |
-| `media.Reload` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:490](../../backend/src/model/component/MediaComponent.ts#L490) |
-| `media.ReportImage.CreateUploadTicket` | `fine-grained-decorator` | canManageSharedMediaAssets | [backend/src/model/component/MediaComponent.ts:168](../../backend/src/model/component/MediaComponent.ts#L168) |
-| `media.ReportImage.List` | `fine-grained-decorator` | canViewSharedMediaAssets | [backend/src/model/component/MediaComponent.ts:156](../../backend/src/model/component/MediaComponent.ts#L156) |
-| `media.SetVolume` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:213](../../backend/src/model/component/MediaComponent.ts#L213) |
+| `media.Background.CreateUploadTicket` | `fine-grained-decorator` | canManageSharedMediaAssets | [backend/src/model/component/MediaComponent.ts:128](../../backend/src/model/component/MediaComponent.ts#L128) |
+| `media.Background.Delete` | `fine-grained-decorator` | canManageSharedMediaAssets | [backend/src/model/component/MediaComponent.ts:144](../../backend/src/model/component/MediaComponent.ts#L144) |
+| `media.Background.List` | `fine-grained-decorator` | canViewSharedMediaAssets | [backend/src/model/component/MediaComponent.ts:116](../../backend/src/model/component/MediaComponent.ts#L116) |
+| `media.DecreaseVolume` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:265](../../backend/src/model/component/MediaComponent.ts#L265) |
+| `media.Delete` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:503](../../backend/src/model/component/MediaComponent.ts#L503) |
+| `media.Describe` | `public` | NoPermissions | [backend/src/model/component/MediaComponent.ts:109](../../backend/src/model/component/MediaComponent.ts#L109) |
+| `media.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:213](../../backend/src/model/component/MediaComponent.ts#L213) |
+| `media.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:226](../../backend/src/model/component/MediaComponent.ts#L226) |
+| `media.IncreaseVolume` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:252](../../backend/src/model/component/MediaComponent.ts#L252) |
+| `media.List` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:531](../../backend/src/model/component/MediaComponent.ts#L531) |
+| `media.ListAudioAlbums` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:356](../../backend/src/model/component/MediaComponent.ts#L356) |
+| `media.ListAudioArtists` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:369](../../backend/src/model/component/MediaComponent.ts#L369) |
+| `media.Player.Next` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:330](../../backend/src/model/component/MediaComponent.ts#L330) |
+| `media.Player.Pause` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:291](../../backend/src/model/component/MediaComponent.ts#L291) |
+| `media.Player.Play` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:278](../../backend/src/model/component/MediaComponent.ts#L278) |
+| `media.Player.PlayAlert` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:438](../../backend/src/model/component/MediaComponent.ts#L438) |
+| `media.Player.PlayAudioClip` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:490](../../backend/src/model/component/MediaComponent.ts#L490) |
+| `media.Player.PlayOrPause` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:304](../../backend/src/model/component/MediaComponent.ts#L304) |
+| `media.Player.PlayRingtone` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:477](../../backend/src/model/component/MediaComponent.ts#L477) |
+| `media.Player.Previous` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:343](../../backend/src/model/component/MediaComponent.ts#L343) |
+| `media.Player.Stop` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:317](../../backend/src/model/component/MediaComponent.ts#L317) |
+| `media.PutMedia` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:421](../../backend/src/model/component/MediaComponent.ts#L421) |
+| `media.Radio.ListFavourites` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:464](../../backend/src/model/component/MediaComponent.ts#L464) |
+| `media.Radio.PlayFavourite` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:451](../../backend/src/model/component/MediaComponent.ts#L451) |
+| `media.Radio.PlayNextFavourite` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:395](../../backend/src/model/component/MediaComponent.ts#L395) |
+| `media.Radio.PlayPreviousFavourite` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:408](../../backend/src/model/component/MediaComponent.ts#L408) |
+| `media.Radio.Stop` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:382](../../backend/src/model/component/MediaComponent.ts#L382) |
+| `media.Reload` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:516](../../backend/src/model/component/MediaComponent.ts#L516) |
+| `media.ReportImage.Assign` | `fine-grained-decorator` | canCrossOrganizationSupport | [backend/src/model/component/MediaComponent.ts:173](../../backend/src/model/component/MediaComponent.ts#L173) |
+| `media.ReportImage.CreateUploadTicket` | `fine-grained-decorator` | canManageSharedMediaAssets | [backend/src/model/component/MediaComponent.ts:194](../../backend/src/model/component/MediaComponent.ts#L194) |
+| `media.ReportImage.List` | `fine-grained-decorator` | canViewSharedMediaAssets | [backend/src/model/component/MediaComponent.ts:161](../../backend/src/model/component/MediaComponent.ts#L161) |
+| `media.SetVolume` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/MediaComponent.ts:239](../../backend/src/model/component/MediaComponent.ts#L239) |
 | `message_text.Describe` | `public` | NoPermissions | [backend/src/model/component/MessageTextComponent.ts:35](../../backend/src/model/component/MessageTextComponent.ts#L35) |
 | `message_text.GetDefault` | `fine-grained-decorator` | canReadOrganizationSettings | [backend/src/model/component/MessageTextComponent.ts:56](../../backend/src/model/component/MessageTextComponent.ts#L56) |
 | `message_text.GetText` | `fine-grained-decorator` | canReadOrganizationSettings | [backend/src/model/component/MessageTextComponent.ts:42](../../backend/src/model/component/MessageTextComponent.ts#L42) |
@@ -777,71 +891,103 @@ Regenerate with `cd backend && npm run generate`.
 | `notification_policy.GetPolicy` | `fine-grained-decorator` | canReadOrganizationSettings | [backend/src/model/component/NotificationPolicyComponent.ts:38](../../backend/src/model/component/NotificationPolicyComponent.ts#L38) |
 | `notification_policy.Reset` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/model/component/NotificationPolicyComponent.ts:62](../../backend/src/model/component/NotificationPolicyComponent.ts#L62) |
 | `notification_policy.SetPolicy` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/model/component/NotificationPolicyComponent.ts:49](../../backend/src/model/component/NotificationPolicyComponent.ts#L49) |
-| `notification.Bundle.ApplyImport` | `crud-decorator` | 'notifications', 'update' | [backend/src/model/component/NotificationComponent.ts:219](../../backend/src/model/component/NotificationComponent.ts#L219) |
-| `notification.Bundle.Export` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:225](../../backend/src/model/component/NotificationComponent.ts#L225) |
-| `notification.Bundle.ExportAlertmanager` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:249](../../backend/src/model/component/NotificationComponent.ts#L249) |
-| `notification.Bundle.ExportGrafana` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:243](../../backend/src/model/component/NotificationComponent.ts#L243) |
-| `notification.Bundle.ImportAlertmanager` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:237](../../backend/src/model/component/NotificationComponent.ts#L237) |
-| `notification.Bundle.ImportGrafana` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:231](../../backend/src/model/component/NotificationComponent.ts#L231) |
-| `notification.Bundle.PlanImport` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:213](../../backend/src/model/component/NotificationComponent.ts#L213) |
-| `notification.Bundle.Validate` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:207](../../backend/src/model/component/NotificationComponent.ts#L207) |
-| `notification.Describe` | `public` | NoPermissions | [backend/src/model/component/NotificationComponent.ts:53](../../backend/src/model/component/NotificationComponent.ts#L53) |
-| `notification.Destination.AddMembers` | `crud-decorator` | 'notifications', 'update', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:165](../../backend/src/model/component/NotificationComponent.ts#L165) |
-| `notification.Destination.Create` | `crud-decorator` | 'notifications', 'create' | [backend/src/model/component/NotificationComponent.ts:134](../../backend/src/model/component/NotificationComponent.ts#L134) |
-| `notification.Destination.Delete` | `crud-decorator` | 'notifications', 'delete', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:152](../../backend/src/model/component/NotificationComponent.ts#L152) |
-| `notification.Destination.Get` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:124](../../backend/src/model/component/NotificationComponent.ts#L124) |
-| `notification.Destination.GetModel` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:110](../../backend/src/model/component/NotificationComponent.ts#L110) |
-| `notification.Destination.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:117](../../backend/src/model/component/NotificationComponent.ts#L117) |
-| `notification.Destination.ListMembers` | `crud-decorator` | 'notifications', 'read', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:158](../../backend/src/model/component/NotificationComponent.ts#L158) |
-| `notification.Destination.RemoveMembers` | `crud-decorator` | 'notifications', 'update', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:171](../../backend/src/model/component/NotificationComponent.ts#L171) |
-| `notification.Destination.Update` | `crud-decorator` | 'notifications', 'update', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:143](../../backend/src/model/component/NotificationComponent.ts#L143) |
-| `notification.EmailAsset.CreateUploadTicket` | `fine-grained-decorator` | async (sender) => { const [canCreate, canUpdate] = await Promise.all([ canPerformComponentOperationAsync( sender, 'notifications', 'create'  | [backend/src/model/component/NotificationComponent.ts:397](../../backend/src/model/component/NotificationComponent.ts#L397) |
-| `notification.EmailAsset.Delete` | `crud-decorator` | 'notifications', 'delete', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:421](../../backend/src/model/component/NotificationComponent.ts#L421) |
-| `notification.EmailAsset.Get` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:414](../../backend/src/model/component/NotificationComponent.ts#L414) |
-| `notification.EmailAsset.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:390](../../backend/src/model/component/NotificationComponent.ts#L390) |
-| `notification.EmailTemplate.Create` | `crud-decorator` | 'notifications', 'create' | [backend/src/model/component/NotificationComponent.ts:338](../../backend/src/model/component/NotificationComponent.ts#L338) |
-| `notification.EmailTemplate.Delete` | `crud-decorator` | 'notifications', 'delete', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:350](../../backend/src/model/component/NotificationComponent.ts#L350) |
-| `notification.EmailTemplate.Get` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:332](../../backend/src/model/component/NotificationComponent.ts#L332) |
-| `notification.EmailTemplate.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:326](../../backend/src/model/component/NotificationComponent.ts#L326) |
-| `notification.EmailTemplate.Update` | `crud-decorator` | 'notifications', 'update', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:344](../../backend/src/model/component/NotificationComponent.ts#L344) |
-| `notification.History.Get` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:186](../../backend/src/model/component/NotificationComponent.ts#L186) |
-| `notification.History.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:179](../../backend/src/model/component/NotificationComponent.ts#L179) |
-| `notification.History.Requeue` | `crud-decorator` | 'notifications', 'update', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:315](../../backend/src/model/component/NotificationComponent.ts#L315) |
-| `notification.Inbox.Get` | `crud-decorator` | 'notifications', 'read', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:83](../../backend/src/model/component/NotificationComponent.ts#L83) |
-| `notification.Inbox.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:76](../../backend/src/model/component/NotificationComponent.ts#L76) |
-| `notification.Inbox.MarkAllRead` | `crud-decorator` | 'notifications', 'update' | [backend/src/model/component/NotificationComponent.ts:102](../../backend/src/model/component/NotificationComponent.ts#L102) |
-| `notification.Inbox.MarkRead` | `crud-decorator` | 'notifications', 'update', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:90](../../backend/src/model/component/NotificationComponent.ts#L90) |
-| `notification.Inbox.MarkUnread` | `crud-decorator` | 'notifications', 'update', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:96](../../backend/src/model/component/NotificationComponent.ts#L96) |
-| `notification.ListTokens` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/NotificationComponent.ts:69](../../backend/src/model/component/NotificationComponent.ts#L69) |
-| `notification.OAuth.Start` | `crud-decorator` | 'notifications', 'update', (p) => p?.endpointId | [backend/src/model/component/NotificationComponent.ts:427](../../backend/src/model/component/NotificationComponent.ts#L427) |
-| `notification.OnCall.Delete` | `crud-decorator` | 'notifications', 'delete' | [backend/src/model/component/NotificationComponent.ts:279](../../backend/src/model/component/NotificationComponent.ts#L279) |
-| `notification.OnCall.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:267](../../backend/src/model/component/NotificationComponent.ts#L267) |
-| `notification.OnCall.Resolve` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:285](../../backend/src/model/component/NotificationComponent.ts#L285) |
-| `notification.OnCall.Set` | `crud-decorator` | 'notifications', 'update' | [backend/src/model/component/NotificationComponent.ts:273](../../backend/src/model/component/NotificationComponent.ts#L273) |
-| `notification.Preference.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:255](../../backend/src/model/component/NotificationComponent.ts#L255) |
-| `notification.Preference.Set` | `crud-decorator` | 'notifications', 'update' | [backend/src/model/component/NotificationComponent.ts:261](../../backend/src/model/component/NotificationComponent.ts#L261) |
-| `notification.RenderEmailPreview` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:200](../../backend/src/model/component/NotificationComponent.ts#L200) |
-| `notification.RenderTemplate` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:193](../../backend/src/model/component/NotificationComponent.ts#L193) |
-| `notification.Routing.Delete` | `crud-decorator` | 'notifications', 'delete' | [backend/src/model/component/NotificationComponent.ts:303](../../backend/src/model/component/NotificationComponent.ts#L303) |
-| `notification.Routing.Evaluate` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:309](../../backend/src/model/component/NotificationComponent.ts#L309) |
-| `notification.Routing.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:291](../../backend/src/model/component/NotificationComponent.ts#L291) |
-| `notification.Routing.Set` | `crud-decorator` | 'notifications', 'update' | [backend/src/model/component/NotificationComponent.ts:297](../../backend/src/model/component/NotificationComponent.ts#L297) |
-| `notification.Subscribe` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/NotificationComponent.ts:60](../../backend/src/model/component/NotificationComponent.ts#L60) |
-| `notification.Template.Create` | `crud-decorator` | 'notifications', 'create' | [backend/src/model/component/NotificationComponent.ts:372](../../backend/src/model/component/NotificationComponent.ts#L372) |
-| `notification.Template.Delete` | `crud-decorator` | 'notifications', 'delete', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:384](../../backend/src/model/component/NotificationComponent.ts#L384) |
-| `notification.Template.Get` | `crud-decorator` | 'notifications', 'read', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:365](../../backend/src/model/component/NotificationComponent.ts#L365) |
-| `notification.Template.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:358](../../backend/src/model/component/NotificationComponent.ts#L358) |
-| `notification.Template.Update` | `crud-decorator` | 'notifications', 'update', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:378](../../backend/src/model/component/NotificationComponent.ts#L378) |
+| `notification.Bundle.ApplyImport` | `crud-decorator` | 'notifications', 'update' | [backend/src/model/component/NotificationComponent.ts:307](../../backend/src/model/component/NotificationComponent.ts#L307) |
+| `notification.Bundle.Export` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:313](../../backend/src/model/component/NotificationComponent.ts#L313) |
+| `notification.Bundle.ExportAlertmanager` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:337](../../backend/src/model/component/NotificationComponent.ts#L337) |
+| `notification.Bundle.ExportGrafana` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:331](../../backend/src/model/component/NotificationComponent.ts#L331) |
+| `notification.Bundle.ImportAlertmanager` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:325](../../backend/src/model/component/NotificationComponent.ts#L325) |
+| `notification.Bundle.ImportGrafana` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:319](../../backend/src/model/component/NotificationComponent.ts#L319) |
+| `notification.Bundle.PlanImport` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:301](../../backend/src/model/component/NotificationComponent.ts#L301) |
+| `notification.Bundle.Validate` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:295](../../backend/src/model/component/NotificationComponent.ts#L295) |
+| `notification.Describe` | `public` | NoPermissions | [backend/src/model/component/NotificationComponent.ts:110](../../backend/src/model/component/NotificationComponent.ts#L110) |
+| `notification.Destination.AddMembers` | `crud-decorator` | 'notifications', 'update', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:245](../../backend/src/model/component/NotificationComponent.ts#L245) |
+| `notification.Destination.Create` | `crud-decorator` | 'notifications', 'create' | [backend/src/model/component/NotificationComponent.ts:214](../../backend/src/model/component/NotificationComponent.ts#L214) |
+| `notification.Destination.Delete` | `crud-decorator` | 'notifications', 'delete', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:232](../../backend/src/model/component/NotificationComponent.ts#L232) |
+| `notification.Destination.Get` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:204](../../backend/src/model/component/NotificationComponent.ts#L204) |
+| `notification.Destination.GetModel` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:190](../../backend/src/model/component/NotificationComponent.ts#L190) |
+| `notification.Destination.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:197](../../backend/src/model/component/NotificationComponent.ts#L197) |
+| `notification.Destination.ListMembers` | `crud-decorator` | 'notifications', 'read', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:238](../../backend/src/model/component/NotificationComponent.ts#L238) |
+| `notification.Destination.RemoveMembers` | `crud-decorator` | 'notifications', 'update', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:251](../../backend/src/model/component/NotificationComponent.ts#L251) |
+| `notification.Destination.Update` | `crud-decorator` | 'notifications', 'update', (p) => p?.id | [backend/src/model/component/NotificationComponent.ts:223](../../backend/src/model/component/NotificationComponent.ts#L223) |
+| `notification.EmailAsset.CreateUploadTicket` | `fine-grained-decorator` | async (sender) => { const [canCreate, canUpdate] = await Promise.all([ canPerformComponentOperationAsync( sender, 'notifications', 'create'  | [backend/src/model/component/NotificationComponent.ts:520](../../backend/src/model/component/NotificationComponent.ts#L520) |
+| `notification.EmailAsset.Delete` | `crud-decorator` | 'notifications', 'delete', NOT_A_DESTINATION_GROUP_ID | [backend/src/model/component/NotificationComponent.ts:549](../../backend/src/model/component/NotificationComponent.ts#L549) |
+| `notification.EmailAsset.Get` | `crud-decorator` | 'notifications', 'read', NOT_A_DESTINATION_GROUP_ID | [backend/src/model/component/NotificationComponent.ts:537](../../backend/src/model/component/NotificationComponent.ts#L537) |
+| `notification.EmailAsset.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:513](../../backend/src/model/component/NotificationComponent.ts#L513) |
+| `notification.EmailTemplate.Create` | `crud-decorator` | 'notifications', 'create' | [backend/src/model/component/NotificationComponent.ts:436](../../backend/src/model/component/NotificationComponent.ts#L436) |
+| `notification.EmailTemplate.Delete` | `crud-decorator` | 'notifications', 'delete', NOT_A_DESTINATION_GROUP_ID | [backend/src/model/component/NotificationComponent.ts:453](../../backend/src/model/component/NotificationComponent.ts#L453) |
+| `notification.EmailTemplate.Get` | `crud-decorator` | 'notifications', 'read', NOT_A_DESTINATION_GROUP_ID | [backend/src/model/component/NotificationComponent.ts:425](../../backend/src/model/component/NotificationComponent.ts#L425) |
+| `notification.EmailTemplate.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:419](../../backend/src/model/component/NotificationComponent.ts#L419) |
+| `notification.EmailTemplate.Update` | `crud-decorator` | 'notifications', 'update', NOT_A_DESTINATION_GROUP_ID | [backend/src/model/component/NotificationComponent.ts:442](../../backend/src/model/component/NotificationComponent.ts#L442) |
+| `notification.History.Get` | `crud-decorator` | 'notifications', 'read', NOT_A_DESTINATION_GROUP_ID | [backend/src/model/component/NotificationComponent.ts:267](../../backend/src/model/component/NotificationComponent.ts#L267) |
+| `notification.History.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:259](../../backend/src/model/component/NotificationComponent.ts#L259) |
+| `notification.History.Requeue` | `crud-decorator` | 'notifications', 'update', NOT_A_DESTINATION_GROUP_ID | [backend/src/model/component/NotificationComponent.ts:403](../../backend/src/model/component/NotificationComponent.ts#L403) |
+| `notification.Inbox.Get` | `crud-decorator` | 'notifications', 'read', NOT_A_DESTINATION_GROUP_ID | [backend/src/model/component/NotificationComponent.ts:140](../../backend/src/model/component/NotificationComponent.ts#L140) |
+| `notification.Inbox.GetMany` | `crud-decorator` | 'notifications', 'read', NOT_A_DESTINATION_GROUP_ID | [backend/src/model/component/NotificationComponent.ts:151](../../backend/src/model/component/NotificationComponent.ts#L151) |
+| `notification.Inbox.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:133](../../backend/src/model/component/NotificationComponent.ts#L133) |
+| `notification.Inbox.MarkAllRead` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:182](../../backend/src/model/component/NotificationComponent.ts#L182) |
+| `notification.Inbox.MarkRead` | `crud-decorator` | 'notifications', 'read', NOT_A_DESTINATION_GROUP_ID | [backend/src/model/component/NotificationComponent.ts:162](../../backend/src/model/component/NotificationComponent.ts#L162) |
+| `notification.Inbox.MarkUnread` | `crud-decorator` | 'notifications', 'read', NOT_A_DESTINATION_GROUP_ID | [backend/src/model/component/NotificationComponent.ts:172](../../backend/src/model/component/NotificationComponent.ts#L172) |
+| `notification.ListTokens` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/NotificationComponent.ts:126](../../backend/src/model/component/NotificationComponent.ts#L126) |
+| `notification.OAuth.Start` | `crud-decorator` | 'integrations', 'update', (p) => p?.channelId | [backend/src/model/component/NotificationComponent.ts:561](../../backend/src/model/component/NotificationComponent.ts#L561) |
+| `notification.OnCall.Delete` | `crud-decorator` | 'notifications', 'delete' | [backend/src/model/component/NotificationComponent.ts:367](../../backend/src/model/component/NotificationComponent.ts#L367) |
+| `notification.OnCall.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:355](../../backend/src/model/component/NotificationComponent.ts#L355) |
+| `notification.OnCall.Resolve` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:373](../../backend/src/model/component/NotificationComponent.ts#L373) |
+| `notification.OnCall.Set` | `crud-decorator` | 'notifications', 'update' | [backend/src/model/component/NotificationComponent.ts:361](../../backend/src/model/component/NotificationComponent.ts#L361) |
+| `notification.Preference.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:343](../../backend/src/model/component/NotificationComponent.ts#L343) |
+| `notification.Preference.Set` | `crud-decorator` | 'notifications', 'update' | [backend/src/model/component/NotificationComponent.ts:349](../../backend/src/model/component/NotificationComponent.ts#L349) |
+| `notification.RenderEmailPreview` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:287](../../backend/src/model/component/NotificationComponent.ts#L287) |
+| `notification.RenderTemplate` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:279](../../backend/src/model/component/NotificationComponent.ts#L279) |
+| `notification.Routing.Delete` | `crud-decorator` | 'notifications', 'delete' | [backend/src/model/component/NotificationComponent.ts:391](../../backend/src/model/component/NotificationComponent.ts#L391) |
+| `notification.Routing.Evaluate` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:397](../../backend/src/model/component/NotificationComponent.ts#L397) |
+| `notification.Routing.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:379](../../backend/src/model/component/NotificationComponent.ts#L379) |
+| `notification.Routing.Set` | `crud-decorator` | 'notifications', 'update' | [backend/src/model/component/NotificationComponent.ts:385](../../backend/src/model/component/NotificationComponent.ts#L385) |
+| `notification.Subscribe` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/NotificationComponent.ts:117](../../backend/src/model/component/NotificationComponent.ts#L117) |
+| `notification.Template.Create` | `crud-decorator` | 'notifications', 'create' | [backend/src/model/component/NotificationComponent.ts:485](../../backend/src/model/component/NotificationComponent.ts#L485) |
+| `notification.Template.Delete` | `crud-decorator` | 'notifications', 'delete', NOT_A_DESTINATION_GROUP_ID | [backend/src/model/component/NotificationComponent.ts:502](../../backend/src/model/component/NotificationComponent.ts#L502) |
+| `notification.Template.Get` | `crud-decorator` | 'notifications', 'read', NOT_A_DESTINATION_GROUP_ID | [backend/src/model/component/NotificationComponent.ts:473](../../backend/src/model/component/NotificationComponent.ts#L473) |
+| `notification.Template.List` | `crud-decorator` | 'notifications', 'read' | [backend/src/model/component/NotificationComponent.ts:466](../../backend/src/model/component/NotificationComponent.ts#L466) |
+| `notification.Template.Update` | `crud-decorator` | 'notifications', 'update', NOT_A_DESTINATION_GROUP_ID | [backend/src/model/component/NotificationComponent.ts:491](../../backend/src/model/component/NotificationComponent.ts#L491) |
 | `object.Describe` | `public` | NoPermissions | [backend/src/model/component/ObjectComponent.ts:20](../../backend/src/model/component/ObjectComponent.ts#L20) |
 | `object.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/ObjectComponent.ts:27](../../backend/src/model/component/ObjectComponent.ts#L27) |
 | `object.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/ObjectComponent.ts:40](../../backend/src/model/component/ObjectComponent.ts#L40) |
 | `object.Set` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/ObjectComponent.ts:66](../../backend/src/model/component/ObjectComponent.ts#L66) |
 | `object.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/ObjectComponent.ts:53](../../backend/src/model/component/ObjectComponent.ts#L53) |
-| `organization.Describe` | `public` | NoPermissions | [backend/src/model/component/OrganizationComponent.ts:44](../../backend/src/model/component/OrganizationComponent.ts#L44) |
-| `organization.GetDefaults` | `public` | NoPermissions | [backend/src/model/component/OrganizationComponent.ts:147](../../backend/src/model/component/OrganizationComponent.ts#L147) |
-| `organization.GetProfile` | `public` | NoPermissions | [backend/src/model/component/OrganizationComponent.ts:51](../../backend/src/model/component/OrganizationComponent.ts#L51) |
-| `organization.GetScopeModel` | `public` | NoPermissions | [backend/src/model/component/OrganizationComponent.ts:166](../../backend/src/model/component/OrganizationComponent.ts#L166) |
-| `organization.SetProfile` | `crud-decorator` | 'organizations', 'update' | [backend/src/model/component/OrganizationComponent.ts:66](../../backend/src/model/component/OrganizationComponent.ts#L66) |
+| `operations.DeleteItaliaPoolRegisterEntry` | `crud-decorator` | 'locations', 'update', (params) => params?.siteId | [backend/src/model/component/OperationsComponent.ts:978](../../backend/src/model/component/OperationsComponent.ts#L978) |
+| `operations.DeletePolicy` | `crud-decorator` | 'organizations', 'update' | [backend/src/model/component/OperationsComponent.ts:1106](../../backend/src/model/component/OperationsComponent.ts#L1106) |
+| `operations.Describe` | `public` | NoPermissions | [backend/src/model/component/OperationsComponent.ts:249](../../backend/src/model/component/OperationsComponent.ts#L249) |
+| `operations.GetColdChainRecordVerdict` | `crud-decorator` | 'organizations', 'read' | [backend/src/model/component/OperationsComponent.ts:356](../../backend/src/model/component/OperationsComponent.ts#L356) |
+| `operations.GetIrrigationVerdict` | `crud-decorator` | 'organizations', 'read' | [backend/src/model/component/OperationsComponent.ts:414](../../backend/src/model/component/OperationsComponent.ts#L414) |
+| `operations.GetItaliaBreakerTripVerdict` | `crud-decorator` | 'organizations', 'read' | [backend/src/model/component/OperationsComponent.ts:734](../../backend/src/model/component/OperationsComponent.ts#L734) |
+| `operations.GetItaliaHotWaterVerdict` | `crud-decorator` | 'organizations', 'read' | [backend/src/model/component/OperationsComponent.ts:497](../../backend/src/model/component/OperationsComponent.ts#L497) |
+| `operations.GetItaliaNightFlowVerdicts` | `crud-decorator` | 'organizations', 'read' | [backend/src/model/component/OperationsComponent.ts:646](../../backend/src/model/component/OperationsComponent.ts#L646) |
+| `operations.GetItaliaPitchVerdict` | `crud-decorator` | 'organizations', 'read' | [backend/src/model/component/OperationsComponent.ts:676](../../backend/src/model/component/OperationsComponent.ts#L676) |
+| `operations.GetItaliaPoolRegister` | `crud-decorator` | 'organizations', 'read' | [backend/src/model/component/OperationsComponent.ts:541](../../backend/src/model/component/OperationsComponent.ts#L541) |
+| `operations.GetItaliaReopeningFlushVerdict` | `crud-decorator` | 'organizations', 'read' | [backend/src/model/component/OperationsComponent.ts:604](../../backend/src/model/component/OperationsComponent.ts#L604) |
+| `operations.GetItaliaSitePowerVerdict` | `crud-decorator` | 'organizations', 'read' | [backend/src/model/component/OperationsComponent.ts:705](../../backend/src/model/component/OperationsComponent.ts#L705) |
+| `operations.GetParkingOperationalVerdict` | `crud-decorator` | 'organizations', 'read' | [backend/src/model/component/OperationsComponent.ts:378](../../backend/src/model/component/OperationsComponent.ts#L378) |
+| `operations.GetPolicies` | `crud-decorator` | 'organizations', 'read' | [backend/src/model/component/OperationsComponent.ts:256](../../backend/src/model/component/OperationsComponent.ts#L256) |
+| `operations.GetPolicyRegistry` | `crud-decorator` | 'organizations', 'read' | [backend/src/model/component/OperationsComponent.ts:271](../../backend/src/model/component/OperationsComponent.ts#L271) |
+| `operations.GetPolicySelectorCatalog` | `crud-decorator` | 'organizations', 'read' | [backend/src/model/component/OperationsComponent.ts:286](../../backend/src/model/component/OperationsComponent.ts#L286) |
+| `operations.GetPvHealthVerdict` | `crud-decorator` | 'organizations', 'read' | [backend/src/model/component/OperationsComponent.ts:463](../../backend/src/model/component/OperationsComponent.ts#L463) |
+| `operations.GetRefrigerationPeerHealth` | `crud-decorator` | 'organizations', 'read' | [backend/src/model/component/OperationsComponent.ts:301](../../backend/src/model/component/OperationsComponent.ts#L301) |
+| `operations.SetColdChainRecordPolicy` | `crud-decorator` | 'organizations', 'update' | [backend/src/model/component/OperationsComponent.ts:784](../../backend/src/model/component/OperationsComponent.ts#L784) |
+| `operations.SetIrrigationPolicy` | `crud-decorator` | 'organizations', 'update' | [backend/src/model/component/OperationsComponent.ts:841](../../backend/src/model/component/OperationsComponent.ts#L841) |
+| `operations.SetItaliaBreakerTripPolicy` | `crud-decorator` | 'organizations', 'update' | [backend/src/model/component/OperationsComponent.ts:1082](../../backend/src/model/component/OperationsComponent.ts#L1082) |
+| `operations.SetItaliaHotWaterPolicy` | `crud-decorator` | 'organizations', 'update' | [backend/src/model/component/OperationsComponent.ts:883](../../backend/src/model/component/OperationsComponent.ts#L883) |
+| `operations.SetItaliaNightFlowPolicy` | `crud-decorator` | 'organizations', 'update' | [backend/src/model/component/OperationsComponent.ts:1006](../../backend/src/model/component/OperationsComponent.ts#L1006) |
+| `operations.SetItaliaPitchPolicy` | `crud-decorator` | 'organizations', 'update' | [backend/src/model/component/OperationsComponent.ts:1034](../../backend/src/model/component/OperationsComponent.ts#L1034) |
+| `operations.SetItaliaPoolChemistryPolicy` | `crud-decorator` | 'organizations', 'update' | [backend/src/model/component/OperationsComponent.ts:907](../../backend/src/model/component/OperationsComponent.ts#L907) |
+| `operations.SetItaliaPoolRegisterEntry` | `crud-decorator` | 'locations', 'update', (params) => params?.entry?.siteId | [backend/src/model/component/OperationsComponent.ts:932](../../backend/src/model/component/OperationsComponent.ts#L932) |
+| `operations.SetItaliaSitePowerPolicy` | `crud-decorator` | 'organizations', 'update' | [backend/src/model/component/OperationsComponent.ts:1058](../../backend/src/model/component/OperationsComponent.ts#L1058) |
+| `operations.SetParkingOperationalPolicy` | `crud-decorator` | 'organizations', 'update' | [backend/src/model/component/OperationsComponent.ts:813](../../backend/src/model/component/OperationsComponent.ts#L813) |
+| `operations.SetPolicy` | `crud-decorator` | 'organizations', 'update' | [backend/src/model/component/OperationsComponent.ts:802](../../backend/src/model/component/OperationsComponent.ts#L802) |
+| `operations.SetPvHealthPolicy` | `crud-decorator` | 'organizations', 'update' | [backend/src/model/component/OperationsComponent.ts:858](../../backend/src/model/component/OperationsComponent.ts#L858) |
+| `operations.SetRefrigerationPeerPolicy` | `crud-decorator` | 'organizations', 'update' | [backend/src/model/component/OperationsComponent.ts:766](../../backend/src/model/component/OperationsComponent.ts#L766) |
+| `organization.Describe` | `public` | NoPermissions | [backend/src/model/component/OrganizationComponent.ts:46](../../backend/src/model/component/OrganizationComponent.ts#L46) |
+| `organization.GetDefaults` | `public` | NoPermissions | [backend/src/model/component/OrganizationComponent.ts:149](../../backend/src/model/component/OrganizationComponent.ts#L149) |
+| `organization.GetProfile` | `public` | NoPermissions | [backend/src/model/component/OrganizationComponent.ts:53](../../backend/src/model/component/OrganizationComponent.ts#L53) |
+| `organization.GetScopeModel` | `public` | NoPermissions | [backend/src/model/component/OrganizationComponent.ts:170](../../backend/src/model/component/OrganizationComponent.ts#L170) |
+| `organization.SetProfile` | `crud-decorator` | 'organizations', 'update' | [backend/src/model/component/OrganizationComponent.ts:68](../../backend/src/model/component/OrganizationComponent.ts#L68) |
 | `ota.Abort` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/OtaComponent.ts:98](../../backend/src/model/component/OtaComponent.ts#L98) |
 | `ota.Commit` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/OtaComponent.ts:85](../../backend/src/model/component/OtaComponent.ts#L85) |
 | `ota.Data` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/OtaComponent.ts:72](../../backend/src/model/component/OtaComponent.ts#L72) |
@@ -850,22 +996,26 @@ Regenerate with `cd backend && npm run generate`.
 | `ota.Start` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/OtaComponent.ts:46](../../backend/src/model/component/OtaComponent.ts#L46) |
 | `ota.Update` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/OtaComponent.ts:31](../../backend/src/model/component/OtaComponent.ts#L31) |
 | `ota.Write` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/OtaComponent.ts:59](../../backend/src/model/component/OtaComponent.ts#L59) |
-| `permission.Describe` | `public` | NoPermissions | [backend/src/model/component/PermissionComponent.ts:60](../../backend/src/model/component/PermissionComponent.ts#L60) |
-| `permission.GetIdentityPolicies` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/PermissionComponent.ts:181](../../backend/src/model/component/PermissionComponent.ts#L181) |
-| `permission.GetRoles` | `fine-grained-decorator` | canReadPolicies | [backend/src/model/component/PermissionComponent.ts:67](../../backend/src/model/component/PermissionComponent.ts#L67) |
-| `permission.GrantRoles` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/model/component/PermissionComponent.ts:127](../../backend/src/model/component/PermissionComponent.ts#L127) |
-| `permission.ListAdministrators` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/PermissionComponent.ts:160](../../backend/src/model/component/PermissionComponent.ts#L160) |
-| `permission.RevokeRoles` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/model/component/PermissionComponent.ts:87](../../backend/src/model/component/PermissionComponent.ts#L87) |
-| `persona.Create` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/PersonaComponent.ts:83](../../backend/src/model/component/PersonaComponent.ts#L83) |
-| `persona.Delete` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/PersonaComponent.ts:159](../../backend/src/model/component/PersonaComponent.ts#L159) |
-| `persona.Describe` | `public` | NoPermissions | [backend/src/model/component/PersonaComponent.ts:43](../../backend/src/model/component/PersonaComponent.ts#L43) |
-| `persona.Get` | `fine-grained-decorator` | canReadPolicies | [backend/src/model/component/PersonaComponent.ts:66](../../backend/src/model/component/PersonaComponent.ts#L66) |
-| `persona.List` | `fine-grained-decorator` | canReadPolicies | [backend/src/model/component/PersonaComponent.ts:50](../../backend/src/model/component/PersonaComponent.ts#L50) |
-| `persona.Update` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/PersonaComponent.ts:111](../../backend/src/model/component/PersonaComponent.ts#L111) |
+| `permission.Describe` | `public` | NoPermissions | [backend/src/model/component/PermissionComponent.ts:61](../../backend/src/model/component/PermissionComponent.ts#L61) |
+| `permission.GetIdentityPolicies` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/PermissionComponent.ts:183](../../backend/src/model/component/PermissionComponent.ts#L183) |
+| `permission.GetRoles` | `fine-grained-decorator` | canReadPolicies | [backend/src/model/component/PermissionComponent.ts:68](../../backend/src/model/component/PermissionComponent.ts#L68) |
+| `permission.GrantRoles` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/model/component/PermissionComponent.ts:129](../../backend/src/model/component/PermissionComponent.ts#L129) |
+| `permission.ListAdministrators` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/PermissionComponent.ts:162](../../backend/src/model/component/PermissionComponent.ts#L162) |
+| `permission.RevokeRoles` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/model/component/PermissionComponent.ts:88](../../backend/src/model/component/PermissionComponent.ts#L88) |
+| `persona.Create` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/PersonaComponent.ts:90](../../backend/src/model/component/PersonaComponent.ts#L90) |
+| `persona.Delete` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/PersonaComponent.ts:168](../../backend/src/model/component/PersonaComponent.ts#L168) |
+| `persona.Describe` | `public` | NoPermissions | [backend/src/model/component/PersonaComponent.ts:50](../../backend/src/model/component/PersonaComponent.ts#L50) |
+| `persona.Get` | `fine-grained-decorator` | canReadPolicies | [backend/src/model/component/PersonaComponent.ts:73](../../backend/src/model/component/PersonaComponent.ts#L73) |
+| `persona.List` | `fine-grained-decorator` | canReadPolicies | [backend/src/model/component/PersonaComponent.ts:57](../../backend/src/model/component/PersonaComponent.ts#L57) |
+| `persona.Update` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/PersonaComponent.ts:119](../../backend/src/model/component/PersonaComponent.ts#L119) |
 | `pill.Describe` | `public` | NoPermissions | [backend/src/model/component/PillComponent.ts:20](../../backend/src/model/component/PillComponent.ts#L20) |
 | `pill.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/PillComponent.ts:40](../../backend/src/model/component/PillComponent.ts#L40) |
 | `pill.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/PillComponent.ts:53](../../backend/src/model/component/PillComponent.ts#L53) |
 | `pill.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/PillComponent.ts:27](../../backend/src/model/component/PillComponent.ts#L27) |
+| `pilluart.Describe` | `public` | NoPermissions | [backend/src/model/component/PillUartComponent.ts:27](../../backend/src/model/component/PillUartComponent.ts#L27) |
+| `pilluart.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/PillUartComponent.ts:47](../../backend/src/model/component/PillUartComponent.ts#L47) |
+| `pilluart.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/PillUartComponent.ts:60](../../backend/src/model/component/PillUartComponent.ts#L60) |
+| `pilluart.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/PillUartComponent.ts:34](../../backend/src/model/component/PillUartComponent.ts#L34) |
 | `plugin.Describe` | `public` | NoPermissions | [backend/src/model/component/PluginManagerComponent.ts:63](../../backend/src/model/component/PluginManagerComponent.ts#L63) |
 | `plugin.List` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/PluginManagerComponent.ts:70](../../backend/src/model/component/PluginManagerComponent.ts#L70) |
 | `plugin.Remove` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/PluginManagerComponent.ts:127](../../backend/src/model/component/PluginManagerComponent.ts#L127) |
@@ -897,19 +1047,20 @@ Regenerate with `cd backend && npm run generate`.
 | `privacy.GetPolicy` | `fine-grained-decorator` | canReadOrganizationSettings | [backend/src/model/component/PrivacyComponent.ts:37](../../backend/src/model/component/PrivacyComponent.ts#L37) |
 | `privacy.Reset` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/model/component/PrivacyComponent.ts:61](../../backend/src/model/component/PrivacyComponent.ts#L61) |
 | `privacy.SetPolicy` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/model/component/PrivacyComponent.ts:48](../../backend/src/model/component/PrivacyComponent.ts#L48) |
-| `report.Cancel` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/ReportComponent.ts:117](../../backend/src/model/component/ReportComponent.ts#L117) |
-| `report.Describe` | `public` | NoPermissions | [backend/src/model/component/ReportComponent.ts:69](../../backend/src/model/component/ReportComponent.ts#L69) |
-| `report.Generate` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/ReportComponent.ts:79](../../backend/src/model/component/ReportComponent.ts#L79) |
-| `report.GetReport` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/ReportComponent.ts:92](../../backend/src/model/component/ReportComponent.ts#L92) |
-| `report.PurgeReports` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/model/component/ReportComponent.ts:193](../../backend/src/model/component/ReportComponent.ts#L193) |
-| `report.SuggestTimeShift` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/ReportComponent.ts:139](../../backend/src/model/component/ReportComponent.ts#L139) |
-| `reporttemplate.Create` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/ReportTemplateComponent.ts:123](../../backend/src/model/component/ReportTemplateComponent.ts#L123) |
-| `reporttemplate.Delete` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/ReportTemplateComponent.ts:197](../../backend/src/model/component/ReportTemplateComponent.ts#L197) |
-| `reporttemplate.Describe` | `public` | NoPermissions | [backend/src/model/component/ReportTemplateComponent.ts:116](../../backend/src/model/component/ReportTemplateComponent.ts#L116) |
-| `reporttemplate.Get` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/ReportTemplateComponent.ts:185](../../backend/src/model/component/ReportTemplateComponent.ts#L185) |
-| `reporttemplate.List` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/ReportTemplateComponent.ts:175](../../backend/src/model/component/ReportTemplateComponent.ts#L175) |
-| `reporttemplate.Run` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/ReportTemplateComponent.ts:210](../../backend/src/model/component/ReportTemplateComponent.ts#L210) |
-| `reporttemplate.Update` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/ReportTemplateComponent.ts:144](../../backend/src/model/component/ReportTemplateComponent.ts#L144) |
+| `report.Cancel` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/ReportComponent.ts:126](../../backend/src/model/component/ReportComponent.ts#L126) |
+| `report.Delete` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/ReportComponent.ts:153](../../backend/src/model/component/ReportComponent.ts#L153) |
+| `report.Describe` | `public` | NoPermissions | [backend/src/model/component/ReportComponent.ts:76](../../backend/src/model/component/ReportComponent.ts#L76) |
+| `report.Generate` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/ReportComponent.ts:86](../../backend/src/model/component/ReportComponent.ts#L86) |
+| `report.GetReport` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/ReportComponent.ts:99](../../backend/src/model/component/ReportComponent.ts#L99) |
+| `report.PurgeReports` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/model/component/ReportComponent.ts:241](../../backend/src/model/component/ReportComponent.ts#L241) |
+| `report.SuggestTimeShift` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/ReportComponent.ts:187](../../backend/src/model/component/ReportComponent.ts#L187) |
+| `reporttemplate.Create` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/ReportTemplateComponent.ts:127](../../backend/src/model/component/ReportTemplateComponent.ts#L127) |
+| `reporttemplate.Delete` | `crud-decorator` | 'reports', 'update', NOT_A_REPORT_ID | [backend/src/model/component/ReportTemplateComponent.ts:203](../../backend/src/model/component/ReportTemplateComponent.ts#L203) |
+| `reporttemplate.Describe` | `public` | NoPermissions | [backend/src/model/component/ReportTemplateComponent.ts:120](../../backend/src/model/component/ReportTemplateComponent.ts#L120) |
+| `reporttemplate.Get` | `crud-decorator` | 'reports', 'read', NOT_A_REPORT_ID | [backend/src/model/component/ReportTemplateComponent.ts:190](../../backend/src/model/component/ReportTemplateComponent.ts#L190) |
+| `reporttemplate.List` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/ReportTemplateComponent.ts:180](../../backend/src/model/component/ReportTemplateComponent.ts#L180) |
+| `reporttemplate.Run` | `crud-decorator` | 'reports', 'update', NOT_A_REPORT_ID | [backend/src/model/component/ReportTemplateComponent.ts:217](../../backend/src/model/component/ReportTemplateComponent.ts#L217) |
+| `reporttemplate.Update` | `crud-decorator` | 'reports', 'update', NOT_A_REPORT_ID | [backend/src/model/component/ReportTemplateComponent.ts:148](../../backend/src/model/component/ReportTemplateComponent.ts#L148) |
 | `restrictions.Describe` | `public` | NoPermissions | [backend/src/model/component/RestrictionsComponent.ts:26](../../backend/src/model/component/RestrictionsComponent.ts#L26) |
 | `restrictions.Get` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/RestrictionsComponent.ts:33](../../backend/src/model/component/RestrictionsComponent.ts#L33) |
 | `restrictions.Set` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/RestrictionsComponent.ts:40](../../backend/src/model/component/RestrictionsComponent.ts#L40) |
@@ -946,6 +1097,13 @@ Regenerate with `cd backend && npm run generate`.
 | `schedule.Describe` | `public` | NoPermissions | [backend/src/model/component/ScheduleComponent.ts:42](../../backend/src/model/component/ScheduleComponent.ts#L42) |
 | `schedule.List` | `crud-decorator` | 'devices', 'read', (p: ScheduleListParams) => p?.shellyID | [backend/src/model/component/ScheduleComponent.ts:63](../../backend/src/model/component/ScheduleComponent.ts#L63) |
 | `schedule.Update` | `crud-decorator` | 'devices', 'update', (p: ScheduleUpdateParams) => p?.shellyID | [backend/src/model/component/ScheduleComponent.ts:120](../../backend/src/model/component/ScheduleComponent.ts#L120) |
+| `scopedautomation.Create` | `public` | NoPermissions | [backend/src/model/component/ScopedAutomationComponent.ts:48](../../backend/src/model/component/ScopedAutomationComponent.ts#L48) |
+| `scopedautomation.Delete` | `public` | NoPermissions | [backend/src/model/component/ScopedAutomationComponent.ts:129](../../backend/src/model/component/ScopedAutomationComponent.ts#L129) |
+| `scopedautomation.Describe` | `public` | NoPermissions | [backend/src/model/component/ScopedAutomationComponent.ts:41](../../backend/src/model/component/ScopedAutomationComponent.ts#L41) |
+| `scopedautomation.Get` | `public` | NoPermissions | [backend/src/model/component/ScopedAutomationComponent.ts:92](../../backend/src/model/component/ScopedAutomationComponent.ts#L92) |
+| `scopedautomation.List` | `public` | NoPermissions | [backend/src/model/component/ScopedAutomationComponent.ts:69](../../backend/src/model/component/ScopedAutomationComponent.ts#L69) |
+| `scopedautomation.Run` | `public` | NoPermissions | [backend/src/model/component/ScopedAutomationComponent.ts:144](../../backend/src/model/component/ScopedAutomationComponent.ts#L144) |
+| `scopedautomation.Update` | `public` | NoPermissions | [backend/src/model/component/ScopedAutomationComponent.ts:108](../../backend/src/model/component/ScopedAutomationComponent.ts#L108) |
 | `script.Create` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/ScriptComponent.ts:50](../../backend/src/model/component/ScriptComponent.ts#L50) |
 | `script.Delete` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/ScriptComponent.ts:63](../../backend/src/model/component/ScriptComponent.ts#L63) |
 | `script.Describe` | `public` | NoPermissions | [backend/src/model/component/ScriptComponent.ts:30](../../backend/src/model/component/ScriptComponent.ts#L30) |
@@ -1007,11 +1165,11 @@ Regenerate with `cd backend && npm run generate`.
 | `smoke.Mute` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/SmokeComponent.ts:71](../../backend/src/model/component/SmokeComponent.ts#L71) |
 | `smoke.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/SmokeComponent.ts:32](../../backend/src/model/component/SmokeComponent.ts#L32) |
 | `storage.Describe` | `public` | NoPermissions | [backend/src/model/component/StorageComponent.ts:135](../../backend/src/model/component/StorageComponent.ts#L135) |
-| `storage.GetAll` | `public` | NoPermissions | [backend/src/model/component/StorageComponent.ts:365](../../backend/src/model/component/StorageComponent.ts#L365) |
+| `storage.GetAll` | `public` | NoPermissions | [backend/src/model/component/StorageComponent.ts:360](../../backend/src/model/component/StorageComponent.ts#L360) |
 | `storage.GetItem` | `public` | NoPermissions | [backend/src/model/component/StorageComponent.ts:234](../../backend/src/model/component/StorageComponent.ts#L234) |
-| `storage.Keys` | `public` | NoPermissions | [backend/src/model/component/StorageComponent.ts:347](../../backend/src/model/component/StorageComponent.ts#L347) |
-| `storage.List` | `public` | NoPermissions | [backend/src/model/component/StorageComponent.ts:456](../../backend/src/model/component/StorageComponent.ts#L456) |
-| `storage.RemoveItem` | `fine-grained-decorator` | canUseAuthenticatedWrite | [backend/src/model/component/StorageComponent.ts:474](../../backend/src/model/component/StorageComponent.ts#L474) |
+| `storage.Keys` | `public` | NoPermissions | [backend/src/model/component/StorageComponent.ts:342](../../backend/src/model/component/StorageComponent.ts#L342) |
+| `storage.List` | `public` | NoPermissions | [backend/src/model/component/StorageComponent.ts:451](../../backend/src/model/component/StorageComponent.ts#L451) |
+| `storage.RemoveItem` | `fine-grained-decorator` | canUseAuthenticatedWrite | [backend/src/model/component/StorageComponent.ts:469](../../backend/src/model/component/StorageComponent.ts#L469) |
 | `storage.SetItem` | `fine-grained-decorator` | canUseAuthenticatedWrite | [backend/src/model/component/StorageComponent.ts:142](../../backend/src/model/component/StorageComponent.ts#L142) |
 | `switch.Describe` | `public` | NoPermissions | [backend/src/model/component/SwitchComponent.ts:26](../../backend/src/model/component/SwitchComponent.ts#L26) |
 | `switch.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/SwitchComponent.ts:89](../../backend/src/model/component/SwitchComponent.ts#L89) |
@@ -1032,48 +1190,54 @@ Regenerate with `cd backend && npm run generate`.
 | `sys.SetDebugConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/SysComponent.ts:238](../../backend/src/model/component/SysComponent.ts#L238) |
 | `sys.SetTime` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/SysComponent.ts:168](../../backend/src/model/component/SysComponent.ts#L168) |
 | `system.Bootstrap` | `public` | NoPermissions | [backend/src/model/component/SystemComponent.ts:111](../../backend/src/model/component/SystemComponent.ts#L111) |
-| `system.DbWrites.Get` | `fine-grained-decorator` | isAuthenticated | [backend/src/model/component/SystemComponent.ts:595](../../backend/src/model/component/SystemComponent.ts#L595) |
-| `system.DbWrites.Set` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/SystemComponent.ts:606](../../backend/src/model/component/SystemComponent.ts#L606) |
-| `system.Describe` | `public` | NoPermissions | [backend/src/model/component/SystemComponent.ts:345](../../backend/src/model/component/SystemComponent.ts#L345) |
-| `system.GetConnectionInspector` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:414](../../backend/src/model/component/SystemComponent.ts#L414) |
-| `system.GetModuleHistory` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:454](../../backend/src/model/component/SystemComponent.ts#L454) |
-| `system.GetSlowBuilds` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:492](../../backend/src/model/component/SystemComponent.ts#L492) |
-| `system.GetSlowClients` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:538](../../backend/src/model/component/SystemComponent.ts#L538) |
-| `system.GetSlowDeviceCommands` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:515](../../backend/src/model/component/SystemComponent.ts#L515) |
-| `system.GetSlowRpcs` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:467](../../backend/src/model/component/SystemComponent.ts#L467) |
-| `system.GetTopology` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:383](../../backend/src/model/component/SystemComponent.ts#L383) |
-| `system.GetTopologyDiff` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:443](../../backend/src/model/component/SystemComponent.ts#L443) |
+| `system.DbWrites.Get` | `fine-grained-decorator` | isAuthenticated | [backend/src/model/component/SystemComponent.ts:594](../../backend/src/model/component/SystemComponent.ts#L594) |
+| `system.DbWrites.Set` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/SystemComponent.ts:605](../../backend/src/model/component/SystemComponent.ts#L605) |
+| `system.Describe` | `public` | NoPermissions | [backend/src/model/component/SystemComponent.ts:344](../../backend/src/model/component/SystemComponent.ts#L344) |
+| `system.GetConnectionInspector` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:413](../../backend/src/model/component/SystemComponent.ts#L413) |
+| `system.GetModuleHistory` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:453](../../backend/src/model/component/SystemComponent.ts#L453) |
+| `system.GetSlowBuilds` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:491](../../backend/src/model/component/SystemComponent.ts#L491) |
+| `system.GetSlowClients` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:537](../../backend/src/model/component/SystemComponent.ts#L537) |
+| `system.GetSlowDeviceCommands` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:514](../../backend/src/model/component/SystemComponent.ts#L514) |
+| `system.GetSlowRpcs` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:466](../../backend/src/model/component/SystemComponent.ts#L466) |
+| `system.GetTopology` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:382](../../backend/src/model/component/SystemComponent.ts#L382) |
+| `system.GetTopologyDiff` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:442](../../backend/src/model/component/SystemComponent.ts#L442) |
 | `system.GetVariables` | `public` | NoPermissions | [backend/src/model/component/SystemComponent.ts:122](../../backend/src/model/component/SystemComponent.ts#L122) |
-| `system.Health.GetDebugReport` | `fine-grained-decorator` | isAuthenticated | [backend/src/model/component/SystemComponent.ts:560](../../backend/src/model/component/SystemComponent.ts#L560) |
-| `system.Health.GetFull` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:372](../../backend/src/model/component/SystemComponent.ts#L372) |
-| `system.Health.GetHistory` | `fine-grained-decorator` | isAuthenticated | [backend/src/model/component/SystemComponent.ts:584](../../backend/src/model/component/SystemComponent.ts#L584) |
-| `system.Health.GetStreams` | `fine-grained-decorator` | isAuthenticated | [backend/src/model/component/SystemComponent.ts:571](../../backend/src/model/component/SystemComponent.ts#L571) |
-| `system.ListConnections` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:394](../../backend/src/model/component/SystemComponent.ts#L394) |
-| `system.Log.ListLevels` | `fine-grained-decorator` | isAuthenticated | [backend/src/model/component/SystemComponent.ts:644](../../backend/src/model/component/SystemComponent.ts#L644) |
-| `system.Log.SetLevel` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/SystemComponent.ts:655](../../backend/src/model/component/SystemComponent.ts#L655) |
-| `system.Observability.Reset` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/SystemComponent.ts:634](../../backend/src/model/component/SystemComponent.ts#L634) |
-| `system.Observability.Set` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/SystemComponent.ts:620](../../backend/src/model/component/SystemComponent.ts#L620) |
+| `system.Health.GetDebugReport` | `fine-grained-decorator` | isAuthenticated | [backend/src/model/component/SystemComponent.ts:559](../../backend/src/model/component/SystemComponent.ts#L559) |
+| `system.Health.GetFull` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:371](../../backend/src/model/component/SystemComponent.ts#L371) |
+| `system.Health.GetHistory` | `fine-grained-decorator` | isAuthenticated | [backend/src/model/component/SystemComponent.ts:583](../../backend/src/model/component/SystemComponent.ts#L583) |
+| `system.Health.GetStreams` | `fine-grained-decorator` | isAuthenticated | [backend/src/model/component/SystemComponent.ts:570](../../backend/src/model/component/SystemComponent.ts#L570) |
+| `system.ListConnections` | `fine-grained-decorator` | hasTenantAdminAuthority | [backend/src/model/component/SystemComponent.ts:393](../../backend/src/model/component/SystemComponent.ts#L393) |
+| `system.Log.ListLevels` | `fine-grained-decorator` | isAuthenticated | [backend/src/model/component/SystemComponent.ts:643](../../backend/src/model/component/SystemComponent.ts#L643) |
+| `system.Log.SetLevel` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/SystemComponent.ts:654](../../backend/src/model/component/SystemComponent.ts#L654) |
+| `system.Observability.Reset` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/SystemComponent.ts:633](../../backend/src/model/component/SystemComponent.ts#L633) |
+| `system.Observability.Set` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/model/component/SystemComponent.ts:619](../../backend/src/model/component/SystemComponent.ts#L619) |
 | `system.SubmitTelemetry` | `public` | NoPermissions | [backend/src/model/component/SystemComponent.ts:148](../../backend/src/model/component/SystemComponent.ts#L148) |
-| `system.Subscribe` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/SystemComponent.ts:209](../../backend/src/model/component/SystemComponent.ts#L209) |
-| `system.Unsubscribe` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/SystemComponent.ts:326](../../backend/src/model/component/SystemComponent.ts#L326) |
-| `tag.Assign` | `crud-decorator` | 'tags', 'update', (p) => p?.id | [backend/src/model/component/TagComponent.ts:438](../../backend/src/model/component/TagComponent.ts#L438) |
-| `tag.Create` | `crud-decorator` | 'tags', 'create' | [backend/src/model/component/TagComponent.ts:244](../../backend/src/model/component/TagComponent.ts#L244) |
-| `tag.Delete` | `crud-decorator` | 'tags', 'delete', (p) => p?.id | [backend/src/model/component/TagComponent.ts:342](../../backend/src/model/component/TagComponent.ts#L342) |
-| `tag.Describe` | `public` | NoPermissions | [backend/src/model/component/TagComponent.ts:237](../../backend/src/model/component/TagComponent.ts#L237) |
-| `tag.Get` | `crud-decorator` | 'tags', 'read', (p) => p?.id | [backend/src/model/component/TagComponent.ts:371](../../backend/src/model/component/TagComponent.ts#L371) |
-| `tag.List` | `crud-decorator` | 'tags', 'read' | [backend/src/model/component/TagComponent.ts:396](../../backend/src/model/component/TagComponent.ts#L396) |
-| `tag.ListAssignments` | `crud-decorator` | 'tags', 'read', (p) => p?.id | [backend/src/model/component/TagComponent.ts:514](../../backend/src/model/component/TagComponent.ts#L514) |
-| `tag.ListForSubject` | `crud-decorator` | 'tags', 'read' | [backend/src/model/component/TagComponent.ts:552](../../backend/src/model/component/TagComponent.ts#L552) |
-| `tag.Unassign` | `crud-decorator` | 'tags', 'update', (p) => p?.id | [backend/src/model/component/TagComponent.ts:478](../../backend/src/model/component/TagComponent.ts#L478) |
-| `tag.Update` | `crud-decorator` | 'tags', 'update', (p) => p?.id | [backend/src/model/component/TagComponent.ts:287](../../backend/src/model/component/TagComponent.ts#L287) |
-| `tariff.Add` | `crud-decorator` | 'reports', 'create' | [backend/src/model/component/TariffComponent.ts:75](../../backend/src/model/component/TariffComponent.ts#L75) |
-| `tariff.Assign` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/TariffComponent.ts:105](../../backend/src/model/component/TariffComponent.ts#L105) |
-| `tariff.Delete` | `crud-decorator` | 'reports', 'delete' | [backend/src/model/component/TariffComponent.ts:95](../../backend/src/model/component/TariffComponent.ts#L95) |
-| `tariff.Describe` | `public` | NoPermissions | [backend/src/model/component/TariffComponent.ts:48](../../backend/src/model/component/TariffComponent.ts#L48) |
-| `tariff.Get` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/TariffComponent.ts:65](../../backend/src/model/component/TariffComponent.ts#L65) |
-| `tariff.List` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/TariffComponent.ts:55](../../backend/src/model/component/TariffComponent.ts#L55) |
-| `tariff.SetLiveSource` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/TariffComponent.ts:115](../../backend/src/model/component/TariffComponent.ts#L115) |
-| `tariff.Update` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/TariffComponent.ts:85](../../backend/src/model/component/TariffComponent.ts#L85) |
+| `system.Subscribe` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/SystemComponent.ts:208](../../backend/src/model/component/SystemComponent.ts#L208) |
+| `system.Unsubscribe` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/model/component/SystemComponent.ts:325](../../backend/src/model/component/SystemComponent.ts#L325) |
+| `tag.Assign` | `crud-decorator` | 'tags', 'update', (p) => p?.id | [backend/src/model/component/TagComponent.ts:462](../../backend/src/model/component/TagComponent.ts#L462) |
+| `tag.Create` | `crud-decorator` | 'tags', 'create' | [backend/src/model/component/TagComponent.ts:268](../../backend/src/model/component/TagComponent.ts#L268) |
+| `tag.Delete` | `crud-decorator` | 'tags', 'delete', (p) => p?.id | [backend/src/model/component/TagComponent.ts:366](../../backend/src/model/component/TagComponent.ts#L366) |
+| `tag.Describe` | `public` | NoPermissions | [backend/src/model/component/TagComponent.ts:261](../../backend/src/model/component/TagComponent.ts#L261) |
+| `tag.Get` | `crud-decorator` | 'tags', 'read', (p) => p?.id | [backend/src/model/component/TagComponent.ts:395](../../backend/src/model/component/TagComponent.ts#L395) |
+| `tag.List` | `crud-decorator` | 'tags', 'read' | [backend/src/model/component/TagComponent.ts:420](../../backend/src/model/component/TagComponent.ts#L420) |
+| `tag.ListAssignments` | `crud-decorator` | 'tags', 'read', (p) => p?.id | [backend/src/model/component/TagComponent.ts:540](../../backend/src/model/component/TagComponent.ts#L540) |
+| `tag.ListForSubject` | `crud-decorator` | 'tags', 'read' | [backend/src/model/component/TagComponent.ts:578](../../backend/src/model/component/TagComponent.ts#L578) |
+| `tag.Unassign` | `crud-decorator` | 'tags', 'update', (p) => p?.id | [backend/src/model/component/TagComponent.ts:504](../../backend/src/model/component/TagComponent.ts#L504) |
+| `tag.Update` | `crud-decorator` | 'tags', 'update', (p) => p?.id | [backend/src/model/component/TagComponent.ts:311](../../backend/src/model/component/TagComponent.ts#L311) |
+| `tariff.Add` | `crud-decorator` | 'reports', 'create', NOT_A_REPORT_ID | [backend/src/model/component/TariffComponent.ts:135](../../backend/src/model/component/TariffComponent.ts#L135) |
+| `tariff.Assign` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/TariffComponent.ts:174](../../backend/src/model/component/TariffComponent.ts#L174) |
+| `tariff.BillingPeriodAt` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/TariffComponent.ts:95](../../backend/src/model/component/TariffComponent.ts#L95) |
+| `tariff.BillingPeriods` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/TariffComponent.ts:85](../../backend/src/model/component/TariffComponent.ts#L85) |
+| `tariff.Delete` | `crud-decorator` | 'reports', 'delete', NOT_A_REPORT_ID | [backend/src/model/component/TariffComponent.ts:163](../../backend/src/model/component/TariffComponent.ts#L163) |
+| `tariff.Describe` | `public` | NoPermissions | [backend/src/model/component/TariffComponent.ts:57](../../backend/src/model/component/TariffComponent.ts#L57) |
+| `tariff.Get` | `crud-decorator` | 'reports', 'read', NOT_A_REPORT_ID | [backend/src/model/component/TariffComponent.ts:74](../../backend/src/model/component/TariffComponent.ts#L74) |
+| `tariff.List` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/TariffComponent.ts:64](../../backend/src/model/component/TariffComponent.ts#L64) |
+| `tariff.ListAssignments` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/TariffComponent.ts:105](../../backend/src/model/component/TariffComponent.ts#L105) |
+| `tariff.ResolveAssignments` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/TariffComponent.ts:115](../../backend/src/model/component/TariffComponent.ts#L115) |
+| `tariff.ResolvePricing` | `crud-decorator` | 'reports', 'read' | [backend/src/model/component/TariffComponent.ts:125](../../backend/src/model/component/TariffComponent.ts#L125) |
+| `tariff.SetLiveSource` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/TariffComponent.ts:184](../../backend/src/model/component/TariffComponent.ts#L184) |
+| `tariff.Update` | `crud-decorator` | 'reports', 'update', NOT_A_REPORT_ID | [backend/src/model/component/TariffComponent.ts:152](../../backend/src/model/component/TariffComponent.ts#L152) |
+| `tariff.WriteComponents` | `crud-decorator` | 'reports', 'update' | [backend/src/model/component/TariffComponent.ts:195](../../backend/src/model/component/TariffComponent.ts#L195) |
 | `temperature.Describe` | `public` | NoPermissions | [backend/src/model/component/TemperatureComponent.ts:25](../../backend/src/model/component/TemperatureComponent.ts#L25) |
 | `temperature.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/TemperatureComponent.ts:48](../../backend/src/model/component/TemperatureComponent.ts#L48) |
 | `temperature.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/TemperatureComponent.ts:61](../../backend/src/model/component/TemperatureComponent.ts#L61) |
@@ -1138,56 +1302,56 @@ Regenerate with `cd backend && npm run generate`.
 | `ui.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/UiComponent.ts:85](../../backend/src/model/component/UiComponent.ts#L85) |
 | `ui.Swipe` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/UiComponent.ts:111](../../backend/src/model/component/UiComponent.ts#L111) |
 | `ui.Tap` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/UiComponent.ts:124](../../backend/src/model/component/UiComponent.ts#L124) |
-| `user_group.AddMembers` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/UserGroupComponent.ts:278](../../backend/src/model/component/UserGroupComponent.ts#L278) |
-| `user_group.Create` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/UserGroupComponent.ts:108](../../backend/src/model/component/UserGroupComponent.ts#L108) |
-| `user_group.Delete` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/UserGroupComponent.ts:223](../../backend/src/model/component/UserGroupComponent.ts#L223) |
-| `user_group.Describe` | `public` | NoPermissions | [backend/src/model/component/UserGroupComponent.ts:69](../../backend/src/model/component/UserGroupComponent.ts#L69) |
-| `user_group.Get` | `fine-grained-decorator` | canReadPolicies | [backend/src/model/component/UserGroupComponent.ts:91](../../backend/src/model/component/UserGroupComponent.ts#L91) |
-| `user_group.List` | `fine-grained-decorator` | canReadPolicies | [backend/src/model/component/UserGroupComponent.ts:76](../../backend/src/model/component/UserGroupComponent.ts#L76) |
-| `user_group.ListMembers` | `fine-grained-decorator` | canReadPolicies | [backend/src/model/component/UserGroupComponent.ts:256](../../backend/src/model/component/UserGroupComponent.ts#L256) |
-| `user_group.RemoveMembers` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/UserGroupComponent.ts:332](../../backend/src/model/component/UserGroupComponent.ts#L332) |
-| `user_group.Update` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/UserGroupComponent.ts:137](../../backend/src/model/component/UserGroupComponent.ts#L137) |
-| `user.AttachCustomPersona` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:466](../../backend/src/modules/user/UserComponent.ts#L466) |
-| `user.Authenticate` | `public` | NoPermissions | [backend/src/modules/user/UserComponent.ts:209](../../backend/src/modules/user/UserComponent.ts#L209) |
-| `user.AuthenticateAlexa` | `public` | NoPermissions | [backend/src/modules/user/UserComponent.ts:194](../../backend/src/modules/user/UserComponent.ts#L194) |
-| `user.BulkRotatePATs` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:729](../../backend/src/modules/user/UserComponent.ts#L729) |
-| `user.CreatePAT` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:635](../../backend/src/modules/user/UserComponent.ts#L635) |
-| `user.CreateScopedPAT` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:659](../../backend/src/modules/user/UserComponent.ts#L659) |
-| `user.CreateServiceUser` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:599](../../backend/src/modules/user/UserComponent.ts#L599) |
-| `user.CreateZitadelUser` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:527](../../backend/src/modules/user/UserComponent.ts#L527) |
-| `user.DeactivateUser` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:565](../../backend/src/modules/user/UserComponent.ts#L565) |
-| `user.DeleteServiceUser` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:627](../../backend/src/modules/user/UserComponent.ts#L627) |
-| `user.DeleteSession` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/modules/user/UserComponent.ts:754](../../backend/src/modules/user/UserComponent.ts#L754) |
-| `user.DeleteZitadelUser` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:585](../../backend/src/modules/user/UserComponent.ts#L585) |
-| `user.Describe` | `public` | NoPermissions | [backend/src/modules/user/UserComponent.ts:175](../../backend/src/modules/user/UserComponent.ts#L175) |
-| `user.GetAuthMethods` | `fine-grained-decorator` | canReadPolicies | [backend/src/modules/user/UserComponent.ts:760](../../backend/src/modules/user/UserComponent.ts#L760) |
-| `user.GetEffectivePermissionsV2` | `fine-grained-decorator` | canReadEffectivePermissions | [backend/src/modules/user/UserComponent.ts:324](../../backend/src/modules/user/UserComponent.ts#L324) |
-| `user.GetInstanceInfo` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/modules/user/UserComponent.ts:739](../../backend/src/modules/user/UserComponent.ts#L739) |
-| `user.GetMe` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/modules/user/UserComponent.ts:246](../../backend/src/modules/user/UserComponent.ts#L246) |
-| `user.ListPATs` | `fine-grained-decorator` | canReadPolicies | [backend/src/modules/user/UserComponent.ts:644](../../backend/src/modules/user/UserComponent.ts#L644) |
-| `user.ListScopedPATs` | `fine-grained-decorator` | canReadPolicies | [backend/src/modules/user/UserComponent.ts:674](../../backend/src/modules/user/UserComponent.ts#L674) |
-| `user.ListServiceUsers` | `fine-grained-decorator` | canReadPolicies | [backend/src/modules/user/UserComponent.ts:593](../../backend/src/modules/user/UserComponent.ts#L593) |
-| `user.ListSessions` | `fine-grained-decorator` | canReadPolicies | [backend/src/modules/user/UserComponent.ts:746](../../backend/src/modules/user/UserComponent.ts#L746) |
-| `user.ListZitadelUsers` | `fine-grained-decorator` | canReadPolicies | [backend/src/modules/user/UserComponent.ts:318](../../backend/src/modules/user/UserComponent.ts#L318) |
-| `user.PreviewScopedPAT` | `fine-grained-decorator` | canReadPolicies | [backend/src/modules/user/UserComponent.ts:681](../../backend/src/modules/user/UserComponent.ts#L681) |
-| `user.ProfilePicture.CreateUploadTicket` | `fine-grained-decorator` | canCreateProfilePictureUploadTicket | [backend/src/modules/user/UserComponent.ts:262](../../backend/src/modules/user/UserComponent.ts#L262) |
-| `user.ProfilePicture.GetUrl` | `fine-grained-decorator` | canReadProfilePictureUrl | [backend/src/modules/user/UserComponent.ts:279](../../backend/src/modules/user/UserComponent.ts#L279) |
-| `user.ProfilePicture.Remove` | `fine-grained-decorator` | canRemoveProfilePicture | [backend/src/modules/user/UserComponent.ts:295](../../backend/src/modules/user/UserComponent.ts#L295) |
-| `user.ReactivateUser` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:574](../../backend/src/modules/user/UserComponent.ts#L574) |
-| `user.Refresh` | `public` | NoPermissions | [backend/src/modules/user/UserComponent.ts:234](../../backend/src/modules/user/UserComponent.ts#L234) |
-| `user.RefreshAlexa` | `public` | NoPermissions | [backend/src/modules/user/UserComponent.ts:203](../../backend/src/modules/user/UserComponent.ts#L203) |
-| `user.RevokeAllUserPATs` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:700](../../backend/src/modules/user/UserComponent.ts#L700) |
-| `user.RevokePAT` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:650](../../backend/src/modules/user/UserComponent.ts#L650) |
-| `user.RevokeScopedPAT` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:694](../../backend/src/modules/user/UserComponent.ts#L694) |
-| `user.RotatePAT` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:715](../../backend/src/modules/user/UserComponent.ts#L715) |
-| `user.RotateScopedPAT` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:706](../../backend/src/modules/user/UserComponent.ts#L706) |
-| `user.RotateToken` | `public` | NoPermissions | [backend/src/modules/user/UserComponent.ts:224](../../backend/src/modules/user/UserComponent.ts#L224) |
-| `user.SendPasswordReset` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:559](../../backend/src/modules/user/UserComponent.ts#L559) |
-| `user.SetAllowDebug` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/modules/user/UserComponent.ts:183](../../backend/src/modules/user/UserComponent.ts#L183) |
-| `user.SetServiceUserOrg` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/modules/user/UserComponent.ts:615](../../backend/src/modules/user/UserComponent.ts#L615) |
-| `user.SimulateV2` | `fine-grained-decorator` | canReadPolicies | [backend/src/modules/user/UserComponent.ts:400](../../backend/src/modules/user/UserComponent.ts#L400) |
-| `user.UpdateZitadelUser` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:544](../../backend/src/modules/user/UserComponent.ts#L544) |
-| `user.ZitadelAvailable` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/modules/user/UserComponent.ts:312](../../backend/src/modules/user/UserComponent.ts#L312) |
+| `user_group.AddMembers` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/UserGroupComponent.ts:292](../../backend/src/model/component/UserGroupComponent.ts#L292) |
+| `user_group.Create` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/UserGroupComponent.ts:111](../../backend/src/model/component/UserGroupComponent.ts#L111) |
+| `user_group.Delete` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/UserGroupComponent.ts:236](../../backend/src/model/component/UserGroupComponent.ts#L236) |
+| `user_group.Describe` | `public` | NoPermissions | [backend/src/model/component/UserGroupComponent.ts:71](../../backend/src/model/component/UserGroupComponent.ts#L71) |
+| `user_group.Get` | `fine-grained-decorator` | canReadPolicies | [backend/src/model/component/UserGroupComponent.ts:94](../../backend/src/model/component/UserGroupComponent.ts#L94) |
+| `user_group.List` | `fine-grained-decorator` | canReadPolicies | [backend/src/model/component/UserGroupComponent.ts:78](../../backend/src/model/component/UserGroupComponent.ts#L78) |
+| `user_group.ListMembers` | `fine-grained-decorator` | canReadPolicies | [backend/src/model/component/UserGroupComponent.ts:270](../../backend/src/model/component/UserGroupComponent.ts#L270) |
+| `user_group.RemoveMembers` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/UserGroupComponent.ts:347](../../backend/src/model/component/UserGroupComponent.ts#L347) |
+| `user_group.Update` | `fine-grained-decorator` | canManageAuthz | [backend/src/model/component/UserGroupComponent.ts:144](../../backend/src/model/component/UserGroupComponent.ts#L144) |
+| `user.AttachCustomPersona` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:485](../../backend/src/modules/user/UserComponent.ts#L485) |
+| `user.Authenticate` | `public` | NoPermissions | [backend/src/modules/user/UserComponent.ts:219](../../backend/src/modules/user/UserComponent.ts#L219) |
+| `user.AuthenticateAlexa` | `public` | NoPermissions | [backend/src/modules/user/UserComponent.ts:204](../../backend/src/modules/user/UserComponent.ts#L204) |
+| `user.BulkRotatePATs` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:698](../../backend/src/modules/user/UserComponent.ts#L698) |
+| `user.CreatePAT` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:604](../../backend/src/modules/user/UserComponent.ts#L604) |
+| `user.CreateScopedPAT` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:628](../../backend/src/modules/user/UserComponent.ts#L628) |
+| `user.CreateServiceUser` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:568](../../backend/src/modules/user/UserComponent.ts#L568) |
+| `user.CreateZitadelUser` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:494](../../backend/src/modules/user/UserComponent.ts#L494) |
+| `user.DeactivateUser` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:534](../../backend/src/modules/user/UserComponent.ts#L534) |
+| `user.DeleteServiceUser` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:596](../../backend/src/modules/user/UserComponent.ts#L596) |
+| `user.DeleteSession` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/modules/user/UserComponent.ts:723](../../backend/src/modules/user/UserComponent.ts#L723) |
+| `user.DeleteZitadelUser` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:554](../../backend/src/modules/user/UserComponent.ts#L554) |
+| `user.Describe` | `public` | NoPermissions | [backend/src/modules/user/UserComponent.ts:185](../../backend/src/modules/user/UserComponent.ts#L185) |
+| `user.GetAuthMethods` | `fine-grained-decorator` | canReadPolicies | [backend/src/modules/user/UserComponent.ts:729](../../backend/src/modules/user/UserComponent.ts#L729) |
+| `user.GetEffectivePermissionsV2` | `fine-grained-decorator` | canReadEffectivePermissions | [backend/src/modules/user/UserComponent.ts:335](../../backend/src/modules/user/UserComponent.ts#L335) |
+| `user.GetInstanceInfo` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/modules/user/UserComponent.ts:708](../../backend/src/modules/user/UserComponent.ts#L708) |
+| `user.GetMe` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/modules/user/UserComponent.ts:256](../../backend/src/modules/user/UserComponent.ts#L256) |
+| `user.ListPATs` | `fine-grained-decorator` | canReadPolicies | [backend/src/modules/user/UserComponent.ts:613](../../backend/src/modules/user/UserComponent.ts#L613) |
+| `user.ListScopedPATs` | `fine-grained-decorator` | canReadPolicies | [backend/src/modules/user/UserComponent.ts:643](../../backend/src/modules/user/UserComponent.ts#L643) |
+| `user.ListServiceUsers` | `fine-grained-decorator` | canReadPolicies | [backend/src/modules/user/UserComponent.ts:562](../../backend/src/modules/user/UserComponent.ts#L562) |
+| `user.ListSessions` | `fine-grained-decorator` | canReadPolicies | [backend/src/modules/user/UserComponent.ts:715](../../backend/src/modules/user/UserComponent.ts#L715) |
+| `user.ListZitadelUsers` | `fine-grained-decorator` | canReadPolicies | [backend/src/modules/user/UserComponent.ts:329](../../backend/src/modules/user/UserComponent.ts#L329) |
+| `user.PreviewScopedPAT` | `fine-grained-decorator` | canReadPolicies | [backend/src/modules/user/UserComponent.ts:650](../../backend/src/modules/user/UserComponent.ts#L650) |
+| `user.ProfilePicture.CreateUploadTicket` | `fine-grained-decorator` | canCreateProfilePictureUploadTicket | [backend/src/modules/user/UserComponent.ts:273](../../backend/src/modules/user/UserComponent.ts#L273) |
+| `user.ProfilePicture.GetUrl` | `fine-grained-decorator` | canReadProfilePictureUrl | [backend/src/modules/user/UserComponent.ts:290](../../backend/src/modules/user/UserComponent.ts#L290) |
+| `user.ProfilePicture.Remove` | `fine-grained-decorator` | canRemoveProfilePicture | [backend/src/modules/user/UserComponent.ts:306](../../backend/src/modules/user/UserComponent.ts#L306) |
+| `user.ReactivateUser` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:543](../../backend/src/modules/user/UserComponent.ts#L543) |
+| `user.Refresh` | `public` | NoPermissions | [backend/src/modules/user/UserComponent.ts:244](../../backend/src/modules/user/UserComponent.ts#L244) |
+| `user.RefreshAlexa` | `public` | NoPermissions | [backend/src/modules/user/UserComponent.ts:213](../../backend/src/modules/user/UserComponent.ts#L213) |
+| `user.RevokeAllUserPATs` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:669](../../backend/src/modules/user/UserComponent.ts#L669) |
+| `user.RevokePAT` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:619](../../backend/src/modules/user/UserComponent.ts#L619) |
+| `user.RevokeScopedPAT` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:663](../../backend/src/modules/user/UserComponent.ts#L663) |
+| `user.RotatePAT` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:684](../../backend/src/modules/user/UserComponent.ts#L684) |
+| `user.RotateScopedPAT` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:675](../../backend/src/modules/user/UserComponent.ts#L675) |
+| `user.RotateToken` | `public` | NoPermissions | [backend/src/modules/user/UserComponent.ts:234](../../backend/src/modules/user/UserComponent.ts#L234) |
+| `user.SendPasswordReset` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:528](../../backend/src/modules/user/UserComponent.ts#L528) |
+| `user.SetAllowDebug` | `fine-grained-decorator` | canUsePlatformAdmin | [backend/src/modules/user/UserComponent.ts:193](../../backend/src/modules/user/UserComponent.ts#L193) |
+| `user.SetServiceUserOrg` | `fine-grained-decorator` | canCrossOrganizationBoundary | [backend/src/modules/user/UserComponent.ts:584](../../backend/src/modules/user/UserComponent.ts#L584) |
+| `user.SimulateV2` | `fine-grained-decorator` | canReadPolicies | [backend/src/modules/user/UserComponent.ts:411](../../backend/src/modules/user/UserComponent.ts#L411) |
+| `user.UpdateZitadelUser` | `fine-grained-decorator` | canManageOrganizationSettings | [backend/src/modules/user/UserComponent.ts:513](../../backend/src/modules/user/UserComponent.ts#L513) |
+| `user.ZitadelAvailable` | `fine-grained-decorator` | canUseAuthenticatedRead | [backend/src/modules/user/UserComponent.ts:323](../../backend/src/modules/user/UserComponent.ts#L323) |
 | `variables.Delete` | `crud-decorator` | 'actions', 'delete' | [backend/src/model/component/VariablesComponent.ts:109](../../backend/src/model/component/VariablesComponent.ts#L109) |
 | `variables.Describe` | `public` | NoPermissions | [backend/src/model/component/VariablesComponent.ts:50](../../backend/src/model/component/VariablesComponent.ts#L50) |
 | `variables.Get` | `crud-decorator` | 'actions', 'read' | [backend/src/model/component/VariablesComponent.ts:78](../../backend/src/model/component/VariablesComponent.ts#L78) |
@@ -1198,86 +1362,86 @@ Regenerate with `cd backend && npm run generate`.
 | `virtual_meta.Describe` | `public` | NoPermissions | [backend/src/model/component/VirtualMetaComponent.ts:30](../../backend/src/model/component/VirtualMetaComponent.ts#L30) |
 | `virtual_meta.Fetch` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualMetaComponent.ts:105](../../backend/src/model/component/VirtualMetaComponent.ts#L105) |
 | `virtual_meta.Set` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/VirtualMetaComponent.ts:37](../../backend/src/model/component/VirtualMetaComponent.ts#L37) |
-| `virtual.Add` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:59](../../backend/src/model/component/VirtualComponent.ts#L59) |
-| `virtual.Boolean.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:120](../../backend/src/model/component/VirtualComponent.ts#L120) |
-| `virtual.Boolean.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:133](../../backend/src/model/component/VirtualComponent.ts#L133) |
-| `virtual.Boolean.Set` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:107](../../backend/src/model/component/VirtualComponent.ts#L107) |
-| `virtual.Boolean.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:146](../../backend/src/model/component/VirtualComponent.ts#L146) |
-| `virtual.ComponentSet` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:46](../../backend/src/model/component/VirtualComponent.ts#L46) |
-| `virtual.Delete` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:74](../../backend/src/model/component/VirtualComponent.ts#L74) |
-| `virtual.Describe` | `public` | NoPermissions | [backend/src/model/component/VirtualComponent.ts:39](../../backend/src/model/component/VirtualComponent.ts#L39) |
-| `virtual.Enum.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:276](../../backend/src/model/component/VirtualComponent.ts#L276) |
-| `virtual.Enum.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:289](../../backend/src/model/component/VirtualComponent.ts#L289) |
-| `virtual.Enum.Set` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:263](../../backend/src/model/component/VirtualComponent.ts#L263) |
-| `virtual.Enum.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:302](../../backend/src/model/component/VirtualComponent.ts#L302) |
-| `virtual.Group.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:328](../../backend/src/model/component/VirtualComponent.ts#L328) |
-| `virtual.Group.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:341](../../backend/src/model/component/VirtualComponent.ts#L341) |
-| `virtual.Group.Set` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:315](../../backend/src/model/component/VirtualComponent.ts#L315) |
-| `virtual.Group.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:354](../../backend/src/model/component/VirtualComponent.ts#L354) |
-| `virtual.Number.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:172](../../backend/src/model/component/VirtualComponent.ts#L172) |
-| `virtual.Number.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:185](../../backend/src/model/component/VirtualComponent.ts#L185) |
-| `virtual.Number.Set` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:159](../../backend/src/model/component/VirtualComponent.ts#L159) |
-| `virtual.Number.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:198](../../backend/src/model/component/VirtualComponent.ts#L198) |
-| `virtual.Text.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:224](../../backend/src/model/component/VirtualComponent.ts#L224) |
-| `virtual.Text.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:237](../../backend/src/model/component/VirtualComponent.ts#L237) |
-| `virtual.Text.Set` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:211](../../backend/src/model/component/VirtualComponent.ts#L211) |
-| `virtual.Text.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:250](../../backend/src/model/component/VirtualComponent.ts#L250) |
-| `virtual.Trigger` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:87](../../backend/src/model/component/VirtualComponent.ts#L87) |
-| `virtualdevice.Binding.Create` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:512](../../backend/src/model/component/VirtualDeviceComponent.ts#L512) |
-| `virtualdevice.Binding.List` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:433](../../backend/src/model/component/VirtualDeviceComponent.ts#L433) |
-| `virtualdevice.Binding.ListSources` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:447](../../backend/src/model/component/VirtualDeviceComponent.ts#L447) |
-| `virtualdevice.Binding.Replace` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:538](../../backend/src/model/component/VirtualDeviceComponent.ts#L538) |
-| `virtualdevice.Binding.ReplacementReport` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:658](../../backend/src/model/component/VirtualDeviceComponent.ts#L658) |
-| `virtualdevice.Binding.Retire` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:564](../../backend/src/model/component/VirtualDeviceComponent.ts#L564) |
-| `virtualdevice.Binding.ValidateDraft` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:484](../../backend/src/model/component/VirtualDeviceComponent.ts#L484) |
-| `virtualdevice.Bluetooth.Candidate.List` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:732](../../backend/src/model/component/VirtualDeviceComponent.ts#L732) |
-| `virtualdevice.Bluetooth.Delete` | `crud-decorator` | 'devices', 'delete', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:802](../../backend/src/model/component/VirtualDeviceComponent.ts#L802) |
-| `virtualdevice.Bluetooth.Get` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:786](../../backend/src/model/component/VirtualDeviceComponent.ts#L786) |
-| `virtualdevice.Bluetooth.Image.CreateUploadTicket` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:947](../../backend/src/model/component/VirtualDeviceComponent.ts#L947) |
-| `virtualdevice.Bluetooth.Key.Clear` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:903](../../backend/src/model/component/VirtualDeviceComponent.ts#L903) |
-| `virtualdevice.Bluetooth.Key.SetRef` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:885](../../backend/src/model/component/VirtualDeviceComponent.ts#L885) |
-| `virtualdevice.Bluetooth.List` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:772](../../backend/src/model/component/VirtualDeviceComponent.ts#L772) |
-| `virtualdevice.Bluetooth.PromoteFromGateway` | `crud-decorator` | 'devices', 'create' | [backend/src/model/component/VirtualDeviceComponent.ts:746](../../backend/src/model/component/VirtualDeviceComponent.ts#L746) |
-| `virtualdevice.Bluetooth.Transport.List` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:857](../../backend/src/model/component/VirtualDeviceComponent.ts#L857) |
-| `virtualdevice.Bluetooth.Transport.SetPrimary` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:871](../../backend/src/model/component/VirtualDeviceComponent.ts#L871) |
-| `virtualdevice.Bluetooth.Update` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:927](../../backend/src/model/component/VirtualDeviceComponent.ts#L927) |
-| `virtualdevice.Command.Invoke` | `crud-decorator` | 'devices', 'execute', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:590](../../backend/src/model/component/VirtualDeviceComponent.ts#L590) |
-| `virtualdevice.Create` | `crud-decorator` | 'devices', 'create' | [backend/src/model/component/VirtualDeviceComponent.ts:193](../../backend/src/model/component/VirtualDeviceComponent.ts#L193) |
-| `virtualdevice.Delete` | `crud-decorator` | 'devices', 'delete', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:264](../../backend/src/model/component/VirtualDeviceComponent.ts#L264) |
-| `virtualdevice.Describe` | `public` | NoPermissions | [backend/src/model/component/VirtualDeviceComponent.ts:186](../../backend/src/model/component/VirtualDeviceComponent.ts#L186) |
-| `virtualdevice.Draft.Preview` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:498](../../backend/src/model/component/VirtualDeviceComponent.ts#L498) |
-| `virtualdevice.Extraction.Create` | `crud-decorator` | 'devices', 'create' | [backend/src/model/component/VirtualDeviceComponent.ts:297](../../backend/src/model/component/VirtualDeviceComponent.ts#L297) |
-| `virtualdevice.Extraction.Preview` | `crud-decorator` | 'devices', 'read', (p) => p?.hostExternalId | [backend/src/model/component/VirtualDeviceComponent.ts:283](../../backend/src/model/component/VirtualDeviceComponent.ts#L283) |
-| `virtualdevice.Extraction.ReplacementPreview` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:327](../../backend/src/model/component/VirtualDeviceComponent.ts#L327) |
-| `virtualdevice.Get` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:221](../../backend/src/model/component/VirtualDeviceComponent.ts#L221) |
-| `virtualdevice.History.Backfill` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:644](../../backend/src/model/component/VirtualDeviceComponent.ts#L644) |
-| `virtualdevice.History.ReadProvenance` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:630](../../backend/src/model/component/VirtualDeviceComponent.ts#L630) |
-| `virtualdevice.History.ReadRole` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:616](../../backend/src/model/component/VirtualDeviceComponent.ts#L616) |
-| `virtualdevice.Image.CreateUploadTicket` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:831](../../backend/src/model/component/VirtualDeviceComponent.ts#L831) |
-| `virtualdevice.List` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:234](../../backend/src/model/component/VirtualDeviceComponent.ts#L234) |
-| `virtualdevice.Manifest.Apply` | `fine-grained-decorator` | canAttemptManifestApply | [backend/src/model/component/VirtualDeviceComponent.ts:711](../../backend/src/model/component/VirtualDeviceComponent.ts#L711) |
-| `virtualdevice.Manifest.Export` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:682](../../backend/src/model/component/VirtualDeviceComponent.ts#L682) |
-| `virtualdevice.Manifest.Plan` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:696](../../backend/src/model/component/VirtualDeviceComponent.ts#L696) |
-| `virtualdevice.Manifest.Validate` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:672](../../backend/src/model/component/VirtualDeviceComponent.ts#L672) |
-| `virtualdevice.Profile.Create` | `crud-decorator` | 'devices', 'create' | [backend/src/model/component/VirtualDeviceComponent.ts:356](../../backend/src/model/component/VirtualDeviceComponent.ts#L356) |
-| `virtualdevice.Profile.List` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:342](../../backend/src/model/component/VirtualDeviceComponent.ts#L342) |
-| `virtualdevice.Profile.MatchSources` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:399](../../backend/src/model/component/VirtualDeviceComponent.ts#L399) |
-| `virtualdevice.Profile.SuggestFromDevice` | `crud-decorator` | 'devices', 'read', (p) => p?.deviceExternalId | [backend/src/model/component/VirtualDeviceComponent.ts:419](../../backend/src/model/component/VirtualDeviceComponent.ts#L419) |
-| `virtualdevice.Profile.Update` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/VirtualDeviceComponent.ts:373](../../backend/src/model/component/VirtualDeviceComponent.ts#L373) |
-| `virtualdevice.Profile.Validate` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:389](../../backend/src/model/component/VirtualDeviceComponent.ts#L389) |
-| `virtualdevice.Update` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:245](../../backend/src/model/component/VirtualDeviceComponent.ts#L245) |
+| `virtual.Add` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:76](../../backend/src/model/component/VirtualComponent.ts#L76) |
+| `virtual.Boolean.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:139](../../backend/src/model/component/VirtualComponent.ts#L139) |
+| `virtual.Boolean.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:152](../../backend/src/model/component/VirtualComponent.ts#L152) |
+| `virtual.Boolean.Set` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:126](../../backend/src/model/component/VirtualComponent.ts#L126) |
+| `virtual.Boolean.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:165](../../backend/src/model/component/VirtualComponent.ts#L165) |
+| `virtual.ComponentSet` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:60](../../backend/src/model/component/VirtualComponent.ts#L60) |
+| `virtual.Delete` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:93](../../backend/src/model/component/VirtualComponent.ts#L93) |
+| `virtual.Describe` | `public` | NoPermissions | [backend/src/model/component/VirtualComponent.ts:53](../../backend/src/model/component/VirtualComponent.ts#L53) |
+| `virtual.Enum.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:304](../../backend/src/model/component/VirtualComponent.ts#L304) |
+| `virtual.Enum.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:317](../../backend/src/model/component/VirtualComponent.ts#L317) |
+| `virtual.Enum.Set` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:291](../../backend/src/model/component/VirtualComponent.ts#L291) |
+| `virtual.Enum.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:330](../../backend/src/model/component/VirtualComponent.ts#L330) |
+| `virtual.Group.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:359](../../backend/src/model/component/VirtualComponent.ts#L359) |
+| `virtual.Group.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:372](../../backend/src/model/component/VirtualComponent.ts#L372) |
+| `virtual.Group.Set` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:346](../../backend/src/model/component/VirtualComponent.ts#L346) |
+| `virtual.Group.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:385](../../backend/src/model/component/VirtualComponent.ts#L385) |
+| `virtual.Number.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:194](../../backend/src/model/component/VirtualComponent.ts#L194) |
+| `virtual.Number.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:207](../../backend/src/model/component/VirtualComponent.ts#L207) |
+| `virtual.Number.Set` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:181](../../backend/src/model/component/VirtualComponent.ts#L181) |
+| `virtual.Number.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:220](../../backend/src/model/component/VirtualComponent.ts#L220) |
+| `virtual.Text.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:249](../../backend/src/model/component/VirtualComponent.ts#L249) |
+| `virtual.Text.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:262](../../backend/src/model/component/VirtualComponent.ts#L262) |
+| `virtual.Text.Set` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:236](../../backend/src/model/component/VirtualComponent.ts#L236) |
+| `virtual.Text.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:275](../../backend/src/model/component/VirtualComponent.ts#L275) |
+| `virtual.Trigger` | `crud-decorator` | 'devices', 'execute', (p) => p?.shellyID | [backend/src/model/component/VirtualComponent.ts:106](../../backend/src/model/component/VirtualComponent.ts#L106) |
+| `virtualdevice.Binding.Create` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:552](../../backend/src/model/component/VirtualDeviceComponent.ts#L552) |
+| `virtualdevice.Binding.List` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:459](../../backend/src/model/component/VirtualDeviceComponent.ts#L459) |
+| `virtualdevice.Binding.ListSources` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:479](../../backend/src/model/component/VirtualDeviceComponent.ts#L479) |
+| `virtualdevice.Binding.Replace` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:579](../../backend/src/model/component/VirtualDeviceComponent.ts#L579) |
+| `virtualdevice.Binding.ReplacementReport` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:738](../../backend/src/model/component/VirtualDeviceComponent.ts#L738) |
+| `virtualdevice.Binding.Retire` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:609](../../backend/src/model/component/VirtualDeviceComponent.ts#L609) |
+| `virtualdevice.Binding.ValidateDraft` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:516](../../backend/src/model/component/VirtualDeviceComponent.ts#L516) |
+| `virtualdevice.Bluetooth.Candidate.List` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:834](../../backend/src/model/component/VirtualDeviceComponent.ts#L834) |
+| `virtualdevice.Bluetooth.Delete` | `crud-decorator` | 'devices', 'delete', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:905](../../backend/src/model/component/VirtualDeviceComponent.ts#L905) |
+| `virtualdevice.Bluetooth.Get` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:889](../../backend/src/model/component/VirtualDeviceComponent.ts#L889) |
+| `virtualdevice.Bluetooth.Image.CreateUploadTicket` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:1078](../../backend/src/model/component/VirtualDeviceComponent.ts#L1078) |
+| `virtualdevice.Bluetooth.Key.Clear` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:1034](../../backend/src/model/component/VirtualDeviceComponent.ts#L1034) |
+| `virtualdevice.Bluetooth.Key.SetRef` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:1013](../../backend/src/model/component/VirtualDeviceComponent.ts#L1013) |
+| `virtualdevice.Bluetooth.List` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:875](../../backend/src/model/component/VirtualDeviceComponent.ts#L875) |
+| `virtualdevice.Bluetooth.PromoteFromGateway` | `crud-decorator` | 'devices', 'create' | [backend/src/model/component/VirtualDeviceComponent.ts:848](../../backend/src/model/component/VirtualDeviceComponent.ts#L848) |
+| `virtualdevice.Bluetooth.Transport.List` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:958](../../backend/src/model/component/VirtualDeviceComponent.ts#L958) |
+| `virtualdevice.Bluetooth.Transport.SetPrimary` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:976](../../backend/src/model/component/VirtualDeviceComponent.ts#L976) |
+| `virtualdevice.Bluetooth.Update` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:1058](../../backend/src/model/component/VirtualDeviceComponent.ts#L1058) |
+| `virtualdevice.Command.Invoke` | `crud-decorator` | 'devices', 'execute', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:638](../../backend/src/model/component/VirtualDeviceComponent.ts#L638) |
+| `virtualdevice.Create` | `crud-decorator` | 'devices', 'create' | [backend/src/model/component/VirtualDeviceComponent.ts:206](../../backend/src/model/component/VirtualDeviceComponent.ts#L206) |
+| `virtualdevice.Delete` | `crud-decorator` | 'devices', 'delete', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:286](../../backend/src/model/component/VirtualDeviceComponent.ts#L286) |
+| `virtualdevice.Describe` | `public` | NoPermissions | [backend/src/model/component/VirtualDeviceComponent.ts:199](../../backend/src/model/component/VirtualDeviceComponent.ts#L199) |
+| `virtualdevice.Draft.Preview` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:534](../../backend/src/model/component/VirtualDeviceComponent.ts#L534) |
+| `virtualdevice.Extraction.Create` | `crud-decorator` | 'devices', 'create' | [backend/src/model/component/VirtualDeviceComponent.ts:319](../../backend/src/model/component/VirtualDeviceComponent.ts#L319) |
+| `virtualdevice.Extraction.Preview` | `crud-decorator` | 'devices', 'read', (p) => p?.hostExternalId | [backend/src/model/component/VirtualDeviceComponent.ts:305](../../backend/src/model/component/VirtualDeviceComponent.ts#L305) |
+| `virtualdevice.Extraction.ReplacementPreview` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:350](../../backend/src/model/component/VirtualDeviceComponent.ts#L350) |
+| `virtualdevice.Get` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:240](../../backend/src/model/component/VirtualDeviceComponent.ts#L240) |
+| `virtualdevice.History.Backfill` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:714](../../backend/src/model/component/VirtualDeviceComponent.ts#L714) |
+| `virtualdevice.History.ReadProvenance` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:690](../../backend/src/model/component/VirtualDeviceComponent.ts#L690) |
+| `virtualdevice.History.ReadRole` | `crud-decorator` | 'devices', 'read', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:666](../../backend/src/model/component/VirtualDeviceComponent.ts#L666) |
+| `virtualdevice.Image.CreateUploadTicket` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:932](../../backend/src/model/component/VirtualDeviceComponent.ts#L932) |
+| `virtualdevice.List` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:256](../../backend/src/model/component/VirtualDeviceComponent.ts#L256) |
+| `virtualdevice.Manifest.Apply` | `fine-grained-decorator` | canAttemptManifestApply | [backend/src/model/component/VirtualDeviceComponent.ts:813](../../backend/src/model/component/VirtualDeviceComponent.ts#L813) |
+| `virtualdevice.Manifest.Export` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:768](../../backend/src/model/component/VirtualDeviceComponent.ts#L768) |
+| `virtualdevice.Manifest.Plan` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:798](../../backend/src/model/component/VirtualDeviceComponent.ts#L798) |
+| `virtualdevice.Manifest.Validate` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:758](../../backend/src/model/component/VirtualDeviceComponent.ts#L758) |
+| `virtualdevice.Profile.Create` | `crud-decorator` | 'devices', 'create' | [backend/src/model/component/VirtualDeviceComponent.ts:382](../../backend/src/model/component/VirtualDeviceComponent.ts#L382) |
+| `virtualdevice.Profile.List` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:368](../../backend/src/model/component/VirtualDeviceComponent.ts#L368) |
+| `virtualdevice.Profile.MatchSources` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:425](../../backend/src/model/component/VirtualDeviceComponent.ts#L425) |
+| `virtualdevice.Profile.SuggestFromDevice` | `crud-decorator` | 'devices', 'read', (p) => p?.deviceExternalId | [backend/src/model/component/VirtualDeviceComponent.ts:445](../../backend/src/model/component/VirtualDeviceComponent.ts#L445) |
+| `virtualdevice.Profile.Update` | `crud-decorator` | 'devices', 'update' | [backend/src/model/component/VirtualDeviceComponent.ts:399](../../backend/src/model/component/VirtualDeviceComponent.ts#L399) |
+| `virtualdevice.Profile.Validate` | `crud-decorator` | 'devices', 'read' | [backend/src/model/component/VirtualDeviceComponent.ts:415](../../backend/src/model/component/VirtualDeviceComponent.ts#L415) |
+| `virtualdevice.Update` | `crud-decorator` | 'devices', 'update', (p) => p?.externalId | [backend/src/model/component/VirtualDeviceComponent.ts:267](../../backend/src/model/component/VirtualDeviceComponent.ts#L267) |
 | `voltmeter.CheckExpression` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VoltmeterComponent.ts:76](../../backend/src/model/component/VoltmeterComponent.ts#L76) |
 | `voltmeter.Describe` | `public` | NoPermissions | [backend/src/model/component/VoltmeterComponent.ts:27](../../backend/src/model/component/VoltmeterComponent.ts#L27) |
 | `voltmeter.GetConfig` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VoltmeterComponent.ts:50](../../backend/src/model/component/VoltmeterComponent.ts#L50) |
 | `voltmeter.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/VoltmeterComponent.ts:63](../../backend/src/model/component/VoltmeterComponent.ts#L63) |
 | `voltmeter.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/VoltmeterComponent.ts:34](../../backend/src/model/component/VoltmeterComponent.ts#L34) |
-| `waitingroom.AcceptAllStart` | `fine-grained-decorator` | canAcceptPending | [backend/src/model/component/WaitingRoomComponent.ts:335](../../backend/src/model/component/WaitingRoomComponent.ts#L335) |
-| `waitingroom.AcceptBulkCancel` | `fine-grained-decorator` | canAcceptPending | [backend/src/model/component/WaitingRoomComponent.ts:377](../../backend/src/model/component/WaitingRoomComponent.ts#L377) |
-| `waitingroom.AcceptBulkStart` | `fine-grained-decorator` | canAcceptPending | [backend/src/model/component/WaitingRoomComponent.ts:318](../../backend/src/model/component/WaitingRoomComponent.ts#L318) |
-| `waitingroom.AcceptBulkStatus` | `fine-grained-decorator` | canReadWaitingRoom | [backend/src/model/component/WaitingRoomComponent.ts:355](../../backend/src/model/component/WaitingRoomComponent.ts#L355) |
-| `waitingroom.AcceptPendingByExternalId` | `fine-grained-decorator` | canAcceptPending | [backend/src/model/component/WaitingRoomComponent.ts:295](../../backend/src/model/component/WaitingRoomComponent.ts#L295) |
+| `waitingroom.AcceptAllStart` | `fine-grained-decorator` | canAcceptPending | [backend/src/model/component/WaitingRoomComponent.ts:332](../../backend/src/model/component/WaitingRoomComponent.ts#L332) |
+| `waitingroom.AcceptBulkCancel` | `fine-grained-decorator` | canAcceptPending | [backend/src/model/component/WaitingRoomComponent.ts:374](../../backend/src/model/component/WaitingRoomComponent.ts#L374) |
+| `waitingroom.AcceptBulkStart` | `fine-grained-decorator` | canAcceptPending | [backend/src/model/component/WaitingRoomComponent.ts:315](../../backend/src/model/component/WaitingRoomComponent.ts#L315) |
+| `waitingroom.AcceptBulkStatus` | `fine-grained-decorator` | canReadWaitingRoom | [backend/src/model/component/WaitingRoomComponent.ts:352](../../backend/src/model/component/WaitingRoomComponent.ts#L352) |
+| `waitingroom.AcceptPendingByExternalId` | `fine-grained-decorator` | canAcceptPending | [backend/src/model/component/WaitingRoomComponent.ts:292](../../backend/src/model/component/WaitingRoomComponent.ts#L292) |
 | `waitingroom.AcceptPendingById` | `fine-grained-decorator` | canAcceptPending | [backend/src/model/component/WaitingRoomComponent.ts:239](../../backend/src/model/component/WaitingRoomComponent.ts#L239) |
-| `waitingroom.Approve` | `fine-grained-decorator` | canAcceptPending | [backend/src/model/component/WaitingRoomComponent.ts:387](../../backend/src/model/component/WaitingRoomComponent.ts#L387) |
+| `waitingroom.Approve` | `fine-grained-decorator` | canAcceptPending | [backend/src/model/component/WaitingRoomComponent.ts:384](../../backend/src/model/component/WaitingRoomComponent.ts#L384) |
 | `waitingroom.Describe` | `public` | NoPermissions | [backend/src/model/component/WaitingRoomComponent.ts:106](../../backend/src/model/component/WaitingRoomComponent.ts#L106) |
 | `waitingroom.Get` | `fine-grained-decorator` | canReadWaitingRoom | [backend/src/model/component/WaitingRoomComponent.ts:176](../../backend/src/model/component/WaitingRoomComponent.ts#L176) |
 | `waitingroom.GetCounts` | `fine-grained-decorator` | canReadWaitingRoom | [backend/src/model/component/WaitingRoomComponent.ts:139](../../backend/src/model/component/WaitingRoomComponent.ts#L139) |
@@ -1286,9 +1450,9 @@ Regenerate with `cd backend && npm run generate`.
 | `waitingroom.List` | `fine-grained-decorator` | canReadWaitingRoom | [backend/src/model/component/WaitingRoomComponent.ts:155](../../backend/src/model/component/WaitingRoomComponent.ts#L155) |
 | `waitingroom.ListDenied` | `fine-grained-decorator` | canReadWaitingRoom | [backend/src/model/component/WaitingRoomComponent.ts:218](../../backend/src/model/component/WaitingRoomComponent.ts#L218) |
 | `waitingroom.Probe` | `fine-grained-decorator` | canReadWaitingRoom | [backend/src/model/component/WaitingRoomComponent.ts:192](../../backend/src/model/component/WaitingRoomComponent.ts#L192) |
-| `waitingroom.Quarantine` | `fine-grained-decorator` | canQuarantinePending | [backend/src/model/component/WaitingRoomComponent.ts:495](../../backend/src/model/component/WaitingRoomComponent.ts#L495) |
-| `waitingroom.Reject` | `fine-grained-decorator` | canRejectPending | [backend/src/model/component/WaitingRoomComponent.ts:478](../../backend/src/model/component/WaitingRoomComponent.ts#L478) |
-| `waitingroom.RejectPending` | `fine-grained-decorator` | canRejectPending | [backend/src/model/component/WaitingRoomComponent.ts:405](../../backend/src/model/component/WaitingRoomComponent.ts#L405) |
+| `waitingroom.Quarantine` | `fine-grained-decorator` | canQuarantinePending | [backend/src/model/component/WaitingRoomComponent.ts:492](../../backend/src/model/component/WaitingRoomComponent.ts#L492) |
+| `waitingroom.Reject` | `fine-grained-decorator` | canRejectPending | [backend/src/model/component/WaitingRoomComponent.ts:475](../../backend/src/model/component/WaitingRoomComponent.ts#L475) |
+| `waitingroom.RejectPending` | `fine-grained-decorator` | canRejectPending | [backend/src/model/component/WaitingRoomComponent.ts:402](../../backend/src/model/component/WaitingRoomComponent.ts#L402) |
 | `web.Describe` | `public` | NoPermissions | [backend/src/model/component/WebComponent.ts:21](../../backend/src/model/component/WebComponent.ts#L21) |
 | `webhook.Create` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/WebhookComponent.ts:84](../../backend/src/model/component/WebhookComponent.ts#L84) |
 | `webhook.Delete` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/WebhookComponent.ts:110](../../backend/src/model/component/WebhookComponent.ts#L110) |
@@ -1320,11 +1484,10 @@ Regenerate with `cd backend && npm run generate`.
 | `zigbee.GetStatus` | `crud-decorator` | 'devices', 'read', (p) => p?.shellyID | [backend/src/model/component/ZigbeeComponent.ts:26](../../backend/src/model/component/ZigbeeComponent.ts#L26) |
 | `zigbee.SetConfig` | `crud-decorator` | 'devices', 'update', (p) => p?.shellyID | [backend/src/model/component/ZigbeeComponent.ts:48](../../backend/src/model/component/ZigbeeComponent.ts#L48) |
 
-## `ws` — 4 rows
+## `ws` — 3 rows
 
 | Surface | Auth bucket | Detail | Source |
 |---|---|---|---|
-| `WS /` | `ws-unauthenticated` | handler: unknown | [backend/src/modules/web/ws/WebsocketController.ts:105](../../backend/src/modules/web/ws/WebsocketController.ts#L105) |
-| `WS /` | `ws-unauthenticated` | handler: unknown | [backend/src/modules/web/ws/WebsocketController.ts:115](../../backend/src/modules/web/ws/WebsocketController.ts#L115) |
-| `WS /node-red` | `ws-unauthenticated` | handler: unknown | [backend/src/modules/web/ws/WebsocketController.ts:74](../../backend/src/modules/web/ws/WebsocketController.ts#L74) |
-| `WS /shelly` | `ws-unauthenticated` | handler: unknown | [backend/src/modules/web/ws/WebsocketController.ts:98](../../backend/src/modules/web/ws/WebsocketController.ts#L98) |
+| `WS /` | `ws-unauthenticated` | handler: unknown | [backend/src/modules/web/ws/WebsocketController.ts:127](../../backend/src/modules/web/ws/WebsocketController.ts#L127) |
+| `WS /node-red` | `ws-unauthenticated` | handler: unknown | [backend/src/modules/web/ws/WebsocketController.ts:78](../../backend/src/modules/web/ws/WebsocketController.ts#L78) |
+| `WS /shelly` | `ws-unauthenticated` | handler: unknown | [backend/src/modules/web/ws/WebsocketController.ts:102](../../backend/src/modules/web/ws/WebsocketController.ts#L102) |

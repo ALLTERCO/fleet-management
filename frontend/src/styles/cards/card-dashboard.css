@@ -24,7 +24,6 @@
     border-bottom: 0.5px solid var(--color-border-default);
     background: var(--glass-2-bg);
     backdrop-filter: var(--glass-2-filter);
-    -webkit-backdrop-filter: var(--glass-2-filter);
     box-shadow: inset 0 1px 0 var(--glass-highlight);
 }
 .dash-bar-scroll {

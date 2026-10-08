@@ -10,6 +10,7 @@ import type {DescribeOutput, MethodDescriptor} from '../../src/rpc/describe';
 import type {JsonSchema} from '../../src/types/api/_schema';
 import {loadAllDescribes} from './_describes.js';
 import {GENERATED_DIR, relPath} from './_shared.js';
+import {exampleValue} from './api-example-values.js';
 import {buildGuidesMarkdown} from './api-guides.js';
 
 // Standard JSON Schema 2020-12 / OpenAPI 3.1 keys — anything else is custom.
@@ -137,37 +138,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 // Code samples (JS/Python/wscat) — Scalar renders via x-codeSamples.
 // {HOST} is rewritten at page-load time to window.location.host.
 
-const SAMPLE_DEPTH_CAP = 6;
-function exampleValue(schema: JsonSchema, depth = 0): unknown {
-    if (depth > SAMPLE_DEPTH_CAP) return null;
-    if (schema.const !== undefined) return schema.const;
-    if (schema.enum?.length) return schema.enum[0];
-    if (schema.default !== undefined) return schema.default;
-    const type = Array.isArray(schema.type) ? schema.type[0] : schema.type;
-    if (type === 'string')
-        return schema.format === 'date-time'
-            ? '1970-01-01T00:00:00.000Z'
-            : 'string';
-    if (type === 'integer' || type === 'number') return schema.minimum ?? 0;
-    if (type === 'boolean') return false;
-    if (type === 'null') return null;
-    if (type === 'array')
-        return schema.items ? [exampleValue(schema.items, depth + 1)] : [];
-    if (type !== 'object') return null;
-    const obj: Record<string, unknown> = {};
-    const required = new Set<string>(schema.required ?? []);
-    if (schema.anyOf?.length) {
-        const branchRequired = schema.anyOf
-            .map((b) => b.required ?? [])
-            .find((r) => r.length > 0);
-        for (const k of branchRequired ?? []) required.add(k);
-    }
-    for (const [k, v] of Object.entries(schema.properties ?? {})) {
-        if (required.has(k)) obj[k] = exampleValue(v, depth + 1);
-    }
-    return obj;
-}
-
 function jsonRpcEnvelope(operationId: string, params: unknown): string {
     // Shelly-dialect JSON-RPC: src identifies the caller, dst routes the call
     // (FLEET_MANAGER for the server itself; a device id relays to that device).
@@ -200,8 +170,8 @@ function sampleJs(operationId: string, params: unknown): string {
     ].join('\n');
 }
 
-function samplePython(operationId: string, params: unknown): string {
-    const frame = jsonRpcEnvelope(operationId, params);
+export function samplePython(operationId: string, params: unknown): string {
+    const frame = JSON.stringify(jsonRpcEnvelope(operationId, params));
     return [
         '# pip install websockets',
         'import asyncio, json, websockets',
@@ -209,7 +179,7 @@ function samplePython(operationId: string, params: unknown): string {
         'async def call():',
         '    headers = {"Authorization": f"Bearer {TOKEN}"}',
         "    async with websockets.connect('wss://{HOST}/', additional_headers=headers) as ws:",
-        `        await ws.send(json.dumps(${frame}))`,
+        `        await ws.send(${frame})`,
         '        print(json.loads(await ws.recv()))',
         '',
         'asyncio.run(call())'
@@ -228,7 +198,7 @@ function buildCodeSamples(
     operationId: string,
     params: JsonSchema
 ): CodeSample[] {
-    const exampleParams = exampleValue(params) ?? {};
+    const exampleParams = exampleValue(params);
     return [
         {
             lang: 'js',
@@ -297,7 +267,10 @@ function buildOperation(
     const hasParams =
         method.params.type !== undefined ||
         (method.params.properties &&
-            Object.keys(method.params.properties).length > 0);
+            Object.keys(method.params.properties).length > 0) ||
+        method.params.oneOf ||
+        method.params.anyOf ||
+        method.params.allOf;
     if (hasParams) {
         op.requestBody = {
             required: true,

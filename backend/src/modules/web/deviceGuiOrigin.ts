@@ -2,8 +2,11 @@ import * as http from 'node:http';
 import * as net from 'node:net';
 import {type Duplex, finished, Transform} from 'node:stream';
 import express from 'express';
+import log4js from 'log4js';
 import {tuning} from '../../config';
 import {deviceGuiConfig} from '../../config/deviceGui';
+import * as Observability from '../Observability';
+import {markRedisWaiting} from '../redis/redisWaiting';
 import {deviceGuiSessions} from '../redis/services';
 import {reportHandledPeerError} from '../util/faultGuard';
 import {
@@ -49,6 +52,8 @@ const guiUpgradeAdmissionGate = new AdmissionGate({
 });
 let acceptingGuiUpgrades = true;
 let revocationSubscriberStarted = false;
+let revocationRetry: NodeJS.Timeout | null = null;
+let revocationSubscriberStopped = false;
 let guiTrafficInterval: NodeJS.Timeout | null = null;
 
 function flushGuiSocketBytes(state: ActiveGuiSocket): void {
@@ -948,10 +953,55 @@ export function closeDeviceGuiSessionConnections(sessionId: string): void {
     }
 }
 
-export async function subscribeDeviceGuiRevocations(): Promise<void> {
-    if (revocationSubscriberStarted || !deviceGuiConfig.enabled) return;
-    await deviceGuiSessions.onRevoked(closeDeviceGuiSessionConnections);
-    revocationSubscriberStarted = true;
+const logger = log4js.getLogger('device-gui');
+const REVOCATION_FEATURE = 'device-gui-revocations';
+
+export function deviceGuiRevocationSubscribed(): boolean {
+    return revocationSubscriberStarted;
+}
+
+async function subscribeRevocations(retryMs: number): Promise<void> {
+    revocationRetry = null;
+    if (revocationSubscriberStopped || revocationSubscriberStarted) return;
+    try {
+        await deviceGuiSessions.onRevoked(closeDeviceGuiSessionConnections);
+        revocationSubscriberStarted = true;
+        markRedisWaiting(REVOCATION_FEATURE, false);
+    } catch (err) {
+        markRedisWaiting(REVOCATION_FEATURE, true);
+        Observability.incrementCounter(
+            'device_gui_revocation_subscribe_errors'
+        );
+        logger.error(
+            'device GUI revocation subscribe failed, retrying in %dms; sessions replaced on another instance stay open here until it succeeds: %s',
+            retryMs,
+            err
+        );
+        if (revocationSubscriberStopped) return;
+        revocationRetry = setTimeout(
+            () => void subscribeRevocations(retryMs),
+            retryMs
+        );
+        revocationRetry.unref?.();
+    }
+}
+
+// Serving must not wait for this subscription: Redis at maxmemory refuses
+// SUBSCRIBE, so it retries in the background until Redis accepts it.
+export function startDeviceGuiRevocationSubscriber(
+    retryMs: number = tuning.redis.subBackoffMaxMs
+): void {
+    if (!deviceGuiConfig.enabled) return;
+    revocationSubscriberStopped = false;
+    if (revocationRetry || revocationSubscriberStarted) return;
+    void subscribeRevocations(retryMs);
+}
+
+export function stopDeviceGuiRevocationSubscriber(): void {
+    revocationSubscriberStopped = true;
+    if (revocationRetry) clearTimeout(revocationRetry);
+    revocationRetry = null;
+    markRedisWaiting(REVOCATION_FEATURE, false);
 }
 
 export default buildDeviceGuiRouter();

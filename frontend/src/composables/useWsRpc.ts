@@ -83,12 +83,12 @@ export default function useWsRpc<T>(
     // Latest-wins: a newer execute or an invalidate() discards older responses.
     const guard = createStaleGuard();
 
-    function execute() {
-        if (disposed) return;
+    function execute(): Promise<void> {
+        if (disposed) return Promise.resolve();
         loading.value = data.value == null;
         error.value = false;
         retryPending = false;
-        doExecute();
+        return doExecute();
     }
 
     async function doExecute() {
@@ -122,7 +122,7 @@ export default function useWsRpc<T>(
 
     function scheduleRetry() {
         retryPending = true;
-        retryTimer = setTimeout(() => execute(), 3000);
+        retryTimer = setTimeout(() => void execute(), 3000);
     }
 
     // Clean up retry timers when the component/scope is disposed.
@@ -140,10 +140,11 @@ export default function useWsRpc<T>(
     // If localStorage cache, show it immediately and refresh in background.
     // If nothing, fire RPC (spinner will show).
     if (!options.lazy) {
-        execute();
+        void execute();
     }
 
-    function refresh() {
+    // Resolves when this read settles, so callers can keep one in flight.
+    function refresh(): Promise<void> {
         return execute();
     }
 

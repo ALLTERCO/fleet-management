@@ -17,7 +17,8 @@ import {validateOrThrow} from '../../rpc/validateOrThrow';
 import {
     AUDIT_DESCRIBE,
     AUDIT_EXPORT_PARAMS_SCHEMA,
-    AUDIT_QUERY_PARAMS_SCHEMA
+    AUDIT_QUERY_PARAMS_SCHEMA,
+    type AuditQueryParams
 } from '../../types/api/audit';
 import type CommandSender from '../CommandSender';
 import {canViewAuditLog} from './authzPermissions';
@@ -277,15 +278,10 @@ export default class AuditComponent extends Component<AuditLogConfig> {
     @Component.Alias('auditlog.query')
     @Component.CheckPermissions(canViewAuditLog)
     async query(rawParams: unknown, sender: CommandSender) {
-        const params = validateOrThrow<{
-            from?: string;
-            to?: string;
-            eventTypes?: string[];
-            username?: string;
-            shellyId?: string;
-            limit?: number;
-            offset?: number;
-        }>(rawParams, AUDIT_QUERY_PARAMS_SCHEMA);
+        const params = validateOrThrow<AuditQueryParams>(
+            rawParams,
+            AUDIT_QUERY_PARAMS_SCHEMA
+        );
         const limit = params.limit ?? 200;
         const offset = params.offset ?? 0;
         const from = parseDateParam(params.from, 'from');
@@ -299,6 +295,8 @@ export default class AuditComponent extends Component<AuditLogConfig> {
             eventTypes: params.eventTypes as AuditLogger.AuditEventType[],
             username: params.username,
             shellyId: params.shellyId,
+            agentKeyId: params.agentKeyId,
+            correlationId: params.correlationId,
             limit,
             offset
         });

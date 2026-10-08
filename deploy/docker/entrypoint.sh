@@ -318,9 +318,53 @@ FM_NODE_RED_SESSION_URL="$(validate_url_or_path "${FM_NODE_RED_SESSION_URL:-}" "
 FM_NODE_RED_ENABLED="$(validate_bool "${FM_NODE_RED_ENABLED:-false}")"
 FM_DEV_MODE_JS="$(validate_bool "${FM_DEV_MODE:-false}")"
 
+# MCP browser sign-in client ids ("read=<id>,write=<id>", public, not secrets)
+# as a JS object; any bad entry yields {} so the page never shows a wrong id.
+mcp_oauth_clients_js() {
+  set -f
+  out=""
+  seen=" "
+  old_ifs=$IFS
+  IFS=','
+  for entry in $1; do
+    entry="$(printf '%s' "$entry" | tr -d '[:space:]')"
+    [ -n "$entry" ] || continue
+    level="${entry%%=*}"
+    id="${entry#*=}"
+    case "$level" in
+      read|write) ;;
+      *) echo "[entrypoint] WARN: FM_MCP_OAUTH_CLIENT_IDS level '$level' invalid; browser sign-in hidden" >&2
+         echo "{}"; return ;;
+    esac
+    case "$id" in
+      ''|*[!A-Za-z0-9@._:-]*|"$entry")
+        echo "[entrypoint] WARN: FM_MCP_OAUTH_CLIENT_IDS id for '$level' invalid; browser sign-in hidden" >&2
+        echo "{}"; return ;;
+    esac
+    case "$seen" in
+      *" $level "*)
+        echo "[entrypoint] WARN: FM_MCP_OAUTH_CLIENT_IDS names '$level' twice; browser sign-in hidden" >&2
+        echo "{}"; return ;;
+    esac
+    seen="$seen$level "
+    out="${out:+$out, }$level: \"$id\""
+  done
+  IFS=$old_ifs
+  echo "{$out}"
+}
+FM_MCP_OAUTH_CLIENTS_JS="$(mcp_oauth_clients_js "${FM_MCP_OAUTH_CLIENT_IDS:-}")"
+
+# The BM admin bundle opens in another tab and must inherit the OIDC user.
+if [ -f "/app/frontend/dist-admin/index.html.tmpl" ] || [ -f "/app/frontend/dist-admin/index.html" ]; then
+  FM_CROSS_TAB_AUTH_JS=true
+else
+  FM_CROSS_TAB_AUTH_JS=false
+fi
+
 cat > "$CONFIG_FILE" <<JSEOF
 window.__FM_RUNTIME_CONFIG__ = {
   devMode: $FM_DEV_MODE_JS,
+  crossTabAuth: $FM_CROSS_TAB_AUTH_JS,
   debugDefault: $FM_DEBUG_DEFAULT,
   perfTracing: $FM_PERF_TRACING,
   observability: $FM_OBSERVABILITY,
@@ -336,6 +380,7 @@ window.__FM_RUNTIME_CONFIG__ = {
   rpcAuditLogPath: "$FM_RPC_AUDIT_LOG_PATH",
   zitadelPasswordMinLength: $FM_ZITADEL_PASSWORD_MIN_LENGTH,
   authzUnusedThresholdDays: $FM_AUTHZ_UNUSED_THRESHOLD_DAYS,
+  mcpOAuthClients: $FM_MCP_OAUTH_CLIENTS_JS,
   ui: {
     nowTickerMs: $FM_UI_NOW_TICKER_MS,
     listSkeletonCount: $FM_UI_LIST_SKELETON_COUNT,
@@ -403,6 +448,16 @@ JSEOF
 if [ -n "$OIDC_AUTHORITY" ]; then
   # OIDC scope list comes from env — no default in code.
   : "${FM_OIDC_SCOPE:?FM_OIDC_SCOPE must be set (see deploy/env/.env.example)}"
+  # Zitadel reuses another organisation's session unless the scope names ours.
+  OIDC_SCOPE_EFFECTIVE="$FM_OIDC_SCOPE"
+  if [ -n "${FM_CLIENT_ORG_ID:-}" ]; then
+    case "$FM_OIDC_SCOPE" in
+      *urn:zitadel:iam:org:id:*) ;;
+      *) OIDC_SCOPE_EFFECTIVE="$FM_OIDC_SCOPE urn:zitadel:iam:org:id:$FM_CLIENT_ORG_ID" ;;
+    esac
+  fi
+  # Fleet's MCP sign-in metadata advertises the same scopes; this is their one source.
+  export OIDC_SCOPE_EFFECTIVE
   cat >> "$CONFIG_FILE" <<JSEOF
   ,
   oidc: {
@@ -412,7 +467,7 @@ if [ -n "$OIDC_AUTHORITY" ]; then
     redirect_uri: "$OIDC_REDIRECT_URI",
     post_logout_redirect_uri: "${OIDC_POST_LOGOUT_REDIRECT_URI:-${OIDC_REDIRECT_URI%/callback}/}",
     response_type: "code",
-    scope: "$FM_OIDC_SCOPE",
+    scope: "$OIDC_SCOPE_EFFECTIVE",
     filterProtocolClaims: true,
     loadUserInfo: true,
     automaticSilentRenew: true,
@@ -449,12 +504,11 @@ inline_runtime_config() {
   tmpl="$1"
   out="$2"
   runtime_src="$3"
-  marker="<script src=\"${runtime_src}\"></script>"
   if [ -f "$tmpl" ]; then
     {
       while IFS= read -r line; do
         case "$line" in
-          *"$marker"*)
+          *"<script"*'src="'"${runtime_src}"'"'*"</script>"*)
             printf '    <script>\n'
             cat "$CONFIG_FILE"
             printf '    </script>\n'
@@ -478,13 +532,12 @@ else
   echo "[entrypoint] WARNING: index.html.tmpl not found, skipping inline injection"
 fi
 
-# Operator FM SPA bundle at /admin/ (only present in dual-bundle runtime-bm
-# image). Vite emits the runtime-config.js reference with the configured
-# base, so the marker here uses /admin/runtime-config.js.
+# Operator FM SPA bundle at /admin/ (only present in dual-bundle runtime-bm).
+# The source HTML keeps runtime-config.js rooted at the tenant origin.
 ADMIN_INDEX_TMPL="/app/frontend/dist-admin/index.html.tmpl"
 ADMIN_INDEX_OUT="/tmp/index-admin.html"
 if [ -f "$ADMIN_INDEX_TMPL" ]; then
-  inline_runtime_config "$ADMIN_INDEX_TMPL" "$ADMIN_INDEX_OUT" "/admin/runtime-config.js"
+  inline_runtime_config "$ADMIN_INDEX_TMPL" "$ADMIN_INDEX_OUT" "/runtime-config.js"
 fi
 
 exec "$@"

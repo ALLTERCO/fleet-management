@@ -8,6 +8,17 @@ BACKUP_KEEP="${BACKUP_KEEP:-5}"
 # Shared-infra DBs — never drop via rollback.
 BK_SHARED_DB_DENYLIST="${BK_SHARED_DB_DENYLIST:-postgres template0 template1}"
 
+# Container that hosts a DB service. Shared-mode tenants run in their own
+# compose project, so they resolve fleet-db by label and pin it here.
+bk_db_container() {
+    local db_service="$1"
+    if [ -n "${BK_DB_CONTAINER:-}" ]; then
+        printf '%s' "$BK_DB_CONTAINER"
+        return 0
+    fi
+    hc_container_name "$db_service"
+}
+
 # pg_dump custom format (-Fc). Already compressed, restorable by pg_restore
 # with --jobs=N for parallel restore. Extension stays .dump.
 # stdout: path, rc 1 on fail.
@@ -20,7 +31,7 @@ bk_dump() {
     ts="$(date -u +%Y%m%dT%H%M%SZ)"
     mkdir -p "$BACKUP_DIR"
     out="$BACKUP_DIR/${label}-${ts}.dump"
-    container="$(hc_container_name "$db_service")"
+    container="$(bk_db_container "$db_service")"
 
     local -a dump_args=()
     local schema
@@ -51,6 +62,45 @@ bk_dump() {
     fi
 
     echo "$out"
+}
+
+# Plain-SQL dump, gzipped, written to an explicit path.
+# Kept alongside the custom-format bk_dump because a plain replay carries its
+# own OWNER statements: a shared-mode tenant database is owned by a per-tenant
+# role and must still be after a restore. Refuses a truncated dump — pg_dump
+# writes the completion trailer only when it finished.
+bk_dump_plain() {
+    local db_service="$1"
+    local db_name="$2"
+    local db_user="$3"
+    local out="$4"
+    local container stderr_log size
+
+    container="$(bk_db_container "$db_service")"
+    mkdir -p "$(dirname "$out")" || return 1
+    stderr_log="$(mktemp "${TMPDIR:-/tmp}/fm-pg-dump.XXXXXX")" || return 1
+
+    docker exec "$container" pg_dump -U "$db_user" "$db_name" 2>"$stderr_log" | gzip > "$out"
+    local pgdump_rc=${PIPESTATUS[0]} gzip_rc=${PIPESTATUS[1]}
+    if [ "$pgdump_rc" != "0" ] || [ "$gzip_rc" != "0" ]; then
+        echo "[bk_dump_plain] pg_dump rc=$pgdump_rc gzip rc=$gzip_rc for $db_name" >&2
+        sed -n '1,10p' "$stderr_log" >&2
+        rm -f "$out" "$stderr_log"
+        return 1
+    fi
+    rm -f "$stderr_log"
+
+    size="$(bk_file_size "$out")"
+    if [ "${size:-0}" -lt 100 ]; then
+        echo "[bk_dump_plain] $out is only ${size} bytes — refusing" >&2
+        rm -f "$out"
+        return 1
+    fi
+    if ! gunzip -c "$out" 2>/dev/null | tail -5 | grep -q 'PostgreSQL database dump complete'; then
+        echo "[bk_dump_plain] $out has no completion trailer — partial dump, refusing" >&2
+        rm -f "$out"
+        return 1
+    fi
 }
 
 # Reads last 3 backup manifests for the same label, warns to stderr when the
@@ -256,13 +306,14 @@ bk_inspect_backup() {
         }'
 }
 
-# bk_restore <db_service> <db_name> <db_user> <backup_path>
+# bk_restore <db_service> <db_name> <db_user> <backup_path> [<owner>]
 # Caller must stop FM first. Denylist-guarded; BK_ALLOW_DROP_DB=1 overrides.
 bk_restore() {
     local db_service="$1"
     local db_name="$2"
     local db_user="$3"
     local backup_path="$4"
+    local owner="${5:-}"
     if [ ! -s "$backup_path" ]; then
         return 1
     fi
@@ -278,16 +329,19 @@ bk_restore() {
     fi
 
     local container jobs
-    container="$(hc_container_name "$db_service")"
+    container="$(bk_db_container "$db_service")"
     jobs="${BK_RESTORE_JOBS:-4}"
 
-    bk_recreate_database "$container" "$db_user" "$db_name" || return 1
-    bk_timescale_pre_restore "$container" "$db_user" "$db_name" || return 1
+    bk_recreate_database "$container" "$db_user" "$db_name" "$owner" || return 1
+    bk_timescale_pre_restore "$container" "$db_user" "$db_name" "$backup_path" || return 1
     if ! bk_restore_artifact "$container" "$db_user" "$db_name" "$backup_path" "$jobs"; then
         bk_timescale_post_restore "$container" "$db_user" "$db_name" >/dev/null 2>&1 || true
         return 1
     fi
     bk_timescale_post_restore "$container" "$db_user" "$db_name" || return 1
+    local audit
+    audit="$(bk_post_restore_audit "$container" "$db_user" "$db_name")" || return 1
+    echo "[bk_restore] post-restore audit of $db_name: $audit" >&2
 }
 
 bk_restore_drill() {
@@ -299,7 +353,7 @@ bk_restore_drill() {
     bk_verify_backup "$backup_path" || return 1
 
     local container drill_db safe_label
-    container="$(hc_container_name "$db_service")"
+    container="$(bk_db_container "$db_service")"
     safe_label="$(printf '%s' "$label" | tr -c 'A-Za-z0-9_' '_' | sed 's/^_*//; s/_*$//')"
     [ -n "$safe_label" ] || safe_label="restore_drill"
     drill_db="fm_${safe_label}_$(date -u +%Y%m%d%H%M%S)_$$"
@@ -309,8 +363,8 @@ bk_restore_drill() {
         return 1
     fi
 
-    local rc=0 table_count
-    bk_timescale_pre_restore "$container" "$db_user" "$drill_db" || rc=1
+    local rc=0 audit
+    bk_timescale_pre_restore "$container" "$db_user" "$drill_db" "$backup_path" || rc=1
     if [ "$rc" -eq 0 ]; then
         bk_restore_artifact "$container" "$db_user" "$drill_db" "$backup_path" "${BK_RESTORE_DRILL_JOBS:-2}" || rc=1
     fi
@@ -318,11 +372,8 @@ bk_restore_drill() {
         bk_timescale_post_restore "$container" "$db_user" "$drill_db" || rc=1
     fi
     if [ "$rc" -eq 0 ]; then
-        table_count="$(docker exec "$container" psql -U "$db_user" -d "$drill_db" -AtX -v ON_ERROR_STOP=1 \
-            -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema');" 2>/dev/null || echo "")"
-        case "$table_count" in
-            ""|*[!0-9]*) rc=1 ;;
-        esac
+        audit="$(bk_post_restore_audit "$container" "$db_user" "$drill_db")" || rc=1
+        [ "$rc" -eq 0 ] && echo "[bk_restore_drill] $backup_path replays into $drill_db: $audit" >&2
     fi
 
     docker exec "$container" psql -U "$db_user" -d postgres -v ON_ERROR_STOP=1 \
@@ -372,12 +423,22 @@ bk_restore_artifact() {
     return 1
 }
 
+# bk_recreate_database <container> <db_user> <db_name> [<owner>]
+# Without an explicit owner the database keeps the one it has, so a tenant
+# database owned by its own role does not silently become postgres-owned.
 bk_recreate_database() {
     local container="$1"
     local db_user="$2"
     local db_name="$3"
+    local owner="${4:-}"
 
     bk_validate_db_identifier "$db_name" || return 1
+    if [ -z "$owner" ]; then
+        owner="$(bk_database_owner "$container" "$db_user" "$db_name")"
+    fi
+    if [ -n "$owner" ]; then
+        bk_validate_db_identifier "$owner" || return 1
+    fi
 
     # Terminate other sessions — DROP DATABASE fails otherwise.
     docker exec "$container" psql -U "$db_user" -d postgres -c \
@@ -385,13 +446,58 @@ bk_recreate_database() {
         >/dev/null 2>&1 || true
     docker exec "$container" psql -U "$db_user" -d postgres -c \
         "DROP DATABASE IF EXISTS \"$db_name\";" >/dev/null 2>&1 || return 1
-    docker exec "$container" psql -U "$db_user" -d postgres -c \
-        "CREATE DATABASE \"$db_name\";" >/dev/null 2>&1 || return 1
+    # template1 can carry an older TimescaleDB than the dump being restored.
+    local create_sql="CREATE DATABASE \"$db_name\" TEMPLATE template0;"
+    if [ -n "$owner" ]; then
+        create_sql="CREATE DATABASE \"$db_name\" OWNER \"$owner\" TEMPLATE template0;"
+    fi
+    docker exec "$container" psql -U "$db_user" -d postgres -c "$create_sql" >/dev/null 2>&1 || return 1
 }
 
+bk_database_owner() {
+    local container="$1" db_user="$2" db_name="$3"
+    docker exec "$container" psql -U "$db_user" -d postgres -AtXc \
+        "SELECT pg_catalog.pg_get_userbyid(datdba) FROM pg_database WHERE datname='$db_name';" \
+        2>/dev/null | head -1
+}
+
+# A restore that "succeeded" but produced an empty or unusable database is a
+# failure. Prints "tables=<n> hypertables=<m>"; rc 1 when nothing came back.
+bk_post_restore_audit() {
+    local container="$1" db_user="$2" db_name="$3"
+    local tables hypertables
+    tables="$(docker exec "$container" psql -U "$db_user" -d "$db_name" -AtX -v ON_ERROR_STOP=1 \
+        -c "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema');" 2>/dev/null || echo "")"
+    case "$tables" in
+        ""|*[!0-9]*)
+            echo "[bk_restore] post-restore audit could not count tables in $db_name" >&2
+            return 1
+            ;;
+    esac
+    if [ "$tables" -eq 0 ]; then
+        echo "[bk_restore] post-restore audit found no tables in $db_name" >&2
+        return 1
+    fi
+    hypertables=0
+    if bk_has_timescaledb "$container" "$db_user" "$db_name"; then
+        hypertables="$(docker exec "$container" psql -U "$db_user" -d "$db_name" -AtX \
+            -c "SELECT COUNT(*) FROM timescaledb_information.hypertables;" 2>/dev/null || echo "")"
+        case "$hypertables" in
+            ""|*[!0-9]*)
+                echo "[bk_restore] post-restore audit could not read hypertables in $db_name" >&2
+                return 1
+                ;;
+        esac
+    fi
+    printf 'tables=%s hypertables=%s\n' "$tables" "$hypertables"
+}
+
+# Hyphens are legal in a tenant database and role name (client ids allow them)
+# and are safe inside the double-quoted identifiers below. Quotes, spaces and
+# statement separators stay rejected — that is what this guard is for.
 bk_validate_db_identifier() {
     local value="$1"
-    if [[ "$value" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+    if [[ "$value" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]]; then
         return 0
     fi
     echo "[bk_restore] invalid database identifier: $value" >&2
@@ -407,15 +513,60 @@ bk_has_timescaledb() {
         "SELECT COUNT(*) FROM pg_available_extensions WHERE name = 'timescaledb';" 2>/dev/null || echo 0)" = "1" ]
 }
 
+# post_restore refuses a catalog from another extension version; a dump without the row is unchecked.
 bk_timescale_pre_restore() {
     local container="$1"
     local db_user="$2"
     local db_name="$3"
+    local backup_path="$4"
+    local version create_sql="CREATE EXTENSION IF NOT EXISTS timescaledb;"
 
     bk_has_timescaledb "$container" "$db_user" "$db_name" || return 0
+    version="$(bk_dump_timescale_version "$container" "$backup_path")"
+    if [ -n "$version" ]; then
+        bk_require_timescale_version "$container" "$db_user" "$version" "$backup_path" || return 1
+        create_sql="CREATE EXTENSION IF NOT EXISTS timescaledb VERSION '$version';"
+    fi
     docker exec "$container" psql -U "$db_user" -d "$db_name" -v ON_ERROR_STOP=1 \
-        -c "CREATE EXTENSION IF NOT EXISTS timescaledb;" \
-        -c "SELECT timescaledb_pre_restore();" >/dev/null 2>&1
+        -c "$create_sql" \
+        -c "SELECT timescaledb_pre_restore();" >/dev/null 2>&1 || return 1
+    [ -n "$version" ] || return 0
+    bk_expect_timescale_version "$container" "$db_user" "$db_name" "$version"
+}
+
+# The timescaledb_version row of the dump's own catalog; empty when it has none.
+bk_dump_timescale_version() {
+    local container="$1" backup_path="$2"
+    case "$backup_path" in
+        *.dump)
+            docker exec -i "$container" pg_restore -a -n _timescaledb_catalog -t metadata -f - \
+                <"$backup_path" 2>/dev/null ;;
+        *.sql.gz) gunzip -c "$backup_path" 2>/dev/null ;;
+    esac | awk -F'\t' '
+        /^COPY _timescaledb_catalog\.metadata / { in_copy = 1; next }
+        in_copy && /^\\\.$/ { in_copy = 0 }
+        in_copy && $1 == "timescaledb_version" { version = $2 }
+        END { if (version ~ /^[0-9]+(\.[0-9]+)*$/) print version }
+    ' || true
+}
+
+bk_require_timescale_version() {
+    local container="$1" db_user="$2" version="$3" backup_path="$4" shipped
+    shipped="$(docker exec "$container" psql -U "$db_user" -d postgres -AtX -c \
+        "SELECT COUNT(*) FROM pg_available_extension_versions WHERE name = 'timescaledb' AND version = '$version';" \
+        2>/dev/null || echo 0)"
+    [ "$shipped" = "1" ] && return 0
+    echo "[bk_restore] $backup_path was taken on TimescaleDB $version, which this image does not ship; restore it on an image that has $version" >&2
+    return 1
+}
+
+bk_expect_timescale_version() {
+    local container="$1" db_user="$2" db_name="$3" version="$4" installed
+    installed="$(docker exec "$container" psql -U "$db_user" -d "$db_name" -AtX -c \
+        "SELECT extversion FROM pg_extension WHERE extname = 'timescaledb';" 2>/dev/null || true)"
+    [ "$installed" = "$version" ] && return 0
+    echo "[bk_restore] $db_name has TimescaleDB ${installed:-none}, the dump needs $version" >&2
+    return 1
 }
 
 bk_timescale_post_restore() {
@@ -425,7 +576,7 @@ bk_timescale_post_restore() {
 
     bk_has_timescaledb "$container" "$db_user" "$db_name" || return 0
     docker exec "$container" psql -U "$db_user" -d "$db_name" -v ON_ERROR_STOP=1 \
-        -c "SELECT timescaledb_post_restore();" >/dev/null 2>&1
+        -c "SELECT timescaledb_post_restore();" >/dev/null
 }
 
 # bk_rotate [<keep>] — keep N newest dumps in BACKUP_DIR, delete rest.
@@ -437,6 +588,25 @@ bk_rotate() {
     echo "$listing" | awk -v keep="$keep" 'NR>keep {sub(/^[0-9]+ /, ""); print}' \
         | while IFS= read -r f; do
             [ -n "$f" ] && rm -f "$f" "$(bk_manifest_path "$f")"
+        done
+}
+
+# bk_rotate_snapshot_dirs <prefix> [<keep>] — keep the N newest <prefix>*
+# directories in BACKUP_DIR. Configuration snapshots live beside the dumps and
+# are rotated on the same schedule.
+bk_rotate_snapshot_dirs() {
+    local prefix="$1"
+    local keep="${2:-$BACKUP_KEEP}"
+    [ -d "$BACKUP_DIR" ] || return 0
+    find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -name "${prefix}*" 2>/dev/null |
+        while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            local mtime
+            mtime="$(stat -c '%Y' "$path" 2>/dev/null || stat -f '%m' "$path" 2>/dev/null || echo 0)"
+            printf '%s %s\n' "$mtime" "$path"
+        done | sort -rn | awk -v keep="$keep" 'NR>keep {sub(/^[0-9]+ /, ""); print}' |
+        while IFS= read -r stale; do
+            [ -n "$stale" ] && rm -rf "$stale"
         done
 }
 
@@ -481,7 +651,7 @@ bk_preflight_space() {
     local db_name="$2"
     local db_user="$3"
     local container
-    container="$(hc_container_name "$db_service")"
+    container="$(bk_db_container "$db_service")"
     local db_bytes
     db_bytes="$(docker exec "$container" psql -U "$db_user" -d "$db_name" -tAc "SELECT pg_database_size('$db_name');" 2>/dev/null)"
     if ! [[ "$db_bytes" =~ ^[0-9]+$ ]]; then

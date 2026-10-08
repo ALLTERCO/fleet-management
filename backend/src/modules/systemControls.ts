@@ -1,14 +1,18 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import log4js from 'log4js';
+import {readAppVersion} from '../config/appVersion';
+import {
+    runtimeIdentity,
+    runtimeIdentityComplete
+} from '../config/runtimeIdentity';
 import {runtimeMetadata} from '../config/runtimeMetadata';
 import {tuning} from '../config/tuning';
 import {getAuthzRuntimeStatus} from './authz';
+import {getCounts as getDeviceLoadCounts} from './device/deviceLoadLedger';
 import type {ObsLevel} from './Observability';
 import * as Observability from './Observability';
 import {pingRedis} from './redis/health';
+import {redisFeaturesWaiting} from './redis/redisWaiting';
 
-const logger = log4js.getLogger('system-controls');
 const startedAt = new Date();
 
 type DependencyStatus =
@@ -26,6 +30,7 @@ interface ReadyCheck {
 interface ReadyHealthDeps {
     checkDatabase?: () => Promise<DependencyStatus>;
     checkRedis?: () => Promise<DependencyStatus>;
+    redisFeaturesWaiting?: () => readonly string[];
 }
 
 export const KNOWN_LOG_CATEGORIES = [
@@ -77,16 +82,7 @@ export const VALID_LOG_LEVELS = [
     'MARK'
 ] as const;
 
-export function readAppVersion(): string {
-    try {
-        return JSON.parse(
-            fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8')
-        ).version;
-    } catch (err) {
-        logger.warn('package.json read failed: %s', err);
-        return 'unknown';
-    }
-}
+export {readAppVersion};
 
 export function getLiveHealth() {
     return {
@@ -96,6 +92,9 @@ export function getLiveHealth() {
         online: true,
         service: 'fleet-manager',
         version: readAppVersion(),
+        commit: runtimeIdentity.buildCommit,
+        identity_complete: runtimeIdentityComplete(),
+        configuration_fingerprint: runtimeIdentity.configurationFingerprint,
         uptime_s: Math.max(0, Math.floor(process.uptime())),
         checked_at: new Date().toISOString()
     };
@@ -105,15 +104,27 @@ export function getVersionInfo() {
     return {
         schema_version: 1,
         service: 'fleet-manager',
-        app_version: readAppVersion(),
-        build_commit: runtimeMetadata.buildCommit || 'unknown',
-        frontend_artifact_id: runtimeMetadata.frontendArtifactId,
-        frontend_artifact_version: runtimeMetadata.frontendArtifactVersion,
-        deployment_mode: runtimeMetadata.deploymentMode,
-        client_id: runtimeMetadata.clientId,
-        environment_id: runtimeMetadata.environmentId,
-        compose_project: runtimeMetadata.composeProject,
-        managed_by: runtimeMetadata.managedBy,
+        app_version: runtimeIdentity.appVersion,
+        build_commit: runtimeIdentity.buildCommit,
+        api_contract_version: runtimeIdentity.apiContractVersion,
+        ui_contract_version: runtimeIdentity.uiContractVersion,
+        frontend_artifact_id: runtimeIdentity.frontendArtifactId,
+        frontend_artifact_version: runtimeIdentity.frontendArtifactVersion,
+        deployment_mode: runtimeIdentity.deploymentMode,
+        topology_mode: runtimeIdentity.topologyMode,
+        client_id: runtimeIdentity.clientId,
+        environment_id: runtimeIdentity.environmentId,
+        compose_project: runtimeIdentity.composeProject,
+        managed_by: runtimeIdentity.managedBy,
+        node_version: runtimeIdentity.nodeVersion,
+        platform: runtimeIdentity.platform,
+        architecture: runtimeIdentity.architecture,
+        available_parallelism: runtimeIdentity.availableParallelism,
+        container_cpu_limit_cores: runtimeIdentity.containerCpuLimitCores,
+        container_memory_limit_bytes: runtimeIdentity.containerMemoryLimitBytes,
+        effective_config: runtimeIdentity.effectiveConfig,
+        configuration_fingerprint: runtimeIdentity.configurationFingerprint,
+        identity_complete: runtimeIdentityComplete(),
         started_at: startedAt.toISOString()
     };
 }
@@ -137,6 +148,17 @@ async function checkRedisReady(): Promise<DependencyStatus> {
     }
 }
 
+// Redis answering pings while a feature still waits for a command Redis
+// refuses (for example at maxmemory) serves, but not fully.
+function withWaitingFeatures(
+    redis: DependencyStatus,
+    waitingFeatures: readonly string[]
+): DependencyStatus {
+    return redis === 'passed' && waitingFeatures.length > 0
+        ? 'degraded'
+        : redis;
+}
+
 export async function getReadyHealth(deps: ReadyHealthDeps = {}) {
     const checks: Record<string, ReadyCheck> = {
         database: {
@@ -144,7 +166,10 @@ export async function getReadyHealth(deps: ReadyHealthDeps = {}) {
             required: true
         },
         redis: {
-            status: await (deps.checkRedis ?? checkRedisReady)(),
+            status: withWaitingFeatures(
+                await (deps.checkRedis ?? checkRedisReady)(),
+                (deps.redisFeaturesWaiting ?? redisFeaturesWaiting)()
+            ),
             required: false
         }
     };
@@ -172,6 +197,14 @@ export async function getFullHealth() {
         authz: await getAuthzRuntimeStatus()
     };
     if (runtimeMetadata.buildCommit) base.commit = runtimeMetadata.buildCommit;
+    // Serving with devices the store knows about but memory does not is
+    // degraded, not down: the probe stays 200 and ops still see the gap.
+    if (getDeviceLoadCounts().gap > 0) base.degraded = true;
+    const redisWaiting = redisFeaturesWaiting();
+    if (redisWaiting.length > 0) {
+        base.degraded = true;
+        base.redisWaiting = redisWaiting;
+    }
     if (metrics) base.metrics = metrics;
     return base;
 }

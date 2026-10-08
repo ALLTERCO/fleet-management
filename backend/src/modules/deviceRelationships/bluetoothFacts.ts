@@ -383,7 +383,7 @@ function bluetoothGatewayHealthSummaries(input: {
     const gatewayExternalId = primaryBluetoothGatewayExternalId(input);
     if (!gatewayExternalId) return [];
     const gateway = DeviceCollector.getDevice(gatewayExternalId);
-    if (!gateway || gateway.presence !== 'offline') return [];
+    if (gateway?.presence !== 'offline') return [];
     return [
         {
             severity: 'critical',

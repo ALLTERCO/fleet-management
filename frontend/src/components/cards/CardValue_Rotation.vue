@@ -29,7 +29,7 @@
                     />
                     <circle cx="30" cy="30" r="2.5" fill="var(--color-sensor-rotation)" />
                 </svg>
-                <div class="rot-value">{{ degText }}<span>°</span></div>
+                <div class="rot-value">{{ degText }}<span class="ec-u ec-u--sup">°</span></div>
             </div>
         </template>
         <template #badges>
@@ -112,12 +112,5 @@ const degText = computed(() => String(Math.round(degrees.value)));
     letter-spacing: var(--tracking-tight);
     line-height: 1;
     color: var(--color-sensor-rotation);
-}
-.rot-value span {
-    margin-left: 1px;
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-tertiary);
-    vertical-align: top;
 }
 </style>

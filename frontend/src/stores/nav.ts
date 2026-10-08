@@ -2,7 +2,11 @@
 
 import {defineStore} from 'pinia';
 import {computed, ref} from 'vue';
-import {canAccessPage, type PageAccessContext} from '@/auth/pageAccess';
+import {
+    canAccessPage,
+    firstAutomationsPage,
+    type PageAccessContext
+} from '@/auth/pageAccess';
 import {
     AUTOMATIONS_PATH,
     DASHBOARDS_PATH,
@@ -35,6 +39,8 @@ type BuiltinItem = {
     name: string;
     link: string;
     icon: string;
+    // A section whose tabs answer to different grants opens the first one allowed.
+    landing?: (access: PageAccessContext) => string | null;
 };
 
 // Built-in nav, declared once. Sections are joined by gaps; empty sections
@@ -67,7 +73,8 @@ const BUILTIN_TOP: BuiltinItem[][] = [
         {
             name: 'Automations',
             link: AUTOMATIONS_PATH,
-            icon: 'fa-regular fa-bolt'
+            icon: 'fa-regular fa-bolt',
+            landing: firstAutomationsPage
         }
     ],
     [
@@ -128,30 +135,38 @@ function normaliseCustomItems(raw: unknown): CustomItem[] {
     return out;
 }
 
-function isItemVisible(item: BuiltinItem, access: PageAccessContext): boolean {
-    return canAccessPage(item.link, access);
+function visibleEntry(
+    item: BuiltinItem,
+    access: PageAccessContext
+): MenuEntry | null {
+    const link = item.landing ? item.landing(access) : item.link;
+    if (link === null || !canAccessPage(link, access)) return null;
+    return {type: 'item', name: item.name, link, icon: item.icon};
 }
 
-function builtinToEntry(item: BuiltinItem): MenuEntry {
-    return {type: 'item', name: item.name, link: item.link, icon: item.icon};
+function visibleEntries(
+    items: BuiltinItem[],
+    access: PageAccessContext
+): MenuEntry[] {
+    return items.flatMap((item) => visibleEntry(item, access) ?? []);
 }
 
 function buildTopEntries(access: PageAccessContext): MenuEntry[] {
     const sections = BUILTIN_TOP.map((section) =>
-        section.filter((it) => isItemVisible(it, access))
+        visibleEntries(section, access)
     ).filter((s) => s.length > 0);
     const out: MenuEntry[] = [];
     sections.forEach((section, idx) => {
         if (idx > 0) out.push({type: 'gap'});
-        for (const item of section) out.push(builtinToEntry(item));
+        out.push(...section);
     });
     return out;
 }
 
 function buildBottomEntries(access: PageAccessContext): MenuEntry[] {
-    const visible = BUILTIN_BOTTOM.filter((it) => isItemVisible(it, access));
+    const visible = visibleEntries(BUILTIN_BOTTOM, access);
     if (visible.length === 0) return [];
-    return [{type: 'spacer'}, ...visible.map(builtinToEntry)];
+    return [{type: 'spacer'}, ...visible];
 }
 
 export const useNavStore = defineStore('nav', () => {

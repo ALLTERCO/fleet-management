@@ -7,6 +7,7 @@ import type {
 import * as DeviceCollector from '../DeviceCollector';
 import {
     getBluetoothDevice,
+    listBluetoothTransportComponentKeys,
     listBluetoothTransports
 } from './bluetoothRepository';
 
@@ -25,6 +26,10 @@ interface BluetoothGatewayUnpairDeps {
         organizationId: string,
         externalId: string
     ): Promise<{items: BluetoothTransportDto[]}>;
+    listTransportComponentKeys(
+        organizationId: string,
+        deviceListId: number
+    ): Promise<ReadonlyMap<string, readonly string[]>>;
     sendRpc(
         gatewayExternalId: string,
         method: BluetoothGatewayUnpairTarget['method'],
@@ -35,13 +40,14 @@ interface BluetoothGatewayUnpairDeps {
 const defaultDeps: BluetoothGatewayUnpairDeps = {
     getDevice: getBluetoothDevice,
     listTransports: listBluetoothTransports,
+    listTransportComponentKeys: listBluetoothTransportComponentKeys,
     sendRpc: sendGatewayRpc
 };
 
 export async function unpairBluetoothFromGateways(
     organizationId: string,
     input: BluetoothDeleteParams,
-    ignoreGatewayErrors: boolean,
+    authorizeGateways: (externalIds: string[]) => Promise<void>,
     deps: BluetoothGatewayUnpairDeps = defaultDeps
 ): Promise<void> {
     const device = await deps.getDevice(organizationId, input.externalId);
@@ -50,22 +56,35 @@ export async function unpairBluetoothFromGateways(
         organizationId,
         input.externalId
     );
-    const targets = bluetoothGatewayUnpairTargets(device, transports.items);
+    const targets = bluetoothGatewayUnpairTargets(
+        transports.items,
+        await deps.listTransportComponentKeys(
+            organizationId,
+            device.deviceListId
+        )
+    );
+    await authorizeGateways([
+        ...new Set(targets.map((target) => target.gatewayExternalId))
+    ]);
     for (const target of targets) {
-        await sendUnpairRpc(target, ignoreGatewayErrors, deps);
+        await sendUnpairRpc(target, input.ignoreGatewayErrors === true, deps);
     }
 }
 
+// Each gateway assigned its own BTHome id, so each pairing is deleted by the
+// key stored on that gateway's transport.
 export function bluetoothGatewayUnpairTargets(
-    device: BluetoothDeviceDto,
-    transports: readonly BluetoothTransportDto[]
+    transports: readonly BluetoothTransportDto[],
+    componentKeysByTransport: ReadonlyMap<string, readonly string[]>
 ): BluetoothGatewayUnpairTarget[] {
-    const source = bluetoothGatewayUnpairSource(device);
-    if (!source) return [];
     const unique = new Map<string, BluetoothGatewayUnpairTarget>();
     for (const transport of transports) {
         if (transport.mode !== 'bthome_gateway') continue;
         if (!transport.enabled || !transport.shellyDeviceExternalId) continue;
+        const source = bluetoothGatewayUnpairSource(
+            componentKeysByTransport.get(transport.id) ?? []
+        );
+        if (!source) continue;
         const target = {
             gatewayExternalId: transport.shellyDeviceExternalId,
             method: source.method,
@@ -80,22 +99,15 @@ export function bluetoothGatewayUnpairTargets(
 }
 
 function bluetoothGatewayUnpairSource(
-    device: BluetoothDeviceDto
+    componentKeys: readonly string[]
 ): Pick<BluetoothGatewayUnpairTarget, 'method' | 'id'> | null {
-    const trv = device.components.find((component) =>
-        component.componentKey.startsWith('blutrv:')
-    );
-    if (trv) {
-        return {method: 'BluTrv.Delete', id: componentId(trv.componentKey)};
-    }
-    const bthomeDevice = device.components.find((component) =>
-        component.componentKey.startsWith('bthomedevice:')
+    const trv = componentKeys.find((key) => key.startsWith('blutrv:'));
+    if (trv) return {method: 'BluTrv.Delete', id: componentId(trv)};
+    const bthomeDevice = componentKeys.find((key) =>
+        key.startsWith('bthomedevice:')
     );
     if (!bthomeDevice) return null;
-    return {
-        method: 'BTHome.DeleteDevice',
-        id: componentId(bthomeDevice.componentKey)
-    };
+    return {method: 'BTHome.DeleteDevice', id: componentId(bthomeDevice)};
 }
 
 function componentId(componentKey: string): number {

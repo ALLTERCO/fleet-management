@@ -7,6 +7,7 @@ export {
     type AssignmentDeleteRequest,
     type AssignmentGrantPrecheck,
     type AssignmentGrantRequest,
+    type AttachablePersona,
     assertAssignmentGrantAllowed,
     createAssignmentGrant,
     deleteAssignmentGrant,

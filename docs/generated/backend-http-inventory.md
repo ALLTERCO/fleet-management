@@ -9,14 +9,15 @@ Regenerate with `cd backend && npm run generate`.
 
 ## Totals
 
-- HTTP routes: **68**
-- Mount points (`app.use(path, router)`): **27**
+- HTTP routes: **73**
+- Mount points (`app.use(path, router)`): **28**
 - By auth model:
-  - `public`: **28**
-  - `isLoggedIn`: **18**
+  - `public`: **32**
+  - `isLoggedIn`: **16**
   - `requiresAdmin`: **7**
   - `requiresPlatformAdmin`: **5**
   - `route-permission`: **4**
+  - `mcp-credential`: **3**
   - `requiresPermission`: **3**
   - `requiresAuditView`: **1**
   - `device-gui-session`: **1**
@@ -26,103 +27,109 @@ Regenerate with `cd backend && npm run generate`.
 
 | Prefix | Auth | Middleware | Source |
 |---|---|---|---|
-| `/` | public |  | [backend/src/modules/web/index.ts:1022](../../backend/src/modules/web/index.ts#L1022) |
-| `/admin` | public |  | [backend/src/modules/web/index.ts:964](../../backend/src/modules/web/index.ts#L964) |
-| `/admin/assets` | public |  | [backend/src/modules/web/index.ts:956](../../backend/src/modules/web/index.ts#L956) |
-| `/api` | public |  | [backend/src/modules/web/index.ts:730](../../backend/src/modules/web/index.ts#L730) |
-| `/api` | isLoggedIn | isLoggedIn | [backend/src/modules/web/index.ts:751](../../backend/src/modules/web/index.ts#L751) |
-| `/api` | public |  | [backend/src/modules/web/index.ts:770](../../backend/src/modules/web/index.ts#L770) |
-| `/api/auth/session` | public |  | [backend/src/modules/web/index.ts:747](../../backend/src/modules/web/index.ts#L747) |
-| `/api/device-proxy` | public |  | [backend/src/modules/web/index.ts:767](../../backend/src/modules/web/index.ts#L767) |
-| `/api/docs` | public |  | [backend/src/modules/web/index.ts:748](../../backend/src/modules/web/index.ts#L748) |
-| `/api/grafana` | public |  | [backend/src/modules/web/index.ts:735](../../backend/src/modules/web/index.ts#L735) |
-| `/api/notifications` | public |  | [backend/src/modules/web/index.ts:731](../../backend/src/modules/web/index.ts#L731) |
-| `/api/notifications` | isLoggedIn | isLoggedIn | [backend/src/modules/web/index.ts:749](../../backend/src/modules/web/index.ts#L749) |
-| `/api/oauth` | public |  | [backend/src/modules/web/index.ts:739](../../backend/src/modules/web/index.ts#L739) |
-| `/api/uploads` | isLoggedIn | isLoggedIn | [backend/src/modules/web/index.ts:750](../../backend/src/modules/web/index.ts#L750) |
-| `/api/zitadel/actions` | public |  | [backend/src/modules/web/index.ts:742](../../backend/src/modules/web/index.ts#L742) |
-| `/assets` | public |  | [backend/src/modules/web/index.ts:982](../../backend/src/modules/web/index.ts#L982) |
-| `/grafana` | isLoggedIn | isLoggedIn, requireGrafanaPermission | [backend/src/modules/web/index.ts:753](../../backend/src/modules/web/index.ts#L753) |
-| `/images` | public |  | [backend/src/modules/web/index.ts:1012](../../backend/src/modules/web/index.ts#L1012) |
-| `/images/devices` | unknown | express.static(path.join(clientPath, 'images/devices'), { ma | [backend/src/modules/web/index.ts:995](../../backend/src/modules/web/index.ts#L995) |
-| `/llms.txt` | public |  | [backend/src/modules/web/index.ts:768](../../backend/src/modules/web/index.ts#L768) |
-| `/mcp` | public |  | [backend/src/modules/web/index.ts:769](../../backend/src/modules/web/index.ts#L769) |
-| `/media` | public |  | [backend/src/modules/web/index.ts:771](../../backend/src/modules/web/index.ts#L771) |
-| `/media` | public |  | [backend/src/modules/web/index.ts:772](../../backend/src/modules/web/index.ts#L772) |
-| `/media` | public |  | [backend/src/modules/web/index.ts:773](../../backend/src/modules/web/index.ts#L773) |
-| `/node-red` | isLoggedIn | isLoggedIn, isNotDefaultUser, requireNodeRedPermission | [backend/src/modules/web/index.ts:759](../../backend/src/modules/web/index.ts#L759) |
-| `/plugins/:plugin/public` | public |  | [backend/src/modules/web/index.ts:671](../../backend/src/modules/web/index.ts#L671) |
-| `/uploads/floor-plans` | isLoggedIn | isLoggedIn, uploadAccessGate(extractFloorPlanAccess), svgInlineHardeningMiddleware() | [backend/src/modules/web/index.ts:657](../../backend/src/modules/web/index.ts#L657) |
+| `/` | public |  | [backend/src/modules/web/index.ts:1103](../../backend/src/modules/web/index.ts#L1103) |
+| `/admin` | public |  | [backend/src/modules/web/index.ts:998](../../backend/src/modules/web/index.ts#L998) |
+| `/admin` | public |  | [backend/src/modules/web/index.ts:1045](../../backend/src/modules/web/index.ts#L1045) |
+| `/admin/assets` | public |  | [backend/src/modules/web/index.ts:1037](../../backend/src/modules/web/index.ts#L1037) |
+| `/api` | public |  | [backend/src/modules/web/index.ts:789](../../backend/src/modules/web/index.ts#L789) |
+| `/api` | isLoggedIn | isLoggedIn | [backend/src/modules/web/index.ts:810](../../backend/src/modules/web/index.ts#L810) |
+| `/api` | public |  | [backend/src/modules/web/index.ts:835](../../backend/src/modules/web/index.ts#L835) |
+| `/api/auth/session` | public |  | [backend/src/modules/web/index.ts:806](../../backend/src/modules/web/index.ts#L806) |
+| `/api/device-proxy` | public |  | [backend/src/modules/web/index.ts:832](../../backend/src/modules/web/index.ts#L832) |
+| `/api/docs` | public |  | [backend/src/modules/web/index.ts:807](../../backend/src/modules/web/index.ts#L807) |
+| `/api/grafana` | public |  | [backend/src/modules/web/index.ts:794](../../backend/src/modules/web/index.ts#L794) |
+| `/api/notifications` | public |  | [backend/src/modules/web/index.ts:790](../../backend/src/modules/web/index.ts#L790) |
+| `/api/notifications` | isLoggedIn | isLoggedIn | [backend/src/modules/web/index.ts:808](../../backend/src/modules/web/index.ts#L808) |
+| `/api/oauth` | public |  | [backend/src/modules/web/index.ts:798](../../backend/src/modules/web/index.ts#L798) |
+| `/api/uploads` | isLoggedIn | isLoggedIn | [backend/src/modules/web/index.ts:809](../../backend/src/modules/web/index.ts#L809) |
+| `/api/zitadel/actions` | public |  | [backend/src/modules/web/index.ts:801](../../backend/src/modules/web/index.ts#L801) |
+| `/assets` | public |  | [backend/src/modules/web/index.ts:1063](../../backend/src/modules/web/index.ts#L1063) |
+| `/grafana` | isLoggedIn | isLoggedIn, requireGrafanaPermission | [backend/src/modules/web/index.ts:812](../../backend/src/modules/web/index.ts#L812) |
+| `/images` | public |  | [backend/src/modules/web/index.ts:1093](../../backend/src/modules/web/index.ts#L1093) |
+| `/images/devices` | unknown | express.static(path.join(clientPath, 'images/devices'), { ma | [backend/src/modules/web/index.ts:1076](../../backend/src/modules/web/index.ts#L1076) |
+| `/llms.txt` | public |  | [backend/src/modules/web/index.ts:833](../../backend/src/modules/web/index.ts#L833) |
+| `/mcp` | public |  | [backend/src/modules/web/index.ts:834](../../backend/src/modules/web/index.ts#L834) |
+| `/media` | public |  | [backend/src/modules/web/index.ts:836](../../backend/src/modules/web/index.ts#L836) |
+| `/media` | public |  | [backend/src/modules/web/index.ts:837](../../backend/src/modules/web/index.ts#L837) |
+| `/media` | public |  | [backend/src/modules/web/index.ts:838](../../backend/src/modules/web/index.ts#L838) |
+| `/node-red` | node-red-editor-session | authenticateNodeRedRequest, isNotDefaultUser, requireNodeRedPermission | [backend/src/modules/web/index.ts:822](../../backend/src/modules/web/index.ts#L822) |
+| `/plugins/:plugin/public` | public |  | [backend/src/modules/web/index.ts:728](../../backend/src/modules/web/index.ts#L728) |
+| `/uploads/floor-plans` | isLoggedIn | isLoggedIn, uploadAccessGate(extractFloorPlanAccess), svgInlineHardeningMiddleware() | [backend/src/modules/web/index.ts:714](../../backend/src/modules/web/index.ts#L714) |
 
 ## Routes
 
 | Method | Path | Full path | Auth | Middleware | Source |
 |---|---|---|---|---|---|
 | `DELETE` | `/` | `/` | public | httpRouteLimit(SESSION_LIMIT) | [backend/src/modules/web/routes/authSession.ts:37](../../backend/src/modules/web/routes/authSession.ts#L37) |
-| `GET` | `/` | `/` | isLoggedIn | isLoggedInOrRedirect, docsRateLimit | [backend/src/modules/web/routes/apiDocs.ts:115](../../backend/src/modules/web/routes/apiDocs.ts#L115) |
-| `GET` | `/` | `/` | isLoggedIn | isLoggedIn, mcpRateLimit | [backend/src/modules/web/routes/mcp.ts:280](../../backend/src/modules/web/routes/mcp.ts#L280) |
+| `DELETE` | `/` | `/` | mcp-credential | refuseStatelessStreamMethods, requireMcpBearer, requireMcpAccess, mcpRateLimit | [backend/src/modules/web/routes/mcp.ts:2372](../../backend/src/modules/web/routes/mcp.ts#L2372) |
+| `GET` | `/` | `/` | isLoggedIn | isLoggedInOrRedirect, docsRateLimit | [backend/src/modules/web/routes/apiDocs.ts:116](../../backend/src/modules/web/routes/apiDocs.ts#L116) |
+| `GET` | `/` | `/` | mcp-credential | refuseStatelessStreamMethods, requireMcpBearer, requireMcpAccess, mcpRateLimit | [backend/src/modules/web/routes/mcp.ts:2357](../../backend/src/modules/web/routes/mcp.ts#L2357) |
 | `POST` | `/` | `/` | isLoggedIn | httpRouteLimit(SESSION_LIMIT), isLoggedIn | [backend/src/modules/web/routes/authSession.ts:27](../../backend/src/modules/web/routes/authSession.ts#L27) |
-| `POST` | `/` | `/` | isLoggedIn | isLoggedIn, requireMcpAccess, mcpRateLimit, express.json() | [backend/src/modules/web/routes/mcp.ts:272](../../backend/src/modules/web/routes/mcp.ts#L272) |
-| `GET` | `/*splat` | `/*splat` | public |  | [backend/src/modules/web/index.ts:1040](../../backend/src/modules/web/index.ts#L1040) |
-| `GET` | `/admin/*splat` | `/admin/*splat` | public |  | [backend/src/modules/web/index.ts:969](../../backend/src/modules/web/index.ts#L969) |
+| `POST` | `/` | `/` | mcp-credential | requireMcpBearer, requireMcpAccess, mcpRateLimit, express.json({limit: '4mb'}) | [backend/src/modules/web/routes/mcp.ts:2349](../../backend/src/modules/web/routes/mcp.ts#L2349) |
+| `GET` | `/*splat` | `/*splat` | public |  | [backend/src/modules/web/index.ts:1121](../../backend/src/modules/web/index.ts#L1121) |
+| `GET` | `/admin/*splat` | `/admin/*splat` | public |  | [backend/src/modules/web/index.ts:1050](../../backend/src/modules/web/index.ts#L1050) |
 | `POST` | `/alert-webhook/:orgId` | `/alert-webhook/:orgId` | public | express.json({limit: deps.maxBodyBytes}) | [backend/src/modules/web/routes/grafanaAlertWebhook.ts:211](../../backend/src/modules/web/routes/grafanaAlertWebhook.ts#L211) |
-| `POST` | `/audit-log/download-ticket/:filename` | `/api/audit-log/download-ticket/:filename` | requiresAuditView | requiresAuditView, httpRouteLimit({ name: 'audit-log-download-ticket', capacity | [backend/src/modules/web/routes/auditDownload.ts:120](../../backend/src/modules/web/routes/auditDownload.ts#L120) |
-| `GET` | `/audit-log/download/:filename` | `/api/audit-log/download/:filename` | public | httpRouteLimit({ name: 'audit-log-download', capacityPerMin: | [backend/src/modules/web/routes/auditDownload.ts:69](../../backend/src/modules/web/routes/auditDownload.ts#L69) |
-| `GET` | `/api/control-plane/deploy-manifest` | `/api/control-plane/deploy-manifest` | requiresAdmin | httpRouteLimit({ name: 'control-plane-deploy-manifest', capa, requiresAdmin | [backend/src/modules/web/index.ts:578](../../backend/src/modules/web/index.ts#L578) |
-| `GET` | `/api/control-plane/device-usage` | `/api/control-plane/device-usage` | requiresAdmin | httpRouteLimit({ name: 'control-plane-device-usage', capacit, requiresAdmin | [backend/src/modules/web/index.ts:595](../../backend/src/modules/web/index.ts#L595) |
-| `ALL` | `/api/device-gui/:sessionId/{*devicePath}` | `/api/device-gui/:sessionId/{*devicePath}` | device-gui-session | requireDeviceGuiSession | [backend/src/modules/web/deviceGuiOrigin.ts:512](../../backend/src/modules/web/deviceGuiOrigin.ts#L512) |
+| `POST` | `/audit-log/download-ticket/:filename` | `/api/audit-log/download-ticket/:filename` | requiresAuditView | requiresAuditView, httpRouteLimit({ name: 'audit-log-download-ticket', capacity | [backend/src/modules/web/routes/auditDownload.ts:130](../../backend/src/modules/web/routes/auditDownload.ts#L130) |
+| `GET` | `/audit-log/download/:filename` | `/api/audit-log/download/:filename` | public | httpRouteLimit({ name: 'audit-log-download', capacityPerMin: | [backend/src/modules/web/routes/auditDownload.ts:79](../../backend/src/modules/web/routes/auditDownload.ts#L79) |
+| `GET` | `/api/control-plane/deploy-manifest` | `/api/control-plane/deploy-manifest` | requiresAdmin | httpRouteLimit({ name: 'control-plane-deploy-manifest', capa, requiresAdmin | [backend/src/modules/web/index.ts:635](../../backend/src/modules/web/index.ts#L635) |
+| `GET` | `/api/control-plane/device-usage` | `/api/control-plane/device-usage` | requiresAdmin | httpRouteLimit({ name: 'control-plane-device-usage', capacit, requiresAdmin | [backend/src/modules/web/index.ts:652](../../backend/src/modules/web/index.ts#L652) |
+| `ALL` | `/api/device-gui/:sessionId/{*devicePath}` | `/api/device-gui/:sessionId/{*devicePath}` | device-gui-session | requireDeviceGuiSession | [backend/src/modules/web/deviceGuiOrigin.ts:517](../../backend/src/modules/web/deviceGuiOrigin.ts#L517) |
 | `GET` | `/:shellyID/camera/:componentId/snapshot` | `/api/device-proxy/:shellyID/camera/:componentId/snapshot` | route-permission | httpRouteLimit({ name: 'device-proxy-camera-snapshot', capac, validateDeviceAccess() | [backend/src/modules/web/routes/device-proxy.ts:417](../../backend/src/modules/web/routes/device-proxy.ts#L417) |
 | `POST` | `/:shellyID/camera/streamer/stop` | `/api/device-proxy/:shellyID/camera/streamer/stop` | route-permission | express.json(), httpRouteLimit({ name: 'device-proxy-camera-streamer-stop', , validateDeviceAccess() | [backend/src/modules/web/routes/device-proxy.ts:450](../../backend/src/modules/web/routes/device-proxy.ts#L450) |
 | `GET` | `/:shellyID/gui-debug` | `/api/device-proxy/:shellyID/gui-debug` | route-permission | httpRouteLimit({ name: 'device-proxy-gui-debug', capacityPer, validateDeviceAccess({requireDevice: false}) | [backend/src/modules/web/routes/device-proxy.ts:691](../../backend/src/modules/web/routes/device-proxy.ts#L691) |
 | `GET` | `/:shellyID/info` | `/api/device-proxy/:shellyID/info` | route-permission | httpRouteLimit({ name: 'device-proxy-info', capacityPerMin: , validateDeviceAccess() | [backend/src/modules/web/routes/device-proxy.ts:305](../../backend/src/modules/web/routes/device-proxy.ts#L305) |
 | `POST` | `/devices/:deviceId/gui-session` | `/api/device-proxy/devices/:deviceId/gui-session` | isLoggedIn | httpRouteLimit({ name: 'device-gui-session', capacityPerMin:, isLoggedIn | [backend/src/modules/web/routes/device-proxy.ts:123](../../backend/src/modules/web/routes/device-proxy.ts#L123) |
 | `GET` | `/devices/:deviceId/info` | `/api/device-proxy/devices/:deviceId/info` | isLoggedIn | httpRouteLimit({ name: 'device-gui-info', capacityPerMin: tu, isLoggedIn | [backend/src/modules/web/routes/device-proxy.ts:102](../../backend/src/modules/web/routes/device-proxy.ts#L102) |
-| `GET` | `/exports/download/:filename` | `/api/exports/download/:filename` | isLoggedIn | isLoggedIn, httpRouteLimit({ name: 'exports-download', capacityPerMin: t | [backend/src/modules/web/routes/auditDownload.ts:172](../../backend/src/modules/web/routes/auditDownload.ts#L172) |
-| `POST` | `/email-assets` | `/api/notifications/email-assets` | requiresPermission | isLoggedIn, requiresAnyPermission('notifications:create', 'notifications, httpRouteLimit({ name: 'email-asset-upload', capacityPerMin:, upload.single('file') | [backend/src/modules/web/routes/emailAssets.ts:67](../../backend/src/modules/web/routes/emailAssets.ts#L67) |
-| `GET` | `/email-assets/:id` | `/api/notifications/email-assets/:id` | requiresPermission | isLoggedIn, requiresAnyPermission('notifications:read'), httpRouteLimit({ name: 'email-asset-download', capacityPerMi | [backend/src/modules/web/routes/emailAssets.ts:150](../../backend/src/modules/web/routes/emailAssets.ts#L150) |
+| `GET` | `/exports/download/:filename` | `/api/exports/download/:filename` | isLoggedIn | isLoggedIn, httpRouteLimit({ name: 'exports-download', capacityPerMin: t | [backend/src/modules/web/routes/auditDownload.ts:182](../../backend/src/modules/web/routes/auditDownload.ts#L182) |
+| `POST` | `/email-assets` | `/api/notifications/email-assets` | requiresPermission | isLoggedIn, requiresAnyPermission('notifications:create', 'notifications, httpRouteLimit({ name: 'email-asset-upload', capacityPerMin:, upload.single('file') | [backend/src/modules/web/routes/emailAssets.ts:62](../../backend/src/modules/web/routes/emailAssets.ts#L62) |
+| `GET` | `/email-assets/:id` | `/api/notifications/email-assets/:id` | requiresPermission | isLoggedIn, requiresAnyPermission('notifications:read'), httpRouteLimit({ name: 'email-asset-download', capacityPerMi | [backend/src/modules/web/routes/emailAssets.ts:129](../../backend/src/modules/web/routes/emailAssets.ts#L129) |
 | `GET` | `/callback/email` | `/api/oauth/callback/email` | public | httpRouteLimit({ name: 'oauth-email-callback', // Callback i | [backend/src/modules/web/routes/oauthEmail.ts:38](../../backend/src/modules/web/routes/oauthEmail.ts#L38) |
-| `GET` | `/reports/download/:filename` | `/api/reports/download/:filename` | isLoggedIn | isLoggedIn, httpRouteLimit({ name: 'reports-download', capacityPerMin: t | [backend/src/modules/web/routes/auditDownload.ts:160](../../backend/src/modules/web/routes/auditDownload.ts#L160) |
-| `POST` | `/floor-plan` | `/api/uploads/floor-plan` | isLoggedIn | isLoggedIn, httpRouteLimit({ name: 'floor-plan-upload', capacityPerMin: , upload.single('file') | [backend/src/modules/web/routes/floorPlanUpload.ts:33](../../backend/src/modules/web/routes/floorPlanUpload.ts#L33) |
-| `GET` | `/assets/:id` | `/assets/:id` | public | httpRouteLimit({ name: 'asset-get', capacityPerMin: tuning.h | [backend/src/modules/web/routes/assetUpload.ts:182](../../backend/src/modules/web/routes/assetUpload.ts#L182) |
-| `POST` | `/auth/login_flow` | `/auth/login_flow` | public | httpRouteLimit({ name: 'login-flow', capacityPerMin: tuning. | [backend/src/modules/web/index.ts:778](../../backend/src/modules/web/index.ts#L778) |
-| `GET` | `/embedded-apps` | `/embedded-apps` | isLoggedIn | isLoggedInOrRedirect, docsRateLimit | [backend/src/modules/web/routes/apiDocs.ts:140](../../backend/src/modules/web/routes/apiDocs.ts#L140) |
-| `POST` | `/grant-removed` | `/grant-removed` | public | httpRouteLimit({ name: 'zitadel-webhook', capacityPerMin: tu | [backend/src/modules/web/routes/zitadelActions.ts:34](../../backend/src/modules/web/routes/zitadelActions.ts#L34) |
-| `GET` | `/health` | `/health` | public |  | [backend/src/modules/web/index.ts:552](../../backend/src/modules/web/index.ts#L552) |
-| `GET` | `/health/components/coverage` | `/health/components/coverage` | requiresAdmin | requiresAdmin | [backend/src/modules/web/index.ts:881](../../backend/src/modules/web/index.ts#L881) |
-| `GET` | `/health/db-writes` | `/health/db-writes` | public |  | [backend/src/modules/web/index.ts:618](../../backend/src/modules/web/index.ts#L618) |
-| `POST` | `/health/db-writes` | `/health/db-writes` | requiresPlatformAdmin | requiresPlatformAdmin, express.json() | [backend/src/modules/web/index.ts:815](../../backend/src/modules/web/index.ts#L815) |
-| `GET` | `/health/debug-report` | `/health/debug-report` | isLoggedIn | isLoggedIn | [backend/src/modules/web/index.ts:800](../../backend/src/modules/web/index.ts#L800) |
-| `GET` | `/health/full` | `/health/full` | requiresAdmin | requiresAdmin | [backend/src/modules/web/index.ts:795](../../backend/src/modules/web/index.ts#L795) |
-| `GET` | `/health/live` | `/health/live` | public |  | [backend/src/modules/web/index.ts:556](../../backend/src/modules/web/index.ts#L556) |
-| `POST` | `/health/log-level` | `/health/log-level` | requiresPlatformAdmin | requiresPlatformAdmin, express.json() | [backend/src/modules/web/index.ts:860](../../backend/src/modules/web/index.ts#L860) |
-| `GET` | `/health/log-levels` | `/health/log-levels` | public |  | [backend/src/modules/web/index.ts:626](../../backend/src/modules/web/index.ts#L626) |
-| `POST` | `/health/observability` | `/health/observability` | requiresPlatformAdmin | requiresPlatformAdmin, express.json() | [backend/src/modules/web/index.ts:835](../../backend/src/modules/web/index.ts#L835) |
-| `POST` | `/health/observability/reset` | `/health/observability/reset` | requiresPlatformAdmin | requiresPlatformAdmin | [backend/src/modules/web/index.ts:851](../../backend/src/modules/web/index.ts#L851) |
-| `GET` | `/health/ready` | `/health/ready` | public | httpRouteLimit({name: 'health-ready', capacityPerMin: 120}) | [backend/src/modules/web/index.ts:560](../../backend/src/modules/web/index.ts#L560) |
-| `GET` | `/health/redis` | `/health/redis` | public |  | [backend/src/modules/web/index.ts:622](../../backend/src/modules/web/index.ts#L622) |
-| `GET` | `/health/streams` | `/health/streams` | isLoggedIn | isLoggedIn | [backend/src/modules/web/index.ts:806](../../backend/src/modules/web/index.ts#L806) |
-| `GET` | `/healthz` | `/healthz` | public |  | [backend/src/modules/web/routes/zitadelActions.ts:10](../../backend/src/modules/web/routes/zitadelActions.ts#L10) |
-| `POST` | `/importBackup` | `/importBackup` | requiresPermission | requiresAnyPermission('devices:update'), httpRouteLimit({ name: 'backup-import', capacityPerMin: tuni, uploadBackupFile.single('backup') | [backend/src/modules/web/routes/backupImport.ts:27](../../backend/src/modules/web/routes/backupImport.ts#L27) |
-| `GET` | `/deleteBackground` | `/media/deleteBackground` | public |  | [backend/src/modules/web/routes/media.ts:281](../../backend/src/modules/web/routes/media.ts#L281) |
-| `POST` | `/deleteBackground` | `/media/deleteBackground` | requiresAdmin | requiresAdmin | [backend/src/modules/web/routes/media.ts:265](../../backend/src/modules/web/routes/media.ts#L265) |
-| `GET` | `/media/firmware-file/:token` | `/media/firmware-file/:token` | public | httpRouteLimit({ name: 'firmware-file-download', capacityPer | [backend/src/modules/web/index.ts:690](../../backend/src/modules/web/index.ts#L690) |
-| `GET` | `/getAllBackgrounds` | `/media/getAllBackgrounds` | isLoggedIn | isLoggedIn, httpRouteLimit({ name: 'media-list-backgrounds', capacityPer | [backend/src/modules/web/routes/media.ts:98](../../backend/src/modules/web/routes/media.ts#L98) |
-| `GET` | `/getAllReportImages` | `/media/getAllReportImages` | isLoggedIn | isLoggedIn, httpRouteLimit({ name: 'media-list-report-images', capacityP | [backend/src/modules/web/routes/media.ts:285](../../backend/src/modules/web/routes/media.ts#L285) |
-| `POST` | `/uploadBackground` | `/media/uploadBackground` | requiresAdmin | requiresAdmin, httpRouteLimit({ name: 'media-upload-background', capacityPe, upload.single('image') | [backend/src/modules/web/routes/media.ts:116](../../backend/src/modules/web/routes/media.ts#L116) |
-| `POST` | `/uploadFirmwareFile` | `/media/uploadFirmwareFile` | requiresPlatformAdmin | requiresPlatformAdmin, httpRouteLimit({ name: 'media-upload-firmware', capacityPerM, uploadFirmwareFile.single('firmware') | [backend/src/modules/web/routes/firmwareUpload.ts:35](../../backend/src/modules/web/routes/firmwareUpload.ts#L35) |
-| `POST` | `/uploadProfilePic` | `/media/uploadProfilePic` | isLoggedIn | isLoggedIn, httpRouteLimit({ name: 'media-upload-profile-pic', capacityP, upload.single('image') | [backend/src/modules/web/routes/media.ts:198](../../backend/src/modules/web/routes/media.ts#L198) |
-| `POST` | `/uploadReportImage` | `/media/uploadReportImage` | requiresAdmin | requiresAdmin, httpRouteLimit({ name: 'media-upload-report-image', capacity, uploadReportImage.single('image') | [backend/src/modules/web/routes/media.ts:305](../../backend/src/modules/web/routes/media.ts#L305) |
-| `GET` | `/metrics` | `/metrics` | requiresObservabilityAuth | httpRouteLimit({ name: 'metrics', capacityPerMin: tuning.htt, requireObsAuth | [backend/src/modules/web/index.ts:635](../../backend/src/modules/web/index.ts#L635) |
-| `GET` | `/openapi.json` | `/openapi.json` | isLoggedIn | isLoggedInOrRedirect, docsRateLimit | [backend/src/modules/web/routes/apiDocs.ts:92](../../backend/src/modules/web/routes/apiDocs.ts#L92) |
+| `GET` | `/reports/download/:filename` | `/api/reports/download/:filename` | isLoggedIn | isLoggedIn, httpRouteLimit({ name: 'reports-download', capacityPerMin: t | [backend/src/modules/web/routes/auditDownload.ts:170](../../backend/src/modules/web/routes/auditDownload.ts#L170) |
+| `POST` | `/floor-plan` | `/api/uploads/floor-plan` | isLoggedIn | isLoggedIn, httpRouteLimit({ name: 'floor-plan-upload', capacityPerMin: , upload.single('file') | [backend/src/modules/web/routes/floorPlanUpload.ts:35](../../backend/src/modules/web/routes/floorPlanUpload.ts#L35) |
+| `GET` | `/assets/:id` | `/assets/:id` | public | httpRouteLimit({ name: 'asset-get', capacityPerMin: tuning.h | [backend/src/modules/web/routes/assetUpload.ts:183](../../backend/src/modules/web/routes/assetUpload.ts#L183) |
+| `POST` | `/auth/login_flow` | `/auth/login_flow` | public | httpRouteLimit({ name: 'login-flow', capacityPerMin: tuning. | [backend/src/modules/web/index.ts:843](../../backend/src/modules/web/index.ts#L843) |
+| `GET` | `/:hookId` | `/automation-hooks/:hookId` | public | httpRouteLimit(hookLimit()) | [backend/src/modules/web/routes/automationHooks.ts:204](../../backend/src/modules/web/routes/automationHooks.ts#L204) |
+| `POST` | `/:hookId` | `/automation-hooks/:hookId` | public | httpRouteLimit(hookLimit()) | [backend/src/modules/web/routes/automationHooks.ts:205](../../backend/src/modules/web/routes/automationHooks.ts#L205) |
+| `PUT` | `/:hookId` | `/automation-hooks/:hookId` | public | httpRouteLimit(hookLimit()) | [backend/src/modules/web/routes/automationHooks.ts:206](../../backend/src/modules/web/routes/automationHooks.ts#L206) |
+| `GET` | `/embedded-apps` | `/embedded-apps` | isLoggedIn | isLoggedInOrRedirect, docsRateLimit | [backend/src/modules/web/routes/apiDocs.ts:141](../../backend/src/modules/web/routes/apiDocs.ts#L141) |
+| `POST` | `/grant-removed` | `/grant-removed` | public |  | [backend/src/modules/web/routes/zitadelActions.ts:24](../../backend/src/modules/web/routes/zitadelActions.ts#L24) |
+| `GET` | `/health` | `/health` | public |  | [backend/src/modules/web/index.ts:609](../../backend/src/modules/web/index.ts#L609) |
+| `GET` | `/health/components/coverage` | `/health/components/coverage` | requiresAdmin | requiresAdmin | [backend/src/modules/web/index.ts:946](../../backend/src/modules/web/index.ts#L946) |
+| `GET` | `/health/db-writes` | `/health/db-writes` | public |  | [backend/src/modules/web/index.ts:675](../../backend/src/modules/web/index.ts#L675) |
+| `POST` | `/health/db-writes` | `/health/db-writes` | requiresPlatformAdmin | requiresPlatformAdmin, express.json() | [backend/src/modules/web/index.ts:880](../../backend/src/modules/web/index.ts#L880) |
+| `GET` | `/health/debug-report` | `/health/debug-report` | isLoggedIn | isLoggedIn | [backend/src/modules/web/index.ts:865](../../backend/src/modules/web/index.ts#L865) |
+| `GET` | `/health/full` | `/health/full` | requiresAdmin | requiresAdmin | [backend/src/modules/web/index.ts:860](../../backend/src/modules/web/index.ts#L860) |
+| `GET` | `/health/live` | `/health/live` | public |  | [backend/src/modules/web/index.ts:613](../../backend/src/modules/web/index.ts#L613) |
+| `POST` | `/health/log-level` | `/health/log-level` | requiresPlatformAdmin | requiresPlatformAdmin, express.json() | [backend/src/modules/web/index.ts:925](../../backend/src/modules/web/index.ts#L925) |
+| `GET` | `/health/log-levels` | `/health/log-levels` | public |  | [backend/src/modules/web/index.ts:683](../../backend/src/modules/web/index.ts#L683) |
+| `POST` | `/health/observability` | `/health/observability` | requiresPlatformAdmin | requiresPlatformAdmin, express.json() | [backend/src/modules/web/index.ts:900](../../backend/src/modules/web/index.ts#L900) |
+| `POST` | `/health/observability/reset` | `/health/observability/reset` | requiresPlatformAdmin | requiresPlatformAdmin | [backend/src/modules/web/index.ts:916](../../backend/src/modules/web/index.ts#L916) |
+| `GET` | `/health/ready` | `/health/ready` | public | httpRouteLimit({name: 'health-ready', capacityPerMin: 120}) | [backend/src/modules/web/index.ts:617](../../backend/src/modules/web/index.ts#L617) |
+| `GET` | `/health/redis` | `/health/redis` | public |  | [backend/src/modules/web/index.ts:679](../../backend/src/modules/web/index.ts#L679) |
+| `GET` | `/health/streams` | `/health/streams` | isLoggedIn | isLoggedIn | [backend/src/modules/web/index.ts:871](../../backend/src/modules/web/index.ts#L871) |
+| `GET` | `/healthz` | `/healthz` | public |  | [backend/src/modules/web/routes/zitadelActions.ts:8](../../backend/src/modules/web/routes/zitadelActions.ts#L8) |
+| `POST` | `/importBackup` | `/importBackup` | requiresPermission | requiresAnyPermission('devices:update'), httpRouteLimit({ name: 'backup-import', capacityPerMin: tuni, uploadBackupFile.single('backup') | [backend/src/modules/web/routes/backupImport.ts:26](../../backend/src/modules/web/routes/backupImport.ts#L26) |
+| `GET` | `/deleteBackground` | `/media/deleteBackground` | public |  | [backend/src/modules/web/routes/media.ts:246](../../backend/src/modules/web/routes/media.ts#L246) |
+| `POST` | `/deleteBackground` | `/media/deleteBackground` | requiresAdmin | requiresAdmin | [backend/src/modules/web/routes/media.ts:230](../../backend/src/modules/web/routes/media.ts#L230) |
+| `GET` | `/media/firmware-file/:token` | `/media/firmware-file/:token` | public | httpRouteLimit({ name: 'firmware-file-download', capacityPer | [backend/src/modules/web/index.ts:747](../../backend/src/modules/web/index.ts#L747) |
+| `GET` | `/getAllBackgrounds` | `/media/getAllBackgrounds` | isLoggedIn | isLoggedIn, httpRouteLimit({ name: 'media-list-backgrounds', capacityPer | [backend/src/modules/web/routes/media.ts:90](../../backend/src/modules/web/routes/media.ts#L90) |
+| `GET` | `/getAllReportImages` | `/media/getAllReportImages` | isLoggedIn | isLoggedIn, httpRouteLimit({ name: 'media-list-report-images', capacityP | [backend/src/modules/web/routes/media.ts:250](../../backend/src/modules/web/routes/media.ts#L250) |
+| `POST` | `/uploadBackground` | `/media/uploadBackground` | requiresAdmin | requiresAdmin, httpRouteLimit({ name: 'media-upload-background', capacityPe, upload.single('image') | [backend/src/modules/web/routes/media.ts:108](../../backend/src/modules/web/routes/media.ts#L108) |
+| `POST` | `/uploadFirmwareFile` | `/media/uploadFirmwareFile` | requiresPlatformAdmin | requiresPlatformAdmin, httpRouteLimit({ name: 'media-upload-firmware', capacityPerM, uploadFirmwareFile.single('firmware') | [backend/src/modules/web/routes/firmwareUpload.ts:22](../../backend/src/modules/web/routes/firmwareUpload.ts#L22) |
+| `POST` | `/uploadProfilePic` | `/media/uploadProfilePic` | isLoggedIn | isLoggedIn, httpRouteLimit({ name: 'media-upload-profile-pic', capacityP, upload.single('image') | [backend/src/modules/web/routes/media.ts:163](../../backend/src/modules/web/routes/media.ts#L163) |
+| `POST` | `/uploadReportImage` | `/media/uploadReportImage` | requiresAdmin | requiresAdmin, httpRouteLimit({ name: 'media-upload-report-image', capacity, uploadReportImage.single('image') | [backend/src/modules/web/routes/media.ts:270](../../backend/src/modules/web/routes/media.ts#L270) |
+| `GET` | `/metrics` | `/metrics` | requiresObservabilityAuth | httpRouteLimit({ name: 'metrics', capacityPerMin: tuning.htt, requireObsAuth | [backend/src/modules/web/index.ts:692](../../backend/src/modules/web/index.ts#L692) |
+| `DELETE` | `/node-red/session` | `/node-red/session` | public |  | [backend/src/modules/web/index.ts:821](../../backend/src/modules/web/index.ts#L821) |
+| `POST` | `/node-red/session` | `/node-red/session` | public |  | [backend/src/modules/web/index.ts:819](../../backend/src/modules/web/index.ts#L819) |
+| `GET` | `/openapi.json` | `/openapi.json` | isLoggedIn | isLoggedInOrRedirect, docsRateLimit | [backend/src/modules/web/routes/apiDocs.ts:93](../../backend/src/modules/web/routes/apiDocs.ts#L93) |
 | `POST` | `/provider-receipts/:provider` | `/provider-receipts/:provider` | public | httpRouteLimit({name: 'provider-receipts', capacityPerMin: 1 | [backend/src/modules/web/routes/providerReceipts.ts:12](../../backend/src/modules/web/routes/providerReceipts.ts#L12) |
-| `POST` | `/rpc` | `/rpc` | isLoggedIn | scopedTokenAuthMiddleware, rpcBodyAuth | [backend/src/modules/web/index.ts:503](../../backend/src/modules/web/index.ts#L503) |
-| `GET` | `/rpc/:method` | `/rpc/:method` | public |  | [backend/src/modules/web/index.ts:483](../../backend/src/modules/web/index.ts#L483) |
-| `POST` | `/rpc/:method` | `/rpc/:method` | isLoggedIn | scopedTokenAuthMiddleware, isLoggedIn | [backend/src/modules/web/index.ts:497](../../backend/src/modules/web/index.ts#L497) |
-| `POST` | `/session` | `/session` | public |  | [backend/src/modules/web/routes/nodeRedProxy.ts:242](../../backend/src/modules/web/routes/nodeRedProxy.ts#L242) |
+| `POST` | `/rpc` | `/rpc` | isLoggedIn | scopedTokenAuthMiddleware, rpcBodyAuth | [backend/src/modules/web/index.ts:560](../../backend/src/modules/web/index.ts#L560) |
+| `GET` | `/rpc/:method` | `/rpc/:method` | public |  | [backend/src/modules/web/index.ts:540](../../backend/src/modules/web/index.ts#L540) |
+| `POST` | `/rpc/:method` | `/rpc/:method` | isLoggedIn | scopedTokenAuthMiddleware, isLoggedIn | [backend/src/modules/web/index.ts:554](../../backend/src/modules/web/index.ts#L554) |
 | `POST` | `/tariff/live/:token` | `/tariff/live/:token` | public | httpRouteLimit({name: 'tariff-live-push', capacityPerMin: 12 | [backend/src/modules/web/routes/tariffLivePush.ts:14](../../backend/src/modules/web/routes/tariffLivePush.ts#L14) |
-| `POST` | `/uploads/asset` | `/uploads/asset` | public | httpRouteLimit({ name: 'asset-upload', capacityPerMin: tunin, upload.single('file') | [backend/src/modules/web/routes/assetUpload.ts:100](../../backend/src/modules/web/routes/assetUpload.ts#L100) |
+| `POST` | `/uploads/asset` | `/uploads/asset` | public | httpRouteLimit({ name: 'asset-upload', capacityPerMin: tunin, upload.single('file') | [backend/src/modules/web/routes/assetUpload.ts:101](../../backend/src/modules/web/routes/assetUpload.ts#L101) |
 | `GET` | `/uploads/backgrounds/*assetPath` | `/uploads/backgrounds/*assetPath` | public |  | [backend/src/modules/web/routes/uploadAssets.ts:114](../../backend/src/modules/web/routes/uploadAssets.ts#L114) |
 | `GET` | `/uploads/profilePics/*assetPath` | `/uploads/profilePics/*assetPath` | public |  | [backend/src/modules/web/routes/uploadAssets.ts:118](../../backend/src/modules/web/routes/uploadAssets.ts#L118) |
 | `GET` | `/uploads/reportImages/*assetPath` | `/uploads/reportImages/*assetPath` | public |  | [backend/src/modules/web/routes/uploadAssets.ts:122](../../backend/src/modules/web/routes/uploadAssets.ts#L122) |
-| `POST` | `/user-removed` | `/user-removed` | public | httpRouteLimit({ name: 'zitadel-webhook', capacityPerMin: tu | [backend/src/modules/web/routes/zitadelActions.ts:17](../../backend/src/modules/web/routes/zitadelActions.ts#L17) |
-| `GET` | `/version` | `/version` | public | httpRouteLimit({name: 'version', capacityPerMin: 120}) | [backend/src/modules/web/index.ts:569](../../backend/src/modules/web/index.ts#L569) |
+| `POST` | `/user-removed` | `/user-removed` | public |  | [backend/src/modules/web/routes/zitadelActions.ts:14](../../backend/src/modules/web/routes/zitadelActions.ts#L14) |
+| `GET` | `/version` | `/version` | public | httpRouteLimit({name: 'version', capacityPerMin: 120}) | [backend/src/modules/web/index.ts:626](../../backend/src/modules/web/index.ts#L626) |

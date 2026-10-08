@@ -4,6 +4,8 @@
 import type {OrganizationProfile} from '@api/organization';
 import {defineStore} from 'pinia';
 import {computed, ref} from 'vue';
+import {setActiveRegion} from '@/helpers/format';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import * as ws from '@/tools/websocket';
 
 export const useOrganizationStore = defineStore('organization', () => {
@@ -30,9 +32,12 @@ export const useOrganizationStore = defineStore('organization', () => {
                     {}
                 );
                 profile.value = res;
+                // Single wiring point: every date/number/currency a person
+                // reads follows the org's region from here on.
+                setActiveRegion(res.localeDefault);
                 return res;
             } catch (e) {
-                error.value = e instanceof Error ? e.message : String(e);
+                error.value = rpcErrorMessage(e);
                 console.error('[organization] profile fetch failed', e);
                 return null;
             } finally {
@@ -51,6 +56,7 @@ export const useOrganizationStore = defineStore('organization', () => {
         loading.value = false;
         error.value = null;
         inFlight = null;
+        setActiveRegion(null); // next session starts unset, not the old org's
     }
 
     return {

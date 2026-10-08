@@ -3,6 +3,7 @@
 // HTML, CSV — calls format() so a kWh looks the same everywhere. Raw numbers
 // stay raw until the edge; only display goes through here.
 
+import {formatDecimal} from '../../modules/i18n/localeNumber';
 import {incrementLabeledCounter} from '../../modules/Observability';
 import {SEMANTIC_TYPES, type SemanticType} from '../../types/api/semantic';
 
@@ -19,18 +20,18 @@ export type Formatter = (value: number, ctx: FormatterContext) => string;
 
 // ── Number + unit primitives ────────────────────────────────────────────────
 
-// Locale-aware fixed-precision number. ctx.precision overrides the per-type
-// default when the caller wants a specific scale.
+// Fixed-precision wrapper over the shared locale primitive. ctx.precision
+// overrides the per-type default when the caller wants a specific scale.
 function formatNum(
     value: number,
     ctx: FormatterContext,
     precision: number
 ): string {
     const digits = ctx.precision ?? precision;
-    return new Intl.NumberFormat(ctx.locale, {
+    return formatDecimal(value, ctx.locale, {
         minimumFractionDigits: digits,
         maximumFractionDigits: digits
-    }).format(value);
+    });
 }
 
 function withUnit(

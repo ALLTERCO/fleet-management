@@ -1,11 +1,40 @@
+import type {user_t} from '../../types';
+
 // Shared lifetime for rate-limiter entries across both adapters.
 export const RATE_LIMITER_TTL_MS = 60 * 60_000;
 
-export type OrgSignalKind = 'groups-bumped' | 'policy-changed';
+export type OrgSignalKind =
+    | 'groups-bumped'
+    | 'access-changed'
+    | 'policy-changed'
+    | 'blu-inventory-changed'
+    | 'alert-state-changed';
 export interface OrgSignal {
     instanceId: string;
     kind: OrgSignalKind;
     orgId: string;
+    gatewayExternalId?: string;
+    /** Exact BLU row changed. Older peers omit it, which deliberately
+     *  degrades the receiver to a full inventory refresh. */
+    externalId?: string;
+    /** blu-inventory-changed: every BLU row one gateway pass changed.
+     *  access-changed, groups-bumped: devices whose access changed; absent
+     *  means the whole org, which is what older peers send. */
+    externalIds?: string[];
+    /** blu-inventory-changed: shared route generation after the change, so a
+     *  peer can skip an older signal and detect a missed one. */
+    gatewayGeneration?: number;
+    /** access-changed: 'inventory' means devices were added or changed with
+     *  no grant or virtual binding change. Absent means a full refresh. */
+    accessScope?: 'inventory';
+    /** alert-state-changed: one alert's state key; absent (with no
+     *  offlineFireKeys) drops the tenant. */
+    alertKey?: string;
+    /** alert-state-changed: sender's per-tenant sequence, so a peer can see a
+     *  missed signal. Older peers omit it, which makes the receiver reload. */
+    alertSeq?: number;
+    /** alert-state-changed: offline fire jobs just scheduled, by job key. */
+    offlineFireKeys?: string[];
 }
 
 export interface OrgSignalsPort {
@@ -67,6 +96,65 @@ export interface DeviceTrustCachePort {
     del(key: string): Promise<void>;
 }
 
+export interface BluetoothRouteCacheRead {
+    generation: string;
+    payload: string | null;
+}
+
+export interface BluetoothRouteCacheWrite {
+    gatewayExternalId: string;
+    generation: string;
+    payload: string;
+}
+
+// Shared read-through cache for gateway-component → promoted BLU routing.
+// PostgreSQL remains authoritative. The generation fence makes a concurrent
+// inventory mutation reject a stale cache fill atomically.
+export interface BluetoothRouteCachePort {
+    read(
+        organizationId: string,
+        gatewayExternalId: string
+    ): Promise<BluetoothRouteCacheRead>;
+    readMany(
+        organizationId: string,
+        gatewayExternalIds: readonly string[]
+    ): Promise<ReadonlyMap<string, BluetoothRouteCacheRead>>;
+    setIfCurrent(
+        organizationId: string,
+        gatewayExternalId: string,
+        generation: string,
+        payload: string,
+        ttlSec: number
+    ): Promise<boolean>;
+    setManyIfCurrent(
+        organizationId: string,
+        entries: readonly BluetoothRouteCacheWrite[],
+        ttlSec: number
+    ): Promise<readonly boolean[]>;
+    invalidateGateway(
+        organizationId: string,
+        gatewayExternalId: string
+    ): Promise<number>;
+    invalidateOrg(organizationId: string): Promise<number>;
+}
+
+export interface BluetoothTelemetrySourceClaim {
+    organizationId: string;
+    bluetoothDeviceListId: number;
+    gatewayExternalId: string;
+    primary: boolean;
+}
+
+// One live telemetry owner per promoted BLU device. The configured primary
+// always takes ownership; when it is silent past the TTL, one secondary may
+// claim the lane. This prevents duplicate history from multi-gateway hearing.
+export interface BluetoothTelemetryArbiterPort {
+    acceptMany(
+        claims: readonly BluetoothTelemetrySourceClaim[],
+        ttlMs: number
+    ): Promise<readonly boolean[]>;
+}
+
 export interface DeviceIngestPort {
     appendFrame(
         shellyID: string,
@@ -109,6 +197,20 @@ export interface KvStorePort {
     get(key: string): Promise<string | null>;
     /** Omit ttlSec for a persistent entry. */
     set(key: string, value: string, ttlSec?: number): Promise<void>;
+    /** Atomic claim: true when this caller wrote the key, false when it was
+     *  already held. The only way two nodes can agree on one owner. */
+    setIfAbsent(key: string, value: string, ttlSec?: number): Promise<boolean>;
+    /** Atomic hand-over: replace the value only while it still equals
+     *  `expected`, so two callers cannot both take a key from its last owner. */
+    compareAndSet(
+        key: string,
+        expected: string,
+        value: string,
+        ttlSec?: number
+    ): Promise<boolean>;
+    /** Atomic release: drop the key only while this caller still holds it. */
+    compareAndDelete(key: string, expected: string): Promise<boolean>;
+    delete(key: string): Promise<void>;
 }
 
 export interface LeadershipOptions {
@@ -178,11 +280,21 @@ export type Reservation =
     | {ok: true; release: () => Promise<void>}
     | {ok: false; reason: ReservationDenyReason};
 
-// claim() succeeds only when no other instance holds the key.
+export interface DeviceOwnershipLease {
+    shellyID: string;
+    ownerId: string;
+    leaseId: string;
+}
+
+// claim() succeeds only when no other instance holds the key. A reconnect on
+// the same instance replaces the prior connection lease atomically.
 export interface DeviceOwnershipPort {
-    claim(shellyID: string, ttlMs: number): Promise<boolean>;
-    heartbeat(shellyID: string, ttlMs: number): Promise<boolean>;
-    release(shellyID: string): Promise<void>;
+    claim(lease: DeviceOwnershipLease, ttlMs: number): Promise<boolean>;
+    heartbeatMany(
+        leases: readonly DeviceOwnershipLease[],
+        ttlMs: number
+    ): Promise<readonly boolean[]>;
+    release(lease: DeviceOwnershipLease): Promise<void>;
     owner(shellyID: string): Promise<string | null>;
 }
 
@@ -199,6 +311,7 @@ export interface DeviceIdentityFencePort {
 export interface ExportOwnershipPort {
     set(filename: string, userId: string, ttlSec: number): Promise<void>;
     get(filename: string): Promise<string | null>;
+    delete(filename: string): Promise<void>;
 }
 
 export interface UploadTicketPort {
@@ -210,6 +323,191 @@ export interface UploadSessionPort {
     set(sessionId: string, value: string, ttlSec: number): Promise<void>;
     get(sessionId: string): Promise<string | null>;
     delete(sessionId: string): Promise<void>;
+}
+
+export interface McpStreamPrincipal {
+    username: string;
+    userId?: string;
+    organizationId: string | null;
+    credentialId: string;
+    credentialExpiresAtMs?: number;
+}
+
+export interface McpStreamSession extends McpStreamPrincipal {
+    id: string;
+    expiresAtMs: number;
+}
+
+export interface McpStreamSubscription {
+    uri: string;
+    cursor?: string;
+}
+
+export interface McpStreamFrame {
+    id: string;
+    payload: unknown;
+}
+
+export interface McpReplay {
+    frames: McpStreamFrame[];
+    gap: boolean;
+}
+
+export interface McpEventStreamsPort {
+    createSession(principal: McpStreamPrincipal, id?: string): Promise<string>;
+    getSession(
+        id: string | undefined,
+        principal: McpStreamPrincipal,
+        touch?: boolean
+    ): Promise<McpStreamSession | undefined>;
+    deleteSession(id: string, principal: McpStreamPrincipal): Promise<boolean>;
+    subscribe(
+        id: string,
+        principal: McpStreamPrincipal,
+        subscription: McpStreamSubscription
+    ): Promise<void>;
+    unsubscribe(
+        id: string,
+        principal: McpStreamPrincipal,
+        uri: string
+    ): Promise<boolean>;
+    listSubscriptions(
+        id: string,
+        principal: McpStreamPrincipal
+    ): Promise<McpStreamSubscription[]>;
+    updateCursor(
+        id: string,
+        principal: McpStreamPrincipal,
+        uri: string,
+        cursor: string,
+        readerOwner?: string
+    ): Promise<boolean>;
+    appendFrame(
+        id: string,
+        principal: McpStreamPrincipal,
+        payload: unknown,
+        readerOwner?: string
+    ): Promise<string>;
+    replay(
+        id: string,
+        principal: McpStreamPrincipal,
+        afterId: string | undefined
+    ): Promise<McpReplay>;
+    acquireReader(
+        id: string,
+        principal: McpStreamPrincipal,
+        owner: string
+    ): Promise<boolean>;
+    renewReader(id: string, owner: string): Promise<boolean>;
+    ownsReader(id: string, owner: string): Promise<boolean>;
+    releaseReader(id: string, owner: string): Promise<void>;
+    /** False when no shared store backs event streams (no Redis). */
+    available(): boolean;
+}
+
+/** A remembered "yes, stop asking" for one action of one person. */
+export interface McpStandingApprovalRecord {
+    /** Digest of the full binding; the only handle a caller ever sees. */
+    id: string;
+    organizationId: string;
+    userId: string;
+    username: string;
+    method: string;
+    /** Readable target, e.g. `shellyID=aa&id=0`; empty when there is none. */
+    subject: string;
+    scope: 'ttl' | 'forever';
+    grantedAtMs: number;
+    expiresAtMs: number;
+}
+
+/** Whose approvals a list or revoke may touch: one person, or a whole org. */
+export interface McpStandingApprovalScope {
+    organizationId: string;
+    userId?: string;
+}
+
+export interface McpStandingApprovalsPort {
+    /** False when the store already holds `maxTotal` live approvals. */
+    grant(
+        record: McpStandingApprovalRecord,
+        maxTotal: number
+    ): Promise<boolean>;
+    get(id: string): Promise<McpStandingApprovalRecord | null>;
+    list(scope: McpStandingApprovalScope): Promise<McpStandingApprovalRecord[]>;
+    revoke(id: string, scope: McpStandingApprovalScope): Promise<boolean>;
+}
+
+export interface McpConfirmationClaim {
+    /** Digest of the token; the token itself is never stored. */
+    tokenDigest: string;
+    issuedAtMs: number;
+    expiresAtMs: number;
+}
+
+/**
+ * `predates_store`: the token was issued before the claim store last started,
+ * so a claim it made may have been lost with the store's memory.
+ */
+export type McpConfirmationClaimOutcome =
+    | 'claimed'
+    | 'already_used'
+    | 'predates_store';
+
+export interface McpConfirmationClaimsPort {
+    claim(claim: McpConfirmationClaim): Promise<McpConfirmationClaimOutcome>;
+}
+
+/** An MCP session that may receive `elicitation/create` prompts. */
+export interface McpElicitationSession {
+    id: string;
+    /** Digest of the owning principal; only that principal may use it. */
+    binding: string;
+    elicitation: boolean;
+}
+
+/** A prompt a tool call is waiting on, and the instance holding the call. */
+export interface McpElicitationWait {
+    sessionId: string;
+    requestId: string;
+    binding: string;
+    instanceId: string;
+    expiresAtMs: number;
+}
+
+export interface McpElicitationDelivery {
+    instanceId: string;
+    sessionId: string;
+    requestId: string;
+    result: unknown;
+}
+
+export interface McpElicitationsPort {
+    /** False when `maxSessions` live sessions already exist. */
+    createSession(
+        session: McpElicitationSession,
+        limits: {ttlMs: number; maxSessions: number}
+    ): Promise<boolean>;
+    /** Reads and renews the session's idle expiry. */
+    getSession(
+        id: string,
+        ttlMs: number
+    ): Promise<McpElicitationSession | null>;
+    /** Removes the owner's session and returns what was still waiting on it. */
+    deleteSession(
+        id: string,
+        binding: string
+    ): Promise<McpElicitationWait[] | null>;
+    registerWait(wait: McpElicitationWait): Promise<void>;
+    /** Removes and returns the wait, only for its owner and before expiry. */
+    takeWait(
+        wait: Pick<McpElicitationWait, 'sessionId' | 'requestId' | 'binding'>
+    ): Promise<McpElicitationWait | null>;
+    /** True only when the instance holding the call received the answer. */
+    deliver(delivery: McpElicitationDelivery): Promise<boolean>;
+    onDelivery(
+        instanceId: string,
+        handler: (delivery: McpElicitationDelivery) => void
+    ): Promise<void>;
 }
 
 export interface DeviceGuiSessionPort {
@@ -327,4 +625,35 @@ export interface BulkAcceptJobStorePort {
         ttlSec: number
     ): Promise<void>;
     isCancelRequested(organizationId: string, jobId: string): Promise<boolean>;
+}
+
+/** One Node-RED editor session, stored under the hash of its id. */
+export interface NodeRedEditorSessionRecord {
+    userId: string;
+    username: string;
+    displayName?: string;
+    organizationId: string;
+    createdAt: number;
+    /** Hard end; sliding never moves the session past it. */
+    maxExpiresAt: number;
+    /** The user as signed in when the session was opened or refreshed. */
+    principal: user_t;
+}
+
+export interface NodeRedEditorSessionWrite {
+    key: string;
+    record: NodeRedEditorSessionRecord;
+    ttlMs: number;
+    /** Older sessions of the same user beyond this count are dropped. */
+    perUserMax: number;
+}
+
+// Keys are hashes of the browser's session id; the id itself is never stored.
+export interface NodeRedEditorSessionPort {
+    put(write: NodeRedEditorSessionWrite): Promise<void>;
+    /** The live record, or null once it expired or was revoked. */
+    get(key: string): Promise<NodeRedEditorSessionRecord | null>;
+    delete(key: string): Promise<void>;
+    /** Deletes every session of the user and returns how many there were. */
+    deleteForUser(userId: string): Promise<number>;
 }

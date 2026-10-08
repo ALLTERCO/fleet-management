@@ -24,6 +24,11 @@ export function usePermissions() {
     const isAdmin = computed(() => authStore.isAdmin);
 
     /**
+     * Whether the user may manage automations (automation:update)
+     */
+    const canManageAutomations = computed(() => authStore.canManageAutomations);
+
+    /**
      * Whether the user is a viewer
      */
     const isViewer = computed(() => authStore.isViewer);
@@ -72,6 +77,7 @@ export function usePermissions() {
         canWrite,
         isReadOnly,
         isAdmin,
+        canManageAutomations,
         isViewer,
         role,
         permissionsLoaded,

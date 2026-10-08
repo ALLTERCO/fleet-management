@@ -3,6 +3,7 @@
         <h2 class="sr-only">Settings</h2>
         <header class="settings-shell__topbar">
             <h1 class="dp-header__title">{{ activeTitle }}</h1>
+            <GlobalSearch />
             <AlertBell />
             <PageTopMenu />
         </header>
@@ -18,66 +19,68 @@
                         aria-label="Search settings sections"
                     />
                 </div>
-                <p
-                    v-if="navQuery && !filteredNavGroups.length"
-                    class="settings-shell__no-match"
-                >
-                    No settings match "{{ navQuery }}".
-                </p>
-                <div
-                    v-for="group in filteredNavGroups"
-                    :key="group.label"
-                    class="settings-shell__group"
-                >
-                    <button
-                        type="button"
-                        class="settings-shell__label"
-                        :aria-expanded="!isGroupCollapsed(group.label)"
-                        @click="toggleGroup(group.label)"
+                <div class="settings-shell__list">
+                    <p
+                        v-if="navQuery && !filteredNavGroups.length"
+                        class="settings-shell__no-match"
                     >
-                        <span>{{ group.label }}</span>
-                        <i
-                            class="fas fa-chevron-down settings-shell__chevron"
-                            :class="{
-                                'settings-shell__chevron--collapsed':
-                                    isGroupCollapsed(group.label)
-                            }"
-                            aria-hidden="true"
-                        />
-                    </button>
-                    <template
-                        v-for="item in isGroupCollapsed(group.label)
-                            ? []
-                            : group.items"
-                        :key="item.path"
+                        No settings match "{{ navQuery }}".
+                    </p>
+                    <div
+                        v-for="group in filteredNavGroups"
+                        :key="group.label"
+                        class="settings-shell__group"
                     >
-                        <a
-                            v-if="item.external"
-                            :href="item.path"
-                            target="_blank"
-                            rel="noopener"
-                            class="settings-shell__item"
+                        <button
+                            type="button"
+                            class="settings-shell__label"
+                            :aria-expanded="!isGroupCollapsed(group.label)"
+                            @click="toggleGroup(group.label)"
                         >
-                            <i :class="item.icon" aria-hidden="true" />
-                            <span>{{ item.label }}</span>
+                            <span>{{ group.label }}</span>
                             <i
-                                class="fas fa-arrow-up-right-from-square settings-shell__external"
+                                class="fas fa-chevron-down settings-shell__chevron"
+                                :class="{
+                                    'settings-shell__chevron--collapsed':
+                                        isGroupCollapsed(group.label)
+                                }"
                                 aria-hidden="true"
                             />
-                        </a>
-                        <RouterLink
-                            v-else
-                            :to="item.path"
-                            class="settings-shell__item"
-                            :class="{
-                                'settings-shell__item--active': isActive(item.path)
-                            }"
-                            :aria-current="isActive(item.path) ? 'page' : undefined"
+                        </button>
+                        <template
+                            v-for="item in isGroupCollapsed(group.label)
+                                ? []
+                                : group.items"
+                            :key="item.path"
                         >
-                            <i :class="item.icon" aria-hidden="true" />
-                            <span>{{ item.label }}</span>
-                        </RouterLink>
-                    </template>
+                            <a
+                                v-if="item.external"
+                                :href="item.path"
+                                target="_blank"
+                                rel="noopener"
+                                class="settings-shell__item"
+                            >
+                                <i :class="item.icon" aria-hidden="true" />
+                                <span>{{ item.label }}</span>
+                                <i
+                                    class="fas fa-arrow-up-right-from-square settings-shell__external"
+                                    aria-hidden="true"
+                                />
+                            </a>
+                            <RouterLink
+                                v-else
+                                :to="item.path"
+                                class="settings-shell__item"
+                                :class="{
+                                    'settings-shell__item--active': isActive(item.path)
+                                }"
+                                :aria-current="isActive(item.path) ? 'page' : undefined"
+                            >
+                                <i :class="item.icon" aria-hidden="true" />
+                                <span>{{ item.label }}</span>
+                            </RouterLink>
+                        </template>
+                    </div>
                 </div>
             </nav>
             <div class="settings-shell__content">
@@ -94,146 +97,33 @@
 <script setup lang="ts">
 import {computed, provide, ref, watch} from 'vue';
 import {useRoute} from 'vue-router';
-import {canAccessPage} from '@/auth/pageAccess';
 import AlertBell from '@/components/core/AlertBell.vue';
+import GlobalSearch from '@/components/core/GlobalSearch.vue';
 import PageTopMenu from '@/components/core/PageTopMenu.vue';
-import {ALERTS_PATH, PROFILE_PATH, SETTINGS_PATH} from '@/constants';
+import {monitoringClusterForPath} from '@/helpers/monitoringNavigation';
+import {matchSearch} from '@/helpers/searchMatch';
 import {
-    MONITORING_CLUSTERS,
-    monitoringClusterForPath
-} from '@/helpers/monitoringNavigation';
+    canOpenSettingsPage,
+    SETTINGS_NAV_GROUPS,
+    settingsNavCandidate,
+    settingsPageVisible
+} from '@/helpers/settingsNavigation';
 import {useAuthStore} from '@/stores/auth';
 import type {RouteTab} from '@/types/page-template';
-
-// One sidebar for the whole settings area — the device-settings language
-// (grouped items, circular icon chips) instead of horizontal tab rows.
-
-interface SettingsNavItem {
-    label: string;
-    path: string;
-    icon: string;
-    external?: boolean;
-}
-
-interface SettingsNavGroup {
-    label: string;
-    items: SettingsNavItem[];
-}
-
-const NAV_GROUPS: SettingsNavGroup[] = [
-    {
-        label: 'Application',
-        items: [
-            {label: 'General', path: SETTINGS_PATH, icon: 'fas fa-cog'},
-            {
-                label: 'User settings',
-                path: PROFILE_PATH,
-                icon: 'fas fa-user-cog'
-            }
-        ]
-    },
-    {
-        label: 'Alerts',
-        items: [
-            {label: 'Alerts', path: ALERTS_PATH, icon: 'fas fa-bolt'},
-            {
-                label: 'Rules',
-                path: '/settings/alerts/rules',
-                icon: 'fas fa-sliders'
-            },
-            {
-                label: 'Channels',
-                path: '/settings/alerts/channels',
-                icon: 'fas fa-bullhorn'
-            },
-            {
-                label: 'Templates',
-                path: '/settings/alerts/templates',
-                icon: 'fas fa-envelope-open-text'
-            }
-        ]
-    },
-    {
-        label: 'Users & access',
-        items: [
-            {label: 'Users', path: '/settings/users', icon: 'fas fa-users'},
-            {
-                label: 'Groups',
-                path: '/settings/user-groups',
-                icon: 'fas fa-user-friends'
-            },
-            {
-                label: 'Personas',
-                path: '/settings/personas',
-                icon: 'fas fa-id-badge'
-            },
-            {
-                label: 'Access simulator',
-                path: '/settings/authz-simulator',
-                icon: 'fas fa-bolt'
-            },
-            {
-                label: 'Identity policies',
-                path: '/settings/identity-policies',
-                icon: 'fas fa-id-card-clip'
-            },
-            {
-                label: 'Identity SMTP',
-                path: '/settings/identity-smtp',
-                icon: 'fas fa-envelope'
-            }
-        ]
-    },
-    // Five clusters, one per operator question — detail pages are tabs
-    // inside each cluster, defined next to the pages they navigate.
-    {
-        label: 'Monitoring',
-        items: MONITORING_CLUSTERS.map((cluster) => ({
-            label: cluster.label,
-            path: cluster.path,
-            icon: cluster.icon
-        }))
-    },
-    {
-        label: 'System',
-        items: [
-            {
-                label: 'Security',
-                path: '/settings/security',
-                icon: 'fas fa-shield-halved'
-            },
-            {
-                label: 'Plugins',
-                path: '/settings/plugins',
-                icon: 'fas fa-puzzle-piece'
-            },
-            {
-                label: 'Configurations',
-                path: '/settings/configurations',
-                icon: 'fas fa-wrench'
-            },
-            {
-                label: 'API reference',
-                path: '/api/docs',
-                icon: 'fas fa-code',
-                external: true
-            }
-        ]
-    }
-];
 
 const route = useRoute();
 const authStore = useAuthStore();
 
 // Same page-access registry as router/nav — hidden items stay hidden.
-const navGroups = computed(() =>
-    NAV_GROUPS.map((group) => ({
+const navGroups = computed(() => {
+    const canOpenPage = canOpenSettingsPage(authStore);
+    return SETTINGS_NAV_GROUPS.map((group) => ({
         ...group,
-        items: group.items.filter(
-            (item) => item.external || canAccessPage(item.path, authStore)
+        items: group.items.filter((item) =>
+            settingsPageVisible(item, canOpenPage)
         )
-    })).filter((group) => group.items.length > 0)
-);
+    })).filter((group) => group.items.length > 0);
+});
 
 const allNavPaths = computed(() =>
     navGroups.value.flatMap((group) =>
@@ -241,18 +131,22 @@ const allNavPaths = computed(() =>
     )
 );
 
-// Sidebar search — same behavior as the device-settings nav: a query
-// shows every match and overrides folding while it is set.
+// Sidebar search — a query shows every match and overrides folding while it
+// is set. Matching is shared with every other search box in the app.
 const navQuery = ref('');
 
 const filteredNavGroups = computed(() => {
-    const query = navQuery.value.trim().toLowerCase();
+    const query = navQuery.value.trim();
     if (!query) return navGroups.value;
     return navGroups.value
         .map((group) => ({
             ...group,
-            items: group.items.filter((item) =>
-                item.label.toLowerCase().includes(query)
+            // Filter, never re-rank. A sidebar is ordered on purpose, and a
+            // page a person knows must not move under their hand mid-search.
+            items: group.items.filter(
+                (item) =>
+                    matchSearch(query, settingsNavCandidate(item, group)) !==
+                    null
             )
         }))
         .filter((group) => group.items.length > 0);
@@ -374,7 +268,6 @@ provide('settingsShellChrome', true);
     border-radius: var(--radius-lg);
     background: var(--glass-1-bg);
     backdrop-filter: var(--glass-1-filter);
-    -webkit-backdrop-filter: var(--glass-1-filter);
     box-shadow: inset 0 1px 0 var(--glass-highlight);
 }
 
@@ -385,6 +278,26 @@ provide('settingsShellChrome', true);
     gap: var(--gap-md);
     padding: var(--gap-sm);
     border-right: var(--space-px) solid var(--color-border-subtle);
+    overflow: hidden;
+}
+
+/* The pill fills a toolbar's spare width; in this column that same
+   rule made it grow downwards and drag its centred icon with it. */
+.settings-shell__nav .search-pill {
+    flex: 0 0 auto;
+}
+
+/* Only the list scrolls, so the search stays put and nothing passes
+   behind it. */
+.settings-shell__list {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--gap-md);
+    /* Room for focus rings at the edges, without moving the items. */
+    margin-inline: calc(-1 * var(--space-1));
+    padding-inline: var(--space-1);
     overflow-y: auto;
 }
 
@@ -508,7 +421,6 @@ provide('settingsShellChrome', true);
     background: transparent;
     box-shadow: none;
     backdrop-filter: none;
-    -webkit-backdrop-filter: none;
 }
 
 @media (max-width: 767px) {

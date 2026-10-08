@@ -1,16 +1,24 @@
 import {
     invalidateRecipientsCache as invalidateAlertRecipientsCache,
     invalidateRuleCache as invalidateAlertRuleCache,
+    noteOperatorAlertChange,
     scheduleInitialRuleEvaluation
 } from '../../modules/AlertEngine';
 import * as AlertEvents from '../../modules/AlertEvents';
 import {
+    type AlertActiveWindow,
+    readActiveWindow
+} from '../../modules/alert/activeWindow';
+import {
+    bluetoothCapabilityView,
     capabilityViewOf,
+    type DeviceCapabilityView,
     deviceSupportsKind
 } from '../../modules/alert/deviceCapability';
 import {clearAnomalyBandCacheForRule} from '../../modules/alert/evaluators/anomalyBand';
 import {clearChangeEventCacheForRule} from '../../modules/alert/evaluators/changeEvent';
 import {
+    alertSubjectMissing,
     hydratePublicAlertSubjects,
     resolveDurableAlertSubjectId
 } from '../../modules/alert/logicalDeviceFingerprint';
@@ -18,7 +26,9 @@ import {
     collectBluetoothComponentPaths,
     collectBluetoothMetrics,
     collectComponentPaths,
-    collectMetrics
+    collectMetrics,
+    scanStatusMetrics,
+    scanStatusStates
 } from '../../modules/alert/metricCatalog';
 import {previewRuleAgainstOrg} from '../../modules/alert/rulePreview';
 import {rowToLoadedRule} from '../../modules/alert/ruleRow';
@@ -48,7 +58,9 @@ import {
 import {
     canCrossOrganizationBoundary,
     canPerformComponentOperationAsync,
-    isComponentPermissionAllowed
+    hasTenantWideComponentPermission,
+    isComponentPermissionAllowed,
+    requireTenantWideComponentPermission
 } from '../../modules/authz/evaluator';
 import * as DeviceCollector from '../../modules/DeviceCollector';
 import * as OutboxWorker from '../../modules/delivery/OutboxWorker';
@@ -62,6 +74,15 @@ import {
     bluetoothDeviceSnapshot,
     createDeviceCollectorSnapshotFetcher
 } from '../../modules/virtualDevice/deviceListIntegration';
+import {
+    assignVirtualComponentIds,
+    virtualEntityId,
+    virtualEntityType
+} from '../../modules/virtualDevice/entityProjection';
+import {
+    listVirtualEntities,
+    type VirtualEntityResolution
+} from '../../modules/virtualDevice/virtualEntityResolver';
 import type {DescribeOutput} from '../../rpc/describe';
 import {buildListResponse} from '../../rpc/listResponse';
 import {asOperationFailed} from '../../rpc/operationError';
@@ -76,6 +97,7 @@ import {
     ALERT_ANNOTATION_LIST_PARAMS_SCHEMA,
     ALERT_DESCRIBE,
     ALERT_INSTANCE_ACK_PARAMS_SCHEMA,
+    ALERT_INSTANCE_GET_MANY_PARAMS_SCHEMA,
     ALERT_INSTANCE_GET_PARAMS_SCHEMA,
     ALERT_INSTANCE_LIST_PARAMS_SCHEMA,
     ALERT_INSTANCE_LIST_TRANSITIONS_PARAMS_SCHEMA,
@@ -105,25 +127,35 @@ import {
     ALERT_RULE_UPDATE_PARAMS_SCHEMA,
     type AlertAnnotation,
     type AlertInstance,
+    type AlertInstanceGetManyResult,
+    type AlertInstanceListFilters,
+    type AlertInstanceListPage,
     type AlertRule,
     type AlertRuleFiring,
     type AlertRuleKind,
     type AlertRuleTemplate,
-    type AlertScopeType,
     type AlertSeverity,
     type AlertState,
     type AlertTransition,
     type AlertTransitionAction,
+    MANUAL_RESOLVE_REFUSAL,
     publicAlertRuleKind,
-    publicAlertScopeType,
+    publicAlertSourceType,
     type ScopeSelector,
     type StoredAlertRuleKind,
-    type StoredAlertScopeType,
+    type StoredAlertSourceType,
     storedAlertRuleKind,
-    storedAlertScopeType
+    storedAlertSourceType
 } from '../../types/api/alert';
 import type {BluetoothDeviceDto} from '../../types/api/virtualdevice';
 import type CommandSender from '../CommandSender';
+import {type AccessibleReach, intersectReach} from '../CommandSender';
+import {
+    type AlertListPosition,
+    alertListFilterMark,
+    decodeAlertListCursor,
+    encodeAlertListCursor
+} from './alertListCursor';
 import Component from './Component';
 
 type JsonRecord = Record<string, unknown>;
@@ -151,12 +183,14 @@ interface AlertRuleRow {
     summary_template: string | null;
     message_template: string | null;
     auto_resolve: boolean;
+    trigger_once: boolean;
     config: JsonRecord | null;
     group_by: string[] | null;
     delivery_mode: string | null;
     digest_window_minutes: number | null;
     runbook_url: string | null;
     template_id: number | null;
+    active_window: unknown;
     last_fired_at: Date | string | null;
     condition_family: string | null;
     condition_subkind: string | null;
@@ -176,8 +210,9 @@ interface AlertInstanceRow {
     rule_kind: StoredAlertRuleKind;
     state: AlertState;
     severity: AlertSeverity;
-    source_subject_type: StoredAlertScopeType;
+    source_subject_type: StoredAlertSourceType;
     source_subject_id: string;
+    source_location_id: number | null;
     title: string;
     message: string;
     fingerprint: string;
@@ -188,8 +223,12 @@ interface AlertInstanceRow {
     acknowledged_by_display_name: string | null;
     ack_comment: string | null;
     resolved_at: Date | string | null;
+    resolved_by_user_id: string | null;
+    resolved_by_display_name: string | null;
     silenced_until: Date | string | null;
     silence_reason: string | null;
+    silenced_by_user_id: string | null;
+    silenced_by_display_name: string | null;
     notifications_created_count: number | string;
     delivery_jobs_created_count: number | string;
     context: JsonRecord | null;
@@ -197,6 +236,7 @@ interface AlertInstanceRow {
 
 type AlertInstanceListRow = Partial<AlertInstanceRow> & {
     total_count?: number | string;
+    cursor_triggered_at?: string | null;
 };
 
 interface AlertTransitionRow {
@@ -216,7 +256,7 @@ interface AlertRuleFiringRow {
     alert_id: number;
     action: 'created' | 'triggered';
     fired_at: Date | string;
-    source_subject_type: StoredAlertScopeType;
+    source_subject_type: StoredAlertSourceType;
     source_subject_id: string;
     severity: AlertSeverity;
     title: string;
@@ -233,7 +273,7 @@ interface AlertRuleTemplateRow {
     category: string;
     label: string;
     description: string | null;
-    kind: StoredAlertRuleKind;
+    kind: StoredAlertRuleKind | null;
     severity: AlertSeverity;
     scope: JsonRecord | null;
     config: JsonRecord | null;
@@ -242,6 +282,9 @@ interface AlertRuleTemplateRow {
     summary_template: string | null;
     message_template: string | null;
     auto_resolve: boolean;
+    active_window: unknown;
+    available: boolean;
+    unavailable_reason: string | null;
     author_user_id: string | null;
 }
 
@@ -259,10 +302,12 @@ interface RuleCreateSpec {
     summaryTemplate: string | null;
     messageTemplate: string | null;
     autoResolve: boolean;
+    triggerOnce: boolean;
     config: JsonRecord;
     groupBy: string[] | null;
     deliveryMode: 'instant' | 'digest';
     digestWindowMinutes: number | null;
+    activeWindow: AlertActiveWindow | null;
     runbookUrl: string | null;
     templateId: number | null;
 }
@@ -276,6 +321,66 @@ function normalizeName(name: string, label: string): string {
     const trimmed = name.trim();
     if (!trimmed) throw RpcError.InvalidParams(`${label} cannot be empty`);
     return trimmed;
+}
+
+interface TemplateAvailabilityInput {
+    available: boolean;
+    unavailableReason: string | null;
+}
+
+interface TemplateAvailabilityPatch {
+    available: boolean | null;
+    unavailableReason: string | null;
+    clearUnavailableReason: boolean;
+}
+
+function normalizeTemplateAvailability(
+    input: TemplateAvailabilityInput
+): TemplateAvailabilityInput {
+    const unavailableReason = normalizeOptionalText(input.unavailableReason);
+    if (input.available && unavailableReason !== null) {
+        throw RpcError.InvalidParams(
+            'An available alert template cannot have an unavailable reason.'
+        );
+    }
+    if (!input.available && unavailableReason === null) {
+        throw RpcError.InvalidParams(
+            'An unavailable alert template requires a reason.'
+        );
+    }
+    return {available: input.available, unavailableReason};
+}
+
+function normalizeTemplateAvailabilityPatch(input: {
+    available?: boolean;
+    unavailableReason?: string | null;
+}): TemplateAvailabilityPatch {
+    if (
+        input.available === undefined &&
+        input.unavailableReason === undefined
+    ) {
+        return {
+            available: null,
+            unavailableReason: null,
+            clearUnavailableReason: false
+        };
+    }
+    if (
+        input.available === undefined ||
+        input.unavailableReason === undefined
+    ) {
+        throw RpcError.InvalidParams(
+            'available and unavailableReason must be updated together.'
+        );
+    }
+    const normalized = normalizeTemplateAvailability({
+        available: input.available,
+        unavailableReason: input.unavailableReason
+    });
+    return {
+        ...normalized,
+        clearUnavailableReason: normalized.unavailableReason === null
+    };
 }
 
 // A rule reaches recipients two ways — destination groups and directly-picked
@@ -324,8 +429,230 @@ function toIntArray(value: unknown): number[] {
     return [];
 }
 
+// A tenant-wide alert grant is not narrowed by what the caller reaches.
+async function alertReach(
+    sender: CommandSender
+): Promise<AccessibleReach | null> {
+    if (await hasTenantWideComponentPermission(sender, 'alerts', 'read')) {
+        return null;
+    }
+    return sender.accessibleReach();
+}
+
+interface AlertInstanceListParams extends AlertInstanceListFilters {
+    organizationId?: string;
+    limit?: number;
+    offset?: number;
+    cursor?: string;
+}
+
+interface AlertListPageRequest {
+    limit: number;
+    offset: number;
+    after: AlertListPosition | null;
+    /** A cursor page reads one extra row to learn has_more without a count. */
+    fetchLimit: number;
+    /** Next cursors carry it; a cursor with another mark is refused. */
+    filterMark: string;
+}
+
+function alertListPageRequest(
+    p: AlertInstanceListParams,
+    filterMark: string
+): AlertListPageRequest {
+    const limit = p.limit ?? 200;
+    if (p.cursor === undefined) {
+        return {
+            limit,
+            offset: p.offset ?? 0,
+            after: null,
+            fetchLimit: limit,
+            filterMark
+        };
+    }
+    // The schema fills offset 0; only a real offset conflicts with a cursor.
+    if ((p.offset ?? 0) > 0) {
+        throw RpcError.InvalidParams('send cursor or offset, not both', [
+            {
+                field: 'offset',
+                error: 'not allowed with cursor',
+                code: 'conflict'
+            }
+        ]);
+    }
+    return {
+        limit,
+        offset: 0,
+        after: decodeAlertListCursor(p.cursor, filterMark),
+        fetchLimit: limit + 1,
+        filterMark
+    };
+}
+
+function listParamError(field: string, error: string, code: string): RpcError {
+    return RpcError.InvalidParams(`${field} is not valid`, [
+        {field, error, code}
+    ]);
+}
+
+// `state` is the one-item form of `states`; both mean the same filter.
+function alertListStates(p: AlertInstanceListFilters): AlertState[] | null {
+    if (p.state !== undefined && p.states !== undefined) {
+        throw listParamError('states', 'not with state', 'conflict');
+    }
+    if (p.states !== undefined) {
+        if (new Set(p.states).size !== p.states.length) {
+            throw listParamError('states', 'repeats a state', 'unique');
+        }
+        return [...p.states].sort();
+    }
+    return p.state !== undefined ? [p.state] : null;
+}
+
+async function alertListFilterParams(
+    organizationId: string,
+    p: AlertInstanceListParams
+): Promise<Record<string, unknown>> {
+    const states = alertListStates(p);
+    const sourceId =
+        (p.sourceType === 'device' || p.sourceType === 'component') &&
+        p.sourceId?.trim()
+            ? await resolveDurableAlertSubjectId(
+                  organizationId,
+                  p.sourceType === 'component' ? 'entity' : 'device',
+                  p.sourceId.trim()
+              )
+            : p.sourceId?.trim() || null;
+    return {
+        p_organization_id: organizationId,
+        p_states: states,
+        p_acknowledged: p.acknowledged ?? null,
+        p_silenced: p.silenced ?? null,
+        p_severity: p.severity ?? null,
+        p_rule_id: p.ruleId ?? null,
+        p_source_type: p.sourceType
+            ? storedAlertSourceType(p.sourceType)
+            : null,
+        p_source_id: sourceId,
+        p_location_ids: normalizeIntIds(p.locationIds),
+        p_group_ids: normalizeIntIds(p.groupIds),
+        p_tag_ids: normalizeIntIds(p.tagIds),
+        p_query: p.query?.trim() || null,
+        p_open: p.open ?? null
+    };
+}
+
+function alertListPage(
+    rows: AlertInstanceListRow[],
+    page: AlertListPageRequest
+): AlertInstanceListPage {
+    const listed = rows.filter((row) => row.id != null);
+    const shown = listed.slice(0, page.limit);
+    const hasMore =
+        page.after === null
+            ? page.offset + shown.length < Number(rows[0]?.total_count ?? 0)
+            : listed.length > page.limit;
+    const last = shown[shown.length - 1];
+    const nextCursor =
+        hasMore && last?.cursor_triggered_at && last.id != null
+            ? encodeAlertListCursor(
+                  {triggeredAt: last.cursor_triggered_at, id: last.id},
+                  page.filterMark
+              )
+            : null;
+    const items = shown.map((row) =>
+        rowToAlertInstance(row as AlertInstanceRow)
+    );
+    if (page.after !== null) {
+        return {
+            items,
+            limit: page.limit,
+            has_more: hasMore,
+            next_cursor: nextCursor
+        };
+    }
+    return {
+        ...buildListResponse(
+            items,
+            Number(rows[0]?.total_count ?? 0),
+            page.limit,
+            page.offset
+        ),
+        next_cursor: nextCursor
+    };
+}
+
+// The `alert` authz resource is the rule. An alert, template or device id is
+// not a rule id, so these methods check the grant alone and decide reach themselves.
+const NOT_A_RULE_ID = (): undefined => undefined;
+
+// A template belongs to the whole tenant, so only a tenant-wide grant writes it.
+async function requireOrgWideAlertGrant(
+    sender: CommandSender,
+    operation: 'update' | 'delete'
+): Promise<void> {
+    await requireTenantWideComponentPermission(sender, 'alerts', operation);
+}
+
+// A write reaches what the write grants reach and the caller can also read,
+// so an update grant never acts on an alert its holder cannot list.
+async function alertWriteReach(
+    sender: CommandSender
+): Promise<AccessibleReach | null> {
+    return intersectReach(
+        await alertReach(sender),
+        await sender.reachForOperation('alerts', 'update')
+    );
+}
+
+// Null reach leaves the list unfiltered; SQL narrows before it slices.
+function reachParams(reach: AccessibleReach | null): {
+    p_reach_device_ids: string[] | null;
+    p_reach_location_ids: number[] | null;
+    p_reach_group_ids: number[] | null;
+} {
+    if (!reach) {
+        return {
+            p_reach_device_ids: null,
+            p_reach_location_ids: null,
+            p_reach_group_ids: null
+        };
+    }
+    return {
+        p_reach_device_ids: [...reach.deviceIds],
+        p_reach_location_ids: [...reach.locationIds],
+        p_reach_group_ids: [...reach.groupIds]
+    };
+}
+
+// Another surface showing one alert's content (a template preview) asks
+// the same question Instance.Get does: may this caller read this alert?
+export async function requireAlertReadable(
+    sender: CommandSender,
+    organizationId: string,
+    id: number
+): Promise<void> {
+    const decision = await canPerformComponentOperationAsync(
+        sender,
+        'alerts',
+        'read'
+    );
+    if (!isComponentPermissionAllowed(decision)) {
+        throw RpcError.PermissionDenied(sender.isAuthenticated());
+    }
+    const reach = await alertReach(sender);
+    if (reach === null) return;
+    const result = await postgres.callMethod(
+        'notifications.fn_alert_instance_get',
+        {p_organization_id: organizationId, p_id: id, ...reachParams(reach)}
+    );
+    if (result?.rows?.[0]) return;
+    throw RpcError.PermissionDenied(sender.isAuthenticated());
+}
+
 function rowToAlertRule(row: AlertRuleRow): AlertRule {
     return {
+        activeWindow: readActiveWindow(row.active_window),
         id: row.id,
         organizationId: row.organization_id,
         name: row.name,
@@ -347,6 +674,7 @@ function rowToAlertRule(row: AlertRuleRow): AlertRule {
         summaryTemplate: row.summary_template,
         messageTemplate: row.message_template,
         autoResolve: row.auto_resolve,
+        triggerOnce: row.trigger_once === true,
         config: cloneRecord(row.config),
         groupBy: Array.isArray(row.group_by)
             ? row.group_by.map((v) => String(v))
@@ -373,8 +701,9 @@ function rowToAlertInstance(row: AlertInstanceRow): AlertInstance {
         severity: row.severity,
         source: {
             organizationId: row.organization_id,
-            subjectType: publicAlertScopeType(row.source_subject_type),
-            subjectId: row.source_subject_id
+            subjectType: publicAlertSourceType(row.source_subject_type),
+            subjectId: row.source_subject_id,
+            locationId: row.source_location_id ?? null
         },
         title: row.title,
         message: row.message,
@@ -393,8 +722,20 @@ function rowToAlertInstance(row: AlertInstanceRow): AlertInstance {
                 ? row.ack_comment
                 : null,
         resolvedAt: toIso(row.resolved_at),
+        resolvedBy: row.resolved_by_user_id
+            ? {
+                  userId: row.resolved_by_user_id,
+                  displayName: row.resolved_by_display_name
+              }
+            : null,
         silencedUntil: toIso(row.silenced_until),
         silenceReason: row.silence_reason,
+        silencedBy: row.silenced_by_user_id
+            ? {
+                  userId: row.silenced_by_user_id,
+                  displayName: row.silenced_by_display_name
+              }
+            : null,
         counts: {
             notificationsCreated: Number(row.notifications_created_count ?? 0),
             deliveryJobsCreated: Number(row.delivery_jobs_created_count ?? 0)
@@ -433,7 +774,7 @@ function rowToAlertRuleFiring(
         firedAt: toIso(row.fired_at) ?? '',
         source: {
             organizationId,
-            subjectType: publicAlertScopeType(row.source_subject_type),
+            subjectType: publicAlertSourceType(row.source_subject_type),
             subjectId: row.source_subject_id
         },
         severity: row.severity,
@@ -449,7 +790,7 @@ function rowToAlertRuleTemplate(row: AlertRuleTemplateRow): AlertRuleTemplate {
         category: row.category,
         label: row.label,
         description: row.description,
-        kind: publicAlertRuleKind(row.kind),
+        kind: row.kind === null ? null : publicAlertRuleKind(row.kind),
         severity: row.severity,
         scope: publicScopeSelector(row.scope),
         config: cloneRecord(row.config),
@@ -458,6 +799,9 @@ function rowToAlertRuleTemplate(row: AlertRuleTemplateRow): AlertRuleTemplate {
         summaryTemplate: row.summary_template,
         messageTemplate: row.message_template,
         autoResolve: row.auto_resolve,
+        activeWindow: readActiveWindow(row.active_window),
+        available: row.available,
+        unavailableReason: row.unavailable_reason,
         authorUserId: row.author_user_id
     };
 }
@@ -572,6 +916,116 @@ function translateAlertRuleError(
     return RpcError.OperationFailed(`Alert.Rule.${operation}`, err);
 }
 
+interface VirtualAlertCapabilityRow {
+    external_id: string;
+    role_key: string;
+    source_external_id: string;
+    source_component_key: string;
+    source_snapshot_json: Record<string, unknown> | null;
+    role_metadata_json: Record<string, unknown> | null;
+}
+
+async function virtualAlertCapabilityViews(
+    organizationId: string
+): Promise<Map<string, DeviceCapabilityView>> {
+    const rows = await postgres.queryRows<VirtualAlertCapabilityRow>(
+        `SELECT
+                dl.external_id,
+                binding.role_key,
+                src.external_id AS source_external_id,
+                binding.source_component_key,
+                binding.source_snapshot_json,
+                binding.role_metadata_json
+           FROM device.virtual_device vd
+           JOIN device.list dl
+             ON dl.id = vd.device_list_id
+            AND dl.organization_id = vd.organization_id
+            AND dl.deleted_at IS NULL
+           JOIN device.virtual_device_binding binding
+             ON binding.virtual_device_list_id = vd.device_list_id
+            AND binding.organization_id = vd.organization_id
+            AND binding.effective_from <= NOW()
+            AND (
+                 binding.effective_to IS NULL OR
+                 binding.effective_to > NOW()
+            )
+           JOIN device.list src
+             ON src.id = binding.source_device_list_id
+            AND src.organization_id = binding.organization_id
+            AND src.deleted_at IS NULL
+          WHERE vd.organization_id = $1
+            AND vd.deleted_at IS NULL
+          ORDER BY dl.external_id, binding.role_key`,
+        [organizationId]
+    );
+    const mutable = new Map<
+        string,
+        {
+            entityTypes: Set<string>;
+            entityIds: Set<string>;
+            componentKeys: Set<string>;
+            isBattery: boolean;
+            bthomeObjNames: Set<string>;
+        }
+    >();
+    const rowsByDevice = new Map<string, VirtualAlertCapabilityRow[]>();
+    for (const row of rows) {
+        const bucket = rowsByDevice.get(row.external_id) ?? [];
+        bucket.push(row);
+        rowsByDevice.set(row.external_id, bucket);
+    }
+    const componentIdsByDevice = new Map<string, Map<string, number>>();
+    for (const [externalId, deviceRows] of rowsByDevice) {
+        componentIdsByDevice.set(
+            externalId,
+            assignVirtualComponentIds(
+                deviceRows.map((candidate) => {
+                    const binding = {
+                        roleKey: candidate.role_key,
+                        sourceExternalId: candidate.source_external_id,
+                        sourceComponentKey: candidate.source_component_key,
+                        writable: false,
+                        sourceSnapshot: candidate.source_snapshot_json,
+                        roleMetadata: candidate.role_metadata_json
+                    };
+                    return {
+                        roleKey: candidate.role_key,
+                        sourceComponentKey: candidate.source_component_key,
+                        entityType: virtualEntityType(binding)
+                    };
+                })
+            )
+        );
+    }
+    for (const row of rows) {
+        const current = mutable.get(row.external_id) ?? {
+            entityTypes: new Set<string>(),
+            entityIds: new Set<string>(),
+            componentKeys: new Set<string>(),
+            isBattery: false,
+            bthomeObjNames: new Set<string>()
+        };
+        const binding = {
+            roleKey: row.role_key,
+            sourceExternalId: row.source_external_id,
+            sourceComponentKey: row.source_component_key,
+            writable: false,
+            sourceSnapshot: row.source_snapshot_json,
+            roleMetadata: row.role_metadata_json
+        };
+        const entityType = virtualEntityType(binding);
+        const componentId =
+            componentIdsByDevice.get(row.external_id)?.get(row.role_key) ?? 0;
+        current.entityTypes.add(entityType);
+        current.entityIds.add(virtualEntityId(row.external_id, row.role_key));
+        current.componentKeys.add(`${entityType}:${componentId}`);
+        const objName = row.role_metadata_json?.objName;
+        if (typeof objName === 'string') current.bthomeObjNames.add(objName);
+        mutable.set(row.external_id, current);
+    }
+    return mutable;
+}
+
 export default class AlertComponent extends Component {
     constructor() {
         super('alert', {
@@ -673,6 +1127,24 @@ export default class AlertComponent extends Component {
         );
     }
 
+    // The same reach Instance.List applies, in one round trip.
+    async #instanceRowsInReach(
+        sender: CommandSender,
+        organizationId: string,
+        ids: number[]
+    ): Promise<AlertInstanceRow[]> {
+        if (ids.length === 0) return [];
+        const result = await postgres.callMethod(
+            'notifications.fn_alert_instance_get_many',
+            {
+                p_organization_id: organizationId,
+                p_ids: ids,
+                ...reachParams(await alertReach(sender))
+            }
+        );
+        return (result?.rows ?? []) as AlertInstanceRow[];
+    }
+
     #getInstanceRow(
         organizationId: string,
         id: number,
@@ -686,20 +1158,48 @@ export default class AlertComponent extends Component {
         );
     }
 
-    async #requireInstanceRow(
+    // Out of reach reads as denied, so a scoped caller cannot probe which
+    // ids exist; an unnarrowed caller still gets not-found.
+    async #requireInstanceRowInReach(
+        sender: CommandSender,
         organizationId: string,
         id: number,
-        txId?: number
+        reach: AccessibleReach | null
     ): Promise<AlertInstanceRow> {
-        const row = await this.#requireRow<AlertInstanceRow>(
+        const result = await postgres.callMethod(
             'notifications.fn_alert_instance_get',
-            'alert_instance',
-            organizationId,
-            id,
-            txId
+            {
+                p_organization_id: organizationId,
+                p_id: id,
+                ...reachParams(reach)
+            }
         );
+        const row = result?.rows?.[0] as AlertInstanceRow | undefined;
+        if (!row && reach === null) {
+            throw RpcError.NotFound('alert_instance', id);
+        }
+        if (!row) throw RpcError.PermissionDenied(sender.isAuthenticated());
         await hydratePublicAlertSubjects(organizationId, [row]);
         return row;
+    }
+
+    // An annotation id names no alert, so ask whether its alert is in reach.
+    async #requireAnnotationInWriteReach(
+        sender: CommandSender,
+        organizationId: string,
+        id: number
+    ): Promise<void> {
+        const reach = await alertWriteReach(sender);
+        if (reach === null) return;
+        const result = await postgres.callMethod(
+            'notifications.fn_alert_annotation_in_reach',
+            {p_organization_id: organizationId, p_id: id, ...reachParams(reach)}
+        );
+        const row = result?.rows?.[0] as
+            | {fn_alert_annotation_in_reach?: boolean}
+            | undefined;
+        if (row?.fn_alert_annotation_in_reach) return;
+        throw RpcError.PermissionDenied(sender.isAuthenticated());
     }
 
     async #applyInstanceAction(
@@ -730,7 +1230,11 @@ export default class AlertComponent extends Component {
         );
 
         const row = result?.rows?.[0] as AlertInstanceRow | undefined;
-        if (row) await hydratePublicAlertSubjects(organizationId, [row]);
+        if (row) {
+            // Only this alert moved; the tenant's other alert state still holds.
+            noteOperatorAlertChange(row);
+            await hydratePublicAlertSubjects(organizationId, [row]);
+        }
         return row;
     }
 
@@ -823,6 +1327,59 @@ export default class AlertComponent extends Component {
         });
     }
 
+    async #virtualStatusForPathDiscovery(
+        params: {organizationId?: string; shellyID?: string},
+        sender: CommandSender
+    ): Promise<Record<string, unknown>> {
+        const orgId = sender.getOrganizationId() ?? params.organizationId;
+        if (!orgId) return {};
+        const entities = await listVirtualEntities(
+            {
+                organizationId: orgId,
+                ...(params.shellyID
+                    ? {deviceExternalIds: [params.shellyID]}
+                    : {})
+            },
+            {
+                queryRows: postgres.queryRows,
+                getSourceSnapshot:
+                    createDeviceCollectorSnapshotFetcher(DeviceCollector)
+            }
+        );
+        const allowed = params.shellyID
+            ? new Set([params.shellyID])
+            : canCrossOrganizationBoundary(sender)
+              ? new Set(entities.map((entity) => entity.deviceExternalId))
+              : await sender.filterAccessibleDevices(
+                    entities.map((entity) => entity.deviceExternalId)
+                );
+        const selected = entities.filter((entity) =>
+            allowed.has(entity.deviceExternalId)
+        );
+        const status: Record<string, unknown> = {};
+        const byDevice = new Map<string, VirtualEntityResolution[]>();
+        for (const entity of selected) {
+            const bucket = byDevice.get(entity.deviceExternalId) ?? [];
+            bucket.push(entity);
+            byDevice.set(entity.deviceExternalId, bucket);
+        }
+        for (const deviceEntities of byDevice.values()) {
+            const ids = assignVirtualComponentIds(
+                deviceEntities.map((entity) => ({
+                    roleKey: entity.roleKey,
+                    sourceComponentKey: entity.sourceComponentKey,
+                    entityType: entity.entity.type
+                }))
+            );
+            for (const entity of deviceEntities) {
+                status[
+                    `${entity.entity.type}:${ids.get(entity.roleKey) ?? 0}`
+                ] = entity.status;
+            }
+        }
+        return status;
+    }
+
     async #bluetoothComponentPathsForDiscovery(
         params: {organizationId?: string; shellyID?: string},
         sender: CommandSender
@@ -866,18 +1423,23 @@ export default class AlertComponent extends Component {
     /** Discover numeric metrics the component_threshold rule builder can target. */
     @Component.NoAudit
     @Component.Expose('Rule.ListMetricPaths')
-    @Component.CrudPermission('alerts', 'read')
+    @Component.CrudPermission('alerts', 'read', NOT_A_RULE_ID)
     async listMetricPaths(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{organizationId?: string; shellyID?: string}>(
             params,
             ALERT_RULE_LIST_METRIC_PATHS_PARAMS_SCHEMA
+        );
+        const virtualStatus = await this.#virtualStatusForPathDiscovery(
+            p,
+            sender
         );
         return {
             items: [
                 ...collectMetrics(
                     await this.#devicesForPathDiscovery(p, sender)
                 ),
-                ...(await this.#bluetoothMetricPathsForDiscovery(p, sender))
+                ...(await this.#bluetoothMetricPathsForDiscovery(p, sender)),
+                ...scanStatusMetrics(virtualStatus)
             ]
         };
     }
@@ -885,18 +1447,28 @@ export default class AlertComponent extends Component {
     /** Discover metric and state component paths for alert rule builders. */
     @Component.NoAudit
     @Component.Expose('Rule.ListComponentPaths')
-    @Component.CrudPermission('alerts', 'read')
+    @Component.CrudPermission('alerts', 'read', NOT_A_RULE_ID)
     async listComponentPaths(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{organizationId?: string; shellyID?: string}>(
             params,
             ALERT_RULE_LIST_COMPONENT_PATHS_PARAMS_SCHEMA
+        );
+        const virtualStatus = await this.#virtualStatusForPathDiscovery(
+            p,
+            sender
         );
         return {
             items: [
                 ...collectComponentPaths(
                     await this.#devicesForPathDiscovery(p, sender)
                 ),
-                ...(await this.#bluetoothComponentPathsForDiscovery(p, sender))
+                ...(await this.#bluetoothComponentPathsForDiscovery(p, sender)),
+                ...scanStatusMetrics(virtualStatus).map((metric) => ({
+                    ...metric,
+                    kind: 'metric' as const,
+                    valueType: 'number' as const
+                })),
+                ...scanStatusStates(virtualStatus)
             ]
         };
     }
@@ -917,6 +1489,7 @@ export default class AlertComponent extends Component {
                    FROM device.list
                   WHERE organization_id = $1
                     AND external_id IS NOT NULL
+                    AND deleted_at IS NULL
                   ORDER BY external_id`,
                 [orgId]
             );
@@ -940,7 +1513,68 @@ export default class AlertComponent extends Component {
                 deviceSupportsKind(capabilityViewOf(d), p.kind, config)
             )
             .map((d) => d.shellyID);
-        return {shellyIDs};
+        const requestedOrgId =
+            p.organizationId ??
+            (
+                sender as CommandSender & {
+                    getOrganizationId?: () => string | undefined;
+                }
+            ).getOrganizationId?.();
+        const virtualViews = requestedOrgId
+            ? await virtualAlertCapabilityViews(requestedOrgId)
+            : new Map<string, DeviceCapabilityView>();
+        const virtualIds = [...virtualViews.keys()];
+        const accessibleVirtual = canCrossOrganizationBoundary(sender)
+            ? new Set(virtualIds)
+            : await sender.filterAccessibleDevices(virtualIds);
+        for (const [externalId, view] of virtualViews) {
+            if (!accessibleVirtual.has(externalId)) continue;
+            if (deviceSupportsKind(view, p.kind, config)) {
+                shellyIDs.push(externalId);
+            }
+        }
+        for (const externalId of await this.#eligibleBluetoothDevices(
+            {organizationId: requestedOrgId, kind: p.kind, config},
+            sender
+        )) {
+            shellyIDs.push(externalId);
+        }
+        return {shellyIDs: [...new Set(shellyIDs)]};
+    }
+
+    // Promoted BLU devices are their own list rows, so a scope that names one
+    // must be offered here. Rule.ListComponentPaths already surfaces their
+    // paths; without this the picker offered a condition no device could host.
+    async #eligibleBluetoothDevices(
+        query: {
+            organizationId: string | undefined;
+            kind: AlertRuleKind;
+            config: Record<string, unknown>;
+        },
+        sender: CommandSender
+    ): Promise<string[]> {
+        if (!query.organizationId) return [];
+        const devices = await this.#bluetoothDevicesForPathDiscovery(
+            query.organizationId,
+            {},
+            sender
+        );
+        return devices
+            .filter((device) =>
+                deviceSupportsKind(
+                    bluetoothCapabilityView({
+                        components: device.components,
+                        status:
+                            bluetoothDeviceSnapshot({
+                                device,
+                                gateway: bluetoothGatewaySnapshot(device)
+                            }).status ?? {}
+                    }),
+                    query.kind,
+                    query.config
+                )
+            )
+            .map((device) => device.externalId);
     }
 
     @Component.NoAudit
@@ -960,6 +1594,7 @@ export default class AlertComponent extends Component {
         const offset = p.offset ?? 0;
 
         try {
+            const reach = await alertReach(sender);
             const result = await postgres.callMethod(
                 'notifications.fn_alert_rule_list',
                 {
@@ -968,7 +1603,9 @@ export default class AlertComponent extends Component {
                     p_kind: p.kind ?? null,
                     p_query: p.query?.trim() || null,
                     p_limit: limit,
-                    p_offset: offset
+                    p_offset: offset,
+                    ...reachParams(reach),
+                    p_reach_tag_ids: reach ? [...reach.tagIds] : null
                 }
             );
             const rows = (result?.rows ?? []) as AlertRuleListRow[];
@@ -1028,10 +1665,12 @@ export default class AlertComponent extends Component {
             summaryTemplate?: string | null;
             messageTemplate?: string | null;
             autoResolve?: boolean;
+            triggerOnce?: boolean;
             config?: JsonRecord;
             groupBy?: string[] | null;
             deliveryMode?: 'instant' | 'digest';
             digestWindowMinutes?: number | null;
+            activeWindow?: unknown;
             runbookUrl?: string | null;
             templateId?: number | null;
         }>(params, ALERT_RULE_CREATE_PARAMS_SCHEMA);
@@ -1057,10 +1696,12 @@ export default class AlertComponent extends Component {
                 summaryTemplate: normalizeOptionalText(p.summaryTemplate),
                 messageTemplate: normalizeOptionalText(p.messageTemplate),
                 autoResolve: resolveAlertRuleAutoResolve(p.kind, p.autoResolve),
+                triggerOnce: p.triggerOnce === true,
                 config: normalizeAlertRuleConfig(p.kind, p.config),
                 groupBy: normalizeGroupBy(p.groupBy),
                 deliveryMode:
                     p.deliveryMode === 'digest' ? 'digest' : 'instant',
+                activeWindow: readActiveWindow(p.activeWindow),
                 digestWindowMinutes:
                     typeof p.digestWindowMinutes === 'number' &&
                     p.digestWindowMinutes >= 1
@@ -1099,10 +1740,12 @@ export default class AlertComponent extends Component {
                     p_summary_template: spec.summaryTemplate,
                     p_message_template: spec.messageTemplate,
                     p_auto_resolve: spec.autoResolve,
+                    p_trigger_once: spec.triggerOnce,
                     p_config: spec.config,
                     p_group_by: spec.groupBy,
                     p_delivery_mode: spec.deliveryMode,
                     p_digest_window_minutes: spec.digestWindowMinutes,
+                    p_active_window: spec.activeWindow,
                     p_runbook_url: spec.runbookUrl,
                     p_template_id: spec.templateId
                 },
@@ -1175,10 +1818,12 @@ export default class AlertComponent extends Component {
                 summaryTemplate?: string | null;
                 messageTemplate?: string | null;
                 autoResolve?: boolean;
+                triggerOnce?: boolean;
                 config?: JsonRecord;
                 groupBy?: string[] | null;
                 deliveryMode?: 'instant' | 'digest';
                 digestWindowMinutes?: number | null;
+                activeWindow?: unknown;
                 runbookUrl?: string | null;
                 templateId?: number | null;
             };
@@ -1273,6 +1918,9 @@ export default class AlertComponent extends Component {
                             patch.autoResolve !== undefined
                                 ? nextAutoResolve
                                 : null,
+                        // NULL leaves the stored flag alone, matching every
+                        // other optional field on this patch.
+                        p_trigger_once: patch.triggerOnce ?? null,
                         p_config:
                             patch.config !== undefined ? nextConfig : null,
                         p_group_by:
@@ -1289,6 +1937,8 @@ export default class AlertComponent extends Component {
                                 : null,
                         p_clear_digest_window:
                             patch.digestWindowMinutes === null,
+                        p_active_window: readActiveWindow(patch.activeWindow),
+                        p_clear_active_window: patch.activeWindow === null,
                         p_runbook_url:
                             patch.runbookUrl !== undefined
                                 ? normalizeOptionalText(patch.runbookUrl)
@@ -1386,15 +2036,38 @@ export default class AlertComponent extends Component {
 
         try {
             await this.#requireRuleRow(organizationId, p.id);
-            const result = await postgres.callMethod(
-                'notifications.fn_alert_rule_delete',
-                {
-                    p_organization_id: organizationId,
-                    p_id: p.id
+            // A deleted rule is never evaluated again, so its open alerts
+            // are closed in the same transaction; nothing else ever would.
+            const userId = sender.getUserId();
+            const actorUserId =
+                userId && userId !== '<UNAUTHORIZED>' ? userId : null;
+            const {deleted, closed} = await withPostgresTransaction(
+                async (txId) => {
+                    const closedResult = await postgres.callMethod(
+                        'notifications.fn_alert_rule_resolve_open_instances',
+                        {
+                            p_organization_id: organizationId,
+                            p_rule_id: p.id,
+                            p_actor_user_id: actorUserId,
+                            p_actor_display_name: actorDisplayName(sender)
+                        },
+                        txId
+                    );
+                    const result = await postgres.callMethod(
+                        'notifications.fn_alert_rule_delete',
+                        {
+                            p_organization_id: organizationId,
+                            p_id: p.id
+                        },
+                        txId
+                    );
+                    const row = result?.rows?.[0] as {id?: number} | undefined;
+                    return {
+                        deleted: row?.id != null,
+                        closed: (closedResult?.rows ?? []) as AlertInstanceRow[]
+                    };
                 }
             );
-            const row = result?.rows?.[0] as {id?: number} | undefined;
-            const deleted = row?.id != null;
             if (deleted) {
                 invalidateAlertRuleCache(organizationId);
                 invalidateAlertRecipientsCache(organizationId);
@@ -1402,6 +2075,9 @@ export default class AlertComponent extends Component {
                 // its own — deleted rules must release it.
                 clearAnomalyBandCacheForRule(p.id);
                 clearChangeEventCacheForRule(p.id);
+                for (const row of closed) {
+                    emitAlertInstanceEvent('Alert.Resolved', row);
+                }
                 AlertEvents.emitAlertRuleDeleted({
                     organizationId,
                     ruleId: p.id
@@ -1591,6 +2267,8 @@ export default class AlertComponent extends Component {
             id: 0,
             organizationId,
             name: 'preview',
+            // A preview never fires, so it can never spend a one-shot.
+            triggerOnce: false,
             templateId: null,
             kind: input.kind,
             conditionFamily: familyMapping.family,
@@ -1609,6 +2287,7 @@ export default class AlertComponent extends Component {
             groupBy: null,
             deliveryMode: 'instant',
             digestWindowMinutes: null,
+            activeWindow: null,
             runbookUrl: null,
             labelsTemplate: {}
         };
@@ -1642,6 +2321,12 @@ export default class AlertComponent extends Component {
                 p.templateKey,
                 organizationId
             );
+            if (!template.available || template.kind === null) {
+                throw RpcError.InvalidRequest(
+                    template.unavailableReason ??
+                        'This alert template is not available.'
+                );
+            }
 
             // Caller-supplied config is merged over the template default
             // so a template can supply sane defaults while still letting
@@ -1674,10 +2359,14 @@ export default class AlertComponent extends Component {
                     template.kind,
                     template.autoResolve
                 ),
+                // Templates describe a condition, not a firing policy; a rule
+                // made from one repeats until the operator says otherwise.
+                triggerOnce: false,
                 config: normalizeAlertRuleConfig(template.kind, mergedConfig),
                 groupBy: null,
                 deliveryMode: 'instant',
                 digestWindowMinutes: null,
+                activeWindow: template.activeWindow,
                 runbookUrl: null,
                 templateId: null
             });
@@ -1720,51 +2409,29 @@ export default class AlertComponent extends Component {
     @Component.Expose('Instance.List')
     @Component.CrudPermission('alerts', 'read')
     async listInstances(params: unknown, sender: CommandSender) {
-        const p = validateOrThrow<{
-            organizationId?: string;
-            state?: AlertState;
-            severity?: AlertSeverity;
-            ruleId?: number;
-            sourceType?: AlertScopeType;
-            sourceId?: string;
-            locationIds?: number[];
-            groupIds?: number[];
-            tagIds?: number[];
-            query?: string;
-            limit?: number;
-            offset?: number;
-        }>(params, ALERT_INSTANCE_LIST_PARAMS_SCHEMA);
+        const p = validateOrThrow<AlertInstanceListParams>(
+            params,
+            ALERT_INSTANCE_LIST_PARAMS_SCHEMA
+        );
         const organizationId = requireOrganizationId(sender, p);
-        const limit = p.limit ?? 200;
-        const offset = p.offset ?? 0;
+        const {p_organization_id, ...filters} = await alertListFilterParams(
+            organizationId,
+            p
+        );
+        const page = alertListPageRequest(p, alertListFilterMark(filters));
 
         try {
-            const sourceId =
-                (p.sourceType === 'device' || p.sourceType === 'component') &&
-                p.sourceId?.trim()
-                    ? await resolveDurableAlertSubjectId(
-                          organizationId,
-                          p.sourceType === 'component' ? 'entity' : 'device',
-                          p.sourceId.trim()
-                      )
-                    : p.sourceId?.trim() || null;
             const result = await postgres.callMethod(
                 'notifications.fn_alert_instance_list',
                 {
-                    p_organization_id: organizationId,
-                    p_state: p.state ?? null,
-                    p_severity: p.severity ?? null,
-                    p_rule_id: p.ruleId ?? null,
-                    p_source_type: p.sourceType
-                        ? storedAlertScopeType(p.sourceType)
-                        : null,
-                    p_source_id: sourceId,
-                    p_location_ids: normalizeIntIds(p.locationIds),
-                    p_group_ids: normalizeIntIds(p.groupIds),
-                    p_tag_ids: normalizeIntIds(p.tagIds),
-                    p_query: p.query?.trim() || null,
-                    p_limit: limit,
-                    p_offset: offset
+                    p_organization_id,
+                    ...filters,
+                    p_limit: page.fetchLimit,
+                    p_offset: page.offset,
+                    p_after_triggered_at: page.after?.triggeredAt ?? null,
+                    p_after_id: page.after?.id ?? null,
+                    p_skip_total: page.after !== null,
+                    ...reachParams(await alertReach(sender))
                 }
             );
             const rows = (result?.rows ?? []) as AlertInstanceListRow[];
@@ -1772,24 +2439,46 @@ export default class AlertComponent extends Component {
                 organizationId,
                 rows as AlertInstanceRow[]
             );
-            const total =
-                rows.length > 0 ? Number(rows[0].total_count ?? 0) : 0;
-            const items: AlertInstance[] = [];
-
-            for (const row of rows) {
-                if (row.id == null) continue;
-                items.push(rowToAlertInstance(row as AlertInstanceRow));
-            }
-
-            return buildListResponse(items, total, limit, offset);
+            return alertListPage(rows, page);
         } catch (err: unknown) {
             throw asOperationFailed('Alert.Instance.List', err);
         }
     }
 
     @Component.NoAudit
+    @Component.Expose('Instance.GetMany')
+    @Component.CrudPermission('alerts', 'read')
+    async getInstances(
+        params: unknown,
+        sender: CommandSender
+    ): Promise<AlertInstanceGetManyResult> {
+        const p = validateOrThrow<{organizationId?: string; ids: number[]}>(
+            params,
+            ALERT_INSTANCE_GET_MANY_PARAMS_SCHEMA
+        );
+        const organizationId = requireOrganizationId(sender, p);
+        const asked = [...new Set(p.ids)];
+
+        try {
+            const rows = await this.#instanceRowsInReach(
+                sender,
+                organizationId,
+                asked
+            );
+            await hydratePublicAlertSubjects(organizationId, rows);
+            const found = new Set(rows.map((row) => row.id));
+            return {
+                items: rows.map(rowToAlertInstance),
+                missingIds: asked.filter((id) => !found.has(id))
+            };
+        } catch (err: unknown) {
+            throw asOperationFailed('Alert.Instance.GetMany', err);
+        }
+    }
+
+    @Component.NoAudit
     @Component.Expose('Instance.Get')
-    @Component.CrudPermission('alerts', 'read', (p) => p?.id)
+    @Component.CrudPermission('alerts', 'read', NOT_A_RULE_ID)
     async getInstance(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{organizationId?: string; id: number}>(
             params,
@@ -1799,7 +2488,12 @@ export default class AlertComponent extends Component {
 
         try {
             return rowToAlertInstance(
-                await this.#requireInstanceRow(organizationId, p.id)
+                await this.#requireInstanceRowInReach(
+                    sender,
+                    organizationId,
+                    p.id,
+                    await alertReach(sender)
+                )
             );
         } catch (err: unknown) {
             throw asOperationFailed('Alert.Instance.Get', err);
@@ -1808,7 +2502,7 @@ export default class AlertComponent extends Component {
 
     @Component.NoAudit
     @Component.Expose('Instance.ListTransitions')
-    @Component.CrudPermission('alerts', 'read', (p) => p?.id)
+    @Component.CrudPermission('alerts', 'read', NOT_A_RULE_ID)
     async listInstanceTransitions(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{
             organizationId?: string;
@@ -1821,7 +2515,12 @@ export default class AlertComponent extends Component {
         const offset = p.offset ?? 0;
 
         try {
-            await this.#requireInstanceRow(organizationId, p.id);
+            await this.#requireInstanceRowInReach(
+                sender,
+                organizationId,
+                p.id,
+                await alertReach(sender)
+            );
 
             const result = await postgres.callMethod(
                 'notifications.fn_alert_instance_list_transitions',
@@ -1848,7 +2547,7 @@ export default class AlertComponent extends Component {
     }
 
     @Component.Expose('Instance.Ack')
-    @Component.CrudPermission('alerts', 'update', (p) => p?.id)
+    @Component.CrudPermission('alerts', 'update', NOT_A_RULE_ID)
     async ackInstance(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{
             organizationId?: string;
@@ -1860,9 +2559,11 @@ export default class AlertComponent extends Component {
         const ackComment = normalizeOptionalText(p.comment);
 
         try {
-            const current = await this.#requireInstanceRow(
+            const current = await this.#requireInstanceRowInReach(
+                sender,
                 organizationId,
-                p.id
+                p.id,
+                await alertWriteReach(sender)
             );
             if (isResolvedAlert(current)) throwResolvedAlertConflict(p.id);
             // Already-acked: refresh the comment only if the caller passed
@@ -1894,7 +2595,7 @@ export default class AlertComponent extends Component {
     }
 
     @Component.Expose('Instance.Unack')
-    @Component.CrudPermission('alerts', 'update', (p) => p?.id)
+    @Component.CrudPermission('alerts', 'update', NOT_A_RULE_ID)
     async unackInstance(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{organizationId?: string; id: number}>(
             params,
@@ -1904,9 +2605,11 @@ export default class AlertComponent extends Component {
         const actor = requireActionActor(sender);
 
         try {
-            const current = await this.#requireInstanceRow(
+            const current = await this.#requireInstanceRowInReach(
+                sender,
                 organizationId,
-                p.id
+                p.id,
+                await alertWriteReach(sender)
             );
             if (isResolvedAlert(current)) throwResolvedAlertConflict(p.id);
             if (current.state === 'active') {
@@ -1928,7 +2631,7 @@ export default class AlertComponent extends Component {
     }
 
     @Component.Expose('Instance.Silence')
-    @Component.CrudPermission('alerts', 'update', (p) => p?.id)
+    @Component.CrudPermission('alerts', 'update', NOT_A_RULE_ID)
     async silenceInstance(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{
             organizationId?: string;
@@ -1941,9 +2644,11 @@ export default class AlertComponent extends Component {
         const until = parseFutureTimestamp(p.until, 'until');
 
         try {
-            const current = await this.#requireInstanceRow(
+            const current = await this.#requireInstanceRowInReach(
+                sender,
                 organizationId,
-                p.id
+                p.id,
+                await alertWriteReach(sender)
             );
             if (isResolvedAlert(current)) throwResolvedAlertConflict(p.id);
 
@@ -1973,7 +2678,7 @@ export default class AlertComponent extends Component {
     }
 
     @Component.Expose('Instance.Unsilence')
-    @Component.CrudPermission('alerts', 'update', (p) => p?.id)
+    @Component.CrudPermission('alerts', 'update', NOT_A_RULE_ID)
     async unsilenceInstance(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{organizationId?: string; id: number}>(
             params,
@@ -1983,9 +2688,11 @@ export default class AlertComponent extends Component {
         const actor = requireActionActor(sender);
 
         try {
-            const current = await this.#requireInstanceRow(
+            const current = await this.#requireInstanceRowInReach(
+                sender,
                 organizationId,
-                p.id
+                p.id,
+                await alertWriteReach(sender)
             );
             if (isResolvedAlert(current)) throwResolvedAlertConflict(p.id);
             if (
@@ -2010,7 +2717,7 @@ export default class AlertComponent extends Component {
     }
 
     @Component.Expose('Instance.ResolveManual')
-    @Component.CrudPermission('alerts', 'update', (p) => p?.id)
+    @Component.CrudPermission('alerts', 'update', NOT_A_RULE_ID)
     async resolveInstanceManual(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{organizationId?: string; id: number}>(
             params,
@@ -2020,17 +2727,24 @@ export default class AlertComponent extends Component {
         const actor = requireActionActor(sender);
 
         try {
-            const current = await this.#requireInstanceRow(
+            const current = await this.#requireInstanceRowInReach(
+                sender,
                 organizationId,
-                p.id
+                p.id,
+                await alertWriteReach(sender)
             );
-            if (
+            const closesItself =
                 ALERT_RULE_KIND_DESCRIPTOR_BY_KEY[
                     publicAlertRuleKind(current.rule_kind)
-                ]?.supportsManualResolve !== true
+                ]?.supportsManualResolve !== true;
+            // "Closes itself when the sensor is back" holds only while the
+            // sensor exists. A deleted one never comes back, so let it close.
+            if (
+                closesItself &&
+                !(await alertSubjectMissing(organizationId, p.id))
             ) {
                 throw RpcError.Domain('UnsupportedOperation', {
-                    message: `manual resolve is not supported for ${publicAlertRuleKind(current.rule_kind)}`,
+                    message: MANUAL_RESOLVE_REFUSAL,
                     details: {
                         resourceType: 'alert_instance',
                         identifier: p.id,
@@ -2062,7 +2776,7 @@ export default class AlertComponent extends Component {
     }
 
     @Component.Expose('Instance.Annotate')
-    @Component.CrudPermission('alerts', 'update', (p) => p?.alertInstanceId)
+    @Component.CrudPermission('alerts', 'update', NOT_A_RULE_ID)
     async annotateInstance(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{
             organizationId?: string;
@@ -2076,6 +2790,12 @@ export default class AlertComponent extends Component {
             throw RpcError.InvalidParams('annotation body cannot be empty');
         }
         try {
+            await this.#requireInstanceRowInReach(
+                sender,
+                organizationId,
+                p.alertInstanceId,
+                await alertWriteReach(sender)
+            );
             const result = await postgres.callMethod(
                 'notifications.fn_alert_annotation_append',
                 {
@@ -2096,7 +2816,7 @@ export default class AlertComponent extends Component {
     }
 
     @Component.Expose('Instance.ListAnnotations')
-    @Component.CrudPermission('alerts', 'read', (p) => p?.alertInstanceId)
+    @Component.CrudPermission('alerts', 'read', NOT_A_RULE_ID)
     async listInstanceAnnotations(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{
             organizationId?: string;
@@ -2104,6 +2824,12 @@ export default class AlertComponent extends Component {
         }>(params, ALERT_ANNOTATION_LIST_PARAMS_SCHEMA);
         const organizationId = requireOrganizationId(sender, p);
         try {
+            await this.#requireInstanceRowInReach(
+                sender,
+                organizationId,
+                p.alertInstanceId,
+                await alertReach(sender)
+            );
             const result = await postgres.callMethod(
                 'notifications.fn_alert_annotation_list',
                 {
@@ -2119,7 +2845,7 @@ export default class AlertComponent extends Component {
     }
 
     @Component.Expose('Instance.EditAnnotation')
-    @Component.CrudPermission('alerts', 'update', (p) => p?.id)
+    @Component.CrudPermission('alerts', 'update', NOT_A_RULE_ID)
     async editInstanceAnnotation(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{
             organizationId?: string;
@@ -2133,6 +2859,11 @@ export default class AlertComponent extends Component {
             throw RpcError.InvalidParams('annotation body cannot be empty');
         }
         try {
+            await this.#requireAnnotationInWriteReach(
+                sender,
+                organizationId,
+                p.id
+            );
             const result = await postgres.callMethod(
                 'notifications.fn_alert_annotation_edit',
                 {
@@ -2162,7 +2893,7 @@ export default class AlertComponent extends Component {
     }
 
     @Component.Expose('Instance.DeleteAnnotation')
-    @Component.CrudPermission('alerts', 'update', (p) => p?.id)
+    @Component.CrudPermission('alerts', 'update', NOT_A_RULE_ID)
     async deleteInstanceAnnotation(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{organizationId?: string; id: number}>(
             params,
@@ -2171,6 +2902,11 @@ export default class AlertComponent extends Component {
         const organizationId = requireOrganizationId(sender, p);
         const actor = requireActionActor(sender);
         try {
+            await this.#requireAnnotationInWriteReach(
+                sender,
+                organizationId,
+                p.id
+            );
             const result = await postgres.callMethod(
                 'notifications.fn_alert_annotation_delete',
                 {
@@ -2207,10 +2943,17 @@ export default class AlertComponent extends Component {
             summaryTemplate?: string | null;
             messageTemplate?: string | null;
             autoResolve?: boolean;
+            activeWindow?: AlertActiveWindow | null;
+            available?: boolean;
+            unavailableReason?: string | null;
         }>(params, ALERT_RULE_TEMPLATE_CREATE_PARAMS_SCHEMA);
         const organizationId = requireOrganizationId(sender, p);
         const actor = requireActionActor(sender);
         try {
+            const availability = normalizeTemplateAvailability({
+                available: p.available ?? true,
+                unavailableReason: p.unavailableReason ?? null
+            });
             const scope = validateSupportedScopeSelector(p.kind, p.scope ?? {});
             const result = await postgres.callMethod(
                 'notifications.fn_alert_rule_template_create',
@@ -2236,6 +2979,9 @@ export default class AlertComponent extends Component {
                         p.kind,
                         p.autoResolve
                     ),
+                    p_active_window: readActiveWindow(p.activeWindow),
+                    p_available: availability.available,
+                    p_unavailable_reason: availability.unavailableReason,
                     p_author_user_id: actor.userId
                 }
             );
@@ -2249,7 +2995,7 @@ export default class AlertComponent extends Component {
     }
 
     @Component.Expose('Rule.Template.Update')
-    @Component.CrudPermission('alerts', 'update', (p) => p?.id)
+    @Component.CrudPermission('alerts', 'update', NOT_A_RULE_ID)
     async updateRuleTemplate(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{
             organizationId?: string;
@@ -2264,10 +3010,15 @@ export default class AlertComponent extends Component {
             summaryTemplate?: string | null;
             messageTemplate?: string | null;
             autoResolve?: boolean;
+            activeWindow?: AlertActiveWindow | null;
+            available?: boolean;
+            unavailableReason?: string | null;
         }>(params, ALERT_RULE_TEMPLATE_UPDATE_PARAMS_SCHEMA);
         const organizationId = requireOrganizationId(sender, p);
         const actor = requireActionActor(sender);
         try {
+            await requireOrgWideAlertGrant(sender, 'update');
+            const availability = normalizeTemplateAvailabilityPatch(p);
             const scope =
                 p.scope === undefined
                     ? null
@@ -2302,7 +3053,16 @@ export default class AlertComponent extends Component {
                         p.messageTemplate !== undefined
                             ? normalizeOptionalText(p.messageTemplate)
                             : null,
-                    p_auto_resolve: p.autoResolve ?? null
+                    p_auto_resolve: p.autoResolve ?? null,
+                    p_active_window:
+                        p.activeWindow === undefined
+                            ? null
+                            : readActiveWindow(p.activeWindow),
+                    p_clear_active_window: p.activeWindow === null,
+                    p_available: availability.available,
+                    p_unavailable_reason: availability.unavailableReason,
+                    p_clear_unavailable_reason:
+                        availability.clearUnavailableReason
                 }
             );
             const row = result?.rows?.[0] as AlertRuleTemplateRow | undefined;
@@ -2322,7 +3082,7 @@ export default class AlertComponent extends Component {
     }
 
     @Component.Expose('Rule.Template.Delete')
-    @Component.CrudPermission('alerts', 'delete', (p) => p?.id)
+    @Component.CrudPermission('alerts', 'delete', NOT_A_RULE_ID)
     async deleteRuleTemplate(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{organizationId?: string; id: number}>(
             params,
@@ -2331,6 +3091,7 @@ export default class AlertComponent extends Component {
         const organizationId = requireOrganizationId(sender, p);
         const actor = requireActionActor(sender);
         try {
+            await requireOrgWideAlertGrant(sender, 'delete');
             const result = await postgres.callMethod(
                 'notifications.fn_alert_rule_template_delete',
                 {

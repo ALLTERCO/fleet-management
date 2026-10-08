@@ -40,13 +40,13 @@ interface TopConsumersSectionRequest {
 
 interface TimeSeriesSectionRequest {
     rows: ReportRowSink;
-    tsRows: readonly ReportRow[];
+    tsRows: readonly ReportRow[] | AsyncIterable<ReportRow>;
     currencySymbol: string;
 }
 
 interface PhaseAnalysisSectionRequest {
     rows: ReportRowSink;
-    phaseRows: readonly ReportRow[];
+    phaseRows: readonly ReportRow[] | AsyncIterable<ReportRow>;
     phaseGroups: ReadonlyMap<string, PhaseGroup>;
 }
 
@@ -89,14 +89,26 @@ interface AnomalySectionRequest {
 
 interface DayOfWeekSectionRequest {
     rows: ReportRow[];
-    tsRows: readonly ReportRow[];
+    tsRows?: readonly ReportRow[];
     timezone: string | null;
+    split?: {
+        weekdayKWh: number;
+        weekendKWh: number;
+        weekdayPct: number;
+        weekendPct: number;
+    };
 }
 
 interface LoadDurationSectionRequest {
     rows: ReportRow[];
-    tsRows: readonly ReportRow[];
+    tsRows?: readonly ReportRow[];
     peakPower: number;
+    bands?: readonly {
+        fromKW: number;
+        toKW: number | null;
+        sharePct: number;
+        hours: number;
+    }[];
 }
 
 export function appendTopConsumersSection(
@@ -145,7 +157,7 @@ export async function appendTimeSeriesSection(
 ): Promise<void> {
     const R = energyRow;
     await writeReportRow(request.rows, sectionHeader(R, 'TIME-SERIES'));
-    for (const row of request.tsRows) {
+    for await (const row of request.tsRows) {
         await writeReportRow(
             request.rows,
             R({
@@ -170,16 +182,19 @@ export async function appendTimeSeriesSection(
 export async function appendPhaseAnalysisSection(
     request: PhaseAnalysisSectionRequest
 ): Promise<void> {
-    if (request.phaseRows.length === 0) return;
     const R = energyRow;
-    await writeReportRow(request.rows, sectionHeader(R, '3-PHASE'));
-    for (const row of request.phaseRows) {
+    let wroteHeader = false;
+    for await (const row of request.phaseRows) {
+        if (!wroteHeader) {
+            await writeReportRow(request.rows, sectionHeader(R, '3-PHASE'));
+            wroteHeader = true;
+        }
         await writeReportRow(
             request.rows,
             phaseAnalysisRow(request.phaseGroups, row)
         );
     }
-    await writeReportRow(request.rows, {...energyRowBlank()});
+    if (wroteHeader) await writeReportRow(request.rows, {...energyRowBlank()});
 }
 
 function phaseAnalysisRow(
@@ -188,7 +203,11 @@ function phaseAnalysisRow(
 ): ReportRow {
     const imbalance =
         row.phase === 'L1'
-            ? phaseImbalancePct(phaseGroups.get(`${row.date}::${row.device}`))
+            ? typeof row.imbalance_pct === 'number'
+                ? `${row.imbalance_pct}%`
+                : phaseImbalancePct(
+                      phaseGroups.get(`${row.date}::${row.device}`)
+                  )
             : '';
     return energyRow({
         date: row.date,
@@ -273,13 +292,17 @@ function anomalyRow(anomaly: AnomalySectionRequest['anomalies'][number]) {
 }
 
 export function appendDayOfWeekSection(request: DayOfWeekSectionRequest): void {
-    const samples = request.tsRows
+    const samples = (request.tsRows ?? [])
         .map((row) => parseHourlySample(row))
         .filter((sample): sample is {hour: Date; kWh: number} => {
             return sample !== null;
         });
-    if (samples.length === 0) return;
-    const split = splitByDayOfWeek(samples, request.timezone);
+    const split =
+        request.split ??
+        (samples.length > 0
+            ? splitByDayOfWeek(samples, request.timezone)
+            : null);
+    if (!split) return;
     request.rows.push(
         energyRow({
             section: 'WEEKDAY/WEEKEND',
@@ -301,16 +324,21 @@ export function appendDayOfWeekSection(request: DayOfWeekSectionRequest): void {
 export function appendLoadDurationSection(
     request: LoadDurationSectionRequest
 ): void {
-    const samples = request.tsRows
+    const samples = (request.tsRows ?? [])
         .map((row) =>
             typeof row.power_avg_w === 'number' ? row.power_avg_w / 1000 : null
         )
         .filter((value): value is number => value !== null);
-    if (samples.length === 0) return;
-    const curve = buildLoadDurationCurve({
-        hourlyPowerKW: samples,
-        bandLowerEdgesKW: chooseLoadDurationBands(request.peakPower / 1000)
-    });
+    const curve =
+        request.bands ??
+        (samples.length > 0
+            ? buildLoadDurationCurve({
+                  hourlyPowerKW: samples,
+                  bandLowerEdgesKW: chooseLoadDurationBands(
+                      request.peakPower / 1000
+                  )
+              })
+            : []);
     for (const band of curve) {
         if (band.hours === 0) continue;
         request.rows.push(loadDurationRow(band));

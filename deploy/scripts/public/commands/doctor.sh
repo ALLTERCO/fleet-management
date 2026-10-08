@@ -81,6 +81,15 @@ cmd_doctor() {
     fi
     if [ "$WITH_LOGGING" = "true" ]; then
         ports+=("${DOZZLE_PORT:-9999}")
+        if [ -z "${DOZZLE_USERS_FILE:-}" ]; then
+            error "DOZZLE_USERS_FILE is required with --logging"; issues=$((issues + 1))
+        elif [[ "$DOZZLE_USERS_FILE" != /* ]]; then
+            error "DOZZLE_USERS_FILE must be absolute"; issues=$((issues + 1))
+        elif [ ! -r "$DOZZLE_USERS_FILE" ]; then
+            error "DOZZLE_USERS_FILE is not readable: $DOZZLE_USERS_FILE"; issues=$((issues + 1))
+        else
+            ok "Dozzle simple-auth users: $DOZZLE_USERS_FILE"
+        fi
     fi
     for port in "${ports[@]}"; do
         if check_port_available "$port"; then

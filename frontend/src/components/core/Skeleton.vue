@@ -6,10 +6,11 @@
             { 'skeleton--rounded': rounded },
         ]"
         :style="customStyle"
-        role="status"
-        aria-label="Loading"
+        :role="decorative ? undefined : 'status'"
+        :aria-label="decorative ? undefined : 'Loading'"
+        :aria-hidden="decorative ? 'true' : undefined"
     >
-        <span class="sr-only">Loading...</span>
+        <span v-if="!decorative" class="sr-only">Loading...</span>
     </div>
 </template>
 
@@ -22,10 +23,12 @@ const props = withDefaults(
         width?: string;
         height?: string;
         rounded?: boolean;
+        decorative?: boolean;
     }>(),
     {
         variant: 'text',
-        rounded: false
+        rounded: false,
+        decorative: false
     }
 );
 
@@ -99,5 +102,11 @@ const customStyle = computed(() => {
 
 .skeleton--rounded {
     border-radius: var(--radius-full);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .skeleton::after {
+        animation: none;
+    }
 }
 </style>

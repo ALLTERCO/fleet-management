@@ -19,8 +19,30 @@ export async function searchPlacesNominatim(
         url,
         tuning.geocoding.nominatimTimeoutMs
     );
-    if (response === null) return [];
+    if (!Array.isArray(response)) return [];
     return parseNominatimResponse(response);
+}
+
+export async function reverseGeocodeNominatim(
+    lat: number,
+    lng: number,
+    language?: string
+): Promise<GeocodeCandidate | null> {
+    const params = new URLSearchParams({
+        lat: String(lat),
+        lon: String(lng),
+        format: 'jsonv2',
+        addressdetails: '1',
+        zoom: '18'
+    });
+    if (language) params.set('accept-language', language);
+    const response = await fetchWithTimeout(
+        `${tuning.geocoding.nominatimUrl}/reverse?${params.toString()}`,
+        tuning.geocoding.nominatimTimeoutMs
+    );
+    return response && typeof response === 'object' && !Array.isArray(response)
+        ? (parseNominatimResponse([response])[0] ?? null)
+        : null;
 }
 
 function buildNominatimUrl(q: NominatimQuery): string {
@@ -39,7 +61,7 @@ function buildNominatimUrl(q: NominatimQuery): string {
 async function fetchWithTimeout(
     url: string,
     timeoutMs: number
-): Promise<unknown[] | null> {
+): Promise<unknown | null> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
@@ -56,9 +78,7 @@ async function fetchWithTimeout(
     }
 }
 
-async function handleNominatimResponse(
-    res: Response
-): Promise<unknown[] | null> {
+async function handleNominatimResponse(res: Response): Promise<unknown | null> {
     if (res.status === 429) {
         Observability.incrementLabeledCounter('geo_nominatim_calls_total', {
             outcome: 'rate_limited'
@@ -74,8 +94,7 @@ async function handleNominatimResponse(
     Observability.incrementLabeledCounter('geo_nominatim_calls_total', {
         outcome: 'success'
     });
-    const body = await res.json();
-    return Array.isArray(body) ? body : null;
+    return await res.json();
 }
 
 function recordNominatimFailure(err: unknown, url: string): void {

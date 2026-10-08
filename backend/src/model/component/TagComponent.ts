@@ -1,4 +1,10 @@
 import {readableResourceAllowlistsAsync} from '../../modules/authz/evaluator/readableResourceAllowlists';
+import {
+    mergeSubjects,
+    NO_SUBJECTS,
+    type ResolvedSubjects,
+    requireSubjectsReadable
+} from '../../modules/authz/evaluator/subjectScope';
 import * as DeviceCollector from '../../modules/DeviceCollector';
 import * as EventDistributor from '../../modules/EventDistributor';
 import * as postgres from '../../modules/PostgresProvider';
@@ -88,10 +94,12 @@ async function assertIntegerSubjectExists(
     }
 }
 
+// Returns what the subject resolved to, so the caller can authorize against
+// the same device, location or group without resolving it a second time.
 export async function assertTagSubjectBelongsToOrg(
     orgId: string,
     subject: TagAssignmentRef
-): Promise<void> {
+): Promise<ResolvedSubjects> {
     const table = INTEGER_SUBJECT_TABLES[subject.subjectType];
     if (table) {
         await assertIntegerSubjectExists(
@@ -100,26 +108,28 @@ export async function assertTagSubjectBelongsToOrg(
             table,
             subject.subjectId
         );
-        return;
+        return integerSubjectScope(subject);
     }
     if (subject.subjectType !== 'device' && subject.subjectType !== 'entity') {
-        return;
+        return NO_SUBJECTS;
     }
 
     let shellyID = subject.subjectId;
     if (subject.subjectType === 'entity') {
         const ref = DeviceCollector.findEntityAndDevice(subject.subjectId);
         if (!ref) {
-            const rows = await postgres.queryRows(
-                `SELECT 1
-                   FROM organization.fn_normalize_entity_subject($1, $2)
-                  WHERE device_id IS NOT NULL`,
+            const rows = await postgres.queryRows<{external_id: string}>(
+                `SELECT dl.external_id
+                   FROM organization.fn_normalize_entity_subject($1, $2) n
+                   JOIN device.list dl
+                     ON dl.id = n.device_id AND dl.organization_id = $1
+                  WHERE n.device_id IS NOT NULL`,
                 [orgId, subject.subjectId]
             );
             if (rows.length === 0) {
                 throw RpcError.NotFound('entity', subject.subjectId);
             }
-            return;
+            return {...NO_SUBJECTS, shellyIDs: [rows[0].external_id]};
         }
         shellyID = ref.device.shellyID;
     }
@@ -132,6 +142,20 @@ export async function assertTagSubjectBelongsToOrg(
     if (rows.length === 0) {
         throw RpcError.NotFound(subject.subjectType, subject.subjectId);
     }
+    return {...NO_SUBJECTS, shellyIDs: [shellyID]};
+}
+
+// Locations and groups carry per-item scope; the other integer subjects
+// (alert rules, destinations, channels) do not widen any grant.
+function integerSubjectScope(subject: TagAssignmentRef): ResolvedSubjects {
+    const id = Number(subject.subjectId);
+    if (subject.subjectType === 'location') {
+        return {...NO_SUBJECTS, locationIds: [id]};
+    }
+    if (subject.subjectType === 'group') {
+        return {...NO_SUBJECTS, groupIds: [id]};
+    }
+    return NO_SUBJECTS;
 }
 
 function rowToTag(row: TagRow): Tag {
@@ -276,7 +300,7 @@ export default class TagComponent extends Component {
             );
             const row = result?.rows?.[0] as TagRow | undefined;
             if (!row) throw RpcError.OperationFailed('tag create');
-            EventDistributor.invalidateGroupCache(orgId);
+            EventDistributor.invalidateOrganizationAccess(orgId);
             EventDistributor.emitTagCreated(row.id, row.key, row.name, orgId);
             return rowToTag(row);
         } catch (err: unknown) {
@@ -331,7 +355,7 @@ export default class TagComponent extends Component {
             const row = result?.rows?.[0] as TagRow | undefined;
             if (!row)
                 throw RpcError.Domain('TagNotFound', {details: {id: p.id}});
-            EventDistributor.invalidateGroupCache(orgId);
+            EventDistributor.invalidateOrganizationAccess(orgId);
             EventDistributor.emitTagUpdated(row.id, row.key, row.name, orgId);
             return rowToTag(row);
         } catch (err: unknown) {
@@ -359,7 +383,7 @@ export default class TagComponent extends Component {
             const row = result?.rows?.[0] as {id: number} | undefined;
             const deleted = row?.id != null;
             if (deleted) {
-                EventDistributor.invalidateGroupCache(orgId);
+                EventDistributor.invalidateOrganizationAccess(orgId);
                 EventDistributor.emitTagDeleted(p.id, orgId);
             }
             return {deleted, id: p.id};
@@ -448,9 +472,11 @@ export default class TagComponent extends Component {
         }>(params, TAG_ASSIGN_PARAMS);
         const orgId = requireOrganizationId(sender, p);
 
+        const resolved: ResolvedSubjects[] = [];
         for (const subject of p.subjects) {
-            await assertTagSubjectBelongsToOrg(orgId, subject);
+            resolved.push(await assertTagSubjectBelongsToOrg(orgId, subject));
         }
+        await requireSubjectsReadable(sender, mergeSubjects(resolved));
 
         const types = p.subjects.map((s) => s.subjectType);
         const ids = p.subjects.map((s) => s.subjectId);
@@ -467,7 +493,7 @@ export default class TagComponent extends Component {
             );
             const rows = (result?.rows ?? []) as AssignmentRow[];
             const assigned = rows.map(rowToRef);
-            EventDistributor.invalidateGroupCache(orgId);
+            EventDistributor.invalidateOrganizationAccess(orgId);
             EventDistributor.emitTagAssigned(p.id, assigned, orgId);
             return {id: p.id, assigned};
         } catch (err: unknown) {
@@ -503,7 +529,7 @@ export default class TagComponent extends Component {
             );
             const rows = (result?.rows ?? []) as AssignmentRow[];
             const unassigned = rows.map(rowToRef);
-            EventDistributor.invalidateGroupCache(orgId);
+            EventDistributor.invalidateOrganizationAccess(orgId);
             EventDistributor.emitTagUnassigned(p.id, unassigned, orgId);
             return {id: p.id, unassigned};
         } catch (err: unknown) {

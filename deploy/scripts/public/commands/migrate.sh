@@ -6,12 +6,18 @@
 # shellcheck source=/dev/null
 source "$DEPLOY_DIR/scripts/common/migrate.sh"
 
+mg_kdf_salt_preflight() {
+    public_kdf_salt_preflight
+}
+
 cmd_migrate() {
     _public_migrate_parse_args "$@" || return 1
     enable_debug_mode
     load_state_env
     load_deploy_meta
     load_deploy_env_overrides
+    # Migrate recreates Traefik, which reads the TLS key through its group.
+    public_tls_key_group_readable || return 1
 
     ENV_NAME="${DEPLOY_ENV:-public}"
     export ENV_NAME
@@ -62,6 +68,26 @@ _public_migrate_parse_args() {
     export MIGRATE_PLAN_ONLY MIGRATE_DRY_RUN MIGRATE_YES MIGRATE_VERIFY_RESTORE
 }
 
+# Called by the migrate engine after a successful run. Migrate can replace
+# Fleet Manager, so `rollback` must return to the image that ran before it and
+# restore the Fleet database dump migrate took before its first step.
+# shellcheck disable=SC2329  # Called indirectly by common/migrate.sh.
+mg_on_migration_success() {
+    local report="$1" snapshot dump fm_container
+    [ -n "${MG_ROLLBACK_FM_IMAGE_ID:-}" ] || return 0
+    snapshot="$(jq -r '.artifacts.backups.fleet.path // empty' "$report")"
+    dump="$(awk -F'\t' -v db="${POSTGRES_DB:-fleet}" '$1 == db { print $3; exit }' \
+        "$snapshot/databases.txt" 2>/dev/null || true)"
+    if [ -z "$dump" ] || [ ! -s "$dump" ]; then
+        error "Migration report $report names no pre-migration dump of ${POSTGRES_DB:-fleet}"
+        return 1
+    fi
+    public_tag_rollback_image "$MG_ROLLBACK_FM_IMAGE_ID" || return 1
+    fm_container="$(compat_service_container_id "$COMPOSE_PROJECT_NAME" fleet-manager)"
+    public_record_rollback_point "$MG_ROLLBACK_FM_IMAGE_REF" \
+        "$(compat_container_image "$fm_container")" "$dump"
+}
+
 log_info() { info "$@"; }
 log_warn() { warn "$@"; }
 log_error() { error "$@"; }
@@ -74,11 +100,22 @@ compute_fm_url() {
     printf 'http://localhost:%s' "${FLEET_MANAGER_PORT:-7011}"
 }
 
+# Public compose names the image by FM_VERSION, so select the recorded tag.
+mg_start_fm_at_image() {
+    local image_ref="$1"
+    public_resolve_build_identity "${image_ref##*:}"
+    FM_VERSION="${image_ref##*:}" \
+        compose_cmd up -d --no-deps --no-build --force-recreate fleet-manager >/dev/null || return 1
+    public_kdf_salt_confirm_container
+}
+
 mg_step_fm_rebuild() {
     mg_prepare_fleet_db_for_app_boot || return 1
     generate_fm_config "${ZITADEL_HOSTNAME:-${DEPLOY_HOSTNAME:-localhost}}" || return 1
     compose_cmd pull fleet-manager >/dev/null 2>&1 || true
+    public_resolve_build_identity "${FM_VERSION:-latest}"
     compose_cmd up -d --no-deps fleet-manager >/dev/null || return 1
+    public_kdf_salt_confirm_container
 }
 
 mg_zitadel_wait_and_setup() {

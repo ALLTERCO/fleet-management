@@ -11,7 +11,7 @@
  * The dump has shape `{summary: {...}, users: [{userId, userName, permissionConfig, ...}]}`.
  *
  * This script is "break glass" — written and used once. Not maintained as a regular
- * tool. See docs/plans/2026-04-30-authz-rollback-runbook.md Tier 3.
+ * tool.
  *
  * Usage:
  *   npx tsx backend/scripts/restore-fm-permissions.ts --input=snapshot.json --dry-run

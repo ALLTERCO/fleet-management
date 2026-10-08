@@ -1,0 +1,68 @@
+[
+    {
+        "id": "flow-sunset",
+        "type": "tab",
+        "label": "Evening lights",
+        "disabled": false,
+        "info": "Every day at 18:00, turns on light 0 of every device in group 42. Change the groupId in the device.List node to your group."
+    },
+    {
+        "id": "fm-server-sunset",
+        "type": "fm-server",
+        "name": "Fleet Manager",
+        "baseUrl": "",
+        "wsUrl": ""
+    },
+    {
+        "id": "trigger-evening",
+        "type": "inject",
+        "z": "flow-sunset",
+        "name": "Every day at 18:00",
+        "props": [],
+        "repeat": "",
+        "crontab": "00 18 * * *",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 170,
+        "y": 200,
+        "wires": [["list-group-devices"]]
+    },
+    {
+        "id": "list-group-devices",
+        "type": "fm-device",
+        "z": "flow-sunset",
+        "name": "Devices in the group",
+        "server": "fm-server-sunset",
+        "operation": "device.List",
+        "paramsSource": "config",
+        "paramsJson": "{\"filters\":{\"groupId\":42},\"limit\":0}",
+        "x": 390,
+        "y": 200,
+        "wires": [["one-call-per-device"]]
+    },
+    {
+        "id": "one-call-per-device",
+        "type": "function",
+        "z": "flow-sunset",
+        "name": "One light.Set per device",
+        "func": "const devices = (msg.payload && msg.payload.items) || [];\nreturn [devices.map((device) => ({\n    params: {shellyID: device.shellyID, id: 0, on: true, brightness: 80}\n}))];",
+        "outputs": 1,
+        "x": 620,
+        "y": 200,
+        "wires": [["turn-on-light"]]
+    },
+    {
+        "id": "turn-on-light",
+        "type": "fm-component-action",
+        "z": "flow-sunset",
+        "name": "Light on",
+        "server": "fm-server-sunset",
+        "operation": "light.Set",
+        "paramsSource": "msg.params",
+        "paramsJson": "{}",
+        "x": 830,
+        "y": 200,
+        "wires": [[]]
+    }
+]

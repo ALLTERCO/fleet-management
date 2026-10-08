@@ -14,20 +14,19 @@
     >
         <template #default>
             <div class="ec-dual">
-                <div class="ec-dual-item">
-                    <div class="ec-dv">{{ targetDisplay }}°</div>
+                <div v-if="targetDisplay" class="ec-dual-item">
+                    <div class="ec-dv">{{ targetDisplay }}<span class="ec-u ec-u--sm ec-u--sup">°</span></div>
                     <div class="ec-dl">Target</div>
                 </div>
-                <div class="ec-dsep" />
-                <div class="ec-dual-item">
-                    <div class="ec-dv">{{ currentDisplay }}°</div>
+                <div v-if="targetDisplay && currentDisplay" class="ec-dsep" />
+                <div v-if="currentDisplay" class="ec-dual-item">
+                    <div class="ec-dv">{{ currentDisplay }}<span class="ec-u ec-u--sm ec-u--sup">°</span></div>
                     <div class="ec-dl">Current</div>
                 </div>
             </div>
-            <!-- State indicator: flame (heating), dash (idle), power (off) -->
+            <!-- Idle draws no glyph; a dash reads as a missing value. -->
             <div v-if="isEnabled" class="ec-trv-state-row">
                 <svg v-if="isHeating" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-status-warn)" stroke-width="2"><path d="M12 2c0 6-6 6-6 12a6 6 0 0012 0c0-6-6-6-6-12z"/></svg>
-                <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-quaternary)" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 <span :style="{fontSize:'11px',fontWeight:700,color: isHeating ? 'var(--color-status-warn)' : 'var(--color-text-quaternary)'}">{{ stateLabel }}</span>
             </div>
             <div v-else class="ec-trv-state-row">
@@ -59,11 +58,10 @@
         <template #default>
             <div class="ec-wide-row">
                 <div class="ec-wl">
-                    <div class="ec-trv-target">{{ targetDisplay }}<span>°</span></div>
-                    <div class="ec-trv-cur-sm">{{ currentDisplay }}° current</div>
+                    <div v-if="targetDisplay" class="ec-trv-target">{{ targetDisplay }}<span class="ec-u ec-u--sup">°</span></div>
+                    <div v-if="currentDisplay" class="ec-trv-cur-sm">{{ currentDisplay }}° current</div>
                     <div class="ec-trv-state-row--inline">
                         <svg v-if="isHeating" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-status-warn)" stroke-width="2"><path d="M12 2c0 6-6 6-6 12a6 6 0 0012 0c0-6-6-6-6-12z"/></svg>
-                        <svg v-else width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--color-text-quaternary)" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
                         <span :style="{fontSize:'10px',fontWeight:700,color: isHeating ? 'var(--color-status-warn)' : 'var(--color-text-quaternary)'}">{{ stateLabel }}</span>
                         <span v-if="isBluTrv && valvePercent != null" class="ec-trv-valve-label">Valve {{ valveDisplay }}%</span>
                     </div>
@@ -124,25 +122,25 @@
         <template #default>
             <!-- Hero temps: big SET + smaller NOW -->
             <div class="ec-trv-hero-temps">
-                <div class="ec-trv-hero-set">
-                    <div class="ec-trv-hero-set-v">{{ targetDisplay }}<span>°</span></div>
+                <div v-if="targetDisplay" class="ec-trv-hero-set">
+                    <div class="ec-trv-hero-set-v">{{ targetDisplay }}<span class="ec-u ec-u--sup">°</span></div>
                     <div class="ec-trv-hero-set-l">TARGET</div>
                 </div>
-                <div class="ec-trv-hero-now">
-                    <div class="ec-trv-hero-now-v">{{ currentDisplay }}<span>°</span></div>
+                <div v-if="currentDisplay" class="ec-trv-hero-now">
+                    <div class="ec-trv-hero-now-v">{{ currentDisplay }}<span class="ec-u ec-u--sm ec-u--sup">°</span></div>
                     <div class="ec-trv-hero-now-l">CURRENT</div>
                 </div>
             </div>
 
             <!-- Controls zone -->
             <div class="ec-trv-hero-controls">
-                <!-- Valve position bar (BluTrv only) -->
-                <div v-if="isBluTrv" class="ec-trv-valve-row">
+                <!-- BluTrv only, and only once a position is reported. -->
+                <div v-if="isBluTrv && valvePercent != null" class="ec-trv-valve-row">
                     <div class="ec-trv-valve-label">Valve</div>
                     <div class="ec-trv-valve-bar">
-                        <div class="ec-trv-valve-fill" :style="{width: (valvePercent ?? 0) + '%'}" />
+                        <div class="ec-trv-valve-fill" :style="{width: valvePercent + '%'}" />
                     </div>
-                    <div class="ec-trv-valve-pct">{{ valveDisplay }}%</div>
+                    <div class="ec-trv-valve-pct">{{ valveDisplay }}<span class="ec-u ec-u--sm">%</span></div>
                 </div>
 
                 <!-- Temperature presets -->
@@ -272,13 +270,14 @@ const isHeating = computed(() =>
 const widePresets = [5, 18, 20, 22, 24];
 const heroPresets = [18, 20, 22, 24];
 
-const targetDisplay = computed(() => {
+// null, not a dash — the degree sign never renders without a temperature.
+const targetDisplay = computed<string | null>(() => {
     const t = status.value?.target_C;
-    return t != null ? t.toFixed(1) : '—';
+    return t != null ? t.toFixed(1) : null;
 });
 
-const currentDisplay = computed(() => {
-    return current.value != null ? current.value.toFixed(1) : '—';
+const currentDisplay = computed<string | null>(() => {
+    return current.value != null ? current.value.toFixed(1) : null;
 });
 
 const stateLabel = computed(() => {
@@ -288,10 +287,7 @@ const stateLabel = computed(() => {
 
 const valvePercent = computed(() => status.value?.pos ?? null);
 
-const valveDisplay = computed(() => {
-    const v = status.value?.pos;
-    return v != null ? String(v) : '—';
-});
+const valveDisplay = computed(() => String(valvePercent.value));
 
 const batteryLevel = computed(() => {
     if (isBluTrv.value) return status.value?.battery ?? null;

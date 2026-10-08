@@ -9,5 +9,6 @@ export function alertLinkBase(): string {
 export function alertHref(alertId: number | null | undefined): string {
     const base = alertLinkBase();
     if (!base || alertId == null) return '';
-    return `${base.replace(/\/+$/, '')}/${alertId}`;
+    const separator = base.includes('?') ? '&' : '?';
+    return `${base.replace(/\/+$/, '')}${separator}instance=${alertId}`;
 }

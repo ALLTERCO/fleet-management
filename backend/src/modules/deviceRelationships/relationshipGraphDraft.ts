@@ -323,7 +323,7 @@ function singleNodeDirection(
     >
 ): RelationshipEdgeDto['direction'] | null {
     const directions = nodeDirections.get(nodeId);
-    if (!directions || directions.size !== 1) return null;
+    if (directions?.size !== 1) return null;
     return [...directions][0] ?? null;
 }
 

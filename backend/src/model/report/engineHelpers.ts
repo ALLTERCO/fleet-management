@@ -1,13 +1,16 @@
 // Pure helpers shared by the per-kind report engines. No `this`, no RPC concerns.
 
 import {randomBytes} from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import {tuning} from '../../config';
 import {GRANULARITY_MAP, METRIC_TYPES} from '../../config/energy';
 import {canCrossOrganizationBoundary} from '../../modules/authz/evaluator';
 import {requireScopeRead} from '../../modules/authz/evaluator/scopeRead';
 import {
     type CsvArtifactFormat,
-    sanitizeFileName
+    sanitizeFileName,
+    UPLOADS_DIR
 } from '../../modules/csvExport';
 import * as DeviceCollector from '../../modules/DeviceCollector';
 import {isValidTimezone} from '../../modules/location/isoData';
@@ -18,7 +21,7 @@ import {requireOrganizationId} from '../../rpc/scope';
 import {scopeId, scopeKind} from '../../types/api/fleet';
 import type {ReportGenerateParams} from '../../types/api/report';
 import type CommandSender from '../CommandSender';
-import {bindExportOwner} from '../energy/exportHandler';
+import {bindExportPrincipal, unbindExportOwner} from '../energy/exportHandler';
 import {reportArtifactTtlSec} from './reportRetention';
 
 // Re-export GRANULARITY_MAP at this module so engines have one import.
@@ -359,19 +362,54 @@ export async function bindReportArtifactOwner(
     const safeName = sanitizeFileName(
         `${request.name}_${randomBytes(4).toString('hex')}`
     );
-    await bindExportOwner(
-        `${safeName}.${request.extension}`,
-        request.sender.getUserId(),
-        reportArtifactTtlSec()
-    );
-    for (const extension of request.companionExtensions ?? []) {
-        await bindExportOwner(
-            `${safeName}.${extension}`,
-            request.sender.getUserId(),
-            reportArtifactTtlSec()
-        );
+    const extensions = [
+        request.extension,
+        ...(request.companionExtensions ?? [])
+    ];
+    const filenames = extensions.map((extension) => `${safeName}.${extension}`);
+    const principal = {
+        userId: request.sender.getUserId(),
+        organizationId: request.sender.getOrganizationId()
+    };
+    const bound: string[] = [];
+    try {
+        for (const filename of filenames) {
+            await bindExportPrincipal(
+                filename,
+                principal,
+                reportArtifactTtlSec()
+            );
+            bound.push(filename);
+        }
+    } catch (error) {
+        await Promise.allSettled(bound.map(unbindExportOwner));
+        throw error;
     }
     return safeName;
+}
+
+export async function unbindReportArtifactOwners(
+    safeName: string,
+    extensions: readonly string[]
+): Promise<void> {
+    await Promise.allSettled(
+        extensions.map((extension) =>
+            unbindExportOwner(`${safeName}.${extension}`)
+        )
+    );
+}
+
+export async function rollbackReportArtifacts(
+    safeName: string,
+    extensions: readonly string[]
+): Promise<void> {
+    await Promise.allSettled(
+        extensions.flatMap((extension) => {
+            const filePath = path.join(UPLOADS_DIR, `${safeName}.${extension}`);
+            return [fs.unlink(filePath), fs.unlink(`${filePath}.tmp`)];
+        })
+    );
+    await unbindReportArtifactOwners(safeName, extensions);
 }
 
 export function reportCsvArtifactFormat(): CsvArtifactFormat {

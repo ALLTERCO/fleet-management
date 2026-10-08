@@ -178,21 +178,24 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.annotate'
     },
     'alert.instance.deleteannotation': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.deleteAnnotation'
     },
     'alert.instance.editannotation': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.editAnnotation'
     },
     'alert.instance.get': {
         namespaceKind: 'fleet-manager',
@@ -202,20 +205,29 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         requiresOnlineDevice: false,
         wrapper: 'host.alerts.getInstance'
     },
+    'alert.instance.getmany': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.getInstances'
+    },
     'alert.instance.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
         requiresOnlineDevice: false,
-        wrapper: 'host.alerts.listInstances'
+        wrapper: 'host.alerts.listInstancesPage'
     },
     'alert.instance.listannotations': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.annotations'
     },
     'alert.instance.listtransitions': {
         namespaceKind: 'fleet-manager',
@@ -262,35 +274,40 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.checkDuplicate'
     },
     'alert.rule.create': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.createRule'
     },
     'alert.rule.createfromtemplate': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.createRuleFromTemplate'
     },
     'alert.rule.delete': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.deleteRule'
     },
     'alert.rule.get': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.getRule'
     },
     'alert.rule.list': {
         namespaceKind: 'fleet-manager',
@@ -305,21 +322,24 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.listComponentPaths'
     },
     'alert.rule.listeligibledevices': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.listEligibleDevices'
     },
     'alert.rule.listfirings': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.listFirings'
     },
     'alert.rule.listkinds': {
         namespaceKind: 'fleet-manager',
@@ -334,49 +354,56 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.listMetricPaths'
     },
     'alert.rule.listtemplates': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.templates.list'
     },
     'alert.rule.preview': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.previewRule'
     },
     'alert.rule.template.create': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.templates.create'
     },
     'alert.rule.template.delete': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.templates.delete'
     },
     'alert.rule.template.update': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.templates.update'
     },
     'alert.rule.update': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.alerts.updateRule'
     },
     'alexa.describe': {
         namespaceKind: 'fleet-manager',
@@ -441,10 +468,24 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         consequential: true,
         requiresOnlineDevice: false
     },
+    'asset.readchunk': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
     'asset.setlabel': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'asset.upload': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: false,
         consequential: true,
         requiresOnlineDevice: false
     },
@@ -453,14 +494,16 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.authorization.assignments.create'
     },
     'assignment.delete': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.authorization.assignments.delete'
     },
     'assignment.describe': {
         namespaceKind: 'fleet-manager',
@@ -474,7 +517,8 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.authorization.assignments.listForPersona'
     },
     'assignment.listforresource': {
         namespaceKind: 'fleet-manager',
@@ -488,7 +532,8 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.authorization.assignments.listForSubject'
     },
     'assignment.listunused': {
         namespaceKind: 'fleet-manager',
@@ -509,14 +554,16 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.audit.export'
     },
     'audit.query': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.audit.query'
     },
     'auth.describe': {
         namespaceKind: 'fleet-manager',
@@ -544,6 +591,125 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
+        requiresOnlineDevice: false
+    },
+    'automation.create': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: false,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'automation.delete': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'automation.describe': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'automation.get': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'automation.getactivity': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'automation.getstatus': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'automation.graph.create': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: false,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'automation.graph.delete': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'automation.graph.get': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'automation.graph.readpage': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'automation.graph.update': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'automation.graph.validate': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'automation.list': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'automation.listengines': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'automation.reportactivity': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'automation.setenabled': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'automation.update': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
         requiresOnlineDevice: false
     },
     'backup.delete': {
@@ -630,7 +796,21 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         consequential: false,
         requiresOnlineDevice: false
     },
+    'bill.import': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
     'bill.list': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'bill.quote': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
@@ -1098,8 +1278,7 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: true,
-        wrapper: 'host.bluetoothDevices.renameGatewayChild'
+        requiresOnlineDevice: true
     },
     'bthome.device.setconfig': {
         namespaceKind: 'device',
@@ -1129,13 +1308,19 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         consequential: false,
         requiresOnlineDevice: true
     },
+    'bthome.listdiscovered': {
+        namespaceKind: 'device',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: true
+    },
     'bthome.listgateways': {
         namespaceKind: 'device',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: true,
-        wrapper: 'host.bluetoothDevices.listGateways'
+        requiresOnlineDevice: true
     },
     'bthome.object.listinfos': {
         namespaceKind: 'device',
@@ -1417,6 +1602,61 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         consequential: true,
         requiresOnlineDevice: true
     },
+    'carbon.addemissionfactor': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: false,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.carbon.addEmissionFactor'
+    },
+    'carbon.addprice': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: false,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.carbon.addPrice'
+    },
+    'carbon.calculate': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.carbon.calculate'
+    },
+    'carbon.calculatebreakdown': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.carbon.calculateBreakdown'
+    },
+    'carbon.describe': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'carbon.listemissionfactors': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.carbon.listEmissionFactors'
+    },
+    'carbon.listprices': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.carbon.listPrices'
+    },
     'cb.describe': {
         namespaceKind: 'device',
         readOnly: true,
@@ -1639,14 +1879,16 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.channels.create'
     },
     'channel.delete': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.channels.delete'
     },
     'channel.describe': {
         namespaceKind: 'fleet-manager',
@@ -1660,42 +1902,48 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.channels.get'
     },
     'channel.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.channels.list'
     },
     'channel.listproviders': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.channels.providers'
     },
     'channel.resethealth': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.channels.resetHealth'
     },
     'channel.test': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.channels.test'
     },
     'channel.update': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.channels.update'
     },
     'client.describe': {
         namespaceKind: 'fleet-manager',
@@ -1831,6 +2079,13 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         requiresOnlineDevice: false
     },
     'credential.get': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'credential.getmany': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
@@ -2038,49 +2293,56 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.activity'
     },
     'dashboard.additem': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.items.legacy.add'
     },
     'dashboard.cleardefault': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.default.clear'
     },
     'dashboard.clone': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.clone'
     },
     'dashboard.create': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.create'
     },
     'dashboard.delete': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.delete'
     },
     'dashboard.deletebulk': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.deleteMany'
     },
     'dashboard.describe': {
         namespaceKind: 'fleet-manager',
@@ -2101,28 +2363,32 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.get'
     },
     'dashboard.getdefault': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.default.get'
     },
     'dashboard.getsettings': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.settings.get'
     },
     'dashboard.getuiconfig': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.uiConfig'
     },
     'dashboard.import': {
         namespaceKind: 'fleet-manager',
@@ -2136,182 +2402,208 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.items.add'
     },
     'dashboard.item.addbulk': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.items.addMany'
     },
     'dashboard.item.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.items.list'
     },
     'dashboard.item.remove': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.items.remove'
     },
     'dashboard.item.reorder': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.items.reorder'
     },
     'dashboard.item.setall': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.items.setAll'
     },
     'dashboard.item.update': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.items.update'
     },
     'dashboard.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.list'
     },
     'dashboard.listpinned': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.pins.list'
     },
     'dashboard.pin': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.pins.pin'
     },
     'dashboard.removeitem': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.items.legacy.remove'
     },
     'dashboard.reorder': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.reorder'
     },
     'dashboard.reorderitems': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.items.legacy.reorder'
     },
     'dashboard.reorderpins': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.pins.reorder'
     },
     'dashboard.setdefault': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.default.set'
     },
     'dashboard.setsettings': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.settings.set'
     },
     'dashboard.template.create': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.templates.create'
     },
     'dashboard.template.delete': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.templates.delete'
     },
     'dashboard.template.get': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.templates.get'
     },
     'dashboard.template.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.templates.list'
     },
     'dashboard.template.preview': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.templates.preview'
     },
     'dashboard.template.savefromdashboard': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.templates.saveFromDashboard'
     },
     'dashboard.template.update': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.templates.update'
     },
     'dashboard.unpin': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.pins.unpin'
     },
     'dashboard.update': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.update'
     },
     'dashboard.updateitemsize': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.dashboards.items.legacy.updateSize'
     },
     'device.call': {
         namespaceKind: 'fleet-manager',
@@ -2321,6 +2613,15 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         requiresOnlineDevice: false,
         effectDependsOnInput: true,
         escapeHatch: true
+    },
+    'device.callmany': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false,
+        effectDependsOnInput: true,
+        wrapper: 'host.devices.callMany'
     },
     'device.checkreplacement': {
         namespaceKind: 'fleet-manager',
@@ -2358,6 +2659,14 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.devices.getDeviceChannels'
+    },
+    'device.getemlivedebug': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
         requiresOnlineDevice: false
     },
     'device.getimage': {
@@ -2373,7 +2682,8 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.devices.getInfo'
     },
     'device.getkind': {
         namespaceKind: 'fleet-manager',
@@ -2388,21 +2698,24 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.devices.getSetup'
     },
     'device.getstatushistory': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.devices.getStatusHistory'
     },
     'device.getstatustimeline': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.devices.statusTimeline'
     },
     'device.list': {
         namespaceKind: 'fleet-manager',
@@ -2410,7 +2723,7 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         destructive: false,
         consequential: false,
         requiresOnlineDevice: false,
-        wrapper: 'host.devices.list'
+        wrapper: 'host.devices.listPage'
     },
     'device.listretired': {
         namespaceKind: 'fleet-manager',
@@ -2426,7 +2739,7 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         destructive: false,
         consequential: false,
         requiresOnlineDevice: false,
-        wrapper: 'host.relationships.getDeviceGraph'
+        wrapper: 'host.devices.relationships.get'
     },
     'device.relationships.query': {
         namespaceKind: 'fleet-manager',
@@ -2434,7 +2747,7 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         destructive: false,
         consequential: false,
         requiresOnlineDevice: false,
-        wrapper: 'host.relationships.query'
+        wrapper: 'host.devices.relationships.query'
     },
     'device.replacehardware': {
         namespaceKind: 'fleet-manager',
@@ -2460,6 +2773,13 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         requiresOnlineDevice: false,
         wrapper: 'host.devices.retire'
     },
+    'device.setemlivedebug': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
     'device.setimage': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
@@ -2467,6 +2787,13 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         consequential: true,
         requiresOnlineDevice: false,
         wrapper: 'host.devices.setImage'
+    },
+    'device.setjournaldebug': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
     },
     'device.setkind': {
         namespaceKind: 'fleet-manager',
@@ -2481,7 +2808,8 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.devices.topology'
     },
     'deviceevents.describe': {
         namespaceKind: 'fleet-manager',
@@ -2546,6 +2874,13 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         consequential: true,
         requiresOnlineDevice: false
     },
+    'deviceingress.credential.listexpiring': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
     'deviceingress.credential.revoke': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
@@ -2602,6 +2937,13 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         consequential: true,
         requiresOnlineDevice: false
     },
+    'deviceingress.identity.enable': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
     'deviceingress.identity.get': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
@@ -2638,6 +2980,27 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         requiresOnlineDevice: false
     },
     'deviceingress.rejection.resolve': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'deviceingress.rotation.cancel': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'deviceingress.rotation.list': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'deviceingress.rotation.start': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
@@ -2987,6 +3350,28 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         consequential: true,
         requiresOnlineDevice: true
     },
+    'energy.applycommodityrepair': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'energy.applylogicalmetermeaningchange': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'energy.baseline': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.metrics.baseline'
+    },
     'energy.current': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
@@ -2995,19 +3380,29 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         requiresOnlineDevice: false,
         wrapper: 'host.metrics.current'
     },
+    'energy.deletebaselineexclusion': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.metrics.deleteBaselineExclusion'
+    },
     'energy.deletelogicalmeter': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.metrics.deleteLogicalMeter'
     },
     'energy.deletemeterconnection': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.metrics.deleteMeterConnection'
     },
     'energy.describe': {
         namespaceKind: 'fleet-manager',
@@ -3021,6 +3416,29 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.metrics.getResetAudit'
+    },
+    'energy.listbaselineexclusions': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.metrics.listBaselineExclusions'
+    },
+    'energy.listlogicalmetermeaninghistory': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'energy.listlogicalmetermeaningreviewqueue': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
         requiresOnlineDevice: false
     },
     'energy.listlogicalmeters': {
@@ -3028,21 +3446,54 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.metrics.logicalMeters'
     },
     'energy.listmeasurementpoints': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.metrics.listMeasurementPoints'
     },
     'energy.listmeterconnections': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.metrics.meterConnections'
+    },
+    'energy.overnightbaseline': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.metrics.overnightBaseline'
+    },
+    'energy.previewcommodityrepair': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
         requiresOnlineDevice: false
+    },
+    'energy.previewlogicalmetermeaningchange': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'energy.projection': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.metrics.projection'
     },
     'energy.query': {
         namespaceKind: 'fleet-manager',
@@ -3052,26 +3503,59 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         requiresOnlineDevice: false,
         wrapper: 'host.metrics.history'
     },
-    'energy.savelogicalmeter': {
+    'energy.rejectedsyncblocks': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'energy.requeuerejectedsyncblock': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
         requiresOnlineDevice: false
+    },
+    'energy.savebaselineexclusion': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.metrics.saveBaselineExclusion'
+    },
+    'energy.savelogicalmeter': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.metrics.saveLogicalMeter'
     },
     'energy.savemeterconnection': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.metrics.saveMeterConnection'
     },
     'energy.setpointoverride': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.metrics.setPointOverride'
+    },
+    'energy.syncstatus': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.metrics.syncStatus'
     },
     'entity.describe': {
         namespaceKind: 'fleet-manager',
@@ -3085,21 +3569,24 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.entities.get'
     },
     'entity.getactionschema': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.entities.actionSchema'
     },
     'entity.getcapabilities': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.entities.capabilities'
     },
     'entity.invokeaction': {
         namespaceKind: 'fleet-manager',
@@ -3107,14 +3594,16 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         destructive: true,
         consequential: true,
         requiresOnlineDevice: false,
-        effectDependsOnInput: true
+        effectDependsOnInput: true,
+        wrapper: 'host.entities.invokeAction'
     },
     'entity.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.entities.list'
     },
     'eth.describe': {
         namespaceKind: 'device',
@@ -3186,33 +3675,86 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         consequential: true,
         requiresOnlineDevice: true
     },
-    'firmware.checkforupdatebulk': {
+    'filetransfer.begin': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: false,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'filetransfer.cancel': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'filetransfer.describe': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
         requiresOnlineDevice: false
     },
-    'firmware.createlibrarydownloadurl': {
+    'filetransfer.finalize': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
         requiresOnlineDevice: false
+    },
+    'filetransfer.get': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'filetransfer.readchunk': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'filetransfer.writechunk': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'firmware.checkforupdatebulk': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.checkForUpdateBulk'
+    },
+    'firmware.createlibrarydownloadurl': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.createLibraryDownloadUrl'
     },
     'firmware.createuploadticket': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.createUploadTicket'
     },
     'firmware.deletelibraryentry': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.deleteLibraryEntry'
     },
     'firmware.describe': {
         namespaceKind: 'fleet-manager',
@@ -3226,119 +3768,136 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.getAutoUpdateChannel'
     },
     'firmware.getautoupdatedevices': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.getAutoUpdateDevices'
     },
     'firmware.getautoupdatemode': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.getAutoUpdateMode'
     },
     'firmware.getautoupdatemodes': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.getAutoUpdateModes'
     },
     'firmware.getautoupdatestatus': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.getAutoUpdateStatus'
     },
     'firmware.getlastautoupdaterun': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.getLastAutoUpdateRun'
     },
     'firmware.listlibrary': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.listLibrary'
     },
     'firmware.registermanualupdate': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.registerManualUpdate'
     },
     'firmware.setautoupdate': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.setAutoUpdate'
     },
     'firmware.setautoupdatebulk': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.setAutoUpdateBulk'
     },
     'firmware.setautoupdatechannel': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.setAutoUpdateChannel'
     },
     'firmware.setautoupdatemode': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.setAutoUpdateMode'
     },
     'firmware.setautoupdatemodebulk': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.setAutoUpdateModeBulk'
     },
     'firmware.startupdatejob': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.startUpdateJob'
     },
     'firmware.triggerautoupdate': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.triggerAutoUpdate'
     },
     'firmware.unregistermanualupdate': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.unregisterManualUpdate'
     },
     'firmware.updatelibraryentry': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.firmware.updateLibraryEntry'
     },
     'fleet.describe': {
         namespaceKind: 'fleet-manager',
@@ -3359,7 +3918,8 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.locations.scopedDevices'
     },
     'fleetmap.describe': {
         namespaceKind: 'fleet-manager',
@@ -3373,21 +3933,24 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.fleetmap.alerts'
     },
     'fleetmap.getenergysnapshot': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.fleetmap.energy'
     },
     'fleetmap.getsignalsnapshot': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.fleetmap.signal'
     },
     'fleetsummary.describe': {
         namespaceKind: 'fleet-manager',
@@ -3431,6 +3994,55 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         consequential: true,
         requiresOnlineDevice: true
     },
+    'gasconversion.addcalorificvalue': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'gasconversion.describe': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'gasconversion.listcalorificvalues': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'gasconversion.listprofiles': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'gasconversion.listzones': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'gasconversion.upsertprofile': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'gasconversion.upsertzone': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
     'grafana.describe': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
@@ -3473,14 +4085,16 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.groups.create'
     },
     'group.delete': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.groups.delete'
     },
     'group.describe': {
         namespaceKind: 'fleet-manager',
@@ -3502,14 +4116,16 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.groups.kind.get'
     },
     'group.kind.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.groups.kind.list'
     },
     'group.list': {
         namespaceKind: 'fleet-manager',
@@ -3532,7 +4148,8 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.groups.listDeviceMemberships'
     },
     'group.listmembers': {
         namespaceKind: 'fleet-manager',
@@ -3563,7 +4180,8 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.groups.update'
     },
     'http.describe': {
         namespaceKind: 'device',
@@ -3775,6 +4393,202 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         consequential: true,
         requiresOnlineDevice: true
     },
+    'ir.adddevice': {
+        namespaceKind: 'device',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: true
+    },
+    'ir.deletedevice': {
+        namespaceKind: 'device',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: true
+    },
+    'ir.describe': {
+        namespaceKind: 'device',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: true
+    },
+    'ir.getconfig': {
+        namespaceKind: 'device',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: true
+    },
+    'ir.getstatus': {
+        namespaceKind: 'device',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: true
+    },
+    'ir.setconfig': {
+        namespaceKind: 'device',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: true
+    },
+    'ircode.describe': {
+        namespaceKind: 'device',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: true
+    },
+    'ircode.emit': {
+        namespaceKind: 'device',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: true
+    },
+    'ircode.getconfig': {
+        namespaceKind: 'device',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: true
+    },
+    'ircode.getstatus': {
+        namespaceKind: 'device',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: true
+    },
+    'ircode.setconfig': {
+        namespaceKind: 'device',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: true
+    },
+    'irdevice.deletecode': {
+        namespaceKind: 'device',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: true
+    },
+    'irdevice.describe': {
+        namespaceKind: 'device',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: true
+    },
+    'irdevice.getconfig': {
+        namespaceKind: 'device',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: true
+    },
+    'irdevice.getstatus': {
+        namespaceKind: 'device',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: true
+    },
+    'irdevice.learncode': {
+        namespaceKind: 'device',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: true
+    },
+    'irdevice.setconfig': {
+        namespaceKind: 'device',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: true
+    },
+    'irlibrary.cataloglist': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'irlibrary.delete': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'irlibrary.describe': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'irlibrary.importcatalog': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: false,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'irlibrary.importfile': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: false,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'irlibrary.list': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'irlibrary.pushtodevice': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'irlibrary.save': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: false,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'irlibrary.update': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'job.cancel': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'job.capabilities': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
     'job.describe': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
@@ -3794,6 +4608,13 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
+        requiresOnlineDevice: false
+    },
+    'job.resume': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
         requiresOnlineDevice: false
     },
     'kind.create': {
@@ -4151,6 +4972,14 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.locations.backfillGeo'
+    },
+    'location.backfillgeography': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: false,
+        consequential: true,
         requiresOnlineDevice: false
     },
     'location.children': {
@@ -4160,6 +4989,14 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         consequential: false,
         requiresOnlineDevice: false,
         wrapper: 'host.locations.children'
+    },
+    'location.configuredeviceassignment': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.locations.configureDeviceAssignment'
     },
     'location.create': {
         namespaceKind: 'fleet-manager',
@@ -4177,6 +5014,22 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         requiresOnlineDevice: false,
         wrapper: 'host.locations.delete'
     },
+    'location.deletesubtree': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.locations.deleteSubtree'
+    },
+    'location.descendants': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.locations.descendants'
+    },
     'location.describe': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
@@ -4189,14 +5042,16 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.locations.eventReplay'
     },
     'location.floorplan.createuploadticket': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.locations.floorplan.createUploadTicket'
     },
     'location.get': {
         namespaceKind: 'fleet-manager',
@@ -4227,7 +5082,16 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.locations.listCountries'
+    },
+    'location.listdeviceassignmentprofiles': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.locations.deviceAssignmentProfiles'
     },
     'location.listkinds': {
         namespaceKind: 'fleet-manager',
@@ -4242,7 +5106,8 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.locations.listRegions'
     },
     'location.path': {
         namespaceKind: 'fleet-manager',
@@ -4260,12 +5125,21 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         requiresOnlineDevice: false,
         wrapper: 'host.locations.removeAssignment'
     },
+    'location.reversegeocode': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.locations.reverseGeocode'
+    },
     'location.searchplaces': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.locations.searchPlaces'
     },
     'location.setassignment': {
         namespaceKind: 'fleet-manager',
@@ -4280,14 +5154,16 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.locations.setAssignments'
     },
     'location.signalheatmap': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.locations.signalHeatmap'
     },
     'location.update': {
         namespaceKind: 'fleet-manager',
@@ -4464,6 +5340,27 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         destructive: true,
         consequential: true,
         requiresOnlineDevice: true
+    },
+    'mcp_approval.describe': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'mcp_approval.list': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'mcp_approval.revoke': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: false,
+        consequential: true,
+        requiresOnlineDevice: false
     },
     'mdns.describe': {
         namespaceKind: 'device',
@@ -4689,6 +5586,13 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         consequential: true,
         requiresOnlineDevice: true
     },
+    'media.reportimage.assign': {
+        namespaceKind: 'device',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: true
+    },
     'media.reportimage.createuploadticket': {
         namespaceKind: 'device',
         readOnly: false,
@@ -4855,56 +5759,64 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.bundle.applyImport'
     },
     'notification.bundle.export': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.bundle.export'
     },
     'notification.bundle.exportalertmanager': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.bundle.exportAlertmanager'
     },
     'notification.bundle.exportgrafana': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.bundle.exportGrafana'
     },
     'notification.bundle.importalertmanager': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.bundle.importAlertmanager'
     },
     'notification.bundle.importgrafana': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.bundle.importGrafana'
     },
     'notification.bundle.planimport': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.bundle.planImport'
     },
     'notification.bundle.validate': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.bundle.validate'
     },
     'notification.describe': {
         namespaceKind: 'fleet-manager',
@@ -4918,149 +5830,178 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.destinations.addMembers'
     },
     'notification.destination.create': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.destinations.create'
     },
     'notification.destination.delete': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.destinations.delete'
     },
     'notification.destination.get': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.destinations.get'
     },
     'notification.destination.getmodel': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.destinations.getModel'
     },
     'notification.destination.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.destinations.list'
     },
     'notification.destination.listmembers': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.destinations.listMembers'
     },
     'notification.destination.removemembers': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.destinations.removeMembers'
     },
     'notification.destination.update': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.destinations.update'
     },
     'notification.emailasset.createuploadticket': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.emailAssets.createUploadTicket'
     },
     'notification.emailasset.delete': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.emailAssets.delete'
     },
     'notification.emailasset.get': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.emailAssets.get'
     },
     'notification.emailasset.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.emailAssets.list'
     },
     'notification.emailtemplate.create': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.emailTemplates.create'
     },
     'notification.emailtemplate.delete': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.emailTemplates.delete'
     },
     'notification.emailtemplate.get': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.emailTemplates.get'
     },
     'notification.emailtemplate.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.emailTemplates.list'
     },
     'notification.emailtemplate.update': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.emailTemplates.update'
     },
     'notification.history.get': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.history.get'
     },
     'notification.history.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.history.list'
     },
     'notification.history.requeue': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.history.requeue'
     },
     'notification.inbox.get': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.inbox.get'
+    },
+    'notification.inbox.getmany': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
@@ -5072,168 +6013,192 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.inbox.list'
     },
     'notification.inbox.markallread': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
-        destructive: true,
+        destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.inbox.markAllRead'
     },
     'notification.inbox.markread': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
-        destructive: true,
+        destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.inbox.markRead'
     },
     'notification.inbox.markunread': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
-        destructive: true,
+        destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.inbox.markUnread'
     },
     'notification.listtokens': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.listTokens'
     },
     'notification.oauth.start': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.oauthStart'
     },
     'notification.oncall.delete': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.onCall.delete'
     },
     'notification.oncall.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.onCall.list'
     },
     'notification.oncall.resolve': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.onCall.resolve'
     },
     'notification.oncall.set': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.onCall.set'
     },
     'notification.preference.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.preferences.list'
     },
     'notification.preference.set': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.preferences.set'
     },
     'notification.renderemailpreview': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.renderEmailPreview'
     },
     'notification.rendertemplate': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.renderTemplate'
     },
     'notification.routing.delete': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.routing.delete'
     },
     'notification.routing.evaluate': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.routing.evaluate'
     },
     'notification.routing.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.routing.list'
     },
     'notification.routing.set': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.routing.set'
     },
     'notification.subscribe': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.subscribe'
     },
     'notification.template.create': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.templates.create'
     },
     'notification.template.delete': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.templates.delete'
     },
     'notification.template.get': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.templates.get'
     },
     'notification.template.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.templates.list'
     },
     'notification.template.update': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.notifications.templates.update'
     },
     'object.describe': {
         namespaceKind: 'device',
@@ -5269,6 +6234,223 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         destructive: true,
         consequential: true,
         requiresOnlineDevice: true
+    },
+    'operations.deleteitaliapoolregisterentry': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'operations.deletepolicy': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'operations.describe': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'operations.getcoldchainrecordverdict': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'operations.getirrigationverdict': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'operations.getitaliabreakertripverdict': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'operations.getitaliahotwaterverdict': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'operations.getitalianightflowverdicts': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'operations.getitaliapitchverdict': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'operations.getitaliapoolregister': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'operations.getitaliareopeningflushverdict': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'operations.getitaliasitepowerverdict': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'operations.getparkingoperationalverdict': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'operations.getpolicies': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'operations.getpolicyregistry': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'operations.getpolicyselectorcatalog': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'operations.getpvhealthverdict': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'operations.getrefrigerationpeerhealth': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'operations.setcoldchainrecordpolicy': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'operations.setirrigationpolicy': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'operations.setitaliabreakertrippolicy': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'operations.setitaliahotwaterpolicy': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'operations.setitalianightflowpolicy': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'operations.setitaliapitchpolicy': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'operations.setitaliapoolchemistrypolicy': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'operations.setitaliapoolregisterentry': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'operations.setitaliasitepowerpolicy': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'operations.setparkingoperationalpolicy': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'operations.setpolicy': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'operations.setpvhealthpolicy': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'operations.setrefrigerationpeerpolicy': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
     },
     'organization.describe': {
         namespaceKind: 'fleet-manager',
@@ -5380,14 +6562,16 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.authorization.roles.get'
     },
     'permission.grantroles': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.authorization.roles.grant'
     },
     'permission.listadministrators': {
         namespaceKind: 'fleet-manager',
@@ -5401,7 +6585,8 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.authorization.roles.revoke'
     },
     'persona.create': {
         namespaceKind: 'fleet-manager',
@@ -5436,7 +6621,8 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.authorization.personas.list'
     },
     'persona.update': {
         namespaceKind: 'fleet-manager',
@@ -5467,6 +6653,34 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         requiresOnlineDevice: true
     },
     'pill.setconfig': {
+        namespaceKind: 'device',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: true
+    },
+    'pilluart.describe': {
+        namespaceKind: 'device',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: true
+    },
+    'pilluart.getconfig': {
+        namespaceKind: 'device',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: true
+    },
+    'pilluart.getstatus': {
+        namespaceKind: 'device',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: true
+    },
+    'pilluart.setconfig': {
         namespaceKind: 'device',
         readOnly: false,
         destructive: true,
@@ -5695,7 +6909,16 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.reports.cancel'
+    },
+    'report.delete': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.reports.delete'
     },
     'report.describe': {
         namespaceKind: 'fleet-manager',
@@ -5709,28 +6932,32 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.reports.generate'
     },
     'report.getreport': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.reports.get'
     },
     'report.purgereports': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.reports.purgeReports'
     },
     'report.suggesttimeshift': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.reports.suggestTimeShift'
     },
     'reporttemplate.create': {
         namespaceKind: 'fleet-manager',
@@ -6032,6 +7259,55 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         destructive: true,
         consequential: true,
         requiresOnlineDevice: true
+    },
+    'scopedautomation.create': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: false,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'scopedautomation.delete': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'scopedautomation.describe': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'scopedautomation.get': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'scopedautomation.list': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'scopedautomation.run': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'scopedautomation.update': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
     },
     'script.create': {
         namespaceKind: 'device',
@@ -6382,7 +7658,8 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: true
+        requiresOnlineDevice: true,
+        wrapper: 'host.devices.reboot'
     },
     'shelly.resetauthcode': {
         namespaceKind: 'device',
@@ -6613,7 +7890,8 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: true
+        requiresOnlineDevice: true,
+        wrapper: 'host.devices.renamePhysical'
     },
     'sys.setdebugconfig': {
         namespaceKind: 'device',
@@ -6888,6 +8166,20 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         consequential: true,
         requiresOnlineDevice: false
     },
+    'tariff.billingperiodat': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'tariff.billingperiods': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
     'tariff.delete': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
@@ -6916,6 +8208,27 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         consequential: false,
         requiresOnlineDevice: false
     },
+    'tariff.listassignments': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'tariff.resolveassignments': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'tariff.resolvepricing': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
     'tariff.setlivesource': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
@@ -6924,6 +8237,13 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         requiresOnlineDevice: false
     },
     'tariff.update': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false
+    },
+    'tariff.writecomponents': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
@@ -7447,7 +8767,8 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.attachCustomPersona'
     },
     'user.authenticate': {
         namespaceKind: 'fleet-manager',
@@ -7463,42 +8784,62 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         consequential: true,
         requiresOnlineDevice: false
     },
-    'user.createpat': {
-        namespaceKind: 'fleet-manager',
-        readOnly: false,
-        destructive: false,
-        consequential: true,
-        requiresOnlineDevice: false
-    },
-    'user.createscopedpat': {
-        namespaceKind: 'fleet-manager',
-        readOnly: false,
-        destructive: false,
-        consequential: true,
-        requiresOnlineDevice: false
-    },
-    'user.createserviceuser': {
-        namespaceKind: 'fleet-manager',
-        readOnly: false,
-        destructive: false,
-        consequential: true,
-        requiresOnlineDevice: false
-    },
-    'user.createzitadeluser': {
-        namespaceKind: 'fleet-manager',
-        readOnly: false,
-        destructive: false,
-        consequential: true,
-        requiresOnlineDevice: false
-    },
-    'user.deactivateuser': {
+    'user.bulkrotatepats': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
         requiresOnlineDevice: false
     },
+    'user.createpat': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: false,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.pats.create'
+    },
+    'user.createscopedpat': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: false,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.scopedPats.create'
+    },
+    'user.createserviceuser': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: false,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.serviceUsers.create'
+    },
+    'user.createzitadeluser': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: false,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.create'
+    },
+    'user.deactivateuser': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.deactivate'
+    },
     'user.deleteserviceuser': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.serviceUsers.delete'
+    },
+    'user.deletesession': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
@@ -7510,9 +8851,17 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.delete'
     },
     'user.describe': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false
+    },
+    'user.getauthmethods': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
@@ -7524,6 +8873,14 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.effectivePermissions'
+    },
+    'user.getinstanceinfo': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
         requiresOnlineDevice: false
     },
     'user.getme': {
@@ -7531,23 +8888,34 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.me'
     },
     'user.listpats': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.pats.list'
     },
     'user.listscopedpats': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.scopedPats.list'
     },
     'user.listserviceusers': {
+        namespaceKind: 'fleet-manager',
+        readOnly: true,
+        destructive: false,
+        consequential: false,
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.serviceUsers.list'
+    },
+    'user.listsessions': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
@@ -7566,35 +8934,40 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.scopedPats.preview'
     },
     'user.profilepicture.createuploadticket': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.profilePicture.uploadTicket'
     },
     'user.profilepicture.geturl': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.profilePicture.url'
     },
     'user.profilepicture.remove': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.profilePicture.remove'
     },
     'user.reactivateuser': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.reactivate'
     },
     'user.refresh': {
         namespaceKind: 'fleet-manager',
@@ -7615,28 +8988,40 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.scopedPats.revokeAll'
     },
     'user.revokepat': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.pats.revoke'
     },
     'user.revokescopedpat': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.scopedPats.revoke'
+    },
+    'user.rotatepat': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.pats.rotate'
     },
     'user.rotatescopedpat': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.scopedPats.rotate'
     },
     'user.rotatetoken': {
         namespaceKind: 'fleet-manager',
@@ -7650,9 +9035,18 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.sendPasswordReset'
     },
     'user.setallowdebug': {
+        namespaceKind: 'fleet-manager',
+        readOnly: false,
+        destructive: true,
+        consequential: true,
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.setAllowDebug'
+    },
+    'user.setserviceuserorg': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
@@ -7664,21 +9058,24 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.simulate'
     },
     'user.updatezitadeluser': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.update'
     },
     'user.zitadelavailable': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.users.directory'
     },
     'variables.delete': {
         namespaceKind: 'fleet-manager',
@@ -7986,32 +9383,28 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false,
-        wrapper: 'host.bluetoothDevices.listCandidates'
+        requiresOnlineDevice: false
     },
     'virtualdevice.bluetooth.delete': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false,
-        wrapper: 'host.bluetoothDevices.delete'
+        requiresOnlineDevice: false
     },
     'virtualdevice.bluetooth.get': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false,
-        wrapper: 'host.bluetoothDevices.get'
+        requiresOnlineDevice: false
     },
     'virtualdevice.bluetooth.image.createuploadticket': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false,
-        wrapper: 'host.bluetoothDevices.createImageUploadTicket'
+        requiresOnlineDevice: false
     },
     'virtualdevice.bluetooth.key.clear': {
         namespaceKind: 'fleet-manager',
@@ -8032,40 +9425,35 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false,
-        wrapper: 'host.bluetoothDevices.list'
+        requiresOnlineDevice: false
     },
     'virtualdevice.bluetooth.promotefromgateway': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false,
-        wrapper: 'host.bluetoothDevices.promoteFromGateway'
+        requiresOnlineDevice: false
     },
     'virtualdevice.bluetooth.transport.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false,
-        wrapper: 'host.bluetoothDevices.listTransports'
+        requiresOnlineDevice: false
     },
     'virtualdevice.bluetooth.transport.setprimary': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false,
-        wrapper: 'host.bluetoothDevices.setPrimaryTransport'
+        requiresOnlineDevice: false
     },
     'virtualdevice.bluetooth.update': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false,
-        wrapper: 'host.bluetoothDevices.update'
+        requiresOnlineDevice: false
     },
     'virtualdevice.command.invoke': {
         namespaceKind: 'fleet-manager',
@@ -8080,16 +9468,14 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false,
-        wrapper: 'host.virtualDevices.create'
+        requiresOnlineDevice: false
     },
     'virtualdevice.delete': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false,
-        wrapper: 'host.virtualDevices.delete'
+        requiresOnlineDevice: false
     },
     'virtualdevice.describe': {
         namespaceKind: 'fleet-manager',
@@ -8135,8 +9521,7 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false,
-        wrapper: 'host.virtualDevices.get'
+        requiresOnlineDevice: false
     },
     'virtualdevice.history.backfill': {
         namespaceKind: 'fleet-manager',
@@ -8167,16 +9552,14 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false,
-        wrapper: 'host.virtualDevices.createImageUploadTicket'
+        requiresOnlineDevice: false
     },
     'virtualdevice.list': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false,
-        wrapper: 'host.virtualDevices.list'
+        requiresOnlineDevice: false
     },
     'virtualdevice.manifest.apply': {
         namespaceKind: 'fleet-manager',
@@ -8263,8 +9646,7 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false,
-        wrapper: 'host.virtualDevices.update'
+        requiresOnlineDevice: false
     },
     'voltmeter.checkexpression': {
         namespaceKind: 'device',
@@ -8306,49 +9688,56 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.waitingRoom.acceptAllStart'
     },
     'waitingroom.acceptbulkcancel': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.waitingRoom.acceptBulkCancel'
     },
     'waitingroom.acceptbulkstart': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.waitingRoom.acceptBulkStart'
     },
     'waitingroom.acceptbulkstatus': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.waitingRoom.acceptBulkStatus'
     },
     'waitingroom.acceptpendingbyexternalid': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.waitingRoom.acceptPendingByExternalId'
     },
     'waitingroom.acceptpendingbyid': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.waitingRoom.acceptPendingById'
     },
     'waitingroom.approve': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: false,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.waitingRoom.approve'
     },
     'waitingroom.describe': {
         namespaceKind: 'fleet-manager',
@@ -8362,21 +9751,24 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.waitingRoom.get'
     },
     'waitingroom.getcounts': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.waitingRoom.counts'
     },
     'waitingroom.getdenied': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.waitingRoom.listAllDenied'
     },
     'waitingroom.getpending': {
         namespaceKind: 'fleet-manager',
@@ -8390,42 +9782,48 @@ export const HOST_METHOD_METADATA: Record<string, HostMethodMetadata> = {
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.waitingRoom.list'
     },
     'waitingroom.listdenied': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.waitingRoom.listDenied'
     },
     'waitingroom.probe': {
         namespaceKind: 'fleet-manager',
         readOnly: true,
         destructive: false,
         consequential: false,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.waitingRoom.probe'
     },
     'waitingroom.quarantine': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.waitingRoom.quarantine'
     },
     'waitingroom.reject': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.waitingRoom.reject'
     },
     'waitingroom.rejectpending': {
         namespaceKind: 'fleet-manager',
         readOnly: false,
         destructive: true,
         consequential: true,
-        requiresOnlineDevice: false
+        requiresOnlineDevice: false,
+        wrapper: 'host.waitingRoom.rejectPending'
     },
     'web.describe': {
         namespaceKind: 'device',

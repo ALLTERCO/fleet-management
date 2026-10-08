@@ -54,6 +54,10 @@ import {
     temporaryFirmwareFiles,
     temporaryFirmwareUploadsPath
 } from '../firmwareLibrary';
+import {
+    automationSourceForCaller,
+    withAutomationSource
+} from '../nodeRed/automationSource';
 import * as Observability from '../Observability';
 import {
     readClientDeviceUsageSnapshot,
@@ -64,8 +68,10 @@ import {accessLogOptions} from './accessLog';
 import {selectHttpAuthToken} from './authToken';
 import deviceGuiOrigin, {
     closeDeviceGuiConnections,
-    subscribeDeviceGuiRevocations
+    startDeviceGuiRevocationSubscriber,
+    stopDeviceGuiRevocationSubscriber
 } from './deviceGuiOrigin';
+import {applyHttpServerTimeouts} from './httpServerTimeouts';
 import {mcpAudienceGate} from './mcpAudienceGate';
 import {buildIntrospectionOptions} from './oidcAuth';
 import {enforceRateLimit, httpRouteLimit} from './rateLimit';
@@ -74,6 +80,7 @@ import apiDocs, {llmsTxtRouter} from './routes/apiDocs';
 import assetUpload from './routes/assetUpload';
 import auditDownload from './routes/auditDownload';
 import authSession from './routes/authSession';
+import {buildAutomationHooksRouter} from './routes/automationHooks';
 import backupImport from './routes/backupImport';
 import deviceProxy from './routes/device-proxy';
 import emailAssets from './routes/emailAssets';
@@ -82,11 +89,14 @@ import floorPlanUpload from './routes/floorPlanUpload';
 import grafana from './routes/grafana';
 import {buildDefaultRouter as buildGrafanaAlertWebhookRouter} from './routes/grafanaAlertWebhook';
 import mcpRouter from './routes/mcp';
+import mcpResourceMetadata from './routes/mcpResourceMetadata';
 import media from './routes/media';
 import nodeRedProxy, {
-    NODE_RED_AUTH_COOKIE,
+    authenticateNodeRedRequest,
+    closeNodeRedSession,
     nodeRedSessionPreflight,
     registerNodeRedUpgradeProxy,
+    renewNodeRedSession,
     requireNodeRedPermission
 } from './routes/nodeRedProxy';
 import oauthEmail from './routes/oauthEmail';
@@ -97,6 +107,7 @@ import zitadelActions from './routes/zitadelActions';
 import {scopedTokenAuthMiddleware} from './scopedTokenAuth';
 import {isNonSpaPath, isReservedBackendPath} from './spaFallback';
 import {
+    authFailureFor,
     isLoggedIn,
     isNotDefaultUser,
     requireGrafanaPermission,
@@ -106,6 +117,7 @@ import {
 } from './utils/authMiddleware';
 import {paramStr} from './utils/params';
 import {senderFromUser} from './utils/senderFromRequest';
+import {sendFileByName} from './utils/sendFileByName';
 import {
     auditLogsPath,
     backgroundsPath,
@@ -113,7 +125,7 @@ import {
     profilePicturesPath,
     reportImagesPath
 } from './utils/uploadPaths';
-import {viteDevHttpProxy} from './viteDevProxy';
+import {VITE_ADMIN_PORT, viteDevHttpProxy} from './viteDevProxy';
 import type AbstractWebsocketHandler from './ws/handlers/AbstractWebsocketHandler';
 import ClientWebsocketHandler from './ws/handlers/ClientWebsocketHandler';
 import ShellyWebsocketHandler, {
@@ -124,6 +136,8 @@ import WebsocketController from './ws/WebsocketController';
 
 const logger = log4js.getLogger('web');
 
+const AUTOMATION_HOOKS_PATH = '/automation-hooks';
+
 // HTTP request tracking for Prometheus
 const httpRequestCounts = new Map<string, number>();
 const httpStatusCounts = new Map<number, number>();
@@ -131,6 +145,11 @@ let httpActiveRequests = 0;
 
 function isNodeRedRequest(req: express.Request): boolean {
     return req.path === '/node-red' || req.path.startsWith('/node-red/');
+}
+
+// Webhook bodies are forwarded byte for byte, so they are never parsed here.
+function isAutomationHookRequest(req: express.Request): boolean {
+    return req.path.startsWith(`${AUTOMATION_HOOKS_PATH}/`);
 }
 
 function jsonBodyParser() {
@@ -154,7 +173,12 @@ function jsonBodyParser() {
         // Node-RED deploys flows as JSON through the reverse proxy. Leave
         // those requests unparsed so large flow bodies stream to Node-RED
         // instead of hitting Express' default JSON body cap.
-        if (isNodeRedRequest(req)) {
+        if (
+            isNodeRedRequest(req) ||
+            isAutomationHookRequest(req) ||
+            req.path === '/mcp' ||
+            req.path.startsWith('/mcp/')
+        ) {
             next();
             return;
         }
@@ -257,6 +281,7 @@ export function isProxiedAppPath(path: string): boolean {
 
 function registerMiddleware(app: express.Express) {
     app.use(httpRequestCountingMiddleware());
+    app.use(httpEgressBytesMiddleware());
     app.set('trust proxy', 1);
     const helmetMw = helmet(buildHelmetConfig());
     app.use((req, res, next) =>
@@ -293,6 +318,37 @@ function httpRequestCountingMiddleware(): express.RequestHandler {
         });
         next();
     };
+}
+
+// Response wire bytes (post-compression, incl. headers) per response, from the
+// socket bytesWritten delta — the HTTP egress. WS upgrades bypass Express
+// 'finish' and are not double-counted here.
+function httpEgressBytesMiddleware(): express.RequestHandler {
+    return (req, res, next) => {
+        const startBytes = res.socket?.bytesWritten ?? 0;
+        res.on('finish', () => {
+            const sock = res.socket;
+            if (!sock) return;
+            const delta = Math.max(0, sock.bytesWritten - startBytes);
+            if (delta > 0) {
+                Observability.incrementLabeledCounter(
+                    'http_response_bytes_total',
+                    {route: httpEgressRouteClass(req.path)},
+                    delta
+                );
+            }
+        });
+        next();
+    };
+}
+
+// Bounded route classes for the egress label (avoids per-path cardinality).
+function httpEgressRouteClass(p: string): string {
+    if (p === '/metrics') return 'metrics';
+    if (p === '/health') return 'health';
+    if (p.startsWith('/api')) return 'api';
+    if (p.startsWith('/assets') || p.startsWith('/ui')) return 'ui';
+    return 'other';
 }
 
 // HSTS off — HTTP-on-LAN deploys. Per-route overrides (SVG sandbox,
@@ -336,7 +392,8 @@ export function zitadelOriginOrEmpty(authority: string | undefined): string {
 // Extracts token + resolves user; assigns req.token + req.user for downstream.
 function httpTokenAndUserMiddleware(): express.RequestHandler {
     return async (req, _res, next) => {
-        const token = selectHttpAuthToken(req, NODE_RED_AUTH_COOKIE);
+        const token = selectHttpAuthToken(req);
+        req.authFailure = undefined;
         if (token.length > 1) {
             req.token = token;
             try {
@@ -351,6 +408,7 @@ function httpTokenAndUserMiddleware(): express.RequestHandler {
             } catch (error) {
                 logger.warn('Failed to get user from token: %s', error);
                 req.user = UNAUTHORIZED_USER;
+                req.authFailure = authFailureFor(error);
             }
         } else {
             req.token = '';
@@ -456,11 +514,8 @@ function registerRpcHandlers(app: express.Express) {
         res: express.Response,
         next: express.NextFunction
     ) => {
-        handleWebRpc(
-            res,
-            req.user!,
-            paramStr(req.params.method),
-            req.body
+        withAutomationSource(automationSourceForCaller(req), () =>
+            handleWebRpc(res, req.user!, paramStr(req.params.method), req.body)
         ).catch(next);
     };
     const bodyHandler = (
@@ -473,7 +528,9 @@ function registerRpcHandlers(app: express.Express) {
             res.status(400).json(RpcError.InvalidRequest().getRpcError());
             return;
         }
-        handleWebRpc(res, req.user!, method, params).catch(next);
+        withAutomationSource(automationSourceForCaller(req), () =>
+            handleWebRpc(res, req.user!, method, params)
+        ).catch(next);
     };
 
     // GET /rpc/:method removed (CR-41): query-string params + cookie auth
@@ -713,7 +770,7 @@ function registerStaticRoutes(app: express.Express) {
                 'Content-Disposition',
                 `inline; filename="${safeFileName}"`
             );
-            res.sendFile(file.filePath, (error) => {
+            sendFileByName(res, file.filePath, (error) => {
                 if (error && !res.headersSent) {
                     res.status(404).json({
                         error: 'Firmware file not found or expired'
@@ -724,6 +781,8 @@ function registerStaticRoutes(app: express.Express) {
     );
 }
 function registerRouters(app: express.Express) {
+    // OAuth discovery for /mcp is public by definition (RFC 9728).
+    app.use(mcpResourceMetadata);
     // /api/switch (deprecated GET-based device toggle) removed —
     // callers must use /rpc/switch.Toggle. The legacy endpoint was
     // CSRF-able via cookie auth and only kept under a Sunset header.
@@ -756,13 +815,19 @@ function registerRouters(app: express.Express) {
     // flag, /node-red/* falls through to the catch-all 404.
     if (tuning.nodeRed.enabled) {
         app.options('/node-red/session', nodeRedSessionPreflight);
+        // Checks the sign-in itself: a refused keepalive ends the user's sessions.
+        app.post('/node-red/session', renewNodeRedSession);
+        // Logout must work after the session or the right is gone.
+        app.delete('/node-red/session', closeNodeRedSession);
         app.use(
             '/node-red',
-            isLoggedIn,
+            authenticateNodeRedRequest,
             isNotDefaultUser,
             requireNodeRedPermission,
             nodeRedProxy
         );
+        // Public on purpose: the Node-RED node checks each hook's secret.
+        app.use(AUTOMATION_HOOKS_PATH, buildAutomationHooksRouter());
     }
     app.use('/api/device-proxy', deviceProxy);
     app.use('/llms.txt', llmsTxtRouter);
@@ -924,6 +989,22 @@ function registerZitadelAuth(app: express.Express) {
 
 function registerFrontEnd(app: express.Express) {
     if (DEV_MODE) {
+        // The operator FM SPA, mirroring the /admin/ bundle a runtime-bm image
+        // ships. Registered first and mounted on the path, because '/admin' is
+        // a reserved backend prefix — the general middleware below would hand
+        // it to next() and it would 404 with nothing behind it. Only reachable
+        // when a second Vite is up on VITE_ADMIN_PORT; without one the proxy
+        // answers 502, which reads better than a bare 404.
+        app.use('/admin', (req, res) => {
+            // Vite is based at '/admin/' and does not answer the un-slashed
+            // form. A static server would redirect; in dev we have to.
+            if (req.originalUrl === '/admin') {
+                res.redirect(302, '/admin/');
+                return;
+            }
+            viteDevHttpProxy(req, res, VITE_ADMIN_PORT);
+        });
+
         // Dev: serve the UI live from the Vite dev server (HMR). Backend API
         // paths fall through to their own routes; everything else goes to Vite.
         app.use((req, res, next) => {
@@ -971,7 +1052,7 @@ function registerFrontEnd(app: express.Express) {
                     return next();
                 }
                 if (fs.existsSync(adminIndexPath)) {
-                    res.sendFile(adminIndexPath);
+                    sendFileByName(res, adminIndexPath);
                 } else {
                     next();
                 }
@@ -1005,7 +1086,7 @@ function registerFrontEnd(app: express.Express) {
                 }
                 res.setHeader('Cache-Control', 'public, max-age=86400');
                 res.setHeader('X-Image-Fallback', '1');
-                res.sendFile(genericLogoPath);
+                sendFileByName(res, genericLogoPath);
             }
         );
         // Branding + predefined images — misses are real bugs, no fallback.
@@ -1045,7 +1126,7 @@ function registerFrontEnd(app: express.Express) {
 
             if (fs.existsSync(indexPath)) {
                 res.setHeader('Cache-Control', 'no-cache');
-                res.sendFile(indexPath);
+                sendFileByName(res, indexPath);
             } else {
                 next();
             }
@@ -1078,6 +1159,7 @@ function attachFatalBindErrorHandler(
 }
 
 export async function stop(timeoutMs = 10_000): Promise<void> {
+    stopDeviceGuiRevocationSubscriber();
     closeDeviceGuiConnections();
     const closes: Promise<void>[] = [];
     const closeServer = (srv: http.Server | https.Server | undefined) => {
@@ -1121,7 +1203,7 @@ export async function stop(timeoutMs = 10_000): Promise<void> {
 export async function start() {
     const app = express();
 
-    await subscribeDeviceGuiRevocations();
+    startDeviceGuiRevocationSubscriber();
 
     // Device GUI paths must be handled before the Fleet Manager SPA.
     app.use(deviceGuiOrigin);
@@ -1202,7 +1284,7 @@ export async function start() {
         attachFatalBindErrorHandler(httpServer, config.port);
         registerNodeRedUpgradeProxy(httpServer);
 
-        httpServer.setTimeout(tuning.http.httpSocketTimeoutMs);
+        applyHttpServerTimeouts(httpServer);
 
         _wsController = new WebsocketController(
             httpServer,
@@ -1225,7 +1307,7 @@ export async function start() {
         attachFatalBindErrorHandler(httpsServer, config.port_ssl);
         registerNodeRedUpgradeProxy(httpsServer);
 
-        httpsServer.setTimeout(tuning.http.httpSocketTimeoutMs);
+        applyHttpServerTimeouts(httpsServer);
         _wssController = new WebsocketController(
             httpsServer,
             shellyHandler,
@@ -1240,7 +1322,7 @@ export async function start() {
         );
     } else {
         logger.info(
-            'Node-RED disabled; deploy with --with nodered to start the standalone addon'
+            'Node-RED disabled; to start it, deploy with --with nodered (private deploy.sh) or --nodered (public deploy-public.sh)'
         );
     }
 }

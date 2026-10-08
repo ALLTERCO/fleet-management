@@ -4,6 +4,7 @@
 
 import {DescribeBuilder, type DescribeOutput} from './_describe';
 import type {JsonSchema} from './_schema';
+import {listResponseSchema, SUCCESS_RESPONSE_SCHEMA} from './_shared';
 
 export const CERTIFICATE_KINDS = [
     'root_ca',
@@ -64,7 +65,9 @@ export interface CertificateMetadata {
     chain_includes_root: boolean;
 }
 
-export interface CertificateResponse {
+// Each cert fn returns a different column list, so each gets its own type.
+// fn_certificate_update_name stops at these core columns.
+export interface CertificateCoreResponse {
     id: string;
     tenant_id: string;
     name: string;
@@ -85,10 +88,31 @@ export interface CertificateResponse {
     created_at: string;
     created_by: string | null;
     last_used_at: string | null;
+}
+
+interface CertificateMetaColumns {
     metadata: CertificateMetadata | null;
     tags: string[];
+}
+
+// List rows: core columns plus the aggregated group ids.
+export interface CertificateResponse
+    extends CertificateCoreResponse,
+        CertificateMetaColumns {
     // Strong typed FKs to organization.groups (M:N).
     device_group_ids: number[];
+}
+
+// Get adds the PEM body, null unless the caller asked and may see it.
+export interface CertificateGetResponse extends CertificateResponse {
+    pem: string | null;
+}
+
+// fn_certificate_import aggregates no group ids; it flags a re-import.
+export interface CertificateImportedResponse
+    extends CertificateCoreResponse,
+        CertificateMetaColumns {
+    was_existing: boolean;
 }
 
 export interface CertificateImportParams {
@@ -338,12 +362,23 @@ export const CERTIFICATE_LIST_PUSHES_PARAMS_SCHEMA: JsonSchema = {
     additionalProperties: false
 };
 
-export type CertificatePushStatus =
-    | 'queued'
-    | 'in_progress'
-    | 'applied'
-    | 'failed'
-    | 'rolled_back';
+// Declared once so the schemas below and the types share one list.
+export const CERTIFICATE_PUSH_STATUSES = [
+    'queued',
+    'in_progress',
+    'applied',
+    'failed',
+    'rolled_back'
+] as const;
+export type CertificatePushStatus = (typeof CERTIFICATE_PUSH_STATUSES)[number];
+
+export const CERTIFICATE_JOB_STATUSES = [
+    'queued',
+    'running',
+    'done',
+    'failed'
+] as const;
+export type CertificateJobStatus = (typeof CERTIFICATE_JOB_STATUSES)[number];
 
 export interface CertificateJobResponse {
     id: string;
@@ -351,7 +386,7 @@ export interface CertificateJobResponse {
     certificate_id: string;
     slot: CertificateSlot;
     target_summary: CertificatePushTargetSummary;
-    status: 'queued' | 'running' | 'done' | 'failed';
+    status: CertificateJobStatus;
     started_at: string | null;
     finished_at: string | null;
     created_at: string;
@@ -399,22 +434,295 @@ export const CERTIFICATE_SIGN_CSR_PARAMS_SCHEMA: JsonSchema = {
     additionalProperties: false
 };
 
-const EMPTY_PARAMS: JsonSchema = {type: 'object', properties: {}};
-const ANY_RESPONSE: JsonSchema = {type: 'object', additionalProperties: true};
-const LIST_RESPONSE: JsonSchema = {
+// ---- Response schemas ---------------------------------------------------
+
+// Fourteen methods declared `response: {type: 'object'}`, which generates as
+// Record<string, unknown>, so a template had to guess. Shapes below are read
+// off CertificateComponent.ts and the fn_certificate_* migrations.
+
+// X.509 details the parser extracts. Rows stored before the metadata column
+// existed carry `{}`, so no field is required.
+const CERTIFICATE_METADATA_SCHEMA: JsonSchema = {
     type: 'object',
-    required: ['items', 'total', 'limit', 'offset', 'has_more'],
+    additionalProperties: false,
     properties: {
-        items: {
-            type: 'array',
-            items: {type: 'object', additionalProperties: true}
-        },
-        total: {type: 'integer'},
-        limit: {type: 'integer'},
-        offset: {type: 'integer'},
-        has_more: {type: 'boolean'}
+        signature_algorithm: {type: ['string', 'null']},
+        key_bits: {type: ['integer', 'null']},
+        key_curve: {type: ['string', 'null']},
+        serial_number: {type: 'string'},
+        subject_o: {type: ['string', 'null']},
+        subject_ou: {type: ['string', 'null']},
+        issuer_o: {type: ['string', 'null']},
+        issuer_ou: {type: ['string', 'null']},
+        san_dns: {type: 'array', items: {type: 'string'}},
+        san_ip: {type: 'array', items: {type: 'string'}},
+        key_usage: {type: 'array', items: {type: 'string'}},
+        extended_key_usage: {type: 'array', items: {type: 'string'}},
+        chain_includes_root: {type: 'boolean'}
     }
 };
+
+const CERTIFICATE_ID_SCHEMA: JsonSchema = {type: 'string', format: 'uuid'};
+const CERTIFICATE_TAGS_SCHEMA: JsonSchema = {
+    type: 'array',
+    items: {type: 'string'}
+};
+const CERTIFICATE_GROUP_IDS_SCHEMA: JsonSchema = {
+    type: 'array',
+    items: {type: 'integer'}
+};
+const NULLABLE_TIMESTAMP: JsonSchema = {
+    type: ['string', 'null'],
+    format: 'date-time'
+};
+const NULLABLE_STRING_ARRAY: JsonSchema = {
+    anyOf: [{type: 'array', items: {type: 'string'}}, {type: 'null'}]
+};
+
+// The columns every cert reader returns. fn_certificate_update_name stops
+// here; the list, get and import fns each add their own extras below.
+const CERTIFICATE_CORE_PROPERTIES: Record<string, JsonSchema> = {
+    id: CERTIFICATE_ID_SCHEMA,
+    tenant_id: {type: 'string'},
+    name: {type: 'string'},
+    kind: {type: 'string', enum: [...CERTIFICATE_KINDS]},
+    fingerprint_sha256: {type: 'string'},
+    subject_cn: {type: ['string', 'null']},
+    issuer_cn: {type: ['string', 'null']},
+    sans: NULLABLE_STRING_ARRAY,
+    key_algo: {type: ['string', 'null']},
+    chain_depth: {type: ['integer', 'null']},
+    basic_constraints_ca: {type: ['boolean', 'null']},
+    not_before: NULLABLE_TIMESTAMP,
+    not_after: NULLABLE_TIMESTAMP,
+    slot_compat: {
+        anyOf: [
+            {
+                type: 'array',
+                items: {type: 'string', enum: [...CERTIFICATE_SLOTS]}
+            },
+            {type: 'null'}
+        ]
+    },
+    device_compatible: {type: 'boolean'},
+    incompat_reasons: NULLABLE_STRING_ARRAY,
+    source: {type: 'string', enum: [...CERTIFICATE_SOURCES]},
+    created_at: {type: 'string', format: 'date-time'},
+    created_by: {type: ['string', 'null']},
+    last_used_at: NULLABLE_TIMESTAMP
+};
+const CERTIFICATE_CORE_REQUIRED = Object.keys(CERTIFICATE_CORE_PROPERTIES);
+
+// One stored cert as List returns it — core columns plus the aggregates.
+const CERTIFICATE_ROW_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+        ...CERTIFICATE_CORE_REQUIRED,
+        'metadata',
+        'tags',
+        'device_group_ids'
+    ],
+    properties: {
+        ...CERTIFICATE_CORE_PROPERTIES,
+        metadata: CERTIFICATE_METADATA_SCHEMA,
+        tags: CERTIFICATE_TAGS_SCHEMA,
+        device_group_ids: CERTIFICATE_GROUP_IDS_SCHEMA
+    }
+};
+
+// Get is the list row plus the PEM body, which is null unless the caller
+// asked for it AND is an admin.
+const CERTIFICATE_GET_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: [...(CERTIFICATE_ROW_SCHEMA.required ?? []), 'pem'],
+    properties: {
+        ...(CERTIFICATE_ROW_SCHEMA.properties ?? {}),
+        pem: {type: ['string', 'null']}
+    }
+};
+
+// fn_certificate_import answers with the stored row plus `was_existing`. It
+// does not aggregate device_group_ids, so that field is absent here.
+const CERTIFICATE_IMPORTED_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+        ...CERTIFICATE_CORE_REQUIRED,
+        'metadata',
+        'tags',
+        'was_existing'
+    ],
+    properties: {
+        ...CERTIFICATE_CORE_PROPERTIES,
+        metadata: CERTIFICATE_METADATA_SCHEMA,
+        tags: CERTIFICATE_TAGS_SCHEMA,
+        was_existing: {type: 'boolean'}
+    }
+};
+
+// fn_certificate_update_name returns the core columns only.
+const CERTIFICATE_UPDATED_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: CERTIFICATE_CORE_REQUIRED,
+    properties: {...CERTIFICATE_CORE_PROPERTIES}
+};
+
+const CERTIFICATE_SET_TAGS_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['id', 'tags'],
+    properties: {id: CERTIFICATE_ID_SCHEMA, tags: CERTIFICATE_TAGS_SCHEMA}
+};
+
+const CERTIFICATE_SET_GROUPS_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['id', 'device_group_ids'],
+    properties: {
+        id: CERTIFICATE_ID_SCHEMA,
+        device_group_ids: CERTIFICATE_GROUP_IDS_SCHEMA
+    }
+};
+
+// privateKeyPem ships only when asked for and a key is actually stored.
+const CERTIFICATE_EXPORT_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['id', 'name', 'pem'],
+    properties: {
+        id: CERTIFICATE_ID_SCHEMA,
+        name: {type: 'string'},
+        pem: {type: 'string'},
+        privateKeyPem: {type: 'string'}
+    }
+};
+
+const CERTIFICATE_ISSUE_DEFAULTS_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['defaultValidityDays', 'maxValidityDays'],
+    properties: {
+        defaultValidityDays: {type: 'integer', minimum: 1},
+        maxValidityDays: {type: 'integer', minimum: 1}
+    }
+};
+
+// `warnings` is declared because preflight always returns the key, even
+// though nothing currently pushes into it.
+const CERTIFICATE_PREFLIGHT_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['compatible', 'skipped', 'warnings'],
+    properties: {
+        compatible: {type: 'array', items: {type: 'string'}},
+        skipped: {
+            type: 'array',
+            items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['shellyId', 'reason'],
+                properties: {
+                    shellyId: {type: 'string'},
+                    reason: {type: 'string'}
+                }
+            }
+        },
+        warnings: {
+            type: 'array',
+            items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['shellyId', 'kind'],
+                properties: {
+                    shellyId: {type: 'string'},
+                    kind: {type: 'string'}
+                }
+            }
+        }
+    }
+};
+
+const CERTIFICATE_PUSH_TO_DEVICES_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['jobId', 'deviceCount'],
+    properties: {
+        jobId: {type: 'string', format: 'uuid'},
+        deviceCount: {type: 'integer', minimum: 0}
+    }
+};
+
+const CERTIFICATE_PUSH_ROW_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+        'id',
+        'job_id',
+        'certificate_id',
+        'device_id',
+        'slot',
+        'status',
+        'last_error',
+        'applied_at',
+        'requires_reboot',
+        'retry_count'
+    ],
+    properties: {
+        id: {type: 'integer'},
+        job_id: {type: 'string', format: 'uuid'},
+        certificate_id: CERTIFICATE_ID_SCHEMA,
+        device_id: {type: 'string'},
+        slot: {type: 'string', enum: [...CERTIFICATE_SLOTS]},
+        status: {type: 'string', enum: [...CERTIFICATE_PUSH_STATUSES]},
+        last_error: {type: ['string', 'null']},
+        applied_at: NULLABLE_TIMESTAMP,
+        requires_reboot: {type: 'boolean'},
+        retry_count: {type: 'integer', minimum: 0}
+    }
+};
+
+const CERTIFICATE_PUSH_STATUS_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['job', 'rows'],
+    properties: {
+        job: {
+            type: 'object',
+            additionalProperties: false,
+            required: [
+                'id',
+                'tenant_id',
+                'certificate_id',
+                'slot',
+                'target_summary',
+                'status',
+                'started_at',
+                'finished_at',
+                'created_at',
+                'created_by'
+            ],
+            properties: {
+                id: {type: 'string', format: 'uuid'},
+                tenant_id: {type: 'string'},
+                certificate_id: CERTIFICATE_ID_SCHEMA,
+                slot: {type: 'string', enum: [...CERTIFICATE_SLOTS]},
+                target_summary: CERTIFICATE_PUSH_TARGET_SCHEMA,
+                status: {type: 'string', enum: [...CERTIFICATE_JOB_STATUSES]},
+                started_at: NULLABLE_TIMESTAMP,
+                finished_at: NULLABLE_TIMESTAMP,
+                created_at: {type: 'string', format: 'date-time'},
+                created_by: {type: ['string', 'null']}
+            }
+        },
+        rows: {type: 'array', items: CERTIFICATE_PUSH_ROW_SCHEMA}
+    }
+};
+
+const EMPTY_PARAMS: JsonSchema = {type: 'object', properties: {}};
+const ANY_RESPONSE: JsonSchema = {type: 'object', additionalProperties: true};
 const ADMIN_PERM = {note: 'admin'};
 const READ_PERM = {note: 'authenticated'};
 
@@ -435,14 +743,14 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('List', {
         safety: {operation: 'read'},
         params: CERTIFICATE_LIST_PARAMS_SCHEMA,
-        response: LIST_RESPONSE,
+        response: listResponseSchema(CERTIFICATE_ROW_SCHEMA),
         permission: READ_PERM,
         description: 'List certificates with optional filters.'
     })
     .registerMethod('Get', {
         safety: {operation: 'read'},
         params: CERTIFICATE_GET_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: CERTIFICATE_GET_RESPONSE_SCHEMA,
         permission: READ_PERM,
         description:
             'Full metadata for one cert. PEM body included only when includePem=true (admin).'
@@ -450,7 +758,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('Import', {
         safety: {operation: 'create'},
         params: CERTIFICATE_IMPORT_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: CERTIFICATE_IMPORTED_RESPONSE_SCHEMA,
         permission: ADMIN_PERM,
         description:
             'Import an unencrypted PEM cert (and optional unencrypted private key). Encrypted keys / PFX are rejected per Shelly TLS KB.'
@@ -458,7 +766,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('Update', {
         safety: {operation: 'update'},
         params: CERTIFICATE_UPDATE_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: CERTIFICATE_UPDATED_RESPONSE_SCHEMA,
         permission: ADMIN_PERM,
         description:
             'Update mutable cert fields (name only). PEM is immutable after import.'
@@ -466,7 +774,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('Delete', {
         safety: {operation: 'delete'},
         params: CERTIFICATE_DELETE_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: SUCCESS_RESPONSE_SCHEMA,
         permission: ADMIN_PERM,
         description:
             'Delete a cert. Refuses if currently pushed and not yet replaced.'
@@ -474,7 +782,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('SetTags', {
         safety: {operation: 'update'},
         params: CERTIFICATE_SET_TAGS_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: CERTIFICATE_SET_TAGS_RESPONSE_SCHEMA,
         permission: ADMIN_PERM,
         description:
             'Replace the tag set on a cert. Free-form labels for filter/search.'
@@ -482,14 +790,14 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('SetGroups', {
         safety: {operation: 'update'},
         params: CERTIFICATE_SET_GROUPS_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: CERTIFICATE_SET_GROUPS_RESPONSE_SCHEMA,
         permission: ADMIN_PERM,
         description:
             'Replace the device-group bindings (typed FK to organization.groups).'
     })
     .registerMethod('Export', {
         params: CERTIFICATE_EXPORT_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: CERTIFICATE_EXPORT_RESPONSE_SCHEMA,
         permission: ADMIN_PERM,
         description:
             'Export cert PEM (+ optional private key). Audited every call.'
@@ -497,7 +805,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('IssueDeviceCert', {
         safety: {operation: 'create'},
         params: CERTIFICATE_ISSUE_DEVICE_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: CERTIFICATE_IMPORTED_RESPONSE_SCHEMA,
         permission: ADMIN_PERM,
         description:
             'FM signs a leaf cert for a shellyID against the local Shelly Fleet Manager Root CA.'
@@ -505,7 +813,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('SignCsr', {
         safety: {operation: 'create'},
         params: CERTIFICATE_SIGN_CSR_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: CERTIFICATE_IMPORTED_RESPONSE_SCHEMA,
         permission: ADMIN_PERM,
         description:
             'FM signs an operator-supplied CSR against the local Shelly Fleet Manager Root CA. Operator keeps the private key on the device that generated the CSR.'
@@ -513,7 +821,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('GetIssueDefaults', {
         safety: {operation: 'read'},
         params: CERTIFICATE_GET_ISSUE_DEFAULTS_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: CERTIFICATE_ISSUE_DEFAULTS_RESPONSE_SCHEMA,
         permission: READ_PERM,
         description:
             'Returns {defaultValidityDays, maxValidityDays} from FM env. Frontend reads these instead of mirroring FM_UI_CERT_* runtime config.'
@@ -521,7 +829,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('PreflightPush', {
         safety: {operation: 'read'},
         params: CERTIFICATE_PREFLIGHT_PUSH_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: CERTIFICATE_PREFLIGHT_RESPONSE_SCHEMA,
         permission: READ_PERM,
         description:
             'Resolve the target and report which devices are compatible vs skipped (offline / firmware too old / unsupported key algo / slot incompat) plus warnings (clock skew, enhanced_security off).'
@@ -529,7 +837,7 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('PushToDevices', {
         safety: {operation: 'execute'},
         params: CERTIFICATE_PUSH_TO_DEVICES_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: CERTIFICATE_PUSH_TO_DEVICES_RESPONSE_SCHEMA,
         permission: ADMIN_PERM,
         description:
             'Queue a push job that fans the cert out to the resolved target devices in the chosen slot. Returns {jobId, deviceCount}.'
@@ -537,14 +845,14 @@ export const CERTIFICATE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('PushStatus', {
         safety: {operation: 'read'},
         params: CERTIFICATE_PUSH_STATUS_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: CERTIFICATE_PUSH_STATUS_RESPONSE_SCHEMA,
         permission: READ_PERM,
         description: 'Polling fallback for the WS push event stream.'
     })
     .registerMethod('ListPushes', {
         safety: {operation: 'read'},
         params: CERTIFICATE_LIST_PUSHES_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: listResponseSchema(CERTIFICATE_PUSH_ROW_SCHEMA),
         permission: READ_PERM,
         description: 'List push history scoped by cert / device / job.'
     })

@@ -21,6 +21,7 @@ import {
     userIsAdmin
 } from '../utils/authMiddleware';
 import {paramStr} from '../utils/params';
+import {downloadByName} from '../utils/sendFileByName';
 import {auditLogsPath, emReportsPath} from '../utils/uploadPaths';
 
 const router = express.Router();
@@ -32,13 +33,16 @@ async function serveOwnerBoundReportArtifact(
     res: express.Response
 ): Promise<void> {
     const filename = paramStr(req.params.filename);
-    // CSV, gzipped CSV, and energy HTML twins are owner-bound artifacts.
-    if (!/^[a-zA-Z0-9\-_.]+\.(csv(\.gz)?|html)$/.test(filename)) {
+    // CSV, HTML and XLSX companions are all owner-bound report artifacts.
+    if (!/^[a-zA-Z0-9\-_.]+\.(csv(\.gz)?|html|xlsx|pdf)$/.test(filename)) {
         res.status(400).send('Invalid filename');
         return;
     }
     const userId = req.user?.userId;
-    if (!userId || !(await isExportOwner(filename, userId))) {
+    if (
+        !userId ||
+        !(await isExportOwner(filename, userId, req.user?.organizationId))
+    ) {
         res.status(403).end();
         return;
     }
@@ -62,7 +66,13 @@ async function serveOwnerBoundReportArtifact(
                 ? '/reports/download'
                 : '/exports/download'
         });
-        res.download(fullPath, safeName);
+        if (safeName.endsWith('.xlsx')) {
+            res.type(
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            );
+        }
+        if (safeName.endsWith('.pdf')) res.type('application/pdf');
+        downloadByName(res, emReportsPath, safeName);
     });
 }
 
@@ -112,7 +122,7 @@ router.get(
                 res.status(404).send('File not found');
                 return;
             }
-            res.download(fullPath, safeName);
+            downloadByName(res, auditLogsPath, safeName);
         });
     }
 );

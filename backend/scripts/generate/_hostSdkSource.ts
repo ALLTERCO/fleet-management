@@ -127,12 +127,160 @@ function exportedInitializer(
     return undefined;
 }
 
+function importedSourceFile(
+    source: ts.SourceFile,
+    localName: string
+): string | undefined {
+    for (const statement of source.statements) {
+        if (!ts.isImportDeclaration(statement)) continue;
+        const specifier = statement.moduleSpecifier;
+        if (!ts.isStringLiteral(specifier) || !specifier.text.startsWith('.')) {
+            continue;
+        }
+        const bindings = statement.importClause?.namedBindings;
+        if (!bindings || !ts.isNamedImports(bindings)) continue;
+        const imported = bindings.elements.find(
+            (element) => element.name.text === localName
+        );
+        if (!imported) continue;
+        const candidate = path.resolve(
+            path.dirname(source.fileName),
+            specifier.text
+        );
+        return path.extname(candidate) ? candidate : `${candidate}.ts`;
+    }
+    return undefined;
+}
+
+function returnedObjectLiteral(
+    source: ts.SourceFile,
+    functionName: string
+): ts.ObjectLiteralExpression | undefined {
+    const declaration = source.statements.find(
+        (statement): statement is ts.FunctionDeclaration =>
+            ts.isFunctionDeclaration(statement) &&
+            statement.name?.text === functionName
+    );
+    if (!declaration?.body) return undefined;
+
+    const objects = new Map<string, ts.ObjectLiteralExpression>();
+    for (const statement of declaration.body.statements) {
+        if (!ts.isVariableStatement(statement)) continue;
+        for (const variable of statement.declarationList.declarations) {
+            const name = propertyName(variable.name);
+            const initializer = variable.initializer
+                ? unwrapExpression(variable.initializer)
+                : undefined;
+            if (
+                name &&
+                initializer &&
+                ts.isObjectLiteralExpression(initializer)
+            ) {
+                objects.set(name, initializer);
+            }
+        }
+    }
+    for (const statement of declaration.body.statements) {
+        if (!ts.isReturnStatement(statement) || !statement.expression) continue;
+        const returned = unwrapExpression(statement.expression);
+        if (ts.isObjectLiteralExpression(returned)) return returned;
+        if (ts.isIdentifier(returned)) return objects.get(returned.text);
+    }
+    return undefined;
+}
+
+function factoryObjectLiteral(
+    source: ts.SourceFile,
+    initializer: ts.Expression
+): ts.ObjectLiteralExpression | undefined {
+    const value = unwrapExpression(initializer);
+    if (!ts.isCallExpression(value) || !ts.isIdentifier(value.expression)) {
+        return undefined;
+    }
+    const factoryFile = importedSourceFile(source, value.expression.text);
+    if (!factoryFile || !fs.existsSync(factoryFile)) return undefined;
+    return returnedObjectLiteral(
+        parseSource(factoryFile),
+        value.expression.text
+    );
+}
+
+/**
+ * Resolves `domain.binding` where `domain` is a local const holding a factory
+ * call, to that factory's returned `binding` group.
+ *
+ * A module that aliases a core domain (`bindings: domain.binding`) carries no
+ * nested literal, so without this the alias looks like a leaf and every
+ * wrapper name under it is lost from the catalog.
+ */
+function aliasedShape(
+    source: ts.SourceFile,
+    node: ts.Expression
+): DomainShape | undefined {
+    const value = unwrapExpression(node);
+    if (!ts.isPropertyAccessExpression(value)) return undefined;
+    const target = value.expression;
+    if (!ts.isIdentifier(target)) return undefined;
+    const local = localInitializer(source, target.text);
+    const object = local && factoryObjectLiteral(source, local);
+    if (!object) return undefined;
+    const parent = shapeOf(object);
+    return parent?.kind === 'object'
+        ? parent.nested.get(value.name.text)
+        : undefined;
+}
+
+/** A non-exported `const x = ...` in the same file. */
+function localInitializer(
+    source: ts.SourceFile,
+    name: string
+): ts.Expression | undefined {
+    for (const statement of source.statements) {
+        if (!ts.isVariableStatement(statement)) continue;
+        for (const declaration of statement.declarationList.declarations) {
+            if (propertyName(declaration.name) === name) {
+                return declaration.initializer;
+            }
+        }
+    }
+    return undefined;
+}
+
+function objectShapeResolvingAliases(
+    source: ts.SourceFile,
+    value: ts.ObjectLiteralExpression
+): DomainShape {
+    const shape: DomainShape = {
+        kind: 'object',
+        keys: new Set(),
+        nested: new Map()
+    };
+    for (const prop of value.properties) {
+        const name = prop.name ? propertyName(prop.name) : undefined;
+        if (!name) continue;
+        shape.keys.add(name);
+        if (!ts.isPropertyAssignment(prop)) continue;
+        const child =
+            shapeOf(prop.initializer) ?? aliasedShape(source, prop.initializer);
+        if (child) shape.nested.set(name, child);
+    }
+    return shape;
+}
+
 export function exportedShape(
     source: ts.SourceFile,
     exportName: string
 ): DomainShape | undefined {
     const initializer = exportedInitializer(source, exportName);
-    return initializer ? shapeOf(initializer) : undefined;
+    if (!initializer) return undefined;
+    const unwrapped = unwrapExpression(initializer);
+    if (ts.isObjectLiteralExpression(unwrapped)) {
+        return objectShapeResolvingAliases(source, unwrapped);
+    }
+    const direct = shapeOf(initializer);
+    if (direct) return direct;
+    const factoryObject = factoryObjectLiteral(source, initializer);
+    return factoryObject ? shapeOf(factoryObject) : undefined;
 }
 
 export function sdkSourceFiles(): string[] {
@@ -195,7 +343,8 @@ function collectWrappers(
     literal: ts.ObjectLiteralExpression,
     prefix: string,
     validIds: Set<string>,
-    out: Map<string, string>
+    out: Map<string, string>,
+    source?: ts.SourceFile
 ): void {
     for (const prop of literal.properties) {
         const name = prop.name ? propertyName(prop.name) : undefined;
@@ -204,7 +353,27 @@ function collectWrappers(
         if (ts.isPropertyAssignment(prop)) {
             const value = unwrapExpression(prop.initializer);
             if (ts.isObjectLiteralExpression(value)) {
-                collectWrappers(value, `${prefix}.${name}`, validIds, out);
+                collectWrappers(
+                    value,
+                    `${prefix}.${name}`,
+                    validIds,
+                    out,
+                    source
+                );
+                continue;
+            }
+            // `bindings: domain.binding` — a module that aliases a core group
+            // instead of restating it. Without following it, every wrapper
+            // name underneath disappears from the catalog.
+            const aliased = source && aliasedObjectLiteral(source, value);
+            if (aliased) {
+                collectWrappers(
+                    aliased,
+                    `${prefix}.${name}`,
+                    validIds,
+                    out,
+                    source
+                );
                 continue;
             }
         }
@@ -213,16 +382,43 @@ function collectWrappers(
     }
 }
 
+/** `domain.binding` -> the object literal that factory returns for `binding`. */
+function aliasedObjectLiteral(
+    source: ts.SourceFile,
+    value: ts.Expression
+): ts.ObjectLiteralExpression | undefined {
+    if (!ts.isPropertyAccessExpression(value)) return undefined;
+    const target = value.expression;
+    if (!ts.isIdentifier(target)) return undefined;
+    const local = localInitializer(source, target.text);
+    const object = local && factoryObjectLiteral(source, local);
+    if (!object) return undefined;
+    for (const prop of object.properties) {
+        if (
+            ts.isPropertyAssignment(prop) &&
+            propertyName(prop.name) === value.name.text
+        ) {
+            const nested = unwrapExpression(prop.initializer);
+            if (ts.isObjectLiteralExpression(nested)) return nested;
+        }
+    }
+    return undefined;
+}
+
 /** RPC id -> hand-written wrapper path. Factory proxies excluded —
  *  only curated object-literal wrappers count as recommendations. */
 export function domainWrapperMap(validIds: Set<string>): Map<string, string> {
     const out = new Map<string, string>();
     for (const [domain, file] of hostDomainFiles()) {
-        const initializer = exportedInitializer(parseSource(file), domain);
+        const source = parseSource(file);
+        const initializer = exportedInitializer(source, domain);
         if (!initializer) continue;
         const value = unwrapExpression(initializer);
-        if (!ts.isObjectLiteralExpression(value)) continue;
-        collectWrappers(value, `host.${domain}`, validIds, out);
+        const literal = ts.isObjectLiteralExpression(value)
+            ? value
+            : factoryObjectLiteral(source, initializer);
+        if (!literal) continue;
+        collectWrappers(literal, `host.${domain}`, validIds, out, source);
     }
     return out;
 }
@@ -241,6 +437,31 @@ export function moduleRpcLiterals(): Map<string, Set<string>> {
             literals.add(match[1].toLowerCase());
         }
         out.set(name, literals);
+    }
+    return out;
+}
+
+/**
+ * Modules that only re-bind a core domain, mapped to the domain file they bind.
+ *
+ * `export const firmware = createFirmwareDomain(hostRpcAccess)` carries no RPC
+ * literal and no createHostDomain call, so without this the module reports no
+ * namespace at all — the generated index would say a re-bound surface touches
+ * nothing. The namespaces are the bound domain's; this says where to read them.
+ */
+export function rebindTargets(): Map<string, string> {
+    const out = new Map<string, string>();
+    for (const file of sdkSourceFiles()) {
+        const src = fs.readFileSync(file, 'utf8');
+        const bound = [
+            ...src.matchAll(
+                /import\s*\{\s*(create\w+Domain)\s*\}\s*from\s*'(\.[^']*domains\/[\w-]+)'/g
+            )
+        ];
+        if (bound.length !== 1) continue;
+        const [, factory, spec] = bound[0];
+        if (!new RegExp(`=\\s*${factory}\\(`).test(src)) continue;
+        out.set(path.basename(file, '.ts'), path.basename(spec));
     }
     return out;
 }

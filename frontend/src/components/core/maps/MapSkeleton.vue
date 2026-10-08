@@ -92,7 +92,6 @@ function pinStyle(i: number): Record<string, string> {
     border-radius: var(--radius-full);
     background: var(--glass-2-bg);
     backdrop-filter: var(--glass-2-filter);
-    -webkit-backdrop-filter: var(--glass-2-filter);
     border: 1px solid var(--glass-border);
     font-size: var(--type-caption);
     color: var(--color-text-tertiary);

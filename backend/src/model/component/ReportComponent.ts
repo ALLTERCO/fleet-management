@@ -27,6 +27,7 @@ import {requireOrganizationId} from '../../rpc/scope';
 import {validateOrThrow} from '../../rpc/validateOrThrow';
 import {
     REPORT_CANCEL_PARAMS_SCHEMA,
+    REPORT_DELETE_PARAMS_SCHEMA,
     REPORT_DESCRIBE,
     REPORT_GENERATE_UNIFIED_PARAMS_SCHEMA,
     REPORT_GET_REPORT_PARAMS_SCHEMA,
@@ -38,7 +39,13 @@ import {
     type ReportSuggestTimeShiftResponse
 } from '../../types/api/report';
 import type CommandSender from '../CommandSender';
-import {cancelExportJob, getExportJob} from '../energy/exportJobStore';
+import {isExportOwner, unbindExportOwner} from '../energy/exportHandler';
+import {
+    cancelExportJob,
+    deleteExportJob,
+    type ExportJob,
+    getExportJob
+} from '../energy/exportJobStore';
 import {fetchDashboardCarbonContext} from '../report/dashboardCarbonContext';
 import {resolveScopeForGenerate} from '../report/engineHelpers';
 import {startReportJob} from '../report/reportJobService';
@@ -97,7 +104,7 @@ export default class ReportComponent extends Component {
             REPORT_GET_REPORT_PARAMS_SCHEMA
         );
         const job = await getExportJob(jobId);
-        if (!job || job.userId !== sender.getUserId()) {
+        if (!job || !canAccessExportJob(job, sender)) {
             throw RpcError.NotFound('report_job');
         }
         return {
@@ -106,6 +113,8 @@ export default class ReportComponent extends Component {
             downloadUrl: job.downloadUrl ?? null,
             htmlUrl: job.htmlUrl ?? null,
             artifacts: job.artifacts ?? null,
+            coverage: job.coverage ?? null,
+            measuredUsageCost: job.measuredUsageCost ?? null,
             manifest: job.manifest ?? null,
             progress: job.progress ?? null,
             expiresAt: job.expiresAt ?? null,
@@ -123,9 +132,14 @@ export default class ReportComponent extends Component {
         );
         const userId = sender.getUserId();
         if (!userId) throw RpcError.Unauthorized();
+        const existing = await getExportJob(jobId);
+        if (!existing || !canAccessExportJob(existing, sender)) {
+            throw RpcError.NotFound('report_job');
+        }
         const job = await cancelExportJob({
             jobId,
-            userId
+            userId,
+            organizationId: existing.organizationId
         });
         if (!job || job.userId !== userId) {
             throw RpcError.NotFound('report_job');
@@ -134,6 +148,40 @@ export default class ReportComponent extends Component {
             jobId: job.jobId,
             status: job.status
         };
+    }
+
+    @Component.Expose('Delete')
+    @Component.CrudPermission('reports', 'update')
+    async delete(rawParams: unknown, sender: CommandSender) {
+        const {jobId} = validateOrThrow<{jobId: string}>(
+            rawParams,
+            REPORT_DELETE_PARAMS_SCHEMA
+        );
+        const job = await getExportJob(jobId);
+        if (!job || !canAccessExportJob(job, sender)) {
+            throw RpcError.NotFound('report_job');
+        }
+        if (job.status === 'pending') {
+            throw RpcError.OperationFailed(
+                'report delete',
+                'cancel the running report first'
+            );
+        }
+        const filenames = reportArtifactFilenames(job);
+        const failedFiles: string[] = [];
+        for (const filename of filenames) {
+            if (!(await this.deleteOwnedReportFile(filename, job))) {
+                failedFiles.push(filename);
+            }
+        }
+        if (failedFiles.length > 0) {
+            throw RpcError.OperationFailed(
+                'report delete',
+                `${failedFiles.length} file(s) could not be deleted`
+            );
+        }
+        await deleteExportJob(jobId);
+        return {success: true, jobId, deletedFiles: filenames.length};
     }
 
     @Component.Expose('SuggestTimeShift')
@@ -216,8 +264,7 @@ export default class ReportComponent extends Component {
         }
     }
 
-    // .csv (formatted reports), .csv.gz (raw exports), .html (energy report
-    // twin) all live in the uploads dir and all need purging.
+    // CSV, HTML, XLSX and PDF report artifacts share the uploads directory.
     private async listPurgeableReportFiles(): Promise<string[]> {
         const files = await fs.readdir(PLUGIN_UPLOADS);
         return files.filter((f) => {
@@ -225,7 +272,10 @@ export default class ReportComponent extends Component {
             return (
                 lower.endsWith('.csv') ||
                 lower.endsWith('.csv.gz') ||
-                lower.endsWith('.html')
+                lower.endsWith('.html') ||
+                lower.endsWith('.xlsx') ||
+                lower.endsWith('.pdf') ||
+                lower.endsWith('.pdf.tmp')
             );
         });
     }
@@ -257,4 +307,66 @@ export default class ReportComponent extends Component {
             return false;
         }
     }
+
+    private async deleteOwnedReportFile(
+        filename: string,
+        job: ExportJob
+    ): Promise<boolean> {
+        const filePath = path.join(PLUGIN_UPLOADS, filename);
+        try {
+            const owned = await isExportOwner(
+                filename,
+                job.userId,
+                job.organizationId ?? undefined
+            );
+            const exists = await fs
+                .stat(filePath)
+                .then(() => true)
+                .catch((error: NodeJS.ErrnoException) => {
+                    if (error.code === 'ENOENT') return false;
+                    throw error;
+                });
+            if (exists && !owned) {
+                throw new Error('artifact owner does not match report owner');
+            }
+            if (exists) await fs.unlink(filePath);
+            if (owned) await unbindExportOwner(filename);
+            return true;
+        } catch (err) {
+            this.logger.error(`Failed to delete report file ${filename}:`, err);
+            return false;
+        }
+    }
+}
+
+const REPORT_ARTIFACT_RE = /\.(csv(?:\.gz)?|html|xlsx|pdf)$/i;
+
+function reportArtifactFilenames(job: ExportJob): string[] {
+    const candidates = [
+        job.downloadUrl,
+        job.htmlUrl,
+        ...Object.values(job.artifacts ?? {}),
+        ...Object.values(job.manifest ?? {}).filter(
+            (value): value is string => typeof value === 'string'
+        )
+    ];
+    const filenames = new Set<string>();
+    for (const candidate of candidates) {
+        if (typeof candidate !== 'string') continue;
+        const filename = path.basename(candidate);
+        if (REPORT_ARTIFACT_RE.test(filename)) filenames.add(filename);
+    }
+    return [...filenames];
+}
+
+function canAccessExportJob(
+    job: {userId: string; organizationId: string | null},
+    sender: CommandSender
+): boolean {
+    if (job.userId !== sender.getUserId()) return false;
+    if (canCrossOrganizationBoundary(sender)) return true;
+    return (
+        job.organizationId !== null &&
+        job.organizationId === sender.getOrganizationId()
+    );
 }

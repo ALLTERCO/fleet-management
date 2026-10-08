@@ -13,13 +13,13 @@ export const automationRunFailedEvaluator: Evaluator = {
         return {
             fingerprintV2: fingerprintV2({
                 ruleId: rule.id,
-                subjectType: 'entity',
+                subjectType: 'system',
                 subjectId: String(event.automationId),
                 discriminator: timestampedDiscriminator(Date.now())
             }),
             title: `Automation "${event.automationName}" failed`,
             message: event.errorMessage,
-            subject: {type: 'entity', id: String(event.automationId)},
+            subject: {type: 'system', id: String(event.automationId)},
             context: {
                 automationId: event.automationId,
                 automationName: event.automationName,

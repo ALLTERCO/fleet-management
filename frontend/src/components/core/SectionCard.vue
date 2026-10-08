@@ -32,7 +32,6 @@ defineProps<{
     padding: var(--space-5);
     background-color: var(--glass-1-bg);
     backdrop-filter: var(--glass-1-filter);
-    -webkit-backdrop-filter: var(--glass-1-filter);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-xl);
     box-shadow: inset 0 1px 0 var(--glass-highlight);

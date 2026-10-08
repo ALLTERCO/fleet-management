@@ -5,9 +5,10 @@
  * delivery_attempts.
  */
 
-import type {AlertScopeType} from '../../types/api/alert';
+import type {AlertSourceType} from '../../types/api/alert';
 import type {ChannelProvider} from '../../types/api/channel';
 import type {MessageTemplateBodies} from '../../types/api/notification';
+import type {AlertInstanceState} from '../alert/states';
 import type {ChannelRender} from '../notification/messageTemplateRender';
 
 /** Resolved rule message template carried on the payload for the send-time
@@ -15,6 +16,8 @@ import type {ChannelRender} from '../notification/messageTemplateRender';
 export interface ResolvedMessageTemplate {
     bodies: MessageTemplateBodies;
     fallbackText: string;
+    /** Code-owned default lets native channels keep their platform layout. */
+    isSystemDefault?: boolean;
 }
 
 export interface DeliveryPayload {
@@ -22,6 +25,10 @@ export interface DeliveryPayload {
     message: string;
     severity: 'info' | 'warning' | 'critical';
     organizationId: string;
+    /** Organization presentation settings captured for consistent rendering
+     *  across every notification channel. */
+    locale?: string;
+    timeZone?: string;
     alertId: number | null;
     ruleId: number | null;
     ruleName: string;
@@ -30,24 +37,19 @@ export interface DeliveryPayload {
     ruleRunbookUrl?: string | null;
     // Extra context fields carried through to per-provider rich templates
     // so the renderer has the same data preview + delivery use.
-    state:
-        | 'pending'
-        | 'active'
-        | 'acknowledged'
-        | 'recovering'
-        | 'cleared_unack'
-        | 'cleared_ack'
-        | 'no_data'
-        | 'evaluation_error'
-        | 'resolved';
+    // The shared vocabulary, not a hand-copied union. A tenth state added to
+    // states.ts used to leave this list silently one behind.
+    state: AlertInstanceState;
     firedAt: string;
     activeSince: string;
     source?: {
-        subjectType: AlertScopeType;
+        subjectType: AlertSourceType;
         subjectId: string;
     } | null;
     labels?: Record<string, string>;
     context?: Record<string, unknown>;
+    /** Product image resolved from device.list.jdoc and Shelly's device CDN. */
+    deviceImageUrl?: string;
     /** Grouped delivery: additional alerts batched with this one. Adapters
      *  render leader + siblings as a single multi-alert notification.
      *  Undefined = single-alert (legacy path). */

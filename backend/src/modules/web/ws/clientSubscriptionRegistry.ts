@@ -51,7 +51,10 @@ export function clearClientSubscription(socket: WebSocket): void {
 // even if the filter was never set (or was explicitly cleared).
 export function forgetConnectionId(socket: WebSocket): void {
     const cid = connectionIdBySocket.get(socket);
-    if (cid) byConnectionId.delete(cid);
+    if (!cid) return;
+    // A resumed socket may already own this connectionId's entry.
+    if (byConnectionId.get(cid) !== bySocket.get(socket)) return;
+    byConnectionId.delete(cid);
 }
 
 export function snapshotByConnectionId(): Array<{

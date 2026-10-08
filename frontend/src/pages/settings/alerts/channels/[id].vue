@@ -16,7 +16,7 @@
                             <div class="id-hero__provider">{{ providerLabel }}</div>
                         </div>
                     </div>
-                    <div class="id-hero__actions">
+                    <div v-if="fullChannel" class="id-hero__actions">
                         <Button
                             v-if="canWrite"
                             type="blue-hollow"
@@ -86,7 +86,10 @@
                             </Pill>
                         </dd>
                     </div>
-                    <div v-if="channel.secretState.hasSecretFields" class="id-info-row">
+                    <div
+                        v-if="fullChannel?.secretState.hasSecretFields"
+                        class="id-info-row"
+                    >
                         <dt>Secret state</dt>
                         <dd>
                             <i class="fas fa-lock" />
@@ -96,10 +99,12 @@
                 </dl>
             </BasicBlock>
 
-            <SectionHeading icon="fas fa-code">Configuration</SectionHeading>
-            <BasicBlock bordered padding="md">
-                <pre class="id-config-json">{{ configPreview }}</pre>
-            </BasicBlock>
+            <template v-if="fullChannel">
+                <SectionHeading icon="fas fa-code">Configuration</SectionHeading>
+                <BasicBlock bordered padding="md">
+                    <pre class="id-config-json">{{ configPreview }}</pre>
+                </BasicBlock>
+            </template>
 
             <template v-if="lastTestResult">
                 <SectionHeading icon="fas fa-flask">Test result</SectionHeading>
@@ -118,10 +123,10 @@
         </template>
 
         <EditChannelModal
-            v-if="channel"
+            v-if="fullChannel"
             v-model="editVisible"
             mode="edit"
-            :initial="channel"
+            :initial="fullChannel"
             @saved="onEdited"
         />
 
@@ -148,6 +153,7 @@
 <script setup lang="ts">
 import type {
     Channel,
+    ChannelListItem,
     ChannelTestResult
 } from '@api/channel';
 import {computed, onMounted, ref, watch} from 'vue';
@@ -186,10 +192,15 @@ const channelId = computed(() => {
     return Number.isFinite(n) ? n : null;
 });
 
-const channel = computed<Channel | null>(() =>
+const channel = computed<ChannelListItem | null>(() =>
     channelId.value != null
         ? (store.channels[channelId.value] ?? null)
         : null
+);
+
+// Config, secrets and actions belong to callers with a grant on the channel.
+const fullChannel = computed<Channel | null>(() =>
+    channel.value?.access === 'full' ? channel.value : null
 );
 
 const providerLabel = computed(() => {
@@ -207,7 +218,7 @@ const testSupported = computed(
 );
 
 const configPreview = computed(() =>
-    channel.value ? JSON.stringify(channel.value.config, null, 2) : ''
+    fullChannel.value ? JSON.stringify(fullChannel.value.config, null, 2) : ''
 );
 
 function statusVariant(
@@ -239,10 +250,12 @@ async function refresh() {
     if (channelId.value == null) return;
     loading.value = true;
     try {
-        await Promise.all([
-            store.fetchChannel(channelId.value),
-            store.fetchProviders()
-        ]);
+        // The list row says which level this caller sees; only a full row
+        // may be read in full.
+        await Promise.all([store.fetchChannels(), store.fetchProviders()]);
+        if (store.channels[channelId.value]?.access === 'full') {
+            await store.fetchChannel(channelId.value);
+        }
     } finally {
         loading.value = false;
     }

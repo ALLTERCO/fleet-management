@@ -4,8 +4,11 @@
 // up the full AlertEngine import chain.
 
 import {tuning} from '../../config/tuning';
+import type {ScopeSelector} from '../../types/api/alert';
 import {BoundedMap} from '../boundedMap';
-import {getGroupVersion} from '../groupVersion';
+import {getOrganizationAccessVersion} from '../organizationCacheVersions';
+import {SingleFlight} from '../singleFlight';
+import {matchesScope, scopeHasMembershipSelectors} from './scope';
 import {collectEntityIds} from './signals';
 import type {NormalizedEvent} from './types';
 
@@ -28,42 +31,63 @@ interface MembershipRow {
     tag_ids?: number[];
 }
 
-// Cache key bakes in groupVersion(orgId) — local mutations evict; peer-
+// Cache key bakes in the organization access version — local mutations evict; peer-
 // node mutations remain stale up to alertSubjectCacheTtlMs. Scope to
 // alert routing only; never feed permission decisions from this.
 const membershipCache = new BoundedMap<string, MembershipRow>({
     maxSize: tuning.alert.subjectCacheMax,
     ttlMs: tuning.alert.subjectCacheTtlMs
 });
+let membershipLoads = new SingleFlight<string, MembershipRow>(
+    'alertMemberships'
+);
 
 function cacheKey(orgId: string, shellyID: string): string {
-    return `${orgId}|${shellyID}|${getGroupVersion(orgId)}`;
+    return `${orgId}|${shellyID}|${getOrganizationAccessVersion(orgId)}`;
 }
 
 export async function resolveSubjectForEvent(
     event: NormalizedEvent,
-    pgCall: DbCallMethod
+    pgCall: DbCallMethod,
+    scopes?: readonly ScopeSelector[]
 ): Promise<SubjectMemberships> {
     if (!('shellyID' in event)) return {};
     const device = 'device' in event ? event.device : undefined;
     const entityIds = device ? collectEntityIds(device) : undefined;
     const orgId = event.organizationId;
     const shellyID = event.shellyID;
+    const localSubject: SubjectMemberships = {shellyID, entityIds};
+    const needsMemberships =
+        scopes === undefined ||
+        scopes.some(
+            (scope) =>
+                scopeHasMembershipSelectors(scope) &&
+                !matchesScope(scope, localSubject)
+        );
+    if (!needsMemberships) return localSubject;
 
     const key = cacheKey(orgId, shellyID);
     let row = membershipCache.get(key);
     if (!row) {
-        const res = await pgCall('device.fn_device_memberships', {
-            p_org_id: orgId,
-            p_shelly_id: shellyID
+        const loads = membershipLoads;
+        row = await loads.run(key, async () => {
+            const res = await pgCall('device.fn_device_memberships', {
+                p_org_id: orgId,
+                p_shelly_id: shellyID
+            });
+            const loaded = (res?.rows?.[0] as MembershipRow | undefined) ?? {};
+            if (
+                loads === membershipLoads &&
+                key === cacheKey(orgId, shellyID)
+            ) {
+                membershipCache.set(key, loaded);
+            }
+            return loaded;
         });
-        row = (res?.rows?.[0] as MembershipRow | undefined) ?? {};
-        membershipCache.set(key, row);
     }
 
     return {
-        shellyID,
-        entityIds,
+        ...localSubject,
         groupIds: row.group_ids ?? undefined,
         locationIds: row.location_ids ?? undefined,
         tagIds: row.tag_ids ?? undefined
@@ -73,4 +97,7 @@ export async function resolveSubjectForEvent(
 // Test seam: drops every cached membership.
 export function __resetSubjectMembershipCacheForTests(): void {
     membershipCache.clear();
+    membershipLoads = new SingleFlight<string, MembershipRow>(
+        'alertMemberships'
+    );
 }

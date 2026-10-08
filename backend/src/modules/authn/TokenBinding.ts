@@ -1,5 +1,6 @@
 import {configRc} from '../../config';
 import {envStr} from '../../config/envReader';
+import {type McpOAuthLevel, mcpOAuthClientLevels} from '../../config/zitadel';
 
 interface OidcAuthorizationConfig {
     clientId?: string;
@@ -48,18 +49,61 @@ export function assertFleetTokenBinding(
     }
 }
 
-function expectedOidcAudiences(fleetProjectId: string): Set<string> {
+export type TokenClient =
+    | {kind: 'personal_token'}
+    | {kind: 'session'}
+    | {kind: 'mcp'; clientId: string; level: McpOAuthLevel}
+    | {kind: 'refused'; reason: 'ambiguous_client' | 'unknown_client'};
+
+/**
+ * Which kind of credential an introspected Zitadel token is, by the client it
+ * was issued to. Zitadel lists the project and every client of it in `aud`,
+ * so only `client_id`/`azp` tell apps apart: a Fleet client is a session, an
+ * MCP app an MCP credential, and any other app in the project is refused.
+ * A personal access token names no client at all.
+ */
+export function classifyTokenClient(
+    claims: Record<string, unknown>
+): TokenClient {
+    const named = new Set([
+        ...stringValues(claims.client_id),
+        ...stringValues(claims.azp)
+    ]);
+    if (named.size === 0) return {kind: 'personal_token'};
+    const mcpClients = mcpOAuthClientLevels();
+    if ([...named].some((clientId) => mcpClients.has(clientId))) {
+        const [clientId] = named;
+        const level = named.size === 1 ? mcpClients.get(clientId) : undefined;
+        return level
+            ? {kind: 'mcp', clientId, level}
+            : {kind: 'refused', reason: 'ambiguous_client'};
+    }
+    const sessionClients = fleetSessionClients();
+    return [...named].every((clientId) => sessionClients.has(clientId))
+        ? {kind: 'session'}
+        : {kind: 'refused', reason: 'unknown_client'};
+}
+
+// Fleet's own OIDC clients: the backend API app and the browser app (SPA).
+function fleetSessionClients(): Set<string> {
     const authorization = configRc.oidc?.backend?.authorization as
         | OidcAuthorizationConfig
         | undefined;
     const frontend = configRc.oidc?.frontend as
         | Record<string, unknown>
         | undefined;
-    const values = new Set<string>([fleetProjectId]);
+    const values = new Set<string>();
     addIfSet(values, authorization?.clientId);
     addIfSet(values, authorization?.profile?.clientId);
     addIfSet(values, frontend?.clientId);
+    addIfSet(values, frontend?.client_id);
     addIfSet(values, envStr('OIDC_CLIENT_ID', ''));
+    return values;
+}
+
+function expectedOidcAudiences(fleetProjectId: string): Set<string> {
+    const values = fleetSessionClients();
+    values.add(fleetProjectId);
     addIfSet(values, envStr('OIDC_PROJECT_ID', ''));
     return values;
 }

@@ -6,7 +6,7 @@
 //     subject to the shared enum-value safety regex.
 //   - Free-form text (contactRole, buildingCode, …): regex only.
 
-import {envCsv} from '../../config/envReader';
+import {envCsv, envOptionalStr} from '../../config/envReader';
 import {IANA_TIMEZONES, ISO_COUNTRY_CODES, ISO_CURRENCY_CODES} from './isoData';
 
 /** Keys passed to listKinds() so the frontend knows which option set to show. */
@@ -41,6 +41,7 @@ const DEFAULTS: Record<ExtensibleOptionSetKey, readonly string[]> = {
         'healthcare',
         'education',
         'residential',
+        'common-area',
         'mixed-use',
         // Site / business types — what a place is, not what it consumes.
         // Moved off the device-kind catalog; a combobox so custom is allowed.
@@ -71,7 +72,43 @@ const DEFAULTS: Record<ExtensibleOptionSetKey, readonly string[]> = {
         'aquarium',
         'cannabis-facility',
         'dispensary',
-        'vertical-farm'
+        'vertical-farm',
+        // Everyday commercial + civic places customers classify sites as.
+        'bakery',
+        'restaurant',
+        'cafe',
+        'bar',
+        'supermarket',
+        'grocery-store',
+        'convenience-store',
+        'shopping-mall',
+        'hotel',
+        'motel',
+        'gym',
+        'spa',
+        'salon',
+        'pharmacy',
+        'hospital',
+        'clinic',
+        'bank',
+        'school',
+        'university',
+        'gas-station',
+        'car-wash',
+        'auto-repair',
+        'parking-garage',
+        'stadium',
+        'arena',
+        'fire-station',
+        'police-station',
+        'airport',
+        'train-station',
+        'tv-tower',
+        'farm',
+        'greenhouse',
+        'cold-storage',
+        'distribution-center',
+        'laundromat'
     ],
     buildingType: [
         'office',
@@ -83,7 +120,14 @@ const DEFAULTS: Record<ExtensibleOptionSetKey, readonly string[]> = {
         'healthcare',
         'education',
         'residential',
-        'industrial'
+        'common-area',
+        'industrial',
+        // Common building uses beyond the industrial / office core.
+        'mixed-use',
+        'hotel',
+        'hospital',
+        'school',
+        'parking'
     ],
     roomType: [
         'office',
@@ -95,26 +139,106 @@ const DEFAULTS: Record<ExtensibleOptionSetKey, readonly string[]> = {
         'bathroom',
         'lobby',
         'cleanroom',
-        'lab'
+        'lab',
+        // Everyday room uses across retail, hospitality, healthcare, homes.
+        'reception',
+        'waiting-room',
+        'break-room',
+        'dining',
+        'retail-floor',
+        'classroom',
+        'ward',
+        'gym',
+        'electrical-room',
+        'telecom-room',
+        'freezer',
+        'cold-room',
+        'garage',
+        'utility'
     ],
-    operationalTier: ['critical', 'production', 'staging', 'development'],
+    operationalTier: [
+        'critical',
+        'production',
+        'staging',
+        'development',
+        'disaster-recovery',
+        'decommissioned'
+    ],
     complianceTag: [
         'HIPAA',
         'PCI-DSS',
+        'SOC1',
         'SOC2',
         'ISO-27001',
+        'ISO-9001',
+        'ISO-14001',
+        'GDPR',
         'GDPR-strict',
+        'CCPA',
+        'NIS2',
+        'SOX',
+        'FISMA',
+        'FedRAMP',
+        'NIST-800-53',
+        'NERC-CIP',
         'FDA-regulated',
-        'cleanroom'
+        'cleanroom',
+        // Regional data-protection + regulatory frameworks, by continent.
+        // The global standards above (ISO/SOC/PCI) already cover every region;
+        // these are the national laws that lead each market.
+        'DORA',
+        'EIDAS',
+        'EN-303645',
+        'UK-GDPR',
+        'DPA-2018',
+        'PSTI',
+        'Cyber-Essentials',
+        'GLBA',
+        'FERPA',
+        'PIPEDA',
+        'Quebec-Law-25',
+        'LGPD',
+        'LFPDPPP',
+        'UAE-PDPL',
+        'Saudi-PDPL',
+        'DIFC-DP',
+        'NCA-ECC',
+        'POPIA',
+        'NDPA',
+        'Kenya-DPA',
+        'PIPL',
+        'APPI',
+        'PDPA-Singapore',
+        'DPDPA',
+        'PIPA-Korea',
+        'AU-Privacy-Act',
+        'NZ-Privacy-Act',
+        'Essential-Eight'
     ],
     accessProcedure: [
         'public',
         'badge',
+        'key',
+        'pin-code',
+        'mobile-credential',
         'biometric',
+        'appointment-only',
+        'visitor-log',
         'escort-required',
         'security-cleared'
     ],
-    regulatoryZone: ['EU', 'US', 'UK', 'APAC', 'LATAM', 'MENA', 'OTHER'],
+    regulatoryZone: [
+        'EU',
+        'US',
+        'UK',
+        'CA',
+        'APAC',
+        'ANZ',
+        'LATAM',
+        'MENA',
+        'AFRICA',
+        'OTHER'
+    ],
     energyCertification: [
         'LEED-Platinum',
         'LEED-Gold',
@@ -122,16 +246,55 @@ const DEFAULTS: Record<ExtensibleOptionSetKey, readonly string[]> = {
         'LEED-Certified',
         'BREEAM-Outstanding',
         'BREEAM-Excellent',
+        'BREEAM-Very-Good',
+        'BREEAM-Good',
         'DGNB-Platinum',
         'DGNB-Gold',
+        'WELL-Platinum',
+        'WELL-Gold',
+        'WELL-Silver',
+        'Energy-Star',
+        'ISO-50001',
+        'Passive-House',
+        'NABERS',
+        'EDGE',
+        'Green-Star',
+        // Regional leaders, by continent. EPC is legally mandatory across the
+        // EU and UK, so it is the single most common European rating.
+        'EPC',
+        'HQE',
+        'Minergie',
+        'Green-Globes',
+        'BOMA-BEST',
+        'AQUA-HQE',
+        'Selo-Casa-Azul',
+        'Estidama-Pearl',
+        'GSAS',
+        'Mostadam',
+        'Green-Star-SA',
+        'Green-Mark',
+        'China-Three-Star',
+        'IGBC',
+        'GRIHA',
+        'CASBEE',
+        'BEAM-Plus',
+        'NatHERS',
+        'Homestar',
         'none'
     ],
     contactRole: [
         'Facility Manager',
+        'Property Manager',
+        'Regional Manager',
+        'Energy Manager',
         'IT Operations',
         'Security',
         'Maintenance',
+        'Electrician',
+        'HVAC Technician',
+        'Fire Safety Officer',
         'Reception',
+        'On-Site Contact',
         'Owner',
         'Tenant',
         'Emergency'
@@ -154,7 +317,9 @@ const ENV_KEY: Record<ExtensibleOptionSetKey, string> = {
 export function extensibleOptions(
     key: ExtensibleOptionSetKey
 ): readonly string[] {
-    return envCsv(ENV_KEY[key], DEFAULTS[key]);
+    const envKey = ENV_KEY[key];
+    if (envOptionalStr(envKey) === undefined) return DEFAULTS[key];
+    return envCsv(envKey, DEFAULTS[key]);
 }
 
 /** Descriptor returned via Location.ListKinds so the UI renders

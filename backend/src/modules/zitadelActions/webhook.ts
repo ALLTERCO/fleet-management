@@ -3,9 +3,6 @@
 // verified payload. One home so every action handler verifies identically.
 
 import log4js from 'log4js';
-import * as auditLog from '../AuditLogger';
-import * as Observability from '../Observability';
-import {reservation} from '../redis/services';
 import {zitadelActionReplaySkewMs} from './config';
 import {extractUserId} from './extractUserId';
 import {
@@ -20,6 +17,23 @@ const ZITADEL_SIGNATURE_HEADERS = [
 ] as const;
 const USER_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
+function auditFailure(
+    method: string,
+    reason: string,
+    ipAddress?: string
+): void {
+    void import('../AuditLogger.js').then((auditLog) =>
+        auditLog.log({
+            eventType: 'webhook_failure',
+            method,
+            params: {reason},
+            success: false,
+            errorMessage: reason,
+            ipAddress
+        })
+    );
+}
+
 export interface WebhookOutcome {
     status: number;
     body: unknown;
@@ -31,10 +45,14 @@ export interface RawRequestLike {
     ip?: string;
 }
 
-export interface VerifiedWebhook {
-    userId: string;
+export interface SignedWebhook {
+    eventKey: string;
     parsed: unknown;
     rawBody: Buffer;
+}
+
+export interface VerifiedWebhook extends SignedWebhook {
+    userId: string;
 }
 
 function readSignatureHeader(req: RawRequestLike): string | undefined {
@@ -47,11 +65,12 @@ function readSignatureHeader(req: RawRequestLike): string | undefined {
     return undefined;
 }
 
-export async function verifyZitadelWebhook(
+/** Checks config, signature, replay key and JSON; not who the event is about. */
+export async function verifySignedZitadelBody(
     req: RawRequestLike,
     method: string,
     signingKeys: string[]
-): Promise<{outcome: WebhookOutcome} | {verified: VerifiedWebhook}> {
+): Promise<{outcome: WebhookOutcome} | {signed: SignedWebhook}> {
     if (signingKeys.length === 0) {
         return {
             outcome: {status: 503, body: {error: 'webhook not configured'}}
@@ -70,49 +89,12 @@ export async function verifyZitadelWebhook(
     });
     if (!verify.ok) {
         logger.warn('%s signature rejected: %s', method, verify.reason);
-        void auditLog.log({
-            eventType: 'webhook_failure',
-            method,
-            params: {reason: `signature:${verify.reason}`},
-            success: false,
-            errorMessage: verify.reason,
-            ipAddress: req.ip
-        });
+        auditFailure(method, `signature:${verify.reason}`, req.ip);
         return {outcome: {status: 401, body: {error: 'invalid signature'}}};
     }
     const replayKey = zitadelSignatureReplayKey(signatureHeader);
     if (!replayKey) {
         return {outcome: {status: 401, body: {error: 'invalid signature'}}};
-    }
-    const replayTtlSec = Math.max(
-        1,
-        Math.ceil(zitadelActionReplaySkewMs() / 1000)
-    );
-    const replayClaim = await reservation.reserve(
-        `zitadel-action:${method}:${replayKey}`,
-        1,
-        replayTtlSec
-    );
-    if (!replayClaim.ok) {
-        Observability.incrementCounter('zitadel_webhook_replay_rejects');
-        const error =
-            replayClaim.reason === 'backend_error'
-                ? 'replay guard unavailable'
-                : 'replay detected';
-        void auditLog.log({
-            eventType: 'webhook_failure',
-            method,
-            params: {reason: `signature:${error}`},
-            success: false,
-            errorMessage: error,
-            ipAddress: req.ip
-        });
-        return {
-            outcome: {
-                status: replayClaim.reason === 'backend_error' ? 503 : 409,
-                body: {error}
-            }
-        };
     }
     let parsed: unknown;
     try {
@@ -120,10 +102,28 @@ export async function verifyZitadelWebhook(
     } catch {
         return {outcome: {status: 400, body: {error: 'invalid json'}}};
     }
-    const userId = extractUserId(parsed);
+    return {signed: {eventKey: `${method}:${replayKey}`, parsed, rawBody}};
+}
+
+/** Names the user a signed event is about, or refuses the event. */
+export function requireWebhookUser(
+    method: string,
+    signed: SignedWebhook
+): {outcome: WebhookOutcome} | {verified: VerifiedWebhook} {
+    const userId = extractUserId(signed.parsed);
     if (!userId || !USER_ID_PATTERN.test(userId)) {
         logger.warn('%s missing or malformed userId', method);
         return {outcome: {status: 400, body: {error: 'bad user id'}}};
     }
-    return {verified: {userId, parsed, rawBody}};
+    return {verified: {...signed, userId}};
+}
+
+export async function verifyZitadelWebhook(
+    req: RawRequestLike,
+    method: string,
+    signingKeys: string[]
+): Promise<{outcome: WebhookOutcome} | {verified: VerifiedWebhook}> {
+    const result = await verifySignedZitadelBody(req, method, signingKeys);
+    if ('outcome' in result) return result;
+    return requireWebhookUser(method, result.signed);
 }

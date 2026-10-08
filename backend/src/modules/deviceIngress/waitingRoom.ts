@@ -13,6 +13,7 @@ import type {
     CreateIdentityInput,
     DeviceIngressIdentity,
     DeviceIngressWaitingRoomEntry,
+    EnsureApprovedFleetDeviceInput,
     EnsureApprovedFleetDeviceResult
 } from './deviceIngressRepository';
 import type {WaitingRoomProbe} from './waitingRoomProbeRegistry';
@@ -28,10 +29,9 @@ export interface WaitingRoomRepository {
         waitingRoomId: string;
         identityId: string;
     }): Promise<DeviceIngressWaitingRoomEntry | null>;
-    ensureApprovedFleetDevice(input: {
-        organizationId: string;
-        reportedExternalId: string;
-    }): Promise<EnsureApprovedFleetDeviceResult | null>;
+    ensureApprovedFleetDevice(
+        input: EnsureApprovedFleetDeviceInput
+    ): Promise<EnsureApprovedFleetDeviceResult | null>;
     rejectWaitingRoom(input: {
         organizationId: string;
         waitingRoomId: string;
@@ -117,9 +117,11 @@ async function ensureFleetDeviceForApproval(input: {
     repository: WaitingRoomRepository;
 }): Promise<void> {
     if (input.params.action === 'bind_connector') return;
+    // An operator's approval is the decision, so it may lift an earlier deny.
     const device = await input.repository.ensureApprovedFleetDevice({
         organizationId: input.organizationId,
-        reportedExternalId: input.entry.reportedExternalId
+        reportedExternalId: input.entry.reportedExternalId,
+        overrideDenied: true
     });
     if (device) return;
     throw RpcError.InvalidParams(

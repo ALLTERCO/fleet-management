@@ -9,7 +9,7 @@ const logger = getLogger('fault');
 //
 // reportContainedFault: an UNEXPECTED fault in our own code (a throw inside a
 // timer, a callback that should never fail). This is a bug. Log it loud and
-// count fm_contained_faults so ops can alert and we fix the root cause. Keep
+// count fm_contained_faults_total so ops can alert and we fix the root cause. Keep
 // this channel clean — if it moves, something is genuinely wrong.
 export function reportContainedFault(source: string, err: unknown): void {
     logger.error(
@@ -23,7 +23,7 @@ export function reportContainedFault(source: string, err: unknown): void {
 // reportHandledPeerError: an EXPECTED event caused by the outside world (a peer
 // resets the TCP connection, a device sends a malformed frame, a client
 // disconnects mid-response). Not our bug, and it cannot be "fixed" — it is the
-// normal cost of networking. Count fm_peer_errors for the true rate, and surface
+// normal cost of networking. Count fm_peer_errors_total for the true rate, and surface
 // a visible warn per source so a misbehaving device is findable — but throttled
 // so a flapping peer cannot flood stdout (same shape as the pg pool idle log).
 const PEER_LOG_INTERVAL_MS = 60_000;

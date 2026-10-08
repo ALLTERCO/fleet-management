@@ -4,8 +4,15 @@
 // Streaming generator — one (bucket, device) row open at a time, no full
 // materialization. Cost and bill totals live in the energy report, not here.
 
+import * as fs from 'node:fs/promises';
+import * as path from 'node:path';
 import {tuning} from '../../config';
-import {type CsvMeta, createCsvArtifactWriter} from '../../modules/csvExport';
+import {bucketUsesRollup} from '../../config/energy';
+import {
+    type CsvMeta,
+    createCsvArtifactWriter,
+    UPLOADS_DIR
+} from '../../modules/csvExport';
 import * as PostgresProvider from '../../modules/PostgresProvider';
 import RpcError from '../../rpc/RpcError';
 import {requireOrganizationId} from '../../rpc/scope';
@@ -15,8 +22,15 @@ import {
     type ReportGenerateParams
 } from '../../types/api/report';
 import type CommandSender from '../CommandSender';
-import {buildRawExportSql} from '../energy/streamingExport';
-import {streamSelectCsvRows} from '../energy/streamingExportRunner';
+import {
+    buildDirectFormattedRollupSql,
+    buildRawExportSql,
+    type FormattedExportColumn
+} from '../energy/streamingExport';
+import {
+    streamFormattedReportToGzip,
+    streamSelectCsvRows
+} from '../energy/streamingExportRunner';
 import {reportTimezoneFor} from './energyEngineHelpers';
 import {
     bindReportArtifactOwner,
@@ -26,9 +40,17 @@ import {
     warmReportNameCache
 } from './engineHelpers';
 import {writeReportGeneratedAudit} from './reportAudit';
-import type {ReportJobContext} from './reportJobContext';
+import {
+    enterReportPhase,
+    type ReportJobContext,
+    reportWritingProgress
+} from './reportJobContext';
 import {resolveReportPeriod} from './reportPeriod';
-import {assertReportSafety, estimateReportRows} from './reportSafety';
+import {
+    assertReportSafety,
+    bucketSizeMs,
+    estimateReportRows
+} from './reportSafety';
 
 // Per-tag shaping: output column name, raw divisor, decimal precision.
 interface TagFormat {
@@ -66,6 +88,51 @@ function tagFormats(
     return formats;
 }
 
+function formattedColumns(
+    formats: ReadonlyMap<string, TagFormat>
+): FormattedExportColumn[] {
+    return [...formats].map(([tag, format]) => ({
+        tag,
+        column: format.col,
+        divisor: format.divisor,
+        precision: format.precision
+    }));
+}
+
+function reportWindows(input: {
+    from: Date;
+    to: Date;
+    granularity: string;
+    deviceCount: number;
+    seriesCount: number;
+}): Array<{from: Date; to: Date}> {
+    if (input.granularity === 'month') {
+        return [{from: input.from, to: input.to}];
+    }
+    const bucketMs = bucketSizeMs(input.granularity);
+    const bucketsPerWindow = Math.max(
+        1,
+        Math.floor(
+            tuning.report.chunkTargetRows /
+                Math.max(1, input.deviceCount * input.seriesCount)
+        )
+    );
+    const windowMs = bucketMs * bucketsPerWindow;
+    const windows: Array<{from: Date; to: Date}> = [];
+    const rangeEnd = input.to.getTime();
+    let windowStart = input.from.getTime();
+    while (windowStart < rangeEnd) {
+        const alignedStart = Math.floor(windowStart / bucketMs) * bucketMs;
+        const windowEnd = Math.min(alignedStart + windowMs, rangeEnd);
+        windows.push({
+            from: new Date(windowStart),
+            to: new Date(Math.max(windowStart + 1, windowEnd))
+        });
+        windowStart = windowEnd;
+    }
+    return windows;
+}
+
 export async function generateIntervalReport(
     rawParams: unknown,
     sender: CommandSender,
@@ -84,8 +151,12 @@ export async function generateIntervalReport(
     );
     const {from, to} = await resolveIntervalRange(params, sender);
     const {shellyIDs, scope} = await resolveScopeForGenerate(params, sender);
-    const {internalIds, idMap} =
-        await PostgresProvider.resolveDeviceIds(shellyIDs);
+    const resolved = await PostgresProvider.resolveDeviceIds(shellyIDs);
+    requireOrganizationId(sender, {
+        organizationId: (params as {organizationId?: string}).organizationId
+    });
+    const {internalIds, idMap} = resolved;
+    const deviceAliases = virtualDeviceAliases(idMap);
     if (!internalIds.length) throw RpcError.NotFound('device_ids');
 
     const formats = tagFormats(reportDefs);
@@ -99,24 +170,17 @@ export async function generateIntervalReport(
         seriesCount: tags.length
     };
     assertReportSafety(safety);
-    if (context) context.estimatedRows = estimateReportRows(safety);
-    await context?.update({
-        currentPhase: 'streaming',
-        estimatedRows: context?.estimatedRows,
-        percent: 0
+    if (context) {
+        context.estimatedRows = estimateReportRows({
+            ...safety,
+            // Metric tags are pivoted into columns on one output row.
+            seriesCount: 1
+        });
+    }
+    await enterReportPhase(context, 'streaming', {
+        estimatedRows: context?.estimatedRows
     });
     await context?.throwIfCancelled();
-
-    const nameCache = await warmReportNameCache(idMap, per_device);
-    const resolveDeviceCell = (deviceInternalId: number | string): string => {
-        if (per_device === false) return 'All Devices';
-        const iid = Number(deviceInternalId);
-        return nameCache.get(iid) || idMap[iid] || String(deviceInternalId);
-    };
-
-    let rowCount = 0;
-    let currentKey: string | null = null;
-    let currentRow: Record<string, unknown> | null = null;
 
     const ts = Date.now();
     const perDeviceLabel = per_device !== false ? 'per_device' : 'group';
@@ -127,17 +191,113 @@ export async function generateIntervalReport(
         sender,
         extension: format
     });
+
+    if (bucketUsesRollup(bucket) && format === 'csv.gz') {
+        const filename = `${safeName}.${format}`;
+        const filePath = path.join(UPLOADS_DIR, filename);
+        const columns = formattedColumns(formats);
+        const windows = reportWindows({
+            from: new Date(from),
+            to: new Date(to),
+            granularity,
+            deviceCount: internalIds.length,
+            seriesCount: tags.length
+        });
+        const directQueries = windows.map((window) =>
+            buildDirectFormattedRollupSql(
+                {
+                    internalIds,
+                    from: window.from,
+                    to: window.to,
+                    tags,
+                    perDevice: per_device !== false,
+                    bucket,
+                    deviceAliases
+                },
+                columns
+            )
+        );
+        let rowCount = 0;
+        let result: {bytesWritten: number; rowsWritten: number};
+        try {
+            result = await streamFormattedReportToGzip({
+                filePath,
+                headerCols: directQueries[0]?.headerCols ?? [
+                    'bucket',
+                    'device',
+                    'domain',
+                    ...allCols
+                ],
+                windowSqls: directQueries.map((query) => query.sql),
+                workMemMb: tuning.report.queryWorkMemMb,
+                onProgress: async (rows, bytes) => {
+                    rowCount = rows;
+                    await reportWritingProgress(context, {
+                        rowsWritten: rows,
+                        bytesWritten: bytes
+                    });
+                    await context?.throwIfCancelled();
+                }
+            });
+        } catch (error) {
+            await fs.rm(filePath, {force: true});
+            throw error;
+        }
+        rowCount = result.rowsWritten;
+        const meta = {
+            id: safeName,
+            file: `uploads/reports/${filename}`,
+            name: safeName,
+            generated: new Date().toISOString(),
+            size: result.bytesWritten,
+            devices: shellyIDs,
+            originalDeviceCount: scope.originalDeviceCount,
+            droppedDeviceCount: scope.droppedDeviceCount,
+            droppedShellyIDs: scope.droppedShellyIDs,
+            metrics,
+            granularity,
+            per_device: per_device !== false,
+            from,
+            to,
+            rows: rowCount
+        } as CsvMeta & {rows?: number};
+        await writeReportGeneratedAudit(sender, {
+            reportType: metricLabel,
+            rows: rowCount,
+            meta,
+            generateStart
+        });
+        await enterReportPhase(context, 'ready', {
+            rowsWritten: rowCount,
+            bytesWritten: meta.size
+        });
+        return meta;
+    }
+
+    const nameCache = await warmReportNameCache(idMap, per_device);
+    const resolveDeviceCell = (deviceInternalId: number | string): string => {
+        if (per_device === false) return 'All Devices';
+        const iid = Number(deviceInternalId);
+        return (
+            deviceAliases[iid] ||
+            nameCache.get(iid) ||
+            idMap[iid] ||
+            String(deviceInternalId)
+        );
+    };
+
+    let rowCount = 0;
+    let currentKey: string | null = null;
+    let currentRow: Record<string, unknown> | null = null;
+
     const writer = createCsvArtifactWriter({name: safeName, format});
     const writeReportRow = async (row: Record<string, unknown>) => {
         await writer.write(row);
         rowCount++;
         if (rowCount % tuning.report.streamChunkRows === 0) {
-            await context?.update({
-                currentPhase: 'writing',
-                estimatedRows: context?.estimatedRows,
+            await reportWritingProgress(context, {
                 rowsWritten: rowCount,
-                bytesWritten: writer.bytesWritten(),
-                percent: progressPercent(rowCount, context?.estimatedRows)
+                bytesWritten: writer.bytesWritten()
             });
             await context?.throwIfCancelled();
         }
@@ -174,7 +334,11 @@ export async function generateIntervalReport(
                 const key = `${bucketDate.toISOString()}::${r.device}::${r.domain}`;
                 if (key !== currentKey) {
                     if (currentRow) await finalizeRow(currentRow);
-                    currentRow = {bucket: bucketDate, device: String(r.device)};
+                    currentRow = {
+                        bucket: bucketDate,
+                        device: String(r.device),
+                        domain: r.domain
+                    };
                     currentKey = key;
                 }
                 currentRow![fmt.col] = value;
@@ -204,21 +368,21 @@ export async function generateIntervalReport(
         meta,
         generateStart
     });
-    await context?.update({
-        currentPhase: 'ready',
+    await enterReportPhase(context, 'ready', {
         rowsWritten: rowCount,
-        bytesWritten: meta.size,
-        percent: 100
+        bytesWritten: meta.size
     });
     return meta;
 }
 
-function progressPercent(
-    rowsWritten: number,
-    estimatedRows: number | undefined
-): number | undefined {
-    if (!estimatedRows || estimatedRows <= 0) return undefined;
-    return Math.min(99, Math.floor((rowsWritten / estimatedRows) * 100));
+function virtualDeviceAliases(
+    idMap: Readonly<Record<number, string>>
+): Record<number, string> {
+    return Object.fromEntries(
+        Object.entries(idMap).filter(([, externalId]) =>
+            externalId.startsWith('vdev_')
+        )
+    );
 }
 
 // Resolve the report window to ISO from/to. A named `period` is resolved in the

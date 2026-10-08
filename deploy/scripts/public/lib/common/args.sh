@@ -14,9 +14,15 @@ parse_runtime_flags() {
             --logging)
                 WITH_LOGGING=true
                 shift ;;
+            --nodered)
+                WITH_NODERED=true
+                shift ;;
+            --no-nodered)
+                WITH_NODERED=false
+                shift ;;
             --with)
                 error "Unknown flag: --with"
-                error "Use --mdns for mDNS device discovery"
+                error "Use --mdns for mDNS device discovery, --nodered for Node-RED automations"
                 return 1 ;;
             --ssl)
                 WITH_SSL=true
@@ -101,6 +107,11 @@ parse_runtime_flags() {
         fi
         if [ -n "${SSL_DOMAIN:-}" ]; then
             error "--env dev is incompatible with --domain (local auth, no public hostname)"
+            return 1
+        fi
+        # Node-RED's service account comes from Zitadel, which dev mode skips.
+        if [ "${WITH_NODERED:-}" = "true" ]; then
+            error "--env dev is incompatible with --nodered (no Zitadel for its service account)"
             return 1
         fi
     fi

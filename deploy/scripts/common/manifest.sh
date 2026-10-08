@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # Declarative deployment state — single source of truth for install + update.
-# Schema: docs/architecture/update-command-design.md §3.
 
 # In its own subdir so the FM container can bind-mount it read-only without the
 # sibling secrets (fm-runtime.env, machinekey, …) that live in state/.

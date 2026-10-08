@@ -25,6 +25,8 @@ export interface DeviceRelationshipPermissions {
     alertsRead: boolean;
     accessGrantsRead: boolean;
     actionsRead: boolean;
+    /** May open Node-RED: automation:update and the org lock, as automation.List. */
+    automationsManage: boolean;
     dashboardsRead: boolean;
     notificationsRead: boolean;
     operationsRead: DeviceRelationshipOperationPermissions;

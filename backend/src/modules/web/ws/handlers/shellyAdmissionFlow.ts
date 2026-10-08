@@ -14,10 +14,15 @@ import type log4js from 'log4js';
 import type WebSocket from 'ws';
 import type ShellyDeviceType from '../../../../model/ShellyDevice';
 import type ShellyDeviceFactory from '../../../../model/ShellyDeviceFactory';
-import type {DeviceDataBundle} from '../../../../model/ShellyDeviceFactory';
+import {
+    AdmissionRevokedError,
+    type DeviceDataBundle
+} from '../../../../model/ShellyDeviceFactory';
+import {diffStatus} from '../../../../model/statusMerge';
 import type WebSocketTransport from '../../../../model/transport/WebsocketTransport';
 import type * as AuditLogger from '../../../../modules/AuditLogger';
 import type * as DeviceCollector from '../../../../modules/DeviceCollector';
+import type {DeviceRuntimeOwnershipLease} from '../../../../modules/deviceIdentityRuntime';
 import {
     ingressDropped,
     ingressRegistered
@@ -25,7 +30,8 @@ import {
 import {assessDeviceHealth} from '../../../../modules/deviceIngress/postAcceptHealth';
 import type * as Observability from '../../../../modules/Observability';
 import type {statusSelectivePush as StatusSelectivePush} from '../../../../modules/ShellyMessageHandler';
-import type {ShellyMessageIncoming} from '../../../../types';
+import type {PathChange, ShellyMessageIncoming} from '../../../../types';
+import {fireAndForget} from '../../../util/fireAndForget';
 import {CLOSE_TRY_AGAIN_LATER} from '../closeCodes';
 import {
     checkAdmittedIdentity,
@@ -48,9 +54,10 @@ export interface AdmissionDeps {
     // Data gathered while the device waited, if any. Present → accept assembles
     // from it (no re-fetch); absent → build over the socket, as before.
     takeGatheredData?: (
-        shellyID: string
+        shellyID: string,
+        opts?: {signal?: AbortSignal}
     ) => Promise<DeviceDataBundle | undefined>;
-    deviceCollector: Pick<typeof DeviceCollector, 'register'>;
+    deviceCollector: Pick<typeof DeviceCollector, 'register' | 'getDevice'>;
     auditLogger: Pick<typeof AuditLogger, 'log'>;
     observability: Pick<
         typeof Observability,
@@ -58,8 +65,16 @@ export interface AdmissionDeps {
     >;
     statusSelectivePush: typeof StatusSelectivePush;
     logger: log4js.Logger;
-    claimRuntimeOwnership: (shellyID: string) => Promise<boolean>;
-    releaseRuntimeOwnership: (shellyID: string) => Promise<void>;
+    claimRuntimeOwnership: (
+        shellyID: string
+    ) => Promise<DeviceRuntimeOwnershipLease | null>;
+    bindRuntimeOwnership: (
+        device: ShellyDeviceType,
+        lease: DeviceRuntimeOwnershipLease
+    ) => void;
+    releaseRuntimeOwnership: (
+        lease: DeviceRuntimeOwnershipLease
+    ) => Promise<void>;
 }
 
 export interface AdmittedRegistrationInput {
@@ -68,6 +83,12 @@ export interface AdmittedRegistrationInput {
     message: InitMessage;
     // Marks init phase for the slot watchdog, so a reclaim names where it stuck.
     setStage?: (stage: InitStage) => void;
+    // Slot watchdog cancellation. Every awaited stage checks it before any
+    // irreversible registration side effect.
+    signal?: AbortSignal;
+    // Waiting Room off: no decision let the device in, so its registration
+    // does not need an ALLOWED row.
+    openAdmission?: boolean;
 }
 
 // Top-level error wrapper. Pure error handling — no business logic.
@@ -75,29 +96,43 @@ export async function performAdmittedRegistration(
     input: AdmittedRegistrationInput,
     deps: AdmissionDeps
 ): Promise<boolean> {
-    let ownershipHeld = false;
+    let ownershipLease: DeviceRuntimeOwnershipLease | null = null;
     try {
-        ownershipHeld = await deps.claimRuntimeOwnership(
+        input.signal?.throwIfAborted();
+        ownershipLease = await deps.claimRuntimeOwnership(
             input.admittedShellyID
         );
-        if (!ownershipHeld) {
+        input.signal?.throwIfAborted();
+        if (!ownershipLease) {
             throw new Error('device connection is owned by another server');
         }
-        const registered = await runRegistration(input, deps);
+        const registered = await runRegistration(input, ownershipLease, deps);
         if (!registered) {
-            await deps.releaseRuntimeOwnership(input.admittedShellyID);
+            await deps.releaseRuntimeOwnership(ownershipLease);
         }
         return registered;
     } catch (err) {
-        if (ownershipHeld) {
-            await deps.releaseRuntimeOwnership(input.admittedShellyID);
+        if (ownershipLease) {
+            await deps.releaseRuntimeOwnership(ownershipLease);
         }
         recordRegistrationFailure(input.admittedShellyID, err, deps);
-        if (input.session.ws.readyState === input.session.ws.OPEN) {
-            input.session.ws.close(CLOSE_TRY_AGAIN_LATER, 'register_failed');
-        }
+        closeAfterFailedRegistration(input.session, err);
         return false;
     }
+}
+
+// A device the row no longer allows is refused for good; anything else may
+// retry.
+function closeAfterFailedRegistration(
+    session: AdmissionSession,
+    err: unknown
+): void {
+    if (session.ws.readyState !== session.ws.OPEN) return;
+    if (err instanceof AdmissionRevokedError) {
+        session.ws.close(1008, 'admission_revoked');
+        return;
+    }
+    session.ws.close(CLOSE_TRY_AGAIN_LATER, 'register_failed');
 }
 
 // Pure happy path: build, verify, commit, post-tasks. Identity mismatch
@@ -105,6 +140,7 @@ export async function performAdmittedRegistration(
 // only sees genuine failures.
 async function runRegistration(
     input: AdmittedRegistrationInput,
+    ownershipLease: DeviceRuntimeOwnershipLease,
     deps: AdmissionDeps
 ): Promise<boolean> {
     const {session, admittedShellyID, message} = input;
@@ -121,7 +157,11 @@ async function runRegistration(
     const transport = session.transport ?? deps.buildTransport(session.ws);
     // Reuse the data gathered while the device waited, if any; otherwise gather
     // it now over the socket (a slow or early-accepted device just does it here).
-    const gathered = await deps.takeGatheredData?.(admittedShellyID);
+    // Both stages get the slot signal: they are the waits a reclaim must break.
+    const gathered = await deps.takeGatheredData?.(admittedShellyID, {
+        signal: input.signal
+    });
+    input.signal?.throwIfAborted();
     // Reuse should dominate; a spike in fresh probes means accepts are
     // outrunning the gather.
     const reusedGather = Boolean(gathered && deps.factory.assembleFromGathered);
@@ -130,10 +170,22 @@ async function runRegistration(
             ? 'device_accept_gather_reused'
             : 'device_accept_fresh_probe'
     );
+    const admission = input.openAdmission
+        ? undefined
+        : {shellyID: admittedShellyID};
     const shelly =
         gathered && deps.factory.assembleFromGathered
-            ? await deps.factory.assembleFromGathered(transport, gathered)
-            : await deps.factory.fromWebsocket(transport);
+            ? await deps.factory.assembleFromGathered(
+                  transport,
+                  gathered,
+                  admission
+              )
+            : await deps.factory.fromWebsocket(
+                  transport,
+                  input.signal,
+                  admission
+              );
+    input.signal?.throwIfAborted();
 
     const mismatch = checkAdmittedIdentity(admittedShellyID, shelly.shellyID);
     if (mismatch !== null) {
@@ -141,8 +193,20 @@ async function runRegistration(
         return false;
     }
 
+    input.signal?.throwIfAborted();
+    // Read before register retires it: the last state held for this device.
+    const previous = deps.deviceCollector.getDevice(admittedShellyID);
+    if (initialStatus) shelly.setStatus(initialStatus);
+    const offlineChanges = previous
+        ? diffStatus(previous.status, shelly.status)
+        : [];
     commitRegistration(
-        {shelly, initialStatus, admittedShellyID, initStart},
+        {
+            shelly,
+            admittedShellyID,
+            initStart,
+            ownershipLease
+        },
         deps
     );
     // Operational finish — device.list returns it, commands work now.
@@ -151,20 +215,27 @@ async function runRegistration(
         `${reusedGather ? 'reused gather' : 'fresh probe'}, ${shelly.entities.length} entities`
     );
     input.setStage?.('post-register');
-    await runPostRegisterTasks({shelly, message, initialStatus}, deps);
+    // Registration is complete; post-register enrichment must not retain an
+    // init slot or let a slow status write reduce admission throughput.
+    fireAndForget('device-init.post-register', () =>
+        runPostRegisterTasks(
+            {shelly, message, initialStatus, offlineChanges},
+            deps
+        )
+    );
     return true;
 }
 
 function commitRegistration(
     input: {
         shelly: ShellyDeviceType;
-        initialStatus: unknown;
         admittedShellyID: string;
         initStart: number;
+        ownershipLease: DeviceRuntimeOwnershipLease;
     },
     deps: AdmissionDeps
 ): void {
-    if (input.initialStatus) input.shelly.setStatus(input.initialStatus);
+    deps.bindRuntimeOwnership(input.shelly, input.ownershipLease);
     deps.deviceCollector.register(input.shelly);
     deps.observability.recordInitDuration(
         input.admittedShellyID,
@@ -172,16 +243,19 @@ function commitRegistration(
     );
 }
 
+interface ConnectSnapshot {
+    shelly: ShellyDeviceType;
+    message: InitMessage;
+    // What changed while the device was away; empty for a first connect.
+    offlineChanges: PathChange[];
+}
+
 async function runPostRegisterTasks(
-    input: {
-        shelly: ShellyDeviceType;
-        message: InitMessage;
-        initialStatus: unknown;
-    },
+    input: ConnectSnapshot & {initialStatus: unknown},
     deps: AdmissionDeps
 ): Promise<void> {
     if (input.initialStatus) {
-        await pushInitialStatusSafe(input.shelly, input.message, deps);
+        await pushInitialStatusSafe(input, deps);
     }
     enrichBTHomeSafe(input.shelly, deps);
     reportDeviceHealth(input.shelly, deps);
@@ -203,10 +277,10 @@ function reportDeviceHealth(
 }
 
 async function pushInitialStatusSafe(
-    shelly: ShellyDeviceType,
-    message: InitMessage,
+    snapshot: ConnectSnapshot,
     deps: AdmissionDeps
 ): Promise<void> {
+    const {message} = snapshot;
     // `statusSelectivePush` only reads `params` off the request, but the
     // canonical type requires `dst`. Build a faithful ShellyMessageIncoming
     // so the call site stays type-safe without an `as any` escape hatch.
@@ -217,7 +291,10 @@ async function pushInitialStatusSafe(
         params: message.params
     };
     try {
-        await deps.statusSelectivePush(req, shelly);
+        await deps.statusSelectivePush(req, snapshot.shelly, {
+            changes: snapshot.offlineChanges,
+            observation: 'reconnect'
+        });
     } catch (err) {
         deps.logger.error('Status Selective push failed: %s', err);
     }

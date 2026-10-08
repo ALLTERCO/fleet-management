@@ -14,7 +14,12 @@
                         everyday device control.
                     </span>
                 </div>
-                <Steps :current="stage" :steps="runNow ? 4 : 3" @click="(selected) => (stage = selected)">
+                <Steps
+                    :current="stage"
+                    :steps="runNow ? 4 : 3"
+                    :max-reachable="runNow ? 5 : 4"
+                    @click="(selected) => (stage = selected)"
+                >
                     <template #stepTitle="{ id }">
                         <span v-if="id === STAGES.BUILD" class="font-semibold">Build</span>
                         <span v-if="id === STAGES.PREVIEW" class="font-semibold">Preview</span>

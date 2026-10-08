@@ -2,6 +2,7 @@ import {
     mapBTHomeKnownObjects,
     mapBTHomeKnownSensorObjects
 } from '../../config/BTHomeData';
+import {tuning} from '../../config/tuning';
 import * as DeviceCollector from '../../modules/DeviceCollector';
 import type {DescribeOutput} from '../../rpc/describe';
 import RpcError from '../../rpc/RpcError';
@@ -29,6 +30,7 @@ import {
     BTHOME_DEVICE_SET_KEY_PARAMS_SCHEMA,
     BTHOME_GET_CONFIG_PARAMS_SCHEMA,
     BTHOME_GET_STATUS_PARAMS_SCHEMA,
+    BTHOME_LIST_DISCOVERED_PARAMS_SCHEMA,
     BTHOME_LIST_GATEWAYS_PARAMS_SCHEMA,
     BTHOME_OBJECT_LIST_INFOS_PARAMS_SCHEMA,
     BTHOME_RESET_ENCRYPTION_COUNTER_PARAMS_SCHEMA,
@@ -62,6 +64,7 @@ import {
     type BthomeDeviceSetKeyParams,
     type BthomeGetConfigParams,
     type BthomeGetStatusParams,
+    type BthomeListDiscoveredParams,
     type BthomeListGatewaysParams,
     type BthomeObjectListInfosParams,
     type BthomeResetEncryptionCounterParams,
@@ -81,11 +84,21 @@ import {wrapDeviceRpc} from '../deviceAdminRpc';
 import type ShellyDevice from '../ShellyDevice';
 import Component from './Component';
 
+// What proves a device can host BLU peripherals: the BLE radio, the bthome
+// component that owns discovery, a BLU gateway, or a child already bound to
+// it. Singletons stay bare in the status; the rest carry an instance suffix,
+// and pinning one instance (blugw:0) hides the others.
+const BLE_SINGLETON_KEYS = ['ble', 'bthome'];
+const BLE_INSTANCE_PREFIXES = ['blugw:', 'bthomedevice:', 'blutrv:'];
+
 function isBleCapable(device: AbstractDevice): boolean {
     const status = device.status as Record<string, unknown> | undefined;
     if (!status) return false;
-    if ('ble' in status || 'blugw:0' in status) return true;
-    return Object.keys(status).some((key) => key.startsWith('bthomedevice:'));
+    return Object.keys(status).some(
+        (key) =>
+            BLE_SINGLETON_KEYS.includes(key) ||
+            BLE_INSTANCE_PREFIXES.some((prefix) => key.startsWith(prefix))
+    );
 }
 
 function getShellyDevice(shellyID: string): ShellyDevice {
@@ -175,7 +188,7 @@ export default class BTHomeComponent extends Component<any> {
     @Component.Expose('StartDiscovery')
     @Component.CrudPermission('devices', 'execute', (p) => p?.shellyID)
     async startDiscovery(rawParams: unknown) {
-        const {shellyID, duration = 10} =
+        const {shellyID, duration = tuning.bthome.discoveryDurationSec} =
             validateOrThrow<BthomeStartDiscoveryParams>(
                 rawParams,
                 BTHOME_START_DISCOVERY_PARAMS_SCHEMA
@@ -185,6 +198,17 @@ export default class BTHomeComponent extends Component<any> {
             await device.sendRPC('BTHome.StartDeviceDiscovery', {duration});
             return {success: true as const, duration};
         });
+    }
+
+    @Component.NoAudit
+    @Component.Expose('ListDiscovered')
+    @Component.CrudPermission('devices', 'read', (p) => p?.shellyID)
+    async listDiscovered(rawParams: unknown) {
+        const {shellyID} = validateOrThrow<BthomeListDiscoveredParams>(
+            rawParams,
+            BTHOME_LIST_DISCOVERED_PARAMS_SCHEMA
+        );
+        return {items: getShellyDevice(shellyID).listBTHomeDiscoveries()};
     }
 
     @Component.Expose('Device.AddManual')

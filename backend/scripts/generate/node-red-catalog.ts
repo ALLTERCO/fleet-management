@@ -21,6 +21,7 @@ import {
     readGeneratedJson,
     rpcIndex
 } from './_inventories.js';
+import {isDeniedForNodeRedService} from '../../src/modules/nodeRed/serviceDenylist';
 import {provenanceHeader, REPO_ROOT, writeOutputs} from './_shared.js';
 import type {RpcInventory, RpcMethod} from './backend-rpc-inventory.js';
 
@@ -36,17 +37,17 @@ type NodeKey =
     | 'fm-component-state'
     | 'fm-component-action'
     | 'fm-device-event'
-    | 'fm-scheduler'
+    | 'fm-trigger-threshold'
+    | 'fm-trigger-status'
+    | 'fm-trigger-button'
+    | 'fm-webhook-in'
     | 'fm-schedule'
     | 'fm-variable'
     | 'fm-webhook'
     | 'fm-script'
     | 'fm-firmware'
-    | 'fm-ota'
     | 'fm-backup'
     | 'fm-certificate'
-    | 'fm-security'
-    | 'fm-credential'
     | 'fm-diagnostics'
     | 'fm-alert'
     | 'fm-report'
@@ -92,6 +93,8 @@ export interface NodeRedCatalog {
     packageName: '@shelly/fleet-manager-node-red';
     nodes: NodeRedCatalogNode[];
     methods: NodeRedCatalogMethod[];
+    /** Methods kept out of every node; the package refuses them at runtime. */
+    deniedMethods: string[];
 }
 
 const PACKAGE_CATALOG_PATH = path.join(
@@ -172,11 +175,31 @@ const NODE_DEFINITIONS: Record<NodeKey, Omit<NodeRedCatalogNode, 'methods'>> = {
         label: 'FM Device Event',
         description: 'Trigger flows from device and component events.'
     },
-    'fm-scheduler': {
-        key: 'fm-scheduler',
-        category: 'Fleet Manager / Scheduling & Automation',
-        label: 'FM Scheduler',
-        description: 'Time-based trigger and maintenance-window helper.'
+    'fm-trigger-threshold': {
+        key: 'fm-trigger-threshold',
+        category: 'Fleet Manager / Triggers',
+        label: 'FM Value Threshold',
+        description:
+            'Fires when a device status value goes above or below a limit, optionally for N seconds.'
+    },
+    'fm-trigger-status': {
+        key: 'fm-trigger-status',
+        category: 'Fleet Manager / Triggers',
+        label: 'FM Online / Offline',
+        description: 'Fires when a device goes online or offline.'
+    },
+    'fm-trigger-button': {
+        key: 'fm-trigger-button',
+        category: 'Fleet Manager / Triggers',
+        label: 'FM Button',
+        description: 'Fires on button and input events such as single_push.'
+    },
+    'fm-webhook-in': {
+        key: 'fm-webhook-in',
+        category: 'Fleet Manager / Triggers',
+        label: 'FM Webhook In',
+        description:
+            'Starts a flow from an outside HTTP call, checked with a per-hook secret.'
     },
     'fm-schedule': {
         key: 'fm-schedule',
@@ -206,13 +229,7 @@ const NODE_DEFINITIONS: Record<NodeKey, Omit<NodeRedCatalogNode, 'methods'>> = {
         key: 'fm-firmware',
         category: 'Fleet Manager / Lifecycle Operations',
         label: 'FM Firmware',
-        description: 'Firmware library and auto-update operations.'
-    },
-    'fm-ota': {
-        key: 'fm-ota',
-        category: 'Fleet Manager / Lifecycle Operations',
-        label: 'FM OTA',
-        description: 'Advanced low-level OTA update operations.'
+        description: 'Firmware library and auto-update status (read only).'
     },
     'fm-backup': {
         key: 'fm-backup',
@@ -226,19 +243,7 @@ const NODE_DEFINITIONS: Record<NodeKey, Omit<NodeRedCatalogNode, 'methods'>> = {
         category: 'Fleet Manager / Lifecycle Operations',
         label: 'FM Certificate',
         description:
-            'Certificate store and device certificate rollout operations.'
-    },
-    'fm-security': {
-        key: 'fm-security',
-        category: 'Fleet Manager / Lifecycle Operations',
-        label: 'FM Security',
-        description: 'Direct TLS material operations on devices.'
-    },
-    'fm-credential': {
-        key: 'fm-credential',
-        category: 'Fleet Manager / Lifecycle Operations',
-        label: 'FM Credential',
-        description: 'Device admin credential store and rotation operations.'
+            'Certificate store lookup and rollout preflight (no key export or push).'
     },
     'fm-diagnostics': {
         key: 'fm-diagnostics',
@@ -302,6 +307,10 @@ const COMPONENT_NAMESPACES = new Set([
     'humidity',
     'illuminance',
     'input',
+    'ir',
+    'ircode',
+    'irdevice',
+    'irlibrary',
     'knx',
     'kvs',
     'light',
@@ -313,6 +322,7 @@ const COMPONENT_NAMESPACES = new Set([
     'object',
     'ota',
     'pill',
+    'pilluart',
     'pm1',
     'presence',
     'presencezone',
@@ -346,39 +356,47 @@ function componentNodeKeys(method: string): NodeKey[] {
     return ['fm-component-action'];
 }
 
+// One specific node per namespace. fm-target builds targets; it runs no method.
+const NAMESPACE_NODE_KEYS: Readonly<Record<string, NodeKey>> = {
+    tag: 'fm-tag',
+    group: 'fm-group',
+    location: 'fm-location',
+    device: 'fm-device',
+    schedule: 'fm-schedule',
+    storage: 'fm-variable',
+    variables: 'fm-variable',
+    webhook: 'fm-webhook',
+    script: 'fm-script',
+    firmware: 'fm-firmware',
+    backup: 'fm-backup',
+    certificate: 'fm-certificate',
+    alert: 'fm-alert',
+    report: 'fm-report',
+    energy: 'fm-energy',
+    notification: 'fm-notification',
+    channel: 'fm-notification',
+    mail: 'fm-notification',
+    message_text: 'fm-notification',
+    notification_policy: 'fm-notification',
+    audit: 'fm-audit',
+    authz_audit: 'fm-audit',
+    system: 'fm-diagnostics',
+    fleet: 'fm-diagnostics'
+};
+
 function nodeKeysFor(namespace: string, method: string): NodeKey[] {
-    if (namespace === 'tag') return ['fm-tag', 'fm-target'];
-    if (namespace === 'group') return ['fm-group', 'fm-target'];
-    if (namespace === 'location') return ['fm-location', 'fm-target'];
-    if (namespace === 'device') return ['fm-device', 'fm-target'];
-    if (namespace === 'schedule') return ['fm-schedule', 'fm-scheduler'];
-    if (namespace === 'storage' || namespace === 'variables')
-        return ['fm-variable'];
-    if (namespace === 'webhook') return ['fm-webhook'];
-    if (namespace === 'script') return ['fm-script'];
-    if (namespace === 'firmware') return ['fm-firmware'];
-    if (namespace === 'ota') return ['fm-ota', ...componentNodeKeys(method)];
-    if (namespace === 'backup') return ['fm-backup'];
-    if (namespace === 'certificate') return ['fm-certificate'];
-    if (namespace === 'security') return ['fm-security'];
-    if (namespace === 'credential') return ['fm-credential'];
-    if (namespace === 'alert') return ['fm-alert'];
-    if (namespace === 'report') return ['fm-report'];
-    if (namespace === 'energy') return ['fm-energy'];
-    if (
-        namespace === 'notification' ||
-        namespace === 'mail' ||
-        namespace === 'message_text' ||
-        namespace === 'notification_policy'
-    ) {
-        return ['fm-notification'];
-    }
-    if (namespace === 'audit' || namespace === 'authz_audit')
-        return ['fm-audit'];
-    if (namespace === 'system' || namespace === 'fleet')
-        return ['fm-diagnostics'];
+    const specific = NAMESPACE_NODE_KEYS[namespace];
+    if (specific) return [specific];
     if (COMPONENT_NAMESPACES.has(namespace)) return componentNodeKeys(method);
     return ['fm-rpc'];
+}
+
+// One denylist: the editor hides exactly what the server refuses.
+export function isDeniedMethod(namespace: string, method: string): boolean {
+    return isDeniedForNodeRedService({
+        method: `${namespace}.${method}`,
+        params: {}
+    });
 }
 
 function catalogMethods(
@@ -470,14 +488,22 @@ export async function generate(inputs?: {
     const auth =
         inputs?.auth ??
         readGeneratedJson<AuthInventory>('transport-auth-matrix.json');
-    const methods = catalogMethods(await loadAllDescribes(), rpc, auth);
+    const all = catalogMethods(await loadAllDescribes(), rpc, auth);
+    const methods = all.filter((method) => !isDeniedCatalogMethod(method));
     return {
         generator: 'node-red-catalog',
         version: 1,
         packageName: '@shelly/fleet-manager-node-red',
         nodes: catalogNodes(methods),
-        methods
+        methods,
+        deniedMethods: all
+            .filter(isDeniedCatalogMethod)
+            .map((method) => method.fullMethod)
     };
+}
+
+function isDeniedCatalogMethod(method: NodeRedCatalogMethod): boolean {
+    return isDeniedMethod(method.namespace, method.method);
 }
 
 export function writePackageCatalog(catalog: NodeRedCatalog): void {
@@ -499,6 +525,7 @@ export function renderMarkdown(catalog: NodeRedCatalog): string {
         '',
         `- Nodes: **${catalog.nodes.length}**`,
         `- Methods: **${catalog.methods.length}**`,
+        `- Denied methods (never offered as nodes): **${catalog.deniedMethods.length}**`,
         `- Package: \`${catalog.packageName}\``,
         ''
     ].join('\n');
@@ -513,7 +540,13 @@ export function renderMarkdown(catalog: NodeRedCatalog): string {
         ),
         ''
     ].join('\n');
-    return [header, summary, nodeRows].join('\n');
+    const deniedRows = [
+        '## Denied Methods',
+        '',
+        ...catalog.deniedMethods.map((method) => `- \`${method}\``),
+        ''
+    ].join('\n');
+    return [header, summary, nodeRows, deniedRows].join('\n');
 }
 
 async function main(): Promise<void> {

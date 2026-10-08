@@ -14,38 +14,32 @@
     >
         <template #default>
             <!-- em3 (3-phase): total + phase sub-values -->
-            <div v-if="cardType === 'em3'" class="em-layout em-layout--sm">
+            <div v-if="cardType === 'em3'" class="em-layout">
                 <div class="em-hero">
                     <span class="em-hero-v">{{ powerDisplay }}</span>
-                    <span class="em-hero-u">{{ powerUnit }}</span>
+                    <span class="ec-u">{{ powerUnit }}</span>
                 </div>
                 <div class="em-sep"></div>
                 <div class="em-metrics">
-                    <div class="em-cell">
-                        <div class="em-cell-l ec-ph-a">Phase A</div>
-                        <div class="em-cell-v">{{ phaseA.power }}<span class="em-cell-u">{{ phaseA.powerUnit }}</span></div>
-                    </div>
-                    <div class="em-cell">
-                        <div class="em-cell-l ec-ph-b">Phase B</div>
-                        <div class="em-cell-v">{{ phaseB.power }}<span class="em-cell-u">{{ phaseB.powerUnit }}</span></div>
-                    </div>
-                    <div class="em-cell">
-                        <div class="em-cell-l ec-ph-c">Phase C</div>
-                        <div class="em-cell-v">{{ phaseC.power }}<span class="em-cell-u">{{ phaseC.powerUnit }}</span></div>
-                    </div>
+                    <template v-for="ph in phases" :key="ph.name">
+                        <div v-if="ph.power" class="em-cell">
+                            <div class="em-cell-l" :class="ph.headerClass">{{ ph.name }}</div>
+                            <div class="em-cell-v">{{ ph.power.value }}<span class="ec-u ec-u--sm">{{ ph.power.unit }}</span></div>
+                        </div>
+                    </template>
                 </div>
             </div>
             <!-- Single-phase -->
-            <div v-else class="em-layout em-layout--sm">
+            <div v-else class="em-layout">
                 <div class="em-hero">
                     <span class="em-hero-v">{{ powerDisplay }}</span>
-                    <span class="em-hero-u">{{ powerUnit }}</span>
+                    <span class="ec-u">{{ powerUnit }}</span>
                 </div>
                 <div class="em-sep"></div>
                 <div class="em-metrics">
-                    <div class="em-cell"><div class="em-cell-l">V</div><div class="em-cell-v">{{ voltageDisplay }}</div></div>
-                    <div class="em-cell"><div class="em-cell-l">A</div><div class="em-cell-v">{{ currentDisplay }}</div></div>
-                    <div class="em-cell"><div class="em-cell-l">PF</div><div class="em-cell-v">{{ pfDisplay }}</div></div>
+                    <div v-if="hasMetric(voltageMetric)" class="em-cell"><div class="em-cell-l">V</div><div class="em-cell-v">{{ voltageMetric.value }}</div></div>
+                    <div v-if="hasMetric(currentMetric)" class="em-cell"><div class="em-cell-l">A</div><div class="em-cell-v">{{ currentMetric.value }}</div></div>
+                    <div v-if="hasMetric(pfMetric)" class="em-cell"><div class="em-cell-l">PF</div><div class="em-cell-v">{{ pfMetric.value }}</div></div>
                 </div>
             </div>
         </template>
@@ -71,13 +65,13 @@
             <div class="em-layout">
                 <div class="em-hero">
                     <span class="em-hero-v">{{ powerDisplay }}</span>
-                    <span class="em-hero-u">{{ powerUnit }}</span>
+                    <span class="ec-u">{{ powerUnit }}</span>
                 </div>
                 <div class="em-sep"></div>
                 <div class="em-metrics">
                     <div v-for="m in wideMetrics" :key="m.label" class="em-cell">
                         <div class="em-cell-l">{{ m.label }}</div>
-                        <div class="em-cell-v">{{ m.value }}<span v-if="m.unit" class="em-cell-u">{{ m.unit }}</span></div>
+                        <div class="em-cell-v">{{ m.value }}<span v-if="m.unit" class="ec-u ec-u--sm">{{ m.unit }}</span></div>
                     </div>
                 </div>
             </div>
@@ -87,7 +81,7 @@
         </template>
     </CardShell>
 
-    <!-- 2×2 energy: hero head + 2-col metric grid + Returned footer -->
+    <!-- 2×2 energy: hero power + line-condition meter row + counter grid -->
     <CardShell
         v-else-if="cardType === 'energy'"
         :type="cardType"
@@ -100,22 +94,25 @@
         @delete="$emit('delete')" @cycle-size="$emit('cycle-size')"
     >
         <template #default>
-            <div class="ec-em-hero-head">
-                <div class="ec-em-hero-inline"><span class="ec-em-hero-v">{{ powerDisplay }}</span><span class="ec-em-hero-u">{{ powerUnit }}</span></div>
-                <div class="ec-em-hero-sub">{{ energyDisplay }} kWh total energy</div>
+            <div v-if="hasMetric(powerMetric)" class="ec-hero-power">
+                <div class="ec-hero-power-v">{{ powerDisplay }}</div>
+                <div class="ec-u">{{ powerUnit }}</div>
             </div>
-            <div class="ec-ph-grid ec-ph-grid--2">
-                <div class="ec-ph-col">
-                    <div class="ec-ph-hdr ec-ph-hdr--neutral">Voltage</div>
-                    <div class="ec-ph-val">{{ voltageDisplay }} <span>V</span></div>
-                    <div class="ec-ph-hdr ec-ph-hdr--neutral">Current</div>
-                    <div class="ec-ph-val">{{ currentDisplay }} <span>A</span></div>
-                </div>
-                <div class="ec-ph-col">
-                    <div class="ec-ph-hdr ec-ph-hdr--neutral">Frequency</div>
-                    <div class="ec-ph-val">{{ freqDisplay }} <span>Hz</span></div>
-                    <div class="ec-ph-hdr ec-ph-hdr--neutral">Power Factor</div>
-                    <div class="ec-ph-val">{{ pfDisplay }} <span>PF</span></div>
+            <div v-if="faultText" class="ec-em-fault s-fault">
+                <i class="fas fa-triangle-exclamation" />{{ faultText }}
+            </div>
+            <!-- Live line conditions, same row the metered Switch 2×2 uses. -->
+            <div v-if="hasHeroMeter" class="ec-hero-meter">
+                <div v-if="hasMetric(voltageMetric)" class="ec-hero-meter-item"><span class="ec-hero-meter-v">{{ voltageMetric.value }}</span><span class="ec-u ec-u--sm">V</span></div>
+                <div v-if="hasMetric(currentMetric)" class="ec-hero-meter-item"><span class="ec-hero-meter-v">{{ currentMetric.value }}</span><span class="ec-u ec-u--sm">A</span></div>
+                <div v-if="hasMetric(pfMetric)" class="ec-hero-meter-item"><span class="ec-hero-meter-v">{{ pfMetric.value }}</span><span class="ec-u ec-u--sm">PF</span></div>
+                <div v-if="hasMetric(freqMetric)" class="ec-hero-meter-item"><span class="ec-hero-meter-v">{{ freqMetric.value }}</span><span class="ec-u ec-u--sm">Hz</span></div>
+            </div>
+            <!-- Count drives columns and value size (see card-sensors.css). -->
+            <div class="ec-hero-grid" :data-count="energyStats.length">
+                <div v-for="s in energyStats" :key="s.key" class="ec-hero-grid-item">
+                    <div class="ec-hero-grid-v">{{ s.value }}<span v-if="s.unit" class="ec-u ec-u--sm">{{ s.unit }}</span></div>
+                    <div class="ec-hero-grid-l">{{ s.label }}</div>
                 </div>
             </div>
         </template>
@@ -138,33 +135,16 @@
     >
         <template #default>
             <div class="ec-em-hero-head">
-                <div class="ec-em-hero-inline"><span class="ec-em-hero-v">{{ powerDisplay }}</span><span class="ec-em-hero-u">{{ powerUnit }}</span></div>
-                <div class="ec-em-hero-sub">{{ energyDisplay }} kWh total energy</div>
+                <div class="ec-em-hero-inline"><span class="ec-em-hero-v">{{ powerDisplay }}</span><span class="ec-u">{{ powerUnit }}</span></div>
+                <div v-if="energyDisplay" class="ec-em-hero-sub">{{ energyDisplay }} total energy</div>
             </div>
+            <!-- Value and unit are separate cells so each column aligns. -->
             <div class="ec-ph-grid">
-                <div class="ec-ph-col">
-                    <div class="ec-ph-hdr ec-ph-a">Phase A</div>
-                    <div class="ec-ph-val">{{ phaseA.voltage }} <span>V</span></div>
-                    <div class="ec-ph-val">{{ phaseA.current }} <span>A</span></div>
-                    <div class="ec-ph-val">{{ phaseA.power }} <span>{{ phaseA.powerUnit }}</span></div>
-                    <div class="ec-ph-val">{{ phaseA.apparent }} <span>{{ phaseA.apparentUnit }}</span></div>
-                    <div class="ec-ph-val">{{ phaseA.pf }} <span>PF</span></div>
-                </div>
-                <div class="ec-ph-col">
-                    <div class="ec-ph-hdr ec-ph-b">Phase B</div>
-                    <div class="ec-ph-val">{{ phaseB.voltage }} <span>V</span></div>
-                    <div class="ec-ph-val">{{ phaseB.current }} <span>A</span></div>
-                    <div class="ec-ph-val">{{ phaseB.power }} <span>{{ phaseB.powerUnit }}</span></div>
-                    <div class="ec-ph-val">{{ phaseB.apparent }} <span>{{ phaseB.apparentUnit }}</span></div>
-                    <div class="ec-ph-val">{{ phaseB.pf }} <span>PF</span></div>
-                </div>
-                <div class="ec-ph-col">
-                    <div class="ec-ph-hdr ec-ph-c">Phase C</div>
-                    <div class="ec-ph-val">{{ phaseC.voltage }} <span>V</span></div>
-                    <div class="ec-ph-val">{{ phaseC.current }} <span>A</span></div>
-                    <div class="ec-ph-val">{{ phaseC.power }} <span>{{ phaseC.powerUnit }}</span></div>
-                    <div class="ec-ph-val">{{ phaseC.apparent }} <span>{{ phaseC.apparentUnit }}</span></div>
-                    <div class="ec-ph-val">{{ phaseC.pf }} <span>PF</span></div>
+                <div v-for="ph in phases" :key="ph.name" class="ec-ph-col">
+                    <div class="ec-ph-hdr" :class="ph.headerClass">{{ ph.name }}</div>
+                    <template v-for="r in ph.rows" :key="r.key">
+                        <span class="ec-ph-val">{{ r.value }}</span><span class="ec-ph-u ec-u ec-u--sm">{{ r.unit }}</span>
+                    </template>
                 </div>
             </div>
         </template>
@@ -176,6 +156,21 @@
 
 <script setup lang="ts">
 import {computed} from 'vue';
+import {
+    formatApparentPower,
+    formatApparentPowerGroup,
+    formatCurrent,
+    formatEnergy,
+    formatFrequency,
+    formatPower,
+    formatPowerFactor,
+    formatPowerGroup,
+    formatVoltage,
+    hasMetric,
+    type Metric,
+    meterFaults,
+    metricText
+} from '@/helpers/powerMetrics';
 import {useDevicesStore} from '@/stores/devices';
 import type {entity_t} from '@/types';
 import CardBadges from './CardBadges.vue';
@@ -215,54 +210,56 @@ const cardType = computed(() => {
     return 'energy';
 });
 
-function formatPower(w: number | undefined | null): {
-    display: string;
-    unit: string;
-} {
-    if (w === undefined || w === null) return {display: '—', unit: 'W'};
-    if (Math.abs(w) >= 1000)
-        return {display: (w / 1000).toFixed(1), unit: 'kW'};
-    return {display: String(Math.round(w)), unit: 'W'};
-}
-
-const powerDisplay = computed(() => {
-    const w =
+// Shared powerMetrics helpers: same rounding as every other surface, and an
+// empty unit when a reading is absent so "— V" never renders as a real value.
+const powerMetric = computed(() =>
+    formatPower(
         status.value?.act_power ??
-        status.value?.apower ??
-        status.value?.total_act_power;
-    return formatPower(w).display;
-});
-
-const powerUnit = computed(() => {
-    const w =
-        status.value?.act_power ??
-        status.value?.apower ??
-        status.value?.total_act_power;
-    return formatPower(w).unit;
-});
-
-const voltageDisplay = computed(() => {
-    const v = status.value?.voltage ?? status.value?.a_voltage;
-    return v !== undefined && v !== null ? v.toFixed(1) : '—';
-});
-
-const currentDisplay = computed(() => {
-    const a =
+            status.value?.apower ??
+            status.value?.total_act_power
+    )
+);
+const voltageMetric = computed(() =>
+    formatVoltage(status.value?.voltage ?? status.value?.a_voltage)
+);
+const currentMetric = computed(() =>
+    formatCurrent(
         status.value?.current ??
-        status.value?.a_current ??
-        status.value?.total_current;
-    return a !== undefined && a !== null ? a.toFixed(2) : '—';
-});
+            status.value?.a_current ??
+            status.value?.total_current
+    )
+);
+// em:0 has no top-level `freq`; frequency is common to all phases.
+const freqMetric = computed(() =>
+    formatFrequency(
+        status.value?.freq ??
+            status.value?.a_freq ??
+            status.value?.b_freq ??
+            status.value?.c_freq
+    )
+);
+const pfMetric = computed(() =>
+    formatPowerFactor(status.value?.pf ?? status.value?.a_pf)
+);
+// PM1 spells it `aprtpower`; EM1 uses `aprt_power`, em (3-phase) `total_aprt_power`.
+const apparentMetric = computed(() =>
+    formatApparentPower(
+        status.value?.aprt_power ??
+            status.value?.aprtpower ??
+            status.value?.total_aprt_power
+    )
+);
 
-const freqDisplay = computed(() => {
-    const f = status.value?.freq;
-    return f !== undefined && f !== null ? f.toFixed(2) : '—';
-});
+const powerDisplay = computed(() => powerMetric.value.value);
+const powerUnit = computed(() => powerMetric.value.unit);
 
-const pfDisplay = computed(() => {
-    const pf = status.value?.pf ?? status.value?.a_pf;
-    return pf !== undefined && pf !== null ? pf.toFixed(2) : '—';
-});
+// The meter row draws its own divider, so an all-empty row would leave a rule
+// floating on nothing — hide the container, not just the cells.
+const hasHeroMeter = computed(() =>
+    [voltageMetric, currentMetric, pfMetric, freqMetric].some((m) =>
+        hasMetric(m.value)
+    )
+);
 
 // Energy data — may be in the same status key or in a separate em1data:N / emdata:N key
 const energyStatus = computed(() => {
@@ -277,59 +274,87 @@ const energyStatus = computed(() => {
     );
 });
 
-const energyDisplay = computed(() => {
-    const total =
+// EM1Data / EMData / PM1 each spell the lifetime counters differently.
+const consumedMetric = computed(() =>
+    formatEnergy(
         energyStatus.value?.total_act_energy ??
-        energyStatus.value?.total_act ??
-        status.value?.aenergy?.total;
-    if (total === undefined || total === null) return '—';
-    return (total / 1000).toFixed(1);
+            energyStatus.value?.total_act ??
+            status.value?.aenergy?.total
+    )
+);
+const returnedMetric = computed(() =>
+    formatEnergy(
+        energyStatus.value?.total_act_ret_energy ??
+            energyStatus.value?.total_act_ret ??
+            status.value?.ret_aenergy?.total
+    )
+);
+
+// One string, so the 13px em3 sub-line carries no separately sized unit.
+const energyDisplay = computed<string | null>(() =>
+    hasMetric(consumedMetric.value) ? metricText(consumedMetric.value) : null
+);
+
+// Apparent power and the two lifetime counters — the readings that need a word
+// to be read. Anything the device does not report drops its cell.
+const energyStats = computed(() =>
+    [
+        {key: 'apparent', label: 'Apparent', ...apparentMetric.value},
+        {key: 'consumed', label: 'Consumed', ...consumedMetric.value},
+        {key: 'returned', label: 'Returned', ...returnedMetric.value}
+    ].filter(hasMetric)
+);
+
+// EM1/PM1 report faults on the meter, EM1Data/EMData on the counter store.
+const faultText = computed<string | null>(() => {
+    const faults = meterFaults(status.value, energyStatus.value);
+    return faults.length > 0 ? faults.join(' · ') : null;
 });
 
-// Per-phase data for em3 2×2
-function getPhaseData(prefix: string) {
-    return computed(() => {
-        const s = status.value;
-        if (!s)
-            return {
-                voltage: '—',
-                current: '—',
-                power: '—',
-                powerUnit: 'kW',
-                apparent: '—',
-                apparentUnit: 'kVA',
-                pf: '—'
-            };
-        const v = s[`${prefix}_voltage`];
-        const a = s[`${prefix}_current`];
-        const p = s[`${prefix}_act_power`];
-        const ap = s[`${prefix}_aprt_power`];
-        const pf = s[`${prefix}_pf`];
-        const pw = p != null ? formatPower(p) : null;
-        const apw = ap != null ? formatPower(ap) : null;
+// Phases are compared, so power and apparent power are scaled as one group.
+const PHASE_PREFIXES = ['a', 'b', 'c'] as const;
+
+const phases = computed(() => {
+    const s = status.value;
+    const powers = formatPowerGroup(
+        PHASE_PREFIXES.map((p) => s?.[`${p}_act_power`])
+    );
+    const apparents = formatApparentPowerGroup(
+        PHASE_PREFIXES.map((p) => s?.[`${p}_aprt_power`])
+    );
+    // A phase the meter does not report drops its row — never "— V".
+    return PHASE_PREFIXES.map((p, i) => {
+        const readings: [string, Metric][] = [
+            ['voltage', formatVoltage(s?.[`${p}_voltage`])],
+            ['current', formatCurrent(s?.[`${p}_current`])],
+            ['power', powers[i]],
+            ['apparent', apparents[i]],
+            // PF is dimensionless; the column labels it so the unit is literal.
+            ['pf', {...formatPowerFactor(s?.[`${p}_pf`]), unit: 'PF'}]
+        ];
         return {
-            voltage: v != null ? v.toFixed(1) : '—',
-            current: a != null ? a.toFixed(2) : '—',
-            power: pw?.display ?? '—',
-            powerUnit: pw ? (pw.unit === 'kW' ? 'kW' : 'W') : 'kW',
-            apparent: apw?.display ?? '—',
-            apparentUnit: apw ? (apw.unit === 'kW' ? 'kVA' : 'VA') : 'kVA',
-            pf: pf != null ? pf.toFixed(2) : '—'
+            name: `Phase ${p.toUpperCase()}`,
+            headerClass: `ec-ph-${p}`,
+            // The 1x1 tile shows active power alone; null hides that phase cell.
+            power: hasMetric(powers[i]) ? powers[i] : null,
+            rows: readings
+                .filter(([, m]) => hasMetric(m))
+                .map(([key, m]) => ({key, value: m.value, unit: m.unit}))
         };
-    });
-}
+    }).filter((ph) => ph.rows.length > 0);
+});
 
-const phaseA = getPhaseData('a');
-const phaseB = getPhaseData('b');
-const phaseC = getPhaseData('c');
-
-// 2×1 metric cells below hero value (V, A, PF, Hz)
-const wideMetrics = computed(() => [
-    {value: voltageDisplay.value, label: 'Voltage', unit: 'V'},
-    {value: currentDisplay.value, label: 'Current', unit: 'A'},
-    {value: pfDisplay.value, label: 'PF', unit: ''},
-    {value: freqDisplay.value, label: 'Freq', unit: 'Hz'}
-]);
+// 2×1 metric cells below the hero value — reported readings only. Apparent
+// power is here too: a meter that reports VA must not lose it at this size.
+const wideMetrics = computed(() =>
+    [
+        {label: 'Voltage', ...voltageMetric.value},
+        {label: 'Current', ...currentMetric.value},
+        {label: 'Apparent', ...apparentMetric.value},
+        {label: 'PF', ...pfMetric.value},
+        {label: 'Freq', ...freqMetric.value}
+    ].filter((m) => hasMetric(m))
+);
 </script>
 
 <style scoped>
@@ -344,22 +369,17 @@ const wideMetrics = computed(() => [
     display: flex;
     align-items: baseline;
     justify-content: center;
-    gap: var(--space-1);
     padding: var(--space-4);
     flex: 1;
 }
+/* Relative tracking: tightens the digits without eating their advance. */
 .em-hero-v {
     font-variant-numeric: tabular-nums;
-    font-size: var(--type-body);
+    font-size: var(--type-heading);
     font-weight: 800;
-    letter-spacing: -3px;
+    letter-spacing: var(--tracking-tight);
     line-height: 1;
     color: var(--color-text-primary);
-}
-.em-hero-u {
-    font-size: var(--type-subheading);
-    font-weight: 600;
-    color: var(--color-text-tertiary);
 }
 .em-sep {
     height: 1px;
@@ -391,7 +411,7 @@ const wideMetrics = computed(() => [
     background: var(--color-border-default);
 }
 .em-cell-l {
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     font-weight: 600;
     color: var(--color-text-quaternary);
     margin-bottom: var(--space-1);
@@ -401,19 +421,8 @@ const wideMetrics = computed(() => [
 .em-cell-l.ec-ph-c { color: var(--color-status-on); }
 .em-cell-v {
     font-variant-numeric: tabular-nums;
-    font-size: var(--type-subheading);
+    font-size: var(--type-body);
     font-weight: 700;
     color: var(--color-text-secondary);
 }
-.em-cell-u {
-    font-size: var(--type-body);
-    font-weight: 600;
-    color: var(--color-text-quaternary);
-    margin-left: var(--space-0-5);
-}
-
-/* 1×1 — only font size overrides */
-.em-layout--sm .em-hero-v { font-size: var(--type-body); letter-spacing: -2px; }
-.em-layout--sm .em-hero-u { font-size: var(--type-subheading); }
-.em-layout--sm .em-cell-v { font-size: var(--type-body); }
 </style>

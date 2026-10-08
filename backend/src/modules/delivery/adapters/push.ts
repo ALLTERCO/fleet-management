@@ -3,6 +3,8 @@
 // hitting FCM/APNs/web-push providers.
 
 import {createHmac, timingSafeEqual} from 'node:crypto';
+import {analyzePayload, summaryLine} from '../groupedRender';
+import {stateLabel} from '../notificationDisplay';
 import {type CanonicalAlertPayload, toCanonical} from '../render/canonical';
 import type {DeliveryPayload} from '../types';
 
@@ -19,6 +21,8 @@ export interface PushDeliveryRequest {
     payload: DeliveryPayload;
     /** HMAC secret used to sign action button ids. */
     actionSigningKey: string;
+    /** False for a custom fallback whose body already owns presentation. */
+    useStandardPresentation?: boolean;
 }
 
 export interface PushDeliveryResult {
@@ -50,11 +54,16 @@ export async function sendPush(
     req: PushDeliveryRequest,
     providerSend: PushProviderSendFn
 ): Promise<PushDeliveryResult> {
-    const canonical = toCanonical(req.payload);
+    const presentationPayload =
+        req.useStandardPresentation === false
+            ? req.payload
+            : groupedPushPayload(req.payload);
+    const canonical = toCanonical(presentationPayload);
     const wire = renderForPlatform(
         req.token.platform,
         canonical,
-        req.actionSigningKey
+        req.actionSigningKey,
+        req.useStandardPresentation ?? true
     );
     const sizeCap = sizeCapFor(req.token.platform);
     if (wireByteSize(wire) > sizeCap) {
@@ -71,19 +80,43 @@ export async function sendPush(
     });
 }
 
+function groupedPushPayload(payload: DeliveryPayload): DeliveryPayload {
+    const grouped = analyzePayload(payload);
+    if (grouped.mode === 'single') return payload;
+    return {
+        ...payload,
+        title: `${grouped.alerts.length} alerts · ${payload.ruleName}`,
+        message:
+            summaryLine(grouped.aggregate) || `${grouped.alerts.length} alerts`,
+        alertId: null,
+        firedAt: grouped.aggregate?.lastAt || payload.firedAt,
+        source: null,
+        deviceImageUrl: undefined
+    };
+}
+
 export function renderForPlatform(
     platform: PushPlatform,
     canonical: CanonicalAlertPayload,
-    signingKey: string
+    signingKey: string,
+    useStandardPresentation = true
 ): Record<string, unknown> {
     const signedActions = signActions(canonical.actions, signingKey);
     switch (platform) {
         case 'ios':
-            return renderApns(canonical, signedActions);
+            return renderApns(
+                canonical,
+                signedActions,
+                useStandardPresentation
+            );
         case 'android':
-            return renderFcm(canonical, signedActions);
+            return renderFcm(canonical, signedActions, useStandardPresentation);
         case 'webpush':
-            return renderWebPush(canonical, signedActions);
+            return renderWebPush(
+                canonical,
+                signedActions,
+                useStandardPresentation
+            );
     }
 }
 
@@ -108,70 +141,148 @@ function signActions(
 
 function renderApns(
     c: CanonicalAlertPayload,
-    actions: SignedAction[]
+    actions: SignedAction[],
+    useStandardPresentation: boolean
 ): Record<string, unknown> {
     return {
-        aps: {
-            alert: {title: c.title, body: c.body},
-            category: `alert_${c.severity}`,
-            sound: c.severity === 'critical' ? 'critical.caf' : 'default',
-            'thread-id': c.source?.subjectId ?? 'fleet'
-        },
-        fm: {
-            severity: c.severity,
-            state: c.state,
-            actions,
-            labels: c.labels,
-            firedAt: c.firedAt
+        message: {
+            notification: {
+                title: c.title,
+                body: useStandardPresentation
+                    ? notificationTime(c.firedAt)
+                    : c.body,
+                ...(c.imageUrl ? {image: c.imageUrl} : {})
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        alert: {
+                            title: c.title,
+                            ...(useStandardPresentation
+                                ? {subtitle: notificationMetadata(c)}
+                                : {}),
+                            body: useStandardPresentation
+                                ? notificationTime(c.firedAt)
+                                : c.body
+                        },
+                        category: `alert_${c.severity}`,
+                        sound:
+                            c.severity === 'critical'
+                                ? 'critical.caf'
+                                : 'default',
+                        'thread-id': c.source?.subjectId ?? 'fleet',
+                        ...(c.imageUrl ? {'mutable-content': 1} : {})
+                    }
+                },
+                ...(c.imageUrl ? {fcm_options: {image: c.imageUrl}} : {})
+            },
+            data: pushData(c, actions)
         }
     };
 }
 
 function renderFcm(
     c: CanonicalAlertPayload,
-    actions: SignedAction[]
+    actions: SignedAction[],
+    useStandardPresentation: boolean
 ): Record<string, unknown> {
     return {
         message: {
-            notification: {title: c.title, body: c.body},
+            notification: {
+                title: c.title,
+                body: useStandardPresentation ? notificationBody(c) : c.body,
+                ...(c.imageUrl ? {image: c.imageUrl} : {})
+            },
             android: {
                 priority: c.severity === 'critical' ? 'HIGH' : 'NORMAL',
                 notification: {
                     channel_id: `alert_${c.severity}`,
-                    tag: c.source?.subjectId ?? 'fleet'
+                    tag: c.source?.subjectId ?? 'fleet',
+                    ...(c.imageUrl ? {image: c.imageUrl} : {})
                 }
             },
-            data: {
-                severity: c.severity,
-                state: c.state,
-                actions: JSON.stringify(actions),
-                firedAt: c.firedAt
-            }
+            data: pushData(c, actions)
         }
     };
 }
 
 function renderWebPush(
     c: CanonicalAlertPayload,
-    actions: SignedAction[]
+    actions: SignedAction[],
+    useStandardPresentation: boolean
 ): Record<string, unknown> {
     return {
-        notification: {
-            title: c.title,
-            body: c.body,
-            tag: c.source?.subjectId ?? 'fleet',
-            requireInteraction: c.severity === 'critical',
-            actions: actions.slice(0, 2).map((a) => ({
-                action: `${a.id}|${a.sig}`,
-                title: a.label
-            })),
-            data: {
-                severity: c.severity,
-                state: c.state,
-                firedAt: c.firedAt
-            }
+        message: {
+            notification: {
+                title: c.title,
+                body: useStandardPresentation ? notificationBody(c) : c.body,
+                ...(c.imageUrl ? {image: c.imageUrl} : {})
+            },
+            webpush: {
+                notification: {
+                    title: c.title,
+                    body: useStandardPresentation
+                        ? notificationBody(c)
+                        : c.body,
+                    tag: c.source?.subjectId ?? 'fleet',
+                    requireInteraction: c.severity === 'critical',
+                    ...(c.imageUrl ? {image: c.imageUrl} : {}),
+                    actions: actions.slice(0, 2).map((a) => ({
+                        action: `${a.id}|${a.sig}`,
+                        title: a.label
+                    }))
+                }
+            },
+            data: pushData(c, actions)
         }
     };
+}
+
+function pushData(
+    c: CanonicalAlertPayload,
+    actions: SignedAction[]
+): Record<string, string> {
+    return {
+        severity: c.severity,
+        state: c.state,
+        actions: JSON.stringify(actions),
+        labels: JSON.stringify(c.labels),
+        firedAt: c.firedAt,
+        ...(c.imageUrl ? {imageUrl: c.imageUrl} : {})
+    };
+}
+
+function notificationMetadata(c: CanonicalAlertPayload): string {
+    return [stateLabel(c.state), c.source?.subjectId]
+        .filter((value): value is string => Boolean(value))
+        .join(' · ');
+}
+
+function notificationBody(c: CanonicalAlertPayload): string {
+    const metadata = notificationMetadata(c);
+    const time = notificationTime(c.firedAt);
+    return metadata ? `${metadata}\n${time}` : time;
+}
+
+function notificationTime(value: string): string {
+    const displayed =
+        /(?:^|\s)(\d{1,2})\s+([A-Za-z]{3})(?:\s+\d{4})?\s*·\s*(\d{2}:\d{2})/.exec(
+            value
+        );
+    if (displayed) return `${displayed[1]} ${displayed[2]} · ${displayed[3]}`;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'UTC'
+    }).formatToParts(date);
+    const part = (type: Intl.DateTimeFormatPartTypes) =>
+        parts.find((entry) => entry.type === type)?.value ?? '';
+    return `${part('day')} ${part('month')} · ${part('hour')}:${part('minute')}`;
 }
 
 function sizeCapFor(platform: PushPlatform): number {

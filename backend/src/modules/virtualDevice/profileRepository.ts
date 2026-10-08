@@ -241,7 +241,7 @@ export async function listVirtualDeviceProfiles(
         `SELECT id, organization_id, key, name, version, roles_json, metadata
            FROM device.virtual_device_profile
           WHERE ${filters.where.join(' AND ')}
-          ORDER BY key ASC, version DESC
+          ORDER BY key ASC, version DESC, id ASC
           ${pagination.sql}`,
         [...filters.values, ...pagination.params(offset)]
     );

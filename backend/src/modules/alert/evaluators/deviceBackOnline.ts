@@ -21,7 +21,7 @@ function buildMatch(
         title: `${display} is back online`,
         message: `Device ${display} (${shellyID}) reconnected. Rule: ${ruleName}.`,
         subject: {type: 'device', id: shellyID},
-        context: {shellyID}
+        context: {shellyID, ...(deviceName ? {deviceName} : {})}
     };
 }
 

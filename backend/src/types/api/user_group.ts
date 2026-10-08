@@ -6,6 +6,7 @@
 
 import {DescribeBuilder, type DescribeOutput} from './_describe';
 import type {JsonSchema} from './_schema';
+import {listResponseSchema, SUCCESS_RESPONSE_SCHEMA} from './_shared';
 
 const EMPTY_PARAMS: JsonSchema = {type: 'object', properties: {}};
 
@@ -103,15 +104,95 @@ export interface UserGroupRemoveMembersParams {
 export const USER_GROUP_REMOVE_MEMBERS_PARAMS_SCHEMA =
     USER_GROUP_ADD_MEMBERS_PARAMS_SCHEMA;
 
-export interface UserGroupResponse {
+// The columns every fn_user_group_* returns. Create and Update stop here.
+export interface UserGroupRow {
     id: string;
     tenant_id: string;
     name: string;
     description: string | null;
     parent_group_id: string | null;
-    member_count: number;
     created_at: string;
 }
+
+// Only the read fns count members.
+export interface UserGroupResponse extends UserGroupRow {
+    member_count: number;
+}
+
+// The columns every organization.fn_user_group_* function returns.
+const USER_GROUP_ROW_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+        'id',
+        'tenant_id',
+        'name',
+        'description',
+        'parent_group_id',
+        'created_at'
+    ],
+    properties: {
+        id: {type: 'string', format: 'uuid'},
+        tenant_id: {type: 'string'},
+        name: {type: 'string'},
+        description: {type: ['string', 'null']},
+        parent_group_id: {type: ['string', 'null']},
+        created_at: {type: 'string', format: 'date-time'}
+    }
+};
+
+// Only the read functions count members; fn_user_group_update does not, so
+// Update answers with the plain row above.
+const USER_GROUP_WITH_MEMBER_COUNT_SCHEMA: JsonSchema = {
+    ...USER_GROUP_ROW_SCHEMA,
+    required: [...(USER_GROUP_ROW_SCHEMA.required ?? []), 'member_count'],
+    properties: {
+        ...(USER_GROUP_ROW_SCHEMA.properties ?? {}),
+        member_count: {type: 'integer', minimum: 0}
+    }
+};
+
+const USER_GROUP_LIST_RESPONSE_SCHEMA = listResponseSchema(
+    USER_GROUP_WITH_MEMBER_COUNT_SCHEMA
+);
+
+const USER_GROUP_MEMBERS_RESPONSE_SCHEMA = listResponseSchema({
+    type: 'object',
+    additionalProperties: false,
+    required: ['user_id', 'added_at', 'added_by'],
+    properties: {
+        user_id: {type: 'string'},
+        added_at: {type: 'string', format: 'date-time'},
+        added_by: {type: 'string'}
+    }
+});
+
+const USER_ID_LIST_SCHEMA: JsonSchema = {
+    type: 'array',
+    items: {type: 'string'}
+};
+
+// Both membership writes are idempotent, so they report what changed and what
+// was already in that state.
+const USER_GROUP_ADD_MEMBERS_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['added', 'alreadyMember'],
+    properties: {
+        added: USER_ID_LIST_SCHEMA,
+        alreadyMember: USER_ID_LIST_SCHEMA
+    }
+};
+
+const USER_GROUP_REMOVE_MEMBERS_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['removed', 'notMember'],
+    properties: {
+        removed: USER_ID_LIST_SCHEMA,
+        notMember: USER_ID_LIST_SCHEMA
+    }
+};
 
 const ANY_RESPONSE: JsonSchema = {type: 'object', additionalProperties: true};
 const ADMIN_PERM = {note: 'admin'};
@@ -134,35 +215,35 @@ export const USER_GROUP_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('List', {
         safety: {operation: 'read'},
         params: USER_GROUP_LIST_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: USER_GROUP_LIST_RESPONSE_SCHEMA,
         permission: READ_PERM,
         description: 'List user groups in current tenant.'
     })
     .registerMethod('Get', {
         safety: {operation: 'read'},
         params: USER_GROUP_GET_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: USER_GROUP_WITH_MEMBER_COUNT_SCHEMA,
         permission: READ_PERM,
         description: 'Fetch a user group by id.'
     })
     .registerMethod('Create', {
         safety: {operation: 'create'},
         params: USER_GROUP_CREATE_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: USER_GROUP_WITH_MEMBER_COUNT_SCHEMA,
         permission: ADMIN_PERM,
         description: 'Create a new user group.'
     })
     .registerMethod('Update', {
         safety: {operation: 'update'},
         params: USER_GROUP_UPDATE_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: USER_GROUP_ROW_SCHEMA,
         permission: ADMIN_PERM,
         description: 'Update user group metadata.'
     })
     .registerMethod('Delete', {
         safety: {operation: 'delete'},
         params: USER_GROUP_DELETE_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: SUCCESS_RESPONSE_SCHEMA,
         permission: ADMIN_PERM,
         description:
             'Delete user group (cascades memberships, refuses if assignments reference).'
@@ -170,21 +251,21 @@ export const USER_GROUP_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('ListMembers', {
         safety: {operation: 'read'},
         params: USER_GROUP_LIST_MEMBERS_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: USER_GROUP_MEMBERS_RESPONSE_SCHEMA,
         permission: READ_PERM,
         description: 'List user IDs that belong to this user group.'
     })
     .registerMethod('AddMembers', {
         safety: {operation: 'update'},
         params: USER_GROUP_ADD_MEMBERS_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: USER_GROUP_ADD_MEMBERS_RESPONSE_SCHEMA,
         permission: ADMIN_PERM,
         description: 'Add users to user group. Idempotent.'
     })
     .registerMethod('RemoveMembers', {
         safety: {operation: 'update'},
         params: USER_GROUP_REMOVE_MEMBERS_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: USER_GROUP_REMOVE_MEMBERS_RESPONSE_SCHEMA,
         permission: ADMIN_PERM,
         description: 'Remove users from user group. Idempotent.'
     })

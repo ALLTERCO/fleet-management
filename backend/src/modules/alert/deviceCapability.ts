@@ -1,9 +1,11 @@
 // Backend-owned eligibility: can a device host a rule kind, judged from the
 // same entity view the device UI renders. Profile/mode-aware for free — the
 // entity view is regenerated on a profile change, so eligibility follows it.
+import {bthomeObjectInfos} from '../../config/BTHomeData';
 import type AbstractDevice from '../../model/AbstractDevice';
 import type {bthomesensor_entity} from '../../types';
 import type {AlertRuleKind} from '../../types/api/alert';
+import type {BluetoothSourceComponentDto} from '../../types/api/virtualdevice';
 
 export interface DeviceCapabilityView {
     /** entity.type values present (switch, temperature, em, smoke, …). */
@@ -24,11 +26,16 @@ const UNIVERSAL_KINDS: ReadonlySet<AlertRuleKind> = new Set([
     'device_back_online',
     'heartbeat',
     'energy_consumption_threshold',
+    'cost_budget_threshold',
+    'record_incomplete',
+    'approaching_new_peak',
     'firmware_operation_failed',
     'backup_operation_failed',
     'automation_run_failed',
     'grafana_alert',
-    'composite'
+    'composite',
+    'credential_expiring',
+    'system_health'
 ]);
 
 // Kinds satisfied by a specific capability on the device.
@@ -88,6 +95,54 @@ export function deviceSupportsKind(
         return configComponentPresent(view, config);
     }
     return true;
+}
+
+/**
+ * Capability view for a promoted BLU device.
+ *
+ * A promoted BLU device is its own row in the device list but has no live
+ * connection of its own — it reports through a gateway, so its status is the
+ * gateway's projection keyed by the same component keys. Without this view the
+ * eligibility check has nothing to answer with and the device silently drops
+ * out of every rule scope, even though the condition picker offers its paths.
+ */
+export function bluetoothCapabilityView(input: {
+    components: readonly BluetoothSourceComponentDto[];
+    status: Record<string, unknown>;
+}): DeviceCapabilityView {
+    const entityTypes = new Set<string>();
+    const bthomeObjNames = new Set<string>();
+    for (const component of input.components) {
+        if (component.role === 'identity') continue;
+        entityTypes.add(componentTypeOf(component.componentKey));
+        const objName = bthomeObjectName(component.objectId);
+        if (objName) bthomeObjNames.add(objName);
+    }
+    return {
+        entityTypes,
+        entityIds: new Set<string>(),
+        componentKeys: new Set(Object.keys(input.status)),
+        isBattery: hasBatteryReading(input.status),
+        bthomeObjNames
+    };
+}
+
+function componentTypeOf(componentKey: string): string {
+    return componentKey.split(':')[0] ?? componentKey;
+}
+
+function bthomeObjectName(objectId: number | null): string | undefined {
+    if (objectId == null) return undefined;
+    return bthomeObjectInfos[objectId]?.name?.toLowerCase();
+}
+
+function hasBatteryReading(status: Record<string, unknown>): boolean {
+    const identity = status.bluetoothdevice;
+    return (
+        !!identity &&
+        typeof identity === 'object' &&
+        'battery' in (identity as Record<string, unknown>)
+    );
 }
 
 /** Extract the capability view from a live device — the only coupled part. */

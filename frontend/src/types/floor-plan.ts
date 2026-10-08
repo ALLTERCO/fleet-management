@@ -2,10 +2,19 @@
 // plan at a different size doesn't invalidate existing placements.
 // Persisted under location.kindFields (free-form blob, no migration).
 
+import type {FixtureKind as ApiFixtureKind} from '@api/location';
+
 export interface FloorPlanRef {
     url: string;
     widthPx: number;
     heightPx: number;
+}
+
+/** A point on the plan, normalized 0..1. One type for every geometry the
+ *  plan carries so zones, walls and placements share a coordinate space. */
+export interface PlanPoint {
+    x: number;
+    y: number;
 }
 
 export interface DevicePlacement {
@@ -30,61 +39,9 @@ export type FixtureCategory =
     | 'access'
     | 'furniture';
 
-export type FixtureKind =
-    // Lighting
-    | 'ceiling-light'
-    | 'pendant'
-    | 'spotlight'
-    | 'chandelier'
-    | 'street-light'
-    | 'floor-lamp'
-    | 'table-lamp'
-    | 'wall-sconce'
-    | 'led-strip'
-    // HVAC
-    | 'ac-wall'
-    | 'ac-ceiling'
-    | 'radiator'
-    | 'water-heater'
-    | 'ceiling-fan'
-    | 'thermostat'
-    | 'vent'
-    // Appliances
-    | 'fridge'
-    | 'oven'
-    | 'dishwasher'
-    | 'microwave'
-    | 'washing-machine'
-    | 'dryer'
-    // Solar / energy
-    | 'solar-panel'
-    | 'solar-inverter'
-    | 'battery-wall'
-    // Smart fixtures
-    | 'doorbell'
-    | 'smoke-detector'
-    | 'motion-sensor'
-    | 'smart-blind'
-    | 'smart-curtain'
-    | 'houseplant'
-    // Wall controls
-    | 'wall-outlet'
-    | 'wall-switch'
-    // Entertainment
-    | 'tv'
-    | 'monitor'
-    | 'computer'
-    // Smart access
-    | 'smart-lock'
-    | 'door'
-    | 'garage'
-    // Furniture (context — controlled indirectly via smart plugs)
-    | 'sofa'
-    | 'chair'
-    | 'table'
-    | 'bed'
-    | 'bookshelf'
-    | 'window';
+// Closed set owned by the backend contract (validated by the location
+// placement schema). Re-exported so the 3D code has one import site.
+export type FixtureKind = ApiFixtureKind;
 
 export type DevicePlacementMap = Record<string, DevicePlacement>;
 
@@ -92,13 +49,26 @@ export interface ZoneShape {
     id: string;
     name: string;
     color: string;
-    points: Array<{x: number; y: number}>;
+    points: PlanPoint[];
+}
+
+/** One straight run of wall.
+ *
+ *  Walls reach a floor two ways — auto-extracted from an uploaded SVG, or
+ *  drawn by hand — and D-032 requires both to end up as the same thing.
+ *  This is that thing: endpoints in the same normalized 0..1 space as
+ *  zones and placements, so the 3D extruder never asks where a segment
+ *  came from. */
+export interface WallSegment {
+    from: PlanPoint;
+    to: PlanPoint;
 }
 
 export interface FloorPlanKindFields {
     floorPlan?: FloorPlanRef;
     devicePlacements?: DevicePlacementMap;
     zones?: ZoneShape[];
+    walls?: WallSegment[];
 }
 
 export interface DevicePaletteItem {

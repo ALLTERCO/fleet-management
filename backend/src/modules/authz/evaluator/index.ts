@@ -8,9 +8,11 @@ export {
     authzRequestForComponent,
     canPerformComponentOperation,
     canPerformComponentOperationAsync,
+    hasTenantWideComponentPermission,
     isComponentPermissionAllowed,
     requireComponentPermission,
-    requireComponentPermissionAsync
+    requireComponentPermissionAsync,
+    requireTenantWideComponentPermission
 } from './componentPermission';
 export type {AccessExplanation} from './explainAccess';
 export {explainAccess} from './explainAccess';

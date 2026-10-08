@@ -51,9 +51,6 @@
 .evolt .range{font:500 var(--type-caption) var(--font);color:var(--sub);background:var(--panel);border:1px solid var(--hair);
   border-radius:var(--radius-full);padding:8px 14px;cursor:pointer}
 .evolt .range:hover{color:var(--ink);border-color:var(--hair2)}
-.evolt .ev-int{font:500 var(--type-caption) var(--font);color:var(--sub);background:var(--panel);border:1px solid var(--hair);border-radius:var(--radius-full);padding:8px 10px;cursor:pointer;appearance:none;-webkit-appearance:none;text-align:center}
-.evolt .ev-int:hover{color:var(--ink);border-color:var(--hair2)}
-.evolt .ev-int:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
 .evolt .ic{cursor:pointer}
 .evolt .ed-tool-wrap{position:relative}
 .evolt .rmenu{position:absolute;top:calc(100% + 6px);right:0;min-width:180px;background:var(--panel);border:1px solid var(--hair2);border-radius:var(--radius-lg);padding:6px;z-index:30;box-shadow:0 20px 50px rgba(0,0,0,.55)}
@@ -130,6 +127,9 @@
 .evolt .row b{color:var(--ink);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .evolt .row.total{border-top:1px solid var(--hair2);margin-top:2px;padding-top:9px}
 .evolt .row.total span{color:var(--ink);font-weight:600}
+.evolt .bill-identity-picker{display:flex;flex-direction:column;gap:6px;margin-top:10px;color:var(--sub);font-size:var(--type-caption);font-weight:600}
+.evolt .bill-identity-picker select{width:100%;min-height:var(--touch-target-min);background:var(--color-surface-0);border:1px solid var(--hair2);border-radius:var(--radius-lg);padding:8px 10px;color:var(--ink);font:500 var(--type-caption) var(--font);overflow:hidden;text-overflow:ellipsis}
+.evolt .bill-identity-picker select:focus-visible{outline:var(--focus-ring-width) solid var(--focus-ring-color);outline-offset:var(--focus-ring-offset)}
 .evolt svg{display:block}
 .evolt text{font-family:var(--font);font-variant-numeric:tabular-nums}
 .evolt .axis{font-size:var(--type-caption);fill:var(--faint);font-weight:500}
@@ -287,7 +287,9 @@
 .evolt #insights.on>.grid:last-of-type{flex:1 1 auto;min-height:0}
 .evolt section.on>.grid:has(.hero)>.grid{align-content:stretch;grid-auto-rows:1fr}
 .evolt .nudge{display:none;flex-direction:column;align-items:center;gap:5px;color:var(--faint);font-size:var(--type-caption);font-weight:500;text-align:center}
-.evolt .nudge .cta{color:var(--blue);font-weight:600;cursor:pointer}
+.evolt .nudge .cta{color:var(--blue);font-weight:600;cursor:pointer;appearance:none;background:none;border:0;padding:0;font-family:var(--font);font-size:inherit}
+.evolt .nudge .cta:hover{text-decoration:underline}
+.evolt .nudge .cta:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:3px}
 .evolt .card-nudge{align-items:flex-start;text-align:left;padding:16px 0 6px}
 .evolt.cold .hide-cold{display:none!important}
 .evolt.cold .nudge{display:flex}

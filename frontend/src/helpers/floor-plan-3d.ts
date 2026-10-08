@@ -75,19 +75,22 @@ import {
     onFixtureGlbReady
 } from '@/helpers/fixture-registry';
 import {
+    BLANK_PLAN_RECT,
     type FloorSize,
     normalizedToWorld as normalizedToWorldXZ,
+    type PlanRect,
     worldToNormalizedXY
 } from '@/helpers/floor-plan-coords';
 import {floorPlanPlacementId} from '@/helpers/floor-plan-device-identity';
-import {stripInkscapeBaseLayer} from '@/helpers/svg-floorplan';
-import {
-    loadSvgFloorPlanGeometry,
-    type SvgFloorPlanGeometry
-} from '@/helpers/svg-walls';
+import {type DrawDraft, draftSegments} from '@/helpers/floor-plan-draw';
+import {MIN_WALL_LENGTH, normalizeSvgWalls} from '@/helpers/floor-plan-walls';
+import {isSvgPlanUrl, stripInkscapeBaseLayer} from '@/helpers/svg-floorplan';
+import {loadSvgFloorPlanGeometry} from '@/helpers/svg-walls';
 import type {
     DevicePlacementMap,
     FloorPlanRef,
+    PlanPoint,
+    WallSegment,
     ZoneShape
 } from '@/types/floor-plan';
 
@@ -134,6 +137,17 @@ export interface FloorPlanScene {
     onDeviceMove(
         handler: (id: string, position: {x: number; y: number}) => void
     ): void;
+    /** Fired when a click lands while a draw draft is active. Same
+     *  normalized 0..1 contract the 2D canvas emits, so one draw pipeline
+     *  serves both renderers. */
+    onDraftVertex(handler: (point: PlanPoint) => void): void;
+    /** Screen point → normalized 0..1 floor coords. Exposed because a
+     *  perspective camera makes the host's flat screen-rect fractions
+     *  wrong; HTML5 drops must be projected onto the floor plane. */
+    normalizedPointAt(
+        clientX: number,
+        clientY: number
+    ): {x: number; y: number} | null;
     setView(view: CameraView): void;
     setLighting(mode: LightingMode): void;
     setLayerVisibility(layer: SceneLayer, visible: boolean): void;
@@ -145,8 +159,15 @@ export interface FloorPlanScene {
 export interface SceneInput {
     plan: FloorPlanRef | null;
     zones: ZoneShape[];
+    /** Hand-drawn walls, persisted in kindFields. Extracted walls are
+     *  derived from the plan file and never appear here — both end up in
+     *  the same extruder regardless. */
+    walls: WallSegment[];
     placements: DevicePlacementMap;
     devices: FloorPlanDevice[];
+    /** The in-progress zone or wall, or null. Non-null also arms vertex
+     *  capture: a click then places a vertex instead of picking a device. */
+    draft: DrawDraft | null;
 }
 
 interface BrandPalette {
@@ -186,8 +207,16 @@ interface InternalState {
     renderer: WebGLRenderer;
     controls: OrbitControls;
     floorGroup: Group;
-    wallsGroup: Group;
-    autoWallsGroup: Group;
+    /** Translucent volumes extruded from zone polygons — not walls, but
+     *  they share the `walls` layer toggle users already know. */
+    zoneVolumesGroup: Group;
+    /** Walls auto-extracted from an uploaded SVG. */
+    extractedWallsGroup: Group;
+    /** Walls drawn by hand and persisted in kindFields. */
+    drawnWallsGroup: Group;
+    /** Live preview of the draft being drawn. Deliberately outside the
+     *  layer toggles: hiding what you are drawing is never useful. */
+    draftGroup: Group;
     devicesGroup: Group;
     lights: SceneLights;
     palette: BrandPalette;
@@ -198,6 +227,10 @@ interface InternalState {
     moveHandler:
         | ((id: string, position: {x: number; y: number}) => void)
         | null;
+    vertexHandler: ((point: PlanPoint) => void) | null;
+    /** Mirrors `SceneInput.draft !== null`. Read on every pointer event, so
+     *  it is cached rather than re-derived from lastInput. */
+    draftActive: boolean;
     editMode: boolean;
     /** Floor footprint in world units — used to normalize a drag target
      *  back into 0..1 coords the rest of the app stores in
@@ -209,17 +242,25 @@ interface InternalState {
     onPointerMove: ((e: PointerEvent) => void) | null;
     pointerAbort: AbortController;
     floorLoadSeq: number;
+    /** Plan URL the floor layers were built from, or BLANK_FLOOR_KEY when
+     *  there is no plan. Guards against re-fetching + re-parsing the SVG on
+     *  every prop tick. */
     lastFloorUrl: string | null;
-    /** Walls auto-extruded from the SVG floor plan; null when the plan
-     *  isn't an SVG or extraction failed. Re-used as long as the URL is
-     *  unchanged so we don't re-fetch + re-parse on every prop tick. */
-    autoWallsUrl: string | null;
+    /** Walls extracted from the current SVG plan, already normalized into
+     *  the shared model. Empty for raster plans and for SVGs with no
+     *  readable geometry. */
+    extractedWalls: WallSegment[];
     disposed: boolean;
     fixtureAnims: Map<string, FixtureAnim>;
     hoveredDeviceId: string | null;
     clickFlashes: Map<string, number>;
     lastClickTime: Map<string, number>;
     activeTween: CameraTween | null;
+    /** device id → placement key. Meshes are tagged with the device id so
+     *  clicks report a device, but `kindFields.devicePlacements` is keyed
+     *  by placement id — a drag must emit the placement key or it writes a
+     *  second, orphaned entry. */
+    placementIds: Map<string, string>;
     /** Render-on-demand flag. Event handlers + scene updates set this
      *  true; tick clears it after rendering. RAF stops when this is
      *  false AND no animations are active. */
@@ -257,7 +298,9 @@ export function createFloorPlanScene(): FloorPlanScene {
         update: (input) => {
             state.lastInput = input;
             updateFloor(state, input.plan);
-            updateWalls(state, input.zones);
+            updateZoneVolumes(state, input.zones);
+            updateDrawnWalls(state, input.walls);
+            updateDraft(state, input.draft);
             updateDevices(state, input.devices, input.placements);
             markNeedsRender(state);
         },
@@ -267,6 +310,11 @@ export function createFloorPlanScene(): FloorPlanScene {
         onDeviceMove: (handler) => {
             state.moveHandler = handler;
         },
+        onDraftVertex: (handler) => {
+            state.vertexHandler = handler;
+        },
+        normalizedPointAt: (clientX, clientY) =>
+            normalizedPointAt(state, clientX, clientY),
         setView: (view) => flyCameraToView(state, view),
         setLighting: (mode) => applyLightingPreset(state, mode),
         setLayerVisibility: (layer, visible) =>
@@ -276,10 +324,12 @@ export function createFloorPlanScene(): FloorPlanScene {
     };
 }
 
-// Edit mode suspends orbit so left-drag is reserved for device placement.
+// Edit mode keeps orbit: you cannot draw a wall on a face you cannot see,
+// and D-032 requires drawing to work in 3D. Orbit is suspended per gesture
+// instead — only while a drag that started on a device is in flight, which
+// is the same rule the 2D stage applies with `viewport.pause`.
 function setEditMode(state: InternalState, enabled: boolean): void {
     state.editMode = enabled;
-    state.controls.enabled = !enabled;
 }
 
 // Dispatch by layer key — each entry returns the groups it owns. New layers
@@ -287,7 +337,11 @@ function setEditMode(state: InternalState, enabled: boolean): void {
 const LAYER_GROUPS: Record<SceneLayer, (s: InternalState) => readonly Group[]> =
     {
         floor: (s) => [s.floorGroup],
-        walls: (s) => [s.wallsGroup, s.autoWallsGroup],
+        walls: (s) => [
+            s.zoneVolumesGroup,
+            s.extractedWallsGroup,
+            s.drawnWallsGroup
+        ],
         devices: (s) => [s.devicesGroup]
     };
 
@@ -390,10 +444,19 @@ function initScene(): InternalState {
     const lights = addLights(scene, palette);
 
     const floorGroup = new Group();
-    const wallsGroup = new Group();
-    const autoWallsGroup = new Group();
+    const zoneVolumesGroup = new Group();
+    const extractedWallsGroup = new Group();
+    const drawnWallsGroup = new Group();
+    const draftGroup = new Group();
     const devicesGroup = new Group();
-    scene.add(floorGroup, wallsGroup, autoWallsGroup, devicesGroup);
+    scene.add(
+        floorGroup,
+        zoneVolumesGroup,
+        extractedWallsGroup,
+        drawnWallsGroup,
+        draftGroup,
+        devicesGroup
+    );
 
     return {
         scene,
@@ -401,8 +464,10 @@ function initScene(): InternalState {
         renderer,
         controls,
         floorGroup,
-        wallsGroup,
-        autoWallsGroup,
+        zoneVolumesGroup,
+        extractedWallsGroup,
+        drawnWallsGroup,
+        draftGroup,
         devicesGroup,
         lights,
         palette,
@@ -411,6 +476,8 @@ function initScene(): InternalState {
         host: null,
         clickHandler: null,
         moveHandler: null,
+        vertexHandler: null,
+        draftActive: false,
         editMode: false,
         floorSize: null,
         raycaster: new Raycaster(),
@@ -420,13 +487,14 @@ function initScene(): InternalState {
         pointerAbort: new AbortController(),
         floorLoadSeq: 0,
         lastFloorUrl: null,
-        autoWallsUrl: null,
+        extractedWalls: [],
         disposed: false,
         fixtureAnims: new Map(),
         hoveredDeviceId: null,
         clickFlashes: new Map(),
         lastClickTime: new Map(),
         activeTween: null,
+        placementIds: new Map(),
         needsRender: true,
         lastInputTime: performance.now(),
         lastFrameTime: performance.now(),
@@ -699,10 +767,13 @@ function disposeScene(state: InternalState): void {
     }
     state.pointerAbort.abort();
     clearGroup(state.floorGroup);
-    clearGroup(state.wallsGroup);
-    clearGroup(state.autoWallsGroup);
+    clearGroup(state.zoneVolumesGroup);
+    clearGroup(state.extractedWallsGroup);
+    clearGroup(state.drawnWallsGroup);
+    clearGroup(state.draftGroup);
     clearGroup(state.devicesGroup);
     state.fixtureAnims.clear();
+    state.placementIds.clear();
     state.clickFlashes.clear();
     state.lastClickTime.clear();
     state.unsubscribeGlbReady?.();
@@ -716,35 +787,41 @@ function disposeScene(state: InternalState): void {
 
 // ───── FLOOR ─────────────────────────────────────────────────────────
 
-// Owner-style arg shape: state is the canonical owner; bbox+plan-size are
-// the data peers. Keeps the call site readable instead of guessing arg order.
-interface AutoWallsInput {
-    geom: SvgFloorPlanGeometry;
-    planW: number;
-    planH: number;
-}
+// Sentinel for "no plan uploaded". A floor with no drawing is a real,
+// supported state (D-032), not an absence — it still gets a surface, a
+// fixed size and everything drawn on it.
+const BLANK_FLOOR_KEY = 'fm:no-plan';
 
 function updateFloor(state: InternalState, plan: FloorPlanRef | null): void {
-    if (isValidPlan(plan) && plan.url === state.lastFloorUrl) return;
+    const key = isValidPlan(plan) ? plan.url : BLANK_FLOOR_KEY;
+    if (key === state.lastFloorUrl) return;
     resetFloorLayers(state);
     const seq = ++state.floorLoadSeq;
-    if (!isValidPlan(plan)) return;
-    state.lastFloorUrl = plan.url;
-    state.autoWallsUrl = plan.url;
-    void rebuildFloorAndWalls(state, seq, plan, floorSizeFor(plan));
+    state.lastFloorUrl = key;
+    // Size is known from the plan's own pixel dimensions, so it is set
+    // before the texture request goes out. Without that, a vertex clicked
+    // during the load has no rect to normalize against and is dropped.
+    state.floorSize = floorSizeFor(isValidPlan(plan) ? plan : BLANK_PLAN_RECT);
+    if (!isValidPlan(plan)) {
+        addPlainFloor(state, state.floorSize);
+        rerenderLayersForFloorSize(state);
+        markNeedsRender(state);
+        return;
+    }
+    void rebuildFloorAndWalls(state, seq, plan, state.floorSize);
 }
 
 // Clears every plan-derived group + URL trackers. One place owns the
 // "no plan visible" invariant so callers can't leak stale walls.
 function resetFloorLayers(state: InternalState): void {
     clearGroup(state.floorGroup);
-    clearGroup(state.autoWallsGroup);
+    clearGroup(state.extractedWallsGroup);
     state.lastFloorUrl = null;
-    state.autoWallsUrl = null;
+    state.extractedWalls = [];
 }
 
-function floorSizeFor(plan: FloorPlanRef): FloorSize {
-    const aspect = plan.heightPx / plan.widthPx;
+function floorSizeFor(rect: PlanRect): FloorSize {
+    const aspect = rect.heightPx / rect.widthPx;
     return {
         planW: FLOORPLAN_3D_PLAN_SIZE,
         planH: FLOORPLAN_3D_PLAN_SIZE * aspect
@@ -768,9 +845,13 @@ async function rebuildFloorAndWalls(
         texture?.dispose();
         return;
     }
-    state.floorSize = size;
-    if (geom && geom.walls.length > 0) {
-        addAutoWalls(state, {geom, ...size});
+    // floorSize was set synchronously by updateFloor from the plan's own
+    // pixel dimensions; nothing about the texture or the parse changes it.
+    // Normalized on arrival, so from here on an extracted wall and a
+    // hand-drawn wall are indistinguishable to everything downstream.
+    state.extractedWalls = normalizeSvgWalls(geom);
+    if (state.extractedWalls.length > 0) {
+        renderExtractedWalls(state);
         addPlainFloor(state, size);
         fitCameraToWalls(state, size);
         texture?.dispose();
@@ -788,7 +869,9 @@ async function rebuildFloorAndWalls(
 // until the next prop change happens to fire `scene.update` again.
 function rerenderLayersForFloorSize(state: InternalState): void {
     if (!state.lastInput) return;
-    updateWalls(state, state.lastInput.zones);
+    updateZoneVolumes(state, state.lastInput.zones);
+    updateDrawnWalls(state, state.lastInput.walls);
+    updateDraft(state, state.lastInput.draft);
     updateDevices(state, state.lastInput.devices, state.lastInput.placements);
 }
 
@@ -821,7 +904,7 @@ function loadFloorTexture(url: string): Promise<Texture | null> {
 }
 
 async function prepareTextureUrl(url: string): Promise<string> {
-    if (!/\.svg(\?|#|$)/i.test(url)) return url;
+    if (!isSvgPlanUrl(url)) return url;
     try {
         const response = await fetch(url);
         if (!response.ok) return url;
@@ -849,10 +932,13 @@ function addPlainFloor(state: InternalState, size: FloorSize): void {
     state.floorGroup.add(mesh);
 }
 
-const AUTO_WALL_THICKNESS = 0.8;
-const AUTO_WALL_MIN_LENGTH = 0.5;
-const AUTO_WALL_HEIGHT_MULT = 1.6; // taller than user-drawn zone walls
-const AUTO_WALL_COLOR = 0xe8ecf1;
+const WALL_THICKNESS = 0.8;
+const WALL_HEIGHT_MULT = 1.6; // taller than the translucent zone volumes
+const WALL_COLOR = 0xe8ecf1;
+// The draft reads as unfinished: shorter and see-through until committed.
+const DRAFT_WALL_HEIGHT_MULT = 0.5;
+const DRAFT_OPACITY = 0.55;
+const DRAFT_VERTEX_SIZE = 0.9;
 const CAMERA_FIT_PADDING = 1.3;
 const CAMERA_FIT_HEIGHT_RATIO = 0.65;
 const CAMERA_FIT_DEPTH_RATIO = 0.75;
@@ -875,35 +961,83 @@ function fitCameraToWalls(state: InternalState, size: FloorSize): void {
     };
 }
 
-function addAutoWalls(state: InternalState, input: AutoWallsInput): void {
-    const {geom, planW, planH} = input;
-    const scaleX = planW / geom.width;
-    const scaleZ = planH / geom.height;
-    const halfW = planW / 2;
-    const halfH = planH / 2;
-    const height = FLOORPLAN_3D_WALL_HEIGHT * AUTO_WALL_HEIGHT_MULT;
+interface WallStyle {
+    readonly color: number;
+    readonly height: number;
+    readonly opacity?: number;
+}
+
+/** The one wall extruder.
+ *
+ *  Extracted walls, hand-drawn walls and the live draft preview all arrive
+ *  here as normalized segments — that is the whole point of the shared
+ *  model. One wall look, and one place a geometry bug can hide.
+ *
+ *  The material is built per call and owned by the group, so clearing the
+ *  group disposes it. */
+function addWallSegments(
+    group: Group,
+    segments: readonly WallSegment[],
+    size: FloorSize | null,
+    style: WallStyle
+): void {
+    if (segments.length === 0) return;
     const mat = new MeshStandardMaterial({
-        color: AUTO_WALL_COLOR,
+        color: style.color,
         roughness: 0.9,
-        metalness: 0
+        metalness: 0,
+        transparent: style.opacity !== undefined,
+        opacity: style.opacity ?? 1
     });
-
-    for (const wall of geom.walls) {
-        const ax = wall.from[0] * scaleX - halfW;
-        const az = wall.from[1] * scaleZ - halfH;
-        const bx = wall.to[0] * scaleX - halfW;
-        const bz = wall.to[1] * scaleZ - halfH;
-        const dx = bx - ax;
-        const dz = bz - az;
-        const length = Math.sqrt(dx * dx + dz * dz);
-        if (length < AUTO_WALL_MIN_LENGTH) continue;
-
-        const box = new BoxGeometry(length, height, AUTO_WALL_THICKNESS);
+    // The model's own minimum, carried into world units. Taking the smaller
+    // side keeps the cull conservative on a non-square plan: nothing the
+    // model chose to keep is silently dropped by the renderer.
+    const minLength =
+        MIN_WALL_LENGTH *
+        Math.min(
+            size?.planW ?? FLOORPLAN_3D_PLAN_SIZE,
+            size?.planH ?? FLOORPLAN_3D_PLAN_SIZE
+        );
+    for (const seg of segments) {
+        const a = normalizedToWorld(seg.from, size);
+        const b = normalizedToWorld(seg.to, size);
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        const length = Math.hypot(dx, dz);
+        if (length < minLength) continue;
+        const box = new BoxGeometry(length, style.height, WALL_THICKNESS);
         const mesh = new Mesh(box, mat);
-        mesh.position.set((ax + bx) / 2, height / 2, (az + bz) / 2);
+        mesh.position.set((a.x + b.x) / 2, style.height / 2, (a.z + b.z) / 2);
         mesh.rotation.y = -Math.atan2(dz, dx);
-        state.autoWallsGroup.add(mesh);
+        group.add(mesh);
     }
+}
+
+function wallHeight(): number {
+    return FLOORPLAN_3D_WALL_HEIGHT * WALL_HEIGHT_MULT;
+}
+
+function renderExtractedWalls(state: InternalState): void {
+    clearGroup(state.extractedWallsGroup);
+    addWallSegments(
+        state.extractedWallsGroup,
+        state.extractedWalls,
+        state.floorSize,
+        {color: WALL_COLOR, height: wallHeight()}
+    );
+}
+
+// Drawn walls render identically to extracted ones — once saved they are
+// the floor's walls, and marking them as second-class would be a lie.
+function updateDrawnWalls(
+    state: InternalState,
+    walls: readonly WallSegment[]
+): void {
+    clearGroup(state.drawnWallsGroup);
+    addWallSegments(state.drawnWallsGroup, walls, state.floorSize, {
+        color: WALL_COLOR,
+        height: wallHeight()
+    });
 }
 
 function isValidPlan(plan: FloorPlanRef | null): plan is FloorPlanRef {
@@ -942,10 +1076,10 @@ function applyFloorTexture(
     state.floorGroup.add(mesh);
 }
 
-// ───── WALLS ─────────────────────────────────────────────────────────
+// ───── ZONE VOLUMES ──────────────────────────────────────────────────
 
-function updateWalls(state: InternalState, zones: ZoneShape[]): void {
-    clearGroup(state.wallsGroup);
+function updateZoneVolumes(state: InternalState, zones: ZoneShape[]): void {
+    clearGroup(state.zoneVolumesGroup);
     for (const zone of zones) addWallForZone(state, zone);
 }
 
@@ -963,7 +1097,49 @@ function addWallForZone(state: InternalState, zone: ZoneShape): void {
         side: DoubleSide,
         depthWrite: false
     });
-    state.wallsGroup.add(new Mesh(geom, mat));
+    state.zoneVolumesGroup.add(new Mesh(geom, mat));
+}
+
+// ───── DRAFT PREVIEW ─────────────────────────────────────────────────
+
+// What the user is drawing right now. Rendered through the same segment
+// extruder as a finished wall, so the preview is literally a preview —
+// what you see mid-draw is what a commit produces.
+function updateDraft(state: InternalState, draft: DrawDraft | null): void {
+    clearGroup(state.draftGroup);
+    state.draftActive = draft !== null;
+    if (!draft) return;
+    addWallSegments(state.draftGroup, draftSegments(draft), state.floorSize, {
+        color: DRAFT_COLOR,
+        height: FLOORPLAN_3D_WALL_HEIGHT * DRAFT_WALL_HEIGHT_MULT,
+        opacity: DRAFT_OPACITY
+    });
+    // Markers, not just segments: the first click produces no segment at
+    // all, and a draft that renders as nothing reads as a broken tool.
+    addDraftVertexMarkers(state, draft.points);
+}
+
+const DRAFT_COLOR = 0x4495d1;
+
+function addDraftVertexMarkers(
+    state: InternalState,
+    points: readonly PlanPoint[]
+): void {
+    if (points.length === 0) return;
+    const mat = new MeshStandardMaterial({
+        color: DRAFT_COLOR,
+        emissive: new Color(DRAFT_COLOR),
+        emissiveIntensity: 0.6,
+        roughness: 0.4,
+        metalness: 0
+    });
+    const size = DRAFT_VERTEX_SIZE;
+    for (const point of points) {
+        const world = normalizedToWorld(point, state.floorSize);
+        const mesh = new Mesh(new BoxGeometry(size, size, size), mat);
+        mesh.position.set(world.x, size / 2, world.z);
+        state.draftGroup.add(mesh);
+    }
 }
 
 function buildZoneGeometry(
@@ -1004,6 +1180,10 @@ function updateDevices(
 ): void {
     clearGroup(state.devicesGroup);
     state.fixtureAnims.clear();
+    state.placementIds.clear();
+    for (const dev of devices) {
+        state.placementIds.set(dev.id, floorPlanPlacementId(dev));
+    }
 
     // Group by kind — high-count kinds collapse to InstancedMesh below.
     const byKind = new Map<string, KindBatch>();
@@ -1270,15 +1450,16 @@ function paintLabelCanvas(
 function handlePointerDown(state: InternalState, e: PointerEvent): void {
     if (!state.host || state.disposed) return;
     recordInput(state);
-    // Edit mode + hit a device → drag-to-place instead of orbit/click.
-    if (state.editMode) {
+    // A live draft owns the canvas: dragging a device mid-draw would place
+    // a vertex and move a pin from one gesture.
+    if (state.editMode && !state.draftActive) {
         const id = pickDeviceAt(state, e.clientX, e.clientY);
         if (id) {
             startDeviceDrag(state, id);
             return;
         }
     }
-    if (!state.clickHandler) return;
+    if (!state.clickHandler && !state.draftActive) return;
     listenForClickRelease(state, e.clientX, e.clientY);
 }
 
@@ -1306,11 +1487,20 @@ function listenForClickRelease(
 }
 
 // Drag session — moves the device's mesh on each pointermove, then emits
-// the final normalized position on pointerup. OrbitControls stays disabled
-// throughout because setEditMode already suspended it.
+// the final normalized position on pointerup. Orbit is suspended for the
+// gesture only; every exit path (drop, cancel, scene dispose) funnels
+// through `gesture.abort()`, so one listener restores it.
 function startDeviceDrag(state: InternalState, deviceId: string): void {
     const gesture = new AbortController();
     bindGestureToSceneAbort(state, gesture);
+    state.controls.enabled = false;
+    gesture.signal.addEventListener(
+        'abort',
+        () => {
+            state.controls.enabled = true;
+        },
+        {once: true}
+    );
     window.addEventListener(
         'pointermove',
         (e) => onDragMove(state, deviceId, e),
@@ -1358,11 +1548,23 @@ function onDragEnd(
     gesture: AbortController
 ): void {
     gesture.abort();
-    if (!state.floorSize || !state.moveHandler) return;
-    const world = pickFloorPointAt(state, e.clientX, e.clientY);
-    if (!world) return;
-    const norm = worldToNormalizedXY(world, state.floorSize);
-    state.moveHandler(deviceId, {x: norm.x, y: norm.y});
+    if (!state.moveHandler) return;
+    const norm = normalizedPointAt(state, e.clientX, e.clientY);
+    if (!norm) return;
+    const placementId = state.placementIds.get(deviceId) ?? deviceId;
+    state.moveHandler(placementId, norm);
+}
+
+// Screen point → the 0..1 floor coords stored in devicePlacements.
+function normalizedPointAt(
+    state: InternalState,
+    clientX: number,
+    clientY: number
+): {x: number; y: number} | null {
+    if (!state.floorSize) return null;
+    const world = pickFloorPointAt(state, clientX, clientY);
+    if (!world) return null;
+    return worldToNormalizedXY(world, state.floorSize);
 }
 
 const FLOOR_PLANE = new Plane(new Vector3(0, 1, 0), 0);
@@ -1423,6 +1625,13 @@ function onPointerUp(
 
 function emitClickAt(state: InternalState, e: PointerEvent): void {
     if (!state.host) return;
+    // Drawing wins over picking. Same normalized contract the 2D canvas
+    // emits, so one draw pipeline serves both renderers (D-032).
+    if (state.draftActive) {
+        const point = normalizedPointAt(state, e.clientX, e.clientY);
+        if (point) state.vertexHandler?.(point);
+        return;
+    }
     const deviceId = pickDeviceAt(state, e.clientX, e.clientY);
     if (!deviceId) return;
     const now = performance.now();
@@ -1474,6 +1683,16 @@ function pickDeviceAt(
 function handlePointerMove(state: InternalState, e: PointerEvent): void {
     if (state.disposed) return;
     recordInput(state);
+    // While drawing, every point on the floor is a target — hover
+    // highlighting a device would suggest the click does something else.
+    if (state.draftActive) {
+        if (state.host) state.host.style.cursor = 'crosshair';
+        if (state.hoveredDeviceId !== null) {
+            state.hoveredDeviceId = null;
+            markNeedsRender(state);
+        }
+        return;
+    }
     const id = pickDeviceAt(state, e.clientX, e.clientY);
     if (id === state.hoveredDeviceId) return;
     state.hoveredDeviceId = id;

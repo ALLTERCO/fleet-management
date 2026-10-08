@@ -1,5 +1,6 @@
 // reporttemplate.* — save, list, fetch, and delete named report configurations.
 
+import {requireTenantWideComponentPermission} from '../../modules/authz/evaluator';
 import {incrementLabeledCounter} from '../../modules/Observability';
 import {
     createReportTemplate,
@@ -81,6 +82,9 @@ const PRODUCTION_DEPS: ReportTemplateDeps = {
     startJob: startReportJob
 };
 
+// A report template is not a report: no scope selector names it.
+const NOT_A_REPORT_ID = (): undefined => undefined;
+
 export default class ReportTemplateComponent extends Component {
     readonly #deps: ReportTemplateDeps;
 
@@ -142,8 +146,9 @@ export default class ReportTemplateComponent extends Component {
     }
 
     @Component.Expose('Update')
-    @Component.CrudPermission('reports', 'update')
+    @Component.CrudPermission('reports', 'update', NOT_A_REPORT_ID)
     async update(params: unknown, sender: CommandSender) {
+        await requireTenantWideComponentPermission(sender, 'reports', 'update');
         const p = validateOrThrow<ReportTemplateUpdateParams>(
             params,
             REPORT_TEMPLATE_UPDATE_PARAMS_SCHEMA
@@ -183,8 +188,9 @@ export default class ReportTemplateComponent extends Component {
     }
 
     @Component.Expose('Get')
-    @Component.CrudPermission('reports', 'read')
+    @Component.CrudPermission('reports', 'read', NOT_A_REPORT_ID)
     async get(params: unknown, sender: CommandSender) {
+        await requireTenantWideComponentPermission(sender, 'reports', 'read');
         const p = validateOrThrow<ReportTemplateGetParams>(
             params,
             REPORT_TEMPLATE_GET_PARAMS_SCHEMA
@@ -195,8 +201,9 @@ export default class ReportTemplateComponent extends Component {
     }
 
     @Component.Expose('Delete')
-    @Component.CrudPermission('reports', 'update')
+    @Component.CrudPermission('reports', 'update', NOT_A_REPORT_ID)
     async delete(params: unknown, sender: CommandSender) {
+        await requireTenantWideComponentPermission(sender, 'reports', 'update');
         const p = validateOrThrow<ReportTemplateDeleteParams>(
             params,
             REPORT_TEMPLATE_DELETE_PARAMS_SCHEMA
@@ -208,9 +215,10 @@ export default class ReportTemplateComponent extends Component {
     }
 
     @Component.Expose('Run')
-    @Component.CrudPermission('reports', 'update')
+    @Component.CrudPermission('reports', 'update', NOT_A_REPORT_ID)
     @Component.RateLimit('expensive')
     async run(params: unknown, sender: CommandSender) {
+        await requireTenantWideComponentPermission(sender, 'reports', 'update');
         const p = validateOrThrow<ReportTemplateRunParams>(
             params,
             REPORT_TEMPLATE_RUN_PARAMS_SCHEMA

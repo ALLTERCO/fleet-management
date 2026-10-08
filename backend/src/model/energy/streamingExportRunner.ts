@@ -9,6 +9,7 @@ import {createWriteStream} from 'node:fs';
 import {pipeline} from 'node:stream/promises';
 import {createGzip} from 'node:zlib';
 import {parse as csvParse} from 'fast-csv';
+import type {PoolClient} from 'pg';
 import {to as copyTo} from 'pg-copy-streams';
 import {withPooledClient} from '../../modules/PostgresProvider';
 import {
@@ -26,9 +27,9 @@ const NEWLINE = 0x0a;
  * stream into one file. One header line, each window appended headerless, an
  * optional Totals line, then close. Constant memory, ~DB-COPY throughput.
  *
- * Each window runs on its own pooled client; for-await over the COPY source
- * propagates a cancelled/timed-out statement as a rejection (so it fails the
- * job, never an unhandled stream 'error').
+ * All windows share one repeatable-read transaction, so measurements arriving
+ * during an export cannot make later windows observe a different snapshot.
+ * for-await propagates a cancelled/timed-out COPY as a job failure.
  */
 export async function streamFormattedReportToGzip(input: {
     filePath: string;
@@ -36,6 +37,7 @@ export async function streamFormattedReportToGzip(input: {
     windowSqls: readonly string[];
     totalsSql?: string;
     totalsLabel?: string;
+    workMemMb?: number;
     onProgress?: (rows: number, bytes: number) => Promise<void> | void;
 }): Promise<{bytesWritten: number; rowsWritten: number}> {
     const fileStream = createWriteStream(input.filePath);
@@ -47,8 +49,25 @@ export async function streamFormattedReportToGzip(input: {
     };
     try {
         await write(`${input.headerCols.join(',')}\n`);
-        for (const sql of input.windowSqls) {
-            await withPooledClient(async (client) => {
+        await withPooledClient(async (client) => {
+            await client.query(
+                'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY'
+            );
+            if (input.workMemMb !== undefined) {
+                if (
+                    !Number.isInteger(input.workMemMb) ||
+                    input.workMemMb < 1 ||
+                    input.workMemMb > 2_048
+                ) {
+                    throw new Error(
+                        `invalid report work_mem: ${input.workMemMb}`
+                    );
+                }
+                await client.query(
+                    `SET LOCAL work_mem = '${input.workMemMb}MB'`
+                );
+            }
+            for (const sql of input.windowSqls) {
                 const source = client.query(
                     copyTo(toCopyStatementNoHeader(sql))
                 );
@@ -58,25 +77,27 @@ export async function streamFormattedReportToGzip(input: {
                     }
                     await write(chunk);
                 }
-            });
-            if (input.onProgress) {
-                await input.onProgress(rowsWritten, fileStream.bytesWritten);
+                if (input.onProgress) {
+                    await input.onProgress(
+                        rowsWritten,
+                        fileStream.bytesWritten
+                    );
+                }
             }
-        }
-        if (input.totalsSql) {
-            const total = await withPooledClient(async (client) => {
+            if (input.totalsSql) {
                 const res = await client.query(input.totalsSql as string);
                 const row = res.rows?.[0] ?? {};
-                return String(Object.values(row)[0] ?? '0');
-            });
-            await write(`,${input.totalsLabel ?? 'Totals'},${total}\n`);
-            rowsWritten++;
-        }
+                const total = String(Object.values(row)[0] ?? '0');
+                await write(`,${input.totalsLabel ?? 'Totals'},${total}\n`);
+                rowsWritten++;
+            }
+        });
         gzip.end();
         await fileDone;
     } catch (error) {
         gzip.destroy(error as Error);
         fileStream.destroy(error as Error);
+        await fileDone.catch(() => undefined);
         throw error;
     }
     return {bytesWritten: fileStream.bytesWritten, rowsWritten};
@@ -102,24 +123,32 @@ export async function streamSelectCsvRows(
     selectSql: string,
     onRow: (row: Record<string, string>) => Promise<void>
 ): Promise<void> {
-    const copySql = toCopyStatement(selectSql);
     await withPooledClient(async (client) => {
-        const source = client.query(copyTo(copySql));
-        const parser = source.pipe(csvParse({headers: true}));
-        // .pipe() does not forward source errors; route them into the parser so
-        // a cancelled/timed-out COPY rejects the for-await instead of becoming
-        // an unhandled 'error' that crashes the process.
-        source.on('error', (err) => {
-            if (!parser.destroyed) parser.destroy(err as Error);
-        });
-        try {
-            for await (const row of parser) {
-                await onRow(row as Record<string, string>);
-            }
-        } catch (error) {
-            source.destroy(error as Error);
-            parser.destroy(error as Error);
-            throw error;
-        }
+        await streamSelectCsvRowsWithClient(client, selectSql, onRow);
     });
+}
+
+export async function streamSelectCsvRowsWithClient(
+    client: PoolClient,
+    selectSql: string,
+    onRow: (row: Record<string, string>) => Promise<void>
+): Promise<void> {
+    const copySql = toCopyStatement(selectSql);
+    const source = client.query(copyTo(copySql));
+    const parser = source.pipe(csvParse({headers: true}));
+    // .pipe() does not forward source errors; route them into the parser so
+    // a cancelled/timed-out COPY rejects the for-await instead of becoming
+    // an unhandled 'error' that crashes the process.
+    source.on('error', (err) => {
+        if (!parser.destroyed) parser.destroy(err as Error);
+    });
+    try {
+        for await (const row of parser) {
+            await onRow(row as Record<string, string>);
+        }
+    } catch (error) {
+        source.destroy(error as Error);
+        parser.destroy(error as Error);
+        throw error;
+    }
 }

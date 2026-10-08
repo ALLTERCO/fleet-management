@@ -14,13 +14,14 @@
 </template>
 
 <script setup lang="ts">
-import maplibregl, {type Map as MapLibreMap} from 'maplibre-gl';
+import {Map as MapLibreMap, Marker, type GeoJSONSource} from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import {computed, onBeforeUnmount, ref, watch} from 'vue';
 import {circlePolygon} from '@/helpers/map-circle';
 import {getMapStyleUrl} from '@/helpers/map-style';
 import {applyAppleMapsTint} from '@/helpers/map-tint';
 import {hasWebGL} from '@/helpers/webgl';
+import {configureMapLibreWorker} from '@/helpers/maplibre';
 
 const props = defineProps<{
     geo: {lat: number; lng: number} | null;
@@ -41,7 +42,7 @@ const hostRef = ref<HTMLElement | null>(null);
 // mid-file `let` would TDZ-throw "Cannot access X before initialization".
 let mapInstance: MapLibreMap | null = null;
 let resizeObserver: ResizeObserver | null = null;
-let activeMarker: maplibregl.Marker | null = null;
+let activeMarker: Marker | null = null;
 
 const coordsLabel = computed(() => {
     if (!props.geo) return '';
@@ -69,7 +70,8 @@ onBeforeUnmount(tearDown);
 function initMap(host: HTMLElement): void {
     if (!hasWebGL()) return;
     if (!props.geo) return;
-    const instance = new maplibregl.Map({
+    configureMapLibreWorker();
+    const instance = new MapLibreMap({
         container: host,
         style: getMapStyleUrl(),
         center: [props.geo.lng, props.geo.lat],
@@ -128,14 +130,14 @@ function addFootprint(instance: MapLibreMap): void {
 
 function refreshFootprint(instance: MapLibreMap): void {
     const source = instance.getSource(SOURCE_ID) as
-        | maplibregl.GeoJSONSource
+        | GeoJSONSource
         | undefined;
     source?.setData(footprintFeature());
 }
 
 function addMarker(instance: MapLibreMap): void {
     if (!props.geo) return;
-    activeMarker = new maplibregl.Marker({color: '#4495d1', scale: 0.85})
+    activeMarker = new Marker({color: '#4495d1', scale: 0.85})
         .setLngLat([props.geo.lng, props.geo.lat])
         .addTo(instance);
 }
@@ -194,7 +196,6 @@ function tearDown(): void {
     padding: var(--space-1) var(--space-2);
     background: var(--glass-3-bg);
     backdrop-filter: var(--glass-3-filter);
-    -webkit-backdrop-filter: var(--glass-3-filter);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-md);
     font-size: var(--type-caption);

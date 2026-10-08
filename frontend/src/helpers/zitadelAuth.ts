@@ -2,12 +2,14 @@
 // Exposes the same `oidcAuth` shape as the old wrapper so call sites are unchanged.
 
 import {
+    type SigninRedirectArgs,
     type User,
     UserManager,
     type UserManagerSettings,
     WebStorageStateStore
 } from 'oidc-client-ts';
 import {type Ref, ref} from 'vue';
+import {isRoutePath} from '@/helpers/appPath';
 import {debug} from '@/tools/debug';
 
 interface AuthLifecycleHandlers {
@@ -67,13 +69,19 @@ function reconcileOidcIdentity(authority: string, clientId: string): void {
     localStorage.setItem(IDENTITY_KEY, current);
 }
 
+// `prompt: 'login'` is the only prompt the app needs: it stops Zitadel from
+// silently reusing a browser session the backend has already refused.
+interface SignInOptions {
+    prompt?: 'login';
+}
+
 interface OidcAuthShape {
     mgr: UserManager;
     events: UserManager['events'];
     isAuthenticated: boolean;
     userProfile: User['profile'] | null;
     accessToken: string | null;
-    signIn: (to?: string) => Promise<void>;
+    signIn: (to?: string, options?: SignInOptions) => Promise<void>;
     signOut: () => Promise<void>;
     startup: () => Promise<boolean>;
 }
@@ -83,6 +91,10 @@ interface ZitadelAuthInstance {
     user: Ref<User | null>;
 }
 
+type RuntimeOidcSettings = UserManagerSettings & {
+    project_resource_id?: string;
+};
+
 let instance: ZitadelAuthInstance | undefined;
 let initPromise: Promise<ZitadelAuthInstance | undefined> | undefined;
 
@@ -90,7 +102,7 @@ export function initZitadelAuth(): Promise<ZitadelAuthInstance | undefined> {
     if (initPromise) return initPromise;
 
     const oidc = window.__FM_RUNTIME_CONFIG__?.oidc as
-        | UserManagerSettings
+        | RuntimeOidcSettings
         | undefined;
 
     // Dev mode (FM_DEV_MODE=true) or no OIDC in runtime config → skip Zitadel.
@@ -103,8 +115,7 @@ export function initZitadelAuth(): Promise<ZitadelAuthInstance | undefined> {
 
     initPromise = (async () => {
         const projectResourceId =
-            (oidc as unknown as {project_resource_id?: string})
-                .project_resource_id ?? oidc.client_id!.split('@')[0];
+            oidc.project_resource_id ?? oidc.client_id!.split('@')[0];
 
         reconcileOidcIdentity(oidc.metadata!.issuer!, oidc.client_id!);
 
@@ -118,8 +129,12 @@ export function initZitadelAuth(): Promise<ZitadelAuthInstance | undefined> {
             scope:
                 oidc.scope ??
                 `openid profile email urn:zitadel:iam:org:project:id:${projectResourceId}:aud urn:zitadel:iam:org:projects:roles`,
-            // Tab-scoped: tokens die on tab close.
-            userStore: new WebStorageStateStore({store: sessionStorage}),
+            // BM opens /admin/ in another tab, so that bundle shares the OIDC user.
+            userStore: new WebStorageStateStore({
+                store: window.__FM_RUNTIME_CONFIG__?.crossTabAuth
+                    ? localStorage
+                    : sessionStorage
+            }),
             automaticSilentRenew: true
         });
 
@@ -141,14 +156,22 @@ export function initZitadelAuth(): Promise<ZitadelAuthInstance | undefined> {
             // Optional `to` is carried through the OIDC `state` so the
             // callback page can resume at the originally-requested path
             // (e.g. /api/docs) instead of dumping the user on the default.
-            signIn: (to?: string) =>
-                mgr.signinRedirect(to ? {state: {to}} : undefined),
+            signIn: (to?: string, options?: SignInOptions) => {
+                const args: SigninRedirectArgs = {};
+                if (to) args.state = {to};
+                if (options?.prompt) args.prompt = options.prompt;
+                return mgr.signinRedirect(args);
+            },
             signOut: async () => {
                 await mgr.signoutRedirect();
             },
             startup: async () => {
                 const u = await mgr.getUser();
                 userRef.value = u;
+                // A restored localStorage user does not emit addUserLoaded.
+                if (u?.access_token && !u.expired) {
+                    sessionStorage.setItem('access_token', u.access_token);
+                }
                 return !!u && !u.expired;
             }
         };
@@ -176,7 +199,7 @@ export function initZitadelAuth(): Promise<ZitadelAuthInstance | undefined> {
 
         mgr.events.addAccessTokenExpired(async () => {
             console.warn('access token expired — attempting silent renew');
-            if (window.location.pathname === '/callback') return;
+            if (isRoutePath('/callback')) return;
             try {
                 const u = await mgr.signinSilent();
                 if (u?.access_token) {

@@ -20,6 +20,8 @@ interface VirtualDeviceCommandContext {
     organizationId: string;
     ipAddress?: string;
     authorizeSource(deviceExternalId: string): Promise<void>;
+    /** Throws to refuse the device method an action turns into. */
+    authorizeDeviceCall(call: {method: string; params: unknown}): void;
 }
 
 interface VirtualDeviceCommandDeps {
@@ -38,6 +40,8 @@ interface SourceCommandDevice {
 
 interface ActiveCommandBindingRow {
     virtual_external_id: string;
+    // Absent only on rows built by tests before the column existed.
+    virtual_enabled?: boolean;
     binding_id: string;
     role_key: string;
     source_external_id: string;
@@ -89,6 +93,7 @@ export async function invokeVirtualDeviceRoleCommand(
     if (routed.targetExternalId !== prepared.row.source_external_id) {
         await context.authorizeSource(routed.targetExternalId);
     }
+    context.authorizeDeviceCall({method: routed.method, params: routed.params});
     const device = requireOnlineSourceDevice(routed, deps);
     assertDeviceAdvertisesMethod(device, routed);
     return sendAuditedCommand(routed, device, context, deps);
@@ -115,6 +120,7 @@ async function requireActiveCommandBinding(
     const rows = await deps.queryRows<ActiveCommandBindingRow>(
         `SELECT
             dl.external_id AS virtual_external_id,
+            vd.enabled AS virtual_enabled,
             b.id AS binding_id,
             b.role_key,
             src.external_id AS source_external_id,
@@ -173,6 +179,15 @@ async function requireActiveCommandBinding(
             'virtual_device_source',
             'active source binding not found'
         );
+    }
+    if (row.virtual_enabled === false) {
+        throw RpcError.Domain('ResourceConflict', {
+            message: 'virtual device is disabled',
+            details: {
+                resourceType: 'virtual_device',
+                identifier: input.externalId
+            }
+        });
     }
     return row;
 }

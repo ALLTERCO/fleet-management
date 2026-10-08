@@ -55,9 +55,12 @@ export const PLUGIN_REMOVE_PARAMS_SCHEMA: JsonSchema = {
     properties: {name: {type: 'string', minLength: 1}}
 };
 
+// Every other path throws, so a returned name means it is gone.
 export const PLUGIN_REMOVE_RESPONSE_SCHEMA: JsonSchema = {
     type: 'object',
-    additionalProperties: true
+    required: ['removed'],
+    additionalProperties: false,
+    properties: {removed: {type: 'string'}}
 };
 
 export const PLUGIN_DESCRIBE: DescribeOutput = new DescribeBuilder('plugin', {

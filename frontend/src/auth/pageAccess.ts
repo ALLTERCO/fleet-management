@@ -4,6 +4,7 @@ import {
     DASHBOARDS_PATH,
     DEVICES_PATH,
     GRAPHS_PATH,
+    NODE_RED_ENABLED,
     ORGANIZE_PATH,
     SETTINGS_PATH,
     WAITING_ROOM_PATH
@@ -42,9 +43,13 @@ type PageConfig = {
     fallback: PageFallback;
 };
 
+export const NO_ACCESS_PATH = '/no-permissions';
+export const NODE_RED_PATH = '/automations/node-red';
+
 export type PageAccessContext = {
     isAdmin: boolean;
     canAccessPlatformAdmin: boolean;
+    canManageAutomations: boolean;
     canReadPolicies: boolean;
     canViewAuditLog: boolean;
     hasGrafanaAccess: boolean;
@@ -93,6 +98,52 @@ const PAGE_RULES: readonly PageRule[] = [
     exactPage({
         path: '/settings/configurations',
         gate: adminOnly(),
+        fallback: SETTINGS_PATH
+    }),
+    // Same capability the backend checks before it mints an MCP key.
+    exactPage({
+        path: '/settings/connect-ai',
+        gate: componentAccess({
+            component: 'organizations',
+            operation: 'update'
+        }),
+        fallback: SETTINGS_PATH
+    }),
+    // Energy and billing: money pages answer to reports, meter and repair
+    // pages to devices, because that is what their RPCs ask for.
+    exactPage({
+        path: '/settings/energy/bill',
+        gate: componentAccess({component: 'reports', operation: 'read'}),
+        fallback: SETTINGS_PATH
+    }),
+    exactPage({
+        path: '/settings/energy/tariffs',
+        gate: componentAccess({component: 'reports', operation: 'read'}),
+        fallback: SETTINGS_PATH
+    }),
+    exactPage({
+        path: '/settings/energy/bills',
+        gate: componentAccess({component: 'reports', operation: 'read'}),
+        fallback: SETTINGS_PATH
+    }),
+    exactPage({
+        path: '/settings/energy/carbon',
+        gate: componentAccess({component: 'reports', operation: 'read'}),
+        fallback: SETTINGS_PATH
+    }),
+    exactPage({
+        path: '/settings/energy/meters',
+        gate: componentAccess({component: 'devices', operation: 'read'}),
+        fallback: SETTINGS_PATH
+    }),
+    exactPage({
+        path: '/settings/energy/repair',
+        gate: componentAccess({component: 'devices', operation: 'read'}),
+        fallback: SETTINGS_PATH
+    }),
+    exactPage({
+        path: '/settings/operations',
+        gate: componentAccess({component: 'organizations', operation: 'read'}),
         fallback: SETTINGS_PATH
     }),
     exactPage({
@@ -148,7 +199,12 @@ const PAGE_RULES: readonly PageRule[] = [
     sectionPage({
         path: AUTOMATIONS_PATH,
         gate: componentAccess({component: 'actions', operation: 'read'}),
-        fallback: firstAccessibleSection
+        fallback: automationsFallback
+    }),
+    sectionPage({
+        path: NODE_RED_PATH,
+        gate: nodeRedAccess(),
+        fallback: automationsFallback
     }),
     sectionPage({
         path: WAITING_ROOM_PATH,
@@ -203,8 +259,23 @@ export function canAccessPage(
     return redirectForPageAccess(path, access) === null;
 }
 
+export function redirectForAdminBundleAccess(
+    baseUrl: string,
+    access: Pick<PageAccessContext, 'isAdmin'>
+): string | null {
+    const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+    return normalizedBase === '/admin/' && !access.isAdmin ? '/' : null;
+}
+
 export function resolveDefaultPage(access: PageAccessContext): string {
     return firstAccessibleSection(access);
+}
+
+// Node-RED answers to automation:update, the backend canManageAutomations rule.
+export function firstAutomationsPage(access: PageAccessContext): string | null {
+    if (canRead(access, 'actions')) return AUTOMATIONS_PATH;
+    if (nodeRedAccess()(access)) return NODE_RED_PATH;
+    return null;
 }
 
 function exactPage(config: PageConfig): PageRule {
@@ -267,6 +338,14 @@ function organizeAccess(): PageGate {
         canRead(access, 'tags');
 }
 
+function nodeRedAccess(): PageGate {
+    return (access) => NODE_RED_ENABLED && access.canManageAutomations;
+}
+
+function automationsFallback(access: PageAccessContext): string {
+    return firstAutomationsPage(access) ?? firstAccessibleSection(access);
+}
+
 function grafanaAccess(): PageGate {
     return (access) => access.hasGrafanaAccess;
 }
@@ -297,14 +376,8 @@ function firstAccessibleSection(access: PageAccessContext): string {
             componentAccess({component: 'waiting_room', operation: 'read'})
         ],
         [ORGANIZE_PATH, organizeAccess()],
-        [
-            ALERTS_PATH,
-            componentAccess({component: 'alerts', operation: 'read'})
-        ],
-        [
-            AUTOMATIONS_PATH,
-            componentAccess({component: 'actions', operation: 'read'})
-        ]
+        [ALERTS_PATH, componentAccess({component: 'alerts', operation: 'read'})]
     ];
-    return entries.find(([, gate]) => gate(access))?.[0] ?? '/no-permissions';
+    const section = entries.find(([, gate]) => gate(access))?.[0];
+    return section ?? firstAutomationsPage(access) ?? NO_ACCESS_PATH;
 }

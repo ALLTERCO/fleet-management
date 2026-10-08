@@ -4,15 +4,16 @@
         <template v-else>
             <div class="dash-period-cmp">
                 <div class="cmp-side">
-                    <div class="cmp-label">This period</div>
+                    <div class="cmp-label">{{ currentLabel }}</div>
                     <div class="cmp-value">{{ formatNum(current) }} <span class="cmp-unit">{{ unit }}</span></div>
                     <div class="cmp-bar"><div class="cmp-fill cmp-fill--current" :style="{width: currentPct + '%'}" /></div>
                 </div>
-                <div class="cmp-side">
-                    <div class="cmp-label">Previous</div>
+                <div v-if="previous !== null" class="cmp-side">
+                    <div class="cmp-label">{{ previousLabel }}</div>
                     <div class="cmp-value">{{ formatNum(previous) }} <span class="cmp-unit">{{ unit }}</span></div>
                     <div class="cmp-bar"><div class="cmp-fill cmp-fill--prev" :style="{width: prevPct + '%'}" /></div>
                 </div>
+                <DashNotEnoughData v-else :waiting-for="waitingFor" />
             </div>
             <div v-if="delta !== null && delta !== 0" class="cmp-delta" :class="deltaClass">
                 <i :class="delta > 0 ? 'fas fa-arrow-up' : 'fas fa-arrow-down'" class="cmp-delta-icon" />
@@ -24,24 +25,37 @@
 
 <script setup lang="ts">
 import {computed} from 'vue';
+import DashNotEnoughData from '@/components/dashboard/DashNotEnoughData.vue';
 
 const props = withDefaults(
     defineProps<{
         current: number;
-        previous: number;
+        /** Baseline for the previous period; null when that period holds no readings. */
+        previous: number | null;
         unit: string;
+        currentLabel?: string;
+        previousLabel?: string;
+        /** Shown in place of the baseline while there is none. */
+        waitingFor?: string;
         invertDelta?: boolean;
         loading?: boolean;
     }>(),
-    {invertDelta: false}
+    {
+        currentLabel: 'This period',
+        previousLabel: 'Previous',
+        waitingFor: undefined,
+        invertDelta: false
+    }
 );
 
-const maxVal = computed(() => Math.max(props.current, props.previous, 1));
+const maxVal = computed(() =>
+    Math.max(props.current, props.previous ?? 0, 1)
+);
 const currentPct = computed(() => (props.current / maxVal.value) * 100);
-const prevPct = computed(() => (props.previous / maxVal.value) * 100);
+const prevPct = computed(() => ((props.previous ?? 0) / maxVal.value) * 100);
 
 const delta = computed(() => {
-    if (!props.previous || props.previous === 0) return null;
+    if (!props.previous) return null;
     return Math.round(
         ((props.current - props.previous) / props.previous) * 100
     );

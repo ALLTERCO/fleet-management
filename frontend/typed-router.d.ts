@@ -307,6 +307,14 @@ declare module 'vue-router/auto-routes' {
       | '/settings/authz-simulator'
       | '/settings/branding'
       | '/settings/configurations'
+      | '/settings/connect-ai'
+      | '/settings/energy'
+      | '/settings/energy/bill'
+      | '/settings/energy/bills'
+      | '/settings/energy/carbon'
+      | '/settings/energy/meters'
+      | '/settings/energy/repair'
+      | '/settings/energy/tariffs'
       | '/settings/identity-policies'
       | '/settings/identity-smtp'
       | '/settings/instance'
@@ -328,6 +336,7 @@ declare module 'vue-router/auto-routes' {
       | '/settings/monitoring/runtime'
       | '/settings/monitoring/services'
       | '/settings/monitoring/troubleshoot'
+      | '/settings/operations'
       | '/settings/personas'
       | '/settings/plugins'
       | '/settings/security'
@@ -498,6 +507,67 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/settings/connect-ai': RouteRecordInfo<
+      '/settings/connect-ai',
+      '/settings/connect-ai',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/energy': RouteRecordInfo<
+      '/settings/energy',
+      '/settings/energy',
+      Record<never, never>,
+      Record<never, never>,
+      | '/settings/energy/bill'
+      | '/settings/energy/bills'
+      | '/settings/energy/carbon'
+      | '/settings/energy/meters'
+      | '/settings/energy/repair'
+      | '/settings/energy/tariffs'
+    >,
+    '/settings/energy/bill': RouteRecordInfo<
+      '/settings/energy/bill',
+      '/settings/energy/bill',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/energy/bills': RouteRecordInfo<
+      '/settings/energy/bills',
+      '/settings/energy/bills',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/energy/carbon': RouteRecordInfo<
+      '/settings/energy/carbon',
+      '/settings/energy/carbon',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/energy/meters': RouteRecordInfo<
+      '/settings/energy/meters',
+      '/settings/energy/meters',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/energy/repair': RouteRecordInfo<
+      '/settings/energy/repair',
+      '/settings/energy/repair',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/energy/tariffs': RouteRecordInfo<
+      '/settings/energy/tariffs',
+      '/settings/energy/tariffs',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/settings/identity-policies': RouteRecordInfo<
       '/settings/identity-policies',
       '/settings/identity-policies',
@@ -655,6 +725,13 @@ declare module 'vue-router/auto-routes' {
     '/settings/monitoring/troubleshoot': RouteRecordInfo<
       '/settings/monitoring/troubleshoot',
       '/settings/monitoring/troubleshoot',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/settings/operations': RouteRecordInfo<
+      '/settings/operations',
+      '/settings/operations',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -1071,6 +1148,14 @@ declare module 'vue-router/auto-routes' {
         | '/settings/authz-simulator'
         | '/settings/branding'
         | '/settings/configurations'
+        | '/settings/connect-ai'
+        | '/settings/energy'
+        | '/settings/energy/bill'
+        | '/settings/energy/bills'
+        | '/settings/energy/carbon'
+        | '/settings/energy/meters'
+        | '/settings/energy/repair'
+        | '/settings/energy/tariffs'
         | '/settings/identity-policies'
         | '/settings/identity-smtp'
         | '/settings/instance'
@@ -1092,6 +1177,7 @@ declare module 'vue-router/auto-routes' {
         | '/settings/monitoring/runtime'
         | '/settings/monitoring/services'
         | '/settings/monitoring/troubleshoot'
+        | '/settings/operations'
         | '/settings/personas'
         | '/settings/plugins'
         | '/settings/security'
@@ -1289,6 +1375,76 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
+    'src/pages/settings/connect-ai.vue': {
+      routes:
+        | '/settings/connect-ai'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/energy.vue': {
+      routes:
+        | '/settings/energy'
+        | '/settings/energy/bill'
+        | '/settings/energy/bills'
+        | '/settings/energy/carbon'
+        | '/settings/energy/meters'
+        | '/settings/energy/repair'
+        | '/settings/energy/tariffs'
+      views:
+        | 'default'
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/energy/bill.vue': {
+      routes:
+        | '/settings/energy/bill'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/energy/bills.vue': {
+      routes:
+        | '/settings/energy/bills'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/energy/carbon.vue': {
+      routes:
+        | '/settings/energy/carbon'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/energy/meters.vue': {
+      routes:
+        | '/settings/energy/meters'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/energy/repair.vue': {
+      routes:
+        | '/settings/energy/repair'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/energy/tariffs.vue': {
+      routes:
+        | '/settings/energy/tariffs'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
     'src/pages/settings/identity-policies.vue': {
       routes:
         | '/settings/identity-policies'
@@ -1467,6 +1623,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/settings/monitoring/troubleshoot.vue': {
       routes:
         | '/settings/monitoring/troubleshoot'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/settings/operations.vue': {
+      routes:
+        | '/settings/operations'
       views:
         | never
       pathParamNames:

@@ -107,7 +107,8 @@ import {
     computed,
     inject,
     onMounted,
-    ref
+    ref,
+    watch
 } from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import Button from '@/components/core/Button.vue';
@@ -135,6 +136,7 @@ import {
     enumSection,
     namedSection
 } from '@/helpers/filter-sections';
+import {parseSelectedId} from '@/helpers/locationsUrlState';
 import {collectDescendants} from '@/helpers/locationTree';
 import {useDevicesStore} from '@/stores/devices';
 import {useLocationsStore} from '@/stores/locations';
@@ -213,7 +215,7 @@ const filterSections = computed(() => {
     const sections = [
         enumSection(
             'kind',
-            'Kind',
+            'Type',
             'fa-shapes',
             kindCounts,
             (k) => store.kinds.find((x) => x.kind === k)?.label ?? k
@@ -240,7 +242,7 @@ const activeFilterCount = computed(
 const filterChips = computed<FilterChip[]>(() => {
     const chips: FilterChip[] = selectedKinds.value.map((k) => ({
         key: `kind::${k}`,
-        section: 'Kind',
+        section: 'Type',
         label: store.kinds.find((x) => x.kind === k)?.label ?? k
     }));
     for (const tagIdStr of selectedTags.value) {
@@ -255,7 +257,7 @@ const filterChips = computed<FilterChip[]>(() => {
     for (const cls of selectedClasses.value) {
         chips.push({
             key: `source::${cls}`,
-            section: 'Class',
+            section: 'Device type',
             label: DEVICE_TYPE_LABELS[cls as DeviceType]
         });
     }
@@ -330,6 +332,24 @@ async function selectLocation(id: number): Promise<void> {
 function onLocationCreated(id: number): void {
     void selectLocation(id);
 }
+
+// Deep-link `?preview=N` (dashboard location tiles) folds into the existing
+// `?selected=` state so the tree highlights the node and the detail panel
+// opens — no separate preview surface. Unknown or malformed ids only drop
+// the param; the detail panel itself tolerates ids that never load.
+watch(
+    () => route.query.preview,
+    (raw) => {
+        if (raw == null) return;
+        const id = parseSelectedId(raw);
+        const {preview: _, ...rest} = route.query;
+        void router.replace({
+            path: route.path,
+            query: id != null ? {...rest, selected: String(id)} : rest
+        });
+    },
+    {immediate: true}
+);
 
 // Both the tree row's trash button and the settings "Delete location…" button
 // funnel here. Opens the confirmation modal; on confirm the location and its

@@ -1,6 +1,7 @@
-import type {Component} from 'vue';
+import {type Component, defineAsyncComponent} from 'vue';
 import EntityTemplate_BluGw from '@/components/entity-templates/EntityTemplate_BluGw.vue';
 import EntityTemplate_BluTrv from '@/components/entity-templates/EntityTemplate_BluTrv.vue';
+import EntityTemplate_BM from '@/components/entity-templates/EntityTemplate_BM.vue';
 import EntityTemplate_Boolean from '@/components/entity-templates/EntityTemplate_Boolean.vue';
 import EntityTemplate_BthomeSensor from '@/components/entity-templates/EntityTemplate_BthomeSensor.vue';
 import EntityTemplate_Bulb from '@/components/entity-templates/EntityTemplate_Bulb.vue';
@@ -14,15 +15,18 @@ import EntityTemplate_EM from '@/components/entity-templates/EntityTemplate_EM.v
 import EntityTemplate_Enum from '@/components/entity-templates/EntityTemplate_Enum.vue';
 import EntityTemplate_Illuminance from '@/components/entity-templates/EntityTemplate_Illuminance.vue';
 import EntityTemplate_Input from '@/components/entity-templates/EntityTemplate_Input.vue';
+import EntityTemplate_IrDevice from '@/components/entity-templates/EntityTemplate_IrDevice.vue';
 import EntityTemplate_LedStrip from '@/components/entity-templates/EntityTemplate_LedStrip.vue';
 import EntityTemplate_Light from '@/components/entity-templates/EntityTemplate_Light.vue';
 import EntityTemplate_Matter from '@/components/entity-templates/EntityTemplate_Matter.vue';
 import EntityTemplate_Media from '@/components/entity-templates/EntityTemplate_Media.vue';
 import EntityTemplate_Meter from '@/components/entity-templates/EntityTemplate_Meter.vue';
 import EntityTemplate_Number from '@/components/entity-templates/EntityTemplate_Number.vue';
+import EntityTemplate_Object from '@/components/entity-templates/EntityTemplate_Object.vue';
 import EntityTemplate_Presence from '@/components/entity-templates/EntityTemplate_Presence.vue';
 import EntityTemplate_PresenceZone from '@/components/entity-templates/EntityTemplate_PresenceZone.vue';
 import EntityTemplate_Schedule from '@/components/entity-templates/EntityTemplate_Schedule.vue';
+import EntityTemplate_Script from '@/components/entity-templates/EntityTemplate_Script.vue';
 import EntityTemplate_Sensor from '@/components/entity-templates/EntityTemplate_Sensor.vue';
 import EntityTemplate_Service from '@/components/entity-templates/EntityTemplate_Service.vue';
 import EntityTemplate_Switch from '@/components/entity-templates/EntityTemplate_Switch.vue';
@@ -645,6 +649,23 @@ export const ENTITY_REGISTRY: Record<string, EntityDef> = {
         tags: (status) => cameraTags(status)
     },
 
+    // --- IR controller appliance slot (irdevice:N, e.g. Gen4 IRG4) ---
+    // Informational first pass: IRCode.Emit addressing is undocumented on the
+    // pre-release firmware, so no actions are declared — the backend composes
+    // the entity from the irdevice:N key alone (see docs/devices/).
+    irdevice: {
+        icon: 'fas fa-signal-stream',
+        template: EntityTemplate_IrDevice,
+        actions: {
+            learn: () => entityAction('learn')
+        },
+        extraProps: (entity) => ({
+            shellyID: entity.source,
+            entityName: entity.name
+        }),
+        tags: () => []
+    },
+
     // --- Virtual components ---
     boolean: {
         icon: 'fas fa-toggle-on',
@@ -698,15 +719,29 @@ export const ENTITY_REGISTRY: Record<string, EntityDef> = {
         icon: 'fas fa-hand-pointer',
         template: EntityTemplate_VirtualButton,
         actions: {
-            press: () => entityAction('press')
+            // Firmware requires the press kind; the template always sends one.
+            press: (_id, _status, event?: string) =>
+                entityAction('press', {event: event ?? 'single_push'})
         }
     },
     group: {
         icon: 'fas fa-object-group',
-        template: null,
-        tags: (status) => {
+        // Async: the group template imports this registry back, and a static
+        // cycle would leave `template` undefined.
+        template: defineAsyncComponent(
+            () =>
+                import('@/components/entity-templates/EntityTemplate_Group.vue')
+        ),
+        extraProps: (entity) => ({
+            source: entity.source,
+            members: entity.properties?.members
+        }),
+        tags: (status, properties) => {
             const tags: Tag[] = [];
-            const members = status?.members;
+            // `status.value` is live; `properties.members` is a compose snapshot.
+            const members = Array.isArray(status?.value)
+                ? status.value
+                : properties?.members;
             if (Array.isArray(members))
                 tags.push({text: `${members.length} members`});
             return tags;
@@ -850,12 +885,38 @@ export const ENTITY_REGISTRY: Record<string, EntityDef> = {
     // EV-charger phase_info). Shelly Gen2+ virtual component "Object".
     object: {
         icon: 'fas fa-cube',
-        template: null
+        template: EntityTemplate_Object
     },
     // Battery Monitor — SOC, SOH, voltage, errors (Shelly BM.* component).
+    // Maintenance verbs are irreversible; the template confirms before emitting.
     bm: {
         icon: 'fas fa-car-battery',
-        template: null
+        template: EntityTemplate_BM,
+        actions: {
+            resetCounters: () => entityAction('resetCounters'),
+            resetCharge: () => entityAction('resetCharge'),
+            replaceBattery: () => entityAction('replaceBattery')
+        },
+        extraProps: (entity) => ({
+            shellyID: entity.source,
+            entityId: entity.id
+        }),
+        tags: (status): Tag[] => {
+            const t: Tag[] = [];
+            if (typeof status?.soc === 'number')
+                t.push({text: `${status.soc}%`, icon: 'fas fa-battery-half'});
+            if (typeof status?.soh === 'number')
+                t.push({
+                    text: `SoH ${status.soh}%`,
+                    icon: 'fas fa-heart-pulse'
+                });
+            if ((status?.errors?.length ?? 0) > 0)
+                t.push({
+                    text: 'Fault',
+                    icon: 'fas fa-triangle-exclamation'
+                });
+            return t;
+        }
     },
     // Circuit Breaker (Shelly CB.* component). Two-way relay: CB.Set output
     // true/false. A safety-latched trip blocks remote re-engage (reset lever).
@@ -918,20 +979,35 @@ export const ENTITY_REGISTRY: Record<string, EntityDef> = {
         template: null
     },
     // Script — mJS scripting on Gen2+ devices (Shelly Script.* component).
+    // start/stop map to Script.Start / Script.Stop in the backend action adapter.
     script: {
         icon: 'fas fa-code',
-        template: null
-    },
-    // Triphase energy meter historical data (Shelly EMData.* component).
-    emdata: {
-        icon: 'fas fa-chart-column',
-        template: null
-    },
-    // Monophase energy meter historical data (Shelly EM1Data.* component).
-    em1data: {
-        icon: 'fas fa-chart-column',
-        template: null
+        template: EntityTemplate_Script,
+        actions: {
+            start: () => entityAction('start'),
+            stop: () => entityAction('stop')
+        },
+        extraProps: (entity) => ({
+            shellyID: entity.source,
+            entityId: entity.id
+        }),
+        tags: (status): Tag[] => {
+            const t: Tag[] = [
+                status?.running
+                    ? {text: 'Running', icon: 'fas fa-play'}
+                    : {text: 'Stopped', icon: 'fas fa-stop'}
+            ];
+            if ((status?.errors?.length ?? 0) > 0)
+                t.push({
+                    text: 'Fault',
+                    icon: 'fas fa-triangle-exclamation'
+                });
+            return t;
+        }
     }
+    // emdata/em1data are not composed as entities — they are historical energy
+    // counter stores read straight from the raw emdata:N / em1data:N status by
+    // the em/em1 meter card, so no registry entry (and no card) is needed.
 };
 
 // ---------------------------------------------------------------------------

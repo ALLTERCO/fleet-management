@@ -1,10 +1,11 @@
 import {randomUUID} from 'node:crypto';
+import type AbstractDevice from '../model/AbstractDevice';
 import {flush as flushAuditLog} from './AuditLogger';
 import {disconnectForIdentityChange} from './DeviceCollector';
 import {flush as flushDeviceEvents} from './DeviceEventLogger';
 import * as Observability from './Observability';
 import {getInstanceId} from './redis/instanceId';
-import type {DeviceSignal} from './redis/ports';
+import type {DeviceOwnershipLease, DeviceSignal} from './redis/ports';
 import {
     deviceIdentityFence,
     deviceOwnership,
@@ -18,60 +19,197 @@ const ACK_TIMEOUT_MS = 5_000;
 const ACK_POLL_MS = 25;
 const OWNERSHIP_TTL_MS = 30_000;
 const OWNERSHIP_HEARTBEAT_MS = 10_000;
+const OWNERSHIP_HEARTBEAT_BATCH_SIZE = 256;
 const IDENTITY_FENCE_TTL_MS = 5 * 60_000;
 
-const ownedDeviceIds = new Set<string>();
+export type DeviceRuntimeOwnershipLease = DeviceOwnershipLease;
+
+const ownedDeviceLeases = new Map<string, DeviceRuntimeOwnershipLease>();
+const deviceOwnershipLeases = new WeakMap<
+    AbstractDevice,
+    DeviceRuntimeOwnershipLease
+>();
 let ownershipHeartbeat: ReturnType<typeof setInterval> | null = null;
+let ownershipHeartbeatPass: Promise<void> | null = null;
 
 interface OwnershipDeps {
-    claim(shellyID: string, ttlMs: number): Promise<boolean>;
-    heartbeat(shellyID: string, ttlMs: number): Promise<boolean>;
-    release(shellyID: string): Promise<void>;
+    claim(lease: DeviceRuntimeOwnershipLease, ttlMs: number): Promise<boolean>;
+    heartbeatMany(
+        leases: readonly DeviceRuntimeOwnershipLease[],
+        ttlMs: number
+    ): Promise<readonly boolean[]>;
+    release(lease: DeviceRuntimeOwnershipLease): Promise<void>;
     disconnect(shellyIDs: readonly string[]): void;
 }
 
 const ownershipDeps: OwnershipDeps = {
-    claim: (shellyID, ttlMs) => deviceOwnership.claim(shellyID, ttlMs),
-    heartbeat: (shellyID, ttlMs) => deviceOwnership.heartbeat(shellyID, ttlMs),
-    release: (shellyID) => deviceOwnership.release(shellyID),
+    claim: (lease, ttlMs) => deviceOwnership.claim(lease, ttlMs),
+    heartbeatMany: (leases, ttlMs) =>
+        deviceOwnership.heartbeatMany(leases, ttlMs),
+    release: (lease) => deviceOwnership.release(lease),
     disconnect: disconnectForIdentityChange
 };
+
+function sameOwnershipLease(
+    left: DeviceRuntimeOwnershipLease | undefined,
+    right: DeviceRuntimeOwnershipLease
+): boolean {
+    return left?.ownerId === right.ownerId && left.leaseId === right.leaseId;
+}
 
 export async function claimDeviceRuntimeOwnership(
     shellyID: string,
     overrides: Partial<OwnershipDeps> = {}
-): Promise<boolean> {
+): Promise<DeviceRuntimeOwnershipLease | null> {
     const deps = {...ownershipDeps, ...overrides};
-    const claimed = await deps.claim(shellyID, OWNERSHIP_TTL_MS);
+    const lease: DeviceRuntimeOwnershipLease = {
+        shellyID,
+        ownerId: getInstanceId(),
+        leaseId: randomUUID()
+    };
+    const claimed = await deps.claim(lease, OWNERSHIP_TTL_MS);
     if (!claimed) {
         Observability.incrementCounter('device_ownership_claim_rejected_total');
-        return false;
+        return null;
     }
-    ownedDeviceIds.add(shellyID);
-    Observability.setGauge('device_ownership_leases', ownedDeviceIds.size);
-    return true;
+    ownedDeviceLeases.set(shellyID, lease);
+    Observability.setGauge('device_ownership_leases', ownedDeviceLeases.size);
+    return lease;
 }
 
 export async function releaseDeviceRuntimeOwnership(
-    shellyID: string,
+    lease: DeviceRuntimeOwnershipLease,
     overrides: Partial<OwnershipDeps> = {}
 ): Promise<void> {
-    if (!ownedDeviceIds.delete(shellyID)) return;
-    Observability.setGauge('device_ownership_leases', ownedDeviceIds.size);
-    await (overrides.release ?? ownershipDeps.release)(shellyID);
+    if (!sameOwnershipLease(ownedDeviceLeases.get(lease.shellyID), lease)) {
+        return;
+    }
+    ownedDeviceLeases.delete(lease.shellyID);
+    Observability.setGauge('device_ownership_leases', ownedDeviceLeases.size);
+    await (overrides.release ?? ownershipDeps.release)(lease);
+}
+
+/**
+ * Drop every ownership lease this process holds.
+ *
+ * Called on shutdown. Without it, a restart leaves one lease per connected device
+ * in Redis until the 30s TTL expires, and every device that reconnects in that
+ * window is refused with "device connection is owned by another server" — by the
+ * process that just died. Observed on a 350-device dev fleet: each refusal counts
+ * against that device's reconnect budget, so a 30-second stale window turned into
+ * a five-minute throttle for the whole fleet.
+ *
+ * Failures are swallowed per lease on purpose: shutdown must not hang or abort on
+ * one Redis error, and the TTL is still there as the backstop.
+ */
+export async function releaseAllDeviceRuntimeOwnership(
+    overrides: Partial<OwnershipDeps> = {}
+): Promise<number> {
+    const release = overrides.release ?? ownershipDeps.release;
+    const leases = [...ownedDeviceLeases.values()];
+    ownedDeviceLeases.clear();
+    Observability.setGauge('device_ownership_leases', 0);
+    let released = 0;
+    for (const lease of leases) {
+        try {
+            await release(lease);
+            released += 1;
+        } catch {
+            // The TTL expires it shortly; a shutdown must not stall on one key.
+        }
+    }
+    return released;
+}
+
+export function bindDeviceRuntimeOwnership(
+    device: AbstractDevice,
+    lease: DeviceRuntimeOwnershipLease
+): void {
+    if (device.shellyID !== lease.shellyID) {
+        throw new Error('device ownership lease identity mismatch');
+    }
+    deviceOwnershipLeases.set(device, lease);
+}
+
+export async function releaseDeviceRuntimeOwnershipForDevice(
+    device: AbstractDevice,
+    overrides: Partial<OwnershipDeps> = {}
+): Promise<void> {
+    const lease = deviceOwnershipLeases.get(device);
+    if (!lease) return;
+    deviceOwnershipLeases.delete(device);
+    await releaseDeviceRuntimeOwnership(lease, overrides);
+}
+
+async function releaseCurrentDeviceRuntimeOwnership(
+    shellyID: string
+): Promise<void> {
+    const lease = ownedDeviceLeases.get(shellyID);
+    if (lease) await releaseDeviceRuntimeOwnership(lease);
 }
 
 export async function heartbeatDeviceRuntimeOwnership(
     overrides: Partial<OwnershipDeps> = {}
 ): Promise<void> {
-    const deps = {...ownershipDeps, ...overrides};
-    for (const shellyID of [...ownedDeviceIds]) {
-        if (await deps.heartbeat(shellyID, OWNERSHIP_TTL_MS)) continue;
-        ownedDeviceIds.delete(shellyID);
-        deps.disconnect([shellyID]);
-        Observability.incrementCounter('device_ownership_lost_total');
+    if (ownershipHeartbeatPass) {
+        Observability.incrementCounter(
+            'device_ownership_heartbeat_coalesced_total'
+        );
+        return ownershipHeartbeatPass;
     }
-    Observability.setGauge('device_ownership_leases', ownedDeviceIds.size);
+    const pass = runDeviceOwnershipHeartbeat(overrides).finally(() => {
+        if (ownershipHeartbeatPass === pass) ownershipHeartbeatPass = null;
+    });
+    ownershipHeartbeatPass = pass;
+    return pass;
+}
+
+async function runDeviceOwnershipHeartbeat(
+    overrides: Partial<OwnershipDeps>
+): Promise<void> {
+    const deps = {...ownershipDeps, ...overrides};
+    const leases = [...ownedDeviceLeases.values()];
+    const startedAt = performance.now();
+    Observability.setGauge('device_ownership_heartbeat_devices', leases.length);
+    Observability.setGauge('device_ownership_heartbeat_in_progress', 1);
+    try {
+        for (
+            let offset = 0;
+            offset < leases.length;
+            offset += OWNERSHIP_HEARTBEAT_BATCH_SIZE
+        ) {
+            const batch = leases.slice(
+                offset,
+                offset + OWNERSHIP_HEARTBEAT_BATCH_SIZE
+            );
+            const renewed = await deps.heartbeatMany(batch, OWNERSHIP_TTL_MS);
+            for (let index = 0; index < batch.length; index++) {
+                if (renewed[index] === true) continue;
+                const lease = batch[index];
+                if (
+                    !sameOwnershipLease(
+                        ownedDeviceLeases.get(lease.shellyID),
+                        lease
+                    )
+                ) {
+                    continue;
+                }
+                ownedDeviceLeases.delete(lease.shellyID);
+                deps.disconnect([lease.shellyID]);
+                Observability.incrementCounter('device_ownership_lost_total');
+            }
+        }
+    } finally {
+        Observability.setGauge(
+            'device_ownership_heartbeat_duration_ms',
+            Math.round(performance.now() - startedAt)
+        );
+        Observability.setGauge('device_ownership_heartbeat_in_progress', 0);
+        Observability.setGauge(
+            'device_ownership_leases',
+            ownedDeviceLeases.size
+        );
+    }
 }
 
 export function startDeviceOwnershipHeartbeat(): void {
@@ -86,8 +224,11 @@ export function startDeviceOwnershipHeartbeat(): void {
 export async function stopDeviceOwnershipHeartbeat(): Promise<void> {
     if (ownershipHeartbeat) clearInterval(ownershipHeartbeat);
     ownershipHeartbeat = null;
-    const ids = [...ownedDeviceIds];
-    await Promise.all(ids.map((id) => releaseDeviceRuntimeOwnership(id)));
+    if (ownershipHeartbeatPass) await ownershipHeartbeatPass;
+    const leases = [...ownedDeviceLeases.values()];
+    await Promise.all(
+        leases.map((lease) => releaseDeviceRuntimeOwnership(lease))
+    );
 }
 
 interface IdentityFenceDeps {
@@ -195,8 +336,8 @@ export async function handleIdentityChangingSignal(
     const deps = runtimeDeps(overrides);
     deps.disconnect([oldShellyID, newShellyID]);
     await Promise.all([
-        releaseDeviceRuntimeOwnership(oldShellyID),
-        releaseDeviceRuntimeOwnership(newShellyID)
+        releaseCurrentDeviceRuntimeOwnership(oldShellyID),
+        releaseCurrentDeviceRuntimeOwnership(newShellyID)
     ]);
     await deps.flush();
 }

@@ -148,6 +148,7 @@ fi
 source "$SCRIPT_DIR/zitadel/project.sh"
 # shellcheck source=deploy/scripts/common/zitadel/apps.sh
 source "$SCRIPT_DIR/zitadel/apps.sh"
+MCP_APP_NAME_PREFIX="$(mcp_app_name_prefix "$PROJECT_NAME")"
 # shellcheck source=deploy/scripts/common/zitadel/policies.sh
 source "$SCRIPT_DIR/zitadel/policies.sh"
 # shellcheck source=deploy/scripts/common/zitadel/roles.sh
@@ -201,6 +202,7 @@ ensure_root_admin_user
 ensure_backend_api_app
 ensure_oidc_introspection_key
 ensure_spa_app
+ensure_mcp_apps
 
 # --- Step 8: Users ---
 ensure_platform_admin_user

@@ -9,15 +9,31 @@ import {
     FRONTEND_SRC,
     formatWithBiome,
     GENERATED_DIR,
+    REPO_ROOT,
     relPath
 } from './_shared.js';
 import {NAMESPACE_GUIDE, type NamespaceGuide} from './host-namespace-guide.js';
+import {writeHostContractBuildMetadata} from './host-package-build-metadata.js';
 
 const FRONTEND_OUT_FILE = path.join(
     FRONTEND_SRC,
     'shell/template-host/generated/contract.ts'
 );
 const MCP_OUT_FILE = path.join(GENERATED_DIR, 'host-contract.ts');
+const PACKAGE_GENERATED_DIR = path.join(
+    REPO_ROOT,
+    'packages/fleet-manager-host-contract/generated'
+);
+const PACKAGE_JS_OUT_FILE = path.join(PACKAGE_GENERATED_DIR, 'contract.js');
+const PACKAGE_TYPES_OUT_FILE = path.join(
+    PACKAGE_GENERATED_DIR,
+    'contract.d.ts'
+);
+const PACKAGE_ROOT = path.dirname(PACKAGE_GENERATED_DIR);
+const PACKAGE_BUILD_METADATA_FILES = [
+    path.join(PACKAGE_GENERATED_DIR, 'build-metadata.js'),
+    path.join(PACKAGE_GENERATED_DIR, 'build-metadata.d.ts')
+];
 
 type Schema = Record<string, unknown>;
 
@@ -101,6 +117,8 @@ function arrayTs(schema: Schema): string {
 export function schemaToTs(input: unknown): string {
     const schema = asSchema(input);
     if (!schema) return 'unknown';
+    const negated = asSchema(schema.not);
+    if (negated && Object.keys(negated).length === 0) return 'never';
     if ('const' in schema) return literal(schema.const);
     if (Array.isArray(schema.enum)) {
         const members = unique(schema.enum.map(literal));
@@ -163,6 +181,14 @@ export function buildGuide(
     return out;
 }
 
+function renderGuideType(): string {
+    return `export interface HostNamespaceGuide {
+    kind: 'device' | 'fleet-manager';
+    purpose: string;
+    useInstead?: string;
+}`;
+}
+
 function renderGuide(describes: DescribeOutput[]): string {
     return `export const HOST_NAMESPACE_GUIDE: Record<
     string,
@@ -170,7 +196,7 @@ function renderGuide(describes: DescribeOutput[]): string {
 > = ${JSON.stringify(buildGuide(describes), null, 4)} as const;`;
 }
 
-function render(describes: DescribeOutput[]): string {
+function renderContractTypes(describes: DescribeOutput[]): string[] {
     const entries: string[] = [];
     for (const describe of describes) {
         for (const method of Object.values(describe.methods)) {
@@ -178,10 +204,6 @@ function render(describes: DescribeOutput[]): string {
         }
     }
     return [
-        '// AUTO-GENERATED — do not edit by hand.',
-        '// Source: backend/src/types/api/*.ts (_DESCRIBE) + host-namespace-guide.ts',
-        '// Regenerate: cd backend && npm run generate',
-        '',
         'export interface HostContract {',
         entries.join('\n'),
         '}',
@@ -192,13 +214,43 @@ function render(describes: DescribeOutput[]): string {
         '',
         "export type HostResult<M extends HostMethod> = HostContract[M]['result'];",
         '',
-        'export interface HostNamespaceGuide {',
-        "    kind: 'device' | 'fleet-manager';",
-        '    purpose: string;',
-        '    useInstead?: string;',
-        '}',
+        renderGuideType()
+    ];
+}
+
+function render(describes: DescribeOutput[]): string {
+    return [
+        '// AUTO-GENERATED — do not edit by hand.',
+        '// Source: backend/src/types/api/*.ts (_DESCRIBE) + host-namespace-guide.ts',
+        '// Regenerate: cd backend && npm run generate',
+        '',
+        ...renderContractTypes(describes),
         '',
         renderGuide(describes),
+        ''
+    ].join('\n');
+}
+
+function renderPackageRuntime(describes: DescribeOutput[]): string {
+    return [
+        '// AUTO-GENERATED — do not edit by hand.',
+        '// Source: backend/src/types/api/*.ts (_DESCRIBE) + host-namespace-guide.ts',
+        '// Regenerate: cd backend && npm run generate',
+        '',
+        `export const HOST_NAMESPACE_GUIDE = ${JSON.stringify(buildGuide(describes), null, 4)};`,
+        ''
+    ].join('\n');
+}
+
+function renderPackageDeclarations(describes: DescribeOutput[]): string {
+    return [
+        '// AUTO-GENERATED — do not edit by hand.',
+        '// Source: backend/src/types/api/*.ts (_DESCRIBE) + host-namespace-guide.ts',
+        '// Regenerate: cd backend && npm run generate',
+        '',
+        ...renderContractTypes(describes),
+        '',
+        'export declare const HOST_NAMESPACE_GUIDE: Readonly<Record<string, HostNamespaceGuide>>;',
         ''
     ].join('\n');
 }
@@ -208,21 +260,48 @@ export async function generate(): Promise<{
     methods: number;
 }> {
     const describes = await loadAllDescribes();
+    const methods = describes.reduce(
+        (n, d) => n + Object.keys(d.methods).length,
+        0
+    );
     const output = render(describes);
     for (const file of [FRONTEND_OUT_FILE, MCP_OUT_FILE]) {
         fs.mkdirSync(path.dirname(file), {recursive: true});
         fs.writeFileSync(file, output);
         formatWithBiome(file);
     }
-    const methods = describes.reduce(
-        (n, d) => n + Object.keys(d.methods).length,
-        0
-    );
+    const packageOutputs = new Map([
+        [PACKAGE_JS_OUT_FILE, renderPackageRuntime(describes)],
+        [PACKAGE_TYPES_OUT_FILE, renderPackageDeclarations(describes)]
+    ]);
+    for (const [file, contents] of packageOutputs) {
+        fs.mkdirSync(path.dirname(file), {recursive: true});
+        fs.writeFileSync(file, contents);
+        formatWithBiome(file);
+    }
+    const packageVersion = JSON.parse(
+        fs.readFileSync(path.join(PACKAGE_ROOT, 'package.json'), 'utf8')
+    ).version as string;
+    writeHostContractBuildMetadata({
+        packageDir: PACKAGE_ROOT,
+        fleetVersion: packageVersion,
+        sourceCommit: null,
+        contractMethodCount: methods
+    });
+    for (const file of PACKAGE_BUILD_METADATA_FILES) formatWithBiome(file);
     console.log(
         '[host-contract] %d namespaces, %d methods -> %s',
         describes.length,
         methods,
-        `${relPath(FRONTEND_OUT_FILE)} + ${relPath(MCP_OUT_FILE)}`
+        [
+            FRONTEND_OUT_FILE,
+            MCP_OUT_FILE,
+            PACKAGE_JS_OUT_FILE,
+            PACKAGE_TYPES_OUT_FILE,
+            ...PACKAGE_BUILD_METADATA_FILES
+        ]
+            .map(relPath)
+            .join(' + ')
     );
     return {namespaces: describes.length, methods};
 }

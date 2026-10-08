@@ -138,7 +138,6 @@ function select(row: SitePanelRow): void {
     border-radius: 20px;
     background: rgba(28, 30, 34, 0.72);
     backdrop-filter: blur(28px) saturate(180%);
-    -webkit-backdrop-filter: blur(28px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.08),
@@ -212,7 +211,6 @@ function select(row: SitePanelRow): void {
     padding: var(--space-2) var(--space-3);
     background: color-mix(in srgb, var(--color-surface-3) 80%, transparent);
     backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
     border-bottom: 1px solid var(--color-border-subtle);
     cursor: pointer;
     user-select: none;

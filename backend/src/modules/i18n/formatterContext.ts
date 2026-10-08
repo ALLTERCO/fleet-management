@@ -9,8 +9,7 @@ import {dashboardDefaults} from '../../config/dashboardDefaults';
 import type {FormatterContext} from '../../model/report/semanticTypes';
 import type {OrganizationProfile} from '../../types/api/organization';
 import {getOrganizationProfile} from '../organizationModel';
-
-const DEFAULT_LOCALE = 'en-US';
+import {DEFAULT_LOCALE} from './localeNumber';
 
 interface SenderLike {
     getOrganizationId(): string | undefined;

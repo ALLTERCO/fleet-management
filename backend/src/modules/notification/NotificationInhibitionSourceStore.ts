@@ -27,10 +27,12 @@ interface InhibitionSourceRow {
 
 export async function listActiveInhibitionSourceAlerts(input: {
     organizationId: string;
+    txId?: number;
 }): Promise<InhibitionSourceAlert[]> {
     const result = await PostgresProvider.callMethod(
         'notifications.fn_alert_instance_list_active_for_inhibition',
-        {p_organization_id: input.organizationId}
+        {p_organization_id: input.organizationId},
+        input.txId
     );
     return ((result?.rows ?? []) as InhibitionSourceRow[]).map(rowToSource);
 }

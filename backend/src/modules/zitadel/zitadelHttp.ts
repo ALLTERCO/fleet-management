@@ -4,6 +4,7 @@
 
 import {getLogger} from 'log4js';
 import {zitadelPatDefaultExpirationDays} from '../../config/zitadel';
+import type {ZitadelRefusalContext} from './zitadelErrorMap';
 
 const logger = getLogger('zitadel');
 
@@ -65,12 +66,17 @@ export interface ZitadelHttpContext {
         method: string,
         path: string,
         body?: unknown,
-        opts?: {orgId?: string}
+        opts?: ZitadelRequestOptions
     ): Promise<T>;
     isConfigured(): boolean;
     getServiceToken(): Promise<string>;
     getFleetProject(): Promise<FleetProjectRef>;
     normalizeUser(user: ZitadelV2User): ZitadelUser;
+}
+
+export interface ZitadelRequestOptions {
+    orgId?: string;
+    refusalContext?: ZitadelRefusalContext;
 }
 
 // Validate an ID (userId, tokenId, etc.) to prevent path traversal.

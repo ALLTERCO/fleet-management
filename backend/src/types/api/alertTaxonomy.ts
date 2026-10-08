@@ -66,12 +66,17 @@ export const ALERT_RULE_KINDS = [
     'grafana_alert',
     'heartbeat',
     'energy_consumption_threshold',
+    'cost_budget_threshold',
+    'record_incomplete',
+    'approaching_new_peak',
     'rate_of_change',
     'stuck_sensor',
     'composite',
     'anomaly_band',
     'change_event',
-    'device_event'
+    'device_event',
+    'credential_expiring',
+    'system_health'
 ] as const;
 export type AlertRuleKind = (typeof ALERT_RULE_KINDS)[number];
 
@@ -205,12 +210,17 @@ export const ALERT_KIND_TO_FAMILY: Readonly<
         family: 'threshold',
         subkind: 'energy_consumption'
     },
+    cost_budget_threshold: {family: 'threshold', subkind: 'cost_budget'},
+    record_incomplete: {family: 'inactivity', subkind: 'daily_record'},
+    approaching_new_peak: {family: 'threshold', subkind: 'demand_peak'},
     rate_of_change: {family: 'delta', subkind: 'rate_of_change'},
     stuck_sensor: {family: 'delta', subkind: 'stuck_sensor'},
     composite: {family: 'composite', subkind: 'composite'},
     anomaly_band: {family: 'anomaly', subkind: 'anomaly_band'},
     change_event: {family: 'event', subkind: 'change_event'},
-    device_event: {family: 'event', subkind: 'device_event'}
+    device_event: {family: 'event', subkind: 'device_event'},
+    credential_expiring: {family: 'inactivity', subkind: 'credential_expiring'},
+    system_health: {family: 'event', subkind: 'system_health'}
 });
 
 export const ALERT_SCOPE_TYPES = [
@@ -222,22 +232,39 @@ export const ALERT_SCOPE_TYPES = [
 ] as const;
 export type AlertScopeType = (typeof ALERT_SCOPE_TYPES)[number];
 
-export type StoredAlertScopeType = AlertScopeType | 'entity';
+// What an alert is about: a scope type, an outside system's own key, or
+// Fleet itself (a health check or an automation).
+export const ALERT_SOURCE_TYPES = [
+    ...ALERT_SCOPE_TYPES,
+    'external',
+    'system'
+] as const;
+export type AlertSourceType = (typeof ALERT_SOURCE_TYPES)[number];
 
-export function publicAlertScopeType(type: string): AlertScopeType {
-    return type === 'entity' ? 'component' : (type as AlertScopeType);
+export type StoredAlertSourceType = AlertSourceType | 'entity';
+
+export function publicAlertSourceType(type: string): AlertSourceType {
+    return type === 'entity' ? 'component' : (type as AlertSourceType);
 }
 
-export function storedAlertScopeType(
-    type: AlertScopeType
-): StoredAlertScopeType {
+export function storedAlertSourceType(
+    type: AlertSourceType
+): StoredAlertSourceType {
     return type === 'component' ? 'entity' : type;
 }
 
 export interface SourceRef {
     organizationId: string;
-    subjectType: AlertScopeType;
+    subjectType: AlertSourceType;
     subjectId: string;
+    /**
+     * Where the alert happened, stamped when the instance was created — a
+     * device that moves site later does not rewrite its own history.
+     * null when the subject has no single location (a group, a tag, an
+     * outside system, Fleet itself, or an unplaced device). Absent on refs
+     * that are not alert instances.
+     */
+    locationId?: number | null;
 }
 export type AlertSourceRef = SourceRef;
 
@@ -272,10 +299,20 @@ export interface AlertRule {
     deliveryMode: 'instant' | 'digest';
     /** Digest window in minutes. null = use platform default. */
     digestWindowMinutes: number | null;
+    /** When the rule may fire. null = always. */
+    activeWindow: {
+        startTime: string;
+        endTime: string;
+        daysMask: number;
+        timezone: string | null;
+    } | null;
     ownerUserId: string | null;
     summaryTemplate: string | null;
     messageTemplate: string | null;
     autoResolve: boolean;
+    /** Fire once, notify, then disable the rule. Cooldown and dedupe are
+     *  windows and always reopen; this does not. */
+    triggerOnce: boolean;
     config: Record<string, unknown>;
     /** Per-rule override of FM_ALERT_GROUP_BY. null = use env default. */
     groupBy: readonly string[] | null;
@@ -307,8 +344,10 @@ export interface AlertInstance {
     /** Operator note recorded with the ack. */
     ackComment: string | null;
     resolvedAt: string | null;
+    resolvedBy: AlertActorRef | null;
     silencedUntil: string | null;
     silenceReason: string | null;
+    silencedBy: AlertActorRef | null;
     counts: {
         notificationsCreated: number;
         deliveryJobsCreated: number;

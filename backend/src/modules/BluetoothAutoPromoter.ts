@@ -1,4 +1,5 @@
 import * as log4js from 'log4js';
+import {tuning} from '../config/tuning';
 import {
     type ChildReconcileActions,
     registerBluChildRuntime
@@ -11,13 +12,21 @@ import {
 } from './deviceIngress/ingressTrace';
 import type {DeviceInventorySource} from './EventDistributor';
 import * as EventDistributor from './EventDistributor';
+import * as Observability from './Observability';
+import {
+    recordBluReconcileCapacity,
+    recordBluReconcileCapacityRejection,
+    recordBluReconcileRun
+} from './observability/bluReconcileTimings';
 import {runVirtualDeviceMutation} from './virtualDevice/accessInvalidation';
 import {
-    deleteBluetoothDevice,
+    deleteBluetoothDeviceWithOutcome,
     getBluetoothDeviceExternalIdBySource,
     listBluetoothCandidates,
-    promoteBluetoothFromGateway
+    promoteBluetoothFromGatewayWithOutcome,
+    promoteBluetoothGatewayChildrenWithOutcome
 } from './virtualDevice/bluetoothRepository';
+import {BluReconcileConcurrency} from './virtualDevice/bluReconcileConcurrency';
 
 // Pure BLU decision helpers now live in the model leaf (model/bluChildReconcile)
 // to break the ShellyDevice → promoter import cycle. Re-exported here so existing
@@ -37,6 +46,26 @@ const logger = log4js.getLogger('BluetoothAutoPromoter');
 
 const BT_SOURCE: DeviceInventorySource = 'bluetooth';
 
+const reconcileCapacity = new BluReconcileConcurrency(
+    tuning.virtualDevice.bluReconcileConcurrency,
+    tuning.virtualDevice.bluReconcileQueueMax,
+    ({active, queued}) => recordBluReconcileCapacity(active, queued),
+    recordBluReconcileCapacityRejection
+);
+
+interface PromotionOutcome {
+    externalId: string;
+    created: boolean;
+    changed: boolean;
+    /** Other gateways whose cached status routes this change made wrong. */
+    staleRouteGatewayExternalIds?: readonly string[];
+}
+
+interface RemovalOutcome {
+    /** Gateways whose cached status routes still list the removed device. */
+    staleRouteGatewayExternalIds: readonly string[];
+}
+
 // Seam so the promote/demote decisions are unit-testable without a DB or the
 // event bus. Production values wire the real repository + EventDistributor.
 export interface AutoPromoteDeps {
@@ -52,16 +81,90 @@ export interface AutoPromoteDeps {
         gatewayExternalId: string,
         componentKey: string,
         makePrimary: boolean
-    ) => Promise<{externalId: string}>;
+    ) => Promise<PromotionOutcome>;
+    promoteBatch?: (
+        orgId: string,
+        gatewayExternalId: string,
+        componentKeys: readonly string[]
+    ) => Promise<Array<PromotionOutcome & {componentKey: string}>>;
     resolveExternalId: (
         orgId: string,
         gatewayExternalId: string,
         componentKey: string
     ) => Promise<string | null>;
-    remove: (orgId: string, externalId: string) => Promise<unknown>;
-    emitCreated: (externalId: string, orgId: string) => void;
-    emitUpdated: (externalId: string, orgId: string) => void;
-    emitDeleted: (externalId: string, orgId: string) => void;
+    remove: (
+        orgId: string,
+        externalId: string
+    ) => Promise<RemovalOutcome | undefined>;
+    emitCreated: (
+        externalId: string,
+        orgId: string,
+        gatewayExternalId: string
+    ) => void;
+    emitUpdated: (
+        externalId: string,
+        orgId: string,
+        gatewayExternalId: string,
+        staleRouteGatewayExternalIds?: readonly string[]
+    ) => void;
+    emitDeleted: (
+        externalId: string,
+        orgId: string,
+        gatewayExternalId: string,
+        staleRouteGatewayExternalIds?: readonly string[]
+    ) => void;
+}
+
+interface GatewayPassOutcome {
+    componentKey: string;
+    device: {externalId: string};
+    created: boolean;
+    changed: boolean;
+    staleRouteGatewayExternalIds?: readonly string[];
+}
+
+export interface GatewayPassPorts {
+    promote: (
+        orgId: string,
+        gatewayExternalId: string,
+        componentKeys: readonly string[]
+    ) => Promise<GatewayPassOutcome[]>;
+    invalidateAccess: (orgId: string, externalIds: readonly string[]) => void;
+}
+
+const defaultPassPorts: GatewayPassPorts = {
+    promote: promoteBluetoothGatewayChildrenWithOutcome,
+    invalidateAccess: (orgId, externalIds) =>
+        EventDistributor.invalidateOrganizationInventory({orgId, externalIds})
+};
+
+// A pass writes BLU devices and transports, never grants or virtual bindings,
+// so only membership-keyed caches move, and only when a row changed.
+export async function promoteGatewayPass(
+    input: {
+        orgId: string;
+        gatewayExternalId: string;
+        componentKeys: readonly string[];
+    },
+    overrides: Partial<GatewayPassPorts> = {}
+): Promise<Array<PromotionOutcome & {componentKey: string}>> {
+    const ports = {...defaultPassPorts, ...overrides};
+    const outcomes = await ports.promote(
+        input.orgId,
+        input.gatewayExternalId,
+        input.componentKeys
+    );
+    const changed = outcomes
+        .filter((outcome) => outcome.created || outcome.changed)
+        .map((outcome) => outcome.device.externalId);
+    if (changed.length > 0) ports.invalidateAccess(input.orgId, changed);
+    return outcomes.map((outcome) => ({
+        componentKey: outcome.componentKey,
+        externalId: outcome.device.externalId,
+        created: outcome.created,
+        changed: outcome.changed,
+        staleRouteGatewayExternalIds: outcome.staleRouteGatewayExternalIds
+    }));
 }
 
 const defaultDeps: AutoPromoteDeps = {
@@ -69,35 +172,70 @@ const defaultDeps: AutoPromoteDeps = {
     listCandidates: (orgId, gatewayExternalId) =>
         listBluetoothCandidates(orgId, {gatewayExternalId}),
     promote: (orgId, gatewayExternalId, componentKey, makePrimary) =>
-        runVirtualDeviceMutation(orgId, () =>
-            promoteBluetoothFromGateway(orgId, {
-                gatewayExternalId,
-                componentKey,
-                makePrimary
-            })
-        ),
+        runVirtualDeviceMutation(orgId, async () => {
+            const outcome = await promoteBluetoothFromGatewayWithOutcome(
+                orgId,
+                {
+                    gatewayExternalId,
+                    componentKey,
+                    makePrimary
+                }
+            );
+            return {
+                externalId: outcome.device.externalId,
+                created: outcome.created,
+                changed: outcome.changed,
+                staleRouteGatewayExternalIds:
+                    outcome.staleRouteGatewayExternalIds
+            };
+        }),
+    promoteBatch: (orgId, gatewayExternalId, componentKeys) =>
+        promoteGatewayPass({orgId, gatewayExternalId, componentKeys}),
     resolveExternalId: getBluetoothDeviceExternalIdBySource,
-    remove: (orgId, externalId) =>
-        runVirtualDeviceMutation(orgId, () =>
-            deleteBluetoothDevice(orgId, {externalId, retention: 'tombstone'})
-        ),
-    emitCreated: (externalId, orgId) =>
+    remove: async (orgId, externalId) => {
+        // A tombstone keeps the device row and its bindings; only membership moves.
+        const removed = await deleteBluetoothDeviceWithOutcome(orgId, {
+            externalId,
+            retention: 'tombstone'
+        });
+        EventDistributor.invalidateOrganizationInventory({
+            orgId,
+            externalIds: [externalId]
+        });
+        return removed;
+    },
+    emitCreated: (externalId, orgId, gatewayExternalId) =>
         EventDistributor.emitDeviceCreated({
             externalId,
             source: BT_SOURCE,
-            orgId
+            orgId,
+            gatewayExternalId
         }),
-    emitUpdated: (externalId, orgId) =>
+    emitUpdated: (
+        externalId,
+        orgId,
+        gatewayExternalId,
+        staleRouteGatewayExternalIds
+    ) =>
         EventDistributor.emitDeviceUpdated({
             externalId,
             source: BT_SOURCE,
-            orgId
+            orgId,
+            gatewayExternalId,
+            staleRouteGatewayExternalIds
         }),
-    emitDeleted: (externalId, orgId) =>
+    emitDeleted: (
+        externalId,
+        orgId,
+        gatewayExternalId,
+        staleRouteGatewayExternalIds
+    ) =>
         EventDistributor.emitDeviceDeleted({
             externalId,
             source: BT_SOURCE,
-            orgId
+            orgId,
+            gatewayExternalId,
+            staleRouteGatewayExternalIds
         })
 };
 
@@ -112,35 +250,61 @@ export async function reconcileGatewayChildren(
     const orgId = deps.getDeviceOrg(gatewayExternalId);
     if (!orgId) return;
     const {items} = await deps.listCandidates(orgId, gatewayExternalId);
-    for (const child of items) {
-        try {
-            // Upsert also refreshes an existing device's model/components. A new
-            // child becomes primary; an existing one is refreshed WITHOUT
-            // stealing primary, so two gateways don't ping-pong it.
-            const {externalId} = await deps.promote(
+    const outcomes = deps.promoteBatch
+        ? await deps.promoteBatch(
+              orgId,
+              gatewayExternalId,
+              items.map((child) => child.componentKey)
+          )
+        : await Promise.all(
+              items.map(async (child) => ({
+                  componentKey: child.componentKey,
+                  ...(await deps.promote(
+                      orgId,
+                      gatewayExternalId,
+                      child.componentKey,
+                      false
+                  ))
+              }))
+          );
+    EventDistributor.batchBluetoothInventoryChanges(() => {
+        for (const outcome of outcomes) {
+            announcePromotionOutcome(outcome, {orgId, gatewayExternalId}, deps);
+        }
+    });
+}
+
+function announcePromotionOutcome(
+    outcome: PromotionOutcome & {componentKey: string},
+    gateway: {orgId: string; gatewayExternalId: string},
+    deps: AutoPromoteDeps
+): void {
+    const {orgId, gatewayExternalId} = gateway;
+    try {
+        const {externalId, created, changed, componentKey} = outcome;
+        const via = `${componentKey}@${gatewayExternalId}`;
+        if (created) {
+            deps.emitCreated(externalId, orgId, gatewayExternalId);
+            ingressBluPromoted(externalId, via);
+        } else if (changed) {
+            deps.emitUpdated(
+                externalId,
                 orgId,
                 gatewayExternalId,
-                child.componentKey,
-                !child.alreadyPromoted
+                outcome.staleRouteGatewayExternalIds
             );
-            const via = `${child.componentKey}@${gatewayExternalId}`;
-            if (child.alreadyPromoted) {
-                deps.emitUpdated(externalId, orgId);
-                ingressStage(externalId, 'blu-refreshed', via);
-            } else {
-                deps.emitCreated(externalId, orgId);
-                ingressBluPromoted(externalId, via);
-            }
-        } catch (err) {
-            // One bad child must not block its siblings.
-            ingressDropped(child.componentKey, 'blu_promote_failed');
-            logger.warn(
-                'auto-promote failed gateway=%s child=%s: %s',
-                gatewayExternalId,
-                child.componentKey,
-                err
-            );
+            ingressStage(externalId, 'blu-refreshed', via);
+        } else {
+            Observability.incrementCounter('blu_promotion_noop_total');
         }
+    } catch (err) {
+        ingressDropped(outcome.componentKey, 'blu_promote_failed');
+        logger.warn(
+            'auto-promote failed gateway=%s child=%s: %s',
+            gatewayExternalId,
+            outcome.componentKey,
+            err
+        );
     }
 }
 
@@ -159,8 +323,13 @@ export async function demoteRemovedChild(
         componentKey
     );
     if (!externalId) return;
-    await deps.remove(orgId, externalId);
-    deps.emitDeleted(externalId, orgId);
+    const removed = await deps.remove(orgId, externalId);
+    deps.emitDeleted(
+        externalId,
+        orgId,
+        gatewayExternalId,
+        removed?.staleRouteGatewayExternalIds
+    );
     ingressBluDemoted(externalId, `${componentKey}@${gatewayExternalId}`);
 }
 
@@ -202,18 +371,8 @@ export function isDeviceOrgKnown(shellyID: string): boolean {
 // never blocked; failures are logged, not thrown.
 const backgroundActions: ChildReconcileActions = {
     reconcile: (gatewayExternalId) =>
-        reconcileGatewayChildren(gatewayExternalId).then(
-            () => true,
-            (err) => {
-                // Report the failure so the device keeps its prior state and
-                // retries on the next persist instead of losing the child.
-                logger.warn(
-                    'BLU auto-promote failed for %s: %s',
-                    gatewayExternalId,
-                    err
-                );
-                return false;
-            }
+        reconcileCapacity.run(() =>
+            reconcileGatewayChildrenSafe(gatewayExternalId)
         ),
     demote: (gatewayExternalId, componentKey) =>
         void demoteRemovedChild(gatewayExternalId, componentKey).catch((err) =>
@@ -225,6 +384,27 @@ const backgroundActions: ChildReconcileActions = {
             )
         )
 };
+
+async function reconcileGatewayChildrenSafe(
+    gatewayExternalId: string
+): Promise<boolean> {
+    const startedAt = Date.now();
+    try {
+        await reconcileGatewayChildren(gatewayExternalId);
+        recordBluReconcileRun('succeeded', Date.now() - startedAt);
+        return true;
+    } catch (err) {
+        recordBluReconcileRun('failed', Date.now() - startedAt);
+        // Keep the prior state so the next persist retries instead of losing
+        // the child when a gateway-level read fails.
+        logger.warn(
+            'BLU auto-promote failed for %s: %s',
+            gatewayExternalId,
+            err
+        );
+        return false;
+    }
+}
 
 // Wire the promotion runtime into the device layer's port. DeviceComponent
 // imports this module at startup (demoteAllChildren), so the runtime is

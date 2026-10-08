@@ -10,6 +10,7 @@ import log4js from 'log4js';
 import {envInt} from '../../config/envReader';
 import {tuning} from '../../config/tuning';
 import type CommandSender from '../../model/CommandSender';
+import {buildListResponse} from '../../rpc/listResponse';
 import RpcError from '../../rpc/RpcError';
 import {assertGrantorCanManageCredential} from '../authz/admin';
 import type {CredentialAuditInput} from '../authz/audit';
@@ -21,6 +22,7 @@ import {ConnectionContext} from '../web/ws/ConnectionContext';
 import {zitadelService} from '../zitadel';
 import {evictCachedUserByUserId} from './cache';
 import {writeCredentialAudit} from './credentialAudit';
+import {deletePatMeta} from './patMeta';
 import * as patRevokeWorker from './patRevokeWorker';
 import {publishUserSessionSignal} from './sessionNotifications';
 import {assertTargetOwnedByTenant} from './tenantGate';
@@ -36,7 +38,7 @@ export function patKeyHint(token: string): string {
     return `${token.slice(0, 4)}…${token.slice(-4)}`;
 }
 
-interface PatMetaInput {
+export interface PatMetaInput {
     tokenId: string;
     organizationId: string;
     userId: string;
@@ -88,15 +90,17 @@ export async function loadTokenMeta(
     organizationId: string,
     userId: string
 ): Promise<Map<string, {name: string; keyHint: string}>> {
-    const rows = (await store.callMethod(
+    const result = await store.callMethod(
         'organization.fn_service_user_token_meta_list',
         {p_organization_id: organizationId, p_user_id: userId}
-    )) as Array<{token_id: string; name: string; key_hint: string}> | undefined;
+    );
+    const rows = (result?.rows ?? []) as Array<{
+        token_id: string;
+        name: string;
+        key_hint: string;
+    }>;
     return new Map(
-        (Array.isArray(rows) ? rows : []).map((r) => [
-            r.token_id,
-            {name: r.name, keyHint: r.key_hint}
-        ])
+        rows.map((r) => [r.token_id, {name: r.name, keyHint: r.key_hint}])
     );
 }
 
@@ -200,6 +204,12 @@ export interface RotatePatDeps {
         userId: string
     ) => Promise<string>;
     syncRevokeTimeoutMs: () => number;
+    readPatName: (
+        organizationId: string,
+        userId: string,
+        tokenId: string
+    ) => Promise<string>;
+    recordPatMeta: (input: PatMetaInput) => Promise<string>;
 }
 
 function notifyImmediateRevokeReal(userId: string): void {
@@ -214,8 +224,10 @@ function notifyImmediateRevokeReal(userId: string): void {
 export const defaultRotatePatDeps: RotatePatDeps = {
     createPat: (userId, expirationDate) =>
         zitadelService.createPersonalAccessToken(userId, expirationDate),
-    revokePat: (userId, tokenId) =>
-        zitadelService.revokePersonalAccessToken(userId, tokenId),
+    revokePat: async (userId, tokenId) => {
+        await zitadelService.revokePersonalAccessToken(userId, tokenId);
+        await deletePatMeta(tokenId);
+    },
     scheduleRevoke: (userId, tokenId, revokeAt) =>
         patRevokeWorker.schedule(userId, tokenId, revokeAt),
     writeAudit: writeCredentialAudit,
@@ -228,7 +240,10 @@ export const defaultRotatePatDeps: RotatePatDeps = {
         }),
     assertTenantAccess: requireOwnedByTenant,
     syncRevokeTimeoutMs: () =>
-        envInt('FM_PAT_REVOKE_SYNC_TIMEOUT_MS', 5_000, 500)
+        envInt('FM_PAT_REVOKE_SYNC_TIMEOUT_MS', 5_000, 500),
+    readPatName: async (organizationId, userId, tokenId) =>
+        (await loadTokenMeta(organizationId, userId)).get(tokenId)?.name ?? '',
+    recordPatMeta
 };
 
 // ---------------------------------------------------------------------------
@@ -403,7 +418,7 @@ export async function compensateNewPatAfterScheduleFailure(
     input: CompensateInput
 ): Promise<void> {
     logger.error(
-        'PAT rotation could not durably schedule revoke for user=%s; compensating by revoking new token=%s: %s',
+        'PAT rotation could not durably schedule revoke for user=%s; compensating by revoking new token_id=%s: %s',
         input.userId,
         input.newTokenId,
         input.cause instanceof Error ? input.cause.message : String(input.cause)
@@ -416,7 +431,7 @@ export async function compensateNewPatAfterScheduleFailure(
         // live; operator must clean up via User.RevokePAT. Caller still
         // gets the original schedule error.
         logger.error(
-            'compensating revoke failed user=%s token=%s — manual cleanup required: %s',
+            'compensating revoke failed user=%s token_id=%s — manual cleanup required: %s',
             input.userId,
             input.newTokenId,
             revokeErr instanceof Error ? revokeErr.message : String(revokeErr)
@@ -491,7 +506,7 @@ export async function listPats(
         ...t,
         ...(meta.get(t.tokenId) ?? {name: '', keyHint: ''})
     }));
-    return {items, total: items.length};
+    return buildListResponse(items, items.length, 0, 0);
 }
 
 export async function revokePat(
@@ -513,9 +528,7 @@ export async function revokePat(
     );
 
     // Zitadel hard-deletes PATs on revoke, so drop our orphaned metadata too.
-    await store.callMethod('organization.fn_service_user_token_meta_delete', {
-        p_token_id: params.tokenId
-    });
+    await deletePatMeta(params.tokenId);
 
     // Evict auth cache, refresh WS senders, broadcast to peers.
     evictCachedUserByUserId(params.userId);
@@ -567,6 +580,12 @@ export async function rotatePat(
     const expirationDate = expirationDateFromDays(params.expirationDays);
     const graceMs = computeGraceMs(params.graceMs);
 
+    // Read before the revoke below, which drops the old token's metadata.
+    const name = await readPatNameBestEffort(deps, {
+        organizationId: orgId,
+        userId: params.userId,
+        tokenId: params.tokenId
+    });
     const fresh = await deps.createPat(params.userId, expirationDate);
 
     try {
@@ -589,6 +608,14 @@ export async function rotatePat(
         throw RpcError.OperationFailed('schedule PAT revoke', err);
     }
 
+    await deps.recordPatMeta({
+        tokenId: fresh.tokenId,
+        organizationId: orgId,
+        userId: params.userId,
+        name,
+        token: fresh.token
+    });
+
     // Best-effort: the rotation is committed once arrangeOldPatRevoke
     // returns. An audit failure here must not be re-interpreted as a
     // rotation failure (the caller already has the new token).
@@ -610,6 +637,27 @@ export async function rotatePat(
         replacedTokenId: params.tokenId,
         graceMs
     };
+}
+
+// A rotation must not fail because the old key's label could not be read.
+async function readPatNameBestEffort(
+    deps: RotatePatDeps,
+    target: {organizationId: string; userId: string; tokenId: string}
+): Promise<string> {
+    try {
+        return await deps.readPatName(
+            target.organizationId,
+            target.userId,
+            target.tokenId
+        );
+    } catch (error) {
+        logger.warn(
+            'Failed to read PAT name for token %s: %s',
+            target.tokenId,
+            error
+        );
+        return '';
+    }
 }
 
 interface BulkRotationResult {

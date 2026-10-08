@@ -34,6 +34,7 @@ import {
     kindInBandPct,
     LIGHT_KINDS,
     type SafetySensorStat,
+    WATER_KINDS,
     WEATHER_KINDS
 } from './environmentReportStats';
 
@@ -95,6 +96,7 @@ export function composeEnvironmentReportRows(
         appendKindGroup(rows, 'AIR QUALITY', AIR_QUALITY_KINDS, byKind);
     if (on('light')) appendKindGroup(rows, 'LIGHT', LIGHT_KINDS, byKind);
     if (on('weather')) appendKindGroup(rows, 'WEATHER', WEATHER_KINDS, byKind);
+    if (on('water')) appendKindGroup(rows, 'WATER', WATER_KINDS, byKind);
     if (on('presence')) appendPresence(rows, presence);
     if (on('safety')) appendSafety(rows, safety, input);
     if (on('per_sensor')) appendPerSensor(rows, input);

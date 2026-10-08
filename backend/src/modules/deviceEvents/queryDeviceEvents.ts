@@ -29,6 +29,12 @@ export interface DeviceEventQuery {
     offset?: number;
 }
 
+export interface DeviceEventCounterCatalogRow {
+    shelly_id: string;
+    component: string;
+    counter_field: string;
+}
+
 export async function queryDeviceEvents(
     query: DeviceEventQuery
 ): Promise<DeviceEventRow[]> {
@@ -49,4 +55,20 @@ export async function queryDeviceEvents(
         }
     );
     return (result?.rows ?? []) as DeviceEventRow[];
+}
+
+/** Persisted integer counters that can drive an Italia breaker-trip policy. */
+export async function listOperationCounterCatalog(opts: {
+    organizationId: string;
+    shellyIds: readonly string[];
+}): Promise<DeviceEventCounterCatalogRow[]> {
+    if (opts.shellyIds.length === 0) return [];
+    const result = await PostgresProvider.callMethod(
+        'device.fn_operation_counter_catalog',
+        {
+            p_organization_id: opts.organizationId,
+            p_shelly_ids: [...opts.shellyIds]
+        }
+    );
+    return (result?.rows ?? []) as DeviceEventCounterCatalogRow[];
 }

@@ -70,6 +70,14 @@ cmd_migrate_engine() {
         return 0
     fi
 
+    if declare -F mg_kdf_salt_preflight >/dev/null 2>&1; then
+        mg_kdf_salt_preflight || {
+            mg_report_finish "$report_path" failed "KDF salt preflight"
+            mg_release_lock "$lock_file"
+            return 1
+        }
+    fi
+
     mg_confirm_plan "$plan" || {
         mg_report_finish "$report_path" failed "operator confirmation"
         mg_release_lock "$lock_file"
@@ -126,8 +134,7 @@ cmd_migrate_engine() {
     }
 
     log_info "Executing plan..."
-    MG_ROLLBACK_FLEET_DB_TAG="$(mp_running_image_tag "$COMPOSE_PROJECT_NAME" fleet-db)"
-    MG_ROLLBACK_ZITADEL_DB_TAG="$(mp_running_image_tag "$COMPOSE_PROJECT_NAME" zitadel-db)"
+    mg_record_rollback_images
     local step
     while IFS= read -r step; do
         [ -z "$step" ] && continue
@@ -177,8 +184,30 @@ cmd_migrate_engine() {
         return 1
     }
     mg_report_finish "$report_path" success ""
+    # Optional caller hook, e.g. to record where a later rollback returns to.
+    if declare -F mg_on_migration_success >/dev/null 2>&1; then
+        mg_on_migration_success "$report_path" || {
+            log_error "Migration succeeded, but recording its rollback point failed."
+            mg_release_lock "$lock_file"
+            return 1
+        }
+    fi
     mg_release_lock "$lock_file"
     log_info "Migration complete. Stack now matches target versions."
+}
+
+# Taken before any step runs, so a rollback can put every image back.
+mg_record_rollback_images() {
+    local fm_container
+    MG_ROLLBACK_FLEET_DB_TAG="$(mp_running_image_tag "$COMPOSE_PROJECT_NAME" fleet-db)"
+    MG_ROLLBACK_ZITADEL_DB_TAG="$(mp_running_image_tag "$COMPOSE_PROJECT_NAME" zitadel-db)"
+    MG_ROLLBACK_ZITADEL_API_TAG="$(mp_running_image_tag "$COMPOSE_PROJECT_NAME" zitadel-api)"
+    MG_ROLLBACK_FM_IMAGE_REF=""
+    MG_ROLLBACK_FM_IMAGE_ID=""
+    fm_container="$(compat_service_container_id "$COMPOSE_PROJECT_NAME" fleet-manager 2>/dev/null || true)"
+    [ -n "$fm_container" ] || return 0
+    MG_ROLLBACK_FM_IMAGE_REF="$(compat_container_image "$fm_container")"
+    MG_ROLLBACK_FM_IMAGE_ID="$(docker inspect -f '{{.Image}}' "$fm_container" 2>/dev/null || true)"
 }
 
 mg_import_legacy_machinekey() {
@@ -267,7 +296,11 @@ mg_acquire_lock() {
 
 mg_release_lock() {
     local lock_file="$1"
-    [ -n "$lock_file" ] && rm -f "$lock_file"
+    # Releasing runs on the success path too — a false guard here would end the
+    # function non-zero and abort the deploy under set -e.
+    if [ -n "$lock_file" ]; then
+        rm -f "$lock_file"
+    fi
 }
 
 mg_inventory_snapshot() {
@@ -1003,6 +1036,17 @@ mg_list_user_databases() {
         2>/dev/null
 }
 
+# template1 seeds every new database; template0 takes no connections.
+mg_list_extension_databases() {
+    local service="$1" db_user="${2:-postgres}"
+    local container rows
+    container="$(hc_container_name "$service" 2>/dev/null || true)"
+    [ -n "$container" ] || return 1
+    rows="$(docker exec "$container" psql -U "$db_user" -d postgres -AtX -F $'\t' -v ON_ERROR_STOP=1 \
+        -c "SELECT datname, datallowconn FROM pg_database ORDER BY datname;" 2>/dev/null)" || return 1
+    awk -F'\t' '$2 == "t" { print $1 }' <<<"$rows"
+}
+
 # Arg order matches bk_* (service, db_name, db_user).
 mg_database_owner() {
     local service="$1" db_name="$2" db_user="$3"
@@ -1134,15 +1178,19 @@ mg_set_database_owner() {
 # The extension lives per-database — update it in every one.
 mg_update_timescale_extension_all() {
     local service="$1" db_user="$2"
-    local d rc=0
+    local dbs d rc=0
+    dbs="$(mg_list_extension_databases "$service" "$db_user")" || {
+        log_error "Could not list the databases of $service for the TimescaleDB update."
+        return 1
+    }
     while IFS= read -r d; do
         [ -n "$d" ] || continue
         compat_update_timescale_extension \
             "$(hc_container_name "$service")" "$db_user" "$d" "${TIMESCALEDB_VERSION:-}" || {
-                log_warn "Timescale extension update failed for '$d'"
+                log_error "TimescaleDB extension update failed for '$d'"
                 rc=1
             }
-    done < <(mg_list_user_databases "$service" "$db_user")
+    done <<<"$dbs"
     return "$rc"
 }
 
@@ -1407,11 +1455,12 @@ mg_ensure_zitadel_runtime_dependencies() {
     bash "$DEPLOY_DIR/scripts/common/reload-redis-acl.sh" || return 1
 }
 
+# No deps: a dependency pass would recreate zitadel-api without its start phase.
 mg_start_zitadel_login_if_present() {
     mg_compose_has_service zitadel-login || return 0
     log_info "  starting Zitadel Login UI..."
     mg_compose pull zitadel-login >/dev/null 2>&1 || true
-    mg_compose up -d zitadel-login >/dev/null || return 1
+    mg_compose up -d --no-deps zitadel-login >/dev/null || return 1
     hc_wait_or_dump zitadel-login 180
 }
 
@@ -1427,8 +1476,8 @@ mg_zitadel_wait_and_setup() {
     local zitadel_api_host_port="${ZITADEL_API_HOST_PORT:-8080}"
     local host_header="${ZITADEL_HOST_HEADER:-}"
     local machinekey_path="$DEPLOY_DIR/state/machinekey/zitadel-admin-sa.json"
-    if [ -z "$host_header" ] && declare -F zitadel_host_header >/dev/null 2>&1; then
-        host_header="$(zitadel_host_header)"
+    if [ -z "$host_header" ] && declare -F deploy_zitadel_host_header >/dev/null 2>&1; then
+        host_header="$(deploy_zitadel_host_header)"
     fi
     # shellcheck source=/dev/null
     source "$DEPLOY_DIR/scripts/common/zitadel-lib.sh"
@@ -1456,8 +1505,8 @@ mg_zitadel_wait_runtime_ready() {
     local timeout="$1"
     local zitadel_api_host_port="${2:-${ZITADEL_API_HOST_PORT:-8080}}"
     local host_header="${3:-${ZITADEL_HOST_HEADER:-}}"
-    if [ -z "$host_header" ] && declare -F zitadel_host_header >/dev/null 2>&1; then
-        host_header="$(zitadel_host_header)"
+    if [ -z "$host_header" ] && declare -F deploy_zitadel_host_header >/dev/null 2>&1; then
+        host_header="$(deploy_zitadel_host_header)"
     fi
     # shellcheck source=/dev/null
     source "$DEPLOY_DIR/scripts/common/zitadel-lib.sh"
@@ -1552,7 +1601,8 @@ mg_health_gate() {
     local url="${FM_HEALTH_URL:-$(compute_fm_url)/health}"
     local tries=0
     while [ "$tries" -lt 30 ]; do
-        if curl -sf \
+        # Liveness, not certificate trust: self-signed stacks answer over https.
+        if curl -skf \
             --connect-timeout "${MIGRATE_HEALTH_CONNECT_TIMEOUT_SECONDS:-2}" \
             --max-time "${MIGRATE_HEALTH_MAX_TIME_SECONDS:-5}" \
             "$url" >/dev/null 2>&1; then
@@ -1591,7 +1641,81 @@ mg_rollback() {
             rollback_failed=1
         fi
     fi
-    return "$rollback_failed"
+    if [ "$rollback_failed" -ne 0 ]; then
+        log_error "Services stay stopped: starting them on a half-restored database could change it."
+        return 1
+    fi
+    mg_restart_services_after_rollback
+}
+
+# The databases hold their pre-migrate data again; the services must match it.
+mg_restart_services_after_rollback() {
+    local failed=0
+    mg_rollback_start_zitadel || failed=1
+    mg_rollback_start_fleet_manager || failed=1
+    if [ "$failed" -ne 0 ]; then
+        log_error "ROLLBACK INCOMPLETE: the databases are restored, but a service is not healthy on its pre-migrate image."
+        return 1
+    fi
+    log_info "Rollback complete: services run their pre-migrate images."
+}
+
+mg_rollback_start_zitadel() {
+    local tag="${MG_ROLLBACK_ZITADEL_API_TAG:-}"
+    if [ -z "$tag" ]; then
+        # No API before the migrate: one it created would hide the needed setup.
+        mg_remove_zitadel_api_container
+        return $?
+    fi
+    log_warn "  starting zitadel-api and its login on the pre-migrate tag $tag"
+    if mg_start_zitadel_api_at_tag "$tag" && ZITADEL_VERSION="$tag" mg_start_zitadel_login_if_present; then
+        return 0
+    fi
+    # The planner reads the API image; a container left on the new tag would skip setup.
+    if [ "$(mp_running_image_tag "$COMPOSE_PROJECT_NAME" zitadel-api)" != "$tag" ]; then
+        log_error "  zitadel-api could not return to $tag; removing it so the next migrate runs setup"
+        mg_remove_zitadel_api_container || true
+    fi
+    return 1
+}
+
+# Only the container the planner reads for this project.
+mg_remove_zitadel_api_container() {
+    local id
+    id="$(compat_service_container_id "$COMPOSE_PROJECT_NAME" zitadel-api 2>/dev/null || true)"
+    [ -n "$id" ] || return 0
+    docker rm -f "$id" >/dev/null
+}
+
+mg_start_zitadel_api_at_tag() {
+    local tag="$1"
+    mg_ensure_zitadel_runtime_dependencies || return 1
+    ZITADEL_VERSION="$tag" \
+    ZITADEL_START_PHASE="start-from-setup --init-projections=true" \
+        mg_compose up -d --no-deps --force-recreate zitadel-api >/dev/null || return 1
+    mg_zitadel_wait_healthy 180
+}
+
+mg_rollback_start_fleet_manager() {
+    local image_ref="${MG_ROLLBACK_FM_IMAGE_REF:-}" image_id="${MG_ROLLBACK_FM_IMAGE_ID:-}"
+    [ -n "$image_ref" ] || return 0
+    if [ -z "$image_id" ]; then
+        log_error "  pre-migrate Fleet Manager image for $image_ref is unknown; start it manually"
+        return 1
+    fi
+    log_warn "  starting fleet-manager on its pre-migrate image $image_ref"
+    # The migrate build or pull moved this tag to the new image.
+    docker tag "$image_id" "$image_ref" || {
+        log_error "  pre-migrate Fleet Manager image $image_id is gone; start it manually"
+        return 1
+    }
+    mg_start_fm_at_image "$image_ref" || return 1
+    mg_health_gate
+}
+
+# Private adapter: the compose image name is fixed, so the re-tag selects it.
+mg_start_fm_at_image() {
+    mg_compose_fm up -d --no-deps --no-build --force-recreate fleet-manager >/dev/null
 }
 
 mg_restore_snapshot_on_original_db() {

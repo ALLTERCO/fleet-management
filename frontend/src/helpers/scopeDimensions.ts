@@ -235,6 +235,19 @@ function isSystemPersonaKey(key: string): key is AuthzSystemPersonaKey {
     return key in AUTHZ_SYSTEM_PERSONA_SCOPE_TYPES;
 }
 
+// Exact compatibility check for fixed-resource flows such as ShareDialog.
+// Custom personas accept every explicit scope; provider support authority is
+// never assignable through tenant assignments.
+export function personaAllowsScopeType(
+    personaKey: string | undefined,
+    scopeType: AuthzScopeType
+): boolean {
+    if (!personaKey) return false;
+    if (personaKey === 'super_admin') return false;
+    if (!isSystemPersonaKey(personaKey)) return true;
+    return AUTHZ_SYSTEM_PERSONA_SCOPE_TYPES[personaKey].includes(scopeType);
+}
+
 // Kinds offerable for a role, read from the shared persona↔scope-type matrix
 // (the same one backend enforcement validates against). Custom personas have
 // no matrix row — the backend accepts any explicit scope for them.

@@ -14,9 +14,10 @@ export interface DashChromeActions {
     // Bento only — copy the layout into a new dashboard. Absent when the user
     // lacks create permission or the kind can't be duplicated.
     onDuplicate?: () => void;
-    // Open the share dialog for this dashboard. Absent when the user can't
-    // manage it (canShare false) — the server still gates the actual grant.
-    onShare?: () => void;
+    // Domain dashboards with a live auto-refresh timer expose its cadence in
+    // the ⋮ menu. Absent = the dashboard has no auto-refresh concept.
+    refreshInterval?: number;
+    onSetInterval?: (ms: number) => void;
     // User may update this dashboard (gates Edit / Set as default).
     canEdit: boolean;
     // User may share this dashboard (gates the Share item).

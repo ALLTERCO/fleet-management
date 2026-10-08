@@ -16,6 +16,8 @@ export interface EnergyPoint {
 interface EnergyConfigFlags {
     /** A tariff is configured — gates the cost / bill / TOU cards. */
     tariff: boolean;
+    /** Why authoritative stored-tariff pricing is unavailable. */
+    tariffMessage: string | null;
     /** At least one group or location exists — gates the by-location breakdown. */
     groups: boolean;
     /** At least one device carries an appliance kind — gates the by-kind breakdown. */
@@ -25,16 +27,31 @@ interface EnergyConfigFlags {
 }
 
 interface EnergyBill {
-    energy: number;
+    /** Null when no tariff priced the energy. A zero would read as free. */
+    energy: number | null;
     demandKw: number;
     demand: number;
     standing: number;
-    vatPct: number;
-    vat: number;
-    total: number;
-    vsUtility: number;
-    /** Signed percent vs the utility bill (negative = cheaper). */
-    deltaPct: number;
+    taxes: {code: string; label: string; amount: number}[];
+    /** Null when fixed/demand/tax rules cannot be aggregated honestly. */
+    total: number | null;
+    /** Credit for exported energy; null without an explicit export tariff. */
+    exportCredit: number | null;
+    /** Import energy cost minus the export credit; null unless both are authoritative. */
+    netCost: number | null;
+    complete: boolean;
+    message: string | null;
+    reconciliation:
+        | {status: 'loading' | 'unavailable'; message: string}
+        | {
+              status: 'ready';
+              recorded: number;
+              shadow: number;
+              varianceAbs: number;
+              variancePct: number | null;
+              direction: 'over' | 'under' | 'match';
+              coverageWarning: string;
+          };
 }
 
 interface EnergyTou {
@@ -51,12 +68,18 @@ interface OverviewData {
     consumptionKwh: number;
     /** Total cost for the period; null when no tariff is configured. */
     costValue: number | null;
+    /** End-of-period cost; null when the backend had nothing to project from. */
     projectedValue: number | null;
+    /** The same projection as a kWh range, so a thin one does not read as firm. */
+    projectedRangeKwh: string | null;
+    /** What the projection is still waiting for; null when one is shown. */
+    projectedPending: {observedDays: number} | null;
     dailyAvgKwh: number;
     alwaysOnKwh: number;
     voltagePass: boolean;
     voltageAvgV: number;
-    dataQualityPct: number;
+    /** Share of devices online right now — uptime, not bucket coverage. */
+    devicesOnlinePct: number;
     /** Consumption / cost change vs the mirror prior window; null = no baseline. */
     consumptionDeltaPct: number | null;
     costDeltaPct: number | null;
@@ -114,7 +137,6 @@ interface EnergyPatternsData {
     weekendKwh: number;
     weekdayPerDay: number;
     weekendPerDay: number;
-    env: {temp: string; humidity: string; luminance: string; flow: string};
     /** Load-duration curve (kW sorted descending) and the always-on floor. */
     loadDuration: EnergyPoint[];
     alwaysOnW: number;
@@ -164,14 +186,39 @@ interface DevicesData {
 }
 
 interface SolarData {
-    flow: {solar: number; grid: number; home: number; battery: number; ev: number};
+    flow: {
+        solar: number;
+        grid: number;
+        home: number;
+        battery: number;
+        ev: number;
+    };
     generatedToday: number;
     selfConsumed: number;
     exported: number;
     imported: number;
-    pv: {generation: number; selfConsumed: number; exported: number; gridImport: number; house: number; selfConsumptionPct: number; selfSufficiencyPct: number};
-    battery: {charged: number; discharged: number; roundTripPct: number; losses: number} | null;
-    ev: {delivered: number; sessions: number; avgPerSession: number; cost: number; co2Avoided: number} | null;
+    pv: {
+        generation: number;
+        selfConsumed: number;
+        exported: number;
+        gridImport: number;
+        house: number;
+        selfConsumptionPct: number;
+        selfSufficiencyPct: number;
+    };
+    battery: {
+        charged: number;
+        discharged: number;
+        roundTripPct: number;
+        losses: number;
+    } | null;
+    ev: {
+        delivered: number;
+        sessions: number;
+        avgPerSession: number;
+        cost: number;
+        co2Avoided: number;
+    } | null;
 }
 
 export interface AlertRow {
@@ -186,7 +233,6 @@ export interface AlertRow {
 interface CarbonData {
     locationBasedKg: number;
     marketBasedKg: number;
-    avoidedKg: number;
     equivalentKm: number;
     budgetKg: number;
     projectedKg: number;
@@ -197,7 +243,14 @@ interface CarbonData {
 }
 
 export interface EnergyDashboardData {
-    meta: {rangeLabel: string; rangeHours: number; deviceCount: number; onlineCount: number; currency: string};
+    meta: {
+        rangeLabel: string;
+        rangeHours: number;
+        deviceCount: number;
+        onlineCount: number;
+        currency: string;
+        currencyFractionDigits?: number;
+    };
     config: EnergyConfigFlags;
     overview: OverviewData;
     power: PowerData;

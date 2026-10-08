@@ -1,8 +1,13 @@
+import {tuning} from '../../config/tuning';
 import * as AlertEvents from '../../modules/AlertEvents';
+import {requireTenantWideComponentPermission} from '../../modules/authz/evaluator';
 import {resolveEmailTemplateConfig} from '../../modules/delivery/emailTemplateResolver';
 import {invalidateOutboxSecretsCache} from '../../modules/delivery/OutboxWorker';
 import {performProviderTest} from '../../modules/delivery/ProviderTestRunner';
-import {redactSecretHeadersForResponse} from '../../modules/integrationConfig';
+import {
+    maskIntegrationSecrets,
+    redactSecretHeadersForResponse
+} from '../../modules/integrationConfig';
 import {
     listChannelProviderDescriptors,
     mergeChannelConfig,
@@ -31,11 +36,13 @@ import {
     CHANNEL_TEST_PARAMS_SCHEMA,
     CHANNEL_UPDATE_PARAMS_SCHEMA,
     type Channel,
+    type ChannelListItem,
     type ChannelProvider,
+    type ChannelSummary,
     type ChannelTestResult
 } from '../../types/api/channel';
 import type CommandSender from '../CommandSender';
-import Component from './Component';
+import Component, {canPerformCrudOperation} from './Component';
 
 type JsonRecord = Record<string, unknown>;
 type EndpointOperation = 'create' | 'update' | 'delete';
@@ -113,6 +120,7 @@ function normalizeName(name: string, label: string): string {
 
 function rowToEndpoint(row: EndpointRow): Channel {
     return {
+        access: 'full',
         id: row.id,
         organizationId: row.organization_id,
         provider: row.provider,
@@ -144,6 +152,40 @@ function rowToEndpoint(row: EndpointRow): Channel {
         createdAt: toIso(row.created_at) ?? '',
         updatedAt: toIso(row.updated_at)
     };
+}
+
+// Built field by field from an allow-list, so a field added to Channel stays
+// hidden from callers without a channel grant until it is listed here.
+function toChannelSummary(channel: Channel): ChannelSummary {
+    return {
+        access: 'summary',
+        id: channel.id,
+        organizationId: channel.organizationId,
+        provider: channel.provider,
+        name: channel.name,
+        enabled: channel.enabled,
+        lastTestAt: channel.lastTestAt,
+        lastTestStatus: channel.lastTestStatus,
+        lastDeliveryAt: channel.lastDeliveryAt,
+        lastDeliveryStatus: channel.lastDeliveryStatus,
+        health: {...channel.health},
+        createdAt: channel.createdAt,
+        updatedAt: channel.updatedAt
+    };
+}
+
+// Full for a caller with a grant on this channel, a summary otherwise.
+async function channelAtCallerLevel(
+    sender: CommandSender,
+    channel: Channel
+): Promise<ChannelListItem> {
+    const full = await canPerformCrudOperation(
+        sender,
+        'integrations',
+        'read',
+        channel.id
+    );
+    return full ? channel : toChannelSummary(channel);
 }
 
 function extractErrorMessage(err: unknown): string {
@@ -207,6 +249,8 @@ export async function __performProviderTestForTests(
         payload
     });
 }
+
+const NOT_A_DESTINATION_GROUP_ID = (): undefined => undefined;
 
 export default class ChannelComponent extends Component {
     constructor() {
@@ -377,12 +421,16 @@ export default class ChannelComponent extends Component {
             const rows = (result?.rows ?? []) as EndpointListRow[];
             const total =
                 rows.length > 0 ? Number(rows[0].total_count ?? 0) : 0;
-            const items: Channel[] = [];
-
-            for (const row of rows) {
-                if (row.id == null) continue;
-                items.push(rowToEndpoint(row as EndpointRow));
-            }
+            const items = await Promise.all(
+                rows
+                    .filter((row) => row.id != null)
+                    .map((row) =>
+                        channelAtCallerLevel(
+                            sender,
+                            rowToEndpoint(row as EndpointRow)
+                        )
+                    )
+            );
 
             return buildListResponse(items, total, limit, offset);
         } catch (err: unknown) {
@@ -390,9 +438,11 @@ export default class ChannelComponent extends Component {
         }
     }
 
+    // A channel id is checked as the `integration` resource it is, never as a
+    // destination group (`notification`) whose id may be equal.
     @Component.NoAudit
     @Component.Expose('Get')
-    @Component.CrudPermission('notifications', 'read', (p) => p?.id)
+    @Component.CrudPermission('integrations', 'read', (p) => p?.id)
     async getEndpoint(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{organizationId?: string; id: number}>(
             params,
@@ -401,9 +451,21 @@ export default class ChannelComponent extends Component {
         const organizationId = requireOrganizationId(sender, p);
 
         try {
-            return rowToEndpoint(
-                await this.#requireEndpointRow(organizationId, p.id)
-            );
+            const row = await this.#requireEndpointRow(organizationId, p.id);
+            const channel = rowToEndpoint(row);
+            // Masked only on single-channel read: the edit form needs to show
+            // which secret is stored, and decrypting every row on list would
+            // pay that cost for data the list never shows.
+            if (row.has_secret_fields) {
+                const secretConfig = await this.#getEndpointSecretConfig(
+                    row.id
+                );
+                channel.secretState.maskedFields = maskIntegrationSecrets(
+                    row.provider,
+                    secretConfig
+                );
+            }
+            return channel;
         } catch (err: unknown) {
             if (err instanceof RpcError) throw err;
             throw RpcError.OperationFailed('Channel.Get', err);
@@ -486,7 +548,7 @@ export default class ChannelComponent extends Component {
     }
 
     @Component.Expose('Update')
-    @Component.CrudPermission('notifications', 'update', (p) => p?.id)
+    @Component.CrudPermission('integrations', 'update', (p) => p?.id)
     async updateEndpoint(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{
             organizationId?: string;
@@ -603,7 +665,7 @@ export default class ChannelComponent extends Component {
     }
 
     @Component.Expose('Delete')
-    @Component.CrudPermission('notifications', 'delete', (p) => p?.id)
+    @Component.CrudPermission('integrations', 'delete', (p) => p?.id)
     async deleteEndpoint(
         params: unknown,
         sender: CommandSender
@@ -647,12 +709,24 @@ export default class ChannelComponent extends Component {
         }
     }
 
+    // Sending a test message is a notification send (the Node-RED service
+    // account holds notification:update for it). A channel id is not a
+    // destination group id, so only a tenant-wide grant may send.
     @Component.Expose('Test')
-    @Component.CrudPermission('notifications', 'update', (p) => p?.id)
+    @Component.CrudPermission(
+        'notifications',
+        'update',
+        NOT_A_DESTINATION_GROUP_ID
+    )
     async testEndpoint(
         params: unknown,
         sender: CommandSender
     ): Promise<ChannelTestResult> {
+        await requireTenantWideComponentPermission(
+            sender,
+            'notifications',
+            'update'
+        );
         const p = validateOrThrow<{
             organizationId?: string;
             id: number;
@@ -714,6 +788,21 @@ export default class ChannelComponent extends Component {
                     p_status: state
                 }
             );
+            // A non-dry-run test is a real send, so it counts as a delivery.
+            // Not toward auto-off: that guard is for the outbox, not a person
+            // testing a channel while they fix it.
+            if (!p.dryRun) {
+                await postgres.callMethod(
+                    'notifications.fn_channel_record_delivery',
+                    {
+                        p_endpoint_id: endpoint.id,
+                        p_status: state === 'success' ? 'succeeded' : 'failed',
+                        p_autooff_threshold:
+                            tuning.delivery.endpointAutoOffThreshold,
+                        p_count_toward_autooff: false
+                    }
+                );
+            }
             const refreshed = await this.#requireEndpointRow(
                 organizationId,
                 endpoint.id
@@ -743,7 +832,7 @@ export default class ChannelComponent extends Component {
     }
 
     @Component.Expose('ResetHealth')
-    @Component.CrudPermission('notifications', 'update', (p) => p?.id)
+    @Component.CrudPermission('integrations', 'update', (p) => p?.id)
     async resetEndpointHealth(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{
             organizationId?: string;

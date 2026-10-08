@@ -56,7 +56,6 @@ const emit = defineEmits<{
     border-bottom: 1px solid var(--color-border-default);
     background: var(--glass-3-bg);
     backdrop-filter: var(--glass-3-filter);
-    -webkit-backdrop-filter: var(--glass-3-filter);
 }
 .bld-stage__close {
     display: inline-flex;

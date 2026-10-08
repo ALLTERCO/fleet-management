@@ -26,8 +26,7 @@
  * This is a single-process bench — no WS overhead, no auth, no DB.
  * It measures the EventDistributor + AbstractDevice merge hot path.
  * For full end-to-end stress (multiple WS clients hitting /shelly),
- * the proper rig (per docs/plans/2026-05-07-redis-hot-path-plan.md
- * §1) is still pending.
+ * the proper rig is still pending.
  */
 
 import './bench-events-env';
@@ -86,18 +85,21 @@ const PATH_OPTIONS = [
     ['switch:0.output', 'switch:0.apower']
 ];
 
-function readCounters() {
-    // Application counters surface in Prometheus as either the bare
-    // metric name (fm_events_broadcast) or the generic prefixed form
-    // (fm_counter_<name>) depending on the module's registration path.
-    // Capture both so we don't miss the ones we just added.
-    const metrics = Observability.getPrometheusMetrics();
+async function readCounters() {
+    const metrics = await Observability.getPrometheusMetrics();
     const out: Record<string, number> = {};
     for (const line of metrics.split('\n')) {
-        const m = line.match(
-            /^(fm_(?:counter_)?(?:events_[a-z_]+|events_broadcast|events_path_dispatch_[a-z_]+|events_serialized|events_path_filtered))\b\s+(\d+(?:\.\d+)?)/
+        const registered = line.match(
+            /^fm_events_broadcast_total\s+(\d+(?:\.\d+)?)/
         );
-        if (m) out[m[1]] = Number(m[2]);
+        if (registered) {
+            out.events_broadcast = Number(registered[1]);
+            continue;
+        }
+        const application = line.match(
+            /^fm_internal_events_total\{event="(events_[a-z_]+)"\}\s+(\d+(?:\.\d+)?)/
+        );
+        if (application) out[application[1]] = Number(application[2]);
     }
     return out;
 }
@@ -135,7 +137,7 @@ async function main() {
     }
 
     // 3. Baseline counters.
-    const before = readCounters();
+    const before = await readCounters();
 
     // 4. Tick loop — each tick mutates every device's switch:0.apower
     //    by ±1W. The merge produces one PathChange per device per tick.
@@ -153,21 +155,15 @@ async function main() {
     const elapsedMs = performance.now() - t0;
 
     // 5. Snapshot counters, compute deltas.
-    const after = readCounters();
+    const after = await readCounters();
     const delta = (k: string) => (after[k] ?? 0) - (before[k] ?? 0);
 
     const totalEvents = N_DEVICES * N_TICKS;
     const throughput = (totalEvents / elapsedMs) * 1000;
-    const candidates =
-        delta('fm_events_path_dispatch_candidates') +
-        delta('fm_counter_events_path_dispatch_candidates');
-    const skipped =
-        delta('fm_events_path_dispatch_skipped') +
-        delta('fm_counter_events_path_dispatch_skipped');
-    const serialized =
-        delta('fm_events_serialized') + delta('fm_counter_events_serialized');
-    const broadcast =
-        delta('fm_events_broadcast') + delta('fm_counter_events_broadcast');
+    const candidates = delta('events_path_dispatch_candidates');
+    const skipped = delta('events_path_dispatch_skipped');
+    const serialized = delta('events_serialized');
+    const broadcast = delta('events_broadcast');
     const totalListenerIterations = candidates + skipped;
 
     console.log('');

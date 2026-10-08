@@ -3,6 +3,7 @@
 import type {OrganizationScopeModel} from '@api/organization';
 import {defineStore} from 'pinia';
 import {computed, ref} from 'vue';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import * as ws from '@/tools/websocket';
 
 export const useScopeModelStore = defineStore('scopeModel', () => {
@@ -26,7 +27,7 @@ export const useScopeModelStore = defineStore('scopeModel', () => {
                 model.value = res;
                 return res;
             } catch (e) {
-                error.value = e instanceof Error ? e.message : String(e);
+                error.value = rpcErrorMessage(e);
                 console.error('[scopeModel] fetch failed', e);
                 return null;
             } finally {

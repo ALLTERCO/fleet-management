@@ -31,18 +31,9 @@
 <script setup lang="ts">
 import {computed} from 'vue';
 import {getLogoFallback} from '@/helpers/device';
+import {rgbForAccent} from '@/helpers/widgetCatalog';
 import {useEntityStore} from '@/stores/entities';
 
-const ACCENT_RGB: Record<string, string> = {
-    blue: '68,149,209',
-    pink: '244,114,182',
-    amber: '245,158,11',
-    teal: '20,184,166',
-    green: '34,197,94',
-    purple: '168,85,247',
-    orange: '249,115,22',
-    red: '239,68,68'
-};
 
 const props = defineProps<{
     shellyID: string;
@@ -125,7 +116,7 @@ const deviceMeta = computed(() => {
         }
     }
 
-    return {accent, accentRgb: ACCENT_RGB[accent] ?? ACCENT_RGB.blue, label};
+    return {accent, accentRgb: rgbForAccent(accent), label};
 });
 
 const accentRgb = computed(() => deviceMeta.value.accentRgb);

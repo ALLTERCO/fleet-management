@@ -48,7 +48,9 @@ export function getLane(index: number): RedisStream {
     if (!stream) {
         const {cmd} = getSharedRedis();
         const key = `${tuning.ingest.streamPrefix}:${index}`;
-        stream = new RedisStream(cmd, key);
+        stream = new RedisStream(cmd, key, {
+            maxPendingWrites: tuning.redis.writeMaxPendingCommands
+        });
         lanes.set(index, stream);
     }
     return stream;

@@ -26,7 +26,7 @@ function showAnomalyToast(
 ): void {
     const title = params.title?.trim();
     if (!title) return;
-    const message = params.detail ? `${title} — ${params.detail}` : title;
+    const message = params.detail ? `${title}. ${params.detail}` : title;
     const type = severityToToastType(params.severity);
     toast.addToast({type, message});
 }

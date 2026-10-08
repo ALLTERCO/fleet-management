@@ -2,7 +2,7 @@
     <Modal :visible="visible" wide @close="$emit('close')">
         <template #title>
             <div class="egm__title">
-                <i class="fas fa-up-right-from-square" />
+                <i class="fas fa-up-right-from-square" aria-hidden="true" />
                 <span>Extract as device</span>
             </div>
         </template>
@@ -13,13 +13,13 @@
             </div>
 
             <div v-else-if="loadError" class="egm__state egm__state--error">
-                <i class="fas fa-triangle-exclamation" />
+                <i class="fas fa-triangle-exclamation" aria-hidden="true" />
                 <span>{{ loadError }}</span>
                 <Button type="blue-hollow" size="sm" @click="loadPreview">Retry</Button>
             </div>
 
             <div v-else-if="preview?.alreadyExtracted" class="egm__state">
-                <i class="fas fa-circle-info" />
+                <i class="fas fa-circle-info" aria-hidden="true" />
                 <span>
                     This group has already been extracted as
                     <strong>{{ preview.extractedExternalId }}</strong>.
@@ -44,8 +44,12 @@
                     <FormField label="Type">
                         <Input v-model="form.typeKey" autocomplete="off" />
                     </FormField>
-                    <FormField label="Category">
-                        <select v-model="form.categoryKey" class="egm__select">
+                    <FormField label="Category" :field-id="categoryFieldId">
+                        <select
+                            :id="categoryFieldId"
+                            v-model="form.categoryKey"
+                            class="egm__select"
+                        >
                             <option :value="null">— None —</option>
                             <option
                                 v-for="cat in CATEGORIES"
@@ -109,15 +113,19 @@ import {
     type ExtractionPreview,
     virtualDevices
 } from '@host/virtualDevices';
-import {reactive, ref, watch} from 'vue';
+import {reactive, ref, useId, watch} from 'vue';
 import Button from '@/components/core/Button.vue';
 import FormField from '@/components/core/FormField.vue';
 import Input from '@/components/core/Input.vue';
 import Spinner from '@/components/core/Spinner.vue';
 import Modal from '@/components/modals/Modal.vue';
 import {DEVICE_CATEGORIES} from '@/helpers/deviceCategories';
+import {actionableError} from '@/helpers/rpcError';
 
 const CATEGORIES = DEVICE_CATEGORIES;
+
+// A raw <select> never receives FormField's id, so its label pointed at nothing.
+const categoryFieldId = `egm-category-${useId()}`;
 
 const props = defineProps<{
     visible: boolean;
@@ -155,7 +163,10 @@ async function loadPreview(): Promise<void> {
         form.typeKey = res.typeKey;
         form.categoryKey = res.categoryKey ?? null;
     } catch (err) {
-        loadError.value = err instanceof Error ? err.message : String(err);
+        loadError.value = actionableError(
+            err,
+            'Could not read this group. Retry in a moment.'
+        );
         preview.value = null;
     } finally {
         loading.value = false;
@@ -177,7 +188,10 @@ async function onCreate(): Promise<void> {
         emit('extracted', created.externalId);
         emit('close');
     } catch (err) {
-        createError.value = err instanceof Error ? err.message : String(err);
+        createError.value = actionableError(
+            err,
+            'Could not extract this group. Check the name is not already taken, then try again.'
+        );
     } finally {
         creating.value = false;
     }

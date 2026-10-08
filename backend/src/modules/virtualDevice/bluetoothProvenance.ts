@@ -1,12 +1,23 @@
+import * as Observability from '../Observability';
 import * as postgres from '../PostgresProvider';
 import {jsonbParam} from '../postgresJsonb';
-import type {StatusBatch} from '../status/batchCoalescer';
+import type {BluetoothTelemetryArbiterPort} from '../redis/ports';
+import type {StatusBatch, StatusSourceDevice} from '../status/batchCoalescer';
+import type {BluetoothStatusRoute} from './bluetoothRepository';
+import {
+    type BluetoothGatewayIdentity,
+    type BluetoothTelemetryRouterDeps,
+    routeBluetoothTelemetry,
+    telemetryTargetKey
+} from './bluetoothTelemetryRouter';
 
 export interface BluetoothProvenanceDeps {
     queryRows<T = unknown>(
         sql: string,
         params?: readonly unknown[]
     ): Promise<Array<T>>;
+    acceptTelemetrySources?: BluetoothTelemetryArbiterPort['acceptMany'];
+    loadRoutes?: BluetoothTelemetryRouterDeps['loadRoutes'];
 }
 
 export interface BluetoothStatusBatchEntry {
@@ -32,15 +43,13 @@ interface BluetoothWritableSample extends BluetoothSourceSample {
     bluetoothExternalId: string;
     organizationId: string;
     transportId: string;
+    gatewayExternalId: string;
+    primary: boolean;
 }
 
-export interface BluetoothSourceTargetRow {
-    blu_device_list_id: number;
-    bluetooth_external_id: string;
-    organization_id: string;
-    component_key: string;
-    transport_id: string;
-    source_device_list_id: number;
+export interface BluetoothProvenanceContext {
+    sourceDevices: readonly StatusSourceDevice[];
+    legacySourceMetadata: boolean;
 }
 
 export interface BluetoothProvenanceResult {
@@ -66,11 +75,22 @@ const BLUETOOTH_STATUS_FIELD_GROUP = 'bluetooth';
 
 export async function recordBluetoothGatewayStatusBatch(
     entries: readonly BluetoothStatusBatchEntry[],
-    deps: BluetoothProvenanceDeps = defaultDeps
+    input: {
+        context?: BluetoothProvenanceContext;
+        deps?: BluetoothProvenanceDeps;
+    } = {}
 ): Promise<BluetoothProvenanceResult> {
+    const deps = input.deps ?? defaultDeps;
     const samples = bluetoothSamplesFromBatch(entries);
     if (samples.length === 0) return emptyResult();
-    const writable = await loadWritableBluetoothSamples({samples, deps});
+    const writable = await loadWritableBluetoothSamples({
+        samples,
+        context: input.context ?? {
+            sourceDevices: [],
+            legacySourceMetadata: true
+        },
+        deps
+    });
     if (writable.length === 0) {
         return {
             recorded: 0,
@@ -92,34 +112,100 @@ export async function recordBluetoothGatewayStatusBatch(
 
 interface LoadWritableSamplesInput {
     samples: readonly BluetoothSourceSample[];
+    context: BluetoothProvenanceContext;
     deps: BluetoothProvenanceDeps;
 }
 
 async function loadWritableBluetoothSamples(
     input: LoadWritableSamplesInput
 ): Promise<BluetoothWritableSample[]> {
-    const transports = await resolveBluetoothSourceTargets(
+    const sources = await completeGatewaySources(
         input.samples,
+        input.context,
         input.deps
     );
-    if (transports.length === 0) return [];
-    return writableSamplesFromTransportSources(input.samples, transports);
+    if (sources.length === 0) return [];
+    const routerDeps: Partial<BluetoothTelemetryRouterDeps> = {};
+    if (input.deps.loadRoutes) routerDeps.loadRoutes = input.deps.loadRoutes;
+    if (input.deps.acceptTelemetrySources) {
+        routerDeps.arbiter = {
+            acceptMany: input.deps.acceptTelemetrySources
+        };
+    }
+    const routing = await routeBluetoothTelemetry({
+        sources,
+        targets: input.samples,
+        deps: routerDeps
+    });
+    return input.samples.flatMap((sample) =>
+        writableSample(sample, routing.accepted.get(telemetryTargetKey(sample)))
+    );
 }
 
-function writableSamplesFromTransportSources(
-    samples: readonly BluetoothSourceSample[],
-    transports: readonly BluetoothSourceTargetRow[]
+function writableSample(
+    sample: BluetoothSourceSample,
+    routed: {gatewayExternalId: string; route: BluetoothStatusRoute} | undefined
 ): BluetoothWritableSample[] {
-    const indexed = indexTransportSources(transports);
-    return samples.flatMap((sample) =>
-        (indexed.get(sampleKey(sample)) ?? []).map((transport) => ({
+    if (!routed) return [];
+    return [
+        {
             ...sample,
-            bluDeviceListId: transport.blu_device_list_id,
-            bluetoothExternalId: transport.bluetooth_external_id,
-            organizationId: transport.organization_id,
-            transportId: transport.transport_id
-        }))
+            bluDeviceListId: routed.route.deviceListId,
+            bluetoothExternalId: routed.route.externalId,
+            organizationId: routed.route.organizationId,
+            transportId: routed.route.transportId,
+            gatewayExternalId: routed.gatewayExternalId,
+            primary: routed.route.primary
+        }
+    ];
+}
+
+async function completeGatewaySources(
+    samples: readonly BluetoothSourceSample[],
+    context: BluetoothProvenanceContext,
+    deps: BluetoothProvenanceDeps
+): Promise<BluetoothGatewayIdentity[]> {
+    const sources = new Map(
+        context.sourceDevices.map((source) => [
+            source.deviceListId,
+            source satisfies BluetoothGatewayIdentity
+        ])
     );
+    if (!context.legacySourceMetadata) return [...sources.values()];
+    const missingIds = [
+        ...new Set(
+            samples
+                .map((sample) => sample.sourceDeviceListId)
+                .filter((id) => !sources.has(id))
+        )
+    ];
+    if (missingIds.length === 0) return [...sources.values()];
+    Observability.incrementCounter('blu_telemetry_legacy_source_queries_total');
+    const legacy = await loadLegacyGatewaySources(missingIds, deps);
+    for (const source of legacy) sources.set(source.deviceListId, source);
+    return [...sources.values()];
+}
+
+async function loadLegacyGatewaySources(
+    deviceListIds: readonly number[],
+    deps: BluetoothProvenanceDeps
+): Promise<BluetoothGatewayIdentity[]> {
+    const rows = await deps.queryRows<{
+        id: number;
+        external_id: string;
+        organization_id: string;
+    }>(
+        `SELECT id, external_id, organization_id
+           FROM device.list
+          WHERE id = ANY($1::integer[])
+            AND organization_id IS NOT NULL`,
+        [deviceListIds]
+    );
+    return rows.map((row) => ({
+        deviceListId: row.id,
+        externalId: row.external_id,
+        organizationId: row.organization_id
+    }));
 }
 
 interface InsertProvenanceInput {
@@ -141,16 +227,33 @@ async function insertBluetoothProvenanceRows(
                 row->'payload' AS source_payload_json
               FROM jsonb_array_elements($1::jsonb) row
         ),
+        -- One row per transport: UPDATE ... FROM with several matching rows
+        -- applies an unpredictable one, so the newest sample is chosen here.
+        transport_seen AS (
+            SELECT
+                transport_id,
+                MAX(received_at) AS received_at,
+                (ARRAY_AGG(rssi ORDER BY received_at DESC)
+                    FILTER (WHERE rssi IS NOT NULL))[1] AS rssi
+              FROM input_rows
+             WHERE transport_id IS NOT NULL
+             GROUP BY transport_id
+        ),
         updated_transport AS (
             UPDATE device.blu_transport bt
                SET last_seen_at = GREATEST(
-                       COALESCE(bt.last_seen_at, input_rows.received_at),
-                       input_rows.received_at
+                       COALESCE(bt.last_seen_at, seen.received_at),
+                       seen.received_at
                    ),
-                   last_rssi = COALESCE(input_rows.rssi, bt.last_rssi),
+                   last_rssi = CASE
+                       WHEN bt.last_seen_at IS NULL
+                         OR seen.received_at >= bt.last_seen_at
+                       THEN COALESCE(seen.rssi, bt.last_rssi)
+                       ELSE bt.last_rssi
+                   END,
                    updated_at = NOW()
-              FROM input_rows
-             WHERE bt.id = input_rows.transport_id
+              FROM transport_seen seen
+             WHERE bt.id = seen.transport_id
              RETURNING bt.id
         ),
         inserted AS (
@@ -170,6 +273,15 @@ async function insertBluetoothProvenanceRows(
                 received_at,
                 source_payload_json
               FROM input_rows
+             -- ORDER matters, and not for the output. Every row inserted here
+             -- takes a FOR KEY SHARE lock on its device.blu_device parent to
+             -- satisfy the foreign key. Two status batches draining at once that
+             -- carry the same two BLU devices in different orders each hold one
+             -- lock and wait for the other: deadlock 40P01, observed as
+             --   "while locking tuple (8,3) in relation blu_device".
+             -- Sorting by the parent key makes every transaction take those locks
+             -- in the same order, so one waits instead of both dying.
+             ORDER BY blu_device_list_id, component_key, received_at
             ON CONFLICT DO NOTHING
             RETURNING 1
         )
@@ -177,6 +289,44 @@ async function insertBluetoothProvenanceRows(
         [jsonbParam(provenanceInputRows(input.samples))]
     );
     return Number(rows[0]?.recorded ?? 0);
+}
+
+// Provenance answers "which gateway relayed this sample"; it is kept for a
+// bounded window. Deletes walk the per-device time index in bounded batches.
+export async function deleteExpiredBluetoothProvenance(
+    input: {retentionDays: number; batchSize: number; maxBatches: number},
+    deps: Pick<BluetoothProvenanceDeps, 'queryRows'> = defaultDeps
+): Promise<number> {
+    let deleted = 0;
+    for (let batch = 0; batch < input.maxBatches; batch += 1) {
+        const rows = await deps.queryRows<{deleted: number | string}>(
+            `WITH expired AS (
+                SELECT expired.id
+                  FROM device.blu_device bd
+                 CROSS JOIN LATERAL (
+                    SELECT p.id
+                      FROM device.blu_sample_provenance p
+                     WHERE p.blu_device_list_id = bd.device_list_id
+                       AND p.received_at < NOW() - make_interval(days => $1)
+                     ORDER BY p.received_at
+                     LIMIT $2
+                 ) expired
+                 LIMIT $2
+            ),
+            removed AS (
+                DELETE FROM device.blu_sample_provenance p
+                 USING expired
+                 WHERE p.id = expired.id
+                RETURNING 1
+            )
+            SELECT COUNT(*) AS deleted FROM removed`,
+            [input.retentionDays, input.batchSize]
+        );
+        const count = Number(rows[0]?.deleted ?? 0);
+        deleted += count;
+        if (count < input.batchSize) break;
+    }
+    return deleted;
 }
 
 interface ProvenanceResultInput {
@@ -219,14 +369,25 @@ function emptyResult(): BluetoothProvenanceResult {
 function provenanceInputRows(
     writable: readonly BluetoothWritableSample[]
 ): Array<Record<string, unknown>> {
-    return writable.map((row) => ({
-        bluDeviceListId: row.bluDeviceListId,
-        componentKey: row.componentKey,
-        transportId: row.transportId,
-        rssi: row.rssi,
-        receivedAt: row.ts,
-        payload: row.payload
-    }));
+    // Sorted by the parent key, matching the ORDER BY in the insert above. One
+    // batch's samples arrive in whatever order the gateways reported them; two
+    // batches meeting the same devices in opposite orders is what deadlocked on
+    // the blu_device foreign key.
+    return [...writable]
+        .sort(
+            (a, b) =>
+                a.bluDeviceListId - b.bluDeviceListId ||
+                a.componentKey.localeCompare(b.componentKey) ||
+                a.ts.localeCompare(b.ts)
+        )
+        .map((row) => ({
+            bluDeviceListId: row.bluDeviceListId,
+            componentKey: row.componentKey,
+            transportId: row.transportId,
+            rssi: row.rssi,
+            receivedAt: row.ts,
+            payload: row.payload
+        }));
 }
 
 function bluetoothSamplesFromBatch(
@@ -288,78 +449,6 @@ function epochSeconds(value: string): number | null {
     const millis = Date.parse(value);
     if (!Number.isFinite(millis)) return null;
     return Math.trunc(millis / 1000);
-}
-
-export async function resolveBluetoothSourceTargets(
-    samples: readonly BluetoothSourceTarget[],
-    deps: BluetoothProvenanceDeps = defaultDeps
-): Promise<BluetoothSourceTargetRow[]> {
-    const targets = uniqueTargets(samples);
-    if (targets.length === 0) return [];
-    return deps.queryRows<BluetoothSourceTargetRow>(
-        `WITH targets AS (
-            SELECT *
-              FROM UNNEST($1::integer[], $2::varchar[])
-                AS t(source_device_list_id, component_key)
-        )
-        SELECT
-            bd.device_list_id AS blu_device_list_id,
-            target_device.external_id AS bluetooth_external_id,
-            bd.organization_id,
-            component->>'componentKey' AS component_key,
-            bt.id AS transport_id,
-            bt.shelly_device_list_id AS source_device_list_id
-          FROM device.blu_device bd
-          JOIN device.blu_transport bt
-            ON bt.blu_device_list_id = bd.device_list_id
-           AND bt.organization_id = bd.organization_id
-           AND bt.mode = 'bthome_gateway'
-           AND bt.enabled IS TRUE
-          JOIN device.list target_device
-            ON target_device.id = bd.device_list_id
-           AND target_device.organization_id = bd.organization_id
-          JOIN targets t
-            ON t.source_device_list_id = bt.shelly_device_list_id
-          CROSS JOIN LATERAL jsonb_array_elements(
-            COALESCE(bd.source_components_json, '[]'::jsonb)
-          ) component
-         WHERE bd.deleted_at IS NULL
-           AND component->>'componentKey' = t.component_key`,
-        [
-            targets.map((target) => target.sourceDeviceListId),
-            targets.map((target) => target.componentKey)
-        ]
-    );
-}
-
-function uniqueTargets(
-    samples: readonly BluetoothSourceTarget[]
-): BluetoothSourceTarget[] {
-    const byKey = new Map<string, BluetoothSourceTarget>();
-    for (const sample of samples) {
-        byKey.set(sampleKey(sample), sample);
-    }
-    return [...byKey.values()];
-}
-
-function indexTransportSources(
-    rows: readonly BluetoothSourceTargetRow[]
-): Map<string, BluetoothSourceTargetRow[]> {
-    const out = new Map<string, BluetoothSourceTargetRow[]>();
-    for (const row of rows) {
-        const key = sampleKey({
-            sourceDeviceListId: row.source_device_list_id,
-            componentKey: row.component_key
-        });
-        const bucket = out.get(key) ?? [];
-        bucket.push(row);
-        out.set(key, bucket);
-    }
-    return out;
-}
-
-function sampleKey(sample: BluetoothSourceTarget): string {
-    return `${sample.sourceDeviceListId}\0${sample.componentKey}`;
 }
 
 function splitStatusField(

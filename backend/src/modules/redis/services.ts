@@ -3,6 +3,8 @@
 
 import type {TripPath} from '../eventReplay';
 import type {
+    BluetoothRouteCachePort,
+    BluetoothTelemetryArbiterPort,
     BulkAcceptJobStorePort,
     DeviceGuiSessionPort,
     DeviceIdentityFencePort,
@@ -17,6 +19,11 @@ import type {
     IngressAuditPort,
     KvStorePort,
     LeadershipFactory,
+    McpConfirmationClaimsPort,
+    McpElicitationsPort,
+    McpEventStreamsPort,
+    McpStandingApprovalsPort,
+    NodeRedEditorSessionPort,
     OrgSignalsPort,
     RateLimiterPort,
     ReservationPort,
@@ -27,6 +34,8 @@ import type {
 } from './ports';
 import {
     makeNullEventReplayCache,
+    nullBluetoothRouteCache,
+    nullBluetoothTelemetryArbiter,
     nullBulkAcceptJobStore,
     nullDeviceGuiSessions,
     nullDeviceIdentityFence,
@@ -40,6 +49,11 @@ import {
     nullIngressAudit,
     nullKv,
     nullLeadershipFactory,
+    nullMcpConfirmationClaims,
+    nullMcpElicitations,
+    nullMcpEventStreams,
+    nullMcpStandingApprovals,
+    nullNodeRedEditorSessions,
     nullOrgSignals,
     nullRateLimiter,
     nullReservation,
@@ -51,6 +65,8 @@ import {
 import {
     makeRedisEventReplayCache,
     makeRedisKvStore,
+    redisBluetoothRouteCache,
+    redisBluetoothTelemetryArbiter,
     redisBulkAcceptJobStorePort,
     redisDeviceGuiSessions,
     redisDeviceIdentityFence,
@@ -63,6 +79,11 @@ import {
     redisExportOwnership,
     redisIngressAudit,
     redisLeadershipFactory,
+    redisMcpConfirmationClaims,
+    redisMcpElicitations,
+    redisMcpEventStreams,
+    redisMcpStandingApprovals,
+    redisNodeRedEditorSessions,
     redisOrgSignals,
     redisRateLimiter,
     redisReservation,
@@ -77,6 +98,8 @@ interface RedisServices {
     deviceSignals: DeviceSignalsPort;
     deviceTrustSignals: DeviceTrustSignalsPort;
     deviceTrustCache: DeviceTrustCachePort;
+    bluetoothRouteCache: BluetoothRouteCachePort;
+    bluetoothTelemetryArbiter: BluetoothTelemetryArbiterPort;
     sessionSignals: SessionSignalsPort;
     deviceIngest: DeviceIngestPort;
     deviceGuiSessions: DeviceGuiSessionPort;
@@ -94,6 +117,11 @@ interface RedisServices {
     kv: KvStorePort;
     waitingStore: WaitingStorePort;
     bulkAcceptJobStore: BulkAcceptJobStorePort;
+    mcpEventStreams: McpEventStreamsPort;
+    mcpStandingApprovals: McpStandingApprovalsPort;
+    mcpConfirmationClaims: McpConfirmationClaimsPort;
+    mcpElicitations: McpElicitationsPort;
+    nodeRedEditorSessions: NodeRedEditorSessionPort;
 }
 
 const nullSet = (): RedisServices => ({
@@ -101,6 +129,8 @@ const nullSet = (): RedisServices => ({
     deviceSignals: nullDeviceSignals,
     deviceTrustSignals: nullDeviceTrustSignals,
     deviceTrustCache: nullDeviceTrustCache,
+    bluetoothRouteCache: nullBluetoothRouteCache,
+    bluetoothTelemetryArbiter: nullBluetoothTelemetryArbiter,
     sessionSignals: nullSessionSignals,
     deviceIngest: nullDeviceIngest,
     deviceGuiSessions: nullDeviceGuiSessions,
@@ -117,7 +147,12 @@ const nullSet = (): RedisServices => ({
     uploadSessions: nullUploadSessions,
     kv: nullKv,
     waitingStore: nullWaitingStore,
-    bulkAcceptJobStore: nullBulkAcceptJobStore
+    bulkAcceptJobStore: nullBulkAcceptJobStore,
+    mcpEventStreams: nullMcpEventStreams,
+    mcpStandingApprovals: nullMcpStandingApprovals,
+    mcpConfirmationClaims: nullMcpConfirmationClaims,
+    mcpElicitations: nullMcpElicitations,
+    nodeRedEditorSessions: nullNodeRedEditorSessions
 });
 
 // Default to null adapters until boot wires Redis.
@@ -130,6 +165,8 @@ export function installRedisServices(): void {
         deviceSignals: redisDeviceSignals,
         deviceTrustSignals: redisDeviceTrustSignals,
         deviceTrustCache: redisDeviceTrustCache,
+        bluetoothRouteCache: redisBluetoothRouteCache,
+        bluetoothTelemetryArbiter: redisBluetoothTelemetryArbiter,
         sessionSignals: redisSessionSignals,
         deviceIngest: redisDeviceIngest,
         deviceGuiSessions: redisDeviceGuiSessions,
@@ -146,7 +183,12 @@ export function installRedisServices(): void {
         uploadSessions: redisUploadSessions,
         kv: makeRedisKvStore(),
         waitingStore: redisWaitingStorePort,
-        bulkAcceptJobStore: redisBulkAcceptJobStorePort
+        bulkAcceptJobStore: redisBulkAcceptJobStorePort,
+        mcpEventStreams: redisMcpEventStreams,
+        mcpStandingApprovals: redisMcpStandingApprovals,
+        mcpConfirmationClaims: redisMcpConfirmationClaims,
+        mcpElicitations: redisMcpElicitations,
+        nodeRedEditorSessions: redisNodeRedEditorSessions
     };
 }
 
@@ -177,6 +219,28 @@ export const deviceTrustCache: DeviceTrustCachePort = {
     set: (key, value, ttlSec) =>
         services.deviceTrustCache.set(key, value, ttlSec),
     del: (key) => services.deviceTrustCache.del(key)
+};
+export const bluetoothRouteCache: BluetoothRouteCachePort = {
+    read: (org, gateway) => services.bluetoothRouteCache.read(org, gateway),
+    readMany: (org, gateways) =>
+        services.bluetoothRouteCache.readMany(org, gateways),
+    setIfCurrent: (org, gateway, generation, payload, ttlSec) =>
+        services.bluetoothRouteCache.setIfCurrent(
+            org,
+            gateway,
+            generation,
+            payload,
+            ttlSec
+        ),
+    setManyIfCurrent: (org, entries, ttlSec) =>
+        services.bluetoothRouteCache.setManyIfCurrent(org, entries, ttlSec),
+    invalidateGateway: (org, gateway) =>
+        services.bluetoothRouteCache.invalidateGateway(org, gateway),
+    invalidateOrg: (org) => services.bluetoothRouteCache.invalidateOrg(org)
+};
+export const bluetoothTelemetryArbiter: BluetoothTelemetryArbiterPort = {
+    acceptMany: (claims, ttlMs) =>
+        services.bluetoothTelemetryArbiter.acceptMany(claims, ttlMs)
 };
 export const sessionSignals: SessionSignalsPort = {
     publish: (s) => services.sessionSignals.publish(s),
@@ -213,9 +277,10 @@ export const reservation: ReservationPort = {
     reserve: (key, cap, ttl) => services.reservation.reserve(key, cap, ttl)
 };
 export const deviceOwnership: DeviceOwnershipPort = {
-    claim: (id, ttl) => services.deviceOwnership.claim(id, ttl),
-    heartbeat: (id, ttl) => services.deviceOwnership.heartbeat(id, ttl),
-    release: (id) => services.deviceOwnership.release(id),
+    claim: (lease, ttl) => services.deviceOwnership.claim(lease, ttl),
+    heartbeatMany: (leases, ttl) =>
+        services.deviceOwnership.heartbeatMany(leases, ttl),
+    release: (lease) => services.deviceOwnership.release(lease),
     owner: (id) => services.deviceOwnership.owner(id)
 };
 export const deviceIdentityFence: DeviceIdentityFencePort = {
@@ -236,7 +301,8 @@ export const ingressAudit: IngressAuditPort = {
 };
 export const exportOwnership: ExportOwnershipPort = {
     set: (f, u, t) => services.exportOwnership.set(f, u, t),
-    get: (f) => services.exportOwnership.get(f)
+    get: (f) => services.exportOwnership.get(f),
+    delete: (f) => services.exportOwnership.delete(f)
 };
 export const uploadTickets: UploadTicketPort = {
     set: (token, value, ttlSec) =>
@@ -251,7 +317,14 @@ export const uploadSessions: UploadSessionPort = {
 };
 export const kv: KvStorePort = {
     get: (key) => services.kv.get(key),
-    set: (key, value, ttlSec) => services.kv.set(key, value, ttlSec)
+    set: (key, value, ttlSec) => services.kv.set(key, value, ttlSec),
+    setIfAbsent: (key, value, ttlSec) =>
+        services.kv.setIfAbsent(key, value, ttlSec),
+    compareAndSet: (key, expected, value, ttlSec) =>
+        services.kv.compareAndSet(key, expected, value, ttlSec),
+    compareAndDelete: (key, expected) =>
+        services.kv.compareAndDelete(key, expected),
+    delete: (key) => services.kv.delete(key)
 };
 export const waitingStore: WaitingStorePort = {
     upsert: (entry) => services.waitingStore.upsert(entry),
@@ -278,4 +351,66 @@ export const bulkAcceptJobStore: BulkAcceptJobStorePort = {
         services.bulkAcceptJobStore.markCancel(org, jobId, ttlSec),
     isCancelRequested: (org, jobId) =>
         services.bulkAcceptJobStore.isCancelRequested(org, jobId)
+};
+export const mcpEventStreams: McpEventStreamsPort = {
+    createSession: (principal, id) =>
+        services.mcpEventStreams.createSession(principal, id),
+    getSession: (id, principal, touch) =>
+        services.mcpEventStreams.getSession(id, principal, touch),
+    deleteSession: (id, principal) =>
+        services.mcpEventStreams.deleteSession(id, principal),
+    subscribe: (id, principal, subscription) =>
+        services.mcpEventStreams.subscribe(id, principal, subscription),
+    unsubscribe: (id, principal, uri) =>
+        services.mcpEventStreams.unsubscribe(id, principal, uri),
+    listSubscriptions: (id, principal) =>
+        services.mcpEventStreams.listSubscriptions(id, principal),
+    updateCursor: (id, principal, uri, cursor, owner) =>
+        services.mcpEventStreams.updateCursor(
+            id,
+            principal,
+            uri,
+            cursor,
+            owner
+        ),
+    appendFrame: (id, principal, payload, owner) =>
+        services.mcpEventStreams.appendFrame(id, principal, payload, owner),
+    replay: (id, principal, afterId) =>
+        services.mcpEventStreams.replay(id, principal, afterId),
+    acquireReader: (id, principal, owner) =>
+        services.mcpEventStreams.acquireReader(id, principal, owner),
+    renewReader: (id, owner) => services.mcpEventStreams.renewReader(id, owner),
+    ownsReader: (id, owner) => services.mcpEventStreams.ownsReader(id, owner),
+    releaseReader: (id, owner) =>
+        services.mcpEventStreams.releaseReader(id, owner),
+    available: () => services.mcpEventStreams.available()
+};
+export const mcpStandingApprovals: McpStandingApprovalsPort = {
+    grant: (record, maxTotal) =>
+        services.mcpStandingApprovals.grant(record, maxTotal),
+    get: (id) => services.mcpStandingApprovals.get(id),
+    list: (scope) => services.mcpStandingApprovals.list(scope),
+    revoke: (id, scope) => services.mcpStandingApprovals.revoke(id, scope)
+};
+export const mcpConfirmationClaims: McpConfirmationClaimsPort = {
+    claim: (claim) => services.mcpConfirmationClaims.claim(claim)
+};
+export const mcpElicitations: McpElicitationsPort = {
+    createSession: (session, limits) =>
+        services.mcpElicitations.createSession(session, limits),
+    getSession: (id, ttlMs) => services.mcpElicitations.getSession(id, ttlMs),
+    deleteSession: (id, binding) =>
+        services.mcpElicitations.deleteSession(id, binding),
+    registerWait: (wait) => services.mcpElicitations.registerWait(wait),
+    takeWait: (wait) => services.mcpElicitations.takeWait(wait),
+    deliver: (delivery) => services.mcpElicitations.deliver(delivery),
+    onDelivery: (instanceId, handler) =>
+        services.mcpElicitations.onDelivery(instanceId, handler)
+};
+export const nodeRedEditorSessions: NodeRedEditorSessionPort = {
+    put: (write) => services.nodeRedEditorSessions.put(write),
+    get: (key) => services.nodeRedEditorSessions.get(key),
+    delete: (key) => services.nodeRedEditorSessions.delete(key),
+    deleteForUser: (userId) =>
+        services.nodeRedEditorSessions.deleteForUser(userId)
 };

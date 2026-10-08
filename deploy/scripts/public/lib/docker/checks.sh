@@ -17,9 +17,13 @@ check_required_ports() {
         ports+=("${DOZZLE_PORT:-9999}")
     fi
 
+    local own_ports
+    own_ports=" $(compose_project_host_ports | tr '\n' ' ') "
     for port in "${ports[@]}"; do
         if check_port_available "$port"; then
             ok "Port $port available"
+        elif [[ "$own_ports" == *" $port "* ]]; then
+            ok "Port $port held by this deployment ($COMPOSE_PROJECT_NAME)"
         else
             error "Port $port is already in use"
             failed=1
@@ -31,6 +35,19 @@ check_required_ports() {
         return 1
     fi
     return 0
+}
+
+# Host ports published by running containers of this Compose project. Fixed
+# container names (fm-redis) still carry the project label.
+compose_project_host_ports() {
+    local ids=()
+    [ -n "${COMPOSE_PROJECT_NAME:-}" ] || return 0
+    mapfile -t ids < <(docker ps -q \
+        --filter "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}" 2>/dev/null)
+    [ "${#ids[@]}" -gt 0 ] || return 0
+    docker inspect \
+        --format '{{range $port, $bindings := .NetworkSettings.Ports}}{{range $bindings}}{{println .HostPort}}{{end}}{{end}}' \
+        "${ids[@]}" 2>/dev/null | awk 'NF' | sort -u
 }
 
 docker_cli_exists() {

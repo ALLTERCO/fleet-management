@@ -7,7 +7,7 @@
                 title="Change date range"
                 @click.stop="rangeOpen = !rangeOpen"
             >
-                {{ rangeLabel }} <span style="opacity: 0.6">▾</span>
+                {{ chipLabel }} <span style="opacity: 0.6">▾</span>
             </button>
             <div v-if="rangeOpen" class="rmenu" @click.stop>
                 <button
@@ -67,19 +67,6 @@
             <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10" /><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" /></svg>
         </button>
 
-        <select
-            v-if="showInterval"
-            class="ev-int num"
-            :value="String(refreshInterval)"
-            title="Auto-refresh interval"
-            aria-label="Auto-refresh interval"
-            @change="onInterval"
-        >
-            <option value="0">Off</option>
-            <option value="30000">30s</option>
-            <option value="60000">1m</option>
-        </select>
-
         <button
             type="button"
             class="ic"
@@ -102,27 +89,28 @@
 </template>
 
 <script setup lang="ts">
-import {onMounted, onUnmounted, ref} from 'vue';
+import {computed, onMounted, onUnmounted, ref} from 'vue';
 
 // The Voltaine toolbar's right-hand cluster — one source for every dashboard's
-// date-range chip, filter/refresh/interval/settings/report controls. Styling
-// comes from the global .evolt rules in voltaine.css, so this must render inside
-// a .evolt ancestor. Each dashboard handles the emits its own way.
-withDefaults(
+// date-range chip, filter/refresh/settings/report controls. Styling comes from
+// the global .evolt rules in voltaine.css, so this must render inside a .evolt
+// ancestor. Each dashboard handles the emits its own way. (Auto-refresh moved
+// to the shell ⋮ menu — DashViewActions.)
+const props = withDefaults(
     defineProps<{
         rangeLabel: string;
-        refreshInterval?: number;
+        // Preset key of the current range ('24h', '7d', …). When it matches a
+        // preset the chip shows that label; dates are the custom-range fallback.
+        rangeKey?: string;
         showFilter?: boolean;
-        showInterval?: boolean;
     }>(),
-    {refreshInterval: 0, showFilter: false, showInterval: false}
+    {rangeKey: '', showFilter: false}
 );
 
 const emit = defineEmits<{
     'pick-range': [range: {key: string; from?: string; to?: string}];
     'open-filter': [];
     refresh: [];
-    'set-interval': [ms: number];
     'open-settings': [];
     'open-report': [];
 }>();
@@ -144,6 +132,13 @@ const rangeOpen = ref(false);
 const customFrom = ref('');
 const customTo = ref('');
 
+// Preset picks read as their own words ("Last 7 days"); only custom ranges
+// fall back to the concrete date span the page computed.
+const chipLabel = computed(
+    () =>
+        RANGES.find((r) => r.key === props.rangeKey)?.label ?? props.rangeLabel
+);
+
 function pickRange(key: string) {
     emit('pick-range', {key});
     rangeOpen.value = false;
@@ -152,9 +147,6 @@ function applyCustom() {
     if (!customFrom.value || !customTo.value) return;
     emit('pick-range', {key: 'custom', from: customFrom.value, to: customTo.value});
     rangeOpen.value = false;
-}
-function onInterval(e: Event) {
-    emit('set-interval', Number((e.target as HTMLSelectElement).value));
 }
 
 function onDocClick(e: MouseEvent) {

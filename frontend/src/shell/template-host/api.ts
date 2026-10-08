@@ -1,80 +1,23 @@
-import {sendRPC} from '@/tools/websocket';
-import type {HostPagedEnvelope} from './types';
+// Legacy `@host` / `@host/api` escape hatches, bound to the Fleet transport.
 
-const DEFAULT_PAGE_SIZE = 1000;
+import {fleetRpcTransport} from './app/fleet-rpc';
+import {createRpcAccess} from './core/client';
+import {
+    type HostApiMethod,
+    type HostApiNode,
+    toRpcMethod as toCoreRpcMethod
+} from './core/rpc-client';
 
-export type HostApiMethod = <
-    TResult = unknown,
-    TParams extends object = Record<string, unknown>
->(
-    params?: TParams
-) => Promise<TResult>;
+export {DEFAULT_PAGE_SIZE} from './core/pagination';
+export type {HostApiMethod, HostApiNode};
 
-export type HostApiNode = HostApiMethod & {
-    readonly [key: string]: HostApiNode;
-};
+// Declared rather than re-exported: check-host-api-coverage.mjs asserts that
+// api.ts itself declares the documented escape hatches.
+export const toRpcMethod = toCoreRpcMethod;
 
-function normalizeSegment(segment: string): string {
-    return segment.trim().toLowerCase();
-}
+/** The Host SDK's RPC access, bound to the Fleet application transport. */
+export const hostRpcAccess = createRpcAccess(fleetRpcTransport);
 
-export function toRpcMethod(namespace: string, methodPath: readonly string[]) {
-    return [namespace, ...methodPath].map(normalizeSegment).join('.');
-}
-
-export function call<TResult = unknown>(
-    namespace: string,
-    methodPath: string | readonly string[],
-    params: object = {}
-): Promise<TResult> {
-    const path =
-        typeof methodPath === 'string' ? methodPath.split('.') : methodPath;
-    return sendRPC<TResult>(
-        'FLEET_MANAGER',
-        toRpcMethod(namespace, path),
-        params
-    );
-}
-
-export async function listAll<T>(
-    namespace: string,
-    methodPath: string | readonly string[],
-    params: object = {},
-    pageSize = DEFAULT_PAGE_SIZE
-): Promise<T[]> {
-    const all: T[] = [];
-    let offset = 0;
-    while (true) {
-        const page = await call<HostPagedEnvelope<T>>(namespace, methodPath, {
-            ...params,
-            limit: pageSize,
-            offset
-        });
-        const items = page.items ?? [];
-        all.push(...items);
-        if (!page.has_more || items.length < pageSize) break;
-        offset += pageSize;
-    }
-    return all;
-}
-
-function createApiNode(path: readonly string[]): HostApiNode {
-    const target = ((params?: object) => {
-        const [namespace, ...methodPath] = path;
-        if (!namespace || methodPath.length === 0) {
-            throw new Error('Host API call requires namespace and method');
-        }
-        return call(namespace, methodPath, params ?? {});
-    }) as HostApiNode;
-
-    return new Proxy(target, {
-        get(target, prop, receiver) {
-            if (typeof prop !== 'string') return undefined;
-            if (prop === 'then') return undefined;
-            if (prop in target) return Reflect.get(target, prop, receiver);
-            return createApiNode([...path, prop]);
-        }
-    });
-}
-
-export const api = createApiNode([]);
+export const api: HostApiNode = hostRpcAccess.api;
+export const call = hostRpcAccess.call;
+export const listAll = hostRpcAccess.listAll;

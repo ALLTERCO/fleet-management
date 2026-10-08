@@ -41,16 +41,44 @@ export async function createTokenCredential(input: {
     repository: CreateTokenCredentialRepository;
 }): Promise<DeviceIngressCredential & {tokenOnce: string}> {
     const raw = createRawIngressToken();
-    const credential = await input.repository.createCredential({
-        organizationId: input.organizationId,
-        identityId: input.identityId,
-        credentialType: 'token',
-        state: 'active',
-        tokenHash: hashIngressToken(raw.token),
-        tokenPrefix: raw.prefix,
-        notAfter: expiresAt(input.validityDays).toISOString()
-    });
+    const credential = await input.repository
+        .createCredential({
+            organizationId: input.organizationId,
+            identityId: input.identityId,
+            credentialType: 'token',
+            state: 'active',
+            tokenHash: hashIngressToken(raw.token),
+            tokenPrefix: raw.prefix,
+            notAfter: expiresAt(input.validityDays).toISOString()
+        })
+        .catch((err: unknown) => {
+            if (isOneActiveViolation(err)) {
+                throw activeTokenConflict(input.identityId);
+            }
+            throw err;
+        });
     return {...credential, tokenOnce: raw.token};
+}
+
+// The database allows one active credential per identity and type, which
+// also settles two concurrent creates; the loser is a conflict, not a fault.
+const ONE_ACTIVE_CREDENTIAL = 'device_ingress_credential_one_active';
+
+function isOneActiveViolation(err: unknown): boolean {
+    const pg = err as {code?: unknown; constraint?: unknown} | null;
+    return pg?.code === '23505' && pg.constraint === ONE_ACTIVE_CREDENTIAL;
+}
+
+function activeTokenConflict(identityId: string): RpcError {
+    return RpcError.Domain('ResourceConflict', {
+        message:
+            'identity already has an active token; rotate or revoke it first',
+        details: {
+            resourceType: 'deviceIngress.credential',
+            identifier: identityId,
+            reason: 'active_credential_exists'
+        }
+    });
 }
 
 export async function rotateTokenCredential(input: {

@@ -1,5 +1,5 @@
 <template>
-    <Modal :visible="visible" wide @close="close">
+    <Modal :visible="visible" xlarge tall @close="close">
         <template #title>
             <ModalHeader
                 :title="headerTitle"
@@ -18,11 +18,12 @@
                 </div>
 
                 <template v-else>
-                    <!-- Three simple steps: What → Where → Who -->
+                    <!-- Three steps: Condition, Where, Who and when -->
                     <Steps
                         class="earm__steps"
                         :steps="visibleStepIds.length"
                         :current="displayStep"
+                        :max-reachable="visibleStepIds.length + 1"
                         @click="goToDisplayStep"
                     >
                         <template #stepTitle="{id}">
@@ -46,10 +47,10 @@
                         </template>
                     </Steps>
 
-                    <!-- Duplicate banner — non-blocking, router-linked -->
-                    <!-- Only warn on the final step, once scope is set. -->
+                    <!-- Duplicate banner, non-blocking. Shown once a kind is
+                         chosen; the kind list has nothing to collide with. -->
                     <RouterLink
-                        v-if="duplicate && step === 3"
+                        v-if="duplicate && formKind"
                         :to="`/alerts/rules/${duplicate.id}`"
                         class="earm__dup-banner"
                         role="status"
@@ -69,7 +70,7 @@
                     </RouterLink>
 
                     <!-- Chosen alert — replaces the picker once we move on -->
-                    <div v-if="formKind && step > 1" class="earm__chosen">
+                    <div v-if="formKind" class="earm__chosen">
                         <span
                             class="earm__chosen-icon"
                             :class="`earm__chosen-icon--${severityVariant}`"
@@ -78,7 +79,13 @@
                         </span>
                         <div class="earm__chosen-text">
                             <span class="earm__chosen-name">{{ chosenName }}</span>
-                            <span class="earm__chosen-kind">{{ kindLabel }}</span>
+                            <!-- The auto-filled name is written from the kind,
+                                 so the two read as the same words twice. Show
+                                 the kind only once the name diverges. -->
+                            <span
+                                v-if="!nameEchoesKind"
+                                class="earm__chosen-kind"
+                            >{{ kindLabel }}</span>
                         </div>
                         <AlertSeverityBadge
                             v-if="formSeverityModel"
@@ -94,109 +101,117 @@
                         </button>
                     </div>
 
-                    <!-- Step 1: What — pick a ready-made alert (or custom) -->
+                    <!-- Step 1: Condition. Pick the kind, then set its condition. -->
                     <section v-show="step === 1" class="earm__step">
-                        <!-- Show the picker unless a custom kind still needs its
-                             condition set (then the form below shows instead). -->
                         <div v-if="showPicker" class="earm__picker">
-                            <!-- Search + action stay put; only the cards swap. -->
-                            <div class="earm__pickbar">
-                                <div class="earm__search">
-                                    <Input
-                                        v-model="pickerQuery"
-                                        type="search"
-                                        :placeholder="showCustom ? 'Search alert types' : 'Search templates'"
-                                    />
-                                </div>
-                                <Button
-                                    v-if="!showCustom"
-                                    type="green"
-                                    size="sm"
-                                    @click="enterCustom"
-                                >
-                                    Build your own
-                                </Button>
-                                <Button
-                                    v-else
-                                    type="blue-hollow"
-                                    size="sm"
-                                    @click="exitCustom"
-                                >
-                                    <i class="fas fa-arrow-left" /> Back to templates
-                                </Button>
+                            <div class="earm__search">
+                                <Input
+                                    v-model="pickerQuery"
+                                    type="search"
+                                    placeholder="Search rule types"
+                                />
                             </div>
-
-                            <BuiltinTemplateGallery
-                                v-if="!showCustom"
-                                :query="pickerQuery"
-                                @pick="applyTemplate"
-                            />
                             <AlertKindPicker
-                                v-else
                                 :query="pickerQuery"
                                 @pick="selectKindByKey"
                             />
                         </div>
-
-                        <!-- A chosen alert gets its condition and simple
-                             one-target scope set here. -->
-                        <div
-                            v-else-if="currentKindDescriptor"
-                            class="earm__tab"
-                        >
-                            <header class="earm__section-hdr">
-                                <h3 class="earm__section-title">
-                                    When it should fire
-                                </h3>
-                                <p class="earm__section-desc">
-                                    {{ kindDescription }}
-                                </p>
-                            </header>
-
+                        <div v-else-if="currentKindDescriptor" class="earm__tab">
                             <!-- Friendly quick-picks fill the raw component/field. -->
                             <RulePresetChips
                                 v-if="formKind"
                                 :kind="formKind"
+                                :condition="formConfig"
+                                :available-components="availableComponentFamilies"
                                 @pick="applyPreset"
                             />
 
-                            <div
+                            <!-- Raw signal list. A quick-pick above already
+                                 fills the condition, so this stays folded once
+                                 something is chosen. -->
+                            <details
                                 v-if="showComponentPathPicker"
                                 class="earm__path-picker"
+                                :open="!chosenComponentPath"
                             >
-                                <header class="earm__path-head">
-                                    <span class="earm__label">Component field</span>
+                                <summary class="earm__path-head">
+                                    <span class="earm__label">
+                                        Pick the exact signal
+                                    </span>
                                     <span
                                         v-if="componentPathsLoading"
                                         class="earm__hint"
                                     >
                                         Loading…
                                     </span>
-                                </header>
-                                <div
-                                    v-if="componentPathChoices.length"
-                                    class="earm__path-grid"
-                                >
-                                    <button
-                                        v-for="path in componentPathChoices"
-                                        :key="`${path.kind}:${path.component}:${path.field}`"
-                                        type="button"
-                                        class="earm__path-choice"
-                                        :class="{
-                                            'earm__path-choice--active':
-                                                isSelectedComponentPath(path)
-                                        }"
-                                        @click="applyComponentPath(path)"
+                                    <span
+                                        v-else-if="chosenComponentPath"
+                                        class="earm__hint"
                                     >
-                                        <span class="earm__path-label">
-                                            {{ path.label || path.component }}
-                                        </span>
-                                        <span class="earm__path-meta">
-                                            {{ path.component }}.{{ path.field }}
-                                        </span>
-                                    </button>
+                                        {{ chosenComponentPath }}
+                                    </span>
+                                    <span v-else class="earm__hint">
+                                        from {{ componentPathSourceText }}
+                                    </span>
+                                    <i
+                                        class="fas fa-chevron-down earm__path-caret"
+                                        aria-hidden="true"
+                                    />
+                                </summary>
+                                <input
+                                    v-if="componentPathMatchCount || pathSearch"
+                                    v-model="pathSearch"
+                                    type="search"
+                                    class="earm__path-search"
+                                    placeholder="Search signals"
+                                    aria-label="Search signals"
+                                />
+                                <div
+                                    v-if="componentPathGroups.length"
+                                    class="earm__path-groups"
+                                >
+                                    <div
+                                        v-for="group in componentPathGroups"
+                                        :key="group.key"
+                                        class="earm__path-group"
+                                    >
+                                        <p
+                                            v-if="group.label"
+                                            class="earm__path-group-name"
+                                        >
+                                            {{ group.label }}
+                                        </p>
+                                        <div class="earm__path-grid">
+                                            <button
+                                                v-for="path in group.paths"
+                                                :key="`${group.key}:${path.kind}:${path.component}:${path.field}`"
+                                                type="button"
+                                                class="earm__path-choice"
+                                                :class="{
+                                                    'earm__path-choice--active':
+                                                        isSelectedComponentPath(path)
+                                                }"
+                                                :title="`${path.component}.${path.field}`"
+                                                @click="applyComponentPath(path)"
+                                            >
+                                                <span class="earm__path-label">
+                                                    {{ path.label || path.component }}
+                                                </span>
+                                                <span class="earm__path-meta">
+                                                    {{ path.component }}.{{ path.field }}
+                                                </span>
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
+                                <p v-else class="earm__hint">
+                                    {{ componentPathEmptyText }}
+                                </p>
+                                <p v-if="hiddenPathCount" class="earm__hint">
+                                    {{ hiddenPathCount }} more — narrow the search
+                                    to see them.
+                                </p>
+                            </details>
 
                             <!-- Friendly button picker for BLU remotes: writes
                                  the device_event predicate. Self-hides until a
@@ -207,37 +222,12 @@
                                 :entities="scopedEntities"
                             />
 
-                            <div
-                                v-if="showFoldedScopePicker"
-                                class="earm__tab"
-                            >
-                                <header class="earm__section-hdr">
-                                    <div class="earm__section-title-row">
-                                        <h3 class="earm__section-title">
-                                            Watch one device or sensor
-                                        </h3>
-                                        <Button
-                                            type="blue-hollow"
-                                            size="sm"
-                                            @click="chooseManyScope"
-                                        >
-                                            Groups or many
-                                        </Button>
-                                    </div>
-                                    <p class="earm__section-desc">
-                                        Pick one target here to go straight to
-                                        Notify.
-                                    </p>
-                                </header>
-                                <ScopeSelector
-                                    v-model="formScope"
-                                    :supported-scope-types="foldedScopeTypes"
-                                    single
-                                />
-                            </div>
-
-                            <!-- Raw schema form — power users / fine-tuning. -->
-                            <details v-if="hasConfigSchema" class="earm__advanced">
+                            <SchemaForm
+                                v-if="hasConfigSchema && !foldCondition"
+                                v-model="formConfig"
+                                :schema="currentKindDescriptor.configSchema"
+                            />
+                            <details v-else-if="hasConfigSchema" class="earm__advanced">
                                 <summary class="earm__advanced-summary">
                                     <i class="fas fa-sliders earm__advanced-icon" />
                                     <span>Set the exact condition</span>
@@ -250,20 +240,11 @@
                                     />
                                 </div>
                             </details>
-
-                            <!-- Reads-as sentence + inline test build trust. -->
-                            <RuleReadsAs :kind="formKind!" :config="formConfig" />
-                            <RulePreviewTest
-                                :kind="formKind!"
-                                :severity="formSeverityModel || undefined"
-                                :scope="formScope"
-                                :config="formConfig"
-                            />
                         </div>
-                    </section>
 
-                    <!-- Step 2: Where — the device cards -->
-                    <section v-show="step === 2" class="earm__step">
+                    </section>
+                    <!-- Step 2: Where it applies -->
+                    <section v-show="step === 2" class="earm__step earm__step--setup">
                         <header class="earm__section-hdr">
                             <h3 class="earm__section-title">Where it applies</h3>
                             <p class="earm__section-desc">
@@ -275,16 +256,20 @@
                             v-if="currentKindDescriptor"
                             v-model="formScope"
                             :supported-scope-types="currentKindDescriptor.supportedScopeTypes"
+                            :kind="formKind ?? undefined"
+                            :kind-config="formConfig"
                         />
                     </section>
 
-                    <!-- Step 3: Notify — name, recipients, and Advanced -->
-                    <section v-show="step === 3" class="earm__step">
-                        <!-- Enabled is primary, not buried in Advanced. -->
+                    <!-- Step 3: Who and when. Name, recipients, hours, delivery. -->
+                    <section v-show="step === 3" class="earm__step earm__step--setup">
+                        <!-- Enabled is primary, not buried in Advanced. The
+                             switch already reads "Enabled"; a sentence beside it
+                             restating that spent three lines saying nothing. -->
                         <div class="earm__enabled-row">
                             <Switch v-model="formEnabled" label="Enabled" />
-                            <span class="earm__switch-label">
-                                {{ formEnabled ? 'Enabled — this rule can fire' : 'Disabled — saved but won\'t fire' }}
+                            <span v-if="!formEnabled" class="earm__switch-label">
+                                Saved, but won't fire
                             </span>
                         </div>
 
@@ -298,6 +283,7 @@
                                     :id="nameInputId"
                                     v-model="formName"
                                     placeholder="e.g. Battery low on winter stores"
+                                    @input="nameTouched = true"
                                     @blur="syncNameError"
                                 />
                                 <p v-if="nameError" class="earm__error" role="alert">
@@ -309,13 +295,6 @@
                                 <label class="earm__label">Importance</label>
                                 <SeverityFloorPicker v-model="formSeverityModel" />
                             </div>
-                            <div v-if="templateSummaries.length" class="earm__field">
-                                <label class="earm__label">Template</label>
-                                <TemplatePicker
-                                    v-model="formTemplateId"
-                                    :templates="templateSummaries"
-                                />
-                            </div>
                         </div>
 
                         <div class="earm__tab">
@@ -325,6 +304,17 @@
                             <ChannelPicker v-model="formDestinationChannelIds" />
                         </div>
 
+                        <!-- The whole rule in one line. It belongs here, where
+                             scope and recipients are actually known; on step 1
+                             it could only repeat the chosen alert above it. -->
+                        <RuleReadsAs
+                            v-if="formKind"
+                            :kind="formKind"
+                            :config="formConfig"
+                            :scope-label="scopeSummary || undefined"
+                            :channel-label="channelSummary || undefined"
+                        />
+
                         <!-- Advanced — everything optional, collapsed by default -->
                         <details class="earm__advanced">
                             <summary class="earm__advanced-summary">
@@ -333,11 +323,28 @@
                                 <i class="fas fa-chevron-down earm__advanced-caret" />
                             </summary>
                             <div class="earm__advanced-body">
+                                <div v-if="templateSummaries.length" class="earm__field">
+                                    <label class="earm__label">Template</label>
+                                    <TemplatePicker
+                                        v-model="formTemplateId"
+                                        :templates="templateSummaries"
+                                    />
+                                </div>
+
                                 <!-- Toggles and rate-limits share one compact row. -->
                                 <div class="earm__settings-row">
                                     <div class="earm__switch-item">
                                         <Switch v-model="formAutoResolve" label="Auto-resolve" />
                                         <span class="earm__switch-label">Auto-resolve</span>
+                                    </div>
+                                    <div class="earm__switch-item">
+                                        <Switch
+                                            v-model="formTriggerOnce"
+                                            label="Only tell me once"
+                                        />
+                                        <span class="earm__switch-label">
+                                            Only tell me once
+                                        </span>
                                     </div>
                                     <div class="earm__inline-field">
                                         <span class="earm__label">Don't repeat within</span>
@@ -347,20 +354,60 @@
                                         <span class="earm__label">Wait between</span>
                                         <DurationField v-model="formCooldown" />
                                     </div>
+                                </div>
+
+                                <!-- Quiet outside these hours. Off by default,
+                                     so existing rules are unchanged. -->
+                                <header class="earm__section-hdr earm__section-hdr--spaced">
+                                    <h3 class="earm__section-title">Active hours</h3>
+                                    <p class="earm__section-desc">
+                                        Optional. Outside these hours the rule
+                                        stays quiet. It still clears alerts it
+                                        already raised.
+                                    </p>
+                                </header>
+                                <div class="earm__settings-row">
+                                    <div class="earm__switch-item">
+                                        <Switch
+                                            v-model="formActiveWindowOn"
+                                            label="Only at set times"
+                                        />
+                                        <span class="earm__switch-label">
+                                            Only at set times
+                                        </span>
+                                    </div>
                                     <div
-                                        v-if="formKind === 'component_state'"
+                                        v-if="formActiveWindowOn"
                                         class="earm__inline-field"
                                     >
-                                        <span class="earm__label">Fires after</span>
+                                        <span class="earm__label">From</span>
                                         <Input
-                                            v-model="formForMinutes"
-                                            type="number"
-                                            :min="1"
-                                            :max="1440"
-                                            class="earm__digest-input"
+                                            v-model="formActiveWindowStart"
+                                            type="time"
+                                            class="earm__time-input"
                                         />
-                                        <span class="earm__label">minutes</span>
+                                        <span class="earm__label">to</span>
+                                        <Input
+                                            v-model="formActiveWindowEnd"
+                                            type="time"
+                                            class="earm__time-input"
+                                        />
                                     </div>
+                                </div>
+                                <div v-if="formActiveWindowOn" class="earm__days">
+                                    <button
+                                        v-for="day in DAY_OPTIONS"
+                                        :key="day.bit"
+                                        type="button"
+                                        class="earm__day"
+                                        :class="{
+                                            'earm__day--on': dayIsOn(day.bit)
+                                        }"
+                                        :aria-pressed="dayIsOn(day.bit)"
+                                        @click="toggleDay(day.bit)"
+                                    >
+                                        {{ day.label }}
+                                    </button>
                                 </div>
 
                                 <!-- Groups are optional — channels above cover
@@ -502,24 +549,37 @@
 
         <template #footer>
             <ModalFooter>
-                <template v-if="justSaved" #meta>
-                    <span class="earm__flash">
+                <template #meta>
+                    <span v-if="justSaved" class="earm__flash">
                         <i class="fas fa-circle-check" />
-                        {{ props.mode === 'create' ? 'Rule created' : 'Changes saved' }}
+                        {{ props.mode === 'create' ? 'Alert created' : 'Changes saved' }}
                     </span>
+                    <RulePreviewTest
+                        v-else-if="formKind && !showPicker"
+                        :kind="formKind"
+                        :severity="formSeverityModel || undefined"
+                        :scope="formScope"
+                        :config="formConfig"
+                    />
                 </template>
                 <template #secondary>
-                    <Button v-if="step > 1" type="blue-hollow" @click="goBack">
+                    <!-- Back keeps every answer; only Change on the chip
+                         clears the kind. -->
+                    <Button
+                        v-if="step > 1"
+                        type="blue-hollow"
+                        @click="goToStep(step - 1)"
+                    >
                         <i class="fas fa-arrow-left" /> Back
                     </Button>
                     <Button v-else type="blue-hollow" @click="close">Cancel</Button>
                 </template>
                 <template #primary>
                     <Button
-                        v-if="step < 3"
+                        v-if="props.mode === 'create' && step < 3"
                         type="blue"
                         :disabled="!canAdvance"
-                        @click="goNext"
+                        @click="goToStep(step + 1)"
                     >
                         Next <i class="fas fa-arrow-right" />
                     </Button>
@@ -542,20 +602,16 @@
 
 <script setup lang="ts">
 import type {
-    AlertComponentPath,
     AlertRule,
     AlertRuleKind,
     AlertRuleKindDescriptor,
-    AlertScopeType,
-    AlertSeverity,
-    ScopeSelector as ScopeSelectorType
+    AlertSeverity
 } from '@api/alert';
-import {computed, onBeforeUnmount, ref, useId, watch} from 'vue';
+import {computed, ref, useId, watch} from 'vue';
 import {RouterLink} from 'vue-router';
 import AlertKindPicker from '@/components/core/AlertKindPicker.vue';
 import AlertSeverityBadge from '@/components/core/AlertSeverityBadge.vue';
 import BluButtonPicker from '@/components/core/BluButtonPicker.vue';
-import BuiltinTemplateGallery from '@/components/core/BuiltinTemplateGallery.vue';
 import Button from '@/components/core/Button.vue';
 import ChannelPicker from '@/components/core/ChannelPicker.vue';
 import DestinationGroupPicker from '@/components/core/DestinationGroupPicker.vue';
@@ -563,10 +619,7 @@ import DurationField from '@/components/core/DurationField.vue';
 import Input from '@/components/core/Input.vue';
 import ModalFooter from '@/components/core/ModalFooter.vue';
 import ModalHeader from '@/components/core/ModalHeader.vue';
-import MultiChannelTemplateEditor, {
-    type MultiChannelTemplate,
-    type TemplateChannel
-} from '@/components/core/MultiChannelTemplateEditor.vue';
+import MultiChannelTemplateEditor from '@/components/core/MultiChannelTemplateEditor.vue';
 import RuleMessagePreview from '@/components/core/RuleMessagePreview.vue';
 import RulePresetChips from '@/components/core/RulePresetChips.vue';
 import RulePreviewTest from '@/components/core/RulePreviewTest.vue';
@@ -581,26 +634,36 @@ import TemplatePicker from '@/components/core/TemplatePicker.vue';
 import ViewToggle, {
     type ViewToggleOption
 } from '@/components/core/ViewToggle.vue';
+import {useAlertRuleDuplicateCheck} from '@/composables/useAlertRuleDuplicateCheck';
+import {useAlertRuleForm} from '@/composables/useAlertRuleForm';
+import {useComponentPathPicker} from '@/composables/useComponentPathPicker';
 import {useOptimisticSave} from '@/composables/useOptimisticSave';
 import {useRequiredNameField} from '@/composables/useRequiredNameField';
-import {UI_CONFIG} from '@/config/ui';
+import {useRichMessageTemplates} from '@/composables/useRichMessageTemplates';
+import {
+    buildAlertRulePayload,
+    parseTimings
+} from '@/helpers/alertRulePayload';
+import {
+    describeChannels,
+    describeScopeBreakdown
+} from '@/helpers/alertRuleSummary';
 import {bluSensorStateConfig} from '@/helpers/componentStateTargets';
 import {channelsForChannels} from '@/helpers/endpointChannels';
 import {describeRuleKind} from '@/helpers/ruleKinds';
-import {
-    type AlertRuleTemplate,
-    type MessageTemplate,
-    useAlertsStore
-} from '@/stores/alerts';
+import {describeRuleConfig} from '@/helpers/ruleSentence';
+import {useAlertsStore} from '@/stores/alerts';
 import {useChannelsStore} from '@/stores/channels';
 import {useEntityStore} from '@/stores/entities';
 import Modal from './Modal.vue';
 
-// Three plain steps. Index + 1 maps to the `step` ref.
+// Two steps. A template answers the trigger, condition, severity and name, so
+// only two decisions are left — which devices, and who to tell. Three steps for
+// two decisions is what left the first screen with nothing to show.
 const STEP_META = [
-    {label: 'When', icon: 'fa-bolt'},
-    {label: 'Applies to', icon: 'fa-location-dot'},
-    {label: 'Notify', icon: 'fa-bell'}
+    {label: 'Condition', icon: 'fa-sliders'},
+    {label: 'Where', icon: 'fa-location-dot'},
+    {label: 'Who and when', icon: 'fa-bell'}
 ] as const;
 
 const DELIVERY_OPTIONS: ViewToggleOption<'instant' | 'digest'>[] = [
@@ -621,6 +684,34 @@ const store = useAlertsStore();
 const channelsStore = useChannelsStore();
 const entityStore = useEntityStore();
 
+// The rule being edited. Its own module — loading a stored rule into the form
+// is where the defaults and the copying live.
+const {
+    kind: formKind,
+    name: formName,
+    enabled: formEnabled,
+    autoResolve: formAutoResolve,
+    triggerOnce: formTriggerOnce,
+    severity: formSeverityModel,
+    scope: formScope,
+    config: formConfig,
+    destinationChannelIds: formDestinationChannelIds,
+    destinationGroupIds: formDestinationGroupIds,
+    dedupeWindowSec: formDedupe,
+    cooldownSec: formCooldown,
+    deliveryMode: formDeliveryMode,
+    digestWindow: formDigestWindow,
+    activeWindowOn: formActiveWindowOn,
+    activeWindowStart: formActiveWindowStart,
+    activeWindowEnd: formActiveWindowEnd,
+    activeWindowDays: formActiveWindowDays,
+    summaryTemplate: formSummary,
+    messageTemplate: formMessage,
+    runbookUrl: formRunbookUrl,
+    templateId: formTemplateId,
+    reset: resetRuleFields
+} = useAlertRuleForm();
+
 const nameInputId = useId();
 
 const kindsLoading = ref(true);
@@ -633,29 +724,57 @@ const {saving, justSaved, runOptimisticSave} =
         }
     });
 
-const formKind = ref<AlertRuleKind | null>(null);
-const formName = ref('');
-const formEnabled = ref(true);
-const formAutoResolve = ref(false);
-const formSeverityModel = ref<AlertSeverity | ''>('info');
-const formScope = ref<ScopeSelectorType>({});
-const formDestinationChannelIds = ref<number[]>([]);
-const formDestinationGroupIds = ref<number[]>([]);
-const formDedupe = ref(0);
-const formCooldown = ref(0);
-const formDeliveryMode = ref<'instant' | 'digest'>('instant');
-const formDigestWindow = ref('');
-const formSummary = ref('');
-const formMessage = ref('');
-const formRichMessage = ref(false);
-const formRichBodies = ref<MultiChannelTemplate>(emptyRichBodies());
-const formRichChannel = ref<TemplateChannel>('fallback');
-const formRunbookUrl = ref('');
-const formTemplateId = ref<number | null>(null);
-const formConfig = ref<Record<string, unknown>>({});
-const formForMinutes = ref('');
-const componentPaths = ref<AlertComponentPath[]>([]);
-const componentPathsLoading = ref(false);
+// Auto-name from the condition and scope, the way the reads-as sentence
+// describes it. Stops as soon as the user types their own, and never
+// overwrites a saved rule's name.
+const nameTouched = ref(false);
+
+const suggestedName = computed(() => {
+    if (!formKind.value) return '';
+    const trigger = describeRuleConfig(formKind.value, formConfig.value);
+    const where = scopeSummary.value;
+    const label = trigger.charAt(0).toUpperCase() + trigger.slice(1);
+    // No scope chosen yet — an empty summary left a dangling "on".
+    return where ? `${label} on ${where}` : label;
+});
+
+watch(suggestedName, (next) => {
+    if (nameTouched.value || props.mode === 'edit') return;
+    formName.value = next;
+});
+
+// Fires, notifies, then switches itself off. The two rate-limits beside it are
+// windows and always reopen; this is the one that does not.
+// The sentence names what was actually chosen. Falling back to "these devices"
+// and "your channels" told the reader nothing they had not just typed.
+const scopeSummary = computed(() => describeScopeBreakdown(formScope.value));
+
+const channelSummary = computed(() =>
+    describeChannels({
+        names: formDestinationChannelIds.value
+            .map((id) => channelsStore.channels[id]?.name)
+            .filter(Boolean) as string[],
+        groupCount: formDestinationGroupIds.value.length
+    })
+);
+
+
+// bit0=Mon, matching the backend daysMask and the tariff windows.
+const DAY_OPTIONS = [
+    {bit: 0, label: 'Mon'},
+    {bit: 1, label: 'Tue'},
+    {bit: 2, label: 'Wed'},
+    {bit: 3, label: 'Thu'},
+    {bit: 4, label: 'Fri'},
+    {bit: 5, label: 'Sat'},
+    {bit: 6, label: 'Sun'}
+] as const;
+
+
+const dayIsOn = (bit: number) => ((formActiveWindowDays.value >> bit) & 1) === 1;
+function toggleDay(bit: number) {
+    formActiveWindowDays.value ^= 1 << bit;
+}
 
 // bthomedevice entities on the scoped gateways — feeds the BLU button picker.
 const scopedEntities = computed(() => {
@@ -672,24 +791,21 @@ const chosenChannels = computed(() =>
     )
 );
 
-const chosenTemplateChannels = computed<TemplateChannel[]>(() => {
-    const kinds = new Set<TemplateChannel>(['fallback']);
-    for (const c of chosenChannels.value) {
-        if (c.bodyKind !== 'fallback') kinds.add(c.bodyKind);
-    }
-    return (['email', 'slack', 'teams', 'fallback'] as TemplateChannel[]).filter(
-        (k) => kinds.has(k)
-    );
+const {
+    richMessage: formRichMessage,
+    richBodies: formRichBodies,
+    richChannel: formRichChannel,
+    editableChannels: chosenTemplateChannels,
+    templateSummaries,
+    richMessageError,
+    reset: resetRichMessage,
+    ensureTemplateId: ensureRichTemplate
+} = useRichMessageTemplates({
+    chosenChannels: chosenChannels,
+    plainMessage: () => formMessage.value,
+    templateId: () => formTemplateId.value,
+    ruleName: () => formName.value
 });
-
-// Saved templates the rule can point at, summarised for the picker.
-const templateSummaries = computed(() =>
-    Object.values(store.templates).map((t) => ({
-        id: t.id,
-        name: t.name,
-        channels: Object.keys(t.bodies)
-    }))
-);
 
 // Digest window is stored and edited directly in minutes — no seconds
 // round-trip, so a typed value can never be silently rounded.
@@ -703,39 +819,15 @@ const {
     reset: resetNameError
 } = useRequiredNameField(formName);
 
-const duplicate = ref<{id: number; name: string} | null>(null);
-
-function emptyRichBodies(): MultiChannelTemplate {
-    return {
-        email: {subject: '', html: ''},
-        slack: {blocks: ''},
-        teams: {card: ''},
-        fallback: {text: ''}
-    };
-}
 
 // Step 1 swaps between the template gallery and the custom-kind picker.
 // One search box drives both, so the query lives here.
-const showCustom = ref(false);
 const pickerQuery = ref('');
-
-function enterCustom() {
-    showCustom.value = true;
-    pickerQuery.value = '';
-}
-
-function exitCustom() {
-    showCustom.value = false;
-    pickerQuery.value = '';
-}
-
 // ── Step navigation ────────────────────────────────────────────────────
 const step = ref(1);
-const manyScopeMode = ref(false);
 
-const visibleStepIds = computed<number[]>(() =>
-    showAppliesToStep.value ? [1, 2, 3] : [1, 3]
-);
+// Condition, Where, Who and when. Every kind walks the same three.
+const visibleStepIds = computed<number[]>(() => [1, 2, 3]);
 
 const displayStep = computed(() => {
     const idx = visibleStepIds.value.indexOf(step.value);
@@ -743,42 +835,12 @@ const displayStep = computed(() => {
 });
 
 const canAdvance = computed(() =>
-    step.value === 1 ? !!formKind.value && canLeaveWhenStep.value : true
+    step.value === 1 ? !!formKind.value : true
 );
 
-function isSingleScope(scope: ScopeSelectorType): boolean {
-    const singleTargets =
-        (scope.deviceIds?.length ?? 0) + (scope.componentIds?.length ?? 0);
-    const multiTargets =
-        (scope.groupIds?.length ?? 0) +
-        (scope.locationIds?.length ?? 0) +
-        (scope.tagIds?.length ?? 0);
-    return singleTargets === 1 && multiTargets === 0;
-}
 
-function hasMultiScope(scope: ScopeSelectorType): boolean {
-    const singleTargets =
-        (scope.deviceIds?.length ?? 0) + (scope.componentIds?.length ?? 0);
-    const multiTargets =
-        (scope.groupIds?.length ?? 0) +
-        (scope.locationIds?.length ?? 0) +
-        (scope.tagIds?.length ?? 0);
-    return singleTargets > 1 || multiTargets > 0;
-}
 
-const hasFoldedSingleScope = computed(() => isSingleScope(formScope.value));
 
-const showAppliesToStep = computed(() => {
-    if (!formKind.value) return true;
-    if (manyScopeMode.value || hasMultiScope(formScope.value)) return true;
-    return !showFoldedScopePicker.value;
-});
-
-const canLeaveWhenStep = computed(() => {
-    if (showAppliesToStep.value) return true;
-    if (!showFoldedScopePicker.value) return true;
-    return hasFoldedSingleScope.value;
-});
 
 function goToStep(n: number) {
     if (!formKind.value && n > 1) return;
@@ -792,61 +854,20 @@ function goToDisplayStep(displayId: number) {
     if (realStep) goToStep(realStep);
 }
 
-function goNext() {
-    if (step.value >= 3 || !canAdvance.value) return;
-    step.value = step.value === 1 && !showAppliesToStep.value ? 3 : step.value + 1;
-}
 
-function goBack() {
-    if (step.value <= 1) return;
-    step.value = step.value === 3 && !showAppliesToStep.value ? 1 : step.value - 1;
-}
 
-function chooseManyScope() {
-    manyScopeMode.value = true;
-    step.value = 2;
-}
 
-let dupTimer: ReturnType<typeof setTimeout> | undefined;
-watch(
-    [
-        formKind,
-        formSeverityModel,
-        formScope,
-        formConfig,
-        formDedupe,
-        formCooldown
-    ],
-    () => {
-        clearTimeout(dupTimer);
-        if (!formKind.value || !formSeverityModel.value) {
-            duplicate.value = null;
-            return;
-        }
-        dupTimer = setTimeout(async () => {
-            const check = await store.checkDuplicate({
-                kind: formKind.value as AlertRuleKind,
-                severity: formSeverityModel.value as AlertSeverity,
-                scope: formScope.value,
-                config: formConfig.value,
-                dedupeWindowSec: formDedupe.value,
-                cooldownSec: formCooldown.value,
-                ...(props.mode === 'edit' && props.initial
-                    ? {excludeId: props.initial.id}
-                    : {})
-            });
-            // Failed check: skip the warning without claiming "no duplicate".
-            duplicate.value = check.status === 'ok' ? check.duplicate : null;
-        }, UI_CONFIG.duplicateCheckDebounceMs);
-    },
-    {deep: true}
-);
-
-// WHY: if the component unmounts during the debounce window, the pending
-// duplicate-check would hit the network pointlessly and set state on a
-// dead component.
-onBeforeUnmount(() => {
-    clearTimeout(dupTimer);
+const {duplicate, clear: clearDuplicate} = useAlertRuleDuplicateCheck({
+    draft: () => ({
+        kind: formKind.value,
+        severity: formSeverityModel.value,
+        scope: formScope.value,
+        config: formConfig.value,
+        dedupeWindowSec: formDedupe.value,
+        cooldownSec: formCooldown.value
+    }),
+    excludeId: () =>
+        props.mode === 'edit' && props.initial ? props.initial.id : null
 });
 
 // Picking a BLU sensor targets it through the backend's logical "component:<id>"
@@ -868,28 +889,6 @@ watch(
     }
 );
 
-function applyTemplate(t: AlertRuleTemplate) {
-    formKind.value = t.kind;
-    formSeverityModel.value = t.severity;
-    formScope.value = {...t.scope};
-    manyScopeMode.value = hasMultiScope(t.scope);
-    formConfig.value = {...t.config};
-    formForMinutes.value =
-        typeof t.config.forSec === 'number'
-            ? String(Math.ceil(t.config.forSec / 60))
-            : '';
-    formDedupe.value = t.dedupeWindowSec;
-    formCooldown.value = t.cooldownSec;
-    formSummary.value = t.summaryTemplate ?? '';
-    formMessage.value = t.messageTemplate ?? '';
-    formRichMessage.value = false;
-    formRichBodies.value = emptyRichBodies();
-    formRunbookUrl.value = '';
-    formAutoResolve.value = t.autoResolve;
-    if (!formName.value.trim()) formName.value = t.label;
-    step.value = isSingleScope(formScope.value) ? 3 : 1;
-}
-
 const currentKindDescriptor = computed<AlertRuleKindDescriptor | null>(() => {
     if (!formKind.value) return null;
     return store.kinds.find((k) => k.key === formKind.value) ?? null;
@@ -899,12 +898,27 @@ const kindLabel = computed(
     () => currentKindDescriptor.value?.label ?? formKind.value ?? ''
 );
 
-const hasConfigSchema = computed(() => {
+// "Motion is detected" over "Motion Detected" is one fact twice.
+const nameEchoesKind = computed(() => {
+    const norm = (v: string) => v.toLowerCase().replace(/[^a-z]/g, '');
+    return norm(chosenName.value) === norm(kindLabel.value);
+});
+
+const conditionFieldCount = computed(() => {
     const schema = currentKindDescriptor.value?.configSchema as
         | {properties?: Record<string, unknown>}
         | undefined;
-    return !!schema?.properties && Object.keys(schema.properties).length > 0;
+    return Object.keys(schema?.properties ?? {}).length;
 });
+
+const hasConfigSchema = computed(() => conditionFieldCount.value > 0);
+
+// Past this the condition is a form and earns a fold; below it, folding hides
+// one or two inputs behind a box that costs more space than the inputs do.
+const FOLD_CONDITION_ABOVE = 2;
+const foldCondition = computed(
+    () => conditionFieldCount.value > FOLD_CONDITION_ABOVE
+);
 
 const showPicker = computed(() => !formKind.value);
 
@@ -941,132 +955,60 @@ const headerDescription = computed(() => {
         return 'Update the alert and save.';
     }
     if (!formKind.value) {
-        return 'Pick a template or build your own.';
+        return 'Pick what to watch, then where and who to tell.';
     }
     return '';
 });
 
 // Plain-English description of the chosen kind, for the condition header.
-const kindDescription = computed(() =>
-    formKind.value ? describeRuleKind(formKind.value).description : ''
-);
-
 // Merge a quick-pick preset's config into the current condition.
 function applyPreset(config: Record<string, unknown>) {
     formConfig.value = {...formConfig.value, ...config};
 }
 
-const showComponentPathPicker = computed(
-    () =>
-        formKind.value === 'component_threshold' ||
-        formKind.value === 'component_state'
-);
-
-const foldedScopeTypes = computed<AlertScopeType[]>(() => {
-    const supported = currentKindDescriptor.value?.supportedScopeTypes ?? [];
-    return (['device', 'component'] as AlertScopeType[]).filter((type) =>
-        supported.includes(type)
-    );
+// The signal catalog: what the scoped devices report, filtered to the shape
+// this alert kind watches. Its own module — it is a device-component browser,
+// not an alert concern.
+const {
+    applies: showComponentPathPicker,
+    loading: componentPathsLoading,
+    search: pathSearch,
+    groups: componentPathGroups,
+    matchCount: componentPathMatchCount,
+    hiddenCount: hiddenPathCount,
+    families: availableComponentFamilies,
+    emptyText: componentPathEmptyText,
+    sourceText: componentPathSourceText,
+    chosenLabel: chosenComponentPath,
+    isChosen: isSelectedComponentPath,
+    choose: applyComponentPath,
+    reload: reloadComponentPaths
+} = useComponentPathPicker({
+    deviceIds: () => formScope.value.deviceIds ?? [],
+    ruleKind: formKind,
+    condition: formConfig,
+    active: visible
 });
-
-const showFoldedScopePicker = computed(
-    () => foldedScopeTypes.value.length > 0
-);
-
-const componentPathChoices = computed(() => {
-    const wanted =
-        formKind.value === 'component_threshold'
-            ? 'metric'
-            : formKind.value === 'component_state'
-              ? 'state'
-              : null;
-    if (!wanted) return [];
-    return componentPaths.value
-        .filter((path) => path.kind === wanted)
-        .slice(0, 32);
-});
-
-function isSelectedComponentPath(path: AlertComponentPath): boolean {
-    return (
-        formConfig.value.component === path.component &&
-        formConfig.value.field === path.field
-    );
-}
-
-function defaultEquals(path: AlertComponentPath): string | number | boolean {
-    if (path.values?.includes(true)) return true;
-    return path.values?.[0] ?? true;
-}
-
-function applyComponentPath(path: AlertComponentPath) {
-    if (path.kind === 'metric') {
-        formConfig.value = {
-            ...formConfig.value,
-            component: path.component,
-            field: path.field,
-            operator: formConfig.value.operator ?? 'gt',
-            threshold: formConfig.value.threshold ?? 0
-        };
-        return;
-    }
-    formConfig.value = {
-        ...formConfig.value,
-        component: path.component,
-        field: path.field,
-        equals: defaultEquals(path)
-    };
-}
 
 function selectKindByKey(key: AlertRuleKind) {
     formKind.value = key;
-    manyScopeMode.value = false;
     // Auto-fill severity from the kind's backend default; the user can override.
     const auto = currentKindDescriptor.value?.defaultSeverity;
     if (auto) formSeverityModel.value = auto;
-    // Stay on When if either the condition or the simple target lives there.
-    step.value = hasConfigSchema.value || showFoldedScopePicker.value ? 1 : 2;
 }
 
 function resetKind() {
     if (!canSwitchKind.value) return;
     formKind.value = null;
-    showCustom.value = false;
-    manyScopeMode.value = false;
     formScope.value = {};
     formConfig.value = {};
-    duplicate.value = null;
+    clearDuplicate();
     step.value = 1;
 }
 
 function resetForm() {
-    const t = props.initial;
-    showCustom.value = false;
-    formKind.value = t?.kind ?? null;
-    manyScopeMode.value = t?.scope ? hasMultiScope(t.scope) : false;
-    formName.value = t?.name ?? '';
-    formEnabled.value = t?.enabled ?? true;
-    formAutoResolve.value = t?.autoResolve ?? false;
-    formSeverityModel.value = (t?.severity ?? 'info') as AlertSeverity;
-    formScope.value = t?.scope ? {...t.scope} : {};
-    formDestinationChannelIds.value = [...(t?.destinationChannelIds ?? [])];
-    formDestinationGroupIds.value = [...(t?.destinationGroupIds ?? [])];
-    formDedupe.value = t?.dedupeWindowSec ?? 0;
-    formCooldown.value = t?.cooldownSec ?? 0;
-    formDeliveryMode.value = t?.deliveryMode === 'digest' ? 'digest' : 'instant';
-    formDigestWindow.value =
-        t?.digestWindowMinutes != null ? String(t.digestWindowMinutes) : '';
-    formSummary.value = t?.summaryTemplate ?? '';
-    formMessage.value = t?.messageTemplate ?? '';
-    formRichMessage.value = false;
-    formRichBodies.value = emptyRichBodies();
-    formRichChannel.value = 'fallback';
-    formRunbookUrl.value = t?.runbookUrl ?? '';
-    formTemplateId.value = t?.templateId ?? null;
-    formConfig.value = t ? {...t.config} : {};
-    formForMinutes.value =
-        typeof t?.config.forSec === 'number'
-            ? String(Math.ceil(t.config.forSec / 60))
-            : '';
+    resetRuleFields(props.initial);
+    resetRichMessage();
     resetNameError();
     step.value = 1;
 }
@@ -1081,70 +1023,12 @@ watch(
         } finally {
             kindsLoading.value = false;
         }
-        void store.fetchTemplates();
-        componentPathsLoading.value = true;
-        try {
-            componentPaths.value = await store.listComponentPaths();
-        } finally {
-            componentPathsLoading.value = false;
-        }
+        await reloadComponentPaths();
         resetForm();
     },
     {immediate: true}
 );
 
-function normalizeSec(n: number): number | null {
-    return Number.isInteger(n) && n >= 0 ? n : null;
-}
-
-function parseForSec(): number | null | undefined {
-    if (formKind.value !== 'component_state') return undefined;
-    const raw = formForMinutes.value.trim();
-    if (!raw) return undefined;
-    const minutes = Number(raw);
-    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) return null;
-    return minutes * 60;
-}
-
-watch(formRichMessage, (enabled) => {
-    if (!enabled) return;
-    if (!formRichBodies.value.fallback.text.trim()) {
-        formRichBodies.value = {
-            ...formRichBodies.value,
-            fallback: {text: formMessage.value.trim() || '{{alert.message}}'}
-        };
-    }
-});
-
-function buildRichBodies(): MessageTemplate['bodies'] {
-    const b = formRichBodies.value;
-    const allowed = new Set(chosenTemplateChannels.value);
-    const bodies: MessageTemplate['bodies'] = {};
-    if (allowed.has('email') && (b.email.subject.trim() || b.email.html.trim())) {
-        bodies.email = {
-            subject: b.email.subject,
-            html: b.email.html,
-            text: ''
-        };
-    }
-    if (allowed.has('slack') && b.slack.blocks.trim()) {
-        bodies.slack = {blocks: b.slack.blocks};
-    }
-    if (allowed.has('teams') && b.teams.card.trim()) {
-        bodies.teams = {card: b.teams.card};
-    }
-    return bodies;
-}
-
-const richMessageError = computed(() => {
-    if (!formRichMessage.value || formTemplateId.value != null) return '';
-    if (!formRichBodies.value.fallback.text.trim()) {
-        return 'Add text fallback for channels without a rich body.';
-    }
-    return '';
-});
-
-// Backend requires at least one recipient — a channel or a group.
 const hasRecipient = computed(
     () =>
         formDestinationChannelIds.value.length > 0 ||
@@ -1157,7 +1041,6 @@ const canSave = computed(
         !!formKind.value &&
         isNameValid.value &&
         hasRecipient.value &&
-        parseForSec() !== null &&
         !richMessageError.value
 );
 
@@ -1182,7 +1065,6 @@ async function handleSave() {
     if (!formKind.value) return;
     if (!isNameValid.value) return;
     if (!parsedTimings.value) return;
-    if (parseForSec() === null) return;
     if (!formSeverityModel.value) return;
     if (richMessageError.value) return;
     await runOptimisticSave(persistRule);
@@ -1190,15 +1072,9 @@ async function handleSave() {
 
 // Validated numeric timings — one pure answer, null when the input
 // string isn't a clean non-negative integer.
-const parsedTimings = computed<{
-    dedupeWindowSec: number;
-    cooldownSec: number;
-} | null>(() => {
-    const dedupeWindowSec = normalizeSec(formDedupe.value);
-    const cooldownSec = normalizeSec(formCooldown.value);
-    if (dedupeWindowSec == null || cooldownSec == null) return null;
-    return {dedupeWindowSec, cooldownSec};
-});
+const parsedTimings = computed(() =>
+    parseTimings(formDedupe.value, formCooldown.value)
+);
 
 async function persistRule(): Promise<AlertRule | null> {
     const payload = await buildPayload();
@@ -1210,74 +1086,80 @@ async function persistRule(): Promise<AlertRule | null> {
     return store.updateRule(props.initial.id, payload);
 }
 
-async function ensureRichTemplate(): Promise<number | null | undefined> {
-    if (!formRichMessage.value) return formTemplateId.value ?? undefined;
-    if (formTemplateId.value != null) return formTemplateId.value;
-    const bodies = buildRichBodies();
-    if (Object.keys(bodies).length === 0) return undefined;
-    const fallbackText = formRichBodies.value.fallback.text.trim();
-    if (!fallbackText) return null;
-    const name = `${formName.value.trim() || 'Alert'} message`;
-    const template = await store.createTemplate({
-        name,
-        description: 'Created from the alert rule builder.',
-        bodies,
-        fallbackText
-    });
-    return template?.id ?? null;
-}
-
-function buildConfigPayload(): Record<string, unknown> {
-    const config = {...formConfig.value};
-    const forSec = parseForSec();
-    if (forSec === undefined) {
-        delete config.forSec;
-    } else if (forSec !== null) {
-        config.forSec = forSec;
-    }
-    return config;
-}
-
 async function buildPayload() {
+    // Ordered so an unusable draft cannot create a stored template on its way
+    // to being refused.
     if (!parsedTimings.value || !formSeverityModel.value) return null;
     const richTemplateId = await ensureRichTemplate();
     if (richTemplateId === null) return null;
-    const fallbackOnlyMessage =
-        formRichMessage.value && richTemplateId === undefined
-            ? formRichBodies.value.fallback.text.trim()
-            : formMessage.value.trim();
-    const digestWindowParsed = formDigestWindow.value.trim()
-        ? Number(formDigestWindow.value)
-        : null;
-    const digestWindowMinutes =
-        formDeliveryMode.value === 'digest' &&
-        digestWindowParsed != null &&
-        Number.isInteger(digestWindowParsed) &&
-        digestWindowParsed >= 1
-            ? digestWindowParsed
-            : null;
-    return {
-        name: formName.value.trim(),
+    const usesFallbackBody =
+        formRichMessage.value && richTemplateId === undefined;
+    return buildAlertRulePayload({
+        name: formName.value,
         enabled: formEnabled.value,
-        severity: formSeverityModel.value as AlertSeverity,
+        severity: formSeverityModel.value,
         scope: formScope.value,
         destinationChannelIds: formDestinationChannelIds.value,
         destinationGroupIds: formDestinationGroupIds.value,
-        dedupeWindowSec: parsedTimings.value.dedupeWindowSec,
-        cooldownSec: parsedTimings.value.cooldownSec,
-        summaryTemplate: formSummary.value.trim() || null,
-        messageTemplate: richTemplateId ? null : fallbackOnlyMessage || null,
-        runbookUrl: formRunbookUrl.value.trim() || null,
+        dedupeWindowSec: formDedupe.value,
+        cooldownSec: formCooldown.value,
+        summaryTemplate: formSummary.value,
+        messageTemplate: usesFallbackBody
+            ? formRichBodies.value.fallback.text
+            : formMessage.value,
+        runbookUrl: formRunbookUrl.value,
         templateId: richTemplateId ?? formTemplateId.value,
         autoResolve: formAutoResolve.value,
-        config: buildConfigPayload(),
+        triggerOnce: formTriggerOnce.value,
+        config: formConfig.value,
         deliveryMode: formDeliveryMode.value,
-        digestWindowMinutes
-    };
+        digestWindowRaw: formDigestWindow.value,
+        activeWindow: formActiveWindowOn.value
+            ? {
+                  startTime: formActiveWindowStart.value,
+                  endTime: formActiveWindowEnd.value,
+                  daysMask: formActiveWindowDays.value
+              }
+            : null
+    });
 }
 </script>
 
 <style scoped>
+/* ─── Active-hours day picker ───────────────────────────────────────── */
+
+.earm__days {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+}
+
+.earm__day {
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: var(--type-caption);
+    cursor: pointer;
+    transition: background var(--motion-hover), color var(--motion-hover);
+}
+
+.earm__day:hover {
+    background: var(--color-surface-3);
+}
+
+.earm__day--on {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--color-text-on-primary);
+}
+
+.earm__time-input {
+    width: 7rem;
+}
+
 /* ─── Skeleton while kinds load ─────────────────────────────────────── */
 
 .earm__form {
@@ -1342,6 +1224,7 @@ async function buildPayload() {
     flex-direction: column;
     gap: var(--form-section-gap);
 }
+
 
 /* ─── Duplicate banner ──────────────────────────────────────────────── */
 
@@ -1408,26 +1291,12 @@ async function buildPayload() {
     gap: var(--form-section-gap);
 }
 
-/* Persistent search + action row above the cards. */
-.earm__pickbar {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-}
-
 .earm__search {
-    flex: 1 1 auto;
-    min-width: 0;
     max-width: 24rem;
 }
-/* keep the search input filling its (capped) wrapper */
-.earm__pickbar .earm__search :deep(input) {
+.earm__search :deep(input) {
     width: 100%;
 }
-.earm__pickbar :deep(button) {
-    white-space: nowrap;
-}
-
 /* Chosen-alert summary shown on the later steps — compact, not full width. */
 .earm__chosen {
     align-self: flex-start;
@@ -1524,6 +1393,54 @@ async function buildPayload() {
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    cursor: pointer;
+    list-style: none;
+}
+
+.earm__path-head::-webkit-details-marker {
+    display: none;
+}
+
+.earm__path-caret {
+    margin-left: auto;
+    font-size: var(--type-caption);
+    color: var(--color-text-tertiary);
+    transition: transform var(--duration-fast) var(--ease-out-expo);
+}
+
+.earm__path-picker[open] > .earm__path-head .earm__path-caret {
+    transform: rotate(180deg);
+}
+
+.earm__path-search {
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-1);
+    color: var(--color-text-primary);
+    font-size: var(--type-body);
+}
+
+.earm__path-groups {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    max-height: 18rem;
+    overflow-y: auto;
+}
+
+.earm__path-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.earm__path-group-name {
+    margin: 0;
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-secondary);
 }
 
 .earm__path-grid {

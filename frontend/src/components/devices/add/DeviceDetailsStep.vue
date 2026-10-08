@@ -1,10 +1,8 @@
 <template>
-    <div class="dds">
-        <p class="dds__subheading">
-            Give the virtual device a clear name and category so it is easy to
-            find later.
-        </p>
-
+    <WizardStep
+        name="details"
+        lede="Give the device a clear name and category so it is easy to find later."
+    >
         <div class="dds__layout">
             <!-- Left: form -->
             <div class="dds__form">
@@ -42,11 +40,11 @@
                             {{ tagName(id) }}
                             <button
                                 type="button"
-                                class="dds__chip-remove"
+                                class="icon-ghost-btn dds__chip-remove"
                                 :aria-label="`Remove tag ${tagName(id)}`"
                                 @click="removeTag(id)"
                             >
-                                <i class="fas fa-xmark" />
+                                <i class="fas fa-xmark" aria-hidden="true" />
                             </button>
                         </span>
                         <Dropdown
@@ -68,11 +66,11 @@
                             {{ groupName(id) }}
                             <button
                                 type="button"
-                                class="dds__chip-remove"
+                                class="icon-ghost-btn dds__chip-remove"
                                 :aria-label="`Remove group ${groupName(id)}`"
                                 @click="removeGroup(id)"
                             >
-                                <i class="fas fa-xmark" />
+                                <i class="fas fa-xmark" aria-hidden="true" />
                             </button>
                         </span>
                         <Dropdown
@@ -100,7 +98,6 @@
 
             <!-- Right: preview card -->
             <div class="dds__preview">
-                <p class="dds__preview-label">PREVIEW</p>
                 <div class="dds__normal-preview">
                     <DeviceFleetCard
                         v-if="draft.previewDevice"
@@ -111,11 +108,11 @@
                             <button
                                 type="button"
                                 class="dds__appearance-btn"
-                                aria-label="Pick device icon or image"
+                                aria-label="Appearance: pick device icon or image"
                                 title="Pick device icon or image"
                                 @click.stop="pickerVisible = true"
                             >
-                                <i class="fas fa-pen" /> Appearance
+                                Appearance
                             </button>
                         </template>
                     </DeviceFleetCard>
@@ -128,7 +125,7 @@
                             title="Pick device icon or image"
                             @click="pickerVisible = true"
                         >
-                            <i class="fas fa-pen" />
+                            <i class="fas fa-pen" aria-hidden="true" />
                         </button>
                         <span>Name the device and connect parts to preview it.</span>
                     </div>
@@ -174,7 +171,7 @@
             @select-icon="onIconPick"
             @clear="clearImage"
         />
-    </div>
+    </WizardStep>
 </template>
 
 <script setup lang="ts">
@@ -185,6 +182,7 @@ import DeviceFleetCard from '@/components/cards/DeviceFleetCard.vue';
 import Dropdown from '@/components/core/Dropdown.vue';
 import FormField from '@/components/core/FormField.vue';
 import Input from '@/components/core/Input.vue';
+import WizardStep from '@/components/core/wizard/WizardStep.vue';
 import AssetPickerModal from '@/components/modals/AssetPickerModal.vue';
 import EntityWidget from '@/components/widgets/EntityWidget.vue';
 import {DEVICE_CATEGORIES} from '@/helpers/deviceCategories';
@@ -419,22 +417,10 @@ onBeforeUnmount(revokePreview);
 </script>
 
 <style scoped>
-.dds {
-    display: grid;
-    gap: var(--gap-lg);
-}
-
-.dds__subheading {
-    margin: 0;
-    color: var(--color-text-secondary);
-    font-size: var(--type-body);
-    line-height: var(--leading-snug);
-}
-
 .dds__layout {
     display: grid;
-    grid-template-columns: 1fr 196px;
-    gap: var(--gap-xl);
+    grid-template-columns: 1fr var(--dds-preview-width);
+    gap: var(--gap-lg);
     align-items: start;
 }
 
@@ -450,41 +436,36 @@ onBeforeUnmount(revokePreview);
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--gap-xs);
     min-height: var(--touch-target-min);
-    padding: var(--space-1) 0;
 }
 
 .dds__chip {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-1);
+    gap: var(--gap-2xs);
     padding: var(--space-0-5) var(--gap-xs);
     font-size: var(--type-caption);
     font-weight: var(--font-semibold);
-    border-radius: var(--radius-full);
-    border: 1px solid var(--color-border-medium);
-    background: var(--color-surface-2);
-    color: var(--color-text-secondary);
     line-height: 1;
     white-space: nowrap;
+    border: var(--space-px) solid var(--color-border-medium);
+    border-radius: var(--radius-full);
+    background: var(--color-surface-2);
+    color: var(--color-text-secondary);
 }
 
+/* Sits on the chip's own colour until hovered, so a row of chips stays calm. */
 .dds__chip-remove {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    background: transparent;
     color: inherit;
-    opacity: 0.6;
-    cursor: pointer;
     font-size: var(--type-caption);
-    padding: 0;
     line-height: 1;
+    opacity: 0.6;
+    transition: opacity var(--duration-fast) var(--ease-default);
 }
 
-.dds__chip-remove:hover {
+.dds__chip-remove:hover,
+.dds__chip-remove:focus-visible {
     opacity: 1;
     color: var(--color-danger-text);
 }
@@ -494,35 +475,31 @@ onBeforeUnmount(revokePreview);
 .dds__preview {
     position: sticky;
     top: 0;
-}
-
-.dds__preview-label {
-    margin: 0 0 var(--space-2);
-    font-size: var(--type-caption);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-tertiary);
-    letter-spacing: var(--tracking-wide);
+    display: grid;
+    gap: var(--gap-xs);
 }
 
 .dds__normal-preview {
     display: grid;
-    gap: var(--space-3);
+    gap: var(--gap-sm);
 }
 
 .dds__appearance-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: var(--space-1);
     width: 100%;
-    min-height: 32px;
-    border: 1px solid var(--color-border-medium);
+    min-height: var(--touch-target-min);
+    border: var(--space-px) solid var(--color-border-medium);
     border-radius: var(--radius-md);
     background: var(--color-surface-1);
     color: var(--color-text-secondary);
     font-size: var(--type-caption);
     font-weight: var(--font-semibold);
     cursor: pointer;
+    transition:
+        color var(--duration-fast) var(--ease-default),
+        border-color var(--duration-fast) var(--ease-default);
 }
 
 .dds__appearance-btn:hover {
@@ -530,35 +507,45 @@ onBeforeUnmount(revokePreview);
     border-color: var(--color-border-strong);
 }
 
+.dds__appearance-btn:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+}
+
 .dds__empty-preview {
     display: grid;
     place-items: center;
-    gap: var(--space-2);
-    min-height: 190px;
-    padding: var(--space-4);
-    border: 1px dashed var(--color-border-medium);
+    gap: var(--gap-xs);
+    min-height: var(--wizard-state-min-height);
+    padding: var(--gap-md);
+    border: var(--space-px) dashed var(--color-border-medium);
     border-radius: var(--radius-lg);
     color: var(--color-text-tertiary);
-    text-align: center;
     font-size: var(--type-caption);
+    text-align: center;
 }
 
 .dds__empty-preview-icon {
     display: inline-grid;
     place-items: center;
-    width: 36px;
-    height: 36px;
-    border: 1px solid var(--color-border-medium);
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
+    border: var(--space-px) solid var(--color-border-medium);
     border-radius: var(--radius-full);
     background: var(--color-surface-2);
     color: var(--color-text-secondary);
     cursor: pointer;
 }
 
+.dds__empty-preview-icon:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+}
+
 .dds__component-preview {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-2);
+    gap: var(--gap-xs);
 }
 
 .dds__entity-card {
@@ -567,16 +554,16 @@ onBeforeUnmount(revokePreview);
 
 .dds__missing {
     display: grid;
-    gap: var(--space-1);
+    gap: var(--gap-2xs);
 }
 
 .dds__missing-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-2);
-    padding: var(--space-2);
-    border: 1px solid var(--color-border-subtle);
+    gap: var(--gap-xs);
+    padding: var(--gap-xs);
+    border: var(--space-px) solid var(--color-border-subtle);
     border-radius: var(--radius-md);
     color: var(--color-text-secondary);
     font-size: var(--type-caption);
@@ -584,158 +571,6 @@ onBeforeUnmount(revokePreview);
 
 .dds__missing-row small {
     color: var(--color-text-tertiary);
-}
-
-.dds__card {
-    border: 1px solid var(--color-border-subtle);
-    border-radius: var(--radius-xl);
-    background: var(--color-surface-2);
-    overflow: hidden;
-    box-shadow: var(--shadow-md);
-}
-
-.dds__card-photo {
-    height: 96px;
-    position: relative;
-    display: grid;
-    place-items: center;
-    border-bottom: 1px solid var(--color-border-subtle);
-    background: linear-gradient(
-        160deg,
-        var(--color-surface-3),
-        var(--color-surface-2)
-    );
-}
-
-.dds__card-default-tag {
-    position: absolute;
-    top: var(--space-2);
-    left: var(--space-2);
-    font-size: var(--type-caption);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-tertiary);
-    background: rgba(9, 19, 32, 0.7);
-    border-radius: var(--radius-sm);
-    padding: 2px 6px;
-}
-
-.dds__card-img {
-    height: 44px;
-    opacity: 0.75;
-    object-fit: contain;
-}
-
-.dds__card-glyph {
-    font-size: 2rem;
-    color: var(--color-text-secondary);
-}
-
-.dds__card-edit {
-    position: absolute;
-    right: var(--space-2);
-    top: var(--space-2);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    border: 1px solid var(--color-border-medium);
-    border-radius: var(--radius-full);
-    background: var(--color-surface-1);
-    color: var(--color-text-secondary);
-    cursor: pointer;
-}
-
-.dds__card-edit:hover {
-    color: var(--color-text-primary);
-    border-color: var(--color-border-strong);
-}
-
-.dds__card-body {
-    padding: var(--space-3) var(--space-4) var(--space-4);
-}
-
-.dds__card-name {
-    margin: 0;
-    font-size: var(--type-body);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.dds__card-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1-5);
-    margin-top: var(--space-2);
-}
-
-.dds__tag {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    font-size: var(--type-caption);
-    font-weight: var(--font-semibold);
-    border-radius: var(--radius-full);
-    padding: 3px var(--space-2);
-}
-
-.dds__tag--cat {
-    color: rgb(245, 158, 11);
-    background: rgba(245, 158, 11, 0.12);
-}
-
-.dds__tag--role {
-    color: var(--color-text-secondary);
-    background: rgba(255, 255, 255, 0.06);
-}
-
-.dds__card-parts {
-    margin-top: var(--space-3);
-    display: grid;
-    gap: var(--space-2);
-    border-top: 1px solid var(--color-border-subtle);
-    padding-top: var(--space-3);
-}
-
-.dds__part {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-}
-
-.dds__part-icon {
-    width: 24px;
-    height: 24px;
-    border-radius: var(--radius-sm);
-    display: grid;
-    place-items: center;
-    font-size: var(--type-caption);
-    flex: none;
-}
-
-.dds__part-name {
-    font-size: var(--type-caption);
-    color: var(--color-text-secondary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.dds__part-state {
-    margin-left: auto;
-    font-size: var(--type-caption);
-    color: var(--color-success-text);
-}
-
-.dds__part--missing {
-    opacity: 0.7;
-}
-
-.dds__part--missing .dds__part-state {
-    color: var(--color-warning-text);
 }
 
 /* Narrow the "Add…" dropdown trigger to fit inside the chip row */
@@ -751,5 +586,17 @@ onBeforeUnmount(revokePreview);
     border-style: dashed;
     color: var(--color-text-secondary);
     background: transparent;
+}
+
+/* One column once the preview column can no longer hold a card. */
+@media (max-width: 768px) {
+    .dds__layout {
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--gap-md);
+    }
+
+    .dds__preview {
+        position: static;
+    }
 }
 </style>

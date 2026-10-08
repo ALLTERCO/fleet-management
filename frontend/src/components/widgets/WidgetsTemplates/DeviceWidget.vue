@@ -2,7 +2,7 @@
     <!-- Vertical mode (board list view) -->
     <div v-if="vertical"
         class="widget-card flex flex-row items-center gap-3 rounded-lg shadow-none p-3 relative text-sm min-h-[76px] justify-start hover:cursor-pointer"
-        :class="{ 'widget-card--selected': selected }" @click="onClick">
+        :class="{ 'widget-card--selected': selected, 'widget-card--static': !clickable }" @click="onClick">
 
          <figure class="widget-avatar w-12 h-12 aspect-square border rounded-full flex-shrink-0">
             <slot name="image">
@@ -31,7 +31,8 @@
         class="device-card"
         :class="[
             isOnline ? 'device-card--online' : 'device-card--offline',
-            selected && 'device-card--selected'
+            selected && 'device-card--selected',
+            !clickable && 'device-card--static'
         ]"
         @click="onClick">
         <!-- Accent line -->
@@ -107,13 +108,17 @@ type props_t = {
     accentColor?: string;
     lastSeen?: number;
     battery?: number | null;
+    /** False when clicking has no target — drops the pointer cursor and
+     *  the select emit. */
+    clickable?: boolean;
 };
 const props = withDefaults(defineProps<props_t>(), {
     stripped: false,
     selected: false,
     loading: false,
     online: true,
-    accentColor: ''
+    accentColor: '',
+    clickable: true
 });
 
 const emit = defineEmits<{
@@ -167,6 +172,7 @@ const lastSeenText = computed(() => {
 });
 
 function onClick() {
+    if (!props.clickable) return;
     emit('select');
 }
 </script>
@@ -175,5 +181,11 @@ function onClick() {
 /* Card styles: global .widget-card system (design-tokens.css §16) — not scoped */
 .widget-hint {
     color: var(--color-text-disabled);
+}
+/* No click target behind the card — keep it visible, not click-inviting. */
+.device-card.device-card--static,
+.widget-card.widget-card--static,
+.widget-card.widget-card--static:hover {
+    cursor: default;
 }
 </style>

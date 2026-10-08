@@ -10,7 +10,8 @@
 #   TEMPLATE        Optional template name under template-source/templates/
 #   template-source Build context containing the selected template repo
 #   OVERRIDES_JSON_B64  Base64-encoded client customization JSON
-#   IMAGE_VERSION   Release version for the OCI version label, e.g. 1.91.0
+#   OPERATIONAL_BINDINGS_JSON_B64  Base64-encoded locked runtime bindings
+#   IMAGE_VERSION   Release version for the OCI version label, e.g. 1.92.0
 
 ARG NODE_VERSION=24-alpine
 ARG FM_FRONTEND_BUILD_HEAP_SIZE=4096
@@ -30,12 +31,17 @@ RUN npx tsc --build --force
 # docs/ is otherwise excluded from the build context. Needs docs/api/guides/ in
 # the public export manifest, or the guides render empty.
 COPY docs/api /build/docs/api
-COPY docs/README.md /build/docs/README.md
+COPY docs/public /build/docs/public
 COPY docs/reference/ai-and-mcp.md docs/reference/ai-mcp-operations.md docs/reference/separate-ui-host-sdk.md /build/docs/reference/
-COPY docs/architecture/deploy-reference.md /build/docs/architecture/deploy-reference.md
 COPY deploy/public/deployment.md /build/deploy/public/deployment.md
 # host-sdk-index reads the Host SDK source; without it the index bakes empty.
 COPY frontend/src/shell/template-host /build/frontend/src/shell/template-host
+# host-sdk changelog generation reads the frontend package version.
+COPY frontend/package.json /build/frontend/package.json
+# Generator scripts share the command-entry helper with frontend/scripts.
+COPY frontend/scripts/lib/cli-entry.mjs /build/frontend/scripts/lib/cli-entry.mjs
+# host-contract generation writes package outputs and build metadata.
+COPY packages/fleet-manager-host-contract /build/packages/fleet-manager-host-contract
 # Bake /api/docs artifacts — must run before prune (needs devDeps).
 RUN npm run generate
 # Serializes heavy TS builds under BuildKit on small CI runners.
@@ -107,11 +113,12 @@ RUN npm run build
 FROM frontend-base AS frontend-bm
 ARG TEMPLATE
 ARG OVERRIDES_JSON_B64
+ARG OPERATIONAL_BINDINGS_JSON_B64
 COPY --from=backend-build /tmp/backend-build-ready /tmp/backend-build-ready
 COPY --from=template-source / /build/template-source/
 RUN test -n "$TEMPLATE"; \
     test -n "$OVERRIDES_JSON_B64"; \
-    test -f "/build/template-source/templates/${TEMPLATE}/index.vue"; \
+    test -n "$OPERATIONAL_BINDINGS_JSON_B64"; \
     rm -rf src/template-active; \
     mkdir -p src/template-active; \
     cp -r "/build/template-source/templates/${TEMPLATE}/." src/template-active/; \
@@ -125,10 +132,12 @@ RUN test -n "$TEMPLATE"; \
       cp -r "/build/template-source/shared/." src/shared/; \
     fi; \
     printf '%s' "$OVERRIDES_JSON_B64" | base64 -d > public/customization.json; \
+    printf '%s' "$OPERATIONAL_BINDINGS_JSON_B64" | base64 -d > public/operational-bindings.json; \
     npm run validate:customization -- public/customization.json && \
-    npm run validate:template-package -- ../template-source "$TEMPLATE" public/customization.json && \
+    npm run validate:operational-bindings -- public/operational-bindings.json && \
+    npm run validate:template-package -- ../template-source "$TEMPLATE" public/customization.json public/operational-bindings.json && \
     npm run check:template-boundaries -- ../template-source/templates/${TEMPLATE} && \
-    FM_BUILD_MODE=client npm run build:client
+    FM_BUILD_MODE=client npm run build:client:strict
 
 # ── Stage 4: Runtime base ───────────────────────────────────
 FROM node:${NODE_VERSION} AS runtime-base
@@ -151,6 +160,10 @@ COPY --from=backend-build --chown=node:node /build/backend/node_modules /app/bac
 COPY --from=backend-build --chown=node:node /build/backend/package.json /app/backend/package.json
 COPY --from=backend-build --chown=node:node /build/backend/db /app/backend/db
 COPY --from=backend-build --chown=node:node /build/backend/cfg /app/backend/cfg
+# Bundled static data (IR starter catalog + its license).
+COPY --from=backend-build --chown=node:node /build/backend/static /app/backend/static
+# Portable report fonts resolved by dist/model/report/pdfArtifact.js.
+COPY --from=backend-build --chown=node:node /build/backend/assets/pdf-fonts /app/backend/assets/pdf-fonts
 # API reference and MCP search resources.
 COPY --from=backend-build --chown=node:node /build/docs /app/docs
 COPY --from=backend-build --chown=node:node /build/deploy/public/deployment.md /app/deploy/public/deployment.md

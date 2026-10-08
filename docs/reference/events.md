@@ -1,3 +1,4 @@
+<!-- audience: public -->
 # Events
 
 Fleet Manager sends events in the form of notifications using the [JSON-RPC 2.0 specification](https://www.jsonrpc.org/specification). There are two types of events:
@@ -11,7 +12,7 @@ Fleet Manager sends events in the form of notifications using the [JSON-RPC 2.0 
 
 `System.Config` (formerly `FleetManager.Config`) is reserved for Fleet Manager config-bucket updates.
 
-> **Note:** No emitter currently exists in `backend/src/` — this event is reserved for future use. The shape below documents the intended payload once emission is wired up.
+> **Note:** No emitter currently exists in `backend/src/`: this event is reserved for future use. The shape below documents the intended payload once emission is wired up.
 
 ```typescript
 interface Config extends Basic {

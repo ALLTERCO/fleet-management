@@ -7,7 +7,7 @@ import * as PostgresProvider from '../../modules/PostgresProvider';
 import {reportArtifactTtlMs} from './reportRetention';
 
 const logger = getLogger('reportArtifactCleanup');
-const REPORT_ARTIFACT_RE = /\.(csv\.gz|html)$/;
+const REPORT_ARTIFACT_RE = /\.(csv(?:\.gz)?|html|xlsx|pdf(?:\.tmp)?)$/;
 
 let cleanupTimer: NodeJS.Timeout | null = null;
 

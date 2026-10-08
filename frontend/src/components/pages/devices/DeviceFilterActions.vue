@@ -4,7 +4,7 @@
     <div class="space-y-4">
       <hr class="my-4"/>
       <div>
-        <h3 class="heading-card">Type</h3>
+        <h3 class="heading-card">Model</h3>
         <Dropdown
           :options="allDeviceTypes"
           :default="typeFilter"

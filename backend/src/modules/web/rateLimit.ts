@@ -4,6 +4,7 @@ import * as log4js from 'log4js';
 import type {TuningConfig} from '../../config';
 import RpcError from '../../rpc/RpcError';
 import {BoundedMap} from '../boundedMap';
+import type {RateLimitPool} from './rateLimitPool';
 
 // AuditLogger eagerly loads tuning at import; require() lazily here so
 // callers that set env vars before importing rateLimit (tests) still win.
@@ -86,18 +87,20 @@ class TokenBucketLimiter {
 
 let general: TokenBucketLimiter | null = null;
 let expensive: TokenBucketLimiter | null = null;
+let billing: TokenBucketLimiter | null = null;
 // Per-org overlay — caps fleet-wide damage from a single noisy tenant.
 let orgGeneral: TokenBucketLimiter | null = null;
 let orgExpensive: TokenBucketLimiter | null = null;
+let orgBilling: TokenBucketLimiter | null = null;
 let expensiveMethods: ReadonlySet<string> | null = null;
 // Method → pool registry populated by Component constructors when they see
 // the @RateLimit decorator. Overrides the CSV when present.
-const declaredPool = new Map<string, 'general' | 'expensive'>();
+const declaredPool = new Map<string, RateLimitPool>();
 
 /** Called by Component#registerDecoratorMethods for each @RateLimit method. */
 export function registerRateLimitPool(
     method: string,
-    pool: 'general' | 'expensive'
+    pool: RateLimitPool
 ): void {
     declaredPool.set(method.toLowerCase(), pool);
 }
@@ -106,8 +109,10 @@ let sweepTimer: NodeJS.Timeout | null = null;
 interface InitResult {
     general: TokenBucketLimiter;
     expensive: TokenBucketLimiter;
+    billing: TokenBucketLimiter;
     orgGeneral: TokenBucketLimiter;
     orgExpensive: TokenBucketLimiter;
+    orgBilling: TokenBucketLimiter;
     expensiveMethods: ReadonlySet<string>;
 }
 
@@ -115,8 +120,10 @@ function init(): InitResult {
     if (
         !general ||
         !expensive ||
+        !billing ||
         !orgGeneral ||
         !orgExpensive ||
+        !orgBilling ||
         !expensiveMethods
     ) {
         const t = tuning().http;
@@ -128,6 +135,10 @@ function init(): InitResult {
             t.rateLimitExpensiveRpm,
             t.rateLimitExpensiveRpm / 60
         );
+        billing = new TokenBucketLimiter(
+            t.rateLimitBillingRpm,
+            t.rateLimitBillingRpm / 60
+        );
         orgGeneral = new TokenBucketLimiter(
             t.rateLimitOrgGeneralRpm,
             t.rateLimitOrgGeneralRpm / 60
@@ -135,6 +146,10 @@ function init(): InitResult {
         orgExpensive = new TokenBucketLimiter(
             t.rateLimitOrgExpensiveRpm,
             t.rateLimitOrgExpensiveRpm / 60
+        );
+        orgBilling = new TokenBucketLimiter(
+            t.rateLimitOrgBillingRpm,
+            t.rateLimitOrgBillingRpm / 60
         );
         // Lowercase: dispatch is case-insensitive, so the CSV must match
         // a lowercased method name (else expensive methods fall to general).
@@ -146,8 +161,10 @@ function init(): InitResult {
     return {
         general,
         expensive,
+        billing,
         orgGeneral,
         orgExpensive,
+        orgBilling,
         expensiveMethods
     };
 }
@@ -157,8 +174,10 @@ function ensureSweepTimer(): void {
     sweepTimer = setInterval(() => {
         general?.sweep();
         expensive?.sweep();
+        billing?.sweep();
         orgGeneral?.sweep();
         orgExpensive?.sweep();
+        orgBilling?.sweep();
         for (const limiter of httpRouteBuckets.values()) {
             limiter.sweep();
         }
@@ -199,11 +218,21 @@ export function enforceRateLimit(
     // once a method is decorated; CSV stays as the fallback for un-migrated
     // call sites.
     const declared = declaredPool.get(methodKey);
-    const expensive = declared
-        ? declared === 'expensive'
-        : limits.expensiveMethods.has(methodKey);
-    const userPool = expensive ? limits.expensive : limits.general;
-    const orgPool = expensive ? limits.orgExpensive : limits.orgGeneral;
+    const pool: RateLimitPool =
+        declared ??
+        (limits.expensiveMethods.has(methodKey) ? 'expensive' : 'general');
+    const userPool =
+        pool === 'billing'
+            ? limits.billing
+            : pool === 'expensive'
+              ? limits.expensive
+              : limits.general;
+    const orgPool =
+        pool === 'billing'
+            ? limits.orgBilling
+            : pool === 'expensive'
+              ? limits.orgExpensive
+              : limits.orgGeneral;
     const userBucketKey = `${userKey}:${methodKey}`;
     const orgBucketKey = organizationId
         ? `${organizationId}:${methodKey}`
@@ -256,8 +285,10 @@ export function __resetRateLimitForTests(): void {
     sweepTimer = null;
     general = null;
     expensive = null;
+    billing = null;
     orgGeneral = null;
     orgExpensive = null;
+    orgBilling = null;
     expensiveMethods = null;
     httpRouteBuckets.clear();
     clockMs = Date.now;

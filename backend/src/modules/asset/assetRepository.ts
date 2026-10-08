@@ -88,11 +88,15 @@ export async function createOrFindAsset(
     return rows[0];
 }
 
+type QueryRows = <T>(sql: string, params?: readonly unknown[]) => Promise<T[]>;
+
+// A caller inside a transaction passes the transaction's own query.
 export async function getAssetById(
     organizationId: string,
-    assetId: string
+    assetId: string,
+    queryRows: QueryRows = postgres.queryRows
 ): Promise<VisualAssetRow | null> {
-    const rows = await postgres.queryRows<VisualAssetRow>(
+    const rows = await queryRows<VisualAssetRow>(
         `SELECT * FROM device.visual_asset
           WHERE id = $1 AND organization_id = $2`,
         [assetId, organizationId]
@@ -105,10 +109,11 @@ export async function getAssetById(
 // "the asset must belong to the same org".
 export async function assertAssetBelongsToOrg(
     organizationId: string,
-    assetId: string | null | undefined
+    assetId: string | null | undefined,
+    queryRows: QueryRows = postgres.queryRows
 ): Promise<void> {
     if (!assetId) return;
-    const row = await getAssetById(organizationId, assetId);
+    const row = await getAssetById(organizationId, assetId, queryRows);
     if (!row) {
         throw RpcError.Domain('ResourceNotFound', {
             details: {resourceType: 'visual_asset', identifier: assetId}

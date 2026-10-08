@@ -1,5 +1,37 @@
+// The older names for the virtual-device surface, pointing at the one
+// implementation.
+//
+// This file used to be a second, hand-written copy of the core domain: nine
+// methods with two bodies each, one used by Fleet Manager and one by
+// templates, drifting apart with every fix. The behaviour now lives only in
+// core/domains/virtual-devices. `bindings` stays an object here because that
+// is what every caller expects; in core the same group is `binding`, singular,
+// matching the RPC.
+
+import {hostRpcAccess} from './api';
+import {createVirtualDeviceDomain} from './core/domains/virtual-devices';
+
+const domain = createVirtualDeviceDomain(hostRpcAccess);
+
+export const virtualDevices = {
+    get: domain.get,
+    list: domain.list,
+    create: domain.create,
+    update: domain.update,
+    delete: domain.delete,
+    extraction: domain.extraction,
+    draft: domain.draft,
+    command: domain.command,
+    history: domain.history,
+    manifest: domain.manifest,
+    profiles: domain.profile,
+    bindings: domain.binding,
+    createImageUploadTicket: domain.image.createUploadTicket
+};
+
+// Types stay here: they are the published names, derived from the
+// contract, and unrelated to which file owns the behaviour.
 import type {HostMethod, HostParams, HostResult} from './generated/contract';
-import {callMethod} from './typed';
 
 export type VirtualDeviceMethod = Extract<
     HostMethod,
@@ -34,149 +66,3 @@ export type HistoryMode =
     HostResult<'virtualdevice.binding.list'>['items'][number]['mode'];
 export type ProfileSuggestCandidate =
     HostResult<'virtualdevice.profile.suggestfromdevice'>['candidates'][number];
-
-function callVirtual<TMethod extends VirtualDeviceMethod>(
-    method: TMethod,
-    params: VirtualDeviceParams<TMethod>
-): Promise<VirtualDeviceResult<TMethod>> {
-    return callMethod(method, params);
-}
-
-export const virtualDevices = {
-    create(input: VirtualDeviceParams<'virtualdevice.create'>) {
-        return callVirtual('virtualdevice.create', input);
-    },
-    get(input: VirtualDeviceParams<'virtualdevice.get'>) {
-        return callVirtual('virtualdevice.get', input);
-    },
-    list(input: VirtualDeviceParams<'virtualdevice.list'> = {}) {
-        return callVirtual('virtualdevice.list', input);
-    },
-    update(input: VirtualDeviceParams<'virtualdevice.update'>) {
-        return callVirtual('virtualdevice.update', input);
-    },
-    delete(input: VirtualDeviceParams<'virtualdevice.delete'>) {
-        return callVirtual('virtualdevice.delete', input);
-    },
-    createImageUploadTicket(
-        input: VirtualDeviceParams<'virtualdevice.image.createuploadticket'>
-    ) {
-        return callVirtual('virtualdevice.image.createuploadticket', input);
-    },
-    extraction: {
-        preview(
-            input: VirtualDeviceParams<'virtualdevice.extraction.preview'>
-        ) {
-            return callVirtual('virtualdevice.extraction.preview', input);
-        },
-        create(input: VirtualDeviceParams<'virtualdevice.extraction.create'>) {
-            return callVirtual('virtualdevice.extraction.create', input);
-        },
-        replacementPreview(
-            input: VirtualDeviceParams<'virtualdevice.extraction.replacementpreview'>
-        ) {
-            return callVirtual(
-                'virtualdevice.extraction.replacementpreview',
-                input
-            );
-        }
-    },
-    profiles: {
-        list(input: VirtualDeviceParams<'virtualdevice.profile.list'> = {}) {
-            return callVirtual('virtualdevice.profile.list', input);
-        },
-        create(input: VirtualDeviceParams<'virtualdevice.profile.create'>) {
-            return callVirtual('virtualdevice.profile.create', input);
-        },
-        update(input: VirtualDeviceParams<'virtualdevice.profile.update'>) {
-            return callVirtual('virtualdevice.profile.update', input);
-        },
-        validate(input: VirtualDeviceParams<'virtualdevice.profile.validate'>) {
-            return callVirtual('virtualdevice.profile.validate', input);
-        },
-        matchSources(
-            input: VirtualDeviceParams<'virtualdevice.profile.matchsources'>
-        ) {
-            return callVirtual('virtualdevice.profile.matchsources', input);
-        },
-        suggestFromDevice(
-            input: VirtualDeviceParams<'virtualdevice.profile.suggestfromdevice'>
-        ) {
-            return callVirtual(
-                'virtualdevice.profile.suggestfromdevice',
-                input
-            );
-        }
-    },
-    bindings: {
-        list(input: VirtualDeviceParams<'virtualdevice.binding.list'>) {
-            return callVirtual('virtualdevice.binding.list', input);
-        },
-        listSources(
-            input: VirtualDeviceParams<'virtualdevice.binding.listsources'> = {}
-        ) {
-            return callVirtual('virtualdevice.binding.listsources', input);
-        },
-        validateDraft(
-            input: VirtualDeviceParams<'virtualdevice.binding.validatedraft'>
-        ) {
-            return callVirtual('virtualdevice.binding.validatedraft', input);
-        },
-        create(input: VirtualDeviceParams<'virtualdevice.binding.create'>) {
-            return callVirtual('virtualdevice.binding.create', input);
-        },
-        replace(input: VirtualDeviceParams<'virtualdevice.binding.replace'>) {
-            return callVirtual('virtualdevice.binding.replace', input);
-        },
-        retire(input: VirtualDeviceParams<'virtualdevice.binding.retire'>) {
-            return callVirtual('virtualdevice.binding.retire', input);
-        },
-        replacementReport(
-            input: VirtualDeviceParams<'virtualdevice.binding.replacementreport'>
-        ) {
-            return callVirtual(
-                'virtualdevice.binding.replacementreport',
-                input
-            );
-        }
-    },
-    draft: {
-        preview(input: VirtualDeviceParams<'virtualdevice.draft.preview'>) {
-            return callVirtual('virtualdevice.draft.preview', input);
-        }
-    },
-    command: {
-        invoke(input: VirtualDeviceParams<'virtualdevice.command.invoke'>) {
-            return callVirtual('virtualdevice.command.invoke', input);
-        }
-    },
-    history: {
-        readRole(input: VirtualDeviceParams<'virtualdevice.history.readrole'>) {
-            return callVirtual('virtualdevice.history.readrole', input);
-        },
-        readProvenance(
-            input: VirtualDeviceParams<'virtualdevice.history.readprovenance'>
-        ) {
-            return callVirtual('virtualdevice.history.readprovenance', input);
-        },
-        backfill(input: VirtualDeviceParams<'virtualdevice.history.backfill'>) {
-            return callVirtual('virtualdevice.history.backfill', input);
-        }
-    },
-    manifest: {
-        validate(
-            input: VirtualDeviceParams<'virtualdevice.manifest.validate'>
-        ) {
-            return callVirtual('virtualdevice.manifest.validate', input);
-        },
-        export(input: VirtualDeviceParams<'virtualdevice.manifest.export'>) {
-            return callVirtual('virtualdevice.manifest.export', input);
-        },
-        plan(input: VirtualDeviceParams<'virtualdevice.manifest.plan'>) {
-            return callVirtual('virtualdevice.manifest.plan', input);
-        },
-        apply(input: VirtualDeviceParams<'virtualdevice.manifest.apply'>) {
-            return callVirtual('virtualdevice.manifest.apply', input);
-        }
-    }
-};

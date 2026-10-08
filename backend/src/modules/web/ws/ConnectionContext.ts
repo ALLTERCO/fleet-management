@@ -4,6 +4,7 @@ import type {WebSocket} from 'ws';
 import {envInt} from '../../../config/envReader';
 import type CommandSender from '../../../model/CommandSender';
 import type {user_t} from '../../../types';
+import {mcpCredentialAllowsClientSocket} from '../../ai/mcpGovernance';
 import {type Disposable, DisposableBag} from '../../disposableBag';
 import * as EventDistributor from '../../EventDistributor';
 import {publishSession} from '../../redis/SessionSignals';
@@ -77,6 +78,7 @@ export class ConnectionContext {
     #lastRefreshedAt = Date.now();
     #refreshInFlight: Promise<CommandSender | null> | null = null;
     #tokenInvalidated = false;
+    #afterCloseHold: Promise<void> | undefined;
     readonly #recentEvents: ConnectionEvent[] = [];
 
     constructor(opts: ConnectionContextOptions) {
@@ -278,7 +280,13 @@ export class ConnectionContext {
         this.#refreshInFlight = (async () => {
             const fresh = await getUserFromToken(this.#token);
             this.#lastRefreshedAt = Date.now();
-            if (!fresh) {
+            // Treat a re-resolved MCP credential exactly like an invalidated
+            // token: a socket must not outlive the rule that refused it at
+            // the upgrade.
+            if (
+                !fresh ||
+                !mcpCredentialAllowsClientSocket(fresh.credentialAudience)
+            ) {
                 this.#lastUser = undefined;
                 this.#tokenInvalidated = true;
                 return null;
@@ -360,16 +368,23 @@ export class ConnectionContext {
         this.#bag.add(fn);
     }
 
+    /** False once auth was revoked; such a session must not be resumed. */
+    get isResumable(): boolean {
+        return !this.#tokenInvalidated;
+    }
+
+    /** Resume grace: keep the sender's listeners and tenant index (so auth
+     *  revocation still reaches it) until `until` settles. */
+    holdAfterClose(until: Promise<void>): void {
+        this.#afterCloseHold = until;
+    }
+
     async dispose(): Promise<void> {
         if (this.#abortController.signal.aborted) return;
         this.#abortController.abort();
         ConnectionContext.#registry.delete(this.socket);
         ConnectionContext.#byConnectionId.delete(this.connectionId);
-        this.#unindexTenant(this.#sender.getOrganizationId());
-        // Defense in depth: drop any EventDistributor listener that a
-        // component forgot to detach. Without this, a missed removeEventListener
-        // pair leaks the sender ref via sender_callbacks indefinitely.
-        EventDistributor.removeAllForSender(this.#sender);
+        this.#retireSenderAfterHold();
         // Broadcast disconnect to peer instances (multi-instance session sync).
         // Adapter handles disabled case.
         const userId = this.#sender.getUserId();
@@ -377,6 +392,21 @@ export class ConnectionContext {
             this.publishDisconnectBestEffort(userId);
         }
         await this.#bag.dispose();
+    }
+
+    #retireSenderAfterHold(): void {
+        const sender = this.#sender;
+        const retire = () => {
+            this.#unindexTenant(sender.getOrganizationId());
+            // Defense in depth: drop any EventDistributor listener that a
+            // component forgot to detach, so sender_callbacks can't leak it.
+            EventDistributor.removeAllForSender(sender);
+        };
+        if (!this.#afterCloseHold) {
+            retire();
+            return;
+        }
+        void this.#afterCloseHold.then(retire);
     }
 
     private async waitForRefreshInFlight(): Promise<void> {

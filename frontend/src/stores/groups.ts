@@ -11,9 +11,14 @@ import {toastRpcError} from '@/helpers/domainErrors';
 import {deviceMembers} from '@/helpers/groupMembers';
 import {type PagedEnvelope, paginate} from '@/helpers/pagination';
 import {subjectRefKey} from '@/helpers/subjectRefs';
+import {
+    type CursorPage,
+    paginateByCursor
+} from '@/shell/template-host/core/pagination';
 import {runOptimisticMutation} from '@/stores/optimisticMutation';
 import {createStaleGuard} from '@/stores/staleGuard';
 import * as ws from '../tools/websocket';
+import {GROUP_EVENT} from '../tools/wsEvents';
 import {useToastStore} from './toast';
 
 // ApiGroup + UI `devices` — populated via group.listDeviceMemberships.
@@ -23,7 +28,14 @@ export type StoreGroup = ApiGroup & {
 };
 
 type MembershipMutationMode = 'add' | 'remove';
+export interface GroupMembersEvent {
+    method: string;
+    params: Record<string, unknown>;
+}
 type ItemsResponse<T> = {items: T[]};
+export type FetchFailureOptions = {
+    failureMode?: 'notify' | 'throw';
+};
 
 // Match backend schema maxima.
 const MAX_GROUPS_PER_PAGE = 1000;
@@ -66,20 +78,16 @@ async function listMembershipsBulk(
     return byGroup;
 }
 
+// Cursor pages: offset paging stops at the server's offset cap.
 async function listAllMembersForGroup(id: number): Promise<GroupMemberRef[]> {
-    return paginate<GroupMemberRef>(
-        (offset) =>
-            ws.sendRPC<PagedEnvelope<GroupMemberRef>>(
-                'FLEET_MANAGER',
-                'group.listmembers',
-                {
-                    id,
-                    limit: MAX_MEMBERS_PER_PAGE,
-                    offset
-                }
-            ),
-        MAX_MEMBERS_PER_PAGE
+    const pass = await paginateByCursor((cursor) =>
+        ws.sendRPC<CursorPage<GroupMemberRef>>(
+            'FLEET_MANAGER',
+            'group.listmembers',
+            {id, limit: MAX_MEMBERS_PER_PAGE, ...(cursor ? {cursor} : {})}
+        )
     );
+    return pass.items;
 }
 
 function memberBatches(members: GroupMemberRef[]): GroupMemberRef[][] {
@@ -124,7 +132,9 @@ export const useGroupsStore = defineStore('groups', () => {
         groups.value = next;
     }
 
-    async function fetchGroups() {
+    async function fetchGroups(
+        options: FetchFailureOptions = {}
+    ): Promise<void> {
         try {
             await refreshScope(
                 {parentGroupId: null},
@@ -132,6 +142,7 @@ export const useGroupsStore = defineStore('groups', () => {
             );
         } catch (e) {
             console.error('[groups] fetchGroups failed', e);
+            if (options.failureMode === 'throw') throw e;
             // Use toastRpcError so 401/403 (initial-load WS race, token
             // renewal in flight) don't surface as a user-visible toast —
             // the auth state machine handles those. Pattern mirrors
@@ -186,6 +197,23 @@ export const useGroupsStore = defineStore('groups', () => {
             toastRpcError(toast, e, 'Failed to load group members');
             return groups.value[id]?.devices ?? [];
         }
+    }
+
+    // Member events carry the changed members: patch a loaded group, no read.
+    function applyMembersEvent(event: GroupMembersEvent): void {
+        const groupId = event.params.id;
+        if (typeof groupId !== 'number' || !groups.value[groupId]) return;
+        const members = event.params.members;
+        if (!Array.isArray(members)) {
+            void fetchMembers(groupId);
+            return;
+        }
+        applyDeviceMembership({
+            groupId,
+            members: members as GroupMemberRef[],
+            mode:
+                event.method === GROUP_EVENT.MEMBERS_REMOVED ? 'remove' : 'add'
+        });
     }
 
     async function addDevices(
@@ -420,6 +448,7 @@ export const useGroupsStore = defineStore('groups', () => {
         fetchChildren,
         fetchGroup,
         fetchMembers,
+        applyMembersEvent,
         createGroup,
         updateGroup,
         deleteGroup,

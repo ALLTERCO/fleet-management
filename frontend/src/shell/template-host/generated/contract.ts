@@ -100,7 +100,7 @@ export interface HostContract {
     /** Invoke an allowlisted PostgresProvider method. Super-admin recovery only. */
     'admin.postgrescall': {
         params: {name: string; args?: Record<string, unknown>; txId?: number};
-        result: Record<string, unknown>;
+        result: {rows: unknown};
     };
     /** Register saved devices not yet in memory. Picks up devices inserted out-of-band without an FM restart; leaves connected devices untouched. */
     'admin.reconciledevices': {
@@ -138,12 +138,17 @@ export interface HostContract {
                     | 'grafana_alert'
                     | 'heartbeat'
                     | 'energy_consumption_threshold'
+                    | 'cost_budget_threshold'
+                    | 'record_incomplete'
+                    | 'approaching_new_peak'
                     | 'rate_of_change'
                     | 'stuck_sensor'
                     | 'composite'
                     | 'anomaly_band'
                     | 'change_event'
-                    | 'device_event';
+                    | 'device_event'
+                    | 'credential_expiring'
+                    | 'system_health';
                 label: string;
                 defaultSeverity: 'info' | 'warning' | 'critical';
                 evaluationMode:
@@ -283,12 +288,17 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health';
             config?: Record<string, unknown>;
         };
         result: {shellyIDs: string[]};
@@ -313,12 +323,17 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health';
             query?: string;
             limit?: number;
             offset?: number;
@@ -343,12 +358,17 @@ export interface HostContract {
                     | 'grafana_alert'
                     | 'heartbeat'
                     | 'energy_consumption_threshold'
+                    | 'cost_budget_threshold'
+                    | 'record_incomplete'
+                    | 'approaching_new_peak'
                     | 'rate_of_change'
                     | 'stuck_sensor'
                     | 'composite'
                     | 'anomaly_band'
                     | 'change_event'
-                    | 'device_event';
+                    | 'device_event'
+                    | 'credential_expiring'
+                    | 'system_health';
                 enabled: boolean;
                 severity: 'info' | 'warning' | 'critical';
                 scope: {
@@ -364,10 +384,17 @@ export interface HostContract {
                 destinationChannelIds: number[];
                 deliveryMode: 'instant' | 'digest';
                 digestWindowMinutes: number | null;
+                activeWindow: {
+                    startTime: string;
+                    endTime: string;
+                    daysMask: number;
+                    timezone?: string | null;
+                } | null;
                 ownerUserId: string | null;
                 summaryTemplate: string | null;
                 messageTemplate: string | null;
                 autoResolve: boolean;
+                triggerOnce: boolean;
                 config: Record<string, unknown>;
                 groupBy: Array<
                     | 'organization_id'
@@ -410,12 +437,17 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health';
             enabled: boolean;
             severity: 'info' | 'warning' | 'critical';
             scope: {
@@ -431,10 +463,17 @@ export interface HostContract {
             destinationChannelIds: number[];
             deliveryMode: 'instant' | 'digest';
             digestWindowMinutes: number | null;
+            activeWindow: {
+                startTime: string;
+                endTime: string;
+                daysMask: number;
+                timezone?: string | null;
+            } | null;
             ownerUserId: string | null;
             summaryTemplate: string | null;
             messageTemplate: string | null;
             autoResolve: boolean;
+            triggerOnce: boolean;
             config: Record<string, unknown>;
             groupBy: Array<
                 | 'organization_id'
@@ -470,12 +509,17 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health';
             enabled?: boolean;
             severity: 'info' | 'warning' | 'critical';
             scope: {
@@ -491,10 +535,17 @@ export interface HostContract {
             destinationChannelIds?: number[];
             deliveryMode?: 'instant' | 'digest';
             digestWindowMinutes?: number | null;
+            activeWindow?: {
+                startTime: string;
+                endTime: string;
+                daysMask: number;
+                timezone?: string | null;
+            } | null;
             ownerUserId?: string | null;
             summaryTemplate?: string | null;
             messageTemplate?: string | null;
             autoResolve?: boolean;
+            triggerOnce?: boolean;
             config?: Record<string, unknown>;
             groupBy?: Array<
                 | 'organization_id'
@@ -525,12 +576,17 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health';
             enabled: boolean;
             severity: 'info' | 'warning' | 'critical';
             scope: {
@@ -546,10 +602,17 @@ export interface HostContract {
             destinationChannelIds: number[];
             deliveryMode: 'instant' | 'digest';
             digestWindowMinutes: number | null;
+            activeWindow: {
+                startTime: string;
+                endTime: string;
+                daysMask: number;
+                timezone?: string | null;
+            } | null;
             ownerUserId: string | null;
             summaryTemplate: string | null;
             messageTemplate: string | null;
             autoResolve: boolean;
+            triggerOnce: boolean;
             config: Record<string, unknown>;
             groupBy: Array<
                 | 'organization_id'
@@ -587,10 +650,17 @@ export interface HostContract {
                 destinationChannelIds?: number[];
                 deliveryMode?: 'instant' | 'digest';
                 digestWindowMinutes?: number | null;
+                activeWindow?: {
+                    startTime: string;
+                    endTime: string;
+                    daysMask: number;
+                    timezone?: string | null;
+                } | null;
                 ownerUserId?: string | null;
                 summaryTemplate?: string | null;
                 messageTemplate?: string | null;
                 autoResolve?: boolean;
+                triggerOnce?: boolean;
                 config?: Record<string, unknown>;
                 groupBy?: Array<
                     | 'organization_id'
@@ -622,12 +692,17 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health';
             enabled: boolean;
             severity: 'info' | 'warning' | 'critical';
             scope: {
@@ -643,10 +718,17 @@ export interface HostContract {
             destinationChannelIds: number[];
             deliveryMode: 'instant' | 'digest';
             digestWindowMinutes: number | null;
+            activeWindow: {
+                startTime: string;
+                endTime: string;
+                daysMask: number;
+                timezone?: string | null;
+            } | null;
             ownerUserId: string | null;
             summaryTemplate: string | null;
             messageTemplate: string | null;
             autoResolve: boolean;
+            triggerOnce: boolean;
             config: Record<string, unknown>;
             groupBy: Array<
                 | 'organization_id'
@@ -686,12 +768,17 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health';
             severity: 'info' | 'warning' | 'critical';
             scope: {
                 deviceIds?: string[];
@@ -733,12 +820,18 @@ export interface HostContract {
                     | 'grafana_alert'
                     | 'heartbeat'
                     | 'energy_consumption_threshold'
+                    | 'cost_budget_threshold'
+                    | 'record_incomplete'
+                    | 'approaching_new_peak'
                     | 'rate_of_change'
                     | 'stuck_sensor'
                     | 'composite'
                     | 'anomaly_band'
                     | 'change_event'
-                    | 'device_event';
+                    | 'device_event'
+                    | 'credential_expiring'
+                    | 'system_health'
+                    | null;
                 severity: 'info' | 'warning' | 'critical';
                 scope: {
                     deviceIds?: string[];
@@ -753,6 +846,14 @@ export interface HostContract {
                 summaryTemplate: string | null;
                 messageTemplate: string | null;
                 autoResolve: boolean;
+                activeWindow: {
+                    startTime: string;
+                    endTime: string;
+                    daysMask: number;
+                    timezone?: string | null;
+                } | null;
+                available: boolean;
+                unavailableReason: string | null;
                 authorUserId: string | null;
             }>;
         };
@@ -797,12 +898,17 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health';
             enabled: boolean;
             severity: 'info' | 'warning' | 'critical';
             scope: {
@@ -818,10 +924,17 @@ export interface HostContract {
             destinationChannelIds: number[];
             deliveryMode: 'instant' | 'digest';
             digestWindowMinutes: number | null;
+            activeWindow: {
+                startTime: string;
+                endTime: string;
+                daysMask: number;
+                timezone?: string | null;
+            } | null;
             ownerUserId: string | null;
             summaryTemplate: string | null;
             messageTemplate: string | null;
             autoResolve: boolean;
+            triggerOnce: boolean;
             config: Record<string, unknown>;
             groupBy: Array<
                 | 'organization_id'
@@ -860,12 +973,17 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health';
             severity: 'info' | 'warning' | 'critical';
             scope?: {
                 deviceIds?: string[];
@@ -880,6 +998,14 @@ export interface HostContract {
             summaryTemplate?: string | null;
             messageTemplate?: string | null;
             autoResolve?: boolean;
+            activeWindow?: {
+                startTime: string;
+                endTime: string;
+                daysMask: number;
+                timezone?: string | null;
+            } | null;
+            available?: boolean;
+            unavailableReason?: string | null;
         };
         result: {
             id: number;
@@ -903,12 +1029,18 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health'
+                | null;
             severity: 'info' | 'warning' | 'critical';
             scope: {
                 deviceIds?: string[];
@@ -923,6 +1055,14 @@ export interface HostContract {
             summaryTemplate: string | null;
             messageTemplate: string | null;
             autoResolve: boolean;
+            activeWindow: {
+                startTime: string;
+                endTime: string;
+                daysMask: number;
+                timezone?: string | null;
+            } | null;
+            available: boolean;
+            unavailableReason: string | null;
             authorUserId: string | null;
         };
     };
@@ -947,6 +1087,14 @@ export interface HostContract {
             summaryTemplate?: string | null;
             messageTemplate?: string | null;
             autoResolve?: boolean;
+            activeWindow?: {
+                startTime: string;
+                endTime: string;
+                daysMask: number;
+                timezone?: string | null;
+            } | null;
+            available?: boolean;
+            unavailableReason?: string | null;
         };
         result: {
             id: number;
@@ -970,12 +1118,18 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health'
+                | null;
             severity: 'info' | 'warning' | 'critical';
             scope: {
                 deviceIds?: string[];
@@ -990,6 +1144,14 @@ export interface HostContract {
             summaryTemplate: string | null;
             messageTemplate: string | null;
             autoResolve: boolean;
+            activeWindow: {
+                startTime: string;
+                endTime: string;
+                daysMask: number;
+                timezone?: string | null;
+            } | null;
+            available: boolean;
+            unavailableReason: string | null;
             authorUserId: string | null;
         };
     };
@@ -1019,8 +1181,11 @@ export interface HostContract {
                         | 'component'
                         | 'group'
                         | 'location'
-                        | 'tag';
+                        | 'tag'
+                        | 'external'
+                        | 'system';
                     subjectId: string;
+                    locationId?: number | null;
                 };
                 severity: 'info' | 'warning' | 'critical';
                 title: string;
@@ -1051,12 +1216,17 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health';
             severity?: 'info' | 'warning' | 'critical';
             scope?: {
                 deviceIds?: string[];
@@ -1078,8 +1248,11 @@ export interface HostContract {
                         | 'component'
                         | 'group'
                         | 'location'
-                        | 'tag';
+                        | 'tag'
+                        | 'external'
+                        | 'system';
                     subjectId: string;
+                    locationId?: number | null;
                 };
                 title: string;
                 message: string;
@@ -1094,7 +1267,7 @@ export interface HostContract {
             note: string | null;
         };
     };
-    /** List alert instances in the caller organization. */
+    /** List alert instances in the caller organization, newest change first. Page with `cursor`; `offset` stops at 10,000. */
     'alert.instance.list': {
         params: {
             organizationId?: string;
@@ -1108,16 +1281,38 @@ export interface HostContract {
                 | 'no_data'
                 | 'evaluation_error'
                 | 'resolved';
+            states?: Array<
+                | 'pending'
+                | 'active'
+                | 'acknowledged'
+                | 'recovering'
+                | 'cleared_unack'
+                | 'cleared_ack'
+                | 'no_data'
+                | 'evaluation_error'
+                | 'resolved'
+            >;
+            acknowledged?: boolean;
+            silenced?: boolean;
             severity?: 'info' | 'warning' | 'critical';
             ruleId?: number;
-            sourceType?: 'device' | 'component' | 'group' | 'location' | 'tag';
+            sourceType?:
+                | 'device'
+                | 'component'
+                | 'group'
+                | 'location'
+                | 'tag'
+                | 'external'
+                | 'system';
             sourceId?: string;
             locationIds?: number[];
             groupIds?: number[];
             tagIds?: number[];
             query?: string;
+            open?: boolean;
             limit?: number;
             offset?: number;
+            cursor?: string;
         };
         result: {
             items: Array<{
@@ -1139,12 +1334,17 @@ export interface HostContract {
                     | 'grafana_alert'
                     | 'heartbeat'
                     | 'energy_consumption_threshold'
+                    | 'cost_budget_threshold'
+                    | 'record_incomplete'
+                    | 'approaching_new_peak'
                     | 'rate_of_change'
                     | 'stuck_sensor'
                     | 'composite'
                     | 'anomaly_band'
                     | 'change_event'
-                    | 'device_event';
+                    | 'device_event'
+                    | 'credential_expiring'
+                    | 'system_health';
                 state:
                     | 'pending'
                     | 'active'
@@ -1163,8 +1363,11 @@ export interface HostContract {
                         | 'component'
                         | 'group'
                         | 'location'
-                        | 'tag';
+                        | 'tag'
+                        | 'external'
+                        | 'system';
                     subjectId: string;
+                    locationId?: number | null;
                 };
                 title: string;
                 message: string;
@@ -1178,18 +1381,27 @@ export interface HostContract {
                 } | null;
                 ackComment: string | null;
                 resolvedAt: string | null;
+                resolvedBy: {
+                    userId: string;
+                    displayName?: string | null;
+                } | null;
                 silencedUntil: string | null;
                 silenceReason: string | null;
+                silencedBy: {
+                    userId: string;
+                    displayName?: string | null;
+                } | null;
                 counts: {
                     notificationsCreated: number;
                     deliveryJobsCreated: number;
                 };
                 context: Record<string, unknown>;
             }>;
-            total: number;
+            total?: number;
             limit: number;
-            offset: number;
+            offset?: number;
             has_more: boolean;
+            next_cursor: string | null;
         };
     };
     /** Return one alert instance. */
@@ -1214,12 +1426,17 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health';
             state:
                 | 'pending'
                 | 'active'
@@ -1238,8 +1455,11 @@ export interface HostContract {
                     | 'component'
                     | 'group'
                     | 'location'
-                    | 'tag';
+                    | 'tag'
+                    | 'external'
+                    | 'system';
                 subjectId: string;
+                locationId?: number | null;
             };
             title: string;
             message: string;
@@ -1253,10 +1473,101 @@ export interface HostContract {
             } | null;
             ackComment: string | null;
             resolvedAt: string | null;
+            resolvedBy: {userId: string; displayName?: string | null} | null;
             silencedUntil: string | null;
             silenceReason: string | null;
+            silencedBy: {userId: string; displayName?: string | null} | null;
             counts: {notificationsCreated: number; deliveryJobsCreated: number};
             context: Record<string, unknown>;
+        };
+    };
+    /** Return up to 100 alert instances by id, each checked like Instance.Get. Ids not returned are listed in missingIds. */
+    'alert.instance.getmany': {
+        params: {organizationId?: string; ids: number[]};
+        result: {
+            items: Array<{
+                id: number;
+                organizationId: string;
+                ruleId: number;
+                ruleKind:
+                    | 'device_offline'
+                    | 'device_back_online'
+                    | 'battery_below'
+                    | 'smoke_alarm'
+                    | 'flood_alarm'
+                    | 'motion_detected'
+                    | 'component_threshold'
+                    | 'component_state'
+                    | 'firmware_operation_failed'
+                    | 'backup_operation_failed'
+                    | 'automation_run_failed'
+                    | 'grafana_alert'
+                    | 'heartbeat'
+                    | 'energy_consumption_threshold'
+                    | 'cost_budget_threshold'
+                    | 'record_incomplete'
+                    | 'approaching_new_peak'
+                    | 'rate_of_change'
+                    | 'stuck_sensor'
+                    | 'composite'
+                    | 'anomaly_band'
+                    | 'change_event'
+                    | 'device_event'
+                    | 'credential_expiring'
+                    | 'system_health';
+                state:
+                    | 'pending'
+                    | 'active'
+                    | 'acknowledged'
+                    | 'recovering'
+                    | 'cleared_unack'
+                    | 'cleared_ack'
+                    | 'no_data'
+                    | 'evaluation_error'
+                    | 'resolved';
+                severity: 'info' | 'warning' | 'critical';
+                source: {
+                    organizationId: string;
+                    subjectType:
+                        | 'device'
+                        | 'component'
+                        | 'group'
+                        | 'location'
+                        | 'tag'
+                        | 'external'
+                        | 'system';
+                    subjectId: string;
+                    locationId?: number | null;
+                };
+                title: string;
+                message: string;
+                fingerprint: string;
+                activeSince: string;
+                lastTriggeredAt: string;
+                acknowledgedAt: string | null;
+                acknowledgedBy: {
+                    userId: string;
+                    displayName?: string | null;
+                } | null;
+                ackComment: string | null;
+                resolvedAt: string | null;
+                resolvedBy: {
+                    userId: string;
+                    displayName?: string | null;
+                } | null;
+                silencedUntil: string | null;
+                silenceReason: string | null;
+                silencedBy: {
+                    userId: string;
+                    displayName?: string | null;
+                } | null;
+                counts: {
+                    notificationsCreated: number;
+                    deliveryJobsCreated: number;
+                };
+                context: Record<string, unknown>;
+            }>;
+            missingIds: number[];
         };
     };
     /** List state transitions for one alert instance. */
@@ -1315,12 +1626,17 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health';
             state:
                 | 'pending'
                 | 'active'
@@ -1339,8 +1655,11 @@ export interface HostContract {
                     | 'component'
                     | 'group'
                     | 'location'
-                    | 'tag';
+                    | 'tag'
+                    | 'external'
+                    | 'system';
                 subjectId: string;
+                locationId?: number | null;
             };
             title: string;
             message: string;
@@ -1354,8 +1673,10 @@ export interface HostContract {
             } | null;
             ackComment: string | null;
             resolvedAt: string | null;
+            resolvedBy: {userId: string; displayName?: string | null} | null;
             silencedUntil: string | null;
             silenceReason: string | null;
+            silencedBy: {userId: string; displayName?: string | null} | null;
             counts: {notificationsCreated: number; deliveryJobsCreated: number};
             context: Record<string, unknown>;
         };
@@ -1382,12 +1703,17 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health';
             state:
                 | 'pending'
                 | 'active'
@@ -1406,8 +1732,11 @@ export interface HostContract {
                     | 'component'
                     | 'group'
                     | 'location'
-                    | 'tag';
+                    | 'tag'
+                    | 'external'
+                    | 'system';
                 subjectId: string;
+                locationId?: number | null;
             };
             title: string;
             message: string;
@@ -1421,8 +1750,10 @@ export interface HostContract {
             } | null;
             ackComment: string | null;
             resolvedAt: string | null;
+            resolvedBy: {userId: string; displayName?: string | null} | null;
             silencedUntil: string | null;
             silenceReason: string | null;
+            silencedBy: {userId: string; displayName?: string | null} | null;
             counts: {notificationsCreated: number; deliveryJobsCreated: number};
             context: Record<string, unknown>;
         };
@@ -1454,12 +1785,17 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health';
             state:
                 | 'pending'
                 | 'active'
@@ -1478,8 +1814,11 @@ export interface HostContract {
                     | 'component'
                     | 'group'
                     | 'location'
-                    | 'tag';
+                    | 'tag'
+                    | 'external'
+                    | 'system';
                 subjectId: string;
+                locationId?: number | null;
             };
             title: string;
             message: string;
@@ -1493,8 +1832,10 @@ export interface HostContract {
             } | null;
             ackComment: string | null;
             resolvedAt: string | null;
+            resolvedBy: {userId: string; displayName?: string | null} | null;
             silencedUntil: string | null;
             silenceReason: string | null;
+            silencedBy: {userId: string; displayName?: string | null} | null;
             counts: {notificationsCreated: number; deliveryJobsCreated: number};
             context: Record<string, unknown>;
         };
@@ -1521,12 +1862,17 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health';
             state:
                 | 'pending'
                 | 'active'
@@ -1545,8 +1891,11 @@ export interface HostContract {
                     | 'component'
                     | 'group'
                     | 'location'
-                    | 'tag';
+                    | 'tag'
+                    | 'external'
+                    | 'system';
                 subjectId: string;
+                locationId?: number | null;
             };
             title: string;
             message: string;
@@ -1560,8 +1909,10 @@ export interface HostContract {
             } | null;
             ackComment: string | null;
             resolvedAt: string | null;
+            resolvedBy: {userId: string; displayName?: string | null} | null;
             silencedUntil: string | null;
             silenceReason: string | null;
+            silencedBy: {userId: string; displayName?: string | null} | null;
             counts: {notificationsCreated: number; deliveryJobsCreated: number};
             context: Record<string, unknown>;
         };
@@ -1588,12 +1939,17 @@ export interface HostContract {
                 | 'grafana_alert'
                 | 'heartbeat'
                 | 'energy_consumption_threshold'
+                | 'cost_budget_threshold'
+                | 'record_incomplete'
+                | 'approaching_new_peak'
                 | 'rate_of_change'
                 | 'stuck_sensor'
                 | 'composite'
                 | 'anomaly_band'
                 | 'change_event'
-                | 'device_event';
+                | 'device_event'
+                | 'credential_expiring'
+                | 'system_health';
             state:
                 | 'pending'
                 | 'active'
@@ -1612,8 +1968,11 @@ export interface HostContract {
                     | 'component'
                     | 'group'
                     | 'location'
-                    | 'tag';
+                    | 'tag'
+                    | 'external'
+                    | 'system';
                 subjectId: string;
+                locationId?: number | null;
             };
             title: string;
             message: string;
@@ -1627,8 +1986,10 @@ export interface HostContract {
             } | null;
             ackComment: string | null;
             resolvedAt: string | null;
+            resolvedBy: {userId: string; displayName?: string | null} | null;
             silencedUntil: string | null;
             silenceReason: string | null;
+            silencedBy: {userId: string; displayName?: string | null} | null;
             counts: {notificationsCreated: number; deliveryJobsCreated: number};
             context: Record<string, unknown>;
         };
@@ -1767,6 +2128,51 @@ export interface HostContract {
             errors?: unknown[];
         };
     };
+    /** Upload one bounded base64 image. The stored asset is sanitized and deduplicated by content hash. */
+    'asset.upload': {
+        params: {
+            organizationId?: string;
+            contentType:
+                | 'image/png'
+                | 'image/jpeg'
+                | 'image/jpg'
+                | 'image/webp'
+                | 'image/svg+xml';
+            data: string;
+            label?: string | null;
+            context?: string;
+        };
+        result: {
+            id: string;
+            url: string;
+            sha256: string;
+            contentType: string;
+            sizeBytes: number;
+            label: string | null;
+            uploadedBy: string | null;
+            context: string;
+            created: string;
+        };
+    };
+    /** Read a bounded base64 chunk of one organization-owned visual asset. Continue with nextOffset until eof is true. */
+    'asset.readchunk': {
+        params: {
+            organizationId?: string;
+            id: string;
+            offset?: number;
+            maxBytes?: number;
+        };
+        result: {
+            id: string;
+            contentType: string;
+            sha256: string;
+            totalSizeBytes: number;
+            offset: number;
+            nextOffset: number;
+            eof: boolean;
+            data: string;
+        };
+    };
     /** List the organization's visual assets. Used by the asset picker to show reusable images across all device decoration surfaces. */
     'asset.list': {
         params: {
@@ -1844,7 +2250,7 @@ export interface HostContract {
         params: Record<string, unknown>;
         result: Record<string, unknown>;
     };
-    /** Attach a persona to a user or group with scope. */
+    /** Attach a persona to a user or group with scope. A dashboard scope grants layout access only; it does not grant access to referenced fleet resources or telemetry. */
     'assignment.create': {
         params: {
             subjectType: 'user' | 'user_group';
@@ -1872,22 +2278,121 @@ export interface HostContract {
             comment?: string | null;
             expiresAt?: string | null;
         };
-        result: Record<string, unknown>;
+        result: {
+            id: string;
+            tenant_id: string;
+            subject_type: 'user' | 'user_group';
+            subject_id: string;
+            persona_id: string;
+            scope: {
+                all?: boolean;
+                device_ids?: string[];
+                location_ids?: number[];
+                device_group_ids?: number[];
+                device_tags?: string[];
+                dashboard_ids?: number[];
+                plugin_keys?: string[];
+                waiting_room_ids?: string[];
+                configuration_keys?: string[];
+                report_ids?: number[];
+                organization_ids?: string[];
+                alert_ids?: string[];
+                notification_ids?: string[];
+                integration_keys?: string[];
+                automation_ids?: string[];
+                actions?: string[];
+            };
+            created_at: string;
+            created_by: string;
+            last_used_at: string | null;
+            reason: string | null;
+            comment: string | null;
+            expires_at: string | null;
+        };
     };
     /** Remove an assignment. */
-    'assignment.delete': {
-        params: {id: string};
-        result: Record<string, unknown>;
-    };
+    'assignment.delete': {params: {id: string}; result: {success: boolean}};
     /** List assignments attached to a specific user or group. */
     'assignment.listforsubject': {
         params: {subjectType: 'user' | 'user_group'; subjectId: string};
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{
+                id: string;
+                tenant_id: string;
+                subject_type: 'user' | 'user_group';
+                subject_id: string;
+                persona_id: string;
+                scope: {
+                    all?: boolean;
+                    device_ids?: string[];
+                    location_ids?: number[];
+                    device_group_ids?: number[];
+                    device_tags?: string[];
+                    dashboard_ids?: number[];
+                    plugin_keys?: string[];
+                    waiting_room_ids?: string[];
+                    configuration_keys?: string[];
+                    report_ids?: number[];
+                    organization_ids?: string[];
+                    alert_ids?: string[];
+                    notification_ids?: string[];
+                    integration_keys?: string[];
+                    automation_ids?: string[];
+                    actions?: string[];
+                };
+                created_at: string;
+                created_by: string;
+                last_used_at: string | null;
+                reason: string | null;
+                comment: string | null;
+                expires_at: string | null;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
     /** List subjects that have a given persona attached. */
     'assignment.listforpersona': {
         params: {personaId: string};
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{
+                id: string;
+                tenant_id: string;
+                subject_type: 'user' | 'user_group';
+                subject_id: string;
+                persona_id: string;
+                scope: {
+                    all?: boolean;
+                    device_ids?: string[];
+                    location_ids?: number[];
+                    device_group_ids?: number[];
+                    device_tags?: string[];
+                    dashboard_ids?: number[];
+                    plugin_keys?: string[];
+                    waiting_room_ids?: string[];
+                    configuration_keys?: string[];
+                    report_ids?: number[];
+                    organization_ids?: string[];
+                    alert_ids?: string[];
+                    notification_ids?: string[];
+                    integration_keys?: string[];
+                    automation_ids?: string[];
+                    actions?: string[];
+                };
+                created_at: string;
+                created_by: string;
+                last_used_at: string | null;
+                reason: string | null;
+                comment: string | null;
+                expires_at: string | null;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
     /** List assignments whose scope references a specific resource. Backs the ShareDialog "Shared with" panel. */
     'assignment.listforresource': {
@@ -1910,14 +2415,86 @@ export interface HostContract {
                 | 'action';
             resourceId: string | number;
         };
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{
+                id: string;
+                tenant_id: string;
+                subject_type: 'user' | 'user_group';
+                subject_id: string;
+                persona_id: string;
+                scope: {
+                    all?: boolean;
+                    device_ids?: string[];
+                    location_ids?: number[];
+                    device_group_ids?: number[];
+                    device_tags?: string[];
+                    dashboard_ids?: number[];
+                    plugin_keys?: string[];
+                    waiting_room_ids?: string[];
+                    configuration_keys?: string[];
+                    report_ids?: number[];
+                    organization_ids?: string[];
+                    alert_ids?: string[];
+                    notification_ids?: string[];
+                    integration_keys?: string[];
+                    automation_ids?: string[];
+                    actions?: string[];
+                };
+                created_at: string;
+                created_by: string;
+                last_used_at: string | null;
+                reason: string | null;
+                comment: string | null;
+                expires_at: string | null;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
     /** List assignments unused for thresholdDays (defaults to FM_AUTHZ_UNUSED_THRESHOLD_DAYS). Used by the least-privilege recommender to suggest revokes. */
     'assignment.listunused': {
         params: {thresholdDays?: number};
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{
+                id: string;
+                tenant_id: string;
+                subject_type: 'user' | 'user_group';
+                subject_id: string;
+                persona_id: string;
+                scope: {
+                    all?: boolean;
+                    device_ids?: string[];
+                    location_ids?: number[];
+                    device_group_ids?: number[];
+                    device_tags?: string[];
+                    dashboard_ids?: number[];
+                    plugin_keys?: string[];
+                    waiting_room_ids?: string[];
+                    configuration_keys?: string[];
+                    report_ids?: number[];
+                    organization_ids?: string[];
+                    alert_ids?: string[];
+                    notification_ids?: string[];
+                    integration_keys?: string[];
+                    automation_ids?: string[];
+                    actions?: string[];
+                };
+                created_at: string;
+                created_by: string;
+                last_used_at: string | null;
+                reason: string | null;
+                comment: string | null;
+                expires_at: string | null;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
-    /** Search the audit log with optional time range, event-type, username, and shellyID filters. */
+    /** Search the audit log with optional time range, event-type, username, shellyID, agent key and MCP tool-call filters. */
     'audit.query': {
         params: {
             from?: string;
@@ -1931,12 +2508,15 @@ export interface HostContract {
                 | 'device_add'
                 | 'device_delete'
                 | 'device_reconnect_replace'
+                | 'baseline_exclusion_change'
                 | 'config_change'
                 | 'permission_change'
                 | 'mcp_tool_call'
             >;
             username?: string;
             shellyId?: string;
+            agentKeyId?: string;
+            correlationId?: string;
             limit?: number;
             offset?: number;
         };
@@ -1953,6 +2533,8 @@ export interface HostContract {
                 success?: boolean;
                 error_message?: string | null;
                 ip_address?: string | null;
+                agent_key_id?: string | null;
+                correlation_id?: string | null;
                 [key: string]: unknown;
             }>;
             total: number;
@@ -2037,13 +2619,415 @@ export interface HostContract {
             limit?: number;
             offset?: number;
         };
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{
+                id: string;
+                tenant_id: string | null;
+                actor_id: string;
+                action: string;
+                target_type: string;
+                target_id: string;
+                payload: Record<string, unknown> | null;
+                created_at: string;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
+    };
+    /** List the Node-RED automations: name, whether each is switched on, size, and whether it drives Fleet Manager devices. Says plainly when this install has no Node-RED, which is not the same as having no automations. */
+    'automation.list': {
+        params: {includeDisabled?: boolean; engine?: 'node_red'};
+        result: {
+            items: Array<{
+                id: string;
+                engine: 'node_red';
+                label: string;
+                disabled: boolean;
+                nodeCount: number;
+                usesFleetManager: boolean;
+                deviceIds: string[];
+            }>;
+            available: boolean;
+            note?: string;
+        };
+    };
+    /** Which automation engines this install has, and what each one can do. Ask here before Create rather than discovering by being refused: an engine can be absent entirely, or present but unable to edit an automation someone built by hand. */
+    'automation.listengines': {
+        params: Record<string, never>;
+        result: {
+            items: Array<{
+                engine: 'node_red';
+                label?: string;
+                available: boolean;
+                canCreate: boolean;
+                canEdit: boolean;
+                note?: string;
+            }>;
+        };
+    };
+    /** Read one automation as when/who/what. Returns editable:false for a flow built by hand in the editor, which Update cannot safely change. */
+    'automation.get': {
+        params: {flowId: string};
+        result: {
+            flowId: string;
+            engine: 'node_red';
+            label: string;
+            disabled: boolean;
+            editable: boolean;
+            recipe?: {
+                name: string;
+                when: {
+                    kind: 'cron' | 'everySeconds' | 'onEvents';
+                    cron?: string;
+                    seconds?: number;
+                    events?: string[];
+                };
+                who: {
+                    deviceIds?: string[];
+                    groupIds?: number[];
+                    locationIds?: number[];
+                    tagKeys?: string[];
+                    fleet?: boolean;
+                };
+                what: {method: string; params?: Record<string, unknown>};
+            };
+            nodeCount?: number;
+            usesFleetManager?: boolean;
+        };
+    };
+    /** Read the complete raw graph for one Node-RED tab. Use flowId "global" to read global configuration nodes and subflow definitions. Large MCP results can be truncated; use Graph.ReadPage for a bounded revision-consistent read. The returned revision is required by Graph.Update and Graph.Delete. */
+    'automation.graph.get': {
+        params: {flowId: string};
+        result: {
+            flowId: string;
+            revision: string;
+            complete: true;
+            graph: {
+                properties: Record<string, unknown>;
+                nodes: Array<{
+                    id: string;
+                    type: string;
+                    z?: string;
+                    [key: string]: unknown;
+                }>;
+                configs: Array<{
+                    id: string;
+                    type: string;
+                    z?: string;
+                    [key: string]: unknown;
+                }>;
+                subflows: Array<{
+                    id: string;
+                    properties: Record<string, unknown>;
+                    nodes: Array<{
+                        id: string;
+                        type: string;
+                        z?: string;
+                        [key: string]: unknown;
+                    }>;
+                    configs: Array<{
+                        id: string;
+                        type: string;
+                        z?: string;
+                        [key: string]: unknown;
+                    }>;
+                }>;
+            };
+        };
+    };
+    /** Read a bounded page of raw graph entries. Page zero returns the whole-graph revision; every later page requires that value as expectedRevision and rejects concurrent edits. Continue while offset + the number of items actually returned is less than total, or use the fm_read cursor when its envelope is truncated. Reassemble entries by kind before sending the complete graph to Graph.Update. */
+    'automation.graph.readpage': {
+        params: {
+            flowId: string;
+            offset?: number;
+            limit?: number;
+            expectedRevision?: string;
+        };
+        result: {
+            flowId: string;
+            revision: string;
+            offset: number;
+            total: number;
+            items: Array<{
+                kind:
+                    | 'properties'
+                    | 'node'
+                    | 'config'
+                    | 'subflow'
+                    | 'subflow_node'
+                    | 'subflow_config';
+                subflowId?: string;
+                value: Record<string, unknown>;
+            }>;
+        };
+    };
+    /** Check graph structure, identifiers, wiring, configuration references and installed node types. Node properties of every installed type, third-party included, are checked against the editor definitions the running Node-RED reports (required, number, pattern, typed JSON/number values, config references, output counts), plus Fleet rules for its own nodes. Coverage names the definition source, partially checked and unvalidated types and each property whose custom validator could not run. Fleet never evaluates editor JavaScript. */
+    'automation.graph.validate': {
+        params: {
+            flowId?: string;
+            graph: {
+                properties: Record<string, unknown>;
+                nodes: Array<{
+                    id: string;
+                    type: string;
+                    z?: string;
+                    [key: string]: unknown;
+                }>;
+                configs: Array<{
+                    id: string;
+                    type: string;
+                    z?: string;
+                    [key: string]: unknown;
+                }>;
+                subflows: Array<{
+                    id: string;
+                    properties: Record<string, unknown>;
+                    nodes: Array<{
+                        id: string;
+                        type: string;
+                        z?: string;
+                        [key: string]: unknown;
+                    }>;
+                    configs: Array<{
+                        id: string;
+                        type: string;
+                        z?: string;
+                        [key: string]: unknown;
+                    }>;
+                }>;
+            };
+        };
+        result: {
+            valid: boolean;
+            issues: Array<{code: string; path: string; message: string}>;
+            coverage?: {
+                version: 1;
+                definitionSource: 'installed-node-red' | 'unavailable';
+                validatedNodeTypes: string[];
+                partiallyValidatedNodeTypes: string[];
+                unvalidatedInstalledNodeTypes: string[];
+                uncheckedProperties: Array<{
+                    type: string;
+                    properties: string[];
+                }>;
+                evaluatesEditorJavaScript: false;
+            };
+        };
+    };
+    /** Create a complete Node-RED flow graph. Node and config ids must be unique. Set properties.disabled:true to create a draft that does not run. A concurrent deployment is rejected and is never retried silently. */
+    'automation.graph.create': {
+        params: {
+            graph: {
+                properties: Record<string, unknown>;
+                nodes: Array<{
+                    id: string;
+                    type: string;
+                    z?: string;
+                    [key: string]: unknown;
+                }>;
+                configs: Array<{
+                    id: string;
+                    type: string;
+                    z?: string;
+                    [key: string]: unknown;
+                }>;
+                subflows: Array<{
+                    id: string;
+                    properties: Record<string, unknown>;
+                    nodes: Array<{
+                        id: string;
+                        type: string;
+                        z?: string;
+                        [key: string]: unknown;
+                    }>;
+                    configs: Array<{
+                        id: string;
+                        type: string;
+                        z?: string;
+                        [key: string]: unknown;
+                    }>;
+                }>;
+            };
+        };
+        result: {flowId: string; revision: string; summary: string};
+    };
+    /** Replace one complete Node-RED flow graph while preserving every unrelated flow record. Requires complete:true and the revision returned by an untruncated Graph.Get or fully reassembled Graph.ReadPage sequence, and atomically rejects stale revisions. Redacted values keep their stored value. Use flowId "global" to update global config nodes and subflows. */
+    'automation.graph.update': {
+        params: {
+            flowId: string;
+            expectedRevision: string;
+            complete: true;
+            graph: {
+                properties: Record<string, unknown>;
+                nodes: Array<{
+                    id: string;
+                    type: string;
+                    z?: string;
+                    [key: string]: unknown;
+                }>;
+                configs: Array<{
+                    id: string;
+                    type: string;
+                    z?: string;
+                    [key: string]: unknown;
+                }>;
+                subflows: Array<{
+                    id: string;
+                    properties: Record<string, unknown>;
+                    nodes: Array<{
+                        id: string;
+                        type: string;
+                        z?: string;
+                        [key: string]: unknown;
+                    }>;
+                    configs: Array<{
+                        id: string;
+                        type: string;
+                        z?: string;
+                        [key: string]: unknown;
+                    }>;
+                }>;
+            };
+        };
+        result: {flowId: string; revision: string; summary: string};
+    };
+    /** Delete one Node-RED tab and its nodes. Requires the revision returned by Graph.Get and atomically rejects stale revisions. The global graph cannot be deleted. */
+    'automation.graph.delete': {
+        params: {flowId: string; expectedRevision: string};
+        result: {flowId: string; revision: string; summary: string};
+    };
+    /** Create an automation from a recipe: WHEN (cron, interval or events), WHO (devices, groups, locations, tags or the fleet), WHAT (a Fleet Manager method and its params). It starts running once deployed. */
+    'automation.create': {
+        params: {
+            name: string;
+            when: {
+                kind: 'cron' | 'everySeconds' | 'onEvents';
+                cron?: string;
+                seconds?: number;
+                events?: string[];
+            };
+            who: {
+                deviceIds?: string[];
+                groupIds?: number[];
+                locationIds?: number[];
+                tagKeys?: string[];
+                fleet?: boolean;
+            };
+            what: {method: string; params?: Record<string, unknown>};
+            engine?: 'node_red';
+        };
+        result: {flowId: string; summary: string};
+    };
+    /** Change an existing automation: rename it, retarget it, retime it, or change what it does. Omitted parts stay as they were. Refused when the automation is not a recipe, because rewriting a hand-built flow would discard it. */
+    'automation.update': {
+        params: {
+            flowId: string;
+            name?: string;
+            when?: {
+                kind: 'cron' | 'everySeconds' | 'onEvents';
+                cron?: string;
+                seconds?: number;
+                events?: string[];
+            };
+            who?: {
+                deviceIds?: string[];
+                groupIds?: number[];
+                locationIds?: number[];
+                tagKeys?: string[];
+                fleet?: boolean;
+            };
+            what?: {method: string; params?: Record<string, unknown>};
+        };
+        result: {flowId: string; summary: string};
+    };
+    /** Switch one automation on or off. Off stops it running and keeps it, so a misbehaving automation can be stopped without losing the work in it. */
+    'automation.setenabled': {
+        params: {flowId: string; enabled: boolean};
+        result: {flowId: string; summary: string};
+    };
+    /** Delete an automation and every node in it. Fleet Manager keeps no copy and cannot undo this. Prefer SetEnabled with enabled:false unless the automation is genuinely finished with. */
+    'automation.delete': {
+        params: {flowId: string};
+        result: {flowId: string; summary: string};
+    };
+    /** Called by the Fleet Manager Node-RED nodes, not by people: records that a node in a flow ran or failed. Kept in memory for the activity view; a restart starts empty. */
+    'automation.reportactivity': {
+        params: {
+            flowId: string;
+            nodeId: string;
+            nodeType: string;
+            kind: 'run' | 'error';
+            message?: string;
+        };
+        result: {recorded: boolean};
+    };
+    /** Last run time, run count and the 20 most recent errors for each Node-RED flow, or for one flow. Only flows whose nodes reported since the last restart appear. */
+    'automation.getactivity': {
+        params: {flowId?: string};
+        result: {
+            items: Array<{
+                flowId: string;
+                lastRunAt?: string;
+                runCount: number;
+                errorCount: number;
+                lastErrorAt?: string;
+                errors: Array<{
+                    at: string;
+                    nodeId: string;
+                    nodeType: string;
+                    message?: string;
+                }>;
+            }>;
+        };
+    };
+    /** Whether Node-RED is enabled and answering, which organization it belongs to, and how many flows it runs. The answer is cached for a few seconds. */
+    'automation.getstatus': {
+        params: Record<string, never>;
+        result: {
+            enabled: boolean;
+            reachable: boolean;
+            orgId?: string;
+            flowCount?: number;
+            checkedAt: string;
+        };
+    };
+    /** Return the automation namespace contract (methods, schemas, permissions, errors). */
+    'automation.describe': {
+        params: Record<string, unknown>;
+        result: {
+            namespace: string;
+            methods: Record<string, unknown>;
+            limits?: Record<string, unknown>;
+            tags?: string[];
+            errors?: unknown[];
+        };
     };
     /** List device backups, optionally filtered by shellyID. */
     'backup.list': {
         params: {shellyID?: string; limit?: number; offset?: number};
         result: {
-            items: Array<Record<string, unknown>>;
+            items: Array<{
+                id: string;
+                organizationId: string | null;
+                device: {id: number | null; external_id: string};
+                name: string;
+                shellyID: string;
+                deviceName: string;
+                model: string;
+                app: string;
+                fwVersion: string;
+                createdAt: number;
+                createdDateKey: string;
+                fileSize: number;
+                contents: Record<string, boolean>;
+                contentsSummary: string;
+                groupIds: number[];
+                groupNames: string[];
+                source: 'device' | 'imported';
+                metadata: Record<string, unknown>;
+            }>;
             total: number;
             limit: number;
             offset: number;
@@ -2051,7 +3035,29 @@ export interface HostContract {
         };
     };
     /** Fetch backup metadata by id. */
-    'backup.get': {params: {id: string}; result: Record<string, unknown>};
+    'backup.get': {
+        params: {id: string};
+        result: {
+            id: string;
+            organizationId: string | null;
+            device: {id: number | null; external_id: string};
+            name: string;
+            shellyID: string;
+            deviceName: string;
+            model: string;
+            app: string;
+            fwVersion: string;
+            createdAt: number;
+            createdDateKey: string;
+            fileSize: number;
+            contents: Record<string, boolean>;
+            contentsSummary: string;
+            groupIds: number[];
+            groupNames: string[];
+            source: 'device' | 'imported';
+            metadata: Record<string, unknown>;
+        } | null;
+    };
     /** Pull a fresh backup from a device and persist it. */
     'backup.downloadfromdevice': {
         params: {
@@ -2059,7 +3065,27 @@ export interface HostContract {
             name?: string;
             contents?: Record<string, boolean>;
         };
-        result: Record<string, unknown>;
+        result: {
+            id: string;
+            organizationId: string | null;
+            device: {id: number | null; external_id: string};
+            name: string;
+            shellyID: string;
+            deviceName: string;
+            model: string;
+            app: string;
+            fwVersion: string;
+            createdAt: number;
+            createdDateKey: string;
+            fileSize: number;
+            contents: Record<string, boolean>;
+            contentsSummary: string;
+            groupIds: number[];
+            groupNames: string[];
+            source: 'device' | 'imported';
+            metadata: Record<string, unknown>;
+            replacedBackupId?: string;
+        };
     };
     /** Queue a backend-owned backup creation job for one or more devices. */
     'backup.startdownloadjob': {
@@ -2074,10 +3100,30 @@ export interface HostContract {
     /** Rename a stored backup. */
     'backup.rename': {
         params: {id: string; name: string};
-        result: Record<string, unknown>;
+        result: {
+            id: string;
+            organizationId: string | null;
+            device: {id: number | null; external_id: string};
+            name: string;
+            shellyID: string;
+            deviceName: string;
+            model: string;
+            app: string;
+            fwVersion: string;
+            createdAt: number;
+            createdDateKey: string;
+            fileSize: number;
+            contents: Record<string, boolean>;
+            contentsSummary: string;
+            groupIds: number[];
+            groupNames: string[];
+            source: 'device' | 'imported';
+            metadata: Record<string, unknown>;
+            replacedBackupId?: string;
+        };
     };
     /** Delete a backup by id. */
-    'backup.delete': {params: {id: string}; result: Record<string, unknown>};
+    'backup.delete': {params: {id: string}; result: {success: boolean}};
     /** Restore a backup to a device. */
     'backup.restoretodevice': {
         params: {
@@ -2085,7 +3131,7 @@ export interface HostContract {
             shellyID: string;
             restore?: Record<string, boolean>;
         };
-        result: Record<string, unknown>;
+        result: {success: boolean};
     };
     /** Queue a backend-owned backup restore job for one device. */
     'backup.startrestorejob': {
@@ -2119,7 +3165,10 @@ export interface HostContract {
             periodStart: string;
             periodEnd: string;
             actualCost: number;
-            currency?: string;
+            currency: string;
+            utilityAccountId?: string;
+            meterIdentifier?: string;
+            servicePointIdentifier?: string;
         };
         result: {
             id: number;
@@ -2127,15 +3176,912 @@ export interface HostContract {
             periodEnd: string;
             actualCost: number;
             currency: string;
+            utilityAccountId: string | null;
+            meterIdentifier: string | null;
+            servicePointIdentifier: string | null;
         };
     };
     /** List recorded bills, optionally within a date range. */
     'bill.list': {
-        params: {from?: string; to?: string};
-        result: Record<string, unknown>;
+        params: {
+            from?: string;
+            to?: string;
+            limit?: number;
+            cursor?: {periodStart: string; id: number};
+            utilityAccountId?: string;
+            meterIdentifier?: string;
+            servicePointIdentifier?: string;
+        };
+        result: {
+            bills: Array<{
+                id: number;
+                periodStart: string;
+                periodEnd: string;
+                actualCost: number;
+                currency: string;
+                utilityAccountId: string | null;
+                meterIdentifier: string | null;
+                servicePointIdentifier: string | null;
+            }>;
+            nextCursor: {periodStart: string; id: number} | null;
+        };
+    };
+    /** Atomically import up to 500 recorded bills; duplicate identities in one batch are rejected and repeated stored identities update in place. */
+    'bill.import': {
+        params: {
+            bills: Array<{
+                periodStart: string;
+                periodEnd: string;
+                actualCost: number;
+                currency: string;
+                utilityAccountId?: string;
+                meterIdentifier?: string;
+                servicePointIdentifier?: string;
+            }>;
+        };
+        result: {
+            bills: Array<{
+                id: number;
+                periodStart: string;
+                periodEnd: string;
+                actualCost: number;
+                currency: string;
+                utilityAccountId: string | null;
+                meterIdentifier: string | null;
+                servicePointIdentifier: string | null;
+            }>;
+        };
     };
     /** Delete a recorded bill. */
-    'bill.delete': {params: {id: number}; result: Record<string, unknown>};
+    'bill.delete': {params: {id: number}; result: {deleted: boolean}};
+    /** Calculate an assignment-aware utility bill without caller-supplied rates. Full totals fail closed when fixed, demand, tax, conversion, currency, or coverage inputs are incomplete. A leading pre-enrollment gap returns partial dataCoverage plus coveredNetCost for priced measured usage only; a range with no recorded overlap still fails. Per-device rows and the optional seriesBucket series contain measured usage and export charges only; contract charges are never apportioned. avoidedImportCost returns a labelled self-consumption counterfactual that is never part of any billed total. */
+    'bill.quote': {
+        params: {
+            from: string;
+            to: string;
+            commodity: 'electricity' | 'water' | 'gas' | 'heat';
+            billedUnit?: 'kWh' | 'm3' | 'l' | 'therm' | 'MMBtu' | 'GJ';
+            scope?: {groupId?: number; locationId?: number; tagId?: number};
+            devices?: string[];
+            channels?: Array<{device: string; channel: number}>;
+            meterIds?: number[];
+            seriesBucket?:
+                | '15 minutes'
+                | '30 minutes'
+                | '1 hour'
+                | '6 hours'
+                | '12 hours'
+                | '1 day'
+                | '1 week'
+                | '1 month';
+            avoidedImportCost?: boolean;
+        };
+        result: {
+            status: 'priced' | 'partial' | 'unconfigured';
+            complete: boolean;
+            from: string;
+            to: string;
+            currency:
+                | 'AED'
+                | 'AFN'
+                | 'ALL'
+                | 'AMD'
+                | 'ANG'
+                | 'AOA'
+                | 'ARS'
+                | 'AUD'
+                | 'AWG'
+                | 'AZN'
+                | 'BAM'
+                | 'BBD'
+                | 'BDT'
+                | 'BGN'
+                | 'BHD'
+                | 'BIF'
+                | 'BMD'
+                | 'BND'
+                | 'BOB'
+                | 'BRL'
+                | 'BSD'
+                | 'BTN'
+                | 'BWP'
+                | 'BYN'
+                | 'BZD'
+                | 'CAD'
+                | 'CDF'
+                | 'CHF'
+                | 'CLP'
+                | 'CNY'
+                | 'COP'
+                | 'CRC'
+                | 'CUC'
+                | 'CUP'
+                | 'CVE'
+                | 'CZK'
+                | 'DJF'
+                | 'DKK'
+                | 'DOP'
+                | 'DZD'
+                | 'EGP'
+                | 'ERN'
+                | 'ETB'
+                | 'EUR'
+                | 'FJD'
+                | 'FKP'
+                | 'GBP'
+                | 'GEL'
+                | 'GHS'
+                | 'GIP'
+                | 'GMD'
+                | 'GNF'
+                | 'GTQ'
+                | 'GYD'
+                | 'HKD'
+                | 'HNL'
+                | 'HRK'
+                | 'HTG'
+                | 'HUF'
+                | 'IDR'
+                | 'ILS'
+                | 'INR'
+                | 'IQD'
+                | 'IRR'
+                | 'ISK'
+                | 'JMD'
+                | 'JOD'
+                | 'JPY'
+                | 'KES'
+                | 'KGS'
+                | 'KHR'
+                | 'KMF'
+                | 'KPW'
+                | 'KRW'
+                | 'KWD'
+                | 'KYD'
+                | 'KZT'
+                | 'LAK'
+                | 'LBP'
+                | 'LKR'
+                | 'LRD'
+                | 'LSL'
+                | 'LYD'
+                | 'MAD'
+                | 'MDL'
+                | 'MGA'
+                | 'MKD'
+                | 'MMK'
+                | 'MNT'
+                | 'MOP'
+                | 'MRU'
+                | 'MUR'
+                | 'MVR'
+                | 'MWK'
+                | 'MXN'
+                | 'MYR'
+                | 'MZN'
+                | 'NAD'
+                | 'NGN'
+                | 'NIO'
+                | 'NOK'
+                | 'NPR'
+                | 'NZD'
+                | 'OMR'
+                | 'PAB'
+                | 'PEN'
+                | 'PGK'
+                | 'PHP'
+                | 'PKR'
+                | 'PLN'
+                | 'PYG'
+                | 'QAR'
+                | 'RON'
+                | 'RSD'
+                | 'RUB'
+                | 'RWF'
+                | 'SAR'
+                | 'SBD'
+                | 'SCR'
+                | 'SDG'
+                | 'SEK'
+                | 'SGD'
+                | 'SHP'
+                | 'SLE'
+                | 'SLL'
+                | 'SOS'
+                | 'SRD'
+                | 'SSP'
+                | 'STN'
+                | 'SVC'
+                | 'SYP'
+                | 'SZL'
+                | 'THB'
+                | 'TJS'
+                | 'TMT'
+                | 'TND'
+                | 'TOP'
+                | 'TRY'
+                | 'TTD'
+                | 'TWD'
+                | 'TZS'
+                | 'UAH'
+                | 'UGX'
+                | 'USD'
+                | 'UYU'
+                | 'UZS'
+                | 'VES'
+                | 'VND'
+                | 'VUV'
+                | 'WST'
+                | 'XAF'
+                | 'XCD'
+                | 'XCG'
+                | 'XDR'
+                | 'XOF'
+                | 'XPF'
+                | 'XSU'
+                | 'YER'
+                | 'ZAR'
+                | 'ZMW'
+                | 'ZWG'
+                | 'ZWL'
+                | null;
+            billedUnit: string;
+            quantity: number;
+            pricedQuantity: number;
+            unpricedQuantity: number;
+            returnedQuantity: number;
+            usageCharge: number | null;
+            coveredUsageCharge: number;
+            coveredNetCost: number | null;
+            coveredNetCostBasis: 'priced_measured_usage_only';
+            dataCoverage: {
+                basis: 'recorded_quantity_interval';
+                status: 'complete' | 'partial';
+                requestedFrom: string;
+                requestedTo: string;
+                coveredFrom: string;
+                coveredTo: string;
+                fraction: number;
+            };
+            incompleteRanges: Array<{
+                device: string;
+                channel: number;
+                kind: 'missing_records' | 'counter_mismatch';
+                tag: string;
+                from: string;
+                to: string;
+                expectedWh: number | null;
+                storedWh: number | null;
+            }>;
+            standingCharge: number | null;
+            demandCharge: number | null;
+            demand: {
+                unit: 'kW' | 'kVA';
+                apparentPowerMethod: 'vectorial' | null;
+                intervalMinutes: 15 | 30;
+                chargePeriod: 'day' | 'month';
+                complete: boolean;
+                reason: string | null;
+                periods: Array<{
+                    periodKey: string;
+                    periodStart: string;
+                    periodEnd: string;
+                    billingDays: number;
+                    measuredPeak: number;
+                    billedPeak: number;
+                    peakAt: string | null;
+                    ratchetApplied: boolean;
+                    charge: number;
+                }>;
+            } | null;
+            bands: Array<{
+                band: 'peak' | 'shoulder' | 'off_peak';
+                quantity: number;
+                usageCharge: number;
+                averagePrice: number | null;
+            }> | null;
+            bandBasis: 'declared' | 'price_rank' | null;
+            components: Array<{
+                code: string;
+                name: string;
+                chargeClass: string;
+                amount: number;
+                taxable: boolean;
+            }>;
+            taxes: Array<{
+                code: string;
+                name: string;
+                ratePct: number;
+                calculation: 'exclusive' | 'inclusive';
+                exempt: boolean;
+                base: number;
+                amount: number;
+            }>;
+            exportCredit: number | null;
+            netCost: number | null;
+            tariffIds: number[];
+            exportTariffIds: number[];
+            appliedTariffs: Array<{
+                id: number;
+                name: string;
+                effectiveFrom: string | null;
+                effectiveTo: string | null;
+                sourceReference: string | null;
+                snapshotHash: string;
+            }>;
+            appliedExportTariffs: Array<{
+                id: number;
+                name: string;
+                effectiveFrom: string | null;
+                effectiveTo: string | null;
+                sourceReference: string | null;
+                snapshotHash: string;
+            }>;
+            tariffSnapshotHash: string | null;
+            assignmentSources: string[];
+            exportAssignmentSources: string[];
+            deviceBreakdownBasis: 'measured_usage_only';
+            deviceBreakdown: Array<{
+                device: string;
+                status: 'priced' | 'partial' | 'unconfigured';
+                currency:
+                    | 'AED'
+                    | 'AFN'
+                    | 'ALL'
+                    | 'AMD'
+                    | 'ANG'
+                    | 'AOA'
+                    | 'ARS'
+                    | 'AUD'
+                    | 'AWG'
+                    | 'AZN'
+                    | 'BAM'
+                    | 'BBD'
+                    | 'BDT'
+                    | 'BGN'
+                    | 'BHD'
+                    | 'BIF'
+                    | 'BMD'
+                    | 'BND'
+                    | 'BOB'
+                    | 'BRL'
+                    | 'BSD'
+                    | 'BTN'
+                    | 'BWP'
+                    | 'BYN'
+                    | 'BZD'
+                    | 'CAD'
+                    | 'CDF'
+                    | 'CHF'
+                    | 'CLP'
+                    | 'CNY'
+                    | 'COP'
+                    | 'CRC'
+                    | 'CUC'
+                    | 'CUP'
+                    | 'CVE'
+                    | 'CZK'
+                    | 'DJF'
+                    | 'DKK'
+                    | 'DOP'
+                    | 'DZD'
+                    | 'EGP'
+                    | 'ERN'
+                    | 'ETB'
+                    | 'EUR'
+                    | 'FJD'
+                    | 'FKP'
+                    | 'GBP'
+                    | 'GEL'
+                    | 'GHS'
+                    | 'GIP'
+                    | 'GMD'
+                    | 'GNF'
+                    | 'GTQ'
+                    | 'GYD'
+                    | 'HKD'
+                    | 'HNL'
+                    | 'HRK'
+                    | 'HTG'
+                    | 'HUF'
+                    | 'IDR'
+                    | 'ILS'
+                    | 'INR'
+                    | 'IQD'
+                    | 'IRR'
+                    | 'ISK'
+                    | 'JMD'
+                    | 'JOD'
+                    | 'JPY'
+                    | 'KES'
+                    | 'KGS'
+                    | 'KHR'
+                    | 'KMF'
+                    | 'KPW'
+                    | 'KRW'
+                    | 'KWD'
+                    | 'KYD'
+                    | 'KZT'
+                    | 'LAK'
+                    | 'LBP'
+                    | 'LKR'
+                    | 'LRD'
+                    | 'LSL'
+                    | 'LYD'
+                    | 'MAD'
+                    | 'MDL'
+                    | 'MGA'
+                    | 'MKD'
+                    | 'MMK'
+                    | 'MNT'
+                    | 'MOP'
+                    | 'MRU'
+                    | 'MUR'
+                    | 'MVR'
+                    | 'MWK'
+                    | 'MXN'
+                    | 'MYR'
+                    | 'MZN'
+                    | 'NAD'
+                    | 'NGN'
+                    | 'NIO'
+                    | 'NOK'
+                    | 'NPR'
+                    | 'NZD'
+                    | 'OMR'
+                    | 'PAB'
+                    | 'PEN'
+                    | 'PGK'
+                    | 'PHP'
+                    | 'PKR'
+                    | 'PLN'
+                    | 'PYG'
+                    | 'QAR'
+                    | 'RON'
+                    | 'RSD'
+                    | 'RUB'
+                    | 'RWF'
+                    | 'SAR'
+                    | 'SBD'
+                    | 'SCR'
+                    | 'SDG'
+                    | 'SEK'
+                    | 'SGD'
+                    | 'SHP'
+                    | 'SLE'
+                    | 'SLL'
+                    | 'SOS'
+                    | 'SRD'
+                    | 'SSP'
+                    | 'STN'
+                    | 'SVC'
+                    | 'SYP'
+                    | 'SZL'
+                    | 'THB'
+                    | 'TJS'
+                    | 'TMT'
+                    | 'TND'
+                    | 'TOP'
+                    | 'TRY'
+                    | 'TTD'
+                    | 'TWD'
+                    | 'TZS'
+                    | 'UAH'
+                    | 'UGX'
+                    | 'USD'
+                    | 'UYU'
+                    | 'UZS'
+                    | 'VES'
+                    | 'VND'
+                    | 'VUV'
+                    | 'WST'
+                    | 'XAF'
+                    | 'XCD'
+                    | 'XCG'
+                    | 'XDR'
+                    | 'XOF'
+                    | 'XPF'
+                    | 'XSU'
+                    | 'YER'
+                    | 'ZAR'
+                    | 'ZMW'
+                    | 'ZWG'
+                    | 'ZWL'
+                    | null;
+                billedUnit: string;
+                quantity: number;
+                pricedQuantity: number;
+                unpricedQuantity: number;
+                returnedQuantity: number;
+                usageCharge: number | null;
+                coveredUsageCharge: number;
+                exportCredit: number | null;
+                netUsageCharge: number | null;
+                estimatedQuantity: number;
+                tariffIds: number[];
+                exportTariffIds: number[];
+                assignmentSources: string[];
+                exportAssignmentSources: string[];
+                warnings: Array<{code: string; message: string}>;
+                missingConfigurationReasons: string[];
+            }>;
+            seriesBucket?:
+                | '15 minutes'
+                | '30 minutes'
+                | '1 hour'
+                | '6 hours'
+                | '12 hours'
+                | '1 day'
+                | '1 week'
+                | '1 month';
+            seriesBasis?: 'measured_usage_only';
+            series?: Array<{
+                bucketStart: string;
+                bucketEnd: string;
+                status: 'priced' | 'partial' | 'unconfigured';
+                currency:
+                    | 'AED'
+                    | 'AFN'
+                    | 'ALL'
+                    | 'AMD'
+                    | 'ANG'
+                    | 'AOA'
+                    | 'ARS'
+                    | 'AUD'
+                    | 'AWG'
+                    | 'AZN'
+                    | 'BAM'
+                    | 'BBD'
+                    | 'BDT'
+                    | 'BGN'
+                    | 'BHD'
+                    | 'BIF'
+                    | 'BMD'
+                    | 'BND'
+                    | 'BOB'
+                    | 'BRL'
+                    | 'BSD'
+                    | 'BTN'
+                    | 'BWP'
+                    | 'BYN'
+                    | 'BZD'
+                    | 'CAD'
+                    | 'CDF'
+                    | 'CHF'
+                    | 'CLP'
+                    | 'CNY'
+                    | 'COP'
+                    | 'CRC'
+                    | 'CUC'
+                    | 'CUP'
+                    | 'CVE'
+                    | 'CZK'
+                    | 'DJF'
+                    | 'DKK'
+                    | 'DOP'
+                    | 'DZD'
+                    | 'EGP'
+                    | 'ERN'
+                    | 'ETB'
+                    | 'EUR'
+                    | 'FJD'
+                    | 'FKP'
+                    | 'GBP'
+                    | 'GEL'
+                    | 'GHS'
+                    | 'GIP'
+                    | 'GMD'
+                    | 'GNF'
+                    | 'GTQ'
+                    | 'GYD'
+                    | 'HKD'
+                    | 'HNL'
+                    | 'HRK'
+                    | 'HTG'
+                    | 'HUF'
+                    | 'IDR'
+                    | 'ILS'
+                    | 'INR'
+                    | 'IQD'
+                    | 'IRR'
+                    | 'ISK'
+                    | 'JMD'
+                    | 'JOD'
+                    | 'JPY'
+                    | 'KES'
+                    | 'KGS'
+                    | 'KHR'
+                    | 'KMF'
+                    | 'KPW'
+                    | 'KRW'
+                    | 'KWD'
+                    | 'KYD'
+                    | 'KZT'
+                    | 'LAK'
+                    | 'LBP'
+                    | 'LKR'
+                    | 'LRD'
+                    | 'LSL'
+                    | 'LYD'
+                    | 'MAD'
+                    | 'MDL'
+                    | 'MGA'
+                    | 'MKD'
+                    | 'MMK'
+                    | 'MNT'
+                    | 'MOP'
+                    | 'MRU'
+                    | 'MUR'
+                    | 'MVR'
+                    | 'MWK'
+                    | 'MXN'
+                    | 'MYR'
+                    | 'MZN'
+                    | 'NAD'
+                    | 'NGN'
+                    | 'NIO'
+                    | 'NOK'
+                    | 'NPR'
+                    | 'NZD'
+                    | 'OMR'
+                    | 'PAB'
+                    | 'PEN'
+                    | 'PGK'
+                    | 'PHP'
+                    | 'PKR'
+                    | 'PLN'
+                    | 'PYG'
+                    | 'QAR'
+                    | 'RON'
+                    | 'RSD'
+                    | 'RUB'
+                    | 'RWF'
+                    | 'SAR'
+                    | 'SBD'
+                    | 'SCR'
+                    | 'SDG'
+                    | 'SEK'
+                    | 'SGD'
+                    | 'SHP'
+                    | 'SLE'
+                    | 'SLL'
+                    | 'SOS'
+                    | 'SRD'
+                    | 'SSP'
+                    | 'STN'
+                    | 'SVC'
+                    | 'SYP'
+                    | 'SZL'
+                    | 'THB'
+                    | 'TJS'
+                    | 'TMT'
+                    | 'TND'
+                    | 'TOP'
+                    | 'TRY'
+                    | 'TTD'
+                    | 'TWD'
+                    | 'TZS'
+                    | 'UAH'
+                    | 'UGX'
+                    | 'USD'
+                    | 'UYU'
+                    | 'UZS'
+                    | 'VES'
+                    | 'VND'
+                    | 'VUV'
+                    | 'WST'
+                    | 'XAF'
+                    | 'XCD'
+                    | 'XCG'
+                    | 'XDR'
+                    | 'XOF'
+                    | 'XPF'
+                    | 'XSU'
+                    | 'YER'
+                    | 'ZAR'
+                    | 'ZMW'
+                    | 'ZWG'
+                    | 'ZWL'
+                    | null;
+                billedUnit: string;
+                quantity: number;
+                pricedQuantity: number;
+                unpricedQuantity: number;
+                returnedQuantity: number;
+                usageCharge: number | null;
+                coveredUsageCharge: number;
+                exportCredit: number | null;
+                netUsageCharge: number | null;
+                estimatedQuantity: number;
+                tariffIds: number[];
+                exportTariffIds: number[];
+                assignmentSources: string[];
+                exportAssignmentSources: string[];
+                warnings: Array<{code: string; message: string}>;
+                missingConfigurationReasons: string[];
+            }>;
+            avoidedImportCost?: {
+                basis: 'counterfactual_estimate';
+                method: 'measured_generation_minus_export';
+                status: 'estimated' | 'unavailable';
+                currency:
+                    | 'AED'
+                    | 'AFN'
+                    | 'ALL'
+                    | 'AMD'
+                    | 'ANG'
+                    | 'AOA'
+                    | 'ARS'
+                    | 'AUD'
+                    | 'AWG'
+                    | 'AZN'
+                    | 'BAM'
+                    | 'BBD'
+                    | 'BDT'
+                    | 'BGN'
+                    | 'BHD'
+                    | 'BIF'
+                    | 'BMD'
+                    | 'BND'
+                    | 'BOB'
+                    | 'BRL'
+                    | 'BSD'
+                    | 'BTN'
+                    | 'BWP'
+                    | 'BYN'
+                    | 'BZD'
+                    | 'CAD'
+                    | 'CDF'
+                    | 'CHF'
+                    | 'CLP'
+                    | 'CNY'
+                    | 'COP'
+                    | 'CRC'
+                    | 'CUC'
+                    | 'CUP'
+                    | 'CVE'
+                    | 'CZK'
+                    | 'DJF'
+                    | 'DKK'
+                    | 'DOP'
+                    | 'DZD'
+                    | 'EGP'
+                    | 'ERN'
+                    | 'ETB'
+                    | 'EUR'
+                    | 'FJD'
+                    | 'FKP'
+                    | 'GBP'
+                    | 'GEL'
+                    | 'GHS'
+                    | 'GIP'
+                    | 'GMD'
+                    | 'GNF'
+                    | 'GTQ'
+                    | 'GYD'
+                    | 'HKD'
+                    | 'HNL'
+                    | 'HRK'
+                    | 'HTG'
+                    | 'HUF'
+                    | 'IDR'
+                    | 'ILS'
+                    | 'INR'
+                    | 'IQD'
+                    | 'IRR'
+                    | 'ISK'
+                    | 'JMD'
+                    | 'JOD'
+                    | 'JPY'
+                    | 'KES'
+                    | 'KGS'
+                    | 'KHR'
+                    | 'KMF'
+                    | 'KPW'
+                    | 'KRW'
+                    | 'KWD'
+                    | 'KYD'
+                    | 'KZT'
+                    | 'LAK'
+                    | 'LBP'
+                    | 'LKR'
+                    | 'LRD'
+                    | 'LSL'
+                    | 'LYD'
+                    | 'MAD'
+                    | 'MDL'
+                    | 'MGA'
+                    | 'MKD'
+                    | 'MMK'
+                    | 'MNT'
+                    | 'MOP'
+                    | 'MRU'
+                    | 'MUR'
+                    | 'MVR'
+                    | 'MWK'
+                    | 'MXN'
+                    | 'MYR'
+                    | 'MZN'
+                    | 'NAD'
+                    | 'NGN'
+                    | 'NIO'
+                    | 'NOK'
+                    | 'NPR'
+                    | 'NZD'
+                    | 'OMR'
+                    | 'PAB'
+                    | 'PEN'
+                    | 'PGK'
+                    | 'PHP'
+                    | 'PKR'
+                    | 'PLN'
+                    | 'PYG'
+                    | 'QAR'
+                    | 'RON'
+                    | 'RSD'
+                    | 'RUB'
+                    | 'RWF'
+                    | 'SAR'
+                    | 'SBD'
+                    | 'SCR'
+                    | 'SDG'
+                    | 'SEK'
+                    | 'SGD'
+                    | 'SHP'
+                    | 'SLE'
+                    | 'SLL'
+                    | 'SOS'
+                    | 'SRD'
+                    | 'SSP'
+                    | 'STN'
+                    | 'SVC'
+                    | 'SYP'
+                    | 'SZL'
+                    | 'THB'
+                    | 'TJS'
+                    | 'TMT'
+                    | 'TND'
+                    | 'TOP'
+                    | 'TRY'
+                    | 'TTD'
+                    | 'TWD'
+                    | 'TZS'
+                    | 'UAH'
+                    | 'UGX'
+                    | 'USD'
+                    | 'UYU'
+                    | 'UZS'
+                    | 'VES'
+                    | 'VND'
+                    | 'VUV'
+                    | 'WST'
+                    | 'XAF'
+                    | 'XCD'
+                    | 'XCG'
+                    | 'XDR'
+                    | 'XOF'
+                    | 'XPF'
+                    | 'XSU'
+                    | 'YER'
+                    | 'ZAR'
+                    | 'ZMW'
+                    | 'ZWG'
+                    | 'ZWL'
+                    | null;
+                billedUnit: string;
+                generationQuantity: number | null;
+                exportedQuantity: number | null;
+                selfConsumedQuantity: number | null;
+                avoidedCost: number | null;
+                tariffIds: number[];
+                warnings: Array<{code: string; message: string}>;
+                missingConfigurationReasons: string[];
+            };
+            gasConversions?: Array<Record<string, unknown>>;
+            warnings: Array<{code: string; message: string}>;
+            missingConfigurationReasons: string[];
+        };
+    };
     /** Return the bill namespace contract (methods, schemas, permissions, errors). */
     'bill.describe': {
         params: Record<string, unknown>;
@@ -2497,7 +4443,7 @@ export interface HostContract {
     /** Branding.GetMailTemplate — custom HTML scaffold Zitadel renders every transactional email into. Returns {template, isDefault}. */
     'branding.getmailtemplate': {
         params: {orgId: string};
-        result: Record<string, unknown>;
+        result: {template: string; isDefault: boolean};
     };
     /** Branding.SetMailTemplate — replace the org email HTML scaffold. Use Go-template placeholders (e.g. {{.Title}}, {{.URL}}). */
     'branding.setmailtemplate': {
@@ -2529,6 +4475,26 @@ export interface HostContract {
     'bthome.startdiscovery': {
         params: {shellyID: string; duration?: number};
         result: {success: true; duration: number};
+    };
+    /** List the BLU devices a gateway has heard, most recent first. Survives a page reload, unlike the live discovery event. */
+    'bthome.listdiscovered': {
+        params: {shellyID: string};
+        result: {
+            items: Array<{
+                shellyID: string;
+                mac: string;
+                type: string;
+                name: string;
+                productName?: string;
+                modelString?: string;
+                localName?: string;
+                modelId?: number;
+                isRemote: boolean;
+                rssi?: number;
+                ts?: number;
+                heardAtMs?: number;
+            }>;
+        };
     };
     /** Manually pair a BTHome device by MAC address. */
     'bthome.device.addmanual': {
@@ -2907,6 +4873,246 @@ export interface HostContract {
             errors?: unknown[];
         };
     };
+    'carbon.listemissionfactors': {
+        params: {limit?: number; beforeId?: number};
+        result: {
+            items: Array<{
+                id: number;
+                commodity: 'electricity' | 'water' | 'gas' | 'heat';
+                billedUnit: string;
+                region: string;
+                accountingBasis: 'location_based' | 'market_based' | 'direct';
+                emissionsScope: 'scope1' | 'scope2' | 'scope3';
+                factorKgPerUnit: number;
+                effectiveFrom: string;
+                effectiveTo?: string | null;
+                sourceReference: string;
+                revision: number;
+            }>;
+            nextBeforeId: number | null;
+        };
+    };
+    'carbon.addemissionfactor': {
+        params: {
+            id?: number;
+            commodity: 'electricity' | 'water' | 'gas' | 'heat';
+            billedUnit: string;
+            region: string;
+            accountingBasis: 'location_based' | 'market_based' | 'direct';
+            emissionsScope: 'scope1' | 'scope2' | 'scope3';
+            factorKgPerUnit: number;
+            effectiveFrom: string;
+            effectiveTo?: string | null;
+            sourceReference: string;
+            revision?: number;
+        };
+        result: {
+            factor: {
+                id: number;
+                commodity: 'electricity' | 'water' | 'gas' | 'heat';
+                billedUnit: string;
+                region: string;
+                accountingBasis: 'location_based' | 'market_based' | 'direct';
+                emissionsScope: 'scope1' | 'scope2' | 'scope3';
+                factorKgPerUnit: number;
+                effectiveFrom: string;
+                effectiveTo?: string | null;
+                sourceReference: string;
+                revision: number;
+            };
+        };
+    };
+    'carbon.listprices': {
+        params: {limit?: number; beforeId?: number};
+        result: {
+            items: Array<{
+                id: number;
+                name: string;
+                priceType: 'shadow' | 'fee' | 'implicit' | 'regulated';
+                appliesToScope: 'scope1' | 'scope2' | 'scope3' | 'all';
+                currency: string;
+                amountPerTonne: number;
+                effectiveFrom: string;
+                effectiveTo?: string | null;
+                sourceReference: string;
+                revision: number;
+            }>;
+            nextBeforeId: number | null;
+        };
+    };
+    'carbon.addprice': {
+        params: {
+            id?: number;
+            name: string;
+            priceType: 'shadow' | 'fee' | 'implicit' | 'regulated';
+            appliesToScope: 'scope1' | 'scope2' | 'scope3' | 'all';
+            currency: string;
+            amountPerTonne: number;
+            effectiveFrom: string;
+            effectiveTo?: string | null;
+            sourceReference: string;
+            revision?: number;
+        };
+        result: {
+            price: {
+                id: number;
+                name: string;
+                priceType: 'shadow' | 'fee' | 'implicit' | 'regulated';
+                appliesToScope: 'scope1' | 'scope2' | 'scope3' | 'all';
+                currency: string;
+                amountPerTonne: number;
+                effectiveFrom: string;
+                effectiveTo?: string | null;
+                sourceReference: string;
+                revision: number;
+            };
+        };
+    };
+    /** Resolve dashboard override > factor store > deployment default, compute physical impact, and optionally disclose one explicitly selected or unambiguous carbon valuation. */
+    'carbon.calculate': {
+        params: {
+            quantity: number;
+            commodity: 'electricity' | 'water' | 'gas' | 'heat';
+            billedUnit: string;
+            region: string;
+            accountingBasis: 'location_based' | 'market_based' | 'direct';
+            emissionsScope?: 'scope1' | 'scope2' | 'scope3';
+            from: string;
+            to: string;
+            dashboardId?: number;
+            includeCarbonPrice?: boolean;
+            carbonPriceType?: 'shadow' | 'fee' | 'implicit' | 'regulated';
+        };
+        result: {
+            quantity: number;
+            projectImpactKgCO2e: number;
+            scope2KgCO2e: number | null;
+            factor: {
+                id: number | null;
+                factorKgPerUnit: number;
+                source:
+                    | 'dashboard_override'
+                    | 'factor_store'
+                    | 'deployment_default';
+                sourceReference: string;
+                revision: number | null;
+                accountingBasis: 'location_based' | 'market_based' | 'direct';
+                emissionsScope: 'scope1' | 'scope2' | 'scope3';
+            };
+            carbonPriceStatus:
+                | 'not_requested'
+                | 'resolved'
+                | 'unavailable_or_ambiguous';
+            carbonValue: {
+                amount: number;
+                currency: string;
+                priceId: number;
+                priceType: 'shadow' | 'fee' | 'implicit' | 'regulated';
+                amountPerTonne: number;
+            } | null;
+        };
+    };
+    /** Calculate location-based Scope 2 electricity emissions from Fleet energy history. Fleet resolves scope, recorded-data coverage, location regions, factor coverage, aggregate totals, per-location totals, and interval series. Leading pre-enrollment history gaps return an explicit partial dataCoverage and never a complete aggregate. */
+    'carbon.calculatebreakdown': {
+        params: {
+            from: string;
+            to: string;
+            granularity: '15 minutes' | '1 hour' | '1 day' | '1 month';
+            scope?: {groupId?: number; locationId?: number; tagId?: number};
+            locationIds?: number[];
+            timezone?: string;
+            dashboardId?: number;
+        };
+        result: {
+            from: string;
+            to: string;
+            granularity: '15 minutes' | '1 hour' | '1 day' | '1 month';
+            status: 'complete' | 'partial' | 'unconfigured';
+            quantityKWh: number;
+            coveredQuantityKWh: number;
+            uncoveredQuantityKWh: number;
+            projectImpactKgCO2e: number | null;
+            coveredImpactKgCO2e: number;
+            scope2KgCO2e: number | null;
+            factorKeys: string[];
+            locationsAdditive: true;
+            factorCoverageStatus: 'complete' | 'partial' | 'unconfigured';
+            dataCoverage: {
+                basis: 'recorded_quantity_interval';
+                status: 'complete' | 'partial';
+                requestedFrom: string;
+                requestedTo: string;
+                coveredFrom: string;
+                coveredTo: string;
+                fraction: number;
+            };
+            warnings: Array<{code: 'partial_data_coverage'; message: string}>;
+            factors: Array<{
+                key: string;
+                id: number | null;
+                region: string;
+                factorKgPerUnit: number;
+                source:
+                    | 'dashboard_override'
+                    | 'factor_store'
+                    | 'deployment_default';
+                sourceReference: string;
+                revision: number | null;
+                effectiveFrom: string | null;
+                effectiveTo: string | null;
+                accountingBasis: 'location_based';
+                emissionsScope: 'scope2';
+            }>;
+            series: Array<{
+                bucketStart: string;
+                bucketEnd: string;
+                status: 'complete' | 'partial' | 'unconfigured';
+                quantityKWh: number;
+                coveredQuantityKWh: number;
+                uncoveredQuantityKWh: number;
+                projectImpactKgCO2e: number | null;
+                coveredImpactKgCO2e: number;
+                scope2KgCO2e: number | null;
+                factorKeys: string[];
+            }>;
+            locations: Array<{
+                locationId: number | null;
+                locationName: string;
+                region: string;
+                status: 'complete' | 'partial' | 'unconfigured';
+                quantityKWh: number;
+                coveredQuantityKWh: number;
+                uncoveredQuantityKWh: number;
+                projectImpactKgCO2e: number | null;
+                coveredImpactKgCO2e: number;
+                scope2KgCO2e: number | null;
+                factorKeys: string[];
+                series: Array<{
+                    bucketStart: string;
+                    bucketEnd: string;
+                    status: 'complete' | 'partial' | 'unconfigured';
+                    quantityKWh: number;
+                    coveredQuantityKWh: number;
+                    uncoveredQuantityKWh: number;
+                    projectImpactKgCO2e: number | null;
+                    coveredImpactKgCO2e: number;
+                    scope2KgCO2e: number | null;
+                    factorKeys: string[];
+                }>;
+            }>;
+        };
+    };
+    /** Return the carbon namespace contract (methods, schemas, permissions, errors). */
+    'carbon.describe': {
+        params: Record<string, unknown>;
+        result: {
+            namespace: string;
+            methods: Record<string, unknown>;
+            limits?: Record<string, unknown>;
+            tags?: string[];
+            errors?: unknown[];
+        };
+    };
     /** Circuit Breaker status — state, trip cause, last events. */
     'cb.getstatus': {
         params: {shellyID: string; id: number};
@@ -3019,7 +5225,57 @@ export interface HostContract {
             offset?: number;
         };
         result: {
-            items: Array<Record<string, unknown>>;
+            items: Array<{
+                id: string;
+                tenant_id: string;
+                name: string;
+                kind:
+                    | 'root_ca'
+                    | 'client_pair'
+                    | 'server_bundle'
+                    | 'device'
+                    | 'other';
+                fingerprint_sha256: string;
+                subject_cn: string | null;
+                issuer_cn: string | null;
+                sans: string[] | null;
+                key_algo: string | null;
+                chain_depth: number | null;
+                basic_constraints_ca: boolean | null;
+                not_before: string | null;
+                not_after: string | null;
+                slot_compat: Array<
+                    | 'root_ca'
+                    | 'client_cert'
+                    | 'client_key'
+                    | 'server_ca'
+                    | 'server_cert'
+                    | 'server_key'
+                > | null;
+                device_compatible: boolean;
+                incompat_reasons: string[] | null;
+                source: 'imported' | 'fm-issued';
+                created_at: string;
+                created_by: string | null;
+                last_used_at: string | null;
+                metadata: {
+                    signature_algorithm?: string | null;
+                    key_bits?: number | null;
+                    key_curve?: string | null;
+                    serial_number?: string;
+                    subject_o?: string | null;
+                    subject_ou?: string | null;
+                    issuer_o?: string | null;
+                    issuer_ou?: string | null;
+                    san_dns?: string[];
+                    san_ip?: string[];
+                    key_usage?: string[];
+                    extended_key_usage?: string[];
+                    chain_includes_root?: boolean;
+                };
+                tags: string[];
+                device_group_ids: number[];
+            }>;
             total: number;
             limit: number;
             offset: number;
@@ -3029,7 +5285,58 @@ export interface HostContract {
     /** Full metadata for one cert. PEM body included only when includePem=true (admin). */
     'certificate.get': {
         params: {id: string; includePem?: boolean};
-        result: Record<string, unknown>;
+        result: {
+            id: string;
+            tenant_id: string;
+            name: string;
+            kind:
+                | 'root_ca'
+                | 'client_pair'
+                | 'server_bundle'
+                | 'device'
+                | 'other';
+            fingerprint_sha256: string;
+            subject_cn: string | null;
+            issuer_cn: string | null;
+            sans: string[] | null;
+            key_algo: string | null;
+            chain_depth: number | null;
+            basic_constraints_ca: boolean | null;
+            not_before: string | null;
+            not_after: string | null;
+            slot_compat: Array<
+                | 'root_ca'
+                | 'client_cert'
+                | 'client_key'
+                | 'server_ca'
+                | 'server_cert'
+                | 'server_key'
+            > | null;
+            device_compatible: boolean;
+            incompat_reasons: string[] | null;
+            source: 'imported' | 'fm-issued';
+            created_at: string;
+            created_by: string | null;
+            last_used_at: string | null;
+            metadata: {
+                signature_algorithm?: string | null;
+                key_bits?: number | null;
+                key_curve?: string | null;
+                serial_number?: string;
+                subject_o?: string | null;
+                subject_ou?: string | null;
+                issuer_o?: string | null;
+                issuer_ou?: string | null;
+                san_dns?: string[];
+                san_ip?: string[];
+                key_usage?: string[];
+                extended_key_usage?: string[];
+                chain_includes_root?: boolean;
+            };
+            tags: string[];
+            device_group_ids: number[];
+            pem: string | null;
+        };
     };
     /** Import an unencrypted PEM cert (and optional unencrypted private key). Encrypted keys / PFX are rejected per Shelly TLS KB. */
     'certificate.import': {
@@ -3045,47 +5352,227 @@ export interface HostContract {
             privateKeyPem?: string;
             tags?: string[];
         };
-        result: Record<string, unknown>;
+        result: {
+            id: string;
+            tenant_id: string;
+            name: string;
+            kind:
+                | 'root_ca'
+                | 'client_pair'
+                | 'server_bundle'
+                | 'device'
+                | 'other';
+            fingerprint_sha256: string;
+            subject_cn: string | null;
+            issuer_cn: string | null;
+            sans: string[] | null;
+            key_algo: string | null;
+            chain_depth: number | null;
+            basic_constraints_ca: boolean | null;
+            not_before: string | null;
+            not_after: string | null;
+            slot_compat: Array<
+                | 'root_ca'
+                | 'client_cert'
+                | 'client_key'
+                | 'server_ca'
+                | 'server_cert'
+                | 'server_key'
+            > | null;
+            device_compatible: boolean;
+            incompat_reasons: string[] | null;
+            source: 'imported' | 'fm-issued';
+            created_at: string;
+            created_by: string | null;
+            last_used_at: string | null;
+            metadata: {
+                signature_algorithm?: string | null;
+                key_bits?: number | null;
+                key_curve?: string | null;
+                serial_number?: string;
+                subject_o?: string | null;
+                subject_ou?: string | null;
+                issuer_o?: string | null;
+                issuer_ou?: string | null;
+                san_dns?: string[];
+                san_ip?: string[];
+                key_usage?: string[];
+                extended_key_usage?: string[];
+                chain_includes_root?: boolean;
+            };
+            tags: string[];
+            was_existing: boolean;
+        };
     };
     /** Update mutable cert fields (name only). PEM is immutable after import. */
     'certificate.update': {
         params: {id: string; name?: string};
-        result: Record<string, unknown>;
+        result: {
+            id: string;
+            tenant_id: string;
+            name: string;
+            kind:
+                | 'root_ca'
+                | 'client_pair'
+                | 'server_bundle'
+                | 'device'
+                | 'other';
+            fingerprint_sha256: string;
+            subject_cn: string | null;
+            issuer_cn: string | null;
+            sans: string[] | null;
+            key_algo: string | null;
+            chain_depth: number | null;
+            basic_constraints_ca: boolean | null;
+            not_before: string | null;
+            not_after: string | null;
+            slot_compat: Array<
+                | 'root_ca'
+                | 'client_cert'
+                | 'client_key'
+                | 'server_ca'
+                | 'server_cert'
+                | 'server_key'
+            > | null;
+            device_compatible: boolean;
+            incompat_reasons: string[] | null;
+            source: 'imported' | 'fm-issued';
+            created_at: string;
+            created_by: string | null;
+            last_used_at: string | null;
+        };
     };
     /** Delete a cert. Refuses if currently pushed and not yet replaced. */
-    'certificate.delete': {
-        params: {id: string};
-        result: Record<string, unknown>;
-    };
+    'certificate.delete': {params: {id: string}; result: {success: boolean}};
     /** Replace the tag set on a cert. Free-form labels for filter/search. */
     'certificate.settags': {
         params: {id: string; tags: string[]};
-        result: Record<string, unknown>;
+        result: {id: string; tags: string[]};
     };
     /** Replace the device-group bindings (typed FK to organization.groups). */
     'certificate.setgroups': {
         params: {id: string; groupIds: number[]};
-        result: Record<string, unknown>;
+        result: {id: string; device_group_ids: number[]};
     };
     /** Export cert PEM (+ optional private key). Audited every call. */
     'certificate.export': {
         params: {id: string; includePrivateKey?: boolean};
-        result: Record<string, unknown>;
+        result: {id: string; name: string; pem: string; privateKeyPem?: string};
     };
     /** FM signs a leaf cert for a shellyID against the local Shelly Fleet Manager Root CA. */
     'certificate.issuedevicecert': {
         params: {shellyId: string; validityDays?: number; name?: string};
-        result: Record<string, unknown>;
+        result: {
+            id: string;
+            tenant_id: string;
+            name: string;
+            kind:
+                | 'root_ca'
+                | 'client_pair'
+                | 'server_bundle'
+                | 'device'
+                | 'other';
+            fingerprint_sha256: string;
+            subject_cn: string | null;
+            issuer_cn: string | null;
+            sans: string[] | null;
+            key_algo: string | null;
+            chain_depth: number | null;
+            basic_constraints_ca: boolean | null;
+            not_before: string | null;
+            not_after: string | null;
+            slot_compat: Array<
+                | 'root_ca'
+                | 'client_cert'
+                | 'client_key'
+                | 'server_ca'
+                | 'server_cert'
+                | 'server_key'
+            > | null;
+            device_compatible: boolean;
+            incompat_reasons: string[] | null;
+            source: 'imported' | 'fm-issued';
+            created_at: string;
+            created_by: string | null;
+            last_used_at: string | null;
+            metadata: {
+                signature_algorithm?: string | null;
+                key_bits?: number | null;
+                key_curve?: string | null;
+                serial_number?: string;
+                subject_o?: string | null;
+                subject_ou?: string | null;
+                issuer_o?: string | null;
+                issuer_ou?: string | null;
+                san_dns?: string[];
+                san_ip?: string[];
+                key_usage?: string[];
+                extended_key_usage?: string[];
+                chain_includes_root?: boolean;
+            };
+            tags: string[];
+            was_existing: boolean;
+        };
     };
     /** FM signs an operator-supplied CSR against the local Shelly Fleet Manager Root CA. Operator keeps the private key on the device that generated the CSR. */
     'certificate.signcsr': {
         params: {csrPem: string; validityDays?: number; name?: string};
-        result: Record<string, unknown>;
+        result: {
+            id: string;
+            tenant_id: string;
+            name: string;
+            kind:
+                | 'root_ca'
+                | 'client_pair'
+                | 'server_bundle'
+                | 'device'
+                | 'other';
+            fingerprint_sha256: string;
+            subject_cn: string | null;
+            issuer_cn: string | null;
+            sans: string[] | null;
+            key_algo: string | null;
+            chain_depth: number | null;
+            basic_constraints_ca: boolean | null;
+            not_before: string | null;
+            not_after: string | null;
+            slot_compat: Array<
+                | 'root_ca'
+                | 'client_cert'
+                | 'client_key'
+                | 'server_ca'
+                | 'server_cert'
+                | 'server_key'
+            > | null;
+            device_compatible: boolean;
+            incompat_reasons: string[] | null;
+            source: 'imported' | 'fm-issued';
+            created_at: string;
+            created_by: string | null;
+            last_used_at: string | null;
+            metadata: {
+                signature_algorithm?: string | null;
+                key_bits?: number | null;
+                key_curve?: string | null;
+                serial_number?: string;
+                subject_o?: string | null;
+                subject_ou?: string | null;
+                issuer_o?: string | null;
+                issuer_ou?: string | null;
+                san_dns?: string[];
+                san_ip?: string[];
+                key_usage?: string[];
+                extended_key_usage?: string[];
+                chain_includes_root?: boolean;
+            };
+            tags: string[];
+            was_existing: boolean;
+        };
     };
     /** Returns {defaultValidityDays, maxValidityDays} from FM env. Frontend reads these instead of mirroring FM_UI_CERT_* runtime config. */
     'certificate.getissuedefaults': {
         params: Record<string, never>;
-        result: Record<string, unknown>;
+        result: {defaultValidityDays: number; maxValidityDays: number};
     };
     /** Resolve the target and report which devices are compatible vs skipped (offline / firmware too old / unsupported key algo / slot incompat) plus warnings (clock skew, enhanced_security off). */
     'certificate.preflightpush': {
@@ -3104,7 +5591,11 @@ export interface HostContract {
                 tagKeys?: string[];
             };
         };
-        result: Record<string, unknown>;
+        result: {
+            compatible: string[];
+            skipped: Array<{shellyId: string; reason: string}>;
+            warnings: Array<{shellyId: string; kind: string}>;
+        };
     };
     /** Queue a push job that fans the cert out to the resolved target devices in the chosen slot. Returns {jobId, deviceCount}. */
     'certificate.pushtodevices': {
@@ -3123,12 +5614,58 @@ export interface HostContract {
                 tagKeys?: string[];
             };
         };
-        result: Record<string, unknown>;
+        result: {jobId: string; deviceCount: number};
     };
     /** Polling fallback for the WS push event stream. */
     'certificate.pushstatus': {
         params: {jobId: string};
-        result: Record<string, unknown>;
+        result: {
+            job: {
+                id: string;
+                tenant_id: string;
+                certificate_id: string;
+                slot:
+                    | 'root_ca'
+                    | 'client_cert'
+                    | 'client_key'
+                    | 'server_ca'
+                    | 'server_cert'
+                    | 'server_key';
+                target_summary: {
+                    deviceIds?: string[];
+                    groupIds?: number[];
+                    tagKeys?: string[];
+                };
+                status: 'queued' | 'running' | 'done' | 'failed';
+                started_at: string | null;
+                finished_at: string | null;
+                created_at: string;
+                created_by: string | null;
+            };
+            rows: Array<{
+                id: number;
+                job_id: string;
+                certificate_id: string;
+                device_id: string;
+                slot:
+                    | 'root_ca'
+                    | 'client_cert'
+                    | 'client_key'
+                    | 'server_ca'
+                    | 'server_cert'
+                    | 'server_key';
+                status:
+                    | 'queued'
+                    | 'in_progress'
+                    | 'applied'
+                    | 'failed'
+                    | 'rolled_back';
+                last_error: string | null;
+                applied_at: string | null;
+                requires_reboot: boolean;
+                retry_count: number;
+            }>;
+        };
     };
     /** List push history scoped by cert / device / job. */
     'certificate.listpushes': {
@@ -3139,7 +5676,35 @@ export interface HostContract {
             limit?: number;
             offset?: number;
         };
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{
+                id: number;
+                job_id: string;
+                certificate_id: string;
+                device_id: string;
+                slot:
+                    | 'root_ca'
+                    | 'client_cert'
+                    | 'client_key'
+                    | 'server_ca'
+                    | 'server_cert'
+                    | 'server_key';
+                status:
+                    | 'queued'
+                    | 'in_progress'
+                    | 'applied'
+                    | 'failed'
+                    | 'rolled_back';
+                last_error: string | null;
+                applied_at: string | null;
+                requires_reboot: boolean;
+                retry_count: number;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
     /** Return backend-driven channel provider descriptors and config schemas. */
     'channel.listproviders': {
@@ -3189,7 +5754,7 @@ export interface HostContract {
             }>;
         };
     };
-    /** List channels in the caller organization. */
+    /** List channels in the caller organization. A channel the caller holds a grant on comes in full; every other channel comes as a summary without config or secrets. */
     'channel.list': {
         params: {
             organizationId?: string;
@@ -3209,52 +5774,89 @@ export interface HostContract {
             offset?: number;
         };
         result: {
-            items: Array<{
-                id: number;
-                organizationId: string;
-                provider:
-                    | 'email_smtp'
-                    | 'generic_webhook'
-                    | 'slack_webhook'
-                    | 'teams_workflow_webhook'
-                    | 'telegram_bot'
-                    | 'push_fcm'
-                    | 'sms_twilio'
-                    | 'voice_twilio'
-                    | 'webhook_signed';
-                name: string;
-                enabled: boolean;
-                config: Record<string, unknown>;
-                secretState: {hasSecretFields: boolean};
-                lastTestAt: string | null;
-                lastTestStatus: 'success' | 'failed' | null;
-                lastDeliveryAt: string | null;
-                lastDeliveryStatus: 'success' | 'failed' | null;
-                health: {
-                    consecutiveFailures: number;
-                    lastSuccessAt: string | null;
-                    lastFailureAt: string | null;
-                    autoDisabledAt: string | null;
-                    disableReason: string | null;
-                };
-                quietHours: {
-                    startHour: number;
-                    endHour: number;
-                    timezone: string;
-                } | null;
-                createdAt: string;
-                updatedAt: string | null;
-            }>;
+            items: Array<
+                | {
+                      access: 'full';
+                      id: number;
+                      organizationId: string;
+                      provider:
+                          | 'email_smtp'
+                          | 'generic_webhook'
+                          | 'slack_webhook'
+                          | 'teams_workflow_webhook'
+                          | 'telegram_bot'
+                          | 'push_fcm'
+                          | 'sms_twilio'
+                          | 'voice_twilio'
+                          | 'webhook_signed';
+                      name: string;
+                      enabled: boolean;
+                      config: Record<string, unknown>;
+                      secretState: {
+                          hasSecretFields: boolean;
+                          maskedFields?: Record<string, string>;
+                      };
+                      lastTestAt: string | null;
+                      lastTestStatus: 'success' | 'failed' | null;
+                      lastDeliveryAt: string | null;
+                      lastDeliveryStatus: 'success' | 'failed' | null;
+                      health: {
+                          consecutiveFailures: number;
+                          lastSuccessAt: string | null;
+                          lastFailureAt: string | null;
+                          autoDisabledAt: string | null;
+                          disableReason: string | null;
+                      };
+                      quietHours: {
+                          startHour: number;
+                          endHour: number;
+                          timezone: string;
+                      } | null;
+                      createdAt: string;
+                      updatedAt: string | null;
+                  }
+                | {
+                      access: 'summary';
+                      id: number;
+                      organizationId: string;
+                      provider:
+                          | 'email_smtp'
+                          | 'generic_webhook'
+                          | 'slack_webhook'
+                          | 'teams_workflow_webhook'
+                          | 'telegram_bot'
+                          | 'push_fcm'
+                          | 'sms_twilio'
+                          | 'voice_twilio'
+                          | 'webhook_signed';
+                      name: string;
+                      enabled: boolean;
+                      lastTestAt: string | null;
+                      lastTestStatus: 'success' | 'failed' | null;
+                      lastDeliveryAt: string | null;
+                      lastDeliveryStatus: 'success' | 'failed' | null;
+                      health: {
+                          consecutiveFailures: number;
+                          lastSuccessAt: string | null;
+                          lastFailureAt: string | null;
+                          autoDisabledAt: string | null;
+                          disableReason: string | null;
+                      };
+                      createdAt: string;
+                      updatedAt: string | null;
+                  }
+            >;
             total: number;
             limit: number;
             offset: number;
             has_more: boolean;
         };
     };
-    /** Return one channel. */
+    /** Return one channel in full. Needs a grant on the channel. */
     'channel.get': {
         params: {organizationId?: string; id: number};
         result: {
+            access: 'full';
             id: number;
             organizationId: string;
             provider:
@@ -3270,7 +5872,10 @@ export interface HostContract {
             name: string;
             enabled: boolean;
             config: Record<string, unknown>;
-            secretState: {hasSecretFields: boolean};
+            secretState: {
+                hasSecretFields: boolean;
+                maskedFields?: Record<string, string>;
+            };
             lastTestAt: string | null;
             lastTestStatus: 'success' | 'failed' | null;
             lastDeliveryAt: string | null;
@@ -3315,6 +5920,7 @@ export interface HostContract {
             } | null;
         };
         result: {
+            access: 'full';
             id: number;
             organizationId: string;
             provider:
@@ -3330,7 +5936,10 @@ export interface HostContract {
             name: string;
             enabled: boolean;
             config: Record<string, unknown>;
-            secretState: {hasSecretFields: boolean};
+            secretState: {
+                hasSecretFields: boolean;
+                maskedFields?: Record<string, string>;
+            };
             lastTestAt: string | null;
             lastTestStatus: 'success' | 'failed' | null;
             lastDeliveryAt: string | null;
@@ -3368,6 +5977,7 @@ export interface HostContract {
             };
         };
         result: {
+            access: 'full';
             id: number;
             organizationId: string;
             provider:
@@ -3383,7 +5993,10 @@ export interface HostContract {
             name: string;
             enabled: boolean;
             config: Record<string, unknown>;
-            secretState: {hasSecretFields: boolean};
+            secretState: {
+                hasSecretFields: boolean;
+                maskedFields?: Record<string, string>;
+            };
             lastTestAt: string | null;
             lastTestStatus: 'success' | 'failed' | null;
             lastDeliveryAt: string | null;
@@ -3428,6 +6041,7 @@ export interface HostContract {
     'channel.resethealth': {
         params: {organizationId?: string; id: number; reEnable?: boolean};
         result: {
+            access: 'full';
             id: number;
             organizationId: string;
             provider:
@@ -3443,7 +6057,10 @@ export interface HostContract {
             name: string;
             enabled: boolean;
             config: Record<string, unknown>;
-            secretState: {hasSecretFields: boolean};
+            secretState: {
+                hasSecretFields: boolean;
+                maskedFields?: Record<string, string>;
+            };
             lastTestAt: string | null;
             lastTestStatus: 'success' | 'failed' | null;
             lastDeliveryAt: string | null;
@@ -3591,31 +6208,76 @@ export interface HostContract {
         params: Record<string, unknown>;
         result: Record<string, unknown>;
     };
-    /** List per-device credentials (no plaintext). Filters by device or last_rotation_status. */
+    /** List per-device credentials (no plaintext). Filters by device or last_rotation_status. Page with `cursor`; `offset` stops at 10,000. */
     'credential.list': {
         params: {
             deviceId?: string;
             status?: 'ok' | 'failed' | 'unknown';
             limit?: number;
             offset?: number;
+            cursor?: string;
         };
         result: {
-            items: Array<Record<string, unknown>>;
-            total: number;
+            items: Array<{
+                id: string;
+                tenant_id: string;
+                device_id: string;
+                username: string;
+                realm: string;
+                rotated_at: string;
+                rotated_by: string | null;
+                last_rotation_status: 'ok' | 'failed' | 'unknown';
+                last_rotation_error: string | null;
+            }>;
+            total?: number;
             limit: number;
-            offset: number;
+            offset?: number;
             has_more: boolean;
+            next_cursor: string | null;
         };
     };
     /** Single device credential metadata (no plaintext). */
     'credential.get': {
         params: {deviceId: string};
-        result: Record<string, unknown>;
+        result: {
+            id: string;
+            tenant_id: string;
+            device_id: string;
+            username: string;
+            realm: string;
+            rotated_at: string;
+            rotated_by: string | null;
+            last_rotation_status: 'ok' | 'failed' | 'unknown';
+            last_rotation_error: string | null;
+        };
+    };
+    /** Credential metadata for up to 500 devices in one call (no plaintext). Unknown or retired ids come back in missingIds. */
+    'credential.getmany': {
+        params: {deviceIds: string[]};
+        result: {
+            items: Array<{
+                id: string;
+                tenant_id: string;
+                device_id: string;
+                username: string;
+                realm: string;
+                rotated_at: string;
+                rotated_by: string | null;
+                last_rotation_status: 'ok' | 'failed' | 'unknown';
+                last_rotation_error: string | null;
+            }>;
+            missingIds: string[];
+        };
     };
     /** Admin-only plaintext reveal. Audited every call, rate-limited via FM_CREDENTIAL_REVEAL_PER_ADMIN_PER_DAY. */
     'credential.reveal': {
         params: {deviceId: string; justification?: string};
-        result: Record<string, unknown>;
+        result: {
+            deviceId: string;
+            username: string;
+            realm: string;
+            password: string;
+        };
     };
     /** Operator-initiated rotation. Generates a strong random password and pushes via Shelly.SetAuth. Failed devices excluded from bulk by default; pass includeFlagged=true to override. */
     'credential.rotate': {
@@ -3627,12 +6289,26 @@ export interface HostContract {
             };
             includeFlagged?: boolean;
         };
-        result: Record<string, unknown>;
+        result: {
+            jobId: string;
+            results: Array<{
+                deviceId: string;
+                password: string;
+                pushId: number;
+            }>;
+        };
     };
     /** Set a specific password on a single device. Plaintext returned once in response. */
     'credential.set': {
         params: {deviceId: string; password: string};
-        result: Record<string, unknown>;
+        result: {
+            jobId: string;
+            pushId: number;
+            deviceId: string;
+            username: string;
+            realm: string;
+            password: string;
+        };
     };
     /** Disable Web UI auth on the target devices via Shelly.SetAuth ha1=null. */
     'credential.clear': {
@@ -3643,27 +6319,69 @@ export interface HostContract {
                 tagKeys?: string[];
             };
         };
-        result: Record<string, unknown>;
+        result: {
+            jobId: string;
+            results: Array<{deviceId: string; pushId: number}>;
+        };
     };
     /** Retry a failed push using the stored new ha1. Recovers from transient device errors. */
     'credential.retry': {
         params: {pushId: number};
-        result: Record<string, unknown>;
+        result: {success: boolean; pushId: number};
     };
     /** Operator confirms a failed push left the device on its previous password — clears the flag without retrying. */
     'credential.confirmold': {
         params: {pushId: number};
-        result: Record<string, unknown>;
+        result: {success: boolean};
     };
     /** List devices whose last rotation failed (action surface). */
     'credential.listfailed': {
         params: {limit?: number; offset?: number};
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{
+                id: string;
+                tenant_id: string;
+                device_id: string;
+                username: string;
+                realm: string;
+                rotated_at: string;
+                rotated_by: string | null;
+                last_rotation_status: 'ok' | 'failed' | 'unknown';
+                last_rotation_error: string | null;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
     /** Polling fallback for credential push job state and per-device rows. */
     'credential.pushstatus': {
         params: {jobId: string};
-        result: Record<string, unknown>;
+        result: {
+            job: {
+                id: string;
+                tenant_id: string;
+                target_summary: Record<string, unknown>;
+                mode: 'rotate' | 'set' | 'clear';
+                status: 'queued' | 'running' | 'done' | 'failed';
+                started_at: string | null;
+                finished_at: string | null;
+                created_at: string;
+                created_by: string | null;
+            };
+            rows: Array<{
+                id: number;
+                job_id: string;
+                device_id: string;
+                status: 'queued' | 'in_progress' | 'ok' | 'failed' | 'unknown';
+                last_error: string | null;
+                applied_at: string | null;
+                picked_up_at: string | null;
+                retry_count: number;
+                requested_by: string | null;
+            }>;
+        };
     };
     /** List credential push history scoped by device / job / status. */
     'credential.listpushes': {
@@ -3674,7 +6392,23 @@ export interface HostContract {
             limit?: number;
             offset?: number;
         };
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{
+                id: number;
+                job_id: string;
+                device_id: string;
+                status: 'queued' | 'in_progress' | 'ok' | 'failed' | 'unknown';
+                last_error: string | null;
+                applied_at: string | null;
+                picked_up_at: string | null;
+                retry_count: number;
+                requested_by: string | null;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
     /** Cury.GetConfig. */
     'cury.getconfig': {
@@ -3812,6 +6546,7 @@ export interface HostContract {
             items: Array<{
                 id: number;
                 organizationId: string;
+                ownerUserId: string | null;
                 name: string;
                 dashboardType:
                     | 'classic'
@@ -3909,6 +6644,7 @@ export interface HostContract {
         result: {
             id: number;
             organizationId: string;
+            ownerUserId: string | null;
             name: string;
             dashboardType:
                 | 'classic'
@@ -4110,6 +6846,7 @@ export interface HostContract {
         result: {
             id: number;
             organizationId: string;
+            ownerUserId: string | null;
             name: string;
             dashboardType:
                 | 'classic'
@@ -4222,6 +6959,7 @@ export interface HostContract {
         result: {
             id: number;
             organizationId: string;
+            ownerUserId: string | null;
             name: string;
             dashboardType:
                 | 'classic'
@@ -4353,7 +7091,7 @@ export interface HostContract {
     /** Return the UI registry snapshot (widgets, menu items, available dashboard types). */
     'dashboard.getuiconfig': {
         params: Record<string, unknown>;
-        result: Record<string, unknown>;
+        result: Array<{name: string | null; icon_path: unknown}>;
     };
     /** List items on a dashboard (new structured shape). */
     'dashboard.item.list': {
@@ -4426,6 +7164,7 @@ export interface HostContract {
         result: {
             id: number;
             organizationId: string;
+            ownerUserId: string | null;
             name: string;
             dashboardType:
                 | 'classic'
@@ -4552,6 +7291,7 @@ export interface HostContract {
         result: {
             id: number;
             organizationId: string;
+            ownerUserId: string | null;
             name: string;
             dashboardType:
                 | 'classic'
@@ -4659,6 +7399,7 @@ export interface HostContract {
         result: {
             id: number;
             organizationId: string;
+            ownerUserId: string | null;
             name: string;
             dashboardType:
                 | 'classic'
@@ -4754,6 +7495,7 @@ export interface HostContract {
         result: {
             id: number;
             organizationId: string;
+            ownerUserId: string | null;
             name: string;
             dashboardType:
                 | 'classic'
@@ -4849,6 +7591,7 @@ export interface HostContract {
         result: {
             id: number;
             organizationId: string;
+            ownerUserId: string | null;
             name: string;
             dashboardType:
                 | 'classic'
@@ -4975,6 +7718,7 @@ export interface HostContract {
         result: {
             id: number;
             organizationId: string;
+            ownerUserId: string | null;
             name: string;
             dashboardType:
                 | 'classic'
@@ -5859,6 +8603,7 @@ export interface HostContract {
         result: {
             id: number;
             organizationId: string;
+            ownerUserId: string | null;
             name: string;
             dashboardType:
                 | 'classic'
@@ -5965,6 +8710,7 @@ export interface HostContract {
         result: {
             id: number;
             organizationId: string;
+            ownerUserId: string | null;
             name: string;
             dashboardType:
                 | 'classic'
@@ -6090,12 +8836,26 @@ export interface HostContract {
             errors?: unknown[];
         };
     };
-    /** Paginated slim device list (capability-filtered per user). */
+    /** Paginated slim device list (capability-filtered per user), ordered by device row id. Page with `cursor`; `shellyIDs` reads up to 100 named devices in one call. */
     'device.list': {
         params: {
-            filters?: Record<string, unknown>;
+            filters?: {
+                shellyID?: string;
+                id?: number;
+                source?: 'ws' | 'local' | 'offline' | 'virtual' | 'bluetooth';
+                presence?: 'online' | 'offline' | 'pending';
+                locationId?: number;
+                groupId?: number;
+                tagId?: number;
+                model?: string;
+                kind?: string;
+                battery?: boolean;
+                component?: string;
+            };
             limit?: number;
             offset?: number;
+            cursor?: string;
+            shellyIDs?: string[];
             include?: string[];
             [key: string]: unknown;
         };
@@ -6105,6 +8865,7 @@ export interface HostContract {
             limit?: number;
             offset?: number;
             has_more?: boolean;
+            next_cursor?: string | null;
         };
     };
     /** Device metadata only — no status/settings/memberships. */
@@ -6115,7 +8876,10 @@ export interface HostContract {
     /** Device configuration profiles. */
     'device.getsetup': {
         params: {shellyID?: string; mode?: 'json' | 'rpc'};
-        result: Record<string, unknown>;
+        result: Record<
+            string,
+            Record<string, Record<string, unknown> | string[]>
+        >;
     };
     /** Raw device RPC escape hatch for advanced/admin integrations. Prefer semantic Fleet Manager APIs for product flows. */
     'device.call': {
@@ -6126,8 +8890,65 @@ export interface HostContract {
         };
         result: Record<string, unknown>;
     };
+    /** Run one device RPC across several devices as a SINGLE action, so an operator approves one prompt naming every device rather than one prompt each. Permission is still checked per device; this batches the decision, never the checks. */
+    'device.callmany': {
+        params: {
+            shellyIDs: string[];
+            method: string;
+            params?: Record<string, unknown>;
+        };
+        result: {
+            method: string;
+            requested: number;
+            succeeded: number;
+            failed: number;
+            results: Array<
+                | {shellyID: string; ok: true; result: unknown}
+                | {shellyID: string; ok: false; error: string}
+            >;
+        };
+    };
     /** Full device object by shellyID. */
-    'device.get': {params: {shellyID: string}; result: Record<string, unknown>};
+    'device.get': {
+        params: {shellyID: string};
+        result: {
+            shellyID: string;
+            id: number;
+            source: 'ws' | 'local' | 'offline' | 'virtual' | 'bluetooth' | null;
+            info: Record<string, unknown>;
+            status: Record<string, unknown>;
+            settings: Record<string, unknown>;
+            presence: 'online' | 'offline' | 'pending';
+            entities: string[];
+            capabilities: {
+                backup?: boolean;
+                restore?: boolean;
+                firmwareUpdate?: boolean;
+                firmwareCheck?: boolean;
+                otaCommit?: boolean;
+                matter?: boolean;
+                tlsUserCA?: boolean;
+                tlsClientCert?: boolean;
+                xmod?: boolean;
+                ir?: boolean;
+                service?: boolean;
+                serviceResetCounters?: boolean;
+                virtualComponents?: boolean;
+                addons?: string[];
+                ui?: Record<string, unknown>;
+                [key: string]: unknown;
+            };
+            methods?: string[];
+            meta: Record<string, unknown>;
+            profile?: Record<string, unknown>;
+            lastSeenSleepingMs?: number;
+            groupIds: number[];
+            locationId: number | null;
+            tagIds: number[];
+            kind: string | null;
+            costCenter: string | null;
+        };
+    };
     /** Permanently purge a device and all its history. Irreversible — the everyday delete should use Retire. */
     'device.delete': {params: {shellyID: string}; result: {deleted: string}};
     /** Retire (soft-delete) a device: hide it from fleet lists but keep its id and history. Reversible via Restore. */
@@ -6226,6 +9047,71 @@ export interface HostContract {
                     [key: string]: unknown;
                 }>;
             }>;
+            bindingRequirements: Array<{
+                bindingId: string;
+                virtualDeviceListId: number;
+                roleKey: string;
+                componentKey: string;
+                componentType: string;
+                valueType: string | null;
+                unit: string | null;
+                series: 'status' | 'sensor_numeric' | 'sensor_event' | 'energy';
+                valuePath: string;
+                field: string;
+                sensorSource: string | null;
+                commodity: string | null;
+                electricalSource: string | null;
+                transform: Record<string, unknown>;
+                objectId: number | null;
+            }>;
+            missingBindings: Array<{
+                bindingId: string;
+                virtualDeviceListId: number;
+                roleKey: string;
+                componentKey: string;
+                componentType: string;
+                valueType: string | null;
+                unit: string | null;
+                series: 'status' | 'sensor_numeric' | 'sensor_event' | 'energy';
+                valuePath: string;
+                field: string;
+                sensorSource: string | null;
+                commodity: string | null;
+                electricalSource: string | null;
+                transform: Record<string, unknown>;
+                objectId: number | null;
+            }>;
+            bindingRemapCandidates: Array<{
+                required: {
+                    bindingId: string;
+                    virtualDeviceListId: number;
+                    roleKey: string;
+                    componentKey: string;
+                    componentType: string;
+                    valueType: string | null;
+                    unit: string | null;
+                    series:
+                        | 'status'
+                        | 'sensor_numeric'
+                        | 'sensor_event'
+                        | 'energy';
+                    valuePath: string;
+                    field: string;
+                    sensorSource: string | null;
+                    commodity: string | null;
+                    electricalSource: string | null;
+                    transform: Record<string, unknown>;
+                    objectId: number | null;
+                };
+                candidates: Array<{
+                    componentKey: string;
+                    componentType: string;
+                    valueType: string | null;
+                    unit: string | null;
+                    objectId: number | null;
+                    sourceSnapshot: Record<string, unknown>;
+                }>;
+            }>;
             warnings: string[];
         };
     };
@@ -6250,6 +9136,32 @@ export interface HostContract {
             shellyID: string;
             kind: string | null;
             costCenter?: string | null;
+        };
+    };
+    /** Journal every frame of one device for a set time (the event journal keeps only real events by default). At most 20 devices per tenant. */
+    'device.setjournaldebug': {
+        params: {shellyID: string; minutes: number};
+        result: {shellyID: string; until: string | null};
+    };
+    /** Capture the live em/em1 status values of one meter for FM_EM_LIVE_DEBUG_HOURS (default 4, at most 24), for debugging. The values go to a separate table that billing, reports and the energy rollup never read, and are deleted when the capture ends. Off by default. At most 20 devices per tenant. */
+    'device.setemlivedebug': {
+        params: {shellyID: string; enabled: boolean};
+        result: {shellyID: string; until: string | null};
+    };
+    /** Read the live em/em1 values captured by Device.SetEmLiveDebug, oldest first, one page at a time. Empty once the capture ended. */
+    'device.getemlivedebug': {
+        params: {shellyID: string; after?: number; limit?: number};
+        result: {
+            shellyID: string;
+            until: string | null;
+            frames: Array<{
+                id: number;
+                ts: string;
+                component: string;
+                field: string;
+                value: number;
+            }>;
+            hasMore: boolean;
         };
     };
     /** Set the device catalog kind. Pass kind=null to clear it. */
@@ -6293,7 +9205,20 @@ export interface HostContract {
     /** Device EM channel inventory. */
     'device.getdevicechannels': {
         params: {shellyID: string};
-        result: Record<string, unknown>;
+        result: {
+            emChannels: Array<{
+                channel: number;
+                act_power: number | null;
+                voltage: number | null;
+                current: number | null;
+            }>;
+            em1Channels: Array<{
+                channel: number;
+                act_power: number | null;
+                voltage: number | null;
+                current: number | null;
+            }>;
+        };
     };
     /** Device online/offline timeline over a time range. */
     'device.getstatustimeline': {
@@ -6749,7 +9674,7 @@ export interface HostContract {
                 prev?: unknown;
                 next?: unknown;
                 kind: 'state_change' | 'event' | 'config';
-                source?: 'device' | 'command' | 'unknown' | null;
+                source?: 'device' | 'command' | 'unknown' | 'reconnect' | null;
                 [key: string]: unknown;
             }>;
             total: number;
@@ -6796,7 +9721,12 @@ export interface HostContract {
     /** Which device auth methods this deployment accepts — the single source of truth for the UI. Certificate is always false for Shelly WS. */
     'deviceingress.authmethods': {
         params: Record<string, never>;
-        result: {token: boolean; approvedId: boolean; certificate: boolean};
+        result: {
+            token: boolean;
+            approvedId: boolean;
+            certificate: boolean;
+            keysChecked: boolean;
+        };
     };
     /** Create an org-scoped ingress identity. */
     'deviceingress.identity.create': {
@@ -6846,9 +9776,13 @@ export interface HostContract {
                 | 'disabled'
                 | 'quarantined'
                 | 'deleted';
-            expectedExternalId?: string | null;
-            lastSeenAt?: string | null;
-            [key: string]: unknown;
+            expectedExternalId: string | null;
+            scopeKind: 'device' | 'group' | 'location' | null;
+            scopeRef: string | null;
+            reportedExternalIds: string[];
+            lastSeenAt: string | null;
+            createdAt: string;
+            updatedAt: string;
         };
     };
     /** Get one org-scoped ingress identity. */
@@ -6879,9 +9813,13 @@ export interface HostContract {
                 | 'disabled'
                 | 'quarantined'
                 | 'deleted';
-            expectedExternalId?: string | null;
-            lastSeenAt?: string | null;
-            [key: string]: unknown;
+            expectedExternalId: string | null;
+            scopeKind: 'device' | 'group' | 'location' | null;
+            scopeRef: string | null;
+            reportedExternalIds: string[];
+            lastSeenAt: string | null;
+            createdAt: string;
+            updatedAt: string;
         };
     };
     /** Update operator-editable ingress identity metadata. */
@@ -6916,15 +9854,94 @@ export interface HostContract {
                 | 'disabled'
                 | 'quarantined'
                 | 'deleted';
-            expectedExternalId?: string | null;
-            lastSeenAt?: string | null;
-            [key: string]: unknown;
+            expectedExternalId: string | null;
+            scopeKind: 'device' | 'group' | 'location' | null;
+            scopeRef: string | null;
+            reportedExternalIds: string[];
+            lastSeenAt: string | null;
+            createdAt: string;
+            updatedAt: string;
+        };
+    };
+    /** Enable a pending or disabled ingress identity so its credentials can connect. Already active is a no-op; quarantined and deleted stay closed. */
+    'deviceingress.identity.enable': {
+        params: {id: string};
+        result: {
+            success: boolean;
+            identity: {
+                id: string;
+                organizationId: string;
+                subjectType:
+                    | 'device'
+                    | 'connector'
+                    | 'gateway'
+                    | 'represented_device';
+                subjectId: string;
+                displayName: string;
+                securityModel: 'certificate' | 'direct_token' | 'connector';
+                transport:
+                    | 'wss'
+                    | 'ws'
+                    | 'modbus_tcp'
+                    | 'ble'
+                    | 'cloud_api'
+                    | 'connector_internal';
+                riskLevel: 'strong' | 'compatible' | 'legacy';
+                status:
+                    | 'pending'
+                    | 'active'
+                    | 'disabled'
+                    | 'quarantined'
+                    | 'deleted';
+                expectedExternalId: string | null;
+                scopeKind: 'device' | 'group' | 'location' | null;
+                scopeRef: string | null;
+                reportedExternalIds: string[];
+                lastSeenAt: string | null;
+                createdAt: string;
+                updatedAt: string;
+            };
         };
     };
     /** Disable an ingress identity and close live connections. */
     'deviceingress.identity.disable': {
         params: {id: string};
-        result: Record<string, unknown>;
+        result: {
+            success: boolean;
+            identity: {
+                id: string;
+                organizationId: string;
+                subjectType:
+                    | 'device'
+                    | 'connector'
+                    | 'gateway'
+                    | 'represented_device';
+                subjectId: string;
+                displayName: string;
+                securityModel: 'certificate' | 'direct_token' | 'connector';
+                transport:
+                    | 'wss'
+                    | 'ws'
+                    | 'modbus_tcp'
+                    | 'ble'
+                    | 'cloud_api'
+                    | 'connector_internal';
+                riskLevel: 'strong' | 'compatible' | 'legacy';
+                status:
+                    | 'pending'
+                    | 'active'
+                    | 'disabled'
+                    | 'quarantined'
+                    | 'deleted';
+                expectedExternalId: string | null;
+                scopeKind: 'device' | 'group' | 'location' | null;
+                scopeRef: string | null;
+                reportedExternalIds: string[];
+                lastSeenAt: string | null;
+                createdAt: string;
+                updatedAt: string;
+            };
+        };
     };
     /** List org-scoped ingress identities. */
     'deviceingress.identity.list': {
@@ -6946,12 +9963,65 @@ export interface HostContract {
             limit?: number;
             offset?: number;
         };
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{
+                id: string;
+                organizationId: string;
+                subjectType:
+                    | 'device'
+                    | 'connector'
+                    | 'gateway'
+                    | 'represented_device';
+                subjectId: string;
+                displayName: string;
+                securityModel: 'certificate' | 'direct_token' | 'connector';
+                transport:
+                    | 'wss'
+                    | 'ws'
+                    | 'modbus_tcp'
+                    | 'ble'
+                    | 'cloud_api'
+                    | 'connector_internal';
+                riskLevel: 'strong' | 'compatible' | 'legacy';
+                status:
+                    | 'pending'
+                    | 'active'
+                    | 'disabled'
+                    | 'quarantined'
+                    | 'deleted';
+                expectedExternalId: string | null;
+                scopeKind: 'device' | 'group' | 'location' | null;
+                scopeRef: string | null;
+                reportedExternalIds: string[];
+                lastSeenAt: string | null;
+                createdAt: string;
+                updatedAt: string;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
     /** Create a direct-token credential and return the raw token once. */
     'deviceingress.credential.createtoken': {
         params: {identityId: string; validityDays?: number};
-        result: Record<string, unknown>;
+        result: {
+            id: string;
+            organizationId: string;
+            identityId: string;
+            credentialType: 'certificate' | 'token';
+            state: 'active' | 'pending' | 'expired' | 'revoked' | 'superseded';
+            tokenPrefix: string | null;
+            certificateId: string | null;
+            certificateFingerprint: string | null;
+            notBefore: string | null;
+            notAfter: string | null;
+            lastUsedAt: string | null;
+            createdAt: string;
+            updatedAt: string;
+            tokenOnce: string;
+        };
     };
     /** Create a pending replacement credential. */
     'deviceingress.credential.rotate': {
@@ -6961,22 +10031,134 @@ export interface HostContract {
             validityDays?: number;
             certificateId?: string;
         };
-        result: Record<string, unknown>;
+        result: {
+            id: string;
+            organizationId: string;
+            identityId: string;
+            credentialType: 'certificate' | 'token';
+            state: 'active' | 'pending' | 'expired' | 'revoked' | 'superseded';
+            tokenPrefix: string | null;
+            certificateId: string | null;
+            certificateFingerprint: string | null;
+            notBefore: string | null;
+            notAfter: string | null;
+            lastUsedAt: string | null;
+            createdAt: string;
+            updatedAt: string;
+            tokenOnce?: string;
+        };
     };
     /** Finalize a pending credential rotation. */
     'deviceingress.credential.finalizerotation': {
         params: {credentialId: string};
-        result: Record<string, unknown>;
+        result: {
+            success: boolean;
+            credential: {
+                id: string;
+                organizationId: string;
+                identityId: string;
+                credentialType: 'certificate' | 'token';
+                state:
+                    | 'active'
+                    | 'pending'
+                    | 'expired'
+                    | 'revoked'
+                    | 'superseded';
+                tokenPrefix: string | null;
+                certificateId: string | null;
+                certificateFingerprint: string | null;
+                notBefore: string | null;
+                notAfter: string | null;
+                lastUsedAt: string | null;
+                createdAt: string;
+                updatedAt: string;
+            };
+        };
     };
     /** Cancel a pending credential rotation. */
     'deviceingress.credential.cancelrotation': {
         params: {credentialId: string};
-        result: Record<string, unknown>;
+        result: {
+            success: boolean;
+            credential: {
+                id: string;
+                organizationId: string;
+                identityId: string;
+                credentialType: 'certificate' | 'token';
+                state:
+                    | 'active'
+                    | 'pending'
+                    | 'expired'
+                    | 'revoked'
+                    | 'superseded';
+                tokenPrefix: string | null;
+                certificateId: string | null;
+                certificateFingerprint: string | null;
+                notBefore: string | null;
+                notAfter: string | null;
+                lastUsedAt: string | null;
+                createdAt: string;
+                updatedAt: string;
+            };
+        };
     };
     /** Revoke a credential and close matching live sockets. */
     'deviceingress.credential.revoke': {
         params: {credentialId: string};
-        result: Record<string, unknown>;
+        result: {
+            success: boolean;
+            credential: {
+                id: string;
+                organizationId: string;
+                identityId: string;
+                credentialType: 'certificate' | 'token';
+                state:
+                    | 'active'
+                    | 'pending'
+                    | 'expired'
+                    | 'revoked'
+                    | 'superseded';
+                tokenPrefix: string | null;
+                certificateId: string | null;
+                certificateFingerprint: string | null;
+                notBefore: string | null;
+                notAfter: string | null;
+                lastUsedAt: string | null;
+                createdAt: string;
+                updatedAt: string;
+            };
+        };
+    };
+    /** List active credentials whose end date falls inside the next N days, soonest first. Default N comes from FM_DEVICE_INGRESS_CREDENTIAL_EXPIRY_WARN_DAYS. */
+    'deviceingress.credential.listexpiring': {
+        params: {days?: number; limit?: number; offset?: number};
+        result: {
+            items: Array<{
+                id: string;
+                organizationId: string;
+                identityId: string;
+                credentialType: 'certificate' | 'token';
+                state:
+                    | 'active'
+                    | 'pending'
+                    | 'expired'
+                    | 'revoked'
+                    | 'superseded';
+                tokenPrefix: string | null;
+                certificateId: string | null;
+                certificateFingerprint: string | null;
+                notBefore: string | null;
+                notAfter: string | null;
+                lastUsedAt: string | null;
+                createdAt: string;
+                updatedAt: string;
+                expectedExternalId: string | null;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
     /** Mint a device-agnostic, time-boxed enrollment token; returns the one-time link. */
     'deviceingress.enrollmenttoken.create': {
@@ -6989,17 +10171,38 @@ export interface HostContract {
                 | 'shelly-pro-em-wss-certificate'
                 | 'modbus-tcp-connector';
         };
-        result: Record<string, unknown>;
+        result: {url: string; tokenOnce: string; expiresAt: string};
     };
     /** List the org enrollment tokens. */
     'deviceingress.enrollmenttoken.list': {
         params: Record<string, never>;
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{
+                id: string;
+                organizationId: string;
+                tokenPrefix: string;
+                preferredProfileId:
+                    | 'wall-display-local-ws'
+                    | 'shelly-pro-em-wss-token'
+                    | 'shelly-pro-em-wss-certificate'
+                    | 'modbus-tcp-connector'
+                    | null;
+                state: 'active' | 'consumed' | 'revoked';
+                maxUses: number;
+                useCount: number;
+                notAfter: string;
+                createdBy: string | null;
+                createdAt: string;
+                updatedAt: string;
+                lastUsedAt: string | null;
+                revokedAt: string | null;
+            }>;
+        };
     };
     /** Revoke an active enrollment token before it is used. */
     'deviceingress.enrollmenttoken.revoke': {
         params: {id: string};
-        result: Record<string, unknown>;
+        result: {success: boolean};
     };
     /** List ingress connection history and live connection rows. */
     'deviceingress.connection.list': {
@@ -7009,17 +10212,71 @@ export interface HostContract {
             limit?: number;
             offset?: number;
         };
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{
+                id: string;
+                organizationId: string;
+                identityId: string | null;
+                credentialId: string | null;
+                reportedExternalId: string | null;
+                observedTransport: string;
+                result: 'accepted' | 'waiting_room' | 'rejected';
+                reasonCode: string | null;
+                remoteAddressHash: string | null;
+                safeDetail: Record<string, unknown>;
+                userAgent: string | null;
+                createdAt: string;
+                disconnectedAt: string | null;
+                disconnectReason: string | null;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
     /** Get one org-scoped ingress connection row. */
     'deviceingress.connection.get': {
         params: {id: string};
-        result: Record<string, unknown>;
+        result: {
+            id: string;
+            organizationId: string;
+            identityId: string | null;
+            credentialId: string | null;
+            reportedExternalId: string | null;
+            observedTransport: string;
+            result: 'accepted' | 'waiting_room' | 'rejected';
+            reasonCode: string | null;
+            remoteAddressHash: string | null;
+            safeDetail: Record<string, unknown>;
+            userAgent: string | null;
+            createdAt: string;
+            disconnectedAt: string | null;
+            disconnectReason: string | null;
+        };
     };
     /** Disconnect a live ingress connection and mark history. */
     'deviceingress.connection.disconnect': {
         params: {id: string; reason?: string};
-        result: Record<string, unknown>;
+        result: {
+            success: boolean;
+            connection: {
+                id: string;
+                organizationId: string;
+                identityId: string | null;
+                credentialId: string | null;
+                reportedExternalId: string | null;
+                observedTransport: string;
+                result: 'accepted' | 'waiting_room' | 'rejected';
+                reasonCode: string | null;
+                remoteAddressHash: string | null;
+                safeDetail: Record<string, unknown>;
+                userAgent: string | null;
+                createdAt: string;
+                disconnectedAt: string | null;
+                disconnectReason: string | null;
+            };
+        };
     };
     /** List rejected ingress attempts with fixable/blocked filters. */
     'deviceingress.rejection.list': {
@@ -7048,12 +10305,89 @@ export interface HostContract {
             limit?: number;
             offset?: number;
         };
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{
+                id: string;
+                organizationId: string;
+                identityId: string | null;
+                credentialId: string | null;
+                waitingRoomId: string | null;
+                reasonCode:
+                    | 'token_expired'
+                    | 'pending_token_not_finalized'
+                    | 'certificate_expired'
+                    | 'certificate_not_yet_valid'
+                    | 'wrong_transport'
+                    | 'legacy_ws_disabled'
+                    | 'connection_cap_reached'
+                    | 'rate_limit_exceeded'
+                    | 'identity_disabled'
+                    | 'device_not_bound'
+                    | 'token_revoked'
+                    | 'certificate_revoked'
+                    | 'certificate_cross_org'
+                    | 'device_id_mismatch'
+                    | 'blocked_ip'
+                    | 'operator_quarantine'
+                    | 'credential_replay_suspected'
+                    | 'unknown_security_model'
+                    | 'malformed_handshake';
+                severity: 'fixable' | 'blocked';
+                reportedExternalId: string | null;
+                observedTransport: string | null;
+                safeDetail: Record<string, unknown>;
+                createdAt: string;
+                resolvedAt: string | null;
+                resolvedBy: string | null;
+                resolutionNote: string | null;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
     /** Resolve a rejected ingress entry after operator action. */
     'deviceingress.rejection.resolve': {
         params: {id: string; note?: string};
-        result: Record<string, unknown>;
+        result: {
+            success: boolean;
+            rejection: {
+                id: string;
+                organizationId: string;
+                identityId: string | null;
+                credentialId: string | null;
+                waitingRoomId: string | null;
+                reasonCode:
+                    | 'token_expired'
+                    | 'pending_token_not_finalized'
+                    | 'certificate_expired'
+                    | 'certificate_not_yet_valid'
+                    | 'wrong_transport'
+                    | 'legacy_ws_disabled'
+                    | 'connection_cap_reached'
+                    | 'rate_limit_exceeded'
+                    | 'identity_disabled'
+                    | 'device_not_bound'
+                    | 'token_revoked'
+                    | 'certificate_revoked'
+                    | 'certificate_cross_org'
+                    | 'device_id_mismatch'
+                    | 'blocked_ip'
+                    | 'operator_quarantine'
+                    | 'credential_replay_suspected'
+                    | 'unknown_security_model'
+                    | 'malformed_handshake';
+                severity: 'fixable' | 'blocked';
+                reportedExternalId: string | null;
+                observedTransport: string | null;
+                safeDetail: Record<string, unknown>;
+                createdAt: string;
+                resolvedAt: string | null;
+                resolvedBy: string | null;
+                resolutionNote: string | null;
+            };
+        };
     };
     /** Create a mobile/local provisioning plan. Certificate setup also requires certificate management permission. */
     'deviceingress.setup.plan': {
@@ -7100,26 +10434,34 @@ export interface HostContract {
                     | 'disabled'
                     | 'quarantined'
                     | 'deleted';
-                expectedExternalId?: string | null;
-                lastSeenAt?: string | null;
-                [key: string]: unknown;
+                expectedExternalId: string | null;
+                scopeKind: 'device' | 'group' | 'location' | null;
+                scopeRef: string | null;
+                reportedExternalIds: string[];
+                lastSeenAt: string | null;
+                createdAt: string;
+                updatedAt: string;
             };
             credential: {
-                id?: string;
-                identityId?: string;
-                credentialType?: 'certificate' | 'token';
-                state?:
+                id: string;
+                organizationId: string;
+                identityId: string;
+                credentialType: 'certificate' | 'token';
+                state:
                     | 'active'
                     | 'pending'
                     | 'expired'
                     | 'revoked'
                     | 'superseded';
-                tokenPrefix?: string | null;
-                certificateId?: string | null;
-                certificateFingerprint?: string | null;
-                notBefore?: string | null;
-                notAfter?: string | null;
-                [key: string]: unknown;
+                tokenPrefix: string | null;
+                certificateId: string | null;
+                certificateFingerprint: string | null;
+                notBefore: string | null;
+                notAfter: string | null;
+                lastUsedAt: string | null;
+                createdAt: string;
+                updatedAt: string;
+                tokenOnce?: string;
             } | null;
             profile: {
                 id:
@@ -7183,18 +10525,26 @@ export interface HostContract {
             [key: string]: unknown;
         };
     };
-    /** Fetch a short-lived provisioning bundle. Certificate bundles also require certificate management permission. */
+    /** Fetch a short-lived provisioning bundle. The device key is never returned again: the saved address has no key. Certificate bundles also require certificate management permission. */
     'deviceingress.setup.bundle': {
         params: {sessionId: string};
         result: {
             id: string;
             organizationId: string;
+            reportedExternalId: string;
             profileId:
                 | 'wall-display-local-ws'
                 | 'shelly-pro-em-wss-token'
                 | 'shelly-pro-em-wss-certificate'
                 | 'modbus-tcp-connector';
             status: string;
+            applyMethod:
+                | 'ble'
+                | 'local_http'
+                | 'ws_rpc'
+                | 'connector'
+                | 'manual'
+                | null;
             bundle: {
                 organizationId: string;
                 identityId: string;
@@ -7229,8 +10579,12 @@ export interface HostContract {
                 sessionId?: string;
                 [key: string]: unknown;
             };
-            bundleFetchCount?: number;
-            expiresAt?: string;
+            errorCode: string | null;
+            errorMessage: string | null;
+            bundleFetchCount: number;
+            expiresAt: string;
+            createdAt: string;
+            updatedAt: string;
             [key: string]: unknown;
         };
     };
@@ -7248,7 +10602,181 @@ export interface HostContract {
             errorCode?: string;
             errorMessage?: string;
         };
-        result: Record<string, unknown>;
+        result: {
+            success: boolean;
+            session: {
+                id: string;
+                organizationId: string;
+                reportedExternalId: string;
+                profileId:
+                    | 'wall-display-local-ws'
+                    | 'shelly-pro-em-wss-token'
+                    | 'shelly-pro-em-wss-certificate'
+                    | 'modbus-tcp-connector';
+                status: string;
+                applyMethod:
+                    | 'ble'
+                    | 'local_http'
+                    | 'ws_rpc'
+                    | 'connector'
+                    | 'manual'
+                    | null;
+                bundle: {
+                    organizationId: string;
+                    identityId: string;
+                    securityModel: 'certificate' | 'direct_token' | 'connector';
+                    transport:
+                        | 'wss'
+                        | 'ws'
+                        | 'modbus_tcp'
+                        | 'ble'
+                        | 'cloud_api'
+                        | 'connector_internal';
+                    riskLevel: 'strong' | 'compatible' | 'legacy';
+                    applyMethod:
+                        | 'ble'
+                        | 'local_http'
+                        | 'ws_rpc'
+                        | 'connector'
+                        | 'manual';
+                    deviceConfig: {
+                        ws: {
+                            enable: boolean;
+                            server: string;
+                            ssl_ca?: string;
+                            [key: string]: unknown;
+                        };
+                        [key: string]: unknown;
+                    };
+                    certificates?: unknown;
+                    tokenOnce?: string;
+                    warnings?: string[];
+                    requiresReboot: boolean;
+                    sessionId?: string;
+                    [key: string]: unknown;
+                };
+                errorCode: string | null;
+                errorMessage: string | null;
+                bundleFetchCount: number;
+                expiresAt: string;
+                createdAt: string;
+                updatedAt: string;
+                [key: string]: unknown;
+            };
+        };
+    };
+    /** Queue a token rotation for each identity. Every device in the batch restarts once when its new address is applied. Refuses identities that are not active or already rotating. */
+    'deviceingress.rotation.start': {
+        params: {identityIds: string[]};
+        result: {
+            batchId: string;
+            jobs: Array<{
+                id: string;
+                organizationId: string;
+                batchId: string;
+                identityId: string;
+                oldCredentialId: string;
+                newCredentialId: string | null;
+                state:
+                    | 'queued'
+                    | 'sent'
+                    | 'waiting'
+                    | 'finalized'
+                    | 'failed'
+                    | 'cancelled';
+                errorCode:
+                    | 'offline'
+                    | 'not_applied'
+                    | 'send_failed'
+                    | 'cancelled_by_operator'
+                    | null;
+                sentAt: string | null;
+                createdBy: string;
+                createdAt: string;
+                updatedAt: string;
+                expectedExternalId: string | null;
+            }>;
+        };
+    };
+    /** List rotation jobs by batch or state. */
+    'deviceingress.rotation.list': {
+        params: {
+            batchId?: string;
+            state?:
+                | 'queued'
+                | 'sent'
+                | 'waiting'
+                | 'finalized'
+                | 'failed'
+                | 'cancelled';
+            limit?: number;
+            offset?: number;
+        };
+        result: {
+            items: Array<{
+                id: string;
+                organizationId: string;
+                batchId: string;
+                identityId: string;
+                oldCredentialId: string;
+                newCredentialId: string | null;
+                state:
+                    | 'queued'
+                    | 'sent'
+                    | 'waiting'
+                    | 'finalized'
+                    | 'failed'
+                    | 'cancelled';
+                errorCode:
+                    | 'offline'
+                    | 'not_applied'
+                    | 'send_failed'
+                    | 'cancelled_by_operator'
+                    | null;
+                sentAt: string | null;
+                createdBy: string;
+                createdAt: string;
+                updatedAt: string;
+                expectedExternalId: string | null;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
+    };
+    /** Cancel a queued or waiting rotation job and revoke its pending key. The device keeps its current key. */
+    'deviceingress.rotation.cancel': {
+        params: {id: string};
+        result: {
+            success: boolean;
+            job: {
+                id: string;
+                organizationId: string;
+                batchId: string;
+                identityId: string;
+                oldCredentialId: string;
+                newCredentialId: string | null;
+                state:
+                    | 'queued'
+                    | 'sent'
+                    | 'waiting'
+                    | 'finalized'
+                    | 'failed'
+                    | 'cancelled';
+                errorCode:
+                    | 'offline'
+                    | 'not_applied'
+                    | 'send_failed'
+                    | 'cancelled_by_operator'
+                    | null;
+                sentAt: string | null;
+                createdBy: string;
+                createdAt: string;
+                updatedAt: string;
+                expectedExternalId: string | null;
+            };
+        };
     };
     /** Return the deviceIngress namespace contract (methods, schemas, permissions, errors). */
     'deviceingress.describe': {
@@ -7600,7 +11128,7 @@ export interface HostContract {
             errors?: unknown[];
         };
     };
-    /** Unified time-series read for energy (device_em.stats) and sensor (device_sensor) tags. Group / devices / fleet scope selected by params. Mixed tag sets fan out in parallel. Values are scaled to display units (kWh / V / A / W / °C / % / lux). Omit limit to return the full set (up to the server OOM ceiling); set limit to paginate. total is a lower bound, not exact — has_more is the authoritative "more data exists" signal. */
+    /** Unified time-series read for energy (device_em.stats) and sensor (device_sensor) tags. Group / devices / fleet scope selected by params. Mixed tag sets fan out in parallel. Values are scaled to display units (kWh / kvarh / V / A / W / VA / °C / % / lux). Optional pricing uses stored tariffs and device/channel assignments over the same commodity/electricalSource slice; it is limited to 30 days and reports partial/unconfigured coverage explicitly. Omit limit to return the full set (up to the server OOM ceiling); set limit to paginate. total is a lower bound, not exact — has_more is the authoritative "more data exists" signal. */
     'energy.query': {
         params: {
             from: string;
@@ -7610,6 +11138,7 @@ export interface HostContract {
                 | 'total_act_ret_energy'
                 | 'volume_l'
                 | 'volume_m3'
+                | 'volume_returned_m3'
                 | 'thermal_energy_kwh'
                 | 'power'
                 | 'volume_flow_m3h'
@@ -7620,6 +11149,23 @@ export interface HostContract {
                 | 'max_voltage'
                 | 'min_current'
                 | 'max_current'
+                | 'max_power'
+                | 'min_power'
+                | 'fund_act_energy'
+                | 'fund_act_ret_energy'
+                | 'lag_react_energy'
+                | 'lead_react_energy'
+                | 'max_apparent_power'
+                | 'min_apparent_power'
+                | 'max_neutral_current'
+                | 'min_neutral_current'
+                | 'apparent_power'
+                | 'power_factor'
+                | 'frequency'
+                | 'total_power'
+                | 'total_apparent_power'
+                | 'total_current'
+                | 'neutral_current'
                 | 'soc'
                 | 'soh'
                 | 'cycles'
@@ -7665,11 +11211,16 @@ export interface HostContract {
             offset?: number;
             groupBy?: 'meter' | 'role' | 'kind' | 'utility';
             totals?: boolean;
+            pricing?: {tariffId?: number; exportTariffId?: number};
         };
         result: {
             items: Array<{
                 bucket: string;
                 meterId?: number;
+                balancePosition?:
+                    | 'transformation_input'
+                    | 'transformation_output'
+                    | 'final_consumption';
                 device: number;
                 shellyID: string | null;
                 tag: string;
@@ -7699,6 +11250,42 @@ export interface HostContract {
                 executionMs: number;
                 fromMaterializedView?: boolean;
             };
+            pricing?: {
+                status: 'priced' | 'partial' | 'unconfigured';
+                currency: string | null;
+                billedUnit: string;
+                gasConversions?: Array<{
+                    profileId: number;
+                    profileRevision: number;
+                    billedUnit: string;
+                    calorificValueIds: number[];
+                    calorificValueRevisions: number[];
+                }>;
+                energyCost: number | null;
+                coveredEnergyCost: number;
+                consumptionQuantity: number;
+                returnedQuantity: number;
+                coveredConsumptionQuantity: number;
+                unpricedConsumptionQuantity: number;
+                estimatedQuantity: number;
+                consumptionKWh: number;
+                returnedKWh: number;
+                coveredConsumptionKWh: number;
+                unpricedConsumptionKWh: number;
+                dayEnergyCost: number;
+                nightEnergyCost: number;
+                estimatedKWh: number;
+                source: 'assignments' | 'explicit' | 'mixed' | 'none';
+                assignmentSources: string[];
+                tariffIds: number[];
+                exportCurrency: string | null;
+                exportCredit: number | null;
+                netEnergyCost: number | null;
+                exportTariffId: number | null;
+                exportTariffIds: number[];
+                exportSource: 'assignments' | 'explicit' | 'none';
+                exportAssignmentSources: string[];
+            };
         };
     };
     /** Live instantaneous active power (W) read from in-memory device status — no DB. Selector: scope (group / fleet), devices, or meterIds (one of). detail=total returns one signed sum; device returns per-device sums; channel adds a per-(component, phase) breakdown so a UI can show or pick individual switches or meter phases. components[] narrows to a chosen subset. With meterIds, detail=meter returns per-logical-meter watts (total/meter only, no components); formula meters are rejected — use Query for their energy. Pair with Query for history; poll this (~1–3s) for "now". */
@@ -7727,6 +11314,90 @@ export interface HostContract {
             meters?: Array<{meterId: number; watts: number}>;
         };
     };
+    /** End-of-period run rate for the selected scope, measured from whole observed days. This is a pace, not a forecast: it models no weather, seasonality or occupancy. confidenceBand is the measured spread of those days, and is null when there was nothing to project from — a caller must then say what it is waiting for instead of printing a number. Pass costSoFar to have money projected by the same ratio as energy, so the caller keeps its own tariff. */
+    'energy.projection': {
+        params: {
+            from: string;
+            to: string;
+            scope?: {groupId?: number; locationId?: number; tagId?: number};
+            devices?: string[];
+            commodity?: 'electricity' | 'water' | 'gas' | 'heat';
+            electricalSource?: 'ac_mains' | 'dc_pv' | 'dc_battery' | 'dc_bus';
+            costSoFar?: number;
+            baselineKWhPerDay?: number;
+        };
+        result: {
+            projectedKWh: number;
+            projectedCost: number;
+            confidenceBand: number | null;
+            range: string | null;
+            extrapolated: boolean;
+            observedDays: number;
+            observedKWh: number;
+        };
+    };
+    /** Show EM history catch-up and report-rollup progress for the selected devices. Progress is derived from device bookmarks and the durable rollup queue. */
+    'energy.syncstatus': {
+        params: {
+            scope?: {groupId?: number; locationId?: number; tagId?: number};
+            devices?: string[];
+        };
+        result: {
+            asOf: string;
+            complete: boolean;
+            progressPct: number;
+            devicesTotal: number;
+            devicesCatchingUp: number;
+            channelsCatchingUp: number;
+            historyRemainingSeconds: number;
+            rollupPendingBuckets: number;
+            rollupScheduledBuckets: number;
+            provisional: boolean;
+            oldestRollupAgeSeconds: number;
+            devices: Array<{
+                device: number;
+                shellyID: string;
+                channel: number;
+                syncedThrough: string | null;
+                lagSeconds: number;
+                progressPct: number;
+                rollupPendingBuckets: number;
+                rollupScheduledBuckets: number;
+            }>;
+        };
+    };
+    /** List meter history blocks the database rejected. Each row is one device channel gap with the reason. Nothing is dropped; a block stays here until it is queued again. */
+    'energy.rejectedsyncblocks': {
+        params: {
+            scope?: {groupId?: number; locationId?: number; tagId?: number};
+            devices?: string[];
+            openOnly?: boolean;
+            limit?: number;
+        };
+        result: {
+            openCount: number;
+            blocks: Array<{
+                id: number;
+                device: number;
+                shellyID: string;
+                channel: number;
+                cursorCreated: number;
+                rowCount: number;
+                firstTs: number | null;
+                lastTs: number | null;
+                sqlstate: string | null;
+                message: string;
+                rejectedAt: string;
+                requeuedAt: string | null;
+                requeuedBy: string | null;
+            }>;
+        };
+    };
+    /** Queue one rejected meter history block for writing again, after the cause is fixed. Marks the row as requeued; a second call does nothing. */
+    'energy.requeuerejectedsyncblock': {
+        params: {id: number};
+        result: {id: number; queued: boolean};
+    };
     /** Fix the one fact a device cannot state — the electrical domain or tag of an unknown point (e.g. a voltmeter that may be AC or DC). Writes the tier-1 operator override; the next NotifyStatus frame uses it immediately. All other facts are auto-derived. */
     'energy.setpointoverride': {
         params: {
@@ -7752,6 +11423,7 @@ export interface HostContract {
                 | 'temperature_f'
                 | 'volume_l'
                 | 'volume_m3'
+                | 'volume_returned_m3'
                 | 'volume_storage_l'
                 | 'volume_flow_m3h'
                 | 'thermal_energy_kwh'
@@ -7771,6 +11443,66 @@ export interface HostContract {
         };
         result: {ok: boolean};
     };
+    /** Preview one bounded historical meter-point commodity repair. Persists the exact eligible snapshot; never changes readings. */
+    'energy.previewcommodityrepair': {
+        params: {
+            deviceId: number;
+            channel: number;
+            tag:
+                | 'total_act_energy'
+                | 'total_act_ret_energy'
+                | 'volume_l'
+                | 'volume_m3';
+            from: string;
+            to: string;
+            expectedCommodity: 'electricity' | 'water' | 'gas' | 'heat';
+            expectedElectricalSource:
+                | 'ac_mains'
+                | 'dc_pv'
+                | 'dc_battery'
+                | 'dc_bus'
+                | null;
+            targetCommodity: 'electricity' | 'water' | 'gas' | 'heat';
+            targetElectricalSource:
+                | 'ac_mains'
+                | 'dc_pv'
+                | 'dc_battery'
+                | 'dc_bus'
+                | null;
+            sourceReference: string;
+        };
+        result: {
+            previewId: number;
+            eligible: boolean;
+            rowCount: number;
+            rawRowCount: number;
+            quantity: number;
+            conflictCount: number;
+            rollupConflictCount: number;
+            rawConflictCount: number;
+            dirtyCount: number;
+            ineligibilityReasons: Array<
+                | 'no_source_rows'
+                | 'rollup_conflict'
+                | 'raw_conflict'
+                | 'pending_rollup'
+            >;
+            firstBucket: string | null;
+            lastBucket: string | null;
+        };
+    };
+    /** Apply a previously persisted preview exactly once. Fails if eligible rows changed or the target identity conflicts; briefly pauses metering writes under a bounded maintenance lock. */
+    'energy.applycommodityrepair': {
+        params: {previewId: number; deviceId: number};
+        result: {
+            previewId: number;
+            status: 'applied';
+            appliedRows: number;
+            rawRowsReclassified: number;
+            coverageStart: string;
+            appliedAt: string;
+        };
+    };
     /** Per-(device, channel, tag) reset history from device_em.lifetime_counters — surfaces devices that may have a firmware glitch or that an operator pressed ResetCounters on. */
     'energy.getresetaudit': {
         params: {deviceId?: number; windowDays?: number};
@@ -7783,6 +11515,140 @@ export interface HostContract {
                 lastResetAt?: string | null;
                 lastSeenAt?: string | null;
             }>;
+        };
+    };
+    /** The learned normal for one device or channel and one tag: the median value and its 25th-75th percentile band in each of the 168 hours of the local week, computed nightly from the 15-minute rollups. Always 168 cells. A cell returns median and band null with status insufficient_weeks until enough distinct weeks stand behind it, so a comparison the data does not support cannot be drawn. Operational signal only: this is not a measurement and verification baseline and must not be used for savings, verification or settlement claims. Operator-excluded days (holidays, outages) are removed; excludedDays reports how many. Pass temperatureBand for a profile split by on-site temperature; bands are terciles of the window own temperature series, so they carry no absolute meaning, and the banded profile is always the coarse 48-bin one. This is band separation, not weather normalisation and not a weather regression. When no temperature series is linked to the scope, or none is asked for, the plain profile is returned and temperatureAdjusted is false; a plain profile whose window crosses a shoulder season shows seasonal drift as a difference from normal. changeState reports whether a level shift was detected: on alarm the window was shortened to the new regime, so most cells read insufficient_weeks until three weeks of it exist. */
+    'energy.baseline': {
+        params: {
+            organizationId?: string;
+            shellyID: string;
+            channel?: number;
+            tag:
+                | 'total_act_energy'
+                | 'total_act_ret_energy'
+                | 'volume_l'
+                | 'volume_m3'
+                | 'thermal_energy_kwh'
+                | 'power'
+                | 'temperature'
+                | 'humidity'
+                | 'co2'
+                | 'luminance'
+                | 'pressure'
+                | 'moisture';
+            minWeeks?: number;
+            temperatureBand?: 'cool' | 'mid' | 'warm';
+        };
+        result: {
+            shellyID: string;
+            deviceId: number;
+            scopeType: 'device' | 'device_channel';
+            channel: number;
+            tag:
+                | 'total_act_energy'
+                | 'total_act_ret_energy'
+                | 'volume_l'
+                | 'volume_m3'
+                | 'thermal_energy_kwh'
+                | 'power'
+                | 'temperature'
+                | 'humidity'
+                | 'co2'
+                | 'luminance'
+                | 'pressure'
+                | 'moisture';
+            binScheme: 'day_type_hour' | 'hour_of_week' | null;
+            timezone: string | null;
+            firstSeenDay: string | null;
+            windowFromDay: string | null;
+            excludedDays: number;
+            computedAt: string | null;
+            readyCells: number;
+            cells: Array<{
+                hourOfWeek: number;
+                median: number | null;
+                p25: number | null;
+                p75: number | null;
+                sampleCount: number;
+                weeksObserved: number;
+                status: 'ready' | 'insufficient_weeks' | 'no_data';
+            }>;
+            temperatureAdjusted: boolean;
+            temperatureBands: Array<{
+                band: 'cool' | 'mid' | 'warm';
+                minValue: number;
+                maxValue: number;
+                sourceDeviceId: number;
+                sourceKind: 'weather_station' | 'ambient_sensor';
+                readyCells: number;
+            }>;
+            changeState: 'ok' | 'warning' | 'alarm';
+            changeDetectedOn: string | null;
+            changeDirection: 'up' | 'down' | null;
+        };
+    };
+    /** The estate baseline draw at night, as one number, so a caller does not sum 168-cell profiles itself. A meter here is a readable device that meters AC-mains power; the scope is a location and everything under it, or the whole reach when no location is named. baselineKw sums, over those meters, the mean of the learned medians of the hours the night window covers, read in the organization timezone. It stays null while any meter is short of minWeeks: a sum missing a meter reads as a smaller estate rather than as a partial answer, and status says learning with metersReady counting the ones that do have it. lastNightKw is measured, not learned: the mean draw over the most recent completed night window across the same meters, from the 15-minute rollup. deviationPct compares the two and is null unless both exist and the baseline is non-zero. Same standing as Energy.Baseline: operational signal only, not a measurement and verification baseline, so it must not carry a savings or settlement claim. */
+    'energy.overnightbaseline': {
+        params: {
+            organizationId?: string;
+            locationId?: number;
+            nightStart?: string;
+            nightEnd?: string;
+            minWeeks?: number;
+        };
+        result: {
+            status: 'ready' | 'learning' | 'no_meters';
+            timeZone: string;
+            window: {start: string; end: string};
+            metersConsidered: number;
+            metersReady: number;
+            weeksObserved: number;
+            baselineKw: number | null;
+            lastNightKw: number | null;
+            deviationPct: number | null;
+        };
+    };
+    /** List the inclusive local date ranges this organization has declared must not shape its learned normal. */
+    'energy.listbaselineexclusions': {
+        params: Record<string, never>;
+        result: {
+            exclusions: Array<{
+                id: number;
+                fromDay: string;
+                toDay: string;
+                reason: string;
+                createdBy: string | null;
+                createdAt: string;
+            }>;
+        };
+    };
+    /** Create or update one inclusive local date range that must not shape this organization baseline. The authenticated caller is recorded as author. The change takes effect at the next rebuild. */
+    'energy.savebaselineexclusion': {
+        params: {id?: number; fromDay: string; toDay: string; reason: string};
+        result: {
+            exclusion: {
+                id: number;
+                fromDay: string;
+                toDay: string;
+                reason: string;
+                createdBy: string | null;
+                createdAt: string;
+            };
+        };
+    };
+    /** Delete one organization baseline exclusion and return the range that stopped being excluded. The change takes effect at the next rebuild. */
+    'energy.deletebaselineexclusion': {
+        params: {id: number};
+        result: {
+            deleted: true;
+            removed: {
+                id: number;
+                fromDay: string;
+                toDay: string;
+                reason: string;
+                createdBy: string | null;
+                createdAt: string;
+            };
         };
     };
     /** List a device or scope wireable measurement points for the device Energy assignment UI. Primary source is stored device_em history (hasHistory); the live snapshot adds the componentKey label and isLiveNow. source=history/both can query historical energy; source=live has no history yet. assignedMeterId marks wired points. */
@@ -7818,6 +11684,7 @@ export interface HostContract {
                     | 'temperature_f'
                     | 'volume_l'
                     | 'volume_m3'
+                    | 'volume_returned_m3'
                     | 'volume_storage_l'
                     | 'volume_flow_m3h'
                     | 'thermal_energy_kwh'
@@ -7864,6 +11731,13 @@ export interface HostContract {
                     | 'storage'
                     | 'usage';
                 kindId?: string | null;
+                meaningRevision?: number;
+                meaningEffectiveFrom?: string | null;
+                energySource?: string | null;
+                balancePosition?:
+                    | 'transformation_input'
+                    | 'transformation_output'
+                    | 'final_consumption';
                 phaseMode:
                     | 'single_phase'
                     | 'three_phase'
@@ -7895,6 +11769,7 @@ export interface HostContract {
                         | 'temperature_f'
                         | 'volume_l'
                         | 'volume_m3'
+                        | 'volume_returned_m3'
                         | 'volume_storage_l'
                         | 'volume_flow_m3h'
                         | 'thermal_energy_kwh'
@@ -7912,6 +11787,7 @@ export interface HostContract {
                         | 'gas'
                         | 'unspecified'
                         | null;
+                    currentType?: 'ac' | 'dc' | null;
                     directionHint?:
                         | 'import'
                         | 'export'
@@ -7934,6 +11810,197 @@ export interface HostContract {
             }>;
         };
     };
+    /** List a bounded review queue for logical meters whose end use is unset or whose role is generic aux. Suggestions disclose confidence, evidence and reason codes; they never apply automatically. */
+    'energy.listlogicalmetermeaningreviewqueue': {
+        params: {
+            limit?: number;
+            cursor?: {confidence: number; meterId: number};
+        };
+        result: {
+            items: Array<{
+                meterId: number;
+                name: string;
+                utilityType: 'electric' | 'gas' | 'water' | 'heat';
+                current: {
+                    meterId: number;
+                    revision: number;
+                    effectiveFrom: string | null;
+                    effectiveTo: string | null;
+                    role:
+                        | 'grid'
+                        | 'pv'
+                        | 'battery'
+                        | 'generator'
+                        | 'ev_charge'
+                        | 'load'
+                        | 'aux'
+                        | 'supply'
+                        | 'production'
+                        | 'storage'
+                        | 'usage';
+                    kindId: string | null;
+                };
+                suggestion: {
+                    role:
+                        | 'grid'
+                        | 'pv'
+                        | 'battery'
+                        | 'generator'
+                        | 'ev_charge'
+                        | 'load'
+                        | 'aux'
+                        | 'supply'
+                        | 'production'
+                        | 'storage'
+                        | 'usage';
+                    kindId: string | null;
+                    confidence: number;
+                    evidence: Array<{
+                        code:
+                            | 'declared_role'
+                            | 'missing_end_use'
+                            | 'generic_aux_role'
+                            | 'energy_source'
+                            | 'topology_connection'
+                            | 'point_domain'
+                            | 'point_tag'
+                            | 'name_keyword';
+                        detail: string;
+                    }>;
+                    reasonCodes: Array<
+                        | 'end_use_unclassified'
+                        | 'role_requires_review'
+                        | 'role_supported_by_topology'
+                        | 'role_supported_by_source'
+                        | 'role_supported_by_measurement'
+                        | 'weak_name_only_evidence'
+                    >;
+                };
+            }>;
+            nextCursor: {confidence: number; meterId: number} | null;
+        };
+    };
+    /** List one tenant-owned logical meter role/end-use history in bounded revision order. Intervals are half-open UTC instants. */
+    'energy.listlogicalmetermeaninghistory': {
+        params: {meterId: number; limit?: number; beforeRevision?: number};
+        result: {
+            versions: Array<{
+                meterId: number;
+                revision: number;
+                effectiveFrom: string | null;
+                effectiveTo: string | null;
+                role:
+                    | 'grid'
+                    | 'pv'
+                    | 'battery'
+                    | 'generator'
+                    | 'ev_charge'
+                    | 'load'
+                    | 'aux'
+                    | 'supply'
+                    | 'production'
+                    | 'storage'
+                    | 'usage';
+                kindId: string | null;
+            }>;
+            nextBeforeRevision: number | null;
+        };
+    };
+    /** Persist an audited preview of a role/end-use change, including affected dashboards, alerts, tariff assignments and report interpretation. */
+    'energy.previewlogicalmetermeaningchange': {
+        params: {
+            meterId: number;
+            expectedRevision: number;
+            effectiveFrom: string;
+            role:
+                | 'grid'
+                | 'pv'
+                | 'battery'
+                | 'generator'
+                | 'ev_charge'
+                | 'load'
+                | 'aux'
+                | 'supply'
+                | 'production'
+                | 'storage'
+                | 'usage';
+            kindId: string | null;
+            sourceReference: string;
+        };
+        result: {
+            previewId: number;
+            eligible: boolean;
+            ineligibilityReasons: Array<
+                | 'meter_not_found'
+                | 'revision_changed'
+                | 'meaning_unchanged'
+                | 'effective_from_not_in_history'
+                | 'effective_from_on_existing_boundary'
+                | 'effective_from_not_aligned'
+                | 'kind_not_available'
+            >;
+            current: {
+                meterId: number;
+                revision: number;
+                effectiveFrom: string | null;
+                effectiveTo: string | null;
+                role:
+                    | 'grid'
+                    | 'pv'
+                    | 'battery'
+                    | 'generator'
+                    | 'ev_charge'
+                    | 'load'
+                    | 'aux'
+                    | 'supply'
+                    | 'production'
+                    | 'storage'
+                    | 'usage';
+                kindId: string | null;
+            };
+            proposed: {
+                meterId: number;
+                revision: number;
+                effectiveFrom: string | null;
+                effectiveTo: string | null;
+                role:
+                    | 'grid'
+                    | 'pv'
+                    | 'battery'
+                    | 'generator'
+                    | 'ev_charge'
+                    | 'load'
+                    | 'aux'
+                    | 'supply'
+                    | 'production'
+                    | 'storage'
+                    | 'usage';
+                kindId: string | null;
+            };
+            affected: {
+                dashboards: {count: number; ids: number[]; truncated: boolean};
+                alerts: {count: number; ids: number[]; truncated: boolean};
+                tariffAssignments: {
+                    count: number;
+                    ids: number[];
+                    truncated: boolean;
+                };
+                reportInterpretation: {from: string; to: string | null};
+            };
+        };
+    };
+    /** Apply one eligible meaning preview exactly once. Revision and impact checks fail closed when state changed after preview. */
+    'energy.applylogicalmetermeaningchange': {
+        params: {previewId: number; meterId: number; expectedRevision: number};
+        result: {
+            previewId: number;
+            status: 'applied';
+            meterId: number;
+            revision: number;
+            effectiveFrom: string;
+            appliedAt: string;
+        };
+    };
     /** Create (omit id) or update one logical meter — the meaning the user sets. role is scoped by utilityType; a physical meter carries points + aggregationMode=sum_points, a calculated meter carries a formula + aggregationMode=formula. Returns the saved meter. */
     'energy.savelogicalmeter': {
         params: {
@@ -7953,6 +12020,7 @@ export interface HostContract {
                 | 'storage'
                 | 'usage';
             kindId?: string | null;
+            energySource?: string | null;
             phaseMode?:
                 | 'single_phase'
                 | 'three_phase'
@@ -7984,6 +12052,7 @@ export interface HostContract {
                     | 'temperature_f'
                     | 'volume_l'
                     | 'volume_m3'
+                    | 'volume_returned_m3'
                     | 'volume_storage_l'
                     | 'volume_flow_m3h'
                     | 'thermal_energy_kwh'
@@ -8001,6 +12070,7 @@ export interface HostContract {
                     | 'gas'
                     | 'unspecified'
                     | null;
+                currentType?: 'ac' | 'dc' | null;
                 directionHint?:
                     | 'import'
                     | 'export'
@@ -8035,6 +12105,13 @@ export interface HostContract {
                     | 'storage'
                     | 'usage';
                 kindId?: string | null;
+                meaningRevision?: number;
+                meaningEffectiveFrom?: string | null;
+                energySource?: string | null;
+                balancePosition?:
+                    | 'transformation_input'
+                    | 'transformation_output'
+                    | 'final_consumption';
                 phaseMode:
                     | 'single_phase'
                     | 'three_phase'
@@ -8066,6 +12143,7 @@ export interface HostContract {
                         | 'temperature_f'
                         | 'volume_l'
                         | 'volume_m3'
+                        | 'volume_returned_m3'
                         | 'volume_storage_l'
                         | 'volume_flow_m3h'
                         | 'thermal_energy_kwh'
@@ -8083,6 +12161,7 @@ export interface HostContract {
                         | 'gas'
                         | 'unspecified'
                         | null;
+                    currentType?: 'ac' | 'dc' | null;
                     directionHint?:
                         | 'import'
                         | 'export'
@@ -8218,15 +12297,21 @@ export interface HostContract {
             errors?: unknown[];
         };
     };
-    /** Paginated list of entities the caller can read, filtered against device-level access. */
+    /** Paginated list of entities the caller can read, filtered against device-level access. Ordered physical, virtual, then BLU, each by device id and entity id. Page with `cursor`; `shellyIDs` reads the entities of up to 100 devices. */
     'entity.list': {
-        params: {limit?: number; offset?: number};
+        params: {
+            limit?: number;
+            offset?: number;
+            cursor?: string;
+            shellyIDs?: string[];
+        };
         result: {
             items: Array<Record<string, unknown>>;
-            total: number;
+            total?: number;
             limit: number;
-            offset: number;
+            offset?: number;
             has_more: boolean;
+            next_cursor: string | null;
         };
     };
     /** Return the normalized summary of a single entity. Replaces Entity.GetInfo (removed in the Phase 1 cutover). */
@@ -8342,15 +12427,140 @@ export interface HostContract {
             errors?: unknown[];
         };
     };
+    /** Create a credential-bound upload session after checking the target permission. */
+    'filetransfer.begin': {
+        params: {
+            kind:
+                | 'backup_import'
+                | 'firmware'
+                | 'background'
+                | 'profile_picture'
+                | 'report_image'
+                | 'email_asset'
+                | 'floor_plan'
+                | 'visual_asset';
+            fileName: string;
+            sizeBytes: number;
+            sha256: string;
+            contentType: string;
+            target?: {
+                locationId?: number;
+                username?: string;
+                resourceKind?: 'virtual-device' | 'bluetooth-device' | 'group';
+                resourceId?: string;
+                reportName?: string;
+            };
+            options?: {
+                requestedName?: string;
+                retention?: 'temporary' | 'library';
+                name?: string;
+                app?: string;
+                model?: string;
+                ver?: string;
+                fwId?: string;
+                channel?: 'stable' | 'beta' | 'custom';
+                tags?: string;
+                label?: string | null;
+                context?: string;
+            };
+        };
+        result: {
+            uploadId: string;
+            nextOffset: number;
+            expiresAt: string;
+            maxChunkBytes: number;
+        };
+    };
+    /** Write one canonical base64 chunk at the required offset. */
+    'filetransfer.writechunk': {
+        params: {uploadId: string; offset: number; data: string};
+        result: {uploadId: string; nextOffset: number; complete: boolean};
+    };
+    /** Read the authoritative offset and status of an owner-bound upload. */
+    'filetransfer.get': {
+        params: {uploadId: string};
+        result: {
+            uploadId: string;
+            kind: string;
+            status:
+                | 'open'
+                | 'finalizing'
+                | 'finalized'
+                | 'cancelled'
+                | 'outcome_unknown';
+            nextOffset: number;
+            sizeBytes: number;
+            sha256: string;
+            expiresAt: string;
+            result?: Record<string, unknown>;
+        };
+    };
+    /** Verify and promote a complete upload through its canonical target service. */
+    'filetransfer.finalize': {
+        params: {uploadId: string};
+        result: {
+            uploadId: string;
+            kind: string;
+            sizeBytes: number;
+            sha256: string;
+            result: Record<string, unknown>;
+        };
+    };
+    /** Cancel an open upload and remove its temporary bytes. */
+    'filetransfer.cancel': {
+        params: {uploadId: string};
+        result: {cancelled: boolean};
+    };
+    /** Read a bounded chunk from an owner-bound Fleet artifact. */
+    'filetransfer.readchunk': {
+        params: {
+            kind:
+                | 'backup'
+                | 'firmware_library'
+                | 'firmware_temporary'
+                | 'report_export'
+                | 'audit_export'
+                | 'email_asset'
+                | 'visual_asset'
+                | 'background'
+                | 'profile_picture'
+                | 'report_image'
+                | 'floor_plan';
+            artifactId: string;
+            offset?: number;
+            maxBytes?: number;
+        };
+        result: {
+            fileName: string;
+            contentType: string;
+            sizeBytes: number;
+            sha256: string;
+            offset: number;
+            nextOffset: number;
+            eof: boolean;
+            dataBase64: string;
+        };
+    };
+    /** Return the fileTransfer namespace contract (methods, schemas, permissions, errors). */
+    'filetransfer.describe': {
+        params: Record<string, unknown>;
+        result: {
+            namespace: string;
+            methods: Record<string, unknown>;
+            limits?: Record<string, unknown>;
+            tags?: string[];
+            errors?: unknown[];
+        };
+    };
     /** Register a manual update for one or more devices. */
     'firmware.registermanualupdate': {
         params: {shellyIDs: string[]; ttlMs?: number; ownerToken?: string};
-        result: Record<string, unknown>;
+        result: {locked: string[]};
     };
     /** Cancel a previously registered manual update. */
     'firmware.unregistermanualupdate': {
         params: {shellyIDs: string[]; ownerToken?: string};
-        result: Record<string, unknown>;
+        result: {released: string[]};
     };
     /** Start a backend-owned firmware update job for one or more devices. */
     'firmware.startupdatejob': {
@@ -8380,57 +12590,69 @@ export interface HostContract {
     /** List devices with auto-update configured. */
     'firmware.getautoupdatedevices': {
         params: Record<string, never>;
-        result: Record<string, unknown>;
+        result: {
+            items: string[];
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
     /** Return the supported auto-update modes. */
     'firmware.getautoupdatemodes': {
         params: Record<string, never>;
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{shellyID: string; mode: 'off' | 'stable' | 'beta'}>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
     /** Enable or disable auto-update for a single device. */
     'firmware.setautoupdate': {
         params: {shellyID: string; enabled: boolean};
-        result: Record<string, unknown>;
+        result: {success: boolean};
     };
     /** Bulk enable/disable auto-update. */
     'firmware.setautoupdatebulk': {
         params: {shellyIDs: string[]; enabled: boolean};
-        result: Record<string, unknown>;
+        result: {updated: string[]};
     };
     /** Return the current auto-update status for a device. */
     'firmware.getautoupdatestatus': {
         params: {shellyID: string};
-        result: Record<string, unknown>;
+        result: {enabled: boolean};
     };
     /** Return the auto-update mode for a device. */
     'firmware.getautoupdatemode': {
         params: {shellyID: string};
-        result: Record<string, unknown>;
+        result: {mode: 'off' | 'stable' | 'beta'};
     };
     /** Set the auto-update mode for a single device. */
     'firmware.setautoupdatemode': {
         params: {shellyID: string; mode: 'off' | 'stable' | 'beta'};
-        result: Record<string, unknown>;
+        result: {success: boolean};
     };
     /** Bulk set the auto-update mode for a list of devices. */
     'firmware.setautoupdatemodebulk': {
         params: {shellyIDs: string[]; mode: 'off' | 'stable' | 'beta'};
-        result: Record<string, unknown>;
+        result: {updated: string[]};
     };
     /** Return the global default firmware channel (stable/beta). */
     'firmware.getautoupdatechannel': {
         params: Record<string, never>;
-        result: Record<string, unknown>;
+        result: {channel: 'stable' | 'beta'};
     };
     /** Set the global default firmware channel (stable/beta) for legacy enables. */
     'firmware.setautoupdatechannel': {
         params: {channel: 'stable' | 'beta'};
-        result: Record<string, unknown>;
+        result: {success: boolean};
     };
     /** Return metadata for the most recent scheduler run. */
     'firmware.getlastautoupdaterun': {
         params: Record<string, never>;
-        result: Record<string, unknown>;
+        result: {timestamp: number | null};
     };
     /** Check auto-update candidates and enqueue durable firmware update jobs. */
     'firmware.triggerautoupdate': {
@@ -8464,7 +12686,22 @@ export interface HostContract {
     'firmware.listlibrary': {
         params: Record<string, never>;
         result: {
-            items: Array<Record<string, unknown>>;
+            items: Array<{
+                id: string;
+                name: string;
+                originalFileName: string;
+                storedFileName: string;
+                uploadedAt: number;
+                uploadedBy: string;
+                fileSize: number;
+                checksum: string;
+                app?: string;
+                model?: string;
+                ver?: string;
+                fwId?: string;
+                channel?: 'stable' | 'beta' | 'custom';
+                tags: string[];
+            }>;
             total: number;
             limit: number;
             offset: number;
@@ -8493,7 +12730,25 @@ export interface HostContract {
             channel?: 'stable' | 'beta' | 'custom' | '';
             tags?: string;
         };
-        result: {success: true; item: Record<string, unknown>};
+        result: {
+            success: true;
+            item: {
+                id: string;
+                name: string;
+                originalFileName: string;
+                storedFileName: string;
+                uploadedAt: number;
+                uploadedBy: string;
+                fileSize: number;
+                checksum: string;
+                app?: string;
+                model?: string;
+                ver?: string;
+                fwId?: string;
+                channel?: 'stable' | 'beta' | 'custom';
+                tags: string[];
+            };
+        };
     };
     /** Delete a library entry by id. */
     'firmware.deletelibraryentry': {
@@ -8652,6 +12907,142 @@ export interface HostContract {
             errors?: unknown[];
         };
     };
+    'gasconversion.upsertzone': {
+        params: {
+            name: string;
+            zoneKind: string;
+            externalCode: string;
+            timezone: string;
+            dayBoundary: string;
+        };
+        result: {id: number};
+    };
+    'gasconversion.upsertprofile': {
+        params: {
+            deviceExternalId: string;
+            channel: number | null;
+            pricingZoneId: number;
+            meteredUnit: 'm3' | 'ft3' | 'ccf';
+            billedUnit: 'kWh' | 'therm' | 'MMBtu' | 'GJ';
+            volumeState: 'corrected' | 'uncorrected';
+            correctionMode:
+                | 'none'
+                | 'statutory_constant'
+                | 'altitude_formula'
+                | 'zone_table'
+                | 'computed_PZ'
+                | 'computed_TPZ';
+            correctionFactor?: number | null;
+            metricFactor?: number | null;
+            energyDivisor: number;
+            effectiveFrom: string;
+            effectiveTo?: string | null;
+            sourceReference: string;
+            unitOverrideReason?: string;
+            revision?: number;
+        };
+        result: {id: number};
+    };
+    'gasconversion.addcalorificvalue': {
+        params: {
+            pricingZoneId: number;
+            gasDay: string;
+            value: number;
+            unit: 'MJ/m3' | 'kWh/m3';
+            weighting: 'none' | 'quantity';
+            roundingRule: 'none' | 'truncate_0_1';
+            revision: number;
+            publishedAt: string;
+            sourceReference: string;
+        };
+        result: {id: number};
+    };
+    'gasconversion.listzones': {
+        params: {limit?: number; beforeId?: number};
+        result: {
+            items: Array<{
+                id: number;
+                name: string;
+                zoneKind: string;
+                externalCode: string;
+                timezone: string;
+                dayBoundary: string;
+            }>;
+            nextBeforeId: number | null;
+        };
+    };
+    'gasconversion.listprofiles': {
+        params: {
+            deviceExternalId?: string;
+            channel?: number;
+            limit?: number;
+            beforeId?: number;
+        };
+        result: {
+            items: Array<{
+                id: number;
+                deviceExternalId: string;
+                channel: number | null;
+                pricingZoneId: number;
+                meteredUnit: 'm3' | 'ft3' | 'ccf';
+                billedUnit: 'kWh' | 'therm' | 'MMBtu' | 'GJ';
+                volumeState: 'corrected' | 'uncorrected';
+                correctionMode:
+                    | 'none'
+                    | 'statutory_constant'
+                    | 'altitude_formula'
+                    | 'zone_table'
+                    | 'computed_PZ'
+                    | 'computed_TPZ';
+                correctionFactor?: number | null;
+                metricFactor?: number | null;
+                energyDivisor: number;
+                effectiveFrom: string;
+                effectiveTo?: string | null;
+                sourceReference: string;
+                unitOverrideReason?: string;
+                revision: number;
+                createdAt: string;
+            }>;
+            nextBeforeId: number | null;
+        };
+    };
+    'gasconversion.listcalorificvalues': {
+        params: {
+            pricingZoneId?: number;
+            gasDayFrom?: string;
+            gasDayTo?: string;
+            limit?: number;
+            beforeId?: number;
+        };
+        result: {
+            items: Array<{
+                id: number;
+                pricingZoneId: number;
+                gasDay: string;
+                value: number;
+                unit: 'MJ/m3' | 'kWh/m3';
+                weighting: 'none' | 'quantity';
+                roundingRule: 'none' | 'truncate_0_1';
+                revision: number;
+                publishedAt: string;
+                sourceReference: string;
+                createdAt: string;
+            }>;
+            nextBeforeId: number | null;
+        };
+    };
+    /** Return the gasConversion namespace contract (methods, schemas, permissions, errors). */
+    'gasconversion.describe': {
+        params: Record<string, unknown>;
+        result: {
+            namespace: string;
+            methods: Record<string, unknown>;
+            limits?: Record<string, unknown>;
+            tags?: string[];
+            errors?: unknown[];
+        };
+    };
     /** Return the Grafana integration config snapshot. */
     'grafana.getconfig': {
         params: Record<string, unknown>;
@@ -8665,7 +13056,12 @@ export interface HostContract {
     /** Return a single dashboard entry filtered by slug. */
     'grafana.getdashboard': {
         params: {slug: string};
-        result: Record<string, unknown>;
+        result: {
+            slug: string;
+            uid?: string;
+            hash?: string;
+            [key: string]: unknown;
+        };
     };
     /** Return the grafana namespace contract (methods, schemas, permissions, errors). */
     'grafana.describe': {
@@ -8936,7 +13332,7 @@ export interface HostContract {
         params: {organizationId?: string; id: number};
         result: {items: Array<{id: number; name: string}>};
     };
-    /** List members of a group with optional subject-type filter. */
+    /** List members of a group with optional subject-type filter. Page with `cursor`; `offset` stops at 10,000. */
     'group.listmembers': {
         params: {
             organizationId?: string;
@@ -8944,16 +13340,18 @@ export interface HostContract {
             subjectType?: 'device' | 'entity' | 'location';
             limit?: number;
             offset?: number;
+            cursor?: string;
         };
         result: {
             items: Array<{
                 subjectType: 'device' | 'entity' | 'location';
                 subjectId: string;
             }>;
-            total: number;
+            total?: number;
             limit: number;
-            offset: number;
+            offset?: number;
             has_more: boolean;
+            next_cursor: string | null;
         };
     };
     /** Flat {groupId, subjectId} list of device memberships — one round-trip for UIs that render many groups at once. Optional `ids` narrows the scope; otherwise returns all groups the caller can read. */
@@ -9147,7 +13545,8 @@ export interface HostContract {
         result: {
             gdprTargetId: string;
             grantTargetId: string;
-            rotatedAt?: string;
+            rotatedAt: string;
+            correlationId: string;
         };
     };
     /** Identity.ListIdentityProviders — list configured external IdPs (OIDC, SAML, social). */
@@ -9184,6 +13583,7 @@ export interface HostContract {
             enabled: boolean;
             endpoint: string;
             managementApiHint?: string;
+            rotatedAt: string | null;
         };
     };
     /** Identity.SetScimEnabled — flip Zitadel SCIM endpoint on/off via FM_ZITADEL_SCIM_ENABLED. */
@@ -9334,6 +13734,336 @@ export interface HostContract {
             errors?: unknown[];
         };
     };
+    /** IR.GetConfig (preview firmware API; observed empty on fw 2.1.99). */
+    'ir.getconfig': {
+        params: {shellyID: string};
+        result: Record<string, unknown>;
+    };
+    /** IR.GetStatus (preview firmware API; observed empty on fw 2.1.99). */
+    'ir.getstatus': {
+        params: {shellyID: string};
+        result: Record<string, unknown>;
+    };
+    /** IR.SetConfig (preview firmware API; config fields are firmware-defined, not yet documented). */
+    'ir.setconfig': {
+        params: {shellyID: string; config: Record<string, unknown>};
+        result: Record<string, unknown>;
+    };
+    /** IR.AddDevice — create an irdevice:N component (preview firmware API; params not yet documented). */
+    'ir.adddevice': {
+        params: {shellyID: string; params?: Record<string, unknown>};
+        result: Record<string, unknown>;
+    };
+    /** IR.DeleteDevice — remove an irdevice:N component (preview firmware API; params not yet documented). */
+    'ir.deletedevice': {
+        params: {shellyID: string; params?: Record<string, unknown>};
+        result: Record<string, unknown>;
+    };
+    /** Return the ir namespace contract (methods, schemas, permissions, errors). */
+    'ir.describe': {
+        params: Record<string, unknown>;
+        result: {
+            namespace: string;
+            methods: Record<string, unknown>;
+            limits?: Record<string, unknown>;
+            tags?: string[];
+            errors?: unknown[];
+        };
+    };
+    /** IRCode.GetConfig (preview firmware API; params and response not yet documented). */
+    'ircode.getconfig': {
+        params: {shellyID: string; params?: Record<string, unknown>};
+        result: Record<string, unknown>;
+    };
+    /** IRCode.GetStatus (preview firmware API; params and response not yet documented). */
+    'ircode.getstatus': {
+        params: {shellyID: string; params?: Record<string, unknown>};
+        result: Record<string, unknown>;
+    };
+    /** IRCode.SetConfig (preview firmware API; params and response not yet documented). */
+    'ircode.setconfig': {
+        params: {shellyID: string; params?: Record<string, unknown>};
+        result: Record<string, unknown>;
+    };
+    /** IRCode.Emit — transmit a stored IR code (preview firmware API; params not yet documented). */
+    'ircode.emit': {
+        params: {shellyID: string; params?: Record<string, unknown>};
+        result: Record<string, unknown>;
+    };
+    /** Return the ircode namespace contract (methods, schemas, permissions, errors). */
+    'ircode.describe': {
+        params: Record<string, unknown>;
+        result: {
+            namespace: string;
+            methods: Record<string, unknown>;
+            limits?: Record<string, unknown>;
+            tags?: string[];
+            errors?: unknown[];
+        };
+    };
+    /** IRDevice.GetConfig — observed shape {id, name} on fw 2.1.99 (preview firmware API). */
+    'irdevice.getconfig': {
+        params: {shellyID: string; id: number};
+        result: Record<string, unknown>;
+    };
+    /** IRDevice.GetStatus (preview firmware API; response shape not yet observed). */
+    'irdevice.getstatus': {
+        params: {shellyID: string; id: number};
+        result: Record<string, unknown>;
+    };
+    /** IRDevice.SetConfig — known config fields: name (preview firmware API; kept permissive). */
+    'irdevice.setconfig': {
+        params: {shellyID: string; id: number; config: Record<string, unknown>};
+        result: Record<string, unknown>;
+    };
+    /** IRDevice.LearnCode — capture an IR code (preview firmware API; params not yet documented). */
+    'irdevice.learncode': {
+        params: {
+            shellyID: string;
+            id: number;
+            params?: Record<string, unknown>;
+        };
+        result: Record<string, unknown>;
+    };
+    /** IRDevice.DeleteCode — remove a learned IR code (preview firmware API; params not yet documented). */
+    'irdevice.deletecode': {
+        params: {
+            shellyID: string;
+            id: number;
+            params?: Record<string, unknown>;
+        };
+        result: Record<string, unknown>;
+    };
+    /** Return the irdevice namespace contract (methods, schemas, permissions, errors). */
+    'irdevice.describe': {
+        params: Record<string, unknown>;
+        result: {
+            namespace: string;
+            methods: Record<string, unknown>;
+            limits?: Record<string, unknown>;
+            tags?: string[];
+            errors?: unknown[];
+        };
+    };
+    /** List library entries with brand/device-type/source filters and name search. */
+    'irlibrary.list': {
+        params: {
+            organizationId?: string;
+            query?: string;
+            brand?: string;
+            deviceType?: string;
+            source?: 'learned' | 'import_irdb' | 'import_flipper' | 'manual';
+            limit?: number;
+            offset?: number;
+        };
+        result: {
+            items: Array<{
+                id: number;
+                organizationId: string;
+                name: string;
+                brand: string | null;
+                deviceType: string | null;
+                protocol: string | null;
+                payload: Record<string, unknown>;
+                source: 'learned' | 'import_irdb' | 'import_flipper' | 'manual';
+                sourceDetail: string | null;
+                createdBy: string | null;
+                createdAt: string;
+                updatedAt: string | null;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
+    };
+    /** Store one IR code (learned from a device or entered manually). Payload is kept faithful. */
+    'irlibrary.save': {
+        params: {
+            organizationId?: string;
+            name: string;
+            brand?: string | null;
+            deviceType?: string | null;
+            protocol?: string | null;
+            payload: Record<string, unknown>;
+            source?: 'learned' | 'manual';
+            sourceDetail?: string | null;
+        };
+        result: {
+            id: number;
+            organizationId: string;
+            name: string;
+            brand: string | null;
+            deviceType: string | null;
+            protocol: string | null;
+            payload: Record<string, unknown>;
+            source: 'learned' | 'import_irdb' | 'import_flipper' | 'manual';
+            sourceDetail: string | null;
+            createdBy: string | null;
+            createdAt: string;
+            updatedAt: string | null;
+        };
+    };
+    /** Partial-update an entry. Null clears brand/deviceType/protocol; source is immutable. */
+    'irlibrary.update': {
+        params: {
+            organizationId?: string;
+            id: number;
+            patch: {
+                name?: string;
+                brand?: string | null;
+                deviceType?: string | null;
+                protocol?: string | null;
+                payload?: Record<string, unknown>;
+            };
+        };
+        result: {
+            id: number;
+            organizationId: string;
+            name: string;
+            brand: string | null;
+            deviceType: string | null;
+            protocol: string | null;
+            payload: Record<string, unknown>;
+            source: 'learned' | 'import_irdb' | 'import_flipper' | 'manual';
+            sourceDetail: string | null;
+            createdBy: string | null;
+            createdAt: string;
+            updatedAt: string | null;
+        };
+    };
+    /** Delete one library entry. */
+    'irlibrary.delete': {
+        params: {organizationId?: string; id: number};
+        result: {deleted: boolean; id: number};
+    };
+    /** Import IR codes from an IRDB .csv or Flipper .ir file. dryRun returns a parse preview without storing. Unknown formats are rejected. */
+    'irlibrary.importfile': {
+        params: {
+            organizationId?: string;
+            filename: string;
+            content: string;
+            brand?: string | null;
+            deviceType?: string | null;
+            dryRun?: boolean;
+        };
+        result: {
+            format: 'irdb_csv' | 'flipper_ir';
+            parsed: number;
+            imported: number;
+            skipped: Array<{line: number; reason: string}>;
+            dryRun: boolean;
+            preview?: Array<{
+                name: string;
+                protocol: string | null;
+                payload: Record<string, unknown>;
+            }>;
+            entries?: Array<{
+                id: number;
+                organizationId: string;
+                name: string;
+                brand: string | null;
+                deviceType: string | null;
+                protocol: string | null;
+                payload: Record<string, unknown>;
+                source: 'learned' | 'import_irdb' | 'import_flipper' | 'manual';
+                sourceDetail: string | null;
+                createdBy: string | null;
+                createdAt: string;
+                updatedAt: string | null;
+            }>;
+        };
+    };
+    /** Browse the bundled IR starter catalog (curated from Flipper-IRDB, CC0-1.0) with brand/device-type filters and name search. Read-only; nothing is fetched at runtime. */
+    'irlibrary.cataloglist': {
+        params: {
+            organizationId?: string;
+            query?: string;
+            brand?: string;
+            deviceType?: string;
+            limit?: number;
+            offset?: number;
+        };
+        result: {
+            items: Array<{
+                id: string;
+                name: string;
+                brand: string;
+                deviceType: string;
+                codeCount: number;
+                protocols: string[];
+                sourceRepo: string;
+                sourcePath: string;
+                license: string;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
+    };
+    /** Import selected catalog remotes into the org library through the standard Flipper parser, with catalog provenance in sourceDetail. dryRun previews parse results without storing. */
+    'irlibrary.importcatalog': {
+        params: {organizationId?: string; ids: string[]; dryRun?: boolean};
+        result: {
+            imported: number;
+            dryRun: boolean;
+            remotes: Array<{
+                id: string;
+                name: string;
+                parsed: number;
+                imported: number;
+                skipped: Array<{line: number; reason: string}>;
+            }>;
+            entries?: Array<{
+                id: number;
+                organizationId: string;
+                name: string;
+                brand: string | null;
+                deviceType: string | null;
+                protocol: string | null;
+                payload: Record<string, unknown>;
+                source: 'learned' | 'import_irdb' | 'import_flipper' | 'manual';
+                sourceDetail: string | null;
+                createdBy: string | null;
+                createdAt: string;
+                updatedAt: string | null;
+            }>;
+        };
+    };
+    /** Write library entries to an IR controller via IR.AddDevice/IRCode.SetConfig. Preview firmware: the code-write shape is not documented, so the stored payload is passed through faithfully (hardware-pending). */
+    'irlibrary.pushtodevice': {
+        params: {
+            organizationId?: string;
+            shellyID: string;
+            entryIds: number[];
+            irDeviceId?: number;
+            createDeviceName?: string;
+        };
+        result: {
+            shellyID: string;
+            irDeviceId: number | null;
+            createdDevice: boolean;
+            hardwarePinned: boolean;
+            results: Array<{
+                entryId: number;
+                ok: boolean;
+                error?: string;
+                response?: Record<string, unknown>;
+            }>;
+        };
+    };
+    /** Return the irlibrary namespace contract (methods, schemas, permissions, errors). */
+    'irlibrary.describe': {
+        params: Record<string, unknown>;
+        result: {
+            namespace: string;
+            methods: Record<string, unknown>;
+            limits?: Record<string, unknown>;
+            tags?: string[];
+            errors?: unknown[];
+        };
+    };
     /** Restore active backend-owned operation jobs for the current tenant. */
     'job.listactive': {
         params: {
@@ -9353,6 +14083,19 @@ export interface HostContract {
                 endedAt: string | null;
                 createdBy: string | null;
                 metadata: Record<string, unknown>;
+                control?: {
+                    state:
+                        | 'active'
+                        | 'cancel_requested'
+                        | 'stopped'
+                        | 'completed';
+                    queuedCount: number;
+                    claimedCount: number;
+                    dispatchedCount: number;
+                    stoppedCount: number;
+                    unresolvedCount: number;
+                    cancelRequestedAt: string | null;
+                };
             }>;
             total: number;
             limit: number;
@@ -9378,6 +14121,86 @@ export interface HostContract {
             endedAt: string | null;
             createdBy: string | null;
             metadata: Record<string, unknown>;
+            control?: {
+                state: 'active' | 'cancel_requested' | 'stopped' | 'completed';
+                queuedCount: number;
+                claimedCount: number;
+                dispatchedCount: number;
+                stoppedCount: number;
+                unresolvedCount: number;
+                cancelRequestedAt: string | null;
+            };
+        };
+    };
+    /** Read the safe control actions currently available for one job. */
+    'job.capabilities': {
+        params: {
+            jobId: string;
+            kind?: 'certificate' | 'credential' | 'backup' | 'firmware';
+        };
+        result: {
+            kind: 'certificate' | 'credential' | 'backup' | 'firmware';
+            inspect: {supported: boolean; reason?: string};
+            cancel: {supported: boolean; reason?: string};
+            resume: {supported: boolean; reason?: string};
+        };
+    };
+    /** Stop remaining undispatched job work. */
+    'job.cancel': {
+        params: {
+            jobId: string;
+            kind?: 'certificate' | 'credential' | 'backup' | 'firmware';
+        };
+        result: {
+            id: string;
+            kind: 'certificate' | 'credential' | 'backup' | 'firmware';
+            status: 'queued' | 'running' | 'done' | 'failed';
+            total: number;
+            doneCount: number;
+            failCount: number;
+            createdAt: string;
+            startedAt: string | null;
+            endedAt: string | null;
+            createdBy: string | null;
+            metadata: Record<string, unknown>;
+            control?: {
+                state: 'active' | 'cancel_requested' | 'stopped' | 'completed';
+                queuedCount: number;
+                claimedCount: number;
+                dispatchedCount: number;
+                stoppedCount: number;
+                unresolvedCount: number;
+                cancelRequestedAt: string | null;
+            };
+        };
+    };
+    /** Resume only stopped work known not to have been dispatched. */
+    'job.resume': {
+        params: {
+            jobId: string;
+            kind?: 'certificate' | 'credential' | 'backup' | 'firmware';
+        };
+        result: {
+            id: string;
+            kind: 'certificate' | 'credential' | 'backup' | 'firmware';
+            status: 'queued' | 'running' | 'done' | 'failed';
+            total: number;
+            doneCount: number;
+            failCount: number;
+            createdAt: string;
+            startedAt: string | null;
+            endedAt: string | null;
+            createdBy: string | null;
+            metadata: Record<string, unknown>;
+            control?: {
+                state: 'active' | 'cancel_requested' | 'stopped' | 'completed';
+                queuedCount: number;
+                claimedCount: number;
+                dispatchedCount: number;
+                stoppedCount: number;
+                unresolvedCount: number;
+                cancelRequestedAt: string | null;
+            };
         };
     };
     /** Return the job namespace contract (methods, schemas, permissions, errors). */
@@ -9394,7 +14217,16 @@ export interface HostContract {
     /** List kinds (vendor + this org custom), optionally filtered by appliesTo. */
     'kind.list': {
         params: {appliesTo?: 'device' | 'group' | 'both'};
-        result: Record<string, unknown>;
+        result: {
+            kinds: Array<{
+                id: string;
+                name: string;
+                category: string;
+                icon?: string | null;
+                appliesTo: 'device' | 'group' | 'both';
+                source: 'vendor' | 'custom';
+            }>;
+        };
     };
     /** Get one kind (vendor or this org custom). */
     'kind.get': {
@@ -9445,7 +14277,7 @@ export interface HostContract {
         };
     };
     /** Delete a custom kind; blocked while devices/groups still reference it. */
-    'kind.delete': {params: {id: string}; result: Record<string, unknown>};
+    'kind.delete': {params: {id: string}; result: {deleted: boolean}};
     /** Return the kind namespace contract (methods, schemas, permissions, errors). */
     'kind.describe': {
         params: Record<string, unknown>;
@@ -9796,7 +14628,7 @@ export interface HostContract {
             };
         };
     };
-    /** Partial-update a location. Cycle-safe parent changes. kindFields replaces the stored object. */
+    /** Partial-update a location. Cycle-safe parent changes. kindFields and customFields are shallow-merged with the stored objects. */
     'location.update': {
         params: {
             organizationId?: string;
@@ -9860,6 +14692,16 @@ export interface HostContract {
     'location.delete': {
         params: {organizationId?: string; id: number};
         result: {deleted: boolean};
+    };
+    /** Atomically remove a location subtree and its location assignments. Device and appliance records remain intact. */
+    'location.deletesubtree': {
+        params: {organizationId?: string; id: number};
+        result: {
+            rootId: number;
+            deletedIds: number[];
+            deletedCount: number;
+            removedAssignments: number;
+        };
     };
     /** Fetch one location by id with inherited effective fields resolved. */
     'location.get': {
@@ -10060,6 +14902,11 @@ export interface HostContract {
             has_more: boolean;
         };
     };
+    /** Canonical descendant location ids, optionally including the selected location. */
+    'location.descendants': {
+        params: {organizationId?: string; id: number; includeSelf?: boolean};
+        result: {items: number[]};
+    };
     /** Breadcrumb from root to the given location. */
     'location.path': {
         params: {organizationId?: string; id: number};
@@ -10146,7 +14993,8 @@ export interface HostContract {
                         | 'geo'
                         | 'contact'
                         | 'operatingHours'
-                        | 'environmentalSetpoint';
+                        | 'environmentalSetpoint'
+                        | 'keyValue';
                     optionSet?: string;
                     min?: number;
                     max?: number;
@@ -10200,6 +15048,32 @@ export interface HostContract {
             source: 'local' | 'cache' | 'nominatim' | 'local-weak';
         };
     };
+    /** Resolve map coordinates to one normalized address candidate through Fleet geocoding. */
+    'location.reversegeocode': {
+        params: {lat: number; lng: number; language?: string};
+        result: {
+            candidate: null | {
+                kind: 'country' | 'admin' | 'city' | 'street';
+                geonameid?: number;
+                name: string;
+                asciiname?: string;
+                countryCode: string;
+                countryName?: string;
+                adminCode?: string;
+                adminName?: string;
+                city?: string;
+                streetName?: string;
+                houseNumber?: string;
+                postalCode?: string;
+                lat: number;
+                lng: number;
+                timezone?: string;
+                weight: number;
+                score: number;
+            };
+            source: 'cache' | 'nominatim' | 'unavailable';
+        };
+    };
     /** All countries from the GeoNames reference. Cached at boot. */
     'location.listcountries': {
         params: Record<string, never>;
@@ -10242,6 +15116,25 @@ export interface HostContract {
             unresolved: number;
             remaining: number;
             errors: Array<{locationId: number; reason: string}>;
+        };
+    };
+    /** Build the country/region/city tree above addressed, parentless locations. Existing nodes are adopted, never duplicated, and a location that already has a parent is left where it is. Cursor-paginated; pass nextAfterId until it comes back null. */
+    'location.backfillgeography': {
+        params: {organizationId?: string; batchSize?: number; afterId?: number};
+        result: {
+            processed: number;
+            created: number;
+            adopted: number;
+            skipped: number;
+            nextAfterId: number | null;
+            skips: Array<{
+                locationId: number;
+                reason:
+                    | 'already-parented'
+                    | 'no-country-code'
+                    | 'kind-cannot-nest'
+                    | 'name-taken-by-other-kind';
+            }>;
         };
     };
     /** Mint a short-lived ticket for POST /api/uploads/floor-plan. */
@@ -10306,6 +15199,25 @@ export interface HostContract {
             }>;
         };
     };
+    /** Atomically assign one device to a location, persist its selected entity keys, and optionally update its catalog kind. */
+    'location.configuredeviceassignment': {
+        params: {
+            organizationId?: string;
+            locationId: number;
+            shellyID: string;
+            selectedEntityKeys: string[] | null;
+            catalogKind?: string | null;
+        };
+        result: {
+            organizationId: string;
+            locationId: number;
+            shellyID: string;
+            selectedEntityKeys: string[] | null;
+            catalogKind: string | null;
+            createdAt: string;
+            updatedAt: string | null;
+        };
+    };
     /** Remove the primary location assignment for a device/entity. removed=false if no assignment existed. */
     'location.removeassignment': {
         params: {
@@ -10325,7 +15237,7 @@ export interface HostContract {
             } | null;
         };
     };
-    /** List location assignments with optional filters. */
+    /** List location assignments with optional filters. Page with `cursor`; `offset` stops at 10,000. */
     'location.listassignments': {
         params: {
             organizationId?: string;
@@ -10335,6 +15247,7 @@ export interface HostContract {
             locationIds?: number[];
             limit?: number;
             offset?: number;
+            cursor?: string;
         };
         result: {
             items: Array<{
@@ -10342,6 +15255,32 @@ export interface HostContract {
                 subjectType: 'device' | 'entity' | 'group';
                 subjectId: string;
                 locationId: number;
+                createdAt: string;
+                updatedAt: string | null;
+            }>;
+            total?: number;
+            limit: number;
+            offset?: number;
+            has_more: boolean;
+            next_cursor: string | null;
+        };
+    };
+    /** List device location assignments with canonical entity selection and catalog classification. */
+    'location.listdeviceassignmentprofiles': {
+        params: {
+            organizationId?: string;
+            locationIds?: number[];
+            shellyIDs?: string[];
+            limit?: number;
+            offset?: number;
+        };
+        result: {
+            items: Array<{
+                organizationId: string;
+                locationId: number;
+                shellyID: string;
+                selectedEntityKeys: string[] | null;
+                catalogKind: string | null;
                 createdAt: string;
                 updatedAt: string | null;
             }>;
@@ -10552,6 +15491,43 @@ export interface HostContract {
             errors?: unknown[];
         };
     };
+    /** List live remembered approvals: your own, or with scope "organization" everyone's in your organization. */
+    'mcp_approval.list': {
+        params: {
+            scope?: 'mine' | 'organization';
+            limit?: number;
+            offset?: number;
+        };
+        result: {
+            items: Array<{
+                id: string;
+                userId: string;
+                username: string;
+                method: string;
+                subject: string;
+                scope: 'ttl' | 'forever';
+                grantedAt: string;
+                expiresAt: string;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
+    };
+    /** Revoke one remembered approval, so the next matching AI action asks a person again. revoked is false when no such approval is yours to revoke. */
+    'mcp_approval.revoke': {params: {id: string}; result: {revoked: boolean}};
+    /** Return the mcp_approval namespace contract (methods, schemas, permissions, errors). */
+    'mcp_approval.describe': {
+        params: Record<string, unknown>;
+        result: {
+            namespace: string;
+            methods: Record<string, unknown>;
+            limits?: Record<string, unknown>;
+            tags?: string[];
+            errors?: unknown[];
+        };
+    };
     /** Returns whether the mDNS responder is currently running. */
     'mdns.getstatus': {
         params: Record<string, unknown>;
@@ -10587,6 +15563,11 @@ export interface HostContract {
     'media.background.createuploadticket': {
         params: Record<string, never>;
         result: {uploadTicket: string; expiresAt: string};
+    };
+    /** Give a report image from the shared root folder to one tenant. Root files predate per-tenant folders and have no owner, so this is a hand decision by provider support, audited like every RPC. */
+    'media.reportimage.assign': {
+        params: {fileName: string; organizationId: string};
+        result: {success: boolean; path: string};
     };
     /** Delete a visible background image. */
     'media.background.delete': {
@@ -10846,12 +15827,52 @@ export interface HostContract {
     /** Composite endpoint for mobile app launch — returns slim device list, waiting-room count, alert counts, and identity in one round trip. Sections the caller cannot read are returned with visible=false. */
     'mobile.getbootstrap': {
         params: {deviceLimit?: number};
-        result: Record<string, unknown>;
+        result: {
+            serverTime: string;
+            user: {
+                username: string;
+                organizationId: string | null;
+                isAdmin: boolean;
+            };
+            permissions: Record<string, unknown>;
+            uiCapabilities: {components: Record<string, unknown>};
+            devices: {
+                visible: boolean;
+                items: Array<Record<string, unknown>>;
+                total: number;
+            };
+            waitingRoom: {
+                visible: boolean;
+                pendingCount: number;
+                pending: Record<string, unknown>;
+            };
+            alerts: {
+                visible: boolean;
+                openCount: number;
+                criticalCount: number;
+            };
+        };
     };
     /** Returns devices changed since the given timestamp + current waiting-room count. For mobile resume / incremental refresh. */
     'mobile.syncdelta': {
         params: {since: string};
-        result: Record<string, unknown>;
+        result: {
+            serverTime: string;
+            devices: {
+                visible: boolean;
+                changed: Array<Record<string, unknown>>;
+            };
+            waitingRoom: {
+                visible: boolean;
+                pendingCount: number;
+                pending: Record<string, unknown>;
+            };
+            alerts: {
+                visible: boolean;
+                openCount: number;
+                criticalCount: number;
+            };
+        };
     };
     /** Modbus.SetConfig — Modbus TCP/RTU enable toggle. */
     'modbus.setconfig': {
@@ -10927,7 +15948,7 @@ export interface HostContract {
             has_more: boolean;
         };
     };
-    /** List inbox items for the authenticated caller. */
+    /** List inbox items for the authenticated caller, newest first. Page with `cursor`; `offset` stops at 10,000. Unread count: state unread with limit 1, read total. */
     'notification.inbox.list': {
         params: {
             organizationId?: string;
@@ -10940,6 +15961,7 @@ export interface HostContract {
             query?: string;
             limit?: number;
             offset?: number;
+            cursor?: string;
         };
         result: {
             items: Array<{
@@ -10960,8 +15982,11 @@ export interface HostContract {
                         | 'component'
                         | 'group'
                         | 'location'
-                        | 'tag';
+                        | 'tag'
+                        | 'external'
+                        | 'system';
                     subjectId: string;
+                    locationId?: number | null;
                 } | null;
                 title: string;
                 message: string;
@@ -10977,10 +16002,11 @@ export interface HostContract {
                     | 'open_source'
                 >;
             }>;
-            total: number;
+            total?: number;
             limit: number;
-            offset: number;
+            offset?: number;
             has_more: boolean;
+            next_cursor: string | null;
         };
     };
     /** Return one inbox item for the authenticated caller. */
@@ -11004,8 +16030,11 @@ export interface HostContract {
                     | 'component'
                     | 'group'
                     | 'location'
-                    | 'tag';
+                    | 'tag'
+                    | 'external'
+                    | 'system';
                 subjectId: string;
+                locationId?: number | null;
             } | null;
             title: string;
             message: string;
@@ -11020,6 +16049,51 @@ export interface HostContract {
                 | 'unsilence_alert'
                 | 'open_source'
             >;
+        };
+    };
+    /** Return up to 100 of the caller's own inbox items by id in one call. Other ids come back in missingIds. */
+    'notification.inbox.getmany': {
+        params: {organizationId?: string; ids: number[]};
+        result: {
+            items: Array<{
+                id: number;
+                organizationId: string;
+                userId: string;
+                kind:
+                    | 'alert_created'
+                    | 'alert_updated'
+                    | 'alert_resolved'
+                    | 'alert_digest';
+                state: 'unread' | 'read';
+                alertId: number | null;
+                source: {
+                    organizationId: string;
+                    subjectType:
+                        | 'device'
+                        | 'component'
+                        | 'group'
+                        | 'location'
+                        | 'tag'
+                        | 'external'
+                        | 'system';
+                    subjectId: string;
+                    locationId?: number | null;
+                } | null;
+                title: string;
+                message: string;
+                createdAt: string;
+                readAt: string | null;
+                availableActions: Array<
+                    | 'mark_read'
+                    | 'mark_unread'
+                    | 'acknowledge_alert'
+                    | 'unacknowledge_alert'
+                    | 'silence_alert'
+                    | 'unsilence_alert'
+                    | 'open_source'
+                >;
+            }>;
+            missingIds: number[];
         };
     };
     /** Mark one inbox item as read. */
@@ -11043,8 +16117,11 @@ export interface HostContract {
                     | 'component'
                     | 'group'
                     | 'location'
-                    | 'tag';
+                    | 'tag'
+                    | 'external'
+                    | 'system';
                 subjectId: string;
+                locationId?: number | null;
             } | null;
             title: string;
             message: string;
@@ -11082,8 +16159,11 @@ export interface HostContract {
                     | 'component'
                     | 'group'
                     | 'location'
-                    | 'tag';
+                    | 'tag'
+                    | 'external'
+                    | 'system';
                 subjectId: string;
+                locationId?: number | null;
             } | null;
             title: string;
             message: string;
@@ -12101,6 +17181,1819 @@ export interface HostContract {
             errors?: unknown[];
         };
     };
+    /** Return configured operational policies visible within the caller resource scope. */
+    'operations.getpolicies': {
+        params: {organizationId?: string};
+        result: {
+            refrigeration: Array<{
+                id: string;
+                locationId?: number;
+                freshnessSec: number;
+                thresholdPct: number;
+                minPeerCount: number;
+                sources: Array<{
+                    id: string;
+                    deviceId: string;
+                    channel: number;
+                    tag: 'total_act_energy';
+                    peerGroupIds: string[];
+                }>;
+            }>;
+            coldChain: Array<{
+                id: string;
+                locationId: number;
+                timeZone: string;
+                freshnessSeconds: number;
+                deadlineHour: number;
+                retentionDays: number;
+                sources: Array<{
+                    id: string;
+                    deviceId: string;
+                    kind: string;
+                    source: string;
+                    channel: number;
+                    evidenceRequired: boolean;
+                    maxTemperatureC: number | null;
+                    limitBasis:
+                        | 'statutory'
+                        | 'industry_practice'
+                        | 'custom'
+                        | null;
+                }>;
+            }>;
+            parking: Array<{
+                id: string;
+                locationId: number;
+                freshnessSec: number;
+                sources: Array<
+                    | {
+                          id: string;
+                          customDeviceId: string;
+                          roleKey: string;
+                          kind: 'distance';
+                          calibration: {
+                              mode: 'ratio';
+                              mountHeightM: number;
+                              occupiedRatio: number;
+                          };
+                      }
+                    | {
+                          id: string;
+                          customDeviceId: string;
+                          roleKey: string;
+                          kind: 'distance';
+                          calibration: {
+                              mode: 'threshold';
+                              occupiedBelowM: number;
+                          };
+                      }
+                    | {
+                          id: string;
+                          customDeviceId: string;
+                          roleKey: string;
+                          kind: 'boolean';
+                          occupiedWhen: boolean;
+                      }
+                >;
+                safetySources?: Array<
+                    | {
+                          id: string;
+                          customDeviceId: string;
+                          roleKey: string;
+                          kind: 'smoke' | 'flood';
+                          alarmWhen: boolean;
+                      }
+                    | {
+                          id: string;
+                          customDeviceId: string;
+                          roleKey: string;
+                          kind: 'gas';
+                      }
+                >;
+            }>;
+            irrigation: Array<{
+                id: string;
+                locationId?: number;
+                freshnessSec: number;
+                graceSec: number;
+                schedules: Array<{hour: number; minute: number}>;
+                valve: {deviceId: string; channel: number; kind: string};
+                soil?: {
+                    deviceId: string;
+                    channel: number;
+                    kind: string;
+                    source?: string;
+                    threshold: number;
+                };
+                rain?: {
+                    deviceId: string;
+                    channel: number;
+                    kind: string;
+                    source?: string;
+                    threshold: number;
+                };
+            }>;
+            pv: Array<{
+                id: string;
+                locationId?: number;
+                freshnessSec: number;
+                periodHours: number;
+                minComparableSources: number;
+                attentionFraction: number;
+                sources: Array<{
+                    id: string;
+                    deviceId: string;
+                    channel: number;
+                    tag: 'total_act_energy' | 'total_act_ret_energy';
+                }>;
+            }>;
+            italiaPoolChemistry: Array<{
+                poolId: string;
+                siteId: number;
+                timeZone: string;
+                seasonOpenMonthDay: string;
+                seasonCloseMonthDay: string;
+                bands: Array<{
+                    entry:
+                        | 'freeChlorine'
+                        | 'combinedChlorine'
+                        | 'temperature'
+                        | 'ph';
+                    label: string;
+                    min: number | null;
+                    max: number | null;
+                    unit: string;
+                }>;
+                sources: Array<{
+                    entry: 'temperature' | 'makeUpWaterMeter';
+                    deviceId: string;
+                    kind: string;
+                    source: string;
+                    channel: number;
+                }>;
+            }>;
+            italiaHotWater: Array<{
+                siteId: number;
+                timeZone: string;
+                freshnessSeconds: number;
+                maxGapMinutes: number;
+                holdMinutes: number;
+                blocks: Array<{
+                    blockId: string;
+                    deviceId: string;
+                    kind: string;
+                    source: string;
+                    channel: number;
+                    limitC: number;
+                }>;
+            }>;
+            italiaNightFlow: Array<{
+                siteId: number;
+                timeZone: string;
+                seasonOpenMonthDay: string;
+                seasonCloseMonthDay: string;
+                quietStartHour: number;
+                quietEndHour: number;
+                sustainedMinutes: number;
+                minimumBaselineSamples: number;
+                madMultiplier: number;
+                minimumExcessM3h: number;
+                zones: Array<{
+                    zoneId: number;
+                    sources: Array<{
+                        deviceId: string;
+                        channel: number;
+                        tag: 'volume_flow_m3h';
+                    }>;
+                }>;
+            }>;
+            italiaPitch: Array<{
+                pitchId: number;
+                deviceId: string;
+                component: 'switch';
+                channel: number;
+                ratedAmps: number;
+                warningFraction: number;
+                overloadFraction: number;
+                disconnectAfterSeconds: number;
+                freshnessSeconds: number;
+            }>;
+            italiaSitePower: Array<{
+                siteId: number;
+                meterId: number;
+                contractedKw: number;
+                availableMarginFraction: number;
+                warningFraction: number;
+                disconnectAfterSeconds: number;
+                freshnessSeconds: number;
+            }>;
+            italiaBreakerTrips: Array<{
+                pitchId: number;
+                logicalDeviceId: number;
+                component: string;
+                counterField: string;
+                windowDays: number;
+            }>;
+        };
+    };
+    /** Return the Fleet-owned policy registry, including editable canonical policy schemas for settings clients. */
+    'operations.getpolicyregistry': {
+        params: {organizationId?: string};
+        result: {
+            operations: Array<{
+                family:
+                    | 'refrigeration'
+                    | 'coldChain'
+                    | 'parking'
+                    | 'irrigation'
+                    | 'pv'
+                    | 'italiaPoolChemistry'
+                    | 'italiaHotWater'
+                    | 'italiaNightFlow'
+                    | 'italiaPitch'
+                    | 'italiaSitePower'
+                    | 'italiaBreakerTrips';
+                label: string;
+                description: string;
+                scopes: Array<'organization' | 'location' | 'device'>;
+                sourceSelectors: Array<
+                    | 'physical-device'
+                    | 'logical-device'
+                    | 'logical-meter'
+                    | 'custom-device-role'
+                    | 'manual-entry'
+                >;
+                selectorBindings: Array<{
+                    path: string;
+                    collection:
+                        | 'locations'
+                        | 'physicalSources'
+                        | 'logicalMeters'
+                        | 'logicalDevices'
+                        | 'customDeviceRoles';
+                    sourceType?:
+                        | 'energy'
+                        | 'numeric'
+                        | 'event'
+                        | 'switchCurrent';
+                    locationRelation?: 'selected' | 'selected-or-parent';
+                    locationKinds?: string[];
+                    apply: Record<string, string>;
+                }>;
+                storage: 'profile-metadata' | 'pool-register';
+                evaluatorBlocks: Array<
+                    | 'range'
+                    | 'freshness'
+                    | 'duration'
+                    | 'peer-comparison'
+                    | 'schedule'
+                    | 'sequence'
+                    | 'counter-difference'
+                    | 'aggregation'
+                    | 'scope'
+                >;
+                setMethod: string;
+                verdictMethod: string;
+                permissions: {
+                    read: {
+                        component: 'organizations';
+                        operation: 'read' | 'update';
+                    };
+                    write: {
+                        component: 'organizations';
+                        operation: 'read' | 'update';
+                    };
+                };
+                resultStates: string[];
+                policyIdField:
+                    | 'id'
+                    | 'poolId'
+                    | 'locationId'
+                    | 'siteId'
+                    | 'pitchId';
+                editableFields: string[];
+                policySchema: Record<string, unknown>;
+            }>;
+        };
+    };
+    /** Return exact persisted Fleet source identities and scoped logical choices for one operational-policy family. */
+    'operations.getpolicyselectorcatalog': {
+        params: {
+            organizationId?: string;
+            family:
+                | 'refrigeration'
+                | 'coldChain'
+                | 'parking'
+                | 'irrigation'
+                | 'pv'
+                | 'italiaPoolChemistry'
+                | 'italiaHotWater'
+                | 'italiaNightFlow'
+                | 'italiaPitch'
+                | 'italiaSitePower'
+                | 'italiaBreakerTrips';
+            locationId?: number;
+        };
+        result: {
+            family:
+                | 'refrigeration'
+                | 'coldChain'
+                | 'parking'
+                | 'irrigation'
+                | 'pv'
+                | 'italiaPoolChemistry'
+                | 'italiaHotWater'
+                | 'italiaNightFlow'
+                | 'italiaPitch'
+                | 'italiaSitePower'
+                | 'italiaBreakerTrips';
+            locations: Array<{
+                id: number;
+                name: string;
+                kind: string;
+                parentLocationId: number | null;
+                timeZone: string | null;
+            }>;
+            physicalSources: Array<
+                | {
+                      sourceType: 'energy';
+                      deviceId: string;
+                      label: string;
+                      locationId: number | null;
+                      component: string | null;
+                      channel: number;
+                      tag: string;
+                  }
+                | {
+                      sourceType: 'numeric' | 'event';
+                      deviceId: string;
+                      label: string;
+                      locationId: number | null;
+                      kind: string;
+                      source: string;
+                      channel: number;
+                  }
+                | {
+                      sourceType: 'switchCurrent';
+                      deviceId: string;
+                      label: string;
+                      locationId: number | null;
+                      component: 'switch';
+                      channel: number;
+                  }
+            >;
+            logicalMeters: Array<{
+                meterId: number;
+                name: string;
+                locationId: number | null;
+                utilityType: string;
+                aggregationMode: string;
+                pointCount: number;
+            }>;
+            logicalDevices: Array<{
+                logicalDeviceId: number;
+                deviceId: string;
+                label: string;
+                locationId: number;
+                component: string;
+                counterField: string;
+            }>;
+            customDeviceRoles: Array<{
+                customDeviceId: string;
+                deviceName: string;
+                locationId: number | null;
+                roleKey: string;
+                label: string;
+                valueType:
+                    | 'boolean'
+                    | 'number'
+                    | 'string'
+                    | 'event'
+                    | 'json'
+                    | null;
+            }>;
+        };
+    };
+    /** Create or replace one policy through the Fleet-owned family registry. The policy must satisfy that family’s canonical schema. */
+    'operations.setpolicy': {
+        params:
+            | {
+                  organizationId?: string;
+                  family: 'refrigeration';
+                  policy: {
+                      id: string;
+                      locationId?: number;
+                      freshnessSec: number;
+                      thresholdPct: number;
+                      minPeerCount: number;
+                      sources: Array<{
+                          id: string;
+                          deviceId: string;
+                          channel: number;
+                          tag: 'total_act_energy';
+                          peerGroupIds: string[];
+                      }>;
+                  };
+              }
+            | {
+                  organizationId?: string;
+                  family: 'coldChain';
+                  policy: {
+                      id: string;
+                      locationId: number;
+                      timeZone: string;
+                      freshnessSeconds: number;
+                      deadlineHour: number;
+                      retentionDays: number;
+                      sources: Array<{
+                          id: string;
+                          deviceId: string;
+                          kind: string;
+                          source: string;
+                          channel: number;
+                          evidenceRequired: boolean;
+                          maxTemperatureC: number | null;
+                          limitBasis:
+                              | 'statutory'
+                              | 'industry_practice'
+                              | 'custom'
+                              | null;
+                      }>;
+                  };
+              }
+            | {
+                  organizationId?: string;
+                  family: 'parking';
+                  policy: {
+                      id: string;
+                      locationId: number;
+                      freshnessSec: number;
+                      sources: Array<
+                          | {
+                                id: string;
+                                customDeviceId: string;
+                                roleKey: string;
+                                kind: 'distance';
+                                calibration: {
+                                    mode: 'ratio';
+                                    mountHeightM: number;
+                                    occupiedRatio: number;
+                                };
+                            }
+                          | {
+                                id: string;
+                                customDeviceId: string;
+                                roleKey: string;
+                                kind: 'distance';
+                                calibration: {
+                                    mode: 'threshold';
+                                    occupiedBelowM: number;
+                                };
+                            }
+                          | {
+                                id: string;
+                                customDeviceId: string;
+                                roleKey: string;
+                                kind: 'boolean';
+                                occupiedWhen: boolean;
+                            }
+                      >;
+                      safetySources?: Array<
+                          | {
+                                id: string;
+                                customDeviceId: string;
+                                roleKey: string;
+                                kind: 'smoke' | 'flood';
+                                alarmWhen: boolean;
+                            }
+                          | {
+                                id: string;
+                                customDeviceId: string;
+                                roleKey: string;
+                                kind: 'gas';
+                            }
+                      >;
+                  };
+              }
+            | {
+                  organizationId?: string;
+                  family: 'irrigation';
+                  policy: {
+                      id: string;
+                      locationId?: number;
+                      freshnessSec: number;
+                      graceSec: number;
+                      schedules: Array<{hour: number; minute: number}>;
+                      valve: {deviceId: string; channel: number; kind: string};
+                      soil?: {
+                          deviceId: string;
+                          channel: number;
+                          kind: string;
+                          source?: string;
+                          threshold: number;
+                      };
+                      rain?: {
+                          deviceId: string;
+                          channel: number;
+                          kind: string;
+                          source?: string;
+                          threshold: number;
+                      };
+                  };
+              }
+            | {
+                  organizationId?: string;
+                  family: 'pv';
+                  policy: {
+                      id: string;
+                      locationId?: number;
+                      freshnessSec: number;
+                      periodHours: number;
+                      minComparableSources: number;
+                      attentionFraction: number;
+                      sources: Array<{
+                          id: string;
+                          deviceId: string;
+                          channel: number;
+                          tag: 'total_act_energy' | 'total_act_ret_energy';
+                      }>;
+                  };
+              }
+            | {
+                  organizationId?: string;
+                  family: 'italiaPoolChemistry';
+                  policy: {
+                      poolId: string;
+                      siteId: number;
+                      timeZone: string;
+                      seasonOpenMonthDay: string;
+                      seasonCloseMonthDay: string;
+                      bands: Array<{
+                          entry:
+                              | 'freeChlorine'
+                              | 'combinedChlorine'
+                              | 'temperature'
+                              | 'ph';
+                          label: string;
+                          min: number | null;
+                          max: number | null;
+                          unit: string;
+                      }>;
+                      sources: Array<{
+                          entry: 'temperature' | 'makeUpWaterMeter';
+                          deviceId: string;
+                          kind: string;
+                          source: string;
+                          channel: number;
+                      }>;
+                  };
+              }
+            | {
+                  organizationId?: string;
+                  family: 'italiaHotWater';
+                  policy: {
+                      siteId: number;
+                      timeZone: string;
+                      freshnessSeconds: number;
+                      maxGapMinutes: number;
+                      holdMinutes: number;
+                      blocks: Array<{
+                          blockId: string;
+                          deviceId: string;
+                          kind: string;
+                          source: string;
+                          channel: number;
+                          limitC: number;
+                      }>;
+                  };
+              }
+            | {
+                  organizationId?: string;
+                  family: 'italiaNightFlow';
+                  policy: {
+                      siteId: number;
+                      timeZone: string;
+                      seasonOpenMonthDay: string;
+                      seasonCloseMonthDay: string;
+                      quietStartHour: number;
+                      quietEndHour: number;
+                      sustainedMinutes: number;
+                      minimumBaselineSamples: number;
+                      madMultiplier: number;
+                      minimumExcessM3h: number;
+                      zones: Array<{
+                          zoneId: number;
+                          sources: Array<{
+                              deviceId: string;
+                              channel: number;
+                              tag: 'volume_flow_m3h';
+                          }>;
+                      }>;
+                  };
+              }
+            | {
+                  organizationId?: string;
+                  family: 'italiaPitch';
+                  policy: {
+                      pitchId: number;
+                      deviceId: string;
+                      component: 'switch';
+                      channel: number;
+                      ratedAmps: number;
+                      warningFraction: number;
+                      overloadFraction: number;
+                      disconnectAfterSeconds: number;
+                      freshnessSeconds: number;
+                  };
+              }
+            | {
+                  organizationId?: string;
+                  family: 'italiaSitePower';
+                  policy: {
+                      siteId: number;
+                      meterId: number;
+                      contractedKw: number;
+                      availableMarginFraction: number;
+                      warningFraction: number;
+                      disconnectAfterSeconds: number;
+                      freshnessSeconds: number;
+                  };
+              }
+            | {
+                  organizationId?: string;
+                  family: 'italiaBreakerTrips';
+                  policy: {
+                      pitchId: number;
+                      logicalDeviceId: number;
+                      component: string;
+                      counterField: string;
+                      windowDays: number;
+                  };
+              };
+        result:
+            | {
+                  id: string;
+                  locationId?: number;
+                  freshnessSec: number;
+                  thresholdPct: number;
+                  minPeerCount: number;
+                  sources: Array<{
+                      id: string;
+                      deviceId: string;
+                      channel: number;
+                      tag: 'total_act_energy';
+                      peerGroupIds: string[];
+                  }>;
+              }
+            | {
+                  id: string;
+                  locationId: number;
+                  timeZone: string;
+                  freshnessSeconds: number;
+                  deadlineHour: number;
+                  retentionDays: number;
+                  sources: Array<{
+                      id: string;
+                      deviceId: string;
+                      kind: string;
+                      source: string;
+                      channel: number;
+                      evidenceRequired: boolean;
+                      maxTemperatureC: number | null;
+                      limitBasis:
+                          | 'statutory'
+                          | 'industry_practice'
+                          | 'custom'
+                          | null;
+                  }>;
+              }
+            | {
+                  id: string;
+                  locationId: number;
+                  freshnessSec: number;
+                  sources: Array<
+                      | {
+                            id: string;
+                            customDeviceId: string;
+                            roleKey: string;
+                            kind: 'distance';
+                            calibration: {
+                                mode: 'ratio';
+                                mountHeightM: number;
+                                occupiedRatio: number;
+                            };
+                        }
+                      | {
+                            id: string;
+                            customDeviceId: string;
+                            roleKey: string;
+                            kind: 'distance';
+                            calibration: {
+                                mode: 'threshold';
+                                occupiedBelowM: number;
+                            };
+                        }
+                      | {
+                            id: string;
+                            customDeviceId: string;
+                            roleKey: string;
+                            kind: 'boolean';
+                            occupiedWhen: boolean;
+                        }
+                  >;
+                  safetySources?: Array<
+                      | {
+                            id: string;
+                            customDeviceId: string;
+                            roleKey: string;
+                            kind: 'smoke' | 'flood';
+                            alarmWhen: boolean;
+                        }
+                      | {
+                            id: string;
+                            customDeviceId: string;
+                            roleKey: string;
+                            kind: 'gas';
+                        }
+                  >;
+              }
+            | {
+                  id: string;
+                  locationId?: number;
+                  freshnessSec: number;
+                  graceSec: number;
+                  schedules: Array<{hour: number; minute: number}>;
+                  valve: {deviceId: string; channel: number; kind: string};
+                  soil?: {
+                      deviceId: string;
+                      channel: number;
+                      kind: string;
+                      source?: string;
+                      threshold: number;
+                  };
+                  rain?: {
+                      deviceId: string;
+                      channel: number;
+                      kind: string;
+                      source?: string;
+                      threshold: number;
+                  };
+              }
+            | {
+                  id: string;
+                  locationId?: number;
+                  freshnessSec: number;
+                  periodHours: number;
+                  minComparableSources: number;
+                  attentionFraction: number;
+                  sources: Array<{
+                      id: string;
+                      deviceId: string;
+                      channel: number;
+                      tag: 'total_act_energy' | 'total_act_ret_energy';
+                  }>;
+              }
+            | {
+                  poolId: string;
+                  siteId: number;
+                  timeZone: string;
+                  seasonOpenMonthDay: string;
+                  seasonCloseMonthDay: string;
+                  bands: Array<{
+                      entry:
+                          | 'freeChlorine'
+                          | 'combinedChlorine'
+                          | 'temperature'
+                          | 'ph';
+                      label: string;
+                      min: number | null;
+                      max: number | null;
+                      unit: string;
+                  }>;
+                  sources: Array<{
+                      entry: 'temperature' | 'makeUpWaterMeter';
+                      deviceId: string;
+                      kind: string;
+                      source: string;
+                      channel: number;
+                  }>;
+              }
+            | {
+                  siteId: number;
+                  timeZone: string;
+                  freshnessSeconds: number;
+                  maxGapMinutes: number;
+                  holdMinutes: number;
+                  blocks: Array<{
+                      blockId: string;
+                      deviceId: string;
+                      kind: string;
+                      source: string;
+                      channel: number;
+                      limitC: number;
+                  }>;
+              }
+            | {
+                  siteId: number;
+                  timeZone: string;
+                  seasonOpenMonthDay: string;
+                  seasonCloseMonthDay: string;
+                  quietStartHour: number;
+                  quietEndHour: number;
+                  sustainedMinutes: number;
+                  minimumBaselineSamples: number;
+                  madMultiplier: number;
+                  minimumExcessM3h: number;
+                  zones: Array<{
+                      zoneId: number;
+                      sources: Array<{
+                          deviceId: string;
+                          channel: number;
+                          tag: 'volume_flow_m3h';
+                      }>;
+                  }>;
+              }
+            | {
+                  pitchId: number;
+                  deviceId: string;
+                  component: 'switch';
+                  channel: number;
+                  ratedAmps: number;
+                  warningFraction: number;
+                  overloadFraction: number;
+                  disconnectAfterSeconds: number;
+                  freshnessSeconds: number;
+              }
+            | {
+                  siteId: number;
+                  meterId: number;
+                  contractedKw: number;
+                  availableMarginFraction: number;
+                  warningFraction: number;
+                  disconnectAfterSeconds: number;
+                  freshnessSeconds: number;
+              }
+            | {
+                  pitchId: number;
+                  logicalDeviceId: number;
+                  component: string;
+                  counterField: string;
+                  windowDays: number;
+              };
+    };
+    /** Return a configured refrigeration peer-health verdict and its source coverage. */
+    'operations.getrefrigerationpeerhealth': {
+        params: {
+            organizationId?: string;
+            policyId: string;
+            from: string;
+            to: string;
+        };
+        result: {
+            policyId: string;
+            status:
+                | 'config_missing'
+                | 'data_missing'
+                | 'stale'
+                | 'unrated'
+                | 'healthy'
+                | 'attention';
+            thresholdPct: number | null;
+            from: string | null;
+            to: string | null;
+            coverage: {
+                configuredSources: number;
+                observedSources: number;
+                freshSources: number;
+                ratedSources: number;
+            };
+            sources: Array<{
+                sourceId: string;
+                deviceId: string;
+                peerGroupId: string;
+                energyKwh: number | null;
+                peerMedianKwh: number | null;
+                peerCount: number;
+                driftPct: number | null;
+                status:
+                    | 'data_missing'
+                    | 'stale'
+                    | 'unrated'
+                    | 'healthy'
+                    | 'attention';
+                unratedReason: 'insufficient_peers' | 'zero_median' | null;
+            }>;
+        };
+    };
+    /** Return today’s Fleet-owned cold-chain record verdict for one configured location policy. */
+    'operations.getcoldchainrecordverdict': {
+        params: {organizationId?: string; policyId: string};
+        result: {
+            policyId: string;
+            date: string | null;
+            status:
+                | 'config_missing'
+                | 'data_missing'
+                | 'stale'
+                | 'complete'
+                | 'incomplete'
+                | 'overdue';
+            complete: boolean;
+            overdue: boolean;
+            coverage: {
+                configuredSources: number;
+                observedSources: number;
+                freshSources: number;
+            };
+            sources: Array<{
+                sourceId: string;
+                deviceId: string;
+                status:
+                    | 'data_missing'
+                    | 'stale'
+                    | 'within_limit'
+                    | 'above_limit';
+                observedAt: string | null;
+                temperatureC: number | null;
+                maxTemperatureC: number | null;
+                limitBasis: 'statutory' | 'industry_practice' | 'custom' | null;
+                evidenceRequired: boolean;
+                loggedToday: boolean;
+                neverReported: boolean | null;
+                silenceHours: number | null;
+            }>;
+        };
+    };
+    /** Return configured per-spot parking occupancy plus smoke, flood, and gas safety verdicts, operational status, and source coverage. */
+    'operations.getparkingoperationalverdict': {
+        params: {organizationId?: string; locationId: number};
+        result: {
+            policyId: string;
+            status: 'config_missing' | 'data_missing' | 'stale' | 'operational';
+            coverage: {
+                configuredSources: number;
+                observedSources: number;
+                freshSources: number;
+            };
+            occupied: number;
+            available: number;
+            unavailable: number;
+            occupancyPercent: number | null;
+            spots: Array<{
+                id: string;
+                customDeviceId: string;
+                roleKey: string;
+                status: 'data_missing' | 'stale' | 'occupied' | 'available';
+                occupied: boolean | null;
+                observedAt: string | null;
+            }>;
+            safety: {
+                smoke: {
+                    status:
+                        | 'config_missing'
+                        | 'data_missing'
+                        | 'stale'
+                        | 'clear'
+                        | 'alarm';
+                    coverage: {
+                        configuredSources: number;
+                        observedSources: number;
+                        freshSources: number;
+                    };
+                    alarm: boolean | null;
+                    sources: Array<{
+                        id: string;
+                        customDeviceId: string;
+                        roleKey: string;
+                        status: 'data_missing' | 'stale' | 'clear' | 'alarm';
+                        alarm: boolean | null;
+                        observedAt: string | null;
+                    }>;
+                };
+                flood: {
+                    status:
+                        | 'config_missing'
+                        | 'data_missing'
+                        | 'stale'
+                        | 'clear'
+                        | 'alarm';
+                    coverage: {
+                        configuredSources: number;
+                        observedSources: number;
+                        freshSources: number;
+                    };
+                    alarm: boolean | null;
+                    sources: Array<{
+                        id: string;
+                        customDeviceId: string;
+                        roleKey: string;
+                        status: 'data_missing' | 'stale' | 'clear' | 'alarm';
+                        alarm: boolean | null;
+                        observedAt: string | null;
+                    }>;
+                };
+                gas: {
+                    status:
+                        | 'config_missing'
+                        | 'data_missing'
+                        | 'stale'
+                        | 'clear'
+                        | 'alarm';
+                    coverage: {
+                        configuredSources: number;
+                        observedSources: number;
+                        freshSources: number;
+                    };
+                    alarm: boolean | null;
+                    sources: Array<{
+                        id: string;
+                        customDeviceId: string;
+                        roleKey: string;
+                        status: 'data_missing' | 'stale' | 'clear' | 'alarm';
+                        alarm: boolean | null;
+                        observedAt: string | null;
+                    }>;
+                };
+            };
+        };
+    };
+    /** Return a configured irrigation schedule-execution verdict from persisted valve and optional skip-sensor history. */
+    'operations.getirrigationverdict': {
+        params: {organizationId?: string; policyId: string};
+        result: {
+            policyId: string;
+            status:
+                | 'config_missing'
+                | 'data_missing'
+                | 'stale'
+                | 'scheduled'
+                | 'completed'
+                | 'skipped_by_policy'
+                | 'missed';
+            dueAt: string | null;
+            completedAt: string | null;
+            skipReason: 'soil_wet' | 'rain' | null;
+        };
+    };
+    /** Return a configured PV generation comparison verdict. Attention is advisory, not a fault. */
+    'operations.getpvhealthverdict': {
+        params: {organizationId?: string; policyId: string};
+        result: {
+            policyId: string;
+            status:
+                | 'config_missing'
+                | 'data_missing'
+                | 'stale'
+                | 'healthy'
+                | 'attention';
+            comparableSources: number;
+            attentionSources: string[];
+        };
+    };
+    /** Return configured Italia hot-water block verdicts for the current local day from Fleet sensor history. */
+    'operations.getitaliahotwaterverdict': {
+        params: {organizationId?: string; siteId: number};
+        result: {
+            siteId: number;
+            status: 'config_missing' | 'configured';
+            from: string | null;
+            to: string | null;
+            blocks: Array<{
+                blockId: string;
+                deviceId: string;
+                status:
+                    | 'data_missing'
+                    | 'stale'
+                    | 'at_or_above_limit'
+                    | 'below_limit';
+                limitC: number;
+                currentC: number | null;
+                observedAt: string | null;
+                minimumC: number | null;
+                minutesBelowNow: number | null;
+                minutesBelowInPeriod: number | null;
+                samples: number;
+            }>;
+        };
+    };
+    /** Return Fleet-owned Italia daily pool-register documents, including missing entries, source provenance, configured bands, and compliance. */
+    'operations.getitaliapoolregister': {
+        params: {
+            organizationId?: string;
+            siteId: number;
+            poolId: string;
+            from: string;
+            to: string;
+        };
+        result: Array<{
+            poolId: string;
+            siteId: number;
+            date: string;
+            status: 'config_missing' | 'configured';
+            poolOpen: boolean | null;
+            complete: boolean;
+            presentCount: number;
+            requiredCount: number;
+            entries: Array<{
+                entry:
+                    | 'freeChlorine'
+                    | 'combinedChlorine'
+                    | 'temperature'
+                    | 'ph'
+                    | 'makeUpWaterMeter'
+                    | 'disinfectant'
+                    | 'samplingDate'
+                    | 'bathers';
+                status: 'present' | 'owed';
+                source: 'measured' | 'entered';
+                value: number | string | null;
+                band: {
+                    entry:
+                        | 'freeChlorine'
+                        | 'combinedChlorine'
+                        | 'temperature'
+                        | 'ph';
+                    label: string;
+                    min: number | null;
+                    max: number | null;
+                    unit: string;
+                } | null;
+                compliance: 'within' | 'below' | 'above' | null;
+                acceptedWrite: {at: string; username: string | null} | null;
+            }>;
+        }>;
+    };
+    /** Return configured Italia reopening-flush hold verdicts for an explicit period from Fleet sensor history. */
+    'operations.getitaliareopeningflushverdict': {
+        params: {
+            organizationId?: string;
+            siteId: number;
+            from: string;
+            to: string;
+        };
+        result: {
+            siteId: number;
+            status: 'config_missing' | 'configured';
+            from: string | null;
+            to: string | null;
+            blocks: Array<{
+                blockId: string;
+                deviceId: string;
+                status: 'data_missing' | 'pending' | 'reached' | 'not_reached';
+                limitC: number;
+                holdMinutes: number;
+                heldMinutes: number | null;
+                reachedAt: string | null;
+                heldUntil: string | null;
+                peakC: number | null;
+                samples: number;
+            }>;
+        };
+    };
+    /** Return configured Italia night-flow zone verdicts from Fleet history. */
+    'operations.getitalianightflowverdicts': {
+        params: {organizationId?: string; siteId: number};
+        result: Array<{
+            zoneId: number;
+            status:
+                | 'config_missing'
+                | 'data_missing'
+                | 'insufficient_baseline'
+                | 'normal'
+                | 'leak';
+            latestDay: string | null;
+            latestMinimumM3h: number | null;
+            baselineM3h: number | null;
+            excessM3h: number | null;
+            estimatedLitresPerDay: number | null;
+            baselineSamples: number;
+        }>;
+    };
+    /** Return one configured Italia pitch electrical-load verdict. */
+    'operations.getitaliapitchverdict': {
+        params: {organizationId?: string; pitchId: number};
+        result: {
+            pitchId: number;
+            status:
+                | 'config_missing'
+                | 'data_missing'
+                | 'freshness_missing'
+                | 'normal'
+                | 'warning'
+                | 'overload'
+                | 'disconnect_risk';
+            amps: number | null;
+            ratedAmps: number | null;
+            usedFraction: number | null;
+        };
+    };
+    /** Return one configured Italia site-power verdict from its Fleet logical meter. */
+    'operations.getitaliasitepowerverdict': {
+        params: {organizationId?: string; siteId: number};
+        result: {
+            siteId: number;
+            status:
+                | 'config_missing'
+                | 'data_missing'
+                | 'freshness_missing'
+                | 'normal'
+                | 'warning'
+                | 'overload';
+            meterId: number | null;
+            observedAt: string | null;
+            drawKw: number | null;
+            contractedKw: number | null;
+            availableKw: number | null;
+            availableMarginFraction: number | null;
+            disconnectAfterSeconds: number | null;
+            contractedUsedFraction: number | null;
+            usedFraction: number | null;
+            remainingKw: number | null;
+        };
+    };
+    /** Return one configured Italia pitch breaker-trip count from the stable Fleet device journal. */
+    'operations.getitaliabreakertripverdict': {
+        params: {organizationId?: string; pitchId: number};
+        result: {
+            pitchId: number;
+            logicalDeviceId: number | null;
+            status:
+                | 'config_missing'
+                | 'no_readings'
+                | 'one_reading'
+                | 'counter_reset'
+                | 'complete';
+            trips: number | null;
+            readingsUsed: number;
+            from: string | null;
+            to: string | null;
+        };
+    };
+    /** Create or replace one refrigeration peer-energy policy with explicit source groups, drift threshold, minimum group size, and freshness. */
+    'operations.setrefrigerationpeerpolicy': {
+        params: {
+            organizationId?: string;
+            policy: {
+                id: string;
+                locationId?: number;
+                freshnessSec: number;
+                thresholdPct: number;
+                minPeerCount: number;
+                sources: Array<{
+                    id: string;
+                    deviceId: string;
+                    channel: number;
+                    tag: 'total_act_energy';
+                    peerGroupIds: string[];
+                }>;
+            };
+        };
+        result: {
+            id: string;
+            locationId?: number;
+            freshnessSec: number;
+            thresholdPct: number;
+            minPeerCount: number;
+            sources: Array<{
+                id: string;
+                deviceId: string;
+                channel: number;
+                tag: 'total_act_energy';
+                peerGroupIds: string[];
+            }>;
+        };
+    };
+    /** Create or replace one cold-chain record policy with explicit source mappings, limits, deadline, timezone, freshness, and retention. */
+    'operations.setcoldchainrecordpolicy': {
+        params: {
+            organizationId?: string;
+            policy: {
+                id: string;
+                locationId: number;
+                timeZone: string;
+                freshnessSeconds: number;
+                deadlineHour: number;
+                retentionDays: number;
+                sources: Array<{
+                    id: string;
+                    deviceId: string;
+                    kind: string;
+                    source: string;
+                    channel: number;
+                    evidenceRequired: boolean;
+                    maxTemperatureC: number | null;
+                    limitBasis:
+                        | 'statutory'
+                        | 'industry_practice'
+                        | 'custom'
+                        | null;
+                }>;
+            };
+        };
+        result: {
+            id: string;
+            locationId: number;
+            timeZone: string;
+            freshnessSeconds: number;
+            deadlineHour: number;
+            retentionDays: number;
+            sources: Array<{
+                id: string;
+                deviceId: string;
+                kind: string;
+                source: string;
+                channel: number;
+                evidenceRequired: boolean;
+                maxTemperatureC: number | null;
+                limitBasis: 'statutory' | 'industry_practice' | 'custom' | null;
+            }>;
+        };
+    };
+    /** Create or replace one location parking policy with explicit occupancy calibration, smoke, flood, and gas safety sources, and freshness. */
+    'operations.setparkingoperationalpolicy': {
+        params: {
+            organizationId?: string;
+            policy: {
+                id: string;
+                locationId: number;
+                freshnessSec: number;
+                sources: Array<
+                    | {
+                          id: string;
+                          customDeviceId: string;
+                          roleKey: string;
+                          kind: 'distance';
+                          calibration: {
+                              mode: 'ratio';
+                              mountHeightM: number;
+                              occupiedRatio: number;
+                          };
+                      }
+                    | {
+                          id: string;
+                          customDeviceId: string;
+                          roleKey: string;
+                          kind: 'distance';
+                          calibration: {
+                              mode: 'threshold';
+                              occupiedBelowM: number;
+                          };
+                      }
+                    | {
+                          id: string;
+                          customDeviceId: string;
+                          roleKey: string;
+                          kind: 'boolean';
+                          occupiedWhen: boolean;
+                      }
+                >;
+                safetySources?: Array<
+                    | {
+                          id: string;
+                          customDeviceId: string;
+                          roleKey: string;
+                          kind: 'smoke' | 'flood';
+                          alarmWhen: boolean;
+                      }
+                    | {
+                          id: string;
+                          customDeviceId: string;
+                          roleKey: string;
+                          kind: 'gas';
+                      }
+                >;
+            };
+        };
+        result: {
+            id: string;
+            locationId: number;
+            freshnessSec: number;
+            sources: Array<
+                | {
+                      id: string;
+                      customDeviceId: string;
+                      roleKey: string;
+                      kind: 'distance';
+                      calibration: {
+                          mode: 'ratio';
+                          mountHeightM: number;
+                          occupiedRatio: number;
+                      };
+                  }
+                | {
+                      id: string;
+                      customDeviceId: string;
+                      roleKey: string;
+                      kind: 'distance';
+                      calibration: {mode: 'threshold'; occupiedBelowM: number};
+                  }
+                | {
+                      id: string;
+                      customDeviceId: string;
+                      roleKey: string;
+                      kind: 'boolean';
+                      occupiedWhen: boolean;
+                  }
+            >;
+            safetySources?: Array<
+                | {
+                      id: string;
+                      customDeviceId: string;
+                      roleKey: string;
+                      kind: 'smoke' | 'flood';
+                      alarmWhen: boolean;
+                  }
+                | {
+                      id: string;
+                      customDeviceId: string;
+                      roleKey: string;
+                      kind: 'gas';
+                  }
+            >;
+        };
+    };
+    /** Create or replace one organization irrigation policy. The organization timezone evaluates daily schedules. */
+    'operations.setirrigationpolicy': {
+        params: {
+            organizationId?: string;
+            policy: {
+                id: string;
+                locationId?: number;
+                freshnessSec: number;
+                graceSec: number;
+                schedules: Array<{hour: number; minute: number}>;
+                valve: {deviceId: string; channel: number; kind: string};
+                soil?: {
+                    deviceId: string;
+                    channel: number;
+                    kind: string;
+                    source?: string;
+                    threshold: number;
+                };
+                rain?: {
+                    deviceId: string;
+                    channel: number;
+                    kind: string;
+                    source?: string;
+                    threshold: number;
+                };
+            };
+        };
+        result: {
+            id: string;
+            locationId?: number;
+            freshnessSec: number;
+            graceSec: number;
+            schedules: Array<{hour: number; minute: number}>;
+            valve: {deviceId: string; channel: number; kind: string};
+            soil?: {
+                deviceId: string;
+                channel: number;
+                kind: string;
+                source?: string;
+                threshold: number;
+            };
+            rain?: {
+                deviceId: string;
+                channel: number;
+                kind: string;
+                source?: string;
+                threshold: number;
+            };
+        };
+    };
+    /** Create or replace one PV health policy with explicit source mappings, comparison window, and advisory threshold. */
+    'operations.setpvhealthpolicy': {
+        params: {
+            organizationId?: string;
+            policy: {
+                id: string;
+                locationId?: number;
+                freshnessSec: number;
+                periodHours: number;
+                minComparableSources: number;
+                attentionFraction: number;
+                sources: Array<{
+                    id: string;
+                    deviceId: string;
+                    channel: number;
+                    tag: 'total_act_energy' | 'total_act_ret_energy';
+                }>;
+            };
+        };
+        result: {
+            id: string;
+            locationId?: number;
+            freshnessSec: number;
+            periodHours: number;
+            minComparableSources: number;
+            attentionFraction: number;
+            sources: Array<{
+                id: string;
+                deviceId: string;
+                channel: number;
+                tag: 'total_act_energy' | 'total_act_ret_energy';
+            }>;
+        };
+    };
+    /** Create or replace one Italia hot-water policy with explicit block sensor mappings, limits, freshness, gap, and hold duration. */
+    'operations.setitaliahotwaterpolicy': {
+        params: {
+            organizationId?: string;
+            policy: {
+                siteId: number;
+                timeZone: string;
+                freshnessSeconds: number;
+                maxGapMinutes: number;
+                holdMinutes: number;
+                blocks: Array<{
+                    blockId: string;
+                    deviceId: string;
+                    kind: string;
+                    source: string;
+                    channel: number;
+                    limitC: number;
+                }>;
+            };
+        };
+        result: {
+            siteId: number;
+            timeZone: string;
+            freshnessSeconds: number;
+            maxGapMinutes: number;
+            holdMinutes: number;
+            blocks: Array<{
+                blockId: string;
+                deviceId: string;
+                kind: string;
+                source: string;
+                channel: number;
+                limitC: number;
+            }>;
+        };
+    };
+    /** Create or replace one Italia pool-register policy with its site, season, legal bands, and measured source mappings. */
+    'operations.setitaliapoolchemistrypolicy': {
+        params: {
+            organizationId?: string;
+            policy: {
+                poolId: string;
+                siteId: number;
+                timeZone: string;
+                seasonOpenMonthDay: string;
+                seasonCloseMonthDay: string;
+                bands: Array<{
+                    entry:
+                        | 'freeChlorine'
+                        | 'combinedChlorine'
+                        | 'temperature'
+                        | 'ph';
+                    label: string;
+                    min: number | null;
+                    max: number | null;
+                    unit: string;
+                }>;
+                sources: Array<{
+                    entry: 'temperature' | 'makeUpWaterMeter';
+                    deviceId: string;
+                    kind: string;
+                    source: string;
+                    channel: number;
+                }>;
+            };
+        };
+        result: {
+            poolId: string;
+            siteId: number;
+            timeZone: string;
+            seasonOpenMonthDay: string;
+            seasonCloseMonthDay: string;
+            bands: Array<{
+                entry:
+                    | 'freeChlorine'
+                    | 'combinedChlorine'
+                    | 'temperature'
+                    | 'ph';
+                label: string;
+                min: number | null;
+                max: number | null;
+                unit: string;
+            }>;
+            sources: Array<{
+                entry: 'temperature' | 'makeUpWaterMeter';
+                deviceId: string;
+                kind: string;
+                source: string;
+                channel: number;
+            }>;
+        };
+    };
+    /** Create or replace one manually entered Italia pool-register value and return Fleet acceptance provenance. */
+    'operations.setitaliapoolregisterentry': {
+        params: {
+            organizationId?: string;
+            entry: {
+                poolId: string;
+                siteId: number;
+                date: string;
+                entry:
+                    | 'freeChlorine'
+                    | 'combinedChlorine'
+                    | 'temperature'
+                    | 'ph'
+                    | 'makeUpWaterMeter'
+                    | 'disinfectant'
+                    | 'samplingDate'
+                    | 'bathers';
+                value: number | string;
+            };
+        };
+        result: {
+            poolId: string;
+            siteId: number;
+            date: string;
+            entry:
+                | 'freeChlorine'
+                | 'combinedChlorine'
+                | 'temperature'
+                | 'ph'
+                | 'makeUpWaterMeter'
+                | 'disinfectant'
+                | 'samplingDate'
+                | 'bathers';
+            value: number | string;
+            source: 'entered';
+            acceptedWrite: {at: string; username: string | null};
+        };
+    };
+    /** Delete one manually entered Italia pool-register value within its organization, site, pool, and day. */
+    'operations.deleteitaliapoolregisterentry': {
+        params: {
+            organizationId?: string;
+            siteId: number;
+            poolId: string;
+            date: string;
+            entry:
+                | 'freeChlorine'
+                | 'combinedChlorine'
+                | 'temperature'
+                | 'ph'
+                | 'makeUpWaterMeter'
+                | 'disinfectant'
+                | 'samplingDate'
+                | 'bathers';
+        };
+        result: {deleted: boolean};
+    };
+    /** Create or replace one Italia night-flow site policy with explicit zone mappings. */
+    'operations.setitalianightflowpolicy': {
+        params: {
+            organizationId?: string;
+            policy: {
+                siteId: number;
+                timeZone: string;
+                seasonOpenMonthDay: string;
+                seasonCloseMonthDay: string;
+                quietStartHour: number;
+                quietEndHour: number;
+                sustainedMinutes: number;
+                minimumBaselineSamples: number;
+                madMultiplier: number;
+                minimumExcessM3h: number;
+                zones: Array<{
+                    zoneId: number;
+                    sources: Array<{
+                        deviceId: string;
+                        channel: number;
+                        tag: 'volume_flow_m3h';
+                    }>;
+                }>;
+            };
+        };
+        result: {
+            siteId: number;
+            timeZone: string;
+            seasonOpenMonthDay: string;
+            seasonCloseMonthDay: string;
+            quietStartHour: number;
+            quietEndHour: number;
+            sustainedMinutes: number;
+            minimumBaselineSamples: number;
+            madMultiplier: number;
+            minimumExcessM3h: number;
+            zones: Array<{
+                zoneId: number;
+                sources: Array<{
+                    deviceId: string;
+                    channel: number;
+                    tag: 'volume_flow_m3h';
+                }>;
+            }>;
+        };
+    };
+    /** Create or replace one Italia pitch policy with its source, rating, thresholds, and freshness. */
+    'operations.setitaliapitchpolicy': {
+        params: {
+            organizationId?: string;
+            policy: {
+                pitchId: number;
+                deviceId: string;
+                component: 'switch';
+                channel: number;
+                ratedAmps: number;
+                warningFraction: number;
+                overloadFraction: number;
+                disconnectAfterSeconds: number;
+                freshnessSeconds: number;
+            };
+        };
+        result: {
+            pitchId: number;
+            deviceId: string;
+            component: 'switch';
+            channel: number;
+            ratedAmps: number;
+            warningFraction: number;
+            overloadFraction: number;
+            disconnectAfterSeconds: number;
+            freshnessSeconds: number;
+        };
+    };
+    /** Create or replace one Italia site-power policy with its logical meter, contracted capacity, margin, warning, disconnect duration, and freshness. */
+    'operations.setitaliasitepowerpolicy': {
+        params: {
+            organizationId?: string;
+            policy: {
+                siteId: number;
+                meterId: number;
+                contractedKw: number;
+                availableMarginFraction: number;
+                warningFraction: number;
+                disconnectAfterSeconds: number;
+                freshnessSeconds: number;
+            };
+        };
+        result: {
+            siteId: number;
+            meterId: number;
+            contractedKw: number;
+            availableMarginFraction: number;
+            warningFraction: number;
+            disconnectAfterSeconds: number;
+            freshnessSeconds: number;
+        };
+    };
+    /** Create or replace one Italia breaker-trip policy with its stable logical device, counter source, and history window. */
+    'operations.setitaliabreakertrippolicy': {
+        params: {
+            organizationId?: string;
+            policy: {
+                pitchId: number;
+                logicalDeviceId: number;
+                component: string;
+                counterField: string;
+                windowDays: number;
+            };
+        };
+        result: {
+            pitchId: number;
+            logicalDeviceId: number;
+            component: string;
+            counterField: string;
+            windowDays: number;
+        };
+    };
+    /** Delete one configured operational policy by family and policy identifier. */
+    'operations.deletepolicy': {
+        params: {
+            organizationId?: string;
+            family:
+                | 'refrigeration'
+                | 'coldChain'
+                | 'parking'
+                | 'irrigation'
+                | 'pv'
+                | 'italiaPoolChemistry'
+                | 'italiaHotWater'
+                | 'italiaNightFlow'
+                | 'italiaPitch'
+                | 'italiaSitePower'
+                | 'italiaBreakerTrips';
+            policyId: string;
+        };
+        result: {deleted: boolean};
+    };
+    /** Return the operations namespace contract (methods, schemas, permissions, errors). */
+    'operations.describe': {
+        params: Record<string, unknown>;
+        result: {
+            namespace: string;
+            methods: Record<string, unknown>;
+            limits?: Record<string, unknown>;
+            tags?: string[];
+            errors?: unknown[];
+        };
+    };
     /** Return the caller's organization profile. */
     'organization.getprofile': {
         params: Record<string, never>;
@@ -12108,8 +19001,8 @@ export interface HostContract {
             id: string;
             name: string | null;
             displayName: string | null;
-            timezoneDefault: string | null;
-            localeDefault: string | null;
+            timezoneDefault: string;
+            localeDefault: string;
             currencyDefault: string | null;
             unitSystemDefault: 'metric' | 'imperial' | null;
             brandInitials: string | null;
@@ -12135,8 +19028,8 @@ export interface HostContract {
             id: string;
             name: string | null;
             displayName: string | null;
-            timezoneDefault: string | null;
-            localeDefault: string | null;
+            timezoneDefault: string;
+            localeDefault: string;
             currencyDefault: string | null;
             unitSystemDefault: 'metric' | 'imperial' | null;
             brandInitials: string | null;
@@ -12147,7 +19040,7 @@ export interface HostContract {
     /** Return the caller organization's default timezone + locale. */
     'organization.getdefaults': {
         params: Record<string, never>;
-        result: {timezoneDefault: string | null; localeDefault: string | null};
+        result: {timezoneDefault: string; localeDefault: string};
     };
     /** Single source of truth for frontend form construction — location kinds, group types, membership modes, subject-type enums, phase-1 capabilities, and legacy-transition flags. */
     'organization.getscopemodel': {
@@ -12260,7 +19153,19 @@ export interface HostContract {
     /** permission.GetRoles — return Zitadel built-in role keys held by a user. */
     'permission.getroles': {
         params: {userId: string};
-        result: Record<string, unknown>;
+        result: {
+            userId: string;
+            roleKeys: Array<
+                | 'admin'
+                | 'manager'
+                | 'editor'
+                | 'installer'
+                | 'operator'
+                | 'automation_admin'
+                | 'auditor'
+                | 'viewer'
+            >;
+        };
     };
     /** permission.GrantRoles — grant one or more Zitadel built-in roles to a user. */
     'permission.grantroles': {
@@ -12277,7 +19182,20 @@ export interface HostContract {
                 | 'viewer'
             >;
         };
-        result: {success: boolean};
+        result: {
+            success: boolean;
+            userId: string;
+            roles: Array<
+                | 'admin'
+                | 'manager'
+                | 'editor'
+                | 'installer'
+                | 'operator'
+                | 'automation_admin'
+                | 'auditor'
+                | 'viewer'
+            >;
+        };
     };
     /** permission.RevokeRoles — remove one or more Zitadel built-in roles from a user. Deletes the project authorization entirely when no roles remain. */
     'permission.revokeroles': {
@@ -12294,17 +19212,51 @@ export interface HostContract {
                 | 'viewer'
             >;
         };
-        result: {success: boolean};
+        result: {
+            success: boolean;
+            userId: string;
+            roles: Array<
+                | 'admin'
+                | 'manager'
+                | 'editor'
+                | 'installer'
+                | 'operator'
+                | 'automation_admin'
+                | 'auditor'
+                | 'viewer'
+            >;
+        };
     };
     /** permission.ListAdministrators — list users with administrator role on the resolved organization. */
     'permission.listadministrators': {
         params: Record<string, never>;
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{
+                userId: string;
+                preferredLoginName?: string;
+                organizationId?: string;
+                organizationName?: string;
+                roles: string[];
+                creationDate?: string;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
     /** permission.GetIdentityPolicies — read Zitadel identity (login/lockout/password) policies. */
     'permission.getidentitypolicies': {
         params: Record<string, never>;
-        result: Record<string, unknown>;
+        result: {
+            login: Record<string, unknown> | null;
+            passwordComplexity: Record<string, unknown> | null;
+            passwordExpiry: Record<string, unknown> | null;
+            lockout: Record<string, unknown> | null;
+            security: Record<string, unknown> | null;
+            branding: Record<string, unknown> | null;
+            identityProviders: Array<Record<string, unknown>> | null;
+        };
     };
     /** Return the permission namespace contract (methods, schemas, permissions, errors). */
     'permission.describe': {
@@ -12325,10 +19277,99 @@ export interface HostContract {
     /** List personas (system + custom). */
     'persona.list': {
         params: {includeSystem?: boolean};
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{
+                id: string;
+                tenant_id: string | null;
+                key: string;
+                name: string;
+                description: string | null;
+                is_system_managed: boolean;
+                statements: Array<{
+                    actions: string[];
+                    not_actions?: string[];
+                    resource_types: string[];
+                    not_resource_types?: string[];
+                    effect: 'Allow' | 'Deny';
+                    condition?: {
+                        mfa?: {required?: boolean};
+                        ip?: {cidrs?: string[]};
+                        time?: {window?: {start: string; end: string}};
+                    };
+                }>;
+                scope_types: Array<
+                    | 'tenant'
+                    | 'action'
+                    | 'dashboard'
+                    | 'device'
+                    | 'device_group'
+                    | 'location'
+                    | 'tag'
+                    | 'waiting_room'
+                    | 'configuration'
+                    | 'plugin'
+                    | 'report'
+                    | 'organization'
+                    | 'alert'
+                    | 'notification'
+                    | 'integration'
+                    | 'automation'
+                >;
+                version: number;
+                created_at: string;
+                updated_at: string;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
     /** Fetch a persona by id. */
-    'persona.get': {params: {id: string}; result: Record<string, unknown>};
+    'persona.get': {
+        params: {id: string};
+        result: {
+            id: string;
+            tenant_id: string | null;
+            key: string;
+            name: string;
+            description: string | null;
+            is_system_managed: boolean;
+            statements: Array<{
+                actions: string[];
+                not_actions?: string[];
+                resource_types: string[];
+                not_resource_types?: string[];
+                effect: 'Allow' | 'Deny';
+                condition?: {
+                    mfa?: {required?: boolean};
+                    ip?: {cidrs?: string[]};
+                    time?: {window?: {start: string; end: string}};
+                };
+            }>;
+            scope_types: Array<
+                | 'tenant'
+                | 'action'
+                | 'dashboard'
+                | 'device'
+                | 'device_group'
+                | 'location'
+                | 'tag'
+                | 'waiting_room'
+                | 'configuration'
+                | 'plugin'
+                | 'report'
+                | 'organization'
+                | 'alert'
+                | 'notification'
+                | 'integration'
+                | 'automation'
+            >;
+            version: number;
+            created_at: string;
+            updated_at: string;
+        };
+    };
     /** Create a custom persona. */
     'persona.create': {
         params: {
@@ -12348,7 +19389,47 @@ export interface HostContract {
                 };
             }>;
         };
-        result: Record<string, unknown>;
+        result: {
+            id: string;
+            tenant_id: string | null;
+            key: string;
+            name: string;
+            description: string | null;
+            is_system_managed: boolean;
+            statements: Array<{
+                actions: string[];
+                not_actions?: string[];
+                resource_types: string[];
+                not_resource_types?: string[];
+                effect: 'Allow' | 'Deny';
+                condition?: {
+                    mfa?: {required?: boolean};
+                    ip?: {cidrs?: string[]};
+                    time?: {window?: {start: string; end: string}};
+                };
+            }>;
+            scope_types: Array<
+                | 'tenant'
+                | 'action'
+                | 'dashboard'
+                | 'device'
+                | 'device_group'
+                | 'location'
+                | 'tag'
+                | 'waiting_room'
+                | 'configuration'
+                | 'plugin'
+                | 'report'
+                | 'organization'
+                | 'alert'
+                | 'notification'
+                | 'integration'
+                | 'automation'
+            >;
+            version: number;
+            created_at: string;
+            updated_at: string;
+        };
     };
     /** Update a custom persona. */
     'persona.update': {
@@ -12369,10 +19450,50 @@ export interface HostContract {
                 };
             }>;
         };
-        result: Record<string, unknown>;
+        result: {
+            id: string;
+            tenant_id: string | null;
+            key: string;
+            name: string;
+            description: string | null;
+            is_system_managed: boolean;
+            statements: Array<{
+                actions: string[];
+                not_actions?: string[];
+                resource_types: string[];
+                not_resource_types?: string[];
+                effect: 'Allow' | 'Deny';
+                condition?: {
+                    mfa?: {required?: boolean};
+                    ip?: {cidrs?: string[]};
+                    time?: {window?: {start: string; end: string}};
+                };
+            }>;
+            scope_types: Array<
+                | 'tenant'
+                | 'action'
+                | 'dashboard'
+                | 'device'
+                | 'device_group'
+                | 'location'
+                | 'tag'
+                | 'waiting_room'
+                | 'configuration'
+                | 'plugin'
+                | 'report'
+                | 'organization'
+                | 'alert'
+                | 'notification'
+                | 'integration'
+                | 'automation'
+            >;
+            version: number;
+            created_at: string;
+            updated_at: string;
+        };
     };
     /** Delete a custom persona (refuses if assignments reference). */
-    'persona.delete': {params: {id: string}; result: Record<string, unknown>};
+    'persona.delete': {params: {id: string}; result: {success: boolean}};
     /** Pill.SetConfig (not publicly documented). */
     'pill.setconfig': {
         params: {shellyID: string; config: Record<string, unknown>};
@@ -12390,6 +19511,32 @@ export interface HostContract {
     };
     /** Return the pill namespace contract (methods, schemas, permissions, errors). */
     'pill.describe': {
+        params: Record<string, unknown>;
+        result: {
+            namespace: string;
+            methods: Record<string, unknown>;
+            limits?: Record<string, unknown>;
+            tags?: string[];
+            errors?: unknown[];
+        };
+    };
+    /** PillUart.SetConfig (preview firmware API; config fields are firmware-defined, not yet documented). */
+    'pilluart.setconfig': {
+        params: {shellyID: string; id: number; config: Record<string, unknown>};
+        result: Record<string, unknown>;
+    };
+    /** PillUart.GetConfig (preview firmware API; fields are firmware-defined, not yet documented). */
+    'pilluart.getconfig': {
+        params: {shellyID: string; id: number};
+        result: Record<string, unknown>;
+    };
+    /** PillUart.GetStatus (preview firmware API; fields are firmware-defined, not yet documented). */
+    'pilluart.getstatus': {
+        params: {shellyID: string; id: number};
+        result: Record<string, unknown>;
+    };
+    /** Return the pilluart namespace contract (methods, schemas, permissions, errors). */
+    'pilluart.describe': {
         params: Record<string, unknown>;
         result: {
             namespace: string;
@@ -12419,7 +19566,7 @@ export interface HostContract {
     /** Upload a base64-encoded plugin zip (max 50 MB decoded). */
     'plugin.upload': {params: {data: string}; result: null};
     /** Remove an installed plugin by name (symlink-safe path validation). */
-    'plugin.remove': {params: {name: string}; result: Record<string, unknown>};
+    'plugin.remove': {params: {name: string}; result: {removed: string}};
     /** Return the plugin namespace contract (methods, schemas, permissions, errors). */
     'plugin.describe': {
         params: Record<string, unknown>;
@@ -12691,16 +19838,316 @@ export interface HostContract {
             errors?: unknown[];
         };
     };
-    /** Unified report endpoint — one front door for reports and data exports. Returns a jobId immediately (async); poll Report.GetReport for status + the owner-bound download URL. Two `kind`s: `energy` (the energy report — cost, tariff, CO2 and per-source sections; from, to, granularity incl. 15-minute, scope, tariff, currency, main_meter_ids, dashboardId; format html | csv) and `interval` (interval data / "load profile" — per-device readings of one or more metrics at a chosen granularity: metrics, from, to, granularity, scope/devices, per_device; streamed CSV) and `environment` (the environmental report — comfort, air quality, light, weather, per-sensor breakdown, threshold breaches from the device_sensor rollup; from, to, granularity, scope, source; format html | csv). Use Energy.Query for live on-screen charts; use this for files to download. */
+    /** Unified report endpoint — one front door for reports and data exports. Returns a jobId immediately (async); poll Report.GetReport for status + the owner-bound download URL. Supported kinds include `energy` (the energy report — cost, tariff, CO2 and per-source sections; from, to, granularity incl. 15-minute, scope or Fleet-owned locationIds, tariff, currency, main_meter_ids, dashboardId; format html | csv | xlsx | pdf) and `interval` (interval data / "load profile" — per-device readings of one or more metrics at a chosen granularity: metrics, from, to, granularity, scope/devices, per_device; streamed CSV) and `environment` (the environmental report — comfort, air quality, light, weather, water, per-sensor breakdown, threshold breaches from the device_sensor rollup; from, to, granularity, scope, source, kinds; format html | csv | xlsx | pdf). Use Energy.Query for live on-screen charts; use this for files to download. */
     'report.generate': {
-        params: {
-            kind: 'energy' | 'interval' | 'energy_dump' | 'environment';
-            format?: 'csv' | 'html';
-            [key: string]: unknown;
-        };
+        params:
+            | {
+                  kind: 'energy';
+                  scope?: {
+                      groupId?: number;
+                      locationId?: number;
+                      tagId?: number;
+                  };
+                  locationIds?: number[];
+                  granularity?: 'fifteen_minutes' | 'hour' | 'day' | 'month';
+                  format?: 'csv' | 'html' | 'xlsx' | 'pdf';
+                  tariff?: number;
+                  tariff_mode?: 'single' | 'day_night' | 'tou';
+                  day_rate?: number;
+                  night_rate?: number;
+                  day_start?: string;
+                  day_end?: string;
+                  currency?: string;
+                  tariff_id?: number;
+                  commodity?: 'electricity' | 'water' | 'gas' | 'heat';
+                  billedUnit?: 'kWh' | 'm3' | 'l' | 'therm' | 'MMBtu' | 'GJ';
+                  electricalSource?:
+                      | 'ac_mains'
+                      | 'dc_pv'
+                      | 'dc_battery'
+                      | 'dc_bus';
+                  carbonRegion?: string;
+                  timezone?: string;
+                  billIdentity?: {
+                      billId?: number;
+                      utilityAccountId?: string;
+                      meterIdentifier?: string;
+                      servicePointIdentifier?: string;
+                  };
+                  main_meter_ids?: string[];
+                  category?: 'energy';
+                  peak_device_ids?: string[];
+                  pv_mode?: 'parallel' | 'backup' | 'balcony';
+                  dashboardId?: number;
+                  sections_enabled?: Array<
+                      'demand' | 'solar' | 'battery' | 'ev' | 'tenant'
+                  >;
+                  nominalVoltage?: number;
+                  nominalHz?: number;
+                  require_complete_data?: boolean;
+                  from: string;
+                  to: string;
+                  period?: never;
+                  billing_day?: never;
+              }
+            | {
+                  kind: 'energy';
+                  scope?: {
+                      groupId?: number;
+                      locationId?: number;
+                      tagId?: number;
+                  };
+                  locationIds?: number[];
+                  granularity?: 'fifteen_minutes' | 'hour' | 'day' | 'month';
+                  format?: 'csv' | 'html' | 'xlsx' | 'pdf';
+                  tariff?: number;
+                  tariff_mode?: 'single' | 'day_night' | 'tou';
+                  day_rate?: number;
+                  night_rate?: number;
+                  day_start?: string;
+                  day_end?: string;
+                  currency?: string;
+                  tariff_id?: number;
+                  commodity?: 'electricity' | 'water' | 'gas' | 'heat';
+                  billedUnit?: 'kWh' | 'm3' | 'l' | 'therm' | 'MMBtu' | 'GJ';
+                  electricalSource?:
+                      | 'ac_mains'
+                      | 'dc_pv'
+                      | 'dc_battery'
+                      | 'dc_bus';
+                  carbonRegion?: string;
+                  timezone?: string;
+                  billIdentity?: {
+                      billId?: number;
+                      utilityAccountId?: string;
+                      meterIdentifier?: string;
+                      servicePointIdentifier?: string;
+                  };
+                  main_meter_ids?: string[];
+                  category?: 'energy';
+                  peak_device_ids?: string[];
+                  pv_mode?: 'parallel' | 'backup' | 'balcony';
+                  dashboardId?: number;
+                  sections_enabled?: Array<
+                      'demand' | 'solar' | 'battery' | 'ev' | 'tenant'
+                  >;
+                  nominalVoltage?: number;
+                  nominalHz?: number;
+                  require_complete_data?: boolean;
+                  period:
+                      | 'last_7_days'
+                      | 'last_month'
+                      | 'mtd'
+                      | 'last_year'
+                      | 'ytd'
+                      | 'billing_period';
+                  billing_day?: number;
+                  from?: never;
+                  to?: never;
+              }
+            | {
+                  kind: 'interval';
+                  scope?: {
+                      groupId?: number;
+                      locationId?: number;
+                      tagId?: number;
+                  };
+                  devices?: string[];
+                  metrics: string[];
+                  granularity: string;
+                  per_device?: boolean;
+                  per_phase?: boolean;
+                  format?: 'csv';
+                  from: string;
+                  to: string;
+                  period?: never;
+                  billing_day?: never;
+              }
+            | {
+                  kind: 'interval';
+                  scope?: {
+                      groupId?: number;
+                      locationId?: number;
+                      tagId?: number;
+                  };
+                  devices?: string[];
+                  metrics: string[];
+                  granularity: string;
+                  per_device?: boolean;
+                  per_phase?: boolean;
+                  format?: 'csv';
+                  period:
+                      | 'last_7_days'
+                      | 'last_month'
+                      | 'mtd'
+                      | 'last_year'
+                      | 'ytd'
+                      | 'billing_period';
+                  billing_day?: number;
+                  from?: never;
+                  to?: never;
+              }
+            | {
+                  kind: 'energy_dump';
+                  scope?: {
+                      groupId?: number;
+                      locationId?: number;
+                      tagId?: number;
+                  };
+                  devices?: string[];
+                  metrics: string[];
+                  granularity: string;
+                  per_device?: boolean;
+                  per_phase?: boolean;
+                  format?: 'csv';
+                  from: string;
+                  to: string;
+                  period?: never;
+                  billing_day?: never;
+              }
+            | {
+                  kind: 'energy_dump';
+                  scope?: {
+                      groupId?: number;
+                      locationId?: number;
+                      tagId?: number;
+                  };
+                  devices?: string[];
+                  metrics: string[];
+                  granularity: string;
+                  per_device?: boolean;
+                  per_phase?: boolean;
+                  format?: 'csv';
+                  period:
+                      | 'last_7_days'
+                      | 'last_month'
+                      | 'mtd'
+                      | 'last_year'
+                      | 'ytd'
+                      | 'billing_period';
+                  billing_day?: number;
+                  from?: never;
+                  to?: never;
+              }
+            | {
+                  kind: 'environment';
+                  scope?: {
+                      groupId?: number;
+                      locationId?: number;
+                      tagId?: number;
+                  };
+                  granularity?: 'fifteen_minutes' | 'hour' | 'day' | 'month';
+                  format?: 'csv' | 'html' | 'xlsx' | 'pdf';
+                  source?:
+                      | 'internal'
+                      | 'builtin'
+                      | 'addon'
+                      | 'blu'
+                      | 'weather'
+                      | 'virtual';
+                  kinds?: Array<
+                      | 'temperature'
+                      | 'humidity'
+                      | 'illuminance'
+                      | 'co2'
+                      | 'tvoc'
+                      | 'pm25'
+                      | 'pm10'
+                      | 'pressure'
+                      | 'dewpoint'
+                      | 'uv'
+                      | 'wind_speed'
+                      | 'precipitation'
+                      | 'moisture'
+                      | 'flow'
+                      | 'water_temperature'
+                      | 'water_pressure'
+                      | 'battery'
+                  >;
+                  timezone?: string;
+                  dashboardId?: number;
+                  devices?: string[];
+                  sections_enabled?: Array<
+                      | 'air'
+                      | 'light'
+                      | 'weather'
+                      | 'water'
+                      | 'presence'
+                      | 'safety'
+                      | 'per_sensor'
+                      | 'breaches'
+                      | 'recommendations'
+                      | 'data_quality'
+                  >;
+                  from: string;
+                  to: string;
+                  period?: never;
+                  billing_day?: never;
+              }
+            | {
+                  kind: 'environment';
+                  scope?: {
+                      groupId?: number;
+                      locationId?: number;
+                      tagId?: number;
+                  };
+                  granularity?: 'fifteen_minutes' | 'hour' | 'day' | 'month';
+                  format?: 'csv' | 'html' | 'xlsx' | 'pdf';
+                  source?:
+                      | 'internal'
+                      | 'builtin'
+                      | 'addon'
+                      | 'blu'
+                      | 'weather'
+                      | 'virtual';
+                  kinds?: Array<
+                      | 'temperature'
+                      | 'humidity'
+                      | 'illuminance'
+                      | 'co2'
+                      | 'tvoc'
+                      | 'pm25'
+                      | 'pm10'
+                      | 'pressure'
+                      | 'dewpoint'
+                      | 'uv'
+                      | 'wind_speed'
+                      | 'precipitation'
+                      | 'moisture'
+                      | 'flow'
+                      | 'water_temperature'
+                      | 'water_pressure'
+                      | 'battery'
+                  >;
+                  timezone?: string;
+                  dashboardId?: number;
+                  devices?: string[];
+                  sections_enabled?: Array<
+                      | 'air'
+                      | 'light'
+                      | 'weather'
+                      | 'water'
+                      | 'presence'
+                      | 'safety'
+                      | 'per_sensor'
+                      | 'breaches'
+                      | 'recommendations'
+                      | 'data_quality'
+                  >;
+                  period:
+                      | 'last_7_days'
+                      | 'last_month'
+                      | 'mtd'
+                      | 'last_year'
+                      | 'ytd'
+                      | 'billing_period';
+                  billing_day?: number;
+                  from?: never;
+                  to?: never;
+              };
         result: {jobId: string; status: 'pending'};
     };
-    /** Fetch a report started by Report.Generate. Owner-checked: a caller only sees their own jobs. Returns status (pending | ready | failed); when ready, downloadUrl/htmlUrl keep backwards compatibility and artifacts carries the dataCsvGz/summaryHtml files served from /api/exports/download (authenticated GET, streamed). Records expire after configured report retention. */
+    /** Fetch a report started by Report.Generate. Owner-checked: a caller only sees their own jobs. Returns status (pending | ready | failed); when ready, coverage reports the requested and measured intervals and marks an honest partial result; downloadUrl/htmlUrl keep backwards compatibility and artifacts carries the dataCsvGz/summaryHtml/workbookXlsx/documentPdf files served from /api/exports/download (authenticated GET, streamed). Records expire after configured report retention. */
     'report.getreport': {
         params: {jobId: string};
         result: {
@@ -12708,12 +20155,35 @@ export interface HostContract {
             status: 'pending' | 'ready' | 'failed' | 'cancelled';
             downloadUrl?: string | null;
             htmlUrl?: string | null;
-            artifacts?: null | {dataCsvGz?: string; summaryHtml?: string};
+            artifacts?: null | {
+                dataCsvGz?: string;
+                summaryHtml?: string;
+                workbookXlsx?: string;
+                documentPdf?: string;
+            };
+            coverage?: null | {
+                status: 'complete' | 'partial';
+                requestedFrom: string;
+                requestedTo: string;
+                coveredFrom: string;
+                coveredTo: string;
+                fraction: number;
+            };
+            measuredUsageCost?: null | {
+                amount: number;
+                roundedAmount: number;
+                currency: string;
+                fractionDigits: number;
+                roundsToZeroAtMinorUnit: boolean;
+            };
             manifest?: null | {
                 dataCsvGz?: string;
                 summaryHtml?: string;
+                workbookXlsx?: string;
+                documentPdf?: string;
                 expiresAt: string;
                 bytes: number;
+                report?: Record<string, unknown>;
             };
             progress?: null | {
                 estimatedRows?: number;
@@ -12721,6 +20191,7 @@ export interface HostContract {
                 bytesWritten?: number;
                 currentPhase?: string;
                 percent?: number;
+                lastActivityAt?: string;
             };
             expiresAt?: string | null;
             bytes?: number | null;
@@ -12734,6 +20205,11 @@ export interface HostContract {
             jobId: string;
             status: 'pending' | 'ready' | 'failed' | 'cancelled';
         };
+    };
+    /** Delete one finished report job owned by the caller, its files and their download ownership records. A running report must be cancelled first. */
+    'report.delete': {
+        params: {jobId: string};
+        result: {success: true; jobId: string; deletedFiles: number};
     };
     /** Suggest the single best hour-to-hour load shift for the given device scope + window, scored against grid carbon intensity. Returns null when no useful shift can be proposed. */
     'report.suggesttimeshift': {
@@ -12799,7 +20275,20 @@ export interface HostContract {
     /** List the caller org's report templates. */
     'reporttemplate.list': {
         params: Record<string, never>;
-        result: Record<string, unknown>;
+        result: {
+            templates: Array<{
+                id: string;
+                name: string;
+                description?: string | null;
+                kind: string;
+                params: Record<string, unknown>;
+                sectionsEnabled?: unknown[] | null;
+                createdBy?: string | null;
+                createdAt: string;
+                updatedAt?: string | null;
+                [key: string]: unknown;
+            }>;
+        };
     };
     /** Fetch a single report template. */
     'reporttemplate.get': {
@@ -12842,14 +20331,11 @@ export interface HostContract {
         };
     };
     /** Delete a report template. */
-    'reporttemplate.delete': {
-        params: {id: string};
-        result: Record<string, unknown>;
-    };
+    'reporttemplate.delete': {params: {id: string}; result: {deleted: boolean}};
     /** Run a template's saved report via report.Generate; returns a jobId. */
     'reporttemplate.run': {
         params: {id: string};
-        result: Record<string, unknown>;
+        result: {jobId: string; status: 'pending'};
     };
     /** Return the reporttemplate namespace contract (methods, schemas, permissions, errors). */
     'reporttemplate.describe': {
@@ -13094,6 +20580,135 @@ export interface HostContract {
             errors?: unknown[];
         };
     };
+    /** Create and deploy a device-scoped automation. */
+    'scopedautomation.create': {
+        params: {
+            idempotencyKey: string;
+            name: string;
+            deviceIds: string[];
+            schedule:
+                | {kind: 'timer'; seconds: number}
+                | {kind: 'cron'; expression: string};
+            method: string;
+            params?: Record<string, unknown>;
+        };
+        result: {
+            id: string;
+            name: string;
+            deviceIds: string[];
+            schedule:
+                | {kind: 'timer'; seconds: number}
+                | {kind: 'cron'; expression: string};
+            method: string;
+            params: Record<string, unknown>;
+            enabled: boolean;
+            state: 'draft' | 'active' | 'revoked' | 'unknown';
+            revision: number;
+            flowId: string | null;
+            createdAt: string;
+            updatedAt: string;
+        };
+    };
+    /** List automations owned by the current principal. */
+    'scopedautomation.list': {
+        params: {limit?: number; offset?: number};
+        result: {
+            items: Array<{
+                id: string;
+                name: string;
+                deviceIds: string[];
+                schedule:
+                    | {kind: 'timer'; seconds: number}
+                    | {kind: 'cron'; expression: string};
+                method: string;
+                params: Record<string, unknown>;
+                enabled: boolean;
+                state: 'draft' | 'active' | 'revoked' | 'unknown';
+                revision: number;
+                flowId: string | null;
+                createdAt: string;
+                updatedAt: string;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
+    };
+    /** Read an owned automation. */
+    'scopedautomation.get': {
+        params: {id: string};
+        result: {
+            id: string;
+            name: string;
+            deviceIds: string[];
+            schedule:
+                | {kind: 'timer'; seconds: number}
+                | {kind: 'cron'; expression: string};
+            method: string;
+            params: Record<string, unknown>;
+            enabled: boolean;
+            state: 'draft' | 'active' | 'revoked' | 'unknown';
+            revision: number;
+            flowId: string | null;
+            createdAt: string;
+            updatedAt: string;
+        };
+    };
+    /** Replace an owned automation with revision protection. */
+    'scopedautomation.update': {
+        params: {
+            id: string;
+            expectedRevision: number;
+            name: string;
+            deviceIds: string[];
+            schedule:
+                | {kind: 'timer'; seconds: number}
+                | {kind: 'cron'; expression: string};
+            method: string;
+            params?: Record<string, unknown>;
+        };
+        result: {
+            id: string;
+            name: string;
+            deviceIds: string[];
+            schedule:
+                | {kind: 'timer'; seconds: number}
+                | {kind: 'cron'; expression: string};
+            method: string;
+            params: Record<string, unknown>;
+            enabled: boolean;
+            state: 'draft' | 'active' | 'revoked' | 'unknown';
+            revision: number;
+            flowId: string | null;
+            createdAt: string;
+            updatedAt: string;
+        };
+    };
+    /** Disable and delete an owned automation. */
+    'scopedautomation.delete': {
+        params: {id: string; expectedRevision: number};
+        result: {id: string; deleted: true};
+    };
+    /** Execute once per invocationId and token generation. Completed retries return the stored result; unknown outcomes stay blocked. Omitted invocationId uses one legacy receipt per token generation; update older schedules to generate distinct firing IDs. */
+    'scopedautomation.run': {
+        params: {id: string; executionToken: string; invocationId?: string};
+        result: {
+            id: string;
+            deviceResults: Array<{deviceId: string; result: unknown}>;
+        };
+    };
+    /** Return the scopedautomation namespace contract (methods, schemas, permissions, errors). */
+    'scopedautomation.describe': {
+        params: Record<string, unknown>;
+        result: {
+            namespace: string;
+            methods: Record<string, unknown>;
+            limits?: Record<string, unknown>;
+            tags?: string[];
+            errors?: unknown[];
+        };
+    };
     /** Script.List — all scripts on the device. */
     'script.list': {
         params: {shellyID: string};
@@ -13208,13 +20823,19 @@ export interface HostContract {
             errors?: unknown[];
         };
     };
-    /** Numeric sensor history from device_sensor.numeric_15min (the forever 15-minute rollup), re-bucketed per channel to sample-weighted avg + true min/max, with reading counts. The numeric twin of Sensor.Events. Group / location / tag / devices / fleet scope selected by params (scope XOR devices). kinds fan out one DB call each; source narrows to one reading source (omit for all). Omit limit for the full set (up to the server row ceiling); set limit to paginate. total is a lower bound — has_more is authoritative. */
+    /** Numeric sensor history from device_sensor.numeric_15min (the forever 15-minute rollup), re-bucketed per channel to sample-weighted avg + true min/max, with reading counts. The numeric twin of Sensor.Events. Group / location / tag / devices / fleet scope selected by params (scope XOR devices). kinds fan out one DB call each; source narrows to one reading source — omit it for every ambient source, which leaves out a device's own chip temperature (internal) because that is device health, not the environment. Omit limit for the full set (up to the server row ceiling); set limit to paginate. total is a lower bound — has_more is authoritative. */
     'sensor.query': {
         params: {
             from: string;
             to: string;
             kinds: string[];
-            source?: 'internal' | 'builtin' | 'addon' | 'blu' | 'weather';
+            source?:
+                | 'internal'
+                | 'builtin'
+                | 'addon'
+                | 'blu'
+                | 'weather'
+                | 'virtual';
             scope?: {groupId?: number; locationId?: number; tagId?: number};
             devices?: string[];
             bucket?:
@@ -13243,6 +20864,7 @@ export interface HostContract {
                 value: number;
                 min: number | null;
                 max: number | null;
+                roleKey?: string;
             }>;
             total: number;
             limit: number;
@@ -13256,7 +20878,7 @@ export interface HostContract {
             };
         };
     };
-    /** Discrete event history from device_sensor.events (append-only: binary sensors record on state change, buttons record every push). devices is a required shellyID allowlist — no group/location/tag/fleet scope yet. kind narrows to one event kind; omit for all kinds. */
+    /** Discrete event history from device_sensor.events (append-only: binary sensors record on state change, buttons record every push). devices is a required shellyID allowlist — no group/location/tag/fleet scope yet. kind narrows to one event kind; omit for all kinds. Paged newest-first by limit (default 5000, max 20000) + offset; unlike Energy.Query an omitted limit still pages at the default. total is a lower bound — has_more is authoritative. */
     'sensor.events': {
         params: {
             from: string;
@@ -13264,6 +20886,7 @@ export interface HostContract {
             devices: string[];
             kind?: string;
             limit?: number;
+            offset?: number;
         };
         result: {
             items: Array<{
@@ -13274,7 +20897,12 @@ export interface HostContract {
                 kind: string;
                 channel: number | null;
                 state: number;
+                roleKey?: string;
             }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
         };
     };
     /** Return the sensor namespace contract (methods, schemas, permissions, errors). */
@@ -13354,7 +20982,7 @@ export interface HostContract {
                 | 'serves:heats'
                 | 'serves:measures';
         };
-        result: Record<string, unknown>;
+        result: {deleted: number};
     };
     /** List links by source or by target. */
     'serves.list': {
@@ -13590,17 +21218,17 @@ export interface HostContract {
     /** Upsert a value under a registry key. */
     'storage.setitem': {
         params: {registry?: string; key: string; value: unknown};
-        result: Record<string, unknown>;
+        result: {updated: string};
     };
     /** Read a value by key. */
     'storage.getitem': {
         params: {registry?: string; key: string};
-        result: Record<string, unknown>;
+        result: unknown;
     };
     /** Delete a value by key. */
     'storage.removeitem': {
         params: {registry?: string; key: string};
-        result: Record<string, unknown>;
+        result: {removed: string};
     };
     /** List readable keys in a registry. */
     'storage.keys': {params: {registry?: string}; result: string[]};
@@ -13762,7 +21390,11 @@ export interface HostContract {
             connectionId?: string;
             lastSeenStreamId?: string;
         };
-        result: {ids: number[]};
+        result: {
+            ids: number[];
+            connectionId: string;
+            resyncRequired?: 'no_offset' | 'stream_expired' | 'stream_trimmed';
+        };
     };
     /** Remove websocket event subscriptions by id. */
     'system.unsubscribe': {params: {ids: number[]}; result: null};
@@ -13775,8 +21407,8 @@ export interface HostContract {
                 id: string;
                 name: string | null;
                 displayName: string | null;
-                timezoneDefault: string | null;
-                localeDefault: string | null;
+                timezoneDefault: string;
+                localeDefault: string;
                 currencyDefault: string | null;
                 unitSystemDefault: 'metric' | 'imperial' | null;
                 brandInitials: string | null;
@@ -13893,17 +21525,63 @@ export interface HostContract {
     /** Return the current in-memory debug report. */
     'system.health.getdebugreport': {
         params: Record<string, never>;
-        result: Record<string, unknown>;
+        result: {
+            rpcErrors: Array<Record<string, unknown>>;
+            initFailures: Array<Record<string, unknown>>;
+            wsMessageBreakdown: Record<string, number>;
+            initDurations: Array<Record<string, unknown>>;
+            slowBuilds: Array<Record<string, unknown>>;
+            slowDeviceCommands: Array<Record<string, unknown>>;
+            timestamp: number;
+            level?: number;
+            uptimeS?: number;
+            eventLoopLagMs?: number;
+            eventLoopHistogram?: Record<string, unknown>;
+            memory?: Record<string, unknown>;
+            cpu?: Record<string, unknown>;
+            os?: Record<string, unknown>;
+            gc?: Record<string, unknown>;
+            activeHandles?: number;
+            wsClients?: number;
+            wsClientHealth?: Record<string, unknown>;
+            modules?: Record<string, unknown>;
+            dbWritesDisabled?: boolean;
+            redisDisabled?: boolean;
+            counters?: Record<string, number>;
+            gauges?: Record<string, number>;
+            labeledCounters?: Record<string, number>;
+            labeledGauges?: Record<string, number>;
+            rpcTimings?: Record<
+                string,
+                {count: number; avgMs: number; maxMs: number; minMs: number}
+            >;
+            dbTimings?: Record<
+                string,
+                {count: number; avgMs: number; maxMs: number; minMs: number}
+            >;
+            strugglingClients?: Array<Record<string, unknown>>;
+            [key: string]: unknown;
+        };
     };
     /** Return Redis stream and ingest overflow health. */
     'system.health.getstreams': {
         params: Record<string, never>;
-        result: Record<string, unknown>;
+        result: {
+            redisDisabled: boolean;
+            ingestCapture: boolean;
+            ingestDrainAtBoot: boolean;
+            redis?: 'up' | 'unknown' | 'down';
+            redisError?: string;
+            auditOverflow?: {size: number; oldestAgeMs: number};
+            statusOverflow?: {size: number; oldestAgeMs: number};
+        };
     };
     /** Return recent in-memory runtime metric history. */
     'system.health.gethistory': {
         params: Record<string, never>;
-        result: Record<string, unknown>;
+        result: {
+            history: Array<{ts: number; metrics: Record<string, unknown>}>;
+        };
     };
     /** Return the auto-derived module topology for the monitoring diagram. */
     'system.gettopology': {
@@ -14366,12 +22044,217 @@ export interface HostContract {
     /** List all tariffs in the caller org (header rows only). */
     'tariff.list': {
         params: Record<string, unknown>;
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{
+                id: number;
+                name: string;
+                kind: 'single' | 'day_night' | 'tou' | 'live' | 'block';
+                currency: string;
+                commodity: 'electricity' | 'water' | 'gas' | 'heat';
+                billedUnit: 'kWh' | 'm3' | 'l' | 'therm' | 'MMBtu' | 'GJ';
+                effectiveFrom: string | null;
+                effectiveTo: string | null;
+                sourceReference: string | null;
+            }>;
+        };
     };
     /** Fetch one tariff with nested seasons and windows. */
     'tariff.get': {
         params: Record<string, unknown>;
-        result: Record<string, unknown>;
+        result: {
+            tariff: {
+                name: string;
+                currency: string;
+                timezone: string;
+                billingDay: number;
+                kind: 'single' | 'day_night' | 'tou' | 'live' | 'block';
+                commodity?: 'electricity' | 'water' | 'gas' | 'heat';
+                billedUnit?: 'kWh' | 'm3' | 'l' | 'therm' | 'MMBtu' | 'GJ';
+                standingCharge: number;
+                standingChargePeriod: 'day' | 'month';
+                vatPct?: number | null;
+                taxes?: Array<{
+                    code: string;
+                    name: string;
+                    ratePct: number;
+                    calculation: 'exclusive' | 'inclusive';
+                    appliesTo: Array<'energy' | 'demand' | 'standing'>;
+                    exempt?: boolean;
+                    compoundOn?: string[];
+                }> | null;
+                demandRate?: number | null;
+                demand?: {
+                    rate: number;
+                    unit: 'kW' | 'kVA';
+                    chargePeriod: 'day' | 'month';
+                    intervalMinutes: 15 | 30;
+                    ratchetMonths: number;
+                    seasons: Array<{
+                        startMonthDay: string;
+                        endMonthDay: string;
+                        windows: Array<{
+                            daysMask: number;
+                            startTime: string;
+                            endTime: string;
+                        }>;
+                    }>;
+                } | null;
+                blocks?: {
+                    unit: 'kWh' | 'm3' | 'l' | 'therm' | 'MMBtu' | 'GJ';
+                    steps: Array<{upTo: number | null; rate: number}>;
+                    surcharge: number;
+                } | null;
+                effectiveFrom?: string | null;
+                effectiveTo?: string | null;
+                sourceReference?: string | null;
+                components?: Array<{
+                    code: string;
+                    name: string;
+                    sequence: number;
+                    chargeType:
+                        | 'per_unit'
+                        | 'fixed_day'
+                        | 'fixed_month'
+                        | 'percentage'
+                        | 'minimum';
+                    chargeClass: string;
+                    basis:
+                        | 'consumption'
+                        | 'energy'
+                        | 'demand'
+                        | 'standing'
+                        | 'subtotal';
+                    rate: number;
+                    appliesTo?: string[];
+                    taxable?: boolean;
+                    effectiveFrom?: string | null;
+                    effectiveTo?: string | null;
+                    sourceReference?: string | null;
+                }> | null;
+                seasons: Array<{
+                    startMonthDay: string;
+                    endMonthDay: string;
+                    windows: Array<{
+                        daysMask: number;
+                        startTime: string;
+                        endTime: string;
+                        price: number;
+                        band?: 'peak' | 'shoulder' | 'off_peak';
+                    }>;
+                }>;
+                id: number;
+            };
+        };
+    };
+    /** Billing periods a window touches, anchored on the tariff's own billingDay and timezone. A billing period is not a calendar month and its anchor is not a fixed UTC offset. */
+    'tariff.billingperiods': {
+        params: {tariffId: number; from: string; to: string};
+        result: {
+            items: Array<{key: string; from: string; to: string; days: number}>;
+        };
+    };
+    /** The billing period containing an instant and its predecessor, anchored on the tariff's own billingDay and timezone. */
+    'tariff.billingperiodat': {
+        params: {tariffId: number; at: string};
+        result: {
+            current: {key: string; from: string; to: string; days: number};
+            previous: {key: string; from: string; to: string; days: number};
+        };
+    };
+    /** List tariff assignments in the caller org. */
+    'tariff.listassignments': {
+        params: Record<string, never>;
+        result: {
+            items: Array<{
+                tariffId: number;
+                scopeLevel:
+                    | 'organization'
+                    | 'location'
+                    | 'dashboard'
+                    | 'device'
+                    | 'channel';
+                dashboardId: number | null;
+                locationId: number | null;
+                deviceExternalId: string | null;
+                channel: number | null;
+                commodity: 'electricity' | 'water' | 'gas' | 'heat';
+                billedUnit: 'kWh' | 'm3' | 'l' | 'therm' | 'MMBtu' | 'GJ';
+                direction: 'import' | 'export';
+            }>;
+        };
+    };
+    /** Resolve the effective canonical tariff for device/channel points. */
+    'tariff.resolveassignments': {
+        params: {
+            points: Array<{
+                deviceExternalId: string;
+                channel: number | null;
+                commodity?: 'electricity' | 'water' | 'gas' | 'heat';
+                direction?: 'import' | 'export';
+            }>;
+        };
+        result: {
+            items: Array<{
+                deviceExternalId: string;
+                channel: number | null;
+                tariffId: number | null;
+                scopeLevel:
+                    | 'organization'
+                    | 'location'
+                    | 'device'
+                    | 'channel'
+                    | null;
+                locationId: number | null;
+                ambiguous: boolean;
+                commodity: 'electricity' | 'water' | 'gas' | 'heat';
+                direction: 'import' | 'export';
+            }>;
+        };
+    };
+    /** Resolve one assigned tariff and its effective clock price at an explicit timestamp. Live and block tariffs return an unavailable reason because a timestamp alone cannot determine their rate. */
+    'tariff.resolvepricing': {
+        params: {
+            deviceExternalId: string;
+            channel: number | null;
+            commodity?: 'electricity' | 'water' | 'gas' | 'heat';
+            direction?: 'import' | 'export';
+            at: string;
+        };
+        result: {
+            at: string;
+            deviceExternalId: string;
+            channel: number | null;
+            commodity: 'electricity' | 'water' | 'gas' | 'heat';
+            direction: 'import' | 'export';
+            tariffId: number | null;
+            scopeLevel:
+                | 'organization'
+                | 'location'
+                | 'device'
+                | 'channel'
+                | null;
+            locationId: number | null;
+            ambiguous: boolean;
+            tariff: {
+                kind: 'single' | 'day_night' | 'tou' | 'live' | 'block';
+                currency: string;
+                billedUnit: 'kWh' | 'm3' | 'l' | 'therm' | 'MMBtu' | 'GJ';
+                timezone: string;
+            } | null;
+            pricing: {
+                price: number;
+                band: 'peak' | 'shoulder' | 'off_peak' | null;
+            } | null;
+            unavailableReason:
+                | 'no_tariff_assignment'
+                | 'ambiguous_assignment'
+                | 'tariff_not_found'
+                | 'outside_effective_dates'
+                | 'no_matching_window'
+                | 'live_price_requires_feed'
+                | 'block_requires_period_usage'
+                | null;
+        };
     };
     /** Create a new tariff in the caller org. */
     'tariff.add': {
@@ -14380,11 +22263,70 @@ export interface HostContract {
             currency: string;
             timezone: string;
             billingDay: number;
-            kind: 'single' | 'day_night' | 'tou' | 'live';
+            kind: 'single' | 'day_night' | 'tou' | 'live' | 'block';
+            commodity?: 'electricity' | 'water' | 'gas' | 'heat';
+            billedUnit?: 'kWh' | 'm3' | 'l' | 'therm' | 'MMBtu' | 'GJ';
             standingCharge: number;
             standingChargePeriod: 'day' | 'month';
             vatPct?: number | null;
+            taxes?: Array<{
+                code: string;
+                name: string;
+                ratePct: number;
+                calculation: 'exclusive' | 'inclusive';
+                appliesTo: Array<'energy' | 'demand' | 'standing'>;
+                exempt?: boolean;
+                compoundOn?: string[];
+            }> | null;
             demandRate?: number | null;
+            demand?: {
+                rate: number;
+                unit: 'kW' | 'kVA';
+                chargePeriod: 'day' | 'month';
+                intervalMinutes: 15 | 30;
+                ratchetMonths: number;
+                seasons: Array<{
+                    startMonthDay: string;
+                    endMonthDay: string;
+                    windows: Array<{
+                        daysMask: number;
+                        startTime: string;
+                        endTime: string;
+                    }>;
+                }>;
+            } | null;
+            blocks?: {
+                unit: 'kWh' | 'm3' | 'l' | 'therm' | 'MMBtu' | 'GJ';
+                steps: Array<{upTo: number | null; rate: number}>;
+                surcharge: number;
+            } | null;
+            effectiveFrom?: string | null;
+            effectiveTo?: string | null;
+            sourceReference?: string | null;
+            components?: Array<{
+                code: string;
+                name: string;
+                sequence: number;
+                chargeType:
+                    | 'per_unit'
+                    | 'fixed_day'
+                    | 'fixed_month'
+                    | 'percentage'
+                    | 'minimum';
+                chargeClass: string;
+                basis:
+                    | 'consumption'
+                    | 'energy'
+                    | 'demand'
+                    | 'standing'
+                    | 'subtotal';
+                rate: number;
+                appliesTo?: string[];
+                taxable?: boolean;
+                effectiveFrom?: string | null;
+                effectiveTo?: string | null;
+                sourceReference?: string | null;
+            }> | null;
             seasons: Array<{
                 startMonthDay: string;
                 endMonthDay: string;
@@ -14393,10 +22335,11 @@ export interface HostContract {
                     startTime: string;
                     endTime: string;
                     price: number;
+                    band?: 'peak' | 'shoulder' | 'off_peak';
                 }>;
             }>;
         };
-        result: Record<string, unknown>;
+        result: {id: number};
     };
     /** Replace a tariff definition including its seasons and windows. */
     'tariff.update': {
@@ -14405,11 +22348,70 @@ export interface HostContract {
             currency: string;
             timezone: string;
             billingDay: number;
-            kind: 'single' | 'day_night' | 'tou' | 'live';
+            kind: 'single' | 'day_night' | 'tou' | 'live' | 'block';
+            commodity?: 'electricity' | 'water' | 'gas' | 'heat';
+            billedUnit?: 'kWh' | 'm3' | 'l' | 'therm' | 'MMBtu' | 'GJ';
             standingCharge: number;
             standingChargePeriod: 'day' | 'month';
             vatPct?: number | null;
+            taxes?: Array<{
+                code: string;
+                name: string;
+                ratePct: number;
+                calculation: 'exclusive' | 'inclusive';
+                appliesTo: Array<'energy' | 'demand' | 'standing'>;
+                exempt?: boolean;
+                compoundOn?: string[];
+            }> | null;
             demandRate?: number | null;
+            demand?: {
+                rate: number;
+                unit: 'kW' | 'kVA';
+                chargePeriod: 'day' | 'month';
+                intervalMinutes: 15 | 30;
+                ratchetMonths: number;
+                seasons: Array<{
+                    startMonthDay: string;
+                    endMonthDay: string;
+                    windows: Array<{
+                        daysMask: number;
+                        startTime: string;
+                        endTime: string;
+                    }>;
+                }>;
+            } | null;
+            blocks?: {
+                unit: 'kWh' | 'm3' | 'l' | 'therm' | 'MMBtu' | 'GJ';
+                steps: Array<{upTo: number | null; rate: number}>;
+                surcharge: number;
+            } | null;
+            effectiveFrom?: string | null;
+            effectiveTo?: string | null;
+            sourceReference?: string | null;
+            components?: Array<{
+                code: string;
+                name: string;
+                sequence: number;
+                chargeType:
+                    | 'per_unit'
+                    | 'fixed_day'
+                    | 'fixed_month'
+                    | 'percentage'
+                    | 'minimum';
+                chargeClass: string;
+                basis:
+                    | 'consumption'
+                    | 'energy'
+                    | 'demand'
+                    | 'standing'
+                    | 'subtotal';
+                rate: number;
+                appliesTo?: string[];
+                taxable?: boolean;
+                effectiveFrom?: string | null;
+                effectiveTo?: string | null;
+                sourceReference?: string | null;
+            }> | null;
             seasons: Array<{
                 startMonthDay: string;
                 endMonthDay: string;
@@ -14418,26 +22420,27 @@ export interface HostContract {
                     startTime: string;
                     endTime: string;
                     price: number;
+                    band?: 'peak' | 'shoulder' | 'off_peak';
                 }>;
             }>;
         };
-        result: Record<string, unknown>;
+        result: {id: number};
     };
     /** Delete a tariff by id within the caller org. */
-    'tariff.delete': {
-        params: Record<string, unknown>;
-        result: Record<string, unknown>;
-    };
+    'tariff.delete': {params: {id: number}; result: {deleted: boolean}};
     /** Attach or remove a tariff assignment for a metering point. */
     'tariff.assign': {
         params: {
             tariffId: number;
-            scopeLevel: 'dashboard' | 'device' | 'channel';
+            scopeLevel: 'organization' | 'location' | 'device' | 'channel';
             dashboardId?: number | null;
+            locationId?: number | null;
             deviceExternalId?: string | null;
             channel?: number | null;
+            direction?: 'import' | 'export';
+            delete?: boolean;
         };
-        result: Record<string, unknown>;
+        result: {ok: boolean};
     };
     /** Configure a live tariff source. mode=push returns a one-time token for the price-push URL. */
     'tariff.setlivesource': {
@@ -14447,7 +22450,38 @@ export interface HostContract {
             provider?: string;
             providerConfig?: Record<string, unknown>;
         };
-        result: Record<string, unknown>;
+        result: {token?: string; url?: string; [key: string]: unknown};
+    };
+    /** Replace the ordered named price-component catalogue for a tariff. */
+    'tariff.writecomponents': {
+        params: {
+            tariffId: number;
+            components: Array<{
+                code: string;
+                name: string;
+                sequence: number;
+                chargeType:
+                    | 'per_unit'
+                    | 'fixed_day'
+                    | 'fixed_month'
+                    | 'percentage'
+                    | 'minimum';
+                chargeClass: string;
+                basis:
+                    | 'consumption'
+                    | 'energy'
+                    | 'demand'
+                    | 'standing'
+                    | 'subtotal';
+                rate: number;
+                appliesTo?: string[];
+                taxable?: boolean;
+                effectiveFrom?: string | null;
+                effectiveTo?: string | null;
+                sourceReference?: string | null;
+            }>;
+        };
+        result: {ok: boolean};
     };
     /** Return the tariff namespace contract (methods, schemas, permissions, errors). */
     'tariff.describe': {
@@ -14942,7 +22976,7 @@ export interface HostContract {
             expires_in?: number;
         };
     };
-    /** Return the current user profile + permissions. */
+    /** Return the caller: identity (user, email, organization, actor kind, scoped-key summary) and permissions. Never returns token values. */
     'user.getme': {
         params: Record<string, unknown>;
         result: {
@@ -14954,6 +22988,36 @@ export interface HostContract {
             isViewer: boolean;
             effectiveShape: Record<string, unknown>;
             uiCapabilities: Record<string, unknown>;
+            userId: string | null;
+            username: string | null;
+            displayName: string | null;
+            email: string | null;
+            emailVerified: boolean | null;
+            organizationId: string | null;
+            organizationName: string | null;
+            actorKind: 'human' | 'service_account' | 'scoped_key' | 'system';
+            credential: {
+                id: string;
+                audience: string[];
+                boundary: {
+                    all?: boolean;
+                    device_ids?: string[];
+                    location_ids?: number[];
+                    device_group_ids?: number[];
+                    device_tags?: string[];
+                    dashboard_ids?: number[];
+                    plugin_keys?: string[];
+                    waiting_room_ids?: string[];
+                    configuration_keys?: string[];
+                    report_ids?: number[];
+                    organization_ids?: string[];
+                    alert_ids?: string[];
+                    notification_ids?: string[];
+                    integration_keys?: string[];
+                    automation_ids?: string[];
+                    actions?: string[];
+                } | null;
+            } | null;
         };
     };
     /** Mint a short-lived ticket for POST /media/uploadProfilePic. */
@@ -15008,23 +23072,85 @@ export interface HostContract {
             resourceId?: string | number;
             builtInRoles?: string[];
         };
-        result: Record<string, unknown>;
+        result: {
+            decision: boolean;
+            matchedBy: Array<{
+                source: 'built-in-jwt' | 'group-assignment' | 'user-assignment';
+                persona: string;
+                scope?: {
+                    all?: boolean;
+                    device_ids?: string[];
+                    location_ids?: number[];
+                    device_group_ids?: number[];
+                    device_tags?: string[];
+                    dashboard_ids?: number[];
+                    plugin_keys?: string[];
+                    waiting_room_ids?: string[];
+                    configuration_keys?: string[];
+                    report_ids?: number[];
+                    organization_ids?: string[];
+                    alert_ids?: string[];
+                    notification_ids?: string[];
+                    integration_keys?: string[];
+                    automation_ids?: string[];
+                    actions?: string[];
+                };
+            }>;
+        };
     };
-    /** Attach a custom FM persona to a user with scope. */
+    /** Attach an FM persona to a user with scope. */
     'user.attachcustompersona': {
         params: {
             userId: string;
             personaId: string;
-            scope: Record<string, unknown>;
+            scope: {
+                all?: boolean;
+                device_ids?: string[];
+                location_ids?: number[];
+                device_group_ids?: number[];
+                device_tags?: string[];
+                dashboard_ids?: number[];
+                plugin_keys?: string[];
+                waiting_room_ids?: string[];
+                configuration_keys?: string[];
+                report_ids?: number[];
+                organization_ids?: string[];
+                alert_ids?: string[];
+                notification_ids?: string[];
+                integration_keys?: string[];
+                automation_ids?: string[];
+                actions?: string[];
+            };
             reason?: string | null;
             comment?: string | null;
             expiresAt?: string | null;
         };
         result: {success: boolean; assignmentId: string};
     };
-    /** Provision a Zitadel user. */
+    /** Provision a Zitadel user with a persona. The persona is required: it resolves to the project role the user needs to sign in, and without that grant the user authenticates but is refused at token issue. The persona is also attached as an FM assignment, which is what the permission resolver reads, and any persona may be narrowed with scope. */
     'user.createzitadeluser': {
-        params: Record<string, unknown>;
+        params: {
+            personaId: string;
+            scope?: {
+                all?: boolean;
+                device_ids?: string[];
+                location_ids?: number[];
+                device_group_ids?: number[];
+                device_tags?: string[];
+                dashboard_ids?: number[];
+                plugin_keys?: string[];
+                waiting_room_ids?: string[];
+                configuration_keys?: string[];
+                report_ids?: number[];
+                organization_ids?: string[];
+                alert_ids?: string[];
+                notification_ids?: string[];
+                integration_keys?: string[];
+                automation_ids?: string[];
+                actions?: string[];
+            };
+            [key: string]: unknown;
+        };
         result: {userId: string};
     };
     /** Update a Zitadel user. */
@@ -15034,29 +23160,36 @@ export interface HostContract {
     };
     /** Trigger a Zitadel password-reset email for the user. */
     'user.sendpasswordreset': {
-        params: {username: string};
+        params: {userId: string};
         result: {success: boolean};
     };
     /** Deactivate a user in Zitadel. */
     'user.deactivateuser': {
-        params: {username: string};
+        params: {userId: string};
         result: {success: boolean};
     };
     /** Reactivate a previously deactivated Zitadel user. */
     'user.reactivateuser': {
-        params: {username: string};
+        params: {userId: string};
         result: {success: boolean};
     };
     /** Hard-delete a Zitadel user. Irreversible; audit_log retains the historical record. Use DeactivateUser for soft delete. */
     'user.deletezitadeluser': {
-        params: {username: string};
+        params: {userId: string};
         result: {success: boolean};
     };
     /** List Zitadel service users (machine accounts). Tenant-scoped admins see own org; global provider support sees all. */
     'user.listserviceusers': {
         params: Record<string, unknown>;
         result: {
-            items: Array<Record<string, unknown>>;
+            items: Array<{
+                userId: string;
+                userName: string;
+                name: string;
+                description?: string;
+                organizationId?: string;
+                tokenCount: number;
+            }>;
             total: number;
             limit: number;
             offset: number;
@@ -15114,19 +23247,31 @@ export interface HostContract {
     };
     /** Hard-delete a Zitadel service user. Irreversible; tenant gate ensures only the home-org admin can delete. */
     'user.deleteserviceuser': {
-        params: {username: string};
+        params: {userId: string};
         result: {success: boolean};
     };
     /** Create a Personal Access Token for a user/service user. */
     'user.createpat': {
-        params: {userId: string; expirationDays?: number};
-        result: {tokenId: string; token: string; expirationDate: string | null};
+        params: {userId: string; expirationDays?: number; name?: string};
+        result: {
+            tokenId: string;
+            token: string;
+            expirationDate: string | null;
+            name: string;
+            keyHint: string;
+        };
     };
     /** List Personal Access Tokens for a user. */
     'user.listpats': {
         params: {userId: string};
         result: {
-            items: Array<Record<string, unknown>>;
+            items: Array<{
+                tokenId: string;
+                expirationDate?: string;
+                creationDate?: string;
+                name: string;
+                keyHint: string;
+            }>;
             total: number;
             limit: number;
             offset: number;
@@ -15137,6 +23282,22 @@ export interface HostContract {
     'user.revokepat': {
         params: {userId: string; tokenId: string};
         result: {success: boolean};
+    };
+    /** Rotate a Zitadel Personal Access Token and return the replacement token once. */
+    'user.rotatepat': {
+        params: {
+            userId: string;
+            tokenId: string;
+            expirationDays?: number;
+            graceMs?: number;
+        };
+        result: {
+            tokenId: string;
+            token: string;
+            expirationDate: string | null;
+            replacedTokenId: string;
+            graceMs: number;
+        };
     };
     /** Mint an FM-issued scoped PAT. boundaryScope narrows the user effective shape at the auth gate; can only subtract, never escalate. */
     'user.createscopedpat': {
@@ -15170,7 +23331,37 @@ export interface HostContract {
     'user.listscopedpats': {
         params: {userId?: string};
         result: {
-            items: Array<Record<string, unknown>>;
+            items: Array<{
+                tokenId: string;
+                tenantId: string;
+                userId: string;
+                boundaryScope: {
+                    all?: boolean;
+                    device_ids?: string[];
+                    location_ids?: number[];
+                    device_group_ids?: number[];
+                    device_tags?: string[];
+                    dashboard_ids?: number[];
+                    plugin_keys?: string[];
+                    waiting_room_ids?: string[];
+                    configuration_keys?: string[];
+                    report_ids?: number[];
+                    organization_ids?: string[];
+                    alert_ids?: string[];
+                    notification_ids?: string[];
+                    integration_keys?: string[];
+                    automation_ids?: string[];
+                    actions?: string[];
+                };
+                audience: string[];
+                purpose: string;
+                expiresAt: string;
+                createdAt: string;
+                createdBy: string;
+                lastUsedAt: string | null;
+                revokedAt: string | null;
+                kid: string;
+            }>;
             total: number;
             limit: number;
             offset: number;
@@ -15222,6 +23413,83 @@ export interface HostContract {
         params: {tokenId: string; expirationDays?: number};
         result: {tokenId: string; token: string; expirationDate: string | null};
     };
+    /** Move a service user to an organization and revoke scoped credentials for its prior organization. */
+    'user.setserviceuserorg': {
+        params: {userId: string; organizationId: string};
+        result: {userId: string; organizationId: string};
+    };
+    /** Rotate the target user personal access tokens. Each result reports its outcome; replacement tokens are returned once. */
+    'user.bulkrotatepats': {
+        params: {userId: string; expirationDays?: number; graceMs?: number};
+        result: {
+            results: Array<{
+                replacedTokenId: string;
+                ok: boolean;
+                tokenId?: string;
+                token?: string;
+                expirationDate?: string | null;
+                error?: string;
+            }>;
+        };
+    };
+    /** Read identity-provider instance custom and trusted domains. */
+    'user.getinstanceinfo': {
+        params: Record<string, never>;
+        result: {
+            customDomains: Array<{domain: string; instanceId?: string}>;
+            trustedDomains: Array<{domain: string; instanceId?: string}>;
+        };
+    };
+    /** Read provider sessions for a tenant user. Omit userId only with cross-organization authority. The provider limits the returned session batch. */
+    'user.listsessions': {
+        params: {userId?: string};
+        result: {
+            items: Array<{
+                id: string;
+                creationDate?: string;
+                changeDate?: string;
+                expirationDate?: string;
+                user?: {
+                    id: string;
+                    loginName?: string;
+                    displayName?: string;
+                    organizationId?: string;
+                };
+                factors: {
+                    password?: boolean;
+                    webAuthN?: boolean;
+                    totp?: boolean;
+                    otpSms?: boolean;
+                    otpEmail?: boolean;
+                    intent?: boolean;
+                    recoveryCode?: boolean;
+                };
+                userAgent?: {
+                    fingerprintId?: string;
+                    ip?: string;
+                    description?: string;
+                };
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
+    };
+    /** Delete an identity-provider session. Tenant administrators use user deactivation and credential revocation for offboarding. */
+    'user.deletesession': {
+        params: {sessionId: string};
+        result: {success: boolean};
+    };
+    /** Read authentication method types, passkeys and linked identity providers for a tenant user. */
+    'user.getauthmethods': {
+        params: {userId: string};
+        result: {
+            methodTypes: string[];
+            passkeys: Array<{id: string; name?: string; state?: string}>;
+            idpLinks: Array<{idpId: string; userId: string; userName?: string}>;
+        };
+    };
     /** Return the user namespace contract (methods, schemas, permissions, errors). */
     'user.describe': {
         params: Record<string, unknown>;
@@ -15241,10 +23509,35 @@ export interface HostContract {
     /** List user groups in current tenant. */
     'user_group.list': {
         params: Record<string, unknown>;
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{
+                id: string;
+                tenant_id: string;
+                name: string;
+                description: string | null;
+                parent_group_id: string | null;
+                created_at: string;
+                member_count: number;
+            }>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
     /** Fetch a user group by id. */
-    'user_group.get': {params: {id: string}; result: Record<string, unknown>};
+    'user_group.get': {
+        params: {id: string};
+        result: {
+            id: string;
+            tenant_id: string;
+            name: string;
+            description: string | null;
+            parent_group_id: string | null;
+            created_at: string;
+            member_count: number;
+        };
+    };
     /** Create a new user group. */
     'user_group.create': {
         params: {
@@ -15252,7 +23545,15 @@ export interface HostContract {
             description?: string;
             parentGroupId?: string | null;
         };
-        result: Record<string, unknown>;
+        result: {
+            id: string;
+            tenant_id: string;
+            name: string;
+            description: string | null;
+            parent_group_id: string | null;
+            created_at: string;
+            member_count: number;
+        };
     };
     /** Update user group metadata. */
     'user_group.update': {
@@ -15262,27 +23563,37 @@ export interface HostContract {
             description?: string | null;
             parentGroupId?: string | null;
         };
-        result: Record<string, unknown>;
+        result: {
+            id: string;
+            tenant_id: string;
+            name: string;
+            description: string | null;
+            parent_group_id: string | null;
+            created_at: string;
+        };
     };
     /** Delete user group (cascades memberships, refuses if assignments reference). */
-    'user_group.delete': {
-        params: {id: string};
-        result: Record<string, unknown>;
-    };
+    'user_group.delete': {params: {id: string}; result: {success: boolean}};
     /** List user IDs that belong to this user group. */
     'user_group.listmembers': {
         params: {id: string};
-        result: Record<string, unknown>;
+        result: {
+            items: Array<{user_id: string; added_at: string; added_by: string}>;
+            total: number;
+            limit: number;
+            offset: number;
+            has_more: boolean;
+        };
     };
     /** Add users to user group. Idempotent. */
     'user_group.addmembers': {
         params: {id: string; userIds: string[]};
-        result: Record<string, unknown>;
+        result: {added: string[]; alreadyMember: string[]};
     };
     /** Remove users from user group. Idempotent. */
     'user_group.removemembers': {
         params: {id: string; userIds: string[]};
-        result: Record<string, unknown>;
+        result: {removed: string[]; notMember: string[]};
     };
     /** List every action variable in the standard list envelope. */
     'variables.list': {
@@ -15319,133 +23630,104 @@ export interface HostContract {
         };
     };
     /** {component}.Set for Boolean / Number / Enum / Text virtual components. */
-    'virtual.componentset': {
-        params: {
-            shellyID: string;
-            component: 'Boolean' | 'Number' | 'Enum' | 'Text';
-            id: number;
-            value: unknown;
-        };
-        result: null;
-    };
+    'virtual.componentset': {params: unknown; result: null};
     /** Virtual.Add — creates component at id 200-299. */
     'virtual.add': {
         params: {
             shellyID: string;
             type: 'boolean' | 'text' | 'number' | 'enum' | 'group' | 'button';
             config?: Record<string, unknown>;
+            id?: number;
         };
         result: {id?: number};
     };
     /** Virtual.Delete. */
     'virtual.delete': {params: {shellyID: string; key: string}; result: null};
     /** Virtual.Trigger — fire a Button virtual component. */
-    'virtual.trigger': {
-        params: {
-            shellyID: string;
-            id: number;
-            event?: 'single_push' | 'double_push' | 'triple_push' | 'long_push';
-        };
-        result: null;
-    };
+    'virtual.trigger': {params: unknown; result: null};
     /** Boolean.Set — write a virtual boolean. */
-    'virtual.boolean.set': {
-        params: {shellyID: string; id: number; value: boolean};
-        result: null;
-    };
+    'virtual.boolean.set': {params: unknown; result: null};
     /** Boolean.GetConfig — {id, name, persisted, default_value, meta}. */
     'virtual.boolean.getconfig': {
-        params: {shellyID: string; id: number};
+        params: unknown;
         result: Record<string, unknown>;
     };
     /** Boolean.GetStatus — {value, source, last_update_ts}. */
     'virtual.boolean.getstatus': {
-        params: {shellyID: string; id: number};
+        params: unknown;
         result: Record<string, unknown>;
     };
     /** Boolean.SetConfig. */
     'virtual.boolean.setconfig': {
-        params: {shellyID: string; id: number; config: Record<string, unknown>};
+        params: unknown;
         result: {restart_required: boolean};
     };
     /** Number.Set — write a virtual number. */
-    'virtual.number.set': {
-        params: {shellyID: string; id: number; value: number};
-        result: null;
-    };
+    'virtual.number.set': {params: unknown; result: null};
     /** Number.GetConfig. */
     'virtual.number.getconfig': {
-        params: {shellyID: string; id: number};
+        params: unknown;
         result: Record<string, unknown>;
     };
     /** Number.GetStatus. */
     'virtual.number.getstatus': {
-        params: {shellyID: string; id: number};
+        params: unknown;
         result: Record<string, unknown>;
     };
     /** Number.SetConfig. */
     'virtual.number.setconfig': {
-        params: {shellyID: string; id: number; config: Record<string, unknown>};
+        params: unknown;
         result: {restart_required: boolean};
     };
     /** Text.Set — write a virtual text value. */
-    'virtual.text.set': {
-        params: {shellyID: string; id: number; value: string};
-        result: null;
-    };
+    'virtual.text.set': {params: unknown; result: null};
     /** Text.GetConfig. */
     'virtual.text.getconfig': {
-        params: {shellyID: string; id: number};
+        params: unknown;
         result: Record<string, unknown>;
     };
     /** Text.GetStatus. */
     'virtual.text.getstatus': {
-        params: {shellyID: string; id: number};
+        params: unknown;
         result: Record<string, unknown>;
     };
     /** Text.SetConfig. */
     'virtual.text.setconfig': {
-        params: {shellyID: string; id: number; config: Record<string, unknown>};
+        params: unknown;
         result: {restart_required: boolean};
     };
     /** Enum.Set — write a virtual enum value (must be a valid option or null). */
-    'virtual.enum.set': {
-        params: {shellyID: string; id: number; value: string | null};
-        result: null;
-    };
+    'virtual.enum.set': {params: unknown; result: null};
     /** Enum.GetConfig — {id, name, default_value, options[], ...}. */
     'virtual.enum.getconfig': {
-        params: {shellyID: string; id: number};
+        params: unknown;
         result: Record<string, unknown>;
     };
     /** Enum.GetStatus. */
     'virtual.enum.getstatus': {
-        params: {shellyID: string; id: number};
+        params: unknown;
         result: Record<string, unknown>;
     };
     /** Enum.SetConfig. */
     'virtual.enum.setconfig': {
-        params: {shellyID: string; id: number; config: Record<string, unknown>};
+        params: unknown;
         result: {restart_required: boolean};
     };
     /** Group.Set — write a virtual group (array of component keys). */
-    'virtual.group.set': {
-        params: {shellyID: string; id: number; value: string[]};
-        result: null;
-    };
+    'virtual.group.set': {params: unknown; result: null};
     /** Group.GetConfig. */
     'virtual.group.getconfig': {
-        params: {shellyID: string; id: number};
+        params: unknown;
         result: Record<string, unknown>;
     };
     /** Group.GetStatus. */
     'virtual.group.getstatus': {
-        params: {shellyID: string; id: number};
+        params: unknown;
         result: Record<string, unknown>;
     };
     /** Group.SetConfig. */
     'virtual.group.setconfig': {
-        params: {shellyID: string; id: number; config: Record<string, unknown>};
+        params: unknown;
         result: {restart_required: boolean};
     };
     /** Return the virtual namespace contract (methods, schemas, permissions, errors). */
@@ -15487,7 +23769,36 @@ export interface HostContract {
                 direction?: 'import' | 'export' | 'net';
             };
         };
-        result: Record<string, unknown>;
+        result: {
+            organization_id: string;
+            host_shelly_id: string;
+            component_key: string;
+            glyph: string | null;
+            color: string | null;
+            gradient: {
+                angle?: number;
+                stops: Array<{color: string; offset: number}>;
+            } | null;
+            promoted_at: string | null;
+            image_path: string | null;
+            created: string;
+            updated: string;
+            measurement: {
+                logicalNode?:
+                    | 'MMXU'
+                    | 'MMTR'
+                    | 'MMXN'
+                    | 'MMDC'
+                    | 'MSQI'
+                    | 'MHAI';
+                dataObject?: string;
+                phase?: 'A' | 'B' | 'C' | 'N' | 'total';
+                accumulation?: 'instant' | 'cumulative' | 'delta';
+                unit?: string;
+                direction?: 'import' | 'export' | 'net';
+            } | null;
+            host_device_id: number;
+        };
     };
     /** virtual_meta.Clear — clear specific decoration fields. */
     'virtual_meta.clear': {
@@ -15501,7 +23812,36 @@ export interface HostContract {
             clearPromoted?: boolean;
             clearImage?: boolean;
         };
-        result: Record<string, unknown>;
+        result: {
+            organization_id: string | null;
+            host_shelly_id: string | null;
+            component_key: string | null;
+            glyph: string | null;
+            color: string | null;
+            gradient: {
+                angle?: number;
+                stops: Array<{color: string; offset: number}>;
+            } | null;
+            promoted_at: string | null;
+            image_path: string | null;
+            created: string | null;
+            updated: string | null;
+            measurement: {
+                logicalNode?:
+                    | 'MMXU'
+                    | 'MMTR'
+                    | 'MMXN'
+                    | 'MMDC'
+                    | 'MSQI'
+                    | 'MHAI';
+                dataObject?: string;
+                phase?: 'A' | 'B' | 'C' | 'N' | 'total';
+                accumulation?: 'instant' | 'cumulative' | 'delta';
+                unit?: string;
+                direction?: 'import' | 'export' | 'net';
+            } | null;
+            host_device_id: number | null;
+        };
     };
     /** virtual_meta.Delete — drop the decoration row entirely. */
     'virtual_meta.delete': {
@@ -15511,7 +23851,38 @@ export interface HostContract {
     /** virtual_meta.Fetch — all decoration rows for a host device. */
     'virtual_meta.fetch': {
         params: {shellyID: string};
-        result: {items: Array<Record<string, unknown>>};
+        result: {
+            items: Array<{
+                organization_id: string;
+                host_shelly_id: string;
+                component_key: string;
+                glyph: string | null;
+                color: string | null;
+                gradient: {
+                    angle?: number;
+                    stops: Array<{color: string; offset: number}>;
+                } | null;
+                promoted_at: string | null;
+                image_path: string | null;
+                created: string;
+                updated: string;
+                measurement: {
+                    logicalNode?:
+                        | 'MMXU'
+                        | 'MMTR'
+                        | 'MMXN'
+                        | 'MMDC'
+                        | 'MSQI'
+                        | 'MHAI';
+                    dataObject?: string;
+                    phase?: 'A' | 'B' | 'C' | 'N' | 'total';
+                    accumulation?: 'instant' | 'cumulative' | 'delta';
+                    unit?: string;
+                    direction?: 'import' | 'export' | 'net';
+                } | null;
+                host_device_id: number;
+            }>;
+        };
     };
     /** Return the virtual_meta namespace contract (methods, schemas, permissions, errors). */
     'virtual_meta.describe': {
@@ -15558,6 +23929,7 @@ export interface HostContract {
                     componentKey: string;
                     dynamicCategory?: 'Virtual' | 'BTHome' | 'LNM';
                 };
+                effectiveFrom?: string;
                 visual?: {
                     displayName?: string;
                     icon?: string;
@@ -16255,6 +24627,7 @@ export interface HostContract {
             query?: string;
             componentType?: string;
             roleKey?: string;
+            profileId?: string;
             limit?: number;
             offset?: number;
         };
@@ -16287,6 +24660,7 @@ export interface HostContract {
                     componentKey: string;
                     dynamicCategory?: 'Virtual' | 'BTHome' | 'LNM';
                 };
+                effectiveFrom?: string;
                 visual?: {
                     displayName?: string;
                     icon?: string;
@@ -16339,6 +24713,7 @@ export interface HostContract {
                         componentKey: string;
                         dynamicCategory?: 'Virtual' | 'BTHome' | 'LNM';
                     };
+                    effectiveFrom?: string;
                     visual?: {
                         displayName?: string;
                         icon?: string;
@@ -16367,6 +24742,7 @@ export interface HostContract {
                     componentKey: string;
                     dynamicCategory?: 'Virtual' | 'BTHome' | 'LNM';
                 };
+                effectiveFrom?: string;
                 visual?: {
                     displayName?: string;
                     icon?: string;
@@ -16622,14 +24998,37 @@ export interface HostContract {
                 | null;
         };
     };
-    /** virtualdevice.History.ReadRole — read a stitched role time series across binding replacements. */
+    /** virtualdevice.History.ReadRole — read a stitched role time series across binding replacements from status, retained sensor, discrete-event, or energy history. */
     'virtualdevice.history.readrole': {
         params: {
             externalId: string;
             roleKey: string;
-            field: string;
+            field?: string;
+            series?: 'status' | 'sensor_numeric' | 'sensor_event' | 'energy';
+            bucket?:
+                | '1 minute'
+                | '5 minutes'
+                | '15 minutes'
+                | '30 minutes'
+                | '1 hour'
+                | '6 hours'
+                | '12 hours'
+                | '1 day'
+                | '1 week'
+                | '1 month';
+            sensorSource?:
+                | 'internal'
+                | 'builtin'
+                | 'addon'
+                | 'blu'
+                | 'weather'
+                | 'virtual';
+            channel?: number;
+            commodity?: 'electricity' | 'water' | 'gas' | 'heat';
+            electricalSource?: 'ac_mains' | 'dc_pv' | 'dc_battery' | 'dc_bus';
             from: string;
             to: string;
+            order?: 'asc' | 'desc';
             limit?: number;
         };
         result: {
@@ -16637,6 +25036,14 @@ export interface HostContract {
                 ts: string;
                 value: number | string | null;
                 prevValue: number | string | null;
+                min?: number | null;
+                max?: number | null;
+                sampleCount?: number;
+                channel?: number | null;
+                readingSource?: string;
+                tag?: string;
+                domain?: string;
+                phase?: string;
                 bindingId: string;
                 roleKey: string;
                 mode: 'linked' | 'materialized' | 'derived' | 'live_only';
@@ -16708,6 +25115,7 @@ export interface HostContract {
             from: string;
             to: string;
             limit?: number;
+            cursor?: number;
         };
         result: {
             externalId: string;
@@ -16715,6 +25123,8 @@ export interface HostContract {
             field: string;
             insertedRows: number;
             scannedRows: number;
+            hasMore: boolean;
+            nextCursor: number | null;
         };
     };
     /** virtualdevice.Binding.ReplacementReport — list source replacement events for a virtual device. */
@@ -17703,12 +26113,26 @@ export interface HostContract {
     /** Raw map keyed by internal id — kept for legacy callers. */
     'waitingroom.getpending': {
         params: Record<string, unknown>;
-        result: Record<string, unknown>;
+        result: Record<
+            string,
+            {
+                source: 'legacy' | 'device_ingress';
+                waitingRoomKind: 'legacy' | 'device_ingress';
+                entryId: string;
+                shellyID: string;
+                status: unknown;
+                sortTime: number;
+                [key: string]: unknown;
+            }
+        >;
     };
     /** Raw denied-devices map — kept for legacy callers. */
     'waitingroom.getdenied': {
         params: Record<string, unknown>;
-        result: Record<string, unknown>;
+        result: Record<
+            string,
+            {shellyID?: string; status: Record<string, unknown>}
+        >;
     };
     /** Lightweight waiting-room counters for badges and launch sync. */
     'waitingroom.getcounts': {
@@ -17747,7 +26171,15 @@ export interface HostContract {
             offset?: number;
         };
         result: {
-            items: Array<Record<string, unknown>>;
+            items: Array<{
+                source: 'legacy' | 'device_ingress';
+                waitingRoomKind: 'legacy' | 'device_ingress';
+                entryId: string;
+                shellyID: string;
+                status: unknown;
+                sortTime: number;
+                [key: string]: unknown;
+            }>;
             total: number;
             limit: number;
             offset: number;
@@ -17757,12 +26189,22 @@ export interface HostContract {
     /** Get one canonical waiting-room entry by entryId. */
     'waitingroom.get': {
         params: {entryId: string};
-        result: Record<string, unknown>;
+        result: {
+            source: 'legacy' | 'device_ingress';
+            waitingRoomKind: 'legacy' | 'device_ingress';
+            entryId: string;
+            shellyID: string;
+            status: unknown;
+            sortTime: number;
+            [key: string]: unknown;
+        };
     };
     /** Probe one live waiting-room device when a socket exists. */
     'waitingroom.probe': {
         params: {entryId: string};
-        result: Record<string, unknown>;
+        result:
+            | {source: 'legacy'; live: false; status: unknown}
+            | {deviceInfo: unknown; status: unknown};
     };
     /** Denied devices in the standard list envelope. */
     'waitingroom.listdenied': {
@@ -17782,7 +26224,15 @@ export interface HostContract {
             offset?: number;
         };
         result: {
-            items: Array<Record<string, unknown>>;
+            items: Array<{
+                source: 'legacy' | 'device_ingress';
+                waitingRoomKind: 'legacy' | 'device_ingress';
+                entryId: string;
+                shellyID: string;
+                status: unknown;
+                sortTime: number;
+                [key: string]: unknown;
+            }>;
             total: number;
             limit: number;
             offset: number;
@@ -17827,7 +26277,18 @@ export interface HostContract {
                 | 'modbus-tcp-connector';
             groupId?: number;
         };
-        result: Record<string, unknown>;
+        result:
+            | {
+                  success: Array<number | string>;
+                  error: Array<number | string>;
+                  acceptedIds: number[];
+                  acceptedExternalIds: string[];
+                  pendingCount: number;
+              }
+            | {
+                  identity: Record<string, unknown>;
+                  waitingRoom: Record<string, unknown> | null;
+              };
     };
     /** Start a background bulk accept by external id. Returns a jobId; poll AcceptBulkStatus for progress. */
     'waitingroom.acceptbulkstart': {
@@ -17861,7 +26322,7 @@ export interface HostContract {
     /** Reject pending devices by numeric id (polite close — reversible). */
     'waitingroom.rejectpending': {
         params: {shellyIDs: string[]};
-        result: Record<string, unknown>;
+        result: {success: string[]; error: string[]};
     };
     /** Canonical reject by entryId. Legacy entries use shellyID; device-ingress entries use deviceIngress:<uuid>. */
     'waitingroom.reject': {
@@ -17889,12 +26350,18 @@ export interface HostContract {
                 | 'malformed_handshake';
             detail?: string;
         };
-        result: Record<string, unknown>;
+        result:
+            | {success: string[]; error: string[]}
+            | {
+                  success: true;
+                  entry: Record<string, unknown>;
+                  rejection: Record<string, unknown>;
+              };
     };
     /** Destructive: rewrite device WS config + reboot. Recovery requires factory-reset on the device. Reserved for adversarial / hammering cases. */
     'waitingroom.quarantine': {
         params: {shellyIDs: string[]};
-        result: Record<string, unknown>;
+        result: {success: string[]; error: string[]};
     };
     /** Return the waitingroom namespace contract (methods, schemas, permissions, errors). */
     'waitingroom.describe': {

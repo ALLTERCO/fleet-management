@@ -2,6 +2,7 @@
 
 import {DescribeBuilder, type DescribeOutput} from './_describe';
 import type {JsonSchema} from './_schema';
+import {listResponseSchema, SUCCESS_RESPONSE_SCHEMA} from './_shared';
 
 export const DEVICE_INGRESS_SECURITY_MODELS = [
     'certificate',
@@ -160,6 +161,7 @@ const OPTIONAL_EXTERNAL_ID_SCHEMA: JsonSchema = {
     maxLength: 160,
     pattern: '^[A-Za-z0-9_.:-]+$'
 };
+const DATE_TIME_SCHEMA: JsonSchema = {type: 'string', format: 'date-time'};
 const DATE_TIME_NULL_SCHEMA: JsonSchema = {
     type: ['string', 'null'],
     format: 'date-time'
@@ -378,6 +380,133 @@ export const DEVICE_INGRESS_CREDENTIAL_ID_PARAMS_SCHEMA: JsonSchema = {
     required: ['credentialId'],
     additionalProperties: false,
     properties: {credentialId: UUID_SCHEMA}
+};
+
+export interface DeviceIngressCredentialListExpiringParams {
+    days?: number;
+    limit?: number;
+    offset?: number;
+}
+export const DEVICE_INGRESS_CREDENTIAL_LIST_EXPIRING_PARAMS_SCHEMA: JsonSchema =
+    {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+            days: {type: 'integer', minimum: 1, maximum: 3650},
+            limit: {type: 'integer', minimum: 1, maximum: 500},
+            offset: {type: 'integer', minimum: 0}
+        }
+    };
+
+export const DEVICE_INGRESS_ROTATION_JOB_STATE_SCHEMA: JsonSchema = {
+    type: 'string',
+    enum: ['queued', 'sent', 'waiting', 'finalized', 'failed', 'cancelled']
+};
+
+export interface DeviceIngressRotationStartParams {
+    identityIds: string[];
+}
+export const DEVICE_INGRESS_ROTATION_START_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['identityIds'],
+    additionalProperties: false,
+    properties: {
+        identityIds: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 1000,
+            uniqueItems: true,
+            items: UUID_SCHEMA
+        }
+    }
+};
+
+export interface DeviceIngressRotationListParams {
+    batchId?: string;
+    state?:
+        | 'queued'
+        | 'sent'
+        | 'waiting'
+        | 'finalized'
+        | 'failed'
+        | 'cancelled';
+    limit?: number;
+    offset?: number;
+}
+export const DEVICE_INGRESS_ROTATION_LIST_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+        batchId: UUID_SCHEMA,
+        state: DEVICE_INGRESS_ROTATION_JOB_STATE_SCHEMA,
+        limit: {type: 'integer', minimum: 1, maximum: 500},
+        offset: {type: 'integer', minimum: 0}
+    }
+};
+
+const ROTATION_JOB_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: [
+        'id',
+        'organizationId',
+        'batchId',
+        'identityId',
+        'oldCredentialId',
+        'newCredentialId',
+        'state',
+        'errorCode',
+        'sentAt',
+        'createdBy',
+        'createdAt',
+        'updatedAt',
+        'expectedExternalId'
+    ],
+    additionalProperties: false,
+    properties: {
+        id: UUID_SCHEMA,
+        organizationId: {type: 'string'},
+        batchId: UUID_SCHEMA,
+        identityId: UUID_SCHEMA,
+        oldCredentialId: UUID_SCHEMA,
+        newCredentialId: {type: ['string', 'null'], format: 'uuid'},
+        state: DEVICE_INGRESS_ROTATION_JOB_STATE_SCHEMA,
+        errorCode: {
+            type: ['string', 'null'],
+            enum: [
+                'offline',
+                'not_applied',
+                'send_failed',
+                'cancelled_by_operator',
+                null
+            ]
+        },
+        sentAt: DATE_TIME_NULL_SCHEMA,
+        createdBy: {type: 'string'},
+        createdAt: DATE_TIME_SCHEMA,
+        updatedAt: DATE_TIME_SCHEMA,
+        expectedExternalId: {
+            ...OPTIONAL_EXTERNAL_ID_SCHEMA,
+            description:
+                'Device id from the identity. Null on Rotation.Start and Rotation.Cancel responses; List and Get fill it.'
+        }
+    }
+};
+
+const ROTATION_STARTED_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['batchId', 'jobs'],
+    additionalProperties: false,
+    properties: {
+        batchId: UUID_SCHEMA,
+        jobs: {type: 'array', items: ROTATION_JOB_RESPONSE}
+    }
+};
+
+const ROTATION_JOB_WRAPPED_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['success', 'job'],
+    additionalProperties: false,
+    properties: {success: {type: 'boolean'}, job: ROTATION_JOB_RESPONSE}
 };
 
 export interface DeviceIngressEnrollmentTokenCreateParams {
@@ -635,6 +764,8 @@ const PROFILE_RESPONSE: JsonSchema = {
     }
 };
 
+// The stored identity row, field for field, as toIdentity builds it in
+// deviceIngress/deviceIngressRepository.ts. Every identity reply is this row.
 const IDENTITY_RESPONSE: JsonSchema = {
     type: 'object',
     required: [
@@ -646,9 +777,16 @@ const IDENTITY_RESPONSE: JsonSchema = {
         'securityModel',
         'transport',
         'riskLevel',
-        'status'
+        'status',
+        'expectedExternalId',
+        'scopeKind',
+        'scopeRef',
+        'reportedExternalIds',
+        'lastSeenAt',
+        'createdAt',
+        'updatedAt'
     ],
-    additionalProperties: true,
+    additionalProperties: false,
     properties: {
         id: UUID_SCHEMA,
         organizationId: {type: 'string'},
@@ -660,15 +798,37 @@ const IDENTITY_RESPONSE: JsonSchema = {
         riskLevel: DEVICE_INGRESS_RISK_LEVEL_SCHEMA,
         status: DEVICE_INGRESS_IDENTITY_STATE_SCHEMA,
         expectedExternalId: OPTIONAL_EXTERNAL_ID_SCHEMA,
-        lastSeenAt: DATE_TIME_NULL_SCHEMA
+        scopeKind: DEVICE_INGRESS_SCOPE_KIND_SCHEMA,
+        scopeRef: OPTIONAL_ID_SCHEMA,
+        reportedExternalIds: {type: 'array', items: EXTERNAL_ID_SCHEMA},
+        lastSeenAt: DATE_TIME_NULL_SCHEMA,
+        createdAt: DATE_TIME_SCHEMA,
+        updatedAt: DATE_TIME_SCHEMA
     }
 };
 
-const CREDENTIAL_RESPONSE: JsonSchema = {
-    type: ['object', 'null'],
-    additionalProperties: true,
+// The stored credential row, as toCredential builds it in the repository.
+const CREDENTIAL_ROW_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: [
+        'id',
+        'organizationId',
+        'identityId',
+        'credentialType',
+        'state',
+        'tokenPrefix',
+        'certificateId',
+        'certificateFingerprint',
+        'notBefore',
+        'notAfter',
+        'lastUsedAt',
+        'createdAt',
+        'updatedAt'
+    ],
+    additionalProperties: false,
     properties: {
         id: UUID_SCHEMA,
+        organizationId: {type: 'string'},
         identityId: UUID_SCHEMA,
         credentialType: DEVICE_INGRESS_CREDENTIAL_TYPE_SCHEMA,
         state: DEVICE_INGRESS_CREDENTIAL_STATE_SCHEMA,
@@ -676,7 +836,39 @@ const CREDENTIAL_RESPONSE: JsonSchema = {
         certificateId: {type: ['string', 'null'], format: 'uuid'},
         certificateFingerprint: {type: ['string', 'null']},
         notBefore: DATE_TIME_NULL_SCHEMA,
-        notAfter: DATE_TIME_NULL_SCHEMA
+        notAfter: DATE_TIME_NULL_SCHEMA,
+        lastUsedAt: DATE_TIME_NULL_SCHEMA,
+        createdAt: DATE_TIME_SCHEMA,
+        updatedAt: DATE_TIME_SCHEMA
+    }
+};
+
+const EXPIRING_CREDENTIAL_RESPONSE: JsonSchema = {
+    ...CREDENTIAL_ROW_RESPONSE,
+    required: [
+        ...(CREDENTIAL_ROW_RESPONSE.required ?? []),
+        'expectedExternalId'
+    ],
+    properties: {
+        ...(CREDENTIAL_ROW_RESPONSE.properties ?? {}),
+        expectedExternalId: OPTIONAL_EXTERNAL_ID_SCHEMA
+    }
+};
+
+// Only ever sent in the reply that mints it — the store keeps a hash.
+const TOKEN_ONCE_SCHEMA: JsonSchema = {
+    type: 'string',
+    description: 'The raw token, returned this once and never again.'
+};
+
+// A connector profile mints no credential, so a plan can carry null; a token
+// profile puts the raw token in the plan's credential.
+const CREDENTIAL_RESPONSE: JsonSchema = {
+    ...CREDENTIAL_ROW_RESPONSE,
+    type: ['object', 'null'],
+    properties: {
+        ...(CREDENTIAL_ROW_RESPONSE.properties ?? {}),
+        tokenOnce: TOKEN_ONCE_SCHEMA
     }
 };
 
@@ -792,18 +984,42 @@ const SETUP_PLAN_RESPONSE: JsonSchema = {
     }
 };
 
+// Every column of device_ingress_setup_session, as toSetupSession maps it.
 const SETUP_SESSION_RESPONSE: JsonSchema = {
     type: 'object',
-    required: ['id', 'organizationId', 'profileId', 'status', 'bundle'],
+    required: [
+        'id',
+        'organizationId',
+        'reportedExternalId',
+        'profileId',
+        'status',
+        'applyMethod',
+        'bundle',
+        'errorCode',
+        'errorMessage',
+        'bundleFetchCount',
+        'expiresAt',
+        'createdAt',
+        'updatedAt'
+    ],
     additionalProperties: true,
     properties: {
         id: UUID_SCHEMA,
         organizationId: {type: 'string'},
+        reportedExternalId: {type: 'string'},
         profileId: DEVICE_INGRESS_PROFILE_ID_SCHEMA,
         status: {type: 'string'},
+        applyMethod: {
+            type: ['string', 'null'],
+            enum: [...DEVICE_INGRESS_APPLY_METHODS, null]
+        },
         bundle: SETUP_BUNDLE_RESPONSE,
+        errorCode: {type: ['string', 'null']},
+        errorMessage: {type: ['string', 'null']},
         bundleFetchCount: {type: 'integer'},
-        expiresAt: {type: 'string', format: 'date-time'}
+        expiresAt: {type: 'string', format: 'date-time'},
+        createdAt: {type: 'string', format: 'date-time'},
+        updatedAt: {type: 'string', format: 'date-time'}
     }
 };
 
@@ -811,11 +1027,12 @@ export interface DeviceIngressAuthMethodsResponse {
     token: boolean;
     approvedId: boolean;
     certificate: boolean;
+    keysChecked: boolean;
 }
 
 const AUTH_METHODS_RESPONSE: JsonSchema = {
     type: 'object',
-    required: ['token', 'approvedId', 'certificate'],
+    required: ['token', 'approvedId', 'certificate', 'keysChecked'],
     additionalProperties: false,
     properties: {
         token: {
@@ -832,8 +1049,209 @@ const AUTH_METHODS_RESPONSE: JsonSchema = {
             type: 'boolean',
             description:
                 'WS client-certificate login. Always false — stock Shelly WS has no client cert.'
+        },
+        keysChecked: {
+            type: 'boolean',
+            description:
+                'False when this server admits devices without checking their key; key rotation then waits.'
         }
     }
+};
+
+// The enrollment-token row, as toEnrollmentToken builds it. No secret here:
+// only the prefix is stored, the token itself went out at mint time.
+const ENROLLMENT_TOKEN_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: [
+        'id',
+        'organizationId',
+        'tokenPrefix',
+        'preferredProfileId',
+        'state',
+        'maxUses',
+        'useCount',
+        'notAfter',
+        'createdBy',
+        'createdAt',
+        'updatedAt',
+        'lastUsedAt',
+        'revokedAt'
+    ],
+    additionalProperties: false,
+    properties: {
+        id: UUID_SCHEMA,
+        organizationId: {type: 'string'},
+        tokenPrefix: {type: 'string'},
+        preferredProfileId: {
+            type: ['string', 'null'],
+            enum: [...DEVICE_INGRESS_PROFILE_IDS, null]
+        },
+        state: {type: 'string', enum: ['active', 'consumed', 'revoked']},
+        maxUses: {type: 'integer'},
+        useCount: {type: 'integer'},
+        notAfter: DATE_TIME_SCHEMA,
+        createdBy: {type: ['string', 'null']},
+        createdAt: DATE_TIME_SCHEMA,
+        updatedAt: DATE_TIME_SCHEMA,
+        lastUsedAt: DATE_TIME_NULL_SCHEMA,
+        revokedAt: DATE_TIME_NULL_SCHEMA
+    }
+};
+
+// The connection row, as toConnection builds it. observedTransport is what the
+// client claimed, so it stays a free string, not the transport enum.
+const CONNECTION_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: [
+        'id',
+        'organizationId',
+        'identityId',
+        'credentialId',
+        'reportedExternalId',
+        'observedTransport',
+        'result',
+        'reasonCode',
+        'remoteAddressHash',
+        'safeDetail',
+        'userAgent',
+        'createdAt',
+        'disconnectedAt',
+        'disconnectReason'
+    ],
+    additionalProperties: false,
+    properties: {
+        id: UUID_SCHEMA,
+        organizationId: {type: 'string'},
+        identityId: {type: ['string', 'null'], format: 'uuid'},
+        credentialId: {type: ['string', 'null'], format: 'uuid'},
+        reportedExternalId: OPTIONAL_EXTERNAL_ID_SCHEMA,
+        observedTransport: {type: 'string'},
+        result: {type: 'string', enum: [...DEVICE_INGRESS_CONNECTION_RESULTS]},
+        reasonCode: {type: ['string', 'null']},
+        remoteAddressHash: {type: ['string', 'null']},
+        safeDetail: {type: 'object', additionalProperties: true},
+        userAgent: {type: ['string', 'null']},
+        createdAt: DATE_TIME_SCHEMA,
+        disconnectedAt: DATE_TIME_NULL_SCHEMA,
+        disconnectReason: {type: ['string', 'null']}
+    }
+};
+
+// The rejection row, as toRejection builds it.
+const REJECTION_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: [
+        'id',
+        'organizationId',
+        'identityId',
+        'credentialId',
+        'waitingRoomId',
+        'reasonCode',
+        'severity',
+        'reportedExternalId',
+        'observedTransport',
+        'safeDetail',
+        'createdAt',
+        'resolvedAt',
+        'resolvedBy',
+        'resolutionNote'
+    ],
+    additionalProperties: false,
+    properties: {
+        id: UUID_SCHEMA,
+        organizationId: {type: 'string'},
+        identityId: {type: ['string', 'null'], format: 'uuid'},
+        credentialId: {type: ['string', 'null'], format: 'uuid'},
+        waitingRoomId: {type: ['string', 'null'], format: 'uuid'},
+        reasonCode: DEVICE_INGRESS_REJECTION_REASON_SCHEMA,
+        severity: DEVICE_INGRESS_REJECTION_SEVERITY_SCHEMA,
+        reportedExternalId: OPTIONAL_EXTERNAL_ID_SCHEMA,
+        observedTransport: {type: ['string', 'null']},
+        safeDetail: {type: 'object', additionalProperties: true},
+        createdAt: DATE_TIME_SCHEMA,
+        resolvedAt: DATE_TIME_NULL_SCHEMA,
+        resolvedBy: {type: ['string', 'null']},
+        resolutionNote: {type: ['string', 'null']}
+    }
+};
+
+const IDENTITY_STATUS_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['success', 'identity'],
+    additionalProperties: false,
+    properties: {success: {type: 'boolean'}, identity: IDENTITY_RESPONSE}
+};
+
+// CreateToken always mints a token, so tokenOnce is always there.
+const CREDENTIAL_CREATED_RESPONSE: JsonSchema = {
+    ...CREDENTIAL_ROW_RESPONSE,
+    required: [...(CREDENTIAL_ROW_RESPONSE.required ?? []), 'tokenOnce'],
+    properties: {
+        ...(CREDENTIAL_ROW_RESPONSE.properties ?? {}),
+        tokenOnce: TOKEN_ONCE_SCHEMA
+    }
+};
+
+// Rotate mints a token only for credentialType 'token'; the certificate path
+// binds an existing cert and has no secret to hand back.
+const CREDENTIAL_ROTATED_RESPONSE: JsonSchema = {
+    ...CREDENTIAL_ROW_RESPONSE,
+    properties: {
+        ...(CREDENTIAL_ROW_RESPONSE.properties ?? {}),
+        tokenOnce: TOKEN_ONCE_SCHEMA
+    }
+};
+
+// Finalize, Cancel and Revoke all answer with the credential they moved.
+const CREDENTIAL_ACTION_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['success', 'credential'],
+    additionalProperties: false,
+    properties: {
+        success: {type: 'boolean'},
+        credential: CREDENTIAL_ROW_RESPONSE
+    }
+};
+
+const ENROLLMENT_TOKEN_CREATED_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['url', 'tokenOnce', 'expiresAt'],
+    additionalProperties: false,
+    properties: {
+        url: {type: 'string'},
+        tokenOnce: TOKEN_ONCE_SCHEMA,
+        expiresAt: DATE_TIME_SCHEMA
+    }
+};
+
+const ENROLLMENT_TOKEN_LIST_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['items'],
+    additionalProperties: false,
+    properties: {
+        items: {type: 'array', items: ENROLLMENT_TOKEN_RESPONSE}
+    }
+};
+
+const CONNECTION_DISCONNECTED_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['success', 'connection'],
+    additionalProperties: false,
+    properties: {success: {type: 'boolean'}, connection: CONNECTION_RESPONSE}
+};
+
+const REJECTION_RESOLVED_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['success', 'rejection'],
+    additionalProperties: false,
+    properties: {success: {type: 'boolean'}, rejection: REJECTION_RESPONSE}
+};
+
+const SETUP_APPLY_REPORTED_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['success', 'session'],
+    additionalProperties: false,
+    properties: {success: {type: 'boolean'}, session: SETUP_SESSION_RESPONSE}
 };
 
 const b = new DescribeBuilder('deviceIngress', {
@@ -877,98 +1295,109 @@ b.registerMethod('Identity.Update', {
     permission: PERM_WRITE,
     description: 'Update operator-editable ingress identity metadata.'
 });
+b.registerMethod('Identity.Enable', {
+    params: DEVICE_INGRESS_IDENTITY_GET_PARAMS_SCHEMA,
+    response: IDENTITY_STATUS_RESPONSE,
+    permission: PERM_WRITE,
+    description:
+        'Enable a pending or disabled ingress identity so its credentials can connect. Already active is a no-op; quarantined and deleted stay closed.'
+});
 b.registerMethod('Identity.Disable', {
     params: DEVICE_INGRESS_IDENTITY_GET_PARAMS_SCHEMA,
-    response: {type: 'object', description: 'disabled identity'},
+    response: IDENTITY_STATUS_RESPONSE,
     permission: PERM_WRITE,
     description: 'Disable an ingress identity and close live connections.'
 });
 b.registerMethod('Identity.List', {
     params: DEVICE_INGRESS_IDENTITY_LIST_PARAMS_SCHEMA,
-    response: {type: 'object', description: 'items plus pagination'},
+    response: listResponseSchema(IDENTITY_RESPONSE),
     permission: PERM_READ,
     description: 'List org-scoped ingress identities.'
 });
 b.registerMethod('Credential.CreateToken', {
     params: DEVICE_INGRESS_CREDENTIAL_CREATE_TOKEN_PARAMS_SCHEMA,
-    response: {
-        type: 'object',
-        description: 'credential plus tokenOnce'
-    },
+    response: CREDENTIAL_CREATED_RESPONSE,
     permission: PERM_WRITE,
     description:
         'Create a direct-token credential and return the raw token once.'
 });
 b.registerMethod('Credential.Rotate', {
     params: DEVICE_INGRESS_CREDENTIAL_ROTATE_PARAMS_SCHEMA,
-    response: {type: 'object', description: 'pending credential summary'},
+    response: CREDENTIAL_ROTATED_RESPONSE,
     permission: PERM_WRITE,
     description: 'Create a pending replacement credential.'
 });
 b.registerMethod('Credential.FinalizeRotation', {
     params: DEVICE_INGRESS_CREDENTIAL_ID_PARAMS_SCHEMA,
-    response: {type: 'object', description: '{success:true}'},
+    response: CREDENTIAL_ACTION_RESPONSE,
     permission: PERM_WRITE,
     description: 'Finalize a pending credential rotation.'
 });
 b.registerMethod('Credential.CancelRotation', {
     params: DEVICE_INGRESS_CREDENTIAL_ID_PARAMS_SCHEMA,
-    response: {type: 'object', description: '{success:true}'},
+    response: CREDENTIAL_ACTION_RESPONSE,
     permission: PERM_WRITE,
     description: 'Cancel a pending credential rotation.'
 });
 b.registerMethod('Credential.Revoke', {
     params: DEVICE_INGRESS_CREDENTIAL_ID_PARAMS_SCHEMA,
-    response: {type: 'object', description: '{success:true}'},
+    response: CREDENTIAL_ACTION_RESPONSE,
     permission: PERM_WRITE,
     description: 'Revoke a credential and close matching live sockets.'
 });
+b.registerMethod('Credential.ListExpiring', {
+    params: DEVICE_INGRESS_CREDENTIAL_LIST_EXPIRING_PARAMS_SCHEMA,
+    response: listResponseSchema(EXPIRING_CREDENTIAL_RESPONSE),
+    permission: PERM_READ,
+    description:
+        'List active credentials whose end date falls inside the next N days, soonest first. Default N comes from FM_DEVICE_INGRESS_CREDENTIAL_EXPIRY_WARN_DAYS.'
+});
 b.registerMethod('EnrollmentToken.Create', {
     params: DEVICE_INGRESS_ENROLLMENT_TOKEN_CREATE_PARAMS_SCHEMA,
-    response: {type: 'object', description: 'url, tokenOnce, expiresAt'},
+    response: ENROLLMENT_TOKEN_CREATED_RESPONSE,
     permission: PERM_WRITE,
     description:
         'Mint a device-agnostic, time-boxed enrollment token; returns the one-time link.'
 });
 b.registerMethod('EnrollmentToken.List', {
     params: DEVICE_INGRESS_ENROLLMENT_TOKEN_LIST_PARAMS_SCHEMA,
-    response: {type: 'object', description: 'enrollment tokens (no secrets)'},
+    response: ENROLLMENT_TOKEN_LIST_RESPONSE,
     permission: PERM_READ,
     description: 'List the org enrollment tokens.'
 });
 b.registerMethod('EnrollmentToken.Revoke', {
     params: DEVICE_INGRESS_ENROLLMENT_TOKEN_REVOKE_PARAMS_SCHEMA,
-    response: {type: 'object', description: '{success:true}'},
+    response: SUCCESS_RESPONSE_SCHEMA,
     permission: PERM_WRITE,
     description: 'Revoke an active enrollment token before it is used.'
 });
 b.registerMethod('Connection.List', {
     params: DEVICE_INGRESS_CONNECTION_LIST_PARAMS_SCHEMA,
-    response: {type: 'object', description: 'items plus pagination'},
+    response: listResponseSchema(CONNECTION_RESPONSE),
     permission: PERM_READ,
     description: 'List ingress connection history and live connection rows.'
 });
 b.registerMethod('Connection.Get', {
     params: DEVICE_INGRESS_CONNECTION_GET_PARAMS_SCHEMA,
-    response: {type: 'object', description: 'one connection row'},
+    response: CONNECTION_RESPONSE,
     permission: PERM_READ,
     description: 'Get one org-scoped ingress connection row.'
 });
 b.registerMethod('Connection.Disconnect', {
     params: DEVICE_INGRESS_CONNECTION_DISCONNECT_PARAMS_SCHEMA,
-    response: {type: 'object', description: '{success:true}'},
+    response: CONNECTION_DISCONNECTED_RESPONSE,
     permission: PERM_WRITE,
     description: 'Disconnect a live ingress connection and mark history.'
 });
 b.registerMethod('Rejection.List', {
     params: DEVICE_INGRESS_REJECTION_LIST_PARAMS_SCHEMA,
-    response: {type: 'object', description: 'items plus pagination'},
+    response: listResponseSchema(REJECTION_RESPONSE),
     permission: PERM_READ,
     description: 'List rejected ingress attempts with fixable/blocked filters.'
 });
 b.registerMethod('Rejection.Resolve', {
     params: DEVICE_INGRESS_REJECTION_RESOLVE_PARAMS_SCHEMA,
-    response: {type: 'object', description: 'resolved rejection row'},
+    response: REJECTION_RESOLVED_RESPONSE,
     permission: PERM_WRITE,
     description: 'Resolve a rejected ingress entry after operator action.'
 });
@@ -984,13 +1413,33 @@ b.registerMethod('Setup.Bundle', {
     response: SETUP_SESSION_RESPONSE,
     permission: PERM_SETUP_WRITE,
     description:
-        'Fetch a short-lived provisioning bundle. Certificate bundles also require certificate management permission.'
+        'Fetch a short-lived provisioning bundle. The device key is never returned again: the saved address has no key. Certificate bundles also require certificate management permission.'
 });
 b.registerMethod('Setup.ReportApply', {
     params: DEVICE_INGRESS_SETUP_REPORT_APPLY_PARAMS_SCHEMA,
-    response: {type: 'object', description: '{success:true}'},
+    response: SETUP_APPLY_REPORTED_RESPONSE,
     permission: PERM_WRITE,
     description: 'Report mobile/local provisioning apply result.'
+});
+b.registerMethod('Rotation.Start', {
+    params: DEVICE_INGRESS_ROTATION_START_PARAMS_SCHEMA,
+    response: ROTATION_STARTED_RESPONSE,
+    permission: PERM_WRITE,
+    description:
+        'Queue a token rotation for each identity. Every device in the batch restarts once when its new address is applied. Refuses identities that are not active or already rotating.'
+});
+b.registerMethod('Rotation.List', {
+    params: DEVICE_INGRESS_ROTATION_LIST_PARAMS_SCHEMA,
+    response: listResponseSchema(ROTATION_JOB_RESPONSE),
+    permission: PERM_READ,
+    description: 'List rotation jobs by batch or state.'
+});
+b.registerMethod('Rotation.Cancel', {
+    params: DEVICE_INGRESS_IDENTITY_GET_PARAMS_SCHEMA,
+    response: ROTATION_JOB_WRAPPED_RESPONSE,
+    permission: PERM_WRITE,
+    description:
+        'Cancel a queued or waiting rotation job and revoke its pending key. The device keeps its current key.'
 });
 
 export const DEVICE_INGRESS_DESCRIBE: DescribeOutput = b.build();

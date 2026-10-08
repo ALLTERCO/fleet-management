@@ -1,4 +1,4 @@
-import {HOURS_PER_DAY} from '../../modules/util/timeUnits';
+import {MINUTES_PER_DAY, parseTimeOfDay, windowSpan} from '../timeWindow';
 // Cost split for continuous (always-on) baseline load across tariff modes.
 // Single source of truth for "what does the 24/7 standby draw cost?".
 
@@ -79,22 +79,14 @@ function splitDayNight(input: AlwaysOnCostInput): AlwaysOnCostResult {
     };
 }
 
+// Unparseable bounds fall back to an even split rather than failing a report:
+// a bill that is half right beats a bill that does not render.
 function dayWindowFraction(dayStart: string, dayEnd: string): number {
-    const start = parseHours(dayStart);
-    const end = parseHours(dayEnd);
+    const start = parseTimeOfDay(dayStart);
+    const end = parseTimeOfDay(dayEnd);
     if (start === null || end === null) return 0.5;
-    // Handle day window that crosses midnight (e.g. 22:00 → 06:00).
-    const span = end > start ? end - start : HOURS_PER_DAY - start + end;
-    return Math.max(0, Math.min(1, span / HOURS_PER_DAY));
-}
-
-function parseHours(hms: string): number | null {
-    const parts = hms.split(':');
-    if (parts.length < 2) return null;
-    const h = Number(parts[0]);
-    const m = Number(parts[1]);
-    if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
-    return h + m / 60;
+    const span = windowSpan(start, end, MINUTES_PER_DAY);
+    return Math.max(0, Math.min(1, span / MINUTES_PER_DAY));
 }
 
 function blendedRate(input: AlwaysOnCostInput): number {

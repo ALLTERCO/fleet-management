@@ -12,6 +12,7 @@
  *   - HTTP isLoggedIn middleware
  *   - HTTP requiresAdmin middleware
  *   - HTTP route-permission (hasApiPermission / validateDeviceAccess)
+ *   - HTTP MCP credential (requireMcpBearer)
  *   - Public / unauthenticated
  *
  * Output: docs/generated/transport-auth-matrix.{json,md}
@@ -35,6 +36,7 @@ export type AuthBucket =
     | 'http-audit-view'
     | 'http-route-permission'
     | 'http-session-capability'
+    | 'http-mcp-credential'
     | 'http-unknown'
     | 'ws-authenticated'
     | 'ws-unauthenticated';
@@ -86,9 +88,12 @@ function httpBucket(model: string): AuthBucket {
         case 'requiresObservabilityAuth':
             return 'http-observability';
         case 'device-gui-session':
+        case 'node-red-editor-session':
             return 'http-session-capability';
         case 'route-permission':
             return 'http-route-permission';
+        case 'mcp-credential':
+            return 'http-mcp-credential';
         case 'public':
             return 'public';
         default:

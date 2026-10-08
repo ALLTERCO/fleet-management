@@ -15,6 +15,7 @@ export interface TimeShiftSuggestionInput {
     readonly to: Date;
     readonly factorGPerKWh: number;
     readonly maxShiftableKWh: number;
+    readonly hourlyConsumptionKWh?: readonly number[];
     readonly carbon: {
         readonly zoneCode: string;
         readonly apiKey: string;
@@ -27,14 +28,18 @@ export async function suggestTimeShift(
     input: TimeShiftSuggestionInput
 ): Promise<TimeShiftPlan | null> {
     if (input.maxShiftableKWh <= 0) return null;
-    const profile = await fetchHourlyProfile({
-        deviceIds: input.deviceIds,
-        from: input.from,
-        to: input.to
-    });
+    const consumedKWh =
+        input.hourlyConsumptionKWh ??
+        (
+            await fetchHourlyProfile({
+                deviceIds: input.deviceIds,
+                from: input.from,
+                to: input.to
+            })
+        ).consumedKWh;
     const intensity = await loadIntensityCurve(input);
     return planTimeShift({
-        hourlyConsumptionKWh: profile.consumedKWh,
+        hourlyConsumptionKWh: consumedKWh,
         hourlyIntensityGPerKWh: intensity.curve,
         maxShiftableKWh: input.maxShiftableKWh,
         carbonDegraded: intensity.degraded

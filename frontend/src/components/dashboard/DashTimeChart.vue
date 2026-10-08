@@ -259,6 +259,9 @@ const option = computed(() => {
         },
         yAxis: {type: 'value'},
         tooltip: {
+            // Render in <body> so the hover card is never clipped by a
+            // scrolling/overflow-hidden ancestor (e.g. the device detail modal).
+            appendToBody: true,
             formatter: (params: any) => {
                 const items = Array.isArray(params) ? params : [params];
                 const label = items[0]?.name ?? '';

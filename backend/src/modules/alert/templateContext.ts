@@ -2,10 +2,17 @@
 // preview so a UI-previewed template matches what gets delivered.
 
 import type {AlertRuleKind} from '../../types/api/alert';
-import {notificationDisplayContext} from '../delivery/notificationDisplay';
+import {summaryLine} from '../delivery/groupSummary';
+import {
+    notificationDisplayContext,
+    notificationTimeLabel
+} from '../delivery/notificationDisplay';
 import type {DeliveryPayload} from '../delivery/types';
+import {ALERT_INSTANCE_STATE_SET} from './states';
 
 export interface TemplateContextArgs {
+    locale?: string;
+    timeZone?: string;
     instance: {
         id: number;
         title: string;
@@ -31,6 +38,8 @@ export function buildDeliveryContext(
     payload: DeliveryPayload
 ): Record<string, unknown> {
     const context = buildTemplateContext({
+        locale: payload.locale,
+        timeZone: payload.timeZone,
         instance: {
             id: payload.alertId ?? 0,
             title: payload.title,
@@ -49,18 +58,138 @@ export function buildDeliveryContext(
             runbookUrl: payload.ruleRunbookUrl ?? null
         }
     });
+    const display = context.display as Record<string, string>;
+    const deviceName = payload.context?.deviceName;
+    const sourceLabel =
+        typeof deviceName === 'string' && deviceName.length > 0
+            ? deviceName
+            : (payload.source?.subjectId ?? '');
+    const groupAlerts =
+        payload.siblings && payload.siblings.length > 0
+            ? [payload, ...payload.siblings]
+            : [];
+    const sourceNames = [
+        ...new Set(
+            groupAlerts.map((alert) => {
+                const name = alert.context?.deviceName;
+                return typeof name === 'string' && name.length > 0
+                    ? name
+                    : (alert.source?.subjectId ?? alert.title);
+            })
+        )
+    ];
+    const previewLimit = 5;
+    const previewNames = sourceNames.slice(0, previewLimit);
+    const remainingSources = Math.max(
+        0,
+        sourceNames.length - previewNames.length
+    );
+    const preview = [
+        ...previewNames.map((name) => `• ${name}`),
+        ...(remainingSources > 0 ? [`+${remainingSources} more`] : [])
+    ].join('\n');
+    const compactPreviewLimit = 3;
+    const compactPreviewNames = sourceNames.slice(0, compactPreviewLimit);
+    const remainingCompactSources = Math.max(
+        0,
+        sourceNames.length - compactPreviewNames.length
+    );
+    const compactPreview = [
+        ...compactPreviewNames.map((name) => `• ${name}`),
+        ...(remainingCompactSources > 0
+            ? [`+${remainingCompactSources} more`]
+            : [])
+    ].join('\n');
+    const firstAt = payload.aggregate?.firstAt || payload.firedAt;
+    const lastAt = payload.aggregate?.lastAt || payload.firedAt;
+    const firstLabel = notificationTimeLabel(
+        firstAt,
+        payload.timeZone,
+        payload.locale
+    );
+    const lastLabel = notificationTimeLabel(
+        lastAt,
+        payload.timeZone,
+        payload.locale
+    );
+    const groupTimeLabel =
+        firstAt === lastAt ? firstLabel : `${firstLabel} – ${lastLabel}`;
+    const groupCount = groupAlerts.length;
+    const deviceCount = sourceNames.length;
+    const groupTriggers = groupAlerts.map((alert) => {
+        const name = alert.context?.deviceName;
+        const label =
+            typeof name === 'string' && name.length > 0
+                ? name
+                : (alert.source?.subjectId ?? '');
+        return label && alert.title.startsWith(label)
+            ? alert.title.slice(label.length).trim()
+            : '';
+    });
+    const sharedTrigger =
+        groupTriggers.length > 0 &&
+        groupTriggers.every(
+            (trigger) => trigger.length > 0 && trigger === groupTriggers[0]
+        )
+            ? groupTriggers[0]
+            : '';
     return {
         ...context,
+        group: {
+            isGrouped: groupAlerts.length > 0,
+            count: groupCount,
+            title: `${groupCount} alerts · ${payload.ruleName}`,
+            deviceTitle: sharedTrigger
+                ? `${deviceCount} devices ${sharedTrigger}`
+                : `${deviceCount} devices · ${payload.ruleName}`,
+            heading: `${groupCount} ${display.stateLabel.toLowerCase()} alerts`,
+            summary: summaryLine(payload.aggregate) || `${groupCount} alerts`,
+            preview,
+            compactPreview,
+            timeLabel: groupTimeLabel,
+            compactTimeLabel: compactTimeRange(firstLabel, lastLabel)
+        },
+        display: {
+            ...display,
+            sourceLabel,
+            timeLabel: notificationTimeLabel(
+                payload.firedAt,
+                payload.timeZone,
+                payload.locale
+            )
+        },
         labels: payload.labels ?? {},
         context: payload.context ?? {},
+        is_has_device_image: Boolean(payload.deviceImageUrl),
+        device: {
+            imageUrl: payload.deviceImageUrl ?? ''
+        },
         virtualDevice: payload.context?.virtualDevice ?? null
     };
+}
+
+function compactTimeRange(firstLabel: string, lastLabel: string): string {
+    if (firstLabel === lastLabel) return firstLabel;
+    const first = splitTimeLabel(firstLabel);
+    const last = splitTimeLabel(lastLabel);
+    if (first && last && first.date === last.date && first.zone === last.zone) {
+        return `${first.date} · ${first.time}–${last.time} ${first.zone}`;
+    }
+    return `${firstLabel} – ${lastLabel}`;
+}
+
+function splitTimeLabel(
+    value: string
+): {date: string; time: string; zone: string} | null {
+    const match = /^(.*?) · (\d{2}:\d{2}) (.+)$/.exec(value);
+    if (!match) return null;
+    return {date: match[1], time: match[2], zone: match[3]};
 }
 
 export function buildTemplateContext(
     args: TemplateContextArgs
 ): Record<string, unknown> {
-    const {instance, rule} = args;
+    const {instance, rule, locale, timeZone} = args;
     const severity = normalizeSeverity(instance.severity);
     const state = normalizeState(instance.state);
     return {
@@ -83,7 +212,16 @@ export function buildTemplateContext(
             kind: rule.kind,
             runbookUrl: rule.runbookUrl ?? null
         },
-        display: notificationDisplayContext(severity, state)
+        device: {
+            imageUrl:
+                'https://control.shelly.cloud/images/device_images/SNSW-001X16EU.png'
+        },
+        is_has_device_image: true,
+        display: {
+            ...notificationDisplayContext(severity, state),
+            sourceLabel: instance.sourceSubjectId,
+            timeLabel: notificationTimeLabel(instance.firedAt, timeZone, locale)
+        }
     };
 }
 
@@ -94,21 +232,12 @@ function normalizeSeverity(value: string): DeliveryPayload['severity'] {
     return 'info';
 }
 
+// Asks the shared vocabulary instead of listing the states again. The old copy
+// had to be edited every time a state was added, and nothing said so.
 function normalizeState(value: string): DeliveryPayload['state'] {
-    if (
-        value === 'pending' ||
-        value === 'active' ||
-        value === 'acknowledged' ||
-        value === 'recovering' ||
-        value === 'cleared_unack' ||
-        value === 'cleared_ack' ||
-        value === 'no_data' ||
-        value === 'evaluation_error' ||
-        value === 'resolved'
-    ) {
-        return value;
-    }
-    return 'active';
+    return ALERT_INSTANCE_STATE_SET.has(value)
+        ? (value as DeliveryPayload['state'])
+        : 'active';
 }
 
 // Per-kind sample inputs. Values here are the single source of truth
@@ -235,8 +364,20 @@ const SAMPLE_INSTANCES: Record<AlertRuleKind, TemplateContextArgs['instance']> =
             message: 'Automation execution failed.',
             severity: 'warning',
             state: 'active',
-            sourceSubjectType: 'device',
-            sourceSubjectId: SAMPLE_DEVICE,
+            sourceSubjectType: 'system',
+            sourceSubjectId: '7',
+            firedAt: SAMPLE_TS,
+            activeSince: SAMPLE_TS
+        },
+        system_health: {
+            id: 42,
+            title: 'Rejected meter blocks are waiting',
+            message:
+                '3 meter history blocks were refused by the database. Review the list and queue them again once the cause is fixed.',
+            severity: 'warning',
+            state: 'active',
+            sourceSubjectType: 'system',
+            sourceSubjectId: 'em-sync-rejected-open',
             firedAt: SAMPLE_TS,
             activeSince: SAMPLE_TS
         },
@@ -246,7 +387,7 @@ const SAMPLE_INSTANCES: Record<AlertRuleKind, TemplateContextArgs['instance']> =
             message: 'CPU usage above 90% for 5 minutes.',
             severity: 'warning',
             state: 'active',
-            sourceSubjectType: 'entity',
+            sourceSubjectType: 'external',
             sourceSubjectId: 'grafana-fp-abc123',
             firedAt: SAMPLE_TS,
             activeSince: SAMPLE_TS
@@ -262,10 +403,54 @@ const SAMPLE_INSTANCES: Record<AlertRuleKind, TemplateContextArgs['instance']> =
             firedAt: SAMPLE_TS,
             activeSince: SAMPLE_TS
         },
+        credential_expiring: {
+            id: 42,
+            title: 'Device key ends soon',
+            message: `The key for ${SAMPLE_DEVICE} ends in 29 days.`,
+            severity: 'warning',
+            state: 'active',
+            sourceSubjectType: 'device',
+            sourceSubjectId: SAMPLE_DEVICE,
+            firedAt: SAMPLE_TS,
+            activeSince: SAMPLE_TS
+        },
         energy_consumption_threshold: {
             id: 42,
             title: 'High energy consumption',
             message: `${SAMPLE_DEVICE} consumed 6.250 kWh in the last hour.`,
+            severity: 'warning',
+            state: 'active',
+            sourceSubjectType: 'device',
+            sourceSubjectId: SAMPLE_DEVICE,
+            firedAt: SAMPLE_TS,
+            activeSince: SAMPLE_TS
+        },
+        cost_budget_threshold: {
+            id: 42,
+            title: 'Energy-cost budget threshold reached',
+            message: `${SAMPLE_DEVICE} crossed 80% of its USD 500.00 billing-period energy-cost budget.`,
+            severity: 'warning',
+            state: 'active',
+            sourceSubjectType: 'device',
+            sourceSubjectId: SAMPLE_DEVICE,
+            firedAt: SAMPLE_TS,
+            activeSince: SAMPLE_TS
+        },
+        record_incomplete: {
+            id: 42,
+            title: 'Daily temperature record incomplete',
+            message: `${SAMPLE_DEVICE} has no temperature reading today.`,
+            severity: 'info',
+            state: 'active',
+            sourceSubjectType: 'device',
+            sourceSubjectId: SAMPLE_DEVICE,
+            firedAt: SAMPLE_TS,
+            activeSince: SAMPLE_TS
+        },
+        approaching_new_peak: {
+            id: 42,
+            title: 'Approaching a new demand peak',
+            message: `${SAMPLE_DEVICE} is at 92% of the current billing peak.`,
             severity: 'warning',
             state: 'active',
             sourceSubjectType: 'device',
@@ -399,6 +584,11 @@ const SAMPLE_CONTEXT_PAYLOADS: Partial<
         error: 'Step 3 failed'
     },
     heartbeat: {shellyID: SAMPLE_DEVICE, expectedIntervalSec: 600},
+    credential_expiring: {
+        shellyID: SAMPLE_DEVICE,
+        endsAt: '2026-10-11T10:00:00.000Z',
+        daysLeft: 29
+    },
     energy_consumption_threshold: {
         shellyID: SAMPLE_DEVICE,
         consumptionKWh: 6.25,
@@ -406,6 +596,39 @@ const SAMPLE_CONTEXT_PAYLOADS: Partial<
         operator: 'gt',
         windowSec: 3600,
         sampleCount: 120
+    },
+    cost_budget_threshold: {
+        shellyID: SAMPLE_DEVICE,
+        actualCost: 410,
+        budgetAmount: 500,
+        currency: 'USD',
+        thresholdPct: 80,
+        thresholdAmount: 400,
+        period: 'billing_period',
+        periodStart: '2026-04-01T00:00:00.000Z',
+        periodEnd: SAMPLE_TS,
+        billingDay: 1,
+        timeZone: 'America/New_York',
+        costBasis: 'recorded_import_energy_charge',
+        excludedCharges: ['standing', 'demand', 'tax']
+    },
+    record_incomplete: {
+        shellyID: SAMPLE_DEVICE,
+        roleKey: 'temperature',
+        deadlineHour: 17,
+        timeZone: 'Australia/Sydney',
+        // A real timestamp, not null: the sample exists so every token in the
+        // catalog can be shown rendering, and a null renders as nothing.
+        latestReadingAt: SAMPLE_TS
+    },
+    approaching_new_peak: {
+        shellyID: SAMPLE_DEVICE,
+        intervalMinutes: 30,
+        currentKw: 184,
+        baselineKw: 200,
+        ratio: 0.92,
+        warningRatio: 0.9,
+        timeZone: 'Australia/Sydney'
     },
     rate_of_change: {
         shellyID: SAMPLE_DEVICE,

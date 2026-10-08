@@ -77,6 +77,107 @@ export interface MobileSyncDeltaResponse {
 }
 
 const ANY_RESPONSE: JsonSchema = {type: 'object', additionalProperties: true};
+
+// A section the caller cannot read comes back visible:false with empty
+// counts, so every key is present on every call.
+const ALERTS_SECTION_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['visible', 'openCount', 'criticalCount'],
+    additionalProperties: false,
+    properties: {
+        visible: {type: 'boolean'},
+        openCount: {type: 'integer', minimum: 0},
+        criticalCount: {type: 'integer', minimum: 0}
+    }
+};
+
+const WAITING_ROOM_SECTION_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['visible', 'pendingCount', 'pending'],
+    additionalProperties: false,
+    properties: {
+        visible: {type: 'boolean'},
+        pendingCount: {type: 'integer', minimum: 0},
+        // Keyed by entryId; the entries themselves are open-ended.
+        pending: {type: 'object', additionalProperties: true}
+    }
+};
+
+// device.list rows, whose info/status/settings vary per model.
+const MOBILE_DEVICE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: true
+};
+
+const MOBILE_BOOTSTRAP_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: [
+        'serverTime',
+        'user',
+        'permissions',
+        'uiCapabilities',
+        'devices',
+        'waitingRoom',
+        'alerts'
+    ],
+    additionalProperties: false,
+    properties: {
+        serverTime: {type: 'string', format: 'date-time'},
+        user: {
+            type: 'object',
+            required: ['username', 'organizationId', 'isAdmin'],
+            additionalProperties: false,
+            properties: {
+                username: {type: 'string'},
+                organizationId: {type: ['string', 'null']},
+                isAdmin: {type: 'boolean'}
+            }
+        },
+        // The whole user.GetMe payload, passed through untyped.
+        permissions: {type: 'object', additionalProperties: true},
+        uiCapabilities: {
+            type: 'object',
+            required: ['components'],
+            additionalProperties: false,
+            properties: {
+                components: {type: 'object', additionalProperties: true}
+            }
+        },
+        devices: {
+            type: 'object',
+            required: ['visible', 'items', 'total'],
+            additionalProperties: false,
+            properties: {
+                visible: {type: 'boolean'},
+                items: {type: 'array', items: MOBILE_DEVICE_SCHEMA},
+                total: {type: 'integer', minimum: 0}
+            }
+        },
+        waitingRoom: WAITING_ROOM_SECTION_SCHEMA,
+        alerts: ALERTS_SECTION_SCHEMA
+    }
+};
+
+const MOBILE_SYNC_DELTA_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['serverTime', 'devices', 'waitingRoom', 'alerts'],
+    additionalProperties: false,
+    properties: {
+        serverTime: {type: 'string', format: 'date-time'},
+        devices: {
+            type: 'object',
+            required: ['visible', 'changed'],
+            additionalProperties: false,
+            properties: {
+                visible: {type: 'boolean'},
+                changed: {type: 'array', items: MOBILE_DEVICE_SCHEMA}
+            }
+        },
+        waitingRoom: WAITING_ROOM_SECTION_SCHEMA,
+        alerts: ALERTS_SECTION_SCHEMA
+    }
+};
+
 const AUTH_PERM = {note: 'authenticated'};
 
 export const MOBILE_DESCRIBE: DescribeOutput = new DescribeBuilder('mobile', {
@@ -93,7 +194,7 @@ export const MOBILE_DESCRIBE: DescribeOutput = new DescribeBuilder('mobile', {
     .registerMethod('GetBootstrap', {
         safety: {operation: 'read'},
         params: MOBILE_GET_BOOTSTRAP_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: MOBILE_BOOTSTRAP_RESPONSE_SCHEMA,
         permission: AUTH_PERM,
         description:
             'Composite endpoint for mobile app launch — returns slim ' +
@@ -104,7 +205,7 @@ export const MOBILE_DESCRIBE: DescribeOutput = new DescribeBuilder('mobile', {
     .registerMethod('SyncDelta', {
         safety: {operation: 'read'},
         params: MOBILE_SYNC_DELTA_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: MOBILE_SYNC_DELTA_RESPONSE_SCHEMA,
         permission: AUTH_PERM,
         description:
             'Returns devices changed since the given timestamp + current ' +

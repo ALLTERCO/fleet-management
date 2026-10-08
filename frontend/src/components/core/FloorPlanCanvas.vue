@@ -9,11 +9,12 @@
                 acceleration to see the floor plan.
             </p>
         </div>
-        <div v-else-if="!plan" class="fpc-empty">
+        <div v-else-if="!plan && isBlankFloor" class="fpc-empty">
             <i class="fas fa-image" />
             <p>No floor plan uploaded</p>
             <p class="fpc-empty-sub">
-                Upload a PNG, SVG, or JPG to start placing devices on the plan.
+                Upload a PNG, SVG or JPG — or draw the walls and rooms by
+                hand on the blank sheet.
             </p>
         </div>
         <div v-else-if="planLoadError" class="fpc-empty">
@@ -32,13 +33,13 @@
 
 <script setup lang="ts">
 import {computed, ref, toRef} from 'vue';
-import {
-    useFloorPlanStage, 
-    type ZoneDraft
-} from '@/composables/useFloorPlanStage';
+import {useFloorPlanStage} from '@/composables/useFloorPlanStage';
+import type {DrawDraft} from '@/helpers/floor-plan-draw';
 import type {
     DevicePlacementMap,
     FloorPlanRef,
+    PlanPoint,
+    WallSegment,
     ZoneShape
 } from '@/types/floor-plan';
 
@@ -55,24 +56,32 @@ export interface FloorPlanDevice {
      *  Binary devices set 0 or 1; analog devices (TRV target, dimmer
      *  brightness) set the fraction. */
     level?: number;
+    /** Component types the device reports (`switch`, `light`, `cover`).
+     *  Read by the SVG import to match a drawing's category layer against
+     *  what the device actually is. Not used for rendering. */
+    componentTypes?: readonly string[];
 }
 
 const props = withDefaults(
     defineProps<{
         plan: FloorPlanRef | null;
         zones?: ZoneShape[];
+        walls?: WallSegment[];
         placements?: DevicePlacementMap;
         devices?: FloorPlanDevice[];
         editMode?: boolean;
-        drawingZone?: ZoneDraft | null;
+        /** The zone or wall being drawn. Non-null turns clicks into
+         *  vertices — same contract the 3D canvas honours. */
+        drawing?: DrawDraft | null;
         layerVisibility?: {floor: boolean; walls: boolean; devices: boolean};
     }>(),
     {
         zones: () => [],
+        walls: () => [],
         placements: () => ({}),
         devices: () => [],
         editMode: false,
-        drawingZone: null,
+        drawing: null,
         layerVisibility: () => ({floor: true, walls: true, devices: true})
     }
 );
@@ -80,30 +89,39 @@ const props = withDefaults(
 const emit = defineEmits<{
     'device-move': [id: string, position: {x: number; y: number}];
     'device-click': [id: string];
-    'zone-vertex': [x: number, y: number];
+    'draft-vertex': [point: PlanPoint];
 }>();
 
 const hostRef = ref<HTMLElement | null>(null);
+
+// The upload prompt is for an empty floor only. Once anything has been
+// drawn it would be telling the user to fix something already done.
+const isBlankFloor = computed(
+    () => props.zones.length === 0 && props.walls.length === 0
+);
+
 const planRef = computed(() => props.plan);
 const zonesRef = toRef(props, 'zones');
+const wallsRef = toRef(props, 'walls');
 const placementsRef = toRef(props, 'placements');
 const devicesRef = toRef(props, 'devices');
 const editRef = toRef(props, 'editMode');
-const drawingRef = toRef(props, 'drawingZone');
+const drawingRef = toRef(props, 'drawing');
 const layerVisibilityRef = toRef(props, 'layerVisibility');
 
 const {unsupported, planLoadError} = useFloorPlanStage(hostRef, {
     plan: planRef,
     zones: zonesRef,
+    walls: wallsRef,
     placements: placementsRef,
     devices: devicesRef,
     editMode: editRef,
-    drawingZone: drawingRef,
+    drawing: drawingRef,
     layerVisibility: layerVisibilityRef,
     onDeviceMove: (id: string, position: {x: number; y: number}) =>
         emit('device-move', id, position),
     onDeviceClick: (id) => emit('device-click', id),
-    onZoneVertex: (x, y) => emit('zone-vertex', x, y)
+    onDraftVertex: (point) => emit('draft-vertex', point)
 });
 </script>
 

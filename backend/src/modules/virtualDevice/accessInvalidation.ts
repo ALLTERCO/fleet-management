@@ -5,6 +5,6 @@ export async function runVirtualDeviceMutation<T>(
     mutation: () => Promise<T>
 ): Promise<T> {
     const result = await mutation();
-    EventDistributor.invalidateGroupCache(organizationId);
+    EventDistributor.invalidateOrganizationAccess(organizationId);
     return result;
 }

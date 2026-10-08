@@ -49,6 +49,11 @@ import {
 } from './frontend-backend-dependencies.js';
 import {generate as genHostContract} from './host-contract.js';
 import {generate as genHostMethodMetadata} from './host-method-metadata.js';
+import {generate as genLocationKindCatalog} from './location-kind-catalog.js';
+import {
+    generate as genHostSdkChangelog,
+    renderMarkdown as renderHostSdkChangelog
+} from './host-sdk-changelog.js';
 import {
     generate as genHostSdk,
     renderMarkdown as renderHostSdk
@@ -157,8 +162,21 @@ async function main() {
         methodMetadata.methods
     );
 
+    const locationKindCatalog = await genLocationKindCatalog();
+    console.log(
+        '· location-kind-catalog... ok (%d kinds)',
+        locationKindCatalog.kinds
+    );
+
     const hostSdk = step('host-sdk-index', genHostSdk);
     writeOutputs('host-sdk-index', hostSdk, renderHostSdk(hostSdk));
+
+    const hostSdkChangelog = step('host-sdk-changelog', genHostSdkChangelog);
+    writeOutputs(
+        'host-sdk-changelog',
+        hostSdkChangelog,
+        renderHostSdkChangelog(hostSdkChangelog)
+    );
 
     // api.html is what /api/docs serves from disk — must be built here so
     // the live route never 404s after a fresh checkout.
@@ -218,6 +236,9 @@ async function main() {
     );
     console.log(
         `  Topology metadata: ${topology.totals.modules} modules, ${topology.totals.edges} edges, ${topology.totals.flows} flows`
+    );
+    console.log(
+        `  Host SDK surface: ${hostSdkChangelog.summary.nameCount} names, ${hostSdkChangelog.summary.deprecatedCount} deprecated, ${hostSdkChangelog.summary.removedCount} withdrawn`
     );
 }
 

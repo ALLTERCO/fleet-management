@@ -1,5 +1,6 @@
 import type {
     Channel,
+    ChannelListItem,
     ChannelProvider,
     ChannelProviderDescriptor,
     ChannelTestResult
@@ -14,6 +15,7 @@ import {useToastStore} from './toast';
 
 export type {
     Channel,
+    ChannelListItem,
     ChannelProvider,
     ChannelProviderDescriptor,
     ChannelTestResult
@@ -40,7 +42,8 @@ export interface UpdateChannelPatch {
 }
 
 export const useChannelsStore = defineStore('integrations', () => {
-    const channels = ref<Record<number, Channel>>({});
+    // A row is full only where the caller holds a grant on that channel.
+    const channels = ref<Record<number, ChannelListItem>>({});
     const providers = ref<ChannelProviderDescriptor[]>([]);
     const loading = ref(true);
     const toast = useToastStore();
@@ -65,9 +68,9 @@ export const useChannelsStore = defineStore('integrations', () => {
         try {
             // List fetch: bump so the latest fetch wins between racing fetches.
             const token = channelsGuard.bump();
-            const items = await paginate<Channel>(
+            const items = await paginate<ChannelListItem>(
                 (offset) =>
-                    ws.sendRPC<PagedEnvelope<Channel>>(
+                    ws.sendRPC<PagedEnvelope<ChannelListItem>>(
                         'FLEET_MANAGER',
                         'channel.list',
                         {limit: MAX_ENDPOINTS_PER_PAGE, offset}
@@ -75,7 +78,7 @@ export const useChannelsStore = defineStore('integrations', () => {
                 MAX_ENDPOINTS_PER_PAGE
             );
             if (channelsGuard.isStale(token)) return;
-            const next: Record<number, Channel> = {};
+            const next: Record<number, ChannelListItem> = {};
             for (const e of items) next[e.id] = e;
             channels.value = next;
         } catch (err) {
@@ -157,17 +160,35 @@ export const useChannelsStore = defineStore('integrations', () => {
         }
     }
 
+    // Real send by default. A dry run only validates config, so it reported
+    // success without ever reaching the provider.
+    // Clears the auto-disable a channel earned from repeated failures, so
+    // the next delivery is attempted again after the operator fixed the cause.
+    async function resetHealth(id: number): Promise<boolean> {
+        try {
+            await ws.sendRPC('FLEET_MANAGER', 'channel.resethealth', {id});
+            await fetchChannels();
+            return true;
+        } catch (err) {
+            toastRpcError(toast, err, 'Failed to reset channel health');
+            return false;
+        }
+    }
+
     async function testChannel(
         id: number,
-        dryRun = true,
+        dryRun = false,
         payload?: {title?: string; message?: string}
     ): Promise<ChannelTestResult | null> {
         try {
-            return await ws.sendRPC<ChannelTestResult>(
+            const result = await ws.sendRPC<ChannelTestResult>(
                 'FLEET_MANAGER',
                 'channel.test',
                 {id, dryRun, ...(payload ? {payload} : {})}
             );
+            // Badge reads channel state, not this result.
+            await fetchChannels();
+            return result;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to test channel');
             return null;
@@ -184,6 +205,7 @@ export const useChannelsStore = defineStore('integrations', () => {
         createChannel,
         updateChannel,
         deleteChannel,
+        resetHealth,
         testChannel
     };
 });

@@ -22,15 +22,17 @@
                     <svg width="50" height="50" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="1.5" class="ec-moist-icon">
                         <path d="M12 2.69l5.66 5.66a8 8 0 11-11.31 0z"/>
                     </svg>
-                    <div class="ec-moist-v">{{ valueDisplay }}<span class="ec-moist-u">%</span></div>
+                    <div class="ec-moist-v">{{ valueDisplay }}<span class="ec-u ec-u--float">%</span></div>
                 </div>
             </template>
 
             <!-- BTHome distance: value + bar -->
             <template v-else-if="isDistanceOrMoisture">
                 <div class="ec-dist-1x1">
-                    <div class="ec-dist-v">{{ valueDisplay }}</div>
-                    <div class="ec-dist-u">{{ unitDisplay }}</div>
+                    <div class="ec-vu">
+                        <span class="ec-dist-v">{{ valueDisplay }}</span>
+                        <span class="ec-u">{{ unitDisplay }}</span>
+                    </div>
                     <div class="ec-dist-bar">
                         <div class="ec-dist-bar-fill" :style="{ width: distBarPct + '%' }"></div>
                     </div>
@@ -40,17 +42,18 @@
             <!-- Pressure: value + arc gauge -->
             <template v-else-if="variant === 'pressure'">
                 <div class="ec-gauge-1x1">
-                    <svg class="ec-gauge-arc" viewBox="0 0 120 70">
+                    <!-- viewBox cropped to the arc; dead band below it steals reading space. -->
+                    <svg class="ec-gauge-arc" viewBox="0 0 120 68">
                         <defs><linearGradient id="gaugeGrad"><stop offset="0%" stop-color="#38bdf8" /><stop offset="100%" stop-color="#818cf8" /></linearGradient></defs>
                         <path d="M12 62 A 48 48 0 0 1 108 62" fill="none" stroke="rgba(148,163,184,0.1)" stroke-width="8" stroke-linecap="round" />
                         <path d="M12 62 A 48 48 0 0 1 108 62" fill="none" stroke="url(#gaugeGrad)" stroke-width="8" stroke-linecap="round" :stroke-dasharray="gaugeCirc" :stroke-dashoffset="gaugeOffset" />
                         <line x1="60" y1="62" :x2="gaugeNeedleX" :y2="gaugeNeedleY" stroke="var(--color-text-primary)" stroke-width="2" stroke-linecap="round" opacity=".8" />
                         <circle cx="60" cy="62" r="4" fill="var(--color-text-secondary)" />
-                        <text x="14" y="68" fill="var(--color-text-quaternary)" font-size="6" font-weight="600">{{ pressureMin }}</text>
-                        <text x="96" y="68" fill="var(--color-text-quaternary)" font-size="6" font-weight="600">{{ pressureMax }}</text>
                     </svg>
-                    <div class="ec-gauge-val">{{ valueDisplay }}</div>
-                    <div class="ec-gauge-unit">{{ unitDisplay }}</div>
+                    <div class="ec-vu">
+                        <span class="ec-gauge-val">{{ valueDisplay }}</span>
+                        <span class="ec-u">{{ unitDisplay }}</span>
+                    </div>
                 </div>
             </template>
 
@@ -93,7 +96,7 @@
                             <circle cx="40" cy="40" r="3" fill="#38bdf8" />
                         </svg>
                     </div>
-                    <div class="ec-wind-val">{{ valueDisplay }}<span>{{ unitDisplay }}</span> <span class="ec-wind-dir">{{ windDirLabel }}</span></div>
+                    <div class="ec-wind-val">{{ valueDisplay }}<span class="ec-u">{{ unitDisplay }}</span> <span class="ec-wind-dir">{{ windDirLabel }}</span></div>
                 </div>
             </template>
 
@@ -101,7 +104,7 @@
             <template v-else-if="variant === 'rain'">
                 <div class="ec-rain-1x1">
                     <i class="fas fa-cloud-rain ec-rain-icon"></i>
-                    <div class="ec-rain-val">{{ valueDisplay }}<span>{{ unitDisplay }}</span></div>
+                    <div class="ec-rain-val">{{ valueDisplay }}<span class="ec-u">{{ unitDisplay }}</span></div>
                 </div>
             </template>
 
@@ -113,12 +116,11 @@
                 </div>
             </template>
 
-            <!-- Other analog sensors: value + unit. Voltage is a single reading,
-                 shown large but sized to fit the tile. -->
+            <!-- Other analog sensors: one reading + its unit. -->
             <template v-else-if="isAnalog">
-                <div class="ec-hv-wrap" :class="{'ec-hv-wrap--lg': variant === 'voltage'}">
-                    <span class="ec-hv" :class="{'ec-hv--lg': variant === 'voltage'}">{{ valueDisplay }}</span>
-                    <span class="ec-hu">{{ unitDisplay }}</span>
+                <div class="ec-hv-wrap ec-hv-wrap--lg">
+                    <span class="ec-hv ec-hv--lg">{{ valueDisplay }}</span>
+                    <span class="ec-u">{{ unitDisplay }}</span>
                 </div>
                 <div v-if="subDisplay" class="ec-sub">{{ subDisplay }}</div>
             </template>
@@ -178,14 +180,16 @@
                         <template v-if="isActive"><path d="M8 18c0-3 2-5 2-8a4 4 0 018 0c0 3 2 5 2 8" /><path d="M4 21h16" stroke-linecap="round" /></template>
                         <template v-else><circle cx="12" cy="12" r="10" /><path d="M9 12l2 2 4-4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></template>
                     </svg>
-                    <div class="ec-sensor-hero" :class="isAnalog ? '' : stateClass">{{ wideHeroValue }}</div>
+                    <div class="ec-sensor-hero" :class="isAnalog ? 'ec-sensor-hero--num' : stateClass">
+                        {{ wideHeroValue }}<span v-if="wideHeroUnit" class="ec-u">{{ wideHeroUnit }}</span>
+                    </div>
                     <div class="ec-sensor-hero-sub">{{ wideHeroLabel }}</div>
                 </div>
                 <div class="ec-wr">
-                    <div class="ec-cols">
+                    <div v-if="wideRightCols.length" class="ec-cols">
                         <div v-for="col in wideRightCols" :key="col.label" class="ec-col">
                             <div class="ec-wide-col-v" :class="col.vClass || ''">
-                                {{ col.value }}<span v-if="col.unit" class="ec-wide-col-u">{{ col.unit }}</span>
+                                {{ col.value }}<span v-if="col.unit" class="ec-u">{{ col.unit }}</span>
                             </div>
                             <div class="ec-wide-col-l">{{ col.label }}</div>
                         </div>
@@ -222,13 +226,10 @@
                         <path d="M10 55 A 40 40 0 0 1 90 55" fill="none" stroke="url(#gaugeGradH)" stroke-width="5" stroke-linecap="round" :stroke-dasharray="gaugeCirc" :stroke-dashoffset="gaugeOffset" />
                         <defs><linearGradient id="gaugeGradH"><stop offset="0%" stop-color="#38bdf8" /><stop offset="100%" stop-color="#818cf8" /></linearGradient></defs>
                     </svg>
-                    <div class="ec-hero-top-v">{{ valueDisplay }}</div>
-                    <div class="ec-hero-top-u">{{ unitDisplay }}</div>
-                </div>
-                <div class="ec-hero-info">
-                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">—</div><div class="ec-hero-stat-l">Min 24h</div></div>
-                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">—</div><div class="ec-hero-stat-l">Avg 24h</div></div>
-                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">—</div><div class="ec-hero-stat-l">Max 24h</div></div>
+                    <div class="ec-vu">
+                        <span class="ec-hero-top-v">{{ valueDisplay }}</span>
+                        <span class="ec-u">{{ unitDisplay }}</span>
+                    </div>
                 </div>
             </template>
 
@@ -239,14 +240,12 @@
                     <div class="ec-hero-top-u">{{ uvLabel }}</div>
                 </div>
                 <div class="ec-sensor-padded">
-                    <div class="ec-uv-bar ec-uv-bar--6">
+                    <div class="ec-uv-bar ec-uv-bar--6" :style="{background: UV_BAR_GRADIENT}">
                         <div class="ec-uv-bar-fill" :style="{ width: uvBarPct + '%', background: uvColor }"></div>
                     </div>
                 </div>
-                <div class="ec-hero-info">
-                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">—</div><div class="ec-hero-stat-l">Min 24h</div></div>
-                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">—</div><div class="ec-hero-stat-l">Max 24h</div></div>
-                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">{{ battery !== null ? `${battery}%` : '—' }}</div><div class="ec-hero-stat-l">Battery</div></div>
+                <div v-if="battery !== null" class="ec-hero-info">
+                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">{{ battery }}%</div><div class="ec-hero-stat-l">Battery</div></div>
                 </div>
             </template>
 
@@ -262,13 +261,11 @@
                         <line x1="40" y1="40" :x2="windArrowX80" :y2="windArrowY80" stroke="#38bdf8" stroke-width="3" stroke-linecap="round" />
                         <circle cx="40" cy="40" r="3" fill="#38bdf8" />
                     </svg>
-                    <div class="ec-hero-top-v">{{ valueDisplay }} {{ unitDisplay }}</div>
+                    <div class="ec-hero-top-v">{{ valueDisplay }}<span class="ec-u">{{ unitDisplay }}</span></div>
                     <div class="ec-hero-top-u">{{ variantLabel }}</div>
                 </div>
-                <div class="ec-hero-info">
-                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">—</div><div class="ec-hero-stat-l">Gust</div></div>
-                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">—</div><div class="ec-hero-stat-l">Avg 24h</div></div>
-                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">{{ battery !== null ? `${battery}%` : '—' }}</div><div class="ec-hero-stat-l">Battery</div></div>
+                <div v-if="battery !== null" class="ec-hero-info">
+                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">{{ battery }}%</div><div class="ec-hero-stat-l">Battery</div></div>
                 </div>
             </template>
 
@@ -276,13 +273,11 @@
             <template v-else-if="variant === 'rain'">
                 <div class="ec-hero-top">
                     <i class="fas fa-cloud-rain ec-hero-rain-icon"></i>
-                    <div class="ec-hero-top-v ec-hero-top-v--humidity">{{ valueDisplay }} {{ unitDisplay }}</div>
+                    <div class="ec-hero-top-v ec-hero-top-v--humidity">{{ valueDisplay }}<span class="ec-u">{{ unitDisplay }}</span></div>
                     <div class="ec-hero-top-u">Precipitation</div>
                 </div>
-                <div class="ec-hero-info">
-                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">—</div><div class="ec-hero-stat-l">Today</div></div>
-                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">—</div><div class="ec-hero-stat-l">Max 24h</div></div>
-                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">{{ battery !== null ? `${battery}%` : '—' }}</div><div class="ec-hero-stat-l">Battery</div></div>
+                <div v-if="battery !== null" class="ec-hero-info">
+                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">{{ battery }}%</div><div class="ec-hero-stat-l">Battery</div></div>
                 </div>
             </template>
 
@@ -293,44 +288,21 @@
                     <div class="ec-hero-top-u">Active Channel</div>
                 </div>
                 <div class="ec-hero-info">
-                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">{{ battery !== null ? `${battery}%` : '—' }}</div><div class="ec-hero-stat-l">Battery</div></div>
+                    <div v-if="battery !== null" class="ec-hero-stat"><div class="ec-hero-stat-v">{{ battery }}%</div><div class="ec-hero-stat-l">Battery</div></div>
                     <div class="ec-hero-stat"><div class="ec-hero-stat-v">{{ device?.online ? 'OK' : 'OFF' }}</div><div class="ec-hero-stat-l">Link</div></div>
-                    <div class="ec-hero-stat"><div class="ec-hero-stat-v">—</div><div class="ec-hero-stat-l">RSSI</div></div>
                 </div>
             </template>
 
             <!-- Other analog hero (humidity, illuminance, energy, generic, bthome analog) -->
             <template v-else-if="isAnalog">
                 <div class="ec-hero-top">
-                    <div class="ec-hero-top-v">{{ valueDisplay }}{{ unitDisplay ? ' ' + unitDisplay : '' }}</div>
+                    <div class="ec-hero-top-v">{{ valueDisplay }}<span v-if="unitDisplay" class="ec-u">{{ unitDisplay }}</span></div>
                     <div class="ec-hero-top-u">{{ variantLabel }}</div>
                 </div>
-                <div class="ec-hero-cols">
-                    <div class="ec-hero-col">
-                        <div class="ec-hero-col-v">—</div>
-                        <div class="ec-hero-col-l">Min 24h</div>
-                    </div>
-                    <div class="ec-hero-col">
-                        <div class="ec-hero-col-v">—</div>
-                        <div class="ec-hero-col-l">Avg 24h</div>
-                    </div>
-                    <div class="ec-hero-col">
-                        <div class="ec-hero-col-v">—</div>
-                        <div class="ec-hero-col-l">Max 24h</div>
-                    </div>
-                </div>
-                <div class="ec-hero-info">
+                <div v-if="battery !== null" class="ec-hero-info">
                     <div class="ec-hero-stat">
-                        <div class="ec-hero-stat-v">{{ battery !== null ? `${battery}%` : '—' }}</div>
+                        <div class="ec-hero-stat-v">{{ battery }}%</div>
                         <div class="ec-hero-stat-l">Battery</div>
-                    </div>
-                    <div class="ec-hero-stat">
-                        <div class="ec-hero-stat-v">—</div>
-                        <div class="ec-hero-stat-l">Packet ID</div>
-                    </div>
-                    <div class="ec-hero-stat">
-                        <div class="ec-hero-stat-v">—</div>
-                        <div class="ec-hero-stat-l">RSSI</div>
                     </div>
                 </div>
             </template>
@@ -341,7 +313,7 @@
                     <div role="status" class="ec-hero-top-v" :class="stateClass">{{ stateText }}</div>
                     <div class="ec-hero-top-u">{{ heroTopSub }}</div>
                 </div>
-                <div class="ec-hero-cols">
+                <div v-if="heroCols.length" class="ec-hero-cols">
                     <div v-for="col in heroCols" :key="col.label" class="ec-hero-col">
                         <div class="ec-hero-col-v" :class="col.vClass || ''">{{ col.value }}</div>
                         <div class="ec-hero-col-l">{{ col.label }}</div>
@@ -356,15 +328,13 @@
                         <div class="ec-tl-axis"><span>0h</span><span>6h</span><span>12h</span><span>18h</span><span>24h</span></div>
                         <div v-if="variant === 'flood' || variant === 'smoke'" class="ec-tl-stats">
                             <div class="ec-tl-stat"><div class="ec-tl-dot ec-tl-dot--on"></div><b>{{ isActive ? stateText : (variant === 'flood' ? 'Dry' : 'Clear') }}</b> all day</div>
-                            <div class="ec-tl-stat"><b>—</b> ago checked</div>
                         </div>
                         <div v-else-if="variant === 'presencezone'" class="ec-tl-stats">
                             <div class="ec-tl-stat"><div class="ec-tl-dot ec-tl-dot--on"></div><b>{{ isActive ? 'Occupied' : 'Empty' }}</b> now</div>
-                            <div class="ec-tl-stat"><b>—</b> events today</div>
                         </div>
                     </div>
                 </div>
-                <div class="ec-hero-info">
+                <div v-if="heroStats.length" class="ec-hero-info">
                     <div v-for="stat in heroStats" :key="stat.label" class="ec-hero-stat">
                         <div class="ec-hero-stat-v" :class="stat.vClass || ''">{{ stat.value }}</div>
                         <div class="ec-hero-stat-l">{{ stat.label }}</div>
@@ -387,8 +357,11 @@ import {
     getBThomeIcon,
     getBThomeLabel
 } from '@/config/bthome-presentation';
+import {deviceLux, formatReading} from '@/helpers/deviceReadings';
+import {presentStats} from '@/helpers/powerMetrics';
 import {allowedSizesForEntity} from '@/helpers/widgetCatalog';
 import {useDevicesStore} from '@/stores/devices';
+import {useEntityStore} from '@/stores/entities';
 import type {entity_t} from '@/types';
 import CardBadges from './CardBadges.vue';
 import CardShell from './CardShell.vue';
@@ -410,6 +383,8 @@ defineEmits<{
 }>();
 
 const deviceStore = useDevicesStore();
+const entityStore = useEntityStore();
+const getEntity = (id: string) => entityStore.entities[id];
 const device = computed(() => deviceStore.devices[props.entity.source]);
 // Feeds the shell's size popover/grip so single-value sensors (illuminance,
 // rotation) offer only 1x1 — same rule as everywhere else.
@@ -434,6 +409,11 @@ const battery = computed<number | null>(() => {
     return dp?.battery?.percent ?? null;
 });
 
+// BLU reports illuminance as a sibling BTHome sensor, not `illuminance:<id>`.
+const luxReading = computed<number | null>(() =>
+    deviceLux(device.value, getEntity)
+);
+
 // ── Variant classification ──────────────────────────────────────────────
 
 const ANALOG_VARIANTS = new Set<SensorVariant>([
@@ -450,15 +430,22 @@ const ANALOG_VARIANTS = new Set<SensorVariant>([
     'channel',
     'generic'
 ]);
-const isAnalog = computed(() => ANALOG_VARIANTS.has(props.variant));
+// Backend sensorType outranks the objName→variant map: the WS90 sends rain
+// status on the moisture object, which maps to the humidity variant.
+const isBinaryBThome = computed(
+    () =>
+        isBThome.value &&
+        props.entity.properties?.sensorType === 'binary_sensor'
+);
+const isAnalog = computed(
+    () => !isBinaryBThome.value && ANALOG_VARIANTS.has(props.variant)
+);
 
 // ── New variant computed properties ────────────────────────────────────
 
 // Pressure gauge (normalize 950-1050 hPa to 0-100%)
 const PRESSURE_MIN = 950;
 const PRESSURE_MAX = 1050;
-const pressureMin = PRESSURE_MIN;
-const pressureMax = PRESSURE_MAX;
 const gaugeCirc = '151';
 const gaugePct = computed(() => {
     const raw = Number(status.value?.value ?? 1013);
@@ -490,6 +477,8 @@ const UV_COLORS = [
     '#ef4444',
     '#a855f7'
 ];
+// The static scale bar is painted from this one list, not a hand-copied gradient.
+const UV_BAR_GRADIENT = `linear-gradient(90deg, ${UV_COLORS.join(', ')})`;
 const UV_LABELS = [
     'Low',
     'Low',
@@ -538,8 +527,12 @@ const DISTANCE_OBJ_NAMES = new Set(['distance_mm', 'distance_m']);
 const MOISTURE_OBJ_NAMES = new Set(['moisture']);
 
 const objName = computed(() => props.entity.properties?.objName ?? '');
+// BTHome "moisture" is both an analog percentage (0x14) and a binary wet/dry (0x20).
 const isMoisture = computed(
-    () => isBThome.value && MOISTURE_OBJ_NAMES.has(objName.value)
+    () =>
+        isBThome.value &&
+        !isBinaryBThome.value &&
+        MOISTURE_OBJ_NAMES.has(objName.value)
 );
 const isDistanceOrMoisture = computed(
     () =>
@@ -615,37 +608,34 @@ const variantLabel = computed(() => {
 
 // ── Analog value display ────────────────────────────────────────────────
 
-/** Format a numeric value: 1 decimal for floats, integer for whole numbers */
-function formatValue(v: any): string {
-    if (v === null || v === undefined) return '—';
-    if (typeof v === 'number') {
-        return Number.isInteger(v) ? String(v) : v.toFixed(1);
-    }
-    return String(v);
-}
+// Precision is decided per quantity in deviceReadings.ts, never per card.
 
 // Native Shelly temperature (temperature:N → tC)
-const tempDisplay = computed(() => {
-    if (isBThome.value) return formatValue(status.value?.value);
-    return formatValue(status.value?.tC);
-});
+const tempDisplay = computed(() =>
+    formatReading(
+        isBThome.value ? status.value?.value : status.value?.tC,
+        '°C'
+    )
+);
 
 // Native Shelly humidity (humidity:N → rh)
 const humidityDisplay = computed(() => {
-    if (isBThome.value) return formatValue(status.value?.value);
+    if (isBThome.value) return formatReading(status.value?.value, '%');
     // Internal temp (PCB) has no humidity sensor — never show humidity
     if (isInternalTemp.value) return null;
     if (props.variant === 'humidity') {
-        return formatValue(status.value?.rh);
+        return formatReading(status.value?.rh, '%');
     }
     // For temp variant, check if device has humidity:0
     if (!device.value?.status) return null;
     const hum = device.value.status['humidity:0'];
-    return hum?.rh != null ? String(Math.round(hum.rh)) : null;
+    return hum?.rh != null ? formatReading(hum.rh, '%') : null;
 });
 
 // BThome generic value (reads status.value for any BThome sensor)
-const bthomeValue = computed(() => formatValue(status.value?.value));
+const bthomeValue = computed(() =>
+    formatReading(status.value?.value, unitDisplay.value, props.variant)
+);
 
 /** The main displayed value — picks the right source based on entity type and variant */
 const valueDisplay = computed(() => {
@@ -653,19 +643,23 @@ const valueDisplay = computed(() => {
     if (props.variant === 'humidity') return humidityDisplay.value ?? '—';
     if (props.variant === 'energy') {
         // Native energy → aenergy.total or similar
-        return formatValue(
+        return formatReading(
             status.value?.aenergy?.total ??
                 status.value?.apower ??
                 status.value?.voltage ??
                 status.value?.current ??
-                status.value?.value
+                status.value?.value,
+            unitDisplay.value,
+            props.variant
         );
     }
     if (props.variant === 'voltage') {
-        const v = status.value?.voltage ?? status.value?.xvoltage?.voltage;
-        return v != null ? Number(v).toFixed(1) : '—';
+        return formatReading(
+            status.value?.voltage ?? status.value?.xvoltage?.voltage,
+            'V'
+        );
     }
-    return formatValue(status.value?.value);
+    return formatReading(status.value?.value, unitDisplay.value, props.variant);
 });
 
 /** The displayed unit — from entity properties or variant defaults */
@@ -814,8 +808,7 @@ const stateClass = computed(() => {
 const binarySub1x1 = computed(() => {
     const v = props.variant;
     if (v === 'motion') {
-        // Show lux if available
-        const lux = device.value?.status?.['illuminance:0']?.lux;
+        const lux = luxReading.value;
         return lux != null ? `${lux} lux` : '—';
     }
     if (v === 'presencezone') {
@@ -844,7 +837,7 @@ interface WideCol {
     vClass?: string;
 }
 
-const wideCols = computed<WideCol[]>(() => {
+const rawWideCols = computed<WideCol[]>(() => {
     const v = props.variant;
     const battVal = battery.value !== null ? `${battery.value}` : '—';
     const battUnit = battery.value !== null ? '%' : undefined;
@@ -895,7 +888,7 @@ const wideCols = computed<WideCol[]>(() => {
 
     // Motion: Status, Lux, Last Motion, Battery
     if (v === 'motion') {
-        const lux = device.value?.status?.['illuminance:0']?.lux;
+        const lux = luxReading.value;
         return [
             {value: stateText.value, label: 'Status', vClass: stateClass.value},
             {value: lux != null ? String(lux) : '—', label: 'Lux'},
@@ -949,19 +942,21 @@ const wideCols = computed<WideCol[]>(() => {
     ];
 });
 
+// Every column list is filtered through presentStats — a reading the sensor
+// does not send is dropped, never rendered as a dash.
+const wideCols = computed(() => presentStats(rawWideCols.value));
+
 // ── 2x1 split layout (hero left + columns right) ─────────────────────────
 
-/** The big hero value for the left side of the 2x1 split */
+/** The big hero reading for the left side of the 2x1 split; unit is separate. */
 const wideHeroValue = computed(() => {
-    const v = props.variant;
-    if (isBThome.value && isAnalog.value)
-        return `${bthomeValue.value}${unitDisplay.value ? ` ${unitDisplay.value}` : ''}`;
-    if (isBThome.value) return stateText.value;
-    if (v === 'humidity') return `${humidityDisplay.value ?? '—'}%`;
-    if (v === 'energy') return `${valueDisplay.value} ${unitDisplay.value}`;
-    // Binary: state text
-    return stateText.value;
+    if (!isAnalog.value) return stateText.value;
+    if (props.variant === 'humidity') return humidityDisplay.value ?? '—';
+    return valueDisplay.value;
 });
+
+/** Unit shown next to the 2x1 hero reading. Empty for a state word. */
+const wideHeroUnit = computed(() => (isAnalog.value ? unitDisplay.value : ''));
 
 /** Label under the hero value */
 const wideHeroLabel = computed(() => {
@@ -975,7 +970,7 @@ const wideHeroLabel = computed(() => {
 });
 
 /** Right-side columns for the 2x1 split layout */
-const wideRightCols = computed<WideCol[]>(() => {
+const rawWideRightCols = computed<WideCol[]>(() => {
     const v = props.variant;
     const battVal = battery.value !== null ? `${battery.value}` : '—';
     const battUnit = battery.value !== null ? '%' : undefined;
@@ -1000,7 +995,7 @@ const wideRightCols = computed<WideCol[]>(() => {
         ];
     }
     if (v === 'motion') {
-        const lux = device.value?.status?.['illuminance:0']?.lux;
+        const lux = luxReading.value;
         return [
             {value: lux != null ? String(lux) : '—', label: 'Lux'},
             {value: battVal, unit: battUnit, label: 'Battery'}
@@ -1062,12 +1057,12 @@ interface HeroCol {
     vClass?: string;
 }
 
-const heroCols = computed<HeroCol[]>(() => {
+const rawHeroCols = computed<HeroCol[]>(() => {
     const v = props.variant;
     const battVal = battery.value !== null ? `${battery.value}%` : '—';
 
     if (v === 'motion') {
-        const lux = device.value?.status?.['illuminance:0']?.lux;
+        const lux = luxReading.value;
         return [
             {value: lux != null ? String(lux) : '—', label: 'Lux'},
             {value: battVal, label: 'Battery'},
@@ -1125,7 +1120,7 @@ interface HeroStat {
     vClass?: string;
 }
 
-const heroStats = computed<HeroStat[]>(() => {
+const rawHeroStats = computed<HeroStat[]>(() => {
     const v = props.variant;
 
     if (v === 'motion') {
@@ -1180,4 +1175,8 @@ const heroStats = computed<HeroStat[]>(() => {
         {value: '—', label: 'RSSI'}
     ];
 });
+
+const wideRightCols = computed(() => presentStats(rawWideRightCols.value));
+const heroCols = computed(() => presentStats(rawHeroCols.value));
+const heroStats = computed(() => presentStats(rawHeroStats.value));
 </script>

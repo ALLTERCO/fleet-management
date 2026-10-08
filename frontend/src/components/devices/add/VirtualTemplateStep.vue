@@ -1,44 +1,61 @@
 <template>
-    <div class="vts">
-        <div class="vts__head">
-            <h4>What do you want to make?</h4>
-            <p>Choose a template. Fleet Manager will ask only for the parts it needs.</p>
-        </div>
+    <WizardStep
+        name="template"
+        lede="Pick what you want to make. Fleet Manager then asks only for the parts it needs."
+    >
+        <FilterPill
+            v-if="!draft.profilesLoading && !draft.profilesError"
+            v-model="query"
+            placeholder="Search templates"
+        />
 
-        <div v-if="draft.profilesLoading" class="vts__state">
-            <Spinner size="sm" /> Loading templates...
-        </div>
-        <div v-else-if="draft.profilesError" class="vts__state vts__state--error">
+        <PickRowSkeleton v-if="draft.profilesLoading" :rows="4" label="Loading templates" />
+
+        <WizardState v-else-if="draft.profilesError" tone="error">
             {{ draft.profilesError }}
-        </div>
+        </WizardState>
 
-        <div class="vts__grid">
-            <button
-                v-for="item in templateItems"
-                :key="item.key"
-                type="button"
-                class="vts__card"
-                :class="{'vts__card--active': item.active}"
-                :data-template="item.key"
-                @click="choose(item)"
+        <WizardState v-else-if="!visibleGroups.length" tone="empty">
+            No template matches "{{ query }}".
+        </WizardState>
+
+        <!-- Grouped by what the thing is for. Seventeen in one grid was four
+             times what anyone holds in their head at the hardest question. -->
+        <template v-else>
+            <section
+                v-for="group in visibleGroups"
+                :key="group.key"
+                class="vts__group"
             >
-                <span class="vts__icon" :style="accentStyle(item.meta.accent)">
-                    <i :class="item.meta.icon" />
-                </span>
-                <span class="vts__copy">
-                    <strong>{{ item.meta.label }}</strong>
-                    <small>{{ item.meta.hint }}</small>
-                </span>
-                <i v-if="item.active" class="fas fa-check vts__check" />
-            </button>
-        </div>
-    </div>
+                <h4 class="vts__group-title">{{ group.label }}</h4>
+                <div class="vts__grid">
+                    <PickRow
+                        v-for="item in group.items"
+                        :key="item.key"
+                        :selected="item.active"
+                        :data-template="item.key"
+                        @click="choose(item)"
+                    >
+                        <template #lead>
+                            <i :class="item.meta.icon" aria-hidden="true" />
+                        </template>
+                        {{ item.meta.label }}
+                        <template #meta>{{ item.meta.hint }}</template>
+                    </PickRow>
+                </div>
+            </section>
+        </template>
+    </WizardStep>
 </template>
 
 <script setup lang="ts">
 import type {VirtualDeviceProfile} from '@host/virtualDevices';
-import {computed, onMounted} from 'vue';
-import Spinner from '@/components/core/Spinner.vue';
+import {computed, onMounted, ref} from 'vue';
+import FilterPill from '@/components/core/FilterPill.vue';
+import PickRow from '@/components/core/wizard/PickRow.vue';
+import PickRowSkeleton from '@/components/core/wizard/PickRowSkeleton.vue';
+import WizardState from '@/components/core/wizard/WizardState.vue';
+import WizardStep from '@/components/core/wizard/WizardStep.vue';
 import {
     MANUAL_TEMPLATE,
     MANUAL_TEMPLATE_KEY,
@@ -48,7 +65,19 @@ import {
     templateMeta,
     type VirtualTemplateMeta
 } from '@/helpers/virtualDeviceTemplates';
+import {useNameSearch} from '@/composables/useNameSearch';
 import {useVirtualDeviceDraftStore} from '@/stores/virtualDeviceDraftStore';
+
+// Order is what an operator reaches for most, not alphabetical.
+const CATEGORY_ORDER = ['lighting', 'climate', 'energy', 'safety', 'custom'] as const;
+
+const CATEGORY_LABEL: Record<string, string> = {
+    lighting: 'Lighting',
+    climate: 'Climate and air',
+    energy: 'Energy',
+    safety: 'Safety and security',
+    custom: 'Anything else'
+};
 
 interface TemplateItem {
     key: string;
@@ -57,7 +86,15 @@ interface TemplateItem {
     active: boolean;
 }
 
+interface TemplateGroup {
+    key: string;
+    label: string;
+    items: TemplateItem[];
+}
+
 const draft = useVirtualDeviceDraftStore();
+const query = ref('');
+const {matches} = useNameSearch(query);
 
 onMounted(() => {
     if (draft.availableProfiles.length === 0 && !draft.profilesLoading) {
@@ -65,6 +102,8 @@ onMounted(() => {
     }
 });
 
+// The seeded `custom_blank` profile is superseded by MANUAL_TEMPLATE, which
+// browses every part instead of offering one generic role. Only one may show.
 const templateItems = computed<TemplateItem[]>(() => [
     ...sortedProfiles(draft.availableProfiles)
         .filter((profile) => profile.key !== 'custom_blank')
@@ -82,111 +121,44 @@ const templateItems = computed<TemplateItem[]>(() => [
     }
 ]);
 
+const visibleGroups = computed<TemplateGroup[]>(() => {
+    const hits = templateItems.value.filter(
+        (item) => matches(item.meta.label) || matches(item.meta.hint)
+    );
+    return CATEGORY_ORDER.map((key) => ({
+        key,
+        label: CATEGORY_LABEL[key],
+        items: hits.filter((item) => item.meta.categoryKey === key)
+    })).filter((group) => group.items.length > 0);
+});
+
 function choose(item: TemplateItem): void {
     draft.selectProfile(item.profile);
-    if (item.profile) {
-        draft.details.visual = profileVisual(item.profile);
-    } else {
-        draft.details.visual = manualVisual();
-    }
-}
-
-function accentStyle(accent: string): Record<string, string> {
-    return {
-        color: `rgb(var(--accent-${accent}, var(--accent-generic)))`,
-        background: `rgba(var(--accent-${accent}, var(--accent-generic)), 0.14)`
-    };
+    draft.details.visual = item.profile
+        ? profileVisual(item.profile)
+        : manualVisual();
 }
 </script>
 
 <style scoped>
-.vts {
+.vts__group {
     display: grid;
-    gap: var(--space-4);
+    gap: var(--gap-xs);
 }
 
-.vts__head {
-    display: grid;
-    gap: var(--space-1);
-}
-
-.vts__head h4,
-.vts__head p {
+.vts__group-title {
     margin: 0;
-}
-
-.vts__head h4 {
-    font-size: var(--type-subheading);
-    color: var(--color-text-primary);
-}
-
-.vts__head p,
-.vts__state {
-    color: var(--color-text-secondary);
     font-size: var(--type-body);
-}
-
-.vts__state {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-}
-
-.vts__state--error {
-    color: var(--color-danger-text);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
 }
 
 .vts__grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: var(--space-2);
-}
-
-.vts__card {
-    display: grid;
-    grid-template-columns: 40px 1fr auto;
-    align-items: center;
-    gap: var(--space-2);
-    min-height: 82px;
-    padding: var(--space-3);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
-    color: var(--color-text-primary);
-    text-align: left;
-    cursor: pointer;
-}
-
-.vts__card:hover,
-.vts__card--active {
-    border-color: var(--color-border-focus);
-    background: var(--color-surface-3);
-}
-
-.vts__icon {
-    display: grid;
-    place-items: center;
-    width: 40px;
-    height: 40px;
-    border-radius: var(--radius-full);
-}
-
-.vts__copy {
-    display: grid;
-    gap: 3px;
-    min-width: 0;
-}
-
-.vts__copy strong {
-    font-size: var(--type-body);
-}
-
-.vts__copy small {
-    color: var(--color-text-tertiary);
-    line-height: var(--leading-snug);
-}
-
-.vts__check {
-    color: var(--color-success-text);
+    grid-template-columns: repeat(
+        auto-fit,
+        minmax(var(--pick-row-grid-min), 1fr)
+    );
+    gap: var(--gap-xs);
 }
 </style>

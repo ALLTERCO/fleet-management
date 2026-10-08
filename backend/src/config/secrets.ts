@@ -13,6 +13,8 @@ const KEY_ID_PATTERN = /^[A-Za-z0-9_.-]+$/;
 
 // Entropy floor for an explicit at-rest encryption key (256-bit raw).
 export const MIN_SECRET_KEY_LENGTH = 32;
+// scrypt salt floor; the KDF in modules/secretCrypto reads the same rule.
+export const MIN_SALT_BYTES = 16;
 
 function readKeyId(envVar: string, fallback: string): string {
     const raw = envOptionalStr(envVar);
@@ -78,6 +80,31 @@ export function secretEncryptionPreviousKey(): PreviousKey | null {
 // fatal misconfigurations (empty when boot is safe). Used by
 // warnIfInsecureProduction() in non-dev mode and by future ops tooling
 // that needs the same checks without throwing.
+// At-rest encryption rules. Every deployment mode, dev included, needs these:
+// without them each stored credential (channel secrets, device passwords)
+// fails at write time with a message buried in a form, not at boot.
+export function describeAtRestSecretsMisconfiguration(): string[] {
+    const fmSecret = envOptionalStr('FM_SECRET_ENCRYPTION_KEY') || '';
+    const salt = envOptionalStr('FM_SECRET_KDF_SALT') || '';
+    const errors: string[] = [];
+    if (!fmSecret) {
+        errors.push(
+            'FM_SECRET_ENCRYPTION_KEY is missing — use a dedicated at-rest encryption key instead of sharing JWT_SECRET.'
+        );
+    }
+    if (fmSecret && fmSecret.length < MIN_SECRET_KEY_LENGTH) {
+        errors.push(
+            `FM_SECRET_ENCRYPTION_KEY is too short — use at least ${MIN_SECRET_KEY_LENGTH} random characters (256-bit).`
+        );
+    }
+    if (salt.length < MIN_SALT_BYTES) {
+        errors.push(
+            `FM_SECRET_KDF_SALT is missing or shorter than ${MIN_SALT_BYTES} characters — the at-rest key derivation cannot run.`
+        );
+    }
+    return errors;
+}
+
 export function describeSecretsMisconfiguration(
     jwtFromConfig?: string
 ): string[] {
@@ -89,21 +116,12 @@ export function describeSecretsMisconfiguration(
             'JWT_SECRET is missing or uses the default — all auth tokens are forgeable.'
         );
     }
-    if (!fmSecret) {
-        errors.push(
-            'FM_SECRET_ENCRYPTION_KEY is missing — use a dedicated at-rest encryption key instead of sharing JWT_SECRET.'
-        );
-    }
+    errors.push(...describeAtRestSecretsMisconfiguration());
     // A weak or shared key means one leak forges tokens AND decrypts every
     // credential, so an explicit key must be strong and distinct.
     if (fmSecret && fmSecret === jwtSecret) {
         errors.push(
             'FM_SECRET_ENCRYPTION_KEY must differ from JWT_SECRET — a shared key means one leak compromises both auth and at-rest encryption.'
-        );
-    }
-    if (fmSecret && fmSecret.length < MIN_SECRET_KEY_LENGTH) {
-        errors.push(
-            `FM_SECRET_ENCRYPTION_KEY is too short — use at least ${MIN_SECRET_KEY_LENGTH} random characters (256-bit).`
         );
     }
     return errors;

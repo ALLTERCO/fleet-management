@@ -1,142 +1,140 @@
 <template>
-    <div class="fixed inset-0 z-50 flex items-end justify-center bg-[rgba(var(--color-surface-bg-rgb),0.5)] sm:items-center" @click.self="$emit('close')">
-        <div class="w-full max-w-md rounded-t-2xl sm:rounded-2xl border border-border bg-surface shadow-xl" role="dialog" aria-modal="true" aria-labelledby="wcp-title">
-            <div class="flex items-center justify-between border-b border-border px-5 py-4">
-                <h2 id="wcp-title" class="text-sm font-semibold">Configure Widget</h2>
-                <button class="text-muted hover:text-primary" aria-label="Close" title="Close" @click="$emit('close')">
-                    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="16" height="16">
-                        <path d="M4 4l8 8M12 4l-8 8" />
-                    </svg>
+    <div class="wcp-scrim" @click.self="$emit('close')">
+        <div
+            class="wcp"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wcp-title"
+        >
+            <header class="wcp-head">
+                <h2 id="wcp-title" class="wcp-title">
+                    <i :class="meta.icon" aria-hidden="true" />
+                    {{ meta.name }}
+                </h2>
+                <button
+                    type="button"
+                    class="wcp-close"
+                    aria-label="Close"
+                    @click="$emit('close')"
+                >
+                    <i class="fas fa-xmark" aria-hidden="true" />
                 </button>
+            </header>
+
+            <div class="wcp-body">
+                <section class="wcp-section">
+                    <h3 class="wcp-section-title">Size</h3>
+                    <SizePicker
+                        :size="draftSize"
+                        :allowed-sizes="allowedSizes"
+                        @change="draftSize = $event"
+                    />
+                </section>
+
+                <section class="wcp-section">
+                    <h3 class="wcp-section-title">Settings</h3>
+                    <AddWidgetCfgForm
+                        :widget="widgetKind"
+                        :chart-device-list="deviceList"
+                        :chart-cfg="bundle.chartCfg"
+                        :gauge-cfg="bundle.gaugeCfg"
+                        :stats-cfg="bundle.statsCfg"
+                        :top-cfg="bundle.topCfg"
+                        :timeline-cfg="bundle.timelineCfg"
+                        :heatmap-cfg="bundle.heatmapCfg"
+                        :site-grid-cfg="bundle.siteGridCfg"
+                        :maint-cfg="bundle.maintCfg"
+                        :cross-bar-cfg="bundle.crossBarCfg"
+                    />
+                </section>
+
+                <section class="wcp-section">
+                    <h3 class="wcp-section-title">Preview</h3>
+                    <div class="wcp-preview">
+                        <CardPreview :entry="previewEntry" />
+                    </div>
+                    <p v-if="!built.ok" class="wcp-hint">
+                        <i class="fas fa-circle-info" aria-hidden="true" />
+                        {{ built.message }}
+                    </p>
+                </section>
             </div>
 
-            <div class="p-5 flex flex-col gap-4">
-                <!-- Chart widget: structured form -->
-                <template v-if="draft.id === 'chart_widget'">
-                    <div class="flex flex-col gap-1">
-                        <label class="text-xs font-medium text-muted">Device (Shelly ID)</label>
-                        <input
-                            v-model="draft.shellyId"
-                            type="text"
-                            class="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                            placeholder="e.g. shellyem3-abc123"
-                        />
-                    </div>
-                    <div class="flex flex-col gap-1">
-                        <label class="text-xs font-medium text-muted">Metric</label>
-                        <select
-                            v-model="draft.metric"
-                            class="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                        >
-                            <option v-for="m in CHART_METRICS" :key="m.value" :value="m.value">{{ m.label }}</option>
-                        </select>
-                    </div>
-                    <div class="flex flex-col gap-1">
-                        <label class="text-xs font-medium text-muted">Chart Type</label>
-                        <select
-                            v-model="draft.chartType"
-                            class="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                        >
-                            <option value="line">Line</option>
-                            <option value="bar">Bar</option>
-                        </select>
-                    </div>
-                </template>
-
-                <!-- Gauge widget: structured form -->
-                <template v-else-if="draft.id === 'gauge_widget'">
-                    <div class="flex flex-col gap-1">
-                        <label class="text-xs font-medium text-muted">Device (Shelly ID)</label>
-                        <input
-                            v-model="draft.shellyId"
-                            type="text"
-                            class="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                        />
-                    </div>
-                    <div class="flex flex-col gap-1">
-                        <label class="text-xs font-medium text-muted">Metric</label>
-                        <select
-                            v-model="draft.metric"
-                            class="rounded-lg border border-border bg-surface px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
-                        >
-                            <option v-for="m in CHART_METRICS" :key="m.value" :value="m.value">{{ m.label }}</option>
-                        </select>
-                    </div>
-                </template>
-
-                <!-- Fallback: JSON editor -->
-                <template v-else>
-                    <div class="flex flex-col gap-1">
-                        <label class="text-xs font-medium text-muted">Widget Config (JSON)</label>
-                        <textarea
-                            v-model="jsonDraft"
-                            rows="10"
-                            class="rounded-lg border border-border bg-surface px-3 py-2 font-mono text-xs focus:outline-none focus:ring-1 focus:ring-primary"
-                            :class="{ 'border-red-500': jsonError }"
-                            @input="onJsonInput"
-                        />
-                        <p v-if="jsonError" class="text-xs text-red-500">{{ jsonError }}</p>
-                    </div>
-                </template>
-            </div>
-
-            <div class="flex justify-end gap-2 border-t border-border px-5 py-4">
-                <button class="btn-ghost text-sm" @click="$emit('close')">Cancel</button>
-                <button class="btn-primary text-sm" :disabled="!!jsonError" @click="save">Save</button>
-            </div>
+            <footer class="wcp-foot">
+                <button type="button" class="btn-ghost" @click="$emit('close')">
+                    Cancel
+                </button>
+                <button
+                    type="button"
+                    class="btn-primary"
+                    :disabled="!built.ok"
+                    @click="save"
+                >
+                    Save
+                </button>
+            </footer>
         </div>
     </div>
 </template>
 
 <script setup lang="ts">
-import {onBeforeUnmount, onMounted, ref, watch} from 'vue';
-
-const CHART_METRICS = [
-    {value: 'power', label: 'Power (W)'},
-    {value: 'consumption', label: 'Energy (Wh)'},
-    {value: 'returned_energy', label: 'Returned Energy (Wh)'},
-    {value: 'voltage', label: 'Voltage (V)'},
-    {value: 'current', label: 'Current (A)'},
-    {value: 'temperature', label: 'Temperature (°C)'},
-    {value: 'humidity', label: 'Humidity (%)'},
-    {value: 'luminance', label: 'Luminance (lux)'}
-];
+import {computed, onBeforeUnmount, onMounted, reactive, ref} from 'vue';
+import AddWidgetCfgForm from '@/components/modals/AddWidgetCfgForm.vue';
+import {useWidgetDeviceList} from '@/composables/useWidgetDeviceList';
+import {
+    buildWidgetPayload,
+    createWidgetCfgBundle,
+    seedCfgBundleFromConfig
+} from '@/helpers/widgetBuilders';
+import {allowedSizesForWidget, type CardSize} from '@/helpers/widgetCatalog';
+import {UI_WIDGET_META, WIDGET_SAMPLE_CONFIG} from '@/helpers/widgetSamples';
+import type {DashboardEntry, UiWidgetId} from '@/types/dashboard-entry';
+import SizePicker from '@/components/cards/SizePicker.vue';
+import CardPreview from './CardPreview.vue';
 
 const props = defineProps<{
     config: Record<string, any>;
+    size: CardSize;
 }>();
 
 const emit = defineEmits<{
     close: [];
-    save: [config: Record<string, any>];
+    save: [payload: {config: Record<string, unknown>; size: CardSize}];
 }>();
 
-const draft = ref<Record<string, any>>({});
-const jsonDraft = ref('');
-const jsonError = ref('');
-
-watch(
-    () => props.config,
-    (c) => {
-        draft.value = {...c};
-        jsonDraft.value = JSON.stringify(c, null, 2);
-        jsonError.value = '';
-    },
-    {immediate: true}
+const widgetKind = computed(() => props.config.id as UiWidgetId);
+const meta = computed(
+    () =>
+        UI_WIDGET_META[widgetKind.value] ?? {
+            icon: 'fas fa-shapes',
+            name: 'Widget',
+            description: ''
+        }
 );
 
-function onJsonInput() {
-    try {
-        draft.value = JSON.parse(jsonDraft.value);
-        jsonError.value = '';
-    } catch {
-        jsonError.value = 'Invalid JSON';
-    }
-}
+// Seed the shared form bundle from the stored config once — the reverse of the
+// builder, so a field the builder wrote reads back into the same form.
+const bundle = reactive(createWidgetCfgBundle());
+seedCfgBundleFromConfig(bundle, props.config);
+
+const draftSize = ref<CardSize>(props.size);
+const allowedSizes = computed(() => allowedSizesForWidget(widgetKind.value));
+const deviceList = useWidgetDeviceList();
+
+// One builder for add, edit and preview. An incomplete form declines; the
+// preview then falls back to the sample so it always renders.
+const built = computed(() => buildWidgetPayload(widgetKind.value, bundle));
+const previewEntry = computed<DashboardEntry>(() => ({
+    type: 'ui_widget',
+    size: draftSize.value,
+    data: built.value.ok
+        ? built.value.data
+        : (WIDGET_SAMPLE_CONFIG[widgetKind.value]?.() ?? {id: widgetKind.value})
+}));
 
 function save() {
-    if (jsonError.value) return;
-    emit('save', {...draft.value});
+    if (!built.value.ok) return;
+    emit('save', {config: built.value.data, size: draftSize.value});
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -145,3 +143,123 @@ function onKeydown(e: KeyboardEvent) {
 onMounted(() => window.addEventListener('keydown', onKeydown));
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 </script>
+
+<style scoped>
+.wcp-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-modal);
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    background: var(--overlay-scrim);
+    backdrop-filter: blur(var(--glass-3-blur));
+}
+
+@media (min-width: 640px) {
+    .wcp-scrim {
+        align-items: center;
+    }
+}
+
+.wcp {
+    width: 100%;
+    max-width: 26rem;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--glass-3-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+}
+
+@media (min-width: 640px) {
+    .wcp {
+        border-radius: var(--radius-xl);
+    }
+}
+
+.wcp-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-4) var(--space-5);
+    border-bottom: 1px solid var(--color-border-subtle);
+    flex-shrink: 0;
+}
+
+.wcp-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+}
+
+.wcp-title i {
+    color: var(--color-text-tertiary);
+}
+
+.wcp-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
+    color: var(--color-text-tertiary);
+    border-radius: var(--radius-sm);
+}
+
+.wcp-close:hover {
+    color: var(--color-text-primary);
+    background: var(--glass-hover);
+}
+
+.wcp-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    padding: var(--space-5);
+    overflow-y: auto;
+}
+
+.wcp-section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.wcp-section-title {
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wide);
+    color: var(--color-text-tertiary);
+}
+
+.wcp-preview {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-3);
+    background: var(--color-surface-bg);
+    border-radius: var(--radius-md);
+}
+
+.wcp-hint {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--type-caption);
+    color: var(--color-text-tertiary);
+}
+
+.wcp-foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    padding: var(--space-4) var(--space-5);
+    border-top: 1px solid var(--color-border-subtle);
+    flex-shrink: 0;
+}
+</style>

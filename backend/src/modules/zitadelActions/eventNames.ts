@@ -3,6 +3,8 @@
 export const ZITADEL_USER_EVENTS = {
     humanAdded: 'user.human.added',
     humanRemoved: 'user.removed',
+    deactivated: 'user.deactivated',
+    locked: 'user.locked',
     machineAdded: 'user.machine.added',
     patAdded: 'user.pat.added',
     patRemoved: 'user.pat.removed',
@@ -61,6 +63,15 @@ export const ZITADEL_ACTION_BINDINGS = [
     },
     {
         event: ZITADEL_USER_EVENTS.grantCascadeRemoved,
+        target: 'grantRemoved'
+    },
+    // Access-ending account changes share the grant lane's signed target.
+    {
+        event: ZITADEL_USER_EVENTS.deactivated,
+        target: 'grantRemoved'
+    },
+    {
+        event: ZITADEL_USER_EVENTS.locked,
         target: 'grantRemoved'
     }
 ] as const;

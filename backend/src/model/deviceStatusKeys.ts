@@ -13,5 +13,6 @@ export const NON_COMPONENT_KEYS: ReadonlySet<string> = new Set([
     'eth',
     'dali',
     'knx',
+    'ir',
     'bthome'
 ]);

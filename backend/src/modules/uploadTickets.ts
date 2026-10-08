@@ -4,6 +4,7 @@ import type CommandSender from '../model/CommandSender';
 import {uploadTickets} from './redis/services';
 
 export type UploadTicketKind =
+    | 'backup_import'
     | 'firmware'
     | 'background'
     | 'profile_picture'

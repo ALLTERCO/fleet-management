@@ -22,6 +22,7 @@ import {
     shutdownSamplers
 } from './samplers';
 import {
+    applicationEvents,
     counters,
     dbTimings,
     gauges,
@@ -39,6 +40,12 @@ import {
     resetWsClientHealth
 } from './wsClientHealth';
 
+export {
+    recordBluReconcileCapacity,
+    recordBluReconcileCapacityRejection,
+    recordBluReconcileRequest,
+    recordBluReconcileRun
+} from './bluReconcileTimings';
 export type {
     BuildTiming,
     SlowBuildEntry,
@@ -48,11 +55,19 @@ export {
     getCounter,
     getGauge,
     getLabeledCounter,
+    getLabeledGauge,
+    incrementApplicationEvent,
     incrementCounter,
     incrementLabeledCounter,
     setGauge,
     setLabeledGauge
 } from './counters';
+export {
+    finishDbCall,
+    isDbCallDetailOn,
+    startDbCall,
+    timeDbCall
+} from './dbCallMetrics';
 export type {DbRuntimeSnapshot, DbRuntimeStatus} from './dbRuntime';
 export {
     buildDbRuntimeErrorSnapshot,
@@ -71,6 +86,7 @@ export type {
     DeviceCommandTiming,
     SlowDeviceCommand
 } from './deviceCommandTimings';
+export {recordDeviceIngressElapsed} from './deviceIngressTimings';
 export {
     getInitFailures,
     getRpcErrors,
@@ -80,6 +96,18 @@ export {
 } from './eventLog';
 export {getDebugReport, getMetrics} from './exporters/json';
 export {getPrometheusMetrics} from './exporters/prometheus';
+export type {
+    McpApprovalChannel,
+    McpApprovalOutcome,
+    McpToolOutcome
+} from './mcpMetrics';
+export {
+    recordMcpApproval,
+    recordMcpDenial,
+    recordMcpRateBudgetHit,
+    recordMcpToolCall
+} from './mcpMetrics';
+export {liveGauge} from './processMetrics';
 export {
     getLevel,
     getMetricHistory,
@@ -113,6 +141,8 @@ export {
     registerModule,
     snapshotTopology
 } from './topology';
+export type {McpSpan} from './tracing';
+export {startMcpSpan, startTracing, stopTracing} from './tracing';
 export type {
     EdgeCounter,
     HttpStats,
@@ -180,6 +210,7 @@ export function resetTimings(): void {
     rpcTimings.clear();
     dbTimings.clear();
     counters.clear();
+    applicationEvents.clear();
     labeledCounters.clear();
     gauges.clear();
     labeledGauges.clear();

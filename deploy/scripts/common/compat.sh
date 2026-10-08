@@ -391,7 +391,7 @@ compat_zitadel_next_stage_tag() {
         return 1
     fi
     if [ "$current_major" -lt 3 ] && [ "$target_major" -ge 4 ]; then
-        printf '%s' "${ZITADEL_STAGE_VERSION:-v3.4.9}"
+        printf '%s' "${ZITADEL_STAGE_VERSION:-v3.4.15}"
         return 0
     fi
     return 1
@@ -401,8 +401,8 @@ compat_zitadel_next_stage_tag() {
 compat_zitadel_stage_pg_tag() {
     local zitadel_stage="$1"
     case "$zitadel_stage" in
-        v3.*) printf '%s' "postgres:${ZITADEL_STAGE_POSTGRES_VERSION:-17-alpine}" ;;
-        *)    printf '%s' "postgres:${ZITADEL_POSTGRES_VERSION:-18.3-alpine3.23}" ;;
+        v3.*) printf '%s' "postgres:${ZITADEL_STAGE_POSTGRES_VERSION:-17.11-alpine}" ;;
+        *)    printf '%s' "postgres:${ZITADEL_POSTGRES_VERSION:-18.6-alpine3.23}" ;;
     esac
 }
 

@@ -11,6 +11,11 @@ import type {user_t} from '../../types';
 import * as AuditLogger from '../AuditLogger';
 import {FLEET_ROLES, mapRolesToPermissions} from '../authz/coarse';
 import {identityDirectory} from '../identity';
+import {NODE_RED_SERVICE_USERNAME} from '../nodeRed/serviceIdentity';
+import {
+    NODE_RED_DEFAULT_PERMISSIONS,
+    upgradeRetiredNodeRedDefault
+} from '../nodeRed/servicePermissions';
 import * as Observability from '../Observability';
 import * as store from '../PostgresProvider';
 import {
@@ -24,6 +29,7 @@ import {
 } from '../user/cache';
 import {DefaultSigner, ScopedTokenSigner} from '../user/signers';
 import {getActiveScopedPat, touchScopedPatLastUsed} from '../user/tokenStore';
+import {hasAccountStanding} from './AccountStanding';
 import {authenticateExternalOidcToken} from './ExternalTokenUserResolver';
 import {
     type ServiceTokenProvider,
@@ -37,8 +43,11 @@ function nodeRedOrgId(): string | undefined {
     return value.length > 0 ? value : undefined;
 }
 
+// Unset = the default set; set but empty = no permissions.
 function nodeRedPermissions(): string[] {
-    return [...envCsv('FM_NODE_RED_PERMISSIONS', [])];
+    return upgradeRetiredNodeRedDefault(
+        envCsv('FM_NODE_RED_PERMISSIONS', NODE_RED_DEFAULT_PERMISSIONS)
+    );
 }
 
 function nodeRedServiceToken(): string {
@@ -83,7 +92,7 @@ function grafanaServiceUserId(): string | undefined {
 }
 
 export const NODE_RED_USER: user_t = {
-    username: 'fleet-nodered',
+    username: NODE_RED_SERVICE_USERNAME,
     password: '',
     permissions: nodeRedPermissions(),
     group: 'automation_service',
@@ -112,6 +121,8 @@ export interface ServiceUserSource {
     fallbackPermissions: string[];
     fallbackUserId: string | undefined;
     tokenPresent: boolean;
+    /** Maps a stored list to the one to grant; default keeps it as is. */
+    upgradePermissions?: (permissions: readonly string[]) => string[];
 }
 
 export interface ResolvedServiceUser {
@@ -148,6 +159,10 @@ async function tryLoadServiceUserFromDirectory(
     }
 }
 
+function keepPermissions(permissions: readonly string[]): string[] {
+    return [...permissions];
+}
+
 function buildServiceUserFromMetadata(
     source: ServiceUserSource,
     metadataPermissions: string[]
@@ -157,7 +172,9 @@ function buildServiceUserFromMetadata(
         password: '',
         permissions:
             metadataPermissions.length > 0
-                ? metadataPermissions
+                ? (source.upgradePermissions ?? keepPermissions)(
+                      metadataPermissions
+                  )
                 : source.fallbackPermissions,
         group: 'automation_service',
         enabled: true,
@@ -183,12 +200,13 @@ export function buildFallbackServiceUser(source: ServiceUserSource): user_t {
 export function getNodeRedServiceUser(): Promise<ResolvedServiceUser> {
     return loadServiceUser({
         label: 'Node-RED',
-        username: 'fleet-nodered',
+        username: NODE_RED_SERVICE_USERNAME,
         serviceAccount: configRc.serviceAccounts?.nodered,
         orgId: nodeRedOrgId(),
         fallbackPermissions: nodeRedPermissions(),
         fallbackUserId: nodeRedServiceUserId(),
-        tokenPresent: nodeRedServiceToken().length > 0
+        tokenPresent: nodeRedServiceToken().length > 0,
+        upgradePermissions: upgradeRetiredNodeRedDefault
     });
 }
 
@@ -227,6 +245,7 @@ function createFleetUserTokenAuthenticator(): TokenAuthenticator<user_t> {
         getInflightExternalAuth: getInflightIntrospection,
         registerInflightExternalAuth: registerInflightIntrospection,
         authenticateExternalToken: authenticateExternalOidcToken,
+        hasAccountStanding,
         incrementCounter: Observability.incrementCounter,
         warn: (message) => logger.warn(message),
         debug: (message) => logger.debug(message)

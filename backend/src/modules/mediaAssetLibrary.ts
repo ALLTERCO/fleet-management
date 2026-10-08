@@ -187,13 +187,124 @@ export async function deleteBackground(
     return {success: true};
 }
 
-export async function listReportImages(): Promise<MediaImageList> {
-    const files = await fsAsync.readdir(reportImagesPath);
-    return {
-        thumbnails: files.filter((f) => f.includes('_thumb')),
-        displays: [],
-        originals: files.filter(
-            (f) => !f.includes('_thumb') && !f.includes('_display')
+// Root files predate per-tenant folders and have no owner, so only
+// provider support sees them.
+function reportImageDirs(
+    user?: MediaAssetUser | null
+): Array<{rel: string; abs: string}> {
+    if (userCanCrossOrganizations(user)) {
+        return [{rel: '', abs: reportImagesPath}];
+    }
+    const orgSeg = safeOrgSegment(user?.organizationId);
+    if (!orgSeg) return [];
+    return [{rel: orgSeg, abs: path.join(reportImagesPath, orgSeg)}];
+}
+
+export async function listReportImages(
+    user?: MediaAssetUser | null
+): Promise<MediaImageList> {
+    const thumbnails: string[] = [];
+    const originals: string[] = [];
+    for (const {rel, abs} of reportImageDirs(user)) {
+        const entries = await fsAsync
+            .readdir(abs, {withFileTypes: true})
+            .catch(() => []);
+        for (const entry of entries) {
+            if (!entry.isFile()) continue;
+            const full = rel ? `${rel}/${entry.name}` : entry.name;
+            if (entry.name.includes('_thumb')) thumbnails.push(full);
+            else if (!entry.name.includes('_display')) originals.push(full);
+        }
+    }
+    return {thumbnails, displays: [], originals};
+}
+
+async function listLegacyReportImages(): Promise<string[]> {
+    const entries = await fsAsync
+        .readdir(reportImagesPath, {withFileTypes: true})
+        .catch(() => []);
+    return entries
+        .filter(
+            (entry) =>
+                entry.isFile() &&
+                ALLOWED_REPORT_IMAGE_EXT.has(
+                    path.extname(entry.name).toLowerCase()
+                )
         )
-    };
+        .map((entry) => entry.name);
+}
+
+async function moveReportImageToTenant(
+    fileName: string,
+    orgSegment: string
+): Promise<string> {
+    const targetDir = path.join(reportImagesPath, orgSegment);
+    await fsAsync.mkdir(targetDir, {recursive: true});
+    await fsAsync.rename(
+        path.join(reportImagesPath, fileName),
+        path.join(targetDir, fileName)
+    );
+    return `${orgSegment}/${fileName}`;
+}
+
+// A dedicated install has exactly one tenant, so files from before per-tenant
+// folders belong to it. Safe to run at every boot: a second run finds nothing.
+export async function adoptLegacyReportImages(
+    organizationId: string
+): Promise<string[]> {
+    const orgSegment = safeOrgSegment(organizationId);
+    if (!orgSegment) {
+        throw new MediaAssetValidationError('organization id is invalid');
+    }
+    const moved: string[] = [];
+    for (const fileName of await listLegacyReportImages()) {
+        await moveReportImageToTenant(fileName, orgSegment);
+        moved.push(fileName);
+        logger.info(
+            'report image adopted file=%s tenant=%s',
+            fileName,
+            orgSegment
+        );
+    }
+    return moved;
+}
+
+// Provider support gives an unowned root file to a tenant, by hand.
+export async function assignReportImage(
+    user: MediaAssetUser | undefined | null,
+    fileName: unknown,
+    organizationId: string
+): Promise<{success: true; path: string}> {
+    if (!userCanCrossOrganizations(user)) {
+        throw new MediaAssetPermissionError(
+            'Assigning report images is provider-support-only'
+        );
+    }
+    if (
+        typeof fileName !== 'string' ||
+        fileName !== path.basename(fileName) ||
+        !ALLOWED_REPORT_IMAGE_EXT.has(path.extname(fileName).toLowerCase())
+    ) {
+        throw new MediaAssetValidationError('Invalid fileName');
+    }
+    const orgSegment = safeOrgSegment(organizationId);
+    if (!orgSegment) {
+        throw new MediaAssetValidationError('organization id is invalid');
+    }
+    const legacy = await listLegacyReportImages();
+    if (!legacy.includes(fileName)) {
+        throw new MediaAssetNotFoundError('Report image not found');
+    }
+    const moved = await moveReportImageToTenant(fileName, orgSegment);
+    // The thumbnail the upload wrote next to it goes along.
+    const ext = path.extname(fileName);
+    const thumb = `${fileName.slice(0, -ext.length)}_thumb${ext}`;
+    if (legacy.includes(thumb))
+        await moveReportImageToTenant(thumb, orgSegment);
+    logger.info(
+        'report image assigned file=%s tenant=%s',
+        fileName,
+        orgSegment
+    );
+    return {success: true, path: moved};
 }

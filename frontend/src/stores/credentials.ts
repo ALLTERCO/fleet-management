@@ -1,5 +1,6 @@
 import type {
     CredentialClearParams,
+    CredentialGetManyResult,
     CredentialJobResponse,
     CredentialListParams,
     CredentialListPushesParams,
@@ -13,6 +14,12 @@ import {defineStore} from 'pinia';
 import {ref} from 'vue';
 import {formatRpcError, toastRpcError} from '@/helpers/domainErrors';
 import {BACKEND_LIST_MAX_LIMIT, paginateWhileFull} from '@/helpers/pagination';
+import {
+    type CursorPage,
+    paginateByCursor
+} from '@/shell/template-host/core/pagination';
+import {createBatchCoalescer} from '../tools/coalesce';
+import {deferWhileHidden} from '../tools/hiddenTabDeferral';
 import * as ws from '../tools/websocket';
 import {CREDENTIAL_EVENT} from '../tools/wsEvents';
 import {useJobsStore} from './jobs';
@@ -51,8 +58,14 @@ interface CredentialWsEvent {
         jobId?: string;
         status?: CredentialJobResponse['status'];
         row?: CredentialPushRow;
+        deviceId?: string;
     };
 }
+
+// Matches CREDENTIAL_GET_MANY_MAX_IDS; a bigger burst rereads the list.
+const CHANGED_BATCH_MAX = 500;
+const CHANGED_QUIET_MS = 400;
+const CHANGED_MAX_WAIT_MS = 2000;
 
 export const useCredentialsStore = defineStore('credentials', () => {
     const credentials = ref<Record<string, DeviceCredentialResponse>>({});
@@ -63,6 +76,12 @@ export const useCredentialsStore = defineStore('credentials', () => {
     ws.onCredentialEvent(handleCredentialEvent);
 
     function handleCredentialEvent(event: CredentialWsEvent): void {
+        if (event.method === CREDENTIAL_EVENT.CHANGED) {
+            if (loaded && event.params?.deviceId) {
+                changedBurst.schedule(event.params.deviceId);
+            }
+            return;
+        }
         if (event.method === CREDENTIAL_EVENT.PUSH_ROW && event.params?.row) {
             applyPushRow(event.params.row);
             return;
@@ -112,6 +131,49 @@ export const useCredentialsStore = defineStore('credentials', () => {
         });
     }
 
+    // Changed devices wait here while the tab is hidden.
+    const changedDeviceIds = new Set<string>();
+    const changedRead = deferWhileHidden(() => {
+        const ids = [...changedDeviceIds];
+        changedDeviceIds.clear();
+        void syncChanged(ids);
+    });
+    const changedBurst = createBatchCoalescer<string>(
+        (ids) => {
+            for (const id of ids) changedDeviceIds.add(id);
+            changedRead.request();
+        },
+        CHANGED_QUIET_MS,
+        CHANGED_MAX_WAIT_MS
+    );
+
+    async function syncChanged(deviceIds: string[]): Promise<void> {
+        if (deviceIds.length === 0) return;
+        if (deviceIds.length > CHANGED_BATCH_MAX) {
+            await fetchAll();
+            return;
+        }
+        try {
+            const res = await ws.sendRPC<CredentialGetManyResult>(
+                'FLEET_MANAGER',
+                'credential.getmany',
+                {deviceIds}
+            );
+            applyChangedCredentials(res);
+        } catch (err) {
+            toastRpcError(toast, err, 'Failed to load credentials');
+        }
+    }
+
+    function applyChangedCredentials(res: CredentialGetManyResult): void {
+        const next = {...credentials.value};
+        for (const c of res.items ?? []) next[c.device_id] = c;
+        for (const id of res.missingIds ?? []) delete next[id];
+        credentials.value = next;
+    }
+
+    // Live events update only a list someone loaded.
+    let loaded = false;
     let latestFetchAllResult: DeviceCredentialResponse[] = [];
     const credentialsRefresh =
         createLatestRefreshCoordinator(refreshCredentials);
@@ -123,26 +185,28 @@ export const useCredentialsStore = defineStore('credentials', () => {
         return latestFetchAllResult;
     }
 
-    // Envelope total is broken server-side (always page-sized), so page by
-    // full-page detection; one state write after the whole loop.
+    // Cursor pages, one state write after the whole pass.
     async function refreshCredentials(
         params: CredentialListParams
     ): Promise<void> {
         loading.value = true;
         try {
-            const items = await paginateWhileFull<DeviceCredentialResponse>(
-                (offset) =>
-                    ws.sendRPC('FLEET_MANAGER', 'credential.list', {
+            const {items} = await paginateByCursor((cursor) =>
+                ws.sendRPC<CursorPage<DeviceCredentialResponse>>(
+                    'FLEET_MANAGER',
+                    'credential.list',
+                    {
                         ...params,
                         limit: BACKEND_LIST_MAX_LIMIT,
-                        offset
-                    }),
-                BACKEND_LIST_MAX_LIMIT
+                        ...(cursor ? {cursor} : {})
+                    }
+                )
             );
             const next: Record<string, DeviceCredentialResponse> = {};
             for (const c of items) next[c.device_id] = c;
             credentials.value = next;
             latestFetchAllResult = items;
+            loaded = true;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load credentials');
             latestFetchAllResult = [];

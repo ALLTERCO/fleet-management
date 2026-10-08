@@ -22,6 +22,11 @@ export interface ListPage<T> {
     total: number;
 }
 
+// One borrowed connection inside BEGIN/COMMIT, so ordered statements share it.
+export interface DeviceIngressTx {
+    queryRows<T>(sql: string, params?: readonly unknown[]): Promise<T[]>;
+}
+
 export interface DeviceIngressRepositoryDeps {
     queryRows<T = unknown>(
         sql: string,
@@ -29,7 +34,14 @@ export interface DeviceIngressRepositoryDeps {
     ): Promise<T[]>;
 }
 
-const defaultDeps: DeviceIngressRepositoryDeps = {
+// Only the writes that must span statements need a transaction, so callers that
+// issue one statement are not forced to supply one.
+export interface DeviceIngressTransactionDeps
+    extends DeviceIngressRepositoryDeps {
+    transaction<T>(fn: (tx: DeviceIngressTx) => Promise<T>): Promise<T>;
+}
+
+const defaultDeps: DeviceIngressTransactionDeps = {
     async queryRows<T>(
         sql: string,
         params: readonly unknown[] = []
@@ -37,6 +49,16 @@ const defaultDeps: DeviceIngressRepositoryDeps = {
         // Deliberate lazy import: PostgresProvider loads runtime config.
         const postgres = await import('../PostgresProvider.js');
         return postgres.queryRows<T>(sql, params);
+    },
+    async transaction<T>(fn: (tx: DeviceIngressTx) => Promise<T>): Promise<T> {
+        // Deliberate lazy import: PostgresProvider loads runtime config.
+        const postgres = await import('../PostgresProvider.js');
+        return postgres.withQueryTransaction((client) =>
+            fn({
+                queryRows: <R>(sql: string, params?: readonly unknown[]) =>
+                    client.query<R>(sql, params)
+            })
+        );
     }
 };
 
@@ -137,6 +159,9 @@ export interface EnsureApprovedFleetDeviceInput {
     organizationId: string;
     reportedExternalId: string;
     jdoc?: Record<string, unknown>;
+    // Only an operator's approval may lift a deny; a device's own connect,
+    // even with a valid credential, never does.
+    overrideDenied: boolean;
 }
 
 export interface EnsureApprovedFleetDeviceResult {
@@ -321,6 +346,27 @@ export async function updateIdentityStatus(
     return rows[0] ? toIdentity(rows[0]) : null;
 }
 
+export async function updateIdentityStatusFrom(
+    input: {
+        organizationId: string;
+        id: string;
+        from: DeviceIngressIdentityState;
+        to: DeviceIngressIdentityState;
+    },
+    deps: DeviceIngressRepositoryDeps = defaultDeps
+): Promise<DeviceIngressIdentity | null> {
+    const rows = await deps.queryRows<IdentityRow>(
+        `UPDATE organization.device_ingress_identity
+            SET status = $3, updated_at = now()
+          WHERE organization_id = $1 AND id = $2
+            -- Only the state the caller saw may move, so a racing quarantine is never resurrected.
+            AND status = $4
+          RETURNING ${IDENTITY_COLUMNS}`,
+        [input.organizationId, input.id, input.to, input.from]
+    );
+    return rows[0] ? toIdentity(rows[0]) : null;
+}
+
 export interface CreateCredentialInput {
     organizationId: string;
     identityId: string;
@@ -379,39 +425,101 @@ export async function updateCredentialState(
     return rows[0] ? toCredential(rows[0]) : null;
 }
 
-export async function finalizeCredentialRotation(
+export interface DeviceIngressExpiringCredential
+    extends DeviceIngressCredential {
+    expectedExternalId: string | null;
+}
+
+interface ExpiringCredentialRow extends CredentialRow {
+    expected_external_id: string | null;
+    total_count?: number;
+}
+
+export async function listExpiringCredentials(
+    input: {
+        organizationId: string;
+        withinDays: number;
+        limit: number;
+        offset: number;
+    },
+    deps: DeviceIngressRepositoryDeps = defaultDeps
+): Promise<ListPage<DeviceIngressExpiringCredential>> {
+    const rows = await deps.queryRows<ExpiringCredentialRow>(
+        `SELECT ${qualifiedColumns(CREDENTIAL_COLUMNS, 'c')}, i.expected_external_id,
+                COUNT(*) OVER()::int AS total_count
+           FROM organization.device_ingress_credential c
+           JOIN organization.device_ingress_identity i ON i.id = c.identity_id
+            AND i.organization_id = c.organization_id
+          WHERE c.organization_id = $1
+            AND c.state = 'active'
+            AND c.not_after IS NOT NULL
+            AND c.not_after <= now() + ($2 || ' days')::interval
+          ORDER BY c.not_after ASC, c.id ASC
+          LIMIT $3 OFFSET $4`,
+        [input.organizationId, input.withinDays, input.limit, input.offset]
+    );
+    return {
+        items: rows.map((row) => ({
+            ...toCredential(row),
+            expectedExternalId: row.expected_external_id
+        })),
+        total: totalFromRows(rows)
+    };
+}
+
+// The partial unique index (7050) forbids two active credentials for one
+// identity+type, so the old one must be superseded before the new one activates.
+export async function activatePendingCredential(
+    tx: DeviceIngressTx,
+    input: {
+        organizationId: string;
+        credentialId: string;
+    }
+): Promise<DeviceIngressCredential | null> {
+    const pending = await tx.queryRows<{
+        identity_id: string;
+        credential_type: DeviceIngressCredentialType;
+    }>(
+        `SELECT identity_id, credential_type
+           FROM organization.device_ingress_credential
+          -- Only a pending rotation may activate (no resurrecting revoked).
+          WHERE organization_id = $1 AND id = $2 AND state = 'pending'
+          FOR UPDATE`,
+        [input.organizationId, input.credentialId]
+    );
+    if (!pending[0]) return null;
+    await tx.queryRows(
+        `UPDATE organization.device_ingress_credential
+            SET state = 'superseded', updated_at = now()
+          -- An older pending key (e.g. from Setup.Plan) still authenticates, so
+          -- a finalize must retire it too, not just the active one.
+          WHERE organization_id = $1 AND identity_id = $3
+            AND credential_type = $4 AND id <> $2 AND state IN ('active', 'pending')`,
+        [
+            input.organizationId,
+            input.credentialId,
+            pending[0].identity_id,
+            pending[0].credential_type
+        ]
+    );
+    const rows = await tx.queryRows<CredentialRow>(
+        `UPDATE organization.device_ingress_credential
+            SET state = 'active', updated_at = now()
+          WHERE organization_id = $1 AND id = $2 AND state = 'pending'
+          RETURNING ${CREDENTIAL_COLUMNS}`,
+        [input.organizationId, input.credentialId]
+    );
+    return rows[0] ? toCredential(rows[0]) : null;
+}
+
+export function finalizeCredentialRotation(
     input: {
         organizationId: string;
         credentialId: string;
     },
-    deps: DeviceIngressRepositoryDeps = defaultDeps
+    deps: DeviceIngressTransactionDeps = defaultDeps
 ): Promise<DeviceIngressCredential | null> {
-    // One atomic statement: activate the new credential and supersede the
-    // others for the same identity+type. Two separate UPDATEs could leave two
-    // active credentials on partial failure; the partial unique index (7050)
-    // backstops concurrent rotations.
-    const rows = await deps.queryRows<CredentialRow>(
-        `WITH activated AS (
-            UPDATE organization.device_ingress_credential
-                SET state = 'active', updated_at = now()
-              WHERE organization_id = $1 AND id = $2
-                -- Only a pending rotation may activate (no resurrecting revoked).
-                AND state = 'pending'
-              RETURNING ${CREDENTIAL_COLUMNS}
-        ), superseded AS (
-            UPDATE organization.device_ingress_credential c
-                SET state = 'superseded', updated_at = now()
-               FROM activated a
-              WHERE c.organization_id = a.organization_id
-                AND c.identity_id = a.identity_id
-                AND c.credential_type = a.credential_type
-                AND c.id <> a.id
-                AND c.state = 'active'
-        )
-        SELECT ${CREDENTIAL_COLUMNS} FROM activated`,
-        [input.organizationId, input.credentialId]
-    );
-    return rows[0] ? toCredential(rows[0]) : null;
+    return deps.transaction((tx) => activatePendingCredential(tx, input));
 }
 
 export async function findTokenCredential(
@@ -701,40 +809,70 @@ export async function countActiveEnrollmentTokens(
     return Number(rows[0]?.count ?? 0);
 }
 
-// Batched "last seen" flush: one bulk round-trip for many accepts at once
-// (see DeviceSeenQueue). Stamps each device's last_seen + last-observed posture
-// on device.list keyed on external_id, and stamps last_used_at for the
-// credentialed ones (null credential rows match nothing and no-op). Called by
-// the write-behind flusher, never per-connect — a reconnect storm never touches
-// the DB on the hot path.
+// Batched "last seen" flush: one bulk round-trip for many stamps at once
+// (see DeviceSeenQueue). Stamps each device's last_seen with the row's own time,
+// never moving it back, plus the last-observed posture when the row carries one,
+// keyed on external_id; stamps last_used_at for the credentialed ones (null
+// credential rows match nothing and no-op). Called by the write-behind flusher,
+// never per-connect — a reconnect storm never touches the DB on the hot path.
+//
+// The stamp never waits for a row lock: rows are locked in external_id order and
+// a row another writer holds is skipped and returned, so the caller can stamp it
+// next time. A waiting flush can close a lock cycle with the device snapshot
+// write, which touches the same rows.
 export async function markDeviceSeenBatch(
     batch: DeviceSeenBatch,
     deps: DeviceIngressRepositoryDeps = defaultDeps
-): Promise<void> {
-    if (batch.p_external.length === 0) return;
-    await deps.queryRows(
-        `WITH used AS (
+): Promise<string[]> {
+    if (batch.p_external.length === 0) return [];
+    const rows = await deps.queryRows<{external_id: string}>(
+        `WITH v AS (
+            SELECT *
+              FROM UNNEST($1::text[], $2::text[], $3::text[], $4::text[],
+                          $6::timestamptz[])
+                   AS v(external_id, transport, security_model, risk_level,
+                        seen_at)
+        ),
+        used AS (
             UPDATE organization.device_ingress_credential c
                SET last_used_at = now(), updated_at = now()
-              FROM UNNEST($5::uuid[]) AS v(cred)
-             WHERE v.cred IS NOT NULL AND c.id = v.cred
+              FROM UNNEST($5::uuid[]) AS u(cred)
+             WHERE u.cred IS NOT NULL AND c.id = u.cred
+        ),
+        locked AS (
+            SELECT d.id, d.external_id
+              FROM device.list d
+              JOIN v ON v.external_id = d.external_id
+             ORDER BY d.external_id
+               FOR NO KEY UPDATE OF d SKIP LOCKED
+        ),
+        stamped AS (
+            UPDATE device.list d
+               SET last_seen = GREATEST(d.last_seen, v.seen_at),
+                   transport = COALESCE(v.transport, d.transport),
+                   security_model = COALESCE(v.security_model, d.security_model),
+                   risk_level = COALESCE(v.risk_level, d.risk_level)
+              FROM locked
+              JOIN v ON v.external_id = locked.external_id
+             WHERE d.id = locked.id
+            RETURNING d.external_id
         )
-        UPDATE device.list d
-           SET last_seen = now(),
-               transport = v.transport,
-               security_model = v.security_model,
-               risk_level = v.risk_level
-          FROM UNNEST($1::text[], $2::text[], $3::text[], $4::text[])
-               AS v(external_id, transport, security_model, risk_level)
-         WHERE d.external_id = v.external_id`,
+        SELECT d.external_id
+          FROM device.list d
+          JOIN v ON v.external_id = d.external_id
+         WHERE NOT EXISTS (
+               SELECT 1 FROM stamped s WHERE s.external_id = d.external_id
+         )`,
         [
             batch.p_external,
             batch.p_transport,
             batch.p_security,
             batch.p_risk,
-            batch.p_credential
+            batch.p_credential,
+            batch.p_seen_at
         ]
     );
+    return rows.map((row) => row.external_id);
 }
 
 export interface RecordConnectionInput {
@@ -856,8 +994,9 @@ export async function ensureApprovedFleetDevice(
             organization_id = EXCLUDED.organization_id,
             jdoc = COALESCE(device.list.jdoc, EXCLUDED.jdoc),
             updated = now()
-        WHERE NULLIF(device.list.organization_id, '') IS NULL
-           OR device.list.organization_id = EXCLUDED.organization_id
+        WHERE (NULLIF(device.list.organization_id, '') IS NULL
+               OR device.list.organization_id = EXCLUDED.organization_id)
+          AND ($4 OR device.list.control_access IS DISTINCT FROM 2)
         RETURNING external_id, organization_id`,
         [
             input.reportedExternalId,
@@ -865,7 +1004,8 @@ export async function ensureApprovedFleetDevice(
             JSON.stringify(
                 input.jdoc ??
                     defaultFleetDeviceSnapshot(input.reportedExternalId)
-            )
+            ),
+            input.overrideDenied
         ]
     );
     if (!rows[0]) return null;
@@ -1225,6 +1365,7 @@ export async function countOpenWaitingRoom(input: {
 export interface RetentionCleanupInput {
     waitingRoomRetentionDays: number;
     connectionHistoryRetentionDays: number;
+    setupSessionRetentionDays: number;
 }
 
 export interface RetentionCleanupResult {
@@ -1232,25 +1373,27 @@ export interface RetentionCleanupResult {
     expiredSetupSessions: number;
     expiredWaitingRoomEntries: number;
     disconnectedConnections: number;
+    deletedSetupSessions: number;
 }
 
 export async function runRetentionCleanup(
     input: RetentionCleanupInput,
     deps: DeviceIngressRepositoryDeps = defaultDeps
 ): Promise<RetentionCleanupResult> {
-    const [credentials, sessions, waitingRoom, connections] = await Promise.all(
-        [
+    const [credentials, sessions, deletedSessions, waitingRoom, connections] =
+        await Promise.all([
             expireCredentials(deps),
             expireSetupSessions(deps),
+            deleteExpiredSetupSessions(input, deps),
             expireWaitingRoom(input, deps),
             markStaleConnectionsDisconnected(input, deps)
-        ]
-    );
+        ]);
     return {
         expiredCredentials: credentials,
         expiredSetupSessions: sessions,
         expiredWaitingRoomEntries: waitingRoom,
-        disconnectedConnections: connections
+        disconnectedConnections: connections,
+        deletedSetupSessions: deletedSessions
     };
 }
 
@@ -1309,6 +1452,20 @@ async function expireSetupSessions(
           WHERE status IN ('planned', 'partial')
             AND expires_at < now()
           RETURNING id`
+    );
+    return rows.length;
+}
+
+// Expired setup records have no further use and must not pile up.
+async function deleteExpiredSetupSessions(
+    input: RetentionCleanupInput,
+    deps: DeviceIngressRepositoryDeps
+): Promise<number> {
+    const rows = await deps.queryRows<{id: string}>(
+        `DELETE FROM organization.device_ingress_setup_session
+          WHERE expires_at < now() - ($1 || ' days')::interval
+          RETURNING id`,
+        [input.setupSessionRetentionDays]
     );
     return rows.length;
 }

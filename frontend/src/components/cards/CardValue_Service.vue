@@ -15,7 +15,7 @@
         <template #default>
             <div v-if="primaryValue != null" class="ec-hv-wrap">
                 <span class="ec-hv">{{ primaryDisplay }}</span>
-                <span class="ec-hu">{{ primaryUnit }}</span>
+                <span class="ec-u ec-u--sm">{{ primaryUnit }}</span>
             </div>
             <div v-else class="svc-status-pill" :class="isActive ? 'svc-status--on' : 'svc-status--off'">
                 {{ isActive ? 'Active' : 'Idle' }}
@@ -48,7 +48,7 @@
                 <div class="ec-wl">
                     <div v-if="primaryValue != null" class="ec-hv-wrap">
                         <span class="ec-hv">{{ primaryDisplay }}</span>
-                        <span class="ec-hu">{{ primaryUnit }}</span>
+                        <span class="ec-u">{{ primaryUnit }}</span>
                     </div>
                     <div class="svc-product-label">{{ serviceProps.productName }}</div>
                     <div class="svc-status-pill" :class="isActive ? 'svc-status--on' : 'svc-status--off'">
@@ -120,19 +120,18 @@
 
                     <!-- Slider -->
                     <div v-else-if="res.view === 'slider'" class="svc-ctrl-row">
-                        <span class="svc-ctrl-label">{{ res.name }}: {{ formatVal(vcVal(res.role), res.unit) }}</span>
+                        <span class="svc-ctrl-label">{{ res.name }}<template v-if="vcVal(res.role) != null">: {{ formatVal(vcVal(res.role), res.unit) }}</template></span>
                         <div class="svc-slider-row">
                             <button class="ec-adj-btn" :disabled="!canExecute" :aria-label="`Decrease ${res.name}`" @click.stop="adjustVal(res.role, -(res.step || 1))"><i class="fas fa-minus" /></button>
-                            <input
-                                type="range"
-                                class="sld-r"
+                            <CardSlider
+                                variant="bri"
                                 :min="res.min"
                                 :max="res.max"
                                 :step="res.step || 1"
                                 :value="vcVal(res.role) ?? res.min"
                                 :disabled="!canExecute"
+                                :aria-label="res.name"
                                 @change="onSlider(res.role, $event)"
-                                @click.stop
                             />
                             <button class="ec-adj-btn" :disabled="!canExecute" :aria-label="`Increase ${res.name}`" @click.stop="adjustVal(res.role, res.step || 1)"><i class="fas fa-plus" /></button>
                         </div>
@@ -174,6 +173,7 @@ import {useCardRpc} from '@/composables/useCardRpc';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
 import type {entity_t} from '@/types';
+import CardSlider from '../core/CardSlider.vue';
 import CardBadges from './CardBadges.vue';
 import CardShell from './CardShell.vue';
 import CardToggle from './CardToggle.vue';
@@ -322,9 +322,14 @@ const writableResources = computed(() =>
 );
 
 // Readable = display-only values (view is 'label', not button/object)
+// A resource the service has not reported yet has no tile — never a dash one.
 const readableResources = computed(() =>
     resources.value.filter(
-        (r) => r.view === 'label' && r.type !== 'button' && r.type !== 'object'
+        (r) =>
+            r.view === 'label' &&
+            r.type !== 'button' &&
+            r.type !== 'object' &&
+            vcVal(r.role) != null
     )
 );
 
@@ -558,9 +563,6 @@ function onSlider(role: string, e: Event) {
     display: flex;
     align-items: center;
     gap: var(--space-1-5);
-}
-.svc-slider-row .sld-r {
-    flex: 1;
 }
 
 /* 2x1 controls */

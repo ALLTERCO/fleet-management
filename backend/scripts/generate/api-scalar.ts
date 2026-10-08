@@ -29,6 +29,7 @@ import {
 } from './api-scalar-renderers.js';
 import {
     SECTION_AUTH_HTML,
+    SECTION_MCP_HTML,
     SECTION_QUICKSTART_HTML,
     SECTION_RESOURCES_HTML,
     SECTION_SPLASH_HTML,
@@ -135,6 +136,7 @@ function renderHtml(spec: OpenApiSpec, scalarJs: string): string {
         SECTION_AUTH_HTML,
         SECTION_TRANSPORT_HTML,
         SECTION_QUICKSTART_HTML,
+        SECTION_MCP_HTML,
         SECTION_RESOURCES_HTML,
         renderReferenceSection(ctx),
         renderFooter(ctx.version),

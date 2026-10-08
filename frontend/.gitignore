@@ -29,3 +29,9 @@ typed-router.d.ts
 playwright-report/
 test-results/
 .claude/
+
+# External Business Manager template sources staged by deploy.sh --env dev.
+src/template-active
+src/template-contract-dev
+src/shared
+.fm-dev-template-links

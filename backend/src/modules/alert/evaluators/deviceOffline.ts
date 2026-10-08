@@ -21,7 +21,7 @@ export function buildDeviceOfflineMatch(
         title: `${display} is offline`,
         message: `Device ${display} (${shellyID}) stopped reporting. Rule: ${ruleName}.`,
         subject: {type: 'device', id: shellyID},
-        context: {shellyID, ...context}
+        context: {shellyID, ...(deviceName ? {deviceName} : {}), ...context}
     };
 }
 

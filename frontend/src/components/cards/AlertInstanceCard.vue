@@ -1,79 +1,99 @@
 <template>
     <div
         class="aic"
-        :class="{'aic--selectable': selectable, 'aic--selected': selected}"
+        :class="{'aic--selectable': selectable, 'aic--selected': selected, 'aic--unseen': showTimerPill}"
         role="button"
         tabindex="0"
+        :aria-pressed="selectable ? selected : undefined"
         @click="onCardClick"
         @keydown.enter="onCardClick"
+        @keydown.space.prevent="onCardClick"
     >
-        <div class="aic-top">
-            <span
-                v-if="selectable"
-                class="aic-select"
-                @click.stop="toggleSelect"
-                @keydown.enter.stop="toggleSelect"
-                @keydown.space.stop="toggleSelect"
-            >
-                <input
-                    type="checkbox"
-                    class="aic-select__box"
-                    :checked="selected"
-                    :aria-label="`Select ${instance.title}`"
-                    @change="toggleSelect"
-                    @click.stop
-                />
+        <label
+            v-if="selectable"
+            class="aic-select"
+            @click.stop
+        >
+            <input
+                type="checkbox"
+                class="aic-select__box"
+                :checked="selected"
+                :aria-label="`Select ${instance.title}`"
+                @change="toggleSelect"
+            />
+        </label>
+
+        <span class="aic-icon" :class="`aic-icon--${severityVariant}`" aria-hidden="true">
+            <i :class="kindIcon" />
+        </span>
+
+        <span class="aic-body">
+            <span class="aic-name" :title="instance.title">{{ instance.title }}</span>
+            <span class="aic-meta">
+                <span class="aic-kind">{{ kindLabel }}</span>
+                <span class="aic-meta__sep" aria-hidden="true">·</span>
+                <span>{{ ageLabel }}</span>
             </span>
-            <AlertSeverityBadge :severity="instance.severity" />
-        </div>
+        </span>
 
-        <div class="aic-icon" :class="`aic-icon--${severityVariant}`">
-            <i :class="kindIcon" aria-hidden="true" />
-        </div>
-
-        <div class="aic-name-wrap">
-            <h3 class="aic-name" :title="instance.title">{{ instance.title }}</h3>
-        </div>
-
-        <div class="aic-foot">
+        <span class="aic-state">
             <span
                 v-if="showTimerPill"
-                class="aic-foot--active"
-                :class="`aic-foot--${timerLevel}`"
+                class="aic-state--active"
+                :class="`aic-state--${timerLevel}`"
                 :title="`Active for ${timerLabel}, no acknowledgement`"
             >
                 <span class="aic-pulse" />
-                Active {{ timerLabel }}
+                {{ timerLabel }}
             </span>
-            <span v-else-if="isSilenced" class="aic-foot--muted">
+            <span v-else-if="isSilenced" class="aic-state--muted">
                 <i class="fas fa-bell-slash" aria-hidden="true" />
                 Silenced
             </span>
-            <span v-else-if="isAcknowledged" class="aic-foot--ack">
+            <span v-else-if="isAcknowledged" class="aic-state--ack">
                 <i class="fas fa-circle-check" aria-hidden="true" />
                 Acknowledged
             </span>
-            <span v-else-if="instance.state === 'resolved'" class="aic-foot--resolved">
+            <span v-else-if="instance.state === 'resolved'" class="aic-state--resolved">
                 <i class="fas fa-circle-check" aria-hidden="true" />
                 Resolved
             </span>
-            <span v-else class="aic-foot--age">
-                <i class="fas fa-clock" aria-hidden="true" />
-                {{ ageLabel }}
-            </span>
-        </div>
+        </span>
+
+        <span v-if="!selectable" class="aic-actions">
+            <button
+                v-if="showTimerPill"
+                type="button"
+                class="aic-action"
+                title="Acknowledge"
+                aria-label="Acknowledge"
+                @click.stop="emit('acknowledge')"
+            >
+                <i class="fa-solid fa-check" aria-hidden="true" />
+            </button>
+            <button
+                type="button"
+                class="aic-action"
+                title="Open"
+                aria-label="Open"
+                @click.stop="emit('open')"
+            >
+                <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true" />
+            </button>
+        </span>
     </div>
 </template>
 
 <script setup lang="ts">
 import type {AlertInstance, AlertSeverity} from '@api/alert';
 import {computed, onBeforeUnmount} from 'vue';
-import AlertSeverityBadge from '@/components/core/AlertSeverityBadge.vue';
 import {useNowTicker} from '@/composables/useNowTicker';
 import {UI_CONFIG} from '@/config/ui';
 import {formatRelative} from '@/helpers/format';
 import {describeRuleKind} from '@/helpers/ruleKinds';
 
+// One inbox row: severity, what, when, state, and the two quick actions.
+// Keeps the props and emits of the old tile so the page needs no change.
 const props = withDefaults(
     defineProps<{
         instance: AlertInstance;
@@ -83,7 +103,7 @@ const props = withDefaults(
     {selectable: false, selected: false}
 );
 
-const emit = defineEmits<{open: []; 'toggle-select': []}>();
+const emit = defineEmits<{open: []; 'toggle-select': []; acknowledge: []}>();
 
 const {now, release} = useNowTicker();
 onBeforeUnmount(release);
@@ -100,8 +120,9 @@ function toggleSelect() {
     emit('toggle-select');
 }
 
-// Same kind catalog as the rule card — icon per alert kind, tinted by severity.
-const kindIcon = computed(() => describeRuleKind(props.instance.ruleKind).icon);
+const kindMeta = computed(() => describeRuleKind(props.instance.ruleKind));
+const kindIcon = computed(() => kindMeta.value.icon);
+const kindLabel = computed(() => kindMeta.value.label);
 
 const SEVERITY_VARIANT: Record<AlertSeverity, 'danger' | 'warning' | 'info'> = {
     info: 'info',
@@ -118,7 +139,7 @@ function minutesBetween(iso: string, ref: number): number {
 
 const ageLabel = computed(() => {
     const t = new Date(props.instance.lastTriggeredAt).getTime();
-    return Number.isFinite(t) ? formatRelative(t, now.value) : '—';
+    return Number.isFinite(t) ? formatRelative(t, now.value) : '';
 });
 
 const isSilenced = computed(() => {
@@ -166,159 +187,146 @@ const timerLevel = computed(() => {
 </script>
 
 <style scoped>
-/* Vertical tile — mirrors AlertRuleCard (.arc) so active alerts and their
-   rules read as the same family. */
+/* A row, not a tile: more alerts on one screen, reads like a list. */
 .aic {
     display: flex;
-    flex-direction: column;
-    width: var(--grid-cell, 200px);
-    height: 234px;
-    padding: var(--space-3);
+    align-items: center;
+    gap: var(--space-3);
+    min-height: var(--alert-row-min-height);
+    padding: var(--space-2) var(--space-3);
     border: 1px solid var(--color-border-default);
     border-radius: var(--radius-lg);
     background: var(--color-surface-1);
     cursor: pointer;
-    overflow: hidden;
     transition:
-        border-color var(--duration-fast),
-        box-shadow var(--duration-fast),
-        transform var(--duration-fast);
+        border-color var(--motion-hover),
+        background-color var(--motion-hover);
 }
 .aic:hover {
     border-color: var(--color-primary);
-    box-shadow: var(--shadow-brand-ring);
-    transform: translateY(var(--hover-lift));
+    background: var(--state-hover-bg);
 }
 .aic:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);
     outline-offset: var(--focus-ring-offset);
+}
+.aic:active {
+    background: var(--state-hover-bg-strong);
 }
 .aic--selected {
     border-color: var(--color-primary);
     box-shadow: inset 0 0 0 1px var(--color-primary);
 }
 
-/* Top row — severity (left) and state (right), like the rule card's badge + toggle. */
-.aic-top {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1-5);
-    flex: none;
-    flex-wrap: wrap;
-}
-.aic-state {
-    margin-left: auto;
-}
+/* The checkbox gets a full 44px hit area. */
 .aic-select {
-    display: inline-flex;
-    align-items: center;
+    display: grid;
     flex: none;
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
+    place-items: center;
+    margin: calc(-1 * var(--space-2)) 0;
+    cursor: pointer;
 }
 .aic-select__box {
-    width: 16px;
-    height: 16px;
+    width: var(--space-4);
+    height: var(--space-4);
     accent-color: var(--color-primary);
     cursor: pointer;
 }
 
-/* Pinned kind icon — never moves; tinted by severity. */
+/* Kind icon, tinted by severity. */
 .aic-icon {
-    flex: none;
-    align-self: center;
-    margin-top: var(--space-4);
-    width: var(--icon-size-2xl);
-    height: var(--icon-size-2xl);
     display: flex;
+    flex: none;
+    width: var(--space-8);
+    height: var(--space-8);
     align-items: center;
     justify-content: center;
-    border-radius: var(--radius-lg);
-    font-size: var(--icon-size-xl);
+    border-radius: var(--radius-md);
+    font-size: var(--type-body);
+}
+.aic-icon i {
+    transform: translateY(var(--icon-optical-offset));
 }
 .aic-icon--danger {
     color: rgb(var(--color-danger-rgb));
     background: rgba(var(--color-danger-rgb), 0.12);
-    box-shadow:
-        0 0 0 1px rgba(var(--color-danger-rgb), 0.22),
-        0 0 22px rgba(var(--color-danger-rgb), 0.14);
 }
 .aic-icon--warning {
     color: rgb(var(--color-warning-rgb));
     background: rgba(var(--color-warning-rgb), 0.12);
-    box-shadow:
-        0 0 0 1px rgba(var(--color-warning-rgb), 0.22),
-        0 0 22px rgba(var(--color-warning-rgb), 0.14);
 }
 .aic-icon--info {
     color: rgb(var(--color-info-rgb));
     background: rgba(var(--color-info-rgb), 0.12);
-    box-shadow:
-        0 0 0 1px rgba(var(--color-info-rgb), 0.22),
-        0 0 22px rgba(var(--color-info-rgb), 0.14);
 }
 
-/* Title + source — centered in the gap between icon and footer. */
-.aic-name-wrap {
-    flex: 1;
-    min-height: 0;
+.aic-body {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-2) var(--space-1);
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--space-0-5);
 }
 .aic-name {
-    margin: 0;
-    font-size: var(--type-body);
-    font-weight: 700;
-    line-height: 1.32;
-    text-align: center;
-    color: var(--color-text-primary);
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
     overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text-primary);
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+}
+.aic--unseen .aic-name {
+    font-weight: var(--font-bold);
+}
+.aic-meta {
+    display: flex;
+    gap: var(--space-1-5);
+    color: var(--color-text-tertiary);
+    font-size: var(--type-caption);
+}
+.aic-kind {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
-/* Footer — live status, pinned to the bottom. */
-.aic-foot {
+/* State, right of the text. */
+.aic-state {
     flex: none;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding-top: var(--space-2);
-    border-top: 1px solid var(--color-border-default);
     font-size: var(--type-caption);
-    font-weight: 600;
+    font-weight: var(--font-semibold);
 }
-.aic-foot span {
+.aic-state > span {
     display: inline-flex;
     align-items: center;
     gap: var(--space-1-5);
 }
-.aic-foot--age {
-    color: var(--color-text-tertiary);
-}
-.aic-foot--active {
-    font-weight: 700;
-}
-.aic-foot--ok {
+.aic-state--ok {
     color: var(--color-text-secondary);
 }
-.aic-foot--warn {
+.aic-state--warn {
     --pulse-rgb: var(--color-warning-rgb);
     color: var(--color-warning-text);
 }
-.aic-foot--danger {
+.aic-state--danger {
     --pulse-rgb: var(--color-danger-rgb);
     color: var(--color-danger-text);
 }
+.aic-state--muted,
+.aic-state--ack,
+.aic-state--resolved {
+    color: var(--color-text-tertiary);
+}
 .aic-pulse {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
+    width: var(--alert-pulse-size);
+    height: var(--alert-pulse-size);
+    border-radius: var(--radius-full);
     background: var(--color-text-tertiary);
 }
-.aic-foot--warn .aic-pulse,
-.aic-foot--danger .aic-pulse {
+.aic-state--warn .aic-pulse,
+.aic-state--danger .aic-pulse {
     background: rgb(var(--pulse-rgb));
     box-shadow: 0 0 0 0 rgba(var(--pulse-rgb), 0.55);
     animation: aic-pulse 1.6s ease-out infinite;
@@ -328,10 +336,59 @@ const timerLevel = computed(() => {
         box-shadow: 0 0 0 0 rgba(var(--pulse-rgb), 0.55);
     }
     70% {
-        box-shadow: 0 0 0 6px rgba(var(--pulse-rgb), 0);
+        box-shadow: 0 0 0 var(--space-1-5) rgba(var(--pulse-rgb), 0);
     }
     100% {
         box-shadow: 0 0 0 0 rgba(var(--pulse-rgb), 0);
+    }
+}
+
+/* Quick actions show on hover or keyboard focus, so the row stays quiet. */
+.aic-actions {
+    display: flex;
+    flex: none;
+    gap: var(--space-1);
+    margin: calc(-1 * var(--space-2)) 0;
+    opacity: 0;
+    transition: opacity var(--motion-hover);
+}
+.aic:hover .aic-actions,
+.aic:focus-within .aic-actions {
+    opacity: 1;
+}
+.aic-action {
+    display: grid;
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
+    place-items: center;
+    border-radius: var(--radius-md);
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    transition: background-color var(--motion-hover), color var(--motion-hover);
+}
+.aic-action i {
+    transform: translateY(var(--icon-optical-offset));
+}
+.aic-action:hover {
+    background: var(--state-hover-bg-strong);
+    color: var(--color-text-primary);
+}
+.aic-action:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: calc(-1 * var(--focus-ring-width));
+}
+.aic-action:active {
+    background: var(--state-active-bg);
+}
+.aic-action:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+/* Touch: no hover, so the actions stay visible. */
+@media (hover: none) {
+    .aic-actions {
+        opacity: 1;
     }
 }
 </style>

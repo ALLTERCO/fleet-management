@@ -2,6 +2,9 @@
     <Modal :visible="visible" @close="$emit('close')">
         <template #title>Create user</template>
         <form class="create-user" @submit.prevent="$emit('submit')">
+            <p v-if="formError" class="cu-form-error" role="alert">
+                {{ formError }}
+            </p>
             <section class="create-user__main">
                 <FormSection icon="fas fa-address-card" title="Identity">
                     <div class="cu-avatar-field">
@@ -109,17 +112,13 @@
                     />
                 </FormSection>
 
-                <FormSection
-                    icon="fas fa-user-shield"
-                    title="Access"
-                    badge="optional"
-                >
-                    <FormField label="Persona">
+                <FormSection icon="fas fa-user-shield" title="Access">
+                    <FormField label="Role" :error="errors.personaId">
                         <Dropdown
                             :groups="personaDropdownGroups"
-                            :default="selectedPersonaId"
+                            :default="form.personaId"
                             searchable
-                            @selected="(v: unknown) => (selectedPersonaId = String(v))"
+                            @selected="onPersonaSelected"
                         />
                     </FormField>
                     <FormField label="Groups">
@@ -133,12 +132,12 @@
                             />
                         </div>
                         <p v-else class="cu-empty">
-                            No user groups yet — create them in Settings.
+                            No user groups yet. You can add them later.
                         </p>
                     </FormField>
 
                     <details class="cu-advanced">
-                        <summary>Advanced — scoped role grants</summary>
+                        <summary>Advanced — limit this role to specific things</summary>
                         <ServiceUserAccessPanel
                             :group-ids="form.groupIds"
                             :assignments="form.assignments"
@@ -188,7 +187,8 @@ export type CreateUserField =
     | 'userName'
     | 'firstName'
     | 'lastName'
-    | 'password';
+    | 'password'
+    | 'personaId';
 
 export type CreateUserForm = Record<CreateUserField, string> & {
     passwordChangeRequired: boolean;
@@ -207,10 +207,12 @@ const props = defineProps<{
     creating: boolean;
     form: CreateUserForm;
     errors: Record<CreateUserField, string>;
+    /** A rejection that belongs to no single field. */
+    formError?: string;
     passwordRules: readonly PasswordRule[];
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
     close: [];
     submit: [];
     validate: [field: CreateUserField];
@@ -233,9 +235,9 @@ const groups = computed(() =>
 
 const personaDropdownGroups = computed(() => [
     {
-        label: 'Personas',
+        label: 'Roles',
         items: [
-            {value: '', label: 'No persona'},
+            {value: '', label: 'Choose a role'},
             ...personas.value.map((p) => ({value: p.id, label: p.name}))
         ]
     }
@@ -258,18 +260,13 @@ const initials = computed(() => {
     return user ? user.toUpperCase() : '';
 });
 
-// The simple dropdown owns the single full-access ("all" scope) grant; any
-// scoped grants added under Advanced are preserved alongside it.
-const selectedPersonaId = computed<string>({
-    get: () =>
-        props.form.assignments.find((a) => a.scope?.all)?.personaId ?? '',
-    set: (id) => {
-        const scoped = props.form.assignments.filter((a) => !a.scope?.all);
-        props.form.assignments = id
-            ? [...scoped, {personaId: id, scope: {all: true}}]
-            : scoped;
-    }
-});
+// The persona goes to the create call itself — the backend turns it into the
+// identity-provider grant the user needs to sign in. Scoped grants added under
+// Advanced stay separate and are attached afterwards.
+function onPersonaSelected(value: unknown): void {
+    props.form.personaId = String(value);
+    emit('validate', 'personaId');
+}
 
 onMounted(() => {
     void personasStore.fetchAll(true);
@@ -441,5 +438,16 @@ onBeforeUnmount(revokePreview);
     display: flex;
     justify-content: flex-end;
     gap: var(--gap-xs);
+}
+/* A rejection that belongs to no single field still has to be visible on the
+   form, not only in a toast the user has already scrolled past. */
+.cu-form-error {
+    margin: 0 0 var(--gap-sm);
+    padding: var(--gap-xs) var(--gap-sm);
+    border: 1px solid var(--color-danger);
+    border-radius: var(--radius-md);
+    background: var(--color-danger-subtle);
+    color: var(--color-danger-text);
+    font-size: var(--type-body);
 }
 </style>

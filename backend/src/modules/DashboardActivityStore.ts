@@ -4,6 +4,7 @@
 // Separation of command and query (CQS).
 
 import {toIso} from '../rpc/pgRows';
+import type {AssignmentScope} from '../types/api/assignment';
 import * as PostgresProvider from './PostgresProvider';
 
 export type DashboardActivityKind =
@@ -46,6 +47,17 @@ interface AppendInput {
     detail?: Record<string, unknown>;
 }
 
+export interface AppendDashboardSharingActivityInput {
+    organizationId: string;
+    actorUserId: string | null;
+    eventKind: 'shared' | 'unshared';
+    assignmentId: string;
+    subjectType: string;
+    subjectId: string;
+    personaId: string;
+    scope: AssignmentScope;
+}
+
 // DO — write one row, return nothing. Callers that need to confirm the
 // write should listActivity afterwards or rely on database errors
 // (constraint violation, missing FK) to surface failures as thrown errors.
@@ -57,6 +69,39 @@ export async function appendActivity(input: AppendInput): Promise<void> {
         p_event_kind: input.eventKind,
         p_detail: input.detail ?? {}
     });
+}
+
+/**
+ * Record the dashboard-facing lifecycle of one assignment. The assignment
+ * scope is the single source of dashboard ids, so callers do not need a
+ * second resource lookup or their own scope parsing.
+ */
+export async function appendDashboardSharingActivity(
+    input: AppendDashboardSharingActivityInput
+): Promise<void> {
+    const dashboardIds = [
+        ...new Set(
+            (input.scope.dashboard_ids ?? []).filter(
+                (id): id is number => Number.isInteger(id) && id > 0
+            )
+        )
+    ];
+    await Promise.all(
+        dashboardIds.map((dashboardId) =>
+            appendActivity({
+                dashboardId,
+                organizationId: input.organizationId,
+                actorUserId: input.actorUserId,
+                eventKind: input.eventKind,
+                detail: {
+                    assignmentId: input.assignmentId,
+                    subjectType: input.subjectType,
+                    subjectId: input.subjectId,
+                    personaId: input.personaId
+                }
+            })
+        )
+    );
 }
 
 interface ListInput {

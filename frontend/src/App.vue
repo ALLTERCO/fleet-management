@@ -13,6 +13,7 @@
         <BasicLayout v-else>
             <router-view />
         </BasicLayout>
+        <SystemBanner />
         <Toast />
         <HeatmapOverlay />
     </main>
@@ -23,6 +24,7 @@ import {computed, defineAsyncComponent, onMounted, onUnmounted, watch} from 'vue
 import {useRoute} from 'vue-router';
 import ErrorBoundary from '@/components/core/ErrorBoundary.vue';
 import SessionBootScreen from '@/components/core/SessionBootScreen.vue';
+import SystemBanner from '@/components/core/SystemBanner.vue';
 import Toast from '@/components/core/Toast.vue';
 import {
     applyBackgroundStyle,

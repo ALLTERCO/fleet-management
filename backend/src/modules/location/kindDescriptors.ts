@@ -41,11 +41,14 @@ function inheritablesAmong(fields: readonly string[]): string[] {
     return fields.filter((f) => (INHERITABLE as readonly string[]).includes(f));
 }
 
+// Every property the kind's schema accepts, customFields included: the form
+// renders itself from this list, so a field missing here is a field nobody can
+// set through the UI.
 function fieldsOf(kind: LocationKind): string[] {
     const schema = LOCATION_KIND_FIELD_SCHEMAS[kind];
     const props =
         (schema as {properties?: Record<string, unknown>}).properties ?? {};
-    return Object.keys(props).filter((k) => k !== 'customFields');
+    return Object.keys(props);
 }
 
 const GROUP_RANK: Readonly<Record<FieldGroup, number>> = Object.freeze(
@@ -69,24 +72,46 @@ export const LOCATION_KIND_DESCRIPTORS: readonly LocationKindDescriptor[] =
         descriptor('continent', 'Continent', [], true, 0),
         descriptor('country', 'Country', ['continent'], true, 10),
         descriptor('region', 'Region / State', ['country'], false, 20),
-        descriptor('county', 'County', ['region', 'country'], false, 30),
+        descriptor(
+            'county',
+            'County / District',
+            ['region', 'country'],
+            false,
+            30
+        ),
         descriptor('city', 'City', ['county', 'region', 'country'], false, 40),
         descriptor('neighborhood', 'Neighborhood', ['city'], false, 50),
         descriptor(
             'campus',
             'Campus',
-            ['city', 'neighborhood', 'region', 'country'],
+            ['city', 'neighborhood', 'county', 'region', 'country'],
             true,
             60
         ),
         descriptor(
             'site',
             'Site',
-            ['campus', 'city', 'neighborhood', 'region', 'country'],
+            ['campus', 'city', 'neighborhood', 'county', 'region', 'country'],
             true,
             70
         ),
-        descriptor('building', 'Building', ['site', 'campus'], true, 80),
+        descriptor(
+            'building',
+            'Building',
+            // Physical containers may sit directly under any administrative
+            // level: fleets model Region -> District -> Branch/Building.
+            [
+                'site',
+                'campus',
+                'city',
+                'neighborhood',
+                'county',
+                'region',
+                'country'
+            ],
+            true,
+            80
+        ),
         descriptor(
             'office',
             'Office / Suite',
@@ -95,8 +120,14 @@ export const LOCATION_KIND_DESCRIPTORS: readonly LocationKindDescriptor[] =
             85
         ),
         descriptor('floor', 'Floor', ['building', 'office'], false, 90),
-        descriptor('area', 'Area / Wing', ['floor'], false, 95),
-        descriptor('room', 'Room', ['floor', 'area', 'office'], false, 100),
+        descriptor('area', 'Area / Wing', ['site', 'floor'], false, 95),
+        descriptor(
+            'room',
+            'Room',
+            ['building', 'floor', 'area', 'office'],
+            false,
+            100
+        ),
         descriptor('zone', 'Zone', ['room', 'area', 'floor'], false, 110)
     ] as const);
 

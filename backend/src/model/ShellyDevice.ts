@@ -33,10 +33,7 @@ import {
     getBTHomeGatewayEventObjIds,
     proposeEntities
 } from '../modules/EntityComposer';
-import {
-    getBluetoothInventoryVersion,
-    getDeviceOrg
-} from '../modules/EventDistributor';
+import {getDeviceOrg} from '../modules/EventDistributor';
 import * as Observability from '../modules/Observability';
 import {rawCall, store} from '../modules/PostgresProvider';
 import * as ShellyEvents from '../modules/ShellyEvents';
@@ -47,8 +44,7 @@ import {
     type StatusValueInput
 } from '../modules/ShellyMessageHandler';
 import {
-    appendEvents,
-    appendNumeric,
+    captureSensorRows,
     classifyBthomeObj,
     type EventRow,
     type NumericRow,
@@ -56,7 +52,11 @@ import {
 } from '../modules/sensorCapture';
 import {fireAndForget} from '../modules/util/fireAndForget';
 import {runBoundedParallel} from '../modules/util/runBoundedParallel';
-import {resolveBluetoothSourceTargets} from '../modules/virtualDevice/bluetoothProvenance';
+import {
+    gatewayIdentity,
+    routeBluetoothTelemetry,
+    telemetryTargetKey
+} from '../modules/virtualDevice/bluetoothTelemetryRouter';
 import type {
     BTHomeControlBinding,
     BTHomeLearningState,
@@ -69,10 +69,7 @@ import type {
     shelly_presence_t
 } from '../types';
 import AbstractDevice, {mergeStatusObjects} from './AbstractDevice';
-import {
-    hasUnpromotedBluChild,
-    reconcileBluChildrenForDevice
-} from './bluChildReconcile';
+import {BluChildReconcileCoordinator} from './bluChildReconcile';
 import {
     type BTHomeActionEvent,
     type BTHomeChildSensor,
@@ -88,7 +85,6 @@ import type RpcTransport from './transport/RpcTransport';
 const logger = log4js.getLogger('device');
 
 const BTHOME_ACTIVE_EVENT_WINDOW_MS = 4000;
-const BTHOME_TELEMETRY_TARGET_CACHE_TTL_MS = 5 * 60 * 1000;
 
 // Ecowitt WS90 — the one BLU model that gets its own telemetry source tag
 // instead of generic 'blu' (stable model string, BTHomeData.BLU_DEVICES).
@@ -155,7 +151,48 @@ type BTHomeDiscoveryRecord = {
     isRemote?: boolean;
     rssi?: number;
     ts?: number;
+    /** Server clock when the gateway last reported it; the scan list ages by this. */
+    heardAtMs: number;
 };
+
+/** A discovered BLU as the UI reads it. One shape for the live websocket
+ *  event and the read-back list, so a row renders the same either way. */
+export type BTHomeDiscoveryWire = {
+    shellyID: string;
+    mac: string;
+    type: string;
+    name: string;
+    productName?: string;
+    modelString?: string;
+    localName?: string;
+    modelId?: number;
+    isRemote: boolean;
+    rssi?: number;
+    ts?: number;
+    heardAtMs: number;
+};
+
+const UNIDENTIFIED_BLE_NAME = 'BLE Device';
+
+export function toBTHomeDiscoveryWire(
+    record: BTHomeDiscoveryRecord,
+    shellyID: string
+): BTHomeDiscoveryWire {
+    return {
+        shellyID,
+        mac: record.addr,
+        type: record.modelId ?? record.localName ?? UNIDENTIFIED_BLE_NAME,
+        name: record.productName ?? record.localName ?? UNIDENTIFIED_BLE_NAME,
+        productName: record.productName,
+        modelString: record.modelId,
+        localName: record.localName,
+        modelId: record.modelNumericId,
+        isRemote: record.isRemote ?? false,
+        rssi: record.rssi,
+        ts: record.ts,
+        heardAtMs: record.heardAtMs
+    };
+}
 
 type BTHomeEventSensor = {
     id?: number;
@@ -182,28 +219,16 @@ type BTHomeCaptureContext = {
 
 export default class ShellyDevice extends AbstractDevice {
     #persistTimer?: ReturnType<typeof setTimeout>;
-    // Last reconciled BLU child fingerprint + identity keys. Diffed after each
-    // persist so promotion runs on bind/unbind and on model/component enrichment.
-    #lastBluFingerprint = '';
-    #lastBluChildKeys: string[] = [];
+    #persistDueAtMs = 0;
+    readonly #bluChildReconciler: BluChildReconcileCoordinator;
     // Guards against stacking immediate persists while a fast promote is mid-flight.
     #bluFastPersistPending = false;
+    // A destroyed device never saves again; a late save re-creates a purged row.
+    #destroyed = false;
     // Keyed by untrusted device-reported BLE addr; bounded so a flood of
     // spoofed discovery broadcasts can't grow it without limit.
     #bthomeDiscovery = new BoundedMap<string, BTHomeDiscoveryRecord>({
         maxSize: tuning.bthome.discoveryCacheMax
-    });
-    #bthomeTelemetryTargetIds = new BoundedMap<
-        string,
-        {
-            version: number;
-            deviceId: number;
-            externalId: string;
-            organizationId: string;
-        }
-    >({
-        maxSize: tuning.bthome.discoveryCacheMax,
-        ttlMs: BTHOME_TELEMETRY_TARGET_CACHE_TTL_MS
     });
     #bthomeRuntimeEvents = new Map<string, BTHomeRuntimeEvent>();
     #bthomeRuntimeTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -242,6 +267,9 @@ export default class ShellyDevice extends AbstractDevice {
             capabilities,
             methods
         );
+        this.#bluChildReconciler = new BluChildReconcileCoordinator({
+            gatewayExternalId: shellyID
+        });
 
         stripPersistedBTHomeRuntimeStatus(this.status);
         this.hydrateBTHomeSensorSamplesInMemory();
@@ -262,7 +290,10 @@ export default class ShellyDevice extends AbstractDevice {
         return proposeEntities(this);
     }
 
-    protected override onStateChange(): void {
+    protected override onStateChange(
+        change: 'routine' | 'state' = 'state'
+    ): void {
+        if (this.#destroyed) return;
         // A newly bound BLU child promotes on the next persist. Flush now instead
         // of waiting out the status-persist debounce so the device appears in ~1s.
         if (this.#hasUnpromotedBluChild() && !this.#bluFastPersistPending) {
@@ -271,24 +302,38 @@ export default class ShellyDevice extends AbstractDevice {
                 clearTimeout(this.#persistTimer);
                 this.#persistTimer = undefined;
             }
-            fireAndForget(
-                'device-persist',
+            fireAndForget('device-persist', () =>
                 this.#persistState().finally(() => {
                     this.#bluFastPersistPending = false;
                 })
             );
             return;
         }
-        if (this.#persistTimer) return;
+        const delayMs =
+            change === 'routine'
+                ? tuning.dashboard.persistRoutineDebounceMs
+                : tuning.dashboard.persistDebounceMs;
+        const dueAtMs = Date.now() + delayMs;
+        // A pending save that is due sooner already covers this change.
+        if (this.#persistTimer && this.#persistDueAtMs <= dueAtMs) return;
+        if (this.#persistTimer) clearTimeout(this.#persistTimer);
+        this.#persistDueAtMs = dueAtMs;
         this.#persistTimer = setTimeout(() => {
             this.#persistTimer = undefined;
-            fireAndForget('device-persist', this.#persistState());
-        }, tuning.dashboard.persistDebounceMs);
+            fireAndForget('device-persist', () => this.#persistState());
+        }, delayMs);
+    }
+
+    override async flushPersist(): Promise<void> {
+        if (!this.#persistTimer) return;
+        clearTimeout(this.#persistTimer);
+        this.#persistTimer = undefined;
+        await this.#persistState();
     }
 
     // A bound child config key present now but not yet reconciled into a device.
     #hasUnpromotedBluChild(): boolean {
-        return hasUnpromotedBluChild(this.config, this.#lastBluChildKeys);
+        return this.#bluChildReconciler.hasUnpromotedChild(this.config);
     }
 
     async #persistState() {
@@ -335,22 +380,16 @@ export default class ShellyDevice extends AbstractDevice {
     reconcilePersistedBluetoothChildren(
         persistedConfig: Record<string, unknown> = this.config
     ): void {
-        void this.#reconcileBluChildren(persistedConfig);
-    }
-
-    async #reconcileBluChildren(
-        persistedConfig: Record<string, unknown>
-    ): Promise<void> {
-        const next = await reconcileBluChildrenForDevice(
-            this.shellyID,
-            persistedConfig,
-            {
-                fingerprint: this.#lastBluFingerprint,
-                keys: this.#lastBluChildKeys
-            }
-        );
-        this.#lastBluFingerprint = next.fingerprint;
-        this.#lastBluChildKeys = next.keys;
+        const scheduled = this.#bluChildReconciler.schedule(persistedConfig);
+        if (!scheduled.scheduled) {
+            Observability.incrementCounter(
+                'blu_reconcile_config_unchanged_total'
+            );
+            return;
+        }
+        Observability.recordBluReconcileRequest(scheduled.coalesced);
+        if (scheduled.coalesced) return;
+        fireAndForget('blu-child-reconcile', () => scheduled.completion);
     }
 
     protected override onMessage(
@@ -466,8 +505,7 @@ export default class ShellyDevice extends AbstractDevice {
                 }
             }
             if (telemetryFacts.length > 0) {
-                fireAndForget(
-                    'bthome-telemetry-capture',
+                fireAndForget('bthome-telemetry-capture', () =>
                     this.captureBTHomeTelemetryBatch(telemetryFacts)
                 );
             }
@@ -477,42 +515,41 @@ export default class ShellyDevice extends AbstractDevice {
     private async captureBTHomeTelemetryBatch(
         facts: readonly BTHomeTelemetryFact[]
     ): Promise<void> {
-        const sourceComponentKeys = [
-            ...new Set(facts.map((fact) => fact.sourceComponentKey))
-        ];
-        const inventoryVersion = getBluetoothInventoryVersion();
         const targets = new Map<
             string,
             {deviceId: number; externalId: string; organizationId: string}
         >();
-        const unresolvedSourceKeys: string[] = [];
-        for (const sourceComponentKey of sourceComponentKeys) {
-            const cached =
-                this.#bthomeTelemetryTargetIds.get(sourceComponentKey);
-            if (!cached || cached.version !== inventoryVersion) {
-                unresolvedSourceKeys.push(sourceComponentKey);
-            } else {
-                targets.set(sourceComponentKey, cached);
-            }
-        }
-        if (unresolvedSourceKeys.length > 0) {
+        const suppressedKeys = new Set<string>();
+        const organizationId = getDeviceOrg(this.shellyID);
+        if (organizationId) {
             try {
-                const resolved = await resolveBluetoothSourceTargets(
-                    unresolvedSourceKeys.map((componentKey) => ({
+                const source = gatewayIdentity({
+                    deviceListId: this.id,
+                    externalId: this.shellyID,
+                    organizationId
+                });
+                const routing = await routeBluetoothTelemetry({
+                    sources: source ? [source] : [],
+                    targets: facts.map((fact) => ({
+                        sourceDeviceListId: this.id,
+                        componentKey: fact.sourceComponentKey
+                    }))
+                });
+                for (const fact of facts) {
+                    const componentKey = fact.sourceComponentKey;
+                    const key = telemetryTargetKey({
                         sourceDeviceListId: this.id,
                         componentKey
-                    }))
-                );
-                for (const target of resolved) {
-                    const value = {
-                        deviceId: target.blu_device_list_id,
-                        externalId: target.bluetooth_external_id,
-                        organizationId: target.organization_id
-                    };
-                    targets.set(target.component_key, value);
-                    this.#bthomeTelemetryTargetIds.set(target.component_key, {
-                        ...value,
-                        version: inventoryVersion
+                    });
+                    if (routing.suppressed.has(key)) {
+                        suppressedKeys.add(componentKey);
+                    }
+                    const route = routing.accepted.get(key)?.route;
+                    if (!route) continue;
+                    targets.set(componentKey, {
+                        deviceId: route.deviceListId,
+                        externalId: route.externalId,
+                        organizationId: route.organizationId
                     });
                 }
             } catch (error) {
@@ -531,6 +568,7 @@ export default class ShellyDevice extends AbstractDevice {
         const eventRows: EventRow[] = [];
         const statusValues: StatusValueInput[] = [];
         for (const fact of facts) {
+            if (suppressedKeys.has(fact.sourceComponentKey)) continue;
             const target = targets.get(fact.sourceComponentKey);
             if (
                 typeof fact.sensor.value === 'number' &&
@@ -565,10 +603,10 @@ export default class ShellyDevice extends AbstractDevice {
             );
         }
         enqueueStatusValues(statusValues);
-        await Promise.all([
-            appendNumeric(numericRows, {callDb: rawCall}),
-            appendEvents(eventRows, {callDb: rawCall})
-        ]);
+        await captureSensorRows(
+            {numeric: numericRows, events: eventRows},
+            {callDb: rawCall}
+        );
     }
 
     // Classifies one BTHome sensor reading — electrical readings (MCB
@@ -697,13 +735,16 @@ export default class ShellyDevice extends AbstractDevice {
         this.refreshAffectedBTHomeOverviews([key]);
     }
 
-    override batchSetComponentStatus(data: Record<string, any>): PathChange[] {
+    override batchSetComponentStatus(
+        data: Record<string, any>,
+        journal?: {tsEpochSec?: number}
+    ): PathChange[] {
         for (const key of Object.keys(data)) {
             if (key.startsWith('bthomesensor:')) {
                 data[key] = this.stampBTHomeSensorDisplay(key, data[key]);
             }
         }
-        const changes = super.batchSetComponentStatus(data);
+        const changes = super.batchSetComponentStatus(data, journal);
         this.refreshAffectedBTHomeOverviews(Object.keys(data));
         return changes;
     }
@@ -737,9 +778,14 @@ export default class ShellyDevice extends AbstractDevice {
         );
         this.refreshAffectedBTHomeOverviews([key]);
 
-        if (key.startsWith('bthomedevice:') && this.findEntity(key)) {
-            this.refreshBTHomeDeviceEntity(key);
+        if (key.startsWith('bthomedevice:')) {
+            if (this.findEntity(key)) this.refreshBTHomeDeviceEntity(key);
+            return;
         }
+        // Entity properties are compose-time snapshots (enum options, number
+        // ranges, boolean titles, view). Recompose so a device-side config
+        // edit reaches open UIs instead of waiting for a reconnect.
+        this.recomposeEntitiesForComponent(key);
     }
 
     public updateComponent(key: string, status: any, config: any) {
@@ -1019,6 +1065,7 @@ export default class ShellyDevice extends AbstractDevice {
         modelNumericId?: number;
         rssi?: number;
         ts?: number;
+        heardAtMs?: number;
     }) {
         const {modelId, modelNumericId, productName, isRemote} =
             resolveBluDeviceInfo(undefined, record.modelNumericId);
@@ -1030,8 +1077,25 @@ export default class ShellyDevice extends AbstractDevice {
             productName: productName !== 'BLE Device' ? productName : undefined,
             isRemote,
             rssi: record.rssi,
-            ts: record.ts
+            ts: record.ts,
+            heardAtMs: record.heardAtMs ?? Date.now()
         });
+    }
+
+    /** Every BLU this gateway heard recently, most recently heard first. A
+     *  sensor silent longer than the discovery TTL is forgotten: "found" must
+     *  mean it is still there to pair. */
+    public listBTHomeDiscoveries(nowMs = Date.now()): BTHomeDiscoveryWire[] {
+        const shellyID = String(this.shellyID);
+        const oldest = nowMs - tuning.bthome.discoveryTtlSec * 1000;
+        const fresh: BTHomeDiscoveryRecord[] = [];
+        for (const [addr, record] of this.#bthomeDiscovery.entries()) {
+            if (record.heardAtMs < oldest) this.#bthomeDiscovery.delete(addr);
+            else fresh.push(record);
+        }
+        return fresh
+            .map((record) => toBTHomeDiscoveryWire(record, shellyID))
+            .sort((a, b) => b.heardAtMs - a.heardAtMs);
     }
 
     public syncAllBTHomeOverviews() {
@@ -1991,6 +2055,7 @@ export default class ShellyDevice extends AbstractDevice {
     }
 
     override destroy(options?: {skipDeleteEvent?: boolean}): void {
+        this.#destroyed = true;
         for (const timer of this.#bthomeRuntimeTimers.values()) {
             clearTimeout(timer);
         }
@@ -2000,7 +2065,10 @@ export default class ShellyDevice extends AbstractDevice {
         if (this.#persistTimer) {
             clearTimeout(this.#persistTimer);
             this.#persistTimer = undefined;
-            this.#persistState();
+            // Only a replaced connection keeps its pending state; a removed one drops it.
+            if (options?.skipDeleteEvent) {
+                fireAndForget('device-persist', () => this.#persistState());
+            }
         }
         if (!options?.skipDeleteEvent) {
             ShellyEvents.emitShellyDeleted(this);

@@ -1,12 +1,17 @@
 // Auto-extract wall segments from an SVG floor plan.
 //
-// Strategy: parse every <path> in the document, ignore dashed strokes (those
-// are dimension lines / annotations), tokenize the `d` attribute into
-// straight-line segments, then collapse each segment into a {from, to} pair
-// in SVG coordinate space. The 3D scene scales these into world units and
-// extrudes them into wall boxes.
+// Strategy: reduce every geometry element in the document to straight-line
+// segments, ignore dashed strokes (those are dimension lines / annotations),
+// then collapse each segment into a {from, to} pair in SVG coordinate space.
+// The 3D scene scales these into world units and extrudes them into wall
+// boxes.
+//
+// Inkscape emits walls as <path>, but CAD and Illustrator exports use
+// <line>, <rect>, <polyline> and <polygon> just as often, so all five feed
+// the same segment pipeline.
 
 import {sampleCubicBezier, sampleQuadraticBezier} from '@/helpers/svg-bezier';
+import {removeBaseLayer} from '@/helpers/svg-floorplan';
 import {
     applyMatrixToPoint,
     composeMatrices,
@@ -62,24 +67,43 @@ export function parseSvgFloorPlan(
     const svg = doc.documentElement;
     if (svg.tagName !== 'svg') return null;
 
+    // The Base layer is the page, not the plan — the same rule the texture
+    // readers apply. Without it the full-page background rect becomes a
+    // perimeter wall and stretches the bbox to the paper size.
+    removeBaseLayer(doc);
+
     const raw: SvgWallSegment[] = [];
-    for (const path of doc.querySelectorAll('path')) {
-        if (!isStructuralPath(path)) continue;
-        const matrix = readAccumulatedMatrix(path);
-        const d = path.getAttribute('d');
-        if (!d) continue;
-        for (const seg of segmentsFromPath(d)) {
-            const a = applyMatrixToPoint(matrix, seg.from);
-            const b = applyMatrixToPoint(matrix, seg.to);
-            if (distance(a, b) < MIN_SEGMENT_LEN) continue;
-            raw.push({from: [a[0], a[1]], to: [b[0], b[1]]});
-        }
+    for (const el of doc.querySelectorAll(SVG_GEOMETRY_SELECTOR)) {
+        if (!isStructural(el)) continue;
+        raw.push(...readGeometrySegments(el));
     }
+    return normalizeSegments(raw);
+}
+
+/** One geometry element → straight segments in the document's own coordinate
+ *  space (ancestor transforms applied, sub-wall jitter dropped). The single
+ *  `d`/`points` parser in the app; nothing re-implements it. */
+export function readGeometrySegments(el: Element): SvgWallSegment[] {
+    const matrix = readAccumulatedMatrix(el);
+    const out: SvgWallSegment[] = [];
+    for (const seg of segmentsFromElement(el)) {
+        const a = applyMatrixToPoint(matrix, seg.from);
+        const b = applyMatrixToPoint(matrix, seg.to);
+        if (distance(a, b) < MIN_SEGMENT_LEN) continue;
+        out.push({from: [a[0], a[1]], to: [b[0], b[1]]});
+    }
+    return out;
+}
+
+/** Bbox the segments and translate them so it starts at (0, 0). The canonical
+ *  size — the floor mesh and wall meshes scale against the same numbers so
+ *  they always cover identical ground area. Null when there is nothing, or
+ *  nothing two-dimensional, to scale against. */
+export function normalizeSegments(
+    raw: readonly SvgWallSegment[]
+): SvgFloorPlanGeometry | null {
     if (raw.length === 0) return null;
 
-    // Bbox of all parsed walls. Used as the canonical size — the floor mesh
-    // and wall meshes scale against the same numbers so they always cover
-    // identical ground area.
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;
@@ -98,7 +122,6 @@ export function parseSvgFloorPlan(
     const height = maxY - minY;
     if (width <= 0 || height <= 0) return null;
 
-    // Translate so the bbox starts at (0, 0).
     const walls = raw.map(
         (w): SvgWallSegment => ({
             from: [w.from[0] - minX, w.from[1] - minY],
@@ -108,15 +131,30 @@ export function parseSvgFloorPlan(
     return {width, height, walls};
 }
 
-// Structural paths are those without dashed strokes. Qt-generated plans use
-// stroke-dasharray for dimension lines and solid strokes for the structure.
-function isStructuralPath(path: Element): boolean {
-    if (hasDashedStroke(path)) return false;
-    for (let n: Element | null = path.parentElement; n; n = n.parentElement) {
+/** The one rule that decides whether an element is structure or annotation,
+ *  applied to every geometry tag. Qt-generated plans use stroke-dasharray for
+ *  dimension lines and solid strokes for the structure. Exported so the
+ *  resolver filters annotations by the same rule rather than its own. */
+export function isStructural(el: Element): boolean {
+    if (hasDashedStroke(el)) return false;
+    for (let n: Element | null = el.parentElement; n; n = n.parentElement) {
         if (hasDashedStroke(n)) return false;
+        if (TEMPLATE_TAGS.has(n.tagName.toLowerCase())) return false;
     }
     return true;
 }
+
+// Content under these is a template referenced by <use>, not drawn geometry.
+// pdftocairo puts 260 text-glyph outlines in <defs>; counting them as walls
+// would seed the bbox with letter shapes sitting near the origin.
+const TEMPLATE_TAGS = new Set([
+    'defs',
+    'symbol',
+    'clippath',
+    'mask',
+    'marker',
+    'pattern'
+]);
 
 function hasDashedStroke(el: Element): boolean {
     const dash = el.getAttribute('stroke-dasharray');
@@ -124,12 +162,16 @@ function hasDashedStroke(el: Element): boolean {
     return dash.trim().length > 0;
 }
 
-// Walks the parent chain bottom-up and composes every group's `transform`
-// attribute into a single matrix. Compose order is outer ∘ inner so the
-// outermost group's transform wraps the others — matches SVG semantics.
+// Walks from the element itself up the parent chain and composes every
+// `transform` attribute into a single matrix. Compose order is outer ∘ inner
+// so the outermost group's transform wraps the others — matches SVG semantics.
+//
+// Starts at `el`, not at its parent: an element's own transform applies to its
+// own geometry. pdftocairo puts the whole page transform (including a Y flip)
+// on every single path, so skipping it renders the plan mirrored.
 function readAccumulatedMatrix(el: Element): Matrix2D {
     let m: Matrix2D = IDENTITY_MATRIX;
-    for (let n: Element | null = el.parentElement; n; n = n.parentElement) {
+    for (let n: Element | null = el; n; n = n.parentElement) {
         const t = n.getAttribute('transform');
         if (!t) continue;
         m = composeMatrices(parseTransformAttribute(t), m);
@@ -140,6 +182,109 @@ function readAccumulatedMatrix(el: Element): Matrix2D {
 interface Segment {
     from: [number, number];
     to: [number, number];
+}
+
+type GeometryReader = (el: Element) => Segment[];
+
+// Strategy map, same shape as COMMAND_HANDLERS: one entry per supported tag.
+// Adding a shape is one entry here and nothing else — the query selector is
+// derived from these keys so the two can never drift apart.
+const GEOMETRY_READERS: Record<string, GeometryReader> = {
+    path: (el) => segmentsFromPath(el.getAttribute('d') ?? ''),
+    line: segmentsFromLine,
+    rect: segmentsFromRect,
+    polyline: (el) => segmentsFromPointList(el, {closed: false}),
+    polygon: (el) => segmentsFromPointList(el, {closed: true})
+};
+
+/** Every tag this module can turn into line segments. The geometry resolver
+ *  queries with the same string, so the two can never disagree about what
+ *  counts as geometry. */
+export const SVG_GEOMETRY_SELECTOR: string =
+    Object.keys(GEOMETRY_READERS).join(', ');
+
+function segmentsFromElement(el: Element): Segment[] {
+    return GEOMETRY_READERS[el.tagName.toLowerCase()](el);
+}
+
+function segmentsFromLine(el: Element): Segment[] {
+    return [
+        {
+            from: [numberAttribute(el, 'x1'), numberAttribute(el, 'y1')],
+            to: [numberAttribute(el, 'x2'), numberAttribute(el, 'y2')]
+        }
+    ];
+}
+
+// Rounded corners (rx/ry) are extruded as sharp ones: walls are straight
+// boxes downstream, and a corner radius on an architectural plan is well
+// under MIN_SEGMENT_LEN anyway.
+function segmentsFromRect(el: Element): Segment[] {
+    const x = numberAttribute(el, 'x');
+    const y = numberAttribute(el, 'y');
+    const width = numberAttribute(el, 'width');
+    const height = numberAttribute(el, 'height');
+    // Per the SVG spec a rect with a zero dimension is not rendered at all.
+    if (width <= 0 || height <= 0) return [];
+    return chainSegments(
+        [
+            [x, y],
+            [x + width, y],
+            [x + width, y + height],
+            [x, y + height]
+        ],
+        {closed: true}
+    );
+}
+
+function segmentsFromPointList(
+    el: Element,
+    options: {closed: boolean}
+): Segment[] {
+    const points = parsePointList(el.getAttribute('points') ?? '');
+    if (points.length < 2) return [];
+    return chainSegments(points, options);
+}
+
+// Successive points as segments; `closed` adds the last → first edge that
+// makes a polygon (and a rect) a ring rather than an open chain.
+function chainSegments(
+    points: readonly Point[],
+    options: {closed: boolean}
+): Segment[] {
+    const out: Segment[] = [];
+    for (let i = 1; i < points.length; i++) {
+        out.push(segment(points[i - 1], points[i]));
+    }
+    if (options.closed) {
+        out.push(segment(points[points.length - 1], points[0]));
+    }
+    return out;
+}
+
+function segment(from: Point, to: Point): Segment {
+    return {from: [from[0], from[1]], to: [to[0], to[1]]};
+}
+
+// A `points` attribute separates numbers by commas, whitespace, or both —
+// real Illustrator output mixes them inside one file.
+function parsePointList(raw: string): Point[] {
+    const numbers = raw.match(new RegExp(NUMBER_SOURCE, 'g')) ?? [];
+    const points: Point[] = [];
+    for (let i = 0; i + 1 < numbers.length; i += 2) {
+        points.push([
+            Number.parseFloat(numbers[i]),
+            Number.parseFloat(numbers[i + 1])
+        ]);
+    }
+    return points;
+}
+
+// SVG defaults an absent geometry attribute to 0, and so do we for an
+// unparseable one — a shape is never dropped for a single bad coordinate.
+function numberAttribute(el: Element, name: string): number {
+    const v = Number.parseFloat(el.getAttribute(name) ?? '');
+    return Number.isFinite(v) ? v : 0;
 }
 
 // SVG `d` → straight-line segments. Lines pass through as exact segments;
@@ -411,9 +556,13 @@ function appendBezierSegments(
 
 type PathToken = string | number;
 
+// One grammar for "a number in an SVG attribute". The `d` tokenizer and the
+// `points` reader must agree on what counts as a number.
+const NUMBER_SOURCE = String.raw`-?\d*\.?\d+(?:[eE][+-]?\d+)?`;
+
 function tokenizePath(d: string): PathToken[] {
     const out: PathToken[] = [];
-    const re = /([MmLlHhVvZzCcSsQqTtAa])|(-?\d*\.?\d+(?:[eE][+-]?\d+)?)/g;
+    const re = new RegExp(`([MmLlHhVvZzCcSsQqTtAa])|(${NUMBER_SOURCE})`, 'g');
     let match: RegExpExecArray | null = re.exec(d);
     while (match !== null) {
         if (match[1] != null) {

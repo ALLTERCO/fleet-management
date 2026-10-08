@@ -1,7 +1,8 @@
 <template>
-    <div v-if="!dashboard && loading" class="bento-grid p-4">
-        <Skeleton v-for="n in 6" :key="n" variant="card" />
-    </div>
+    <DashboardLoadingSkeleton
+        v-if="!dashboard && loading"
+        label="Loading dashboard controls"
+    />
 
     <div v-else-if="error">
         <span>Something went wrong</span>
@@ -47,34 +48,54 @@
         </EmptyBlock>
 
         <ErrorBoundary v-if="dashboard!.items.length > 0">
-        <BentoGrid ref="bentoGrid" :has-more="page < totalPages" :editing="editMode" @load-more="loadItems">
-            <template v-for="(entry, entry_index) in items" :key="(entry as DashboardEntry).id ?? entry_index">
-                <DashboardEntryView
-                    :entry="(entry as DashboardEntry)"
-                    :edit-mode="editMode"
-                    :selected="selected === entry_index"
-                    @delete="deleteEntry(entry_index)"
-                    @move="(d: number) => moveEntry(entry_index, d)"
-                    @cycle-size="cycleEntrySize(entry_index)"
-                    @resize="(sz: string) => resizeEntry(entry_index, sz as CardSize)"
-                    @open-detail="onEntryOpenDetail(entry as DashboardEntry, entry_index)"
-                    @open-preview="onEntryOpenPreview(entry as DashboardEntry)"
-                    @configure="openConfigure(entry_index)"
-                />
-            </template>
-
-            <!-- Add Card placeholder (edit mode only) -->
-            <button
-                v-if="editMode && canEditDashboard"
-                type="button"
-                class="ec-add-card"
-                title="Add widget"
-                @click="modals.addWidget = true"
+        <BentoGrid
+            ref="bentoGrid"
+            :has-more="page < totalPages"
+            :editing="editMode"
+            @load-more="loadItems"
+            @layout-change="applyLayoutChange"
+        >
+            <!-- GridStack reads placement off these attributes. A null gs-x/gs-y
+                 means "never positioned"; GridStack then flows the card by DOM
+                 order, which is the migration's documented first-load behaviour. -->
+            <div
+                v-for="(entry, entry_index) in items"
+                :key="(entry as DashboardEntry).id ?? entry_index"
+                class="grid-stack-item"
+                :gs-id="String((entry as DashboardEntry).id ?? entry_index)"
+                :gs-x="(entry as DashboardEntry).gridX ?? undefined"
+                :gs-y="(entry as DashboardEntry).gridY ?? undefined"
+                :gs-w="footprintFor((entry as DashboardEntry).size).w"
+                :gs-h="footprintFor((entry as DashboardEntry).size).h"
             >
-                <i class="fas fa-plus" />
-                <span>Add widget</span>
-            </button>
+                <div class="grid-stack-item-content">
+                    <DashboardEntryView
+                        :entry="(entry as DashboardEntry)"
+                        :edit-mode="editMode"
+                        :selected="selected === entry_index"
+                        @delete="deleteEntry(entry_index)"
+                        @cycle-size="cycleEntrySize(entry_index)"
+                        @resize="(sz: string) => resizeEntry(entry_index, sz as CardSize)"
+                        @open-detail="openEntryDetail(entry as DashboardEntry, entry_index)"
+                        @open-preview="openEntryDetail(entry as DashboardEntry, entry_index)"
+                        @configure="openConfigure(entry_index)"
+                    />
+                </div>
+            </div>
         </BentoGrid>
+
+        <!-- Outside the grid: GridStack owns its children's geometry, and a
+             button that is not a card should not occupy a grid cell. -->
+        <button
+            v-if="editMode && canEditDashboard"
+            type="button"
+            class="ec-add-card ec-add-card--standalone"
+            title="Add widget"
+            @click="modals.addWidget = true"
+        >
+            <i class="fas fa-plus" />
+            <span>Add widget</span>
+        </button>
         </ErrorBoundary>
 
         <div v-if="page < totalPages" class="mt-2 flex h-6 justify-center">
@@ -84,6 +105,7 @@
         <WidgetConfigPanel
             v-if="configuringConfig !== null"
             :config="configuringConfig"
+            :size="configuringSize"
             @close="closeConfigure"
             @save="saveWidgetConfig"
         />
@@ -94,15 +116,6 @@
             :saving="renameSaving"
             @save="saveRename"
             @close="renameVisible = false"
-        />
-        <ShareDialog
-            v-if="dashboard"
-            :visible="shareVisible"
-            resource-type="dashboard"
-            :resource-id="dashboard.id"
-            :resource-label="dashboard.name"
-            @close="shareVisible = false"
-            @shared="onShared"
         />
         <ConfirmationModal ref="modalRefDelete">
             <template #title>
@@ -125,12 +138,28 @@
             @update:size="updateDetailSize"
             @after-leave="clearDetail"
         />
+
+        <DetailOverlayShell
+            v-if="widgetDetail"
+            :visible="widgetDetailVisible"
+            data-type="ui_widget"
+            @close="closeWidgetDetail"
+            @after-leave="clearWidgetDetail"
+        >
+            <template #default="{close, titleId}">
+                <WidgetDetailBody
+                    :entry="widgetDetail.entry"
+                    :title="widgetDetail.title"
+                    :title-id="titleId"
+                    @close="close"
+                />
+            </template>
+        </DetailOverlayShell>
     </div>
 </template>
 
 <script setup lang="ts">
 import '@/styles/card-system.css';
-import {useSortable} from '@vueuse/integrations/useSortable';
 import {storeToRefs} from 'pinia';
 import {
     computed,
@@ -144,25 +173,29 @@ import {
 import {useRoute, useRouter} from 'vue-router';
 import BentoGrid from '@/components/cards/BentoGrid.vue';
 import DetailOverlay from '@/components/cards/DetailOverlay.vue';
+import DetailOverlayShell from '@/components/cards/DetailOverlayShell.vue';
+import WidgetDetailBody from '@/components/cards/WidgetDetailBody.vue';
 import Button from '@/components/core/Button.vue';
 import EmptyBlock from '@/components/core/EmptyBlock.vue';
 import ErrorBoundary from '@/components/core/ErrorBoundary.vue';
-import Skeleton from '@/components/core/Skeleton.vue';
 import Spinner from '@/components/core/Spinner.vue';
 import DashboardBreadcrumb from '@/components/dashboard/DashboardBreadcrumb.vue';
 import DashboardEntryView from '@/components/dashboard/DashboardEntryView.vue';
+import DashboardLoadingSkeleton from '@/components/dashboard/DashboardLoadingSkeleton.vue';
 import DashEditToolbar from '@/components/dashboard/DashEditToolbar.vue';
 import DashRenameModal from '@/components/dashboard/DashRenameModal.vue';
 import WidgetConfigPanel from '@/components/dashboard/WidgetConfigPanel.vue';
 import AddWidgetModal from '@/components/modals/AddWidgetModal.vue';
 import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
-import ShareDialog from '@/components/modals/ShareDialog.vue';
 import {
     ACTIONS_LIST_KEY,
     ENTITY_CACHE_KEY
 } from '@/composables/dashboardInjectionKeys';
 import type {DashboardContext} from '@/composables/useDashboardContext';
 import {DASHBOARD_CONTEXT_KEY} from '@/composables/useDashboardContext';
+import type {DetailResolverContext} from '@/composables/useDashboardDetailResolver';
+import {resolveDashboardDetail} from '@/composables/useDashboardDetailResolver';
+import {footprintFor, type GridMove} from '@/composables/useDashboardGrid';
 import {useDashboardHistory} from '@/composables/useDashboardHistory';
 import useInfiniteScroll from '@/composables/useInfiniteScroll';
 import useRegistry from '@/composables/useRegistry';
@@ -172,9 +205,14 @@ import {
 } from '@/composables/useVisibleDeviceComponents';
 import {registerShortcut} from '@/config/shortcuts';
 import {DASHBOARDS_PATH} from '@/constants';
-import {ActionBoard} from '@/helpers/components';
+import {ActionBoard, DeviceBoard} from '@/helpers/components';
+import {useRpcPermissions} from '@/helpers/rpcPermissions';
 import {dashboardEditMode, modals} from '@/helpers/ui';
-import {nextSizeForEntity} from '@/helpers/widgetCatalog';
+import {
+    defaultSizeForWidget,
+    nextSizeForEntity
+} from '@/helpers/widgetCatalog';
+import {CATALOG_UI_WIDGETS} from '@/helpers/widgetSamples';
 import {useAuthStore} from '@/stores/auth';
 import {useDashboardChromeStore} from '@/stores/dashboardChrome';
 import {type DashboardItem, useDashboardsStore} from '@/stores/dashboards';
@@ -197,6 +235,7 @@ import type {CardSize, DashboardEntry} from '@/types/dashboard-entry';
 
 const toast = useToastStore();
 const authStore = useAuthStore();
+const rpcPermissions = useRpcPermissions();
 
 const modalRefDelete = ref<InstanceType<typeof ConfirmationModal>>();
 
@@ -266,20 +305,9 @@ const actions = computed(() => actionsRaw.value || []);
 // the same resolver and need the same actions list + entity cache).
 provide(ACTIONS_LIST_KEY, actions);
 
-const KNOWN_WIDGETS = new Set([
-    'chart_widget',
-    'gauge_widget',
-    'stats_summary_widget',
-    'top_consumers_widget',
-    'state_timeline_widget',
-    'activity_heatmap_widget',
-    'energy_flow_sankey_widget',
-    'fleet_kpi_strip_widget',
-    'site_grid_widget',
-    'maintenance_list_widget',
-    'cross_site_bar_widget',
-    'data_table_widget'
-]);
+// Derived from the catalog, never a second list: the two drifted once and every
+// clock item became "Widget config invalid".
+const KNOWN_WIDGETS = new Set<string>(CATALOG_UI_WIDGETS);
 
 // Backend kind enum → template's `type` axis (existing branches use this name).
 function kindToEntryType(kind: string): DashboardEntry['type'] {
@@ -523,11 +551,15 @@ const {
 } = useInfiniteScroll(dashboardItems, pageSize);
 const selected = ref<number>(-1);
 
-// Detail overlay state
+// Detail overlay state (entity tiles)
 const detailEntity = ref<entity_t | null>(null);
 const detailSize = ref<CardSize>('1x1');
 const detailVisible = ref(false);
 const detailEntryIndex = ref(-1);
+
+// Detail overlay state (ui_widget tiles) — same shell, widget body.
+const widgetDetail = ref<{entry: DashboardEntry; title: string} | null>(null);
+const widgetDetailVisible = ref(false);
 
 watch(
     () => rightSideStore.inspectorComponent,
@@ -567,22 +599,6 @@ function deleteEntry(index: number) {
     });
 }
 
-// Default canvas sizes for each known widget kind.
-const UI_WIDGET_SIZES: Record<string, string> = {
-    chart_widget: '2x1',
-    stats_summary_widget: '2x1',
-    top_consumers_widget: '2x1',
-    state_timeline_widget: '2x2',
-    activity_heatmap_widget: '2x2',
-    energy_flow_sankey_widget: '2x2',
-    gauge_widget: '1x1',
-    fleet_kpi_strip_widget: '2x1',
-    site_grid_widget: '2x2',
-    maintenance_list_widget: '2x1',
-    cross_site_bar_widget: '2x1',
-    data_table_widget: '2x2'
-};
-
 // Phase 2 wire format: {kind, refId, subItem?}. Backend returns the updated
 // Dashboard — we use the last item from it instead of a second fetch.
 async function addSimpleWidget(
@@ -592,12 +608,10 @@ async function addSimpleWidget(
     order: number
 ): Promise<DashboardEntry> {
     const rpc = getRegistry('ui').addItem;
-    const isConfigWidget =
-        typeKey === 'ui_widget' &&
-        item.data?.id &&
-        item.data.id !== 'clock_widget';
     const size =
-        (isConfigWidget ? UI_WIDGET_SIZES[item.data.id] : undefined) ?? '1x1';
+        typeKey === 'ui_widget'
+            ? defaultSizeForWidget(item.data?.id)
+            : '1x1';
 
     const refId = typeKey === 'ui_widget' ? 0 : Number(item.data.id) || 0;
     const fields: Record<string, unknown> = {
@@ -634,7 +648,7 @@ async function addSimpleWidget(
     return {
         type: entryType,
         size: size as CardSize,
-        data: isConfigWidget
+        data: typeKey === 'ui_widget'
             ? item.data
             : typeKey === 'action'
               ? {id: String(refId), subId: null}
@@ -809,92 +823,50 @@ function resizeEntry(index: number, newSize: CardSize) {
     });
 }
 
-// `to` is the desired FINAL index of the moved card in the array (not an
-// insert-before position). Both callers — the arrow buttons and drag-drop —
-// pass the target slot directly; the redo/undo splices remove-then-insert so
-// the element lands at exactly `to` regardless of move direction.
-function reorderItems(from: number, to: number) {
-    if (!dashboard.value) return;
-    const arr = dashboard.value.items;
-    if (from < 0 || from >= arr.length) return;
-    const clampedTo = Math.max(0, Math.min(to, arr.length - 1));
-    if (from === clampedTo) return;
+// GridStack reports every card whose placement changed after a drag. Applying
+// them through the history keeps undo/redo working the same as add and resize.
+function applyLayoutChange(moves: GridMove[]) {
+    if (!dashboard.value || !moves.length) return;
+    const arr = dashboard.value.items as DashboardEntry[];
+    const targets = moves
+        .map((move) => ({
+            move,
+            entry: arr.find((it) => String(it.id) === move.id)
+        }))
+        .filter((t): t is {move: GridMove; entry: DashboardEntry} => !!t.entry);
+    if (!targets.length) return;
 
-    // Capture item reference — index may be stale after other undo/redo ops
-    const movedItem = arr[from];
-    const originalFrom = from;
-    const originalTo = clampedTo;
+    const before = targets.map((t) => ({
+        entry: t.entry,
+        gridX: t.entry.gridX ?? null,
+        gridY: t.entry.gridY ?? null
+    }));
+    // Nothing actually moved — GridStack also fires on its own reflow.
+    if (
+        before.every(
+            (b, i) =>
+                b.gridX === targets[i].move.x && b.gridY === targets[i].move.y
+        )
+    )
+        return;
 
     history.execute({
         type: 'move',
-        label: 'Move card',
+        label: targets.length > 1 ? 'Move cards' : 'Move card',
         redo: () => {
-            const currentIdx = arr.indexOf(movedItem);
-            if (currentIdx === -1) return;
-            arr.splice(currentIdx, 1);
-            arr.splice(Math.min(originalTo, arr.length), 0, movedItem);
+            for (const {move, entry} of targets) {
+                entry.gridX = move.x;
+                entry.gridY = move.y;
+            }
         },
         undo: () => {
-            const currentIdx = arr.indexOf(movedItem);
-            if (currentIdx === -1) return;
-            arr.splice(currentIdx, 1);
-            arr.splice(Math.min(originalFrom, arr.length), 0, movedItem);
+            for (const b of before) {
+                b.entry.gridX = b.gridX;
+                b.entry.gridY = b.gridY;
+            }
         }
     });
 }
-
-function moveEntry(index: number, direction: number) {
-    reorderItems(index, index + direction);
-}
-
-// SortableJS via VueUse — long-press on touch (200ms) to start drag, keeps
-// taps clickable. onUpdate fires after sortable mutates the array; we revert
-// and route through reorderItems so moves go via the undo/redo history.
-const bentoGrid = ref<{gridEl: HTMLElement | null} | null>(null);
-const sortableEl = computed(() => bentoGrid.value?.gridEl ?? null);
-const sortableItems = computed(() => dashboard.value?.items ?? []);
-const sortable = useSortable(sortableEl, sortableItems, {
-    animation: 150,
-    delay: 200,
-    delayOnTouchOnly: true,
-    ghostClass: 'dragging',
-    // Drag-to-reorder is disabled by product decision: dashboard items keep
-    // their add-order; users can only add and remove (and resize). Kept the
-    // sortable wiring inert rather than ripping it out.
-    disabled: true,
-    onUpdate(e: {
-        oldIndex?: number;
-        newIndex?: number;
-        item?: HTMLElement;
-        from?: HTMLElement;
-    }) {
-        const oldIndex = e.oldIndex;
-        const newIndex = e.newIndex;
-        if (oldIndex == null || newIndex == null || oldIndex === newIndex)
-            return;
-        const arr = dashboard.value?.items;
-        if (!arr) return;
-        // We supply our own onUpdate, so VueUse's array-sync is disabled and
-        // the model is untouched here — only the DOM was reordered by
-        // SortableJS. Revert that DOM move so Vue can re-render from the model
-        // (the source of truth), then apply the move via the undo/redo history.
-        const node = e.item;
-        const parent = e.from;
-        if (node && parent) {
-            node.parentNode?.removeChild(node);
-            parent.insertBefore(node, parent.children[oldIndex] ?? null);
-        }
-        // Drags that start on a non-card child are not real reorders.
-        if (oldIndex >= arr.length) return;
-        // The Add-widget button and load-more sentinel share the grid and sit
-        // after the cards; clamp the drop target into the item range so we
-        // never index a non-item slot (which previously spliced `undefined`
-        // into the model and crashed the render).
-        reorderItems(oldIndex, Math.min(newIndex, arr.length - 1));
-    }
-});
-// Keep sortable permanently disabled regardless of edit mode.
-watch(dashboardEditMode, () => sortable.option('disabled', true));
 
 function cancelEdit() {
     history.clear();
@@ -1017,12 +989,14 @@ async function saveEdit() {
 // ── Widget configure panel ──
 const configuringIndex = ref<number | null>(null);
 const configuringConfig = ref<Record<string, any> | null>(null);
+const configuringSize = ref<CardSize>('1x1');
 
 function openConfigure(index: number) {
     const entry = dashboard.value?.items[index];
     if (!entry || entry.type !== 'ui_widget') return;
     configuringIndex.value = index;
     configuringConfig.value = {...entry.data};
+    configuringSize.value = entry.size;
 }
 
 function closeConfigure() {
@@ -1030,14 +1004,18 @@ function closeConfigure() {
     configuringConfig.value = null;
 }
 
-async function saveWidgetConfig(updatedConfig: Record<string, any>) {
+async function saveWidgetConfig(payload: {
+    config: Record<string, unknown>;
+    size: CardSize;
+}) {
     const index = configuringIndex.value;
     if (index === null || !dashboard.value) return;
     const entry = dashboard.value.items[index];
     if (!entry) return;
 
-    const prev = {...entry.data};
-    entry.data = {...updatedConfig};
+    const prev = {data: {...entry.data}, size: entry.size};
+    entry.data = {...payload.config};
+    entry.size = payload.size;
 
     try {
         const dashId = dashboard.value.id;
@@ -1049,7 +1027,8 @@ async function saveWidgetConfig(updatedConfig: Record<string, any>) {
         });
         closeConfigure();
     } catch {
-        entry.data = prev;
+        entry.data = prev.data;
+        entry.size = prev.size;
         toast.error('Failed to save widget config');
     }
 }
@@ -1059,30 +1038,78 @@ function actionClicked(index: number, actionID: string) {
     rightSideStore.showInspector(ActionBoard, {actionID});
 }
 
+// Same inspector call the devices page uses for a card click.
+function deviceClicked(index: number, shellyID: string) {
+    selected.value = index;
+    rightSideStore.showInspector(DeviceBoard, {shellyID});
+}
+
 function gotoGroup(id: number) {
     router.push(`/organize/groups?preview=${id}`);
 }
 
-/** Bridges DashboardEntryView's open-detail event back to the right
- *  click handler for the entry type. */
-function onEntryOpenDetail(entry: DashboardEntry, index: number) {
-    if (editMode.value) return;
-    if (entry.type === 'entity') {
-        const ent =
-            entityCache.value.get(entry.data.id)?.entity ??
-            entityStore.entities[entry.data.id];
-        if (ent) entityClicked(index, ent);
-        return;
-    }
-    if (entry.type === 'action') {
-        actionClicked(index, entry.data.id);
-    }
+function gotoLocation(id: number) {
+    router.push(`/organize/locations?preview=${id}`);
 }
 
-function onEntryOpenPreview(entry: DashboardEntry) {
+function gotoTag(id: number) {
+    router.push(`/organize/tags?preview=${id}`);
+}
+
+function openWidgetDetail(entry: DashboardEntry, title: string) {
+    widgetDetail.value = {entry, title};
+    widgetDetailVisible.value = true;
+}
+
+function closeWidgetDetail() {
+    widgetDetailVisible.value = false;
+}
+
+function clearWidgetDetail() {
+    widgetDetail.value = null;
+}
+
+// Context for the click-detail resolver — the same lookups the render path
+// uses, plus device presence (the inspector needs a loaded device record).
+function detailResolverCtx(): DetailResolverContext {
+    return {
+        entityCache: entityCache.value,
+        rawEntity: (entityId) => entityStore.entities[entityId],
+        group: (groupId) => groupStore.groups[groupId],
+        action: (actionId) => actions.value.find((a) => a.id === actionId),
+        deviceExternalId: (deviceId) => deviceStore.idToShellyMap.get(deviceId),
+        device: (shellyID) => deviceStore.devices[shellyID]
+    };
+}
+
+/** One resolver-driven entry point for every card click (open-detail and
+ *  open-preview both land here) — replaces the old per-type whitelists. */
+function openEntryDetail(entry: DashboardEntry, index: number) {
     if (editMode.value) return;
-    if (entry.type === 'group') {
-        gotoGroup(entry.data.id);
+    const detail = resolveDashboardDetail(entry, detailResolverCtx());
+    if (!detail) return;
+    switch (detail.kind) {
+        case 'entity':
+            entityClicked(index, detail.entity);
+            return;
+        case 'action':
+            actionClicked(index, detail.actionId);
+            return;
+        case 'device':
+            deviceClicked(index, detail.deviceId);
+            return;
+        case 'group':
+            gotoGroup(detail.groupId);
+            return;
+        case 'location':
+            gotoLocation(detail.locationId);
+            return;
+        case 'tag':
+            gotoTag(detail.tagId);
+            return;
+        case 'widget':
+            openWidgetDetail(entry, detail.title);
+            return;
     }
 }
 
@@ -1144,6 +1171,8 @@ onUnmounted(() => {
     dashboardEditMode.value = false;
     detailVisible.value = false;
     detailEntity.value = null;
+    widgetDetailVisible.value = false;
+    widgetDetail.value = null;
     rightSideStore.clearInspector();
     chrome.clear();
     // Drop this dashboard's scoped component subscription.
@@ -1171,11 +1200,6 @@ async function duplicateDashboard(): Promise<void> {
     if (copy) router.push({name: '/dash/[id]', params: {id: copy.id}});
 }
 
-const shareVisible = ref(false);
-function onShared(): void {
-    // The dialog refreshes its own "Shared with" list on @shared.
-}
-
 watchEffect(() => {
     chrome.register({
         kind: 'bento',
@@ -1184,12 +1208,8 @@ watchEffect(() => {
         onDuplicate: canCreateDashboard.value
             ? () => void duplicateDashboard()
             : undefined,
-        // Manage-capable users can share; the server gates the actual grant.
-        onShare: () => {
-            shareVisible.value = true;
-        },
         canEdit: canEditDashboard.value,
-        canShare: canEditDashboard.value,
+        canShare: rpcPermissions.canCall('assignment.create'),
         isDefault: isDefaultDash.value,
         loading: loading.value
     });

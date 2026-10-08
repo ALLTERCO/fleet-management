@@ -4,6 +4,8 @@ declare global {
     interface Window {
         __FM_RUNTIME_CONFIG__?: {
             devMode?: boolean;
+            /** Share the OIDC user with the separately opened admin bundle. */
+            crossTabAuth?: boolean;
             oidc?: {
                 authority?: string;
                 client_id?: string;
@@ -13,7 +15,7 @@ declare global {
                     issuer?: string;
                     token_endpoint?: string;
                 };
-                [key: string]: any;
+                [key: string]: unknown;
             };
             obs_level?: number;
             observability?: boolean;
@@ -29,6 +31,8 @@ declare global {
             auditPageSize?: number;
             swUpdatePollIntervalMs?: number;
             zitadelPasswordMinLength?: number;
+            /** MCP browser sign-in client ids per level; public, not secrets. */
+            mcpOAuthClients?: {read?: string; write?: string};
             mapStyleUrl?: string;
             mapSinglePinZoom?: number;
             mapDetailZoom?: number;
@@ -109,7 +113,7 @@ declare global {
                 };
                 shortcuts?: Record<string, string>;
             };
-            [key: string]: any;
+            [key: string]: unknown;
         };
         fmObservability?: (level: ObsLevel) => void;
         fmDebug?: (enabled: boolean) => void;

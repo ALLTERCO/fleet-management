@@ -60,7 +60,7 @@
         <!-- Overflow (⋮): always present for Create / Manage. Pages register
              per-dashboard actions (edit / set default / duplicate) via the
              chrome store; the menu contents branch on dashboard kind. -->
-        <DashViewActions :actions="chrome.actions" />
+        <DashViewActions :actions="chrome.actions" @share="$emit('share')" />
     </div>
 </template>
 
@@ -91,6 +91,7 @@ const chrome = useDashboardChromeStore();
 
 defineEmits<{
     select: [id: number | string];
+    share: [];
 }>();
 
 // Block style injection via the color prop.

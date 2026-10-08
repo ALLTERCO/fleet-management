@@ -77,7 +77,9 @@
     position: relative;
     display: flex;
     min-height: var(--touch-target-min);
-    max-width: 320px;
+    /* Cap scales with the tab count so a 4-way toggle is not squeezed into the
+       2-way width. 160px per tab keeps every existing 2-tab toggle at 320px. */
+    max-width: calc(var(--slider-count, 2) * 160px);
     background: var(--color-surface-3);
     border-radius: var(--btn-radius);
     padding: 3px;
@@ -104,13 +106,6 @@
  */
 .route-tabs {
     --slider-count: 2;
-}
-.route-tabs--3 {
-    --slider-count: 3;
-}
-.route-tabs--4 {
-    --slider-count: 4;
-    max-width: 480px;
 }
 .route-tabs__track {
     /* max() guards a 0-option toggle: calc(100% / 0) clamps the track to the
@@ -155,6 +150,13 @@
 }
 .route-tabs__btn--active {
     color: var(--color-text-primary);
+}
+/* A long label wraps inside its equal-width tab instead of spilling past it. */
+.route-tabs__label {
+    min-width: 0;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.15;
 }
 
 /* ── Filter dropdown (shared — used by groups index, detail, etc.) ── */

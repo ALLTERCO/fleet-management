@@ -1,0 +1,59 @@
+{
+    "name": "@shelly/fleet-manager-host-contract",
+    "version": "1.92.0",
+    "description": "Generated Fleet Manager Host RPC contract and portable conformance runner.",
+    "type": "module",
+    "main": "./index.js",
+    "types": "./index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./index.d.ts",
+            "import": "./index.js",
+            "default": "./index.js"
+        },
+        "./conformance": {
+            "types": "./conformance/index.d.ts",
+            "import": "./conformance/index.js",
+            "default": "./conformance/index.js"
+        },
+        "./generated/contract": {
+            "types": "./generated/contract.d.ts",
+            "import": "./generated/contract.js",
+            "default": "./generated/contract.js"
+        },
+        "./generated/build-metadata": {
+            "types": "./generated/build-metadata.d.ts",
+            "import": "./generated/build-metadata.js",
+            "default": "./generated/build-metadata.js"
+        },
+        "./generated/method-metadata": {
+            "types": "./generated/method-metadata.d.ts",
+            "import": "./generated/method-metadata.js",
+            "default": "./generated/method-metadata.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "README.md",
+        "index.js",
+        "index.d.ts",
+        "conformance",
+        "generated"
+    ],
+    "scripts": {
+        "test": "node --test test/*.test.mjs"
+    },
+    "engines": {
+        "node": ">=20"
+    },
+    "publishConfig": {
+        "access": "restricted"
+    },
+    "sideEffects": false,
+    "license": "UNLICENSED",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ALLTERCO/fleet-management.git",
+        "directory": "packages/fleet-manager-host-contract"
+    }
+}

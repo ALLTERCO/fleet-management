@@ -1,10 +1,16 @@
 import type {AlertInstance, AlertTransition} from '@api/alert';
-import {type Ref, computed, ref, watch} from 'vue';
+import {computed, type Ref, ref, watch} from 'vue';
 import {usePermissions} from '@/composables/usePermissions';
+import {describeSystemHealthCheck} from '@/helpers/systemHealthChecks';
 import {useAlertsStore} from '@/stores/alerts';
 import {useDevicesStore} from '@/stores/devices';
 import {useGroupsStore} from '@/stores/groups';
 import {useNotificationsStore} from '@/stores/notifications';
+
+const FAILED_JOB_STATES: ReadonlySet<string> = new Set([
+    'failed',
+    'dead_letter'
+]);
 
 // Friendly noun per alert scope type — so the source reads "Device", not "device".
 const SCOPE_LABEL: Record<string, string> = {
@@ -14,7 +20,9 @@ const SCOPE_LABEL: Record<string, string> = {
     location: 'Location',
     tag: 'Tag',
     fleet: 'Fleet',
-    organization: 'Organization'
+    organization: 'Organization',
+    external: 'External',
+    system: 'System'
 };
 
 export interface AlertSourceView {
@@ -22,6 +30,16 @@ export interface AlertSourceView {
     icon: string;
     label: string;
     to: string | null;
+}
+
+// A system health alert: the product itself is the source, the context
+// carries the number and the fix.
+export interface SystemHealthView {
+    actionLabel: string;
+    to: string;
+    action: string;
+    statLabel: string;
+    statValue: string;
 }
 
 // Data + actions for a single alert instance. Shared by the /alerts/:id page
@@ -45,9 +63,32 @@ export function useAlertInstance(instanceId: Ref<number | null>) {
 
     // Where the alert fired, resolved to a friendly name + a link where we have
     // one (raw `device:abc123` is meaningless to a human).
+    const systemHealth = computed<SystemHealthView | null>(() => {
+        const i = instance.value;
+        if (i?.ruleKind !== 'system_health') return null;
+        const context = (i.context ?? {}) as Record<string, unknown>;
+        const view = describeSystemHealthCheck(context.check);
+        const value = typeof context.value === 'number' ? context.value : null;
+        return {
+            actionLabel: view.actionLabel,
+            to: view.to,
+            action: typeof context.action === 'string' ? context.action : '',
+            statLabel: view.unit,
+            statValue: value === null ? '' : String(value)
+        };
+    });
+
     const source = computed<AlertSourceView | null>(() => {
         const s = instance.value?.source;
         if (!s) return null;
+        if (systemHealth.value) {
+            return {
+                kind: 'System check',
+                icon: 'fa-solid fa-heart-pulse',
+                label: 'Fleet Manager',
+                to: systemHealth.value.to
+            };
+        }
         const id = s.subjectId;
         if (s.subjectType === 'device') {
             const dev = devicesStore.devices[id];
@@ -96,6 +137,15 @@ export function useAlertInstance(instanceId: Ref<number | null>) {
             : []
     );
 
+    // Distinct from an empty timeline: true only when the transitions fetch
+    // itself failed, so the history section can say so instead of reading
+    // as a quiet alert.
+    const historyError = computed<boolean>(() =>
+        instanceId.value != null
+            ? (store.transitionsError[instanceId.value] ?? false)
+            : false
+    );
+
     const deliveryJobs = computed(() =>
         instanceId.value == null
             ? []
@@ -125,6 +175,14 @@ export function useAlertInstance(instanceId: Ref<number | null>) {
         return `${Math.round(hours / 24)}d ago`;
     });
 
+    // The same instant twice says nothing; show the second time only once
+    // the alert has fired again.
+    const firedAgain = computed(
+        () =>
+            !!instance.value &&
+            instance.value.lastTriggeredAt !== instance.value.activeSince
+    );
+
     const hasContext = computed(
         () =>
             !!instance.value &&
@@ -151,9 +209,30 @@ export function useAlertInstance(instanceId: Ref<number | null>) {
                 store.fetchTransitions(id),
                 notifications.fetchHistory({alertId: id})
             ]);
+            await loadFailureDetails();
         } finally {
             loading.value = false;
         }
+    }
+
+    // The job list carries states only; the reason lives on the attempts.
+    // Load them for the jobs that failed so the modal can say why.
+    async function loadFailureDetails(): Promise<void> {
+        const failed = deliveryJobs.value.filter((job) =>
+            FAILED_JOB_STATES.has(job.state)
+        );
+        await Promise.all(
+            failed.map((job) => notifications.fetchHistoryDetail(job.id))
+        );
+    }
+
+    function lastErrorFor(jobId: number): string | null {
+        const attempts = notifications.attempts[jobId] ?? [];
+        for (let i = attempts.length - 1; i >= 0; i--) {
+            const message = attempts[i]?.errorMessage;
+            if (message) return message;
+        }
+        return null;
     }
 
     watch(instanceId, refresh, {immediate: true});
@@ -197,13 +276,17 @@ export function useAlertInstance(instanceId: Ref<number | null>) {
         sourceDevice,
         sourceGroup,
         timeline,
+        historyError,
         deliveryJobs,
+        lastErrorFor,
         loading,
         silenceVisible,
         silencedActive,
         ageLabel,
         hasContext,
         contextPreview,
+        systemHealth,
+        firedAgain,
         canWrite,
         formatTs,
         refresh,

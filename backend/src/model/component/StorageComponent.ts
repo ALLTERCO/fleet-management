@@ -93,6 +93,9 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
         // Known DB-backed (registry, key) pair → admin baseline.
         if (this.#isOrgScopedRegistryKey(reg, k)) {
             if (hasTenantAdminAuthority(sender)) return;
+            if (reg === 'ui') {
+                throw RpcError.PermissionDenied(sender.isAuthenticated());
+            }
             if (reg === 'actions') {
                 if (!sender.hasCrudPermission('actions', operation)) {
                     throw RpcError.InvalidRequest(
@@ -100,9 +103,6 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
                     );
                 }
             }
-            // ui.* keys: admin baseline above; non-admin would only get
-            // here through hasCrudPermission for dashboards, which we
-            // do not grant via the ui registry.
             return;
         }
         // Configuration profiles are selected by their registry key.
@@ -248,100 +248,95 @@ export default class StorageComponent extends Component<StorageComponentConfig> 
         if (registry === 'configs') {
             return readConfigurationProfile(sender, params.key);
         }
-        try {
-            const registryContent = await Registry.getFromRegistry(
-                registry,
-                params.key,
-                sender.getOrganizationId()
-            );
+        const registryContent = await Registry.getFromRegistry(
+            registry,
+            params.key,
+            sender.getOrganizationId()
+        );
 
-            if (!registryContent) {
-                return null;
-            }
-
-            // Whole-registry global bypass for global provider support only.
-            // Tenant admins flow through the per-resource filters below.
-            if (canCrossOrganizationBoundary(sender)) {
-                return registryContent;
-            }
-
-            const key = (params.key ?? '').toLowerCase();
-            if (
-                (registry === 'actions' || key === 'rpc') &&
-                Array.isArray(registryContent)
-            ) {
-                if (!sender.hasCrudPermission('actions', 'read')) {
-                    return [];
-                }
-
-                const allDeviceIds = new Set<string>();
-                for (const act of registryContent) {
-                    for (const step of act.actions) {
-                        for (const id of step.dst) allDeviceIds.add(id);
-                    }
-                }
-                const accessible = await sender.filterAccessibleDevices([
-                    ...allDeviceIds
-                ]);
-
-                const filtered: typeof registryContent = [];
-                for (const act of registryContent) {
-                    let ok = true;
-                    for (const step of act.actions) {
-                        for (const shellyID of step.dst) {
-                            if (!accessible.has(shellyID)) {
-                                ok = false;
-                                break;
-                            }
-                        }
-                        if (!ok) break;
-                    }
-                    if (ok) filtered.push(act);
-                }
-                return filtered;
-            }
-
-            if (registry === 'dashboards' || key === 'dashboards') {
-                if (!sender.hasCrudPermission('dashboards', 'read')) {
-                    return Array.isArray(registryContent) ? [] : {};
-                }
-
-                if (Array.isArray(registryContent)) {
-                    return registryContent.filter((d: any) =>
-                        isComponentPermissionAllowed(
-                            canPerformComponentOperation(
-                                sender,
-                                'dashboards',
-                                'read',
-                                d?.id
-                            )
-                        )
-                    );
-                }
-                const result: Record<string, any> = {};
-                for (const [id, val] of Object.entries(registryContent)) {
-                    const dashId = (val as any)?.id ?? Number(id);
-                    if (
-                        isComponentPermissionAllowed(
-                            canPerformComponentOperation(
-                                sender,
-                                'dashboards',
-                                'read',
-                                dashId
-                            )
-                        )
-                    ) {
-                        result[id] = val;
-                    }
-                }
-                return result;
-            }
-
-            return registryContent;
-        } catch (error) {
-            this.logger.error(`Error accessing registry ${registry}:`, error);
+        if (!registryContent) {
             return null;
         }
+
+        // Whole-registry global bypass for global provider support only.
+        // Tenant admins flow through the per-resource filters below.
+        if (canCrossOrganizationBoundary(sender)) {
+            return registryContent;
+        }
+
+        const key = (params.key ?? '').toLowerCase();
+        if (
+            (registry === 'actions' || key === 'rpc') &&
+            Array.isArray(registryContent)
+        ) {
+            if (!sender.hasCrudPermission('actions', 'read')) {
+                return [];
+            }
+
+            const allDeviceIds = new Set<string>();
+            for (const act of registryContent) {
+                for (const step of act.actions) {
+                    for (const id of step.dst) allDeviceIds.add(id);
+                }
+            }
+            const accessible = await sender.filterAccessibleDevices([
+                ...allDeviceIds
+            ]);
+
+            const filtered: typeof registryContent = [];
+            for (const act of registryContent) {
+                let ok = true;
+                for (const step of act.actions) {
+                    for (const shellyID of step.dst) {
+                        if (!accessible.has(shellyID)) {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    if (!ok) break;
+                }
+                if (ok) filtered.push(act);
+            }
+            return filtered;
+        }
+
+        if (registry === 'dashboards' || key === 'dashboards') {
+            if (!sender.hasCrudPermission('dashboards', 'read')) {
+                return Array.isArray(registryContent) ? [] : {};
+            }
+
+            if (Array.isArray(registryContent)) {
+                return registryContent.filter((d: any) =>
+                    isComponentPermissionAllowed(
+                        canPerformComponentOperation(
+                            sender,
+                            'dashboards',
+                            'read',
+                            d?.id
+                        )
+                    )
+                );
+            }
+            const result: Record<string, any> = {};
+            for (const [id, val] of Object.entries(registryContent)) {
+                const dashId = (val as any)?.id ?? Number(id);
+                if (
+                    isComponentPermissionAllowed(
+                        canPerformComponentOperation(
+                            sender,
+                            'dashboards',
+                            'read',
+                            dashId
+                        )
+                    )
+                ) {
+                    result[id] = val;
+                }
+            }
+            return result;
+        }
+
+        return registryContent;
     }
 
     @Component.NoAudit

@@ -17,8 +17,10 @@
     >
         <template #default>
             <div class="lux-body">
-                <span class="lux-value" :class="sizeClass">{{ luxText }}</span>
-                <span class="lux-unit">lux</span>
+                <span v-if="luxText" class="ec-vu">
+                    <span class="lux-value" :class="sizeClass">{{ luxText }}</span>
+                    <span class="ec-u">lux</span>
+                </span>
             </div>
         </template>
         <template #badges>
@@ -69,14 +71,15 @@ const lux = computed<number | null>(() => {
     const v = status.value?.lux ?? status.value?.illuminance ?? status.value?.value;
     return typeof v === 'number' ? Math.round(v) : null;
 });
-const luxText = computed(() =>
-    lux.value !== null ? String(lux.value) : '—'
+// null, not a dash — "— lux" is a unit with no reading.
+const luxText = computed<string | null>(() =>
+    lux.value !== null ? String(lux.value) : null
 );
 
 // Lux spans a huge range (0 – 100000+); keep the number big, only stepping it
 // down once it gets long enough to overflow the tile.
 const sizeClass = computed(() => {
-    const digits = luxText.value.replace('—', '').length;
+    const digits = luxText.value?.length ?? 0;
     return digits >= 5 ? 'lux-value--sm' : 'lux-value--lg';
 });
 </script>
@@ -106,10 +109,5 @@ const sizeClass = computed(() => {
 }
 .lux-value--sm {
     font-size: var(--type-heading);
-}
-.lux-unit {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-tertiary);
 }
 </style>

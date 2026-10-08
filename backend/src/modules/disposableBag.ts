@@ -11,8 +11,7 @@ export class DisposableBag {
 
     add(fn: Disposable): void {
         if (this.#disposed) {
-            fireAndForget(
-                'disposableBag.post-dispose',
+            fireAndForget('disposableBag.post-dispose', () =>
                 Promise.resolve().then(fn)
             );
             return;

@@ -197,7 +197,8 @@ const imageSrc = computed(() => {
     transform: scale(0.99);
     filter: brightness(0.97);
 }
-.dtc--selected {
+.dtc--selected,
+.dtc--selected:hover {
     border-color: var(--color-primary);
     box-shadow: var(--shadow-primary);
 }

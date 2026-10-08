@@ -1,7 +1,10 @@
 import {tuning} from '../../config/tuning';
 import {mergeStatusObjects} from '../../model/statusMerge';
+import {BoundedMap} from '../boundedMap';
 import * as Observability from '../Observability';
 import type {
+    BluetoothRouteCachePort,
+    BluetoothTelemetryArbiterPort,
     BulkAcceptJobRecord,
     BulkAcceptJobStorePort,
     DeviceGuiSessionPort,
@@ -21,6 +24,16 @@ import type {
     LeadershipFactory,
     LeadershipOptions,
     LeadershipPort,
+    McpConfirmationClaimsPort,
+    McpElicitationSession,
+    McpElicitationsPort,
+    McpElicitationWait,
+    McpEventStreamsPort,
+    McpStandingApprovalRecord,
+    McpStandingApprovalScope,
+    McpStandingApprovalsPort,
+    NodeRedEditorSessionPort,
+    NodeRedEditorSessionRecord,
     OrgSignalsPort,
     RateLimiterPort,
     Reservation,
@@ -46,6 +59,198 @@ export const nullSessionSignals: SessionSignalsPort = {
     async publish() {},
     async on() {}
 };
+
+function mcpEventsUnavailable(): never {
+    throw new Error('Durable MCP event streams require Redis');
+}
+
+export const nullMcpEventStreams: McpEventStreamsPort = {
+    async createSession() {
+        return mcpEventsUnavailable();
+    },
+    async getSession() {
+        return mcpEventsUnavailable();
+    },
+    async deleteSession() {
+        return mcpEventsUnavailable();
+    },
+    async subscribe() {
+        return mcpEventsUnavailable();
+    },
+    async unsubscribe() {
+        return mcpEventsUnavailable();
+    },
+    async listSubscriptions() {
+        return mcpEventsUnavailable();
+    },
+    async updateCursor() {
+        return mcpEventsUnavailable();
+    },
+    async appendFrame() {
+        return mcpEventsUnavailable();
+    },
+    async replay() {
+        return mcpEventsUnavailable();
+    },
+    async acquireReader() {
+        return mcpEventsUnavailable();
+    },
+    async renewReader() {
+        return mcpEventsUnavailable();
+    },
+    async ownsReader() {
+        return mcpEventsUnavailable();
+    },
+    async releaseReader() {
+        return mcpEventsUnavailable();
+    },
+    available() {
+        return false;
+    }
+};
+
+// In-process consent state for single-process deployments without Redis. A
+// restart forgets it: approvals are asked again and older tokens are refused.
+const nullApprovals = new Map<string, McpStandingApprovalRecord>();
+const nullConfirmationClaims = new Map<string, number>();
+// The process start, not module load: this module may load after a token was issued.
+let nullConfirmationClaimsStartedAtMs = performance.timeOrigin;
+const nullElicitationSessions = new Map<
+    string,
+    {session: McpElicitationSession; expiresAt: number}
+>();
+const nullElicitationWaits = new Map<string, Map<string, McpElicitationWait>>();
+
+function liveNullApprovals(now = Date.now()): McpStandingApprovalRecord[] {
+    for (const [id, record] of nullApprovals) {
+        if (record.expiresAtMs <= now) nullApprovals.delete(id);
+    }
+    return [...nullApprovals.values()];
+}
+
+function approvalInScope(
+    record: McpStandingApprovalRecord,
+    scope: McpStandingApprovalScope
+): boolean {
+    return (
+        record.organizationId === scope.organizationId &&
+        (scope.userId === undefined || record.userId === scope.userId)
+    );
+}
+
+export const nullMcpStandingApprovals: McpStandingApprovalsPort = {
+    async grant(record, maxTotal) {
+        const live = liveNullApprovals();
+        if (!nullApprovals.has(record.id) && live.length >= maxTotal) {
+            return false;
+        }
+        nullApprovals.set(record.id, {...record});
+        return true;
+    },
+    async get(id) {
+        const record = nullApprovals.get(id);
+        if (!record || record.expiresAtMs <= Date.now()) return null;
+        return {...record};
+    },
+    async list(scope) {
+        return liveNullApprovals()
+            .filter((record) => approvalInScope(record, scope))
+            .sort((a, b) => a.grantedAtMs - b.grantedAtMs)
+            .map((record) => ({...record}));
+    },
+    async revoke(id, scope) {
+        const record = nullApprovals.get(id);
+        if (!record || !approvalInScope(record, scope)) return false;
+        return nullApprovals.delete(id);
+    }
+};
+
+export const nullMcpConfirmationClaims: McpConfirmationClaimsPort = {
+    async claim({tokenDigest, issuedAtMs, expiresAtMs}) {
+        // Tokens carry whole seconds, so the start is compared at that grain.
+        if (
+            issuedAtMs <
+            Math.floor(nullConfirmationClaimsStartedAtMs / 1000) * 1000
+        ) {
+            return 'predates_store';
+        }
+        const now = Date.now();
+        for (const [seen, expiresAt] of nullConfirmationClaims) {
+            if (expiresAt < now) nullConfirmationClaims.delete(seen);
+        }
+        if (nullConfirmationClaims.has(tokenDigest)) return 'already_used';
+        nullConfirmationClaims.set(tokenDigest, expiresAtMs);
+        return 'claimed';
+    }
+};
+
+function liveNullElicitationSessions(now = Date.now()): number {
+    for (const [id, entry] of nullElicitationSessions) {
+        if (entry.expiresAt > now) continue;
+        nullElicitationSessions.delete(id);
+        nullElicitationWaits.delete(id);
+    }
+    return nullElicitationSessions.size;
+}
+
+export const nullMcpElicitations: McpElicitationsPort = {
+    async createSession(session, {ttlMs, maxSessions}) {
+        const now = Date.now();
+        if (
+            !nullElicitationSessions.has(session.id) &&
+            liveNullElicitationSessions(now) >= maxSessions
+        ) {
+            return false;
+        }
+        nullElicitationSessions.set(session.id, {
+            session: {...session},
+            expiresAt: now + ttlMs
+        });
+        return true;
+    },
+    async getSession(id, ttlMs) {
+        const entry = nullElicitationSessions.get(id);
+        const now = Date.now();
+        if (!entry || entry.expiresAt <= now) return null;
+        entry.expiresAt = now + ttlMs;
+        return {...entry.session};
+    },
+    async deleteSession(id, binding) {
+        const entry = nullElicitationSessions.get(id);
+        if (!entry || entry.session.binding !== binding) return null;
+        nullElicitationSessions.delete(id);
+        const waits = [...(nullElicitationWaits.get(id)?.values() ?? [])];
+        nullElicitationWaits.delete(id);
+        return waits;
+    },
+    async registerWait(wait) {
+        const waits = nullElicitationWaits.get(wait.sessionId) ?? new Map();
+        waits.set(wait.requestId, {...wait});
+        nullElicitationWaits.set(wait.sessionId, waits);
+    },
+    async takeWait({sessionId, requestId, binding}) {
+        const waits = nullElicitationWaits.get(sessionId);
+        const wait = waits?.get(requestId);
+        if (!waits || !wait || wait.binding !== binding) return null;
+        waits.delete(requestId);
+        if (waits.size === 0) nullElicitationWaits.delete(sessionId);
+        return wait.expiresAtMs > Date.now() ? wait : null;
+    },
+    // One process, one instance: an answer for another instance has no taker.
+    async deliver() {
+        return false;
+    },
+    async onDelivery() {}
+};
+
+/** Test seam: the in-process consent state as a fresh process would have it. */
+export function resetNullMcpConsentForTests(startedAtMs = Date.now()): void {
+    nullApprovals.clear();
+    nullConfirmationClaims.clear();
+    nullConfirmationClaimsStartedAtMs = startedAtMs;
+    nullElicitationSessions.clear();
+    nullElicitationWaits.clear();
+}
 
 export const nullDeviceTrustSignals: DeviceTrustSignalsPort = {
     async publish() {},
@@ -79,6 +284,168 @@ export const nullDeviceTrustCache: DeviceTrustCachePort = {
 
 export function clearNullDeviceTrustCacheForTests(): void {
     nullTrustCache.clear();
+}
+
+const nullBluetoothRouteGenerations = new Map<string, number>();
+const nullBluetoothGatewayRouteGenerations = new Map<string, number>();
+const nullBluetoothRoutes = new Map<
+    string,
+    {generation: string; payload: string; expiresAt: number}
+>();
+
+function nullBluetoothRouteKey(
+    organizationId: string,
+    gatewayExternalId: string
+): string {
+    return `${organizationId}\0${gatewayExternalId}`;
+}
+
+export const nullBluetoothRouteCache: BluetoothRouteCachePort = {
+    async read(organizationId, gatewayExternalId) {
+        const key = nullBluetoothRouteKey(organizationId, gatewayExternalId);
+        const generation = `${nullBluetoothRouteGenerations.get(organizationId) ?? 0}:${nullBluetoothGatewayRouteGenerations.get(key) ?? 0}`;
+        const entry = nullBluetoothRoutes.get(key);
+        if (
+            !entry ||
+            entry.generation !== generation ||
+            entry.expiresAt <= Date.now()
+        ) {
+            if (entry) nullBluetoothRoutes.delete(key);
+            return {generation, payload: null};
+        }
+        return {generation, payload: entry.payload};
+    },
+    async readMany(organizationId, gatewayExternalIds) {
+        return new Map(
+            await Promise.all(
+                gatewayExternalIds.map(
+                    async (gatewayExternalId) =>
+                        [
+                            gatewayExternalId,
+                            await nullBluetoothRouteCache.read(
+                                organizationId,
+                                gatewayExternalId
+                            )
+                        ] as const
+                )
+            )
+        );
+    },
+    async setIfCurrent(
+        organizationId,
+        gatewayExternalId,
+        generation,
+        payload,
+        ttlSec
+    ) {
+        const key = nullBluetoothRouteKey(organizationId, gatewayExternalId);
+        const current = `${nullBluetoothRouteGenerations.get(organizationId) ?? 0}:${nullBluetoothGatewayRouteGenerations.get(key) ?? 0}`;
+        if (current !== generation) return false;
+        nullBluetoothRoutes.set(key, {
+            generation,
+            payload,
+            expiresAt: Date.now() + ttlSec * 1000
+        });
+        return true;
+    },
+    async setManyIfCurrent(organizationId, entries, ttlSec) {
+        return Promise.all(
+            entries.map((entry) =>
+                nullBluetoothRouteCache.setIfCurrent(
+                    organizationId,
+                    entry.gatewayExternalId,
+                    entry.generation,
+                    entry.payload,
+                    ttlSec
+                )
+            )
+        );
+    },
+    async invalidateGateway(organizationId, gatewayExternalId) {
+        const key = nullBluetoothRouteKey(organizationId, gatewayExternalId);
+        const generation =
+            (nullBluetoothGatewayRouteGenerations.get(key) ?? 0) + 1;
+        nullBluetoothGatewayRouteGenerations.set(key, generation);
+        nullBluetoothRoutes.delete(key);
+        return generation;
+    },
+    async invalidateOrg(organizationId) {
+        const generation =
+            (nullBluetoothRouteGenerations.get(organizationId) ?? 0) + 1;
+        nullBluetoothRouteGenerations.set(organizationId, generation);
+        return generation;
+    }
+};
+
+const nullBluetoothTelemetryOwners = new BoundedMap<
+    string,
+    {gatewayExternalId: string; expiresAt: number}
+>({
+    maxSize: tuning.virtualDevice.bluTelemetryOwnerMaxEntries,
+    ttlMs: tuning.virtualDevice.bluTelemetryFailoverMs * 2
+});
+const nullBluetoothTelemetryGrace = new BoundedMap<
+    string,
+    {readyAt: number; expiresAt: number}
+>({
+    maxSize: tuning.virtualDevice.bluTelemetryOwnerMaxEntries,
+    ttlMs: tuning.virtualDevice.bluTelemetryFailoverMs * 2
+});
+
+export const nullBluetoothTelemetryArbiter: BluetoothTelemetryArbiterPort = {
+    async acceptMany(claims, ttlMs) {
+        const now = Date.now();
+        return claims.map((claim) => {
+            const key = `${claim.organizationId}\0${claim.bluetoothDeviceListId}`;
+            const current = nullBluetoothTelemetryOwners.get(key);
+            if (claim.primary) {
+                nullBluetoothTelemetryOwners.set(key, {
+                    gatewayExternalId: claim.gatewayExternalId,
+                    expiresAt: now + ttlMs
+                });
+                nullBluetoothTelemetryGrace.set(key, {
+                    readyAt: now,
+                    expiresAt: now + ttlMs * 2
+                });
+                return true;
+            }
+            if (
+                current &&
+                current.expiresAt > now &&
+                current.gatewayExternalId !== claim.gatewayExternalId
+            ) {
+                return false;
+            }
+            if (!current || current.expiresAt <= now) {
+                nullBluetoothTelemetryOwners.delete(key);
+                const grace = nullBluetoothTelemetryGrace.get(key);
+                if (!grace || grace.expiresAt <= now) {
+                    nullBluetoothTelemetryGrace.set(key, {
+                        readyAt: now + ttlMs,
+                        expiresAt: now + ttlMs * 2
+                    });
+                    return false;
+                }
+                if (grace.readyAt > now) return false;
+            }
+            nullBluetoothTelemetryOwners.set(key, {
+                gatewayExternalId: claim.gatewayExternalId,
+                expiresAt: now + ttlMs
+            });
+            return true;
+        });
+    }
+};
+
+export function clearNullBluetoothRouteCacheForTests(): void {
+    nullBluetoothRouteGenerations.clear();
+    nullBluetoothGatewayRouteGenerations.clear();
+    nullBluetoothRoutes.clear();
+}
+
+export function clearNullBluetoothTelemetryArbiterForTests(): void {
+    nullBluetoothTelemetryOwners.clear();
+    nullBluetoothTelemetryGrace.clear();
 }
 
 export const nullDeviceIngest: DeviceIngestPort = {
@@ -245,8 +612,9 @@ function sweepWaitingMaps(now: number): void {
 }
 setInterval(sweepRateLimiterMaps, RATE_LIMITER_TTL_MS).unref();
 
-// Single-process: this instance owns everything it has claimed.
-const nullOwned = new Set<string>();
+// Single-process fallback still uses connection-scoped leases so reconnect
+// behavior matches the Redis adapter.
+const nullOwned = new Map<string, {ownerId: string; leaseId: string}>();
 const nullIdentityFences = new Map<string, string>();
 
 export const nullDeviceIdentityFence: DeviceIdentityFencePort = {
@@ -266,19 +634,33 @@ export const nullDeviceIdentityFence: DeviceIdentityFencePort = {
 };
 
 export const nullDeviceOwnership: DeviceOwnershipPort = {
-    async claim(shellyID: string): Promise<boolean> {
-        if (nullIdentityFences.has(shellyID)) return false;
-        nullOwned.add(shellyID);
+    async claim(lease): Promise<boolean> {
+        if (nullIdentityFences.has(lease.shellyID)) return false;
+        const current = nullOwned.get(lease.shellyID);
+        if (current && current.ownerId !== lease.ownerId) return false;
+        nullOwned.set(lease.shellyID, lease);
         return true;
     },
-    async heartbeat(): Promise<boolean> {
-        return true;
+    async heartbeatMany(leases): Promise<readonly boolean[]> {
+        return leases.map((lease) => {
+            const current = nullOwned.get(lease.shellyID);
+            return (
+                current?.ownerId === lease.ownerId &&
+                current.leaseId === lease.leaseId
+            );
+        });
     },
-    async release(shellyID: string): Promise<void> {
-        nullOwned.delete(shellyID);
+    async release(lease): Promise<void> {
+        const current = nullOwned.get(lease.shellyID);
+        if (
+            current?.ownerId === lease.ownerId &&
+            current.leaseId === lease.leaseId
+        ) {
+            nullOwned.delete(lease.shellyID);
+        }
     },
     async owner(shellyID: string): Promise<string | null> {
-        return nullOwned.has(shellyID) ? 'local' : null;
+        return nullOwned.get(shellyID)?.ownerId ?? null;
     }
 };
 
@@ -318,6 +700,9 @@ export const nullExportOwnership: ExportOwnershipPort = {
             return null;
         }
         return entry.userId;
+    },
+    async delete(filename) {
+        nullExportOwners.delete(filename);
     }
 };
 
@@ -440,6 +825,79 @@ export const nullDeviceGuiSessions: DeviceGuiSessionPort = {
     }
 };
 
+interface NullEditorSessionEntry {
+    record: NodeRedEditorSessionRecord;
+    expiresAt: number;
+}
+const nullEditorSessions = new Map<string, NullEditorSessionEntry>();
+const nullEditorSessionsByUser = new Map<string, Set<string>>();
+export const NULL_EDITOR_SESSION_MAX = 10_000;
+
+function forgetEditorSession(key: string, userId: string): void {
+    nullEditorSessions.delete(key);
+    const keys = nullEditorSessionsByUser.get(userId);
+    keys?.delete(key);
+    if (keys?.size === 0) nullEditorSessionsByUser.delete(userId);
+}
+
+function liveEditorSession(key: string): NullEditorSessionEntry | undefined {
+    const entry = nullEditorSessions.get(key);
+    if (!entry) return undefined;
+    if (entry.expiresAt > Date.now()) return entry;
+    forgetEditorSession(key, entry.record.userId);
+    return undefined;
+}
+
+function sweepEditorSessions(now: number): void {
+    for (const [key, entry] of nullEditorSessions) {
+        if (entry.expiresAt <= now)
+            forgetEditorSession(key, entry.record.userId);
+    }
+}
+
+function reserveEditorSessionSlot(key: string, now: number): void {
+    if (nullEditorSessions.has(key)) return;
+    if (nullEditorSessions.size < NULL_EDITOR_SESSION_MAX) return;
+    sweepEditorSessions(now);
+    if (nullEditorSessions.size >= NULL_EDITOR_SESSION_MAX) {
+        throw new Error('Node-RED editor session capacity reached');
+    }
+}
+
+function trimUserEditorSessions(userId: string, keep: number): void {
+    const keys = [...(nullEditorSessionsByUser.get(userId) ?? [])];
+    const excess = keys.length - keep;
+    if (excess <= 0) return;
+    const createdAt = (key: string) =>
+        nullEditorSessions.get(key)?.record.createdAt ?? 0;
+    keys.sort((a, b) => createdAt(a) - createdAt(b));
+    for (const key of keys.slice(0, excess)) forgetEditorSession(key, userId);
+}
+
+export const nullNodeRedEditorSessions: NodeRedEditorSessionPort = {
+    async put({key, record, ttlMs, perUserMax}) {
+        const now = Date.now();
+        reserveEditorSessionSlot(key, now);
+        nullEditorSessions.set(key, {record, expiresAt: now + ttlMs});
+        const keys = nullEditorSessionsByUser.get(record.userId) ?? new Set();
+        keys.add(key);
+        nullEditorSessionsByUser.set(record.userId, keys);
+        trimUserEditorSessions(record.userId, perUserMax);
+    },
+    async get(key) {
+        return liveEditorSession(key)?.record ?? null;
+    },
+    async delete(key) {
+        const entry = nullEditorSessions.get(key);
+        if (entry) forgetEditorSession(key, entry.record.userId);
+    },
+    async deleteForUser(userId) {
+        const keys = [...(nullEditorSessionsByUser.get(userId) ?? [])];
+        for (const key of keys) forgetEditorSession(key, userId);
+        return keys.length;
+    }
+};
+
 interface NullKvEntry {
     value: string;
     expiresAt: number | null;
@@ -464,6 +922,33 @@ export const nullKv: KvStorePort = {
         const expiresAt =
             ttlSec !== undefined ? Date.now() + ttlSec * 1000 : null;
         nullKvStore.set(key, {value, expiresAt});
+    },
+    async setIfAbsent(key, value, ttlSec) {
+        const entry = nullKvStore.get(key);
+        if (entry && !nullKvExpired(entry, Date.now())) return false;
+        const expiresAt =
+            ttlSec !== undefined ? Date.now() + ttlSec * 1000 : null;
+        nullKvStore.set(key, {value, expiresAt});
+        return true;
+    },
+    async compareAndSet(key, expected, value, ttlSec) {
+        const entry = nullKvStore.get(key);
+        if (!entry || nullKvExpired(entry, Date.now())) return false;
+        if (entry.value !== expected) return false;
+        const expiresAt =
+            ttlSec !== undefined ? Date.now() + ttlSec * 1000 : null;
+        nullKvStore.set(key, {value, expiresAt});
+        return true;
+    },
+    async compareAndDelete(key, expected) {
+        const entry = nullKvStore.get(key);
+        if (!entry || nullKvExpired(entry, Date.now())) return false;
+        if (entry.value !== expected) return false;
+        nullKvStore.delete(key);
+        return true;
+    },
+    async delete(key) {
+        nullKvStore.delete(key);
     }
 };
 

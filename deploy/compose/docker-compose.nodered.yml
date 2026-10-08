@@ -1,0 +1,77 @@
+services:
+  fleet-manager:
+    environment:
+      FM_NODE_RED_ENABLED: "true"
+      FM_NODE_RED_PROXY_TARGET: "http://nodered:1880"
+      FM_NODE_RED_UI_PERMISSIONS: "${FM_NODE_RED_UI_PERMISSIONS:-automation:update,automation:*}"
+      FM_NODE_RED_SESSION_ALLOWED_ORIGINS: "${FM_NODE_RED_SESSION_ALLOWED_ORIGINS:-}"
+      FM_NODE_RED_SESSION_COOKIE_SAMESITE: "${FM_NODE_RED_SESSION_COOKIE_SAMESITE:-strict}"
+    depends_on:
+      - nodered
+
+  nodered:
+    image: ${NODE_RED_IMAGE:-nodered/node-red:${NODE_RED_VERSION:?NODE_RED_VERSION must be pinned in deploy/VERSIONS.env}}
+    labels:
+      fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
+      fleet.client: "${FM_CLIENT_ID:-shared}"
+      fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
+      fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
+      fleet.version: "${NODE_RED_VERSION:-unknown}"
+      fleet.commit: "${FM_BUILD_COMMIT:-unknown}"
+      fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
+      fleet.service: "nodered"
+    restart: unless-stopped
+    # Only Node-RED's own keys: flow editors can read every container env var.
+    env_file:
+      - path: ../state/nodered-runtime.env
+        required: false
+    environment:
+      NODE_RED_HTTP_ADMIN_ROOT: "/node-red/red"
+      NODE_RED_HTTP_NODE_ROOT: "/node-red/api"
+      NODE_RED_BUILTIN_NODE_PATH: "/opt/fm-node-red-package"
+      NODE_RED_ALLOWED_NODES: "${NODE_RED_ALLOWED_NODES:-@shelly/fleet-manager-node-red,node-red-contrib-shelly}"
+      NODE_RED_EXTRA_NODES: "${NODE_RED_EXTRA_NODES:-}"
+      NODE_RED_FUNCTION_TIMEOUT_SECONDS: "${NODE_RED_FUNCTION_TIMEOUT_SECONDS:-30}"
+      FM_BASE_URL: "http://fleet-manager:7011"
+      FM_WS_URL: "ws://fleet-manager:7011/"
+    expose:
+      - "1880"
+    volumes:
+      - nodered-data:/data
+      - ../nodered/settings.js:/data/settings.js:ro
+      - ../nodered/start.sh:/usr/local/bin/fm-node-red-start:ro
+      - ../nodered/healthcheck.js:/usr/local/bin/fm-node-red-healthcheck.js:ro
+      - ../../packages/node-red-fleet-manager:/opt/fm-node-red-package:ro
+    # entrypoint, not command: image entrypoint runs node-red + passes command
+    # as its args, so the installer must replace the entrypoint.
+    entrypoint: ["/bin/sh", "/usr/local/bin/fm-node-red-start"]
+    command: []
+    networks:
+      - fleet-net
+    # Replaces the image check, which counts a 403 from our guard as healthy.
+    healthcheck:
+      test: ["CMD", "node", "/usr/local/bin/fm-node-red-healthcheck.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    # One runaway flow must not take the host's memory.
+    deploy:
+      resources:
+        limits:
+          memory: "${NODE_RED_MEM_LIMIT:-512m}"
+          cpus: "${NODE_RED_CPU_LIMIT:-1.0}"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:size=64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  nodered-data:

@@ -23,6 +23,18 @@ const RESP_POLICY: JsonSchema = {
     description: 'Active or draft label policy as Zitadel returns it.'
 };
 
+// The one branding read FM reshapes itself: it base64-decodes Zitadel's
+// template and defaults isDefault, so the shape is ours to promise.
+const RESP_MAIL_TEMPLATE: JsonSchema = {
+    type: 'object',
+    required: ['template', 'isDefault'],
+    additionalProperties: false,
+    properties: {
+        template: {type: 'string'},
+        isDefault: {type: 'boolean'}
+    }
+};
+
 export interface BrandingScopeParams {
     orgId: string;
 }
@@ -261,7 +273,7 @@ b.registerMethod('DeleteFont', {
 b.registerMethod('GetMailTemplate', {
     safety: {operation: 'read'},
     params: BRANDING_GET_POLICY_PARAMS_SCHEMA,
-    response: {type: 'object', additionalProperties: true},
+    response: RESP_MAIL_TEMPLATE,
     permission: PERM,
     description:
         'Branding.GetMailTemplate — custom HTML scaffold Zitadel renders ' +

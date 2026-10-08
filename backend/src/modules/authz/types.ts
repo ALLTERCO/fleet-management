@@ -1,6 +1,8 @@
 // Authz module — shared types.
 // Library-agnostic. ioredis types confined to redis-cache.ts.
 
+import type {AssignmentScope} from '../../types/api/assignment';
+
 export interface CachedEffectiveShape {
     version: number;
     shape: EffectiveShape;
@@ -76,27 +78,7 @@ export function requestContextCacheKey(ctx?: RequestContext): string {
         .join('&');
 }
 
-// Resolver-side scope shape. Mirrors the wire format in
-// types/api/assignment.ts; kept local so the resolver has no API import.
-export interface Scope {
-    all?: boolean;
-    device_ids?: string[];
-    location_ids?: number[];
-    device_group_ids?: number[];
-    device_tags?: string[];
-    dashboard_ids?: number[];
-    plugin_keys?: string[];
-    waiting_room_ids?: string[];
-    configuration_keys?: string[];
-    report_ids?: number[];
-    organization_ids?: string[];
-    alert_ids?: string[];
-    notification_ids?: string[];
-    integration_keys?: string[];
-    automation_ids?: string[];
-    // PAT-only narrowing. Patterns: 'type:verb', 'type:*', '*:verb', '*'.
-    // Undefined = inherit all. Empty array rejected at create-time.
-    actions?: string[];
-}
+// Type-only alias keeps the resolver aligned with the wire contract.
+export type Scope = AssignmentScope;
 
 export type InvalidationHandler = (tenantId: string, version: number) => void;

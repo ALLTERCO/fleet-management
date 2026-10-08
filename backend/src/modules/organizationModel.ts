@@ -16,9 +16,20 @@ import type {
     OrganizationScopeModel
 } from '../types/api/organization';
 import {TAG_SUBJECT_TYPES} from '../types/api/tag';
+import {DEFAULT_LOCALE} from './i18n/localeNumber';
 import * as postgres from './PostgresProvider';
 
 const logger = log4js.getLogger('organization-model');
+export const ORGANIZATION_DEFAULT_TIMEZONE = 'UTC';
+export const ORGANIZATION_DEFAULT_LOCALE = DEFAULT_LOCALE;
+
+export type ResolvedOrganizationProfile = Omit<
+    OrganizationProfile,
+    'timezoneDefault' | 'localeDefault'
+> & {
+    timezoneDefault: string;
+    localeDefault: string;
+};
 
 interface ProfileRow {
     id: string;
@@ -33,13 +44,15 @@ interface ProfileRow {
     metadata: Record<string, unknown> | null;
 }
 
-export function rowToOrganizationProfile(row: ProfileRow): OrganizationProfile {
+export function rowToOrganizationProfile(
+    row: ProfileRow
+): ResolvedOrganizationProfile {
     return {
         id: row.id,
         name: row.name,
         displayName: row.display_name,
-        timezoneDefault: row.timezone_default,
-        localeDefault: row.locale_default,
+        timezoneDefault: row.timezone_default ?? ORGANIZATION_DEFAULT_TIMEZONE,
+        localeDefault: row.locale_default ?? ORGANIZATION_DEFAULT_LOCALE,
         currencyDefault: row.currency_default,
         unitSystemDefault: normalizeUnitSystem(row.unit_system_default),
         brandInitials: row.brand_initials,
@@ -56,12 +69,22 @@ function normalizeUnitSystem(
 
 export async function readOrganizationProfile(
     orgId: string
-): Promise<OrganizationProfile | null> {
+): Promise<ResolvedOrganizationProfile | null> {
     const result = await postgres.callMethod('organization.fn_profile_get', {
         p_id: orgId
     });
     const row = result?.rows?.[0] as ProfileRow | undefined;
     return row ? rowToOrganizationProfile(row) : null;
+}
+
+// The single tenant of this install, or null when there are none or many.
+export async function readSoleOrganizationId(): Promise<string | null> {
+    const result = await postgres.callMethod(
+        'organization.fn_profile_sole_id',
+        {}
+    );
+    const value = postgres.extractScalar(result?.rows);
+    return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
 export async function ensureOrganizationProfile(orgId: string): Promise<void> {
@@ -78,7 +101,7 @@ export async function ensureOrganizationProfile(orgId: string): Promise<void> {
 
 export async function getOrganizationProfile(
     orgId: string
-): Promise<OrganizationProfile> {
+): Promise<ResolvedOrganizationProfile> {
     const existing = await readOrganizationProfile(orgId);
     if (existing) return existing;
     await ensureOrganizationProfile(orgId);
@@ -86,8 +109,8 @@ export async function getOrganizationProfile(
         id: orgId,
         name: null,
         displayName: null,
-        timezoneDefault: null,
-        localeDefault: null,
+        timezoneDefault: ORGANIZATION_DEFAULT_TIMEZONE,
+        localeDefault: ORGANIZATION_DEFAULT_LOCALE,
         currencyDefault: null,
         unitSystemDefault: null,
         brandInitials: null,

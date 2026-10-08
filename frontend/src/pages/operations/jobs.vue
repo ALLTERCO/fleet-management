@@ -53,13 +53,7 @@
                 >
                     Cancel
                 </Button>
-                <router-link
-                    v-if="isActiveJob(row)"
-                    :to="JOB_TYPE_ROUTE[jobType(row)]"
-                    class="ops-job__open"
-                >
-                    Open <i class="fas fa-arrow-up-right-from-square" />
-                </router-link>
+                <JobOpenLink :to="jobRoute(row)" />
             </template>
         </DataList>
     </PageTemplate>
@@ -71,6 +65,7 @@ import {type ComputedRef, computed, inject} from 'vue';
 import Button from '@/components/core/Button.vue';
 import DataList, {type DataColumn} from '@/components/core/DataList.vue';
 import PageTemplate from '@/components/core/PageTemplate.vue';
+import JobOpenLink from '@/components/pages/operations/JobOpenLink.vue';
 import {OPS_REFRESH_MS} from '@/constants';
 import {formatRelative} from '@/helpers/format';
 import {
@@ -87,7 +82,9 @@ import type {RouteTab} from '@/types/page-template';
 
 type OperationsJob = BackendJobRecord | JobRecord;
 
-// Each job type opens the page that owns its workflow.
+// Each job type opens the page that owns its workflow. The union keeps this
+// exhaustive at compile time; `jobRoute` covers a kind arriving from a newer
+// backend than this bundle knows about.
 const JOB_TYPE_ROUTE: Record<BackendJobKind | JobType, string> = {
     firmware: '/operations/firmware',
     backup: '/operations/backups',
@@ -113,6 +110,12 @@ const hasJobs = computed(() => allJobs.value.length > 0);
 
 function jobType(job: OperationsJob): BackendJobKind | JobType {
     return 'kind' in job ? job.kind : job.type;
+}
+
+// A job with no home page gets no shortcut, rather than a link to nowhere.
+function jobRoute(job: OperationsJob): string | undefined {
+    if (!isActiveJob(job)) return undefined;
+    return JOB_TYPE_ROUTE[jobType(job)];
 }
 
 function jobTotal(job: OperationsJob): number {
@@ -228,25 +231,4 @@ const columns: DataColumn<OperationsJob>[] = [
     color: var(--color-text-tertiary);
 }
 
-.ops-job__open {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-1);
-    min-height: var(--btn-h-sm);
-    padding: 0 var(--space-3);
-    border: 1px solid var(--color-border-default);
-    border-radius: var(--radius-md);
-    color: var(--color-primary);
-    font-size: var(--type-caption);
-    font-weight: var(--font-medium);
-    text-decoration: none;
-    margin-left: var(--space-2);
-    transition: background-color var(--motion-hover);
-}
-.ops-job__open:hover {
-    background: var(--state-hover-bg);
-}
-.ops-job__open:hover, .ops-job__open:focus-visible {
-    text-decoration: underline;
-}
 </style>

@@ -97,8 +97,11 @@ print_summary() {
     if [ "$FM_DEV_MODE" != "true" ]; then
         echo "  ${DIM}Zitadel Console${RESET}  ${CYAN}${zitadel_url}${RESET}"
     fi
+    if [ "${WITH_NODERED:-false}" = "true" ]; then
+        echo "  ${DIM}Node-RED${RESET}         ${CYAN}${fm_url}/automations/node-red${RESET}"
+    fi
     if [ "$WITH_LOGGING" = "true" ]; then
-        echo "  ${DIM}Log Viewer${RESET}       ${CYAN}http://${hostname}:${DOZZLE_PORT:-9999}${RESET}"
+        echo "  ${DIM}Log Viewer${RESET}       ${CYAN}http://127.0.0.1:${DOZZLE_PORT:-9999}${RESET} (SSH tunnel for remote access)"
     fi
     echo ""
     echo "${SEP}"

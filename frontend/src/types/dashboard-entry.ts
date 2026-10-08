@@ -27,6 +27,10 @@ export interface DashboardEntry {
     type: DashboardEntryType;
     size: CardSize;
     data: Record<string, any>;
+    /** Grid placement. Null until the card has been positioned, which is the
+     *  signal for the grid engine to auto-flow it by order on first load. */
+    gridX?: number | null;
+    gridY?: number | null;
 }
 
 /** Widget IDs recognised by the renderer for `type === 'ui_widget'`. */

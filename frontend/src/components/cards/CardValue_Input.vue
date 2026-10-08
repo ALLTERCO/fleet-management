@@ -27,13 +27,13 @@
             </template>
             <!-- Analog: calibrated value -->
             <template v-else-if="isAnalog">
-                <div class="ec-hv-wrap"><span class="ec-hv in-hv">{{ analogDisplay }}</span><span class="ec-hu">{{ analogUnit }}</span></div>
+                <div v-if="analogDisplay" class="ec-hv-wrap"><span class="ec-hv in-hv">{{ analogDisplay }}</span><span class="ec-u ec-u--sm">{{ analogUnit }}</span></div>
                 <div class="ec-sub ec-sub--sensor">{{ modeLabel }}</div>
             </template>
             <!-- Count: total pulses + live rate -->
             <template v-else-if="isCount">
-                <div class="ec-hv-wrap"><span class="ec-hv in-hv">{{ countDisplay }}</span></div>
-                <div class="ec-sub ec-sub--sensor">{{ countFreqDisplay !== '—' ? `${countFreqDisplay} Hz` : 'Pulses' }}</div>
+                <div v-if="countDisplay" class="ec-hv-wrap"><span class="ec-hv in-hv">{{ countDisplay }}</span></div>
+                <div class="ec-sub ec-sub--sensor">{{ countFreqDisplay ? `${countFreqDisplay} Hz` : 'Pulses' }}</div>
             </template>
             <!-- Unknown mode -->
             <template v-else>
@@ -46,13 +46,14 @@
         </template>
     </CardShell>
 
-    <!-- 2×1: the same fact, centered, with one line of context -->
+    <!-- Wide (2×1 and up): the same fact, centered, with one line of context.
+         Bare v-else so no size falls through to an empty tile. -->
     <CardShell
-        v-else-if="size === '2x1'"
+        v-else
         type="input"
         :name="entity.name"
         icon="fas fa-toggle-on"
-        size="2x1"
+        :size="size"
         :is-on="isActive"
         :is-offline="isOffline" :is-sleeping="isSleeping"
         :edit-mode="editMode"
@@ -63,26 +64,26 @@
     >
         <template #default>
             <!-- Switch: state + wiring -->
-            <div v-if="inputMode === 'switch'" class="in-2x1">
+            <div v-if="inputMode === 'switch'" class="in-wide">
                 <div role="status" class="ec-state-lg" :class="isActive ? 's-closed' : 's-open'">{{ switchStateWord }}</div>
                 <div class="in-meta">Switch input · {{ isInverted ? 'Inverted' : 'Normal' }} signal</div>
             </div>
 
             <!-- Analog: value + level bar -->
-            <div v-else-if="isAnalog" class="in-2x1">
-                <div class="ec-hv-wrap"><span class="ec-hv">{{ analogDisplay }}</span><span class="ec-hu">{{ analogUnit }}</span></div>
+            <div v-else-if="isAnalog" class="in-wide">
+                <div v-if="analogDisplay" class="ec-hv-wrap"><span class="ec-hv">{{ analogDisplay }}</span><span class="ec-u">{{ analogUnit }}</span></div>
                 <div class="in-bar"><div class="in-bar-fill" :style="{width: `${analogBarPct}%`}" /></div>
                 <div class="in-meta">Analog input · raw {{ analogBarPct }}%</div>
             </div>
 
             <!-- Count: total + live rate -->
-            <div v-else-if="isCount" class="in-2x1">
-                <div class="ec-hv-wrap"><span class="ec-hv">{{ countDisplay }}</span></div>
-                <div class="in-meta">{{ countFreqDisplay }} Hz · {{ countByMinute[0] ?? '—' }} last min · pulses</div>
+            <div v-else-if="isCount" class="in-wide">
+                <div v-if="countDisplay" class="ec-hv-wrap"><span class="ec-hv">{{ countDisplay }}</span></div>
+                <div class="in-meta">{{ countMetaLine }}</div>
             </div>
 
             <!-- Button: last gesture + when -->
-            <div v-else class="in-2x1">
+            <div v-else class="in-wide">
                 <template v-if="lastGesture">
                     <div role="status" class="in-gesture">{{ lastGesture }}</div>
                     <div class="in-meta">{{ lastGestureAgo }} · {{ eventHistory.length }} recent {{ eventHistory.length === 1 ? 'press' : 'presses' }}</div>
@@ -214,12 +215,13 @@ const isActive = computed(() => {
 });
 
 // Analog: prefer xpercent (calibrated), fall back to raw percent.
-const analogDisplay = computed(() => {
+// null, not a dash — the unit only renders alongside a real value.
+const analogDisplay = computed<string | null>(() => {
     const xp = status.value?.xpercent;
     if (xp != null)
         return typeof xp === 'number' ? String(Math.round(xp)) : String(xp);
     const v = status.value?.percent;
-    return v != null ? String(Math.round(v)) : '—';
+    return v != null ? String(Math.round(v)) : null;
 });
 const analogUnit = computed(() => props.entity.properties.unit || '%');
 // Raw 0-100% for the bar fill, independent of the calibrated value.
@@ -228,18 +230,28 @@ const analogBarPct = computed(() =>
 );
 
 // Count: device reports counts.total / freq / by_minute (Shelly Input docs).
-const countDisplay = computed(() => {
+const countDisplay = computed<string | null>(() => {
     const c = status.value?.counts?.total;
-    return typeof c === 'number' ? String(c) : '—';
+    return typeof c === 'number' ? String(c) : null;
 });
-const countFreqDisplay = computed(() => {
+const countFreqDisplay = computed<string | null>(() => {
     const f = status.value?.freq;
-    if (typeof f !== 'number') return '—';
+    if (typeof f !== 'number') return null;
     return f < 10 ? f.toFixed(1) : String(Math.round(f));
 });
 const countByMinute = computed<number[]>(() => {
     const bm = status.value?.counts?.by_minute;
     return Array.isArray(bm) ? bm.slice(0, 3) : [];
+});
+// Context line built from the parts the device sends — a missing rate or
+// last-minute count drops its clause rather than printing "— Hz".
+const countMetaLine = computed(() => {
+    const parts: string[] = [];
+    if (countFreqDisplay.value) parts.push(`${countFreqDisplay.value} Hz`);
+    if (countByMinute.value[0] != null)
+        parts.push(`${countByMinute.value[0]} last min`);
+    parts.push('pulses');
+    return parts.join(' · ');
 });
 
 // Switch: open/closed wording (closed contact = active), plus config context.
@@ -260,9 +272,8 @@ const buttonStateDisplay = computed(() => (isActive.value ? 'ON' : 'OFF'));
 </script>
 
 <style scoped>
-/* 2x1 — one centered stack per input mode (the value zone is top-aligned at
-   this size, so center it here). */
-.in-2x1 {
+/* Wide sizes — the shell's value zones are top-aligned, so center here. */
+.in-wide {
     height: 100%;
     display: flex;
     flex-direction: column;

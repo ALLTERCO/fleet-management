@@ -1,10 +1,10 @@
 ## Transport and framing
 
-![One socket over time — a call with an id, an id-matched result, a pushed NotifyStatus, and an error](diagrams/transport-sequence.svg)
+![One socket over time: a call with an id, an id-matched result, a pushed NotifyStatus, and an error](diagrams/transport-sequence.svg)
 
 The API speaks JSON-RPC 2.0 over one WebSocket connection. Each message is a
 small JSON object we call a **frame**. On top of the standard JSON-RPC fields,
-every frame adds `src` and `dst` — who sent it, and who it is for. One signed-in
+every frame adds `src` and `dst` (who sent it and who it is for). One signed-in
 connection carries all your calls and every event the server sends back.
 
 ### How one exchange works
@@ -17,7 +17,7 @@ The numbers match the diagram above:
    your call.
 4. Separately, the server **pushes** a `NotifyStatus` event with no `id`. It is
    a live update, not a reply.
-5. If the call was bad, you get an **error** — again with the same `id`.
+5. If the call was bad, you get an **error** (again with the same `id`).
 
 ### The four frames
 
@@ -28,12 +28,12 @@ same `id` as your call. A pushed event has no `id` at all.
 
 ### Endpoint
 
-Connect to `wss://<your-host>/` — the root path (`ws://` on non-TLS
+Connect to `wss://<your-host>/`: the root path (`ws://` on non-TLS
 deployments). The socket must be authenticated at the upgrade; see
 [Authentication](#authentication). Some deployments mount the API behind a
 reverse-proxy path prefix, so the base path is configurable; the default is `/`.
 
-There is also an HTTP fallback for single calls — see below.
+There is also an HTTP fallback for single calls: see below.
 
 ### Request frame
 
@@ -48,15 +48,15 @@ There is also an HTTP fallback for single calls — see below.
 }
 ```
 
-- `id` — required, a number. The response echoes it back so you can match
+- `id`: required, a number. The response echoes it back so you can match
   replies to requests.
-- `src` — required, any string that identifies your client. It is returned as
+- `src`: required, any string that identifies your client. It is returned as
   the `dst` of the reply.
-- `dst` — set to `FLEET_MANAGER` to call the Fleet Manager. A device id here
+- `dst`: set to `FLEET_MANAGER` to call the Fleet Manager. A device id here
   relays the call to that device instead.
-- `method` — `namespace.Method` (for example `device.List`). Method matching is
+- `method`: `namespace.Method` (for example `device.List`). Method matching is
   case-insensitive.
-- `jsonrpc` — optional; `"2.0"` if present.
+- `jsonrpc`: optional; `"2.0"` if present.
 
 ### Success and error replies
 
@@ -69,7 +69,7 @@ There is also an HTTP fallback for single calls — see below.
   "error": { "code": -32601, "message": "Method not found" } }
 ```
 
-Error handling — codes, validation details, and per-namespace error kinds — is
+Error handling (codes, validation details, and per-namespace error kinds) is
 covered in [Errors](#errors).
 
 ### Batching
@@ -82,7 +82,7 @@ whole. Replies come back as individual frames, not a batched array.
 
 The maximum inbound frame is 5 MiB. The server pings roughly every 30 seconds
 and terminates a socket that stops answering; reconnect with backoff on close.
-Subscriptions are per-connection, so re-subscribe after reconnecting — see
+Subscriptions are per-connection, so re-subscribe after reconnecting: see
 [Events](#events).
 
 ### HTTP fallback
@@ -96,7 +96,7 @@ curl -X POST https://<your-host>/rpc \
 ```
 
 You can also put the method in the path: `POST /rpc/device.List` with just the
-`params` body. The HTTP path targets the Fleet Manager only — it does not relay
-to devices, and needs no `src`/`dst`/`id` envelope. A success returns the bare
+`params` body. The HTTP path targets the Fleet Manager only; it does not relay
+to devices and needs no `src`/`dst`/`id` envelope. A success returns the bare
 `result` as the body; an error returns `{ "error": { … } }` with a matching HTTP
 status.

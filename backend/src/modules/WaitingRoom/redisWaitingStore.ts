@@ -41,6 +41,13 @@ export async function isPending(
     return waitingStore.isPending(organizationId, shellyID);
 }
 
+export async function getPending(
+    organizationId: string,
+    shellyID: string
+): Promise<WaitingEntry | null> {
+    return waitingStore.get(organizationId, shellyID);
+}
+
 export async function mergePendingStatus(
     organizationId: string,
     shellyID: string,
@@ -87,20 +94,34 @@ export async function dropPending(
     await waitingStore.remove(organizationId, shellyID);
 }
 
+// A cooldown is keyed on the claimed id alone only when an operator rejected
+// the device. A gate rejection is keyed on the id and the source address as
+// well, so a forged claim from elsewhere cannot cool the real device out.
 export async function markRejected(
     organizationId: string,
-    shellyID: string
+    shellyID: string,
+    sourceKey?: string
 ): Promise<void> {
     await waitingStore.markRejected(
         organizationId,
-        shellyID,
+        cooldownSubject(shellyID, sourceKey),
         tuning.waitingRoom.rejectCooldownSec
     );
 }
 
 export async function isRejected(
     organizationId: string,
-    shellyID: string
+    shellyID: string,
+    sourceKey?: string
 ): Promise<boolean> {
-    return waitingStore.isRejected(organizationId, shellyID);
+    if (await waitingStore.isRejected(organizationId, shellyID)) return true;
+    if (!sourceKey) return false;
+    return waitingStore.isRejected(
+        organizationId,
+        cooldownSubject(shellyID, sourceKey)
+    );
+}
+
+function cooldownSubject(shellyID: string, sourceKey?: string): string {
+    return sourceKey ? `${shellyID}@${sourceKey}` : shellyID;
 }

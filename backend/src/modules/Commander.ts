@@ -6,7 +6,11 @@ import RpcError from '../rpc/RpcError';
 import {ValidationError} from '../rpc/validation';
 import type {PrincipalType} from '../types';
 import * as AuditLogger from './AuditLogger';
+import {currentCorrelationId} from './ai/mcpCorrelation';
 import {BoundedMap} from './boundedMap';
+import {runAsForegroundDbWork} from './dbWorkPriority';
+import {currentAutomationSource} from './nodeRed/automationSource';
+import {assertNodeRedServiceMayCall} from './nodeRed/serviceDenylist';
 import * as Observability from './Observability';
 import {RequestContext} from './RequestContext';
 import type {ConnectionContext} from './web/ws/ConnectionContext';
@@ -125,6 +129,13 @@ interface RpcCaller {
     organizationId: string | undefined;
     senderType: PrincipalType;
     sourceIp: string | undefined;
+    // Which scoped credential this arrived on, when it was an agent. Derived
+    // from the user rather than threaded through, so every caller gets it.
+    agentKeyId: string | undefined;
+    // Set while an MCP tool call is running; ties these rows to that call.
+    correlationId: string | undefined;
+    // Which Node-RED flow and node made the call, when Node-RED made it.
+    automationSource: AuditLogger.RpcAuditInput['automationSource'];
 }
 
 function recordSuccess(
@@ -151,7 +162,10 @@ function recordSuccess(
             method: resolved.auditMethod,
             params,
             organizationId: caller.organizationId,
-            ipAddress: caller.sourceIp
+            ipAddress: caller.sourceIp,
+            agentKeyId: caller.agentKeyId,
+            correlationId: caller.correlationId,
+            automationSource: caller.automationSource
         });
     }
 }
@@ -184,7 +198,10 @@ function recordFailure(
         success: false,
         errorMessage: message,
         organizationId: caller.organizationId,
-        ipAddress: caller.sourceIp
+        ipAddress: caller.sourceIp,
+        agentKeyId: caller.agentKeyId,
+        correlationId: caller.correlationId,
+        automationSource: caller.automationSource
     });
 }
 
@@ -244,9 +261,25 @@ interface DispatchInput {
     req: RequestContext;
 }
 
+// A person or client is waiting on an untrusted caller's RPC, so its database
+// work goes ahead of background work; trusted internal calls stay background.
+function dispatchWithDbPriority(
+    input: DispatchInput
+): Promise<{result: any; shouldAudit: boolean}> {
+    const dispatch = () => dispatchToComponent(input);
+    return input.sender.isTrusted()
+        ? dispatch()
+        : runAsForegroundDbWork(dispatch);
+}
+
 async function dispatchToComponent(
     input: DispatchInput
 ): Promise<{result: any; shouldAudit: boolean}> {
+    // Before lookup, so a denied name is refused even where it is not routed.
+    assertNodeRedServiceMayCall(input.sender, {
+        method: input.resolved.method,
+        params: input.params
+    });
     const {component, submethod} = lookupComponent(input.resolved.method);
     const shouldAudit = component.shouldAuditMethod(submethod);
     const result = await component.call(
@@ -321,7 +354,10 @@ export async function exec(
         userId: sender.getUserId(),
         organizationId: sender.getOrganizationId(),
         senderType: sender.getPrincipalType(),
-        sourceIp: sender.getSourceIp()
+        sourceIp: sender.getSourceIp(),
+        agentKeyId: sender.getCredentialId(),
+        correlationId: currentCorrelationId(),
+        automationSource: currentAutomationSource()
     };
     const t0 = Observability.isEnabled() ? performance.now() : 0;
     const requestId = makeRequestId();
@@ -334,7 +370,7 @@ export async function exec(
 
     inFlightRpcCount++;
     try {
-        const {result, shouldAudit} = await dispatchToComponent({
+        const {result, shouldAudit} = await dispatchWithDbPriority({
             sender,
             resolved,
             params,

@@ -23,12 +23,19 @@
     "paths": {
       "@/*": ["./src/*"],
       "@app-root": ["./src/App.vue"],
+      "@build-mode": ["./src/shell/build-mode.full.ts"],
       "@router-routes": ["./src/router/routes.full.ts"],
       "@host": ["./src/shell/template-host/index.ts"],
       "@host/*": ["./src/shell/template-host/*"],
       "@template/*": ["./src/template-active/*"],
-      "@template-contract": ["./src/template-contract/index.ts"],
-      "@template-contract/*": ["./src/template-contract/*"],
+      "@template-contract": [
+        "./src/template-contract-dev/index.ts",
+        "./src/template-contract/index.ts"
+      ],
+      "@template-contract/*": [
+        "./src/template-contract-dev/*",
+        "./src/template-contract/*"
+      ],
       "@shared/*": ["./src/shared/*"],
       "@api/*": ["../backend/src/types/api/*"]
     },

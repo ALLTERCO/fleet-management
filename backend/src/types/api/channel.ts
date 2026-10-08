@@ -70,6 +70,8 @@ export interface ChannelQuietHours {
 }
 
 export interface Channel {
+    /** Full: the caller holds a grant on this channel. */
+    access: 'full';
     id: number;
     organizationId: string;
     provider: ChannelProvider;
@@ -78,6 +80,10 @@ export interface Channel {
     config: Record<string, unknown>;
     secretState: {
         hasSecretFields: boolean;
+        /** Masked stored secrets, keyed by config path (e.g. "auth.pass").
+         *  First and last 4 characters only — enough to recognise a value
+         *  without exposing it. Absent when nothing is stored. */
+        maskedFields?: Record<string, string>;
     };
     lastTestAt: string | null;
     lastTestStatus: 'success' | 'failed' | null;
@@ -88,6 +94,28 @@ export interface Channel {
     createdAt: string;
     updatedAt: string | null;
 }
+
+/**
+ * What a caller without a grant on the channel may see: what it is and
+ * whether it works. Never config, secrets or quiet hours.
+ */
+export interface ChannelSummary {
+    access: 'summary';
+    id: number;
+    organizationId: string;
+    provider: ChannelProvider;
+    name: string;
+    enabled: boolean;
+    lastTestAt: string | null;
+    lastTestStatus: 'success' | 'failed' | null;
+    lastDeliveryAt: string | null;
+    lastDeliveryStatus: 'success' | 'failed' | null;
+    health: ChannelHealth;
+    createdAt: string;
+    updatedAt: string | null;
+}
+
+export type ChannelListItem = Channel | ChannelSummary;
 
 export interface ChannelTestResult {
     channelId: number;
@@ -146,6 +174,13 @@ const EMAIL_SMTP_CONFIG_SCHEMA: JsonSchema = {
     additionalProperties: false,
     required: ['from', 'toAddresses'],
     properties: {
+        mode: {
+            type: 'string',
+            enum: ['use_system_smtp', 'custom_smtp'],
+            default: 'custom_smtp',
+            description:
+                '"use_system_smtp" delivers through the system mail settings and ignores host/port/auth here. "custom_smtp" (default) uses this channel\'s own server.'
+        },
         preset: {
             type: 'string',
             enum: [...SMTP_PRESET_KEYS],
@@ -853,7 +888,7 @@ export const CHANNEL_PROVIDER_DESCRIPTORS: ChannelProviderDescriptor[] = [
         key: 'push_fcm',
         label: 'Mobile Push (FCM)',
         phaseAvailable: 5,
-        enabled: false,
+        enabled: true,
         configSchema: CHANNEL_PROVIDER_CONFIG_SCHEMAS.push_fcm,
         testSupported: true,
         templateFields: CHANNEL_PROVIDER_TEMPLATE_FIELDS.push_fcm
@@ -892,7 +927,13 @@ const SECRET_STATE_SCHEMA: JsonSchema = {
     additionalProperties: false,
     required: ['hasSecretFields'],
     properties: {
-        hasSecretFields: {type: 'boolean'}
+        hasSecretFields: {type: 'boolean'},
+        maskedFields: {
+            type: 'object',
+            additionalProperties: {type: 'string'},
+            description:
+                'Stored secrets masked to first/last 4 characters, keyed by config path. Never the full value.'
+        }
     }
 };
 
@@ -920,13 +961,23 @@ const ENDPOINT_HEALTH_SCHEMA: JsonSchema = {
     }
 };
 
+// The window is [startHour, endHour) in whole local hours. endHour reaches 24
+// so an all-day mute is expressible as 0..24; capped at 23 the widest window
+// left 23:00-00:00 live. startHour == endHour is not a window — it is what an
+// untouched form sends, and it mutes nothing.
 const QUIET_HOURS_SCHEMA: JsonSchema = {
     type: ['object', 'null'],
     additionalProperties: false,
     required: ['startHour', 'endHour', 'timezone'],
     properties: {
         startHour: {type: 'integer', minimum: 0, maximum: 23},
-        endHour: {type: 'integer', minimum: 0, maximum: 23},
+        endHour: {
+            type: 'integer',
+            minimum: 0,
+            maximum: 24,
+            description:
+                'Exclusive end hour. 24 means end of day, so 0-24 mutes the whole day.'
+        },
         timezone: {type: 'string', minLength: 1, maxLength: 60}
     }
 };
@@ -935,6 +986,7 @@ export const CHANNEL_SCHEMA: JsonSchema = {
     type: 'object',
     additionalProperties: false,
     required: [
+        'access',
         'id',
         'organizationId',
         'provider',
@@ -952,6 +1004,7 @@ export const CHANNEL_SCHEMA: JsonSchema = {
         'updatedAt'
     ],
     properties: {
+        access: {type: 'string', enum: ['full']},
         id: {type: 'integer'},
         organizationId: ORG_ID_SCHEMA,
         provider: PROVIDER_SCHEMA,
@@ -968,6 +1021,41 @@ export const CHANNEL_SCHEMA: JsonSchema = {
         lastDeliveryStatus: TEST_STATUS_SCHEMA,
         health: ENDPOINT_HEALTH_SCHEMA,
         quietHours: QUIET_HOURS_SCHEMA,
+        createdAt: {type: 'string'},
+        updatedAt: {type: ['string', 'null']}
+    }
+};
+
+export const CHANNEL_SUMMARY_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+        'access',
+        'id',
+        'organizationId',
+        'provider',
+        'name',
+        'enabled',
+        'lastTestAt',
+        'lastTestStatus',
+        'lastDeliveryAt',
+        'lastDeliveryStatus',
+        'health',
+        'createdAt',
+        'updatedAt'
+    ],
+    properties: {
+        access: {type: 'string', enum: ['summary']},
+        id: {type: 'integer'},
+        organizationId: ORG_ID_SCHEMA,
+        provider: PROVIDER_SCHEMA,
+        name: NAME_SCHEMA,
+        enabled: {type: 'boolean'},
+        lastTestAt: {type: ['string', 'null']},
+        lastTestStatus: TEST_STATUS_SCHEMA,
+        lastDeliveryAt: {type: ['string', 'null']},
+        lastDeliveryStatus: TEST_STATUS_SCHEMA,
+        health: ENDPOINT_HEALTH_SCHEMA,
         createdAt: {type: 'string'},
         updatedAt: {type: ['string', 'null']}
     }
@@ -1075,7 +1163,10 @@ const LIST_ENVELOPE_SCHEMA: JsonSchema = {
     additionalProperties: false,
     required: ['items', 'total', 'limit', 'offset', 'has_more'],
     properties: {
-        items: {type: 'array', items: CHANNEL_SCHEMA},
+        items: {
+            type: 'array',
+            items: {oneOf: [CHANNEL_SCHEMA, CHANNEL_SUMMARY_SCHEMA]}
+        },
         total: {type: 'integer'},
         limit: {type: 'integer'},
         offset: {type: 'integer'},
@@ -1120,13 +1211,14 @@ export const CHANNEL_DESCRIBE: DescribeOutput = new DescribeBuilder('channel', {
         params: CHANNEL_LIST_PARAMS_SCHEMA,
         response: LIST_ENVELOPE_SCHEMA,
         permission: {component: 'notifications', operation: 'read'},
-        description: 'List channels in the caller organization.'
+        description:
+            'List channels in the caller organization. A channel the caller holds a grant on comes in full; every other channel comes as a summary without config or secrets.'
     })
     .registerMethod('Get', {
         params: CHANNEL_GET_PARAMS_SCHEMA,
         response: CHANNEL_SCHEMA,
-        permission: {component: 'notifications', operation: 'read'},
-        description: 'Return one channel.'
+        permission: {component: 'integrations', operation: 'read'},
+        description: 'Return one channel in full. Needs a grant on the channel.'
     })
     .registerMethod('Create', {
         params: CHANNEL_CREATE_PARAMS_SCHEMA,
@@ -1138,13 +1230,13 @@ export const CHANNEL_DESCRIBE: DescribeOutput = new DescribeBuilder('channel', {
     .registerMethod('Update', {
         params: CHANNEL_UPDATE_PARAMS_SCHEMA,
         response: CHANNEL_SCHEMA,
-        permission: {component: 'notifications', operation: 'update'},
+        permission: {component: 'integrations', operation: 'update'},
         description: 'Update a channel. Omitted secret fields are preserved.'
     })
     .registerMethod('Delete', {
         params: CHANNEL_DELETE_PARAMS_SCHEMA,
         response: DELETED_SCHEMA,
-        permission: {component: 'notifications', operation: 'delete'},
+        permission: {component: 'integrations', operation: 'delete'},
         description:
             'Delete a channel if no destination groups still reference it.'
     })
@@ -1158,7 +1250,7 @@ export const CHANNEL_DESCRIBE: DescribeOutput = new DescribeBuilder('channel', {
     .registerMethod('ResetHealth', {
         params: CHANNEL_RESET_HEALTH_PARAMS_SCHEMA,
         response: CHANNEL_SCHEMA,
-        permission: {component: 'notifications', operation: 'update'},
+        permission: {component: 'integrations', operation: 'update'},
         description:
             'Clear consecutive_failures + auto_disabled_at and (by default) re-enable after an auto-disable.'
     })

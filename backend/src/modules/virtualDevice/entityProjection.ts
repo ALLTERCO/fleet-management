@@ -46,6 +46,33 @@ export function virtualEntityId(externalId: string, roleKey: string): string {
     return `${externalId}:role:${roleKey}:virtual`;
 }
 
+export interface VirtualComponentIdentityInput {
+    roleKey: string;
+    sourceComponentKey: string;
+    entityType: string;
+}
+
+/**
+ * Assign stable, collision-free component ids per entity type. Every consumer
+ * (device read models, alert events, and discovery) uses this one mapping.
+ */
+export function assignVirtualComponentIds(
+    bindings: readonly VirtualComponentIdentityInput[]
+): Map<string, number> {
+    const usedByType = new Map<string, Set<number>>();
+    const out = new Map<string, number>();
+    for (const binding of bindings) {
+        const used = usedByType.get(binding.entityType) ?? new Set<number>();
+        usedByType.set(binding.entityType, used);
+        const preferred = sourceComponentId(binding.sourceComponentKey);
+        let id = preferred;
+        while (used.has(id)) id += 1;
+        used.add(id);
+        out.set(binding.roleKey, id);
+    }
+    return out;
+}
+
 export function projectVirtualEntity(
     input: ProjectVirtualEntityInput
 ): ProjectedVirtualEntity {

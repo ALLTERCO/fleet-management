@@ -19,10 +19,14 @@ import {
     SINGLE_FREQ_FIELD,
     SINGLE_VOLTAGE_FIELD
 } from '../types/api/componentPower';
+import {DEVICE_HEALTH_SENSOR_SOURCE} from '../types/api/sensor';
 import {boundedLogDedupeSet} from './boundedLogDedupeSet';
 import * as DeviceCollector from './DeviceCollector';
 import * as DeviceEventLogger from './DeviceEventLogger';
+import {runAsDbWorkload} from './dbWorkPriority';
 import {getDeviceOrg} from './EventDistributor';
+import {emLiveDebugCapture} from './emLiveDebugCapture';
+import {spillEmStatsBatch} from './emStatsOverflow';
 import {emStatsQueue} from './emStatsQueue';
 import {
     type ComponentConfigResolver,
@@ -34,29 +38,32 @@ import {
 import {domainContradictsSignals} from './energyClassifier';
 import {energyClassifierCache} from './energyClassifierCache';
 import {energyOverrideCache} from './energyOverrideCache';
-import {appendEmStats} from './energyRollup';
+import {appendEmStats, splitEmStatsBatch} from './energyRollup';
 import {flushLifetimeBatch} from './lifetimeFlush';
 import {lifetimeQueue} from './lifetimeQueue';
 import * as Observability from './Observability';
+import type {CounterName} from './observability/counters';
 import {callMethod, rawCall} from './PostgresProvider';
 import {createQueueFlusher} from './queueFlusher';
 import {InitEm} from './ShellyEmHandler';
 import type {NotifyEventEnvelope} from './ShellyEvents';
 import * as ShellyEvents from './ShellyEvents';
 import {
-    appendEvents,
-    appendNumeric,
+    captureSensorRows,
     classifyNativeNumeric,
     type EventRow,
     type NumericRow,
     type SensorSource
 } from './sensorCapture';
+import {SingleFlight} from './singleFlight';
+import type {StatusSourceDevice} from './status/batchCoalescer';
 import {
     appendStatusBatch,
     appendStatusBatchBestEffort
 } from './status/StatusStream';
 import {projectPersistedStatusBatch} from './status/statusProjection';
 import {toEpochSeconds} from './util/epochSeconds';
+import {fireAndForget} from './util/fireAndForget';
 import {isPlainObject} from './util/isPlainObject';
 
 const logger = log4js.getLogger('message-parser');
@@ -184,16 +191,27 @@ function emptyStatusPushQueue(): t_intermid_1 {
 }
 let status_push_queue: t_intermid_1 = emptyStatusPushQueue();
 let statusQueueOrgIds = new Set<string>();
+let statusQueueSources = new Map<number, StatusSourceDevice>();
 let statusFlushInProgress = false;
+
 let lastFlushMs = 0;
 let lastFlushBatchSize = 0;
 let statusFlushTimer: ReturnType<typeof setInterval> | undefined;
 let inFlightStatusFlush: Promise<void> | null = null;
 
-// Pending message buffer — hot path just pushes here.
-// `changes` is the field-level diff computed by AbstractDevice.merge
-// at patch time. Cold-path flush reads prev from here instead of
-// round-tripping to PG (Phase 2.2a).
+// `live`: the device pushed the change. `reconnect`: the difference between the
+// snapshot a device sends when it connects and the last state held for it.
+export type StatusObservation = 'live' | 'reconnect';
+
+// The merge diff of one message and how it was observed.
+export interface StatusDiff {
+    changes: PathChange[];
+    observation: StatusObservation;
+}
+
+// Pending message buffer — hot path just pushes here. `changes` is the merge
+// diff against the device state held in memory, the only source of a
+// previous value for the flush.
 export type PendingMessage = {
     ts: number;
     // Server receive time; fallback when the device omits a valid `ts`.
@@ -204,6 +222,7 @@ export type PendingMessage = {
     shellyId: string;
     params: Record<string, any>;
     changes: PathChange[];
+    observation: StatusObservation;
 };
 const pendingMessages: PendingMessage[] = [];
 
@@ -222,14 +241,16 @@ export interface StatusValueInput {
 // Redis outages as silent unhandledRejection warnings.
 function spillBatchSafely(
     batch: t_intermid_1,
-    organizationIds: readonly string[] = []
+    organizationIds: readonly string[] = [],
+    sourceDevices: readonly StatusSourceDevice[] = []
 ): void {
-    void appendStatusBatchBestEffort({batch, organizationIds});
+    void appendStatusBatchBestEffort({batch, organizationIds, sourceDevices});
 }
 
 export function enqueueStatusValues(values: readonly StatusValueInput[]): void {
     const batch = emptyStatusPushQueue();
     const organizationIds = new Set<string>();
+    const sourceDevices = new Map<number, StatusSourceDevice>();
     for (const input of values) {
         const group = statusFieldGroup(input.field);
         if (!group || !Number.isFinite(input.value)) continue;
@@ -248,7 +269,14 @@ export function enqueueStatusValues(values: readonly StatusValueInput[]): void {
         );
         const organizationId =
             input.organizationId ?? getDeviceOrg(input.shellyId);
-        if (organizationId) organizationIds.add(organizationId);
+        if (organizationId) {
+            organizationIds.add(organizationId);
+            sourceDevices.set(input.deviceId, {
+                deviceListId: input.deviceId,
+                externalId: input.shellyId,
+                organizationId
+            });
+        }
     }
     if (batch.p_ts.length === 0) return;
     if (
@@ -256,7 +284,11 @@ export function enqueueStatusValues(values: readonly StatusValueInput[]): void {
         tuning.status.queueMax
     ) {
         Observability.incrementCounter('status_queue_spilled');
-        spillBatchSafely(batch, [...organizationIds]);
+        spillBatchSafely(
+            batch,
+            [...organizationIds],
+            [...sourceDevices.values()]
+        );
         return;
     }
     for (let i = 0; i < batch.p_ts.length; i++) {
@@ -270,22 +302,27 @@ export function enqueueStatusValues(values: readonly StatusValueInput[]): void {
     for (const organizationId of organizationIds) {
         statusQueueOrgIds.add(organizationId);
     }
+    mergeStatusSources(statusQueueSources, sourceDevices.values());
 }
 
 function takeStatusQueue(): {
     batch: t_intermid_1;
     organizationIds: string[];
+    sourceDevices: StatusSourceDevice[];
 } {
     const batch = status_push_queue;
     const organizationIds = [...statusQueueOrgIds];
+    const sourceDevices = [...statusQueueSources.values()];
     status_push_queue = emptyStatusPushQueue();
     statusQueueOrgIds = new Set();
-    return {batch, organizationIds};
+    statusQueueSources = new Map();
+    return {batch, organizationIds, sourceDevices};
 }
 
 function prependStatusQueue(
     batch: t_intermid_1,
-    organizationIds: readonly string[]
+    organizationIds: readonly string[],
+    sourceDevices: readonly StatusSourceDevice[]
 ): void {
     status_push_queue = {
         p_ts: [...batch.p_ts, ...status_push_queue.p_ts],
@@ -299,11 +336,13 @@ function prependStatusQueue(
         p_prev_value: [...batch.p_prev_value, ...status_push_queue.p_prev_value]
     };
     for (const orgId of organizationIds) statusQueueOrgIds.add(orgId);
+    mergeStatusSources(statusQueueSources, sourceDevices);
 }
 
 async function appendStatusQueueToRedis(input: {
     batch: t_intermid_1;
     organizationIds: readonly string[];
+    sourceDevices: readonly StatusSourceDevice[];
 }): Promise<void> {
     const appendStart = performance.now();
     await appendStatusBatch(input);
@@ -313,12 +352,31 @@ async function appendStatusQueueToRedis(input: {
     );
 }
 
-// Build a status batch without the cold-start PG seed — prev comes from the
-// in-event diff, else falls back to value (delta=0). Used to spill to the DLQ.
+function mergeStatusSources(
+    target: Map<number, StatusSourceDevice>,
+    sources: Iterable<StatusSourceDevice>
+): void {
+    for (const source of sources) target.set(source.deviceListId, source);
+}
+
+function previousValues(changes: readonly PathChange[]): Map<string, unknown> {
+    return new Map(changes.map((c) => [c.path, c.prev]));
+}
+
+// A field the diff names takes its prev; a field it does not name kept the
+// value this message carries.
+function previousValueOf(
+    previous: ReadonlyMap<string, unknown>,
+    field: string,
+    value: number
+): unknown {
+    return previous.has(field) ? previous.get(field) : value;
+}
+
+// Build a status batch from one message alone. Used to spill to the DLQ.
 function pendingMessageToStatusBatch(msg: PendingMessage): t_intermid_1 {
     const out = emptyStatusPushQueue();
-    const prevByField = new Map<string, unknown>();
-    for (const c of msg.changes) prevByField.set(c.path, c.prev);
+    const previous = previousValues(msg.changes);
     const {ts: rawTs, ...components} = msg.params;
     const tsSec = toEpochSeconds(rawTs, msg.receivedAtSec);
     const flat = flattie(components);
@@ -327,7 +385,7 @@ function pendingMessageToStatusBatch(msg: PendingMessage): t_intermid_1 {
         if (group === undefined) continue;
         const v = flat[k];
         if (typeof v !== 'number' || !Number.isFinite(v)) continue;
-        const prev = prevByField.get(k);
+        const prev = previousValueOf(previous, k, v);
         out.p_ts.push(tsSec);
         out.p_id.push(msg.deviceId);
         out.p_field.push(k);
@@ -345,7 +403,19 @@ function spillOverflowMessage(msg: PendingMessage): void {
     if (batch.p_ts.length === 0) return;
     Observability.incrementCounter('status_queue_spilled');
     const orgId = getDeviceOrg(msg.shellyId);
-    spillBatchSafely(batch, orgId ? [orgId] : []);
+    spillBatchSafely(
+        batch,
+        orgId ? [orgId] : [],
+        orgId
+            ? [
+                  {
+                      deviceListId: msg.deviceId,
+                      externalId: msg.shellyId,
+                      organizationId: orgId
+                  }
+              ]
+            : []
+    );
 }
 
 // Process buffered messages → flush the status queue to PG once.
@@ -365,16 +435,20 @@ async function flushStatusQueueOnce(): Promise<void> {
     const sl = status_push_queue.p_ts.length;
     if (!sl) return;
     lastFlushBatchSize = sl;
-    const {batch: toFlush, organizationIds} = takeStatusQueue();
+    const {batch: toFlush, organizationIds, sourceDevices} = takeStatusQueue();
     statusFlushInProgress = true;
     if (tuning.status.redisFirst) {
         try {
-            await appendStatusQueueToRedis({batch: toFlush, organizationIds});
+            await appendStatusQueueToRedis({
+                batch: toFlush,
+                organizationIds,
+                sourceDevices
+            });
         } catch (e) {
             Observability.incrementCounter('status_stream_append_errors');
             Observability.incrementCounter('status_stream_degraded');
             logger.error('status Redis-first append failed:', e);
-            prependStatusQueue(toFlush, organizationIds);
+            prependStatusQueue(toFlush, organizationIds, sourceDevices);
         } finally {
             statusFlushInProgress = false;
         }
@@ -383,17 +457,19 @@ async function flushStatusQueueOnce(): Promise<void> {
     if (Observability.isDbWritesDisabled()) {
         Observability.incrementCounter('status_flushes_skipped');
         // Spill instead of clearing — DLQ stream drains when PG resumes.
-        spillBatchSafely(toFlush, organizationIds);
+        spillBatchSafely(toFlush, organizationIds, sourceDevices);
         statusFlushInProgress = false;
         return;
     }
     if (tuning.status.redisShadow) {
-        appendStatusQueueToRedis({batch: toFlush, organizationIds}).catch(
-            (e) => {
-                Observability.incrementCounter('status_stream_append_errors');
-                logger.warn('status shadow append failed: %s', e);
-            }
-        );
+        appendStatusQueueToRedis({
+            batch: toFlush,
+            organizationIds,
+            sourceDevices
+        }).catch((e) => {
+            Observability.incrementCounter('status_stream_append_errors');
+            logger.warn('status shadow append failed: %s', e);
+        });
     }
     Observability.incrementCounter('status_flushes');
     const flushStart = performance.now();
@@ -401,7 +477,10 @@ async function flushStatusQueueOnce(): Promise<void> {
         logger.info('---->>> Syncing status, length %d', sl);
         await rawCall('device.fn_status_push', toFlush);
         try {
-            await projectPersistedStatusBatch(toFlush);
+            await projectPersistedStatusBatch(toFlush, {
+                sourceDevices,
+                legacySourceMetadata: false
+            });
         } catch (error) {
             Observability.incrementCounter('virtual_projection_drain_errors');
             logger.warn(
@@ -416,7 +495,7 @@ async function flushStatusQueueOnce(): Promise<void> {
         logger.error('Failed to flush status queue:', e);
         Observability.incrementCounter('status_flush_errors');
         // Spill to DLQ so the drainer can replay when PG recovers.
-        spillBatchSafely(toFlush, organizationIds);
+        spillBatchSafely(toFlush, organizationIds, sourceDevices);
     } finally {
         statusFlushInProgress = false;
     }
@@ -442,30 +521,55 @@ async function runStatusFlush(): Promise<void> {
 }
 
 // device_em.stats + device_em.lifetime_counters flushes use the same
-// drain→flush→retry-on-failure→drop-on-overflow loop. Cadence (2 min)
-// kept identical so each lifetime UPSERT lands in lockstep with the
-// em_stats rows it was derived from.
-const FLUSH_INTERVAL_MS = 120_000;
-const FLUSH_RETRY_MAX = 50_000;
+// drain→flush→retry with backoff→spill or drop by age loop. One cadence so
+// each lifetime UPSERT lands in lockstep with the em_stats rows it was
+// derived from. Only em_stats spills: a lifetime row is superseded by the
+// next one, so its overflow is dropped by age instead.
+const FLUSH_INTERVAL_MS = tuning.energy.emStatsFlushIntervalMs;
+const FLUSH_RETRY_MAX = tuning.energy.emStatsRetryMaxRows;
+const FLUSH_RETRY_BACKOFF_MAX_MS = tuning.energy.emStatsRetryBackoffMaxMs;
+const FLUSH_MAX_AGE_MS = tuning.energy.emStatsMaxAgeS * 1000;
 
 const emStatsFlusher = createQueueFlusher({
     name: 'em_stats',
+    counters: {
+        flushes: 'em_stats_flushes',
+        flushesSkipped: 'em_stats_flushes_skipped',
+        flushErrors: 'em_stats_flush_errors',
+        dataDropped: 'em_stats_data_dropped'
+    },
     queue: emStatsQueue,
     // This is the 15-second live status pipeline — the secondary series.
+    // Energy saves are capped on the shared pool (FM_DB_ENERGY_WRITE_MAX_CONNECTIONS).
     flush: (batch) =>
-        appendEmStats({...batch, p_source: 'live'}, {callDb: callMethod}),
+        runAsDbWorkload('energy', () =>
+            appendEmStats({...batch, p_source: 'live'}, {callDb: callMethod})
+        ),
+    split: (batch) =>
+        splitEmStatsBatch(batch, tuning.energy.emStatsWriteMaxRows),
     batchSize: (batch) => batch.p_ts.length,
     intervalMs: FLUSH_INTERVAL_MS,
-    retryMax: FLUSH_RETRY_MAX
+    retryMax: FLUSH_RETRY_MAX,
+    retryBackoffMaxMs: FLUSH_RETRY_BACKOFF_MAX_MS,
+    maxAgeMs: FLUSH_MAX_AGE_MS,
+    spill: (batch) => spillEmStatsBatch({...batch, p_source: 'live'})
 });
 
 const lifetimeFlusher = createQueueFlusher({
     name: 'lifetime',
+    counters: {
+        flushes: 'lifetime_flushes',
+        flushesSkipped: 'lifetime_flushes_skipped',
+        flushErrors: 'lifetime_flush_errors',
+        dataDropped: 'lifetime_data_dropped'
+    },
     queue: lifetimeQueue,
     flush: flushLifetimeBatch,
     batchSize: (batch) => batch.p_ts.length,
     intervalMs: FLUSH_INTERVAL_MS,
-    retryMax: FLUSH_RETRY_MAX
+    retryMax: FLUSH_RETRY_MAX,
+    retryBackoffMaxMs: FLUSH_RETRY_BACKOFF_MAX_MS,
+    maxAgeMs: FLUSH_MAX_AGE_MS
 });
 
 // Graceful-shutdown drain: stop the timers and write every in-memory buffer
@@ -546,7 +650,8 @@ type shelly_event_t =
     | 'sleep' // battery device about to sleep; ts marker for read paths
     | 'media_ready' // camera: image/video finalized on device
     | 'upload_complete' // camera: media uploaded to cloud
-    | 'upload_failed'; // camera: media upload to cloud failed
+    | 'upload_failed' // camera: media upload to cloud failed
+    | 'data'; // emdata/em1data: a 1-minute meter record saved to flash
 
 // Catalog cache must drop when firmware republishes its event vocabulary.
 const priorCfgRev = new WeakMap<ShellyDevice, number>();
@@ -780,6 +885,17 @@ function handleCameraMedia({
     });
 }
 
+// A pushed meter record is EM history input; it is still forwarded like any
+// other device event.
+function handleEmRecordPush(ctx: DeviceEventContext): void {
+    em.acceptRecordPush({
+        device: ctx.shelly,
+        component: ctx.component,
+        event: ctx.event
+    });
+    handleUnknownEvent(ctx);
+}
+
 // Default arm: forward any event kind not in the dispatch map, counting the
 // firehose and diagnosing genuinely-unknown (unresolved) events once.
 function handleUnknownEvent({
@@ -831,7 +947,8 @@ const deviceEventHandlers: Partial<Record<shelly_event_t, DeviceEventHandler>> =
         sleep: handleSleepEvent,
         media_ready: handleCameraMedia,
         upload_complete: handleCameraMedia,
-        upload_failed: handleCameraMedia
+        upload_failed: handleCameraMedia,
+        data: handleEmRecordPush
     };
 for (const action of BUTTON_EVENTS) {
     deviceEventHandlers[action] = handleButtonEvent;
@@ -858,7 +975,7 @@ export function handleMessage(
         // for the flush path — eliminates the per-field fn_status_last_value
         // N+1 in processPendingMessages.
         const changes = patchStatus(shelly, res.params);
-        statusSelectivePush(res, shelly, changes);
+        statusSelectivePush(res, shelly, {changes, observation: 'live'});
     } else if (res.method === 'NotifyEvent') {
         if (
             typeof res.params?.events === 'object' &&
@@ -907,7 +1024,9 @@ function patchStatus(
         if (key === 'ts') continue;
         patch[key] = data[key];
     }
-    return shelly.batchSetComponentStatus(patch);
+    return shelly.batchSetComponentStatus(patch, {
+        tsEpochSec: typeof data.ts === 'number' ? data.ts : undefined
+    });
 }
 
 type t_intermid_1 = {
@@ -919,11 +1038,11 @@ type t_intermid_1 = {
     p_prev_value: number[];
 };
 
-// Hot path: just buffer the raw message + the merge diff (O(1), <1μs)
+// Hot path: just buffer the raw message + its merge diff (O(1), <1μs)
 export function statusSelectivePush(
     req: ShellyMessageIncoming,
     device: ShellyDevice,
-    changes: PathChange[] = []
+    diff: StatusDiff = {changes: [], observation: 'live'}
 ) {
     Observability.incrementCounter('status_messages');
     // Capture the deltas into the durable device event log first — before the
@@ -932,7 +1051,8 @@ export function statusSelectivePush(
     DeviceEventLogger.captureChanges({
         device,
         tsEpochSec: req.params.ts,
-        changes
+        changes: diff.changes,
+        source: diff.observation === 'reconnect' ? 'reconnect' : 'device'
     });
     const message: PendingMessage = {
         ts: req.params.ts,
@@ -940,7 +1060,8 @@ export function statusSelectivePush(
         deviceId: device.id,
         shellyId: device.shellyID,
         params: req.params,
-        changes
+        changes: diff.changes,
+        observation: diff.observation
     };
     if (pendingMessages.length >= tuning.status.queueMax) {
         statusDrops++;
@@ -951,88 +1072,17 @@ export function statusSelectivePush(
     pendingMessages.push(message);
 }
 
-// Cold path: process buffered messages into flush queue (runs in 250ms
-// interval).
-//
-// Phase 2.2a — prev values come from the in-event diff (msg.changes)
-// computed by AbstractDevice.batchSetComponentStatus at patch time. When
-// the diff says prev=undefined (first message for the field since the
-// device connected after a restart), fall back to a SINGLE batched
-// fn_status_last_values call per device-batch — no per-field N+1.
+// Cold path: turn buffered messages into flush rows (runs every flush tick).
+// Each message's previous values come from its own merge diff, so this never
+// reads the database.
 export async function processPendingMessages(batch: PendingMessage[]) {
-    // Build a {deviceId → {field → prev}} lookup from the in-event diffs.
-    // For each leaf change emitted by the merge we already have prev.
-    const prevByDevice = new Map<number, Map<string, unknown>>();
-    for (const msg of batch) {
-        let perField = prevByDevice.get(msg.deviceId);
-        if (!perField) {
-            perField = new Map();
-            prevByDevice.set(msg.deviceId, perField);
-        }
-        for (const c of msg.changes) perField.set(c.path, c.prev);
-    }
-
-    // Identify (device, field) pairs we'd need a cold-start PG seed for —
-    // fields the flush cares about whose prev is undefined in the diff.
-    const seedNeeded = new Map<number, Set<string>>();
-    for (const msg of batch) {
-        const {ts: _ts, ...components} = msg.params;
-        const flat = flattie(components);
-        const perField = prevByDevice.get(msg.deviceId)!;
-        for (const k of Object.keys(flat)) {
-            if (statusFieldGroup(k) === undefined) continue;
-            if (perField.get(k) !== undefined) continue;
-            let s = seedNeeded.get(msg.deviceId);
-            if (!s) {
-                s = new Set();
-                seedNeeded.set(msg.deviceId, s);
-            }
-            s.add(k);
-        }
-    }
-
-    // One batched PG round-trip per device that needs a seed (boot-time
-    // cold start only — once the merge runs, prev for the next batch
-    // comes from in-memory device.#status with zero PG traffic).
-    if (tuning.status.redisFirst) {
-        seedNeeded.clear();
-    }
-    for (const [deviceId, fields] of seedNeeded) {
-        try {
-            const {rows} = await rawCall('device.fn_status_last_values', {
-                p_id: deviceId,
-                p_fields: Array.from(fields)
-            });
-            const perField = prevByDevice.get(deviceId)!;
-            for (const r of rows as Array<{
-                field: string;
-                last_value: number | null;
-            }>) {
-                if (
-                    r.last_value !== null &&
-                    perField.get(r.field) === undefined
-                ) {
-                    perField.set(r.field, r.last_value);
-                }
-            }
-        } catch (e) {
-            logger.warn(
-                'cold-start prev-value seed failed device=%d: %s',
-                deviceId,
-                e
-            );
-        }
-    }
-
-    // Now walk every message and push to the flush queue using the
-    // resolved prev values.
     const numericRows: NumericRow[] = [];
     const eventRows: EventRow[] = [];
     for (const msg of batch) {
         const {ts: rawTs, ...components} = msg.params;
         const tsSec = toEpochSeconds(rawTs, msg.receivedAtSec);
         const d = flattie(components);
-        const perField = prevByDevice.get(msg.deviceId)!;
+        const previous = previousValues(msg.changes);
         try {
             for (const k of Object.keys(d)) {
                 const group = statusFieldGroup(k);
@@ -1043,7 +1093,7 @@ export async function processPendingMessages(batch: PendingMessage[]) {
                 // don't poison the status batch + energy queue (matches the
                 // EM-sync guard in ShellyEmHandler).
                 if (typeof v !== 'number' || !Number.isFinite(v)) continue;
-                const lastVal = perField.get(k);
+                const lastVal = previousValueOf(previous, k, v);
                 status_push_queue.p_ts.push(tsSec);
                 status_push_queue.p_id.push(msg.deviceId);
                 status_push_queue.p_field.push(k);
@@ -1053,19 +1103,35 @@ export async function processPendingMessages(batch: PendingMessage[]) {
                     typeof lastVal === 'number' ? lastVal : v
                 );
                 const orgId = getDeviceOrg(msg.shellyId);
-                if (orgId) statusQueueOrgIds.add(orgId);
+                if (orgId) {
+                    statusQueueOrgIds.add(orgId);
+                    statusQueueSources.set(msg.deviceId, {
+                        deviceListId: msg.deviceId,
+                        externalId: msg.shellyId,
+                        organizationId: orgId
+                    });
+                }
 
                 // Energy/power capture path. Two implementations gated by
                 // tuning.energyClassifier — see docs/architecture/
                 // energy-storage-reference.md section 7.3 for the rollout
                 // matrix.
+                const componentKey = extractComponentKey(k);
+                const fieldName = extractFieldName(k);
                 routeEnergyRow({
-                    componentKey: extractComponentKey(k),
-                    fieldName: extractFieldName(k),
+                    componentKey,
+                    fieldName,
                     deviceId: msg.deviceId,
                     shellyId: msg.shellyId,
                     value: v,
                     lastValue: lastVal,
+                    ts: tsSec
+                });
+                emLiveDebugCapture.record({
+                    deviceId: msg.deviceId,
+                    componentKey,
+                    fieldName,
+                    value: v,
                     ts: tsSec
                 });
 
@@ -1088,11 +1154,6 @@ export async function processPendingMessages(batch: PendingMessage[]) {
                         val: v
                     });
                 }
-
-                // Keep perField current for any later messages from the
-                // same device in this same batch — successive messages
-                // see "previous" as the most-recent v.
-                perField.set(k, v);
             }
             // Native binary sensors (flood/smoke/occupancy): msg.changes is
             // this exact message's merge diff (AbstractDevice.mergeStatusAndDiff),
@@ -1104,9 +1165,14 @@ export async function processPendingMessages(batch: PendingMessage[]) {
             logger.error('Collect device status: ', e);
         }
     }
-    // Isolated: appendNumeric/appendEvents never throw, so they cannot affect the status flush.
-    void appendNumeric(numericRows, {callDb: rawCall});
-    void appendEvents(eventRows, {callDb: rawCall});
+    // Persistence is detached from the status flush. Redis-first mode keeps
+    // every accepted sensor batch durable until PostgreSQL confirms the write.
+    fireAndForget('sensor-capture', () =>
+        captureSensorRows(
+            {numeric: numericRows, events: eventRows},
+            {callDb: rawCall}
+        )
+    );
 }
 
 // Native sensorSource — mirrors EntityComposer's per-component parsers
@@ -1122,7 +1188,7 @@ function resolveNativeSensorSource(
     componentId: number,
     embedded: boolean
 ): SensorSource {
-    if (embedded) return 'internal';
+    if (embedded) return DEVICE_HEALTH_SENSOR_SOURCE;
     const device = DeviceCollector.getDevice(shellyId);
     if (
         device &&
@@ -1173,6 +1239,8 @@ function captureNativeBinaryEvents(
     tsSec: number,
     eventRows: EventRow[]
 ): void {
+    // A state found at reconnect happened at an unknown moment, not as a live edge.
+    if (msg.observation === 'reconnect') return;
     for (const change of msg.changes) {
         const binary = classifyNativeBinary(change.path);
         if (!binary) continue;
@@ -1222,13 +1290,13 @@ function legacyResolve(row: EnergyRowInput) {
     };
 }
 
-const parityCounters: Record<string, string> = {
+const parityCounters = {
     both_null: 'energy_classifier_parity_both_null',
     v2_only: 'energy_classifier_parity_v2_only',
     legacy_only: 'energy_classifier_parity_legacy_only',
     match: 'energy_classifier_parity_match',
     mismatch: 'energy_classifier_parity_mismatch'
-};
+} as const satisfies Record<string, CounterName>;
 
 const observabilityParitySink = {
     record(outcome: keyof typeof parityCounters): void {
@@ -1330,32 +1398,77 @@ export function routeEnergyRow(row: EnergyRowInput): void {
     });
 }
 
+// A burst of config_changed events for one component collapses into a single
+// in-flight GetConfig. Without this the backend amplifies a chatty device 1:1
+// into RPCs and fills the per-device pending queue.
+const configRefreshFlight = new SingleFlight<string, void>(
+    'shelly-config-refresh'
+);
+
 async function onConfigChange(shelly: ShellyDevice, key: string, _config: any) {
     const {type, id} = parseComponentKey(key);
-    await refreshComponentConfig(shelly, key, type, id);
+    await configRefreshFlight.run(`${shelly.shellyID}:${key}`, () =>
+        refreshComponentConfig(shelly, {key, type, id})
+    );
     if (type === 'sys') {
         await refreshDeviceInfo(shelly);
     }
 }
 
+interface ComponentRef {
+    key: string;
+    type: string;
+    id: number | undefined;
+}
+
+/**
+ * The device's own ListMethods is the source of truth for the RPC name.
+ *
+ * A NotifyEvent carries the component key verbatim (`powerstrip_ui`), but the
+ * method is namespaced (`POWERSTRIP_UI.GetConfig`). Guessing the name burns a
+ * pending-RPC slot for the full timeout on every miss, and the queue is
+ * per-device — ten misses stall every other RPC to that device, including EM
+ * sync and UI commands. Devices that never advertised a method list keep the
+ * old guess so a missing probe cannot silence config refreshes.
+ */
+function findGetConfigMethod(
+    shelly: ShellyDevice,
+    type: string
+): string | null {
+    const guess = `${type}.GetConfig`;
+    if (shelly.methods.length === 0) return guess;
+    const wanted = guess.toLowerCase();
+    return shelly.methods.find((name) => name.toLowerCase() === wanted) ?? null;
+}
+
 async function refreshComponentConfig(
     shelly: ShellyDevice,
-    key: string,
-    type: string,
-    id: number | undefined
+    component: ComponentRef
 ): Promise<void> {
+    const method = findGetConfigMethod(shelly, component.type);
+    if (!method) {
+        logger.warn(
+            'device %s reports no %s.GetConfig — config refresh for %s skipped',
+            shelly.shellyID,
+            component.type,
+            component.key
+        );
+        return;
+    }
     try {
         // Use id !== undefined instead of id && to handle id=0 correctly
         const latestConfig = await shelly.sendRPC(
-            `${type}.GetConfig`,
-            id !== undefined ? {id} : undefined
+            method,
+            component.id !== undefined ? {id: component.id} : undefined,
+            false,
+            AbortSignal.timeout(tuning.rpc.initProbeTimeoutMs)
         );
-        shelly.setComponentConfig(key, latestConfig);
+        shelly.setComponentConfig(component.key, latestConfig);
         // Same-cfg_rev config refreshes (rare but possible) must also
         // invalidate so the tier-3/4 classifier re-reads name/unit/obj_id.
         energyClassifierCache.invalidateDevice(shelly.shellyID);
     } catch (error) {
-        logger.error('Error getting config for %s:%s -> %s', type, id, error);
+        logger.error('Error getting config for %s -> %s', component.key, error);
     }
 }
 

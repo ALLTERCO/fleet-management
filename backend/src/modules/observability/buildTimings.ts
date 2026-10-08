@@ -4,16 +4,27 @@
 // that names which probe step was slow.
 
 import {getLogger} from 'log4js';
+import {Histogram} from 'prom-client';
 import {tuning} from '../../config/tuning';
 import {IntervalSampler} from '../util/intervalSampler';
 import {formatStageTimings, type StageTiming} from '../util/stageTimer';
 import {incrementCounter} from './counters';
+import {registry} from './registry';
 import {getLevel} from './samplers';
 import {pushRing} from './util/ringBuffer';
 import {type WindowQuery, windowedTopN} from './util/windowedTopN';
 
 const logger = getLogger('device-build');
 const slowLog = new IntervalSampler(() => tuning.device.buildSlowLogIntervalMs);
+const buildDuration = new Histogram({
+    name: 'fm_device_build_duration_seconds',
+    help: 'Device gather and assembly wall duration in seconds by stage',
+    labelNames: ['stage'] as const,
+    buckets: [
+        0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30
+    ],
+    registers: [registry]
+});
 
 export interface SlowBuildEntry {
     shellyID: string;
@@ -45,6 +56,7 @@ function isSlow(totalMs: number): boolean {
 // Slow ones land in a bounded ring and a rate-limited log.
 export function recordBuildTiming(build: BuildTiming): void {
     incrementCounter('device_builds_total');
+    recordBuildDuration(build);
     if (!isSlow(build.totalMs)) return;
     incrementCounter('device_builds_slow');
     logSlowBuild(build);
@@ -60,6 +72,14 @@ export function recordBuildTiming(build: BuildTiming): void {
         },
         tuning.observability.initDurationRingSize
     );
+}
+
+function recordBuildDuration(build: BuildTiming): void {
+    if (getLevel() < 2) return;
+    buildDuration.observe({stage: 'total'}, build.totalMs / 1000);
+    for (const stage of build.stages) {
+        buildDuration.observe({stage: stage.name}, stage.ms / 1000);
+    }
 }
 
 // At most one line per interval; the count carries how many it stands for.

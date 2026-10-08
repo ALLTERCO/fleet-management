@@ -8,9 +8,13 @@
             v-for="entry in entries"
             :key="entry.value"
             type="button"
+            :disabled="locked"
             v-bind="ariaAttrs(entry.value)"
             class="ctp__option"
-            :class="{'ctp__option--active': entry.value === selected}"
+            :class="{
+                'ctp__option--active': entry.value === selected,
+                'ctp__option--locked': locked
+            }"
             :style="{'--ctp-color': `var(${entry.colorToken})`}"
             @click="pick(entry.value)"
         >
@@ -28,6 +32,10 @@ import {
     listConfigurableChannelTypes
 } from '@/helpers/channelTypes';
 
+// A saved channel keeps its provider for life — channel.update carries no
+// provider field. Locked mode shows the type without offering a change.
+const {locked = false} = defineProps<{locked?: boolean}>();
+
 const selected = defineModel<ChannelType>({required: true});
 
 const entries = computed(() =>
@@ -35,16 +43,19 @@ const entries = computed(() =>
 );
 
 function pick(value: ChannelType): void {
+    if (locked) return;
     selected.value = value;
 }
 
 function ariaAttrs(value: ChannelType): {
     role: string;
     'aria-checked': 'true' | 'false';
+    'aria-disabled': 'true' | 'false';
 } {
     return {
         role: 'radio',
-        'aria-checked': value === selected.value ? 'true' : 'false'
+        'aria-checked': value === selected.value ? 'true' : 'false',
+        'aria-disabled': locked ? 'true' : 'false'
     };
 }
 </script>
@@ -52,7 +63,8 @@ function ariaAttrs(value: ChannelType): {
 <style scoped>
 .ctp {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    /* Six configurable types — three per row beats a five-wide row with one orphan. */
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--space-2);
     padding: var(--space-1);
     background-color: var(--color-surface-2);
@@ -80,6 +92,24 @@ function ariaAttrs(value: ChannelType): {
 .ctp__option:hover {
     color: var(--color-text-primary);
     background-color: var(--color-surface-3);
+}
+
+.ctp__option--locked {
+    cursor: default;
+}
+
+.ctp__option--locked:not(.ctp__option--active) {
+    opacity: var(--opacity-disabled);
+}
+
+.ctp__option--locked:hover {
+    color: var(--color-text-secondary);
+    background-color: transparent;
+}
+
+.ctp__option--locked.ctp__option--active:hover {
+    color: var(--ctp-color);
+    background-color: color-mix(in srgb, var(--ctp-color) 12%, transparent);
 }
 
 .ctp__option--active {

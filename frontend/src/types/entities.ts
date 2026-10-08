@@ -38,7 +38,12 @@ export interface temperature_entity extends entity {
     type: 'temperature';
     properties: entity['properties'] & {
         extSensorId?: string;
-        sensorSource?: 'blu' | 'addon';
+        /**
+         * 'internal' is the device's own chip temperature — device health, not
+         * the air. Cards must label it as such and history reads must ask for
+         * it by name, because ambient reads leave it out.
+         */
+        sensorSource?: 'blu' | 'addon' | 'internal';
         embeddedIn?: string;
         deviceProfile?: string;
     };

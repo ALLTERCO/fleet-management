@@ -4,11 +4,36 @@
             <span>Label</span><span>From</span><span>To</span><span>Rate</span><span></span>
         </div>
         <div v-for="(w, i) in modelValue" :key="i" class="etw-row">
-            <input class="etw-in" :value="w.label" maxlength="32" placeholder="Peak" @input="patch(i, {label: value($event)})" />
-            <input class="etw-in" :value="w.from" type="time" @input="patch(i, {from: value($event)})" />
-            <input class="etw-in" :value="w.to" type="time" @input="patch(i, {to: value($event)})" />
-            <input class="etw-in" :value="w.rate" type="number" step="0.01" min="0" @input="patch(i, {rate: num($event)})" />
-            <button type="button" class="etw-del" aria-label="Remove window" @click="remove(i)">✕</button>
+            <input
+                class="etw-in core-input border text-base rounded-lg block w-full p-2"
+                :value="w.label"
+                maxlength="32"
+                placeholder="Peak"
+                @input="patch(i, {label: value($event)})"
+            />
+            <input
+                class="etw-in core-input border text-base rounded-lg block w-full p-2"
+                :value="w.from"
+                type="time"
+                @input="patch(i, {from: value($event)})"
+            />
+            <input
+                class="etw-in core-input border text-base rounded-lg block w-full p-2"
+                :value="w.to"
+                type="time"
+                @input="patch(i, {to: value($event)})"
+            />
+            <input
+                class="etw-in core-input border text-base rounded-lg block w-full p-2"
+                :value="w.rate"
+                type="number"
+                step="0.01"
+                min="0"
+                @input="patch(i, {rate: num($event)})"
+            />
+            <button type="button" class="etw-del" aria-label="Remove window" @click="remove(i)">
+                <i class="fas fa-xmark" aria-hidden="true" />
+            </button>
         </div>
         <p v-if="!modelValue.length" class="etw-empty">No windows yet. Add one for each price band across the day.</p>
         <button type="button" class="etw-add" :disabled="modelValue.length >= 8" @click="add">+ Add window</button>
@@ -41,59 +66,55 @@ function remove(i: number) {
 .etw-head,
 .etw-row {
     display: grid;
-    grid-template-columns: 1.4fr 1fr 1fr 0.9fr 28px;
-    gap: 6px;
+    grid-template-columns: 1.4fr 1fr 1fr 0.9fr var(--space-7);
+    gap: var(--space-1-5);
     align-items: center;
 }
 .etw-head {
     font-size: var(--type-caption);
-    font-weight: 600;
-    letter-spacing: 0.06em;
+    font-weight: var(--font-semibold);
+    letter-spacing: var(--tracking-caps);
     text-transform: uppercase;
-    color: #5d646f;
-    padding: 0 2px 6px;
+    color: var(--color-text-tertiary);
+    padding: 0 var(--space-0-5) var(--space-1-5);
 }
 .etw-row {
-    margin-bottom: 6px;
-}
-.etw-in {
-    width: 100%;
-    background: #0e1116;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 9px;
-    padding: 8px 9px;
-    color: #f5f6f8;
-    font: 500 12.5px 'Inter', system-ui, sans-serif;
+    margin-bottom: var(--space-1-5);
 }
 .etw-del {
-    width: 28px;
-    height: 28px;
-    border-radius: 8px;
+    width: var(--space-7);
+    height: var(--space-7);
+    border-radius: var(--radius-md);
     background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #9aa1ac;
+    border: 1px solid var(--color-border-subtle);
+    color: var(--color-text-secondary);
     cursor: pointer;
+    font-size: var(--type-caption);
 }
 .etw-del:hover {
-    color: #f5f6f8;
-    background: #181c23;
+    color: var(--color-text-primary);
+    background: var(--color-surface-3);
 }
 .etw-empty {
     font-size: var(--type-caption);
-    color: #5d646f;
-    padding: 4px 2px 8px;
+    color: var(--color-text-tertiary);
+    padding: var(--space-1) var(--space-0-5) var(--space-2);
 }
 .etw-add {
     background: transparent;
-    color: #4495d1;
-    border: 1px dashed rgba(68, 149, 209, 0.5);
-    border-radius: 10px;
-    padding: 8px 14px;
-    font: 600 12.5px 'Inter', system-ui, sans-serif;
+    color: var(--color-primary-text);
+    border: 1px dashed color-mix(in srgb, var(--color-primary) 50%, transparent);
+    border-radius: var(--radius-md);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
     cursor: pointer;
 }
+.etw-add:hover:not(:disabled) {
+    border-color: var(--color-primary);
+}
 .etw-add:disabled {
-    opacity: 0.4;
+    opacity: var(--opacity-disabled);
     cursor: not-allowed;
 }
 </style>

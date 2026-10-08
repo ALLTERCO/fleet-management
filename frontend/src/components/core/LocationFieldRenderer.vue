@@ -76,6 +76,11 @@
         <LocationField_EnvironmentalSetpoint v-else-if="field.widget === 'environmentalSetpoint'"
             :model-value="modelValue as LocationEnvSetpointValue | null"
             @update:model-value="emitUpdate($event)" />
+
+        <LocationField_CustomFields v-else-if="field.widget === 'keyValue'"
+            :model-value="modelValue as LocationCustomFieldsValue | null"
+            :max="field.max"
+            @update:model-value="emitUpdate($event)" />
     </div>
 </template>
 
@@ -84,6 +89,7 @@ import {computed, ref, watch} from 'vue';
 import Input from '@/components/core/Input.vue';
 import LocationField_Address from '@/components/core/LocationField_Address.vue';
 import LocationField_Contact from '@/components/core/LocationField_Contact.vue';
+import LocationField_CustomFields from '@/components/core/LocationField_CustomFields.vue';
 import LocationField_EnvironmentalSetpoint from '@/components/core/LocationField_EnvironmentalSetpoint.vue';
 import LocationField_Geo from '@/components/core/LocationField_Geo.vue';
 import LocationField_OperatingHours from '@/components/core/LocationField_OperatingHours.vue';
@@ -94,6 +100,7 @@ import type {
 } from '@/stores/locations';
 import type {LocationAddressValue} from './LocationField_Address.vue';
 import type {LocationContactValue} from './LocationField_Contact.vue';
+import type {LocationCustomFieldsValue} from './LocationField_CustomFields.vue';
 import type {LocationEnvSetpointValue} from './LocationField_EnvironmentalSetpoint.vue';
 import type {LocationGeoValue} from './LocationField_Geo.vue';
 import type {LocationOperatingHoursValue} from './LocationField_OperatingHours.vue';

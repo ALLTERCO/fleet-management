@@ -1,0 +1,52 @@
+[
+    {
+        "id": "flow-hook",
+        "type": "tab",
+        "label": "Outside call turns a switch on or off",
+        "disabled": false,
+        "info": "POST {\"on\": true} to <Fleet Manager URL>/automation-hooks/garage-door-hook-01 with header x-fm-hook-secret. Set the secret in the webhook node and the shellyID in the function node."
+    },
+    {
+        "id": "fm-server-hook",
+        "type": "fm-server",
+        "name": "Fleet Manager",
+        "baseUrl": "",
+        "wsUrl": ""
+    },
+    {
+        "id": "hook-in",
+        "type": "fm-webhook-in",
+        "z": "flow-hook",
+        "name": "Garage hook",
+        "hookId": "garage-door-hook-01",
+        "respond": "auto",
+        "server": "fm-server-hook",
+        "x": 160,
+        "y": 200,
+        "wires": [["switch-params"]]
+    },
+    {
+        "id": "switch-params",
+        "type": "function",
+        "z": "flow-hook",
+        "name": "Build switch.Set params",
+        "func": "const shellyID = 'shellyplus1pm-a8032ab12345';\nmsg.params = {shellyID, id: 0, on: msg.payload && msg.payload.on === true};\nreturn msg;",
+        "outputs": 1,
+        "x": 380,
+        "y": 200,
+        "wires": [["set-switch"]]
+    },
+    {
+        "id": "set-switch",
+        "type": "fm-component-action",
+        "z": "flow-hook",
+        "name": "Switch on/off",
+        "server": "fm-server-hook",
+        "operation": "switch.Set",
+        "paramsSource": "msg.params",
+        "paramsJson": "{}",
+        "x": 600,
+        "y": 200,
+        "wires": [[]]
+    }
+]

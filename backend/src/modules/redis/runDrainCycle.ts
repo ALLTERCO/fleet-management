@@ -4,13 +4,14 @@
 
 import type {Logger} from 'log4js';
 import * as Observability from '../Observability';
+import type {CounterName} from '../observability/counters';
 import {sleep} from '../util/sleep';
 
 export interface DrainCycleOptions {
     name: string;
     logger: Logger;
     retryMs: number;
-    cycleErrorsCounter: string;
+    cycleErrorsCounter: CounterName;
 }
 
 export async function runDrainCycle(

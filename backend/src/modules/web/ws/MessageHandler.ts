@@ -6,6 +6,7 @@ import * as AuditLogger from '../../../modules/AuditLogger';
 import * as Commander from '../../../modules/Commander';
 import * as DeviceCollector from '../../../modules/DeviceCollector';
 import * as Observability from '../../../modules/Observability';
+import {logRpcFailure} from '../../../modules/rpcFailureLog';
 import {buildOutgoingJsonRpc} from '../../../rpc/builders';
 import RpcError from '../../../rpc/RpcError';
 import type {JsonRpcIncoming} from '../../../rpc/types';
@@ -380,9 +381,9 @@ export default class MessageHandler {
                 JSON.stringify(buildOutgoingJsonRpc(data.id, data.src, result))
             );
         } catch (err: any) {
-            logger.error(
-                'Sending error:[%s] method:[%s] params:[%s]',
-                err?.message,
+            logRpcFailure(
+                logger,
+                err,
                 data.method,
                 truncateForDebugLog(
                     AuditLogger.redactSensitiveParams(data.method, params),

@@ -2,6 +2,7 @@
 
 import {DescribeBuilder, type DescribeOutput} from './_describe';
 import type {JsonSchema} from './_schema';
+import {SHELLY_ID_SCHEMA} from './_shared';
 
 // --- GetCapabilities -----------------------------------------------------
 
@@ -190,9 +191,16 @@ export const ENTITY_GET_ACTION_SCHEMA_RESPONSE_SCHEMA: JsonSchema = {
 
 // --- Describe() output ---------------------------------------------------
 
+/** Largest page entity.list serves; a bigger limit is served as this. */
+export const ENTITY_LIST_MAX_LIMIT = 5000;
+/** Most devices one entity.list `shellyIDs` read may name. */
+export const ENTITY_LIST_MAX_IDS = 100;
+
 export interface EntityListParams {
     limit?: number;
     offset?: number;
+    cursor?: string;
+    shellyIDs?: string[];
 }
 export const ENTITY_LIST_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
@@ -200,22 +208,53 @@ export const ENTITY_LIST_PARAMS_SCHEMA: JsonSchema = {
         limit: {
             type: 'integer',
             minimum: 0,
-            description:
-                '0 = unlimited; default = FM_ENTITY_LIST_DB_PAGE_MAX (500)'
+            description: `Default FM_ENTITY_LIST_DB_PAGE_MAX (500). A limit above ${ENTITY_LIST_MAX_LIMIT} is served as ${ENTITY_LIST_MAX_LIMIT}. 0 returns every row on an offset page and ${ENTITY_LIST_MAX_LIMIT} on a cursor page.`
         },
-        offset: {type: 'integer', minimum: 0, default: 0}
+        offset: {
+            type: 'integer',
+            minimum: 0,
+            description: 'Default 0. Not with `cursor`.'
+        },
+        cursor: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 400,
+            description:
+                '`next_cursor` of the previous page. Skips the total. Not with `offset`.'
+        },
+        shellyIDs: {
+            type: 'array',
+            items: SHELLY_ID_SCHEMA,
+            minItems: 1,
+            maxItems: ENTITY_LIST_MAX_IDS,
+            description:
+                'Read only the entities of these devices. Each device is checked for read access; an unknown or unreadable one is left out.'
+        }
     }
 };
 
 export const ENTITY_LIST_RESPONSE_SCHEMA: JsonSchema = {
     type: 'object',
-    required: ['items', 'total', 'limit', 'offset', 'has_more'],
+    required: ['items', 'limit', 'has_more', 'next_cursor'],
     properties: {
         items: {type: 'array', items: {type: 'object'}},
-        total: {type: 'integer', minimum: 0},
+        total: {
+            type: 'integer',
+            minimum: 0,
+            description: 'All matches. Present on offset pages only.'
+        },
         limit: {type: 'integer', minimum: 0},
-        offset: {type: 'integer', minimum: 0},
-        has_more: {type: 'boolean'}
+        offset: {
+            type: 'integer',
+            minimum: 0,
+            description: 'Present on offset pages only.'
+        },
+        has_more: {type: 'boolean'},
+        next_cursor: {
+            type: ['string', 'null'],
+            description:
+                'Pass as `cursor` for the next page. null on the last page.'
+        }
     }
 };
 
@@ -230,7 +269,7 @@ export const ENTITY_DESCRIBE: DescribeOutput = new DescribeBuilder('entity', {
         response: ENTITY_LIST_RESPONSE_SCHEMA,
         permission: {note: 'authenticated — filtered by device access'},
         description:
-            'Paginated list of entities the caller can read, filtered against device-level access.'
+            'Paginated list of entities the caller can read, filtered against device-level access. Ordered physical, virtual, then BLU, each by device id and entity id. Page with `cursor`; `shellyIDs` reads the entities of up to 100 devices.'
     })
     .registerMethod('Get', {
         params: ENTITY_GET_PARAMS_SCHEMA,

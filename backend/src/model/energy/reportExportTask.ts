@@ -8,6 +8,11 @@
  */
 
 import {emitReportReady} from '../../modules/EventDistributor';
+import type {
+    ReportCoverageInterval,
+    ReportMeasuredUsageCost
+} from '../../types/api/report';
+import type CommandSender from '../CommandSender';
 import {generateEnergyReport} from '../report/energyEngine';
 import {generateEnvironmentReport} from '../report/environmentEngine';
 import {generateIntervalReport} from '../report/intervalEngine';
@@ -15,9 +20,12 @@ import {generatePerPhaseIntervalReport} from '../report/intervalPerPhaseEngine';
 import {projectCurrentReportSelectors} from '../report/reportDeviceSelectors';
 import {
     createReportJobContext,
-    isReportCancelledError
+    enterReportPhase,
+    isReportCancelledError,
+    type ReportJobContext
 } from '../report/reportJobContext';
 import {restoreReportSender} from '../report/reportJobSender';
+import {reportArtifactExpiresAt} from '../report/reportRetention';
 import {downloadUrlFor} from './exportHandler';
 import {
     cancelExportJob,
@@ -27,8 +35,24 @@ import {
 } from './exportJobStore';
 import type {ReportExportPayload} from './reportExportPayload';
 
+export type ReportEngineMeta =
+    | Awaited<ReturnType<typeof generateEnergyReport>>
+    | Awaited<ReturnType<typeof generateEnvironmentReport>>
+    | Awaited<ReturnType<typeof generateIntervalReport>>
+    | Awaited<ReturnType<typeof generatePerPhaseIntervalReport>>;
+
+/** Engine dispatch, injectable so the job lifecycle can be exercised without
+ *  a database behind it. */
+export type ReportEngineRunner = (
+    kind: ReportExportPayload['kind'],
+    rawParams: unknown,
+    sender: CommandSender,
+    context: ReportJobContext
+) => Promise<ReportEngineMeta>;
+
 export async function runReportExportJob(
-    p: ReportExportPayload
+    p: ReportExportPayload,
+    runEngine: ReportEngineRunner = productionReportEngine
 ): Promise<void> {
     try {
         if (await isExportCancelled(p.jobId)) return;
@@ -38,26 +62,35 @@ export async function runReportExportJob(
             kind: p.kind,
             orgId: p.orgId
         });
-        await context.update({
-            currentPhase: 'running',
-            estimatedRows: context.estimatedRows,
-            percent: 0
+        await enterReportPhase(context, 'checking_data', {
+            estimatedRows: context.estimatedRows
         });
         const rawParams = await executionParams(p);
-        const {downloadUrl, bytes, htmlUrl, artifacts} =
-            await runReportExportPayload(p, rawParams, context);
+        const {
+            downloadUrl,
+            bytes,
+            htmlUrl,
+            artifacts,
+            coverage,
+            measuredUsageCost,
+            manifest
+        } = await runReportExportPayload(p, rawParams, context, runEngine);
         await context.throwIfCancelled();
         const published = await markExportReady({
             jobId: p.jobId,
             userId: p.userId,
+            organizationId: p.orgId,
             downloadUrl,
             bytes,
             htmlUrl,
-            artifacts
+            artifacts,
+            coverage,
+            measuredUsageCost,
+            manifest
         });
         // A cancel that raced in keeps the job cancelled — never emit ready.
         if (!published) return;
-        emitReportReady(p.orgId, {
+        emitReportReady(p.orgId, p.userId, {
             jobId: p.jobId,
             status: 'ready',
             downloadUrl,
@@ -67,8 +100,12 @@ export async function runReportExportJob(
         });
     } catch (err) {
         if (isReportCancelledError(err)) {
-            await cancelExportJob({jobId: p.jobId, userId: p.userId});
-            emitReportReady(p.orgId, {
+            await cancelExportJob({
+                jobId: p.jobId,
+                userId: p.userId,
+                organizationId: p.orgId
+            });
+            emitReportReady(p.orgId, p.userId, {
                 jobId: p.jobId,
                 status: 'cancelled',
                 error: 'cancelled'
@@ -79,54 +116,143 @@ export async function runReportExportJob(
         const recorded = await markExportFailed({
             jobId: p.jobId,
             userId: p.userId,
+            organizationId: p.orgId,
             error
         });
         if (!recorded) return;
-        emitReportReady(p.orgId, {jobId: p.jobId, status: 'failed', error});
+        emitReportReady(p.orgId, p.userId, {
+            jobId: p.jobId,
+            status: 'failed',
+            error
+        });
     }
 }
 
-async function runReportExportPayload(
-    p: ReportExportPayload,
-    rawParams: unknown,
-    context: ReturnType<typeof createReportJobContext>
-) {
-    const sender = restoreReportSender(p.sender);
-    let meta:
-        | Awaited<ReturnType<typeof generateEnergyReport>>
-        | Awaited<ReturnType<typeof generateEnvironmentReport>>
-        | Awaited<ReturnType<typeof generateIntervalReport>>
-        | Awaited<ReturnType<typeof generatePerPhaseIntervalReport>>;
+const productionReportEngine: ReportEngineRunner = async (
+    kind,
+    rawParams,
+    sender,
+    context
+) => {
     // energy_dump is the legacy per-phase 15-minute dump (kept for t6 and other
     // tenants whose integrations still call it); route it to the same per-phase
     // engine as interval + per_phase=true.
     const perPhase =
-        p.kind === 'energy_dump' ||
+        kind === 'energy_dump' ||
         (rawParams as {per_phase?: boolean} | null)?.per_phase === true;
-    if (p.kind === 'energy') {
-        meta = await generateEnergyReport(rawParams, sender, context);
-    } else if (p.kind === 'environment') {
-        meta = await generateEnvironmentReport(rawParams, sender, context);
-    } else if (perPhase) {
-        // interval + per_phase: keep phases as separate columns (fast path).
-        meta = await generatePerPhaseIntervalReport(rawParams, sender, context);
-    } else {
-        meta = await generateIntervalReport(rawParams, sender, context);
+    if (kind === 'energy') {
+        return generateEnergyReport(rawParams, sender, context);
     }
+    if (kind === 'environment') {
+        return generateEnvironmentReport(rawParams, sender, context);
+    }
+    if (perPhase) {
+        // interval + per_phase: keep phases as separate columns (fast path).
+        return generatePerPhaseIntervalReport(rawParams, sender, context);
+    }
+    return generateIntervalReport(rawParams, sender, context);
+};
+
+async function runReportExportPayload(
+    p: ReportExportPayload,
+    rawParams: unknown,
+    context: ReportJobContext,
+    runEngine: ReportEngineRunner
+) {
+    const sender = restoreReportSender(p.sender);
+    const meta = await runEngine(p.kind, rawParams, sender, context);
     const downloadUrl = downloadUrlFor(meta.file);
     const htmlUrl =
         typeof meta.html_file === 'string'
             ? downloadUrlFor(meta.html_file)
             : undefined;
+    const csvUrl =
+        typeof meta.csv_file === 'string'
+            ? downloadUrlFor(meta.csv_file)
+            : /\.csv(?:\.gz)?$/.test(meta.file)
+              ? downloadUrl
+              : undefined;
+    const xlsxUrl =
+        typeof meta.xlsx_file === 'string'
+            ? downloadUrlFor(meta.xlsx_file)
+            : /\.xlsx$/.test(meta.file)
+              ? downloadUrl
+              : undefined;
+    const pdfUrl =
+        typeof meta.pdf_file === 'string'
+            ? downloadUrlFor(meta.pdf_file)
+            : /\.pdf$/.test(meta.file)
+              ? downloadUrl
+              : undefined;
+    const artifacts = {
+        ...(csvUrl ? {dataCsvGz: csvUrl} : {}),
+        ...(htmlUrl ? {summaryHtml: htmlUrl} : {}),
+        ...(xlsxUrl ? {workbookXlsx: xlsxUrl} : {}),
+        ...(pdfUrl ? {documentPdf: pdfUrl} : {})
+    };
+    const coverage = reportCoverage(meta.coverage);
+    const measuredCost = reportMeasuredUsageCost(meta.measured_usage_cost);
     return {
         downloadUrl,
         htmlUrl,
         bytes: meta.size ?? 0,
-        artifacts: {
-            dataCsvGz: downloadUrl,
-            ...(htmlUrl ? {summaryHtml: htmlUrl} : {})
+        artifacts,
+        coverage,
+        measuredUsageCost: measuredCost,
+        manifest: {
+            ...artifacts,
+            bytes: meta.size ?? 0,
+            expiresAt: reportArtifactExpiresAt(),
+            report: {
+                schema_version: meta.schema_version,
+                calculation_version: meta.calculation_version,
+                tariff_snapshot: meta.tariff_snapshot,
+                emission_factors_g_per_kwh: meta.emission_factors_g_per_kwh,
+                from: meta.from,
+                to: meta.to,
+                granularity: meta.granularity,
+                total_consumption_kwh: meta.total_consumption_kwh,
+                total_returned_kwh: meta.total_returned_kwh,
+                total_cost: meta.total_cost,
+                measured_usage_cost: measuredCost,
+                coverage
+            }
         }
     };
+}
+
+function reportMeasuredUsageCost(
+    value: unknown
+): ReportMeasuredUsageCost | undefined {
+    if (!value || typeof value !== 'object') return undefined;
+    const cost = value as Partial<ReportMeasuredUsageCost>;
+    if (
+        typeof cost.amount !== 'number' ||
+        typeof cost.roundedAmount !== 'number' ||
+        typeof cost.currency !== 'string' ||
+        typeof cost.fractionDigits !== 'number' ||
+        !Number.isInteger(cost.fractionDigits) ||
+        typeof cost.roundsToZeroAtMinorUnit !== 'boolean'
+    ) {
+        return undefined;
+    }
+    return cost as ReportMeasuredUsageCost;
+}
+
+function reportCoverage(value: unknown): ReportCoverageInterval | undefined {
+    if (!value || typeof value !== 'object') return undefined;
+    const coverage = value as Partial<ReportCoverageInterval>;
+    if (
+        (coverage.status !== 'complete' && coverage.status !== 'partial') ||
+        typeof coverage.requestedFrom !== 'string' ||
+        typeof coverage.requestedTo !== 'string' ||
+        typeof coverage.coveredFrom !== 'string' ||
+        typeof coverage.coveredTo !== 'string' ||
+        typeof coverage.fraction !== 'number'
+    ) {
+        return undefined;
+    }
+    return coverage as ReportCoverageInterval;
 }
 
 async function executionParams(p: ReportExportPayload): Promise<unknown> {

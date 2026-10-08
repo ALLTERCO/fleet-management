@@ -46,7 +46,6 @@ const title = computed(() => {
     padding: var(--space-1) var(--space-3);
     background: var(--glass-2-bg);
     backdrop-filter: blur(var(--glass-2-blur));
-    -webkit-backdrop-filter: blur(var(--glass-2-blur));
     border: 1px solid var(--color-border-default);
     border-radius: var(--radius-full, 999px);
     font-size: var(--type-caption);

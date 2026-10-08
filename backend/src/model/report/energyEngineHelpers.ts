@@ -1,28 +1,40 @@
 // Helpers consumed only by energyEngine.ts (and energy-adjacent renderers/tests).
 
 import {getLogger} from 'log4js';
-import {tuning} from '../../config';
 // Leaf import (not the barrel) — matches EnergyRepository's rollup routing.
-import {bucketUsesRollup} from '../../config/energy';
 import type {GroupKindCategory} from '../../config/groupKindCatalog';
 import {requireScopeRead} from '../../modules/authz/evaluator/scopeRead';
 import * as DashboardRegistry from '../../modules/DashboardRegistry';
 import {isValidTimezone} from '../../modules/location/isoData';
 import {incrementLabeledCounter} from '../../modules/Observability';
-import {readOrganizationProfile} from '../../modules/organizationModel';
+import {
+    getOrganizationProfile,
+    readOrganizationProfile
+} from '../../modules/organizationModel';
 import * as PostgresProvider from '../../modules/PostgresProvider';
-import type {EnergyStatsRow} from '../../modules/repositories/EnergyRepository';
 import {listLogicalMeters} from '../../modules/repositories/LogicalMeterRepository';
-import {resolveScopeShellyIDs} from '../../modules/scopeResolver';
+import {
+    resolveLocationShellyIDs,
+    resolveScopeShellyIDs
+} from '../../modules/scopeResolver';
 import RpcError from '../../rpc/RpcError';
+import {
+    currencyFractionDigits,
+    currencySymbol,
+    roundCurrencyAmount
+} from '../../types/api/_currency';
 import type {EnergyLogicalMeter, EnergyMeterRole} from '../../types/api/energy';
 import {type DashboardScope, scopeId, scopeKind} from '../../types/api/fleet';
+import {
+    REPORT_LOCATION_SELECTION_MAX_ITEMS,
+    type ReportGenerateEnergyParams
+} from '../../types/api/report';
 import type CommandSender from '../CommandSender';
 import type {PhaseGroup} from './anomalies';
 import {computeBatteryEfficiency} from './batteryEfficiency';
 import {reconcileBill} from './billReconciliation';
 import {allocateCost, type ServesLink} from './costAllocation';
-import {computeDemandCharges} from './demandCharges';
+import type {BillChargeSummary} from './energyReportBillChargeTypes';
 import {
     deviceDisplayName,
     deviceHardwareType,
@@ -35,10 +47,21 @@ import {
     selectSections
 } from './sectionDispatch';
 import {computeSolarSelfConsumption} from './solarSelfConsumption';
-import {computeTenantBilling} from './tenantBilling';
+import type {TariffDemandDeviceSample} from './tariffDemandCharges';
+import {
+    storedQuantityToBilled,
+    type TariffQuantityMetric
+} from './tariffQuantity';
+import {
+    buildTenantDemandAllocation,
+    computeTenantBilling,
+    type TenantBillingRow,
+    type TenantDemandAllocationMethod,
+    tenantCostCenterLabel
+} from './tenantBilling';
 
 // Shared with the frontend so report symbols stay consistent.
-export {currencySymbol} from '../../types/api/_currency';
+export {currencySymbol};
 
 const logger = getLogger('energyReport');
 const RECONCILIATION_EPSILON = 0.01;
@@ -77,20 +100,19 @@ export async function reportCurrencyFor(
 }
 
 // The IANA zone that anchors a report's bill-period matching: caller override
-// wins, else the org default, else null (UTC). A caller zone must be real, so a
-// typo fails loudly instead of silently shifting which bill is matched.
+// wins, otherwise Fleet supplies the resolved organization default.
 export async function reportTimezoneFor(
     orgId: string,
     paramTimezone: string | undefined,
-    readProfile = readOrganizationProfile
-): Promise<string | null> {
+    readProfile: typeof getOrganizationProfile = getOrganizationProfile
+): Promise<string> {
     if (paramTimezone) {
         if (!isValidTimezone(paramTimezone))
             throw RpcError.InvalidParams(`Unknown timezone '${paramTimezone}'`);
         return paramTimezone;
     }
     const profile = await readProfile(orgId);
-    return profile?.timezoneDefault ?? null;
+    return profile.timezoneDefault;
 }
 
 // SUMMARY total must equal sum of per-device costs within float epsilon —
@@ -121,15 +143,22 @@ interface RoleGatedContext {
         returned_kwh?: unknown;
         power_avg_w?: unknown;
     }>;
+    readonly devicePeakW: ReadonlyMap<number, number>;
     readonly deviceAgg: Map<number, {cons: number; ret: number; cost: number}>;
     readonly deviceMap: Map<number, string>;
     readonly tariff: number;
     readonly currencySymbol: string;
+    readonly currencyFractionDigits?: number;
+    readonly masterEnergyCost?: number;
+    readonly billCharges?: BillChargeSummary | null;
+    readonly demandDeviceSamples?: readonly TariffDemandDeviceSample[];
     // Template allowlist; null/undefined renders every triggered section.
     readonly allowedSections?: readonly string[] | null;
 }
 
-type RowConstructor = (...cells: any[]) => Record<string, any>;
+// Named-field only. A positional call is a compile error, which is how the
+// seven role and cost sections silently rendered blank rows for months.
+type RowConstructor = (cells: Partial<EnergyReportRow>) => EnergyReportRow;
 
 type SectionRenderer = (
     rows: Record<string, any>[],
@@ -139,10 +168,13 @@ type SectionRenderer = (
 
 // Renderer per section. null = the section routes but has no content yet.
 const SECTION_RENDERERS: Record<ReportSectionId, SectionRenderer | null> = {
-    demand: appendDemandChargesRows,
+    demand: appendObservedPeakRows,
     solar: appendSolarSelfConsumptionRows,
     battery: appendBatteryEfficiencyRows,
-    ev: appendEVChargingRows,
+    // EV is rendered from logical-meter role `ev_charge` in energyReportEv.
+    // The legacy group role `ev_charger` cannot establish delivered-energy
+    // attribution and must not emit a second, conflicting total.
+    ev: null,
     tenant: appendTenantBillingRows
 };
 
@@ -351,45 +383,101 @@ export function appendCostAllocationRows(
     }
 }
 
-// Section: report cost vs the actual utility bill. Skipped when no bill is
-// recorded for the report period.
+interface BillReconciliationRowInput {
+    reportCost: number;
+    actual: {actualCost: number; currency: string} | null;
+    /** ISO 4217 code used by the platform shadow bill. */
+    currency: string;
+    /** Why this platform total cannot be compared with an organization bill. */
+    unavailableReason?: string | null;
+    /** Schema/data-quality caveat that remains even when a comparison is valid. */
+    coverageWarning?: string | null;
+}
+
+function formatCurrencyAmount(amount: number, currency: string): string {
+    return `${currencySymbol(currency)}${roundCurrencyAmount(
+        amount,
+        currency
+    ).toFixed(currencyFractionDigits(currency))}`;
+}
+
+function appendUnavailableBillReconciliationRow(
+    rows: Record<string, any>[],
+    R: RowConstructor,
+    reason: string
+): void {
+    rows.push(
+        R({
+            section: 'BILL_RECON',
+            device: 'Recorded utility bill',
+            notes: `Unavailable — ${reason}`
+        })
+    );
+}
+
+// Section: the platform shadow bill vs an exactly aligned recorded organization
+// bill. Currency mismatch and incomplete coverage fail closed: no subtraction,
+// percentage or money symbol is emitted for an invalid comparison.
 export function appendBillReconciliationRows(
     rows: Record<string, any>[],
     R: RowConstructor,
-    input: {
-        reportCost: number;
-        actual: {actualCost: number; currency: string} | null;
-        currency: string;
-    }
+    input: BillReconciliationRowInput
 ): void {
-    if (!input.actual) return;
     incrementLabeledCounter('fm_report_section_rendered', {
         section: 'bill_recon'
     });
-    const v = reconcileBill(input.reportCost, input.actual.actualCost);
-    const sign = v.variancePct >= 0 ? '+' : '';
-    const sym = input.currency;
+    if (input.unavailableReason) {
+        appendUnavailableBillReconciliationRow(
+            rows,
+            R,
+            input.unavailableReason
+        );
+        return;
+    }
+    if (!input.actual) {
+        appendUnavailableBillReconciliationRow(
+            rows,
+            R,
+            'no recorded organization bill exactly matches this report period'
+        );
+        return;
+    }
+    if (input.actual.currency !== input.currency) {
+        appendUnavailableBillReconciliationRow(
+            rows,
+            R,
+            `recorded bill currency ${input.actual.currency} does not match ` +
+                `platform shadow-bill currency ${input.currency}; no FX conversion is configured`
+        );
+        return;
+    }
+    const v = reconcileBill(
+        input.reportCost,
+        input.actual.actualCost,
+        input.currency
+    );
+    const variancePct =
+        v.variancePct === null
+            ? 'percentage unavailable (zero platform estimate)'
+            : `${v.variancePct >= 0 ? '+' : ''}${v.variancePct.toFixed(1)}%`;
+    const warning = input.coverageWarning
+        ? ` · Coverage warning: ${input.coverageWarning}`
+        : '';
     rows.push(
-        R(
-            'BILL_RECON',
-            '',
-            'Bill reconciliation',
-            '',
-            '',
-            '',
-            '',
-            `${sym}${input.actual.actualCost.toFixed(2)}`,
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            `${sign}${v.variancePct.toFixed(1)}%`,
-            '',
-            '',
-            `Report ${sym}${input.reportCost.toFixed(2)} vs bill ${sym}${input.actual.actualCost.toFixed(2)} — ${v.status}`
-        )
+        R({
+            section: 'BILL_RECON',
+            device: 'Recorded utility bill vs platform shadow bill',
+            cost: formatCurrencyAmount(v.actualCost, input.currency),
+            share_pct:
+                v.variancePct === null
+                    ? ''
+                    : `${v.variancePct >= 0 ? '+' : ''}${v.variancePct.toFixed(1)}%`,
+            notes:
+                `Platform ${formatCurrencyAmount(v.reportCost, input.currency)} ` +
+                `vs recorded ${formatCurrencyAmount(v.actualCost, input.currency)}; ` +
+                `variance ${formatCurrencyAmount(v.varianceAbs, input.currency)} ` +
+                `(${variancePct}) — ${v.status}${warning}`
+        })
     );
 }
 
@@ -398,65 +486,41 @@ function allocationRow(
     currency: string,
     cell: {label: string; cost: number; sharePct: string; note: string}
 ): Record<string, any> {
-    return R(
-        'COST_ALLOC',
-        '',
-        cell.label,
-        '',
-        '',
-        '',
-        '',
-        `${currency}${cell.cost.toFixed(2)}`,
-        '',
-        '',
-        '',
-        '',
-        '',
-        '',
-        cell.sharePct,
-        '',
-        '',
-        cell.note
-    );
+    return R({
+        section: 'COST_ALLOC',
+        device: cell.label,
+        cost: `${currency}${cell.cost.toFixed(2)}`,
+        share_pct: cell.sharePct,
+        notes: cell.note
+    });
 }
 
-function appendDemandChargesRows(
+function appendObservedPeakRows(
     rows: Record<string, any>[],
     R: RowConstructor,
     ctx: RoleGatedContext
 ): void {
+    // Filter to service-entrance devices BEFORE taking any maximum. A fleet
+    // peak under a service-entrance label would be a false claim.
     const mainSet = new Set(ctx.roles.service_entrance);
-    const samples = ctx.tsRows
-        .map((r) => toDemandSample(r, mainSet, ctx.deviceMap))
-        .filter((s): s is {powerKW: number; ts: Date} => s !== null);
-    if (samples.length === 0) return;
-    const result = computeDemandCharges({
-        samples,
-        windowMinutes: 60, // tsRows are hourly; widen window to match.
-        demandRate: 0 // no rate metadata yet — report kW only, cost omitted
-    });
-    if (result.peakKW <= 0) return;
+    let peakW: number | null = null;
+    for (const [deviceId, watts] of ctx.devicePeakW) {
+        const shellyId = ctx.deviceMap.get(deviceId);
+        if (!shellyId || !mainSet.has(shellyId)) continue;
+        if (peakW === null || watts > peakW) peakW = watts;
+    }
+    if (peakW === null || peakW <= 0) return;
+    const peakKW = +(peakW / 1_000).toFixed(3);
     rows.push(
-        R(
-            'DEMAND',
-            '',
-            'Peak hourly demand',
-            '',
-            '',
-            '',
-            '',
-            '',
-            +(result.peakKW * 1000).toFixed(0),
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            `${result.peakKW} kW peak${result.peakStart ? ` at ${result.peakStart.toISOString()}` : ''} — service entrance metering`
-        )
+        R({
+            section: 'DEMAND',
+            device: 'Observed peak power',
+            power_w: +peakW.toFixed(0),
+            // No peak instant: devicePeakW carries the value alone, so there is
+            // no moment to print. Inventing one would assert something this
+            // map cannot support.
+            notes: `${peakKW} kW highest observed import power — service entrance metering; not tariff demand`
+        })
     );
 }
 
@@ -476,26 +540,15 @@ function appendSolarSelfConsumptionRows(
         exportedKWh: exported
     });
     rows.push(
-        R(
-            'SOLAR',
-            '',
-            'Solar self-consumption',
-            '',
-            +produced.toFixed(3),
-            +exported.toFixed(3),
-            +(produced - exported).toFixed(3),
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            `${result.selfConsumptionRatePct}%`,
-            '',
-            '',
-            `${result.selfConsumedKWh} kWh self-used (measured at PV inverter, not heuristic)`
-        )
+        R({
+            section: 'SOLAR',
+            device: 'Solar self-consumption',
+            consumption_kwh: +produced.toFixed(3),
+            returned_kwh: +exported.toFixed(3),
+            net_kwh: +(produced - exported).toFixed(3),
+            share_pct: `${result.selfConsumptionRatePct}%`,
+            notes: `${result.selfConsumedKWh} kWh self-used (measured at PV inverter, not heuristic)`
+        })
     );
 }
 
@@ -515,61 +568,15 @@ function appendBatteryEfficiencyRows(
         dischargedKWh: discharged
     });
     rows.push(
-        R(
-            'BATTERY',
-            '',
-            'Round-trip efficiency',
-            '',
-            +result.chargedKWh.toFixed(3),
-            +result.dischargedKWh.toFixed(3),
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            result.roundTripPct !== null ? `${result.roundTripPct}%` : '—',
-            '',
-            '',
-            `${result.losses} kWh lost in conversion`
-        )
-    );
-}
-
-// EV charging energy delivered across the org's charge points. Phase-agnostic:
-// it sums energy (kWh), which already includes every phase of a 3-phase
-// charger, so single- and 3-phase chargers report the same way.
-function appendEVChargingRows(
-    rows: Record<string, any>[],
-    R: RowConstructor,
-    ctx: RoleGatedContext
-): void {
-    const {cons: delivered} = sumAggForRole(ctx, ctx.roles.ev_charger);
-    if (delivered <= 0) return;
-    const points = ctx.roles.ev_charger.length;
-    rows.push(
-        R(
-            'EV',
-            '',
-            'EV charging delivered',
-            '',
-            +delivered.toFixed(3),
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            '',
-            `${delivered.toFixed(1)} kWh delivered across ${points} charge point(s)`
-        )
+        R({
+            section: 'BATTERY',
+            device: 'Round-trip efficiency',
+            consumption_kwh: +result.chargedKWh.toFixed(3),
+            returned_kwh: +result.dischargedKWh.toFixed(3),
+            share_pct:
+                result.roundTripPct !== null ? `${result.roundTripPct}%` : '—',
+            notes: `${result.losses} kWh lost in conversion`
+        })
     );
 }
 
@@ -578,44 +585,134 @@ function appendTenantBillingRows(
     R: RowConstructor,
     ctx: RoleGatedContext
 ): void {
+    if (ctx.billCharges && !ctx.billCharges.complete) {
+        rows.push(
+            R({
+                section: 'TENANT',
+                device: 'Tenant chargeback unavailable',
+                notes:
+                    ctx.billCharges.demandResult?.reason ??
+                    'Master demand charge is incomplete.'
+            })
+        );
+        return;
+    }
     const tenantSet = new Set(ctx.roles.tenant);
-    const usages = [...ctx.deviceAgg.entries()]
+    const tenantRows = [...ctx.deviceAgg.entries()]
         .map(([id, agg]) => ({
+            id,
             shellyId: ctx.deviceMap.get(id),
             agg
         }))
-        .filter((row) => row.shellyId && tenantSet.has(row.shellyId))
-        .map((row) => ({
-            costCenter: costCenterFor(row.shellyId!, ctx.roles.costCenters),
-            kWh: row.agg.cons,
-            cost: row.agg.cost
-        }));
+        .filter((row) => row.shellyId && tenantSet.has(row.shellyId));
+    const usages = tenantRows.map((row) => ({
+        costCenter: costCenterFor(row.shellyId!, ctx.roles.costCenters),
+        kWh: row.agg.cons,
+        cost: row.agg.cost
+    }));
     if (usages.length === 0) return;
-    const result = computeTenantBilling(usages);
-    for (const billingRow of result.rows) {
-        rows.push(
-            R(
-                'TENANT',
-                '',
-                billingRow.costCenter,
-                '',
-                billingRow.kWh,
-                '',
-                '',
-                `${ctx.currencySymbol}${billingRow.cost.toFixed(2)}`,
-                '',
-                '',
-                '',
-                '',
-                '',
-                '',
-                `${billingRow.sharePct}%`,
-                '',
-                '',
-                'Tenant-meter allocation by cost center'
+    const tenantCostCenters = new Map(
+        tenantRows.map((row) => [
+            row.id,
+            tenantCostCenterLabel(
+                costCenterFor(row.shellyId!, ctx.roles.costCenters)
             )
+        ])
+    );
+    const importedKWhByCostCenter = new Map<string, number>();
+    for (const usage of usages) {
+        const label = tenantCostCenterLabel(usage.costCenter);
+        importedKWhByCostCenter.set(
+            label,
+            (importedKWhByCostCenter.get(label) ?? 0) + Math.max(0, usage.kWh)
         );
     }
+    const demandAllocation = ctx.billCharges?.demandResult
+        ? buildTenantDemandAllocation({
+              periods: ctx.billCharges.demandResult.periods,
+              samples: ctx.demandDeviceSamples ?? [],
+              tenantCostCenters,
+              importedKWhByCostCenter
+          })
+        : null;
+    const result = computeTenantBilling({
+        usages,
+        masterEnergyCost:
+            ctx.masterEnergyCost ??
+            usages.reduce((sum, usage) => sum + usage.cost, 0),
+        demandCharge: ctx.billCharges?.demand ?? 0,
+        standingCharge: ctx.billCharges?.standing ?? 0,
+        taxes: ctx.billCharges?.taxes ?? [],
+        currencyFractionDigits: ctx.currencyFractionDigits ?? 2,
+        demandAllocation
+    });
+    for (const billingRow of result.rows) {
+        rows.push(
+            R({
+                section: 'TENANT',
+                device: billingRow.costCenter,
+                consumption_kwh: billingRow.kWh,
+                cost: `${ctx.currencySymbol}${billingRow.cost.toFixed(
+                    ctx.currencyFractionDigits ?? 2
+                )}`,
+                share_pct: `${billingRow.sharePct}%`,
+                notes: tenantBillingNotes(
+                    billingRow,
+                    result.demandAllocationMethod,
+                    ctx.currencySymbol,
+                    ctx.currencyFractionDigits ?? 2
+                )
+            })
+        );
+    }
+}
+
+function tenantBillingNotes(
+    row: TenantBillingRow,
+    demandMethod: TenantDemandAllocationMethod,
+    symbol: string,
+    fractionDigits: number
+): string {
+    const parts = [
+        'Tenant-meter allocation by cost center',
+        `measured energy ${symbol}${row.energyCost.toFixed(fractionDigits)}`
+    ];
+    if (row.standingCharge !== 0) {
+        parts.push(
+            `standing/fixed ${symbol}${row.standingCharge.toFixed(
+                fractionDigits
+            )} by imported-kWh share`
+        );
+    }
+    if (row.demandCharge !== 0) {
+        parts.push(
+            `demand ${symbol}${row.demandCharge.toFixed(fractionDigits)} ` +
+                `by ${tenantDemandMethodLabel(demandMethod)}`
+        );
+    }
+    for (const tax of row.taxes) {
+        const qualifier = tax.exempt
+            ? ' exempt'
+            : tax.calculation === 'inclusive'
+              ? ' included'
+              : '';
+        parts.push(
+            `${tax.name}${qualifier} ${symbol}${tax.amount.toFixed(
+                fractionDigits
+            )}`
+        );
+    }
+    return parts.join('; ');
+}
+
+function tenantDemandMethodLabel(method: TenantDemandAllocationMethod): string {
+    if (method === 'coincident_master_peak') {
+        return 'coincident master-peak contribution';
+    }
+    if (method === 'mixed_coincident_and_kwh_proxy') {
+        return 'mixed coincident contribution/imported-kWh proxy';
+    }
+    return 'imported-kWh proxy (coincident samples unavailable)';
 }
 
 function costCenterFor(
@@ -628,39 +725,22 @@ function costCenterFor(
     return null;
 }
 
-function toDemandSample(
-    row: {date?: unknown; device?: unknown; power_avg_w?: unknown},
-    mainShellyIds: ReadonlySet<string>,
-    deviceMap: ReadonlyMap<number, string>
-): {powerKW: number; ts: Date} | null {
-    const deviceId = typeof row.device === 'number' ? row.device : null;
-    if (deviceId === null) return null;
-    const shellyId = deviceMap.get(deviceId);
-    if (!shellyId || !mainShellyIds.has(shellyId)) return null;
-    const power = row.power_avg_w;
-    if (typeof power !== 'number' || !Number.isFinite(power)) return null;
-    const ts =
-        row.date instanceof Date
-            ? row.date
-            : typeof row.date === 'string'
-              ? new Date(row.date)
-              : null;
-    if (!ts || Number.isNaN(ts.getTime())) return null;
-    return {powerKW: power / 1000, ts};
-}
-
 // Injectable seam for the logical-meter role reads (and device_serves links).
 export interface RoleSourceDeps {
     queryRows<T = unknown>(
         sql: string,
         params?: readonly unknown[]
     ): Promise<T[]>;
-    listLogicalMeters(orgId: string): Promise<EnergyLogicalMeter[]>;
+    listLogicalMeters(
+        orgId: string,
+        asOf?: Date
+    ): Promise<EnergyLogicalMeter[]>;
 }
 
 const defaultRoleSourceDeps: RoleSourceDeps = {
     queryRows: PostgresProvider.queryRows,
-    listLogicalMeters
+    listLogicalMeters: (orgId, asOf) =>
+        listLogicalMeters(orgId, undefined, undefined, asOf)
 };
 
 // Logical-meter role → the report's role bucket. The bucket vocabulary feeds the
@@ -723,7 +803,8 @@ export async function shellyIDsByRole(
     organizationId: string,
     shellyIDs: readonly string[],
     deviceMap: ReadonlyMap<number, string>,
-    deps: RoleSourceDeps = defaultRoleSourceDeps
+    deps: RoleSourceDeps = defaultRoleSourceDeps,
+    asOf?: Date
 ): Promise<
     Record<ReportRoleBucket, string[]> & {costCenters: Map<string, string[]>}
 > {
@@ -731,7 +812,7 @@ export async function shellyIDsByRole(
     const costCenters = new Map<string, string[]>();
     const scope = new Set(shellyIDs);
 
-    for (const meter of await deps.listLogicalMeters(organizationId)) {
+    for (const meter of await deps.listLogicalMeters(organizationId, asOf)) {
         const bucket = ROLE_TO_BUCKET[meter.role];
         for (const point of meter.points) {
             const shellyId = deviceMap.get(point.deviceId);
@@ -808,9 +889,10 @@ export async function unionGridMeterDevices(
     orgId: string,
     target: Set<string>,
     deviceMap: ReadonlyMap<number, string>,
-    deps: RoleSourceDeps = defaultRoleSourceDeps
+    deps: RoleSourceDeps = defaultRoleSourceDeps,
+    asOf?: Date
 ): Promise<void> {
-    for (const meter of await deps.listLogicalMeters(orgId)) {
+    for (const meter of await deps.listLogicalMeters(orgId, asOf)) {
         if (meter.role !== 'grid') continue;
         for (const point of meter.points) {
             const shellyId = deviceMap.get(point.deviceId);
@@ -962,6 +1044,79 @@ export async function resolveScopeOnlyForEnergyReport(
     return {shellyIDs: scope.shellyIDs, scope};
 }
 
+export interface ReportLocationScopeDeps {
+    resolveLocations(
+        orgId: string,
+        locationIds: readonly number[]
+    ): Promise<Map<number, string[]>>;
+}
+
+const reportLocationScopeDeps: ReportLocationScopeDeps = {
+    resolveLocations: resolveLocationShellyIDs
+};
+
+/**
+ * Resolve the report-only multi-location selector through Fleet's canonical
+ * location resolver. Every chosen location must currently resolve inside the
+ * caller's organization and all selected devices must be readable; otherwise
+ * an aggregate would silently undercount a selected site.
+ */
+export async function resolveLocationIdsForEnergyReport(
+    locationIds: readonly number[],
+    sender: CommandSender,
+    orgId: string,
+    deps: ReportLocationScopeDeps = reportLocationScopeDeps
+): Promise<{
+    shellyIDs: string[];
+    scope: ScopeResult;
+    byLocation: Map<number, string[]>;
+}> {
+    if (
+        locationIds.length === 0 ||
+        locationIds.length > REPORT_LOCATION_SELECTION_MAX_ITEMS
+    ) {
+        throw RpcError.InvalidParams(
+            `locationIds must contain 1-${REPORT_LOCATION_SELECTION_MAX_ITEMS} locations`
+        );
+    }
+    const uniqueLocationIds = [...new Set(locationIds)];
+    if (uniqueLocationIds.length !== locationIds.length) {
+        throw RpcError.InvalidParams('locationIds must not contain duplicates');
+    }
+    const locations = await deps.resolveLocations(orgId, uniqueLocationIds);
+    const unresolved = uniqueLocationIds.filter(
+        (locationId) => (locations.get(locationId)?.length ?? 0) === 0
+    );
+    if (unresolved.length > 0) {
+        throw RpcError.Domain('ValidationFailed', {
+            field: 'locationIds',
+            message:
+                'Every selected location must belong to this organization and contain at least one reportable device.'
+        });
+    }
+    // A parent and its selected child can legitimately resolve the same meter.
+    // The report reads the physical device once, preventing duplicate rows and
+    // totals without inventing a template-side hierarchy.
+    const selectedShellyIDs = [
+        ...new Set(uniqueLocationIds.flatMap((id) => locations.get(id) ?? []))
+    ];
+    const scope = await scopeShellyIDs(selectedShellyIDs, sender);
+    if (scope.droppedDeviceCount > 0) {
+        throw RpcError.PermissionDenied(sender.isAuthenticated());
+    }
+    return {shellyIDs: scope.shellyIDs, scope, byLocation: locations};
+}
+
+export function assertExclusiveEnergyReportScope(
+    params: Pick<ReportGenerateEnergyParams, 'scope' | 'locationIds'>
+): void {
+    if (params.locationIds !== undefined && params.scope !== undefined) {
+        throw RpcError.InvalidParams(
+            'locationIds and scope cannot be used together'
+        );
+    }
+}
+
 // Cross-org guard for the dashboardId param; uses single SoT registry check.
 export async function assertDashboardOwnedBySender(
     dashboardId: number | undefined,
@@ -977,37 +1132,47 @@ export async function assertDashboardOwnedBySender(
 }
 
 // Best-effort: empty map on PG failure so deltas degrade to "no prior".
-export async function fetchPriorConsumptionByDevice(
-    internalIds: number[],
-    priorFrom: Date,
-    priorTo: Date,
-    bucket: string
-): Promise<Map<number, number>> {
+export async function fetchPriorConsumptionByDevice(input: {
+    internalIds: number[];
+    priorFrom: Date;
+    priorTo: Date;
+    quantityMetric: TariffQuantityMetric;
+    electricalSource?: string;
+}): Promise<Map<number, number>> {
     const out = new Map<number, number>();
-    if (priorTo.getTime() <= priorFrom.getTime()) return out;
+    if (input.priorTo.getTime() <= input.priorFrom.getTime()) return out;
     try {
-        // Same rollup routing as the current-period read — a prior window
-        // older than the 31-day raw retention must not read empty.
-        const res = await PostgresProvider.callMethod(
-            reportStatsFunctions(bucket).combinedFn,
-            {
-                p_devices: internalIds,
-                p_from: priorFrom,
-                p_to: priorTo,
-                p_tags: ['total_act_energy'],
-                p_bucket: bucket,
-                p_per_device: true,
-                // Reports aggregate AC-mains electricity; DC domains queried explicitly.
-                p_commodity: 'electricity',
-                p_electrical_source: 'ac_mains',
-                p_limit: tuning.report.maxRows + 1,
-                p_offset: 0
-            }
+        const rows = await PostgresProvider.queryRows<{
+            device: number;
+            consumption_raw: number;
+        }>(
+            `SELECT device,
+                    SUM(sum_val)::float8 AS consumption_raw
+               FROM device_em.fn_logical_energy_15min_rows(
+                        $1::integer[], $2, $3, ARRAY[$4]::varchar(30)[])
+              WHERE commodity = $5
+                AND ($6::text IS NULL OR electrical_source IS NOT DISTINCT FROM $6)
+              GROUP BY device`,
+            [
+                input.internalIds,
+                input.priorFrom,
+                input.priorTo,
+                input.quantityMetric.consumptionTag,
+                input.quantityMetric.commodity,
+                input.electricalSource ??
+                    (input.quantityMetric.commodity === 'electricity'
+                        ? 'ac_mains'
+                        : null)
+            ]
         );
-        for (const r of (res?.rows ?? []) as EnergyStatsRow[]) {
-            if (r.tag !== 'total_act_energy') continue;
-            const kwh = (r.agg_value ?? 0) / 1000;
-            out.set(r.device, (out.get(r.device) ?? 0) + kwh);
+        for (const row of rows) {
+            out.set(
+                row.device,
+                storedQuantityToBilled(
+                    Number(row.consumption_raw ?? 0),
+                    input.quantityMetric
+                )
+            );
         }
     } catch (err) {
         // Degrade to "no prior" so current-period reporting survives, but
@@ -1019,77 +1184,3 @@ export async function fetchPriorConsumptionByDevice(
 
 // Raw device_em.stats is dropped after 31 days, so report windows that reach
 // past it must read the long-term rollup. ≥15-min buckets (every report) take
-// the rollup path, mirroring EnergyRepository.queryEnergyStats.
-export function reportStatsFunctions(bucket: string): {
-    combinedFn: string;
-    phaseFn: string;
-} {
-    return bucketUsesRollup(bucket)
-        ? {
-              combinedFn: 'device_em.fn_report_stats_rollup_paged',
-              phaseFn: 'device_em.fn_report_stats_rollup_by_phase_paged'
-          }
-        : {
-              combinedFn: 'device_em.fn_report_stats_paged',
-              phaseFn: 'device_em.fn_report_stats_by_phase_paged'
-          };
-}
-
-export async function fetchEnergyStatsParallel(
-    internalIds: number[],
-    fromDate: Date,
-    toDate: Date,
-    bucket: string
-): Promise<{
-    combinedRep: {rows: EnergyStatsRow[]};
-    phaseRep: {rows: EnergyStatsRow[]};
-}> {
-    const allTags = [
-        'total_act_energy',
-        'total_act_ret_energy',
-        'power',
-        'voltage',
-        'min_voltage',
-        'max_voltage',
-        'current',
-        'min_current',
-        'max_current',
-        // power_factor enables PF penalty + recommendation rows; ignored
-        // when devices don't emit it (averagePowerFactor returns null).
-        'power_factor'
-    ];
-    const rowCap = tuning.report.maxRows + 1;
-    const baseParams = {
-        p_devices: internalIds,
-        p_from: fromDate,
-        p_to: toDate,
-        p_tags: allTags,
-        p_bucket: bucket,
-        p_per_device: true,
-        // Reports aggregate AC-mains electricity; DC domains queried explicitly.
-        p_commodity: 'electricity',
-        p_electrical_source: 'ac_mains',
-        p_limit: rowCap,
-        p_offset: 0
-    };
-    const {combinedFn, phaseFn} = reportStatsFunctions(bucket);
-    const [combinedRep, phaseRep] = await Promise.all([
-        PostgresProvider.callMethod(combinedFn, {...baseParams}),
-        PostgresProvider.callMethod(phaseFn, {...baseParams})
-    ]);
-    if (
-        combinedRep.rows.length > tuning.report.maxRows ||
-        phaseRep.rows.length > tuning.report.maxRows
-    ) {
-        throw RpcError.Domain('ValidationFailed', {
-            message: `Energy report result too large (combined=${combinedRep.rows.length}, phase=${phaseRep.rows.length}). Use a coarser granularity or shorter date range.`,
-            field: 'range',
-            details: {
-                combinedRowCount: combinedRep.rows.length,
-                phaseRowCount: phaseRep.rows.length,
-                limit: tuning.report.maxRows
-            }
-        });
-    }
-    return {combinedRep, phaseRep};
-}

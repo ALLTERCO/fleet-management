@@ -37,6 +37,11 @@ import {
     temporaryFirmwareFiles
 } from '../../modules/firmwareLibrary';
 import {
+    firmwareAutoUpdateAuthority,
+    registerSystemJobAuthorityChecker,
+    snapshotJobAuthority
+} from '../../modules/jobs/control';
+import {
     createFirmwareJob,
     enqueueFirmwareTargets,
     type FirmwareQueuedUnit
@@ -358,6 +363,10 @@ export default class FirmwareComponent extends Component<FirmwareComponentConfig
         super('firmware', {set_config_methods: false, viewer_visible: true});
         registerFirmwareUnitProcessor((unit) =>
             this.processFirmwareJobUnit(unit)
+        );
+        registerSystemJobAuthorityChecker(
+            (authority, deviceId) =>
+                this.getAutoUpdateModeForDevice(deviceId) === authority.channel
         );
     }
 
@@ -771,6 +780,8 @@ export default class FirmwareComponent extends Component<FirmwareComponentConfig
         const ownerKey = this.firmwareJobOwnerKey(sender, requestHash);
         const ownerLabel = sender.getUser()?.username ?? sender.getGroup();
         const tenantId = requireOrganizationId(sender);
+        const authority = snapshotJobAuthority(sender, tenantId, 'execute');
+        const createdBy = sender.getUser()?.username ?? authority.userId;
         const target = {
             deviceIds: shellyIDs,
             request,
@@ -783,9 +794,10 @@ export default class FirmwareComponent extends Component<FirmwareComponentConfig
                 tenantId,
                 mode: request.type,
                 target,
-                createdBy: ownerLabel,
+                createdBy,
                 idempotencyKey: params.idempotencyKey,
-                requestHash
+                requestHash,
+                authority
             });
             if (created.created) {
                 await enqueueFirmwareTargets({
@@ -1018,6 +1030,16 @@ export default class FirmwareComponent extends Component<FirmwareComponentConfig
         unit: FirmwareQueuedUnit
     ): Promise<FirmwareUnitResult> {
         const request = this.parseFirmwareUnitRequest(unit.request);
+        if (
+            unit.authority.kind === 'system' &&
+            (request.type !== 'channel' ||
+                this.getAutoUpdateModeForDevice(unit.device_id) !==
+                    request.value)
+        ) {
+            throw new Error(
+                'firmware auto-update policy no longer allows dispatch'
+            );
+        }
         const lockOwnerKey =
             typeof unit.target_summary.lockOwnerKey === 'string'
                 ? unit.target_summary.lockOwnerKey
@@ -1574,7 +1596,11 @@ export default class FirmwareComponent extends Component<FirmwareComponentConfig
                 mode: 'channel',
                 target,
                 createdBy: 'firmware-auto-update',
-                requestHash
+                requestHash,
+                authority: firmwareAutoUpdateAuthority(
+                    group.tenantId,
+                    group.channel
+                )
             });
             if (created.created) {
                 await enqueueFirmwareTargets({

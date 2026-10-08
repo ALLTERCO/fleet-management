@@ -1,6 +1,11 @@
 import {tuning} from '../../config/tuning';
+import {
+    canPerformComponentOperationAsync,
+    hasTenantWideComponentPermission
+} from '../../modules/authz/evaluator';
 import {readableResourceAllowlistsAsync} from '../../modules/authz/evaluator/readableResourceAllowlists';
 import * as DeviceCollector from '../../modules/DeviceCollector';
+import {assertDeviceKindAllowed} from '../../modules/deviceKindValidator';
 import * as EventDistributor from '../../modules/EventDistributor';
 import {buildTripPaths, type EventReplayRow} from '../../modules/eventReplay';
 import {
@@ -9,12 +14,20 @@ import {
     loadCountries,
     loadRegionsByCountry
 } from '../../modules/geocoding/geocoding';
+import {reverseGeocode as runReverseGeocode} from '../../modules/geocoding/reverseGeocode';
 import {searchPlaces as runPlaceSearch} from '../../modules/geocoding/searchPlaces';
 import {
     backfillGeoBatch,
     DEFAULT_BATCH_SIZE
 } from '../../modules/location/backfillGeo';
 import {locationCoordinateStatus} from '../../modules/location/coordinateStatus';
+import {
+    backfillGeographyBatch,
+    type CreatedAncestor,
+    DEFAULT_GEOGRAPHY_BATCH_SIZE,
+    ensureGeographyAncestors,
+    type GeographyAddress
+} from '../../modules/location/geographyAncestors';
 import {buildKindsDescribeResponse} from '../../modules/location/kindDescriptors';
 import {validateKindFields} from '../../modules/location/validator';
 import {
@@ -22,6 +35,7 @@ import {
     type DeviceAtLocation
 } from '../../modules/locationHeatmap';
 import * as postgres from '../../modules/PostgresProvider';
+import {jsonbParam} from '../../modules/postgresJsonb';
 import {getCachedEventReplay} from '../../modules/repositories/EventReplayCache';
 import {
     issueUploadTicket,
@@ -30,6 +44,11 @@ import {
 } from '../../modules/uploadTickets';
 import {translatePgError} from '../../rpc/dbErrors';
 import type {DescribeOutput} from '../../rpc/describe';
+import {
+    isMembershipKey,
+    keysetListPage,
+    keysetPageRequest
+} from '../../rpc/keysetPage';
 import {buildListResponse} from '../../rpc/listResponse';
 import {toIso} from '../../rpc/pgRows';
 import RpcError from '../../rpc/RpcError';
@@ -37,19 +56,25 @@ import {requireOrganizationId} from '../../rpc/scope';
 import {validateOrThrow} from '../../rpc/validateOrThrow';
 import {
     LOCATION_BACKFILL_GEO_PARAMS,
+    LOCATION_BACKFILL_GEOGRAPHY_PARAMS,
     LOCATION_CHILDREN_PARAMS,
+    LOCATION_CONFIGURE_DEVICE_ASSIGNMENT_PARAMS,
     LOCATION_CREATE_PARAMS,
     LOCATION_DELETE_PARAMS,
+    LOCATION_DELETE_SUBTREE_PARAMS,
+    LOCATION_DESCENDANTS_PARAMS,
     LOCATION_DESCRIBE,
     LOCATION_EVENT_REPLAY_PARAMS,
     LOCATION_GET_PARAMS,
     LOCATION_LIST_ASSIGNMENTS_PARAMS,
     LOCATION_LIST_COUNTRIES_PARAMS,
+    LOCATION_LIST_DEVICE_ASSIGNMENT_PROFILES_PARAMS,
     LOCATION_LIST_KINDS_PARAMS,
     LOCATION_LIST_PARAMS,
     LOCATION_LIST_REGIONS_PARAMS,
     LOCATION_PATH_PARAMS,
     LOCATION_REMOVE_ASSIGNMENT_PARAMS,
+    LOCATION_REVERSE_GEOCODE_PARAMS,
     LOCATION_SEARCH_PLACES_PARAMS,
     LOCATION_SET_ASSIGNMENT_PARAMS,
     LOCATION_SET_ASSIGNMENTS_PARAMS,
@@ -57,13 +82,16 @@ import {
     LOCATION_UPDATE_PARAMS,
     type Location,
     type LocationAssignment,
+    type LocationBackfillGeographyParams,
     type LocationBackfillGeoParams,
     type LocationBreadcrumbEntry,
     type LocationCustomFields,
+    type LocationDeviceAssignmentProfile,
     type LocationEffective,
     type LocationKind,
     type LocationKindFields,
     type LocationListRegionsParams,
+    type LocationReverseGeocodeParams,
     type LocationSearchPlacesParams,
     type LocationSubjectType
 } from '../../types/api/location';
@@ -104,7 +132,8 @@ interface LocationRow {
     environmental_setpoint: Record<string, unknown> | null;
     custom_fields: LocationCustomFields | null;
     /** Free-form JSONB sidecar. Currently holds .viz with floorPlan,
-     *  devicePlacements, zones — surfaced under kindFields by buildKindFields. */
+     *  devicePlacements, zones, and .locationDetails with tags, notes —
+     *  surfaced under kindFields by buildKindFields. */
     metadata: Record<string, unknown> | null;
     created_at: Date | string;
     updated_at: Date | string | null;
@@ -163,6 +192,20 @@ function buildKindFields(row: LocationRow): LocationKindFields {
         if (v.floorPlan) out.floorPlan = v.floorPlan;
         if (v.devicePlacements) out.devicePlacements = v.devicePlacements;
         if (v.zones) out.zones = v.zones;
+    }
+    const details =
+        row.metadata && typeof row.metadata === 'object'
+            ? (row.metadata as Record<string, unknown>).locationDetails
+            : null;
+    if (details && typeof details === 'object') {
+        const d = details as Record<string, unknown>;
+        if (
+            Array.isArray(d.tags) &&
+            d.tags.every((t) => typeof t === 'string')
+        ) {
+            out.tags = d.tags;
+        }
+        if (typeof d.notes === 'string') out.notes = d.notes;
     }
     return out;
 }
@@ -268,6 +311,11 @@ export default class LocationComponent extends Component {
             customFields?: LocationCustomFields;
         }>(params, LOCATION_CREATE_PARAMS);
         const orgId = requireOrganizationId(sender, p);
+        await this.#assertMayAttachTo(
+            sender,
+            'create',
+            p.parentLocationId ?? null
+        );
         const parentKind = await this.#parentKind(
             orgId,
             p.parentLocationId ?? null
@@ -299,9 +347,9 @@ export default class LocationComponent extends Component {
             );
             const row = result?.rows?.[0] as LocationRow | undefined;
             if (!row) throw RpcError.OperationFailed('location create');
-            EventDistributor.invalidateGroupCache(orgId);
+            EventDistributor.invalidateOrganizationAccess(orgId);
             EventDistributor.emitLocationCreated(row.id, row.name, orgId);
-            return rowToLocation(row);
+            return rowToLocation(await this.#ensureGeographyTree(sender, row));
         } catch (err: unknown) {
             throw translateDbError(err, 'create');
         }
@@ -326,6 +374,9 @@ export default class LocationComponent extends Component {
             p.parentLocationId === undefined
                 ? current.parent_location_id
                 : p.parentLocationId;
+        if (nextParentId !== current.parent_location_id) {
+            await this.#assertMayAttachTo(sender, 'update', nextParentId);
+        }
         const parentKind = await this.#parentKind(orgId, nextParentId);
         const parentCountryCode = await this.#parentCountryCode(
             orgId,
@@ -344,6 +395,10 @@ export default class LocationComponent extends Component {
                       parentCountryCode
                   )
                 : undefined;
+        const customFields =
+            p.customFields !== undefined
+                ? {...(current.custom_fields ?? {}), ...p.customFields}
+                : undefined;
 
         const clearParent = p.parentLocationId === null;
 
@@ -360,7 +415,7 @@ export default class LocationComponent extends Component {
                     p_clear_parent: clearParent,
                     p_sort_order: p.sortOrder ?? null,
                     p_kind_fields: kindFields ?? null,
-                    p_custom_fields: p.customFields ?? null
+                    p_custom_fields: customFields ?? null
                 }
             );
             const row = result?.rows?.[0] as LocationRow | undefined;
@@ -368,9 +423,13 @@ export default class LocationComponent extends Component {
                 throw RpcError.Domain('LocationNotFound', {
                     details: {id: p.id}
                 });
-            EventDistributor.invalidateGroupCache(orgId);
+            EventDistributor.invalidateOrganizationAccess(orgId);
             EventDistributor.emitLocationUpdated(row.id, row.name, orgId);
-            return rowToLocation(row);
+            // Only an address edit can newly place a location on the map.
+            if (!Object.hasOwn(p.kindFields ?? {}, 'address')) {
+                return rowToLocation(row);
+            }
+            return rowToLocation(await this.#ensureGeographyTree(sender, row));
         } catch (err: unknown) {
             throw translateDbError(err, 'update');
         }
@@ -396,10 +455,102 @@ export default class LocationComponent extends Component {
             const row = result?.rows?.[0] as {deleted: boolean} | undefined;
             const deleted = Boolean(row?.deleted);
             if (deleted) {
-                EventDistributor.invalidateGroupCache(orgId);
+                EventDistributor.invalidateOrganizationAccess(orgId);
                 EventDistributor.emitLocationDeleted(p.id, orgId);
             }
             return {deleted};
+        } catch (err: unknown) {
+            throw translateDbError(err, 'delete');
+        }
+    }
+
+    @Component.Expose('DeleteSubtree')
+    @Component.CrudPermission('locations', 'delete', (p) => p?.id)
+    async deleteSubtree(
+        params: unknown,
+        sender: CommandSender
+    ): Promise<{
+        rootId: number;
+        deletedIds: number[];
+        deletedCount: number;
+        removedAssignments: number;
+    }> {
+        const p = validateOrThrow<{organizationId?: string; id: number}>(
+            params,
+            LOCATION_DELETE_SUBTREE_PARAMS
+        );
+        const orgId = requireOrganizationId(sender, p);
+
+        try {
+            const subtreeResult = await postgres.callMethod(
+                'organization.fn_location_descendant_ids',
+                {
+                    p_organization_id: orgId,
+                    p_location_id: p.id,
+                    p_include_self: true
+                }
+            );
+            const expectedIds = [
+                ...new Set(
+                    ((subtreeResult?.rows ?? []) as Array<{id: number}>)
+                        .map((row) => Number(row.id))
+                        .filter(Number.isInteger)
+                )
+            ].sort((left, right) => left - right);
+
+            // The root-level decorator cannot see explicit denials deeper in
+            // the tree. Review every row before the database acquires its
+            // mutation lock, then bind that exact reviewed set to the delete.
+            for (const id of expectedIds) {
+                if (
+                    !(await sender.evaluateComponentPermissionAsync({
+                        component: 'locations',
+                        operation: 'delete',
+                        itemId: id
+                    }))
+                ) {
+                    throw RpcError.PermissionDenied(sender.isAuthenticated());
+                }
+            }
+
+            const result = await postgres.callMethod(
+                'organization.fn_location_delete_subtree_checked',
+                {
+                    p_organization_id: orgId,
+                    p_root_id: p.id,
+                    p_expected_ids: expectedIds
+                }
+            );
+            const row = result?.rows?.[0] as
+                | {
+                      deleted_ids?: number[] | null;
+                      removed_assignments?: number | string | null;
+                      subtree_changed?: boolean | null;
+                  }
+                | undefined;
+            if (row?.subtree_changed) {
+                throw RpcError.Domain('LocationSubtreeChanged');
+            }
+            const deletedIds = Array.isArray(row?.deleted_ids)
+                ? row.deleted_ids.map(Number).filter(Number.isInteger)
+                : [];
+            const removedAssignments = Number(row?.removed_assignments ?? 0);
+
+            if (deletedIds.length > 0) {
+                EventDistributor.invalidateOrganizationAccess(orgId);
+                for (const id of deletedIds) {
+                    EventDistributor.emitLocationDeleted(id, orgId);
+                }
+            }
+
+            return {
+                rootId: p.id,
+                deletedIds,
+                deletedCount: deletedIds.length,
+                removedAssignments: Number.isFinite(removedAssignments)
+                    ? removedAssignments
+                    : 0
+            };
         } catch (err: unknown) {
             throw translateDbError(err, 'delete');
         }
@@ -482,7 +633,9 @@ export default class LocationComponent extends Component {
         const p = validateOrThrow<{
             organizationId?: string;
             parentLocationId?: number | null;
+            kind?: LocationKind;
             rootsOnly?: boolean;
+            query?: string;
             limit?: number;
             offset?: number;
             includeSummary?: boolean;
@@ -492,10 +645,20 @@ export default class LocationComponent extends Component {
         const rootsOnly = p.rootsOnly ?? p.parentLocationId === null;
         const parentId =
             typeof p.parentLocationId === 'number' ? p.parentLocationId : null;
+        // "Only roots" and "children of X" cannot both hold. The SQL ORs its
+        // parent branches, so the pair would widen the result instead of
+        // narrowing it — reject rather than answer a question nobody asked.
+        if (rootsOnly && parentId !== null) {
+            throw RpcError.InvalidParams(
+                'rootsOnly conflicts with a numeric parentLocationId — pass one'
+            );
+        }
         return this.#listLocations(sender, {
             orgId,
             parentId,
             rootsOnly,
+            kind: p.kind ?? null,
+            query: p.query ?? null,
             limit: p.limit ?? 200,
             offset: p.offset ?? 0,
             includeSummary: p.includeSummary ?? false,
@@ -504,12 +667,16 @@ export default class LocationComponent extends Component {
     }
 
     // Shared body for List/Children — differ only in parentId/rootsOnly.
+    // Sole filter-to-SQL mapping for both methods; every declared filter is
+    // named here or it does not exist.
     async #listLocations(
         sender: CommandSender,
         opts: {
             orgId: string;
             parentId: number | null;
             rootsOnly: boolean;
+            kind: LocationKind | null;
+            query: string | null;
             limit: number;
             offset: number;
             includeSummary: boolean;
@@ -529,7 +696,9 @@ export default class LocationComponent extends Component {
                 p_include_summary: opts.includeSummary,
                 p_allowed_device_ids: scope.devices,
                 p_allowed_group_ids: scope.groups,
-                p_allowed_tag_ids: scope.tags
+                p_allowed_tag_ids: scope.tags,
+                p_kind: opts.kind,
+                p_query: opts.query
             }
         );
         const rows = (result?.rows ?? []) as ListRow[];
@@ -569,11 +738,51 @@ export default class LocationComponent extends Component {
             orgId,
             parentId: p.id,
             rootsOnly: false,
+            // Children declares neither filter; passing null keeps the one
+            // mapping above authoritative instead of forking a second call.
+            kind: null,
+            query: null,
             limit: p.limit ?? 200,
             offset: p.offset ?? 0,
             includeSummary: p.includeSummary ?? false,
             includeEffective: p.includeEffective ?? false
         });
+    }
+
+    @Component.NoAudit
+    @Component.Expose('Descendants')
+    @Component.CrudPermission('locations', 'read', (p) => p?.id)
+    async descendants(params: unknown, sender: CommandSender) {
+        const p = validateOrThrow<{
+            organizationId?: string;
+            id: number;
+            includeSelf?: boolean;
+        }>(params, LOCATION_DESCENDANTS_PARAMS);
+        const orgId = requireOrganizationId(sender, p);
+        const result = await postgres.callMethod(
+            'organization.fn_location_descendant_ids',
+            {
+                p_organization_id: orgId,
+                p_location_id: p.id,
+                p_include_self: p.includeSelf ?? true
+            }
+        );
+        const candidateIds = ((result?.rows ?? []) as Array<{id: number}>).map(
+            (row) => row.id
+        );
+        const decisions = await Promise.all(
+            candidateIds.map((id) =>
+                canPerformComponentOperationAsync(
+                    sender,
+                    'locations',
+                    'read',
+                    id
+                )
+            )
+        );
+        return {
+            items: candidateIds.filter((_, index) => decisions[index].allowed)
+        };
     }
 
     @Component.NoAudit
@@ -602,7 +811,13 @@ export default class LocationComponent extends Component {
             name: r.name,
             kind: r.kind
         }));
-        return {items};
+        const visible = truncateToAccessible(
+            items,
+            await sender.accessibleLocationIds()
+        );
+        if (visible.length === 0)
+            throw RpcError.Domain('LocationNotFound', {details: {id: p.id}});
+        return {items: visible};
     }
 
     @Component.NoAudit
@@ -630,6 +845,17 @@ export default class LocationComponent extends Component {
             limit: p.limit ?? 5,
             precision: p.precision
         });
+    }
+
+    @Component.NoAudit
+    @Component.Expose('ReverseGeocode')
+    @Component.CrudPermission('locations', 'read')
+    async reverseGeocode(params: unknown) {
+        const p = validateOrThrow<LocationReverseGeocodeParams>(
+            params,
+            LOCATION_REVERSE_GEOCODE_PARAMS
+        );
+        return await runReverseGeocode(p);
     }
 
     @Component.NoAudit
@@ -676,6 +902,27 @@ export default class LocationComponent extends Component {
             batchSize: p.batchSize ?? DEFAULT_BATCH_SIZE,
             forceRefresh: p.forceRefresh ?? false
         });
+    }
+
+    @Component.Expose('BackfillGeography')
+    @Component.CrudPermission('locations', 'create')
+    async backfillGeography(params: unknown, sender: CommandSender) {
+        const p = validateOrThrow<LocationBackfillGeographyParams>(
+            params,
+            LOCATION_BACKFILL_GEOGRAPHY_PARAMS
+        );
+        const organizationId = requireOrganizationId(sender, {
+            organizationId: p.organizationId
+        });
+        // Country nodes land at the root, so a tree-scoped grant is not enough.
+        await this.#assertMayAttachTo(sender, 'create', null);
+        const result = await backfillGeographyBatch({
+            organizationId,
+            batchSize: p.batchSize ?? DEFAULT_GEOGRAPHY_BATCH_SIZE,
+            afterId: p.afterId ?? 0
+        });
+        this.#announceAncestors(organizationId, result.createdAncestors);
+        return result.summary;
     }
 
     @Component.NoAudit
@@ -795,7 +1042,7 @@ export default class LocationComponent extends Component {
             );
             const row = result?.rows?.[0] as AssignmentRow | undefined;
             if (!row) throw RpcError.OperationFailed('location setAssignment');
-            EventDistributor.invalidateGroupCache(orgId);
+            EventDistributor.invalidateOrganizationAccess(orgId);
             EventDistributor.emitLocationAssignmentSet(
                 p.subjectType,
                 p.subjectId,
@@ -852,7 +1099,7 @@ export default class LocationComponent extends Component {
                 }
             );
             const rows = (result?.rows ?? []) as AssignmentRow[];
-            EventDistributor.invalidateGroupCache(orgId);
+            EventDistributor.invalidateOrganizationAccess(orgId);
             EventDistributor.emitLocationAssignmentsSet(p.locationId, orgId);
             return {
                 locationId: p.locationId,
@@ -861,6 +1108,69 @@ export default class LocationComponent extends Component {
         } catch (err: unknown) {
             if (err instanceof RpcError) throw err;
             throw translatePgError(err, 'location setAssignments');
+        }
+    }
+
+    @Component.Expose('ConfigureDeviceAssignment')
+    @Component.CrudPermission('locations', 'update', (p) => p?.locationId)
+    async configureDeviceAssignment(
+        params: unknown,
+        sender: CommandSender
+    ): Promise<LocationDeviceAssignmentProfile> {
+        const p = validateOrThrow<{
+            organizationId?: string;
+            locationId: number;
+            shellyID: string;
+            selectedEntityKeys: string[] | null;
+            catalogKind?: string | null;
+        }>(params, LOCATION_CONFIGURE_DEVICE_ASSIGNMENT_PARAMS);
+        const orgId = requireOrganizationId(sender, p);
+        const updateKind = Object.hasOwn(p, 'catalogKind');
+        if (
+            updateKind &&
+            !(await sender.evaluateComponentPermissionAsync({
+                component: 'devices',
+                operation: 'update',
+                itemId: p.shellyID
+            }))
+        ) {
+            throw RpcError.PermissionDenied(sender.isAuthenticated());
+        }
+        if (updateKind) {
+            await assertDeviceKindAllowed(p.catalogKind ?? null, orgId);
+        }
+
+        try {
+            const result = await postgres.callMethod(
+                'organization.fn_location_configure_device_assignment',
+                {
+                    p_organization_id: orgId,
+                    p_location_id: p.locationId,
+                    p_shelly_id: p.shellyID,
+                    p_selected_entity_keys: p.selectedEntityKeys,
+                    p_update_catalog_kind: updateKind,
+                    p_catalog_kind: p.catalogKind ?? null
+                }
+            );
+            const row = result?.rows?.[0] as
+                | DeviceAssignmentProfileRow
+                | undefined;
+            if (!row) {
+                throw RpcError.OperationFailed(
+                    'location configureDeviceAssignment'
+                );
+            }
+            EventDistributor.invalidateOrganizationAccess(orgId);
+            EventDistributor.emitLocationAssignmentSet(
+                'device',
+                p.shellyID,
+                p.locationId,
+                orgId
+            );
+            return rowToDeviceAssignmentProfile(row);
+        } catch (err: unknown) {
+            if (err instanceof RpcError) throw err;
+            throw translatePgError(err, 'location configureDeviceAssignment');
         }
     }
 
@@ -876,6 +1186,14 @@ export default class LocationComponent extends Component {
             subjectId: string;
         }>(params, LOCATION_REMOVE_ASSIGNMENT_PARAMS);
         const orgId = requireOrganizationId(sender, p);
+        const currentLocationId = await this.#assignedLocationId(
+            orgId,
+            p.subjectType,
+            p.subjectId
+        );
+        if (currentLocationId === null)
+            return {removed: false, assignment: null};
+        await this.#assertMayEditLocation(sender, currentLocationId);
 
         try {
             const result = await postgres.callMethod(
@@ -888,7 +1206,7 @@ export default class LocationComponent extends Component {
             );
             const row = result?.rows?.[0] as AssignmentRow | undefined;
             if (!row) return {removed: false, assignment: null};
-            EventDistributor.invalidateGroupCache(orgId);
+            EventDistributor.invalidateOrganizationAccess(orgId);
             EventDistributor.emitLocationAssignmentRemoved(
                 p.subjectType,
                 p.subjectId,
@@ -914,13 +1232,16 @@ export default class LocationComponent extends Component {
             locationIds?: number[];
             limit?: number;
             offset?: number;
+            cursor?: string;
         }>(params, LOCATION_LIST_ASSIGNMENTS_PARAMS);
         const orgId = requireOrganizationId(sender, p);
-        const limit = p.limit ?? 200;
-        const offset = p.offset ?? 0;
+        const page = keysetPageRequest(p, {
+            defaultLimit: 200,
+            isKey: isMembershipKey
+        });
 
         const result = await postgres.callMethod(
-            'organization.fn_location_list_assignments',
+            'organization.fn_location_assignments_page',
             {
                 p_organization_id: orgId,
                 p_subject_type: p.subjectType ?? null,
@@ -930,20 +1251,169 @@ export default class LocationComponent extends Component {
                     Array.isArray(p.locationIds) && p.locationIds.length > 0
                         ? p.locationIds
                         : null,
+                p_limit: page.fetchLimit,
+                p_offset: page.offset,
+                p_allowed_ids: (await readableResourceAllowlistsAsync(sender))
+                    .locations,
+                p_after: page.after ? jsonbParam(page.after) : null,
+                p_skip_total: page.after !== null
+            }
+        );
+        return keysetListPage((result?.rows ?? []) as AssignmentListRow[], {
+            page,
+            isRow: (r) => r.cursor_key != null,
+            toItem: (r) =>
+                r.subject_id == null
+                    ? null
+                    : rowToAssignment(r as AssignmentRow)
+        });
+    }
+
+    @Component.NoAudit
+    @Component.Expose('ListDeviceAssignmentProfiles')
+    @Component.CrudPermission('locations', 'read')
+    async listDeviceAssignmentProfiles(params: unknown, sender: CommandSender) {
+        const p = validateOrThrow<{
+            organizationId?: string;
+            locationIds?: number[];
+            shellyIDs?: string[];
+            limit?: number;
+            offset?: number;
+        }>(params, LOCATION_LIST_DEVICE_ASSIGNMENT_PROFILES_PARAMS);
+        const orgId = requireOrganizationId(sender, p);
+        const limit = p.limit ?? 200;
+        const offset = p.offset ?? 0;
+        const result = await postgres.callMethod(
+            'organization.fn_location_list_device_assignment_profiles',
+            {
+                p_organization_id: orgId,
+                p_location_ids: p.locationIds?.length ? p.locationIds : null,
+                p_shelly_ids: p.shellyIDs?.length ? p.shellyIDs : null,
                 p_limit: limit,
                 p_offset: offset,
                 p_allowed_ids: (await readableResourceAllowlistsAsync(sender))
                     .locations
             }
         );
-        const rows = (result?.rows ?? []) as AssignmentListRow[];
+        const rows = (result?.rows ?? []) as DeviceAssignmentProfileListRow[];
         const total = rows.length > 0 ? Number(rows[0].total_count ?? 0) : 0;
-        const items: LocationAssignment[] = [];
-        for (const r of rows) {
-            if (r.subject_id == null) continue;
-            items.push(rowToAssignment(r as AssignmentRow));
+        return buildListResponse(
+            rows.map(rowToDeviceAssignmentProfile),
+            total,
+            limit,
+            offset
+        );
+    }
+
+    // An addressed location belongs under its country/region/city. The tree
+    // is built after the write, so a geography failure must not report the
+    // saved location as unsaved — it is logged and the row is returned as-is.
+    async #ensureGeographyTree(
+        sender: CommandSender,
+        row: LocationRow
+    ): Promise<LocationRow> {
+        if (row.parent_location_id !== null || !row.address) return row;
+        // Country nodes land at the root, so a tree-scoped grant is not enough.
+        if (
+            !(await hasTenantWideComponentPermission(
+                sender,
+                'locations',
+                'create'
+            ))
+        ) {
+            return row;
         }
-        return buildListResponse(items, total, limit, offset);
+        try {
+            const result = await ensureGeographyAncestors({
+                organizationId: row.organization_id,
+                id: row.id,
+                kind: row.kind,
+                parentLocationId: row.parent_location_id,
+                address: row.address as GeographyAddress
+            });
+            this.#announceAncestors(
+                row.organization_id,
+                result.createdAncestors
+            );
+            if (result.parentLocationId === null) return row;
+            return {...row, parent_location_id: result.parentLocationId};
+        } catch (err: unknown) {
+            this.logger.warn('geography ancestors failed', {
+                locationId: row.id,
+                organizationId: row.organization_id,
+                error: RpcError.messageOf(err)
+            });
+            return row;
+        }
+    }
+
+    #announceAncestors(orgId: string, created: readonly CreatedAncestor[]) {
+        if (created.length === 0) return;
+        EventDistributor.invalidateOrganizationAccess(orgId);
+        for (const node of created) {
+            EventDistributor.emitLocationCreated(node.id, node.name, orgId);
+        }
+    }
+
+    // The decorator only sees the item named in params. A tree-bound grant
+    // must not grow past its tree, so attaching to a parent needs the same
+    // right on that parent, and attaching to the root needs an org-wide one.
+    async #assertMayAttachTo(
+        sender: CommandSender,
+        operation: 'create' | 'update',
+        parentId: number | null
+    ): Promise<void> {
+        const allowed =
+            parentId === null
+                ? await hasTenantWideComponentPermission(
+                      sender,
+                      'locations',
+                      operation
+                  )
+                : await sender.evaluateComponentPermissionAsync({
+                      component: 'locations',
+                      operation,
+                      itemId: parentId
+                  });
+        if (!allowed) throw RpcError.PermissionDenied(sender.isAuthenticated());
+    }
+
+    async #assertMayEditLocation(
+        sender: CommandSender,
+        locationId: number
+    ): Promise<void> {
+        const allowed = await sender.evaluateComponentPermissionAsync({
+            component: 'locations',
+            operation: 'update',
+            itemId: locationId
+        });
+        if (!allowed) throw RpcError.PermissionDenied(sender.isAuthenticated());
+    }
+
+    // Where a subject currently lives, or null when it is unassigned. Reads
+    // unfiltered on purpose: the caller authorizes against the answer.
+    async #assignedLocationId(
+        orgId: string,
+        subjectType: LocationSubjectType,
+        subjectId: string
+    ): Promise<number | null> {
+        const result = await postgres.callMethod(
+            'organization.fn_location_list_assignments',
+            {
+                p_organization_id: orgId,
+                p_subject_type: subjectType,
+                p_subject_id: subjectId,
+                p_location_id: null,
+                p_location_ids: null,
+                p_limit: 1,
+                p_offset: 0,
+                p_allowed_ids: null
+            }
+        );
+        const row = result?.rows?.[0] as
+            | {location_id: number | null}
+            | undefined;
+        return row?.location_id ?? null;
     }
 
     async #currentRow(orgId: string, id: number): Promise<LocationRow> {
@@ -977,6 +1447,17 @@ export default class LocationComponent extends Component {
         const row = await this.#currentRow(orgId, parentId);
         return row.country_code ?? undefined;
     }
+}
+
+// A breadcrumb runs root first, so cutting the head hides what is above.
+function truncateToAccessible(
+    items: readonly LocationBreadcrumbEntry[],
+    accessible: number[] | null
+): LocationBreadcrumbEntry[] {
+    if (accessible === null) return [...items];
+    const allowed = new Set(accessible);
+    const start = items.findIndex((entry) => allowed.has(entry.id));
+    return start === -1 ? [] : items.slice(start);
 }
 
 // Live PG path for event-replay. Wrapped by EventReplayCache for L2 (org-keyed; scoped callers bypass).
@@ -1051,6 +1532,20 @@ interface AssignmentRow {
     created_at: Date | string;
     updated_at: Date | string | null;
 }
+
+interface DeviceAssignmentProfileRow {
+    organization_id: string;
+    location_id: number;
+    shelly_id: string;
+    selected_entity_keys: string[] | null;
+    catalog_kind: string | null;
+    created_at: Date | string;
+    updated_at: Date | string | null;
+}
+
+type DeviceAssignmentProfileListRow = DeviceAssignmentProfileRow & {
+    total_count?: number | string;
+};
 
 async function assertGroupBelongsToOrg(
     orgId: string,
@@ -1193,7 +1688,8 @@ async function assertLocationSubjectsBelongToOrg(
 }
 
 type AssignmentListRow = Partial<AssignmentRow> & {
-    total_count?: number | string;
+    total_count?: number | string | null;
+    cursor_key?: unknown;
 };
 
 function rowToAssignment(row: AssignmentRow): LocationAssignment {
@@ -1202,6 +1698,20 @@ function rowToAssignment(row: AssignmentRow): LocationAssignment {
         subjectType: row.subject_type,
         subjectId: row.subject_id,
         locationId: row.location_id,
+        createdAt: toIso(row.created_at) ?? '',
+        updatedAt: toIso(row.updated_at)
+    };
+}
+
+function rowToDeviceAssignmentProfile(
+    row: DeviceAssignmentProfileRow
+): LocationDeviceAssignmentProfile {
+    return {
+        organizationId: row.organization_id,
+        locationId: row.location_id,
+        shellyID: row.shelly_id,
+        selectedEntityKeys: row.selected_entity_keys,
+        catalogKind: row.catalog_kind,
         createdAt: toIso(row.created_at) ?? '',
         updatedAt: toIso(row.updated_at)
     };

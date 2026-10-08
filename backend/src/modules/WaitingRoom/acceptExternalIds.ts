@@ -40,9 +40,6 @@ export async function acceptExternalIds(
         undefined,
         onChunk
     );
-    if (result.success.length > 0) {
-        propagateOwningOrg(result.success, organizationId);
-    }
     emitAcceptedSafe(result.records.map((r) => r.id));
     if (typeof groupId === 'number' && result.success.length > 0) {
         await addToGroup(organizationId, groupId, result.success);
@@ -78,17 +75,6 @@ function reportGroupAddFailure(
     );
 }
 
-// Org is already on the row from admit; sync the in-memory map so the alert
-// engine and group cache see the new ownership without a DB re-read.
-function propagateOwningOrg(
-    externalIds: string[],
-    organizationId: string
-): void {
-    for (const ext of externalIds)
-        EventDistributor.setDeviceOrg(ext, organizationId);
-    EventDistributor.invalidateGroupCache(organizationId);
-}
-
 function emitAcceptedSafe(ids: number[]): void {
     try {
         emitWaitingRoomAcceptedBatch(ids);
@@ -105,7 +91,7 @@ async function addToGroup(
     const startMs = performance.now();
     try {
         await groupAddDevicesBatch(organizationId, groupId, externalIds);
-        EventDistributor.invalidateGroupCache(organizationId);
+        EventDistributor.invalidateGroupMembership(organizationId, externalIds);
         Observability.recordDbTiming(
             'waitingroom.accept_external.group_add',
             performance.now() - startMs

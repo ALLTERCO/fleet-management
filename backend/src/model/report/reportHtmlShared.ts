@@ -7,6 +7,8 @@
 // the document shell, header, footer, section grouping, table markup, and the
 // light print theme — is shared here.
 
+import type {ReportCoverageInterval} from '../../types/api/report';
+
 export interface ReportHtmlMeta {
     readonly title: string;
     readonly subtitle: string;
@@ -14,6 +16,7 @@ export interface ReportHtmlMeta {
     readonly dataDownloadUrl?: string;
     readonly rowsShown?: number;
     readonly totalRows?: number;
+    readonly coverage?: ReportCoverageInterval;
 }
 
 // Column key -> header label. Order is the render order within a section table.
@@ -37,12 +40,21 @@ ${buildHead(meta.title)}
 <body>
 <main class="rpt">
 ${buildHeader(meta)}
+${buildCoverageNotice(meta)}
 ${kpis}
 ${sections}
 ${buildFooter(meta)}
 </main>
 </body>
 </html>`;
+}
+
+function buildCoverageNotice(meta: ReportHtmlMeta): string {
+    if (!meta.coverage) return '';
+    return `<section class="rpt-coverage" role="note">
+  <strong>Partial data coverage</strong>
+  <span>Requested ${escapeHtml(meta.coverage.requestedFrom)} to ${escapeHtml(meta.coverage.requestedTo)}. Measured ${escapeHtml(meta.coverage.coveredFrom)} to ${escapeHtml(meta.coverage.coveredTo)}. Totals include measured usage only; full-period charges and comparisons are withheld.</span>
+</section>`;
 }
 
 // Keep sections in first-seen order; rows before any section header fall under
@@ -185,6 +197,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;c
 .rpt-note{margin-left:8px}
 .rpt-cta{flex:none;background:var(--brand);color:#fff;text-decoration:none;font-size:13px;font-weight:600;padding:9px 14px;border-radius:8px}
 .rpt-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+.rpt-coverage{display:flex;flex-direction:column;gap:6px;background:#fff8e8;border:1px solid #d99a1b;border-radius:12px;padding:14px 16px;margin-bottom:18px;color:#5f4308}
+.rpt-coverage strong{font-size:14px}
+.rpt-coverage span{font-size:12.5px;line-height:1.45}
 .rpt-kpi{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px}
 .rpt-kpi-val{font-size:22px;font-weight:700;color:var(--brand-dk)}
 .rpt-kpi-unit{font-size:12px;font-weight:600;color:var(--muted);margin-left:4px}

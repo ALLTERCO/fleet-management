@@ -98,22 +98,30 @@ mp_build_plan() {
         "timescale/timescaledb:${TIMESCALEDB_VERSION:-}"
     # Zitadel api + db — may emit multi-hop staging for v2 → v4 jumps.
     mp_emit_zitadel_steps "$project"
+    # The login ships with the API and runs the same tag.
+    mp_classify image zitadel-login \
+        "$(mp_running_image_tag "$project" zitadel-login)" \
+        "ghcr.io/zitadel/zitadel-login:${ZITADEL_VERSION:-}"
+    # The backup sidecar's pg_dump must match the Zitadel DB's PostgreSQL.
+    mp_classify image zitadel-backup \
+        "$(mp_running_image_tag "$project" zitadel-backup)" \
+        "postgres:${ZITADEL_POSTGRES_VERSION:-}"
     # Adjacent services — same-major bumps in place, warn on major drift.
     mp_classify image redis \
         "$(mp_running_image_tag "$project" redis)" \
-        "redis:${REDIS_VERSION:-7.4.2-alpine}"
+        "redis:${REDIS_VERSION:-7.4.11-alpine}"
     mp_classify image grafana \
         "$(mp_running_image_tag "$project" grafana)" \
-        "grafana/grafana-oss:${GRAFANA_VERSION:-}"
+        "grafana/grafana:${GRAFANA_VERSION:-}"
     mp_classify image nodered \
         "$(mp_running_image_tag "$project" nodered)" \
-        "nodered/node-red:${NODE_RED_VERSION:-latest}"
+        "nodered/node-red:${NODE_RED_VERSION:-}"
     mp_classify image traefik \
         "$(mp_running_image_tag "$project" traefik)" \
         "traefik:${TRAEFIK_VERSION:-}"
     mp_classify image dozzle \
         "$(mp_running_image_tag "$project" dozzle)" \
-        "amir20/dozzle:${DOZZLE_VERSION:-v10.4.1}"
+        "amir20/dozzle:${DOZZLE_VERSION:-v10.10.0}"
     mp_classify image mailcatcher \
         "$(mp_running_image_tag "$project" mailcatcher)" \
         "haravich/fake-smtp-server:${MAILCATCHER_VERSION:-}"
@@ -159,11 +167,11 @@ mp_emit_tenant_steps() {
         [ -n "$cid" ] || continue
         # Node-RED
         current="$(mp_running_image_tag "${project}-${cid}" nodered)"
-        target="${NODE_RED_IMAGE:-nodered/node-red:${NODE_RED_VERSION:-latest}}"
+        target="${NODE_RED_IMAGE:-nodered/node-red:${NODE_RED_VERSION:-}}"
         mp_emit_tenant_recreate "$cid" nodered "$current" "$target"
         # Grafana
         current="$(mp_running_image_tag "${project}-${cid}" grafana)"
-        target="grafana/grafana-oss:${GRAFANA_VERSION:-}"
+        target="grafana/grafana:${GRAFANA_VERSION:-}"
         mp_emit_tenant_recreate "$cid" grafana "$current" "$target"
     done
 }
@@ -255,6 +263,10 @@ mp_emit_zitadel_steps() {
         && [ "$current_pg_major" != "$target_pg_major" ]; then
         printf 'zitadel_setup\tzitadel-api\t%s\t%s\trestart after PG major hop\n' \
             "$target_zitadel" "$target_zitadel"
+    elif [ -z "$current_zitadel" ] && [ -n "$current_pg" ] && [ -n "$target_zitadel" ]; then
+        # Nothing tells which version last set this database up; setup is idempotent.
+        printf 'zitadel_setup\tzitadel-api\tunknown\t%s\tAPI container missing next to its database\n' \
+            "$target_zitadel"
     elif [ "$current_zitadel" != "$target_zitadel" ]; then
         mp_classify zitadel zitadel-api "$current_zitadel" "$target_zitadel"
     else

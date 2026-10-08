@@ -163,18 +163,11 @@ const TEMPLATE_META: Record<string, VirtualTemplateMeta> = {
         categoryKey: 'energy',
         cardProfile: 'meter',
         sort: 160
-    },
-    custom_blank: {
-        label: 'Custom',
-        hint: 'Pick any parts manually',
-        icon: 'fas fa-layer-group',
-        accent: 'generic',
-        categoryKey: 'custom',
-        cardProfile: 'custom',
-        sort: 1000
     }
 };
 
+/** The one definition of the free-form option. The seeded `custom_blank`
+ *  profile it supersedes is never listed, so it needs no meta entry. */
 export const MANUAL_TEMPLATE: VirtualTemplateMeta = {
     label: 'Custom',
     hint: 'Pick any parts manually',
@@ -226,7 +219,9 @@ export function sortedProfiles(
 ): VirtualDeviceProfile[] {
     return [...profiles].sort((a, b) => {
         const bySort = templateMeta(a).sort - templateMeta(b).sort;
-        return bySort || templateMeta(a).label.localeCompare(templateMeta(b).label);
+        return (
+            bySort || templateMeta(a).label.localeCompare(templateMeta(b).label)
+        );
     });
 }
 
@@ -238,7 +233,9 @@ export function roleMatchesCandidate(
     const component = candidate.componentType.toLowerCase();
     const key = candidate.componentKey.toLowerCase();
     const metadata = role.metadata as Record<string, unknown> | undefined;
-    const wanted = stringMeta(metadata, 'componentType') ?? stringMeta(metadata, 'objName');
+    const wanted =
+        stringMeta(metadata, 'componentType') ??
+        stringMeta(metadata, 'objName');
     if (wanted && candidateMatches(component, key, wanted)) return true;
     if (roleText.includes('open') || roleText.includes('door')) {
         return ['window', 'door', 'garage_door'].some((term) =>
@@ -248,15 +245,21 @@ export function roleMatchesCandidate(
     if (roleText.includes('light') || roleText.includes('actuator')) {
         return component.includes('switch') || component.includes('relay');
     }
-    if (roleText.includes('temperature')) return component.includes('temperature');
+    if (roleText.includes('temperature'))
+        return component.includes('temperature');
     if (roleText.includes('humidity')) return component.includes('humidity');
     if (roleText.includes('co2')) return component.includes('co2');
     if (roleText.includes('tvoc')) return component.includes('tvoc');
     if (roleText.includes('pressure')) return component.includes('pressure');
     if (roleText.includes('rain')) {
-        return component.includes('rain') || component.includes('precipitation');
+        return (
+            component.includes('rain') || component.includes('precipitation')
+        );
     }
-    if (roleText.includes('occupancy')) return component.includes('occupancy') || component.includes('presence');
+    if (roleText.includes('occupancy'))
+        return (
+            component.includes('occupancy') || component.includes('presence')
+        );
     if (roleText.includes('motion')) return component.includes('motion');
     if (roleText.includes('power')) {
         return component.includes('power') || key.includes('apower');
@@ -268,9 +271,11 @@ export function roleMatchesCandidate(
     if (roleText.includes('battery')) return component.includes('battery');
     if (roleText.includes('tamper')) return component.includes('tamper');
     if (roleText.includes('lock')) return component.includes('lock');
-    if (roleText.includes('button')) return component.includes('button') || component.includes('input');
+    if (roleText.includes('button'))
+        return component.includes('button') || component.includes('input');
     if (roleText.includes('gas')) return component.includes('gas');
-    if (roleText.includes('carbon monoxide')) return component.includes('carbon_monoxide');
+    if (roleText.includes('carbon monoxide'))
+        return component.includes('carbon_monoxide');
     if (roleText.includes('alarm')) {
         return ['smoke', 'flood', 'gas', 'motion', 'presence'].some((term) =>
             component.includes(term)
@@ -302,6 +307,10 @@ function stringMeta(
         : null;
 }
 
-function candidateMatches(component: string, key: string, wanted: string): boolean {
+function candidateMatches(
+    component: string,
+    key: string,
+    wanted: string
+): boolean {
     return component.includes(wanted) || key.includes(wanted);
 }

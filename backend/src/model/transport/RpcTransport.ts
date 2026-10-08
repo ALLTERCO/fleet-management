@@ -10,6 +10,7 @@ import type {
     ShellyMessageUnsafe,
     ShellyResponseCallback
 } from '../../types';
+import type {DeviceSource} from '../../types/api/deviceSource';
 import {ShellyDeviceEmitter} from '../TypedEventEmitter';
 
 const logger = log4js.getLogger();
@@ -29,11 +30,13 @@ interface StoredMessage {
 export default abstract class RpcTransport {
     #shellyMessageMap = new Map<number, StoredMessage>();
     #uniqueID = 0;
+    #destroyed = false;
     #intervalId: NodeJS.Timeout;
     protected _messageListeners: ShellyResponseCallback[] = [];
     protected _eventEmitter: ShellyDeviceEmitter;
 
-    public abstract readonly name: string;
+    // Shown to callers as the device's `source`, so a rename here is public.
+    public abstract readonly name: DeviceSource;
     // shellyID once known; lets slow-command timings name the device.
     public deviceLabel = '';
 
@@ -88,6 +91,14 @@ export default abstract class RpcTransport {
         emitMessage = false,
         signal?: AbortSignal
     ) {
+        // ws.send() after close is a silent no-op and destroy() stopped the
+        // stale sweeper, so a slot registered now would never settle.
+        if (this.#destroyed) {
+            Observability.incrementLabeledCounter('device_rpc_rejected_total', {
+                reason: 'transport-destroyed'
+            });
+            return Promise.reject(RpcError.Timeout());
+        }
         if (signal?.aborted) {
             return Promise.reject(signal.reason ?? new Error('aborted'));
         }
@@ -235,6 +246,7 @@ export default abstract class RpcTransport {
     }
 
     public destroy() {
+        this.#destroyed = true;
         const error = RpcError.Timeout();
         for (const handler of this.#shellyMessageMap.values()) {
             handler.cleanup?.();

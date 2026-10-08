@@ -29,7 +29,7 @@
         </template>
     </CardShell>
 
-    <!-- 2x1 — glyph + Open/Closed hero, columns: Lux · Tilt · Battery -->
+    <!-- 2x1 — glyph + Open/Closed hero, columns: Light · Tilt · Opens · RSSI -->
     <CardShell
         v-else-if="size === '2x1'"
         type="door"
@@ -55,16 +55,17 @@
                     <div role="status" class="ec-sensor-hero" :class="stateClass">{{ stateText }}</div>
                 </div>
                 <div class="ec-wr">
-                    <div class="door-vals">
+                    <div v-if="cols.length" class="door-vals">
                         <div v-for="col in cols" :key="col.label" class="door-val">
-                            <div class="ec-wide-col-v" :class="{'ec-wide-col-v--text': col.text}">{{ col.value }}<span v-if="col.unit" class="ec-wide-col-u" :class="{'ec-wide-col-u--sup': col.unit === '°'}">{{ col.unit }}</span></div>
+                            <div class="ec-wide-col-v" :class="{'ec-wide-col-v--text': col.text}">{{ col.value }}<span v-if="col.unit" class="ec-u" :class="{'ec-u--sup': col.unit === '°'}">{{ col.unit }}</span></div>
+                            <div class="ec-wide-col-l">{{ col.label }}</div>
                         </div>
                     </div>
                 </div>
             </div>
         </template>
         <template #badges>
-            <CardBadges :is-offline="isOffline" :shelly-id="entity.source" />
+            <CardBadges :is-offline="isOffline" :battery="battery" :shelly-id="entity.source" />
         </template>
     </CardShell>
 
@@ -93,12 +94,12 @@
                 <div role="status" class="ec-hero-top-v door-hero-state" :class="stateClass">{{ stateText }}</div>
                 <div v-if="lastSeen" class="ec-hero-top-u">{{ lastSeen }}</div>
             </div>
-            <div class="ec-hero-cols">
+            <div v-if="cols.length" class="ec-hero-cols">
                 <div v-for="col in cols" :key="col.label" class="ec-hero-col">
-                    <div class="ec-hero-col-v" :class="{'ec-hero-col-v--text': col.text}">{{ col.value }}<span v-if="col.unit" class="door-hero-unit" :class="{'door-hero-unit--sup': col.unit === '°'}">{{ col.unit }}</span></div>
+                    <div class="ec-hero-col-v" :class="{'ec-hero-col-v--text': col.text}">{{ col.value }}<span v-if="col.unit" class="ec-u" :class="{'ec-u--sup': col.unit === '°'}">{{ col.unit }}</span></div>
                 </div>
             </div>
-            <div class="ec-hero-info">
+            <div v-if="heroStats.length" class="ec-hero-info">
                 <div v-for="s in heroStats" :key="s.label" class="ec-hero-stat">
                     <div class="ec-hero-stat-v" :class="{'ec-hero-stat-v--compact': s.value.length > 6}">{{ s.value }}</div>
                     <div class="ec-hero-stat-l">{{ s.label }}</div>
@@ -126,7 +127,9 @@ import {
     deviceRssi,
     deviceTilt
 } from '@/helpers/deviceReadings';
+import {presentStats} from '@/helpers/powerMetrics';
 import {allowedSizesForEntity} from '@/helpers/widgetCatalog';
+import {useSensorActivationsToday} from '@/composables/useSensorHistory';
 import {useDevicesStore} from '@/stores/devices';
 import {useEntityStore} from '@/stores/entities';
 import type {entity_t} from '@/types';
@@ -189,32 +192,46 @@ function fmtLux(v: number): string {
     return String(v);
 }
 
-// Real sibling readings (Light + Tilt are separate BLU sensors on the same
-// device). Light is lux on the old DW (SBDW-002C) and a 3-state level
-// (dark/twilight/bright) on the ZB DW and newer sensors — show whichever the
-// device reports. `text` marks a word value so the column can size it to fit.
+const battery = computed(() =>
+    deviceBatteryPercent(device.value, getEntity)
+);
+
+// Opens since local midnight, from device_sensor.events via Sensor.Events.
+const opensToday = useSensorActivationsToday(
+    computed(() => props.entity),
+    isOpen
+);
+
+// Wide-card readings, all live:
+//   Light + Tilt — sibling BLU sensors on the same device. Light is lux on the
+//     old DW (SBDW-002C) and a 3-state level on the ZB DW and newer sensors.
+//   Opens — Sensor.Events count since midnight.
+//   RSSI — wifi.rssi, or the gateway's measurement of this BLU device.
+// Battery is not here: the badge carries it. `text` marks a word value so the
+// column can size it to fit. A reading the device does not send is dropped, so
+// no "—°" or "— %".
 const cols = computed<
     {label: string; value: string; unit?: string; text?: boolean}[]
 >(() => {
     const lux = deviceLux(device.value, getEntity);
     const level = deviceLightLevel(device.value, getEntity);
     const tilt = deviceTilt(device.value, getEntity);
-    const battery = deviceBatteryPercent(device.value, getEntity);
+    const rssi = deviceRssi(device.value);
     const light =
         lux !== null
             ? {label: 'Light', value: fmtLux(lux), unit: 'lx'}
             : level !== null
               ? {label: 'Light', value: getLightLevelLabel(level), text: true}
               : {label: 'Light', value: '—'};
-    return [
+    return presentStats([
         light,
         {label: 'Tilt', value: tilt !== null ? String(tilt) : '—', unit: '°'},
         {
-            label: 'Battery',
-            value: battery !== null ? String(battery) : '—',
-            unit: '%'
-        }
-    ];
+            label: 'Opens',
+            value: opensToday.value !== null ? String(opensToday.value) : '—'
+        },
+        {label: 'RSSI', value: rssi !== null ? String(rssi) : '—', unit: 'dBm'}
+    ]);
 });
 
 const lastSeen = computed(() => deviceLastSeen(device.value));
@@ -248,15 +265,19 @@ function formatLastOpen(tsSeconds: number | null): string | null {
     return `${date} ${time}`;
 }
 
-// Bottom stats. RSSI and Last Open come from the device status; Opens Today has
-// no source yet (a since-midnight count needs backend history), so it reads '—'.
+// Bottom stats — all live: Opens Today from Sensor.Events, Last Open from the
+// device status, RSSI from wifi.rssi / the gateway's BLU measurement.
 const heroStats = computed(() => {
     const rssi = deviceRssi(device.value);
-    return [
-        {value: '—', label: 'Opens Today'},
+    return presentStats([
+        {
+            value:
+                opensToday.value !== null ? String(opensToday.value) : '—',
+            label: 'Opens Today'
+        },
         {value: formatLastOpen(lastOpenTs.value) ?? '—', label: 'Last Open'},
         {value: rssi !== null ? String(rssi) : '—', label: 'RSSI'}
-    ];
+    ]);
 });
 
 // Custom door glyph. Closed = a shut panel; open = the door swung ajar (drawn
@@ -360,6 +381,8 @@ const DoorGlyph = (p: {open: boolean; size: number}) =>
 }
 .door-val {
     display: flex;
+    flex-direction: column;
+    align-items: center;
     justify-content: center;
 }
 /* Word light levels (Dark/Twilight/Bright) don't fit the big numeric size —
@@ -368,16 +391,6 @@ const DoorGlyph = (p: {open: boolean; size: number}) =>
     font-size: clamp(14px, 7cqi, 20px);
     white-space: nowrap;
 }
-/* Breathing room between the value and a word unit (lx, %). */
-.ec-wide-col-u {
-    margin-left: var(--space-1);
-}
-/* Degree sits raised at the top, tight to the number (e.g. 45°). */
-.ec-wide-col-u--sup {
-    margin-left: 0;
-    vertical-align: top;
-}
-
 /* 2x2: glyph + state stacked at the top; state text sized to sit under the
    glyph rather than fill the card. */
 .door-hero-top {
@@ -393,16 +406,6 @@ const DoorGlyph = (p: {open: boolean; size: number}) =>
     font-size: var(--type-heading);
 }
 /* 2x2 value units: space a word unit (lx, %), raise the degree. */
-.door-hero-unit {
-    margin-left: var(--space-1);
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
-    -webkit-text-fill-color: var(--color-text-secondary);
-}
-.door-hero-unit--sup {
-    margin-left: 0;
-    vertical-align: top;
-}
 /* 2x2 word light level — smaller than the big numeric value so it fits. */
 .ec-hero-col-v--text {
     font-size: var(--type-body);

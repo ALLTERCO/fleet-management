@@ -3,7 +3,9 @@ import type express from 'express';
 import {tuning} from '../../../config';
 import type CommandSender from '../../../model/CommandSender';
 import type {ComponentName, CrudOperation} from '../../../model/permissions';
+import type {AuthFailure} from '../../../types';
 import type {FleetRole} from '../../../types/api/authzCatalog';
+import {AuthContextRejectedError} from '../../authn/ExternalTokenUserResolver';
 import {
     canPerformComponentOperationAsync,
     isComponentPermissionAllowed
@@ -63,18 +65,43 @@ function acceptsHtml(req: express.Request): boolean {
     return (req.get('accept') ?? '').includes('text/html');
 }
 
+interface ForbiddenBody {
+    error: {code: number; message: string};
+    code?: 'AUTH_ORG_MISMATCH';
+}
+
+// A wrong-organisation token carries a stable code so the tenant UI can name
+// the reason instead of bouncing the person back to /login.
+function forbiddenBody(req: express.Request): ForbiddenBody {
+    const body: ForbiddenBody = {
+        error: {code: -32000, message: 'Forbidden'}
+    };
+    if (req.authFailure === 'org_mismatch') body.code = 'AUTH_ORG_MISMATCH';
+    return body;
+}
+
+/** The reason recorded when resolving a presented token threw. */
+export function authFailureFor(error: unknown): AuthFailure {
+    return error instanceof AuthContextRejectedError
+        ? error.reason
+        : 'unavailable';
+}
+
 export function isLoggedIn(
     req: express.Request,
     res: express.Response,
     next: express.NextFunction
 ) {
     const result = checkAuth(req);
-    if (result === 'no_token') {
+    if (
+        result === 'no_token' ||
+        (result === 'unauthorized_user' && req.authFailure !== 'org_mismatch')
+    ) {
         res.status(401).json({error: {code: -32000, message: 'Unauthorized'}});
         return;
     }
     if (result === 'unauthorized_user') {
-        res.status(403).json({error: {code: -32000, message: 'Forbidden'}});
+        res.status(403).json(forbiddenBody(req));
         return;
     }
     next();

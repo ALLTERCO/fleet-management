@@ -1,3 +1,4 @@
+<!-- audience: public -->
 # RPC Relay
 
 Fleet manager can also be used a RPC relay. If Fleet Manager sees that the `dst` key of the incoming JSON-RPC request is a shelly device, Fleet Manager will forward the message to the shelly device. When the shelly device responds, the response will be forwarded to the sender. Below are some examples of use cases:

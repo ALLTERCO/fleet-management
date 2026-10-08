@@ -6,7 +6,9 @@ const ALLOWED_TRANSITIONS: Record<
     readonly DeviceIngressCredentialState[]
 > = {
     active: ['pending', 'expired', 'revoked', 'superseded'],
-    pending: ['active', 'expired', 'revoked'],
+    // A finalize now supersedes every older active-or-pending key of the
+    // identity, not only the active one (see activatePendingCredential).
+    pending: ['active', 'expired', 'revoked', 'superseded'],
     expired: ['revoked'],
     revoked: [],
     superseded: ['revoked']

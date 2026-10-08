@@ -1,8 +1,9 @@
-import maplibregl, {type Map as MapLibreMap} from 'maplibre-gl';
+import {Map as MapLibreMap, NavigationControl} from 'maplibre-gl';
 import type {Ref} from 'vue';
 import {onBeforeUnmount, onMounted, ref, shallowRef} from 'vue';
 import {getMapStyleUrl} from '@/helpers/map-style';
 import {applyAppleMapsTint} from '@/helpers/map-tint';
+import {configureMapLibreWorker} from '@/helpers/maplibre';
 import {hasWebGL} from '@/helpers/webgl';
 import {DEFAULT_VIEWPORT, type MapViewport} from '@/types/map';
 
@@ -42,7 +43,8 @@ export function useMapInstance(
             return;
         }
         try {
-            const instance = new maplibregl.Map({
+            configureMapLibreWorker();
+            const instance = new MapLibreMap({
                 container: container.value,
                 style: getMapStyleUrl(),
                 center: [initial.longitude, initial.latitude],
@@ -54,7 +56,7 @@ export function useMapInstance(
 
             if (showNavControl) {
                 instance.addControl(
-                    new maplibregl.NavigationControl({visualizePitch: true}),
+                    new NavigationControl({visualizePitch: true}),
                     'top-right'
                 );
             }
@@ -73,9 +75,9 @@ export function useMapInstance(
             // OpenFreeMap dark style references Maki icons (circle-11 etc.)
             // that aren't always in its sprite sheet — supply a 1px
             // transparent stub so MapLibre stops warning per missing icon.
-            instance.on('styleimagemissing', (e) => {
-                if (instance.hasImage(e.id)) return;
-                instance.addImage(e.id, MISSING_ICON_STUB, {pixelRatio: 1});
+            instance.setMissingStyleImageResolver((id) => {
+                if (instance.hasImage(id)) return;
+                instance.addImage(id, MISSING_ICON_STUB, {pixelRatio: 1});
             });
 
             map.value = instance;

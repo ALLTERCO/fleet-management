@@ -25,25 +25,35 @@ export interface AlertPayloadRow {
     last_triggered_at: string;
 }
 
+export interface AlertPresentationSettings {
+    locale: string;
+    timeZone: string;
+}
+
 type SubjectType = NonNullable<DeliveryPayload['source']>['subjectType'];
 
 export function buildAlertPayload(
     rule: AlertPayloadRule,
-    row: AlertPayloadRow
+    row: AlertPayloadRow,
+    presentation?: AlertPresentationSettings
 ): DeliveryPayload {
-    const base = buildBasePayload(rule, row);
+    const base = buildBasePayload(rule, row, presentation);
     return applyRuleTemplates(base, rule);
 }
 
 function buildBasePayload(
     rule: AlertPayloadRule,
-    row: AlertPayloadRow
+    row: AlertPayloadRow,
+    presentation?: AlertPresentationSettings
 ): DeliveryPayload {
+    const context = contextRecord(row.context);
     return {
         title: row.title,
-        message: row.message,
+        message: clearedMessage(row.state, context) ?? row.message,
         severity: row.severity,
         organizationId: row.organization_id,
+        locale: presentation?.locale,
+        timeZone: presentation?.timeZone,
         alertId: row.id,
         ruleId: rule.id,
         ruleName: rule.name,
@@ -54,11 +64,33 @@ function buildBasePayload(
         activeSince: row.active_since,
         source: {
             subjectType: row.source_subject_type as SubjectType,
-            subjectId: row.source_subject_id
+            subjectId:
+                row.source_subject_type === 'device' &&
+                typeof context?.shellyID === 'string'
+                    ? context.shellyID
+                    : row.source_subject_id
         },
-        labels: labelsFromContext(row.context),
-        context: contextRecord(row.context)
+        labels: labelsFromContext(context),
+        context
     };
+}
+
+const CLEARED_STATES: ReadonlySet<string> = new Set([
+    'resolved',
+    'cleared_unack',
+    'cleared_ack'
+]);
+
+// The row keeps the text of its open; a clear stores its own reading beside it.
+function clearedMessage(
+    state: string,
+    context: Record<string, unknown> | undefined
+): string | undefined {
+    if (!CLEARED_STATES.has(state)) return undefined;
+    const message = contextRecord(
+        context?.cleared as Record<string, unknown> | undefined
+    )?.message;
+    return typeof message === 'string' ? message : undefined;
 }
 
 function labelsFromContext(

@@ -43,6 +43,8 @@ export interface HttpRoute {
         | 'requiresAuditView'
         | 'requiresObservabilityAuth'
         | 'device-gui-session'
+        | 'node-red-editor-session'
+        | 'mcp-credential'
         | 'route-permission'
         | 'public'
         | 'unknown';
@@ -112,6 +114,11 @@ function authModelFromMiddleware(chain: string[]): HttpRoute['authModel'] {
     if (joined.includes('requiresAuditView')) return 'requiresAuditView';
     if (joined.includes('requireObsAuth')) return 'requiresObservabilityAuth';
     if (joined.includes('requireDeviceGuiSession')) return 'device-gui-session';
+    // Bearer header with a credential issued for MCP; sessions are refused.
+    if (joined.includes('requireMcpBearer')) return 'mcp-credential';
+    // Bearer login, or the Node-RED editor session cookie on its own paths.
+    if (joined.includes('authenticateNodeRedRequest'))
+        return 'node-red-editor-session';
     // rpcBodyAuth wraps isLoggedIn with a DEV_MODE bypass for the auth
     // bootstrap methods — classify it alongside isLoggedIn.
     if (joined.includes('isLoggedIn') || joined.includes('rpcBodyAuth'))
@@ -212,6 +219,10 @@ export function generate(): HttpInventory {
     > = {
         'backend/src/modules/web/routes/api.ts': {
             prefix: '/api',
+            middleware: []
+        },
+        'backend/src/modules/web/routes/automationHooks.ts': {
+            prefix: '/automation-hooks',
             middleware: []
         },
         'backend/src/modules/web/routes/auditDownload.ts': {

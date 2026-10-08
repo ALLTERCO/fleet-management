@@ -172,17 +172,9 @@ const search = defineModel<string>('search', {default: ''});
     color: var(--color-text-primary);
     border-color: var(--color-primary);
 }
-/* Size the tab switch to its content — compact for two tabs, wide enough to
-   stay readable for many — instead of the fluid stretch (overlapped the search)
-   or the 320px cap (squished 5 tabs). The buttons stay equal-width. */
-.route-tabs {
-    width: fit-content;
-    max-width: none;
-    overflow: visible;
-}
 /* Tab buttons clip their content by default; allow the badge to escape so it
    can sit outside the tab switch like the sidebar nav-badge. */
-.route-tabs__btn {
+.pt-toolbar :deep(.route-tabs__btn) {
     overflow: visible;
 }
 
@@ -223,14 +215,5 @@ const search = defineModel<string>('search', {default: ''});
     .pt-toolbar__right {
         justify-content: flex-start;
     }
-}
-</style>
-
-<style>
-/* Reaches RouteTabs' buttons rendered inside the toolbar slot — plain
-   block instead of scoped :deep (opaque to the CSS linter). */
-.pt-toolbar .route-tabs__btn {
-    padding: 0 var(--gap-lg);
-    font-size: var(--type-body);
 }
 </style>

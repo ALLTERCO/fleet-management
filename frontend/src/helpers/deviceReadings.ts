@@ -2,6 +2,62 @@
 // doesn't re-implement them. The battery CARD resolves its own precise value
 // (addr-matched); these are the health readings other cards show as a stat.
 
+// Decimals belong to the quantity, not the card. Values follow the resolution
+// the device actually reports, per the Shelly docs.
+
+// For quantities a unit cannot tell apart: "mm" is both rain and distance.
+const DECIMALS_BY_QUANTITY: Record<string, number> = {uv: 1, rain: 1};
+
+const DECIMALS_BY_UNIT: Record<string, number> = {
+    '°C': 1,
+    '°F': 1,
+    '%': 0,
+    lux: 0,
+    hPa: 0,
+    V: 2,
+    A: 2,
+    W: 0,
+    Wh: 0,
+    kWh: 1,
+    'm/s': 1,
+    mm: 0,
+    '°': 0,
+    kg: 1,
+    lb: 1,
+    ppm: 0,
+    'ug/m3': 0
+};
+
+/** Decimals for a reading, or null when no rule covers it. */
+export function readingDecimals(
+    unit?: string,
+    quantity?: string
+): number | null {
+    if (quantity && quantity in DECIMALS_BY_QUANTITY) {
+        return DECIMALS_BY_QUANTITY[quantity];
+    }
+    // BTHome sends both "°C" (obj 2) and "° C" (obj 69) for the same quantity.
+    const key = (unit ?? '').replace(/\s+/g, '');
+    return key in DECIMALS_BY_UNIT ? DECIMALS_BY_UNIT[key] : null;
+}
+
+/** Format a reading at its quantity's precision. */
+export function formatReading(
+    value: unknown,
+    unit?: string,
+    quantity?: string
+): string {
+    if (value === null || value === undefined) return '—';
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        return String(value);
+    }
+    const decimals = readingDecimals(unit, quantity);
+    if (decimals === null) {
+        return Number.isInteger(value) ? String(value) : value.toFixed(1);
+    }
+    return value.toFixed(decimals);
+}
+
 interface DeviceLike {
     status?: Record<string, any>;
     entities?: string[];

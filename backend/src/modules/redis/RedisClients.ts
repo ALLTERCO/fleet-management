@@ -2,6 +2,12 @@
 //
 // Connection roles are kept separate on purpose:
 //   - cmd      request-path commands, cache, gates (fast, non-blocking)
+//   - coordination
+//              safety-critical ownership leases, isolated from request traffic
+//   - durableWrite
+//              append-only data that must not compete with replaceable state
+//   - telemetryWrite
+//              replaceable snapshots and live status
 //   - sub      pub/sub subscriber (cannot run normal commands)
 //   - *Blocking one per XREADGROUP BLOCK loop, so a blocking read never
 //              queues ahead of request-path commands on a shared connection.
@@ -10,6 +16,8 @@ import log4js from 'log4js';
 import {tuning} from '../../config';
 
 const logger = log4js.getLogger('redis-clients');
+
+const RETRY_STEP_MS = 200;
 
 export interface RedisClientsOptions {
     url: string;
@@ -21,6 +29,16 @@ export interface RedisClientTuning {
     subBackoffMaxMs: number;
 }
 
+// +-25% jitter so clients across tenants do not reconnect in lockstep.
+export function redisRetryDelayMs(
+    times: number,
+    backoffMaxMs: number,
+    random: number = Math.random()
+): number {
+    const base = Math.min(times * RETRY_STEP_MS, backoffMaxMs);
+    return Math.max(1, Math.round(base * (0.75 + random * 0.5)));
+}
+
 export function buildRedisBaseOptions(
     settings: RedisClientTuning
 ): RedisOptions {
@@ -29,7 +47,7 @@ export function buildRedisBaseOptions(
         enableReadyCheck: false,
         connectTimeout: settings.connectTimeoutMs,
         retryStrategy: (times) =>
-            Math.min(times * 200, settings.subBackoffMaxMs)
+            redisRetryDelayMs(times, settings.subBackoffMaxMs)
     };
     if (settings.commandTimeoutMs > 0) {
         options.commandTimeout = settings.commandTimeoutMs;
@@ -58,12 +76,16 @@ export function buildBlockingDuplicateOverride(): Partial<RedisOptions> {
 
 export class RedisClients {
     readonly cmd: Redis;
+    readonly coordination: Redis;
+    readonly durableWrite: Redis;
+    readonly telemetryWrite: Redis;
     readonly sub: Redis;
     readonly statusBlocking: Redis;
     readonly snapshotBlocking: Redis;
     readonly deviceEventBlocking: Redis;
     readonly auditBlocking: Redis;
     readonly emSyncBlocking: Redis;
+    readonly sensorCaptureBlocking: Redis;
     readonly #url: string;
 
     constructor(options: RedisClientsOptions) {
@@ -74,6 +96,9 @@ export class RedisClients {
             ...baseOpts,
             maxRetriesPerRequest: tuning.redis.cmdRetriesMax
         });
+        this.coordination = this.#makeCommand(baseOpts, 'coordination');
+        this.durableWrite = this.#makeCommand(baseOpts, 'durable-write');
+        this.telemetryWrite = this.#makeCommand(baseOpts, 'telemetry-write');
         this.sub = new Redis(this.#url, {
             ...baseOpts,
             // Pub/Sub commands ignore retries; subscribe must not throw mid-reconnect.
@@ -88,10 +113,24 @@ export class RedisClients {
         );
         this.auditBlocking = this.#makeBlocking(blockOpts, 'audit');
         this.emSyncBlocking = this.#makeBlocking(blockOpts, 'em-sync');
+        this.sensorCaptureBlocking = this.#makeBlocking(
+            blockOpts,
+            'sensor-capture'
+        );
         this.cmd.on('error', (err) => logger.warn('cmd error: %s', err));
         this.sub.on('error', (err) => logger.warn('sub error: %s', err));
         this.cmd.on('reconnecting', () => logger.info('cmd reconnecting'));
         this.sub.on('reconnecting', () => logger.info('sub reconnecting'));
+    }
+
+    #makeCommand(opts: RedisOptions, label: string): Redis {
+        const client = new Redis(this.#url, {
+            ...opts,
+            maxRetriesPerRequest: tuning.redis.cmdRetriesMax
+        });
+        client.on('error', (err) => logger.warn('%s error: %s', label, err));
+        client.on('reconnecting', () => logger.info('%s reconnecting', label));
+        return client;
     }
 
     #makeBlocking(opts: RedisOptions, label: string): Redis {
@@ -108,12 +147,16 @@ export class RedisClients {
     async disconnect(): Promise<void> {
         await Promise.allSettled([
             this.cmd.quit(),
+            this.coordination.quit(),
+            this.durableWrite.quit(),
+            this.telemetryWrite.quit(),
             this.sub.quit(),
             this.statusBlocking.quit(),
             this.snapshotBlocking.quit(),
             this.deviceEventBlocking.quit(),
             this.auditBlocking.quit(),
-            this.emSyncBlocking.quit()
+            this.emSyncBlocking.quit(),
+            this.sensorCaptureBlocking.quit()
         ]);
     }
 }
@@ -156,16 +199,25 @@ export async function shutdownSharedRedis(): Promise<void> {
 export function setSharedRedisForTests(
     cmd: unknown,
     sub: unknown,
-    blocking: unknown = cmd
+    blocking: unknown = cmd,
+    writeClients: {
+        durable?: unknown;
+        telemetry?: unknown;
+        coordination?: unknown;
+    } = {}
 ): void {
     shared = {
         cmd,
+        coordination: writeClients.coordination ?? cmd,
+        durableWrite: writeClients.durable ?? cmd,
+        telemetryWrite: writeClients.telemetry ?? cmd,
         sub,
         statusBlocking: blocking,
         snapshotBlocking: blocking,
         deviceEventBlocking: blocking,
         auditBlocking: blocking,
         emSyncBlocking: blocking,
+        sensorCaptureBlocking: blocking,
         disconnect: async () => {}
     } as unknown as RedisClients;
 }

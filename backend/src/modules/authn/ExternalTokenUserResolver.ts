@@ -26,8 +26,15 @@ import {
 import {userHasPresenceInTenant} from '../user/tokenStore';
 import {truncateErrorForLog} from '../util/truncateErrorForLog';
 import {withTimeout} from '../util/withTimeout';
-import {buildAuthenticatedIdentity} from './TokenAuthenticator';
-import {assertFleetTokenBinding} from './TokenBinding';
+import {
+    buildAuthenticatedIdentity,
+    readEmailClaims
+} from './TokenAuthenticator';
+import {
+    assertFleetTokenBinding,
+    classifyTokenClient,
+    type TokenClient
+} from './TokenBinding';
 
 const logger = getLogger('authn');
 const ZITADEL_STRATEGY = 'zitadel-introspection';
@@ -39,6 +46,10 @@ export async function authenticateExternalOidcToken(
     token: string
 ): Promise<user_t | undefined> {
     const startedAt = performance.now();
+    Observability.setGauge(
+        'auth_inflight',
+        Observability.getGauge('auth_inflight') + 1
+    );
     // Captured before the Zitadel round-trip: a revoke that evicts the cache
     // mid-introspection bumps this, fencing off the late write.
     const evictionGeneration = currentEvictionGeneration();
@@ -53,6 +64,10 @@ export async function authenticateExternalOidcToken(
             'zitadel-introspection'
         );
     } finally {
+        Observability.setGauge(
+            'auth_inflight',
+            Math.max(0, Observability.getGauge('auth_inflight') - 1)
+        );
         Observability.noteRpcCompletion({
             method: 'Auth.Introspect',
             ms: performance.now() - startedAt,
@@ -65,11 +80,13 @@ function runIntrospection(
     token: string,
     evictionGeneration: number
 ): Promise<user_t | undefined> {
+    const startedAt = performance.now();
     return new Promise<user_t | undefined>((resolve, reject) => {
         passport.authenticate(
             ZITADEL_STRATEGY,
             {session: false},
             async (err: Error, claims: Record<string, unknown>) => {
+                noteAuthPhase('Auth.IdpIntrospection', startedAt);
                 try {
                     const result = await resolveIntrospectionResult({
                         token,
@@ -137,32 +154,47 @@ async function buildUserFromClaims(
     evictionGeneration: number
 ): Promise<user_t | undefined> {
     try {
-        const userinfo = await fetchUserinfoWithCache(token);
+        const userinfo = await measureAuthPhase('Auth.Userinfo', () =>
+            fetchUserinfoWithCache(token)
+        );
         const identity = buildAuthenticatedIdentity({claims, userinfo});
-        const organizationId = await resolveTrustedOrganization({
-            claims,
-            userinfo,
-            userId: identity.userId
-        });
+        const organizationId = await measureAuthPhase('Auth.Organization', () =>
+            resolveTrustedOrganization({
+                claims,
+                userinfo,
+                userId: identity.userId
+            })
+        );
         const topology = getDeploymentTopology();
-        const fleetProjectId =
-            await identityDirectory.getDeploymentRoleScopeId();
+        const fleetProjectId = await measureAuthPhase('Auth.ProjectScope', () =>
+            identityDirectory.getDeploymentRoleScopeId()
+        );
 
-        assertProjectBinding({
+        const bound = projectBindingHolds({
             claims,
             userinfo,
             userId: identity.userId,
             organizationId,
             fleetProjectId
         });
+        if (!bound) return undefined;
+        const tokenClient = classifyTokenClient(claims);
+        if (tokenClient.kind === 'refused') {
+            return rejectTokenClient(token, {
+                userId: identity.userId,
+                reason: tokenClient.reason
+            });
+        }
 
-        const roleContext = await resolveRoles({
-            claims,
-            userinfo,
-            userId: identity.userId,
-            organizationId,
-            fleetProjectId
-        });
+        const roleContext = await measureAuthPhase('Auth.Roles', () =>
+            resolveRoles({
+                claims,
+                userinfo,
+                userId: identity.userId,
+                organizationId,
+                fleetProjectId
+            })
+        );
         const mapped = mapRolesToPermissions(roleContext.roles);
 
         logSuccessfulAuthentication({
@@ -192,7 +224,9 @@ async function buildUserFromClaims(
             isPlatformAdmin: roleContext.isPlatformAdmin,
             userId: identity.userId,
             displayName: identity.displayName,
-            mfaPresent: identity.mfaPresent
+            ...readEmailClaims({claims, userinfo}),
+            mfaPresent: identity.mfaPresent,
+            ...mcpOAuthCredential(tokenClient, identity.expiresAt)
         };
 
         cacheAuthenticatedUser(
@@ -210,6 +244,26 @@ async function buildUserFromClaims(
         Observability.incrementCounter('auth_transient_errors');
         throw error;
     }
+}
+
+async function measureAuthPhase<T>(
+    method: string,
+    operation: () => Promise<T>
+): Promise<T> {
+    const startedAt = performance.now();
+    try {
+        return await operation();
+    } finally {
+        noteAuthPhase(method, startedAt);
+    }
+}
+
+function noteAuthPhase(method: string, startedAt: number): void {
+    Observability.noteRpcCompletion({
+        method,
+        ms: performance.now() - startedAt,
+        senderType: 'user'
+    });
 }
 
 interface TrustedOrganizationInput {
@@ -265,13 +319,15 @@ interface ProjectBindingInput {
     fleetProjectId: string;
 }
 
-function assertProjectBinding({
+// A token bound to another project is a bad token, not an outage: the caller
+// answers it as unauthenticated.
+function projectBindingHolds({
     claims,
     userinfo,
     userId,
     organizationId,
     fleetProjectId
-}: ProjectBindingInput): void {
+}: ProjectBindingInput): boolean {
     const topology = getDeploymentTopology();
     const tenantPinnedToken =
         topology.clientOrgId !== undefined &&
@@ -284,6 +340,7 @@ function assertProjectBinding({
         assertFleetTokenBinding(claims, userinfo, fleetProjectId, {
             allowMissingProjectBinding: tenantPinnedToken || platformOrgToken
         });
+        return true;
     } catch (error) {
         logger.warn(
             '%s (sub=%s, project=%s); rejecting',
@@ -292,8 +349,43 @@ function assertProjectBinding({
             fleetProjectId
         );
         Observability.incrementCounter('auth_failures');
-        throw error;
+        return false;
     }
+}
+
+// The client is read from the introspection answer alone, so the refusal is
+// final for this token.
+function rejectTokenClient(
+    token: string,
+    refusal: {userId: string; reason: string}
+): undefined {
+    logger.warn(
+        'Token issued to a client Fleet does not accept (%s, sub=%s); rejecting',
+        refusal.reason,
+        refusal.userId
+    );
+    Observability.incrementCounter('auth_failures');
+    markTokenRejected(token);
+    return undefined;
+}
+
+// A browser login for MCP is confined like an MCP key: its audience names the
+// level, the client id stands in for the key id, and streams end at its expiry.
+function mcpOAuthCredential(
+    client: TokenClient,
+    expiresAtSec: number | undefined
+): Pick<
+    user_t,
+    'credentialAudience' | 'credentialClientId' | 'credentialExpiresAtMs'
+> {
+    if (client.kind !== 'mcp') return {};
+    return {
+        credentialAudience: [`mcp:${client.level}`],
+        credentialClientId: client.clientId,
+        ...(expiresAtSec === undefined
+            ? {}
+            : {credentialExpiresAtMs: expiresAtSec * 1000})
+    };
 }
 
 interface RoleResolutionInput {
@@ -349,7 +441,20 @@ async function resolveRoles({
     };
 }
 
-function rejectAuthContextFailure(input: {
+// Typed so the HTTP layer can name a wrong-organisation token instead of
+// answering with a denial the UI cannot tell apart from any other.
+export class AuthContextRejectedError extends Error {
+    readonly reason: 'org_mismatch';
+
+    constructor(reason: 'org_mismatch', message: string) {
+        super(message);
+        this.name = 'AuthContextRejectedError';
+        this.reason = reason;
+    }
+}
+
+// Exported for tests.
+export function rejectAuthContextFailure(input: {
     reason: 'org_mismatch';
     organizationId: string;
 }): never {
@@ -360,7 +465,7 @@ function rejectAuthContextFailure(input: {
         input.organizationId
     );
     Observability.incrementCounter('auth_failures');
-    throw new Error('JWT org mismatch');
+    throw new AuthContextRejectedError(input.reason, 'JWT org mismatch');
 }
 
 async function fetchUserinfoWithCache(
@@ -372,10 +477,12 @@ async function fetchUserinfoWithCache(
     if (cached && now - cached.fetchedAt < USERINFO_CACHE_TTL_MS) {
         logger.debug('Userinfo cache hit');
         Observability.incrementCounter('auth_cache_hits');
+        Observability.incrementCounter('auth_userinfo_cache_hits');
         return cached.data;
     }
 
     Observability.incrementCounter('auth_cache_misses');
+    Observability.incrementCounter('auth_userinfo_cache_misses');
     const oidcBackend = configRc.oidc?.backend;
     if (!oidcBackend) return null;
 

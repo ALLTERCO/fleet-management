@@ -1,6 +1,7 @@
 export type DeviceIngressAuditKind =
     | 'identity_created'
     | 'identity_updated'
+    | 'identity_enabled'
     | 'identity_disabled'
     | 'identity_quarantined'
     | 'credential_created'
@@ -8,6 +9,8 @@ export type DeviceIngressAuditKind =
     | 'credential_finalized'
     | 'credential_cancelled'
     | 'credential_revoked'
+    | 'rotation_batch_started'
+    | 'rotation_job_state_changed'
     | 'enrollment_token_created'
     | 'enrollment_token_revoked'
     | 'waiting_room_approved'

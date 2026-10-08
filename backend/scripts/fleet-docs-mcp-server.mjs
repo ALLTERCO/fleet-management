@@ -11,6 +11,7 @@ import {register as registerEsmLoader} from 'tsx/esm/api';
 registerEsmLoader();
 registerCjsLoader();
 const core = await import('../src/modules/ai/fleetDocsMcp.ts');
+const {McpError} = await import('../src/modules/ai/mcpErrors.ts');
 
 function writeMessage(message) {
     process.stdout.write(`${JSON.stringify(message)}\n`);
@@ -26,6 +27,16 @@ export async function runServer() {
         let message;
         try {
             message = JSON.parse(line);
+        } catch {
+            writeMessage(
+                core.errorResponse(
+                    null,
+                    new McpError('parse_error', 'Invalid JSON')
+                )
+            );
+            continue;
+        }
+        try {
             const result = await core.handleRequest(message);
             if (result) writeMessage(result);
         } catch (error) {

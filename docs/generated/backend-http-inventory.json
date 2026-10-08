@@ -2,11 +2,12 @@
   "generator": "backend-http-inventory",
   "version": 1,
   "totals": {
-    "routes": 68,
-    "mounts": 27,
+    "routes": 73,
+    "mounts": 28,
     "byAuthModel": {
-      "public": 28,
-      "isLoggedIn": 18,
+      "public": 32,
+      "mcp-credential": 3,
+      "isLoggedIn": 16,
       "requiresAuditView": 1,
       "requiresAdmin": 7,
       "device-gui-session": 1,
@@ -21,25 +22,31 @@
       "prefix": "/",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 1022
+      "sourceLine": 1103
     },
     {
       "prefix": "/admin",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 964
+      "sourceLine": 998
+    },
+    {
+      "prefix": "/admin",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 1045
     },
     {
       "prefix": "/admin/assets",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 956
+      "sourceLine": 1037
     },
     {
       "prefix": "/api",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 730
+      "sourceLine": 789
     },
     {
       "prefix": "/api",
@@ -47,43 +54,43 @@
         "isLoggedIn"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 751
+      "sourceLine": 810
     },
     {
       "prefix": "/api",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 770
+      "sourceLine": 835
     },
     {
       "prefix": "/api/auth/session",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 747
+      "sourceLine": 806
     },
     {
       "prefix": "/api/device-proxy",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 767
+      "sourceLine": 832
     },
     {
       "prefix": "/api/docs",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 748
+      "sourceLine": 807
     },
     {
       "prefix": "/api/grafana",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 735
+      "sourceLine": 794
     },
     {
       "prefix": "/api/notifications",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 731
+      "sourceLine": 790
     },
     {
       "prefix": "/api/notifications",
@@ -91,13 +98,13 @@
         "isLoggedIn"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 749
+      "sourceLine": 808
     },
     {
       "prefix": "/api/oauth",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 739
+      "sourceLine": 798
     },
     {
       "prefix": "/api/uploads",
@@ -105,19 +112,19 @@
         "isLoggedIn"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 750
+      "sourceLine": 809
     },
     {
       "prefix": "/api/zitadel/actions",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 742
+      "sourceLine": 801
     },
     {
       "prefix": "/assets",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 982
+      "sourceLine": 1063
     },
     {
       "prefix": "/grafana",
@@ -126,13 +133,13 @@
         "requireGrafanaPermission"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 753
+      "sourceLine": 812
     },
     {
       "prefix": "/images",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 1012
+      "sourceLine": 1093
     },
     {
       "prefix": "/images/devices",
@@ -140,53 +147,53 @@
         "express.static(path.join(clientPath, 'images/devices'), { ma"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 995
+      "sourceLine": 1076
     },
     {
       "prefix": "/llms.txt",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 768
+      "sourceLine": 833
     },
     {
       "prefix": "/mcp",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 769
+      "sourceLine": 834
     },
     {
       "prefix": "/media",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 771
+      "sourceLine": 836
     },
     {
       "prefix": "/media",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 772
+      "sourceLine": 837
     },
     {
       "prefix": "/media",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 773
+      "sourceLine": 838
     },
     {
       "prefix": "/node-red",
       "middleware": [
-        "isLoggedIn",
+        "authenticateNodeRedRequest",
         "isNotDefaultUser",
         "requireNodeRedPermission"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 759
+      "sourceLine": 822
     },
     {
       "prefix": "/plugins/:plugin/public",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 671
+      "sourceLine": 728
     },
     {
       "prefix": "/uploads/floor-plans",
@@ -196,7 +203,7 @@
         "svgInlineHardeningMiddleware()"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 657
+      "sourceLine": 714
     }
   ],
   "routes": [
@@ -211,6 +218,19 @@
       "authModel": "public"
     },
     {
+      "method": "DELETE",
+      "path": "/",
+      "middleware": [
+        "refuseStatelessStreamMethods",
+        "requireMcpBearer",
+        "requireMcpAccess",
+        "mcpRateLimit"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/mcp.ts",
+      "sourceLine": 2372,
+      "authModel": "mcp-credential"
+    },
+    {
       "method": "GET",
       "path": "/",
       "middleware": [
@@ -218,19 +238,21 @@
         "docsRateLimit"
       ],
       "sourceFile": "backend/src/modules/web/routes/apiDocs.ts",
-      "sourceLine": 115,
+      "sourceLine": 116,
       "authModel": "isLoggedIn"
     },
     {
       "method": "GET",
       "path": "/",
       "middleware": [
-        "isLoggedIn",
+        "refuseStatelessStreamMethods",
+        "requireMcpBearer",
+        "requireMcpAccess",
         "mcpRateLimit"
       ],
       "sourceFile": "backend/src/modules/web/routes/mcp.ts",
-      "sourceLine": 280,
-      "authModel": "isLoggedIn"
+      "sourceLine": 2357,
+      "authModel": "mcp-credential"
     },
     {
       "method": "POST",
@@ -247,21 +269,21 @@
       "method": "POST",
       "path": "/",
       "middleware": [
-        "isLoggedIn",
+        "requireMcpBearer",
         "requireMcpAccess",
         "mcpRateLimit",
-        "express.json()"
+        "express.json({limit: '4mb'})"
       ],
       "sourceFile": "backend/src/modules/web/routes/mcp.ts",
-      "sourceLine": 272,
-      "authModel": "isLoggedIn"
+      "sourceLine": 2349,
+      "authModel": "mcp-credential"
     },
     {
       "method": "GET",
       "path": "/*splat",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 1040,
+      "sourceLine": 1121,
       "authModel": "public"
     },
     {
@@ -269,7 +291,7 @@
       "path": "/admin/*splat",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 969,
+      "sourceLine": 1050,
       "authModel": "public"
     },
     {
@@ -290,7 +312,7 @@
         "httpRouteLimit({ name: 'audit-log-download-ticket', capacity"
       ],
       "sourceFile": "backend/src/modules/web/routes/auditDownload.ts",
-      "sourceLine": 120,
+      "sourceLine": 130,
       "authModel": "requiresAuditView",
       "mount": "/api"
     },
@@ -301,7 +323,7 @@
         "httpRouteLimit({ name: 'audit-log-download', capacityPerMin:"
       ],
       "sourceFile": "backend/src/modules/web/routes/auditDownload.ts",
-      "sourceLine": 69,
+      "sourceLine": 79,
       "authModel": "public",
       "mount": "/api"
     },
@@ -313,7 +335,7 @@
         "requiresAdmin"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 578,
+      "sourceLine": 635,
       "authModel": "requiresAdmin"
     },
     {
@@ -324,7 +346,7 @@
         "requiresAdmin"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 595,
+      "sourceLine": 652,
       "authModel": "requiresAdmin"
     },
     {
@@ -334,7 +356,7 @@
         "requireDeviceGuiSession"
       ],
       "sourceFile": "backend/src/modules/web/deviceGuiOrigin.ts",
-      "sourceLine": 512,
+      "sourceLine": 517,
       "authModel": "device-gui-session"
     },
     {
@@ -418,7 +440,7 @@
         "httpRouteLimit({ name: 'exports-download', capacityPerMin: t"
       ],
       "sourceFile": "backend/src/modules/web/routes/auditDownload.ts",
-      "sourceLine": 172,
+      "sourceLine": 182,
       "authModel": "isLoggedIn",
       "mount": "/api"
     },
@@ -432,7 +454,7 @@
         "upload.single('file')"
       ],
       "sourceFile": "backend/src/modules/web/routes/emailAssets.ts",
-      "sourceLine": 67,
+      "sourceLine": 62,
       "authModel": "requiresPermission",
       "mount": "/api/notifications"
     },
@@ -445,7 +467,7 @@
         "httpRouteLimit({ name: 'email-asset-download', capacityPerMi"
       ],
       "sourceFile": "backend/src/modules/web/routes/emailAssets.ts",
-      "sourceLine": 150,
+      "sourceLine": 129,
       "authModel": "requiresPermission",
       "mount": "/api/notifications"
     },
@@ -468,7 +490,7 @@
         "httpRouteLimit({ name: 'reports-download', capacityPerMin: t"
       ],
       "sourceFile": "backend/src/modules/web/routes/auditDownload.ts",
-      "sourceLine": 160,
+      "sourceLine": 170,
       "authModel": "isLoggedIn",
       "mount": "/api"
     },
@@ -481,7 +503,7 @@
         "upload.single('file')"
       ],
       "sourceFile": "backend/src/modules/web/routes/floorPlanUpload.ts",
-      "sourceLine": 33,
+      "sourceLine": 35,
       "authModel": "isLoggedIn",
       "mount": "/api/uploads"
     },
@@ -492,7 +514,7 @@
         "httpRouteLimit({ name: 'asset-get', capacityPerMin: tuning.h"
       ],
       "sourceFile": "backend/src/modules/web/routes/assetUpload.ts",
-      "sourceLine": 182,
+      "sourceLine": 183,
       "authModel": "public"
     },
     {
@@ -502,8 +524,41 @@
         "httpRouteLimit({ name: 'login-flow', capacityPerMin: tuning."
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 778,
+      "sourceLine": 843,
       "authModel": "public"
+    },
+    {
+      "method": "GET",
+      "path": "/:hookId",
+      "middleware": [
+        "httpRouteLimit(hookLimit())"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/automationHooks.ts",
+      "sourceLine": 204,
+      "authModel": "public",
+      "mount": "/automation-hooks"
+    },
+    {
+      "method": "POST",
+      "path": "/:hookId",
+      "middleware": [
+        "httpRouteLimit(hookLimit())"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/automationHooks.ts",
+      "sourceLine": 205,
+      "authModel": "public",
+      "mount": "/automation-hooks"
+    },
+    {
+      "method": "PUT",
+      "path": "/:hookId",
+      "middleware": [
+        "httpRouteLimit(hookLimit())"
+      ],
+      "sourceFile": "backend/src/modules/web/routes/automationHooks.ts",
+      "sourceLine": 206,
+      "authModel": "public",
+      "mount": "/automation-hooks"
     },
     {
       "method": "GET",
@@ -513,17 +568,15 @@
         "docsRateLimit"
       ],
       "sourceFile": "backend/src/modules/web/routes/apiDocs.ts",
-      "sourceLine": 140,
+      "sourceLine": 141,
       "authModel": "isLoggedIn"
     },
     {
       "method": "POST",
       "path": "/grant-removed",
-      "middleware": [
-        "httpRouteLimit({ name: 'zitadel-webhook', capacityPerMin: tu"
-      ],
+      "middleware": [],
       "sourceFile": "backend/src/modules/web/routes/zitadelActions.ts",
-      "sourceLine": 34,
+      "sourceLine": 24,
       "authModel": "public"
     },
     {
@@ -531,7 +584,7 @@
       "path": "/health",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 552,
+      "sourceLine": 609,
       "authModel": "public"
     },
     {
@@ -541,7 +594,7 @@
         "requiresAdmin"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 881,
+      "sourceLine": 946,
       "authModel": "requiresAdmin"
     },
     {
@@ -549,7 +602,7 @@
       "path": "/health/db-writes",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 618,
+      "sourceLine": 675,
       "authModel": "public"
     },
     {
@@ -560,7 +613,7 @@
         "express.json()"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 815,
+      "sourceLine": 880,
       "authModel": "requiresPlatformAdmin"
     },
     {
@@ -570,7 +623,7 @@
         "isLoggedIn"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 800,
+      "sourceLine": 865,
       "authModel": "isLoggedIn"
     },
     {
@@ -580,7 +633,7 @@
         "requiresAdmin"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 795,
+      "sourceLine": 860,
       "authModel": "requiresAdmin"
     },
     {
@@ -588,7 +641,7 @@
       "path": "/health/live",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 556,
+      "sourceLine": 613,
       "authModel": "public"
     },
     {
@@ -599,7 +652,7 @@
         "express.json()"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 860,
+      "sourceLine": 925,
       "authModel": "requiresPlatformAdmin"
     },
     {
@@ -607,7 +660,7 @@
       "path": "/health/log-levels",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 626,
+      "sourceLine": 683,
       "authModel": "public"
     },
     {
@@ -618,7 +671,7 @@
         "express.json()"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 835,
+      "sourceLine": 900,
       "authModel": "requiresPlatformAdmin"
     },
     {
@@ -628,7 +681,7 @@
         "requiresPlatformAdmin"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 851,
+      "sourceLine": 916,
       "authModel": "requiresPlatformAdmin"
     },
     {
@@ -638,7 +691,7 @@
         "httpRouteLimit({name: 'health-ready', capacityPerMin: 120})"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 560,
+      "sourceLine": 617,
       "authModel": "public"
     },
     {
@@ -646,7 +699,7 @@
       "path": "/health/redis",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 622,
+      "sourceLine": 679,
       "authModel": "public"
     },
     {
@@ -656,7 +709,7 @@
         "isLoggedIn"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 806,
+      "sourceLine": 871,
       "authModel": "isLoggedIn"
     },
     {
@@ -664,7 +717,7 @@
       "path": "/healthz",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/routes/zitadelActions.ts",
-      "sourceLine": 10,
+      "sourceLine": 8,
       "authModel": "public"
     },
     {
@@ -676,7 +729,7 @@
         "uploadBackupFile.single('backup')"
       ],
       "sourceFile": "backend/src/modules/web/routes/backupImport.ts",
-      "sourceLine": 27,
+      "sourceLine": 26,
       "authModel": "requiresPermission"
     },
     {
@@ -684,7 +737,7 @@
       "path": "/deleteBackground",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/routes/media.ts",
-      "sourceLine": 281,
+      "sourceLine": 246,
       "authModel": "public",
       "mount": "/media"
     },
@@ -695,7 +748,7 @@
         "requiresAdmin"
       ],
       "sourceFile": "backend/src/modules/web/routes/media.ts",
-      "sourceLine": 265,
+      "sourceLine": 230,
       "authModel": "requiresAdmin",
       "mount": "/media"
     },
@@ -706,7 +759,7 @@
         "httpRouteLimit({ name: 'firmware-file-download', capacityPer"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 690,
+      "sourceLine": 747,
       "authModel": "public"
     },
     {
@@ -717,7 +770,7 @@
         "httpRouteLimit({ name: 'media-list-backgrounds', capacityPer"
       ],
       "sourceFile": "backend/src/modules/web/routes/media.ts",
-      "sourceLine": 98,
+      "sourceLine": 90,
       "authModel": "isLoggedIn",
       "mount": "/media"
     },
@@ -729,7 +782,7 @@
         "httpRouteLimit({ name: 'media-list-report-images', capacityP"
       ],
       "sourceFile": "backend/src/modules/web/routes/media.ts",
-      "sourceLine": 285,
+      "sourceLine": 250,
       "authModel": "isLoggedIn",
       "mount": "/media"
     },
@@ -742,7 +795,7 @@
         "upload.single('image')"
       ],
       "sourceFile": "backend/src/modules/web/routes/media.ts",
-      "sourceLine": 116,
+      "sourceLine": 108,
       "authModel": "requiresAdmin",
       "mount": "/media"
     },
@@ -755,7 +808,7 @@
         "uploadFirmwareFile.single('firmware')"
       ],
       "sourceFile": "backend/src/modules/web/routes/firmwareUpload.ts",
-      "sourceLine": 35,
+      "sourceLine": 22,
       "authModel": "requiresPlatformAdmin",
       "mount": "/media"
     },
@@ -768,7 +821,7 @@
         "upload.single('image')"
       ],
       "sourceFile": "backend/src/modules/web/routes/media.ts",
-      "sourceLine": 198,
+      "sourceLine": 163,
       "authModel": "isLoggedIn",
       "mount": "/media"
     },
@@ -781,7 +834,7 @@
         "uploadReportImage.single('image')"
       ],
       "sourceFile": "backend/src/modules/web/routes/media.ts",
-      "sourceLine": 305,
+      "sourceLine": 270,
       "authModel": "requiresAdmin",
       "mount": "/media"
     },
@@ -793,8 +846,24 @@
         "requireObsAuth"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 635,
+      "sourceLine": 692,
       "authModel": "requiresObservabilityAuth"
+    },
+    {
+      "method": "DELETE",
+      "path": "/node-red/session",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 821,
+      "authModel": "public"
+    },
+    {
+      "method": "POST",
+      "path": "/node-red/session",
+      "middleware": [],
+      "sourceFile": "backend/src/modules/web/index.ts",
+      "sourceLine": 819,
+      "authModel": "public"
     },
     {
       "method": "GET",
@@ -804,7 +873,7 @@
         "docsRateLimit"
       ],
       "sourceFile": "backend/src/modules/web/routes/apiDocs.ts",
-      "sourceLine": 92,
+      "sourceLine": 93,
       "authModel": "isLoggedIn"
     },
     {
@@ -825,7 +894,7 @@
         "rpcBodyAuth"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 503,
+      "sourceLine": 560,
       "authModel": "isLoggedIn"
     },
     {
@@ -833,7 +902,7 @@
       "path": "/rpc/:method",
       "middleware": [],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 483,
+      "sourceLine": 540,
       "authModel": "public"
     },
     {
@@ -844,16 +913,8 @@
         "isLoggedIn"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 497,
+      "sourceLine": 554,
       "authModel": "isLoggedIn"
-    },
-    {
-      "method": "POST",
-      "path": "/session",
-      "middleware": [],
-      "sourceFile": "backend/src/modules/web/routes/nodeRedProxy.ts",
-      "sourceLine": 242,
-      "authModel": "public"
     },
     {
       "method": "POST",
@@ -873,7 +934,7 @@
         "upload.single('file')"
       ],
       "sourceFile": "backend/src/modules/web/routes/assetUpload.ts",
-      "sourceLine": 100,
+      "sourceLine": 101,
       "authModel": "public"
     },
     {
@@ -903,11 +964,9 @@
     {
       "method": "POST",
       "path": "/user-removed",
-      "middleware": [
-        "httpRouteLimit({ name: 'zitadel-webhook', capacityPerMin: tu"
-      ],
+      "middleware": [],
       "sourceFile": "backend/src/modules/web/routes/zitadelActions.ts",
-      "sourceLine": 17,
+      "sourceLine": 14,
       "authModel": "public"
     },
     {
@@ -917,7 +976,7 @@
         "httpRouteLimit({name: 'version', capacityPerMin: 120})"
       ],
       "sourceFile": "backend/src/modules/web/index.ts",
-      "sourceLine": 569,
+      "sourceLine": 626,
       "authModel": "public"
     }
   ]

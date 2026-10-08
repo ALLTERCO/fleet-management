@@ -5,7 +5,7 @@
     <component
         v-if="card && !isLegacyClickableEntity"
         :is="card.component"
-        v-bind="card.props"
+        v-bind="{...card.props, ...inertProps}"
         @delete="emit('delete')"
         @move="(d: number) => emit('move', d)"
         @cycle-size="emit('cycle-size')"
@@ -49,6 +49,8 @@ import {
     ACTIONS_LIST_KEY,
     ENTITY_CACHE_KEY
 } from '@/composables/dashboardInjectionKeys';
+import type {DetailResolverContext} from '@/composables/useDashboardDetailResolver';
+import {resolveDashboardDetail} from '@/composables/useDashboardDetailResolver';
 import {resolveDashboardEntry} from '@/composables/useDashboardEntryRenderer';
 import {useDevicesStore} from '@/stores/devices';
 import {useEntityStore} from '@/stores/entities';
@@ -60,8 +62,11 @@ const props = withDefaults(
         entry: DashboardEntry;
         editMode?: boolean;
         selected?: boolean;
+        /** Explicit false forces the inert affordance (used by the widget
+         *  detail overlay); omitted, the detail resolver decides per entry. */
+        clickable?: boolean;
     }>(),
-    {editMode: false, selected: false}
+    {editMode: false, selected: false, clickable: undefined}
 );
 
 const emit = defineEmits<{
@@ -82,19 +87,21 @@ const devicesStore = useDevicesStore();
 const entityStore = useEntityStore();
 const groupsStore = useGroupsStore();
 
+// One context for both resolvers — render and click-detail read the same
+// lookups so the affordance can't drift from what a click actually does.
+const resolverCtx = computed<DetailResolverContext>(() => ({
+    entityCache: injectedCache?.value ?? new Map(),
+    rawEntity: (id) => entityStore.entities[id],
+    group: (id) => groupsStore.groups[id],
+    action: (id) => injectedActions?.value.find((a) => a.id === id),
+    deviceExternalId: (id) => devicesStore.idToShellyMap.get(id),
+    device: (id) => devicesStore.devices[id]
+}));
+
 const resolved = computed(() =>
-    resolveDashboardEntry(
-        props.entry,
-        {
-            entityCache: injectedCache?.value ?? new Map(),
-            rawEntity: (id) => entityStore.entities[id],
-            group: (id) => groupsStore.groups[id],
-            action: (id) =>
-                injectedActions?.value.find((a) => a.id === id),
-            deviceExternalId: (id) => devicesStore.idToShellyMap.get(id)
-        },
-        {editMode: props.editMode}
-    )
+    resolveDashboardEntry(props.entry, resolverCtx.value, {
+        editMode: props.editMode
+    })
 );
 
 const card = computed(() =>
@@ -102,6 +109,19 @@ const card = computed(() =>
 );
 const missing = computed(() =>
     resolved.value.kind === 'missing' ? resolved.value : null
+);
+
+// Entries with no detail view get clickable=false so CardShell (and the tile
+// cards that declare the prop) drop the pointer cursor and the dead emit.
+// Passed only when false to avoid leaking a DOM attribute onto cards that
+// don't declare the prop.
+const hasDetail = computed(
+    () =>
+        props.clickable !== false &&
+        resolveDashboardDetail(props.entry, resolverCtx.value) !== null
+);
+const inertProps = computed(() =>
+    hasDetail.value ? {} : {clickable: false}
 );
 
 /** EntityWidget (used as the entity-not-mapped fallback) emits `delete`

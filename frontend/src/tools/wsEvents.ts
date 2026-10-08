@@ -20,6 +20,7 @@ export const SHELLY_EVENT = {
 export const ENTITY_EVENT = {
     ADDED: 'Entity.Added',
     REMOVED: 'Entity.Removed',
+    UPDATED: 'Entity.Updated',
     EVENT: 'Entity.Event'
 } as const;
 
@@ -109,7 +110,12 @@ export const VARIABLES_EVENT = {
 } as const;
 
 export const DEVICE_EVENT = {
-    RELATIONSHIPS_CHANGED: 'Device.RelationshipsChanged'
+    RELATIONSHIPS_CHANGED: 'Device.RelationshipsChanged',
+    // The backend has always emitted this on promote and on virtual-device
+    // create. Nothing subscribed, so notifyAll dropped it and a device added
+    // in one tab stayed invisible in every other one — and an auto-promoted
+    // BLU device, which has no tab behind it at all, was invisible everywhere.
+    CREATED: 'Device.Created'
 } as const;
 
 export const GROUP_EVENT = {

@@ -107,8 +107,11 @@ export async function handleEnergyMeterQuery(
     // Output only what the caller asked for — a formula's referenced-only
     // physical meters are inputs, not results.
     const requested = new Set(meterIds);
-    const rows = [...physicalRows, ...formulaRows].filter(
-        (r) => r.meterId !== undefined && requested.has(r.meterId)
+    const rows = attachBalancePositions(
+        [...physicalRows, ...formulaRows].filter(
+            (r) => r.meterId !== undefined && requested.has(r.meterId)
+        ),
+        all
     );
     const executionMs = Date.now() - startMs;
 
@@ -121,6 +124,22 @@ export async function handleEnergyMeterQuery(
         });
     }
     return page(rows, validated, {from, to, bucket, executionMs});
+}
+
+function attachBalancePositions(
+    rows: readonly EnergyQueryRow[],
+    meters: readonly EnergyLogicalMeter[]
+): EnergyQueryRow[] {
+    const positionByMeter = new Map(
+        meters.map((meter) => [
+            meter.id,
+            meter.balancePosition ?? ('final_consumption' as const)
+        ])
+    );
+    return rows.map((row) => {
+        if (row.meterId === undefined) return row;
+        return {...row, balancePosition: positionByMeter.get(row.meterId)};
+    });
 }
 
 function requireMeterSelector(params: EnergyQueryParams): number[] {

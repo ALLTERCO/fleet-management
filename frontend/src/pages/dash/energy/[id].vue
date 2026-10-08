@@ -1,5 +1,25 @@
 <template>
     <div class="energy-dash" :class="{'energy-dash--kiosk': isKiosk}">
+        <BackgroundProgressIndicator
+            v-if="showSyncProgress"
+            title="Energy history syncing"
+            :detail="syncProgressDetail"
+            :progress="syncProgressPct"
+            progress-label="history loaded"
+            :eta="syncProgressEta"
+            :items="syncProgressItems"
+        />
+        <!-- A large report takes minutes; without this the Generate click looks
+             like it did nothing until the file lands. -->
+        <BackgroundProgressIndicator
+            v-if="reportGenerating"
+            title="Building your report"
+            :detail="reportProgressDetail"
+            :progress="reportProgressPct"
+            progress-label="complete"
+            :eta="reportElapsedLabel"
+            :items="reportProgressItems"
+        />
         <DashboardState
             v-if="error"
             state="error"
@@ -7,10 +27,10 @@
             :error="error"
             @retry="load"
         />
-        <DashboardState
+        <DashboardLoadingSkeleton
             v-else-if="store.loading"
-            state="loading"
-            title="Loading energy data…"
+            variant="energy"
+            label="Loading energy dashboard"
         />
         <DashboardState
             v-else-if="!hasData"
@@ -24,14 +44,16 @@
             :key="renderKey"
             :d="voltaineData"
             :initial-tab="activeTab"
-            :refresh-interval="store.settings?.refreshInterval ?? 0"
+            :range-key="rangeKey"
+            :recorded-bill-choices="recordedBillChoices"
+            :selected-recorded-bill-id="selectedRecordedBillId"
             @open-filter="filterOpen = true"
             @open-settings="openSettings"
             @refresh="load"
             @pick-range="onPickRange"
             @generate-report="onGenerateReport"
             @tab-change="onTabChange"
-            @set-interval="onSetInterval"
+            @select-recorded-bill="selectRecordedBill"
         />
 
         <!-- Real, functional settings (tariff editor, device/meter picker, scope, PV, carbon) -->
@@ -42,8 +64,11 @@
             :group-id="groupId"
             :groups="groupsList"
             :devices="store.liveDevices"
+            :assignment-devices="assignmentDevices"
+            :locations="locationList"
             :tariffs="savedTariffs"
             :dashboard-id="dashboardId"
+            :saving="savingSettings"
             @close="showSettings = false"
             @save="saveSettings"
             @reload-tariffs="reloadTariffs"
@@ -71,23 +96,45 @@
 </template>
 
 <script setup lang="ts">
-import {PHASE_ACTIVE_POWER_FIELDS} from '@api/componentPower';
+import {
+    AC_ACTIVE_POWER_COMPONENTS,
+    PHASE_ACTIVE_POWER_FIELDS
+} from '@api/componentPower';
+import type {TariffSpec} from '@api/tariff';
 import {computed, onMounted, onUnmounted, ref, watch} from 'vue';
 import {useRoute} from 'vue-router';
+import BackgroundProgressIndicator from '@/components/core/BackgroundProgressIndicator.vue';
 import FilterModal, {type FilterSection} from '@/components/core/FilterModal.vue';
+import DashboardLoadingSkeleton from '@/components/dashboard/DashboardLoadingSkeleton.vue';
 import DashboardState from '@/components/dashboard/DashboardState.vue';
 import DashRenameModal from '@/components/dashboard/DashRenameModal.vue';
+import {
+    findExactRecordedBills,
+    type RecordedBillLookup,
+    type RecordedUtilityBill,
+    recordedBillIdentity,
+    recordedBillIdentityLabel,
+    recordedBillPeriodDate
+} from '@/components/dashboard/energy/billReconciliation';
 import EnergySettingsPanel from '@/components/dashboard/energy/EnergySettingsPanel.vue';
 import EnergyVoltaine from '@/components/dashboard/energy/EnergyVoltaine.vue';
 import {buildEnergyDashboardData} from '@/components/dashboard/energy/energyDashboard.mapper';
-import {averageByTag, countVoltageEvents, deltaLabel, hourlyProfile, roleKwh} from '@/components/dashboard/energy/energyLive.helpers';
-import {useDashboardScope} from '@/composables/useDashboardScope';
+import {countVoltageEvents, deltaLabel, hourlyProfile, roleKwh} from '@/components/dashboard/energy/energyLive.helpers';
+import {dashboardAdditionalCharges} from '@/components/dashboard/energy/tariffBill';
+import {effectiveTariffTaxes} from '@/components/dashboard/energy/tariffTaxes';
 import {useDomainDashboardChrome} from '@/composables/useDomainDashboardChrome';
 import {useReportProgress} from '@/composables/useReportProgress';
+import {
+    estimateProgress,
+    formatRemaining,
+    type ProgressSample,
+    progressPct
+} from '@/helpers/backgroundProgress';
+import {validateTimezone} from '@/helpers/channelValidators';
 import {currencySymbol as currencySymbolFor} from '@/helpers/currencies';
 import {fetchDashboardRecordSummary} from '@/helpers/dashboardRecord';
-import {filterByScope} from '@/helpers/dashboardScopeFilter';
 import {normaliseDashboardSettings} from '@/helpers/dashboardSettings';
+import {getDeviceName} from '@/helpers/device';
 import {
     DEVICE_TYPE_LABELS,
     DEVICE_TYPES,
@@ -97,22 +144,20 @@ import {
 } from '@/helpers/deviceTypeFilter';
 import {readEnvNumber} from '@/helpers/env';
 import {tariffLocalTime} from '@/helpers/liveMetrics';
-import {
-    dayRateFraction,
-    isDayRateHour,
-    resolveTouRate
-} from '@/helpers/tariffBands';
 import {logSettledRejections, resolveOptional} from '@/helpers/promiseUtils';
 import {
     generateReportFile,
+    partialCoverageMessage,
     ReportCancelledError,
     ReportPollAbortedError
 } from '@/helpers/reportGeneration';
-import {useAuthStore} from '@/stores/auth';
 import {useDashboardChromeStore} from '@/stores/dashboardChrome';
 import {useDashboardsStore} from '@/stores/dashboards';
 import {useDevicesStore} from '@/stores/devices';
-import {useEnergyDashboardStore} from '@/stores/energyDashboard';
+import {
+    type ProjectionRequest,
+    useEnergyDashboardStore
+} from '@/stores/energyDashboard';
 import {useGroupsStore} from '@/stores/groups';
 import {useLocationsStore} from '@/stores/locations';
 import {useTagsStore} from '@/stores/tags';
@@ -140,17 +185,179 @@ const tagsStore = useTagsStore();
 const locationsStore = useLocationsStore();
 const dashboardsStore = useDashboardsStore();
 const deviceStore = useDevicesStore();
-const authStore = useAuthStore();
 const toast = useToastStore();
 
-const scopeApi = useDashboardScope({scopeKey: () => authStore.currentUserId});
 
 const dashboardId = computed(() => Number((route.params as {id: string}).id));
 const dashboardName = ref('Energy');
 const groupId = ref<number | null>(null);
-const chartView = ref<'kwh' | 'cost'>('kwh');
+const dashboardApiScope = ref<{
+    groupId?: number;
+    locationId?: number;
+    tagId?: number;
+}>({});
 const error = ref<string | null>(null);
 const showSettings = ref(false);
+// True while saveSettings' RPC chain runs — the panel disables Save on it so a
+// double-click cannot double-submit the rename / scope / setsettings calls.
+const savingSettings = ref(false);
+
+interface EnergySyncStatus {
+    complete: boolean;
+    progressPct: number;
+    devicesTotal: number;
+    devicesCatchingUp: number;
+    channelsCatchingUp: number;
+    historyRemainingSeconds: number;
+    rollupPendingBuckets: number;
+    oldestRollupAgeSeconds: number;
+    devices: {
+        shellyID: string;
+        channel: number;
+        lagSeconds: number;
+        progressPct: number;
+        rollupPendingBuckets: number;
+    }[];
+}
+
+const syncStatus = ref<EnergySyncStatus | null>(null);
+const syncProgressEtaSeconds = ref<number | null>(null);
+let syncProgressSample: ProgressSample | null = null;
+// Smoothed completion rate, carried between polls so the ETA drifts rather than jumps.
+let syncProgressRate: number | null = null;
+let syncProgressKind: 'history' | 'rollup' | null = null;
+let syncProgressScope = '';
+let rollupStartPending = 0;
+let syncStatusTimer: ReturnType<typeof setInterval> | null = null;
+const syncStatusPendingScopes = new Set<string>();
+
+const showSyncProgress = computed(
+    () =>
+        (syncStatus.value?.devicesCatchingUp ?? 0) > 0 ||
+        ((syncStatus.value?.rollupPendingBuckets ?? 0) > 0 &&
+            (syncStatus.value?.oldestRollupAgeSeconds ?? 0) >= 60)
+);
+const syncProgressPct = computed(() => {
+    const status = syncStatus.value;
+    if (!status) return 0;
+    // energy.syncstatus already withholds 100 while it reports work left, so
+    // the history share is printed as the backend sent it.
+    if (status.devicesCatchingUp > 0) return status.progressPct;
+    if (rollupStartPending <= 0) return 0;
+    return progressPct(
+        ((rollupStartPending - status.rollupPendingBuckets) /
+            rollupStartPending) *
+            100,
+        status.rollupPendingBuckets > 0
+    );
+});
+const syncProgressEta = computed(() =>
+    formatRemaining(syncProgressEtaSeconds.value)
+);
+const syncProgressDetail = computed(() => {
+    const status = syncStatus.value;
+    if (!status) return '';
+    if (status.devicesCatchingUp > 0) {
+        const deviceWord =
+            status.devicesCatchingUp === 1 ? 'device' : 'devices';
+        const channelDetail =
+            status.channelsCatchingUp > status.devicesCatchingUp
+                ? ` across ${status.channelsCatchingUp} channels`
+                : '';
+        return `${status.devicesCatchingUp} ${deviceWord} still syncing${channelDetail}`;
+    }
+    return `${status.rollupPendingBuckets.toLocaleString()} report buckets processing`;
+});
+const syncProgressItems = computed(() => {
+    const status = syncStatus.value;
+    if (!status) return [];
+    const relevant = status.devices.filter(
+        (device) =>
+            device.lagSeconds > 10 * 60 ||
+            device.rollupPendingBuckets > 0
+    );
+    const items = relevant.slice(0, 50).map((device) => {
+            const lagHours = Math.ceil(device.lagSeconds / 3600);
+            const lag =
+                lagHours >= 24
+                    ? `${Math.ceil(lagHours / 24)} days behind`
+                    : `${lagHours} hours behind`;
+            if (device.lagSeconds <= 10 * 60) {
+                return (
+                    `${device.shellyID} channel ${device.channel}: ` +
+                    `${device.rollupPendingBuckets.toLocaleString()} report buckets processing`
+                );
+            }
+            return (
+                `${device.shellyID} channel ${device.channel}: ${lag}, ` +
+                `${device.progressPct.toFixed(1)}%`
+            );
+        });
+    const hidden = relevant.length - items.length;
+    if (hidden > 0) items.push(`and ${hidden} more channels`);
+    return items;
+});
+
+async function fetchSyncStatus(): Promise<void> {
+    const scope = JSON.stringify(dashboardApiScope.value);
+    if (syncStatusPendingScopes.has(scope)) return;
+    syncStatusPendingScopes.add(scope);
+    try {
+        const params = dashboardScopeParams();
+        const next = await ws.sendRPC<EnergySyncStatus>(
+            'FLEET_MANAGER',
+            'energy.syncstatus',
+            params
+        );
+        const currentScope = JSON.stringify(dashboardApiScope.value);
+        if (scope !== currentScope) return;
+        syncStatus.value = next;
+        const kind =
+            next.devicesCatchingUp > 0
+                ? 'history'
+                : next.rollupPendingBuckets > 0
+                  ? 'rollup'
+                  : null;
+        if (kind === 'rollup') {
+            rollupStartPending = Math.max(
+                rollupStartPending,
+                next.rollupPendingBuckets
+            );
+        } else if (kind === null) {
+            rollupStartPending = 0;
+        }
+        const remaining =
+            kind === 'history'
+                ? next.historyRemainingSeconds
+                : next.rollupPendingBuckets;
+        const sample = {remaining, sampledAtMs: Date.now()};
+        // A different phase or scope is a different job — start its rate fresh
+        // rather than carrying the previous one's speed into it.
+        if (kind !== syncProgressKind || scope !== syncProgressScope) {
+            syncProgressSample = null;
+            syncProgressRate = null;
+        }
+        const estimate =
+            kind === null
+                ? null
+                : estimateProgress(syncProgressSample, sample, syncProgressRate);
+        syncProgressEtaSeconds.value = estimate?.remainingSeconds ?? null;
+        syncProgressRate = estimate?.ratePerSecond ?? syncProgressRate;
+        syncProgressSample = kind === null ? null : sample;
+        syncProgressKind = kind;
+        syncProgressScope = scope;
+    } catch (err) {
+        console.warn('[Energy] sync status:', err);
+    } finally {
+        syncStatusPendingScopes.delete(scope);
+    }
+}
+
+function startSyncStatusPolling(): void {
+    if (syncStatusTimer) clearInterval(syncStatusTimer);
+    void fetchSyncStatus();
+    syncStatusTimer = setInterval(() => void fetchSyncStatus(), 10_000);
+}
 
 
 
@@ -161,13 +368,40 @@ const DEFAULT_EMISSION_FACTOR = readEnvNumber(
 
 
 const groupsList = computed(() => Object.values(groupsStore.groups));
+const locationList = computed(() => Object.values(locationsStore.locations));
+const assignmentDevices = computed(() =>
+    Object.values(deviceStore.devices)
+        .map((device) => {
+            const channels = new Set<number>();
+            for (const key of Object.keys(device.status ?? {})) {
+                const separator = key.lastIndexOf(':');
+                if (separator < 0) continue;
+                const component = key.slice(0, separator);
+                const channel = Number(key.slice(separator + 1));
+                if (
+                    AC_ACTIVE_POWER_COMPONENTS.includes(component as never) &&
+                    Number.isInteger(channel) &&
+                    channel >= 0
+                ) {
+                    channels.add(channel);
+                }
+            }
+            return {
+                shellyId: device.shellyID,
+                name: getDeviceName(device.info, device.shellyID),
+                locationId: device.locationId ?? null,
+                channels: [...channels].sort((a, b) => a - b)
+            };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name))
+);
 const allShellyIds = computed(() => Object.keys(deviceStore.devices));
 const hasData = computed(
     () => groupId.value !== null || allShellyIds.value.length > 0
 );
 
 const currencySymbol = computed(() =>
-    currencySymbolFor(store.settings?.currency)
+    currencySymbolFor(store.periodPricing?.currency ?? store.settings?.currency)
 );
 
 function defaultDateRange() {
@@ -177,6 +411,9 @@ function defaultDateRange() {
 }
 
 const dateRange = ref(defaultDateRange());
+// Preset key behind dateRange — the toolbar chip shows the preset's words
+// ("Last 7 days") instead of dates. '7d' matches defaultDateRange().
+const rangeKey = ref('7d');
 // Bumped after each data (re)load so the imperatively drawn charts remount fresh.
 const renderKey = ref(0);
 // Active dashboard tab — preserved across renderKey remounts (so refresh / lazy
@@ -187,7 +424,8 @@ const activeTab = ref('overview');
 const loadedTabs = new Set<string>();
 // Fetch a tab's heavy data on first open; returns true when a fetch ran.
 async function ensureTabData(tab: string): Promise<boolean> {
-    if (tab === 'power' && !loadedTabs.has('power')) {
+    // Solar needs the period export, which only the history carries.
+    if ((tab === 'power' || tab === 'solar') && !loadedTabs.has('power')) {
         loadedTabs.add('power');
         await fetchHistoricalMetrics();
         return true;
@@ -212,9 +450,11 @@ function onPickRange(p: {key: string; from?: string; to?: string}) {
         const from = new Date(`${p.from}T00:00:00.000Z`);
         const to = new Date(`${p.to}T23:59:59.999Z`);
         if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) return;
+        rangeKey.value = p.key;
         dateRange.value = {from: from.toISOString(), to: to.toISOString()};
         return;
     }
+    rangeKey.value = p.key;
     const to = new Date();
     const from = new Date(to);
     if (p.key === '24h') from.setDate(to.getDate() - 1);
@@ -349,39 +589,8 @@ const phaseLines = computed(() => {
 });
 
 
-const liveReturnedEnergy = computed(() => {
-    const devs = store.liveDevices;
-    let sum = 0;
-    let found = false;
-    for (const d of devs) {
-        const status = deviceStore.devices[d.shellyId]?.status;
-        if (!status) continue;
-        for (let i = 0; i < 5; i++) {
-            const v = status[`em1data:${i}`]?.total_act_ret_energy;
-            if (typeof v === 'number') {
-                sum += v / 1000;
-                found = true;
-            }
-            const v2 = status[`emdata:${i}`]?.total_act_ret;
-            if (typeof v2 === 'number') {
-                sum += v2 / 1000;
-                found = true;
-            }
-            const v3 = status[`switch:${i}`]?.ret_aenergy?.total;
-            if (typeof v3 === 'number') {
-                sum += v3 / 1000;
-                found = true;
-            }
-        }
-    }
-    return found ? sum : null;
-});
-
-const totalReturned = computed(() => {
-    const histTotal = histReturned.value.reduce((s, p) => s + p.value, 0);
-    if (histTotal > 0) return histTotal;
-    return liveReturnedEnergy.value ?? 0;
-});
+// History only: a device's lifetime return counter is not a period value.
+const totalReturned = computed(() => histReturned.value.reduce((s, p) => s + p.value, 0));
 
 // Solar / grid metrics
 
@@ -398,14 +607,6 @@ const co2Factor = computed(() => {
     const g = store.settings?.emissionFactorGPerKWh ?? null;
     return g !== null ? g / 1000 : ENV_DEFAULT_FACTOR_KG_PER_KWH;
 });
-
-
-const co2Avoided = computed(() => {
-    const ret = totalReturned.value;
-    if (ret <= 0) return null;
-    return ret * co2Factor.value;
-});
-
 
 
 // Cost delta — independent from consumption delta (tariff changes affect cost differently).
@@ -428,31 +629,6 @@ function mainMeterIdsFromSettings(
 
 // ── Consumption chart data ──
 
-function resolveRate(bucket: string): number {
-    const s = store.settings;
-    if (!s) return 0;
-    if (s.tariffMode === 'single') return s.tariff ?? 0;
-    if (s.tariffMode === 'tou') {
-        // Price by the time-of-use window covering this bucket's local time;
-        // fall back to the flat tariff when no window matches.
-        const {hhmm} = tariffLocalTime(bucket, s.tariffTimezone);
-        return resolveTouRate(s, new Date(bucket), hhmm) ?? s.tariff ?? 0;
-    }
-    const dayRate = s.dayRate ?? s.tariff ?? 0;
-    const nightRate = s.nightRate ?? s.tariff ?? 0;
-    const dayStartH = Number.parseInt(s.dayStart?.slice(0, 2) ?? '7', 10);
-    const dayEndH = Number.parseInt(s.dayEnd?.slice(0, 2) ?? '23', 10);
-    // Hourly buckets classify by their local wall-clock hour in the tariff zone.
-    // Day/month buckets sit at 00:00 and span both windows, so blend by the
-    // day-hour share — classifying a whole day by hour 0 would price it at night.
-    if (granularity.value === 'hour') {
-        const hour = tariffLocalTime(bucket, s.tariffTimezone).hour;
-        return isDayRateHour(hour, dayStartH, dayEndH) ? dayRate : nightRate;
-    }
-    const dayFraction = dayRateFraction(dayStartH, dayEndH);
-    return dayFraction * dayRate + (1 - dayFraction) * nightRate;
-}
-
 // The funnel filter narrows the whole view: when any dimension is selected, the
 // headline totals/charts use only the period rows for the surviving devices.
 const funnelActive = computed(
@@ -471,15 +647,226 @@ const filteredPeriodCurrent = computed(() => {
 });
 const filteredTotalConsumption = computed(() => filteredPeriodCurrent.value.reduce((sum, p) => sum + p.value, 0));
 
-const consumptionChartData = computed((): TimePoint[] => {
-    const data = filteredPeriodCurrent.value;
-    if (chartView.value === 'cost' && store.settings) {
-        return aggregateByBucket(data).map((p) => ({
-            bucket: p.bucket,
-            value: p.value * resolveRate(p.bucket)
-        }));
+const canonicalTariff = ref<TariffSpec | null>(null);
+const canonicalTariffError = ref<string | null>(null);
+const recordedBill = ref<RecordedBillLookup>({
+    status: 'loading',
+    message: 'Loading an exactly aligned recorded utility bill…'
+});
+const recordedBillCandidates = ref<RecordedUtilityBill[]>([]);
+const selectedRecordedBillId = ref<number | null>(null);
+const recordedBillChoices = computed(() =>
+    recordedBillCandidates.value.map((bill) => ({
+        id: bill.id,
+        label: recordedBillIdentityLabel(bill),
+        disabled: false
+    }))
+);
+let canonicalPricingRun = 0;
+let recordedBillRun = 0;
+
+async function refreshRecordedBill(): Promise<void> {
+    const run = ++recordedBillRun;
+    recordedBillCandidates.value = [];
+    selectedRecordedBillId.value = null;
+    if (
+        funnelActive.value ||
+        Object.keys(dashboardApiScope.value).length > 0
+    ) {
+        recordedBill.value = {
+            status: 'unavailable',
+            message:
+                'Recorded bills are organization-level, while this dashboard shows a selected device scope.'
+        };
+        return;
     }
-    return aggregateByBucket(data);
+    recordedBill.value = {
+        status: 'loading',
+        message: 'Loading an exactly aligned recorded utility bill…'
+    };
+    const timezone = store.settings?.tariffTimezone ?? null;
+    const periodStart = recordedBillPeriodDate(
+        dateRange.value.from,
+        timezone
+    );
+    const periodEnd = recordedBillPeriodDate(dateRange.value.to, timezone);
+    try {
+        const listed: RecordedUtilityBill[] = [];
+        let cursor: {periodStart: string; id: number} | null = null;
+        for (let page = 0; page < 5; page += 1) {
+            const result: {
+                bills: RecordedUtilityBill[];
+                nextCursor: {periodStart: string; id: number} | null;
+            } = await ws.sendRPC('FLEET_MANAGER', 'bill.list', {
+                from: periodStart,
+                to: periodEnd,
+                limit: 200,
+                ...(cursor ? {cursor} : {})
+            });
+            listed.push(...(result?.bills ?? []));
+            cursor = result?.nextCursor ?? null;
+            if (!cursor) break;
+            if (page === 4) {
+                recordedBillCandidates.value = [];
+                selectedRecordedBillId.value = null;
+                recordedBill.value = {
+                    status: 'unavailable',
+                    message:
+                        'More than 1,000 recorded bills match this period. Narrow the recorded-bill identity before comparing.'
+                };
+                return;
+            }
+        }
+        if (run !== recordedBillRun) return;
+        const candidates = findExactRecordedBills(
+            listed,
+            periodStart,
+            periodEnd,
+            timezone
+        );
+        recordedBillCandidates.value = candidates;
+        const selected = candidates.length === 1 ? candidates[0] : null;
+        selectedRecordedBillId.value = selected?.id ?? null;
+        setRecordedBillLookup(selected, periodStart, periodEnd);
+    } catch (err) {
+        if (run !== recordedBillRun) return;
+        recordedBill.value = {
+            status: 'unavailable',
+            message:
+                (err as {message?: string})?.message ??
+                'Recorded utility bills are unavailable.'
+        };
+    }
+}
+
+function setRecordedBillLookup(
+    selected: RecordedUtilityBill | null,
+    periodStart: string,
+    periodEnd: string
+): void {
+    if (selected) {
+        recordedBill.value = {
+            status: 'ready',
+            bill: selected,
+            coverageWarning: recordedBillIdentity(selected)
+                ? `Operator-selected recorded identity: ${recordedBillIdentityLabel(selected)}. Verify that this utility identity covers the organization-wide shadow bill; no dashboard-to-utility-meter mapping is stored.`
+                : 'This legacy bill has period-only coverage; account and meter coverage cannot be verified.'
+        };
+        return;
+    }
+    recordedBill.value = {
+        status: 'unavailable',
+        message:
+            recordedBillCandidates.value.length > 1
+                ? 'Multiple recorded bills match this period. Select the exact account, meter, or service point before comparing.'
+                : `No recorded organization bill exactly matches ${periodStart} to ${periodEnd}.`
+    };
+}
+
+function selectRecordedBill(id: number): void {
+    const selected = recordedBillCandidates.value.find((bill) => bill.id === id);
+    if (!selected) return;
+    selectedRecordedBillId.value = selected.id;
+    setRecordedBillLookup(selected, selected.periodStart, selected.periodEnd);
+}
+
+/** Refresh money for the exact visible scope through the same stored-tariff
+ * assignment and per-channel pricing engine used by reports. */
+async function refreshCanonicalPricing(): Promise<void> {
+    const run = ++canonicalPricingRun;
+    canonicalTariff.value = null;
+    canonicalTariffError.value = null;
+    await Promise.all([
+        store.fetchPeriodPricing({
+            ...(funnelActive.value
+                ? {devices: scopedMeterRows.value.map((row) => row.shellyId).filter(Boolean)}
+                : Object.keys(dashboardApiScope.value).length > 0
+                  ? {scope: dashboardApiScope.value}
+                  : {}),
+            from: dateRange.value.from,
+            to: dateRange.value.to
+        }),
+        refreshRecordedBill()
+    ]);
+    if (run !== canonicalPricingRun) return;
+    const pricing = store.periodPricing;
+    if (pricing?.status !== 'priced' || pricing.tariffIds.length !== 1) return;
+    try {
+        const result = await ws.sendRPC<{tariff: TariffSpec}>(
+            'FLEET_MANAGER',
+            'tariff.get',
+            {id: pricing.tariffIds[0]}
+        );
+        if (run !== canonicalPricingRun) return;
+        canonicalTariff.value = result.tariff;
+    } catch (err) {
+        if (run !== canonicalPricingRun) return;
+        canonicalTariffError.value =
+            (err as {message?: string})?.message ?? 'Tariff details are unavailable.';
+    }
+}
+
+const canonicalPricingMessage = computed(() => {
+    if (store.pricingError) return `Stored-tariff pricing unavailable: ${store.pricingError}`;
+    const pricing = store.periodPricing;
+    if (!pricing) {
+        return funnelActive.value && scopedMeterRows.value.length === 0
+            ? 'No devices match the active filters.'
+            : 'Loading stored-tariff pricing…';
+    }
+    if (pricing.status === 'partial') {
+        return `${pricing.unpricedConsumptionKWh.toLocaleString('en-US')} kWh has no tariff assignment. Assign every visible meter before showing money.`;
+    }
+    if (pricing.status === 'unconfigured') {
+        return 'No canonical tariff covers the visible meters. Add a tariff assignment in Settings.';
+    }
+    return null;
+});
+
+const canonicalAdditionalCharges = computed(() => {
+    const pricing = store.periodPricing;
+    if (pricing?.status !== 'priced') {
+        return {complete: false, demand: 0, standing: 0, message: null};
+    }
+    if (pricing.tariffIds.length > 1) {
+        return {
+            complete: false,
+            demand: 0,
+            standing: 0,
+            message:
+                'Energy cost uses all assigned tariffs. Additional charges are unavailable for mixed tariffs; run a report per tariff.'
+        };
+    }
+    if (canonicalTariffError.value) {
+        return {
+            complete: false,
+            demand: 0,
+            standing: 0,
+            message: `Energy cost is authoritative, but additional charges are unavailable: ${canonicalTariffError.value}`
+        };
+    }
+    if (!canonicalTariff.value) {
+        return {
+            complete: false,
+            demand: 0,
+            standing: 0,
+            message:
+                pricing.tariffIds.length === 0
+                    ? 'Energy cost is authoritative, but no single tariff defines additional charges.'
+                    : 'Loading additional tariff charges…'
+        };
+    }
+    return dashboardAdditionalCharges({
+        tariff: canonicalTariff.value,
+        from: new Date(dateRange.value.from),
+        to: new Date(dateRange.value.to),
+        periodDays: rangeDays.value,
+        peakKw: (peakPower.value ?? 0) / 1000
+    });
+});
+
+const consumptionChartData = computed((): TimePoint[] => {
+    return aggregateByBucket(filteredPeriodCurrent.value);
 });
 
 // Brush-to-compare on the consumption chart → Analytics.AttributeWindow.
@@ -556,17 +943,11 @@ async function fetchHourlyBreakdown() {
             electricalSource: 'ac_mains',
             bucket: '1 hour'
         };
-        const result = groupId.value
-            ? await ws.sendRPC<{items: any[]}>(
-                  'FLEET_MANAGER',
-                  'energy.query',
-                  {...commonParams, scope: {groupId: groupId.value}}
-              )
-            : await ws.sendRPC<{items: any[]}>(
-                  'FLEET_MANAGER',
-                  'energy.query',
-                  commonParams
-              );
+        const result = await ws.sendRPC<{items: any[]}>(
+            'FLEET_MANAGER',
+            'energy.query',
+            {...commonParams, ...dashboardScopeParams()}
+        );
 
         buildFromPoints(result?.items ?? []);
     } catch {
@@ -627,6 +1008,7 @@ function applyEnergyFilters(state: Record<string, string[]>) {
     selectedTags.value = new Set(state.tag ?? []);
     selectedDevices.value = new Set(state.device ?? []);
     filterOpen.value = false;
+    void refreshCanonicalPricing();
 }
 
 // A device passes the funnel when it matches every dimension that has a selection.
@@ -651,13 +1033,8 @@ function typeOfRow(shellyID: string): DeviceType {
 // Scoped meter rows — every per-device computed below derives from this so the
 // scope picker and device-type filter narrow the entire page consistently.
 const scopedMeterRows = computed(() => {
-    const byScope = filterByScope(
-        store.meterRows,
-        (r) => membershipOf(r.shellyId),
-        scopeApi.current.value
-    );
     const byType = filterByDeviceType(
-        byScope,
+        store.meterRows,
         (r) => typeOfRow(r.shellyId),
         selectedDeviceTypes.value
     );
@@ -734,16 +1111,10 @@ async function fetchHistoricalMetrics() {
             electricalSource: 'ac_mains',
             bucket
         };
-        return groupId.value
-            ? ws.sendRPC<{items: any[]}>('FLEET_MANAGER', 'energy.query', {
-                  ...params,
-                  scope: {groupId: groupId.value}
-              })
-            : ws.sendRPC<{items: any[]}>(
-                  'FLEET_MANAGER',
-                  'energy.query',
-                  params
-              );
+        return ws.sendRPC<{items: any[]}>('FLEET_MANAGER', 'energy.query', {
+            ...params,
+            ...dashboardScopeParams()
+        });
     };
 
     const [powerRes, voltageRes, currentRes, returnedRes] = await Promise.all([
@@ -796,56 +1167,47 @@ const histReturnedChart = computed((): TimePoint[] => histReturned.value);
 
 
 
-// ── Day / night split ──
-
-const dayNightSplit = computed(() => {
-    const data = filteredPeriodCurrent.value;
-    const s = store.settings;
-    if (!data.length || !s) return {day: 0, night: 0};
-    const dayStartH = Number.parseInt(s.dayStart?.slice(0, 2) ?? '7', 10);
-    const dayEndH = Number.parseInt(s.dayEnd?.slice(0, 2) ?? '23', 10);
-    const dayFraction = dayRateFraction(dayStartH, dayEndH);
-    const hourly = granularity.value === 'hour';
-    let day = 0;
-    let night = 0;
-    for (const point of data) {
-        // Hourly buckets classify exactly by local wall-clock hour; day/month
-        // buckets span both windows and split by the day-hour share (else 00:00
-        // buckets read as all-night).
-        if (hourly) {
-            const hour = tariffLocalTime(point.bucket, s.tariffTimezone).hour;
-            if (isDayRateHour(hour, dayStartH, dayEndH)) day += point.value;
-            else night += point.value;
-        } else {
-            day += point.value * dayFraction;
-            night += point.value * (1 - dayFraction);
-        }
-    }
-    return {day, night};
-});
-
-// Period cost from the day/night-aware resolveRate (the store's calculateCostFromFlat
-// prices whole-day buckets at the night rate — a shared-store bug we route around here).
 const periodTotalCost = computed(() => {
-    if (!energyTariffConfigured.value || !store.settings) return null;
-    const data = filteredPeriodCurrent.value;
-    if (!data.length) return null;
-    return aggregateByBucket(data).reduce((sum, p) => sum + p.value * resolveRate(p.bucket), 0);
+    const pricing = store.periodPricing;
+    return pricing?.status === 'priced' ? pricing.energyCost : null;
 });
-// Keep the projection's ratio to the (uncorrected) store total, applied to the corrected total.
-const periodProjectedCost = computed(() => {
-    if (periodTotalCost.value === null) return null;
-    const storeTotal = store.totalCost;
-    const storeProjected = store.projectedMonthlyCost;
-    return storeTotal && storeTotal > 0 && storeProjected !== null
-        ? periodTotalCost.value * (storeProjected / storeTotal)
-        : periodTotalCost.value;
-});
+// The period the user named, which is not the query window: the window always
+// ends "now", so a rolling range is already complete and only a named calendar
+// period still runs past now. Falling back to the window end tells the backend
+// the period has closed, and a closed period is an actual, never a projection.
+function namedPeriodEnd(): string {
+    const to = new Date(dateRange.value.to);
+    if (to.getTime() > Date.now()) return to.toISOString();
+    if (rangeKey.value === 'month') return new Date(to.getFullYear(), to.getMonth() + 1, 1).toISOString();
+    if (rangeKey.value === 'ytd') return new Date(to.getFullYear() + 1, 0, 1).toISOString();
+    return to.toISOString();
+}
+// Projected over the same devices the period cost is priced from, so the run
+// rate and the total it scales always describe the same fleet. The maths lives
+// in the backend (energy.projection) — nothing here decides how thin is too thin.
+const projectionRequest = computed((): ProjectionRequest => ({
+    ...(funnelActive.value
+        ? {devices: scopedMeterRows.value.map((r) => r.shellyId).filter(Boolean)}
+        : Object.keys(dashboardApiScope.value).length > 0
+          ? {scope: dashboardApiScope.value}
+          : {}),
+    from: dateRange.value.from,
+    to: namedPeriodEnd(),
+    costSoFar: periodTotalCost.value
+}));
+// Registered on mount, not here: an immediate run during setup would read
+// refs this block is still above.
+function watchProjection(): void {
+    watch(projectionRequest, (request) => void store.fetchProjection(request), {
+        deep: true,
+        immediate: true
+    });
+}
 
 // ── Location breakdown (fleet mode) ──
 
 const locationData = computed(() => {
-    if (groupId.value) return [];
+    if (Object.keys(dashboardApiScope.value).length > 0) return [];
     const data = store.periodData?.current ?? [];
     if (!data.length) return [];
 
@@ -907,7 +1269,7 @@ const meterTableRows = computed((): DashDeviceRow[] => {
         name: r.deviceName,
         online: r.online,
         consumption: r.consumptionPeriod,
-        cost: r.costPeriod,
+        cost: 0,
         power: r.livePower,
         share: r.share,
         hasEmChannels: r.hasEmChannels,
@@ -923,8 +1285,15 @@ async function fetchDashboardRecord() {
     const dashboard = await fetchDashboardRecordSummary(dashboardId.value);
     if (dashboard) {
         dashboardName.value = dashboard.name ?? 'Energy';
-        groupId.value = dashboard.groupId;
+        dashboardApiScope.value = dashboard.apiScope;
+        groupId.value = dashboard.apiScope.groupId ?? null;
     }
+}
+
+function dashboardScopeParams(): {scope?: typeof dashboardApiScope.value} {
+    return Object.keys(dashboardApiScope.value).length > 0
+        ? {scope: dashboardApiScope.value}
+        : {};
 }
 
 const energyGroups = ref<{
@@ -940,8 +1309,6 @@ const voltageEventCount = ref(0);
 const battery = ref<{has: boolean; charged: number; discharged: number}>({has: false, charged: 0, discharged: 0});
 // EV-charger role delivered energy (kWh) for the period.
 const evDeliveredKwh = ref(0);
-// Average environment readings across the fleet for the period.
-const env = ref<{temp: number | null; humidity: number | null; luminance: number | null; flow: number | null}>({temp: null, humidity: null, luminance: null, flow: null});
 // deviceId → energy role / cost centre, from the logical-meter definitions.
 const meterRoles = ref<Map<number, string>>(new Map());
 const meterCostCenters = ref<Map<number, string>>(new Map());
@@ -964,7 +1331,7 @@ async function fetchLogicalMeters() {
         ws.sendRPC<{meters?: {role: string; costCenter?: string | null; points?: {deviceId: number}[]}[]}>(
             'FLEET_MANAGER',
             'energy.listlogicalmeters',
-            groupId.value ? {scope: {groupId: groupId.value}} : {}
+            dashboardScopeParams()
         )
     ]);
     logSettledRejections('Logical meters', {meters: r});
@@ -986,7 +1353,7 @@ async function fetchLogicalMeters() {
 // backend rejects scope.groupId=null, so fleet must omit scope entirely. Fleet must
 // NOT use {devices: allShellyIds} — that array is capped at 500 and would drop data
 // on larger fleets; a missing scope already means "all devices".
-const energyScope = () => (groupId.value ? {scope: {groupId: groupId.value}} : {});
+const energyScope = dashboardScopeParams;
 const groupByScope = energyScope;
 const deviceScope = energyScope;
 
@@ -998,15 +1365,6 @@ function fleetHasBatteryOrEv(): boolean {
     for (const role of meterRoles.value.values()) if (role === 'battery' || role === 'ev_charge') return true;
     return false;
 }
-function fleetHasEnvSensors(): boolean {
-    for (const d of store.liveDevices) {
-        const s = deviceStore.devices[d.shellyId]?.status;
-        if (!s) continue;
-        for (const k in s) if (k.startsWith('temperature:') || k.startsWith('humidity:') || k.startsWith('illuminance:')) return true;
-    }
-    return false;
-}
-
 async function fetchEnergyGroups() {
     const base = {
         ...groupByScope(),
@@ -1018,8 +1376,7 @@ async function fetchEnergyGroups() {
     };
     const genDevices = (store.settings?.pvGenerationRefs ?? []).map((r) => r.device).filter(Boolean);
     const runRoles = fleetHasBatteryOrEv();
-    const runEnv = fleetHasEnvSensors();
-    const [kindR, utilR, genR, voltR, roleActR, roleRetR, envR] = await Promise.allSettled([
+    const [kindR, utilR, genR, voltR, roleActR, roleRetR] = await Promise.allSettled([
         ws.sendRPC<{groups?: {label: string; value: number; unit: string}[]}>('FLEET_MANAGER', 'energy.query', {...base, groupBy: 'kind'}),
         ws.sendRPC<{groups?: {label: string; value: number; unit: string}[]}>('FLEET_MANAGER', 'energy.query', {...base, groupBy: 'utility'}),
         genDevices.length
@@ -1048,19 +1405,9 @@ async function fetchEnergyGroups() {
             : Promise.resolve({groups: []}),
         runRoles
             ? ws.sendRPC<{groups?: {key: string; value: number}[]}>('FLEET_MANAGER', 'energy.query', {...base, tags: ['total_act_ret_energy'], groupBy: 'role'})
-            : Promise.resolve({groups: []}),
-        runEnv
-            ? ws.sendRPC<{items?: {tag: string; value: number}[]}>('FLEET_MANAGER', 'energy.query', {
-                  ...deviceScope(),
-                  from: dateRange.value.from,
-                  to: dateRange.value.to,
-                  tags: ['temperature', 'humidity', 'luminance'],
-                  bucket: '1 hour',
-                  perDevice: false
-              })
-            : Promise.resolve({items: []})
+            : Promise.resolve({groups: []})
     ]);
-    logSettledRejections('Energy groups', {kind: kindR, utility: utilR, generation: genR, voltage: voltR, role: roleActR, roleRet: roleRetR, env: envR});
+    logSettledRejections('Energy groups', {kind: kindR, utility: utilR, generation: genR, voltage: voltR, role: roleActR, roleRet: roleRetR});
     energyGroups.value = {
         kind: kindR.status === 'fulfilled' ? (kindR.value?.groups ?? []) : [],
         utility: utilR.status === 'fulfilled' ? (utilR.value?.groups ?? []) : []
@@ -1076,7 +1423,6 @@ async function fetchEnergyGroups() {
     const discharged = roleKwhFromResult(roleRetR, 'battery');
     battery.value = {has: charged > 0 || discharged > 0, charged, discharged};
     evDeliveredKwh.value = roleKwhAny(roleActR, ['ev_charge', 'ev', 'ev_charger']);
-    env.value = envR.status === 'fulfilled' ? averageByTag(envR.value?.items ?? []) : {temp: null, humidity: null, luminance: null, flow: null};
 }
 
 // Prior mirror window (same span, ending where this window starts) → deltas.
@@ -1114,11 +1460,10 @@ async function fetchPriorPeriod() {
         return;
     }
     const consumption = items.reduce((s, r) => s + (r.value ?? 0), 0);
-    const cost = store.settings ? items.reduce((s, r) => s + (r.value ?? 0) * resolveRate(r.bucket), 0) : null;
     const byDevice = new Map<number, number>();
     for (const r of items) if (typeof r.device === 'number') byDevice.set(r.device, (byDevice.get(r.device) ?? 0) + (r.value ?? 0));
     priorByDevice.value = byDevice;
-    priorPeriod.value = {consumption, cost};
+    priorPeriod.value = {consumption, cost: null};
 }
 
 async function fetchDashboardEnrichment(label: string) {
@@ -1170,10 +1515,10 @@ const hourlyWeekend = computed(() => hourlyProfile(hourlyHeatmapRaw.value, (d) =
 
 // Effective €/kWh — real average when cost is known, else the configured rate.
 const effectiveRate = computed(() => {
-    const c = store.totalConsumption ?? 0;
-    const cost = store.totalCost ?? 0;
+    const c = filteredTotalConsumption.value;
+    const cost = periodTotalCost.value ?? 0;
     if (c > 0 && cost > 0) return cost / c;
-    return store.settings?.tariff ?? store.settings?.dayRate ?? 0;
+    return 0;
 });
 
 // Cost allocation — by real cost centre when meters carry one, else by group.
@@ -1209,28 +1554,17 @@ async function load() {
     // Independent chart fetches — one failure must not blank the whole page.
     // Power-history + hourly are deferred to the tab that shows them (Power /
     // Energy); only the Overview core loads here.
-    if (groupId.value) {
-        const [period, live] = await Promise.allSettled([
-            store.fetchPeriodData(
-                groupId.value,
-                dateRange.value.from,
-                dateRange.value.to,
-                granularity.value
-            ),
-            store.fetchLiveMetrics(groupId.value)
-        ]);
-        logSettledRejections('Energy', {period, live});
-    } else if (allShellyIds.value.length > 0) {
-        const [period] = await Promise.allSettled([
-            store.fetchPeriodDataFleet(
-                dateRange.value.from,
-                dateRange.value.to,
-                granularity.value
-            )
-        ]);
-        logSettledRejections('Energy', {period});
-        store.setLiveDevicesNoGroup(allShellyIds.value, deviceStore.devices);
-    }
+    const [period, live] = await Promise.allSettled([
+        store.fetchPeriodData(
+            dashboardApiScope.value,
+            dateRange.value.from,
+            dateRange.value.to,
+            granularity.value
+        ),
+        store.fetchLiveMetrics(dashboardApiScope.value)
+    ]);
+    logSettledRejections('Energy', {period, live});
+    await refreshCanonicalPricing();
     // If the user is already on a heavy tab (refresh / retry), refetch its data.
     await ensureTabData(activeTab.value);
     debugTiming('primary load', startedAt);
@@ -1245,7 +1579,7 @@ async function load() {
 
 const reportMode = ref<'full' | 'single'>('full');
 const reportKind = ref<'energy' | 'interval' | 'energy_dump'>('energy');
-const reportFormat = ref<'html' | 'csv'>('html');
+const reportFormat = ref<'html' | 'csv' | 'xlsx' | 'pdf'>('html');
 const reportSections = ref<string[]>(['demand', 'solar', 'battery', 'ev', 'tenant']);
 const reportMetrics = ref<string[]>(['consumption']);
 const reportGranularity = ref('day');
@@ -1259,13 +1593,50 @@ const reportJobId = ref<string | null>(null);
 let reportTimer: ReturnType<typeof setInterval> | null = null;
 let reportPollAbort: AbortController | null = null;
 
+// Report feedback. Elapsed is shown instead of a predicted finish time: report
+// cost varies with row count and format, so any ETA would swing and mislead.
+const reportProgressPct = computed(() =>
+    progressPct(reportProgress.percent.value ?? 0, reportGenerating.value)
+);
+const reportProgressDetail = computed(() => {
+    const phase = reportProgress.label.value;
+    return phase || 'Collecting readings for the selected period';
+});
+const reportElapsedLabel = computed(() => {
+    const s = reportElapsed.value;
+    if (s < 60) return `${s}s elapsed`;
+    return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s elapsed`;
+});
+const reportProgressItems = computed(() => {
+    const items: string[] = [];
+    const rows = reportProgress.rowsWritten.value;
+    const estimated = reportProgress.estimatedRows.value;
+    if (rows !== null) {
+        items.push(
+            estimated !== null && estimated > 0
+                ? `${rows.toLocaleString('en-US')} of about ${estimated.toLocaleString('en-US')} rows written`
+                : `${rows.toLocaleString('en-US')} rows written`
+        );
+    }
+    const bytes = reportProgress.bytesWritten.value;
+    if (bytes !== null && bytes > 0) {
+        items.push(`${(bytes / 1024 / 1024).toFixed(1)} MB so far`);
+    }
+    items.push('You can keep using the dashboard while this runs');
+    return items;
+});
+
 
 // Energy report params from the current builder — shared by the generate
 // button and "Save as template".
 function currentEnergyReportParams() {
     const s = store.settings;
+    const tariffTimezone = s?.tariffTimezone?.trim();
+    const selectedBill = recordedBillCandidates.value.find(
+        (bill) => bill.id === selectedRecordedBillId.value
+    );
     return {
-        ...(groupId.value ? {scope: {groupId: groupId.value}} : {}),
+        ...dashboardScopeParams(),
         from: dateRange.value.from,
         to: dateRange.value.to,
         granularity: reportGranularity.value,
@@ -1279,7 +1650,18 @@ function currentEnergyReportParams() {
         main_meter_ids: mainMeterIdsFromSettings(s),
         nominalVoltage: (s?.chartSettings?.nominalVoltage as number | undefined) ?? 230,
         nominalHz: (s?.chartSettings?.nominalHz as number | undefined) ?? 50,
-        dashboardId: dashboardId.value
+        dashboardId: dashboardId.value,
+        ...(tariffTimezone && validateTimezone(tariffTimezone).valid
+            ? {timezone: tariffTimezone}
+            : {}),
+        ...(selectedBill
+            ? {
+                  billIdentity: {
+                      billId: selectedBill.id,
+                      ...(recordedBillIdentity(selectedBill) ?? {})
+                  }
+              }
+            : {})
     };
 }
 
@@ -1288,36 +1670,45 @@ function currentEnergyReportParams() {
 async function saveSettings(
     updated: Partial<DashboardSettings & {groupId?: number | null; name?: string}>
 ) {
-    const {groupId: newGroupId, name: newName, ...settings} = updated;
-    let scopeChanged = false;
-    if (newName && newName !== dashboardName.value) {
-        const renamed = await dashboardsStore.update(dashboardId.value, {name: newName});
-        if (renamed) dashboardName.value = renamed.name ?? newName;
-    }
-    if ('groupId' in updated) {
-        const dashboard = await dashboardsStore.update(dashboardId.value, {
-            scope: newGroupId == null ? null : {groupId: newGroupId}
-        });
-        if (!dashboard) return;
-        const nextGroupId = dashboard.scope?.groupId ?? null;
-        scopeChanged = nextGroupId !== groupId.value;
-        groupId.value = nextGroupId;
-    }
-    if (Object.keys(settings).length > 0) {
-        try {
-            await ws.sendRPC('FLEET_MANAGER', 'dashboard.setsettings', {
-                dashboardId: dashboardId.value,
-                ...normaliseDashboardSettings(settings)
-            });
-        } catch (err) {
-            toast.error((err as {message?: string})?.message ?? 'Could not save settings');
-            return;
+    savingSettings.value = true;
+    try {
+        const {groupId: newGroupId, name: newName, ...settings} = updated;
+        let scopeChanged = false;
+        if (newName && newName !== dashboardName.value) {
+            const renamed = await dashboardsStore.update(dashboardId.value, {name: newName});
+            if (renamed) dashboardName.value = renamed.name ?? newName;
         }
+        if ('groupId' in updated) {
+            const dashboard = await dashboardsStore.update(dashboardId.value, {
+                scope: newGroupId == null ? null : {groupId: newGroupId}
+            });
+            if (!dashboard) return;
+            const nextGroupId = dashboard.scope?.groupId ?? null;
+            scopeChanged = nextGroupId !== groupId.value;
+            groupId.value = nextGroupId;
+            dashboardApiScope.value = dashboard.scope ?? {};
+        }
+        if (Object.keys(settings).length > 0) {
+            try {
+                await ws.sendRPC('FLEET_MANAGER', 'dashboard.setsettings', {
+                    dashboardId: dashboardId.value,
+                    ...normaliseDashboardSettings(settings)
+                });
+            } catch (err) {
+                toast.error((err as {message?: string})?.message ?? 'Could not save settings');
+                return;
+            }
+        }
+        await store.fetchSettings(dashboardId.value);
+        showSettings.value = false;
+        // A new scope means every chart/table is showing the old scope's data.
+        if (scopeChanged) {
+            void fetchSyncStatus();
+            await reloadForRange();
+        }
+    } finally {
+        savingSettings.value = false;
     }
-    await store.fetchSettings(dashboardId.value);
-    showSettings.value = false;
-    // A new scope means every chart/table is showing the old scope's data.
-    if (scopeChanged) await reloadForRange();
 }
 
 // Saved org tariffs for the settings panel's tariff picker; loaded lazily on open.
@@ -1338,6 +1729,21 @@ async function openSettings() {
     showSettings.value = true;
     if (!tariffsLoaded) await fetchTariffList();
 }
+
+let tariffSettingsQueryHandled = false;
+watch(
+    () => route.query.settings,
+    (value) => {
+        if (value !== 'tariffs') {
+            tariffSettingsQueryHandled = false;
+            return;
+        }
+        if (tariffSettingsQueryHandled) return;
+        tariffSettingsQueryHandled = true;
+        void openSettings();
+    },
+    {immediate: true}
+);
 // The tariff editor created / edited an org tariff — refresh the picker list.
 async function reloadTariffs() {
     await fetchTariffList();
@@ -1352,10 +1758,26 @@ async function onGenerateReport(p: {
     metrics?: string[];
     sections?: string[];
 }) {
+    if (
+        p.kind === 'energy' &&
+        recordedBillCandidates.value.length > 1 &&
+        selectedRecordedBillId.value === null
+    ) {
+        toast.error(
+            'Select the exact recorded bill in the Bill card before generating this report.'
+        );
+        return;
+    }
     reportKind.value = (['energy', 'interval', 'energy_dump'].includes(p.kind) ? p.kind : 'energy') as typeof reportKind.value;
     reportMode.value = p.kind === 'interval' ? 'single' : 'full';
     if (['fifteen_minutes', 'hour', 'day', 'month'].includes(p.granularity)) reportGranularity.value = p.granularity;
-    if (p.format === 'html' || p.format === 'csv') reportFormat.value = p.format;
+    if (
+        p.format === 'html' ||
+        p.format === 'csv' ||
+        p.format === 'xlsx' ||
+        p.format === 'pdf'
+    )
+        reportFormat.value = p.format;
     if (typeof p.perDevice === 'boolean') reportPerDevice.value = p.perDevice;
     if (p.metrics?.length) reportMetrics.value = p.metrics;
     if (p.sections) reportSections.value = p.sections;
@@ -1400,40 +1822,16 @@ async function generateReport() {
                 progressOpts
             );
 
-            downloadReport(result);
+            showPartialCoverageWarning(result);
+            downloadReport(result, reportFormat.value);
         } else {
             // Single metric report
-            if (!groupId.value) {
-                // Fleet mode — fall through to full report since GenerateReport requires a group
-                const s = store.settings;
-                const result = await generateReportFile(
-                    ws,
-                    {
-                        kind: 'energy',
-                        from: dateRange.value.from,
-                        to: dateRange.value.to,
-                        granularity: reportGranularity.value,
-                        tariff: s?.tariff ?? 0,
-                        tariff_mode: s?.tariffMode ?? 'single',
-                        day_rate: s?.dayRate ?? 0,
-                        night_rate: s?.nightRate ?? 0,
-                        day_start: s?.dayStart ?? '07:00:00',
-                        day_end: s?.dayEnd ?? '23:00:00',
-                        currency: s?.currency ?? 'EUR',
-                        dashboardId: dashboardId.value
-                    },
-                    'energy_report',
-                    progressOpts
-                );
-                downloadReport(result);
-                return;
-            }
             const result = await generateReportFile(
                 ws,
                 {
                     kind: 'interval',
                     format: reportFormat.value,
-                    scope: {groupId: groupId.value},
+                    ...dashboardScopeParams(),
                     metrics: reportMetrics.value,
                     from: dateRange.value.from,
                     to: dateRange.value.to,
@@ -1444,7 +1842,7 @@ async function generateReport() {
                 progressOpts
             );
 
-            downloadReport(result);
+            downloadReport(result, reportFormat.value);
         }
     } catch (err: unknown) {
         if (
@@ -1470,20 +1868,41 @@ async function generateReport() {
     }
 }
 
+function showPartialCoverageWarning(
+    result: Awaited<ReturnType<typeof generateReportFile>>
+): void {
+    const message = partialCoverageMessage(result.coverage);
+    if (!message) return;
+    toast.addToast({type: 'warning', message, persistent: true});
+}
+
 function stopReportPoll(): void {
     reportPollAbort?.abort();
     reportPollAbort = null;
 }
 
 
-async function downloadReport(result: any) {
+async function downloadReport(
+    result: any,
+    format: 'html' | 'csv' | 'xlsx' | 'pdf'
+) {
     if (!result?.file) {
         reportError.value =
             'Report generated but no file returned. Check backend logs.';
         return;
     }
-    const filename = result.file.split('/').pop() ?? result.file;
-    const csvName = `${result.name ?? 'report'}.csv`;
+    const selectedFile =
+        format === 'html' && result.htmlFile ? result.htmlFile : result.file;
+    const filename = selectedFile.split('/').pop() ?? selectedFile;
+    const extension =
+        format === 'xlsx'
+            ? 'xlsx'
+            : format === 'pdf'
+              ? 'pdf'
+              : format === 'html'
+                ? 'html'
+                : 'csv';
+    const downloadName = `${result.name ?? 'report'}.${extension}`;
     try {
         // dev_mode_token: localStorage (cross-tab). Zitadel access_token:
         // sessionStorage (tab-scoped, post-XSS migration).
@@ -1500,14 +1919,14 @@ async function downloadReport(result: any) {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = csvName;
+        link.download = downloadName;
         link.click();
         URL.revokeObjectURL(url);
-        const htmlFile = typeof result.html_file === 'string'
-            ? result.html_file.split('/').pop()
+        const htmlFile = typeof result.htmlFile === 'string'
+            ? result.htmlFile.split('/').pop()
             : null;
         lastReport.value = {
-            name: csvName,
+            name: downloadName,
             url: `/api/reports/download/${filename}`,
             htmlUrl: htmlFile ? `/api/reports/download/${htmlFile}` : undefined
         };
@@ -1523,15 +1942,15 @@ async function downloadReport(result: any) {
 async function reloadForRange() {
     const startedAt = performance.now();
     loadedTabs.clear(); // new window — the deferred tab data is now stale
-    if (groupId.value) {
-        await Promise.allSettled([
-            store.fetchPeriodData(groupId.value, dateRange.value.from, dateRange.value.to, granularity.value)
-        ]);
-    } else if (allShellyIds.value.length > 0) {
-        await Promise.allSettled([
-            store.fetchPeriodDataFleet(dateRange.value.from, dateRange.value.to, granularity.value)
-        ]);
-    }
+    await Promise.allSettled([
+        store.fetchPeriodData(
+            dashboardApiScope.value,
+            dateRange.value.from,
+            dateRange.value.to,
+            granularity.value
+        )
+    ]);
+    await refreshCanonicalPricing();
     // Refetch the heavy data only for the tab the user is currently viewing.
     await ensureTabData(activeTab.value);
     debugTiming('range primary load', startedAt);
@@ -1545,7 +1964,7 @@ watch(dateRange, () => void reloadForRange(), {deep: true});
 watch(
     allShellyIds,
     (ids) => {
-        if (ids.length > 0 && !groupId.value && !store.periodData) {
+        if (ids.length > 0 && !store.periodData) {
             load();
         }
     },
@@ -1562,11 +1981,7 @@ function startRefresh() {
         try {
             // Refresh live KPIs only. Advancing dateRange.to here would remount the
             // whole dashboard (via renderKey) every tick and reset the active tab.
-            if (groupId.value) {
-                await store.fetchLiveMetrics(groupId.value);
-            } else if (allShellyIds.value.length > 0) {
-                store.setLiveDevicesNoGroup(allShellyIds.value, deviceStore.devices);
-            }
+            await store.fetchLiveMetrics(dashboardApiScope.value);
         } catch (err) {
             console.error('[Energy] refresh error:', err);
         }
@@ -1581,7 +1996,7 @@ function restartRefresh() {
     startRefresh();
 }
 
-// Header refresh-interval dropdown (Off / 30s / 1m). Persist to settings, then
+// Auto-refresh cadence picked from the shell ⋮ menu. Persist to settings, then
 // restart the live-refresh timer against the new cadence.
 async function onSetInterval(ms: number): Promise<void> {
     await saveSettings({refreshInterval: ms});
@@ -1589,7 +2004,12 @@ async function onSetInterval(ms: number): Promise<void> {
 }
 
 onMounted(async () => {
+    watchProjection();
+    startSyncStatusPolling();
     await load();
+    // The dashboard record may establish a group scope. Refresh immediately
+    // instead of showing the initial fleet-wide status until the next poll.
+    void fetchSyncStatus();
     startRefresh();
     // Filter-dimension labels — non-blocking; sections appear once loaded.
     void Promise.allSettled([tagsStore.fetchTags(), locationsStore.fetchLocations()]);
@@ -1599,11 +2019,12 @@ onUnmounted(() => {
     stopReportPoll();
     if (refreshTimer) clearInterval(refreshTimer);
     if (reportTimer) clearInterval(reportTimer);
+    if (syncStatusTimer) clearInterval(syncStatusTimer);
     chrome.clear();
 });
 
-// Refresh + settings live in the Energy header (EnergyVoltaine toolbar), not the
-// shell ⋮ — the shell only carries rename / set-default / lifecycle.
+// Refresh + settings live in the Energy header (EnergyVoltaine toolbar); the
+// shell ⋮ carries rename / set-default / lifecycle plus the auto-refresh cadence.
 const chrome = useDashboardChromeStore();
 const {renameVisible, renameSaving, renameName, saveRename} =
     useDomainDashboardChrome({
@@ -1612,18 +2033,16 @@ const {renameVisible, renameSaving, renameName, saveRename} =
         currentName: () => dashboardName.value,
         onRenamed: (name) => {
             dashboardName.value = name;
-        }
+        },
+        refreshInterval: () => store.settings?.refreshInterval ?? 0,
+        onSetInterval: (ms) => void onSetInterval(ms)
     });
 
 // ── Producer side of the energy dashboard SSOT contract ──
 // buildEnergyDashboardData is the single mapper from the live energy layer to the
 // presentational shape EnergyVoltaine consumes.
 const energyTariffConfigured = computed(() => {
-    const s = store.settings;
-    if (!s) return false;
-    if (s.tariffMode === 'day_night') return (s.dayRate ?? 0) > 0 || (s.nightRate ?? 0) > 0;
-    if (s.tariffMode === 'tou') return (s.tariffWindows?.length ?? 0) > 0;
-    return (s.tariff ?? 0) > 0;
+    return store.periodPricing?.status === 'priced';
 });
 const energyRangeLabel = computed(() => {
     const fmt = (iso: string) => {
@@ -1638,7 +2057,9 @@ const voltaineData = computed(() =>
         deviceCount: allShellyIds.value.length,
         onlineCount: deviceListRows.value.filter((r) => r.online).length,
         currency: currencySymbol.value,
+        currencyCode: store.periodPricing?.currency ?? null,
         tariffConfigured: energyTariffConfigured.value,
+        tariffMessage: canonicalPricingMessage.value,
         hasGroups: groupsList.value.length > 0,
         hasKinds: false,
         hasSolar:
@@ -1648,21 +2069,31 @@ const voltaineData = computed(() =>
             evDeliveredKwh.value > 0,
         totalConsumptionKwh: filteredTotalConsumption.value,
         totalCost: periodTotalCost.value,
-        projectedCost: periodProjectedCost.value,
+        projectedCost: store.projectedCost,
+        projectionObservedDays: store.projectionObservedDays,
+        projectionRangeKwh: store.projectionRangeKwh,
         totalReturnedKwh: totalReturned.value,
         rangeDays: rangeDays.value,
-        priorConsumptionKwh: priorPeriod.value.consumption,
-        priorCost: priorPeriod.value.cost,
+        priorConsumptionKwh: store.previousPeriodPricing?.consumptionKWh ?? null,
+        priorCost:
+            store.previousPeriodPricing?.status === 'priced'
+                ? store.previousPeriodPricing.energyCost
+                : null,
         consumption: consumptionChartData.value,
         returned: histReturnedChart.value,
-        dayKwh: dayNightSplit.value.day,
-        nightKwh: dayNightSplit.value.night,
-        dayRate: store.settings?.dayRate ?? store.settings?.tariff ?? 0,
-        nightRate: store.settings?.nightRate ?? store.settings?.tariff ?? 0,
-        demandRate: (store.settings?.chartSettings?.demandRate as number | undefined) ?? 0,
-        standingCharge: (store.settings?.chartSettings?.standingCharge as number | undefined) ?? 0,
-        standingPeriod: (store.settings?.chartSettings?.standingPeriod as 'day' | 'month' | undefined) ?? 'month',
-        vatPct: (store.settings?.chartSettings?.vatPct as number | undefined) ?? 0,
+        dayCost: store.periodPricing?.dayEnergyCost ?? 0,
+        nightCost: store.periodPricing?.nightEnergyCost ?? 0,
+        exportCredit: store.periodPricing?.exportCredit ?? null,
+        netEnergyCost: store.periodPricing?.netEnergyCost ?? null,
+        demandCharge: canonicalAdditionalCharges.value.demand,
+        standingCharge: canonicalAdditionalCharges.value.standing,
+        taxes:
+            canonicalAdditionalCharges.value.complete && canonicalTariff.value
+                ? effectiveTariffTaxes(canonicalTariff.value)
+                : [],
+        additionalChargesComplete: canonicalAdditionalCharges.value.complete,
+        additionalChargesMessage: canonicalAdditionalCharges.value.message,
+        recordedBill: recordedBill.value,
         avgVoltage: avgVoltage.value,
         avgPowerFactor: avgPowerFactor.value,
         avgFrequency: avgFrequency.value,
@@ -1684,7 +2115,9 @@ const voltaineData = computed(() =>
             role: meterRoles.value.has(r.id) ? (ROLE_LABELS[meterRoles.value.get(r.id) as string] ?? meterRoles.value.get(r.id) ?? '') : DEVICE_TYPE_LABELS[typeOfRow(r.shellyId)],
             live: `${Math.round(r.power)} W`,
             energy: `${Math.round(r.consumption)} kWh`,
-            cost: r.cost > 0 ? `${currencySymbol.value}${Math.round(r.cost).toLocaleString('en-US')}` : '—',
+            // Per-device authoritative pricing is not part of the aggregate
+            // summary; do not spread a blended fleet rate across unlike tariffs.
+            cost: '—',
             delta: deltaLabel(r.consumption, priorByDevice.value.get(r.id)),
             quality: r.online ? 'Good' : 'No data',
             status: r.online ? 'online' : 'offline',
@@ -1692,7 +2125,6 @@ const voltaineData = computed(() =>
         })),
         hourly: hourlyData.value,
         co2LocationKg: filteredTotalConsumption.value * ((store.settings?.emissionFactorGPerKWh ?? DEFAULT_EMISSION_FACTOR) / 1000),
-        co2AvoidedKg: co2Avoided.value ?? 0,
         co2BudgetKg: store.settings?.co2BudgetKg ?? null,
         emissionFactorMbm: store.settings?.emissionFactorMbmGPerKWh ?? null,
         pvGenerationKwh: pvGenerationKwh.value,
@@ -1704,10 +2136,6 @@ const voltaineData = computed(() =>
         evDeliveredKwh: evDeliveredKwh.value,
         hourlyWeekday: hourlyWeekday.value,
         hourlyWeekend: hourlyWeekend.value,
-        envTemp: env.value.temp,
-        envHumidity: env.value.humidity,
-        envLuminance: env.value.luminance,
-        envFlow: env.value.flow,
         tenants: tenantRows.value,
         byKind: byKindRows.value,
         utility: utilityRows.value,

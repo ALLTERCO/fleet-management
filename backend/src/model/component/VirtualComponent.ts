@@ -28,6 +28,20 @@ import {
 import {getDeviceOrThrow, wrapDeviceRpc} from '../deviceAdminRpc';
 import Component from './Component';
 
+// Device-side addressing: numeric id, or XT1 {owner, role} for
+// service-owned components. Schemas enforce at least one form.
+function addressOf(v: {
+    id?: number;
+    owner?: string;
+    role?: string;
+}): Record<string, unknown> {
+    const address: Record<string, unknown> = {};
+    if (v.id !== undefined) address.id = v.id;
+    if (v.owner !== undefined) address.owner = v.owner;
+    if (v.role !== undefined) address.role = v.role;
+    return address;
+}
+
 export default class VirtualComponent extends Component<any> {
     constructor() {
         super('virtual', {
@@ -52,7 +66,10 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Virtual.ComponentSet', () =>
-            device.sendRPC(`${v.component}.Set`, {id: v.id, value: v.value})
+            device.sendRPC(`${v.component}.Set`, {
+                ...addressOf(v),
+                value: v.value
+            })
         );
     }
 
@@ -65,6 +82,8 @@ export default class VirtualComponent extends Component<any> {
         );
         const payload: Record<string, unknown> = {type: v.type};
         if (v.config !== undefined) payload.config = v.config;
+        // fw 1.4+: caller may pin the new component id (200-299).
+        if (v.id !== undefined) payload.id = v.id;
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Virtual.Add', () =>
             device.sendRPC('Virtual.Add', payload)
@@ -91,7 +110,7 @@ export default class VirtualComponent extends Component<any> {
             params,
             VIRTUAL_TRIGGER_PARAMS_SCHEMA
         );
-        const payload: Record<string, unknown> = {id: v.id};
+        const payload: Record<string, unknown> = addressOf(v);
         if (v.event !== undefined) payload.event = v.event;
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Virtual.Trigger', () =>
@@ -113,7 +132,7 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Boolean.Set', () =>
-            device.sendRPC('Boolean.Set', {id: v.id, value: v.value})
+            device.sendRPC('Boolean.Set', {...addressOf(v), value: v.value})
         );
     }
 
@@ -126,7 +145,7 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Boolean.GetConfig', () =>
-            device.sendRPC('Boolean.GetConfig', {id: v.id})
+            device.sendRPC('Boolean.GetConfig', addressOf(v))
         );
     }
 
@@ -139,7 +158,7 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Boolean.GetStatus', () =>
-            device.sendRPC('Boolean.GetStatus', {id: v.id})
+            device.sendRPC('Boolean.GetStatus', addressOf(v))
         );
     }
 
@@ -152,7 +171,10 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Boolean.SetConfig', () =>
-            device.sendRPC('Boolean.SetConfig', {id: v.id, config: v.config})
+            device.sendRPC('Boolean.SetConfig', {
+                ...addressOf(v),
+                config: v.config
+            })
         );
     }
 
@@ -165,7 +187,7 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Number.Set', () =>
-            device.sendRPC('Number.Set', {id: v.id, value: v.value})
+            device.sendRPC('Number.Set', {...addressOf(v), value: v.value})
         );
     }
 
@@ -178,7 +200,7 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Number.GetConfig', () =>
-            device.sendRPC('Number.GetConfig', {id: v.id})
+            device.sendRPC('Number.GetConfig', addressOf(v))
         );
     }
 
@@ -191,7 +213,7 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Number.GetStatus', () =>
-            device.sendRPC('Number.GetStatus', {id: v.id})
+            device.sendRPC('Number.GetStatus', addressOf(v))
         );
     }
 
@@ -204,7 +226,10 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Number.SetConfig', () =>
-            device.sendRPC('Number.SetConfig', {id: v.id, config: v.config})
+            device.sendRPC('Number.SetConfig', {
+                ...addressOf(v),
+                config: v.config
+            })
         );
     }
 
@@ -217,7 +242,7 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Text.Set', () =>
-            device.sendRPC('Text.Set', {id: v.id, value: v.value})
+            device.sendRPC('Text.Set', {...addressOf(v), value: v.value})
         );
     }
 
@@ -230,7 +255,7 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Text.GetConfig', () =>
-            device.sendRPC('Text.GetConfig', {id: v.id})
+            device.sendRPC('Text.GetConfig', addressOf(v))
         );
     }
 
@@ -243,7 +268,7 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Text.GetStatus', () =>
-            device.sendRPC('Text.GetStatus', {id: v.id})
+            device.sendRPC('Text.GetStatus', addressOf(v))
         );
     }
 
@@ -256,7 +281,10 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Text.SetConfig', () =>
-            device.sendRPC('Text.SetConfig', {id: v.id, config: v.config})
+            device.sendRPC('Text.SetConfig', {
+                ...addressOf(v),
+                config: v.config
+            })
         );
     }
 
@@ -269,7 +297,7 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Enum.Set', () =>
-            device.sendRPC('Enum.Set', {id: v.id, value: v.value})
+            device.sendRPC('Enum.Set', {...addressOf(v), value: v.value})
         );
     }
 
@@ -282,7 +310,7 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Enum.GetConfig', () =>
-            device.sendRPC('Enum.GetConfig', {id: v.id})
+            device.sendRPC('Enum.GetConfig', addressOf(v))
         );
     }
 
@@ -295,7 +323,7 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Enum.GetStatus', () =>
-            device.sendRPC('Enum.GetStatus', {id: v.id})
+            device.sendRPC('Enum.GetStatus', addressOf(v))
         );
     }
 
@@ -308,7 +336,10 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Enum.SetConfig', () =>
-            device.sendRPC('Enum.SetConfig', {id: v.id, config: v.config})
+            device.sendRPC('Enum.SetConfig', {
+                ...addressOf(v),
+                config: v.config
+            })
         );
     }
 
@@ -321,7 +352,7 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Group.Set', () =>
-            device.sendRPC('Group.Set', {id: v.id, value: v.value})
+            device.sendRPC('Group.Set', {...addressOf(v), value: v.value})
         );
     }
 
@@ -334,7 +365,7 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Group.GetConfig', () =>
-            device.sendRPC('Group.GetConfig', {id: v.id})
+            device.sendRPC('Group.GetConfig', addressOf(v))
         );
     }
 
@@ -347,7 +378,7 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Group.GetStatus', () =>
-            device.sendRPC('Group.GetStatus', {id: v.id})
+            device.sendRPC('Group.GetStatus', addressOf(v))
         );
     }
 
@@ -360,7 +391,10 @@ export default class VirtualComponent extends Component<any> {
         );
         const device = getDeviceOrThrow(v.shellyID);
         return wrapDeviceRpc('Group.SetConfig', () =>
-            device.sendRPC('Group.SetConfig', {id: v.id, config: v.config})
+            device.sendRPC('Group.SetConfig', {
+                ...addressOf(v),
+                config: v.config
+            })
         );
     }
 

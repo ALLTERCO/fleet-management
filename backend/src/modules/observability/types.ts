@@ -6,6 +6,7 @@ import type {
     TopologyNodeKind,
     TopologyZoneId
 } from '../../types/api/topology';
+import type {CounterName} from './counters';
 
 export type {
     ModuleClusterId,
@@ -76,7 +77,7 @@ export interface ModuleRegistration {
 export interface EdgeCounter {
     from: string;
     to: string;
-    counter: string;
+    counter: CounterName;
 }
 
 export interface HttpStats {

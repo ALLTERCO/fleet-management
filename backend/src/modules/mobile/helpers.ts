@@ -93,6 +93,14 @@ export async function readAlertCounts(
     }
 }
 
+// fn_alert_instance_list matches p_state literally against
+// alert_instances.state, whose vocabulary is
+// active/acknowledged/resolved/no_data/pending. There is no 'open' state, so
+// asking for one silently counted zero. 'active' is what the badge means:
+// firing right now and unhandled — acknowledged is already someone's problem
+// and resolved is finished.
+const OPEN_ALERT_STATE = 'active';
+
 async function queryAlertCount(
     orgId: string,
     severity: string | null
@@ -101,7 +109,7 @@ async function queryAlertCount(
         'notifications.fn_alert_instance_list',
         {
             p_organization_id: orgId,
-            p_state: 'open',
+            p_state: OPEN_ALERT_STATE,
             p_severity: severity,
             p_rule_id: null,
             p_source_type: null,

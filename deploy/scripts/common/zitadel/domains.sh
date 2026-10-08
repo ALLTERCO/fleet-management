@@ -1,6 +1,15 @@
 # shellcheck shell=bash
 
 register_internal_domains() {
+    # A central Zitadel over https has no docker-internal hostnames to register.
+    case "$ZITADEL_URL" in
+        http://localhost*|http://127.*) ;;
+        *)
+            echo ""
+            echo "  Skipping internal domain registration (remote Zitadel)"
+            return 0
+            ;;
+    esac
     if [ -n "$SYSTEM_API_KEY_PATH" ] && [ -f "$SYSTEM_API_KEY_PATH" ]; then
         echo ""
         echo "--- Internal Domains ---"

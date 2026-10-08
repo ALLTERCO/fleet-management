@@ -171,34 +171,33 @@ export default class SystemComponent extends Component<any> {
                     continue;
                 }
                 this.#knownTelemetryKeys.add(key);
-                Observability.incrementCounter(`ui_${key}`, val);
+                Observability.incrementApplicationEvent(`ui_${key}`, val);
             }
         }
         if (typeof clicks === 'number' && clicks > 0) {
-            Observability.incrementCounter('ui_clicks_total', clicks);
+            Observability.incrementApplicationEvent('ui_clicks_total', clicks);
         }
-        // §4-B4: WS-patch telemetry snapshot pushed from the FE. Max
-        // depth + max raf duration are gauges (latest-wins via
-        // incrementCounter — Prom counter is fine here since each push
-        // is a sample); dropped-frame is cumulative.
+        // WS telemetry is a bounded application-event stream. The frontend
+        // submits one aggregate per flush window; no dynamic metric names are
+        // created from these keys.
         if (wsTelemetry && typeof wsTelemetry === 'object') {
             const depth = wsTelemetry.patchBufferMaxDepth;
             const dropped = wsTelemetry.droppedFrameCount;
             const rafMs = wsTelemetry.rafFrameTimeMaxMs;
             if (typeof depth === 'number' && depth >= 0) {
-                Observability.incrementCounter(
+                Observability.incrementApplicationEvent(
                     'ui_ws_patch_buffer_max_depth',
                     depth
                 );
             }
             if (typeof dropped === 'number' && dropped > 0) {
-                Observability.incrementCounter(
+                Observability.incrementApplicationEvent(
                     'ui_ws_dropped_frame_count',
                     dropped
                 );
             }
             if (typeof rafMs === 'number' && rafMs > 0) {
-                Observability.incrementCounter(
+                Observability.incrementApplicationEvent(
                     'ui_ws_raf_frame_time_max_ms',
                     Math.round(rafMs)
                 );
@@ -230,14 +229,11 @@ export default class SystemComponent extends Component<any> {
                 'System.Subscribe requires a websocket transport'
             );
         }
-        const socket = ctx.socket;
-        const {sink, connectionId, resyncRequired} = await getSessionStream(
-            ctx,
-            {
+        const {sink, capture, connectionId, resyncRequired} =
+            await getSessionStream(ctx, {
                 connectionId: params.connectionId,
                 lastSeenStreamId: params.lastSeenStreamId
-            }
-        );
+            });
         for (const event of events) {
             const eventOptions = options?.events?.[event];
             const shellyIDs = options?.shellyIDs;
@@ -254,7 +250,8 @@ export default class SystemComponent extends Component<any> {
                 event,
                 {...eventOptions, shellyIDs, paths},
                 (evt: json_rpc_event, eventData: event_data_t) => {
-                    if (socket.readyState !== 1) return;
+                    // Keeps recording through the resume grace after close.
+                    if (!capture.accepts()) return;
                     const payload =
                         eventData?.serialized || JSON.stringify(evt);
                     if (
@@ -294,12 +291,14 @@ export default class SystemComponent extends Component<any> {
                 );
             }
         }
-        // Drain exactly this call's listener ids on close.
-        ctx.onClose(() => {
+        // Drain exactly this call's listener ids when capture ends.
+        capture.onRelease(() => {
             for (const [eventName, id] of subscribedEvents) {
                 EventDistributor.removeEventListener(id, eventName);
             }
         });
+        // Our listeners exist now, so a resumed session's old ones can go.
+        capture.releasePredecessor();
 
         // Pre-warm device access cache (fire-and-forget, non-blocking).
         // Eliminates async DB fallback in EventDistributor hot loop for

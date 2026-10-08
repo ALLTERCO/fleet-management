@@ -13,6 +13,7 @@ import type {
 } from '@/types';
 import * as ws from '../tools/websocket';
 import {useEntityStore} from './entities';
+import {createIdBatchReads} from './idBatchReads';
 import {createRefreshCoordinator} from './refreshCoordinator';
 import {createStaleGuard} from './staleGuard';
 
@@ -45,13 +46,13 @@ function didTopLevelKeysChange(
 
 const DEVICE_LOADING_TIMEOUT_MS = 5_000;
 
+// Both sides now share the backend union, so nothing needs dropping. It used
+// to match 'shelly', which nothing emits, so every physical device arrived
+// here as undefined and was classified by an id-prefix guess instead.
 function normalizedDeviceSource(
     source: ShellyDeviceExternal['source'] | undefined
 ): shelly_device_t['source'] | undefined {
-    if (source === 'shelly' || source === 'virtual' || source === 'bluetooth') {
-        return source;
-    }
-    return undefined;
+    return source;
 }
 
 export const useDevicesStore = defineStore('devices', () => {
@@ -404,7 +405,8 @@ export const useDevicesStore = defineStore('devices', () => {
             locationId: shelly.locationId,
             tagIds: shelly.tagIds
         });
-        if (!isDiscovered(shelly.shellyID)) addDeviceEntities(shelly.entities);
+        if (!isDiscovered(shelly.shellyID))
+            addDeviceEntities(shelly.shellyID, shelly.entities);
     }
 
     function updateExistingDevice(
@@ -420,7 +422,11 @@ export const useDevicesStore = defineStore('devices', () => {
             applyPatch(existing.status, shelly.status);
         if (shelly.settings) applyPatch(existing.settings, shelly.settings);
         if (shelly.entities !== undefined) {
-            syncEntityStore(existing.entities ?? [], shelly.entities);
+            syncEntityStore({
+                shellyID: shelly.shellyID,
+                oldEntityIds: existing.entities ?? [],
+                newEntityIds: shelly.entities
+            });
             existing.entities = shelly.entities;
         }
         if (shelly.meta) applyPatch(existing.meta, shelly.meta);
@@ -536,23 +542,59 @@ export const useDevicesStore = defineStore('devices', () => {
 
     // Backend does NOT emit Entity.Added/Removed during reconnect.
     // Diff old vs new entity IDs and sync the entity store.
-    function syncEntityStore(oldEntityIds: string[], newEntityIds?: string[]) {
+    function syncEntityStore(input: {
+        shellyID: string;
+        oldEntityIds: string[];
+        newEntityIds?: string[];
+    }) {
+        const {shellyID, oldEntityIds, newEntityIds} = input;
         if (newEntityIds === undefined) return;
         const oldSet = new Set(oldEntityIds);
         const newSet = new Set(newEntityIds);
         const removed = [...oldSet].filter((id) => !newSet.has(id));
         if (removed.length) entityStore().removeEntities(removed);
-        addDeviceEntities(newEntityIds);
+        addDeviceEntities(shellyID, newEntityIds);
     }
 
-    function addDeviceEntities(entityIds: string[]) {
+    function addDeviceEntities(shellyID: string, entityIds: string[]) {
         // An entity missing from the store means the bulk list has not landed
-        // yet (boot race) or a device just gained one. Trigger the single
-        // coalesced bulk load, never one entity.get per id — the refresh
-        // coordinator dedupes concurrent calls, so a fleet-wide boot burst
-        // collapses to one entity.list instead of N entity.get.
+        // yet (boot race) or a device just gained one. Read that device's
+        // entities in the shared batch, never one entity.get per id and never
+        // the whole entity list again.
         const hasGap = entityIds.some((id) => !entityStore().entities[id]);
-        if (hasGap) void entityStore().fetchEntities();
+        if (!hasGap) return;
+        entityStore()
+            .fetchEntitiesOfDevices([shellyID])
+            .catch((error) => debug('[entities] read by device failed', error));
+    }
+
+    const deviceReads = createIdBatchReads({
+        read: readDevicesById,
+        onError: (error) => debug('[devices] read by id failed', error)
+    });
+
+    /** One device.list read of the named devices, merged in place. */
+    async function readDevicesById(shellyIDs: string[]): Promise<void> {
+        const page = await ws.sendRPC<{items?: ShellyDeviceExternal[]}>(
+            'FLEET_MANAGER',
+            'device.list',
+            {shellyIDs, limit: shellyIDs.length}
+        );
+        beginBatch();
+        try {
+            for (const device of page.items ?? []) handleNewDevice(device);
+            bumpVersion();
+        } finally {
+            endBatch();
+        }
+    }
+
+    /**
+     * Devices that joined or changed, read by id in batches. A device event
+     * costs a read of that device, not a snapshot of the fleet.
+     */
+    function refreshDevicesById(shellyIDs: readonly string[]): Promise<void> {
+        return deviceReads.request(shellyIDs);
     }
 
     type DeviceRecordSnapshotField =
@@ -656,7 +698,11 @@ export const useDevicesStore = defineStore('devices', () => {
                 });
             }
 
-            syncEntityStore(device.entities, nextEntities);
+            syncEntityStore({
+                shellyID: snapshot.shellyID,
+                oldEntityIds: device.entities,
+                newEntityIds: nextEntities
+            });
             replaceArrayContents(device.entities, nextEntities);
             replaceArrayContents(device.methods, snapshot.methods);
             replaceArrayContents(
@@ -699,7 +745,11 @@ export const useDevicesStore = defineStore('devices', () => {
                 device.sleeping = false;
                 setOnline(device, true);
                 replaceDeviceData(device, shelly);
-                syncEntityStore(device.entities, shelly.entities);
+                syncEntityStore({
+                    shellyID: shelly.shellyID,
+                    oldEntityIds: device.entities,
+                    newEntityIds: shelly.entities
+                });
                 if (shelly.entities?.length) device.entities = shelly.entities;
             } else {
                 handleNewDevice(shelly);
@@ -1043,6 +1093,7 @@ export const useDevicesStore = defineStore('devices', () => {
         fetchDevices,
         reconcileDevicesFromBackend,
         refreshDevicesInBackground,
+        refreshDevicesById,
         seedFromBootstrap,
         deviceConnected,
         deviceDisconnected,

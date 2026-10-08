@@ -1,0 +1,9 @@
+Project Haystack definitions and content (defs.json, units.txt, tz.txt)
+are licensed under the Academic Free License v3.0 (AFL-3.0) by the
+Project Haystack Corporation.
+
+Source: https://project-haystack.org/download
+License: https://opensource.org/licenses/AFL-3.0
+
+These files are vendored verbatim with no modifications. Updates are
+periodic — refresh by re-downloading from the upstream URL.

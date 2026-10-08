@@ -15,10 +15,10 @@ const STABLE_ALERT: ContextVariable[] = [
     {path: 'alert.severity', label: 'Severity'},
     {path: 'alert.activeSince', label: 'Active since (ISO)'},
     {path: 'rule.name', label: 'Rule name'},
-    {path: 'rule.kind', label: 'Rule kind'},
+    {path: 'rule.kind', label: 'Rule type'},
     {path: 'rule.runbookUrl', label: 'Runbook URL'},
     {path: 'subject.name', label: 'Subject name'},
-    {path: 'subject.type', label: 'Subject type'},
+    {path: 'subject.type', label: 'Applies to'},
     {path: 'subject.id', label: 'Subject identifier'}
 ];
 

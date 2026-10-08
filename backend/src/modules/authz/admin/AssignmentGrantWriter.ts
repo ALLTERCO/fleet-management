@@ -1,7 +1,6 @@
 import type CommandSender from '../../../model/CommandSender';
 import RpcError from '../../../rpc/RpcError';
 import type {
-    AssignmentGrantMetadata,
     AssignmentResponse,
     AssignmentScope,
     AssignmentSubjectType
@@ -10,32 +9,17 @@ import {authzGrantIsHighRisk} from '../../../types/api/authzCatalog';
 import * as store from '../../PostgresProvider';
 import {userIsServiceUser} from '../../user/subjectPrincipal';
 import {authzAuditWriter} from '../audit';
+import {invalidateAuthzTenant} from '../runtime';
 import {isExplicitScope, SCOPE_NOT_EXPLICIT_MESSAGE} from '../scopeGuard';
 import {normalizeAssignmentGrantMetadata} from './AssignmentGrantMetadataValidator';
 import {
     assertGrantorCanCreateAssignment,
     assertGrantorCanDeleteAssignment
 } from './GrantorAuthorityValidator';
+import type {AssignmentGrantRequest, AttachablePersona} from './grantTypes';
 import {assertPersonaScopeCompatible} from './PersonaScopeCompatibilityValidator';
 
-interface AttachablePersona {
-    key: string;
-    is_system_managed: boolean;
-}
-
-export interface AssignmentGrantRequest {
-    tenantId: string;
-    actorId: string;
-    grantor: CommandSender;
-    subjectType: AssignmentSubjectType;
-    subjectId: string;
-    personaId: string;
-    scope: AssignmentScope;
-    metadata?: AssignmentGrantMetadata;
-    // Known by some callers (service-user flows); resolved from Zitadel
-    // metadata when omitted. Never taken from the wire — trust boundary.
-    subjectIsServiceUser?: boolean;
-}
+export type {AssignmentGrantRequest, AttachablePersona};
 
 export interface AssignmentDeleteRequest {
     tenantId: string;
@@ -104,12 +88,14 @@ export type AssignmentGrantPrecheck = Omit<
 > & {subjectIsServiceUser: boolean};
 
 export async function assertAssignmentGrantAllowed(
-    request: AssignmentGrantPrecheck
+    request: AssignmentGrantPrecheck,
+    // Callers that already resolved the persona pass it in rather than paying
+    // for the same row twice.
+    preloaded?: AttachablePersona
 ): Promise<void> {
-    const persona = await loadAttachablePersona(
-        request.personaId,
-        request.tenantId
-    );
+    const persona =
+        preloaded ??
+        (await loadAttachablePersona(request.personaId, request.tenantId));
     validateAssignmentGrant(request, persona);
 }
 
@@ -139,12 +125,18 @@ export async function deleteAssignmentGrant(
         throw error;
     }
 
-    const result = await store.callMethod('organization.fn_assignment_delete', {
-        p_id: request.assignmentId,
-        p_tenant_id: request.tenantId
-    });
+    const result = await store.callMethod(
+        'organization.fn_assignment_delete_with_dashboard_activity',
+        {
+            p_id: request.assignmentId,
+            p_tenant_id: request.tenantId,
+            p_activity_actor_user_id:
+                request.grantor.getUserId() ?? request.actorId
+        }
+    );
     const rows = (result?.rows ?? []) as Array<{id: string}>;
     if (rows.length === 0) throw RpcError.NotFound('assignment');
+    await invalidateAuthzTenant(request.tenantId);
     await authzAuditWriter.writeAssignmentEvent({
         tenantId: request.tenantId,
         actorId: request.actorId,
@@ -181,6 +173,7 @@ function validateAssignmentGrant(
     assertGrantorCanCreateAssignment({
         grantor: request.grantor,
         personaKey: persona.key,
+        personaIsSystemManaged: persona.is_system_managed,
         scope: request.scope,
         subjectType: request.subjectType
     });
@@ -266,19 +259,25 @@ async function writeAssignmentGrant(
     request: AssignmentGrantRequest,
     metadata: ReturnType<typeof normalizeAssignmentGrantMetadata>
 ): Promise<AssignmentResponse> {
-    const result = await store.callMethod('organization.fn_assignment_create', {
-        p_tenant_id: request.tenantId,
-        p_subject_type: request.subjectType,
-        p_subject_id: request.subjectId,
-        p_persona_id: request.personaId,
-        p_scope: JSON.stringify(request.scope),
-        p_created_by: request.actorId,
-        p_reason: metadata.reason,
-        p_comment: metadata.comment,
-        p_expires_at: metadata.expiresAt
-    });
+    const result = await store.callMethod(
+        'organization.fn_assignment_create_with_dashboard_activity',
+        {
+            p_tenant_id: request.tenantId,
+            p_subject_type: request.subjectType,
+            p_subject_id: request.subjectId,
+            p_persona_id: request.personaId,
+            p_scope: JSON.stringify(request.scope),
+            p_created_by: request.actorId,
+            p_reason: metadata.reason,
+            p_comment: metadata.comment,
+            p_expires_at: metadata.expiresAt,
+            p_activity_actor_user_id:
+                request.grantor.getUserId() ?? request.actorId
+        }
+    );
     const rows = (result?.rows ?? []) as AssignmentResponse[];
     const assignment = rows[0];
+    await invalidateAuthzTenant(request.tenantId);
     await authzAuditWriter.writeAssignmentEvent({
         tenantId: request.tenantId,
         actorId: request.actorId,

@@ -1,13 +1,23 @@
 <template>
-    <label v-if="label" :for="'generic_input_' + id" class="input-label block text-base font-semibold pt-2 pb-2">
+    <label
+        v-if="label"
+        :for="fieldId"
+        :class="
+            labelHidden
+                ? 'sr-only'
+                : 'input-label block text-base font-semibold pt-2 pb-2'
+        "
+    >
         {{ props.label }}
     </label>
     <div class="relative w-full">
 
-        <input :id="'generic_input_' + id" v-model="model" :type="computedType"
+        <input :id="fieldId" v-model="model" :type="computedType"
+            :aria-describedby="describedBy" :aria-invalid="invalid || undefined"
             class="core-input border text-base rounded-lg block w-full p-2"
             :class="[props.disabled && 'core-input--disabled', props.customClass, props.type === 'password' ? 'pr-10' : '']"
             :placeholder="props.placeholder" :max="Number.isFinite(props.max) ? props.max : undefined" :min="Number.isFinite(props.min) ? props.min : undefined" :disabled="props.disabled" :required="props.required" :autocomplete="props.autocomplete ?? defaultAutocomplete"
+            :step="props.step"
             :inputmode="props.inputmode ?? defaultInputmode"
             :enterkeyhint="props.enterkeyhint"
             :autocapitalize="props.autocapitalize ?? defaultAutocapitalize"
@@ -49,15 +59,18 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref, useId} from 'vue';
+import {computed, ref} from 'vue';
+import {useFieldId} from '@/composables/useFieldId';
 
-const id = useId();
+// A wrapping FormField owns the id; standalone use falls back to its own.
+const {id: fieldId, describedBy, invalid} = useFieldId();
 
 type InputType =
     | 'text'
     | 'password'
     | 'number'
     | 'datetime-local'
+    | 'time'
     | 'email'
     | 'tel'
     | 'url'
@@ -67,9 +80,18 @@ const props = withDefaults(
     defineProps<{
         placeholder?: string;
         label?: string;
+        /**
+         * Keeps the label for assistive tech but not on screen. For compact
+         * rows where a visible label would repeat what the column already
+         * says. Do NOT reach for `aria-label` instead: this component has two
+         * root nodes, so a fallthrough attribute lands on the wrapper and
+         * never reaches the input.
+         */
+        labelHidden?: boolean;
         type?: InputType;
         min?: number;
         max?: number;
+        step?: number | 'any';
         disabled?: boolean;
         customClass?: string;
         error?: string;
@@ -110,6 +132,7 @@ const props = withDefaults(
         label: undefined,
         min: Number.NaN,
         max: Number.NaN,
+        step: undefined,
         disabled: false,
         customClass: '',
         error: '',

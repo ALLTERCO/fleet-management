@@ -269,6 +269,11 @@ _upd_audit_or_rollback() {
     report_path="${UPGRADE_AUDIT_DIR:-${STATE_DIR:-deploy/state}/upgrade-audits}/compare-update-${UPD_CLIENT_ID:-default}-$(date -u +%Y%m%dT%H%M%SZ).json"
     if ua_compare_snapshots "$UPD_LAST_PRE_AUDIT_PATH" "$post_path" "$report_path"; then
         export UPD_LAST_AUDIT_REPORT_PATH="$report_path"
+        local carried_over
+        carried_over="$(ua_preexisting_domain_issue_summary "$report_path")"
+        if [ -n "$carried_over" ]; then
+            echo "[update] WARN: $carried_over" >&2
+        fi
         echo "[update] migration audit passed: $report_path"
         return 0
     fi

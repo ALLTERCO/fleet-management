@@ -5,6 +5,8 @@ export interface PreferenceFilterInput {
     userIds: string[];
     channelType: string;
     severity: string;
+    /** Runs on the caller's open transaction when set. */
+    txId?: number;
 }
 
 export interface ResolvedPreferenceUsers {
@@ -32,7 +34,8 @@ export async function resolveUsersByNotificationPreference(
             p_user_ids: input.userIds,
             p_channel_type: input.channelType,
             p_severity: input.severity
-        }
+        },
+        input.txId
     );
     const rows = (result?.rows ?? []) as Array<{
         user_id?: string;

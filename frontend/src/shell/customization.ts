@@ -7,6 +7,8 @@ import {
     type ThemeTokens,
     validateProjectOverrides
 } from './customizationSchema';
+import {validateTemplateCustomization} from './template-customization-gate';
+import {resolvePresentationCustomization} from './template-host/core/customization-presentation';
 
 // Templates following @template-contract read `customization.value.X`,
 // so this key must hold a Ref, not a plain object. Without the Ref wrap
@@ -22,22 +24,44 @@ export class CustomizationError extends Error {
     }
 }
 
-function cssVarName(key: string): string {
-    return `--fm-template-${key.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)}`;
+// A network failure or 5xx means the file could not be reached, not that it is
+// wrong; callers fall back to defaults instead of failing the boot.
+export class CustomizationUnavailableError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'CustomizationUnavailableError';
+    }
 }
 
-export function applyThemeTokens(theme: ThemeTokens = {}): void {
+export function applyThemeTokens(
+    theme: ThemeTokens = {},
+    themeTokens: Readonly<Record<string, string>> = {}
+): void {
     const root = document.documentElement;
-    for (const [key, value] of Object.entries(theme)) {
-        if (value) root.style.setProperty(cssVarName(key), value);
+    const presentation = resolvePresentationCustomization({theme, themeTokens});
+    for (const [key, value] of Object.entries(presentation.themeStyle)) {
+        root.style.setProperty(key, value);
     }
 }
 
 async function fetchCustomization(): Promise<unknown> {
-    const response = await fetch('/customization.json', {
-        cache: 'no-store',
-        headers: {Accept: 'application/json'}
-    });
+    let response: Response;
+    try {
+        response = await fetch('/customization.json', {
+            cache: 'no-store',
+            headers: {Accept: 'application/json'}
+        });
+    } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new CustomizationUnavailableError(
+            `customization.json could not be reached: ${message}`
+        );
+    }
+    if (response.status >= 500) {
+        throw new CustomizationUnavailableError(
+            `customization.json failed with HTTP ${response.status}`
+        );
+    }
     if (!response.ok) {
         throw new CustomizationError(
             `customization.json failed with HTTP ${response.status}`
@@ -53,14 +77,29 @@ export async function loadCustomization(): Promise<Readonly<ProjectOverrides>> {
         if (!parsed.ok) {
             throw new CustomizationError(parsed.errors.join('; '));
         }
+        const safetyIssues = validateTemplateCustomization(
+            parsed.value,
+            DEFAULT_CUSTOMIZATION.theme
+        );
+        if (safetyIssues.length > 0) {
+            throw new CustomizationError(safetyIssues.join('; '));
+        }
         const customization = Object.freeze(
             mergeProjectOverrides(parsed.value)
         );
-        applyThemeTokens(customization.theme);
+        applyThemeTokens(customization.theme, customization.themeTokens);
         return customization;
     } catch (err) {
         if (import.meta.env.DEV) {
             console.error('[customization] using dev defaults:', err);
+            applyThemeTokens(DEFAULT_CUSTOMIZATION.theme);
+            return DEFAULT_CUSTOMIZATION;
+        }
+        if (err instanceof CustomizationUnavailableError) {
+            console.warn(
+                '[customization] temporarily unavailable, using defaults:',
+                err
+            );
             applyThemeTokens(DEFAULT_CUSTOMIZATION.theme);
             return DEFAULT_CUSTOMIZATION;
         }

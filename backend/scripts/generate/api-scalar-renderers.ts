@@ -189,6 +189,7 @@ export function renderTopbar(version: string): string {
           <a href="#transport">Transport</a>
           <a href="#categories">Categories</a>
           <a href="#quickstart">Quick start</a>
+          <a href="#mcp">MCP</a>
           <a href="#reference">Reference</a>
         </nav>
         <div class="fm-topbar-spacer"></div>

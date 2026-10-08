@@ -12,8 +12,8 @@ only the add-ons the running deployment has enabled.
 ## Node-RED
 
 - Proxy base: `/node-red/red`
-- Auth (external): FM session or Bearer PAT with node-red access; FM injects x-fm-node-red-proxy-secret upstream
-- Auth (internal): Direct to node-red:1880 with header x-fm-node-red-proxy-secret
+- Auth (external): Editor session cookie (POST /node-red/session) or Bearer PAT with node-red access; FM injects x-fm-node-red-proxy-secret and a signed x-fm-node-red-user upstream
+- Auth (internal): Direct to node-red:1880 with headers x-fm-node-red-proxy-secret and x-fm-node-red-user (HMAC-signed with the proxy secret, 5 min expiry)
 
 ### `GET /node-red/red/flows`
 

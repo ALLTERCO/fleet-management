@@ -4,14 +4,48 @@
    Ported from shelly-fm design library — all styles exact match
    ══════════════════════════════════════════════════════ */
 
-/* ── Bento Grid ── */
+/* ── Bento Grid ──
+   GridStack owns placement (it absolutely positions every item), so this must
+   not also be a CSS grid — two layout systems on one container is what made
+   card movement unpredictable before. The cell and gap custom properties stay
+   here as the single home for sizing; the grid engine reads them at runtime. */
 .bento-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, var(--grid-cell));
-    grid-auto-rows: var(--grid-cell);
-    gap: var(--card-grid-gap);
     margin-bottom: var(--space-5);
-    justify-content: center;
+}
+
+/* Cards fill the cell GridStack sized for them. */
+.bento-grid .grid-stack-item-content {
+    display: flex;
+    inset: 0;
+    overflow: visible;
+}
+.bento-grid .grid-stack-item-content > * {
+    width: 100%;
+    height: 100%;
+}
+
+/* ── Responsive cells — override the tokens the grid (and every card
+   height / intrinsic-size hint) already consumes, so tracks and card
+   content stay in sync at every width. Breakpoints follow the --bp-*
+   reference in design-tokens.css; above 1200px the :root defaults
+   (200px / 12px) apply unchanged. ── */
+@media (max-width: 480px) {
+    .bento-grid {
+        --grid-cell: 152px;
+        --card-grid-gap: var(--space-2);
+    }
+}
+@media (min-width: 481px) and (max-width: 768px) {
+    .bento-grid {
+        --grid-cell: 172px;
+        --card-grid-gap: var(--space-3);
+    }
+}
+@media (min-width: 769px) and (max-width: 1200px) {
+    .bento-grid {
+        --grid-cell: var(--bento-cell);
+        --card-grid-gap: var(--bento-gap);
+    }
 }
 
 /* ══════════════════════════════════════════════════════
@@ -83,14 +117,10 @@
     outline: none;
 }
 
-/* ── Bento Sizes ── */
-.ec-wide {
-    grid-column: span 2;
-}
-.ec-hero {
-    grid-column: span 2;
-    grid-row: span 2;
-}
+/* ── Bento Sizes ──
+   Footprint is carried by the item's gs-w / gs-h attributes, derived from the
+   card's size. The size classes remain because card content styles key off
+   them; they no longer declare spans. */
 
 /* ── Offline ── */
 .ec.is-offline {
@@ -441,8 +471,9 @@
     color: var(--color-warning-text);
     -webkit-text-fill-color: var(--color-warning-text);
 }
-.ec.is-warning .ec-hu {
+.ec.is-warning .ec-u {
     color: var(--color-warning-text);
+    -webkit-text-fill-color: var(--color-warning-text);
     opacity: 0.7;
 }
 .ec.is-warning .ec-switch-label {
@@ -674,10 +705,6 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
 }
-.ec[data-type="rgbw"] .ec-hu,
-.ec[data-type="bulb"] .ec-hu {
-    -webkit-text-fill-color: rgba(var(--rgb-c), 0.4);
-}
 .ec[data-type="rgbw"] .ec-dpct,
 .ec[data-type="bulb"] .ec-dpct {
     background: linear-gradient(
@@ -689,11 +716,6 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
 }
-.ec[data-type="rgbw"] .ec-dpct span,
-.ec[data-type="bulb"] .ec-dpct span {
-    -webkit-text-fill-color: rgba(var(--rgb-c), 0.4);
-}
-
 /* .ec-cct-pct lives once, in card-controls.css (RGBW CCT brightness %). */
 
 /* TRV 1×1 hierarchy — target/current values at subheading size,
@@ -743,13 +765,6 @@
 .ec-hero .ec-hv {
     font-size: var(--type-display);
 }
-.ec-wide .ec-hu,
-.ec-hero .ec-hu {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
-    text-transform: none;
-    letter-spacing: normal;
-}
 .ec-wide .ec-wl .ec-hv-wrap {
     margin-bottom: 0;
 }
@@ -764,10 +779,16 @@
     position: relative;
     align-items: stretch;
 }
-.ec[data-type="switch"].ec-wide .ec-wide-row::after {
+/* One vertical divider for every wide two-column control card; the offset is
+   data (--split-x, default 50%), so the geometry has a single home. */
+.ec[data-type="switch"].ec-wide .ec-wide-row::after,
+.ec[data-type="dimmer"].ec-wide .ec-wide-row::after,
+.ec[data-type="rgbw"].ec-wide .ec-wide-row::after,
+.ec[data-type="cover"].ec-wide .ec-wide-row::after,
+.ec[data-type="trv"].ec-wide .ec-wide-row::after {
     content: "";
     position: absolute;
-    left: 50%;
+    left: var(--split-x, 50%);
     top: 15%;
     bottom: 15%;
     width: 1px;
@@ -809,10 +830,6 @@
     letter-spacing: var(--tracking-tight);
     line-height: 1;
 }
-.ec[data-type="switch"].ec-wide .ec-wl .ec-hu {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
-}
 .ec-hero .ec-hv--lg {
     font-size: var(--type-display);
     letter-spacing: var(--tracking-tight);
@@ -821,10 +838,6 @@
     font-size: var(--type-display);
     font-weight: var(--font-black);
     letter-spacing: var(--tracking-tight);
-}
-.ec-hero .ec-dpct--xl span {
-    font-size: var(--type-heading);
-    font-weight: var(--font-semibold);
 }
 .ec-sub--vol {
     font-size: var(--type-caption);
@@ -1188,7 +1201,6 @@
 .ec-hv-wrap {
     display: flex;
     align-items: baseline;
-    gap: 2px;
     margin-bottom: var(--space-2);
 }
 .ec-hv {
@@ -1201,13 +1213,6 @@
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    line-height: 1;
-}
-.ec-hu {
-    font-variant-numeric: tabular-nums;
-    font-size: var(--type-body);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-tertiary);
     line-height: 1;
 }
 
@@ -1228,15 +1233,6 @@
     width: 100%;
     margin-bottom: var(--space-1);
 }
-.ec-dpct span,
-.ec-cpos span {
-    font-size: var(--type-body);
-    font-weight: var(--font-semibold);
-    letter-spacing: normal;
-    color: var(--color-text-tertiary);
-    margin-left: 2px;
-    -webkit-text-fill-color: var(--color-text-tertiary);
-}
 /* Dimmer 1×1 — bigger percentage, top-aligned info zone, breathing room above toggle */
 .ec[data-type="dimmer"]:not(.ec-wide):not(.ec-hero) .ec-val-center {
     justify-content: center;
@@ -1248,10 +1244,6 @@
     font-size: var(--type-heading);
     font-weight: var(--font-black);
     margin-bottom: 0;
-}
-.ec[data-type="dimmer"]:not(.ec-wide):not(.ec-hero) .ec-dpct span {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
 }
 .ec[data-type="dimmer"]:not(.ec-wide):not(.ec-hero) .ec-sub--sensor {
     font-size: var(--type-body);
@@ -1276,11 +1268,6 @@
     font-size: var(--type-heading);
     font-weight: var(--font-black);
     margin-bottom: 0;
-}
-.ec[data-type="rgbw"]:not(.ec-wide):not(.ec-hero) .ec-dpct span,
-.ec[data-type="bulb"]:not(.ec-wide):not(.ec-hero) .ec-dpct span {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
 }
 .ec[data-type="rgbw"]:not(.ec-wide):not(.ec-hero) .ec-sub--sensor,
 .ec[data-type="bulb"]:not(.ec-wide):not(.ec-hero) .ec-sub--sensor {
@@ -1309,13 +1296,6 @@
     font-size: var(--type-display);
     font-weight: var(--font-black);
     letter-spacing: var(--tracking-tight);
-}
-.ec[data-type="switch"]:not(.ec-wide):not(.ec-hero) .ec-hu {
-    font-size: var(--type-body);
-    font-weight: var(--font-semibold);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-wide);
-    color: var(--color-text-tertiary);
 }
 .ec[data-type="switch"]:not(.ec-wide):not(.ec-hero) .ec-btn-zone {
     padding-top: 0;
@@ -1400,9 +1380,6 @@
     font-size: var(--type-subheading);
     font-weight: 700;
 }
-.ec-metrics-grid .ec-metric-u {
-    font-size: var(--type-caption);
-}
 /* Horizontal faded line */
 .ec-metrics-grid::before {
     content: "";
@@ -1465,13 +1442,6 @@
     color: var(--color-text-secondary);
     letter-spacing: normal;
 }
-.ec-metric-u {
-    font-size: var(--type-caption);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-wide);
-}
 /* ── Dimmer 2×1 — 50/50 split with centered divider ── */
 .ec[data-type="dimmer"].ec-wide .ec-val {
     padding: 0;
@@ -1482,24 +1452,13 @@
     padding: 0;
     position: relative;
     align-items: stretch;
+    /* Separator sits on the 40/60 column boundary, not the 50% default. */
+    --split-x: 40%;
 }
-.ec[data-type="dimmer"].ec-wide .ec-wide-row::after {
-    content: "";
-    position: absolute;
-    left: 40%;
-    top: 15%;
-    bottom: 15%;
-    width: 1px;
-    background: linear-gradient(
-        180deg,
-        transparent,
-        var(--color-border-medium),
-        transparent
-    );
-    transform: translateX(-50%);
-    z-index: 1;
-}
-.ec[data-type="dimmer"].ec-wide .ec-wl {
+/* Left = value column (40%), right = sliders + toggle (60%). */
+.ec[data-type="dimmer"].ec-wide .ec-wl,
+.ec[data-type="rgbw"].ec-wide .ec-wl,
+.ec[data-type="bulb"].ec-wide .ec-wl {
     flex: 0 0 40%;
     display: flex;
     flex-direction: column;
@@ -1508,7 +1467,10 @@
     padding: 0;
     gap: var(--space-1);
 }
-.ec[data-type="dimmer"].ec-wide .ec-wr {
+/* Dimmer, RGBW and bulb wide right column: sliders + toggle, stacked. */
+.ec[data-type="dimmer"].ec-wide .ec-wr,
+.ec[data-type="rgbw"].ec-wide .ec-wr,
+.ec[data-type="bulb"].ec-wide .ec-wr {
     flex: 0 0 60%;
     display: flex;
     flex-direction: column;
@@ -1517,31 +1479,29 @@
     gap: 18px;
     padding: 0 var(--space-4);
 }
-.ec[data-type="dimmer"].ec-wide .ec-clr-track {
+.ec[data-type="dimmer"].ec-wide .ec-wr > *,
+.ec[data-type="rgbw"].ec-wide .ec-wr > *,
+.ec[data-type="bulb"].ec-wide .ec-wr > * {
+    flex-shrink: 0;
+}
+/* The slider wrapper fills its column on every wide slider card. One home. */
+.ec[data-type="dimmer"].ec-wide .ec-clr-track,
+.ec[data-type="rgbw"].ec-wide .ec-clr-track,
+.ec[data-type="bulb"].ec-wide .ec-clr-track,
+.ec[data-type="cover"].ec-wide .ec-clr-track {
     flex: 0 0 auto;
     width: 100%;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    padding: 0;
 }
-.ec[data-type="dimmer"].ec-wide .ec-clr-track .sld-r {
-    height: 12px;
-    border-radius: 6px;
-}
+/* Brightness is the hero of the wide tile; the half-width column affords it. */
 .ec[data-type="dimmer"].ec-wide .ec-dpct {
-    font-size: var(--type-heading);
+    font-size: var(--type-display);
     font-weight: var(--font-black);
     letter-spacing: var(--tracking-tight);
     line-height: 1;
     margin-bottom: 0;
 }
-.ec[data-type="dimmer"].ec-wide .ec-dpct span {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
-}
 .ec[data-type="dimmer"].ec-wide .ec-sub--power {
-    font-size: var(--type-caption);
+    font-size: var(--type-body);
     font-weight: var(--font-semibold);
     color: var(--color-text-tertiary);
     text-transform: uppercase;
@@ -1557,52 +1517,11 @@
     padding: 0;
     position: relative;
     align-items: stretch;
+    --split-x: 40%;
 }
-.ec[data-type="rgbw"].ec-wide .ec-wide-row::after {
-    content: "";
-    position: absolute;
-    left: 40%;
-    top: 15%;
-    bottom: 15%;
-    width: 1px;
-    background: linear-gradient(
-        180deg,
-        transparent,
-        var(--color-border-medium),
-        transparent
-    );
-    transform: translateX(-50%);
-    z-index: 1;
-}
-.ec[data-type="rgbw"].ec-wide .ec-wl {
-    flex: 0 0 40%;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    padding: 0;
-    gap: var(--space-1);
-}
-.ec[data-type="rgbw"].ec-wide .ec-wr {
+.ec[data-type="rgbw"].ec-wide .ec-wr,
+.ec[data-type="bulb"].ec-wide .ec-wr {
     flex: 0 0 60%;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    gap: 18px;
-    padding: 0 var(--space-4);
-}
-.ec[data-type="rgbw"].ec-wide .ec-clr-track {
-    flex: 0 0 auto;
-    width: 100%;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    padding: 0;
-}
-.ec[data-type="rgbw"].ec-wide .ec-clr-track .sld-r {
-    height: 12px;
-    border-radius: 6px;
 }
 .ec[data-type="rgbw"].ec-wide .ec-dpct {
     font-size: var(--type-heading);
@@ -1610,10 +1529,6 @@
     letter-spacing: var(--tracking-tight);
     line-height: 1;
     margin-bottom: 0;
-}
-.ec[data-type="rgbw"].ec-wide .ec-dpct span {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
 }
 .ec[data-type="rgbw"].ec-wide .ec-sub--power {
     font-size: var(--type-caption);
@@ -1692,22 +1607,7 @@
     padding: 0;
     position: relative;
     align-items: stretch;
-}
-.ec[data-type="cover"].ec-wide .ec-wide-row::after {
-    content: "";
-    position: absolute;
-    left: 40%;
-    top: 15%;
-    bottom: 15%;
-    width: 1px;
-    background: linear-gradient(
-        180deg,
-        transparent,
-        var(--color-border-medium),
-        transparent
-    );
-    transform: translateX(-50%);
-    z-index: 1;
+    --split-x: 40%;
 }
 .ec[data-type="cover"].ec-wide .ec-wl {
     flex: 0 0 40%;
@@ -1730,14 +1630,6 @@
 .ec[data-type="cover"].ec-wide .ec-clr-track {
     flex: 0 0 auto;
     width: 100%;
-    height: 28px;
-    display: flex;
-    align-items: center;
-    padding: 0;
-}
-.ec[data-type="cover"].ec-wide .ec-clr-track .sld-r {
-    height: 12px;
-    border-radius: 6px;
 }
 .ec[data-type="cover"].ec-wide .ec-cpos {
     font-size: var(--type-heading);
@@ -1745,10 +1637,6 @@
     letter-spacing: var(--tracking-tight);
     line-height: 1;
     margin-bottom: 0;
-}
-.ec[data-type="cover"].ec-wide .ec-cpos span {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
 }
 .ec[data-type="cover"].ec-wide .ec-sub--power {
     font-size: var(--type-caption);
@@ -2490,10 +2378,6 @@
     width: auto;
     line-height: 1;
 }
-.ec-wide .ec-dpct span {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
-}
 .ec-wide .ec-cpos {
     font-size: var(--type-heading);
     font-weight: var(--font-black);
@@ -2501,10 +2385,6 @@
     margin-bottom: 0;
     width: auto;
     line-height: 1;
-}
-.ec-wide .ec-cpos span {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
 }
 .ec-wide .ec-dv {
     font-size: var(--type-heading);
@@ -2578,22 +2458,7 @@
     padding: 0;
     position: relative;
     align-items: stretch;
-}
-.ec[data-type="trv"].ec-wide .ec-wide-row::after {
-    content: "";
-    position: absolute;
-    left: 40%;
-    top: 15%;
-    bottom: 15%;
-    width: 1px;
-    background: linear-gradient(
-        180deg,
-        transparent,
-        var(--color-border-medium),
-        transparent
-    );
-    transform: translateX(-50%);
-    z-index: 1;
+    --split-x: 40%;
 }
 .ec[data-type="trv"].ec-wide .ec-wl {
     flex: 0 0 40%;
@@ -2648,8 +2513,7 @@
     height: 36px;
     font-size: var(--type-body);
 }
-/* 2×1 TRV — heading-sized target, body current. Degree symbol scales
-   with the digit via subheading step below heading. */
+/* 2×1 TRV — heading-sized target, body current. The degree is .ec-u. */
 .ec-trv-target {
     font-variant-numeric: tabular-nums;
     font-size: var(--type-heading);
@@ -2658,19 +2522,10 @@
     line-height: 1.1;
     display: flex;
     align-items: baseline;
-    gap: 2px;
-}
-.ec-trv-target,
-.ec-trv-target span {
     background: linear-gradient(180deg, #fff 20%, rgba(255, 255, 255, 0.6));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-}
-.ec-trv-target span {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
-    letter-spacing: 0;
 }
 .ec-trv-cur-sm {
     font-variant-numeric: tabular-nums;
@@ -2737,9 +2592,6 @@
     margin-bottom: 0;
     width: auto;
     line-height: 1;
-}
-.ec-3col .ec-dpct span {
-    font-size: var(--type-body);
 }
 .ec-3col .ec-cdots {
     display: flex;
@@ -3227,9 +3079,6 @@
     }
     .ec-hv {
         font-size: var(--type-subheading);
-    }
-    .ec-hu {
-        font-size: var(--type-body);
     }
     .ec-icon {
         width: 20px;

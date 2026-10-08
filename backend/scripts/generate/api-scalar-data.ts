@@ -62,7 +62,7 @@ export const FEATURED_NAMESPACES: FeaturedNamespace[] = [
     }
 ];
 
-// Categories — derived from entity-registry.ts + docs/architecture/api.md § 2.
+// Categories — derived from entity-registry.ts.
 // Every namespace belongs to exactly one. Build asserts full coverage.
 export const CATEGORIES: readonly Category[] = [
     {
@@ -145,7 +145,13 @@ export const CATEGORIES: readonly Category[] = [
         label: 'Specialty Devices',
         blurb: 'Cury scent diffusers, Pill, DALI lighting networks, XT1 services.',
         icon: 'M12 2 4 6v6c0 5 3.5 9.5 8 10 4.5-.5 8-5 8-10V6z',
-        namespaces: ['cury', 'pill', 'dali', 'service']
+        namespaces: ['cury', 'pill', 'pilluart', 'dali', 'service']
+    },
+    {
+        label: 'IR Control',
+        blurb: 'IR controllers, per-remote devices, code learning, and the org IR code library.',
+        icon: 'M12 4a8 8 0 0 0-8 8h4a4 4 0 0 1 8 0h4a8 8 0 0 0-8-8zM12 14v6M9 20h6',
+        namespaces: ['ir', 'irdevice', 'ircode', 'irlibrary']
     },
     {
         label: 'Virtual Components & Devices',
@@ -208,9 +214,9 @@ export const CATEGORIES: readonly Category[] = [
     },
     {
         label: 'Schedules & Automation',
-        blurb: 'Time- and event-driven schedules; embedded device scripts.',
+        blurb: 'Time- and event-driven schedules; embedded device scripts; Node-RED automations.',
         icon: 'M5 3v18M9 7l5-3 5 3v10l-5 3-5-3z',
-        namespaces: ['schedule', 'script']
+        namespaces: ['schedule', 'script', 'automation']
     },
     {
         label: 'Dashboards & UI',

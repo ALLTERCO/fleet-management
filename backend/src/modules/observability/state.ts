@@ -137,6 +137,9 @@ export const dbTimings = new BoundedMap<string, RpcMethodStats>({
 export const counters = new BoundedMap<string, number>({
     maxSize: METRIC_KEY_LIMIT
 });
+export const applicationEvents = new BoundedMap<string, number>({
+    maxSize: METRIC_KEY_LIMIT
+});
 // Label values are device-influenced; excess label-sets fold into an overflow
 // bucket so the counter stays monotonic for rate().
 export const labeledCounters = new LabeledSeriesMap({

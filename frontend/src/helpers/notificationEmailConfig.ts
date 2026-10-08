@@ -45,7 +45,10 @@ export function buildEmailChannelConfig(
         config.auth = {
             type: 'password',
             user: form.authUser,
-            pass: form.authPass
+            // Blank means "keep the stored password". The API never returns it,
+            // so the field is empty on every edit; sending that empty string
+            // would wipe a working password just to change a recipient.
+            ...(form.authPass ? {pass: form.authPass} : {})
         };
     }
     return config;

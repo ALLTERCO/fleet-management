@@ -141,6 +141,7 @@ import {
     notesErrorMessage
 } from '@/helpers/location-drawer-steps';
 import {inheritKindFieldsFromParent} from '@/helpers/location-inheritance';
+import {buildLocationKindFields} from '@/helpers/location-form-payload';
 import {isPlanFriendlyKind} from '@/helpers/location-kinds';
 import {NAME_MAX_LENGTH} from '@/helpers/validation-limits';
 import {type LocationKindDescriptor, useLocationsStore} from '@/stores/locations';
@@ -418,20 +419,15 @@ function isSaveAllowed(): boolean {
 
 // Answer — kindFields payload from the current form state.
 function buildKindFieldsPayload(): LocationKindFields {
-    const out: Record<string, unknown> = {...formKindFields.value};
-    if (hasPin.value) {
-        out.geo = {
-            lat: geo.value.lat,
-            lng: geo.value.lng,
-            precision: precision.value
-        };
-    }
-    if (tags.value.length > 0) out.tags = [...tags.value];
-    else delete out.tags;
-    const trimmedNotes = notes.value.trim();
-    if (trimmedNotes) out.notes = trimmedNotes;
-    else delete out.notes;
-    return out as LocationKindFields;
+    return buildLocationKindFields({
+        mode: props.mode,
+        kindFields: formKindFields.value,
+        geo: geo.value,
+        hasPin: hasPin.value,
+        precision: precision.value,
+        tags: tags.value,
+        notes: notes.value
+    });
 }
 
 async function persistLocation(): Promise<ApiLocation | null> {

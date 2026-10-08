@@ -14,6 +14,7 @@ export const AUDIT_EVENT_TYPES = [
     'device_add',
     'device_delete',
     'device_reconnect_replace',
+    'baseline_exclusion_change',
     'config_change',
     'permission_change',
     'mcp_tool_call'
@@ -31,10 +32,27 @@ export const AUDIT_EVENT_LABELS: Record<AuditEventType, string> = {
     device_add: 'Device added',
     device_delete: 'Device deleted',
     device_reconnect_replace: 'Device reconnect replaced existing socket',
+    baseline_exclusion_change: 'Baseline exclusion changed',
     config_change: 'Config change',
     permission_change: 'Permission change',
     mcp_tool_call: 'MCP agent tool call'
 };
+
+// Column widths of logging.audit_log (migration 7339); a wider value matches nothing.
+export const AGENT_KEY_ID_MAX_LENGTH = 255;
+export const CORRELATION_ID_MAX_LENGTH = 64;
+
+export interface AuditQueryParams {
+    from?: string;
+    to?: string;
+    eventTypes?: AuditEventType[];
+    username?: string;
+    shellyId?: string;
+    agentKeyId?: string;
+    correlationId?: string;
+    limit?: number;
+    offset?: number;
+}
 
 export const AUDIT_QUERY_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
@@ -47,10 +65,47 @@ export const AUDIT_QUERY_PARAMS_SCHEMA: JsonSchema = {
         },
         username: {type: 'string'},
         shellyId: {type: 'string'},
+        agentKeyId: {
+            type: 'string',
+            maxLength: AGENT_KEY_ID_MAX_LENGTH,
+            description:
+                'Scoped credential id. Returns everything one agent key did.'
+        },
+        correlationId: {
+            type: 'string',
+            maxLength: CORRELATION_ID_MAX_LENGTH,
+            description:
+                'Every row produced by one MCP tool call. No time range is needed.'
+        },
         limit: {type: 'integer', minimum: 1, maximum: 10000, default: 200},
         offset: {type: 'integer', minimum: 0, default: 0}
     }
 };
+
+export interface AuditQueryRow {
+    id: number;
+    ts: string;
+    event_type: string;
+    username: string | null;
+    shelly_id: string | null;
+    shelly_ids: string[] | null;
+    device_id: number | null;
+    method: string | null;
+    params: Record<string, unknown> | null;
+    success: boolean;
+    error_message: string | null;
+    ip_address: string | null;
+    agent_key_id: string | null;
+    correlation_id: string | null;
+}
+
+export interface AuditQueryResponse {
+    items: AuditQueryRow[];
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+}
 
 const AUDIT_ROW_SCHEMA: JsonSchema = {
     type: 'object',
@@ -71,7 +126,16 @@ const AUDIT_ROW_SCHEMA: JsonSchema = {
         params: {type: ['object', 'null'], additionalProperties: true},
         success: {type: 'boolean'},
         error_message: {type: ['string', 'null']},
-        ip_address: {type: ['string', 'null']}
+        ip_address: {type: ['string', 'null']},
+        agent_key_id: {
+            type: ['string', 'null'],
+            description:
+                'Scoped credential the call arrived on. Null for a person.'
+        },
+        correlation_id: {
+            type: ['string', 'null'],
+            description: 'Shared by every row from one MCP tool call.'
+        }
     },
     additionalProperties: true
 };
@@ -88,6 +152,12 @@ export const AUDIT_QUERY_RESPONSE_SCHEMA: JsonSchema = {
     }
 };
 
+export interface AuditExportParams {
+    from: string;
+    to: string;
+    eventTypes?: AuditEventType[];
+}
+
 export const AUDIT_EXPORT_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
     required: ['from', 'to'],
@@ -97,6 +167,14 @@ export const AUDIT_EXPORT_PARAMS_SCHEMA: JsonSchema = {
         eventTypes: {type: 'array', items: {type: 'string'}}
     }
 };
+
+export interface AuditExportResponse {
+    filename: string;
+    downloadUrl: string;
+    downloadTicketUrl: string;
+    rows: number;
+    generated: string;
+}
 
 export const AUDIT_EXPORT_RESPONSE_SCHEMA: JsonSchema = {
     type: 'object',
@@ -143,7 +221,7 @@ export const AUDIT_DESCRIBE: DescribeOutput = new DescribeBuilder('audit', {
         response: AUDIT_QUERY_RESPONSE_SCHEMA,
         permission: {note: 'admin-only'},
         description:
-            'Search the audit log with optional time range, event-type, username, and shellyID filters.'
+            'Search the audit log with optional time range, event-type, username, shellyID, agent key and MCP tool-call filters.'
     })
     .registerMethod('Export', {
         safety: {operation: 'create'},

@@ -29,7 +29,7 @@ write_login_client_pat_file() {
 state_var() {
     local key="$1"
     if [ -f "$STATE_FILE" ]; then
-        grep -oP "^${key}=\\K.*" "$STATE_FILE" 2>/dev/null || true
+        awk -v prefix="${key}=" 'index($0, prefix) == 1 { print substr($0, length(prefix) + 1) }' "$STATE_FILE"
     fi
 }
 
@@ -42,6 +42,39 @@ bootstrap_password_change_required() {
         public|prod|staging) printf 'true' ;;
         *) printf 'false' ;;
     esac
+}
+
+# Re-apply the configured password to a user that already exists.
+#
+# Creating a user is the only place a password was ever set, so rotating
+# FM_ADMIN_PASSWORD never reached Zitadel and the env file quietly disagreed
+# with the real account. Envs that opt in (FM_ADMIN_PASSWORD_RECONCILE=true)
+# get the env file treated as the source of truth on every deploy.
+reconcile_user_password() {
+    local user_id="$1" password="$2" label="$3"
+    local body response
+
+    if [ "${FM_ADMIN_PASSWORD_RECONCILE:-false}" != "true" ]; then
+        return 0
+    fi
+    if [ -z "$password" ]; then
+        echo "ERROR: FM_ADMIN_PASSWORD_RECONCILE=true but no password for $label" >&2
+        exit 1
+    fi
+
+    echo "  Re-applying configured password to $label..."
+    body=$(jq -cn --arg password "$password" \
+        '{newPassword:{password:$password, changeRequired:false}}')
+    response=$(zitadel_api "POST" "/v2/users/${user_id}/password" \
+        "$body" "$TOKEN" "$ZITADEL_URL")
+
+    # A success body carries no error field; anything else is a real failure.
+    if echo "$response" | jq -e 'has("code") or has("message")' >/dev/null 2>&1; then
+        echo "ERROR: could not set password for $label" >&2
+        echo "$response" >&2
+        exit 1
+    fi
+    echo "  Password for $label now matches the env file"
 }
 
 list_internal_org_roles() {
@@ -312,7 +345,12 @@ ensure_platform_admin_user() {
             echo "ERROR: Platform admin user belongs to org ${existing_resource_owner:-unknown}, expected $PLATFORM_ORGANIZATION_ID" >&2
             exit 1
         fi
-        echo "  Existing platform admin password is not changed; env password must match Zitadel."
+        if [ "${FM_ADMIN_PASSWORD_RECONCILE:-false}" = "true" ]; then
+            reconcile_user_password "$PLATFORM_ADMIN_USER_ID" \
+                "$PLATFORM_ADMIN_PASSWORD" "$FM_PLATFORM_ADMIN_USER"
+        else
+            echo "  Existing platform admin password is not changed; env password must match Zitadel."
+        fi
     else
         echo "  Creating platform admin user..."
         create_user_body=$(jq -cn \
@@ -381,6 +419,7 @@ ensure_fm_admin_user() {
     if [ -n "$existing_user" ]; then
         TEST_USER_ID=$(echo "$existing_user" | jq -r '.userId')
         echo "  FM admin user exists: $TEST_USER_ID"
+        reconcile_user_password "$TEST_USER_ID" "$TEST_USER_PASSWORD" "$TEST_USER_NAME"
     else
         echo "  Creating FM admin user (CreateUser v2 — pre-verified, password-change policy applied)..."
         create_user_body=$(jq -cn \
@@ -597,19 +636,46 @@ ensure_service_user() {
     fi
 }
 
+# stdout: the operator's own permission list, or nothing. Empty means the
+# Fleet Manager default (backend/src/modules/nodeRed/servicePermissions.ts).
+node_red_permission_override() {
+    printf '%s' "${FM_NODE_RED_PERMISSIONS:-$(state_var FM_NODE_RED_PERMISSIONS)}"
+}
+
+# Writes NODE_RED_PERMISSIONS (empty = default) into the account's metadata.
+# Runs for new and existing accounts alike, so a redeploy re-applies it.
+write_node_red_service_metadata() {
+    local permissions_json permissions_b64 group_b64 metadata_body response
+    permissions_json="$(csv_to_json_array "$NODE_RED_PERMISSIONS")"
+    permissions_b64="$(printf '%s' "$permissions_json" | base64 | tr -d '\n')"
+    group_b64="$(printf 'automation_service' | base64 | tr -d '\n')"
+    metadata_body=$(jq -cn \
+        --arg permissions "$permissions_b64" \
+        --arg group "$group_b64" \
+        '{metadata:[
+            {key:"fleet_permissions",value:$permissions},
+            {key:"fleet_group",value:$group}
+        ]}')
+    response=$(zitadel_api "POST" "/v2/users/${NODE_RED_SERVICE_USER_ID}/metadata" \
+        "$metadata_body" "$TOKEN" "$ZITADEL_URL")
+    if echo "$response" | jq -e 'has("code") or has("error")' >/dev/null 2>&1; then
+        echo "ERROR: Failed to set Node-RED service metadata" >&2
+        echo "$response" >&2
+        exit 1
+    fi
+    echo "  Metadata set: ${NODE_RED_PERMISSIONS:-Fleet Manager default}"
+}
+
 ensure_node_red_service_user() {
     local enabled="${FM_NODE_RED_ADDON_ENABLED:-${FM_NODE_RED_ENABLED:-false}}"
-    local existing_user create_machine_body response metadata_body
-    local permissions_json permissions_b64 group_b64
+    local existing_user create_machine_body response
     local pat_expiry_days pat_expiry
 
     NODE_RED_SERVICE_USER_ID="${NODE_RED_SERVICE_USER_ID:-$(state_var FM_NODE_RED_SERVICE_USER_ID)}"
     NODE_RED_SERVICE_PAT="${NODE_RED_SERVICE_PAT:-$(state_var FM_NODE_RED_SERVICE_TOKEN)}"
     NODE_RED_PROXY_SECRET="${FM_NODE_RED_PROXY_SECRET:-$(state_var FM_NODE_RED_PROXY_SECRET)}"
     NODE_RED_CREDENTIAL_SECRET="${FM_NODE_RED_CREDENTIAL_SECRET:-$(state_var FM_NODE_RED_CREDENTIAL_SECRET)}"
-    NODE_RED_PERMISSIONS="${FM_NODE_RED_PERMISSIONS:-$(state_var FM_NODE_RED_PERMISSIONS)}"
-    # Least privilege: read + control devices, run actions. No device:write.
-    NODE_RED_PERMISSIONS="${NODE_RED_PERMISSIONS:-device:read,device:execute,action:execute}"
+    NODE_RED_PERMISSIONS="$(node_red_permission_override)"
 
     if [ "$enabled" != "true" ]; then
         return 0
@@ -691,24 +757,7 @@ ensure_node_red_service_user() {
         echo "  Node-RED PAT generated"
     fi
 
-    permissions_json="$(csv_to_json_array "$NODE_RED_PERMISSIONS")"
-    permissions_b64="$(printf '%s' "$permissions_json" | base64 | tr -d '\n')"
-    group_b64="$(printf 'automation_service' | base64 | tr -d '\n')"
-    metadata_body=$(jq -cn \
-        --arg permissions "$permissions_b64" \
-        --arg group "$group_b64" \
-        '{metadata:[
-            {key:"fleet_permissions",value:$permissions},
-            {key:"fleet_group",value:$group}
-        ]}')
-    response=$(zitadel_api "POST" "/v2/users/${NODE_RED_SERVICE_USER_ID}/metadata" \
-        "$metadata_body" "$TOKEN" "$ZITADEL_URL")
-    if echo "$response" | jq -e 'has("code") or has("error")' >/dev/null 2>&1; then
-        echo "ERROR: Failed to set Node-RED service metadata" >&2
-        echo "$response" >&2
-        exit 1
-    fi
-    echo "  Metadata set: $NODE_RED_PERMISSIONS"
+    write_node_red_service_metadata
 }
 
 ensure_grafana_service_user() {

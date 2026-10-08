@@ -1,8 +1,10 @@
+import type {AssignmentScope} from '../../types/api/assignment';
 import type {
     CertificatePushRow,
     CertificatePushStatus
 } from '../../types/api/certificate';
 import type {
+    OperationJobControlSnapshot,
     OperationJobKind,
     OperationJobSnapshot,
     OperationJobStatus
@@ -24,6 +26,8 @@ export interface BackupQueuedUnit {
     device_id: string;
     mode: 'create' | 'restore';
     target_summary: Record<string, unknown>;
+    authority: JobAuthority;
+    execution_id: string;
 }
 
 export interface BackupUnitCounts {
@@ -59,7 +63,29 @@ export interface FirmwareQueuedUnit {
     mode: 'channel' | 'url';
     target_summary: Record<string, unknown>;
     request: Record<string, unknown>;
+    authority: JobAuthority;
+    execution_id: string;
 }
+
+export interface UserJobAuthority {
+    kind: 'user';
+    tenantId: string;
+    userId: string;
+    username?: string;
+    credentialId?: string;
+    credentialBoundary?: AssignmentScope;
+    operation: 'update' | 'execute';
+    sourceIp?: string;
+}
+
+export interface SystemJobAuthority {
+    kind: 'system';
+    tenantId: string;
+    service: 'firmware-auto-update';
+    channel: 'stable' | 'beta';
+}
+
+export type JobAuthority = UserJobAuthority | SystemJobAuthority;
 
 export interface FirmwareUnitCounts {
     pending: number;
@@ -78,6 +104,13 @@ interface JobDbRow {
     ended_at: Date | string | null;
     created_by: string | null;
     metadata: Record<string, unknown> | null;
+    control_state?: string | null;
+    queued_count?: number | string | null;
+    claimed_count?: number | string | null;
+    dispatched_count?: number | string | null;
+    stopped_count?: number | string | null;
+    unresolved_count?: number | string | null;
+    cancel_requested_at?: Date | string | null;
 }
 
 interface JobQuery {
@@ -98,6 +131,7 @@ interface CreateCertificateJobQuery {
     slot: string;
     target: unknown;
     createdBy: string;
+    authority: JobAuthority;
 }
 
 interface EnqueueCertificateTargetsQuery {
@@ -113,6 +147,7 @@ interface CreateCredentialJobQuery {
     target: unknown;
     mode: 'set' | 'rotate' | 'clear';
     createdBy: string;
+    authority: JobAuthority;
 }
 
 interface CreateBackupJobQuery {
@@ -122,6 +157,7 @@ interface CreateBackupJobQuery {
     createdBy: string;
     idempotencyKey?: string;
     requestHash: string;
+    authority: JobAuthority;
 }
 
 export interface CreatedBackupJob {
@@ -136,6 +172,7 @@ interface CreateFirmwareJobQuery {
     createdBy: string;
     idempotencyKey?: string;
     requestHash: string;
+    authority: JobAuthority;
 }
 
 export interface CreatedFirmwareJob {
@@ -174,12 +211,14 @@ interface MarkCertificateUnitQuery {
     status: CertificatePushStatus;
     lastError: string | null;
     requiresReboot: boolean;
+    executionId: string;
 }
 
 interface MarkCredentialUnitQuery {
     id: number;
     status: 'ok' | 'failed' | 'unknown';
     lastError: string | null;
+    executionId: string;
 }
 
 interface ListQueuedBackupUnitsQuery {
@@ -188,12 +227,14 @@ interface ListQueuedBackupUnitsQuery {
 
 interface MarkBackupUnitDoneQuery {
     id: number;
+    executionId: string;
     backupId?: string;
     result?: unknown;
 }
 
 interface MarkBackupUnitFailedQuery {
     id: number;
+    executionId: string;
     lastError: string;
 }
 
@@ -212,12 +253,14 @@ interface ListQueuedFirmwareUnitsQuery {
 
 interface MarkFirmwareUnitProgressQuery {
     id: number;
+    executionId: string;
     phase: string;
     progressPercent?: number;
 }
 
 interface MarkFirmwareUnitDoneQuery {
     id: number;
+    executionId: string;
     finalVersion?: string;
     finalFwId?: string;
     result?: unknown;
@@ -225,6 +268,7 @@ interface MarkFirmwareUnitDoneQuery {
 
 interface MarkFirmwareUnitFailedQuery {
     id: number;
+    executionId: string;
     lastError: string;
 }
 
@@ -235,6 +279,27 @@ interface GetFirmwareUnitCountsQuery {
 
 interface ReclaimStaleFirmwareUnitsQuery {
     timeoutMs: number;
+}
+
+interface PrepareUnitDispatchQuery {
+    kind: OperationJobKind;
+    id: number;
+    executionId: string;
+}
+
+interface StopUnitBeforeDispatchQuery extends PrepareUnitDispatchQuery {
+    reason: string;
+}
+
+interface ControlJobQuery {
+    tenantId: string;
+    jobId: string;
+    kind: OperationJobKind;
+}
+
+export interface JobControlContext {
+    authority?: JobAuthority;
+    deviceIds: string[];
 }
 
 type QueryRows = <T = unknown>(
@@ -275,7 +340,7 @@ function toIsoString(value: Date | string | null): string | null {
 }
 
 function mapJobRow(row: JobDbRow): OperationJobSnapshot {
-    return {
+    const snapshot: OperationJobSnapshot = {
         id: row.id,
         kind: row.kind,
         status: row.status,
@@ -288,6 +353,18 @@ function mapJobRow(row: JobDbRow): OperationJobSnapshot {
         createdBy: row.created_by,
         metadata: row.metadata ?? {}
     };
+    if (row.control_state) {
+        snapshot.control = {
+            state: row.control_state as OperationJobControlSnapshot['state'],
+            queuedCount: normalizeCount(row.queued_count ?? 0),
+            claimedCount: normalizeCount(row.claimed_count ?? 0),
+            dispatchedCount: normalizeCount(row.dispatched_count ?? 0),
+            stoppedCount: normalizeCount(row.stopped_count ?? 0),
+            unresolvedCount: normalizeCount(row.unresolved_count ?? 0),
+            cancelRequestedAt: toIsoString(row.cancel_requested_at ?? null)
+        };
+    }
+    return snapshot;
 }
 
 function includesKind(
@@ -301,149 +378,167 @@ function activeStatusFilter(): string {
     return 'AND j.status IN ($2, $3)';
 }
 
-function certificateJobsSql(statusFilter: string): string {
-    return `
-        SELECT
-            j.id::text AS id,
-            'certificate'::text AS kind,
-            j.status::text AS status,
-            count(p.id)::int AS total,
-            count(p.id) FILTER (WHERE p.status = 'applied')::int AS done_count,
-            count(p.id) FILTER (WHERE p.status IN ('failed', 'rolled_back'))::int AS fail_count,
-            j.created_at,
-            j.started_at,
-            j.finished_at AS ended_at,
-            j.created_by::text AS created_by,
-            jsonb_build_object(
+// UNION ALL matches columns by position, so every kind select uses this one order.
+const JOB_SELECT_COLUMNS = [
+    'id',
+    'kind',
+    'status',
+    'total',
+    'done_count',
+    'fail_count',
+    'created_at',
+    'started_at',
+    'ended_at',
+    'created_by',
+    'metadata',
+    'control_state',
+    'queued_count',
+    'claimed_count',
+    'dispatched_count',
+    'stopped_count',
+    'unresolved_count',
+    'cancel_requested_at'
+] as const satisfies readonly (keyof JobDbRow)[];
+
+type JobSelectColumn = (typeof JOB_SELECT_COLUMNS)[number];
+
+interface JobKindSelect {
+    columns: Record<JobSelectColumn, string>;
+    from: string;
+    extraGroupBy: readonly string[];
+}
+
+const SHARED_JOB_COLUMNS = {
+    id: 'j.id::text',
+    status: 'j.status::text',
+    created_at: 'j.created_at',
+    started_at: 'j.started_at',
+    ended_at: 'j.finished_at',
+    created_by: 'j.created_by::text',
+    control_state: 'j.control_state',
+    cancel_requested_at: 'j.cancel_requested_at'
+} as const;
+
+const SHARED_JOB_GROUP_BY = [
+    'j.id',
+    'j.status',
+    'j.created_at',
+    'j.started_at',
+    'j.finished_at',
+    'j.created_by',
+    'j.control_state',
+    'j.cancel_requested_at'
+] as const;
+
+function pushJobSelect(
+    kind: 'certificate' | 'credential',
+    doneStatuses: string,
+    failStatuses: string,
+    metadata: string,
+    extraGroupBy: readonly string[]
+): JobKindSelect {
+    return {
+        columns: {
+            ...SHARED_JOB_COLUMNS,
+            kind: `'${kind}'::text`,
+            total: 'count(p.id)::int',
+            done_count: `count(p.id) FILTER (WHERE p.status IN (${doneStatuses}))::int`,
+            fail_count: `count(p.id) FILTER (WHERE p.status IN (${failStatuses}))::int`,
+            metadata,
+            queued_count:
+                "count(p.id) FILTER (WHERE p.outcome_state = 'active' AND p.dispatch_state = 'queued')::int",
+            claimed_count:
+                "count(p.id) FILTER (WHERE p.outcome_state = 'active' AND p.dispatch_state = 'claimed')::int",
+            dispatched_count:
+                "count(p.id) FILTER (WHERE p.dispatch_state = 'dispatched')::int",
+            stopped_count:
+                "count(p.id) FILTER (WHERE p.outcome_state = 'stopped')::int",
+            unresolved_count:
+                "count(p.id) FILTER (WHERE p.outcome_state = 'unknown')::int"
+        },
+        from: `organization.${kind}_jobs j
+          LEFT JOIN organization.${kind}_pushes p ON p.job_id = j.id`,
+        extraGroupBy
+    };
+}
+
+function unitActiveCountSql(dispatchState: string): string {
+    return `count(u.id) FILTER (
+                WHERE u.outcome_state = 'active' AND u.status IN ('queued', 'in_progress')
+                  AND u.dispatch_state = '${dispatchState}'
+            )::int`;
+}
+
+function unitJobSelect(kind: 'backup' | 'firmware'): JobKindSelect {
+    return {
+        columns: {
+            ...SHARED_JOB_COLUMNS,
+            kind: `'${kind}'::text`,
+            total: 'count(u.id)::int',
+            done_count: "count(u.id) FILTER (WHERE u.status = 'done')::int",
+            fail_count: "count(u.id) FILTER (WHERE u.status = 'failed')::int",
+            metadata: `jsonb_build_object(
+                'mode', j.mode,
+                'targetSummary', j.target_summary,
+                'lastError', j.last_error
+            )`,
+            queued_count: unitActiveCountSql('queued'),
+            claimed_count: unitActiveCountSql('claimed'),
+            dispatched_count: unitActiveCountSql('dispatched'),
+            stopped_count:
+                "count(u.id) FILTER (WHERE u.outcome_state = 'stopped')::int",
+            unresolved_count:
+                "count(u.id) FILTER (WHERE u.outcome_state = 'unknown')::int"
+        },
+        from: `organization.${kind}_jobs j
+          LEFT JOIN organization.${kind}_units u ON u.job_id = j.id`,
+        extraGroupBy: ['j.mode', 'j.target_summary', 'j.last_error']
+    };
+}
+
+const JOB_KIND_SELECTS: Record<OperationJobKind, JobKindSelect> = {
+    certificate: pushJobSelect(
+        'certificate',
+        "'applied'",
+        "'failed', 'rolled_back'",
+        `jsonb_build_object(
                 'certificateId', j.certificate_id::text,
                 'slot', j.slot,
                 'targetSummary', j.target_summary
-            ) AS metadata
-          FROM organization.certificate_jobs j
-          LEFT JOIN organization.certificate_pushes p ON p.job_id = j.id
-         WHERE j.tenant_id = $1
-           ${statusFilter}
-         GROUP BY
-            j.id,
-            j.status,
-            j.created_at,
-            j.started_at,
-            j.finished_at,
-            j.created_by,
-            j.certificate_id,
-            j.slot,
-            j.target_summary
-    `;
-}
-
-function credentialJobsSql(statusFilter: string): string {
-    return `
-        SELECT
-            j.id::text AS id,
-            'credential'::text AS kind,
-            j.status::text AS status,
-            count(p.id)::int AS total,
-            count(p.id) FILTER (WHERE p.status = 'ok')::int AS done_count,
-            count(p.id) FILTER (WHERE p.status IN ('failed', 'unknown'))::int AS fail_count,
-            j.created_at,
-            j.started_at,
-            j.finished_at AS ended_at,
-            j.created_by::text AS created_by,
-            jsonb_build_object(
+            )`,
+        ['j.certificate_id', 'j.slot', 'j.target_summary']
+    ),
+    credential: pushJobSelect(
+        'credential',
+        "'ok'",
+        "'failed', 'unknown'",
+        `jsonb_build_object(
                 'mode', j.mode,
                 'targetSummary', j.target_summary
-            ) AS metadata
-          FROM organization.credential_jobs j
-          LEFT JOIN organization.credential_pushes p ON p.job_id = j.id
-         WHERE j.tenant_id = $1
-           ${statusFilter}
-         GROUP BY
-            j.id,
-            j.status,
-            j.created_at,
-            j.started_at,
-            j.finished_at,
-            j.created_by,
-            j.mode,
-            j.target_summary
-    `;
-}
-
-function backupJobsSql(statusFilter: string): string {
-    return `
-        SELECT
-            j.id::text AS id,
-            'backup'::text AS kind,
-            j.status::text AS status,
-            count(u.id)::int AS total,
-            count(u.id) FILTER (WHERE u.status = 'done')::int AS done_count,
-            count(u.id) FILTER (WHERE u.status = 'failed')::int AS fail_count,
-            j.created_at,
-            j.started_at,
-            j.finished_at AS ended_at,
-            j.created_by::text AS created_by,
-            jsonb_build_object(
-                'mode', j.mode,
-                'targetSummary', j.target_summary,
-                'lastError', j.last_error
-            ) AS metadata
-          FROM organization.backup_jobs j
-          LEFT JOIN organization.backup_units u ON u.job_id = j.id
-         WHERE j.tenant_id = $1
-           ${statusFilter}
-         GROUP BY
-            j.id,
-            j.status,
-            j.created_at,
-            j.started_at,
-            j.finished_at,
-            j.created_by,
-            j.mode,
-            j.target_summary,
-            j.last_error
-    `;
-}
-
-function firmwareJobsSql(statusFilter: string): string {
-    return `
-        SELECT
-            j.id::text AS id,
-            'firmware'::text AS kind,
-            j.status::text AS status,
-            count(u.id)::int AS total,
-            count(u.id) FILTER (WHERE u.status = 'done')::int AS done_count,
-            count(u.id) FILTER (WHERE u.status = 'failed')::int AS fail_count,
-            j.created_at,
-            j.started_at,
-            j.finished_at AS ended_at,
-            j.created_by::text AS created_by,
-            jsonb_build_object(
-                'mode', j.mode,
-                'targetSummary', j.target_summary,
-                'lastError', j.last_error
-            ) AS metadata
-          FROM organization.firmware_jobs j
-          LEFT JOIN organization.firmware_units u ON u.job_id = j.id
-         WHERE j.tenant_id = $1
-           ${statusFilter}
-         GROUP BY
-            j.id,
-            j.status,
-            j.created_at,
-            j.started_at,
-            j.finished_at,
-            j.created_by,
-            j.mode,
-            j.target_summary,
-            j.last_error
-    `;
-}
+            )`,
+        ['j.mode', 'j.target_summary']
+    ),
+    backup: unitJobSelect('backup'),
+    firmware: unitJobSelect('firmware')
+};
 
 function jobsSqlFor(kind: OperationJobKind, statusFilter: string): string {
-    if (kind === 'certificate') return certificateJobsSql(statusFilter);
-    if (kind === 'credential') return credentialJobsSql(statusFilter);
-    if (kind === 'backup') return backupJobsSql(statusFilter);
-    return firmwareJobsSql(statusFilter);
+    const select = JOB_KIND_SELECTS[kind];
+    const columns = JOB_SELECT_COLUMNS.map(
+        (column) => `${select.columns[column]} AS ${column}`
+    ).join(',\n            ');
+    const groupBy = [...SHARED_JOB_GROUP_BY, ...select.extraGroupBy].join(
+        ',\n            '
+    );
+    return `
+        SELECT
+            ${columns}
+          FROM ${select.from}
+         WHERE j.tenant_id = $1
+           ${statusFilter}
+         GROUP BY
+            ${groupBy}
+    `;
 }
 
 function jobTable(kind: OperationJobKind): string {
@@ -477,10 +572,19 @@ function getJobKinds(
 }
 
 function finishJobSql(kind: OperationJobKind): string {
+    const controlUpdate = `, control_state = CASE
+                   WHEN EXISTS (
+                       SELECT 1 FROM ${controlledUnitTable(kind)} unit
+                        WHERE unit.job_id = ${jobTable(kind)}.id
+                          AND unit.outcome_state IN ('stopped', 'unknown')
+                   ) THEN 'stopped'
+                   ELSE 'completed'
+               END`;
     return `
         UPDATE ${jobTable(kind)}
            SET status = $1,
                finished_at = now()
+               ${controlUpdate}
          WHERE id = $2
            AND tenant_id = $3
            AND status IN ('queued', 'running')
@@ -506,6 +610,8 @@ function markCertificateUnitSql(): string {
                applied_at = CASE WHEN $1 = 'applied' THEN now() ELSE applied_at END,
                requires_reboot = $3
          WHERE id = $4
+           AND execution_id = $5
+           AND outcome_state = 'active'
      RETURNING id, job_id::text, certificate_id::text, device_id, slot,
                status, last_error, applied_at, requires_reboot, retry_count
     `;
@@ -518,20 +624,42 @@ function markCredentialUnitSql(): string {
                last_error = $2,
                applied_at = CASE WHEN $1 = 'ok' THEN now() ELSE applied_at END
          WHERE id = $3
+           AND execution_id = $4
+           AND outcome_state = 'active'
      RETURNING id, job_id::text, device_id, status, last_error
     `;
 }
 
 function selectQueuedBackupUnitsSql(): string {
     return `
-        WITH candidates AS MATERIALIZED (
-              SELECT u.id, u.logical_device_id
+        WITH job_service AS MATERIALIZED (
+              SELECT job_id, MAX(picked_up_at) AS last_picked
+                FROM organization.backup_units
+               GROUP BY job_id
+        ), ranked AS MATERIALIZED (
+              SELECT u.id,
+                     u.job_id,
+                     u.logical_device_id,
+                     ROW_NUMBER() OVER (
+                         PARTITION BY u.job_id ORDER BY u.id
+                     ) AS job_rank,
+                     service.last_picked AS job_last_picked
                 FROM organization.backup_units u
                 JOIN organization.backup_jobs j ON j.id = u.job_id
+                JOIN job_service service ON service.job_id = u.job_id
                WHERE u.status = 'queued'
                  AND j.status IN ('queued', 'running')
+                 AND j.control_state = 'active'
+                 AND u.outcome_state = 'active'
+                 AND u.dispatch_state = 'queued'
                  AND u.logical_device_id IS NOT NULL
-               ORDER BY u.id ASC
+        ), candidates AS MATERIALIZED (
+              SELECT id, logical_device_id
+                FROM ranked
+               ORDER BY job_rank,
+                        job_last_picked ASC NULLS FIRST,
+                        job_id,
+                        id
                LIMIT $1
         ), bound AS MATERIALIZED (
               SELECT candidates.id,
@@ -559,18 +687,23 @@ function selectQueuedBackupUnitsSql(): string {
                      locked.external_id
                 FROM locked
                 JOIN organization.backup_units unit ON unit.id = locked.id
+                JOIN organization.backup_jobs job ON job.id = unit.job_id
                WHERE unit.status = 'queued'
-               FOR UPDATE OF unit SKIP LOCKED
+                 AND job.control_state = 'active'
+               FOR UPDATE OF unit, job SKIP LOCKED
         ), claimed AS (
               UPDATE organization.backup_units unit
                  SET status = 'in_progress',
                      phase = 'running',
-                     picked_up_at = now()
+                     picked_up_at = now(),
+                     execution_id = gen_random_uuid(),
+                     dispatch_state = 'claimed'
                 FROM claimable
                WHERE unit.id = claimable.id
            RETURNING unit.id,
                      unit.job_id,
                      unit.tenant_id,
+                     unit.execution_id,
                      claimable.logical_device_id,
                      claimable.external_id
         )
@@ -580,7 +713,8 @@ function selectQueuedBackupUnitsSql(): string {
                claimed.logical_device_id,
                claimed.external_id AS device_id,
                job.mode,
-               job.target_summary
+               job.target_summary,
+               job.authority
           FROM claimed
           JOIN organization.backup_jobs job ON job.id = claimed.job_id
          ORDER BY claimed.id
@@ -597,6 +731,9 @@ function markBackupUnitDoneSql(): string {
                last_error = NULL,
                finished_at = now()
          WHERE id = $1
+           AND execution_id = $4
+           AND outcome_state = 'active'
+     RETURNING id
     `;
 }
 
@@ -608,13 +745,18 @@ function markBackupUnitFailedSql(): string {
                last_error = $2,
                finished_at = now()
          WHERE id = $1
+           AND execution_id = $3
+           AND outcome_state = 'active'
+     RETURNING id
     `;
 }
 
 function backupUnitCountsSql(): string {
     return `
         SELECT
-            COUNT(*) FILTER (WHERE status IN ('queued', 'in_progress'))::int AS pending,
+            COUNT(*) FILTER (
+                WHERE outcome_state = 'active' AND status IN ('queued', 'in_progress')
+            )::int AS pending,
             COUNT(*) FILTER (WHERE status = 'failed')::int AS failed
           FROM organization.backup_units
          WHERE job_id = $1
@@ -698,9 +840,18 @@ function resolveBackupDeviceOwnersSql(): string {
 function reclaimStaleBackupUnitsSql(): string {
     return `
         UPDATE organization.backup_units
-           SET status = 'failed',
-               phase = 'failed',
-               last_error = 'fm_restart_during_backup_job',
+           SET outcome_state = CASE
+                   WHEN dispatch_state = 'dispatched' THEN 'unknown'
+                   ELSE 'stopped'
+               END,
+               phase = CASE
+                   WHEN dispatch_state = 'dispatched' THEN 'unknown'
+                   ELSE 'stopped'
+               END,
+               last_error = CASE
+                   WHEN dispatch_state = 'dispatched' THEN 'fm_restart_after_backup_dispatch'
+                   ELSE 'fm_restart_before_backup_dispatch'
+               END,
                finished_at = now()
          WHERE status = 'in_progress'
            AND (picked_up_at IS NULL OR picked_up_at < now() - ($1 || ' ms')::interval)
@@ -710,14 +861,34 @@ function reclaimStaleBackupUnitsSql(): string {
 
 function selectQueuedFirmwareUnitsSql(): string {
     return `
-        WITH candidates AS MATERIALIZED (
-              SELECT u.id, u.logical_device_id
+        WITH job_service AS MATERIALIZED (
+              SELECT job_id, MAX(picked_up_at) AS last_picked
+                FROM organization.firmware_units
+               GROUP BY job_id
+        ), ranked AS MATERIALIZED (
+              SELECT u.id,
+                     u.job_id,
+                     u.logical_device_id,
+                     ROW_NUMBER() OVER (
+                         PARTITION BY u.job_id ORDER BY u.id
+                     ) AS job_rank,
+                     service.last_picked AS job_last_picked
                 FROM organization.firmware_units u
                 JOIN organization.firmware_jobs j ON j.id = u.job_id
+                JOIN job_service service ON service.job_id = u.job_id
                WHERE u.status = 'queued'
                  AND j.status IN ('queued', 'running')
+                 AND j.control_state = 'active'
+                 AND u.outcome_state = 'active'
+                 AND u.dispatch_state = 'queued'
                  AND u.logical_device_id IS NOT NULL
-               ORDER BY u.id ASC
+        ), candidates AS MATERIALIZED (
+              SELECT id, logical_device_id
+                FROM ranked
+               ORDER BY job_rank,
+                        job_last_picked ASC NULLS FIRST,
+                        job_id,
+                        id
                LIMIT $1
         ), bound AS MATERIALIZED (
               SELECT candidates.id,
@@ -745,19 +916,24 @@ function selectQueuedFirmwareUnitsSql(): string {
                      locked.external_id
                 FROM locked
                 JOIN organization.firmware_units unit ON unit.id = locked.id
+                JOIN organization.firmware_jobs job ON job.id = unit.job_id
                WHERE unit.status = 'queued'
-               FOR UPDATE OF unit SKIP LOCKED
+                 AND job.control_state = 'active'
+               FOR UPDATE OF unit, job SKIP LOCKED
         ), claimed AS (
               UPDATE organization.firmware_units unit
                  SET status = 'in_progress',
                      phase = 'starting',
-                     picked_up_at = now()
+                     picked_up_at = now(),
+                     execution_id = gen_random_uuid(),
+                     dispatch_state = 'claimed'
                 FROM claimable
                WHERE unit.id = claimable.id
            RETURNING unit.id,
                      unit.job_id,
                      unit.tenant_id,
                      unit.request,
+                     unit.execution_id,
                      claimable.logical_device_id,
                      claimable.external_id
         )
@@ -768,7 +944,8 @@ function selectQueuedFirmwareUnitsSql(): string {
                claimed.external_id AS device_id,
                job.mode,
                job.target_summary,
-               claimed.request
+               claimed.request,
+               job.authority
           FROM claimed
           JOIN organization.firmware_jobs job ON job.id = claimed.job_id
          ORDER BY claimed.id
@@ -782,6 +959,9 @@ function markFirmwareUnitProgressSql(): string {
                phase = $2,
                progress_percent = $3
          WHERE id = $1
+           AND execution_id = $4
+           AND outcome_state = 'active'
+     RETURNING id
     `;
 }
 
@@ -797,6 +977,9 @@ function markFirmwareUnitDoneSql(): string {
                last_error = NULL,
                finished_at = now()
          WHERE id = $1
+           AND execution_id = $5
+           AND outcome_state = 'active'
+     RETURNING id
     `;
 }
 
@@ -808,13 +991,18 @@ function markFirmwareUnitFailedSql(): string {
                last_error = $2,
                finished_at = now()
          WHERE id = $1
+           AND execution_id = $3
+           AND outcome_state = 'active'
+     RETURNING id
     `;
 }
 
 function firmwareUnitCountsSql(): string {
     return `
         SELECT
-            COUNT(*) FILTER (WHERE status IN ('queued', 'in_progress'))::int AS pending,
+            COUNT(*) FILTER (
+                WHERE outcome_state = 'active' AND status IN ('queued', 'in_progress')
+            )::int AS pending,
             COUNT(*) FILTER (WHERE status = 'failed')::int AS failed
           FROM organization.firmware_units
          WHERE job_id = $1
@@ -825,12 +1013,46 @@ function firmwareUnitCountsSql(): string {
 function reclaimStaleFirmwareUnitsSql(): string {
     return `
         UPDATE organization.firmware_units
-           SET status = 'failed',
-               phase = 'failed',
-               last_error = 'fm_restart_during_firmware_job',
+           SET outcome_state = CASE
+                   WHEN dispatch_state = 'dispatched' THEN 'unknown'
+                   ELSE 'stopped'
+               END,
+               phase = CASE
+                   WHEN dispatch_state = 'dispatched' THEN 'unknown'
+                   ELSE 'stopped'
+               END,
+               last_error = CASE
+                   WHEN dispatch_state = 'dispatched' THEN 'fm_restart_after_firmware_dispatch'
+                   ELSE 'fm_restart_before_firmware_dispatch'
+               END,
                finished_at = now()
          WHERE status = 'in_progress'
            AND (picked_up_at IS NULL OR picked_up_at < now() - ($1 || ' ms')::interval)
+     RETURNING id
+    `;
+}
+
+function controlledUnitTable(kind: OperationJobKind): string {
+    if (kind === 'certificate') return 'organization.certificate_pushes';
+    if (kind === 'credential') return 'organization.credential_pushes';
+    return kind === 'backup'
+        ? 'organization.backup_units'
+        : 'organization.firmware_units';
+}
+
+function stopUnitBeforeDispatchSql(kind: OperationJobKind): string {
+    const phaseUpdate =
+        kind === 'backup' || kind === 'firmware' ? ", phase = 'stopped'" : '';
+    return `
+        UPDATE ${controlledUnitTable(kind)}
+           SET outcome_state = 'stopped',
+               last_error = $3
+               ${phaseUpdate},
+               finished_at = now()
+         WHERE id = $1
+           AND execution_id = $2
+           AND dispatch_state = 'claimed'
+           AND outcome_state = 'active'
      RETURNING id
     `;
 }
@@ -947,20 +1169,26 @@ export function createJobRepository(
 
     async function markCertificateUnit(
         query: MarkCertificateUnitQuery
-    ): Promise<CertificatePushRow> {
+    ): Promise<CertificatePushRow | undefined> {
         const rows = await queryRows<CertificatePushRow>(
             markCertificateUnitSql(),
-            [query.status, query.lastError, query.requiresReboot, query.id]
+            [
+                query.status,
+                query.lastError,
+                query.requiresReboot,
+                query.id,
+                query.executionId
+            ]
         );
         return rows[0];
     }
 
     async function markCredentialUnit(
         query: MarkCredentialUnitQuery
-    ): Promise<CredentialPushRow> {
+    ): Promise<CredentialPushRow | undefined> {
         const rows = await queryRows<CredentialPushRow>(
             markCredentialUnitSql(),
-            [query.status, query.lastError, query.id]
+            [query.status, query.lastError, query.id, query.executionId]
         );
         return rows[0];
     }
@@ -976,18 +1204,25 @@ export function createJobRepository(
 
     async function markBackupUnitDone(
         query: MarkBackupUnitDoneQuery
-    ): Promise<void> {
-        await queryRows(markBackupUnitDoneSql(), [
+    ): Promise<boolean> {
+        const rows = await queryRows<{id: number}>(markBackupUnitDoneSql(), [
             query.id,
             query.backupId ?? null,
-            JSON.stringify(query.result ?? {})
+            JSON.stringify(query.result ?? {}),
+            query.executionId
         ]);
+        return rows.length === 1;
     }
 
     async function markBackupUnitFailed(
         query: MarkBackupUnitFailedQuery
-    ): Promise<void> {
-        await queryRows(markBackupUnitFailedSql(), [query.id, query.lastError]);
+    ): Promise<boolean> {
+        const rows = await queryRows<{id: number}>(markBackupUnitFailedSql(), [
+            query.id,
+            query.lastError,
+            query.executionId
+        ]);
+        return rows.length === 1;
     }
 
     async function getBackupUnitCounts(
@@ -1099,32 +1334,40 @@ export function createJobRepository(
 
     async function markFirmwareUnitProgress(
         query: MarkFirmwareUnitProgressQuery
-    ): Promise<void> {
-        await queryRows(markFirmwareUnitProgressSql(), [
-            query.id,
-            query.phase,
-            query.progressPercent ?? null
-        ]);
+    ): Promise<boolean> {
+        const rows = await queryRows<{id: number}>(
+            markFirmwareUnitProgressSql(),
+            [
+                query.id,
+                query.phase,
+                query.progressPercent ?? null,
+                query.executionId
+            ]
+        );
+        return rows.length === 1;
     }
 
     async function markFirmwareUnitDone(
         query: MarkFirmwareUnitDoneQuery
-    ): Promise<void> {
-        await queryRows(markFirmwareUnitDoneSql(), [
+    ): Promise<boolean> {
+        const rows = await queryRows<{id: number}>(markFirmwareUnitDoneSql(), [
             query.id,
             query.finalVersion ?? null,
             query.finalFwId ?? null,
-            JSON.stringify(query.result ?? {})
+            JSON.stringify(query.result ?? {}),
+            query.executionId
         ]);
+        return rows.length === 1;
     }
 
     async function markFirmwareUnitFailed(
         query: MarkFirmwareUnitFailedQuery
-    ): Promise<void> {
-        await queryRows(markFirmwareUnitFailedSql(), [
-            query.id,
-            query.lastError
-        ]);
+    ): Promise<boolean> {
+        const rows = await queryRows<{id: number}>(
+            markFirmwareUnitFailedSql(),
+            [query.id, query.lastError, query.executionId]
+        );
+        return rows.length === 1;
     }
 
     async function getFirmwareUnitCounts(
@@ -1154,13 +1397,14 @@ export function createJobRepository(
         query: CreateCertificateJobQuery
     ): Promise<string> {
         const result = await requireCallMethod(callMethod)(
-            'organization.fn_certificate_job_create',
+            'organization.fn_certificate_job_create_authorized',
             {
                 p_tenant_id: query.tenantId,
                 p_certificate_id: query.certificateId,
                 p_slot: query.slot,
                 p_target: JSON.stringify(query.target),
-                p_created_by: query.createdBy
+                p_created_by: query.createdBy,
+                p_authority: JSON.stringify(query.authority)
             }
         );
         return readCreatedJobId(result, 'certificate_job');
@@ -1185,12 +1429,13 @@ export function createJobRepository(
         query: CreateCredentialJobQuery
     ): Promise<string> {
         const result = await requireCallMethod(callMethod)(
-            'organization.fn_credential_job_create',
+            'organization.fn_credential_job_create_authorized',
             {
                 p_tenant_id: query.tenantId,
                 p_target: JSON.stringify(query.target),
                 p_mode: query.mode,
-                p_created_by: query.createdBy
+                p_created_by: query.createdBy,
+                p_authority: JSON.stringify(query.authority)
             }
         );
         return readCreatedJobId(result, 'credential_job');
@@ -1200,14 +1445,15 @@ export function createJobRepository(
         query: CreateBackupJobQuery
     ): Promise<CreatedBackupJob> {
         const result = await requireCallMethod(callMethod)(
-            'organization.fn_backup_job_create',
+            'organization.fn_backup_job_create_authorized',
             {
                 p_tenant_id: query.tenantId,
                 p_target: JSON.stringify(query.target),
                 p_mode: query.mode,
                 p_created_by: query.createdBy,
                 p_idempotency_key: query.idempotencyKey ?? null,
-                p_request_hash: query.requestHash
+                p_request_hash: query.requestHash,
+                p_authority: JSON.stringify(query.authority)
             }
         );
         return readCreatedBackupJob(result);
@@ -1230,14 +1476,15 @@ export function createJobRepository(
         query: CreateFirmwareJobQuery
     ): Promise<CreatedFirmwareJob> {
         const result = await requireCallMethod(callMethod)(
-            'organization.fn_firmware_job_create',
+            'organization.fn_firmware_job_create_authorized',
             {
                 p_tenant_id: query.tenantId,
                 p_target: JSON.stringify(query.target),
                 p_mode: query.mode,
                 p_created_by: query.createdBy,
                 p_idempotency_key: query.idempotencyKey ?? null,
-                p_request_hash: query.requestHash
+                p_request_hash: query.requestHash,
+                p_authority: JSON.stringify(query.authority)
             }
         );
         return readCreatedFirmwareJob(result);
@@ -1255,6 +1502,104 @@ export function createJobRepository(
                 p_request: JSON.stringify(query.request)
             }
         );
+    }
+
+    async function prepareUnitDispatch(
+        query: PrepareUnitDispatchQuery
+    ): Promise<boolean> {
+        const extended =
+            query.kind === 'certificate' || query.kind === 'credential';
+        const method = extended
+            ? 'fm.fn_extended_job_prepare_dispatch'
+            : 'fm.fn_job_prepare_dispatch';
+        const result = await requireCallMethod(callMethod)(method, {
+            p_kind: query.kind,
+            p_unit_id: query.id,
+            p_execution_id: query.executionId
+        });
+        return (
+            (result?.rows?.[0] as Record<string, boolean> | undefined)?.[
+                extended
+                    ? 'fn_extended_job_prepare_dispatch'
+                    : 'fn_job_prepare_dispatch'
+            ] === true
+        );
+    }
+
+    async function cancelJob(query: ControlJobQuery): Promise<boolean> {
+        const extended =
+            query.kind === 'certificate' || query.kind === 'credential';
+        const method = extended
+            ? 'fm.fn_extended_job_cancel'
+            : 'fm.fn_job_cancel';
+        const result = await requireCallMethod(callMethod)(method, {
+            p_kind: query.kind,
+            p_tenant_id: query.tenantId,
+            p_job_id: query.jobId
+        });
+        return (
+            (result?.rows?.[0] as Record<string, boolean> | undefined)?.[
+                extended ? 'fn_extended_job_cancel' : 'fn_job_cancel'
+            ] === true
+        );
+    }
+
+    async function stopUnitBeforeDispatch(
+        query: StopUnitBeforeDispatchQuery
+    ): Promise<boolean> {
+        const rows = await queryRows<{id: number}>(
+            stopUnitBeforeDispatchSql(query.kind),
+            [query.id, query.executionId, query.reason]
+        );
+        return rows.length === 1;
+    }
+
+    async function resumeJob(query: ControlJobQuery): Promise<boolean> {
+        const extended =
+            query.kind === 'certificate' || query.kind === 'credential';
+        const method = extended
+            ? 'fm.fn_extended_job_resume'
+            : 'fm.fn_job_resume';
+        const result = await requireCallMethod(callMethod)(method, {
+            p_kind: query.kind,
+            p_tenant_id: query.tenantId,
+            p_job_id: query.jobId
+        });
+        return (
+            (result?.rows?.[0] as Record<string, boolean> | undefined)?.[
+                extended ? 'fn_extended_job_resume' : 'fn_job_resume'
+            ] === true
+        );
+    }
+
+    async function getJobControlContext(
+        query: ControlJobQuery
+    ): Promise<JobControlContext | undefined> {
+        const rows = await queryRows<{
+            authority: JobAuthority;
+            device_ids: unknown;
+        }>(
+            `SELECT job.authority,
+                    jsonb_agg(unit.device_id ORDER BY unit.id) AS device_ids
+               FROM ${jobTable(query.kind)} job
+               LEFT JOIN ${controlledUnitTable(query.kind)} unit
+                 ON unit.job_id = job.id
+              WHERE job.id = $1 AND job.tenant_id = $2
+              GROUP BY job.id, job.authority
+              LIMIT 1`,
+            [query.jobId, query.tenantId]
+        );
+        const row = rows[0];
+        if (!row) return undefined;
+        const deviceIds = Array.isArray(row.device_ids)
+            ? row.device_ids.filter(
+                  (value): value is string => typeof value === 'string'
+              )
+            : [];
+        return {
+            ...(row.authority ? {authority: row.authority} : {}),
+            deviceIds
+        };
     }
 
     return {
@@ -1284,6 +1629,11 @@ export function createJobRepository(
         createBackupJob,
         enqueueBackupTargets,
         createFirmwareJob,
-        enqueueFirmwareTargets
+        enqueueFirmwareTargets,
+        prepareUnitDispatch,
+        stopUnitBeforeDispatch,
+        cancelJob,
+        resumeJob,
+        getJobControlContext
     };
 }

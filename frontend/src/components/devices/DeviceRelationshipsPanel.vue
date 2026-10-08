@@ -222,6 +222,30 @@
                 </div>
             </div>
 
+            <template v-if="automationFlows.length">
+                <div class="rel-sec">Used in automations</div>
+                <div class="rel-auto">
+                    <button
+                        v-for="flow in automationFlows"
+                        :key="flow.flowId"
+                        type="button"
+                        class="rel-auto__row"
+                        :title="`Open ${flow.label} in Node-RED`"
+                        @click="openAutomationFlow(flow.flowId)"
+                    >
+                        <span class="rel-auto__ic"><i class="fas fa-diagram-project" /></span>
+                        <span class="rel-auto__tx">
+                            <span class="rel-auto__n">{{ flow.label }}</span>
+                            <small>
+                                {{ flow.triggers ? 'Starts on this device' : 'Acts on this device' }}
+                                <template v-if="!flow.enabled"> · off</template>
+                            </small>
+                        </span>
+                        <span class="rel-row__chev"><i class="fas fa-chevron-right" /></span>
+                    </button>
+                </div>
+            </template>
+
             <div class="rel-sec">All connections</div>
             <div class="rel-lists">
                 <div
@@ -285,6 +309,7 @@ import {useRouter} from 'vue-router';
 import Notification from '@/components/core/Notification.vue';
 import Spinner from '@/components/core/Spinner.vue';
 import {DeviceBoard, GroupBoard} from '@/helpers/components';
+import {automationFlowsForDevice} from '@/helpers/deviceAutomationFlows';
 import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useRightSideMenuStore} from '@/stores/right-side';
 import {onDeviceRelationshipChanged} from '@/tools/websocket';
@@ -400,7 +425,10 @@ const BUCKET_META: Record<Bucket, {label: string; icon: string}> = {
 // Edges that are internal plumbing, not relationships worth showing.
 const EXCLUDED_EDGES = new Set<EdgeType>([
     'has_visual_asset',
-    'recorded_history_event'
+    'recorded_history_event',
+    // Shown per flow under "Used in automations" instead.
+    'automation_refs_device',
+    'device_event_feeds_automation'
 ]);
 
 const EDGE_META: Partial<Record<EdgeType, EdgeMeta>> = {
@@ -517,7 +545,14 @@ const relations = computed<Relation[]>(() => {
 // Include attention so device-health summaries still show when a device has
 // summaries but no bucketed relations (else warnings hide behind the empty state).
 const hasContent = computed(
-    () => relations.value.length > 0 || attentionItems.value.length > 0
+    () =>
+        relations.value.length > 0 ||
+        attentionItems.value.length > 0 ||
+        automationFlows.value.length > 0
+);
+
+const automationFlows = computed(() =>
+    graph.value ? automationFlowsForDevice(graph.value) : []
 );
 
 const visibleBuckets = computed<BucketView[]>(() =>
@@ -854,6 +889,13 @@ function navigateToNode(node: RelationshipNode | undefined): void {
     }
 }
 
+function openAutomationFlow(flowId: string): void {
+    void router.push({
+        path: '/automations/node-red',
+        query: {view: 'editor', flow: flowId}
+    });
+}
+
 function idPart(nodeId: string): string {
     const separator = nodeId.indexOf(':');
     return separator === -1 ? nodeId : nodeId.slice(separator + 1);
@@ -874,6 +916,53 @@ function idPart(nodeId: string): string {
     min-width: 0;
     flex-direction: column;
     gap: var(--space-5);
+}
+
+/* --- Used in automations --- */
+.rel-auto {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1-5);
+}
+
+.rel-auto__row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-border-muted);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-1);
+    color: var(--color-text-primary);
+    text-align: left;
+    cursor: pointer;
+}
+
+.rel-auto__row:hover {
+    background: var(--color-surface-3);
+}
+
+.rel-auto__ic {
+    color: var(--rel-function);
+}
+
+.rel-auto__tx {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-direction: column;
+}
+
+.rel-auto__n {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.rel-auto__tx small {
+    color: var(--color-text-tertiary);
+    font-size: var(--type-caption);
 }
 
 /* --- Header --- */

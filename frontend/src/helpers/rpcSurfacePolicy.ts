@@ -86,7 +86,9 @@ const READ_METHODS = new Set([
     'Report.SuggestTimeShift',
     'Shelly.DetectLocation',
     'Sys.DownloadSettings',
+    'deviceIngress.AuthMethods',
     'sensor.events',
+    'tariff.resolveassignments',
     'virtualdevice.Binding.ReplacementReport',
     'virtualdevice.Profile.SuggestFromDevice'
 ]);
@@ -116,6 +118,11 @@ const ACCESS_CHANGE_METHODS = new Set([
     'assignment.create',
     'assignment.delete',
     'deviceIngress.EnrollmentToken.Revoke',
+    'deviceIngress.Identity.Disable',
+    'deviceIngress.Identity.Enable',
+    'deviceIngress.Rotation.Cancel',
+    'deviceIngress.Rotation.Start',
+    'mcp_approval.Revoke',
     'permission.GrantRoles',
     'permission.RevokeRoles',
     'persona.create',
@@ -209,9 +216,16 @@ const PENDING_COMMAND_VERBS = [
 ];
 
 const LOWERCASE_PENDING_COMMAND_VERBS = [
+    // Binding a tariff to a location or meter is a server-authoritative
+    // write, the same class as create/update/delete beside it. It sat
+    // unclassified only because no earlier namespace happened to use the
+    // verb. `.unassign` is listed with it so the pair cannot split later.
+    '.assign',
+    '.unassign',
     '.create',
     '.update',
     '.delete',
+    '.save',
     '.import',
     '.issue',
     '.push',
@@ -221,6 +235,7 @@ const LOWERCASE_PENDING_COMMAND_VERBS = [
     '.reset',
     '.remove',
     '.add',
+    '.apply',
     '.mark',
     '.ack',
     '.unack',
@@ -273,7 +288,9 @@ const READ_VERBS = [
 const LOWERCASE_READ_VERBS = [
     '.get',
     '.list',
+    '.cataloglist',
     '.query',
+    '.projection',
     '.preview',
     '.export',
     '.history',
@@ -282,6 +299,7 @@ const LOWERCASE_READ_VERBS = [
     '.path',
     '.eventreplay',
     '.signalheatmap',
+    '.syncstatus',
     '.generateenergyreport',
     '.generatereport',
     '.checkduplicate',

@@ -1,81 +1,102 @@
 <template>
-    <div class="bis">
-        <div class="bis__intro">
-            <h4 class="bis__heading">Confirm what's paired</h4>
-            <p class="bis__subheading">
-                Rename a sensor before you finish. Location and group can be
-                set per device from its detail page.
-            </p>
-        </div>
+    <WizardStep
+        name="identify"
+        lede="Rename now if you like. Location and group are set later, on the device page."
+    >
+        <PickRowSkeleton v-if="loading" label="Loading paired sensors" />
 
-        <div v-if="loading" class="bis__state">
-            <Spinner size="md" /> <span>Loading paired sensors…</span>
-        </div>
+        <WizardState v-else-if="listError" tone="error">
+            {{ listError }}
+            <template #action>
+                <Button type="blue-hollow" size="sm" @click="loadCandidates">
+                    Retry
+                </Button>
+            </template>
+        </WizardState>
 
-        <div v-else-if="listError" class="bis__state bis__state--error">
-            <i class="fas fa-triangle-exclamation" aria-hidden="true" />
-            <span>{{ listError }}</span>
-            <Button type="blue-hollow" size="sm" @click="loadCandidates">Retry</Button>
-        </div>
-
-        <div
+        <WizardState
             v-else-if="!paired.length"
-            class="bis__state bis__state--empty"
+            tone="empty"
+            icon="fab fa-bluetooth-b"
         >
-            <i class="fas fa-circle-info" aria-hidden="true" />
-            <span>No sensors paired through this gateway yet.</span>
-        </div>
+            No sensors paired through this gateway yet.
+        </WizardState>
 
-        <ul v-else class="bis__list">
-            <li
-                v-for="dev in paired"
-                :key="dev.id"
-                class="bis__row"
-                :data-id="dev.id"
-            >
-                <div class="bis__row-head">
-                    <i class="fab fa-bluetooth-b bis__bt" aria-hidden="true" />
-                    <div class="bis__row-meta">
-                        <Input
-                            :model-value="editingNames[dev.id] ?? dev.displayName"
-                            placeholder="Sensor name"
-                            @update:model-value="(v: string | number) => onNameInput(dev.id, String(v))"
-                        />
-                        <span class="bis__row-addr">{{ dev.addr }}</span>
-                    </div>
-                    <Button
-                        v-if="isDirty(dev)"
-                        type="blue"
-                        size="sm"
-                        :loading="savingId === dev.id"
-                        @click="saveName(dev)"
-                    >
-                        Save
-                    </Button>
-                    <Button
-                        v-if="dev.alreadyPromoted"
-                        type="green"
-                        size="sm"
-                        disabled
-                    >
-                        Added
-                    </Button>
-                    <Button
-                        v-else
-                        type="green"
-                        size="sm"
-                        :loading="promotingKey === dev.componentKey"
-                        @click="promote(dev)"
-                    >
-                        Add
-                    </Button>
-                </div>
-                <div v-if="errors[dev.id]" class="bis__row-error">
+        <ul v-else class="stack-list">
+            <li v-for="dev in paired" :key="dev.id" :data-id="dev.id">
+                <PickRow
+                    :interactive="false"
+                    :selected="dev.alreadyPromoted"
+                    control
+                >
+                    <template #lead>
+                        <i class="fab fa-bluetooth-b" aria-hidden="true" />
+                    </template>
+
+                    <Input
+                        :model-value="editingNames[dev.id] ?? dev.displayName"
+                        label="Sensor name"
+                        label-hidden
+                        placeholder="Sensor name"
+                        @update:model-value="
+                            (v: string | number) => onNameInput(dev.id, String(v))
+                        "
+                    />
+
+                    <template #meta>
+                        <span class="mono-id">{{ dev.addr }}</span>
+                    </template>
+
+                    <template #trail>
+                        <Button
+                            v-if="isDirty(dev)"
+                            type="blue-hollow"
+                            size="sm"
+                            :loading="savingId === dev.id"
+                            @click="saveName(dev)"
+                        >
+                            Save name
+                        </Button>
+                        <span v-if="dev.alreadyPromoted" class="meta-pill meta-pill--success">
+                            <i class="fas fa-check" aria-hidden="true" />
+                            Added
+                        </span>
+                        <!-- Only before it becomes a fleet device: unpairing a
+                             promoted one would orphan the device. -->
+                        <Button
+                            v-if="!dev.alreadyPromoted"
+                            type="red"
+                            size="sm"
+                            :loading="unpairingId === dev.id"
+                            title="Remove this sensor from the gateway"
+                            @click="unpair(dev)"
+                        >
+                            Unpair
+                        </Button>
+                        <Button
+                            v-if="!dev.alreadyPromoted"
+                            type="green"
+                            size="sm"
+                            :disabled="!canPromote"
+                            :title="
+                                canPromote
+                                    ? 'Add as a fleet device'
+                                    : 'Device create permission is required'
+                            "
+                            :loading="promotingKey === dev.componentKey"
+                            @click="promote(dev)"
+                        >
+                            Add
+                        </Button>
+                    </template>
+                </PickRow>
+
+                <WizardState v-if="errors[dev.id]" tone="error" class="bis__row-error">
                     {{ errors[dev.id] }}
-                </div>
+                </WizardState>
             </li>
         </ul>
-    </div>
+    </WizardStep>
 </template>
 
 <script setup lang="ts">
@@ -86,7 +107,13 @@ import {
 import {computed, ref, watch} from 'vue';
 import Button from '@/components/core/Button.vue';
 import Input from '@/components/core/Input.vue';
-import Spinner from '@/components/core/Spinner.vue';
+import PickRow from '@/components/core/wizard/PickRow.vue';
+import PickRowSkeleton from '@/components/core/wizard/PickRowSkeleton.vue';
+import WizardState from '@/components/core/wizard/WizardState.vue';
+import WizardStep from '@/components/core/wizard/WizardStep.vue';
+import {useDeviceSettingsSettled} from '@/composables/useDeviceSettingsSettled';
+import {actionableError} from '@/helpers/rpcError';
+import {useAuthStore} from '@/stores/auth';
 
 interface PairedRow {
     id: number;
@@ -98,16 +125,28 @@ interface PairedRow {
     bluetoothExternalId: string | null;
 }
 
-const props = defineProps<{gatewayId: string | null}>();
-const emit = defineEmits<{created: [externalId: string]}>();
+const props = defineProps<{gatewayId: string | null; reloadKey?: number}>();
+const emit = defineEmits<{created: [externalId: string, name: string]}>();
+
+// One request's worth, not a ceiling on what a gateway may hold.
+const CANDIDATE_PAGE_SIZE = 200;
 
 const candidates = ref<BluetoothCandidate[]>([]);
 const editingNames = ref<Record<number, string>>({});
 const savingId = ref<number | null>(null);
 const promotingKey = ref<string | null>(null);
+const unpairingId = ref<number | null>(null);
 const errors = ref<Record<number, string>>({});
 const loading = ref(false);
 const listError = ref<string | null>(null);
+const authStore = useAuthStore();
+const {whenSettled} = useDeviceSettingsSettled();
+const canPromote = computed(
+    () =>
+        authStore.hasComponentPermission('devices', 'create') &&
+        !!props.gatewayId &&
+        authStore.canPerformComponent('devices', 'read', props.gatewayId)
+);
 
 const paired = computed<PairedRow[]>(() => {
     return candidates.value.map(candidateToRow).sort((a, b) => a.id - b.id);
@@ -140,11 +179,18 @@ async function saveName(row: PairedRow): Promise<void> {
         });
         const {[row.id]: _drop, ...rest} = editingNames.value;
         editingNames.value = rest;
+        // The candidate list reads the persisted snapshot, so reloading before
+        // the gateway reports back re-reads the old name and the rename looks
+        // like it failed.
+        await whenSettled(props.gatewayId);
         await loadCandidates();
     } catch (err) {
         errors.value = {
             ...errors.value,
-            [row.id]: err instanceof Error ? err.message : String(err)
+            [row.id]: actionableError(
+                err,
+                'Could not rename this sensor. Check the gateway is online, then try again.'
+            )
         };
     } finally {
         savingId.value = null;
@@ -152,7 +198,19 @@ async function saveName(row: PairedRow): Promise<void> {
 }
 
 async function promote(row: PairedRow): Promise<void> {
-    if (!props.gatewayId || row.alreadyPromoted) return;
+    if (!props.gatewayId || row.alreadyPromoted || !canPromote.value) return;
+
+    // Commit a pending rename first. Without this the draft is thrown away by
+    // the reload that follows, and the device is added under its old name.
+    if (isDirty(row)) {
+        await saveName(row);
+        if (errors.value[row.id]) return;
+        const renamed = paired.value.find(
+            (c) => c.componentKey === row.componentKey
+        );
+        if (renamed) row = renamed;
+    }
+
     promotingKey.value = row.componentKey;
     clearRowError(row.id);
     try {
@@ -161,14 +219,74 @@ async function promote(row: PairedRow): Promise<void> {
             componentKey: row.componentKey,
             makePrimary: true
         });
-        emit('created', device.externalId);
+        candidates.value = candidates.value.map((candidate) =>
+            candidate.componentKey === row.componentKey
+                ? {
+                      ...candidate,
+                      alreadyPromoted: true,
+                      bluetoothExternalId: device.externalId
+                  }
+                : candidate
+        );
+        emit('created', device.externalId, row.displayName);
     } catch (err) {
         errors.value = {
             ...errors.value,
-            [row.id]: err instanceof Error ? err.message : String(err)
+            [row.id]: actionableError(
+                err,
+                'Could not add this sensor. Check the gateway is online, then try again.'
+            )
         };
     } finally {
         promotingKey.value = null;
+    }
+}
+
+/** Takes the pairing back out of the gateway's config. The wizard wrote it
+ *  there, so the wizard offers the way back. */
+async function unpair(row: PairedRow): Promise<void> {
+    if (!props.gatewayId || row.alreadyPromoted) return;
+    unpairingId.value = row.id;
+    clearRowError(row.id);
+    try {
+        await bluetoothDevices.removeGatewayChild({
+            shellyID: props.gatewayId,
+            id: row.id
+        });
+        candidates.value = candidates.value.filter(
+            (candidate) => candidate.componentKey !== row.componentKey
+        );
+    } catch (err) {
+        errors.value = {
+            ...errors.value,
+            [row.id]: actionableError(
+                err,
+                'Could not unpair this sensor. Check the gateway is online, then try again.'
+            )
+        };
+    } finally {
+        unpairingId.value = null;
+    }
+}
+
+/** How many children a gateway can hold is the device's business, so never
+ *  assume one page covers it. Follow has_more; the backend's own total bounds
+ *  the loop, and a page that returns nothing ends it. */
+async function fetchEveryCandidate(
+    gatewayExternalId: string
+): Promise<BluetoothCandidate[]> {
+    const all: BluetoothCandidate[] = [];
+    let offset = 0;
+    for (;;) {
+        const page = await bluetoothDevices.listCandidates({
+            gatewayExternalId,
+            limit: CANDIDATE_PAGE_SIZE,
+            offset
+        });
+        const items = page.items ?? [];
+        all.push(...items);
+        offset += items.length;
+        if (!page.has_more || items.length === 0) return all;
     }
 }
 
@@ -180,13 +298,12 @@ async function loadCandidates(): Promise<void> {
     loading.value = true;
     listError.value = null;
     try {
-        const res = await bluetoothDevices.listCandidates({
-            gatewayExternalId: props.gatewayId,
-            limit: 200
-        });
-        candidates.value = res.items ?? [];
+        candidates.value = await fetchEveryCandidate(props.gatewayId);
     } catch (err) {
-        listError.value = err instanceof Error ? err.message : String(err);
+        listError.value = actionableError(
+            err,
+            'Could not load the sensors paired to this gateway. Retry when it is back online.'
+        );
         candidates.value = [];
     } finally {
         loading.value = false;
@@ -219,93 +336,22 @@ function componentId(componentKey: string): number {
     return Number.isFinite(id) ? id : 0;
 }
 
-watch(() => props.gatewayId, loadCandidates, {immediate: true});
+// reloadKey advances every time the pair step pairs something. Without it the
+// KeepAlive-cached list still shows what was paired before this run.
+watch(
+    () => [props.gatewayId, props.reloadKey],
+    loadCandidates,
+    {immediate: true}
+);
 </script>
 
 <style scoped>
-.bis {
-    display: grid;
-    gap: var(--gap-lg);
-}
-.bis__intro {
-    display: grid;
-    gap: 6px;
-}
-.bis__eyebrow {
-    font-size: var(--type-caption);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-caps);
-    color: var(--brand-light);
-    font-weight: var(--font-semibold);
-}
-.bis__heading {
-    margin: 0;
-    font-size: var(--type-subheading);
-    line-height: var(--leading-tight);
-    color: var(--color-text-primary);
-    font-weight: var(--font-semibold);
-}
-.bis__subheading {
-    margin: 0;
-    color: var(--color-text-secondary);
-    font-size: var(--type-body);
-    max-width: 56ch;
-}
-.bis__state {
-    display: grid;
-    place-items: center;
-    gap: var(--gap-sm);
-    padding: var(--gap-xl);
-    text-align: center;
-    color: var(--color-text-secondary);
-    background: var(--color-surface-2);
-    border: 1px dashed var(--color-border-subtle);
-    border-radius: var(--radius-md);
-    min-height: 180px;
-}
-.bis__state--error i {
-    color: var(--color-warning-text);
-    font-size: var(--type-subheading);
-}
-.bis__state--empty i {
-    color: var(--brand-light);
-    font-size: var(--type-subheading);
-}
-.bis__list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: var(--gap-sm);
-}
-.bis__row {
-    padding: var(--gap-md);
-    background: var(--color-surface-1);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: var(--radius-md);
-}
-.bis__row-head {
-    display: flex;
-    align-items: center;
-    gap: var(--gap-md);
-}
-.bis__bt {
-    color: var(--brand-light);
-    font-size: var(--type-body);
-}
-.bis__row-meta {
-    flex: 1;
-    display: grid;
-    gap: 4px;
-}
-.bis__row-addr {
-    font-family: var(--font-mono);
-    font-size: var(--type-caption);
-    color: var(--color-text-tertiary);
-}
+
+
 .bis__row-error {
     margin-top: var(--gap-xs);
-    color: var(--color-danger-text);
     font-size: var(--type-caption);
 }
+
+/* Already added is a state, not an action — it never looks pressable. */
 </style>

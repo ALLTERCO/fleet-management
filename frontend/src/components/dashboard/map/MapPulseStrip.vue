@@ -75,7 +75,6 @@ function decimalsFor(stat: PulseStat): number {
     border-radius: 22px;
     background: var(--glass-2-bg);
     backdrop-filter: var(--glass-2-filter);
-    -webkit-backdrop-filter: var(--glass-2-filter);
     border: 1px solid var(--glass-border);
     color: var(--color-text-tertiary);
     font-size: var(--type-caption);

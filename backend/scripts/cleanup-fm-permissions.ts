@@ -1,10 +1,10 @@
 /**
  * Cleanup: delete fm_permissions metadata from every Zitadel user.
  *
- * Run AFTER 14-day soak (per docs/blitz/phases/phase-11-cleanup.md, sub-phase 11.1).
+ * Run AFTER the 14-day soak.
  * The metadata is the Tier-3 rollback insurance — do NOT run this until soak is
  * confirmed clean and a separate JSON dump (audit-fm-permissions.ts --output=json)
- * has been archived per docs/plans/2026-04-30-authz-rollback-runbook.md.
+ * has been archived.
  *
  * Usage:
  *   npx tsx backend/scripts/cleanup-fm-permissions.ts --dry-run

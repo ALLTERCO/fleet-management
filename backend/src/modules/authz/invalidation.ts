@@ -1,13 +1,15 @@
-type TenantInvalidator = (tenantId: string) => Promise<void>;
+type TenantCacheInvalidator = (tenantId: string) => Promise<void>;
 
-let tenantInvalidator: TenantInvalidator | null = null;
+let tenantCacheInvalidator: TenantCacheInvalidator | null = null;
 
-export function registerAuthzTenantInvalidator(
-    invalidator: TenantInvalidator
+export function registerAuthzTenantCacheInvalidator(
+    invalidator: TenantCacheInvalidator
 ): void {
-    tenantInvalidator = invalidator;
+    tenantCacheInvalidator = invalidator;
 }
 
-export async function invalidateAuthzTenant(tenantId: string): Promise<void> {
-    await tenantInvalidator?.(tenantId);
+export async function invalidateAuthzTenantCache(
+    tenantId: string
+): Promise<void> {
+    await tenantCacheInvalidator?.(tenantId);
 }

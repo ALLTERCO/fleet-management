@@ -1,12 +1,18 @@
 import log4js from 'log4js';
 import {tuning} from '../../config';
+import {setDeviceJournalDebug} from '../../modules/ai/eventJournalDebug';
+import {
+    emitResolvedAlerts,
+    resolveOpenAlertsForDeletedDevice
+} from '../../modules/alert/deviceAlertClosure';
 import {assertAssetBelongsToOrg} from '../../modules/asset/assetRepository';
 import {
     canCrossOrganizationBoundary,
     canPerformComponentOperation,
     hasTenantAdminAuthority,
     isComponentPermissionAllowed,
-    readableResourceAllowlistsAsync
+    readableResourceAllowlistsAsync,
+    requireComponentPermissionAsync
 } from '../../modules/authz/evaluator';
 import {demoteAllChildren} from '../../modules/BluetoothAutoPromoter';
 import {BoundedMap} from '../../modules/boundedMap';
@@ -19,12 +25,13 @@ import {
     listDeviceKinds,
     setDeviceKind
 } from '../../modules/device/deviceKindRepository';
+import {readDeviceMemberships} from '../../modules/device/deviceMembershipCache';
 import {redactDeviceResponseSecrets} from '../../modules/device/deviceResponseRedaction';
 import {
     type DeviceDecoration,
     decorationConflict,
     getDeviceDecoration,
-    listDeviceDecorations,
+    listDeviceKindsAndDecorations,
     setDeviceDecoration
 } from '../../modules/device/imageOverrideRepository';
 import {assertDeviceKindAllowed} from '../../modules/deviceKindValidator';
@@ -38,12 +45,14 @@ import {
     type DeviceSnapshot
 } from '../../modules/deviceTopology';
 import * as EventDistributor from '../../modules/EventDistributor';
-import {
-    getGroupVersion,
-    invalidateGroupCache
-} from '../../modules/groupVersion';
+import {emLiveDebugCapture} from '../../modules/emLiveDebugCapture';
 import {incrementCounter} from '../../modules/Observability';
+import {
+    bumpOrganizationAccessVersion,
+    getOrganizationAccessVersion
+} from '../../modules/organizationCacheVersions';
 import * as PostgresProvider from '../../modules/PostgresProvider';
+import {withPostgresTransaction} from '../../modules/postgresTx';
 import {
     excludeRetired,
     markRestored,
@@ -52,19 +61,19 @@ import {
 import {
     getBluetoothDevice,
     listBluetoothDevices,
+    listBluetoothDevicesByExternalIds,
     listBluetoothSourceKeysByGateway
 } from '../../modules/virtualDevice/bluetoothRepository';
 import {
     applyExtractedSourceHealth,
-    bluetoothDeviceMatchesFilter,
     bluetoothDeviceToFullJSON,
     bluetoothDeviceToListJSON,
     extractedSourceHostExternalId,
-    virtualDeviceMatchesFilter,
     virtualDeviceToFullJSON,
     virtualDeviceToListJSON
 } from '../../modules/virtualDevice/deviceListEntry';
 import {
+    bluetoothEntryPresence,
     bluetoothEntryToListJSON,
     bluetoothPrimaryGatewaySnapshot,
     createDeviceCollectorSnapshotFetcher,
@@ -83,37 +92,53 @@ import {
     getVirtualDevice,
     listVirtualDevices
 } from '../../modules/virtualDevice/repository';
+import {
+    filterReadableVirtualDeviceIds,
+    requireVirtualDeviceSourceReads
+} from '../../modules/virtualDevice/sourceAccessPolicy';
 import * as WaitingRoom from '../../modules/WaitingRoom';
 import {buildRpcRequest} from '../../rpc/builders';
+import {translatePgError} from '../../rpc/dbErrors';
 import type {DescribeOutput} from '../../rpc/describe';
 import {buildListResponse} from '../../rpc/listResponse';
 import RpcError from '../../rpc/RpcError';
 import {validateOrThrow} from '../../rpc/validateOrThrow';
 import type {ShellyDeviceExternal} from '../../types';
 import {
+    DEVICE_CALL_MANY_PARAMS_SCHEMA,
     DEVICE_CALL_PARAMS_SCHEMA,
     DEVICE_CHECK_REPLACEMENT_PARAMS_SCHEMA,
     DEVICE_DESCRIBE,
+    DEVICE_GET_EM_LIVE_DEBUG_PARAMS_SCHEMA,
     DEVICE_GET_SETUP_PARAMS_SCHEMA,
     DEVICE_GET_STATUS_HISTORY_PARAMS_SCHEMA,
     DEVICE_GET_STATUS_TIMELINE_PARAMS_SCHEMA,
+    DEVICE_LIST_MAX_LIMIT,
     DEVICE_LIST_PARAMS_SCHEMA,
     DEVICE_NO_PARAMS_SCHEMA,
     DEVICE_RELATIONSHIPS_GET_PARAMS_SCHEMA,
     DEVICE_RELATIONSHIPS_QUERY_PARAMS_SCHEMA,
     DEVICE_REPLACE_HARDWARE_PARAMS_SCHEMA,
+    DEVICE_SET_EM_LIVE_DEBUG_PARAMS_SCHEMA,
     DEVICE_SET_IMAGE_PARAMS_SCHEMA,
+    DEVICE_SET_JOURNAL_DEBUG_PARAMS_SCHEMA,
     DEVICE_SHELLY_ONLY_PARAMS_SCHEMA,
     DEVICE_TOPOLOGY_PARAMS_SCHEMA,
+    type DeviceCallManyParams,
     type DeviceCallParams,
     type DeviceCheckReplacementParams,
+    type DeviceGetEmLiveDebugParams,
+    type DeviceGetEmLiveDebugResult,
     type DeviceGetSetupParams,
     type DeviceListParams,
     type DeviceRelationshipsGetParams,
     type DeviceRelationshipsQueryParams,
     type DeviceReplaceHardwareParams,
+    type DeviceSetEmLiveDebugParams,
+    type DeviceSetEmLiveDebugResult,
     type DeviceSetImageParams,
     type DeviceSetImageResult,
+    type DeviceSetJournalDebugParams,
     type DeviceShellyOnlyParams,
     type DeviceTimeRangeParams,
     type DeviceTopologyParams
@@ -130,19 +155,36 @@ import type AbstractDevice from '../AbstractDevice';
 import type CommandSender from '../CommandSender';
 import {checkReplacement, replaceHardware} from '../deviceReplacement';
 import {methodToCrudOperation} from '../permissions';
-import {canReadPolicies, canViewAuthz} from './authzPermissions';
+import {
+    canManageThisNodeRed,
+    canReadPolicies,
+    canViewAuthz
+} from './authzPermissions';
 import {bluCacheEntryFresh} from './bluCacheFreshness';
-import Component from './Component';
+import Component, {canPerformCrudOperation} from './Component';
+import {
+    assertKnownDeviceFilters,
+    type DeviceFilterMemberships,
+    deviceMatchesFilters,
+    filtersNeedKinds,
+    filtersNeedMemberships,
+    NO_FILTER_MEMBERSHIPS
+} from './deviceFilters';
 import {
     applyFilters,
+    type DeviceListPosition,
     isNonEmptyFilters,
+    orderDeviceList,
+    pageDeviceList,
     parseIncludeSet,
-    sliceForPage
+    physicalFilterView
 } from './deviceListHelpers';
 import {hideExtractedSourceComponents} from './deviceListSourceVisibility';
 import {canReadDeviceFieldAsync} from './entityPermissions';
 
 const logger = log4js.getLogger('DeviceComponent');
+// Frames per Device.GetEmLiveDebug page when the caller names no limit.
+const EM_LIVE_DEBUG_PAGE_DEFAULT = 1000;
 
 // Short-TTL cache for filtered device lists — avoids repeating getAll() +
 // filterAccessibleDevices() for each page of a chunked device.list request.
@@ -173,12 +215,6 @@ function serializedByteLength(value: unknown): number {
     return Buffer.byteLength(JSON.stringify(value ?? {}), 'utf8');
 }
 
-function snapshotForShellyID(shellyID: string) {
-    const device = DeviceCollector.getDevice(shellyID);
-    if (!device) return undefined;
-    return {status: device.status, config: device.config};
-}
-
 interface DeviceMemberships {
     groupIds: number[];
     locationId: number | null;
@@ -199,7 +235,7 @@ async function buildDeviceMembershipIndex(
 ): Promise<Map<string, DeviceMemberships>> {
     const out = new Map<string, DeviceMemberships>();
     if (!organizationId || shellyIDs.length === 0) return out;
-    const rows = await PostgresProvider.listDeviceMemberships(organizationId);
+    const rows = await readDeviceMemberships(organizationId);
     const interesting = new Set(shellyIDs);
     for (const r of rows) {
         if (!interesting.has(r.subject_id)) continue;
@@ -224,6 +260,7 @@ function relationshipPermissions(
     return {
         accessGrantsRead: canReadPolicies(sender),
         actionsRead: sender.hasCrudPermission('actions', 'read'),
+        automationsManage: canManageThisNodeRed(sender),
         alertsRead: sender.hasCrudPermission('alerts', 'read'),
         dashboardsRead: sender.hasCrudPermission('dashboards', 'read'),
         notificationsRead: sender.hasCrudPermission('notifications', 'read'),
@@ -238,29 +275,59 @@ function relationshipPermissions(
     };
 }
 
+/** The devices a list may hold: the named ones, or the whole collector. */
+function physicalCandidates(scope: ReadonlySet<string> | undefined) {
+    if (!scope) return DeviceCollector.getAll();
+    const devices: AbstractDevice[] = [];
+    for (const shellyID of scope) {
+        const device = DeviceCollector.getDevice(shellyID);
+        if (device) devices.push(device);
+    }
+    return devices;
+}
+
 /** Returns null when permission resolution fails — caller emits empty list. */
 async function loadAccessibleDevices(
     sender: CommandSender,
     filters: Record<string, unknown> | undefined,
-    hasFilters: boolean
+    hasFilters: boolean,
+    scope?: ReadonlySet<string>
 ): Promise<AbstractDevice[] | null> {
     const username = sender.getUser()?.username;
     // Versioned key — bypasses stale entries on any mutation.
     const orgId = sender.getOrganizationId() ?? '';
     const cacheKey = username
-        ? `${username}|${orgId}|${getGroupVersion(orgId)}|${DeviceCollector.getCollectorVersion()}`
+        ? `${username}|${orgId}|${getOrganizationAccessVersion(orgId)}|${DeviceCollector.getCollectorVersion()}`
         : '__nocache__';
     const cache = getFilteredDeviceCache();
+    const cacheable = !hasFilters && !scope;
 
-    if (!hasFilters) {
+    if (cacheable) {
         const cached = cache.get(cacheKey);
         if (cached) return cached;
     }
 
     // Hide retired (soft-deleted) devices from every fleet list. They stay in
     // the collector while reporting, so this is the chokepoint that hides them.
-    let devices: AbstractDevice[] = excludeRetired(DeviceCollector.getAll());
-    if (hasFilters && filters) devices = applyFilters(devices, filters);
+    let devices: AbstractDevice[] = excludeRetired(physicalCandidates(scope));
+    if (hasFilters && filters) {
+        // Group, location and tag live on the org tables, not the device, so
+        // they have to be read before the filter can answer. Only when asked.
+        const memberships = filtersNeedMemberships(filters)
+            ? await buildDeviceMembershipIndex(
+                  sender.getOrganizationId(),
+                  devices.map((device) => device.shellyID)
+              )
+            : undefined;
+        // Kinds are on the org tables too — same rule, read only when asked.
+        const kinds = filtersNeedKinds(filters)
+            ? await listDeviceKinds(
+                  devices.map((device) => device.shellyID),
+                  sender.getOrganizationId()
+              )
+            : undefined;
+        devices = applyFilters(devices, filters, memberships, kinds);
+    }
 
     // Only provider support sees DeviceCollector unfiltered. Org admin must
     // pass through filterAccessibleDevices so cross-org devices are
@@ -277,7 +344,7 @@ async function loadAccessibleDevices(
         }
     }
 
-    if (!hasFilters && username) {
+    if (cacheable && username) {
         cache.set(cacheKey, devices);
     }
     return devices;
@@ -302,15 +369,20 @@ async function scopeDevicesForTopology(
         organizationId,
         result.map((d) => d.shellyID)
     );
-    return result.filter((d) => {
-        const m = memberships.get(d.shellyID);
-        if (!m) return false;
-        if (groupId !== undefined && !m.groupIds.includes(groupId))
-            return false;
-        if (locationId !== undefined && m.locationId !== locationId)
-            return false;
-        return true;
-    });
+    // The same rule the device list uses. Topology asking a different question
+    // than the list is how a device could appear in one and not the other.
+    const filters: Record<string, unknown> = {};
+    if (groupId !== undefined) filters.groupId = groupId;
+    if (locationId !== undefined) filters.locationId = locationId;
+    return result.filter((d) =>
+        deviceMatchesFilters(
+            physicalFilterView(
+                d,
+                memberships.get(d.shellyID) ?? NO_FILTER_MEMBERSHIPS
+            ),
+            filters
+        )
+    );
 }
 
 type DeviceListEntry =
@@ -318,19 +390,77 @@ type DeviceListEntry =
     | {kind: 'virtual'; device: VirtualDeviceDto}
     | {kind: 'bluetooth'; device: BluetoothDeviceDto};
 
+function deviceListEntryPosition(entry: DeviceListEntry): DeviceListPosition {
+    return entry.kind === 'physical'
+        ? {id: entry.device.id, shellyID: entry.device.shellyID}
+        : {id: entry.device.deviceListId, shellyID: entry.device.externalId};
+}
+
+/** Every row the caller may see, in the one device-list order. */
+async function loadOrderedDeviceListEntries(
+    sender: CommandSender,
+    query: {
+        filters: Record<string, unknown> | undefined;
+        scope: ReadonlySet<string> | undefined;
+    }
+): Promise<DeviceListEntry[] | null> {
+    const {filters, scope} = query;
+    const hasFilters = isNonEmptyFilters(filters);
+    const devices = await loadAccessibleDevices(
+        sender,
+        filters,
+        hasFilters,
+        scope
+    );
+    if (devices === null) return null;
+    const [virtualDevices, bluetoothDevices] = await Promise.all([
+        loadAccessibleVirtualDevices(sender, filters, hasFilters, scope),
+        loadAccessibleBluetoothDevices(sender, filters, hasFilters, scope)
+    ]);
+    return orderDeviceList<DeviceListEntry>(
+        [
+            ...devices.map((device) => ({kind: 'physical' as const, device})),
+            ...virtualDevices.map((device) => ({
+                kind: 'virtual' as const,
+                device
+            })),
+            ...bluetoothDevices.map((device) => ({
+                kind: 'bluetooth' as const,
+                device
+            }))
+        ],
+        deviceListEntryPosition
+    );
+}
+
 async function loadAccessibleVirtualDevices(
     sender: CommandSender,
     filters: Record<string, unknown> | undefined,
-    hasFilters: boolean
+    hasFilters: boolean,
+    scope?: ReadonlySet<string>
 ): Promise<VirtualDeviceDto[]> {
     const orgId = sender.getOrganizationId();
     if (!orgId) return [];
     const page = await listVirtualDevices(orgId, {limit: 0});
-    let devices = page.items;
+    let devices = scope
+        ? page.items.filter((device) => scope.has(device.externalId))
+        : page.items;
     if (hasFilters && filters) {
         const structuralFilters = omitPresenceFilter(filters);
+        // A virtual device is assigned to a location like any other, so it has
+        // to be filtered on the same membership, not excluded from it.
+        const memberships = filtersNeedMemberships(structuralFilters)
+            ? await buildDeviceMembershipIndex(
+                  orgId,
+                  devices.map((device) => device.externalId)
+              )
+            : undefined;
         devices = devices.filter((device) =>
-            virtualDeviceMatchesFilters(device, structuralFilters)
+            virtualDeviceMatchesFilters(
+                device,
+                structuralFilters,
+                memberships?.get(device.externalId) ?? NO_FILTER_MEMBERSHIPS
+            )
         );
         devices = await filterVirtualDevicesByProjectedPresence(
             orgId,
@@ -338,8 +468,9 @@ async function loadAccessibleVirtualDevices(
             filters.presence
         );
     }
-    if (canCrossOrganizationBoundary(sender)) return devices;
-    const accessible = await sender.filterAccessibleDevices(
+    const accessible = await filterReadableVirtualDeviceIds(
+        orgId,
+        sender,
         devices.map((device) => device.externalId)
     );
     return devices.filter((device) => accessible.has(device.externalId));
@@ -347,13 +478,25 @@ async function loadAccessibleVirtualDevices(
 
 function virtualDeviceMatchesFilters(
     device: VirtualDeviceDto,
-    filters: Record<string, unknown>
+    filters: Record<string, unknown>,
+    memberships: DeviceFilterMemberships
 ): boolean {
-    for (const [key, value] of Object.entries(filters)) {
-        if (!isPrimitiveFilterValue(value)) continue;
-        if (!virtualDeviceMatchesFilter(device, key, value)) return false;
-    }
-    return true;
+    return deviceMatchesFilters(
+        {
+            shellyID: device.externalId,
+            id: device.deviceListId,
+            source: 'virtual',
+            presence: device.enabled ? 'online' : 'offline',
+            model: device.typeKey ?? null,
+            kind: device.kind ?? null,
+            // No profile is built for a record, so these are unanswerable
+            // rather than false. A null never matches, so the filter skips it.
+            battery: null,
+            componentTypes: [],
+            ...memberships
+        },
+        filters
+    );
 }
 
 function omitPresenceFilter(
@@ -389,15 +532,33 @@ function projectedListPresence(
 async function loadAccessibleBluetoothDevices(
     sender: CommandSender,
     filters: Record<string, unknown> | undefined,
-    hasFilters: boolean
+    hasFilters: boolean,
+    scope?: ReadonlySet<string>
 ): Promise<BluetoothDeviceDto[]> {
     const orgId = sender.getOrganizationId();
     if (!orgId) return [];
-    const page = await listBluetoothDevices(orgId, {limit: 0});
-    let devices = page.items;
+    // Device.List and virtual read-model serialization both need the same full
+    // BLU inventory. Use the shared version-aware cache so one request does not
+    // issue the multi-thousand-row query twice.
+    const cached = await loadBluetoothCacheForOrg(orgId);
+    let devices = scope
+        ? [...scope].flatMap((id) => cached.get(id) ?? [])
+        : [...cached.values()];
     if (hasFilters && filters) {
+        // A promoted BLU child is a device row and can be placed in a location,
+        // which is the only way it is ever visible to a location-scoped view.
+        const memberships = filtersNeedMemberships(filters)
+            ? await buildDeviceMembershipIndex(
+                  orgId,
+                  devices.map((device) => device.externalId)
+              )
+            : undefined;
         devices = devices.filter((device) =>
-            bluetoothDeviceMatchesFilters(device, filters)
+            bluetoothDeviceMatchesFilters(
+                device,
+                filters,
+                memberships?.get(device.externalId) ?? NO_FILTER_MEMBERSHIPS
+            )
         );
     }
     if (canCrossOrganizationBoundary(sender)) return devices;
@@ -409,19 +570,24 @@ async function loadAccessibleBluetoothDevices(
 
 function bluetoothDeviceMatchesFilters(
     device: BluetoothDeviceDto,
-    filters: Record<string, unknown>
+    filters: Record<string, unknown>,
+    memberships: DeviceFilterMemberships
 ): boolean {
-    for (const [key, value] of Object.entries(filters)) {
-        if (!isPrimitiveFilterValue(value)) continue;
-        if (!bluetoothDeviceMatchesFilter(device, key, value)) return false;
-    }
-    return true;
-}
-
-function isPrimitiveFilterValue(
-    value: unknown
-): value is string | number | boolean {
-    return ['string', 'number', 'boolean'].includes(typeof value);
+    return deviceMatchesFilters(
+        {
+            shellyID: device.externalId,
+            id: device.deviceListId,
+            source: 'bluetooth',
+            // Same transport health as the row, or BLU never counts as online.
+            presence: bluetoothEntryPresence(DeviceCollector, device),
+            model: device.modelId ?? device.capability ?? null,
+            kind: null,
+            battery: null,
+            componentTypes: [],
+            ...memberships
+        },
+        filters
+    );
 }
 
 async function serializeDeviceListEntries(
@@ -438,12 +604,21 @@ async function serializeDeviceListEntries(
     const physicalIds = entries
         .filter((entry) => entry.kind === 'physical')
         .map((entry) => entry.device.shellyID);
-    const [extractedHiddenKeys, bluetoothHiddenKeys, kinds, decorations] =
+    const [extractedHiddenKeys, bluetoothHiddenKeys, {kinds, decorations}] =
         await Promise.all([
             listExtractedSourceKeysByHost(organizationId, physicalIds),
             listBluetoothSourceKeysByGateway(organizationId, physicalIds),
-            listDeviceKinds(physicalIds, organizationId),
-            listDeviceDecorations(organizationId, physicalIds)
+            // One batch read answers every row type; no per-row Device.GetKind.
+            organizationId
+                ? listDeviceKindsAndDecorations(
+                      organizationId,
+                      ids,
+                      physicalIds
+                  )
+                : listDeviceKinds(ids, organizationId).then((kinds) => ({
+                      kinds,
+                      decorations: new Map<string, DeviceDecoration>()
+                  }))
         ]);
     const hiddenSourceKeys = mergeHiddenComponentKeyMaps(
         extractedHiddenKeys,
@@ -483,10 +658,7 @@ async function serializeDeviceListEntries(
         return redactDeviceResponseSecrets({
             ...row,
             ...(memberships.get(row.shellyID) ?? NO_MEMBERSHIPS),
-            kind:
-                entry.kind === 'physical'
-                    ? (kinds.get(row.shellyID) ?? null)
-                    : null
+            kind: kinds.get(row.shellyID) ?? null
         });
     });
 }
@@ -563,7 +735,9 @@ async function loadVirtualReadModels(
     );
 }
 
-const BLU_CACHE_TTL_MS = 5_000;
+// Inventory events refresh exact changed rows. This TTL is only a recovery
+// fence for a missed cross-instance signal, not the normal refresh mechanism.
+const BLU_CACHE_TTL_MS = 5 * 60_000;
 // Insertion-ordered LRU: Map iteration order is insertion order, so the
 // oldest entry is keys().next() and re-insertion refreshes recency.
 interface BluCacheEntry {
@@ -574,16 +748,29 @@ interface BluCacheEntry {
     data: Map<string, BluetoothDeviceDto>;
 }
 const bluCacheByOrg = new Map<string, BluCacheEntry>();
+const bluCacheLoadsByOrg = new Map<string, Promise<BluCacheEntry>>();
 
 async function loadBluetoothCacheForOrg(
     organizationId: string
 ): Promise<Map<string, BluetoothDeviceDto>> {
     const fresh = readFreshBluCache(organizationId);
     if (fresh) return fresh;
-    const entry = await fetchBluCacheEntry(organizationId);
-    storeBluCacheEntry(organizationId, entry);
-    evictOldestBluCache();
-    return entry.data;
+    // Five API users can miss the same org at once. Share that one database
+    // read instead of launching five full-inventory queries in parallel.
+    const existingLoad = bluCacheLoadsByOrg.get(organizationId);
+    if (existingLoad) return (await existingLoad).data;
+    const loading = refreshBluCacheEntry(organizationId);
+    bluCacheLoadsByOrg.set(organizationId, loading);
+    try {
+        const entry = await loading;
+        storeBluCacheEntry(organizationId, entry);
+        evictOldestBluCache();
+        return entry.data;
+    } finally {
+        if (bluCacheLoadsByOrg.get(organizationId) === loading) {
+            bluCacheLoadsByOrg.delete(organizationId);
+        }
+    }
 }
 
 function readFreshBluCache(
@@ -595,7 +782,7 @@ function readFreshBluCache(
         !bluCacheEntryFresh(
             hit,
             Date.now(),
-            EventDistributor.getBluetoothInventoryVersion()
+            EventDistributor.getBluetoothInventoryVersion(organizationId)
         )
     ) {
         return null;
@@ -605,11 +792,41 @@ function readFreshBluCache(
     return hit.data;
 }
 
+async function refreshBluCacheEntry(
+    organizationId: string
+): Promise<BluCacheEntry> {
+    const current = bluCacheByOrg.get(organizationId);
+    if (!current || current.expiresAt <= Date.now()) {
+        return fetchBluCacheEntry(organizationId);
+    }
+    const changes = EventDistributor.getBluetoothInventoryChanges(
+        organizationId,
+        current.version
+    );
+    if (changes.externalIds === null) {
+        return fetchBluCacheEntry(organizationId);
+    }
+    if (changes.externalIds.length === 0) return current;
+    const changed = await listBluetoothDevicesByExternalIds(
+        organizationId,
+        changes.externalIds
+    );
+    const data = new Map(current.data);
+    for (const externalId of changes.externalIds) data.delete(externalId);
+    for (const device of changed) data.set(device.externalId, device);
+    return {
+        expiresAt: Date.now() + BLU_CACHE_TTL_MS,
+        version: changes.version,
+        data
+    };
+}
+
 async function fetchBluCacheEntry(
     organizationId: string
 ): Promise<BluCacheEntry> {
     const data = new Map<string, BluetoothDeviceDto>();
-    const version = EventDistributor.getBluetoothInventoryVersion();
+    const version =
+        EventDistributor.getBluetoothInventoryVersion(organizationId);
     const page = await listBluetoothDevices(organizationId, {limit: 0});
     for (const blu of page.items) data.set(blu.externalId, blu);
     return {expiresAt: Date.now() + BLU_CACHE_TTL_MS, version, data};
@@ -633,11 +850,15 @@ function evictOldestBluCache(): void {
 
 async function loadStoredDeviceForGet(
     organizationId: string | undefined,
-    shellyID: string
+    shellyID: string,
+    sender: CommandSender
 ): Promise<ShellyDeviceExternal | null> {
     if (!organizationId) return null;
     const virtualDevice = await getVirtualDevice(organizationId, shellyID);
     if (virtualDevice) {
+        await requireVirtualDeviceSourceReads(organizationId, sender, [
+            shellyID
+        ]);
         const readModels = await loadVirtualReadModels(organizationId, [
             virtualDevice
         ]);
@@ -716,7 +937,11 @@ async function rejectInvalidDeviceKind(
     }
 }
 
-const STATUS_RANGE_FIELD = /^[a-zA-Z][\w:.-]*$/i;
+// A field is composed from a channel and a component path, so it may open
+// with a digit: 8_0:em.total_act_power is what an energy meter card asks for.
+// The guard keeps out anything that is not a field name; it does not care
+// which character comes first.
+export const STATUS_RANGE_FIELD = /^[\w][\w:.-]*$/;
 const STATUS_RANGE_MAX_MS = 24 * 60 * 60 * 1000;
 
 interface ResolvedStatusRange {
@@ -961,51 +1186,36 @@ export default class DeviceComponent extends Component<any> {
             DEVICE_LIST_PARAMS_SCHEMA
         );
         const filters = params.filters;
-        const hasFilters = isNonEmptyFilters(filters);
-
-        const devices = await loadAccessibleDevices(
-            sender,
+        // Belt and braces with the schema: a filter the matcher cannot answer
+        // must say so. Returning an empty list for a typo is how a whole
+        // location's devices looked like they had vanished.
+        assertKnownDeviceFilters(filters);
+        const entries = await loadOrderedDeviceListEntries(sender, {
             filters,
-            hasFilters
-        );
-        if (devices === null) return buildListResponse([], 0, 0, 0);
-
-        const virtualDevices = await loadAccessibleVirtualDevices(
-            sender,
-            filters,
-            hasFilters
-        );
-        const bluetoothDevices = await loadAccessibleBluetoothDevices(
-            sender,
-            filters,
-            hasFilters
-        );
-        const entries: DeviceListEntry[] = [
-            ...devices.map((device) => ({kind: 'physical' as const, device})),
-            ...virtualDevices.map((device) => ({
-                kind: 'virtual' as const,
-                device
-            })),
-            ...bluetoothDevices.map((device) => ({
-                kind: 'bluetooth' as const,
-                device
-            }))
-        ];
-        const total = entries.length;
-        const {sliced, rawLimit, offset} = sliceForPage(
-            entries,
-            total,
-            params.limit,
-            params.offset,
-            tuning.device.listDbPageMax
-        );
-        const detailSet = parseIncludeSet(params.include);
+            scope: params.shellyIDs ? new Set(params.shellyIDs) : undefined
+        });
+        const page = pageDeviceList(entries ?? [], {
+            positionOf: deviceListEntryPosition,
+            request: params,
+            bounds: {
+                defaultLimit: tuning.device.listDbPageMax,
+                maxLimit: DEVICE_LIST_MAX_LIMIT
+            }
+        });
         const rows = await serializeDeviceListEntries(
-            sliced,
+            page.items,
             sender.getOrganizationId(),
-            detailSet
+            parseIncludeSet(params.include)
         );
-        return buildListResponse(rows, total, rawLimit, offset);
+        return {
+            ...buildListResponse(
+                rows,
+                entries?.length ?? 0,
+                page.limit,
+                page.offset
+            ),
+            next_cursor: page.nextCursor
+        };
     }
 
     @Component.NoAudit
@@ -1103,6 +1313,102 @@ export default class DeviceComponent extends Component<any> {
         return await device.sendRPC(params.method, params.params);
     }
 
+    /**
+     * The same device method, on many devices, as one action.
+     *
+     * Exists so that "turn the kitchen lights off" is one thing a human
+     * approves rather than twelve. Twelve prompts is not twelve times the
+     * safety — people click through them, and then they click through the
+     * thirteenth that mattered.
+     *
+     * It widens nothing. Every device is permission-checked separately,
+     * through the same function the single-device call uses, and a device the
+     * caller cannot touch is reported as refused rather than silently skipped
+     * — a partial result that looked complete would be worse than an error.
+     */
+    @Component.Expose('CallMany')
+    // Coarse gate: does this caller hold execute on devices at all. It passes
+    // no item id on purpose — there is no single item — and the real boundary
+    // is the per-device check inside, which asks the same question once per
+    // shellyID. Declared so the transport-auth matrix records how this method
+    // is guarded rather than falling back to "inherited".
+    @Component.CrudPermission('devices', 'execute', () => undefined)
+    async directCallMany(rawParams: unknown, sender: CommandSender) {
+        const params = validateOrThrow<DeviceCallManyParams>(
+            rawParams,
+            DEVICE_CALL_MANY_PARAMS_SCHEMA
+        );
+        if (params.method.length > tuning.device.callMaxMethodLength) {
+            throw RpcError.InvalidParams(
+                `method must be at most ${tuning.device.callMaxMethodLength} characters`
+            );
+        }
+        if (
+            serializedByteLength(params.params) >
+            tuning.device.callMaxParamsBytes
+        ) {
+            throw RpcError.InvalidParams(
+                `params must be at most ${tuning.device.callMaxParamsBytes} bytes when serialized`
+            );
+        }
+        // The cap bounds what one "yes" can do, and keeps the list short
+        // enough that the human approving it can actually read it.
+        const max = tuning.device.callManyMaxDevices;
+        if (params.shellyIDs.length > max) {
+            throw RpcError.InvalidParams(
+                `shellyIDs must contain at most ${max} devices`
+            );
+        }
+        // Duplicates would run the method twice on one device and report it
+        // twice, so the count the human approved would not match reality.
+        const shellyIDs: string[] = [...new Set(params.shellyIDs)];
+
+        const results = await Promise.all(
+            shellyIDs.map(async (shellyID) => {
+                const allowed = await canPerformCrudOperation(
+                    sender,
+                    'devices',
+                    'execute',
+                    shellyID
+                );
+                if (!allowed) {
+                    return {shellyID, ok: false, error: 'PermissionDenied'};
+                }
+                const device = DeviceCollector.getDevice(shellyID);
+                if (!device) {
+                    return {shellyID, ok: false, error: 'DeviceNotFound'};
+                }
+                try {
+                    return {
+                        shellyID,
+                        ok: true,
+                        result: await device.sendRPC(
+                            params.method,
+                            params.params
+                        )
+                    };
+                } catch (error) {
+                    return {
+                        shellyID,
+                        ok: false,
+                        error:
+                            error instanceof Error
+                                ? error.message
+                                : String(error)
+                    };
+                }
+            })
+        );
+        const failed = results.filter((r) => !r.ok).length;
+        return {
+            method: params.method,
+            requested: shellyIDs.length,
+            succeeded: shellyIDs.length - failed,
+            failed,
+            results
+        };
+    }
+
     @Component.NoAudit
     @Component.Expose('Get')
     @Component.CrudPermission('devices', 'read', (params) => params?.shellyID)
@@ -1116,7 +1422,11 @@ export default class DeviceComponent extends Component<any> {
 
         const device = DeviceCollector.getDevice(shellyID);
         if (!device) {
-            const storedDevice = await loadStoredDeviceForGet(orgId, shellyID);
+            const storedDevice = await loadStoredDeviceForGet(
+                orgId,
+                shellyID,
+                sender
+            );
             if (!storedDevice) throw RpcError.DeviceNotFound();
             const [kindStored, costCenter] = await Promise.all([
                 getDeviceKind(shellyID, orgId),
@@ -1161,11 +1471,32 @@ export default class DeviceComponent extends Component<any> {
         // Demote this gateway's promoted BLU children first, so deleting it
         // can't leave them as orphaned "online" ghost devices.
         await demoteAllChildren(shellyID);
-        await PostgresProvider.deviceDelete(shellyID);
-        // Bump group version so cached accessible-device sets drop the row.
         const orgId = sender.getOrganizationId();
+        const actor = sender.getUser();
+        const actorUserId = sender.getUserId();
+        // A deleted device is never evaluated again, so its open alerts close
+        // in the same transaction; the closed rows drive the live update.
+        const closedAlerts = await withPostgresTransaction(async (txId) => {
+            const rows = orgId
+                ? await resolveOpenAlertsForDeletedDevice({
+                      organizationId: orgId,
+                      deviceId: rec.id,
+                      actorUserId:
+                          actorUserId && actorUserId !== '<UNAUTHORIZED>'
+                              ? actorUserId
+                              : null,
+                      actorDisplayName:
+                          actor?.displayName ?? actor?.username ?? null,
+                      txId
+                  })
+                : [];
+            await PostgresProvider.deviceDelete(shellyID, txId);
+            return rows;
+        });
+        emitResolvedAlerts(closedAlerts);
+        // Bump access version so cached accessible-device sets drop the row.
         if (orgId) {
-            invalidateGroupCache(orgId);
+            bumpOrganizationAccessVersion(orgId);
             EventDistributor.emitDeviceDeleted({
                 externalId: shellyID,
                 source: 'physical',
@@ -1193,10 +1524,10 @@ export default class DeviceComponent extends Component<any> {
         }
         await PostgresProvider.deviceRetire(shellyID);
         markRetired(shellyID);
-        // Bumps the group version, which is part of the device-list cache key,
+        // Bumps the access version, which is part of the device-list cache key,
         // so the next list rebuilds without this device.
         const orgId = sender.getOrganizationId();
-        if (orgId) invalidateGroupCache(orgId);
+        if (orgId) bumpOrganizationAccessVersion(orgId);
         return {retired: shellyID};
     }
 
@@ -1213,7 +1544,7 @@ export default class DeviceComponent extends Component<any> {
         // Re-register in case it was retired while offline and dropped from the
         // collector; already-present devices are skipped.
         await PostgresProvider.loadSavedDevices({orgId, skipRegistered: true});
-        if (orgId) invalidateGroupCache(orgId);
+        if (orgId) bumpOrganizationAccessVersion(orgId);
         return {restored: shellyID};
     }
 
@@ -1241,11 +1572,24 @@ export default class DeviceComponent extends Component<any> {
         );
         const orgId = sender.getOrganizationId();
         if (!orgId) throw RpcError.Unauthorized();
+        await Promise.all([
+            requireComponentPermissionAsync(
+                sender,
+                'devices',
+                'read',
+                params.oldShellyID
+            ),
+            requireComponentPermissionAsync(
+                sender,
+                'devices',
+                'read',
+                params.newShellyID
+            )
+        ]);
         return await checkReplacement({
             organizationId: orgId,
             oldShellyID: params.oldShellyID,
-            newShellyID: params.newShellyID,
-            snapshotForShellyID
+            newShellyID: params.newShellyID
         });
     }
 
@@ -1258,14 +1602,27 @@ export default class DeviceComponent extends Component<any> {
         );
         const orgId = sender.getOrganizationId();
         if (!orgId) throw RpcError.Unauthorized();
+        await Promise.all([
+            requireComponentPermissionAsync(
+                sender,
+                'devices',
+                'update',
+                params.oldShellyID
+            ),
+            requireComponentPermissionAsync(
+                sender,
+                'devices',
+                'update',
+                params.newShellyID
+            )
+        ]);
         try {
             return await replaceHardware({
                 organizationId: orgId,
                 oldShellyID: params.oldShellyID,
                 newShellyID: params.newShellyID,
                 confirmedMapping: params.confirmedMapping,
-                confirmedBy: sender.getUser()?.username ?? null,
-                snapshotForShellyID
+                confirmedBy: sender.getUser()?.username ?? null
             });
         } catch (err) {
             throw RpcError.InvalidParams((err as Error).message);
@@ -1308,6 +1665,76 @@ export default class DeviceComponent extends Component<any> {
         }
         incrementCounter('fm_device_kind_set');
         return {shellyID: params.shellyID, kind: params.kind};
+    }
+
+    @Component.Expose('SetJournalDebug')
+    @Component.CrudPermission('devices', 'update', (params) => params?.shellyID)
+    async setJournalDebug(rawParams: unknown, sender: CommandSender) {
+        const params = validateOrThrow<DeviceSetJournalDebugParams>(
+            rawParams,
+            DEVICE_SET_JOURNAL_DEBUG_PARAMS_SCHEMA
+        );
+        const orgId = sender.getOrganizationId();
+        if (!orgId) throw RpcError.Unauthorized();
+        try {
+            const {until} = await setDeviceJournalDebug({
+                organizationId: orgId,
+                deviceId: params.shellyID,
+                minutes: params.minutes,
+                userId: sender.getUserId()
+            });
+            return {shellyID: params.shellyID, until};
+        } catch (error) {
+            throw translatePgError(error, 'Device.SetJournalDebug');
+        }
+    }
+
+    @Component.Expose('SetEmLiveDebug')
+    @Component.CrudPermission('devices', 'update', (params) => params?.shellyID)
+    async setEmLiveDebug(
+        rawParams: unknown,
+        sender: CommandSender
+    ): Promise<DeviceSetEmLiveDebugResult> {
+        const params = validateOrThrow<DeviceSetEmLiveDebugParams>(
+            rawParams,
+            DEVICE_SET_EM_LIVE_DEBUG_PARAMS_SCHEMA
+        );
+        const orgId = sender.getOrganizationId();
+        if (!orgId) throw RpcError.Unauthorized();
+        try {
+            const {until} = await emLiveDebugCapture.set({
+                organizationId: orgId,
+                shellyId: params.shellyID,
+                hours: params.enabled ? tuning.energy.liveDebugHours : 0,
+                userId: sender.getUserId()
+            });
+            return {shellyID: params.shellyID, until};
+        } catch (error) {
+            throw translatePgError(error, 'Device.SetEmLiveDebug');
+        }
+    }
+
+    @Component.NoAudit
+    @Component.Expose('GetEmLiveDebug')
+    @Component.CrudPermission('devices', 'read', (params) => params?.shellyID)
+    async getEmLiveDebug(
+        rawParams: unknown,
+        sender: CommandSender
+    ): Promise<DeviceGetEmLiveDebugResult> {
+        const params = validateOrThrow<DeviceGetEmLiveDebugParams>(
+            rawParams,
+            DEVICE_GET_EM_LIVE_DEBUG_PARAMS_SCHEMA
+        );
+        const orgId = sender.getOrganizationId();
+        if (!orgId) throw RpcError.Unauthorized();
+        const page = await emLiveDebugCapture.read({
+            organizationId: orgId,
+            shellyId: params.shellyID,
+            after: params.after ?? 0,
+            limit: params.limit ?? EM_LIVE_DEBUG_PAGE_DEFAULT
+        });
+        if (!page) throw RpcError.Domain('ResourceNotFound');
+        return {shellyID: params.shellyID, ...page};
     }
 
     @Component.Expose('SetImage')

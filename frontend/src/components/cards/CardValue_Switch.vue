@@ -17,7 +17,7 @@
         <template #default>
             <div class="ec-hv-wrap">
                 <span class="ec-hv">{{ powerDisplay }}</span>
-                <span class="ec-hu">{{ powerUnit }}</span>
+                <span class="ec-u">{{ powerUnit }}</span>
             </div>
         </template>
         <template #badges>
@@ -101,15 +101,15 @@
                 <div class="ec-wl ec-wl--divided">
                     <div class="ec-hv-wrap">
                         <span class="ec-hv">{{ powerDisplay }}</span>
-                        <span class="ec-hu">{{ powerUnit }}</span>
+                        <span class="ec-u">{{ powerUnit }}</span>
                     </div>
                 </div>
                 <div class="ec-wr">
-                    <div class="ec-metrics-grid">
-                        <div class="ec-metric"><span class="ec-metric-v">{{ voltageDisplay }}</span><span class="ec-metric-u">V</span></div>
-                        <div class="ec-metric"><span class="ec-metric-v">{{ currentDisplay }}</span><span class="ec-metric-u">A</span></div>
-                        <div class="ec-metric"><span class="ec-metric-v">{{ freqDisplay }}</span><span class="ec-metric-u">Hz</span></div>
-                        <div class="ec-metric"><span class="ec-metric-v">{{ tempValueOnly }}</span><span class="ec-metric-u">°C</span></div>
+                    <div v-if="hasMetricsGrid" class="ec-metrics-grid">
+                        <div v-if="hasMetric(voltageMetric)" class="ec-metric"><span class="ec-metric-v">{{ voltageMetric.value }}</span><span class="ec-u ec-u--sm">V</span></div>
+                        <div v-if="hasMetric(currentMetric)" class="ec-metric"><span class="ec-metric-v">{{ currentMetric.value }}</span><span class="ec-u ec-u--sm">A</span></div>
+                        <div v-if="hasMetric(freqMetric)" class="ec-metric"><span class="ec-metric-v">{{ freqMetric.value }}</span><span class="ec-u ec-u--sm">Hz</span></div>
+                        <div v-if="hasMetric(tempMetric)" class="ec-metric"><span class="ec-metric-v">{{ tempMetric.value }}</span><span class="ec-u ec-u--sm">°C</span></div>
                     </div>
                     <CardToggle class="ec-wr-toggle" :is-on="isThermostatActuator ? thermostatEnabled : isOn" :disabled="!canToggle" @toggle="toggle" />
                 </div>
@@ -180,14 +180,14 @@
             <!-- Big power value -->
             <div class="ec-hero-power">
                 <div class="ec-hero-power-v">{{ powerDisplay }}</div>
-                <div class="ec-hero-power-u">{{ powerUnit }}</div>
+                <div class="ec-u">{{ powerUnit }}</div>
             </div>
             <!-- Electrical metrics row -->
-            <div class="ec-hero-meter">
-                <div class="ec-hero-meter-item"><span class="ec-hero-meter-v">{{ voltageDisplay }}</span><span class="ec-hero-meter-u">V</span></div>
-                <div class="ec-hero-meter-item"><span class="ec-hero-meter-v">{{ currentDisplay }}</span><span class="ec-hero-meter-u">A</span></div>
-                <div v-if="hasPf" class="ec-hero-meter-item"><span class="ec-hero-meter-v">{{ pfDisplay }}</span><span class="ec-hero-meter-u">PF</span></div>
-                <div class="ec-hero-meter-item"><span class="ec-hero-meter-v">{{ freqDisplay }}</span><span class="ec-hero-meter-u">Hz</span></div>
+            <div v-if="hasHeroMeter" class="ec-hero-meter">
+                <div v-if="hasMetric(voltageMetric)" class="ec-hero-meter-item"><span class="ec-hero-meter-v">{{ voltageMetric.value }}</span><span class="ec-u ec-u--sm">V</span></div>
+                <div v-if="hasMetric(currentMetric)" class="ec-hero-meter-item"><span class="ec-hero-meter-v">{{ currentMetric.value }}</span><span class="ec-u ec-u--sm">A</span></div>
+                <div v-if="hasMetric(pfMetric)" class="ec-hero-meter-item"><span class="ec-hero-meter-v">{{ pfMetric.value }}</span><span class="ec-u ec-u--sm">PF</span></div>
+                <div v-if="hasMetric(freqMetric)" class="ec-hero-meter-item"><span class="ec-hero-meter-v">{{ freqMetric.value }}</span><span class="ec-u ec-u--sm">Hz</span></div>
             </div>
             <!-- Toggle -->
             <div class="ec-btn-zone" style="padding:0 var(--space-5)">
@@ -243,15 +243,15 @@
                     <div class="ec-hero-stat-v">{{ isOn ? 'On' : 'Off' }}</div>
                     <div class="ec-hero-stat-l">Status</div>
                 </div>
-                <div class="ec-hero-stat">
+                <div v-if="uptimeDisplay" class="ec-hero-stat">
                     <div class="ec-hero-stat-v">{{ uptimeDisplay }}</div>
                     <div class="ec-hero-stat-l">Uptime</div>
                 </div>
-                <div class="ec-hero-stat">
+                <div v-if="tempDisplay" class="ec-hero-stat">
                     <div class="ec-hero-stat-v">{{ tempDisplay }}</div>
                     <div class="ec-hero-stat-l">Device Temp</div>
                 </div>
-                <div class="ec-hero-stat">
+                <div v-if="rssiDisplay" class="ec-hero-stat">
                     <div class="ec-hero-stat-v">{{ rssiDisplay }}</div>
                     <div class="ec-hero-stat-l">RSSI</div>
                 </div>
@@ -271,6 +271,7 @@ import {
     formatPowerFactor,
     formatTemperature,
     formatVoltage,
+    hasMetric,
     metricText
 } from '@/helpers/powerMetrics';
 import {allowedSizesForEntity} from '@/helpers/widgetCatalog';
@@ -330,18 +331,22 @@ const hasPM = computed(() => status.value?.apower !== undefined);
 
 // Every electrical reading goes through the shared display standard
 // (powerMetrics.ts) so every card reads the same.
-const powerDisplay = computed(() => formatPower(status.value?.apower).value);
-const powerUnit = computed(() => formatPower(status.value?.apower).unit);
-const voltageDisplay = computed(
-    () => formatVoltage(status.value?.voltage).value
+// Switch reports voltage/current/freq/pf only "if applicable" — each cell is
+// gated on hasMetric() so a device that omits one shows nothing, not "— Hz".
+const powerMetric = computed(() => formatPower(status.value?.apower));
+const powerDisplay = computed(() => powerMetric.value.value);
+const powerUnit = computed(() => powerMetric.value.unit);
+const voltageMetric = computed(() => formatVoltage(status.value?.voltage));
+const currentMetric = computed(() => formatCurrent(status.value?.current));
+const freqMetric = computed(() => formatFrequency(status.value?.freq));
+const pfMetric = computed(() => formatPowerFactor(status.value?.pf));
+// The hero meter row draws its own divider line, so an all-empty row would
+// leave a divider floating on nothing — hide the container, not just the cells.
+const hasHeroMeter = computed(() =>
+    [voltageMetric, currentMetric, pfMetric, freqMetric].some((m) =>
+        hasMetric(m.value)
+    )
 );
-const currentDisplay = computed(
-    () => formatCurrent(status.value?.current).value
-);
-const freqDisplay = computed(() => formatFrequency(status.value?.freq).value);
-const pfDisplay = computed(() => formatPowerFactor(status.value?.pf).value);
-// Hide PF entirely when the device doesn't report it — no dash placeholder.
-const hasPf = computed(() => typeof status.value?.pf === 'number');
 
 // today/yesterday are the real daily figures from the 1-day rollup (batched
 // loader — one query per board). Lifetime "Total" lives on the detail page,
@@ -366,35 +371,36 @@ const yesterday = computed(() =>
 
 // Device temperature lives on the switch component (switch:N.temperature.tC),
 // not sys — sys is kept only as a fallback for devices that report it there.
-const tempValueOnly = computed(() => {
+const tempMetric = computed(() => {
     const switchTemp = (
         status.value as {temperature?: {tC?: number}} | null
     )?.temperature?.tC;
     const sysTemp = (
         device.value?.status?.sys as {temperature?: {tC?: number}} | undefined
     )?.temperature?.tC;
-    return formatTemperature(switchTemp ?? sysTemp).value;
+    return formatTemperature(switchTemp ?? sysTemp);
 });
-const tempDisplay = computed(() => {
-    const t = tempValueOnly.value;
-    return t === '—' ? '—' : `${t}°C`;
-});
+const tempDisplay = computed(() =>
+    hasMetric(tempMetric.value) ? `${tempMetric.value.value}°C` : null
+);
+// Same reason as hasHeroMeter — the 2x1 grid draws its own divider lines.
+const hasMetricsGrid = computed(() =>
+    [voltageMetric, currentMetric, freqMetric, tempMetric].some((m) =>
+        hasMetric(m.value)
+    )
+);
 
-const rssiValueOnly = computed(() => {
+// null, not a dash — the caller decides to render nothing.
+const rssiDisplay = computed<string | null>(() => {
     const wifi = device.value?.status?.wifi as {rssi?: number} | undefined;
     const rssi = wifi?.rssi;
-    return rssi !== undefined && rssi !== null ? String(rssi) : '—';
+    return rssi == null ? null : `${rssi} dBm`;
 });
 
-const rssiDisplay = computed(() => {
-    const rssi = rssiValueOnly.value;
-    return rssi === '—' ? '—' : `${rssi} dBm`;
-});
-
-const uptimeDisplay = computed(() => {
+const uptimeDisplay = computed<string | null>(() => {
     const sys = device.value?.status?.sys as {uptime?: number} | undefined;
     const uptime = sys?.uptime;
-    if (uptime === undefined || uptime === null) return '—';
+    if (uptime == null) return null;
     const h = Math.floor(uptime / 3600);
     const m = Math.floor((uptime % 3600) / 60);
     if (h > 24) return `${Math.floor(h / 24)}d ${h % 24}h`;
@@ -419,13 +425,9 @@ const relayStats = computed<{key: string; value: string; label: string}[]>(
         const out: {key: string; value: string; label: string}[] = [];
         if (inputDisplay.value)
             out.push({key: 'input', value: inputDisplay.value, label: 'Input'});
-        if (tempValueOnly.value !== '—')
-            out.push({
-                key: 'temp',
-                value: `${tempValueOnly.value}°C`,
-                label: 'Temp'
-            });
-        if (uptimeDisplay.value !== '—')
+        if (tempDisplay.value)
+            out.push({key: 'temp', value: tempDisplay.value, label: 'Temp'});
+        if (uptimeDisplay.value)
             out.push({
                 key: 'uptime',
                 value: uptimeDisplay.value,
@@ -472,9 +474,9 @@ const gridStats = computed<GridStat[]>(() => {
             text: metricText(yesterday.value)
         });
     }
-    if (uptimeDisplay.value !== '—')
+    if (uptimeDisplay.value)
         out.push({key: 'uptime', label: 'Uptime', text: uptimeDisplay.value});
-    if (tempValueOnly.value !== '—')
+    if (tempDisplay.value)
         out.push({key: 'temp', label: 'Temp', text: tempDisplay.value});
     return out;
 });

@@ -21,7 +21,7 @@
                     :class="{
                         [`awm-pv--${sz.value}`]: true,
                         'awm-pv--sel':
-                            (sizes[ent.id] ?? defaultSizeForEntityType(ent.type)) ===
+                            (sizes[ent.id] ?? defaultSizeForEntity(ent)) ===
                             sz.value
                     }"
                     @click="pickSize(ent.id, sz.value)"
@@ -58,7 +58,7 @@ import {getBThomeVariant} from '@/config/bthome-presentation';
 import {getEntityIcon} from '@/config/entity-registry';
 import {
     allowedSizesForEntity,
-    defaultSizeForEntityType,
+    defaultSizeForEntity,
     WIDGET_SIZES
 } from '@/helpers/widgetCatalog';
 import type {entity_t} from '@/types';

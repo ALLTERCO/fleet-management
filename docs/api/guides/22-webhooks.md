@@ -1,6 +1,6 @@
 ## Webhooks
 
-![Two kinds of webhook: device-fired ones managed through the relayed webhook namespace, and Fleet-Manager-sent alert-delivery ones registered as channels with generic_webhook or webhook_signed and an fm-signature HMAC](diagrams/webhooks.svg)
+![Two kinds of webhook: device-fired ones managed through the relayed webhook namespace, and Fleet-Manager-sent alert-delivery ones registered as channels with generic_webhook or webhook_signed (with fm-signature HMAC)](diagrams/webhooks.svg)
 
 Two unrelated things share the name "webhook" in Fleet Manager. Keep them
 straight.
@@ -8,12 +8,12 @@ straight.
 ### Device webhooks (fired by the device)
 
 Shelly devices fire their own outbound HTTP webhooks on device events. You
-manage them fleet-wide through the relayed `webhook` namespace — the calls are
+manage them fleet-wide through the relayed `webhook` namespace: the calls are
 forwarded to the device:
 
 - `webhook.List`, `webhook.ListSupported` / `webhook.ListAllSupported` (event
   types this firmware supports).
-- `webhook.Create` — `{ shellyID, event, urls[] }` plus optional `enable`,
+- `webhook.Create`: `{ shellyID, event, urls[] }` plus optional `enable`,
   `name`, `condition`, `active_between`, `repeat_period`.
 - `webhook.Update`, `webhook.Delete`, `webhook.DeleteAll`.
 

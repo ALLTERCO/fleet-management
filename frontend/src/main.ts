@@ -1,6 +1,7 @@
 import {createApp, h} from 'vue';
 import './styles/style.css';
 import App from '@app-root';
+import {IS_CLIENT_BUILD} from '@build-mode';
 import {createPinia} from 'pinia';
 import {LOGIN_PATH} from '@/constants';
 import {setLoginRedirectHandler} from '@/helpers/authNavigation';
@@ -11,10 +12,16 @@ import {
 import {initWebVitals} from '@/helpers/webVitals';
 import {initZitadelAuth} from '@/helpers/zitadelAuth';
 import {installCustomization, loadCustomization} from '@/shell/customization';
+import {
+    EMPTY_OPERATIONAL_BINDINGS,
+    installOperationalBindings,
+    loadOperationalBindings
+} from '@/shell/operational-bindings';
 import {initLaunchSync} from '@/tools/launchSync';
 import {initPwaInstall} from '@/tools/pwaInstall';
 import {initReportAnomalyToasts} from '@/tools/reportAnomalyToast';
 import {initSwUpdate} from '@/tools/swUpdate';
+import {initSystemAlertBanners} from '@/tools/systemAlertBanners';
 import router from './router';
 
 setLoginRedirectHandler(async () => {
@@ -40,7 +47,12 @@ function mountBootError(err: unknown): void {
 }
 
 async function init() {
-    const customization = await loadCustomization();
+    const [customization, operationalBindings] = await Promise.all([
+        loadCustomization(),
+        IS_CLIENT_BUILD
+            ? loadOperationalBindings()
+            : Promise.resolve(EMPTY_OPERATIONAL_BINDINGS)
+    ]);
     const pinia = createPinia();
 
     const app = createApp(App);
@@ -54,6 +66,7 @@ async function init() {
     app.use(pinia);
     app.use(router);
     installCustomization(app, customization);
+    installOperationalBindings(app, operationalBindings);
 
     // Shared IntersectionObserver for v-lazyload (one observer for all images)
     let lazyObserver: IntersectionObserver | null = null;
@@ -99,6 +112,7 @@ async function init() {
     initPwaInstall();
     initLaunchSync();
     initReportAnomalyToasts();
+    initSystemAlertBanners(router);
 }
 
 if (!window.__FM_RUNTIME_CONFIG__?.devMode) {

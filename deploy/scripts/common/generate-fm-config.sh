@@ -9,10 +9,69 @@ DEPLOY_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 REPO_ROOT="$(cd "$DEPLOY_DIR/.." && pwd)"
 CONFIG_LIB_DIR="$SCRIPT_DIR/generate-fm-config"
 
-# shellcheck source=deploy/scripts/common/generate-fm-config/dev.sh
-source "$CONFIG_LIB_DIR/dev.sh"
 # shellcheck source=deploy/scripts/common/generate-fm-config/oidc.sh
 source "$CONFIG_LIB_DIR/oidc.sh"
+# shellcheck source=deploy/scripts/common/nodered-runtime-env.sh
+source "$SCRIPT_DIR/nodered-runtime-env.sh"
+
+write_generated_json() {
+    local output_file="$1"
+    local output_dir tmp_file old_umask
+    output_dir="$(dirname "$output_file")"
+    mkdir -p "$output_dir"
+
+    old_umask="$(umask)"
+    umask 077
+    tmp_file="$(mktemp "${output_file}.XXXXXX")" || {
+        umask "$old_umask"
+        return 1
+    }
+    umask "$old_umask"
+
+    if ! cat > "$tmp_file"; then
+        rm -f "$tmp_file"
+        return 1
+    fi
+    if ! jq empty "$tmp_file" >/dev/null 2>&1; then
+        echo "ERROR: Generated JSON is invalid: $output_file" >&2
+        rm -f "$tmp_file"
+        return 1
+    fi
+
+    chmod 0600 "$tmp_file"
+    mv "$tmp_file" "$output_file"
+}
+
+write_generated_env() {
+    local output_file="$1"
+    local output_dir tmp_file old_umask
+    output_dir="$(dirname "$output_file")"
+    mkdir -p "$output_dir"
+
+    old_umask="$(umask)"
+    umask 077
+    tmp_file="$(mktemp "${output_file}.XXXXXX")" || {
+        umask "$old_umask"
+        return 1
+    }
+    umask "$old_umask"
+
+    if ! cat > "$tmp_file"; then
+        rm -f "$tmp_file"
+        return 1
+    fi
+    if ! awk '
+        /^#/ || /^[[:space:]]*$/ { next }
+        !/^[A-Za-z_][A-Za-z0-9_-]*=/ { exit 1 }
+    ' "$tmp_file"; then
+        echo "ERROR: Generated env file is invalid: $output_file" >&2
+        rm -f "$tmp_file"
+        return 1
+    fi
+
+    chmod 0600 "$tmp_file"
+    mv "$tmp_file" "$output_file"
+}
 
 config_arg_value() {
     local flag="$1"
@@ -50,18 +109,15 @@ while [ $# -gt 0 ]; do
 done
 
 case "$MODE" in
-    dev)
-        generate_dev_config
-        ;;
     zitadel)
         generate_zitadel_config "$TARGET" "$CLIENT_ID"
         ;;
     "")
-        echo "ERROR: --mode is required (zitadel or dev)" >&2
+        echo "ERROR: --mode is required (zitadel)" >&2
         exit 1
         ;;
     *)
-        echo "ERROR: Unknown mode '$MODE' (expected: zitadel or dev)" >&2
+        echo "ERROR: Unknown mode '$MODE' (expected: zitadel)" >&2
         exit 1
         ;;
 esac

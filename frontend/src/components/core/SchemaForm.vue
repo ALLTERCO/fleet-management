@@ -1,5 +1,5 @@
 <template>
-    <div class="sf">
+    <div class="sf" :class="{'sf--inline': inline}" :title="inline ? inlineHint : undefined">
         <div
             v-for="field in fields"
             :key="field.key"
@@ -40,6 +40,7 @@
             <DurationField
                 v-else-if="field.isDuration"
                 :model-value="Number(readValue(field.key) ?? 0)"
+                :max="field.max"
                 @update:model-value="setValue(field.key, $event)"
             />
 
@@ -50,6 +51,7 @@
                 type="number"
                 :min="field.min"
                 :max="field.max"
+                :step="field.step"
                 :placeholder="field.placeholder"
                 @update:model-value="setNumeric(field.key, $event)"
             />
@@ -73,7 +75,10 @@
                 @update:model-value="setValue(field.key, $event)"
             />
 
-            <p v-if="cleanDescription(field) && !field.isBoolean" class="sf__hint">
+            <p
+                v-if="cleanDescription(field) && !field.isBoolean && !inline"
+                class="sf__hint"
+            >
                 {{ cleanDescription(field) }}
             </p>
         </div>
@@ -81,6 +86,7 @@
 </template>
 
 <script setup lang="ts">
+import type {JsonSchema} from '@api/_schema';
 import {computed} from 'vue';
 import Checkbox from '@/components/core/Checkbox.vue';
 import Dropdown from '@/components/core/Dropdown.vue';
@@ -88,30 +94,10 @@ import DurationField from '@/components/core/DurationField.vue';
 import Input from '@/components/core/Input.vue';
 import SecretField from '@/components/core/SecretField.vue';
 
-// Minimal JSON Schema subset — covers backend's config/provider schemas.
-interface PropSchema {
-    type?: string | string[];
-    enum?: Array<string | number | boolean>;
-    description?: string;
-    minimum?: number;
-    maximum?: number;
-    minLength?: number;
-    maxLength?: number;
-    default?: unknown;
-    properties?: Record<string, PropSchema>;
-    required?: string[];
-}
-
-interface ObjectSchema {
-    type?: string | string[];
-    properties?: Record<string, PropSchema>;
-    required?: string[];
-}
-
 const model = defineModel<Record<string, unknown>>({required: true});
 
 const props = defineProps<{
-    schema: ObjectSchema;
+    schema: JsonSchema;
     hasSecretFor?: (fieldPath: string) => boolean;
 }>();
 
@@ -126,10 +112,11 @@ interface FieldDescriptor {
     isDuration: boolean;
     isSecret: boolean;
     isObject: boolean;
-    schema: PropSchema;
+    schema: JsonSchema;
     placeholder?: string;
     min?: number;
     max?: number;
+    step?: number | 'any';
 }
 
 function humanize(key: string): string {
@@ -153,10 +140,23 @@ function isNumericType(t: string | string[] | undefined): boolean {
     return arr.some((x) => x === 'integer' || x === 'number');
 }
 
+function numericStep(t: string | string[] | undefined): number | 'any' {
+    const types = Array.isArray(t) ? t : [t];
+    return types.includes('number') ? 'any' : 1;
+}
+
 function isBooleanType(t: string | string[] | undefined): boolean {
     if (!t) return false;
     return Array.isArray(t) ? t.includes('boolean') : t === 'boolean';
 }
+
+// One setting reads as a row; more than one needs its column back.
+const inline = computed(() => fields.value.length === 1);
+
+// The hint would wrap and undo the row, so it moves to the control's tooltip.
+const inlineHint = computed(() =>
+    inline.value ? (cleanDescription(fields.value[0]) ?? '') : ''
+);
 
 const fields = computed<FieldDescriptor[]>(() => {
     const required = new Set(props.schema.required ?? []);
@@ -188,7 +188,8 @@ const fields = computed<FieldDescriptor[]>(() => {
             schema: field,
             placeholder,
             min: field.minimum,
-            max: field.maximum
+            max: field.maximum,
+            step: numericStep(field.type)
         };
     });
 });
@@ -238,13 +239,16 @@ function cleanDescription(field: FieldDescriptor): string | undefined {
 
 <style scoped>
 /* Auto-fit grid — handles schemas with any number of fields cleanly.
-   Single-field schemas take full width; multi-field schemas pack as many
-   columns as fit with a 16rem minimum. Wide fields (objects, nested) always
-   span full-width. */
+   Columns pack at a 16rem minimum; wide fields (objects, nested) span the row.
+
+   Columns are capped rather than 1fr: with auto-fit, a one-field schema took
+   the entire grid, so a "3 min" duration stretched the full width of a wide
+   modal. A control should be as wide as the value it holds. */
 .sf {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 24rem));
     gap: var(--space-3) var(--space-4);
+    justify-content: start;
 }
 
 .sf__field {
@@ -252,6 +256,27 @@ function cleanDescription(field: FieldDescriptor): string | undefined {
     flex-direction: column;
     gap: var(--space-1);
     min-width: 0;
+}
+
+/* A lone setting reads better as one row than as a stacked label, control and
+   hint. Research favours labels above fields for multi-field forms, where the
+   eye scans a column; a single control has no column to scan. */
+.sf--inline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+}
+
+.sf--inline .sf__field {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.sf--inline .sf__label {
+    margin: 0;
+    white-space: nowrap;
 }
 
 .sf__field--wide {

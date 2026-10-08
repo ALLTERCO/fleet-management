@@ -10,12 +10,16 @@
 
 import RpcError from '../../rpc/RpcError';
 import type {MessageTemplateBodies} from '../../types/api/notification';
-import {renderTemplate} from '../alert/templateRenderer';
+import {
+    renderTemplate,
+    type TemplateEscapeMode
+} from '../alert/templateRenderer';
 
 export interface ChannelRender {
     rendered: string | object;
     missingTokens: string[];
     usedFallback: boolean;
+    isSystemDefault?: boolean;
 }
 
 /** Minimum a template needs to render — satisfied by both the full
@@ -23,23 +27,33 @@ export interface ChannelRender {
 export interface RenderableTemplate {
     bodies: MessageTemplateBodies;
     fallbackText: string;
+    isSystemDefault?: boolean;
 }
 
 type Ctx = Record<string, unknown>;
 
+const SYSTEM_EMAIL_MAX_OUTPUT_CHARS = 32_000;
+const SYSTEM_RICH_CARD_MAX_OUTPUT_CHARS = 16_000;
+
 function renderText(
     template: string,
-    ctx: Ctx
+    ctx: Ctx,
+    escapeMode: TemplateEscapeMode = 'none',
+    maxOutputChars?: number
 ): {text: string; missing: string[]} {
-    const r = renderTemplate(template, ctx);
+    const r = renderTemplate(template, ctx, {escapeMode, maxOutputChars});
     return {text: r.rendered, missing: r.missingTokens};
 }
 
 function renderJson(
     template: string,
-    ctx: Ctx
+    ctx: Ctx,
+    maxOutputChars?: number
 ): {value: unknown; missing: string[]; parsed: boolean} {
-    const r = renderTemplate(template, ctx, {escapeMode: 'json'});
+    const r = renderTemplate(template, ctx, {
+        escapeMode: 'json',
+        maxOutputChars
+    });
     try {
         return {
             value: JSON.parse(r.rendered),
@@ -63,10 +77,11 @@ function fallback(template: RenderableTemplate, ctx: Ctx): ChannelRender {
 
 function renderEmail(
     body: NonNullable<MessageTemplateBodies['email']>,
-    ctx: Ctx
+    ctx: Ctx,
+    maxOutputChars?: number
 ): ChannelRender {
     const subject = renderText(body.subject, ctx);
-    const html = renderText(body.html, ctx);
+    const html = renderText(body.html, ctx, 'html', maxOutputChars);
     const text = renderText(body.text, ctx);
     return {
         rendered: {subject: subject.text, html: html.text, text: text.text},
@@ -100,13 +115,23 @@ export function renderMessageTemplateForChannel(
 ): ChannelRender {
     const b = template.bodies ?? {};
     if (channelType === 'email_smtp' && b.email) {
-        return renderEmail(b.email, ctx);
+        return renderEmail(
+            b.email,
+            ctx,
+            template.isSystemDefault ? SYSTEM_EMAIL_MAX_OUTPUT_CHARS : undefined
+        );
     }
     if (channelType === 'slack_webhook' && b.slack?.blocks) {
         return renderSlack(b.slack.blocks, ctx);
     }
     if (channelType === 'teams_workflow_webhook' && b.teams?.card) {
-        const j = renderJson(b.teams.card, ctx);
+        const j = renderJson(
+            b.teams.card,
+            ctx,
+            template.isSystemDefault
+                ? SYSTEM_RICH_CARD_MAX_OUTPUT_CHARS
+                : undefined
+        );
         if (j.parsed && j.value && typeof j.value === 'object') {
             return {
                 rendered: j.value as object,

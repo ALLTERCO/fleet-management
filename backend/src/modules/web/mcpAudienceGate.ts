@@ -1,17 +1,16 @@
 import type express from 'express';
-import {hasMcpAudience} from '../ai/mcpGovernance';
+import {mcpCredentialAllowsHttpPath} from '../ai/mcpGovernance';
 
-export function mcpAudienceAllowsPath(
-    audience: string[] | undefined,
-    path: string
-): boolean {
-    if (!hasMcpAudience(audience)) return true;
-    return path === '/mcp' || path.startsWith('/mcp/');
-}
-
+/**
+ * Keeps an MCP-scoped credential on the MCP router. The rule itself lives in
+ * mcpGovernance so the WebSocket upgrade enforces the same one — this is only
+ * the Express half of it.
+ */
 export function mcpAudienceGate(): express.RequestHandler {
     return (req, res, next) => {
-        if (mcpAudienceAllowsPath(req.user?.credentialAudience, req.path)) {
+        if (
+            mcpCredentialAllowsHttpPath(req.user?.credentialAudience, req.path)
+        ) {
             next();
             return;
         }

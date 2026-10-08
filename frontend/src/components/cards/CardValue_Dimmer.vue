@@ -20,8 +20,8 @@
                 @click.stop="calibrate"
             >Calibrate</button>
             <template v-else>
-                <div role="status" class="ec-dpct">{{ brightnessDisplay }}<span>%</span></div>
-                <div v-if="powerMetric.value !== '—'" class="ec-sub ec-sub--sensor">{{ powerMetric.value }} {{ powerMetric.unit }}</div>
+                <div role="status" class="ec-dpct">{{ brightnessDisplay }}<span class="ec-u">%</span></div>
+                <div v-if="hasMetric(powerMetric)" class="ec-sub ec-sub--sensor">{{ metricText(powerMetric) }}</div>
             </template>
         </template>
         <template #badges>
@@ -48,8 +48,8 @@
         <template #default>
             <div class="ec-wide-row">
                 <div class="ec-wl">
-                    <div role="status" class="ec-dpct ec-dpct--flush">{{ brightnessDisplay }}<span>%</span></div>
-                    <div v-if="powerMetric.value !== '—'" class="ec-sub--power">{{ powerMetric.value }} {{ powerMetric.unit }}</div>
+                    <div role="status" class="ec-dpct ec-dpct--flush">{{ brightnessDisplay }}<span class="ec-u">%</span></div>
+                    <div v-if="hasMetric(powerMetric)" class="ec-sub--power">{{ metricText(powerMetric) }}</div>
                 </div>
                 <div class="ec-wr">
                     <button
@@ -59,19 +59,15 @@
                         @click.stop="calibrate"
                     >Calibrate</button>
                     <span v-else-if="isCalibrating" class="dh-cal-progress">{{ calibrationProgress }}%</span>
-                    <div v-else class="ec-clr-track">
-                        <input
-                            type="range"
-                            class="sld-r sld-bri"
-                            min="0"
-                            max="100"
-                            :value="displayBrightness"
-                            :disabled="controlsDisabled || isOffline"
-                            @input="onSliderInput"
-                            @change="onSliderChange"
-                            @click.stop
-                        />
-                    </div>
+                    <CardSlider
+                        v-else
+                        variant="bri"
+                        :value="displayBrightness"
+                        :disabled="controlsDisabled || isOffline"
+                        aria-label="Brightness"
+                        @input="onSliderInput"
+                        @change="onSliderChange"
+                    />
                     <CardToggle :is-on="isOn" :disabled="!isOperable" @toggle="toggle" />
                 </div>
             </div>
@@ -106,26 +102,21 @@
                     <div class="ec-fil-glare"></div>
                 </div>
                 <div class="dh-value">
-                    <div class="dh-pct">{{ brightnessDisplay }}<span>%</span></div>
+                    <div class="dh-pct">{{ brightnessDisplay }}<span class="ec-u">%</span></div>
                 </div>
             </div>
 
             <!-- Controls: slider, presets, toggle -->
             <div class="dh-controls">
                 <div class="dh-slider">
-                    <div class="ec-clr-track">
-                        <input
-                            type="range"
-                            class="sld-r sld-bri"
-                            min="0"
-                            max="100"
-                            :value="displayBrightness"
-                            :disabled="controlsDisabled || isOffline"
-                            @input="onSliderInput"
-                            @change="onSliderChange"
-                            @click.stop
-                        />
-                    </div>
+                    <CardSlider
+                        variant="bri"
+                        :value="displayBrightness"
+                        :disabled="controlsDisabled || isOffline"
+                        aria-label="Brightness"
+                        @input="onSliderInput"
+                        @change="onSliderChange"
+                    />
                 </div>
                 <div v-if="needsCalibration || isCalibrating" class="dh-calibrate">
                     <button
@@ -157,21 +148,9 @@
         </template>
         <template #footer>
             <!-- PM stats — value + unit only, no labels -->
-            <div v-if="hasPM" class="ec-hero-info ec-hero-info--values">
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ powerMetric.value }} {{ powerMetric.unit }}</div>
-                </div>
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ currentMetric.value }} {{ currentMetric.unit }}</div>
-                </div>
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ voltageMetric.value }} {{ voltageMetric.unit }}</div>
-                </div>
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ tempMetric.value }}{{ tempMetric.unit }}</div>
-                </div>
-                <div class="ec-hero-stat">
-                    <div class="ec-hero-stat-v">{{ todayMetric.value }} {{ todayMetric.unit }}</div>
+            <div v-if="footerStats.length" class="ec-hero-info ec-hero-info--values">
+                <div v-for="s in footerStats" :key="s.key" class="ec-hero-stat">
+                    <div class="ec-hero-stat-v">{{ s.text }}</div>
                 </div>
             </div>
             <!-- No-PM: no footer stats (matches mockup) -->
@@ -189,12 +168,16 @@ import {
     formatEnergy,
     formatPower,
     formatTemperature,
-    formatVoltage
+    formatVoltage,
+    hasMetric,
+    type Metric,
+    metricText
 } from '@/helpers/powerMetrics';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
 import {loadDailyEnergy} from '@/tools/dailyEnergyLoader';
 import type {entity_t} from '@/types';
+import CardSlider from '../core/CardSlider.vue';
 import CardBadges from './CardBadges.vue';
 import CardShell from './CardShell.vue';
 import CardToggle from './CardToggle.vue';
@@ -289,6 +272,21 @@ onMounted(async () => {
 const todayMetric = computed(() =>
     formatEnergy(dailyEnergy.value ? dailyEnergy.value.today * 1000 : null)
 );
+
+// Light exposes apower/voltage/current/temperature only "if applicable", so a
+// dimmer may report none of them — drop what is absent instead of dashing it.
+const footerStats = computed<{key: string; text: string}[]>(() => {
+    const all: [string, Metric][] = [
+        ['power', powerMetric.value],
+        ['current', currentMetric.value],
+        ['voltage', voltageMetric.value],
+        ['temp', tempMetric.value],
+        ['today', todayMetric.value]
+    ];
+    return all
+        .filter(([, m]) => hasMetric(m))
+        .map(([key, m]) => ({key, text: metricText(m)}));
+});
 
 function isNearPreset(preset: number): boolean {
     return Math.abs(displayBrightness.value - preset) <= 3;

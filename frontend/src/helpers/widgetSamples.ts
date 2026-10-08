@@ -164,19 +164,29 @@ export const UI_WIDGET_META: Record<
     }
 };
 
-/** All widget IDs the catalog should display, in display order. */
-export const CATALOG_UI_WIDGETS: UiWidgetId[] = [
-    'clock_widget',
-    'chart_widget',
-    'gauge_widget',
-    'stats_summary_widget',
-    'top_consumers_widget',
-    'state_timeline_widget',
-    'activity_heatmap_widget',
-    'energy_flow_sankey_widget',
-    'fleet_kpi_strip_widget',
-    'site_grid_widget',
-    'maintenance_list_widget',
-    'cross_site_bar_widget',
-    'data_table_widget'
-];
+// Display order, keyed by the whole UiWidgetId union so a new widget fails to
+// compile until it is placed. -1 means never shown in the picker (the error
+// tile). The catalog list below is derived from this — one home, compiler-gated.
+const WIDGET_ORDER: Record<UiWidgetId, number> = {
+    clock_widget: 0,
+    chart_widget: 1,
+    gauge_widget: 2,
+    stats_summary_widget: 3,
+    top_consumers_widget: 4,
+    state_timeline_widget: 5,
+    activity_heatmap_widget: 6,
+    energy_flow_sankey_widget: 7,
+    fleet_kpi_strip_widget: 8,
+    site_grid_widget: 9,
+    maintenance_list_widget: 10,
+    cross_site_bar_widget: 11,
+    data_table_widget: 12,
+    broken_widget: -1
+};
+
+/** Every widget the catalog displays, in display order. Derived, never hand-kept. */
+export const CATALOG_UI_WIDGETS: UiWidgetId[] = (
+    Object.keys(WIDGET_ORDER) as UiWidgetId[]
+)
+    .filter((id) => WIDGET_ORDER[id] >= 0)
+    .sort((a, b) => WIDGET_ORDER[a] - WIDGET_ORDER[b]);

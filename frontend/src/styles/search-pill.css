@@ -30,8 +30,9 @@
 .search-pill__input {
     width: 100%;
     min-height: var(--touch-target-min);
-    padding: var(--gap-xs) calc(var(--gap-xl) + var(--gap-lg)) var(--gap-xs)
-        var(--gap-lg);
+    /* The magnifier sits in the left padding. Nothing sits in the right, so
+       the browser's own clear cross can hug the edge. */
+    padding: var(--gap-xs) var(--gap-sm) var(--gap-xs) var(--gap-lg);
     background: var(--color-surface-3);
     border: 1px solid
         color-mix(in srgb, var(--color-primary) 20%, var(--color-border-medium));
@@ -42,6 +43,13 @@
     font-family: inherit;
     transition: border-color var(--duration-fast);
 }
+/* Our own clear and funnel sit inside the box, so the text steps back for
+   them. Without buttons the browser's own cross would be pushed a long way in
+   from the edge by padding nothing is using. */
+.search-pill--buttons .search-pill__input {
+    padding-right: calc(var(--gap-xl) + var(--gap-lg));
+}
+
 .search-pill__input:focus {
     outline: none;
     border-color: var(--color-border-focus);
@@ -51,12 +59,12 @@
 }
 .search-pill__clear {
     position: absolute;
-    right: 44px; /* funnel box + 2px — icon-button convention */
+    right: 2px; /* icon-button convention: hard against the edge */
     top: 50%;
     transform: translateY(-50%);
     display: flex;
     width: 34px; /* golden — same box as the funnel */
-    height: 34px;
+    height: var(--touch-target-min);
     align-items: center;
     justify-content: center;
     padding: 0;
@@ -66,6 +74,11 @@
     color: var(--color-text-disabled);
     cursor: pointer;
     transition: all var(--duration-fast);
+}
+
+/* A funnel sits at the edge when the box has one, so the cross steps aside. */
+.search-pill--filtered .search-pill__clear {
+    right: 44px; /* funnel box + 2px */
 }
 /* Without the funnel, the clear button takes its place at the edge. */
 .search-pill__clear:last-child {
@@ -83,7 +96,7 @@
     top: 50%;
     transform: translateY(-50%);
     width: 34px; /* golden */
-    height: 34px;
+    height: var(--touch-target-min);
     display: flex;
     align-items: center;
     justify-content: center;

@@ -1,15 +1,19 @@
 import {getLogger} from 'log4js';
 import {tuning} from '../../config/tuning';
 import * as DeviceCollector from '../DeviceCollector';
+import {runAsBackgroundDbWork} from '../dbWorkPriority';
 import {
     invalidateAccessControl,
-    readAccessControlCached
+    readAccessControlCached,
+    setPeerAccessChangeHandler
 } from '../deviceIngress/deviceTrustCache';
 import {ingressStage} from '../deviceIngress/ingressTrace';
+import type {AutoAdmitBindResult} from '../discovery/autoAdmitFinalize';
 import {
     finalizePendingAdmission as defaultFinalize,
     reservePendingAdmission as defaultReserve
 } from '../discovery/pendingAdmissionRepo';
+import * as EventDistributor from '../EventDistributor';
 import * as Observability from '../Observability';
 import * as postgres from '../PostgresProvider';
 import {withPostgresTransaction} from '../postgresTx';
@@ -21,7 +25,7 @@ import {ReconnectLimiter} from './ReconnectLimiter';
 import {
     claimPending,
     dropPending,
-    listPending,
+    getPending,
     markRejected,
     restoreClaimedPending
 } from './redisWaitingStore';
@@ -109,7 +113,7 @@ export interface AutoAdmitHooks {
     preApproveBind: (
         shellyID: string,
         intent: AdmissionIntent
-    ) => Promise<boolean>;
+    ) => Promise<AutoAdmitBindResult>;
     postFinalizeAudit: (shellyID: string, intent: AdmissionIntent) => void;
 }
 let autoAdmitHooks: AutoAdmitHooks | null = null;
@@ -129,7 +133,7 @@ async function tryAutoAdmit(
         intent.organization_id
     );
     const bound = await runPreApproveBindSafe(shellyID, intent);
-    if (!bound) return false;
+    if (bound !== 'bound') return false;
     const approveOk = await runApproveSafe(shellyID, onApprove, intent);
     if (!approveOk) return false;
     const consumed = await finalizeIntentSafe(shellyID, intent);
@@ -171,9 +175,10 @@ async function runApproveSafe(
     }
 }
 
-// Absorbs slot-rejection rejections from non-awaited approve sites.
+// Absorbs slot-rejection rejections from non-awaited approve sites. The
+// registration is not the operator's request, so it runs as background.
 function fireOnApproveSafe(onApprove: ApproveCallback, shellyID: string): void {
-    void Promise.resolve(onApprove()).catch((err) => {
+    void runAsBackgroundDbWork(async () => onApprove()).catch((err) => {
         logger.warn('onApprove rejected for %s: %s', shellyID, err);
     });
 }
@@ -181,8 +186,8 @@ function fireOnApproveSafe(onApprove: ApproveCallback, shellyID: string): void {
 async function runPreApproveBindSafe(
     shellyID: string,
     intent: AdmissionIntent
-): Promise<boolean> {
-    if (!autoAdmitHooks) return true;
+): Promise<AutoAdmitBindResult> {
+    if (!autoAdmitHooks) return 'bound';
     try {
         return await autoAdmitHooks.preApproveBind(shellyID, intent);
     } catch (err) {
@@ -191,7 +196,7 @@ async function runPreApproveBindSafe(
             shellyID,
             err
         );
-        return false;
+        return 'failed';
     }
 }
 
@@ -373,10 +378,23 @@ export async function addDevice(
     onEvict: () => void,
     onQuarantine: () => void
 ): Promise<AdmissionResult> {
-    return addDeviceWithPolicy(
-        {shellyID, onApprove, onDeny, onEvict, onQuarantine},
-        {allowStoredDecision: true, allowAutoAdmit: true}
-    );
+    return admitOrQueueDevice({
+        shellyID,
+        onApprove,
+        onDeny,
+        onEvict,
+        onQuarantine
+    });
+}
+
+// A stored decision or auto-admit first, otherwise the Waiting Room.
+export async function admitOrQueueDevice(
+    input: AddDeviceInput
+): Promise<AdmissionResult> {
+    return addDeviceWithPolicy(input, {
+        allowStoredDecision: true,
+        allowAutoAdmit: true
+    });
 }
 
 export async function queueDevice(
@@ -534,6 +552,7 @@ function queuePendingDevice(input: AddDeviceInput): AdmissionResult {
         onDeny: input.onDeny,
         onEvict: input.onEvict,
         onQuarantine: input.onQuarantine,
+        organizationId: input.organizationId ?? null,
         touchedAt: Date.now()
     });
     debouncedNotifyWaitingRoom();
@@ -610,7 +629,12 @@ export async function approveDevicesByExternalIds(
     const records: postgres.get_resp_t[] = [];
 
     const {admissions, unknown} = collectAdmissionsForApprove(externalIds);
-    error.push(...unknown);
+    // A denied device is dropped on every reconnect, so it never reaches the
+    // live map; its stored row is what an operator accepts from the Denied list.
+    const denied = organizationId ? await collectDeniedForApprove(unknown) : [];
+    const revived = new Set(denied.map((a) => a.externalId));
+    error.push(...unknown.filter((id) => !revived.has(id)));
+    admissions.push(...denied);
     if (admissions.length === 0) {
         debouncedNotifyWaitingRoom();
         return {success, error, records};
@@ -640,6 +664,7 @@ export async function approveDevicesByExternalIds(
         return {success, error, records};
     }
 
+    const admitted: Array<{shellyID: string; record: postgres.get_resp_t}> = [];
     for (const {externalId: shellyID} of admissions) {
         const record = admittedByExtId.get(shellyID);
         if (!record) {
@@ -650,10 +675,18 @@ export async function approveDevicesByExternalIds(
         logAudit((audit) => audit.logDeviceAdd(shellyID, username));
         success.push(shellyID);
         records.push(record);
-        await invalidateAccessControl(shellyID);
-        // The claim path removed the store entry; this fallback path must
-        // too, or the approved device stays listed until its TTL.
-        await dropStoreEntrySafe(shellyID, organizationId);
+        admitted.push({shellyID, record});
+    }
+    // One round for the whole batch, as on the claim path. The claim path
+    // removed the store entry; this fallback path must too, or the approved
+    // device stays listed until its TTL.
+    await Promise.all(
+        admitted.map(async ({shellyID}) => {
+            await invalidateAccessControl(shellyID);
+            await dropStoreEntrySafe(shellyID, organizationId);
+        })
+    );
+    for (const {shellyID, record} of admitted) {
         await fireApproveSideEffects(shellyID, record, beforeApprove);
     }
     debouncedNotifyWaitingRoom();
@@ -696,6 +729,24 @@ function collectAdmissionsForApprove(externalIds: string[]) {
     return {admissions, unknown};
 }
 
+// Only a row already stored as DENIED may be revived: an unknown id must not
+// insert a device. The org check stays in the DB flip; a foreign row comes
+// back unflipped and is reported as an error.
+async function collectDeniedForApprove(
+    externalIds: string[]
+): Promise<Array<{externalId: string; jdoc: undefined}>> {
+    const denied: Array<{externalId: string; jdoc: undefined}> = [];
+    for (const shellyID of externalIds) {
+        const row = await waitingRoomStore.accessControl(
+            shellyID,
+            undefined,
+            postgres.ACCESS_CONTROL.DENIED
+        );
+        if (row) denied.push({externalId: shellyID, jdoc: undefined});
+    }
+    return denied;
+}
+
 // fn_admit_batch returns every matching row, including ones it didn't flip.
 // An ALLOWED admit is genuine only when control_access actually landed on
 // ALLOWED; deny/quarantine apply to every returned row. Cross-org rows are
@@ -721,10 +772,14 @@ async function runAdmissionBatch(
 ): Promise<Map<string, postgres.get_resp_t> | null> {
     const startMs = performance.now();
     try {
+        // An operator decision may revive a row already DENIED. Only an accept
+        // may create a row; a deny must not conjure the device it rejects.
         const admitted = await waitingRoomStore.admitBatch(
             admissions,
             accessControl,
-            organizationId
+            organizationId,
+            true,
+            accessControl === postgres.ACCESS_CONTROL.ALLOWED
         );
         const elapsed = performance.now() - startMs;
         Observability.recordDbTiming(`waitingroom.admit.${label}`, elapsed);
@@ -737,12 +792,22 @@ async function runAdmissionBatch(
             admitted.length,
             Math.round(elapsed)
         );
-        return new Map(
+        const admittedByExtId = new Map(
             admitted
                 .filter((r) => r.external_id)
                 .filter((r) => isGenuineAdmit(r, accessControl))
                 .map((r) => [r.external_id as string, r])
         );
+        if (
+            accessControl === postgres.ACCESS_CONTROL.ALLOWED &&
+            organizationId
+        ) {
+            EventDistributor.bindDevicesToOrganization(
+                [...admittedByExtId.keys()],
+                organizationId
+            );
+        }
+        return admittedByExtId;
     } catch (err) {
         const elapsed = performance.now() - startMs;
         Observability.recordDbTiming(`waitingroom.admit.${label}`, elapsed);
@@ -987,12 +1052,20 @@ async function claimLegacyDefaultOrg(
     if (!defaultOrg || operatorOwnsGatelessOrg(operatorOrganizationId)) {
         return null;
     }
-    const entries = await listPending(defaultOrg);
-    const match = entries.find(
-        (entry) => entry.shellyID === shellyID && entry.authMethod === 'none'
-    );
-    if (!match) return null;
-    return claimPending(defaultOrg, shellyID);
+    // The fallback is per external ID, so scanning and parsing the full
+    // default-org waiting room here makes bulk acceptance O(devices²).
+    // Peek the exact HASH field, then use the existing atomic claim.
+    const pending = await getPending(defaultOrg, shellyID);
+    if (pending?.authMethod !== 'none') return null;
+    const claimed = await claimPending(defaultOrg, shellyID);
+    if (!claimed) return null;
+    // A reconnect can replace the entry between peek and claim. Never let a
+    // cross-org operator consume a token/certificate-owned entry.
+    if (claimed.authMethod !== 'none') {
+        await restoreClaimedPending(claimed);
+        return null;
+    }
+    return claimed;
 }
 
 async function approveClaimedEntries(
@@ -1025,6 +1098,8 @@ async function approveClaimedEntries(
     }
 
     const failed: WaitingEntry[] = [];
+    const admitted: Array<{entry: WaitingEntry; record: postgres.get_resp_t}> =
+        [];
     for (const entry of entries) {
         const record = admittedByExtId.get(entry.shellyID);
         if (!record) {
@@ -1036,8 +1111,15 @@ async function approveClaimedEntries(
         logAudit((audit) => audit.logDeviceAdd(entry.shellyID, username));
         success.push(entry.shellyID);
         records.push(record);
-        // Drop cached PENDING so a fast reconnect auto-admits.
-        await invalidateAccessControl(entry.shellyID);
+        admitted.push({entry, record});
+    }
+    // Drop cached PENDING so a fast reconnect auto-admits. One round for the
+    // whole chunk: a round trip per device lets the registrations started
+    // below run inside the accept and stretch it.
+    await Promise.all(
+        admitted.map(({entry}) => invalidateAccessControl(entry.shellyID))
+    );
+    for (const {entry, record} of admitted) {
         await fireApproveSideEffects(entry.shellyID, record, beforeApprove);
     }
     if (failed.length > 0) await restoreClaimedEntries(failed);
@@ -1069,9 +1151,9 @@ interface DenyImplInput {
 }
 
 // Shared backbone for deny + quarantine. Claims the live store entries so the
-// permanent denied row keeps each device's status snapshot — the same way the
-// accept path snapshots the allowed row. A device absent from the store is
-// denied in absentia: jdoc null so the SQL NULLIF preserves any existing row.
+// permanent denied row keeps each device's status snapshot, the same way the
+// accept path snapshots the allowed row. A device with no row is reported in
+// error, never created; jdoc null still preserves an existing row's snapshot.
 async function denyByExternalIdsImpl(input: DenyImplInput) {
     const {organizationId, externalIds, username, kind} = input;
     const success: string[] = [];
@@ -1152,6 +1234,12 @@ function fireDenySideEffects(
             if (kind === 'quarantine') device.onQuarantine();
             else device.onDeny();
         }
+        // A deny with no pending device means the close hooks never ran.
+        logger.info(
+            'deny side effects for %s: pending device present=%s',
+            shellyID,
+            device !== undefined
+        );
         DeviceCollector.deleteDevice(shellyID);
     } catch (err) {
         logger.warn(
@@ -1162,6 +1250,55 @@ function fireDenySideEffects(
         );
     }
 }
+
+// The Waiting Room organizations of the pending sockets held here; null for a
+// socket filed under none.
+export function pendingDeviceOrganizations(): Set<string | null> {
+    const organizations = new Set<string | null>();
+    for (const entry of pendingDevices.values()) {
+        organizations.add(entry.organizationId);
+    }
+    return organizations;
+}
+
+// True when this process holds the device's socket, live or still pending.
+export function holdsDeviceSocket(shellyID: string): boolean {
+    return (
+        DeviceCollector.getDevice(shellyID) !== undefined ||
+        pendingDevices.has(shellyID)
+    );
+}
+
+// The row's access decides whether a socket held here may stay. A deny closes
+// it as a local deny does; a peer never quarantines from here.
+export function enforceStoredAccess(
+    shellyID: string,
+    access: number | undefined
+): void {
+    if (access === waitingRoomStore.ACCESS_CONTROL.ALLOWED) return;
+    if (!holdsDeviceSocket(shellyID)) return;
+    if (access === waitingRoomStore.ACCESS_CONTROL.DENIED) {
+        fireDenySideEffects(shellyID, 'deny');
+        return;
+    }
+    if (DeviceCollector.getDevice(shellyID)) {
+        DeviceCollector.deleteDevice(shellyID);
+    }
+}
+
+// A peer changed this device's access and its signal is all this process
+// hears, so the current row decides.
+async function enforcePeerAccessChange(shellyID: string): Promise<void> {
+    if (!holdsDeviceSocket(shellyID)) return;
+    const row = await waitingRoomStore.accessControl(shellyID);
+    enforceStoredAccess(shellyID, row?.control_access);
+}
+
+setPeerAccessChangeHandler((shellyID) => {
+    void enforcePeerAccessChange(shellyID).catch((err) =>
+        logger.warn('peer access change for %s not enforced: %s', shellyID, err)
+    );
+});
 
 // Destructive Quarantine — persists DENIED in DB AND rewrites the device's
 // own WS config + reboots it. Recovery requires factory-reset on the device.
@@ -1264,8 +1401,10 @@ export async function denyDevice(id: number, username?: string) {
         reconnectLimiter.clear(externalId);
         device.onDeny();
         Observability.incrementCounter('waiting_room_denied');
-        logAudit((audit) => audit.logDeviceDelete(externalId, username));
     }
+    // The row is denied whether or not a live device object was pending, so
+    // the audit trail must not depend on one being there.
+    logAudit((audit) => audit.logDeviceDelete(externalId, username));
     DeviceCollector.deleteDevice(externalId);
     debouncedNotifyWaitingRoom();
     return !!device;

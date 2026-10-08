@@ -77,8 +77,15 @@
     }
 
     ::selection {
-        background: rgba(68, 149, 209, 0.28);
+        background: rgba(var(--color-primary-rgb), 0.28);
         color: var(--color-text-primary);
+    }
+
+    /* The caret shipped as a browser default, which belongs to no palette. */
+    input,
+    textarea,
+    [contenteditable] {
+        caret-color: var(--color-caret);
     }
 
     .background {
@@ -261,7 +268,6 @@
     .gc {
         box-shadow: none;
         backdrop-filter: none;
-        -webkit-backdrop-filter: none;
         border: 1px solid #ccc;
         background: #fff;
     }

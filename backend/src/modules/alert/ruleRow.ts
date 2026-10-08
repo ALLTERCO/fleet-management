@@ -12,6 +12,7 @@ import {
     type StoredAlertRuleKind
 } from '../../types/api/alert';
 import {publicScopeSelector} from '../alertRuleModel';
+import {readActiveWindow} from './activeWindow';
 import type {LoadedAlertRule} from './types';
 
 export interface RuleRowShape {
@@ -27,6 +28,7 @@ export interface RuleRowShape {
     summary_template: string | null;
     message_template: string | null;
     auto_resolve: boolean;
+    trigger_once: boolean | null;
     config: Record<string, unknown> | null;
     destination_group_ids: unknown;
     destination_channel_ids: unknown;
@@ -35,6 +37,7 @@ export interface RuleRowShape {
     digest_window_minutes: number | null;
     runbook_url: string | null;
     template_id: number | null;
+    active_window: unknown;
     condition_family: string | null;
     condition_subkind: string | null;
     labels_template: Record<string, unknown> | null;
@@ -87,6 +90,7 @@ export function rowToLoadedRule(row: RuleRowShape): LoadedAlertRule {
         summaryTemplate: row.summary_template,
         messageTemplate: row.message_template,
         autoResolve: row.auto_resolve,
+        triggerOnce: row.trigger_once === true,
         config: cloneRecord(row.config),
         destinationGroupIds: toIntArray(row.destination_group_ids),
         destinationChannelIds: toIntArray(row.destination_channel_ids),
@@ -105,6 +109,7 @@ export function rowToLoadedRule(row: RuleRowShape): LoadedAlertRule {
                 : null,
         templateId:
             typeof row.template_id === 'number' ? row.template_id : null,
+        activeWindow: readActiveWindow(row.active_window),
         conditionFamily: pickConditionFamily(row),
         conditionSubkind:
             typeof row.condition_subkind === 'string' &&

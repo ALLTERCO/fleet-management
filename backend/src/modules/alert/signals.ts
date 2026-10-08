@@ -5,6 +5,11 @@
  * wired counterparts do — scope matches, fingerprints attribute to the
  * right subject, and the alert page points at the actual device.
  */
+import {
+    bthomeObjectInfos,
+    objIdsForName,
+    resolveBluSensorOverride
+} from '../../config/BTHomeData';
 import type AbstractDevice from '../../model/AbstractDevice';
 import type {bthomesensor_entity, entity_t} from '../../types';
 
@@ -23,6 +28,14 @@ export interface Signal {
 // BTHome object-name → normalized field evaluators scan. Keys are lowercase;
 // the lookup lowercases so display-cased names ('Flood') resolve too. Leak
 // devices report either 'flood' (custom obj_name) or the catalog 'moisture'.
+//
+// CAREFUL with 'moisture': BTHome gives that one name to three different
+// objects (config/BTHomeData.ts) — 0x20 is a Wet/Dry BINARY alarm, while 0x14
+// and 0x2F are percentage READINGS (a soil probe). Only the binary one means
+// water is present, so MEASURED_ONLY_OBJ_NAMES below refuses to raise a flood
+// from a percentage. Without that guard a BLU Soil probe sitting in damp
+// ground, and every other child of the same gateway, reported "Water
+// detected".
 const BLU_FIELD_BY_OBJ_NAME: Record<string, string> = {
     motion: 'motion',
     moving: 'motion',
@@ -66,15 +79,63 @@ function bluSensorComponent(
         | undefined;
 }
 
+/** Object names whose ALARM meaning belongs only to the binary form. A
+ *  percentage carrying the same name is a measurement, never an alarm. */
+const MEASURED_ONLY_OBJ_NAMES = new Set(['moisture']);
+
+/** BTHome marks a Wet/Dry object as a binary_sensor and a percentage as a
+ *  sensor (config/BTHomeData.ts). */
+function isBinarySensor(entity: bthomesensor_entity): boolean {
+    return String(entity.properties.sensorType ?? '') === 'binary_sensor';
+}
+
+/**
+ * What this object means ON THIS MODEL, lowercased.
+ *
+ * A BTHome object id does not always mean the same thing on every device. The
+ * Ecowitt WS90 sends the Wet/Dry moisture object (0x20) to report rain
+ * (docs-ble/Devices/BLU_ZB/EcowittWS90WeatherStation.md, Packet Type 1), so a
+ * shower outdoors raised a CRITICAL "water leak" on a weather station. The
+ * per-model meanings already exist for the capture pipeline
+ * (config/BTHomeData.ts BLU_SENSOR_OVERRIDES); alerts read the same table
+ * rather than keeping a second opinion.
+ */
+export function modelObjName(
+    entity: bthomesensor_entity,
+    objName: string
+): string {
+    const generic = objName.toLowerCase();
+    const model = entity.properties.bleModelId;
+    if (!model) return generic;
+    const sensorType = entity.properties.sensorType;
+    for (const objId of objIdsForName(generic)) {
+        // One name covers several objects (moisture is binary 0x20 plus two
+        // percentages); only the one this entity actually is can speak for it.
+        if (sensorType && bthomeObjectInfos[objId]?.type !== sensorType) {
+            continue;
+        }
+        const override = resolveBluSensorOverride(model, objId, undefined);
+        if (override) return override.kind.toLowerCase();
+    }
+    return generic;
+}
+
 function bluSignal(
     device: AbstractDevice,
     entity: bthomesensor_entity
 ): Signal | null {
     const objName = entity.properties.objName;
     if (!objName) return null;
+    // A soil probe reads 38% moisture. That is not a leak.
+    if (
+        MEASURED_ONLY_OBJ_NAMES.has(objName.toLowerCase()) &&
+        !isBinarySensor(entity)
+    ) {
+        return null;
+    }
     // Normalize case: object names are lowercase, but a display-cased value
     // must still resolve rather than silently drop the signal.
-    const field = BLU_FIELD_BY_OBJ_NAME[objName.toLowerCase()];
+    const field = BLU_FIELD_BY_OBJ_NAME[modelObjName(entity, objName)];
     if (!field) return null;
     const component = bluSensorComponent(device, entity);
     if (component?.value === undefined) return null;
@@ -89,8 +150,72 @@ function bluSignal(
     };
 }
 
-/** Every signal this device publishes: one per status component + BLU entities. */
-export function collectSignals(device: AbstractDevice): Signal[] {
+/**
+ * The `bthomesensor:N` component keys on this device whose BTHome object is
+ * `objName` (per-model meaning applied). A gateway exposes every BLU reading
+ * under the same component type; only the object name says what it measures.
+ */
+export function bluComponentsForObject(
+    device: Pick<AbstractDevice, 'entities'> | undefined,
+    objName: string
+): Set<string> {
+    const wanted = objName.toLowerCase();
+    const out = new Set<string>();
+    for (const e of device?.entities ?? []) {
+        if (!isBthomeSensor(e)) continue;
+        const raw = e.properties?.objName;
+        if (!raw || e.properties?.id === undefined) continue;
+        if (modelObjName(e, raw) !== wanted) continue;
+        out.add(`bthomesensor:${e.properties.id}`);
+    }
+    return out;
+}
+
+const WILDCARD = ':*';
+
+/** The concrete components a component rule watches on this status: the
+ *  literal one, or every instance of the type for a "switch:*" watch-all,
+ *  narrowed to one BTHome object when `objName` is set. */
+export function alertTargetComponents(
+    target: {component: string; objName?: string},
+    status: Record<string, unknown>,
+    device: AbstractDevice | undefined,
+    promotedAway?: ReadonlySet<string>
+): string[] {
+    // Splitting on ':' matches the component TYPE, so 'switch:*' never sweeps in 'switchx:0'.
+    const candidates = target.component.endsWith(WILDCARD)
+        ? Object.keys(status).filter(
+              (k) =>
+                  k.split(':')[0] ===
+                  target.component.slice(0, -WILDCARD.length)
+          )
+        : [target.component];
+    const owned = promotedAway
+        ? candidates.filter((k) => !promotedAway.has(k))
+        : candidates;
+    if (target.objName === undefined) return owned;
+    const bluComponents = bluComponentsForObject(device, target.objName);
+    return owned.filter((k) => bluComponents.has(k));
+}
+
+/** The single component type a component rule watches, or null when it
+ *  targets an entity id and so can read any component. */
+export function componentRuleInputTypes(
+    component: unknown
+): ReadonlySet<string> | null {
+    if (typeof component !== 'string' || !component) return null;
+    if (component.startsWith('component:') || component.startsWith('entity:'))
+        return null;
+    return new Set([component.split(':')[0] ?? component]);
+}
+
+/** Every signal this device publishes: one per status component + BLU entities.
+ *  `promotedAway` holds gateway components a promoted BLU device owns; those
+ *  are judged on that BLU device, never again on the gateway. */
+export function collectSignals(
+    device: AbstractDevice,
+    promotedAway?: ReadonlySet<string>
+): Signal[] {
     const out: Signal[] = [];
     const status = (device.status ?? {}) as Record<string, unknown>;
     const displayName =
@@ -109,6 +234,7 @@ export function collectSignals(device: AbstractDevice): Signal[] {
 
     for (const entity of device.entities ?? []) {
         if (!isBthomeSensor(entity)) continue;
+        if (promotedAway?.has(`bthomesensor:${entity.properties.id}`)) continue;
         const sig = bluSignal(device, entity);
         if (sig) out.push(sig);
     }

@@ -44,6 +44,7 @@ export const ACTION_KINDS = [
     'setTilt',
     'open',
     'close',
+    'start',
     'stop',
     'calibrate',
     'setTarget',
@@ -51,6 +52,7 @@ export const ACTION_KINDS = [
     'setEnabled',
     'trigger',
     'press',
+    'learn',
     'play',
     'pause',
     'playPause',
@@ -73,6 +75,8 @@ export const ACTION_KINDS = [
     'startRecording',
     'stopRecording',
     'resetCounters',
+    'resetCharge',
+    'replaceBattery',
     'playFavourite',
     'playNextFavourite',
     'playPreviousFavourite',
@@ -95,7 +99,9 @@ export type ActionCategory = 'control' | 'maintenance';
 // as a quiet menu, and marks that a maintenance-only entity isn't controllable.
 const MAINTENANCE_ACTIONS: ReadonlySet<ActionKind> = new Set([
     'calibrate',
-    'resetCounters'
+    'resetCounters',
+    'resetCharge',
+    'replaceBattery'
 ]);
 
 export function actionCategory(action: ActionKind): ActionCategory {
@@ -202,6 +208,7 @@ export const ACTION_PARAM_SCHEMAS: Record<string, JsonSchema> = {
             duration: {type: 'integer', minimum: 1, maximum: 86400}
         }
     },
+    start: {type: 'object', additionalProperties: false, properties: {}},
     stop: {type: 'object', additionalProperties: false, properties: {}},
     setPosition: {
         type: 'object',
@@ -217,6 +224,11 @@ export const ACTION_PARAM_SCHEMAS: Record<string, JsonSchema> = {
         properties: {
             event: {type: 'string', minLength: 1}
         }
+    },
+    learn: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {}
     },
     setTilt: {
         type: 'object',
@@ -351,6 +363,22 @@ export const ACTION_PARAM_SCHEMAS: Record<string, JsonSchema> = {
                 items: {type: 'string'},
                 minItems: 1
             }
+        }
+    },
+    // BM only. Omitted `soc` = device default 100%.
+    resetCharge: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+            soc: {type: 'number', minimum: 0, maximum: 100}
+        }
+    },
+    // BM only. Omitted `cycles` = 0.
+    replaceBattery: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+            cycles: {type: 'integer', minimum: 0}
         }
     },
     playFavourite: {
@@ -551,7 +579,7 @@ function buildBluTrvCall(
 interface SetValueStrategy {
     method: string;
     paramSchema: JsonSchema;
-    castValue: (v: unknown) => boolean | number | string;
+    castValue: (v: unknown) => boolean | number | string | null;
 }
 
 const SET_VALUE_STRATEGIES: Record<string, SetValueStrategy> = {
@@ -585,15 +613,16 @@ const SET_VALUE_STRATEGIES: Record<string, SetValueStrategy> = {
         },
         castValue: (v) => v as string
     },
+    // Enum.Set accepts null to clear the value (device spec).
     enum: {
         method: 'Enum.Set',
         paramSchema: {
             type: 'object',
             required: ['value'],
             additionalProperties: false,
-            properties: {value: {type: 'string'}}
+            properties: {value: {type: ['string', 'null']}}
         },
-        castValue: (v) => v as string
+        castValue: (v) => v as string | null
     }
 };
 
@@ -717,9 +746,14 @@ const BUILDERS: Record<string, ActionBuilder> = {
         if (!component) {
             throw new Error(`setMode is not supported for '${entityType}'`);
         }
+        // Every light `*.Set` rejects `mode` alone; it needs `on` or `brightness`.
         return {
             method: `${component}.Set`,
-            params: {id: channelId, mode: actionParams.mode as string}
+            params: {
+                id: channelId,
+                mode: actionParams.mode as string,
+                on: true
+            }
         };
     },
     open: ({entityType, channelId, actionParams}) => {
@@ -744,6 +778,13 @@ const BUILDERS: Record<string, ActionBuilder> = {
         }
         return {method: `${component}.Close`, params};
     },
+    // Script only; scoped so no other type advertises a missing method.
+    start: ({entityType, channelId}) => {
+        if (entityType !== 'script') {
+            throw new Error(`start is not supported for '${entityType}'`);
+        }
+        return {method: 'Script.Start', params: {id: channelId}};
+    },
     stop: ({entityType, channelId}) => {
         const component = shellyComponentForEntityType(entityType);
         if (!component) {
@@ -765,11 +806,22 @@ const BUILDERS: Record<string, ActionBuilder> = {
         if (entityType !== 'button') {
             throw new Error(`press is not supported for '${entityType}'`);
         }
-        const payload: Record<string, unknown> = {id: channelId};
-        if (typeof actionParams.event === 'string') {
-            payload.event = actionParams.event;
+        // Firmware requires `event` on Button.Trigger and rejects the call
+        // without it; a bare press means a single push. Valid events:
+        // single_push, double_push, triple_push, long_push.
+        const event =
+            typeof actionParams.event === 'string'
+                ? actionParams.event
+                : 'single_push';
+        return {method: 'Button.Trigger', params: {id: channelId, event}};
+    },
+    // IR code learning only needs the slot id; the captured code lands in
+    // device config and flows back via the normal config-change path.
+    learn: ({entityType, channelId}) => {
+        if (entityType !== 'irdevice') {
+            throw new Error(`learn is not supported for '${entityType}'`);
         }
-        return {method: 'Button.Trigger', params: payload};
+        return {method: 'IRDevice.LearnCode', params: {id: channelId}};
     },
     setTilt: ({entityType, channelId, actionParams}) => {
         if (entityType !== 'cover') {
@@ -1079,6 +1131,28 @@ const BUILDERS: Record<string, ActionBuilder> = {
         }
         return {method: `${component}.ResetCounters`, params};
     },
+    // BM only. Realigns the State-of-Charge estimate.
+    resetCharge: ({entityType, channelId, actionParams}) => {
+        if (entityType !== 'bm') {
+            throw new Error(`resetCharge is not supported for '${entityType}'`);
+        }
+        const params: Record<string, unknown> = {id: channelId};
+        if (typeof actionParams.soc === 'number') params.soc = actionParams.soc;
+        return {method: 'BM.ResetCharge', params};
+    },
+    // BM only. Restarts cycle count and install date; `cycles` seeds a used pack.
+    replaceBattery: ({entityType, channelId, actionParams}) => {
+        if (entityType !== 'bm') {
+            throw new Error(
+                `replaceBattery is not supported for '${entityType}'`
+            );
+        }
+        const params: Record<string, unknown> = {id: channelId};
+        if (typeof actionParams.cycles === 'number') {
+            params.cycles = actionParams.cycles;
+        }
+        return {method: 'BM.ReplaceBattery', params};
+    },
     // Radio-capable media players only. `favouriteId` = station slot (0-based).
     playFavourite: ({entityType, channelId, actionParams}) => {
         if (entityType !== 'media') {
@@ -1270,6 +1344,7 @@ const METHOD_PROBE_PARAMS: Record<string, Record<string, unknown>> = {
     setTilt: {slat_pos: 50},
     open: {},
     close: {},
+    start: {},
     stop: {},
     calibrate: {},
     setTarget: {target_C: 20},
@@ -1277,6 +1352,7 @@ const METHOD_PROBE_PARAMS: Record<string, Record<string, unknown>> = {
     setEnabled: {enabled: true},
     trigger: {key: 'Button:0', event: 'single_push'},
     press: {},
+    learn: {},
     play: {},
     pause: {},
     next: {},
@@ -1290,6 +1366,8 @@ const METHOD_PROBE_PARAMS: Record<string, Record<string, unknown>> = {
     setCuryMode: {mode: null},
     setSlot: {slot: 'left', on: true},
     resetCounters: {},
+    resetCharge: {},
+    replaceBattery: {},
     playFavourite: {favouriteId: 0},
     playNextFavourite: {},
     playPreviousFavourite: {},

@@ -13,14 +13,18 @@ export interface WriteAction {
     params: Record<string, unknown>;
     username: string;
     organizationId: string | null;
+    credentialId?: string;
+    idempotencyKey?: string;
 }
 
 interface TokenPayload extends WriteAction {
+    iat: number;
     exp: number;
 }
 
 export interface VerifiedWrite extends WriteAction {
-    /** Token expiry in ms, for single-use claiming. */
+    /** Token issue time and expiry in ms, for single-use claiming. */
+    issuedAtMs: number;
     expiresAtMs: number;
 }
 
@@ -38,10 +42,8 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 export function signWriteConfirmation(action: WriteAction): string {
-    const payload: TokenPayload = {
-        ...action,
-        exp: Math.floor(Date.now() / 1000) + TTL_SEC
-    };
+    const iat = Math.floor(Date.now() / 1000);
+    const payload: TokenPayload = {...action, iat, exp: iat + TTL_SEC};
     const encoded = Buffer.from(JSON.stringify(payload), 'utf8').toString(
         'base64url'
     );
@@ -52,7 +54,11 @@ export function signWriteConfirmation(action: WriteAction): string {
 // user than the one who prepared it is refused.
 export function verifyWriteConfirmation(
     token: unknown,
-    caller: {username: string; organizationId: string | null}
+    caller: {
+        username: string;
+        organizationId: string | null;
+        credentialId?: string;
+    }
 ): VerifiedWrite {
     if (typeof token !== 'string') {
         throw new Error('confirmationToken required');
@@ -72,6 +78,9 @@ export function verifyWriteConfirmation(
     } catch {
         throw new Error('malformed confirmationToken');
     }
+    if (typeof payload.iat !== 'number' || typeof payload.exp !== 'number') {
+        throw new Error('malformed confirmationToken');
+    }
     if (payload.exp < Math.floor(Date.now() / 1000)) {
         throw new Error('confirmationToken expired — prepare again');
     }
@@ -83,11 +92,19 @@ export function verifyWriteConfirmation(
             'confirmationToken was issued for a different organization'
         );
     }
+    if (payload.credentialId !== caller.credentialId) {
+        throw new Error(
+            'confirmationToken was issued for a different credential'
+        );
+    }
     return {
+        credentialId: payload.credentialId,
+        idempotencyKey: payload.idempotencyKey,
         method: payload.method,
         params: payload.params,
         username: payload.username,
         organizationId: payload.organizationId,
+        issuedAtMs: payload.iat * 1000,
         expiresAtMs: payload.exp * 1000
     };
 }

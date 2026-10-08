@@ -210,8 +210,11 @@
                     <div class="egm__device-panel">
                         <div class="egm__member-bar">
                         <div
-                            class="search-pill egm__member-search"
-                            :class="{'search-pill__input--filtered': hasActiveFilter}"
+                            class="search-pill search-pill--buttons egm__member-search"
+                            :class="[
+                'search-pill--filtered',
+                {'search-pill__input--filtered': hasActiveFilter}
+            ]"
                         >
                             <i class="fas fa-search search-pill__icon" />
                             <input
@@ -371,33 +374,33 @@ import type {GroupMemberRef} from '@api/group';
 import {computed, defineAsyncComponent, ref, watch} from 'vue';
 import DeviceFleetCard from '@/components/cards/DeviceFleetCard.vue';
 import Button from '@/components/core/Button.vue';
-import Dropdown from '@/components/core/Dropdown.vue';
-import GroupKindPicker from '@/components/core/GroupKindPicker.vue';
-import GroupMetadataForm from '@/components/core/GroupMetadataForm.vue';
 import DecorationAvatar from '@/components/core/DecorationAvatar.vue';
-import Input from '@/components/core/Input.vue';
-import RetentionDaysInput from '@/components/core/RetentionDaysInput.vue';
-import AssetPickerModal from '@/components/modals/AssetPickerModal.vue';
-import {useDecorationDraft} from '@/composables/useDecorationDraft';
-import SeverityFloorPicker from '@/components/core/SeverityFloorPicker.vue';
-import Spinner from '@/components/core/Spinner.vue';
-import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
+import Dropdown from '@/components/core/Dropdown.vue';
 import FilterModal, {
     type FilterSection,
     type FilterState
 } from '@/components/core/FilterModal.vue';
+import GroupKindPicker from '@/components/core/GroupKindPicker.vue';
+import GroupMetadataForm from '@/components/core/GroupMetadataForm.vue';
+import Input from '@/components/core/Input.vue';
+import RetentionDaysInput from '@/components/core/RetentionDaysInput.vue';
+import SeverityFloorPicker from '@/components/core/SeverityFloorPicker.vue';
+import Spinner from '@/components/core/Spinner.vue';
+import AssetPickerModal from '@/components/modals/AssetPickerModal.vue';
+import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
 import Modal from '@/components/modals/Modal.vue';
 import BTHomeDeviceWidget from '@/components/widgets/BTHomeDeviceWidget.vue';
+import {useDecorationDraft} from '@/composables/useDecorationDraft';
 import {useGroupKinds} from '@/composables/useGroupKinds';
 import {getDeviceName} from '@/helpers/device';
 import {type DeviceType, deviceTypeOf} from '@/helpers/deviceTypeFilter';
+import {formatRpcError, toastRpcError} from '@/helpers/domainErrors';
 import {
     booleanSection,
     countByKey,
     deviceClassSection,
     enumSection
 } from '@/helpers/filter-sections';
-import {formatRpcError, toastRpcError} from '@/helpers/domainErrors';
 import {diffSubjectMembers} from '@/helpers/groupMembers';
 import {extractKindMetadata} from '@/helpers/groupMetadataKeys';
 import {
@@ -622,7 +625,6 @@ const deleteConfirmTitle = ref('');
 
 const treeLoading = ref(false);
 
-// #10 fix: track which groups have been edited so we save ALL of them
 const dirtyGroupIds = ref(new Set<number>());
 type DirtyEntry = {
     name: string;
@@ -632,6 +634,7 @@ type DirtyEntry = {
     kind: string;
 };
 const dirtyFormData = ref<Record<number, DirtyEntry>>({});
+const initialFormFingerprints = ref<Record<number, string>>({});
 
 // WHY separate build + sort: avoid re-sorting on every reactive tick.
 // The computed only recalculates when groupStore.groups ref changes.
@@ -671,10 +674,28 @@ async function fetchAllChildren(groupId: number) {
     await Promise.all(kids.map((child: any) => fetchAllChildren(child.id)));
 }
 
-// Save current form data to dirty map before switching nodes
-function saveToDirtyMap() {
+function formFingerprint(metadata: MetadataRecord): string {
+    return JSON.stringify({
+        name: formName.value.trim(),
+        kind: formKind.value,
+        metadata,
+        members: selectedMembers.value
+            .map((member) => `${member.subjectType}:${member.subjectId}`)
+            .sort()
+    });
+}
+
+function saveToDirtyMap(): boolean {
     const id = activeGroupId.value;
-    if (id == null || props.mode === 'create') return;
+    if (id == null || props.mode === 'create') return true;
+    if (!validateName() || metadataIsInvalid.value) return false;
+    const metadata = validateMetadata();
+    if (metadata === null) return false;
+    if (formFingerprint(metadata) === initialFormFingerprints.value[id]) {
+        dirtyGroupIds.value.delete(id);
+        delete dirtyFormData.value[id];
+        return true;
+    }
     const existing = dirtyFormData.value[id];
     const baseline = existing?.baselineMembers ?? [
         ...(groupStore.groups[id]?.members ?? [])
@@ -684,14 +705,15 @@ function saveToDirtyMap() {
         name: formName.value,
         members: [...selectedMembers.value],
         baselineMembers: baseline,
-        metadata: {...formKindMetadata.value},
+        metadata,
         kind: formKind.value
     };
+    return true;
 }
 
 function selectGroup(groupId: number) {
     if (activeGroupId.value === groupId) return;
-    saveToDirtyMap();
+    if (!saveToDirtyMap()) return;
     activeGroupId.value = groupId;
     loadFormFromGroup(groupId);
 }
@@ -900,12 +922,11 @@ function confirmDeleteSubgroup(childId: number) {
 // ── Form ↔ Store ──
 
 function loadFormFromGroup(groupId: number) {
-    // #10: load from dirty map if this group was previously edited
     const dirty = dirtyFormData.value[groupId];
     if (dirty) {
         formName.value = dirty.name;
         selectedMembers.value = [...dirty.members];
-        formKindMetadata.value = {...dirty.metadata};
+        formKindMetadata.value = extractKindMetadata(dirty.metadata);
         formKind.value = dirty.kind;
     } else {
         const g = groupStore.groups[groupId];
@@ -917,11 +938,10 @@ function loadFormFromGroup(groupId: number) {
                 ? g.kind
                 : 'manual';
     }
-    // Load config profile from metadata (not shown in the kind form)
     const g = groupStore.groups[groupId];
-    formConfigProfile.value = configProfileFromMetadata(g?.metadata);
-    // Load policy overrides from metadata.policy
-    const policy = policyFromMetadata(g?.metadata);
+    const metadata = dirty?.metadata ?? g?.metadata;
+    formConfigProfile.value = configProfileFromMetadata(metadata);
+    const policy = policyFromMetadata(metadata);
     const sev = policy?.severityFloor;
     formSeverityFloor.value =
         typeof sev === 'string' &&
@@ -946,6 +966,11 @@ function loadFormFromGroup(groupId: number) {
     availablePageSize.value = 30;
     metadataError.value = '';
     nameError.value = '';
+    const validatedMetadata = validateMetadata();
+    if (validatedMetadata !== null) {
+        initialFormFingerprints.value[groupId] ??=
+            formFingerprint(validatedMetadata);
+    }
 }
 
 // ── Validation ──
@@ -983,10 +1008,14 @@ function validateMetadata(): MetadataRecord | null {
 
 // Validate all dirty groups — returns error message or null if all valid
 function validateAllDirtyGroups(): string | null {
-    saveToDirtyMap();
-    // Policy overrides apply to the active group only — validate once.
-    const policyResult = buildPolicy();
-    if (!policyResult.ok) return policyResult.error;
+    if (!saveToDirtyMap()) {
+        return (
+            nameError.value ||
+            retentionDaysError.value ||
+            auditRetentionDaysError.value ||
+            'Group metadata is invalid'
+        );
+    }
     for (const id of dirtyGroupIds.value) {
         const data = dirtyFormData.value[id];
         if (!data) continue;
@@ -1014,34 +1043,12 @@ async function syncGroupMembers(
     ]);
 }
 
-function buildUpdateMetadata(id: number, data: DirtyEntry): MetadataRecord {
-    const metadata: MetadataRecord = {...data.metadata};
-    // Reserved slots (configProfile + policy) are tracked at the modal
-    // level — only the active group's form state has them in scope.
-    if (id === activeGroupId.value) {
-        if (formConfigProfile.value)
-            metadata.configProfile = formConfigProfile.value;
-        else delete metadata.configProfile;
-        const policyResult = buildPolicy();
-        if (policyResult.ok && policyResult.data)
-            metadata.policy = policyResult.data;
-        else delete metadata.policy;
-    }
-    return metadata;
-}
-
 async function saveDirtyGroup(id: number, data: DirtyEntry): Promise<void> {
-    const metadata = buildUpdateMetadata(id, data);
-    // Only the active group has its kind in formKind right now; for other
-    // dirty groups in the tree we leave kind untouched (PG keeps current).
     const kindPatch =
-        id === activeGroupId.value &&
-        formKind.value !== groupStore.groups[id]?.kind
-            ? {kind: formKind.value}
-            : {};
+        data.kind !== groupStore.groups[id]?.kind ? {kind: data.kind} : {};
     await groupStore.updateGroup({
         id,
-        patch: {name: data.name.trim(), metadata, ...kindPatch}
+        patch: {name: data.name.trim(), metadata: data.metadata, ...kindPatch}
     });
     await syncGroupMembers(id, data.baselineMembers, data.members);
 }
@@ -1155,6 +1162,7 @@ watch(
         metadataIsInvalid.value = false;
         dirtyGroupIds.value = new Set<number>();
         dirtyFormData.value = {};
+        initialFormFingerprints.value = {};
         void entityStore.fetchEntities();
 
         if (props.mode === 'edit' && props.groupId != null) {

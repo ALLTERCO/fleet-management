@@ -1,3 +1,4 @@
+<!-- audience: public -->
 # AI and MCP Reference
 
 This is the short entrypoint for agents and AI tooling.
@@ -6,18 +7,44 @@ This is the short entrypoint for agents and AI tooling.
 
 Read in this order:
 
-1. `llms.txt`
-2. `docs/generated/ai-index.json`
+1. [Repository rules](../../AGENTS.md), then the area rule for your task
+2. `llms.txt` and `docs/generated/ai-index.json`
 3. The exact generated contract or stable doc named by the index
 
-For Fleet Manager install/deploy commands and `deploy/deploy.sh` parameters,
-read `docs/reference/deployment.md` first. For a separate UI or BM template UI,
+For Fleet Manager install/deploy commands and `deploy/deploy-public.sh` options,
+read `docs/deployment.md` first. For a separate UI or BM template UI,
 read `docs/reference/separate-ui-host-sdk.md` and the Host SDK contracts named
 by the index.
 
 Use the smallest source that answers the question. Do not hand-edit files under
 `docs/generated/`; change source code or stable docs, then run `npm run generate`
 from the repo root.
+
+## Critical system flows
+
+This table is the navigation source for `python3 tools/knowledge/check.py --flows`.
+The generated AI index already points to this reference. Each guide links its
+owner, authoritative data, boundaries, failure behavior, reusable code and tests.
+Use current source when a graph or memory result disagrees. Source review and
+file existence are not passing-test or live-system evidence.
+
+<!-- knowledge-flows:start -->
+| Task | Flow guide |
+|---|---|
+| Onboard or admit a device | [Device onboarding](../internal/architecture/workflows/device-onboarding.md) |
+| Change identity or permission behavior | [Authentication and permissions](../internal/architecture/auth-authz-flow.md) |
+| Send a command or diagnose optimistic state | [Entity commands](../internal/architecture/workflows/actuator-command-optimistic-ui.md) |
+| Store, recover or query energy | [Energy storage](../internal/architecture/workflows/energy-storage.md) |
+| Diagnose an alert or delivery | [Notifications](../internal/architecture/notifications.md) |
+| Install, update or recover a deployment | [Deployment](../internal/ops/deployment.md) |
+<!-- knowledge-flows:end -->
+
+Run the [session brief and maintenance checks](../../tools/knowledge/README.md)
+before trusting derived knowledge. Architecture Atlas is not part of this
+workflow. For design choices, follow the
+[research and decision rules](../internal/ENGINEERING_RULES.md#research-reuse-and-design-decisions).
+Record why, alternatives, sources, acceptance status and revisit triggers in the
+existing decision directory. Do not create another issue list or memory-only fact.
 
 ## Doc Layers
 
@@ -26,7 +53,6 @@ from the repo root.
 | `docs/generated/` | Facts from code. Never hand-edit. |
 | `docs/reference/` | Stable how-to docs and operator/developer entrypoints. |
 | `docs/architecture/` | Why the system works this way. |
-| `docs/internal/plans/` | History and planning, not the shipped source of truth. |
 
 ## UI Rule
 
@@ -43,7 +69,7 @@ low-level device configuration wrappers.
 
 `host.api`, `call`, `listAll`, `useTemplateRpc`, and `host.devices.call` are
 raw escape hatches. They stay supported, but they skip the curated domain
-wrappers — use them only when extending the SDK itself. The full list with
+wrappers, use them only when extending the SDK itself. The full list with
 notes is in `docs/generated/api-catalog.json` under `escapeHatches`.
 
 The SDK also exports `HOST_METHOD_METADATA` and `HOST_ESCAPE_HATCHES` (from
@@ -56,11 +82,9 @@ call instead" without leaving the SDK.
 
 | Task | Read |
 |---|---|
-| Install or update Fleet Manager | `docs/reference/deployment.md`, then `docs/architecture/deploy-reference.md` for deeper deploy behavior. |
-| Run local demo-seeded dev FM | `./deploy/deploy.sh up --env dev --seed` (`--seed` starts demo data after the dev backend is reachable). |
-| Run demo-seeded Docker local/test FM | `./deploy/deploy.sh up --env <env> --seed`. |
-| Build standard FM UI | `./deploy/deploy.sh up --env <env> --mode fm` (`fm` is the default). |
-| Build BM template UI | `./deploy/deploy.sh up --env <env> --mode bm --manifest <request.json> --template-source <templates checkout>`. |
+| Install or update Fleet Manager | `docs/deployment.md`, then `docs/public/reference/deploy-public-reference.md` for deeper deploy behavior. |
+| Run a dev Fleet Manager from source | `./deploy/deploy-public.sh up --env dev` (login `admin` / `admin`). |
+| Add demo data | `./deploy/deploy-public.sh seed` (`--dev` for a dev-mode install). |
 | Build a separate UI | `docs/reference/separate-ui-host-sdk.md`, `docs/generated/host-sdk-index.json`, and `frontend/src/shell/template-host/generated/contract.ts`. |
 
 ## Common Host SDK Flows
@@ -175,8 +199,9 @@ Fleet Manager has one MCP core with two transports:
 - A running Fleet Manager serves `POST /mcp` on its normal HTTP port. This
   transport supports documentation, governed reads, and confirmed writes.
 
-The live endpoint requires an admin session or a scoped access key carrying
-`mcp:read`, `mcp:write`, or `mcp:full`. Normal RBAC still applies. Destructive
+The live endpoint accepts only a scoped access key carrying `mcp:read`,
+`mcp:write`, or `mcp:full`, or an OAuth token from an MCP app. Browser
+sessions are refused, whatever the role. Normal RBAC still applies. Destructive
 writes require confirmation. Stateful calls are audited and rate-limited.
 See `docs/reference/ai-mcp-operations.md` for setup and limits.
 
@@ -190,18 +215,8 @@ See `docs/reference/ai-mcp-operations.md` for setup and limits.
 | `fm://ui/host-sdk-index` | Host SDK module/export lookup. |
 | `fm://ui/frontend-backend-dependencies` | Existing frontend/backend dependency map. |
 
-Tools:
-
-| Tool | Use |
-|---|---|
-| `read_resource_chunk` | Read a bounded part of a large listed MCP resource. Continue with `nextOffset` until it is null. |
-| `get_api_method` | One-method lookup: namespaceKind (device or fleet-manager), schemas, permission, safety hints, recommended Host SDK wrapper. Prefer this. |
-| `get_rpc_method` | Exact RPC inventory lookup (declaration provenance, source). |
-| `search_docs` | Simple doc search. |
-| `find_frontend_callers` | Find UI callers before changing a backend contract. |
-| `fm_read` | Run a permitted Fleet Manager read as the authenticated user. |
-| `fm_write` | Prepare or execute a permitted Fleet Manager write. |
-| `fm_confirm_write` | Confirm the exact destructive write returned by `fm_write`. |
+Tools: the full list, with toolset and read-only flag, is the table in
+[AI and MCP operations](ai-mcp-operations.md#tools).
 
 ## Boundaries
 

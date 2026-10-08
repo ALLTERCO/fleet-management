@@ -3,17 +3,26 @@ import {Viewport} from 'pixi-viewport';
 import type {Ref} from 'vue';
 import {onBeforeUnmount, onMounted, ref, shallowRef, watch} from 'vue';
 import {isAutoPlaced} from '@/helpers/auto-placement';
+import {type PlanRect, planRect} from '@/helpers/floor-plan-coords';
 import {floorPlanPlacementId} from '@/helpers/floor-plan-device-identity';
-import {stripInkscapeBaseLayer} from '@/helpers/svg-floorplan';
+import {type DrawDraft, draftSegments} from '@/helpers/floor-plan-draw';
+import {isSvgPlanUrl, stripInkscapeBaseLayer} from '@/helpers/svg-floorplan';
 import {hasWebGL} from '@/helpers/webgl';
 import {debug} from '@/tools/debug';
 import type {
     DevicePlacementMap,
     FloorPlanRef,
+    PlanPoint,
+    WallSegment,
     ZoneShape
 } from '@/types/floor-plan';
 
 const AUTO_PIN_ALPHA = 0.45;
+// Walls read as structure, not decoration: the same near-white the 3D
+// extruder uses, so a floor looks like one floor across both views.
+const WALL_COLOR = 0xe8ecf1;
+const WALL_WIDTH_PX = 4;
+const DRAFT_COLOR = 0x4495d1;
 
 // PixiJS floor-plan stage. Diff-based sprite sync, loadGen guards
 // against stale Assets.load resolutions, cancelled flag protects
@@ -26,24 +35,21 @@ export interface DeviceSprite {
     color: number;
 }
 
-// Zone draft = in-progress polygon being placed via canvas clicks.
-// Treated separately from the persisted `zones` so finished zones can
-// be diff-rendered while the draft repaints on every vertex add.
-export interface ZoneDraft {
-    points: Array<{x: number; y: number}>;
-    color?: string;
-}
-
 export interface FloorPlanStageOptions {
     plan: Ref<FloorPlanRef | null>;
     zones: Ref<ZoneShape[]>;
+    /** Hand-drawn walls. Extracted walls live only in the 3D scene, which
+     *  derives them from the plan file. */
+    walls?: Ref<WallSegment[]>;
     placements: Ref<DevicePlacementMap>;
     devices: Ref<DeviceSprite[]>;
     onDeviceMove?: (id: string, position: {x: number; y: number}) => void;
     onDeviceClick?: (id: string) => void;
     editMode?: Ref<boolean>;
-    drawingZone?: Ref<ZoneDraft | null>;
-    onZoneVertex?: (x: number, y: number) => void;
+    /** The zone or wall being drawn, straight from the shared draw-state
+     *  machine. Both canvases render the same draft the same way. */
+    drawing?: Ref<DrawDraft | null>;
+    onDraftVertex?: (point: PlanPoint) => void;
     /** Per-layer visibility — same names as the 3D scene API. */
     layerVisibility?: Ref<{floor: boolean; walls: boolean; devices: boolean}>;
 }
@@ -68,15 +74,11 @@ interface ZoneEntry {
 
 // Plan dimensions are part of the signature so re-uploading at a
 // different size forces a re-render at the new pixel multiplier.
-function zoneSignature(
-    z: ZoneShape,
-    widthPx: number,
-    heightPx: number
-): string {
+function zoneSignature(z: ZoneShape, rect: PlanRect): string {
     const pts = z.points
         .map((p) => `${p.x.toFixed(4)},${p.y.toFixed(4)}`)
         .join(';');
-    return `${widthPx}x${heightPx}|${z.name}|${z.color}|${pts}`;
+    return `${rect.widthPx}x${rect.heightPx}|${z.name}|${z.color}|${pts}`;
 }
 
 export function useFloorPlanStage(
@@ -91,6 +93,7 @@ export function useFloorPlanStage(
     const planLoadError = ref(false);
     const planLayer = new Container();
     const zoneLayer = new Container();
+    const wallLayer = new Container();
     const drawingLayer = new Container();
     const deviceLayer = new Container();
     const sprites = new Map<string, SpriteEntry>();
@@ -136,12 +139,12 @@ export function useFloorPlanStage(
         // World dims placeholder; applyPlan() resizes to match the plan
         // once it loads. Without that, fit/clamp computations use the
         // wrong world size and the plan ends up tiny on screen.
-        const planInit = opts.plan.value;
+        const rectInit = planRect(opts.plan.value);
         const vp = new Viewport({
             screenWidth: host.value.clientWidth,
             screenHeight: host.value.clientHeight,
-            worldWidth: planInit?.widthPx ?? host.value.clientWidth,
-            worldHeight: planInit?.heightPx ?? host.value.clientHeight,
+            worldWidth: rectInit.widthPx,
+            worldHeight: rectInit.heightPx,
             events: application.renderer.events
         } as ConstructorParameters<typeof Viewport>[0]);
         vp.drag()
@@ -152,6 +155,7 @@ export function useFloorPlanStage(
         application.stage.addChild(vp as unknown as Container);
         vp.addChild(planLayer as unknown as never);
         vp.addChild(zoneLayer as unknown as never);
+        vp.addChild(wallLayer as unknown as never);
         vp.addChild(drawingLayer as unknown as never);
         vp.addChild(deviceLayer as unknown as never);
 
@@ -164,8 +168,9 @@ export function useFloorPlanStage(
         await applyPlan();
         if (cancelled) return;
         applyZones();
+        applyWalls();
         syncDevices();
-        applyDrawingZone();
+        applyDraft();
         bindVertexCapture();
     }
 
@@ -255,18 +260,16 @@ export function useFloorPlanStage(
         }
     }
 
+    // Geometry normalizes against the plan rect, which exists whether or
+    // not a drawing was uploaded — D-032 makes hand-drawing a normal setup
+    // path, so an empty floor is still a floor you can draw on.
     function applyZones() {
-        const p = opts.plan.value;
-        if (!p) {
-            for (const e of zones.values()) detachZone(e);
-            zones.clear();
-            return;
-        }
+        const p = planRect(opts.plan.value);
         const seen = new Set<string>();
         for (const zone of opts.zones.value) {
             if (zone.points.length < 3) continue;
             seen.add(zone.id);
-            const sig = zoneSignature(zone, p.widthPx, p.heightPx);
+            const sig = zoneSignature(zone, p);
             const existing = zones.get(zone.id);
             if (existing && existing.sig === sig) continue;
             if (existing) detachZone(existing);
@@ -310,15 +313,26 @@ export function useFloorPlanStage(
         entry.label.destroy();
     }
 
+    // Walls repaint whole rather than diffing: they carry no identity to
+    // diff by, and a floor's worth of segments is one Graphics object.
+    function applyWalls() {
+        wallLayer.removeChildren();
+        const walls = opts.walls?.value ?? [];
+        if (walls.length === 0) return;
+        const p = planRect(opts.plan.value);
+        const g = new Graphics();
+        for (const wall of walls) {
+            g.moveTo(wall.from.x * p.widthPx, wall.from.y * p.heightPx);
+            g.lineTo(wall.to.x * p.widthPx, wall.to.y * p.heightPx);
+        }
+        g.stroke({color: WALL_COLOR, width: WALL_WIDTH_PX, alpha: 0.9});
+        wallLayer.addChild(g);
+    }
+
     // Diff sync: existing sprites are updated in place; new ones created;
     // unplaced/removed devices are detached and disposed.
     function syncDevices() {
-        const p = opts.plan.value;
-        if (!p) {
-            for (const entry of sprites.values()) detachSprite(entry);
-            sprites.clear();
-            return;
-        }
+        const p = planRect(opts.plan.value);
         const placements = opts.placements.value;
         const editing = opts.editMode?.value ?? false;
         const seen = new Set<string>();
@@ -341,12 +355,12 @@ export function useFloorPlanStage(
                 };
                 sprites.set(device.id, entry);
                 if (opts.onDeviceClick) {
-                    // While a zone draft is active, viewport `clicked` is
-                    // already adding a vertex at this point — emitting
-                    // deviceClick here too would also navigate away from
-                    // the location detail page mid-draft.
+                    // While a draft is active, viewport `clicked` is already
+                    // adding a vertex at this point — emitting deviceClick
+                    // here too would also navigate away from the location
+                    // detail page mid-draft.
                     node.on('pointertap', () => {
-                        if (opts.drawingZone?.value) return;
+                        if (opts.drawing?.value) return;
                         opts.onDeviceClick?.(device.id);
                     });
                 }
@@ -375,8 +389,7 @@ export function useFloorPlanStage(
                 // a mid-edit dimension change otherwise denormalizes
                 // the drop against the wrong scale.
                 entry.drag = bindDrag(entry.node, viewport.value, (wx, wy) => {
-                    const cp = opts.plan.value;
-                    if (!cp) return;
+                    const cp = planRect(opts.plan.value);
                     opts.onDeviceMove?.(placementId, {
                         x: wx / cp.widthPx,
                         y: wy / cp.heightPx
@@ -408,16 +421,19 @@ export function useFloorPlanStage(
         await applyPlan();
         if (cancelled) return;
         applyZones();
+        applyWalls();
         syncDevices();
-        applyDrawingZone();
+        applyDraft();
     });
     watch(opts.zones, applyZones, {deep: true});
+    if (opts.walls) watch(opts.walls, applyWalls, {deep: true});
     if (opts.layerVisibility) {
         watch(
             opts.layerVisibility,
             (v) => {
                 planLayer.visible = v.floor;
                 zoneLayer.visible = v.walls;
+                wallLayer.visible = v.walls;
                 deviceLayer.visible = v.devices;
             },
             {deep: true, immediate: true}
@@ -428,36 +444,41 @@ export function useFloorPlanStage(
         syncDevices,
         {deep: true}
     );
-    if (opts.drawingZone) {
-        watch(opts.drawingZone, applyDrawingZone, {deep: true});
-        watch(() => opts.drawingZone?.value !== null, bindVertexCapture);
+    if (opts.drawing) {
+        watch(opts.drawing, applyDraft, {deep: true});
+        watch(() => opts.drawing?.value !== null, bindVertexCapture);
     }
 
-    // Re-render the in-progress polygon. The draft is open (no fill yet) —
-    // a polyline + per-vertex dots so the user can see what they've placed.
-    function applyDrawingZone() {
+    // Re-render the in-progress draft — the segments it currently describes
+    // plus a dot per placed vertex. Segments come from the shared draw-state
+    // machine, so 2D and 3D show the same shape from the same source (a zone
+    // draws its closing edge, a wall run does not).
+    function applyDraft() {
         drawingLayer.removeChildren();
-        const p = opts.plan.value;
-        const draft = opts.drawingZone?.value;
-        if (!p || !draft || draft.points.length === 0) return;
-        const pts = draft.points.map((pt) => ({
+        const draft = opts.drawing?.value;
+        if (!draft || draft.points.length === 0) return;
+        const p = planRect(opts.plan.value);
+        const toStage = (pt: PlanPoint) => ({
             x: pt.x * p.widthPx,
             y: pt.y * p.heightPx
-        }));
-        const color = parseColor(draft.color ?? '#5b8def');
-        if (pts.length >= 2) {
+        });
+        const segments = draftSegments(draft);
+        if (segments.length > 0) {
             const line = new Graphics();
-            line.moveTo(pts[0].x, pts[0].y);
-            for (let i = 1; i < pts.length; i++) {
-                line.lineTo(pts[i].x, pts[i].y);
+            for (const seg of segments) {
+                const from = toStage(seg.from);
+                const to = toStage(seg.to);
+                line.moveTo(from.x, from.y);
+                line.lineTo(to.x, to.y);
             }
-            line.stroke({color, width: 2, alpha: 0.85});
+            line.stroke({color: DRAFT_COLOR, width: 2, alpha: 0.85});
             drawingLayer.addChild(line);
         }
-        for (const pt of pts) {
+        for (const pt of draft.points) {
+            const stage = toStage(pt);
             const dot = new Graphics()
-                .circle(pt.x, pt.y, 4)
-                .fill({color})
+                .circle(stage.x, stage.y, 4)
+                .fill({color: DRAFT_COLOR})
                 .stroke({color: 0xffffff, width: 1, alpha: 0.85});
             drawingLayer.addChild(dot);
         }
@@ -473,14 +494,13 @@ export function useFloorPlanStage(
         if (!vp) return;
         detachVertexCapture?.();
         detachVertexCapture = null;
-        if (!opts.drawingZone?.value || !opts.onZoneVertex) return;
+        if (!opts.drawing?.value || !opts.onDraftVertex) return;
         const handler = (e: {world: {x: number; y: number}}) => {
-            const cp = opts.plan.value;
-            if (!cp) return;
-            opts.onZoneVertex?.(
-                e.world.x / cp.widthPx,
-                e.world.y / cp.heightPx
-            );
+            const cp = planRect(opts.plan.value);
+            opts.onDraftVertex?.({
+                x: e.world.x / cp.widthPx,
+                y: e.world.y / cp.heightPx
+            });
         };
         (vp as unknown as {on: (ev: string, f: typeof handler) => void}).on(
             'clicked',
@@ -510,6 +530,7 @@ export function useFloorPlanStage(
         sprites.clear();
         for (const entry of zones.values()) detachZone(entry);
         zones.clear();
+        wallLayer.removeChildren();
         drawingLayer.removeChildren();
         app.value?.destroy(true, {children: true, texture: false});
         app.value = null;
@@ -520,7 +541,7 @@ export function useFloorPlanStage(
     // Strip the Inkscape "Base" layer (full-bleed white rect) before Pixi
     // rasterizes the SVG. Non-SVG or fetch failure → fall back to the URL.
     async function resolveLoadUrl(url: string): Promise<string> {
-        if (!isSvgUrl(url)) return url;
+        if (!isSvgPlanUrl(url)) return url;
         try {
             const response = await fetch(url);
             if (!response.ok) return url;
@@ -533,10 +554,6 @@ export function useFloorPlanStage(
         } catch {
             return url;
         }
-    }
-
-    function isSvgUrl(url: string): boolean {
-        return /\.svg(\?|#|$)/i.test(url);
     }
 
     // Re-fit the plan whenever the host element resizes (fullscreen toggle,
@@ -554,18 +571,17 @@ export function useFloorPlanStage(
     function refitToHost(): void {
         const vp = viewport.value;
         const hostEl = host.value;
-        const plan = opts.plan.value;
         if (!vp || !hostEl) return;
         const screenW = hostEl.clientWidth;
         const screenH = hostEl.clientHeight;
         if (screenW === 0 || screenH === 0) return;
-        const worldW = plan?.widthPx ?? screenW;
-        const worldH = plan?.heightPx ?? screenH;
-        vp.resize(screenW, screenH, worldW, worldH);
-        if (plan) {
-            vp.fit(true, worldW, worldH);
-            vp.moveCenter(worldW / 2, worldH / 2);
-        }
+        // Fits the plan rect whether or not an image backs it — a blank
+        // sheet has to fill the viewport too, or drawing on it happens at
+        // an arbitrary zoom.
+        const {widthPx, heightPx} = planRect(opts.plan.value);
+        vp.resize(screenW, screenH, widthPx, heightPx);
+        vp.fit(true, widthPx, heightPx);
+        vp.moveCenter(widthPx / 2, heightPx / 2);
     }
 
     return {app, viewport, ready, unsupported, planLoadError};

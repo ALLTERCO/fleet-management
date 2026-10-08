@@ -1,9 +1,7 @@
 import {createHash} from 'node:crypto';
 import {tuning} from '../../../../config/tuning';
-import {
-    recordConnection,
-    recordRejection
-} from '../../../../modules/deviceIngress/deviceIngressRepository';
+import {recordRejection} from '../../../../modules/deviceIngress/deviceIngressRepository';
+import {enqueueIngressConnection} from '../../../../modules/deviceIngress/ingressAuditBuffer';
 import {truncateSafeDetail} from '../../../../modules/deviceIngress/redaction';
 import {rejectionSeverityFor} from '../../../../modules/deviceIngress/rejectionReasons';
 import type {AdmissionIntent} from '../../../../modules/WaitingRoom';
@@ -14,25 +12,26 @@ import type {
 } from '../../../../types/api/deviceIngress';
 
 export interface ShellyIngressRecorderDeps {
-    recordConnection: typeof recordConnection;
+    enqueueIngressConnection: typeof enqueueIngressConnection;
     recordRejection: typeof recordRejection;
     config: () => ShellyIngressRecorderConfig;
 }
 
 const defaultDeps: ShellyIngressRecorderDeps = {
-    recordConnection,
+    enqueueIngressConnection,
     recordRejection,
     config: readRecorderConfig
 };
 
 export interface ShellyIngressRecorderConfig {
     defaultOrganizationId: string;
-    shellyTransport: 'ws' | 'wss';
     safeDetailBytes: number;
 }
 
+// transport is what the server observed on the device's socket.
 export interface ShellyIngressRecordInput {
     shellyID: string;
+    transport: 'ws' | 'wss';
     intent?: AdmissionIntent;
     reasonCode?: DeviceIngressRejectionReason;
     detail?: unknown;
@@ -40,6 +39,7 @@ export interface ShellyIngressRecordInput {
 
 export interface ShellyIngressQueuedInput {
     shellyID: string;
+    transport: 'ws' | 'wss';
     detail?: unknown;
 }
 
@@ -50,7 +50,7 @@ export async function recordShellyIngressAccepted(
     const config = deps.config();
     const organizationId = organizationIdFor(input.intent, config);
     if (!organizationId) return;
-    await deps.recordConnection(
+    await deps.enqueueIngressConnection(
         shellyConnectionInput(input, organizationId, 'accepted', config)
     );
 }
@@ -62,7 +62,7 @@ export async function recordShellyIngressRejected(
     const config = deps.config();
     const organizationId = organizationIdFor(input.intent, config);
     if (!organizationId || !input.reasonCode) return;
-    await deps.recordConnection(
+    await deps.enqueueIngressConnection(
         shellyConnectionInput(input, organizationId, 'rejected', config)
     );
     await deps.recordRejection({
@@ -70,7 +70,7 @@ export async function recordShellyIngressRejected(
         reasonCode: input.reasonCode,
         severity: rejectionSeverityFor(input.reasonCode),
         reportedExternalId: input.shellyID,
-        observedTransport: config.shellyTransport,
+        observedTransport: input.transport,
         safeDetail: safeDetail(input.detail, config)
     });
 }
@@ -84,12 +84,17 @@ export async function recordShellyIngressQueued(
     const config = deps.config();
     const organizationId = normalizeIngressOrg(config.defaultOrganizationId);
     if (!organizationId) return;
-    await deps.recordConnection({
+    await deps.enqueueIngressConnection({
         organizationId,
+        identityId: null,
+        credentialId: null,
         reportedExternalId: input.shellyID,
-        observedTransport: config.shellyTransport,
+        observedTransport: input.transport,
         result: 'waiting_room',
-        safeDetail: safeDetail(input.detail, config)
+        reasonCode: null,
+        remoteAddressHash: null,
+        safeDetail: safeDetail(input.detail, config),
+        userAgent: null
     });
 }
 
@@ -101,12 +106,15 @@ function shellyConnectionInput(
 ) {
     return {
         organizationId,
+        identityId: null,
+        credentialId: null,
         reportedExternalId: input.shellyID,
-        observedTransport: config.shellyTransport,
+        observedTransport: input.transport,
         result,
         reasonCode: input.reasonCode ?? null,
         remoteAddressHash: null,
-        safeDetail: safeDetail(input.detail, config)
+        safeDetail: safeDetail(input.detail, config),
+        userAgent: null
     };
 }
 
@@ -131,7 +139,6 @@ function safeDetail(
 function readRecorderConfig(): ShellyIngressRecorderConfig {
     return {
         defaultOrganizationId: tuning.deviceIngress.defaultOrganizationId,
-        shellyTransport: tuning.deviceIngress.shellyWsTransport,
         safeDetailBytes: tuning.deviceIngress.rejectionDetailMaxBytes
     };
 }

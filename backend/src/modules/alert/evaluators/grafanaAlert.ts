@@ -8,7 +8,7 @@ const KIND = 'grafana_alert';
 function alertFingerprint(ruleId: number, grafanaFingerprint: string): string {
     return fingerprintV2({
         ruleId,
-        subjectType: 'entity',
+        subjectType: 'external',
         subjectId: grafanaFingerprint
     });
 }
@@ -26,7 +26,7 @@ export const grafanaAlertEvaluator: Evaluator = {
             fingerprintV2: alertFingerprint(rule.id, event.fingerprint),
             title: `Grafana: ${event.alertName}`,
             message: event.summary,
-            subject: {type: 'entity', id: event.fingerprint},
+            subject: {type: 'external', id: event.fingerprint},
             context: {
                 alertName: event.alertName,
                 labels: event.labels,

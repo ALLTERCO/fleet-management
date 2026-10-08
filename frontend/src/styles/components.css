@@ -35,7 +35,7 @@
     background-color: var(--color-surface-1);
 }
 .core-input::placeholder {
-    color: var(--input-placeholder, var(--color-text-disabled));
+    color: var(--input-placeholder);
 }
 .core-input[type="number"]::-webkit-inner-spin-button,
 .core-input[type="number"]::-webkit-outer-spin-button {
@@ -45,6 +45,14 @@
 .core-input[type="number"] {
     -moz-appearance: textfield;
     appearance: textfield;
+}
+/* Every search box's own clear cross: clickable look, and a hit area a few
+   pixels bigger than the glyph. The cross is drawn at the box's right edge,
+   so the area grows left, up and down only and the cross stays in place. */
+input[type="search"]::-webkit-search-cancel-button {
+    cursor: pointer;
+    padding: 6px 0 6px 6px;
+    margin: -6px 0 -6px -6px;
 }
 
 /* ── Shared radio primitive — matches .core-cb__box sizing and accent so
@@ -507,7 +515,6 @@ textarea:focus {
     border-radius: var(--toast-radius);
     background: var(--toast-bg);
     backdrop-filter: var(--toast-filter);
-    -webkit-backdrop-filter: var(--toast-filter);
     border: 1px solid var(--color-border-default);
     border-left: 3px solid var(--color-primary);
     box-shadow:
@@ -1567,7 +1574,6 @@ textarea:focus {
     align-items: center;
     justify-content: center;
     background: rgba(var(--color-surface-bg-rgb), 0.82);
-    -webkit-backdrop-filter: blur(var(--scrim-blur));
     backdrop-filter: blur(var(--scrim-blur));
 }
 .modal {
@@ -2964,7 +2970,6 @@ textarea:focus {
         inset: 0;
         z-index: var(--z-dropdown);
         background: rgba(0, 0, 0, 0.5);
-        -webkit-backdrop-filter: blur(var(--scrim-blur));
         backdrop-filter: blur(var(--scrim-blur));
     }
     .nav.open ~ .nav-scrim {
@@ -3086,10 +3091,6 @@ textarea:focus {
 }
 
 @media (max-width: 480px) {
-    :root {
-        --cell: 160px;
-        --gap: 8px;
-    }
     .main {
         padding: 56px var(--space-2) 60px;
     }
@@ -3106,16 +3107,17 @@ textarea:focus {
     .ec-hero-info {
         flex-wrap: wrap;
     }
-    .ec-wide,
-    .ec-hero {
-        grid-column: span 1;
-    }
-    .ec-hero {
-        grid-row: span 1;
-    }
+    /* Wide/hero spans stay — 152px cells make a 2-track card 312px,
+       which fits a 360px phone; collapsing to 1x1 crushed multi-tile
+       cards. Split-row content still stacks below. */
     .ec-wide-row {
         flex-direction: column;
         gap: var(--space-2);
+    }
+    /* The vertical split divider assumes side-by-side columns; once the row
+       stacks it would cut through the content, so it goes away on phones. */
+    .ec[data-type].ec-wide .ec-wide-row::after {
+        display: none;
     }
     .ec-wide .ec-wl {
         min-width: auto;
@@ -3156,6 +3158,85 @@ textarea:focus {
 }
 
 /* --- PRINT --- */
+/* ==========================================================================
+   Shared small patterns — each was hand-rolled in 4+ components
+   ========================================================================== */
+
+/* A device id, MAC address or component key. Monospace because the characters
+   are data to compare, not prose. Was copied into 5 files. */
+.mono-id {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+/* A reset list that lays its items out. Was copied into 5 files. */
+.stack-list {
+    display: grid;
+    gap: var(--gap-xs);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* A small non-interactive label on a row or card. Was hand-rolled 6 times.
+   Tone modifiers tint it; the base is neutral. */
+.meta-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gap-2xs);
+    padding: var(--space-0-5) var(--gap-xs);
+    border-radius: var(--radius-full);
+    background: var(--glass-input);
+    color: var(--color-text-secondary);
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    white-space: nowrap;
+}
+
+.meta-pill--info {
+    background: color-mix(in srgb, var(--color-info) 16%, transparent);
+    color: var(--color-info-text);
+}
+
+.meta-pill--warning {
+    background: color-mix(in srgb, var(--color-warning-text) 14%, transparent);
+    color: var(--color-warning-text);
+}
+
+.meta-pill--success {
+    background: transparent;
+    color: var(--color-success-text);
+}
+
+/* A borderless glyph button. Keeps its visual size while the hit area reaches
+   the 44px floor. Was hand-rolled 4 times, each one under the minimum. */
+.icon-ghost-btn {
+    position: relative;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    transition: color var(--duration-fast) var(--ease-default);
+}
+
+.icon-ghost-btn::after {
+    content: '';
+    position: absolute;
+    inset: calc((var(--touch-target-min) - 100%) / -2);
+}
+
+.icon-ghost-btn:hover {
+    color: var(--color-text-primary);
+}
+
+.icon-ghost-btn:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+}
+
 @media print {
     body {
         background: #fff;
@@ -3181,7 +3262,6 @@ textarea:focus {
         border: 1px solid #ddd;
         background: #fff;
         backdrop-filter: none;
-        -webkit-backdrop-filter: none;
     }
     .ec-name {
         color: #000;

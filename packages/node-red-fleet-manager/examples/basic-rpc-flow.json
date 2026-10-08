@@ -1,0 +1,73 @@
+[
+  {
+    "id": "fm-example-tab",
+    "type": "tab",
+    "label": "Fleet Manager RPC Example",
+    "disabled": false,
+    "info": ""
+  },
+  {
+    "id": "fm-example-inject",
+    "type": "inject",
+    "z": "fm-example-tab",
+    "name": "Describe system",
+    "props": [
+      {
+        "p": "params",
+        "v": "{}",
+        "vt": "json"
+      }
+    ],
+    "repeat": "",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0.1,
+    "topic": "",
+    "x": 150,
+    "y": 100,
+    "wires": [
+      [
+        "fm-example-rpc"
+      ]
+    ]
+  },
+  {
+    "id": "fm-example-rpc",
+    "type": "fm-rpc",
+    "z": "fm-example-tab",
+    "name": "system.Describe",
+    "server": "fm-example-server",
+    "operation": "system.Describe",
+    "paramsSource": "msg.params",
+    "paramsJson": "{}",
+    "x": 370,
+    "y": 100,
+    "wires": [
+      [
+        "fm-example-debug"
+      ]
+    ]
+  },
+  {
+    "id": "fm-example-debug",
+    "type": "debug",
+    "z": "fm-example-tab",
+    "name": "FM response",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "x": 590,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "fm-example-server",
+    "type": "fm-server",
+    "name": "Fleet Manager",
+    "baseUrl": "",
+    "wsUrl": ""
+  }
+]

@@ -1,4 +1,5 @@
 import {getZitadelAuth} from '@/helpers/zitadelAuth';
+import type {AlertInstanceEvent} from '@/stores/alerts';
 import type {useLogStore} from '@/stores/console';
 // Lazy-imported inside connect()/onConnect() to break circular dependency:
 // websocket → stores/devices → stores/entities → websocket
@@ -41,7 +42,6 @@ import {
     CERTIFICATE_EVENT,
     CHANNEL_EVENT,
     CONSOLE_EVENT,
-    CREDENTIAL_EVENT,
     DESTINATION_EVENT,
     DEVICE_CHANGE_EVENT,
     DEVICE_EVENT,
@@ -64,6 +64,68 @@ let connected = false;
 let connecting = false;
 let hasEverConnected = false;
 let client = undefined as WebSocket | undefined;
+let settleConnectionAttempt: (() => void) | undefined;
+
+/** What this module knows about the connection, for anything that has to say
+ * so out loud. Derived from the same two flags the socket handlers set. */
+export interface WsConnectionSnapshot {
+    connected: boolean;
+    /** An attempt is in flight: fetching a token, or the socket is opening. */
+    connecting: boolean;
+    /** True once a socket has opened. The flags alone cannot tell a first
+     *  attempt from a drop, and no timestamp is needed to say which it is. */
+    everConnected: boolean;
+    /** Epoch ms the two flags above last changed. */
+    changedAt: number;
+}
+
+const connectionListeners = new Set<() => void>();
+let connectionSnapshot: WsConnectionSnapshot = {
+    connected: false,
+    connecting: false,
+    everConnected: false,
+    changedAt: Date.now()
+};
+
+// One publisher, because the flags are also cleared by early returns that give
+// up before a socket exists: an abandoned attempt must not read as connecting.
+function republishConnection(): void {
+    if (
+        connected === connectionSnapshot.connected &&
+        connecting === connectionSnapshot.connecting &&
+        hasEverConnected === connectionSnapshot.everConnected
+    ) {
+        return;
+    }
+    connectionSnapshot = {
+        connected,
+        connecting,
+        everConnected: hasEverConnected,
+        changedAt: Date.now()
+    };
+    for (const listener of [...connectionListeners]) listener();
+}
+
+function setConnected(next: boolean): void {
+    connected = next;
+    republishConnection();
+}
+
+function setConnecting(next: boolean): void {
+    connecting = next;
+    republishConnection();
+}
+
+export function getConnectionSnapshot(): WsConnectionSnapshot {
+    return connectionSnapshot;
+}
+
+export function onConnectionChange(listener: () => void): () => void {
+    connectionListeners.add(listener);
+    return () => {
+        connectionListeners.delete(listener);
+    };
+}
 
 // Callback registry for component status events (NotifyStatus)
 const statusListeners = new Map<string, Set<(data: any) => void>>();
@@ -97,6 +159,7 @@ const variablesEventListeners = new Set<(e: NamespacedEvent) => void>();
 const deviceRelationshipEventListeners = new Set<
     (e: DeviceRelationshipChangedEvent) => void
 >();
+const deviceCreatedEventListeners = new Set<(e: DeviceCreatedEvent) => void>();
 const componentEventListeners = new Map<string, Set<() => void>>();
 
 // Subscribers to the backend's universal NotifyEvent forward (method prefix
@@ -126,6 +189,11 @@ export interface DeviceRelationshipChangedEvent {
         reason: string;
         externalId?: string;
     };
+}
+
+export interface DeviceCreatedEvent {
+    method: typeof DEVICE_EVENT.CREATED;
+    params: {externalId?: string};
 }
 const deviceEventListeners = new Map<
     string,
@@ -241,6 +309,60 @@ export function onDeviceChange(cb: (e: NamespacedEvent) => void): () => void {
     };
 }
 
+// Narrow seam for the Fleet SDK's template transport. Business Manager
+// templates never import this module; `shell/template-host/app/fleet-transport.ts`
+// is the only caller and it adapts this into the FleetEventTransport contract.
+// One generic fan-out beats exporting a new per-namespace listener each time a
+// template needs a different event.
+const templateEventListeners = new Set<(e: NamespacedEvent) => void>();
+
+// Covers login plus the token fetch that precedes socket creation.
+const WS_READY_TIMEOUT_MS = 20_000;
+
+// Resolved when the socket reaches OPEN. `connect()` awaits a token before it
+// creates the socket, so for that window `client` is undefined and a readyState
+// check alone reports "no connection" for a connection that is on its way.
+const connectionReadyWaiters = new Set<() => void>();
+
+function notifyConnectionReady(): void {
+    for (const resolve of [...connectionReadyWaiters]) resolve();
+    connectionReadyWaiters.clear();
+}
+
+/** Resolves once the Fleet connection is usable, or rejects on timeout. */
+export function whenConnected(timeoutMs = WS_READY_TIMEOUT_MS): Promise<void> {
+    if (client?.readyState === WebSocket.OPEN) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+        const onReady = () => {
+            clearTimeout(timer);
+            resolve();
+        };
+        const timer = setTimeout(() => {
+            connectionReadyWaiters.delete(onReady);
+            reject(
+                new Error(
+                    `Fleet connection was not ready within ${timeoutMs}ms`
+                )
+            );
+        }, timeoutMs);
+        connectionReadyWaiters.add(onReady);
+    });
+}
+
+export function onFleetEvent(cb: (e: NamespacedEvent) => void): () => void {
+    templateEventListeners.add(cb);
+    return () => {
+        templateEventListeners.delete(cb);
+    };
+}
+
+// Copied before iterating so a listener that unsubscribes itself mid-dispatch
+// cannot skip the next one.
+function notifyFleetEventListeners(event: json_rpc_event): void {
+    if (templateEventListeners.size === 0) return;
+    for (const cb of [...templateEventListeners]) cb(event as NamespacedEvent);
+}
+
 export function onAlertEvent(cb: (e: NamespacedEvent) => void): () => void {
     alertEventListeners.add(cb);
     return () => {
@@ -328,6 +450,16 @@ export function onDeviceRelationshipChanged(
     };
 }
 
+/** Fires when a device joins the fleet — promoted, virtual, or auto-promoted. */
+export function onDeviceCreated(
+    cb: (e: DeviceCreatedEvent) => void
+): () => void {
+    deviceCreatedEventListeners.add(cb);
+    return () => {
+        deviceCreatedEventListeners.delete(cb);
+    };
+}
+
 // Callback registry for OTA progress events (Shelly.OtaProgress)
 export type OtaEvent = {
     shellyID: string;
@@ -355,6 +487,8 @@ export type BTHomeDiscoveryEvent = {
     productName?: string;
     /** Stable Shelly model string such as "SBBT-004CEU" */
     modelString?: string;
+    /** Server time (ms) the gateway last heard it; drives "Heard 3m ago". */
+    heardAtMs?: number;
     /** True if this is a remote/button device (supports BTHomeControl learning) */
     isRemote: boolean;
     /** Numeric model_id from shelly_mfdata 0x0B block, if available */
@@ -768,14 +902,23 @@ type PatchEntry =
 
 const pendingPatches = new Map<string, PatchEntry>();
 let rafScheduled = false;
+const pendingAnimationFrames = new Set<number>();
 
 const FLUSH_CHUNK_SIZE = 80; // max patches per frame — keeps frames under 16ms budget
+
+function scheduleAnimationFrame(callback: () => void): void {
+    const frame = requestAnimationFrame(() => {
+        pendingAnimationFrames.delete(frame);
+        callback();
+    });
+    pendingAnimationFrames.add(frame);
+}
 
 function schedulePatchFlush(devicesStore: ReturnType<typeof useDevicesStore>) {
     if (rafScheduled) return;
     rafScheduled = true;
 
-    requestAnimationFrame(() => {
+    scheduleAnimationFrame(() => {
         // B1: record peak buffer depth right before draining — this is
         // the true accumulated size since the last frame
         if (isWsTelemetryEnabled()) {
@@ -806,7 +949,7 @@ function schedulePatchFlush(devicesStore: ReturnType<typeof useDevicesStore>) {
                 if (pendingPatches.size > 0) schedulePatchFlush(devicesStore);
                 return;
             }
-            requestAnimationFrame(() => {
+            scheduleAnimationFrame(() => {
                 try {
                     timedApplyPatchBatch(
                         entries.splice(0, FLUSH_CHUNK_SIZE),
@@ -1079,6 +1222,17 @@ function handleEntityEvents(
             break;
         }
 
+        case /\.updated$/i.test(method): {
+            // Entity.Updated carries the full replacement entity; swap the
+            // stored one so open dropdowns/templates re-render with fresh
+            // properties. Fallback fetch if an older backend omits the payload.
+            const entity = (event.params as {entity?: entity_t}).entity;
+            if (entity) entitiesStore.upsertEntities([entity]);
+            else void entitiesStore.updateEntity(entityId);
+
+            break;
+        }
+
         case /\.event$/i.test(method): {
             const _event = event.params.event;
 
@@ -1104,7 +1258,11 @@ let websocketStoresLoad:
     | Promise<typeof import('./websocketStores')>
     | undefined;
 function loadWebsocketStores(): Promise<typeof import('./websocketStores')> {
-    websocketStoresLoad ??= import('./websocketStores');
+    // A failed chunk load must not stay cached: the next call retries.
+    websocketStoresLoad ??= import('./websocketStores').catch((error) => {
+        websocketStoresLoad = undefined;
+        throw error;
+    });
     return websocketStoresLoad;
 }
 
@@ -1114,35 +1272,89 @@ const LIVENESS_QUIET_MS = 400;
 // Cap so a sustained burst (events < quietMs apart) still flushes at least
 // this often instead of the trailing timer starving for the whole storm.
 const LIVENESS_MAX_WAIT_MS = 2000;
-// Small bursts fetch instances individually; larger ones use one list call.
-const MAX_SINGLE_ALERT_FETCHES = 3;
-
-const alertInstanceRefetch = createBatchCoalescer<number>(
-    (ids) => {
-        void refetchAlertInstances(ids);
+// Alert events carry the id plus state and severity, not the row. A burst
+// keeps the newest event per id; the store patches and reads only those ids.
+const pendingAlertEvents = new Map<number, AlertInstanceEvent>();
+const alertInstanceSync = createTrailingCoalescer(
+    () => {
+        const events = [...pendingAlertEvents.values()];
+        pendingAlertEvents.clear();
+        void syncAlertInstances(events);
     },
     LIVENESS_QUIET_MS,
     LIVENESS_MAX_WAIT_MS
 );
 
-async function refetchAlertInstances(ids: number[]): Promise<void> {
-    const {getLivenessStores} = await loadWebsocketStores();
-    const {alertsStore} = getLivenessStores();
-    if (!alertsStore) return;
-    if (ids.length <= MAX_SINGLE_ALERT_FETCHES) {
-        await Promise.all(ids.map((id) => alertsStore.fetchInstance(id)));
-        return;
-    }
-    await alertsStore.fetchInstances();
+function scheduleAlertInstanceSync(event: AlertInstanceEvent): void {
+    pendingAlertEvents.set(event.alertId, event);
+    alertInstanceSync.schedule();
 }
 
-const groupMembersRefetch = createBatchCoalescer<number>(
-    (ids) => {
+function cancelAlertInstanceSync(): void {
+    pendingAlertEvents.clear();
+    alertInstanceSync.cancel();
+}
+
+async function syncAlertInstances(events: AlertInstanceEvent[]): Promise<void> {
+    const {getLivenessStores} = await loadWebsocketStores();
+    await getLivenessStores().alertsStore?.syncInstancesFromEvents(events);
+}
+
+// A gap in the event stream means missed alert changes: reread open alerts.
+async function resyncOpenAlerts(): Promise<void> {
+    const {getResyncStores} = await loadWebsocketStores();
+    await getResyncStores().alertsStore?.resyncOpenInstances();
+}
+resyncRequiredListeners.add(() => {
+    void resyncOpenAlerts();
+});
+
+// The server says the event stream cannot be replayed: only then are the
+// entity, device, group, location and tag lists reread. Otherwise replayed events keep them right.
+let deviceResyncPending = false;
+// False until the first connect load ran; that load already reads fresh data.
+let initialDataLoaded = false;
+
+async function resyncDevicesIfRequired(): Promise<void> {
+    if (!deviceResyncPending || !initialDataLoaded) return;
+    const {getResyncStores, getOnConnectStores} = await loadWebsocketStores();
+    const {pinia, authStore, devicesStore} = getResyncStores();
+    if (!pinia || !authStore || !devicesStore || !authStore.loggedIn) return;
+    deviceResyncPending = false;
+    try {
+        // Entities first: new devices would otherwise fetch each entity alone.
+        const {entityStore, groupsStore, locationsStore, tagsStore} =
+            getOnConnectStores();
+        await entityStore?.fetchEntities();
+        await devicesStore.fetchDevices();
+        // Small registries last, one read each.
+        await Promise.all([
+            groupsStore?.fetchGroups(),
+            locationsStore?.fetchLocations(),
+            tagsStore?.fetchTags()
+        ]);
+    } catch (error) {
+        deviceResyncPending = true;
+        throw error;
+    }
+}
+
+resyncRequiredListeners.add(() => {
+    deviceResyncPending = true;
+    resyncDevicesIfRequired().catch((e) =>
+        logRecoverableFailure('[WS] device re-sync failed:', e)
+    );
+});
+
+// Accepted carries waiting-room row ids, not shelly ids, and the server emits
+// no Device.Created for them: one coalesced list read covers a whole burst.
+const acceptedDevicesReload = createTrailingCoalescer(
+    () => {
         void (async () => {
-            const {getLivenessStores} = await loadWebsocketStores();
-            const {groupsStore} = getLivenessStores();
-            if (!groupsStore) return;
-            await Promise.all(ids.map((id) => groupsStore.fetchGroup(id)));
+            const {getResyncStores} = await loadWebsocketStores();
+            getResyncStores().devicesStore?.refreshDevicesInBackground(
+                'WS waiting-room'
+            );
         })();
     },
     LIVENESS_QUIET_MS,
@@ -1197,18 +1409,17 @@ const destinationMembersRefetch = createBatchCoalescer<number>(
 // refetches are reads — the stores' stale guards keep them latest-wins.
 async function handleGroupEvent(event: json_rpc_event): Promise<void> {
     const id = event.params.id;
-    // Member events burst under bulk ops — coalesce per group id.
-    if (
-        (event.method === GROUP_EVENT.MEMBERS_ADDED ||
-            event.method === GROUP_EVENT.MEMBERS_REMOVED) &&
-        typeof id === 'number'
-    ) {
-        groupMembersRefetch.schedule(id);
-        return;
-    }
     const {getLivenessStores} = await loadWebsocketStores();
     const {groupsStore} = getLivenessStores();
     if (!groupsStore) return;
+    // Member events carry the changed members: the store patches, no read.
+    if (
+        event.method === GROUP_EVENT.MEMBERS_ADDED ||
+        event.method === GROUP_EVENT.MEMBERS_REMOVED
+    ) {
+        groupsStore.applyMembersEvent(event as NamespacedEvent);
+        return;
+    }
     // Deleted: refetch the list — group.get on a deleted id would 404-toast.
     if (event.method !== GROUP_EVENT.DELETED && typeof id === 'number') {
         await groupsStore.fetchGroup(id);
@@ -1274,14 +1485,6 @@ async function handleCertificateCrudEvent(): Promise<void> {
     const {certificatesStore} = getLivenessStores();
     if (!certificatesStore) return;
     await certificatesStore.fetchAll();
-}
-
-// A filtered per-device fetch would clobber the full map — refresh the list.
-async function handleCredentialChangedEvent(): Promise<void> {
-    const {getLivenessStores} = await loadWebsocketStores();
-    const {credentialsStore} = getLivenessStores();
-    if (!credentialsStore) return;
-    await credentialsStore.fetchAll();
 }
 
 async function handleAlertRuleEvent(event: json_rpc_event): Promise<void> {
@@ -1657,7 +1860,7 @@ function hasAnyToken(): boolean {
 
 export async function connect(): Promise<void> {
     if (connected || connecting) return;
-    connecting = true;
+    setConnecting(true);
 
     // Check for dev mode token first
     let token = localStorage.getItem(DEV_MODE_TOKEN_KEY);
@@ -1666,13 +1869,13 @@ export async function connect(): Promise<void> {
     if (!token) {
         if (window.__FM_RUNTIME_CONFIG__?.devMode) {
             // Dev mode — user hasn't logged in yet, not an error
-            connecting = false;
+            setConnecting(false);
             return;
         }
         const zitadelAuth = getZitadelAuth();
         if (!zitadelAuth) {
             console.error('Zitadel auth not initialized');
-            connecting = false;
+            setConnecting(false);
             return;
         }
         // A rejected getUser() (transient OIDC/network failure) must not leave
@@ -1687,37 +1890,37 @@ export async function connect(): Promise<void> {
 
     if (!token || token.length === 0) {
         console.warn('No access token available for WebSocket connection');
-        connecting = false;
+        setConnecting(false);
         return;
     }
 
     // A failed dynamic import (e.g. a stale chunk 404 after a deploy) must also
     // reset `connecting`; otherwise reconnection wedges until a page reload.
-    const stores = await import('./websocketStores').catch((err) => {
+    const stores = await loadWebsocketStores().catch((err) => {
         console.error('[WS] websocketStores import failed:', err);
         return null;
     });
     if (!stores) {
-        connecting = false;
+        setConnecting(false);
         return;
     }
     const connectStores = stores.getConnectStores();
     if (!connectStores.pinia) {
         console.warn('[WS] Pinia not ready, delaying websocket connect');
-        connecting = false;
+        setConnecting(false);
         return;
     }
     const {devicesStore, entitiesStore, logStore} = connectStores;
     if (!devicesStore || !entitiesStore || !logStore) {
         console.warn('[WS] Pinia stores not ready, delaying websocket connect');
-        connecting = false;
+        setConnecting(false);
         return;
     }
     try {
         client = new WebSocket(WS_URL, token);
     } catch (err) {
         console.error('[WS] Failed to create WebSocket:', err);
-        connecting = false;
+        setConnecting(false);
         return;
     }
 
@@ -1725,11 +1928,21 @@ export async function connect(): Promise<void> {
     // This lets callers `await connect()` before issuing RPC calls,
     // preventing the "websocket not ready" fallback to HTTP.
     return new Promise<void>((resolve) => {
+        let settled = false;
+        const settle = () => {
+            if (settled) return;
+            settled = true;
+            if (settleConnectionAttempt === settle) {
+                settleConnectionAttempt = undefined;
+            }
+            resolve();
+        };
+        settleConnectionAttempt = settle;
         client!.onclose = (ev) => {
             debug('[WS] closed, code:', ev.code);
-            connected = false;
-            connecting = false;
-            resolve(); // ensure connect() promise settles even if onerror didn't fire
+            setConnected(false);
+            setConnecting(false);
+            settle(); // ensure connect() promise settles even if onerror didn't fire
             if (ev.code === 4401) {
                 // Server rejected our token. Try silent renew first —
                 // the OIDC library may be able to get a fresh token without
@@ -1755,15 +1968,16 @@ export async function connect(): Promise<void> {
         };
         client!.onerror = (e) => {
             console.error('ws error: ', e);
-            connected = false;
-            connecting = false;
-            resolve(); // resolve anyway so callers aren't stuck; RPC will fallback to HTTP
+            setConnected(false);
+            setConnecting(false);
+            settle(); // resolve anyway so callers aren't stuck; RPC will fallback to HTTP
         };
         client!.onopen = () => {
             debug('[WS] connected');
-            connected = true;
-            connecting = false;
             hasEverConnected = true;
+            setConnected(true);
+            setConnecting(false);
+            notifyConnectionReady();
             client?.send(
                 JSON.stringify({
                     jsonrpc: '2.0',
@@ -1776,7 +1990,7 @@ export async function connect(): Promise<void> {
             );
 
             onConnect();
-            resolve();
+            settle();
         };
         client!.onmessage = (e) => {
             recordWsMessage(); // already gated internally by level < 3
@@ -1792,6 +2006,7 @@ export async function connect(): Promise<void> {
                 }
 
                 recordEventStreamOffset(parsed);
+                notifyFleetEventListeners(parsed);
                 const {method} = parsed;
 
                 switch (true) {
@@ -1844,9 +2059,7 @@ export async function connect(): Promise<void> {
                         break;
 
                     case method === WAITING_ROOM_EVENT.ACCEPTED:
-                        devicesStore.refreshDevicesInBackground(
-                            'WS waiting-room'
-                        );
+                        acceptedDevicesReload.schedule();
                         break;
 
                     // Server lost our event stream mid-session and recreated it
@@ -1894,10 +2107,15 @@ export async function connect(): Promise<void> {
                         break;
 
                     case method.startsWith(WS_PREFIX.ALERT): {
-                        // Sweep bursts collapse into one coalesced refetch.
+                        // Sweep bursts collapse into one coalesced id read.
                         const alertId = parsed.params?.alertId;
                         if (typeof alertId === 'number')
-                            alertInstanceRefetch.schedule(alertId);
+                            scheduleAlertInstanceSync({
+                                method,
+                                alertId,
+                                state: parsed.params?.state,
+                                severity: parsed.params?.severity
+                            });
                         for (const cb of alertEventListeners)
                             cb(parsed as NamespacedEvent);
                         break;
@@ -1917,10 +2135,6 @@ export async function connect(): Promise<void> {
                     case method.startsWith(WS_PREFIX.CERTIFICATE):
                         for (const cb of certificateEventListeners)
                             cb(parsed as NamespacedEvent);
-                        break;
-
-                    case method === CREDENTIAL_EVENT.CHANGED:
-                        void handleCredentialChangedEvent();
                         break;
 
                     case method.startsWith(WS_PREFIX.CREDENTIAL):
@@ -1990,6 +2204,11 @@ export async function connect(): Promise<void> {
                             cb(parsed as DeviceRelationshipChangedEvent);
                         break;
 
+                    case method === DEVICE_EVENT.CREATED:
+                        for (const cb of deviceCreatedEventListeners)
+                            cb(parsed as DeviceCreatedEvent);
+                        break;
+
                     default:
                         debug('unhandled ws event', method);
                         break;
@@ -2001,10 +2220,60 @@ export async function connect(): Promise<void> {
     }); // end of new Promise
 }
 
-export function close() {
+export function close(): void {
+    cancelConnectLoads();
+    cancelCoalescedRefetches();
+    scheduleDeviceComponentSub.cancel();
+    stopResyncInterval();
+    if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
+    }
+    for (const frame of pendingAnimationFrames) {
+        cancelAnimationFrame(frame);
+    }
+    pendingAnimationFrames.clear();
+    pendingPatches.clear();
+    rafScheduled = false;
+
+    hasEverConnected = false;
+    setConnected(false);
+    setConnecting(false);
     _connectCount = 0;
-    if (client !== undefined) {
-        client.close();
+    reconnectDelay = 2000;
+    lastDisconnectTs = 0;
+    resyncInProgress = false;
+    deviceResyncPending = false;
+    initialDataLoaded = false;
+    preloadCache.clear();
+    invalidateTemporarySubscriptions();
+
+    if (waiting.size > 0) {
+        const stale = new Map(waiting);
+        waiting.clear();
+        for (const [, entry] of stale) {
+            entry.reject(new Error('WebSocket closed'));
+        }
+    }
+
+    settleConnectionAttempt?.();
+    settleConnectionAttempt = undefined;
+
+    const socket = client;
+    client = undefined;
+    if (socket !== undefined) {
+        // Intentional shutdown must not flow through onClose(), which schedules
+        // a reconnect. Detach first, then close the underlying transport.
+        socket.onopen = null;
+        socket.onclose = null;
+        socket.onerror = null;
+        socket.onmessage = null;
+        if (
+            socket.readyState !== WebSocket.CLOSED &&
+            socket.readyState !== WebSocket.CLOSING
+        ) {
+            socket.close();
+        }
     }
 }
 
@@ -2105,7 +2374,11 @@ function requireDeviceListPage(
         throw new Error('Device.List returned an invalid page');
     }
     const page = value as Partial<DeviceListPage>;
-    if (!Array.isArray(page.items) || !Number.isInteger(page.total) || page.total! < 0) {
+    if (
+        !Array.isArray(page.items) ||
+        !Number.isInteger(page.total) ||
+        page.total! < 0
+    ) {
         throw new Error('Device.List returned an invalid page');
     }
     if (expectedTotal !== undefined && page.total !== expectedTotal) {
@@ -2133,11 +2406,10 @@ export async function listDevicesSnapshot(): Promise<ShellyDeviceExternal[]> {
         offset += DEVICE_PAGE_SIZE
     ) {
         pagePromises.push(
-            sendRPC<DeviceListPage>(
-                'FLEET_MANAGER',
-                'device.list',
-                {limit: DEVICE_PAGE_SIZE, offset}
-            ).then((page) => requireDeviceListPage(page, first.total))
+            sendRPC<DeviceListPage>('FLEET_MANAGER', 'device.list', {
+                limit: DEVICE_PAGE_SIZE,
+                offset
+            }).then((page) => requireDeviceListPage(page, first.total))
         );
     }
 
@@ -2321,8 +2593,8 @@ const authChangedRefetch = createTrailingCoalescer(() => {
 // A stale refetch timer must not fire into the next session.
 function cancelCoalescedRefetches() {
     authChangedRefetch.cancel();
-    alertInstanceRefetch.cancel();
-    groupMembersRefetch.cancel();
+    acceptedDevicesReload.cancel();
+    cancelAlertInstanceSync();
     tagAssignmentRefetch.cancel();
     userGroupMembersRefetch.cancel();
     destinationMembersRefetch.cancel();
@@ -2352,13 +2624,9 @@ async function runResync() {
         return;
     }
     resyncInProgress = true;
-    debug('[WS] periodic device re-sync');
+    debug('[WS] periodic device re-sync check');
     try {
-        const {getResyncStores} = await import('./websocketStores');
-        const {pinia, authStore, devicesStore} = getResyncStores();
-        if (!pinia || !authStore || !devicesStore || !authStore.loggedIn)
-            return;
-        await devicesStore.fetchDevices();
+        await resyncDevicesIfRequired();
         resyncFailCount = 0;
     } catch (e) {
         resyncFailCount++;
@@ -2403,15 +2671,17 @@ function onConnect() {
         // server-side while we were disconnected.
         void (async () => {
             try {
-                const {getResyncStores} = await import('./websocketStores');
+                const {getResyncStores} = await loadWebsocketStores();
                 const {authStore, jobsStore, alertsStore, notificationsStore} =
                     getResyncStores();
                 await authStore?.fetchUserPermissions();
                 await jobsStore?.restoreActive();
-                // Alerts and inbox move while disconnected; both fetches
-                // are guarded latest-wins reads.
-                await alertsStore?.fetchInstances();
-                await notificationsStore?.fetchInbox();
+                // Alerts and inbox move while disconnected. Alerts reread the
+                // open list only, bounded; history is never reread here.
+                await alertsStore?.resyncOpenInstances();
+                // Only counts and lists someone loaded are read again.
+                await notificationsStore?.resyncAfterReconnect();
+                await alertsStore?.reconcileHistoryTotal();
             } catch (err) {
                 console.warn('[WS] reconnect restore failed:', err);
             }
@@ -2440,7 +2710,16 @@ function onConnect() {
         // If the socket was closed (e.g., 4401 auth rejection) before this fires,
         // don't start data loads — they'd fall back to HTTP with a stale token.
         if (!connected) return;
-        const {getOnConnectStores} = await import('./websocketStores');
+        const {getOnConnectStores} = await loadWebsocketStores();
+        // A reconnect resumes the event stream; lists are reread only when
+        // the server flags the stream as not replayable.
+        if (initialDataLoaded) {
+            startResyncInterval();
+            void resyncDevicesIfRequired().catch((e) =>
+                logRecoverableFailure('[WS] device re-sync failed:', e)
+            );
+            return;
+        }
         const {
             pinia,
             entityStore,
@@ -2458,6 +2737,8 @@ function onConnect() {
         // load them so any subject reference resolves to a name app-wide.
         locationsStore?.fetchLocations();
         tagsStore?.fetchTags();
+        deviceResyncPending = false;
+        initialDataLoaded = true;
         startResyncInterval();
     }, 50);
 }
@@ -2520,7 +2801,7 @@ async function handleAuthRejection() {
     }
 
     authRetryCount = 0;
-    const {getResyncStores} = await import('./websocketStores');
+    const {getResyncStores} = await loadWebsocketStores();
     const {authStore} = getResyncStores();
     if (authStore) {
         await authStore.signOut('ws-4401');
@@ -2599,19 +2880,13 @@ if (typeof document !== 'undefined') {
             return;
         }
 
-        // WS is connected but we may have missed events while backgrounded.
-        // Trigger an immediate re-sync (the periodic interval skips hidden tabs).
-        // Skip if not authenticated (login page) to avoid 401 errors.
+        // WS is connected; the stream resume replays missed events. A full
+        // reread runs only if the server flagged the stream as not replayable.
         if (resyncInProgress || !connected) return;
         resyncInProgress = true;
-        debug('[WS] tab visible, re-syncing device list');
+        debug('[WS] tab visible, re-sync check');
         try {
-            const {getResyncStores} = await import('./websocketStores');
-            const {pinia, authStore, devicesStore} = getResyncStores();
-            if (!pinia) return;
-            if (!authStore || !devicesStore) return;
-            if (!authStore.loggedIn) return;
-            await devicesStore.fetchDevices();
+            await resyncDevicesIfRequired();
         } catch (e) {
             logRecoverableFailure('[WS] visible-tab device re-sync failed:', e);
         } finally {

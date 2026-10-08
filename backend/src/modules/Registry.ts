@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import fsPromises from 'node:fs/promises';
 import path from 'node:path';
 import log4js from 'log4js';
@@ -377,12 +376,19 @@ function getRegistryPath(name: string) {
     return path.join(REGISTRY_FOLDER, `${safe}.json`);
 }
 
-function registryExists(path: string) {
-    return (
-        fs.existsSync(REGISTRY_FOLDER) &&
-        fs.statSync(REGISTRY_FOLDER).isDirectory() &&
-        fs.existsSync(path)
-    );
+async function readRegistryContents(registryPath: string) {
+    try {
+        return await fsPromises.readFile(registryPath, 'utf-8');
+    } catch (error) {
+        if (
+            error instanceof Error &&
+            'code' in error &&
+            error.code === 'ENOENT'
+        ) {
+            return undefined;
+        }
+        throw error;
+    }
 }
 
 async function loadRegistry(name: string): Promise<Record<string, any>> {
@@ -390,48 +396,25 @@ async function loadRegistry(name: string): Promise<Record<string, any>> {
     const cached = fileCache.get(name);
     if (cached) return cached;
 
-    const registryPath = getRegistryPath(name);
-    if (!registryExists(registryPath)) {
-        logger.debug('registry %s not found, returning empty', name);
-        const empty = {};
-        fileCache.set(name, empty);
-        return empty;
+    const contents = await readRegistryContents(getRegistryPath(name));
+    const registry: unknown =
+        contents === undefined ? {} : JSON.parse(contents);
+    if (
+        registry === null ||
+        typeof registry !== 'object' ||
+        Array.isArray(registry)
+    ) {
+        throw new TypeError(`Registry '${name}' must contain an object`);
     }
-    try {
-        const contents = await fsPromises.readFile(registryPath, 'utf-8');
-        const registry = JSON.parse(contents);
-        if (typeof registry === 'object') {
-            fileCache.set(name, registry);
-            return registry;
-        }
-    } catch (error) {
-        logger.warn('registry %s cannot be parsed', name, error);
-        try {
-            await saveRegistry(name, {}, true);
-        } catch (_e) {
-            logger.warn('registry %s cannot be parsed', name, error);
-        }
-        return {};
-    }
-
-    logger.warn('registry %s is of the wrong format', name);
-    return {};
+    const record = registry as Record<string, unknown>;
+    fileCache.set(name, record);
+    return record;
 }
 
-async function saveRegistry(name: string, content: any, backupFirst = false) {
+async function saveRegistry(name: string, content: any) {
     const registryPath = getRegistryPath(name);
     const tempPath = `${registryPath}.${process.pid}.${Date.now()}.tmp`;
     await fsPromises.mkdir(REGISTRY_FOLDER, {recursive: true});
-    if (backupFirst) {
-        try {
-            await fsPromises.rename(
-                registryPath,
-                `${registryPath}.${Date.now()}.back`
-            );
-        } catch (error) {
-            logger.warn('failed to rename registry %s', name, error);
-        }
-    }
     try {
         await fsPromises.writeFile(
             tempPath,

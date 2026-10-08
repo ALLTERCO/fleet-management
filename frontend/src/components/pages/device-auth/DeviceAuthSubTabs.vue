@@ -1,7 +1,6 @@
 <template>
     <div
         class="route-tabs"
-        :class="`route-tabs--${tabs.length}`"
         :style="{'--slider-count': String(tabs.length)}"
     >
         <div

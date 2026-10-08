@@ -1,13 +1,13 @@
 <!--
   Button atom. Pick `type` by intent, never by color preference. Full spec:
-  docs/internal/design/DESIGN_SYSTEM.md -> "Button intent matrix".
+  Button intent matrix: see the design system.
 
   type:  blue (default)  primary CTA, one per view
-         blue-hollow     control buttons (Select/Done/Cancel/Clear) — text, no icon
+         blue-hollow     control buttons (Select/Done/Cancel/Clear): text, no icon
          green           confirm / create
          red             destructive
          orange          warning / beta
-         orange-hollow   secondary beta / warning — outline, not a solid shout
+         orange-hollow   secondary beta / warning: outline, not a solid shout
          white           high-emphasis on dark, rare
 
   Icon rules:
@@ -134,7 +134,7 @@ const classColor = computed(() => {
 .core-btn--lg {
     font-size: var(--btn-font-size-lg);
 }
-/* Press bounces via ease-spring on the transform transition — shrinks
+/* Press bounces via ease-spring on the transform transition: shrinks
    on mousedown, the spring easing gives a tiny overshoot on release. */
 .core-btn:active:not(:disabled) {
     transform: scale(var(--press-scale));
@@ -176,7 +176,7 @@ const classColor = computed(() => {
     );
     box-shadow: var(--shadow-danger);
 }
-/* Danger buttons glow stronger on hover — destructive actions deserve a
+/* Danger buttons glow stronger on hover: destructive actions deserve a
    visible "are you sure" cue before the click. */
 .btn-red:hover {
     background: linear-gradient(

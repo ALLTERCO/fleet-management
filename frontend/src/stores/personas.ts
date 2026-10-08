@@ -21,7 +21,8 @@ export const usePersonasStore = defineStore('personas', () => {
     // Writes bump so an in-flight read can't clobber them; reads never bump.
     const personasGuard = createStaleGuard();
 
-    async function fetchAll(includeSystem = true): Promise<PersonaResponse[]> {
+    // Throws on failure, for a caller that renders its own error state.
+    async function loadAll(includeSystem = true): Promise<PersonaResponse[]> {
         loading.value = true;
         try {
             // List fetch: bump so the latest fetch wins between racing fetches.
@@ -36,11 +37,17 @@ export const usePersonasStore = defineStore('personas', () => {
             for (const p of res.items) next[p.id] = p;
             personas.value = next;
             return res.items;
+        } finally {
+            loading.value = false;
+        }
+    }
+
+    async function fetchAll(includeSystem = true): Promise<PersonaResponse[]> {
+        try {
+            return await loadAll(includeSystem);
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load personas');
             return [];
-        } finally {
-            loading.value = false;
         }
     }
 
@@ -113,5 +120,14 @@ export const usePersonasStore = defineStore('personas', () => {
         }
     }
 
-    return {personas, loading, fetchAll, fetch, create, update, remove};
+    return {
+        personas,
+        loading,
+        loadAll,
+        fetchAll,
+        fetch,
+        create,
+        update,
+        remove
+    };
 });

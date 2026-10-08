@@ -118,7 +118,6 @@ onBeforeUnmount(restorePreviousFocus);
     border-radius: var(--radius-xl) 0 0 var(--radius-xl);
     background: var(--glass-3-bg);
     backdrop-filter: var(--glass-3-filter);
-    -webkit-backdrop-filter: var(--glass-3-filter);
     box-shadow: var(--shadow-lg), inset 0 1px 0 var(--glass-highlight);
 }
 .right-side-menu__body {

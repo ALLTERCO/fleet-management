@@ -43,7 +43,7 @@ export const TEMPLATE_TOKENS: readonly TemplateTokenDescriptor[] = [
     },
     {
         token: 'alert.source.type',
-        label: 'Source type',
+        label: 'Applies to',
         description: "'device', 'entity', 'group', 'location', 'tag'.",
         example: 'device'
     },
@@ -79,8 +79,8 @@ export const TEMPLATE_TOKENS: readonly TemplateTokenDescriptor[] = [
     },
     {
         token: 'rule.kind',
-        label: 'Rule kind',
-        description: 'Internal rule kind.',
+        label: 'Rule type',
+        description: 'Internal rule type.',
         example: 'battery_below'
     }
 ] as const;

@@ -61,7 +61,7 @@ export async function readVirtualDeviceReplacementReport(
            LEFT JOIN device.virtual_device_binding b
              ON b.id = e.binding_id
           WHERE ${filter.where.join(' AND ')}
-          ORDER BY e.created_at DESC
+          ORDER BY e.created_at DESC, e.id DESC
           LIMIT $${filter.values.length + 1}
          OFFSET $${filter.values.length + 2}`,
         [...filter.values, limit, offset]

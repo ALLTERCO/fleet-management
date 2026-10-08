@@ -38,9 +38,9 @@
                 />
                 <circle cx="50" cy="50" r="3" class="gauge-pivot" />
             </svg>
-            <div class="gauge-readout">
+            <div v-if="displayValue" class="gauge-readout ec-vu">
                 <span class="gauge-val">{{ displayValue }}</span>
-                <span class="gauge-unit">{{ config.unit }}</span>
+                <span v-if="config.unit" class="ec-u ec-u--sm">{{ config.unit }}</span>
             </div>
         </div>
     </CardShell>
@@ -48,6 +48,7 @@
 
 <script setup lang="ts">
 import {computed} from 'vue';
+import {useDevicesStore} from '@/stores/devices';
 import {useEntityStore} from '@/stores/entities';
 import CardShell from './CardShell.vue';
 
@@ -83,16 +84,25 @@ defineEmits<{
 }>();
 
 const entityStore = useEntityStore();
+const devicesStore = useDevicesStore();
 
+// Live status lives on the device; the entity carries identity and config only.
 const liveValue = computed<number | null>(() => {
-    const entity = entityStore.entities[props.config.entityId] as any;
-    if (!entity?.status) return null;
-    const v = entity.status[props.config.field];
+    const entity = entityStore.entities[props.config.entityId];
+    if (!entity) return null;
+    const status =
+        devicesStore.devices[entity.source]?.status?.[
+            `${entity.type}:${entity.properties.id}`
+        ];
+    const v = (status as Record<string, unknown> | undefined)?.[
+        props.config.field
+    ];
     return v != null ? Number(v) : null;
 });
 
-const displayValue = computed(() =>
-    liveValue.value != null ? liveValue.value.toFixed(1) : '--'
+// null, not a placeholder — the configured unit needs a live reading.
+const displayValue = computed<string | null>(() =>
+    liveValue.value != null ? liveValue.value.toFixed(1) : null
 );
 
 // Gauge arc helpers — 180° semicircle, left to right
@@ -101,11 +111,12 @@ const R = 40;
 const CX = 50;
 const CY = 50;
 
-function polarToXY(angleDeg: number): {x: number; y: number} {
+// SVG y grows downward, so an arc above the pivot subtracts sin.
+function polarToXY(angleDeg: number, radius = R): {x: number; y: number} {
     const rad = (angleDeg * Math.PI) / 180;
     return {
-        x: CX + R * Math.cos(rad),
-        y: CY + R * Math.sin(rad)
+        x: CX + radius * Math.cos(rad),
+        y: CY - radius * Math.sin(rad)
     };
 }
 
@@ -165,16 +176,12 @@ const valueColor = computed(() => {
     return sorted[sorted.length - 1]?.color ?? 'var(--color-primary)';
 });
 
-const needleTip = computed(() => {
-    const deg =
-        liveValue.value != null ? valueToDeg(liveValue.value) : START_DEG;
-    const needleR = R - 6;
-    const rad = (deg * Math.PI) / 180;
-    return {
-        x: CX + needleR * Math.cos(rad),
-        y: CY + needleR * Math.sin(rad)
-    };
-});
+const needleTip = computed(() =>
+    polarToXY(
+        liveValue.value != null ? valueToDeg(liveValue.value) : START_DEG,
+        R - 6
+    )
+);
 </script>
 
 <style scoped>
@@ -225,20 +232,9 @@ const needleTip = computed(() => {
     fill: var(--color-text-primary);
 }
 
-.gauge-readout {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-1);
-}
-
 .gauge-val {
     font-size: var(--type-body);
     font-weight: 700;
     color: var(--color-text-primary);
-}
-
-.gauge-unit {
-    font-size: var(--type-body);
-    color: var(--color-text-tertiary);
 }
 </style>

@@ -20,12 +20,12 @@
         <template #default>
             <div class="th-dual">
                 <div class="th-item">
-                    <div class="th-value">{{ tempText }}<span class="th-unit">°C</span></div>
+                    <div v-if="tempText" class="th-value">{{ tempText }}<span class="ec-u ec-u--sm">°C</span></div>
                     <div class="th-label">Temp</div>
                 </div>
                 <div class="th-sep" />
                 <div class="th-item">
-                    <div class="th-value">{{ humidityText }}<span class="th-unit">%</span></div>
+                    <div v-if="humidityText" class="th-value">{{ humidityText }}<span class="ec-u ec-u--sm">%</span></div>
                     <div class="th-label">Humidity</div>
                 </div>
             </div>
@@ -55,8 +55,8 @@
     >
         <template #default>
             <div class="th-hero">
-                <div class="th-value th-value--hero">{{ tempText }}<span class="th-unit">°C</span></div>
-                <div class="th-humidity">{{ humidityText }}% RH</div>
+                <div v-if="tempText" class="th-value th-value--hero">{{ tempText }}<span class="ec-u">°C</span></div>
+                <div v-if="humidityText" class="th-humidity">{{ humidityText }}% RH</div>
                 <div v-if="stats.length" class="th-stats">
                     <div v-for="s in stats" :key="s.label" class="th-stat">
                         <div class="th-stat-v">{{ s.value }}</div>
@@ -116,8 +116,9 @@ const temp = computed<number | null>(() => {
     const v = status.value?.tC;
     return typeof v === 'number' ? v : null;
 });
-const tempText = computed(() =>
-    temp.value !== null ? temp.value.toFixed(1) : '—'
+// null, not a dash — the readout and its unit both stay hidden.
+const tempText = computed<string | null>(() =>
+    temp.value !== null ? temp.value.toFixed(1) : null
 );
 
 // This card is only used when the device reports humidity on humidity:0.
@@ -125,8 +126,8 @@ const humidity = computed<number | null>(() => {
     const rh = device.value?.status?.['humidity:0']?.rh;
     return typeof rh === 'number' ? rh : null;
 });
-const humidityText = computed(() =>
-    humidity.value !== null ? String(Math.round(humidity.value)) : '—'
+const humidityText = computed<string | null>(() =>
+    humidity.value !== null ? String(Math.round(humidity.value)) : null
 );
 
 const stats = computed(() => {
@@ -172,13 +173,6 @@ const stats = computed(() => {
 }
 .th-value--hero {
     font-size: var(--type-display);
-}
-.th-unit {
-    margin-left: 2px;
-    font-size: var(--type-caption);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-secondary);
-    -webkit-text-fill-color: var(--color-text-secondary);
 }
 .th-label {
     font-size: var(--type-caption);

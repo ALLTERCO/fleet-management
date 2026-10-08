@@ -1,20 +1,32 @@
 import crypto from 'node:crypto';
 import {tuning} from '../../config/tuning';
 import type {UploadSessionPort} from '../redis/ports';
-import {uploadSessions} from '../redis/services';
+import {kv, uploadSessions} from '../redis/services';
 import type {UploadTicketKind, UploadTicketUser} from '../uploadTickets';
 
-export type UploadSessionStatus = 'open' | 'finalized' | 'cancelled';
+export type UploadSessionStatus =
+    | 'open'
+    | 'finalizing'
+    | 'finalized'
+    | 'cancelled'
+    | 'outcome_unknown';
+
+export interface UploadSessionOwner extends UploadTicketUser {
+    credentialId?: string;
+}
 
 export interface UploadSession {
     id: string;
     kind: UploadTicketKind;
-    owner: UploadTicketUser;
+    owner: UploadSessionOwner;
     fileName: string;
     sizeBytes: number;
     offsetBytes: number;
     expectedSha256?: string;
     contentType?: string;
+    target?: Record<string, unknown>;
+    options?: Record<string, unknown>;
+    result?: Record<string, unknown>;
     status: UploadSessionStatus;
     createdAt: number;
     updatedAt: number;
@@ -23,24 +35,32 @@ export interface UploadSession {
 
 export interface BeginUploadSessionInput {
     kind: UploadTicketKind;
-    owner: UploadTicketUser;
+    owner: UploadSessionOwner;
     fileName: string;
     sizeBytes: number;
     expectedSha256?: string;
     contentType?: string;
+    target?: Record<string, unknown>;
+    options?: Record<string, unknown>;
 }
 
 export interface AppendUploadChunkInput {
     sessionId: string;
-    owner: UploadTicketUser;
+    owner: UploadSessionOwner;
     offsetBytes: number;
     chunkBytes: number;
 }
 
 export interface FinalizeUploadSessionInput {
     sessionId: string;
-    owner: UploadTicketUser;
+    owner: UploadSessionOwner;
     sha256: string;
+}
+
+const UPLOAD_SESSION_LIVE_PREFIX = 'file-transfer:session-live:';
+
+function uploadSessionLiveKey(sessionId: string): string {
+    return `${UPLOAD_SESSION_LIVE_PREFIX}${sessionId}`;
 }
 
 class UploadSessionError extends Error {
@@ -115,7 +135,7 @@ export async function finalizeUploadSession(
 
 export async function cancelUploadSession(
     sessionId: string,
-    owner: UploadTicketUser,
+    owner: UploadSessionOwner,
     store: UploadSessionPort = uploadSessions
 ): Promise<UploadSession> {
     const session = await loadOpenSession(sessionId, owner, store);
@@ -145,6 +165,8 @@ function createUploadSession(
         offsetBytes: 0,
         expectedSha256: input.expectedSha256,
         contentType: input.contentType,
+        target: input.target,
+        options: input.options,
         status: 'open',
         createdAt: now,
         updatedAt: now,
@@ -154,7 +176,7 @@ function createUploadSession(
 
 async function loadOpenSession(
     sessionId: string,
-    owner: UploadTicketUser,
+    owner: UploadSessionOwner,
     store: UploadSessionPort
 ): Promise<UploadSession> {
     const session = await loadUploadSession(sessionId, store);
@@ -165,9 +187,9 @@ async function loadOpenSession(
     return session;
 }
 
-async function loadUploadSession(
+export async function loadUploadSession(
     sessionId: string,
-    store: UploadSessionPort
+    store: UploadSessionPort = uploadSessions
 ): Promise<UploadSession | null> {
     if (!sessionId)
         throw new UploadSessionValidationError('sessionId required');
@@ -176,15 +198,38 @@ async function loadUploadSession(
     return parseUploadSession(raw);
 }
 
-async function saveUploadSession(
+export async function saveUploadSession(
     session: UploadSession,
-    store: UploadSessionPort
+    store: UploadSessionPort = uploadSessions
 ): Promise<void> {
     const ttlSec = Math.max(
         1,
         Math.ceil((session.expiresAt - Date.now()) / 1000)
     );
     await store.set(session.id, JSON.stringify(session), ttlSec);
+    if (store === uploadSessions) {
+        await kv.set(
+            uploadSessionLiveKey(session.id),
+            String(session.expiresAt),
+            ttlSec
+        );
+    }
+}
+
+export async function uploadSessionExpiryForCleanup(
+    sessionId: string,
+    store: UploadSessionPort = uploadSessions
+): Promise<number | null> {
+    const session = await loadUploadSession(sessionId, store);
+    if (session) return session.expiresAt;
+    if (store !== uploadSessions) return null;
+
+    // Unlike the session adapter, KV reads surface Redis errors. Cleanup must
+    // not mistake an unavailable session store for an expired session.
+    const liveUntil = await kv.get(uploadSessionLiveKey(sessionId));
+    if (liveUntil === null) return null;
+    const parsed = Number(liveUntil);
+    return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
 }
 
 function parseUploadSession(raw: string): UploadSession {
@@ -200,7 +245,7 @@ function parseUploadSession(raw: string): UploadSession {
     return parsed;
 }
 
-function assertOwner(owner: UploadTicketUser): void {
+function assertOwner(owner: UploadSessionOwner): void {
     if (!owner.userId && !owner.username) {
         throw new UploadSessionValidationError('owner identity required');
     }
@@ -260,7 +305,7 @@ function assertChecksumMatches(session: UploadSession, sha256: string): void {
 
 function assertSessionOwner(
     session: UploadSession,
-    owner: UploadTicketUser
+    owner: UploadSessionOwner
 ): void {
     if (session.owner.userId && session.owner.userId !== owner.userId) {
         throw new UploadSessionNotFoundError();
@@ -268,12 +313,22 @@ function assertSessionOwner(
     if (session.owner.username && session.owner.username !== owner.username) {
         throw new UploadSessionNotFoundError();
     }
-    if (
-        session.owner.organizationId &&
-        session.owner.organizationId !== owner.organizationId
-    ) {
+    if (session.owner.organizationId !== owner.organizationId) {
         throw new UploadSessionNotFoundError();
     }
+    if (session.owner.credentialId !== owner.credentialId) {
+        throw new UploadSessionNotFoundError();
+    }
+}
+
+export function requireOwnedUploadSession(
+    session: UploadSession | null,
+    owner: UploadSessionOwner
+): UploadSession {
+    if (!session) throw new UploadSessionNotFoundError();
+    assertSessionOwner(session, owner);
+    assertSessionNotExpired(session);
+    return session;
 }
 
 function assertSessionOpen(session: UploadSession): void {
@@ -293,14 +348,26 @@ function isUploadSession(value: unknown): value is UploadSession {
         return false;
     }
     const record = value as Record<string, unknown>;
+    const owner = record.owner as Record<string, unknown> | null;
     return (
         typeof record.id === 'string' &&
         typeof record.kind === 'string' &&
-        typeof record.owner === 'object' &&
+        owner !== null &&
+        typeof owner === 'object' &&
+        (owner.organizationId === undefined ||
+            typeof owner.organizationId === 'string') &&
+        (owner.userId === undefined || typeof owner.userId === 'string') &&
+        (owner.username === undefined || typeof owner.username === 'string') &&
+        (owner.credentialId === undefined ||
+            typeof owner.credentialId === 'string') &&
         typeof record.fileName === 'string' &&
         typeof record.sizeBytes === 'number' &&
         typeof record.offsetBytes === 'number' &&
-        typeof record.status === 'string' &&
+        (record.status === 'open' ||
+            record.status === 'finalizing' ||
+            record.status === 'finalized' ||
+            record.status === 'cancelled' ||
+            record.status === 'outcome_unknown') &&
         typeof record.createdAt === 'number' &&
         typeof record.updatedAt === 'number' &&
         typeof record.expiresAt === 'number'

@@ -4,11 +4,13 @@ import type WebSocket from 'ws';
 import {tuning} from '../../../../config';
 import type CommandSender from '../../../../model/CommandSender';
 import type {user_t} from '../../../../types';
+import {mcpCredentialAllowsClientSocket} from '../../../ai/mcpGovernance';
 import * as Observability from '../../../Observability';
 import {getUserFromToken} from '../../../user';
 import {ConnectionContext} from '../ConnectionContext';
 import {CLOSE_AUTH_FAILED} from '../closeCodes';
 import type MessageHandler from '../MessageHandler';
+import {clientSocketDeflate} from '../perMessageDeflate';
 import AbstractWebsocketHandler, {
     type WebSocketExt
 } from './AbstractWebsocketHandler';
@@ -20,7 +22,10 @@ export default class ClientWebsocketHandler extends AbstractWebsocketHandler {
     #messageHandler: MessageHandler;
 
     constructor(handler: MessageHandler) {
-        super({noServer: true}, tuning.ws.clientHeartbeatMs);
+        super(
+            {noServer: true, perMessageDeflate: clientSocketDeflate(tuning.ws)},
+            tuning.ws.clientHeartbeatMs
+        );
         this.#messageHandler = handler;
     }
 
@@ -87,6 +92,17 @@ export default class ClientWebsocketHandler extends AbstractWebsocketHandler {
             if (!newUser) {
                 logger.error('Cannot get user from token, closing WS (4401)');
                 socket.close(CLOSE_AUTH_FAILED, 'Unauthorized');
+                return;
+            }
+            // An MCP credential belongs on the MCP endpoint, not here. This
+            // socket would otherwise hand it the whole RPC surface with none
+            // of MCP's governance.
+            if (!mcpCredentialAllowsClientSocket(newUser.credentialAudience)) {
+                logger.warn(
+                    'MCP-scoped credential refused on the client WS (%s)',
+                    newUser.username
+                );
+                socket.close(CLOSE_AUTH_FAILED, 'MCP credential');
                 return;
             }
             Observability.setWsClientCount(this._server.clients.size);

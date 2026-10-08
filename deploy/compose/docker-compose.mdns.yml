@@ -5,6 +5,11 @@
 services:
   mdns-repeater:
     image: shellygroup/mdns-repeater:${MDNS_REPEATER_VERSION}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     labels:
       fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
       fleet.client: "${FM_CLIENT_ID:-shared}"

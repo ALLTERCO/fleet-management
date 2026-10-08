@@ -4,7 +4,6 @@
 // notifications:* permission gate mirrors the RPC contract enforced on
 // EmailAsset.List / EmailAsset.Get via @Component.CrudPermission.
 
-import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import express from 'express';
 import log4js from 'log4js';
@@ -15,11 +14,13 @@ import {
     deleteAsset,
     getAssetBytes,
     getAssetMetadata,
-    insertAsset,
     isAllowedContentType,
     listAssets
 } from '../../delivery/emailAssets';
-import {sanitizeSvg} from '../../svgSanitize';
+import {
+    processEmailAssetUpload,
+    sanitizeAssetBytes
+} from '../../uploads/fileTransfer';
 import {consumeUploadTicket} from '../../uploadTickets';
 import {bestEffort} from '../../util/fireAndForget';
 import {httpRouteLimit} from '../rateLimit';
@@ -28,13 +29,7 @@ import {paramStr} from '../utils/params';
 
 const logger = log4js.getLogger('email-assets');
 
-const SVG_CONTENT_TYPE = 'image/svg+xml';
-
-// SVG can carry active script; sanitize before storage so neither the inline
-// HTTP download nor the SMTP adapter ever serves an executable payload.
-export function sanitizeAssetBytes(contentType: string, bytes: Buffer): Buffer {
-    return contentType === SVG_CONTENT_TYPE ? sanitizeSvg(bytes) : bytes;
-}
+export {sanitizeAssetBytes};
 
 // Inline assets are served same-origin; nosniff stops a mislabelled byte
 // stream from being interpreted as active content by the browser.
@@ -106,29 +101,13 @@ router.post(
                 res.status(403).json({error: 'Invalid upload ticket'});
                 return;
             }
-            const raw = await fs.readFile(file.path);
-            const bytes = sanitizeAssetBytes(contentType, raw);
-            const sha256 = crypto
-                .createHash('sha256')
-                .update(bytes)
-                .digest('hex');
-            const inserted = await insertAsset({
+            const inserted = await processEmailAssetUpload({
+                tempPath: file.path,
                 organizationId,
-                filename: file.originalname.slice(0, 255),
-                contentType,
-                sizeBytes: bytes.byteLength,
-                sha256,
-                bytes
+                originalName: file.originalname,
+                contentType
             });
-            res.json({
-                id: inserted.id,
-                filename: inserted.filename,
-                contentType: inserted.contentType,
-                sizeBytes: inserted.sizeBytes,
-                sha256: inserted.sha256,
-                createdAt: inserted.createdAt,
-                deduped: inserted.deduped
-            });
+            res.json(inserted);
         } catch (err) {
             logger.warn(
                 'email asset upload failed org=%s err=%s',

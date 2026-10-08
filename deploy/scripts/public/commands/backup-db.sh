@@ -65,6 +65,7 @@ _backup_db_create() {
         }
     ok "Backup created: $backup_path"
     info "Manifest: $(bk_manifest_path "$backup_path")"
+    public_nodered_backup_if_present "$label"
 }
 
 _backup_db_restore() {
@@ -81,6 +82,8 @@ _backup_db_restore() {
         return 1
     }
 
+    public_kdf_salt_preflight || return 1
+
     info "Stopping Fleet Manager before DB restore..."
     compose_cmd stop fleet-manager >/dev/null 2>&1 || true
     info "Restoring DB from $path..."
@@ -89,7 +92,10 @@ _backup_db_restore() {
         return 1
     fi
     info "Starting Fleet Manager..."
-    compose_cmd up -d --no-deps fleet-manager >/dev/null
+    public_kdf_salt_preflight || return 1
+    public_resolve_build_identity "${FM_VERSION:-latest}"
+    compose_cmd up -d --no-deps fleet-manager >/dev/null || return 1
+    public_kdf_salt_confirm_container || return 1
     hc_wait_or_dump fleet-manager "${FM_STARTUP_TIMEOUT:-180}"
 }
 
@@ -100,9 +106,10 @@ Usage: deploy-public.sh backup-db <list|inspect|verify|create|restore>
   list                         Print backup inventory as JSON lines
   inspect PATH                 Print a backup manifest, or legacy metadata
   verify PATH                  Verify gzip integrity + manifest checksum
-  create [--label NAME]        Create a manual Fleet DB backup
+  create [--label NAME]        Create a manual Fleet DB backup (+ Node-RED volume when on)
   restore PATH --yes           Stop FM, restore Fleet DB, start FM, health-gate
 
 State credentials are not included here. Use backup-state for deploy/state/.
+Node-RED alone: backup-nodered / restore-nodered.
 EOF
 }

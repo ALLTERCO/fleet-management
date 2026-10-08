@@ -158,6 +158,10 @@
 <script setup lang="ts">
 import '@/styles/card-system.css';
 import '@/styles/device-page.css';
+import {
+    type DeviceFilterView, 
+    deviceMatchesFilters
+} from '@api/deviceFilters';
 import type {DefineComponent} from 'vue';
 import {computed, onMounted, onUnmounted, ref, watch} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
@@ -182,6 +186,7 @@ import {
 import {DeviceBoard} from '@/helpers/components';
 import {getDeviceName} from '@/helpers/device';
 import {deleteFleetDevice} from '@/helpers/deviceDeleteRpc';
+
 import {deviceTypeOf} from '@/helpers/deviceTypeFilter';
 import {
     booleanSection,
@@ -202,6 +207,7 @@ import type {SensorDevice} from '@/stores/sensors';
 import {useTagsStore} from '@/stores/tags';
 import {useToastStore} from '@/stores/toast';
 import type {WizardKind} from '@/stores/virtualDeviceDraftStore';
+import {onDeviceCreated} from '@/tools/websocket';
 import type {shelly_device_t} from '@/types';
 import type {StatItem} from '@/types/page-template';
 
@@ -395,7 +401,7 @@ const filterSections = computed<FilterSection[]>(() => {
             onlineCount,
             devs.length - onlineCount
         ),
-        enumSection('type', 'Device Type', 'fa-microchip', byType),
+        enumSection('type', 'Model', 'fa-microchip', byType),
         deviceClassSection(bySource),
         namedSection(
             'group',
@@ -469,14 +475,54 @@ function applyFilters(next: Record<string, string[]>) {
     filterVisible.value = false;
 }
 
+// One device, in the shape the shared matcher understands. The page used to
+// answer group/tag/location membership three different ways in one function;
+// this hands the question to the rule the backend list already uses.
+function filterViewOf(
+    device: shelly_device_t,
+    tagIx: Record<string, number[]>,
+    locIx: Record<string, number[]>
+): DeviceFilterView {
+    return {
+        shellyID: device.shellyID,
+        id: device.id,
+        source: device.source ?? 'offline',
+        // The store's device shape carries no presence; the page answers
+        // online/offline from `online` above, so this stays unanswered
+        // rather than guessed. A null never matches a presence filter.
+        presence: null,
+        locationId: locIx[device.shellyID]?.[0] ?? null,
+        groupIds: device.groupIds ?? [],
+        tagIds: tagIx[device.shellyID] ?? [],
+        model: device.info?.model ?? null,
+        kind: null,
+        battery: null,
+        componentTypes: []
+    };
+}
+
+// The picker is multi-select ("in ANY of these"); the shared rule answers one
+// value at a time ("in THIS one"). So ask it once per chosen value and OR.
+function matchesAny(
+    view: DeviceFilterView,
+    key: string,
+    chosen: readonly (string | number)[]
+): boolean {
+    return (
+        chosen.length === 0 ||
+        chosen.some((value) => deviceMatchesFilters(view, {[key]: value}))
+    );
+}
+
 const showDevices = computed(() => {
     const typeSet = new Set(typeFilter.value);
-    const sourceSet = new Set(sourceFilter.value);
-    const groupSet = new Set(groupFilter.value.map(Number));
-    const tagSet = new Set(tagFilter.value.map(Number));
-    const locSet = new Set(locationFilter.value.map(Number));
     const tagIx = tagsByDevice.value;
     const locIx = locationsByDevice.value;
+
+    const sources = sourceFilter.value;
+    const groups = groupFilter.value.map(Number);
+    const tags = tagFilter.value.map(Number);
+    const locations = locationFilter.value.map(Number);
 
     let onlineNeeded: boolean | null = null;
     if (statusFilter.value[0] === 'true') onlineNeeded = true;
@@ -486,29 +532,27 @@ const showDevices = computed(() => {
 
     const filtered = rawDevices.value.filter((d) => {
         if (onlineNeeded !== null && d.online !== onlineNeeded) return false;
+        // Page-only concerns: the backend list has no app-name or free-text
+        // filter, so these stay here rather than pretending to be shared.
         if (typeSet.size > 0 && !typeSet.has(d.info?.app ?? '')) return false;
-        if (sourceSet.size > 0 && !sourceSet.has(deviceTypeOf(d.source))) {
-            return false;
-        }
-        if (groupSet.size > 0) {
-            const gids = d.groupIds ?? [];
-            if (!gids.some((id) => groupSet.has(id))) return false;
-        }
-        if (tagSet.size > 0) {
-            const devTags = tagIx[d.shellyID] ?? [];
-            if (!devTags.some((id) => tagSet.has(id))) return false;
-        }
-        if (locSet.size > 0) {
-            const devLocs = locIx[d.shellyID] ?? [];
-            if (!devLocs.some((id) => locSet.has(id))) return false;
-        }
         if (needle) {
             const matches = [d.info?.name, d.info?.id].some(
                 (t) => typeof t === 'string' && t.toLowerCase().includes(needle)
             );
             if (!matches) return false;
         }
-        return true;
+
+        const view = filterViewOf(d, tagIx, locIx);
+        // The picker groups the five real source values into three families,
+        // so it filters on the family, not on the raw value.
+        if (sources.length > 0 && !sources.includes(deviceTypeOf(d.source))) {
+            return false;
+        }
+        return (
+            matchesAny(view, 'groupId', groups) &&
+            matchesAny(view, 'tagId', tags) &&
+            matchesAny(view, 'locationId', locations)
+        );
     });
 
     return filtered.sort((a, b) => {
@@ -862,11 +906,27 @@ function sensorClicked(sensor: BTHomeCard) {
     );
 }
 
+// A device can join the fleet without this page asking for it — another tab,
+// or the auto-promoter with nobody watching. Listening means the grid is right
+// either way, instead of only after the wizard that happens to live here.
+let stopDeviceCreated: (() => void) | undefined;
+
 onMounted(() => {
     deviceStore.refreshDevicesInBackground('devices');
+    stopDeviceCreated = onDeviceCreated((event) => {
+        const externalId = event.params?.externalId;
+        if (externalId) {
+            void deviceStore.refreshDevicesById([externalId]);
+            return;
+        }
+        deviceStore.refreshDevicesInBackground('devices');
+    });
 });
 
-onUnmounted(() => rightSideStore.clearInspector());
+onUnmounted(() => {
+    stopDeviceCreated?.();
+    rightSideStore.clearInspector();
+});
 
 watch(
     () => rightSideStore.inspectorComponent,
@@ -881,8 +941,8 @@ watch(
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-3);
+    gap: var(--gap-xs);
+    padding: var(--gap-xs) var(--gap-sm);
     background: var(--color-surface-2);
     border-bottom: 1px solid var(--color-border-subtle);
     font-size: var(--type-caption);
@@ -894,7 +954,7 @@ watch(
 .dv-active-chip {
     display: inline-flex;
     align-items: center;
-    gap: var(--space-1);
+    gap: var(--gap-2xs);
     background: transparent;
     border: none;
     padding: 0;
@@ -912,7 +972,7 @@ watch(
     background: transparent;
     border: 1px solid var(--color-border-medium);
     color: var(--color-text-secondary);
-    padding: var(--space-0-5) var(--space-2);
+    padding: var(--space-0-5) var(--gap-xs);
     border-radius: var(--radius-full);
     cursor: pointer;
     font-size: var(--type-caption);
@@ -922,9 +982,6 @@ watch(
     border-color: var(--color-border-strong);
 }
 
-.dv__btn--active {
-    box-shadow: 0 0 0 2px var(--color-primary);
-}
 
 .dv__bulk-wrap {
     position: fixed;

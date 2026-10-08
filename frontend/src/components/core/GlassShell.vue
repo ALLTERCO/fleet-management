@@ -46,27 +46,22 @@ withDefaults(
 .gs--tier-1 {
     background: var(--glass-1-bg);
     backdrop-filter: var(--glass-1-filter);
-    -webkit-backdrop-filter: var(--glass-1-filter);
 }
 .gs--tier-2 {
     background: var(--glass-2-bg);
     backdrop-filter: var(--glass-2-filter);
-    -webkit-backdrop-filter: var(--glass-2-filter);
 }
 .gs--tier-3 {
     background: var(--glass-3-bg);
     backdrop-filter: var(--glass-3-filter);
-    -webkit-backdrop-filter: var(--glass-3-filter);
 }
 .gs--tier-4 {
     background: var(--glass-4-bg);
     backdrop-filter: var(--glass-4-filter);
-    -webkit-backdrop-filter: var(--glass-4-filter);
 }
 .gs--tier-5 {
     background: var(--glass-5-bg);
     backdrop-filter: var(--glass-5-filter);
-    -webkit-backdrop-filter: var(--glass-5-filter);
 }
 @media (max-width: 640px) {
     .gs {

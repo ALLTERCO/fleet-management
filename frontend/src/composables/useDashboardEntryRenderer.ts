@@ -33,7 +33,11 @@ import ClockWidget from '@/components/widgets/IntegratedWidgets/ClockWidget.vue'
 import {resolveEntityCard} from '@/composables/useEntityCardResolver';
 import type {SensorVariant} from '@/config/bthome-presentation';
 import {getBThomeVariant} from '@/config/bthome-presentation';
-import {clampSizeForEntity} from '@/helpers/widgetCatalog';
+import {
+    allowedSizesForWidget,
+    clampSizeForEntity,
+    clampSizeForWidget
+} from '@/helpers/widgetCatalog';
 import type {action_t, entity_t} from '@/types';
 import type {DashboardEntry, UiWidgetId} from '@/types/dashboard-entry';
 
@@ -99,7 +103,7 @@ const UI_WIDGET_COMPONENTS: Record<UiWidgetId, Component | null> = {
     maintenance_list_widget: CardValue_MaintenanceList,
     cross_site_bar_widget: CardValue_CrossSiteBarChart,
     data_table_widget: CardValue_DataTable,
-    clock_widget: null, // routed to ClockWidget — separate prop shape
+    clock_widget: ClockWidget,
     broken_widget: null // routed to MissingCard
 };
 
@@ -267,16 +271,24 @@ export function resolveDashboardEntry(
                     component: UI_WIDGET_COMPONENTS[widgetId] as Component,
                     props: {
                         config: entry.data,
-                        size,
+                        // A heatmap or a five-column table saved at 1x1 is
+                        // unreadable; clamp to what the kind can take.
+                        size: clampSizeForWidget(size, widgetId),
+                        // CardShell must show only sizes the renderer accepts.
+                        // Otherwise selecting an invalid size appears to do
+                        // nothing because the next render clamps it back.
+                        allowedSizes: allowedSizesForWidget(widgetId),
                         editMode
                     }
                 };
             }
-            // Default ui_widget bucket (clock_widget or unrecognised id)
+            // Any id not in UI_WIDGET_COMPONENTS is unknown — show the error tile,
+            // don't silently fall back to the clock.
             return {
-                kind: 'component',
-                component: ClockWidget,
-                props: {vertical: false, editMode}
+                kind: 'missing',
+                reason: 'widget-broken',
+                title: 'Widget config invalid',
+                size
             };
         }
 

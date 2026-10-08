@@ -6,21 +6,28 @@ import type {
     EmailAsset,
     EmailTemplate,
     InboxState,
+    NotificationInboxGetManyResult,
     NotificationInboxItem,
     NotificationOnCallSchedule,
     NotificationRoutingPolicy,
     TemplateTokenDescriptor
 } from '@api/notification';
 import {defineStore} from 'pinia';
-import {computed, ref} from 'vue';
+import {onScopeDispose, ref} from 'vue';
 import apiClient from '@/helpers/axios';
 import {toastRpcError} from '@/helpers/domainErrors';
 import {type PagedEnvelope, paginate} from '@/helpers/pagination';
 import {runOptimisticMutation} from '@/stores/optimisticMutation';
-import {createTrailingCoalescer} from '../tools/coalesce';
+import {createBatchCoalescer} from '../tools/coalesce';
+import {
+    deferWhileHidden,
+    logCountDrift,
+    recheckWhileVisible
+} from '../tools/hiddenTabDeferral';
 import {createUploadTicket} from '../tools/uploadTickets';
 import * as ws from '../tools/websocket';
 import {NOTIFICATION_EVENT} from '../tools/wsEvents';
+import {useAuthStore} from './auth';
 import {createLatestRefreshCoordinator} from './refreshCoordinator';
 import {createStaleGuard} from './staleGuard';
 import {useToastStore} from './toast';
@@ -134,6 +141,13 @@ export interface EmailAssetUploadResult extends EmailAsset {
 }
 
 const MAX_PER_PAGE = 1000;
+// The inbox keeps the newest page only; a deep inbox is never paged in full.
+const INBOX_PAGE_SIZE = 200;
+const INBOX_EVENT_QUIET_MS = 250;
+// Matches NOTIFICATION_INBOX_GET_MANY_MAX_IDS; a bigger burst rereads the page.
+const INBOX_GET_MANY_MAX_IDS = 100;
+// A sustained burst still refreshes at least this often.
+const INBOX_EVENT_MAX_WAIT_MS = 2000;
 
 interface InboxStateMutation {
     id: number;
@@ -152,6 +166,7 @@ export interface HistoryFilters {
 
 export const useNotificationsStore = defineStore('notifications', () => {
     const toast = useToastStore();
+    const auth = useAuthStore();
 
     const inbox = ref<Record<number, NotificationInboxItem>>({});
     const inboxLoading = ref(true);
@@ -181,11 +196,11 @@ export const useNotificationsStore = defineStore('notifications', () => {
     const onCallSchedulesGuard = createStaleGuard();
     const preferencesGuard = createStaleGuard();
 
-    const unreadCount = computed(
-        () =>
-            Object.values(inbox.value).filter((i) => i.state === 'unread')
-                .length
-    );
+    // The server's unread total, read once, then moved by inbox events.
+    const unreadCount = ref(0);
+    let unreadCountLoaded = false;
+    // Starts with the first loaded count; before that there is nothing to re-read.
+    let countRecheck: {dispose(): void} | undefined;
 
     function upsertInbox(item: NotificationInboxItem) {
         inboxGuard.bump();
@@ -277,32 +292,103 @@ export const useNotificationsStore = defineStore('notifications', () => {
     const inboxRefresh = createLatestRefreshCoordinator(refreshInbox);
 
     async function fetchInbox(state?: InboxState) {
-        await inboxRefresh.request(state);
+        await Promise.all([inboxRefresh.request(state), loadUnreadCount()]);
     }
+
+    // A one-row unread page: its total is the count, no list is read.
+    // One read runs at a time; a call during a read joins it.
+    let unreadRead: Promise<void> | null = null;
+    // Moves with every live event, so a read can tell it was overtaken.
+    let unreadEventSeq = 0;
+
+    function loadUnreadCount(silent = false): Promise<void> {
+        unreadRead ??= readUnreadCount(silent).finally(() => {
+            unreadRead = null;
+        });
+        return unreadRead;
+    }
+
+    async function readUnreadTotal(): Promise<number> {
+        const page = await ws.sendRPC<{total?: number}>(
+            'FLEET_MANAGER',
+            'notification.inbox.list',
+            {state: 'unread', limit: 1}
+        );
+        return page?.total ?? 0;
+    }
+
+    // Events that land during a read make its value stale: read once more,
+    // and if events still move the count, keep the live local value.
+    async function readUnreadCount(silent: boolean): Promise<void> {
+        try {
+            let seq = unreadEventSeq;
+            let server = await readUnreadTotal();
+            if (seq !== unreadEventSeq) {
+                seq = unreadEventSeq;
+                server = await readUnreadTotal();
+                if (seq !== unreadEventSeq && unreadCountLoaded) return;
+            }
+            if (unreadCountLoaded && server !== unreadCount.value) {
+                logCountDrift('unread', unreadCount.value, server);
+            }
+            unreadCount.value = server;
+            unreadCountLoaded = true;
+            countRecheck ??= recheckWhileVisible(
+                () => void reconcileUnreadCount()
+            );
+        } catch (err) {
+            if (!silent)
+                toastRpcError(toast, err, 'Failed to load unread count');
+        }
+    }
+
+    // Push events can be lost: re-read a count someone already loaded.
+    async function reconcileUnreadCount(): Promise<void> {
+        if (!unreadCountLoaded) return;
+        await loadUnreadCount(true);
+    }
+
+    // After a reconnect: only what someone loaded is read again.
+    async function resyncAfterReconnect(): Promise<void> {
+        await Promise.all([
+            inboxLoaded ? inboxRefresh.request(inboxFilter) : undefined,
+            reconcileUnreadCount()
+        ]);
+    }
+
+    onScopeDispose(() => countRecheck?.dispose());
+
+    function moveUnreadCount(change: number): void {
+        unreadEventSeq++;
+        if (!unreadCountLoaded) return;
+        unreadCount.value = Math.max(0, unreadCount.value + change);
+    }
+
+    // Live events refresh only an inbox someone loaded, with its last filter.
+    let inboxLoaded = false;
+    let inboxFilter: InboxState | undefined;
 
     async function refreshInbox(state?: InboxState): Promise<void> {
         const fetchToken = inboxGuard.bump();
         inboxLoading.value = true;
         try {
-            const items = await paginate<NotificationInboxItem>(
-                (offset) =>
-                    ws.sendRPC<PagedEnvelope<NotificationInboxItem>>(
-                        'FLEET_MANAGER',
-                        'notification.inbox.list',
-                        {
-                            ...(state ? {state} : {}),
-                            limit: MAX_PER_PAGE,
-                            offset
-                        }
-                    ),
-                MAX_PER_PAGE
+            const page = await ws.sendRPC<PagedEnvelope<NotificationInboxItem>>(
+                'FLEET_MANAGER',
+                'notification.inbox.list',
+                {
+                    ...(state ? {state} : {}),
+                    limit: INBOX_PAGE_SIZE,
+                    offset: 0
+                }
             );
             if (inboxGuard.isStale(fetchToken)) return;
             const next: Record<number, NotificationInboxItem> = state
                 ? {...inbox.value}
                 : {};
-            for (const i of items) next[i.id] = i;
+            for (const i of page?.items ?? []) next[i.id] = i;
             inbox.value = next;
+            inboxLoaded = true;
+            inboxFilter = state;
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load inbox');
         } finally {
@@ -459,17 +545,40 @@ export const useNotificationsStore = defineStore('notifications', () => {
         }
     }
 
-    // Live updates — bursty event runs would otherwise stack many concurrent
-    // fetchInbox calls; coalesce each burst into one trailing refetch.
-    const inboxRefetch = createTrailingCoalescer(
-        () => {
-            void fetchInbox();
+    // Created ids wait here while the tab is hidden. A burst becomes one
+    // batch read by id, or one first-page read when it is too big.
+    const createdInboxIds = new Set<number>();
+    const createdInboxRead = deferWhileHidden(() => {
+        const ids = [...createdInboxIds];
+        createdInboxIds.clear();
+        void syncCreatedInbox(ids);
+    });
+    const createdInboxBurst = createBatchCoalescer<number>(
+        (ids) => {
+            for (const id of ids) createdInboxIds.add(id);
+            createdInboxRead.request();
         },
-        250,
-        // Cap so a sustained notification burst still refreshes the unread
-        // badge/inbox at least this often instead of starving until it pauses.
-        2000
+        INBOX_EVENT_QUIET_MS,
+        INBOX_EVENT_MAX_WAIT_MS
     );
+
+    async function syncCreatedInbox(ids: number[]): Promise<void> {
+        if (ids.length === 0) return;
+        if (ids.length > INBOX_GET_MANY_MAX_IDS) {
+            await inboxRefresh.request(inboxFilter);
+            return;
+        }
+        try {
+            const res = await ws.sendRPC<NotificationInboxGetManyResult>(
+                'FLEET_MANAGER',
+                'notification.inbox.getmany',
+                {ids}
+            );
+            for (const item of res?.items ?? []) upsertInbox(item);
+        } catch (err) {
+            toastRpcError(toast, err, 'Failed to load inbox');
+        }
+    }
 
     ws.onNotificationEvent((e) => {
         if (e.method === NOTIFICATION_EVENT.DELIVERY_UPDATED) {
@@ -479,8 +588,56 @@ export const useNotificationsStore = defineStore('notifications', () => {
             }
             return;
         }
-        inboxRefetch.schedule();
+        if (!isForCurrentUser(e.params)) return;
+        if (e.method === NOTIFICATION_EVENT.CREATED) {
+            applyCreated(e.params);
+            return;
+        }
+        if (e.method === NOTIFICATION_EVENT.READ_STATE_CHANGED) {
+            applyReadState(e.params);
+        }
     });
+
+    // Inbox events go to the whole org; each names the user it belongs to.
+    function isForCurrentUser(params: Record<string, unknown>): boolean {
+        const me = auth.currentUserId;
+        return typeof params.userId !== 'string' || !me || params.userId === me;
+    }
+
+    // New inbox rows are unread.
+    function applyCreated(params: Record<string, unknown>): void {
+        moveUnreadCount(1);
+        if (!inboxLoaded) return;
+        const id = params.notificationId;
+        if (typeof id === 'number') createdInboxBurst.schedule(id);
+    }
+
+    // The server emits only real changes. The event has no readAt; the next
+    // page read brings it.
+    function applyReadState(params: Record<string, unknown>): void {
+        const state = params.state;
+        if (state !== 'read' && state !== 'unread') return;
+        const id = params.notificationId;
+        if (typeof id !== 'number') {
+            applyAllRead();
+            return;
+        }
+        moveUnreadCount(state === 'unread' ? 1 : -1);
+        const item = inbox.value[id];
+        if (item && item.state !== state) upsertInbox({...item, state});
+    }
+
+    function applyAllRead(): void {
+        unreadEventSeq++;
+        if (unreadCountLoaded) unreadCount.value = 0;
+        const next = {...inbox.value};
+        for (const [id, item] of Object.entries(next)) {
+            if (item.state === 'unread')
+                next[Number(id)] = {...item, state: 'read'};
+        }
+        inboxGuard.bump();
+        inbox.value = next;
+    }
 
     async function renderTemplate(params: {
         template: string;
@@ -1099,6 +1256,9 @@ export const useNotificationsStore = defineStore('notifications', () => {
         inbox,
         inboxLoading,
         unreadCount,
+        loadUnreadCount,
+        reconcileUnreadCount,
+        resyncAfterReconnect,
         history,
         historyLoading,
         attempts,

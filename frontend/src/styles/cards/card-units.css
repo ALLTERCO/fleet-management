@@ -1,0 +1,64 @@
+/* Value + unit — one rule for every card reading. A card adds `.ec-u` (or
+   `.ec-u--sm`) to the unit element and defines no unit typography of its own.
+
+   The unit sits INLINE on the value's baseline, never on its own line: a 1x1
+   tile is ~200px and already stacks icon -> value -> name, so a stacked unit
+   costs a fourth row and forces the value down a size.
+
+   The unit is an annotation and is always smaller than its value. Two tiers,
+   picked from the VALUE's font-size:
+     value 68 / 42 (display, heading)     -> .ec-u      (16)
+     value 26 / 16 (subheading, body)     -> .ec-u--sm  (13) */
+
+/* Value + unit on one baseline. Only needed when the unit is a sibling. */
+.ec-vu {
+    display: inline-flex;
+    align-items: baseline;
+    justify-content: center;
+    min-width: 0;
+}
+
+/* The gap lives on the unit so nested and sibling units space alike. */
+.ec-u {
+    margin-left: var(--space-0-5);
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--color-text-tertiary);
+    /* Hero values are gradient-clipped; without this a nested unit disappears. */
+    -webkit-text-fill-color: var(--color-text-tertiary);
+}
+
+.ec-u--sm {
+    font-size: var(--type-caption);
+}
+
+.ec-u--float {
+    position: absolute;
+    left: 100%;
+    bottom: 0.06em;
+}
+
+/* A bare degree sign is drawn at cap height and needs no leading space. */
+.ec-u--sup {
+    margin-left: 0;
+    vertical-align: top;
+    align-self: flex-start;
+}
+
+/* Small cells drop .ec-hv a tier, so the unit beside it drops with it. */
+@media (max-width: 768px) {
+    .ec-hv-wrap .ec-u {
+        font-size: var(--type-caption);
+    }
+}
+
+/* Colour-tinted cards tint the unit too; size and placement stay from .ec-u. */
+.ec[data-type="rgbw"] .ec-u,
+.ec[data-type="bulb"] .ec-u {
+    color: rgba(var(--rgb-c), 0.4);
+    -webkit-text-fill-color: rgba(var(--rgb-c), 0.4);
+}

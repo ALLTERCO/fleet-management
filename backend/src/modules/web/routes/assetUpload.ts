@@ -22,6 +22,7 @@ import {
 import {bestEffort} from '../../util/fireAndForget';
 import {httpRouteLimit} from '../rateLimit';
 import {senderFromUser} from '../utils/senderFromRequest';
+import {sendFileByName} from '../utils/sendFileByName';
 
 const logger = log4js.getLogger('asset-upload');
 
@@ -207,7 +208,7 @@ router.get(
         }
         res.setHeader('Content-Type', asset.content_type);
         res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
-        res.sendFile(disk, (err) => {
+        sendFileByName(res, disk, (err) => {
             if (err) {
                 logger.warn('asset send failed id=%s err=%s', asset.id, err);
             }

@@ -31,16 +31,16 @@ Use Host SDK for UI/multi-UI work; use backend RPC/OpenAPI for backend/API contr
 | `host-sdk` | `frontend/src/shell/template-host/index.ts` | Use to discover the supported UI-facing domains and helpers. |
 | `host-sdk-index` | `docs/generated/host-sdk-index.json` | Use to find the right @host domain before touching UI/template code. |
 | `ai-and-mcp-reference` | `docs/reference/ai-and-mcp.md` | Use before UI, docs, or MCP work so agents follow the right contract layer. |
-| `deployment-guide` | `deploy/public/deployment.md` | Use for Fleet Manager install/deploy commands and deploy.sh parameters. |
+| `deployment-guide` | `deploy/public/deployment.md` | Use for Fleet Manager install/deploy commands and deploy-public.sh parameters. |
 | `separate-ui-host-sdk-guide` | `docs/reference/separate-ui-host-sdk.md` | Use before building a separate UI, BM template UI, or Host SDK adapter. |
-| `docs-readme` | `docs/README.md` | Use before creating or moving documentation. |
+| `docs-readme` | `docs/public/README.md` | Use to find the right public guide or reference. |
 
 ## Generated Resources
 
 | ID | Path | Use |
 |---|---|---|
 | `host-method-metadata` | `frontend/src/shell/template-host/generated/method-metadata.ts` | Use in UI code via the HOST_METHOD_METADATA export to pick safe calls without leaving @host. |
-| `deploy-reference` | `docs/architecture/deploy-reference.md` | Use after the deployment guide when deploy behavior needs deeper explanation. |
+| `deploy-reference` | `docs/public/reference/deploy-public-reference.md` | Use after the deployment guide when deploy behavior needs deeper explanation. |
 | `rpc-inventory` | `docs/generated/backend-rpc-inventory.json` | Use to find backend owners, permissions, source locations, and callable methods. |
 | `http-inventory` | `docs/generated/backend-http-inventory.json` | Use to verify route shapes, auth middleware, and served static/API endpoints. |
 | `ws-inventory` | `docs/generated/backend-ws-inventory.json` | Use to check WS paths, handlers, and payload caps. |
@@ -65,6 +65,13 @@ Use Host SDK for UI/multi-UI work; use backend RPC/OpenAPI for backend/API contr
 | `fm://auth/transport-matrix` | `docs/generated/transport-auth-matrix.json` | read-only | Authorization and transport boundary lookup. |
 | `fm://api/embedded-apps` | `docs/generated/embedded-apps-api.json` | read-only | Node-RED + Grafana proxied API (create/update/delete flows and dashboards). |
 | `fm://api/execute` | `docs/generated/api.openapi.json` | read-write-deferred | Future controlled API execution through OpenAPI/Scalar MCP. |
+| `fm://docs/ai-and-mcp` | `docs/reference/ai-and-mcp.md` | read-only | MCP and Host SDK entrypoint. |
+| `fm://docs/ai-mcp-operations` | `docs/reference/ai-mcp-operations.md` | read-only | Governed MCP operation workflow. |
+| `fm://docs/separate-ui-host-sdk` | `docs/reference/separate-ui-host-sdk.md` | read-only | Separate UI and template Host SDK guide. |
+| `fm://docs/deployment` | `deploy/public/deployment.md` | read-only | Public installation and deployment guide. |
+| `fm://docs/deploy-reference` | `docs/public/reference/deploy-public-reference.md` | read-only | Deployment architecture reference. |
+| `fm://docs/readme` | `docs/public/README.md` | read-only | Public documentation map. |
+| `fm://docs/doc-drift-report` | `docs/generated/doc-drift-report.md` | read-only | Generated documentation drift report. |
 
 ## MCP Search Corpus
 
@@ -74,8 +81,8 @@ Use Host SDK for UI/multi-UI work; use backend RPC/OpenAPI for backend/API contr
 | `ai-mcp-operations` | `docs/reference/ai-mcp-operations.md` | Governed MCP operation workflow. |
 | `separate-ui-host-sdk-guide` | `docs/reference/separate-ui-host-sdk.md` | Separate UI and template Host SDK guide. |
 | `deployment-guide` | `deploy/public/deployment.md` | Public installation and deployment guide. |
-| `deploy-reference` | `docs/architecture/deploy-reference.md` | Deployment architecture reference. |
-| `docs-readme` | `docs/README.md` | Documentation map and conventions. |
+| `deploy-reference` | `docs/public/reference/deploy-public-reference.md` | Deployment architecture reference. |
+| `docs-readme` | `docs/public/README.md` | Public documentation map. |
 | `doc-drift-report` | `docs/generated/doc-drift-report.md` | Generated documentation drift report. |
 
 ## Workflows
@@ -90,7 +97,7 @@ The Host SDK is the stable UI-facing layer; raw backend RPC is lower level.
 
 Read: `deployment-guide`, `deploy-reference`, `ai-and-mcp-reference`
 
-The deploy docs define deploy.sh commands, flags, environments, modes, and routing behavior.
+The deploy docs define deploy-public.sh commands, flags, environments, modes, and routing behavior.
 
 ### Change backend RPC contract
 

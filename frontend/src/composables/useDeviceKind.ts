@@ -1,4 +1,7 @@
+import type {DeviceSource} from '@api/deviceSource';
 import {computed, type MaybeRef, unref} from 'vue';
+
+export type {DeviceSource};
 
 export type DeviceKind =
     | 'physical'
@@ -6,8 +9,6 @@ export type DeviceKind =
     | 'extracted'
     | 'composed'
     | 'connector';
-
-export type DeviceSource = 'shelly' | 'virtual' | 'bluetooth';
 
 export interface DeviceKindFlags {
     kind: DeviceKind;
@@ -27,15 +28,23 @@ function classifyByIdPrefix(externalId: string | null | undefined): DeviceKind {
     return 'physical';
 }
 
+// Keyed by the backend union, so a new source is a build error here.
+const SOURCE_TO_KIND: Record<DeviceSource, DeviceKind> = {
+    ws: 'physical',
+    local: 'physical',
+    offline: 'physical',
+    virtual: 'composed',
+    bluetooth: 'bluetooth'
+};
+
 /** Backend-sent device.source is the classification; id prefix only as fallback. */
 export function classifyDevice(
     source: DeviceSource | null | undefined,
     externalId?: string | null
 ): DeviceKind {
-    if (source === 'virtual') return 'composed';
-    if (source === 'bluetooth') return 'bluetooth';
-    if (source === 'shelly') return 'physical';
-    return classifyByIdPrefix(externalId);
+    return (
+        (source && SOURCE_TO_KIND[source]) ?? classifyByIdPrefix(externalId)
+    );
 }
 
 export function useDeviceKind(

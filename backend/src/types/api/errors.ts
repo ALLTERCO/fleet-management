@@ -164,6 +164,29 @@ export const DOMAIN_ERRORS = {
         category: 'device'
     },
 
+    // --- report.* (1400-1499) --------------------------------------------
+    GasUnitDefinitionMismatch: {
+        code: 1400,
+        message:
+            'Gas conversion figures contradict the units they are billed and metered in — correct them, or state a unitOverrideReason',
+        httpStatus: 400,
+        category: 'validation'
+    },
+    NoRecordedData: {
+        code: 1401,
+        message:
+            'No measurements were recorded for the selected devices in this period',
+        httpStatus: 404,
+        category: 'not_found'
+    },
+    EnergyHistoryIncomplete: {
+        code: 1402,
+        message:
+            'Energy history in this period is held or abandoned and cannot be completed by waiting',
+        httpStatus: 409,
+        category: 'conflict'
+    },
+
     // --- dashboard.* (1500-1599) -----------------------------------------
     DashboardNotFound: {
         code: 1500,
@@ -316,6 +339,12 @@ export const DOMAIN_ERRORS = {
         httpStatus: 409,
         category: 'conflict'
     },
+    LocationSubtreeChanged: {
+        code: 2907,
+        message: 'Location tree changed while deletion was being authorized',
+        httpStatus: 409,
+        category: 'conflict'
+    },
 
     // --- tag.* (3000-3099) -----------------------------------------------
     TagNotFound: {
@@ -437,6 +466,14 @@ export const DOMAIN_ERRORS = {
         message: 'Device ingress connection was rejected',
         httpStatus: 403,
         category: 'auth'
+    },
+
+    // --- user.* (3600-3699) ----------------------------------------------
+    UserAlreadyExists: {
+        code: 3600,
+        message: 'A user with this email address already exists',
+        httpStatus: 409,
+        category: 'conflict'
     }
 
     // Report / dashboard / plugin / notification / audit / backup /
@@ -454,6 +491,14 @@ export interface FieldError {
     error: string;
     code: string;
 }
+
+/** Stable per-field codes for identity forms. Never repurpose a shipped code. */
+export const IDENTITY_FIELD_ERROR_CODES = {
+    UsernameAlreadyExists: 'UsernameAlreadyExists'
+} as const;
+
+export type IdentityFieldErrorCode =
+    (typeof IDENTITY_FIELD_ERROR_CODES)[keyof typeof IDENTITY_FIELD_ERROR_CODES];
 
 /** Unified error payload — every RPC error response uses this shape. */
 export interface RpcErrorPayload {
@@ -571,6 +616,7 @@ export interface RpcCallError {
     message?: string;
     data?: {
         field?: string;
+        fieldErrors?: FieldError[];
         details?: {
             resourceType?: string;
             operation?: string;

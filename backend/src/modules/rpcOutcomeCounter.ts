@@ -3,6 +3,7 @@
 
 import log4js from 'log4js';
 import {incrementLabeledCounter} from './Observability';
+import type {LabeledCounterName} from './observability/counters';
 import {formatError} from './util/formatError';
 
 const logger = log4js.getLogger('rpcOutcomeCounter');
@@ -13,13 +14,13 @@ const FALLBACK_ERROR_OUTCOME = 'error';
 export type OutcomeClassifier = (err: unknown) => string;
 
 export interface OutcomeCounterSpec<T> {
-    metric: string;
+    metric: LabeledCounterName;
     classify: OutcomeClassifier;
     run: () => Promise<T>;
 }
 
 function safeClassify(
-    metric: string,
+    metric: LabeledCounterName,
     classify: OutcomeClassifier,
     err: unknown
 ): string {
@@ -51,7 +52,10 @@ export async function withOutcomeCounter<T>(
 
 // Per-arm helper for branches that must record an outcome before throwing
 // (i.e. when the classifier cannot recover the outcome from the error alone).
-export function recordOutcome(metric: string, outcome: string): void {
+export function recordOutcome(
+    metric: LabeledCounterName,
+    outcome: string
+): void {
     incrementLabeledCounter(metric, {outcome});
 }
 

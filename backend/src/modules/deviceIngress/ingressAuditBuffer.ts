@@ -1,8 +1,10 @@
 // Redis-buffered ingress audit records. The gate enqueues here on connect (one
 // fast Redis push) instead of writing Postgres inline; the flusher drains and
 // bulk-inserts them. One buffer, one flush — no per-connect DB write.
+import {randomUUID} from 'node:crypto';
 import * as Observability from '../Observability';
 import {ingressAudit} from '../redis/services';
+import {bulkInsertConnections} from './deviceIngressRepository';
 
 // Cap the buffer so a stalled flush can't grow Redis without bound; sized well
 // above a realistic backlog, and overflow drops oldest at the Redis layer.
@@ -33,14 +35,46 @@ export interface IngressConnectionEvent {
 
 export type IngressAuditEvent = IngressConnectionEvent;
 
+export type EnqueueIngressConnectionInput = Omit<
+    IngressConnectionEvent,
+    'kind' | 'id' | 'createdAt'
+>;
+
+type PersistIngressAudit = (records: IngressConnectionEvent[]) => Promise<void>;
+
+// Single construction path for every connection outcome. Mint the id and
+// timestamp before enqueue so live trusted sessions can register immediately
+// while the durable row is flushed asynchronously.
+export async function enqueueIngressConnection(
+    input: EnqueueIngressConnectionInput
+): Promise<string> {
+    const id = randomUUID();
+    await enqueueIngressAudit({
+        kind: 'connection',
+        id,
+        createdAt: new Date().toISOString(),
+        ...input
+    });
+    return id;
+}
+
 export async function enqueueIngressAudit(
-    event: IngressAuditEvent
+    event: IngressAuditEvent,
+    persist: PersistIngressAudit = bulkInsertConnections
 ): Promise<void> {
-    await ingressAudit.push(
-        JSON.stringify(event),
-        BUFFER_MAXLEN,
-        BUFFER_TTL_MS
-    );
+    try {
+        await ingressAudit.push(
+            JSON.stringify(event),
+            BUFFER_MAXLEN,
+            BUFFER_TTL_MS
+        );
+    } catch {
+        // Connection audit is durable history, not replaceable live state.
+        // Preserve the caller-minted id and connect timestamp through the
+        // existing idempotent bulk writer when Redis cannot accept the row.
+        Observability.incrementCounter('ingress_audit_postgres_fallback');
+        await persist([event]);
+    }
 }
 
 export async function drainIngressAudit(

@@ -11,10 +11,10 @@
             OFF
         </span>
 
-        <!-- Battery pill (hidden when sleeping — moon takes its place; and on
-             battery cards, whose whole face already shows the level) -->
+        <!-- Battery pill — only when low enough to act on. Hidden when sleeping
+             and on battery cards, whose face already shows the level. -->
         <span
-            v-if="resolvedBattery != null && !isSleeping && !hideBattery"
+            v-if="showBattery"
             class="ec-batt"
             :class="batteryClass"
         >
@@ -26,6 +26,7 @@
 
 <script setup lang="ts">
 import {computed} from 'vue';
+import {shouldShowBatteryBadge} from '@/helpers/device';
 import {useDevicesStore} from '@/stores/devices';
 
 const props = defineProps<{
@@ -65,6 +66,14 @@ const resolvedBattery = computed(() => {
         null
     );
 });
+
+// Shared with the device list so both show a battery at the same point.
+const showBattery = computed(
+    () =>
+        !props.hideBattery &&
+        !isSleeping.value &&
+        shouldShowBatteryBadge(resolvedBattery.value)
+);
 
 const batteryClass = computed(() => {
     if (resolvedBattery.value == null) return '';

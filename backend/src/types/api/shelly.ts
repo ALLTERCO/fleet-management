@@ -120,7 +120,13 @@ export const SHELLY_GET_COMPONENTS_PARAMS_SCHEMA: JsonSchema = {
     properties: {
         shellyID: SHELLY_ID,
         offset: {type: 'integer'},
-        include: {type: 'array', items: {type: 'string'}},
+        include: {
+            type: 'array',
+            items: {type: 'string'},
+            description:
+                "What to return with each component key. 'status' adds its status, 'config' its config; " +
+                'use both for everything. Keys alone when left out. The device decides what it supports.'
+        },
         dynamic_only: {type: 'boolean'},
         keys: {type: 'array', items: {type: 'string'}}
     }

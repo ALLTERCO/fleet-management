@@ -11,8 +11,13 @@ export function accessLogLevelForStatus(statusCode: number): AccessLogLevel {
     return 'info';
 }
 
+// A webhook may carry its secret as ?token=, so its query never reaches a log.
+function withoutHookQuery(url: string): string {
+    return url.startsWith('/automation-hooks/') ? url.split('?')[0]! : url;
+}
+
 export function sanitizeAccessLogUrl(url: string): string {
-    return url.replace(
+    return withoutHookQuery(url).replace(
         /^\/api\/tariff\/live\/[^/?#]+(?=$|[/?#])/,
         '/api/tariff/live/[redacted]'
     );

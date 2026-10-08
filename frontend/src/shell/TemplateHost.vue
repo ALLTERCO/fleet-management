@@ -7,34 +7,138 @@
                 <summary>Stack trace (paste this if you report the bug)</summary>
                 <pre>{{ error.stack }}</pre>
             </details>
-            <button class="template-host__reload" @click="reloadView">Reload</button>
+            <button type="button" class="template-host__reload" @click="reloadView">Reload</button>
         </div>
-        <Suspense v-else>
-            <component :is="TemplateRoot" />
+        <div v-else-if="!profileReady" class="template-host__loading">
+            Loading organization settings...
+        </div>
+        <Suspense v-else-if="vueRoot">
+            <component :is="vueRoot" />
             <template #fallback>
                 <div class="template-host__loading">Loading fleet view...</div>
             </template>
         </Suspense>
+        <div v-else ref="mountPoint" class="template-host__mount" />
     </section>
 </template>
 
 <script setup lang="ts">
-import TemplateRoot from '@template/index.vue';
-import {onErrorCaptured, ref} from 'vue';
+import {
+    computed,
+    inject,
+    onBeforeUnmount,
+    onErrorCaptured,
+    onMounted,
+    ref,
+    shallowRef,
+    watch
+} from 'vue';
+import {routerKey} from 'vue-router';
+import {useOrganizationStore} from '@/stores/organization';
+import {resolveTemplateEntry} from './template-entry';
+import {createFleetRuntimeContext} from './template-host/app/fleet-runtime-context';
+import type {
+    MountedTemplate,
+    TemplateRuntimeContext
+} from './template-host/core/types';
+import {provideFleetRuntime} from './template-host/vue/provider';
 
-// We capture both message + stack so the user can paste a copy-friendly
-// trace into the bug report instead of digging through DevTools. The
-// "happens from time to time" intermittent bugs (transient null on a
-// host composable, race during initial mount) need the stack to locate.
+declare const NPM_APP_VERSION: string;
+
+// Message + stack so a user can paste a copy-friendly trace into a bug report;
+// the intermittent mount races are not locatable without it.
 const error = ref<{message: string; stack?: string} | null>(null);
+const mountPoint = ref<HTMLElement | null>(null);
+const vueRoot = shallowRef<unknown>(null);
+const organization = useOrganizationStore();
+const profileReady = computed(() => organization.profile !== null);
 
-onErrorCaptured((err) => {
+let runtime: TemplateRuntimeContext | null = null;
+let mounted: MountedTemplate | null = null;
+const router = inject(routerKey, null);
+
+function reportError(err: unknown): void {
     if (err instanceof Error) {
         error.value = {message: err.message, stack: err.stack};
     } else {
         error.value = {message: String(err)};
     }
-    console.error('[template-host] render error:', err);
+    console.error('[template-host] template failed:', err);
+}
+
+// One runtime context per host, created in setup so Pinia and the Vue app are
+// live, and provided synchronously for Vue templates that inject it.
+try {
+    runtime = createFleetRuntimeContext({hostVersion: NPM_APP_VERSION, router: router ?? undefined});
+    provideFleetRuntime(runtime);
+} catch (err) {
+    reportError(err);
+}
+
+const entry = error.value ? null : safeResolveEntry();
+
+function safeResolveEntry() {
+    try {
+        const resolved = resolveTemplateEntry(NPM_APP_VERSION);
+        if (profileReady.value && resolved.renderer === 'vue') {
+            vueRoot.value = resolved.component;
+        }
+        return resolved;
+    } catch (err) {
+        reportError(err);
+        return null;
+    }
+}
+
+async function mountReadyEntry(): Promise<void> {
+    if (!profileReady.value || !entry || !runtime) return;
+    if (entry.renderer === 'vue') {
+        vueRoot.value = entry.component;
+        return;
+    }
+    if (!mountPoint.value) {
+        reportError(new Error('React template has no mount element'));
+        return;
+    }
+    if (mounted) return;
+    try {
+        mounted = await entry.mount(mountPoint.value, runtime);
+    } catch (err) {
+        reportError(err);
+    }
+}
+
+onMounted(() => {
+    void mountReadyEntry();
+});
+
+watch(profileReady, (ready) => {
+    if (ready) void mountReadyEntry();
+}, {flush: 'post'});
+
+watch(
+    () => organization.error,
+    (profileError) => {
+        if (!organization.profile && profileError) {
+            reportError(new Error(`Organization settings could not be loaded: ${profileError}`));
+        }
+    }
+);
+
+onBeforeUnmount(async () => {
+    try {
+        await mounted?.unmount();
+    } catch (err) {
+        console.error('[template-host] template unmount failed:', err);
+    } finally {
+        mounted = null;
+        runtime?.dispose();
+        runtime = null;
+    }
+});
+
+onErrorCaptured((err) => {
+    reportError(err);
     return false;
 });
 
@@ -48,6 +152,10 @@ function reloadView() {
     min-height: 100vh;
     color: var(--fm-template-text, #172033);
     background: var(--fm-template-background, #f6f8fb);
+}
+
+.template-host__mount {
+    min-height: 100vh;
 }
 
 .template-host__loading,

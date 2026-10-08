@@ -17,6 +17,7 @@ import type {
     EnergySaveMeterConnectionResponse
 } from '../../types/api/energy';
 import {
+    assertConnectionBalanceConsistent,
     assertConnectionReferences,
     assertConnectionShape
 } from './meterConnectionValidation';
@@ -62,6 +63,7 @@ export async function handleSaveMeterConnection(
     assertConnectionReferences(params, {
         isOrgMeter: (meterId) => orgMeterIds.has(meterId)
     });
+    assertConnectionBalanceConsistent(params, await deps.repo.list(org));
 
     const id = await deps.repo.save(toDbParams(params, org));
     const connection = await findSavedConnection(deps.repo, org, id);

@@ -1,18 +1,8 @@
-// Phase 7: anomaly band evaluator.
-//
-// Catches values that drift outside a learned statistical band (mean ±
-// k·stddev) for a metric. The engine maintains a per-(subject, field)
-// rolling window outside this module; here we keep the math pure so it
-// can be tested without any DB / time source.
-//
-// The simplest robust implementation: Welford-online mean + variance
-// over a fixed-size window, then compare the current sample to
-// mean ± k * stddev. K defaults to 3 (~99.7% under a normal
-// assumption); the engine can pass a tighter k for tighter rules.
+// Keep each meter's baseline separate so readings cannot train unrelated meters.
 
 import {BoundedMap} from '../../boundedMap';
 import {fieldFingerprintV2} from '../fingerprint';
-import type {Evaluator, MatchResult} from '../types';
+import type {ClearMatch, Evaluator, MatchResult} from '../types';
 import {
     clearRuleFieldCache,
     clearRuleFieldCacheForDevice,
@@ -177,58 +167,132 @@ function readNumeric(
     return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
-export const anomalyBandEvaluator: Evaluator = {
-    triggerKinds: ['device_status_changed'],
-    clearKinds: ['device_status_changed'],
-    match(event, rule, opts): MatchResult | null {
-        if (rule.kind !== KIND) return null;
-        if (event.kind !== 'device_status_changed') return null;
-        const cfg = readConfig(rule.config);
-        if (!cfg) return null;
-        const current = readNumeric(event.status, cfg.component, cfg.field);
-        if (current === null) return null;
+const WILDCARD = ':*';
+const isWildcard = (component: string) => component.endsWith(WILDCARD);
 
-        const key = ruleFieldKey(
-            rule.id,
-            event.shellyID,
-            cfg.component,
-            cfg.field
-        );
-        const stored = windowCache.get(key) ?? [];
-        let samples: number[];
-        if (opts?.preview) {
-            // Read-only: evaluate a transient window; never touch the live one.
-            samples = [...stored, current].slice(-cfg.windowSamples);
-        } else {
+// Concrete components to evaluate: the literal one, or every native instance of
+// the type for an "em:*"-style watch-all.
+function targetComponents(
+    cfg: AnomalyConfig,
+    status: Record<string, unknown>
+): string[] {
+    if (!isWildcard(cfg.component)) return [cfg.component];
+    const type = cfg.component.slice(0, -WILDCARD.length);
+    return Object.keys(status).filter((k) => k.split(':')[0] === type);
+}
+
+// One concrete component's band.
+//
+// The cache key MUST carry the concrete component, never cfg.component: with
+// `em:*` the raw config value would put em:0, em:1 and em:2 into a single
+// sample series, so the baseline would be a mean across unrelated meters and
+// every anomaly reported would be noise. Each meter learns its own normal.
+function matchComponent(
+    event: {shellyID: string; status: Record<string, unknown>},
+    rule: {id: number; name: string},
+    cfg: AnomalyConfig,
+    component: string,
+    preview: boolean
+): MatchResult | null {
+    const current = readNumeric(event.status, component, cfg.field);
+    if (current === null) return null;
+
+    const key = ruleFieldKey(rule.id, event.shellyID, component, cfg.field);
+    const stored = windowCache.get(key) ?? [];
+
+    // evaluateAnomalyBand takes the last value as the reading under test and
+    // everything before it as the baseline, so `stored` is exactly the history
+    // this reading should be judged against.
+    const result = evaluateAnomalyBand(
+        {samples: [...stored, current]},
+        {k: cfg.k, minSamples: cfg.minSamples, minStdDev: cfg.minStdDev}
+    );
+
+    if (!preview) {
+        // An anomaly must not become part of what counts as normal. Kept in
+        // the window it pulled the mean up and widened the band for every
+        // later check, so the SECOND occurrence of a fault was quieter than
+        // the first and a sustained fault went silent altogether — the
+        // detector learning to accept the thing it exists to catch.
+        if (!result.matched) {
             stored.push(current);
             if (stored.length > cfg.windowSamples) {
                 stored.splice(0, stored.length - cfg.windowSamples);
             }
-            windowCache.set(key, stored);
-            samples = stored;
         }
+        windowCache.set(key, stored);
+    }
 
-        const result = evaluateAnomalyBand(
-            {samples},
-            {
-                k: cfg.k,
-                minSamples: cfg.minSamples,
-                minStdDev: cfg.minStdDev
-            }
+    if (!result.matched) return null;
+
+    return synthesizeAnomalyBandHit({
+        ruleId: rule.id,
+        ruleName: rule.name,
+        shellyID: event.shellyID,
+        component,
+        field: cfg.field,
+        result
+    });
+}
+
+function configFor(rule: {
+    kind: string;
+    config: Record<string, unknown>;
+}): AnomalyConfig | null {
+    if (rule.kind !== KIND) return null;
+    return readConfig(rule.config);
+}
+
+export const anomalyBandEvaluator: Evaluator = {
+    stateful: true,
+    triggerKinds: ['device_status_changed'],
+    clearKinds: ['device_status_changed'],
+    // Single-component path for direct callers (preview/tests); the engine
+    // fires via matchAll. Wildcard is owned by matchAll, so a rule can never
+    // answer the same event twice.
+    match(event, rule, opts): MatchResult | null {
+        if (event.kind !== 'device_status_changed') return null;
+        const cfg = configFor(rule);
+        if (!cfg || isWildcard(cfg.component)) return null;
+        return matchComponent(
+            event,
+            rule,
+            cfg,
+            cfg.component,
+            opts?.preview === true
         );
-        if (!result.matched) return null;
-
-        return synthesizeAnomalyBandHit({
-            ruleId: rule.id,
-            ruleName: rule.name,
-            shellyID: event.shellyID,
-            component: cfg.component,
-            field: cfg.field,
-            result
-        });
     },
+
+    matchAll(event, rule, opts): MatchResult[] {
+        if (event.kind !== 'device_status_changed') return [];
+        const cfg = configFor(rule);
+        if (!cfg) return [];
+        return targetComponents(cfg, event.status)
+            .map((c) =>
+                matchComponent(event, rule, cfg, c, opts?.preview === true)
+            )
+            .filter((m): m is MatchResult => m !== null);
+    },
+
     matchClear(event, rule) {
+        const cfg = configFor(rule);
+        if (cfg && isWildcard(cfg.component)) return null;
         return deviceFieldClearMatch(event, rule, KIND, readConfig);
+    },
+
+    matchClearAll(event, rule): readonly ClearMatch[] {
+        if (event.kind !== 'device_status_changed') return [];
+        const cfg = configFor(rule);
+        if (!cfg) return [];
+        return targetComponents(cfg, event.status).map((component) => ({
+            fingerprintV2: fieldFingerprintV2({
+                ruleId: rule.id,
+                subjectType: 'device',
+                subjectId: event.shellyID,
+                component,
+                field: cfg.field
+            })
+        }));
     }
 };
 

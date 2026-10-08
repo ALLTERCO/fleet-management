@@ -12,9 +12,17 @@ export interface StatusBatch {
     p_prev_value: number[];
 }
 
+export interface StatusSourceDevice {
+    deviceListId: number;
+    externalId: string;
+    organizationId: string;
+}
+
 export interface CoalescedBatch {
     batch: StatusBatch;
     sourceIds: string[];
+    sourceDevices: StatusSourceDevice[];
+    legacySourceMetadata: boolean;
 }
 
 export interface CoalesceResult {
@@ -47,24 +55,47 @@ export function coalesceStatusBatches(
     const poisonIds: string[] = [];
     let current = emptyBatch();
     let currentIds: string[] = [];
+    let currentSources = new Map<number, StatusSourceDevice>();
+    let conflictingSourceIds = new Set<number>();
+    let legacySourceMetadata = false;
     for (const entry of entries) {
-        const parsed = parseEntryBatch(entry);
+        const parsed = parseEntry(entry);
         if (parsed === null) {
             poisonIds.push(entry.id);
             continue;
         }
-        if (current.p_ts.length + parsed.p_ts.length > maxRows) {
+        if (current.p_ts.length + parsed.batch.p_ts.length > maxRows) {
             if (current.p_ts.length > 0) {
-                batches.push({batch: current, sourceIds: currentIds});
+                batches.push({
+                    batch: current,
+                    sourceIds: currentIds,
+                    sourceDevices: [...currentSources.values()],
+                    legacySourceMetadata
+                });
                 current = emptyBatch();
                 currentIds = [];
+                currentSources = new Map();
+                conflictingSourceIds = new Set();
+                legacySourceMetadata = false;
             }
         }
-        appendBatch(current, parsed);
+        appendBatch(current, parsed.batch);
+        legacySourceMetadata ||=
+            mergeSources(
+                currentSources,
+                conflictingSourceIds,
+                parsed.sourceDevices
+            ) > 0;
+        legacySourceMetadata ||= parsed.legacySourceMetadata;
         currentIds.push(entry.id);
     }
     if (current.p_ts.length > 0) {
-        batches.push({batch: current, sourceIds: currentIds});
+        batches.push({
+            batch: current,
+            sourceIds: currentIds,
+            sourceDevices: [...currentSources.values()],
+            legacySourceMetadata
+        });
     }
     return {batches, poisonIds};
 }
@@ -80,19 +111,87 @@ function emptyBatch(): StatusBatch {
     };
 }
 
-function parseEntryBatch(entry: StreamEntry): StatusBatch | null {
+interface ParsedStatusEntry {
+    batch: StatusBatch;
+    sourceDevices: StatusSourceDevice[];
+    legacySourceMetadata: boolean;
+}
+
+function parseEntry(entry: StreamEntry): ParsedStatusEntry | null {
     const raw = entry.fields.batch;
     if (typeof raw !== 'string') return null;
     try {
         const obj = JSON.parse(raw);
         if (!isStatusBatch(obj)) return null;
+        const sourceDevices = parseSourceDevices(entry.fields.sourceDevices);
         return {
-            ...obj,
-            p_ts: obj.p_ts.map((seconds) => toEpochSeconds(seconds, 0))
+            batch: {
+                ...obj,
+                p_ts: obj.p_ts.map((seconds) => toEpochSeconds(seconds, 0))
+            },
+            sourceDevices: sourceDevices ?? [],
+            legacySourceMetadata: sourceDevices === null
         };
     } catch {
         return null;
     }
+}
+
+function parseSourceDevices(
+    raw: string | undefined
+): StatusSourceDevice[] | null {
+    if (raw === undefined) return null;
+    try {
+        const parsed: unknown = JSON.parse(raw);
+        if (!Array.isArray(parsed) || !parsed.every(isStatusSourceDevice)) {
+            return null;
+        }
+        return parsed;
+    } catch {
+        return null;
+    }
+}
+
+function isStatusSourceDevice(value: unknown): value is StatusSourceDevice {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return false;
+    }
+    const source = value as Partial<StatusSourceDevice>;
+    return (
+        Number.isInteger(source.deviceListId) &&
+        typeof source.externalId === 'string' &&
+        source.externalId.length > 0 &&
+        typeof source.organizationId === 'string' &&
+        source.organizationId.length > 0
+    );
+}
+
+function mergeSources(
+    target: Map<number, StatusSourceDevice>,
+    conflicts: Set<number>,
+    sources: readonly StatusSourceDevice[]
+): number {
+    let conflictCount = 0;
+    for (const source of sources) {
+        if (conflicts.has(source.deviceListId)) continue;
+        const current = target.get(source.deviceListId);
+        if (
+            current &&
+            (current.externalId !== source.externalId ||
+                current.organizationId !== source.organizationId)
+        ) {
+            // A device-list identity is immutable. Conflicting stream metadata
+            // is not trusted; remove it so the bounded PostgreSQL compatibility
+            // resolver restores the authoritative identity without dropping the
+            // status rows.
+            target.delete(source.deviceListId);
+            conflicts.add(source.deviceListId);
+            conflictCount++;
+            continue;
+        }
+        target.set(source.deviceListId, source);
+    }
+    return conflictCount;
 }
 
 function appendBatch(into: StatusBatch, from: StatusBatch): void {

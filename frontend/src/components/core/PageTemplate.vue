@@ -12,6 +12,7 @@
                         </slot>
                     </div>
 
+                    <GlobalSearch />
                     <AlertBell class="pt-topbar__bell" />
                     <PageTopMenu class="pt-topbar__menu" />
                 </header>
@@ -182,6 +183,7 @@ import AlertBell from '@/components/core/AlertBell.vue';
 import EmptyBlock from '@/components/core/EmptyBlock.vue';
 import ErrorBoundary from '@/components/core/ErrorBoundary.vue';
 import GlassShell from '@/components/core/GlassShell.vue';
+import GlobalSearch from '@/components/core/GlobalSearch.vue';
 import PageTopMenu from '@/components/core/PageTopMenu.vue';
 import ListSourceRenderer from '@/components/core/pageTemplate/ListSourceRenderer.vue';
 import PageToolbar from '@/components/core/pageTemplate/PageToolbar.vue';

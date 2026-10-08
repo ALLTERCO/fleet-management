@@ -17,7 +17,8 @@ import type {
 } from '../../types/api/virtualdevice';
 import * as postgres from '../PostgresProvider';
 import {getBluetoothDevice} from './bluetoothRepository';
-import {classifyBluComponent, scoreCandidate} from './profileMatchSources';
+import {classifyBluComponent} from './profileMatchSources';
+import {scoreCandidate} from './profileRoleScoring';
 import {
     classifySourceComponent,
     collectBindableComponentKeys

@@ -21,18 +21,27 @@ import type {
     SensorRepository
 } from '../../modules/repositories/SensorRepository';
 import {runBoundedParallel} from '../../modules/util/runBoundedParallel';
+import {
+    loadVirtualRoleHistorySources,
+    type VirtualRoleSource
+} from '../../modules/virtualDevice/energySources';
+import {readVirtualDeviceRoleHistory} from '../../modules/virtualDevice/historyRepository';
+import {filterReadableVirtualSourceMap} from '../../modules/virtualDevice/sourceAccessPolicy';
 import RpcError from '../../rpc/RpcError';
 import {MAX_RANGE, parseDateRange} from '../../rpc/validation';
 import type {EnergyBucket} from '../../types/api/energy';
-import type {
-    SensorQueryParams,
-    SensorQueryResponse,
-    SensorQueryRow
+import {
+    type SensorQueryParams,
+    type SensorQueryResponse,
+    type SensorQueryRow,
+    sensorSourceAccepted,
+    UNDECLARED_ROLE_SENSOR_SOURCE
 } from '../../types/api/sensor';
 import {
     resolveScope,
     type SenderCapabilities,
-    senderCanCrossOrganizations
+    senderCanCrossOrganizations,
+    virtualSourceOrganization
 } from '../energy/queryHandler';
 
 // Same OOM ceiling as Energy.Query — one shared row cap for both time-series
@@ -52,11 +61,22 @@ type Scope = {
     idMap: Readonly<Record<number, string>>;
 };
 
+export interface SensorVirtualHistoryDeps {
+    loadRoleSources: typeof loadVirtualRoleHistorySources;
+    readRoleHistory: typeof readVirtualDeviceRoleHistory;
+}
+
+const defaultVirtualDeps: SensorVirtualHistoryDeps = {
+    loadRoleSources: loadVirtualRoleHistorySources,
+    readRoleHistory: readVirtualDeviceRoleHistory
+};
+
 export async function handleSensorQuery(
     params: SensorQueryParams,
     sender: SenderCapabilities,
     scopeRepo: EnergyRepository,
-    sensorRepo: SensorRepository
+    sensorRepo: SensorRepository,
+    virtualDeps: SensorVirtualHistoryDeps = defaultVirtualDeps
 ): Promise<SensorQueryResponse> {
     // Mutual exclusion: the schema can't express it with Draft 7.
     if (params.scope !== undefined && params.devices !== undefined) {
@@ -80,19 +100,45 @@ export async function handleSensorQuery(
     const organizationId = senderCanCrossOrganizations(sender)
         ? null
         : (sender.getOrganizationId() ?? null);
+    // A named source is pushed into the DB read; an omitted one cannot be,
+    // because "every source except device health" is not expressible in
+    // fn_numeric_history's single p_source argument. Ambient stays a row-level
+    // rule (sensorSourceAccepted), applied where the aliasing filter already
+    // re-pages to make up for dropped rows.
     const source = params.source ?? null;
+    const virtualIds = scope.internalIds.filter((id) =>
+        scope.idMap[id]?.startsWith('vdev_')
+    );
+    const loadedVirtualRoles =
+        virtualIds.length > 0
+            ? await virtualDeps.loadRoleSources(
+                  virtualSourceOrganization(organizationId, sender),
+                  virtualIds
+              )
+            : new Map<number, VirtualRoleSource[]>();
+    const virtualRoles = await filterReadableVirtualSourceMap(
+        sender,
+        loadedVirtualRoles,
+        {from, to}
+    );
     const startMs = Date.now();
 
     const tasks = params.kinds.map(
         (kind) => () =>
-            queryKindRows(sensorRepo, scope, {
-                organizationId,
-                kind,
-                source,
-                from,
-                to,
-                bucket
-            })
+            queryKindRows(
+                sensorRepo,
+                scope,
+                {
+                    organizationId,
+                    kind,
+                    source,
+                    from,
+                    to,
+                    bucket
+                },
+                virtualRoles,
+                virtualDeps
+            )
     );
     const settled = await runBoundedParallel({
         tasks,
@@ -107,7 +153,8 @@ export async function handleSensorQuery(
             (r): r is PromiseFulfilledResult<SensorQueryRow[]> =>
                 r.status === 'fulfilled'
         )
-        .flatMap((r) => r.value);
+        .flatMap((r) => r.value)
+        .sort(compareSensorRows);
     const executionMs = Date.now() - startMs;
 
     const materialized = allRows.length;
@@ -135,6 +182,17 @@ export async function handleSensorQuery(
     };
 }
 
+function compareSensorRows(a: SensorQueryRow, b: SensorQueryRow): number {
+    return (
+        a.bucket.localeCompare(b.bucket) ||
+        a.device - b.device ||
+        a.kind.localeCompare(b.kind) ||
+        a.source.localeCompare(b.source) ||
+        (a.channel ?? -1) - (b.channel ?? -1) ||
+        (a.roleKey ?? '').localeCompare(b.roleKey ?? '')
+    );
+}
+
 async function queryKindRows(
     sensorRepo: SensorRepository,
     scope: Scope,
@@ -145,20 +203,140 @@ async function queryKindRows(
         from: Date;
         to: Date;
         bucket: EnergyBucket;
-    }
+    },
+    virtualRoles: ReadonlyMap<number, VirtualRoleSource[]>,
+    virtualDeps: SensorVirtualHistoryDeps
 ): Promise<SensorQueryRow[]> {
-    const rows = await sensorRepo.queryNumeric({
+    const virtualIds = new Set(virtualRoles.keys());
+    const physicalIds = scope.internalIds.filter((id) => !virtualIds.has(id));
+    const rawLimit = SENSOR_QUERY_ROW_LIMIT + 1;
+    let rawOffset = 0;
+    let lastPhysicalPage = await sensorRepo.queryNumeric({
         organizationId: opts.organizationId,
-        internalIds: scope.internalIds,
+        internalIds: physicalIds,
         kind: opts.kind,
         source: opts.source,
         from: opts.from,
         to: opts.to,
         bucket: opts.bucket,
         // +1 detects overflow; the merged cap is enforced after the fan-out.
-        limit: SENSOR_QUERY_ROW_LIMIT + 1
+        limit: rawLimit,
+        ...(virtualRoles.size > 0 ? {offset: rawOffset} : {})
     });
-    return rows.map((r) => toRow(opts.kind, r, scope.idMap));
+    rawOffset += lastPhysicalPage.length;
+    const selectedIds = new Set(scope.internalIds);
+    const sourceIdByExternalId = new Map(
+        Object.entries(scope.idMap).map(([id, externalId]) => [
+            externalId,
+            Number(id)
+        ])
+    );
+    const aliasedPhysical = new Set<string>();
+    const virtualRows: SensorQueryRow[] = [];
+    const seenLineage = new Set<string>();
+    for (const [virtualId, roles] of virtualRoles) {
+        const externalId = scope.idMap[virtualId];
+        for (const role of roles) {
+            if (role.series !== 'sensor_numeric' || role.field !== opts.kind) {
+                continue;
+            }
+            // A binding that declares no reading source states nothing about
+            // the reading — only a declared one can rule the whole role out.
+            // Treating silence as device health made every custom device built
+            // on a real temperature:N sensor vanish from the ambient reads.
+            const declaredSource = role.sensorSource ?? null;
+            if (declaredSource && opts.source && opts.source !== declaredSource)
+                continue;
+            const roleOrganizationId =
+                role.organizationId ?? opts.organizationId;
+            if (!roleOrganizationId) continue;
+            const history = await virtualDeps.readRoleHistory(
+                roleOrganizationId,
+                {
+                    externalId,
+                    roleKey: role.roleKey,
+                    from: opts.from.toISOString(),
+                    to: opts.to.toISOString(),
+                    bucket: opts.bucket,
+                    limit: SENSOR_QUERY_ROW_LIMIT + 1
+                }
+            );
+            for (const point of history.items) {
+                const pointSource =
+                    point.readingSource ??
+                    declaredSource ??
+                    UNDECLARED_ROLE_SENSOR_SOURCE;
+                if (!sensorSourceAccepted(pointSource, opts.source)) continue;
+                const channel =
+                    point.channel ??
+                    componentChannel(point.source.componentKey);
+                const pointSourceId = sourceIdByExternalId.get(
+                    point.source.deviceExternalId
+                );
+                if (
+                    pointSourceId !== undefined &&
+                    selectedIds.has(pointSourceId)
+                ) {
+                    aliasedPhysical.add(
+                        `${pointSourceId}|${opts.kind}|${pointSource}|${channel}|${point.ts}`
+                    );
+                }
+                const lineage = `${virtualId}|${point.bindingId}|${opts.kind}|${pointSource}|${channel}|${point.ts}`;
+                if (seenLineage.has(lineage)) continue;
+                seenLineage.add(lineage);
+                const value = toNum(point.value);
+                virtualRows.push({
+                    bucket: point.ts,
+                    device: virtualId,
+                    shellyID: externalId,
+                    kind: opts.kind,
+                    source: pointSource as SensorQueryRow['source'],
+                    channel,
+                    sampleCount: point.sampleCount ?? 1,
+                    value,
+                    min: point.min ?? value,
+                    max: point.max ?? value,
+                    roleKey: role.roleKey
+                });
+            }
+        }
+    }
+    const mapPhysicalRows = (rows: readonly SensorNumericRow[]) =>
+        rows
+            .map((r) => toRow(opts.kind, r, scope.idMap))
+            .filter(
+                (row) =>
+                    sensorSourceAccepted(row.source, opts.source) &&
+                    !aliasedPhysical.has(
+                        `${row.device}|${row.kind}|${row.source}|${row.channel ?? 0}|${row.bucket}`
+                    )
+            );
+    const physicalRows = mapPhysicalRows(lastPhysicalPage);
+    while (
+        physicalRows.length + virtualRows.length < rawLimit &&
+        lastPhysicalPage.length === rawLimit
+    ) {
+        lastPhysicalPage = await sensorRepo.queryNumeric({
+            organizationId: opts.organizationId,
+            internalIds: physicalIds,
+            kind: opts.kind,
+            source: opts.source,
+            from: opts.from,
+            to: opts.to,
+            bucket: opts.bucket,
+            limit: rawLimit,
+            offset: rawOffset
+        });
+        rawOffset += lastPhysicalPage.length;
+        physicalRows.push(...mapPhysicalRows(lastPhysicalPage));
+    }
+    return [...physicalRows, ...virtualRows];
+}
+
+function componentChannel(componentKey: string): number {
+    const raw = componentKey.slice(componentKey.lastIndexOf(':') + 1);
+    const channel = Number.parseInt(raw, 10);
+    return Number.isInteger(channel) && channel >= 0 ? channel : 0;
 }
 
 // fn_numeric_history is called per kind, so the row's kind is the loop's kind.

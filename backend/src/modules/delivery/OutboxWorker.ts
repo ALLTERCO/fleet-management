@@ -14,16 +14,19 @@ import {
     type TaskList
 } from 'graphile-worker';
 import * as log4js from 'log4js';
+import type {Pool} from 'pg';
 import type {config_rc_t} from '../../config';
 import {tuning} from '../../config/tuning';
 import type {ReportExportPayload} from '../../model/energy/reportExportPayload';
 import type {ChannelProvider} from '../../types/api/channel';
 import * as AlertEvents from '../AlertEvents';
+import {noteOfflineFireScheduled} from '../alert/openAlertSet';
 import {BoundedMap} from '../boundedMap';
 import {mergeIntegrationConfig} from '../integrationConfig';
 import {resolveMessageTemplate} from '../notification/messageTemplateResolver';
 import {standardResolvedMessageTemplate} from '../notification/standardMessageTemplate';
 import * as Observability from '../Observability';
+import {watchPoolConnections} from '../observability/dbPoolMetrics';
 import * as PostgresProvider from '../PostgresProvider';
 import {isLeader, startLeaderGate} from '../redis/leaderGate';
 import {decryptJsonSecret} from '../secretCrypto';
@@ -44,6 +47,7 @@ import {
     stopDeliveryMetricsPolling
 } from './DeliveryMetrics';
 import {enforceDeliveryRateLimit} from './DeliveryRateLimiter';
+import {withDeviceNotificationImage} from './deviceNotificationImage';
 import {resolveEmailTemplateConfig} from './emailTemplateResolver';
 import {applyEmailRecipientSuppressions} from './RecipientSuppressionFilter';
 import {endpointTemplateId, prepareTemplatedSend} from './templatedSend';
@@ -58,14 +62,19 @@ const TASK_STATE_HOLD = 'entity_state_hold';
 const TASK_GROUP_FLUSH = 'delivery_group_flush';
 const TASK_GROUP_REPEAT_SWEEP = 'delivery_group_repeat_sweep';
 const TASK_RECLAIM_STRANDED = 'delivery_job_reclaim_stranded';
+const TASK_UNFLUSHED_SWEEP = 'delivery_group_unflushed_sweep';
 const TASK_RECORD_RECONCILE = 'delivery_record_reconcile';
 const TASK_ESCALATION_STAGE = 'delivery_escalation_stage';
 const TASK_DIGEST_FLUSH = 'notification_digest_flush';
 const TASK_REPORT_EXPORT = 'report_export';
+const REPORT_EXPORT_QUEUE = 'report-export';
 const RECLAIM_LEADER_NAME = 'outbox-reclaim-stranded';
 const DIGEST_LEADER_NAME = 'notification-digest-flush';
+// Bounds one sweep run; the rest is picked up by the next run.
+const UNFLUSHED_SWEEP_LIMIT = 500;
 
 let runner: Runner | null = null;
+let outboxPool: Pool | null = null;
 
 // --- Job payloads --------------------------------------------------------
 
@@ -237,11 +246,15 @@ export async function enqueueSend(payload: DeliverySendPayload): Promise<void> {
 // Queue a raw report export for durable, restart-surviving execution. Throws
 // when the worker is not running so the caller can fall back to in-process.
 export async function enqueueReportExport(
-    payload: ReportExportPayload
+    payload: ReportExportPayload,
+    jobKey?: string
 ): Promise<void> {
     if (!runner) throw new Error('OutboxWorker not started');
     await runner.addJob(TASK_REPORT_EXPORT, payload, {
-        maxAttempts: tuning.report.exportMaxAttempts
+        queueName: REPORT_EXPORT_QUEUE,
+        maxAttempts: tuning.report.exportMaxAttempts,
+        // One queued row per fingerprint keeps duplicates off the queue.
+        ...(jobKey ? {jobKey, jobKeyMode: 'preserve_run_at' as const} : {})
     });
 }
 
@@ -371,7 +384,7 @@ export async function cancelMotionClear(
     }
 }
 
-function offlineFireJobKey(ruleId: number, deviceId: number): string {
+export function offlineFireJobKey(ruleId: number, deviceId: number): string {
     return `device_offline_fire:${ruleId}:${deviceId}`;
 }
 
@@ -387,33 +400,125 @@ export async function enqueueOfflineFire(
         );
         return;
     }
-    await runner.addJob(TASK_OFFLINE_FIRE, payload, {
-        runAt,
-        jobKey: offlineFireJobKey(payload.ruleId, payload.deviceId),
-        jobKeyMode: 'replace'
-    });
+    const jobKey = offlineFireJobKey(payload.ruleId, payload.deviceId);
+    // Known before the job exists, so a reconnect on any process cancels it.
+    noteOfflineFireScheduled(payload.organizationId, jobKey);
+    // A cancel queued before this disconnect is older; sent later it would remove the new timer.
+    const superseded = takeQueuedOfflineFireCancels(jobKey);
+    try {
+        await runner.addJob(TASK_OFFLINE_FIRE, payload, {
+            runAt,
+            jobKey,
+            jobKeyMode: 'replace'
+        });
+    } catch (err) {
+        requeueOfflineFireCancels(jobKey, superseded);
+        throw err;
+    }
+    for (const cancel of superseded) cancel.resolve(true);
 }
 
-export async function cancelOfflineFire(
+// Many devices reconnect at once; one call per event-loop turn cancels them
+// all. The limit is the cap in fn_cancel_scheduled_worker_jobs.
+const OFFLINE_FIRE_CANCEL_BATCH_LIMIT = 500;
+
+interface QueuedOfflineFireCancel {
+    ruleId: number;
+    deviceId: number;
+    resolve: (cancelled: boolean) => void;
+}
+
+let queuedOfflineFireCancels = new Map<string, QueuedOfflineFireCancel[]>();
+let offlineFireCancelsScheduled = false;
+
+export function cancelOfflineFire(
     ruleId: number,
     deviceId: number
 ): Promise<boolean> {
-    try {
+    return new Promise((resolve) => {
+        requeueOfflineFireCancels(offlineFireJobKey(ruleId, deviceId), [
+            {ruleId, deviceId, resolve}
+        ]);
+    });
+}
+
+function takeQueuedOfflineFireCancels(
+    jobKey: string
+): QueuedOfflineFireCancel[] {
+    const queued = queuedOfflineFireCancels.get(jobKey) ?? [];
+    queuedOfflineFireCancels.delete(jobKey);
+    return queued;
+}
+
+function requeueOfflineFireCancels(
+    jobKey: string,
+    cancels: readonly QueuedOfflineFireCancel[]
+): void {
+    if (cancels.length === 0) return;
+    queuedOfflineFireCancels.set(jobKey, [
+        ...(queuedOfflineFireCancels.get(jobKey) ?? []),
+        ...cancels
+    ]);
+    if (offlineFireCancelsScheduled) return;
+    offlineFireCancelsScheduled = true;
+    setImmediate(sendQueuedOfflineFireCancels);
+}
+
+function sendQueuedOfflineFireCancels(): void {
+    offlineFireCancelsScheduled = false;
+    const queued = [...queuedOfflineFireCancels];
+    queuedOfflineFireCancels = new Map();
+    for (let i = 0; i < queued.length; i += OFFLINE_FIRE_CANCEL_BATCH_LIMIT) {
+        void sendOfflineFireCancels(
+            new Map(queued.slice(i, i + OFFLINE_FIRE_CANCEL_BATCH_LIMIT))
+        );
+    }
+}
+
+async function sendOfflineFireCancels(
+    batch: ReadonlyMap<string, readonly QueuedOfflineFireCancel[]>
+): Promise<void> {
+    const cancelled = await removeScheduledWorkerJobs([...batch.keys()]).then(
+        () => true,
+        (err: unknown) => reportFailedOfflineFireCancels(batch, err)
+    );
+    for (const cancels of batch.values()) {
+        for (const cancel of cancels) cancel.resolve(cancelled);
+    }
+}
+
+async function removeScheduledWorkerJobs(
+    keys: readonly string[]
+): Promise<void> {
+    if (keys.length === 1) {
         await PostgresProvider.callMethod(
             'notifications.fn_cancel_scheduled_worker_job',
-            {p_key: offlineFireJobKey(ruleId, deviceId)}
+            {p_key: keys[0]}
         );
-        return true;
-    } catch (err) {
-        Observability.incrementCounter('outbox_offline_fire_cancel_errors');
-        logger.error(
-            'cancelOfflineFire rule=%d deviceId=%d failed — deferred fire may still arrive: %s',
-            ruleId,
-            deviceId,
-            formatError(err)
-        );
-        return false;
+        return;
     }
+    await PostgresProvider.callMethod(
+        'notifications.fn_cancel_scheduled_worker_jobs',
+        {p_keys: keys}
+    );
+}
+
+function reportFailedOfflineFireCancels(
+    batch: ReadonlyMap<string, readonly QueuedOfflineFireCancel[]>,
+    err: unknown
+): false {
+    for (const cancels of batch.values()) {
+        for (const {ruleId, deviceId} of cancels) {
+            Observability.incrementCounter('outbox_offline_fire_cancel_errors');
+            logger.error(
+                'cancelOfflineFire rule=%d deviceId=%d failed — deferred fire may still arrive: %s',
+                ruleId,
+                deviceId,
+                formatError(err)
+            );
+        }
+    }
+    return false;
 }
 
 // Per (rule, device, component.field) so each relay holds independently.
@@ -519,74 +624,104 @@ export async function start(
     // cycle even though graphile schedules the cron on every worker.
     void startLeaderGate(RECLAIM_LEADER_NAME);
     void startLeaderGate(DIGEST_LEADER_NAME);
-    runner = await run({
+    const pool = PostgresProvider.createManagedPool(
         connectionString,
-        concurrency: tuning.delivery.outboxConcurrency,
-        noHandleSignals: true, // app.ts owns SIGTERM/SIGINT
-        crontab: [
-            `*/${cronMinuteInterval(Math.floor(tuning.alert.groupIntervalSec / 60), 'group-repeat-sweep')} * * * * ${TASK_GROUP_REPEAT_SWEEP}`,
-            `*/${cronMinuteInterval(tuning.delivery.outboxReclaimIntervalMinutes, 'reclaim-stranded')} * * * * ${TASK_RECLAIM_STRANDED}`,
-            `*/${cronMinuteInterval(tuning.delivery.digestFlushIntervalMinutes, 'digest-flush')} * * * * ${TASK_DIGEST_FLUSH}`
-        ].join('\n'),
-        taskList: {
-            [TASK_SEND]: async (payload, helpers) => {
-                await processSendJob({
-                    payload: payload as DeliverySendPayload,
-                    finalAttempt: isFinalAttempt(helpers.job),
-                    helpers
-                });
-            },
-            [TASK_MOTION_CLEAR]: async (payload) => {
-                if (!motionClearHandler) {
-                    logger.warn('motion_clear fired without handler');
-                    return;
-                }
-                await motionClearHandler(payload as MotionClearPayload);
-            },
-            [TASK_OFFLINE_FIRE]: runOfflineFireTask,
-            [TASK_STATE_HOLD]: runStateHoldTask,
-            [TASK_GROUP_FLUSH]: async (payload) => {
-                if (!groupFlushHandler) {
-                    logger.warn('delivery_group_flush fired without handler');
-                    return;
-                }
-                const p = payload as DeliveryGroupFlushPayload;
-                await groupFlushHandler(p.groupId);
-            },
-            [TASK_GROUP_REPEAT_SWEEP]: async () => {
-                await sweepRepeatDueGroups();
-            },
-            [TASK_RECLAIM_STRANDED]: async () => {
-                await reclaimStrandedJobs();
-            },
-            [TASK_RECORD_RECONCILE]: async (payload) => {
-                await reconcileRecord(
-                    payload as DeliveryRecordReconcilePayload
-                );
-            },
-            [TASK_ESCALATION_STAGE]: async (payload) => {
-                if (!escalationStageHandler) {
-                    logger.warn(
-                        'delivery_escalation_stage fired without handler'
-                    );
-                    return;
-                }
-                await escalationStageHandler(
-                    payload as DeliveryEscalationStagePayload
-                );
-            },
-            [TASK_DIGEST_FLUSH]: async () => {
-                await flushNotificationDigests();
-            },
-            [TASK_REPORT_EXPORT]: async (payload) => {
-                if (!reportExportHandler) {
-                    logger.warn('report_export fired without handler');
-                    return;
-                }
-                await reportExportHandler(payload as ReportExportPayload);
-            }
+        tuning.db.outboxPoolMax,
+        'fleet-outbox'
+    );
+    watchPoolConnections('outbox', pool);
+    outboxPool = pool;
+    Observability.registerModule('dbOutboxPool', {
+        stats: () => PostgresProvider.poolObservabilityStats(outboxPool ?? {}),
+        topology: {
+            role: 'sink',
+            cluster: 'storage',
+            upstreams: ['notificationDelivery'],
+            label: 'Database Outbox',
+            description: 'Graphile Worker PostgreSQL pool',
+            route: '/monitoring/database'
         }
     });
+    try {
+        runner = await run({
+            pgPool: pool,
+            concurrency: tuning.delivery.outboxConcurrency,
+            noHandleSignals: true, // app.ts owns SIGTERM/SIGINT
+            crontab: [
+                `*/${cronMinuteInterval(Math.floor(tuning.alert.groupIntervalSec / 60), 'group-repeat-sweep')} * * * * ${TASK_GROUP_REPEAT_SWEEP}`,
+                `*/${cronMinuteInterval(tuning.delivery.outboxReclaimIntervalMinutes, 'reclaim-stranded')} * * * * ${TASK_RECLAIM_STRANDED}`,
+                `*/${cronMinuteInterval(tuning.delivery.outboxReclaimIntervalMinutes, 'unflushed-sweep')} * * * * ${TASK_UNFLUSHED_SWEEP}`,
+                `*/${cronMinuteInterval(tuning.delivery.digestFlushIntervalMinutes, 'digest-flush')} * * * * ${TASK_DIGEST_FLUSH}`
+            ].join('\n'),
+            taskList: {
+                [TASK_SEND]: async (payload, helpers) => {
+                    await processSendJob({
+                        payload: payload as DeliverySendPayload,
+                        finalAttempt: isFinalAttempt(helpers.job),
+                        helpers
+                    });
+                },
+                [TASK_MOTION_CLEAR]: async (payload) => {
+                    if (!motionClearHandler) {
+                        logger.warn('motion_clear fired without handler');
+                        return;
+                    }
+                    await motionClearHandler(payload as MotionClearPayload);
+                },
+                [TASK_OFFLINE_FIRE]: runOfflineFireTask,
+                [TASK_STATE_HOLD]: runStateHoldTask,
+                [TASK_GROUP_FLUSH]: async (payload) => {
+                    if (!groupFlushHandler) {
+                        logger.warn(
+                            'delivery_group_flush fired without handler'
+                        );
+                        return;
+                    }
+                    const p = payload as DeliveryGroupFlushPayload;
+                    await groupFlushHandler(p.groupId);
+                },
+                [TASK_GROUP_REPEAT_SWEEP]: async () => {
+                    await sweepRepeatDueGroups();
+                },
+                [TASK_RECLAIM_STRANDED]: async () => {
+                    await reclaimStrandedJobs();
+                },
+                [TASK_UNFLUSHED_SWEEP]: async () => {
+                    await sweepUnflushedGroups();
+                },
+                [TASK_RECORD_RECONCILE]: async (payload) => {
+                    await reconcileRecord(
+                        payload as DeliveryRecordReconcilePayload
+                    );
+                },
+                [TASK_ESCALATION_STAGE]: async (payload) => {
+                    if (!escalationStageHandler) {
+                        logger.warn(
+                            'delivery_escalation_stage fired without handler'
+                        );
+                        return;
+                    }
+                    await escalationStageHandler(
+                        payload as DeliveryEscalationStagePayload
+                    );
+                },
+                [TASK_DIGEST_FLUSH]: async () => {
+                    await flushNotificationDigests();
+                },
+                [TASK_REPORT_EXPORT]: async (payload) => {
+                    if (!reportExportHandler) {
+                        logger.warn('report_export fired without handler');
+                        return;
+                    }
+                    await reportExportHandler(payload as ReportExportPayload);
+                }
+            }
+        });
+    } catch (error) {
+        await pool.end().catch(() => undefined);
+        outboxPool = null;
+        throw error;
+    }
     logger.info(
         'OutboxWorker started — concurrency %d',
         tuning.delivery.outboxConcurrency
@@ -633,6 +768,45 @@ async function reclaimStrandedJobs(
     }
 }
 
+// Re-queues a flush lost after its alert committed; safe to repeat because the
+// flush reloads from the database and a job is claimed only while 'queued'.
+async function sweepUnflushedGroups(
+    options: {requireLeadership?: boolean} = {}
+): Promise<number> {
+    if ((options.requireLeadership ?? true) && !isLeader(RECLAIM_LEADER_NAME)) {
+        return 0;
+    }
+    try {
+        const result = await PostgresProvider.callMethod(
+            'notifications.fn_delivery_group_unflushed_list',
+            {
+                p_min_age_ms: tuning.delivery.outboxUnflushedStaleMs,
+                p_max_age_ms: tuning.delivery.outboxUnflushedMaxAgeMs,
+                p_limit: UNFLUSHED_SWEEP_LIMIT
+            }
+        );
+        const rows = (result?.rows ?? []) as Array<{group_id: number}>;
+        for (const {group_id} of rows) {
+            await enqueueGroupFlush(Number(group_id), new Date());
+        }
+        if (rows.length > 0) {
+            logger.warn(
+                'outbox unflushed sweep: re-queued the flush of %d groups with unclaimed jobs',
+                rows.length
+            );
+            Observability.incrementCounter(
+                'outbox_unflushed_groups_reflushed',
+                rows.length
+            );
+        }
+        return rows.length;
+    } catch (err) {
+        Observability.incrementCounter('outbox_unflushed_sweep_errors');
+        logger.error('outbox unflushed sweep failed: %s', formatError(err));
+        return 0;
+    }
+}
+
 async function sweepRepeatDueGroups(): Promise<void> {
     try {
         const result = await PostgresProvider.callMethod(
@@ -669,14 +843,26 @@ async function flushNotificationDigests(
 }
 
 export async function stop(): Promise<void> {
-    if (!runner) return;
-    try {
-        await runner.stop();
-    } catch (err) {
-        logger.error('OutboxWorker stop failed: %s', formatError(err));
+    if (runner) {
+        try {
+            await runner.stop();
+        } catch (err) {
+            logger.error('OutboxWorker stop failed: %s', formatError(err));
+        }
     }
     stopDeliveryMetricsPolling();
     runner = null;
+    if (outboxPool) {
+        try {
+            await outboxPool.end();
+        } catch (error) {
+            logger.error(
+                'OutboxWorker pool stop failed: %s',
+                formatError(error)
+            );
+        }
+        outboxPool = null;
+    }
     logger.info('OutboxWorker stopped');
 }
 
@@ -1001,9 +1187,10 @@ async function runAdapter(call: AdapterCall): Promise<DeliveryResult> {
     try {
         // Render the applicable template once for this channel (single
         // authority); adapters read the rendered body off context.templateBody.
-        const template = await effectiveTemplate(call);
+        const message = await withDeviceNotificationImage(call.message);
+        const template = await effectiveTemplate({...call, message});
         const prepared = prepareTemplatedSend(
-            call.message,
+            message,
             call.adapter.provider,
             template
         );
@@ -1506,6 +1693,10 @@ export async function __processSendJobForTests(
 
 export async function __reclaimStrandedJobsForTests(): Promise<number> {
     return reclaimStrandedJobs({requireLeadership: false});
+}
+
+export async function __sweepUnflushedGroupsForTests(): Promise<number> {
+    return sweepUnflushedGroups({requireLeadership: false});
 }
 
 // Inject a minimal runner so a test can observe enqueue() without a real

@@ -1,12 +1,13 @@
 import log4js from 'log4js';
 import {tuning} from '../../config/tuning';
 import RpcError from '../../rpc/RpcError';
+import type {DeviceSource} from '../../types/api/deviceSource';
 import RpcTransport from './RpcTransport';
 
 const logger = log4js.getLogger();
 
 export default class HttpTransport extends RpcTransport {
-    public override name = 'local';
+    public override name: DeviceSource = 'local';
     #deviceIp: string;
 
     constructor(deviceIp: string) {

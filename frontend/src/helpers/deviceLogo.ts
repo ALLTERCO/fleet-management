@@ -101,3 +101,26 @@ export function deviceGlyphStyle(
     if (logo.kind !== 'icon' || !logo.accent) return undefined;
     return {color: `rgb(var(--accent-${logo.accent}))`};
 }
+
+// Same precedence as a device's own decoration, for anything else that
+// carries a picture: groups, tags, virtual devices, entities. Lives here
+// because this file is the one home for image logic — a second copy beside
+// it is how the descriptors drift apart.
+export function resolveVisualDecoration(subject: {
+    imageAssetId?: string | null;
+    icon?: string | null;
+    accent?: string | null;
+    imageModel?: string | null;
+}): DeviceLogo | undefined {
+    const {icon, accent, imageAssetId, imageModel} = subject;
+    if (typeof icon === 'string' && icon.length > 0) {
+        return {kind: 'icon', faClass: icon, ...(accent ? {accent} : {})};
+    }
+    if (typeof imageAssetId === 'string' && imageAssetId.length > 0) {
+        return {kind: 'image', src: resolveAssetSrc(imageAssetId)};
+    }
+    if (typeof imageModel === 'string' && imageModel.length > 0) {
+        return {kind: 'image', src: getLogoFromModel(imageModel)};
+    }
+    return undefined;
+}

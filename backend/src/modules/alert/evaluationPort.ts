@@ -1,9 +1,15 @@
 type OrganizationRuleEvaluationReason = 'scope_changed' | 'startup';
 
-type OrganizationRuleEvaluator = (input: {
+export interface OrganizationRuleEvaluationRequest {
     organizationId: string;
     reason: OrganizationRuleEvaluationReason;
-}) => void;
+    /** Devices whose access changed. Absent means re-check the whole org. */
+    externalIds?: readonly string[];
+}
+
+type OrganizationRuleEvaluator = (
+    input: OrganizationRuleEvaluationRequest
+) => void;
 
 let organizationRuleEvaluator: OrganizationRuleEvaluator | null = null;
 
@@ -13,9 +19,8 @@ export function registerOrganizationRuleEvaluator(
     organizationRuleEvaluator = evaluator;
 }
 
-export function scheduleOrganizationRuleEvaluation(input: {
-    organizationId: string;
-    reason: OrganizationRuleEvaluationReason;
-}): void {
+export function scheduleOrganizationRuleEvaluation(
+    input: OrganizationRuleEvaluationRequest
+): void {
     organizationRuleEvaluator?.(input);
 }

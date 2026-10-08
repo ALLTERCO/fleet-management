@@ -40,7 +40,7 @@
                         :value="form.end"
                         type="number"
                         min="0"
-                        max="23"
+                        max="24"
                         autocomplete="off"
                         class="qhs__input"
                         @input="onEnd"
@@ -58,6 +58,10 @@
                     />
                 </label>
             </div>
+            <p v-if="noOpWindow" class="qhs__note" role="status">
+                Start and end are the same, so nothing is muted. Use 0 to 24 to
+                mute the whole day.
+            </p>
             <div class="qhs__actions">
                 <button
                     v-if="!empty"
@@ -77,6 +81,7 @@
 
 <script setup lang="ts">
 import {computed, ref} from 'vue';
+import {mutesAnything} from '@/helpers/channelDraft';
 
 export interface QuietHoursForm {
     start: string;
@@ -90,8 +95,16 @@ const form = defineModel<QuietHoursForm>({
 
 const open = ref(false);
 
-const empty = computed(() =>
-    isEmptyForm(form.value)
+// A window that mutes nothing reads as unset. Equal hours are what an
+// untouched form holds, and the chip used to wear a moon and announce
+// "Quiet 00:00-00:00" over a channel that was never muted for a second.
+const empty = computed(
+    () => isEmptyForm(form.value) || !mutesAnything(form.value)
+);
+
+// Only worth saying once the user has actually typed something.
+const noOpWindow = computed(
+    () => !isEmptyForm(form.value) && !mutesAnything(form.value)
 );
 
 const chipLabel = computed(() =>
@@ -111,12 +124,14 @@ function describeForm(value: QuietHoursForm): string {
     const end = formatHour(value.end);
     const tz = value.timezone.trim() || 'UTC';
     if (!start || !end) return `Quiet hours · ${tz}`;
+    if (start === '00:00' && end === '24:00') return `Quiet all day · ${tz}`;
     return `Quiet ${start}–${end} · ${tz}`;
 }
 
+// 24 is the exclusive end of the day, not an hour of the clock.
 function formatHour(raw: string): string {
     const hour = Number(raw);
-    if (!Number.isInteger(hour) || hour < 0 || hour > 23) return '';
+    if (!Number.isInteger(hour) || hour < 0 || hour > 24) return '';
     return `${String(hour).padStart(2, '0')}:00`;
 }
 
@@ -229,6 +244,13 @@ function collapse(): void {
     outline: none;
     border-color: var(--color-primary);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+.qhs__note {
+    margin: 0;
+    color: var(--color-text-tertiary);
+    font-size: var(--type-caption);
+    line-height: var(--leading-snug);
 }
 
 .qhs__actions {

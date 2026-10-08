@@ -20,9 +20,15 @@ function isWildcardScope(scope: ScopeSelector): boolean {
     return (
         !scope.deviceIds?.length &&
         !scope.componentIds?.length &&
-        !scope.groupIds?.length &&
-        !scope.locationIds?.length &&
-        !scope.tagIds?.length
+        !scopeHasMembershipSelectors(scope)
+    );
+}
+
+export function scopeHasMembershipSelectors(scope: ScopeSelector): boolean {
+    return Boolean(
+        scope.groupIds?.length ||
+            scope.locationIds?.length ||
+            scope.tagIds?.length
     );
 }
 

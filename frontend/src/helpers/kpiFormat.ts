@@ -1,3 +1,4 @@
+import {formatNumber} from '@/helpers/format';
 import type {DashKpiMetric} from '@/types/dashboard-components';
 
 export type KpiSeverity = 'normal' | 'warning' | 'danger';
@@ -6,7 +7,7 @@ export function formatKpiValue(metric: DashKpiMetric): string {
     if (metric.value == null) return '—';
     if (typeof metric.value === 'string') return metric.value;
     const dp = metric.decimals ?? 1;
-    return metric.value.toLocaleString('en-US', {
+    return formatNumber(metric.value, {
         minimumFractionDigits: 0,
         maximumFractionDigits: dp
     });

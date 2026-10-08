@@ -63,7 +63,34 @@
                     Share dashboard
                 </button>
 
-                <hr v-if="hasDashboardActions" class="dva__menu-sep" />
+                <template v-if="actions?.onSetInterval">
+                    <hr v-if="hasDashboardActions" class="dva__menu-sep" />
+                    <div class="dva__menu-label" aria-hidden="true">
+                        Auto-refresh
+                    </div>
+                    <button
+                        v-for="opt in REFRESH_INTERVALS"
+                        :key="opt.ms"
+                        type="button"
+                        class="dva__menu-item"
+                        role="menuitemradio"
+                        :aria-checked="currentInterval === opt.ms"
+                        @click="onIntervalChoice(opt.ms)"
+                    >
+                        <i class="fas fa-rotate" aria-hidden="true" />
+                        {{ opt.label }}
+                        <i
+                            v-if="currentInterval === opt.ms"
+                            class="fas fa-check dva__menu-check"
+                            aria-hidden="true"
+                        />
+                    </button>
+                </template>
+
+                <hr
+                    v-if="hasDashboardActions || actions?.onSetInterval"
+                    class="dva__menu-sep"
+                />
 
                 <!-- Global lifecycle / navigation -->
                 <button
@@ -97,6 +124,7 @@ import type {DashChromeActions} from '@/stores/dashboardChrome';
 // Nullable: pages that don't register chrome (map, analytics) still get the
 // ⋮ with Create / Manage — only the dashboard-specific items are page-gated.
 const props = defineProps<{actions: DashChromeActions | null}>();
+const emit = defineEmits<{share: []}>();
 
 // Provided by the /dash shell (pages/dash.vue). Opens the dashboard palette in
 // list mode ("Manage dashboards") or create mode ("Create dashboard").
@@ -116,6 +144,21 @@ const hasDashboardActions = computed(
         Boolean(props.actions?.canShare)
 );
 
+// One list for every dashboard — the settings panel must offer the same values
+// so a stored cadence always matches an option here.
+const REFRESH_INTERVALS = [
+    {ms: 0, label: 'Off'},
+    {ms: 30_000, label: 'Every 30 seconds'},
+    {ms: 60_000, label: 'Every minute'},
+    {ms: 300_000, label: 'Every 5 minutes'}
+] as const;
+const currentInterval = computed(() => props.actions?.refreshInterval ?? 0);
+
+function onIntervalChoice(ms: number): void {
+    menuOpen.value = false;
+    props.actions?.onSetInterval?.(ms);
+}
+
 type MenuChoice =
     | 'edit'
     | 'set-default'
@@ -127,7 +170,7 @@ const MENU_HANDLERS: Record<MenuChoice, () => void> = {
     edit: () => props.actions?.onEdit(),
     'set-default': () => props.actions?.onSetDefault(),
     duplicate: () => props.actions?.onDuplicate?.(),
-    share: () => props.actions?.onShare?.(),
+    share: () => emit('share'),
     create: () => openPalette?.({mode: 'create'}),
     manage: () => openPalette?.({mode: 'list'})
 };
@@ -250,5 +293,10 @@ onBeforeUnmount(() => {
     border: 0;
     border-top: 1px solid var(--color-border-default);
     margin: var(--space-1) 0;
+}
+.dva__menu-label {
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--type-caption);
+    color: var(--color-text-tertiary);
 }
 </style>

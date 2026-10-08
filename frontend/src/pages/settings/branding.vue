@@ -128,6 +128,7 @@ import BasicBlock from '@/components/core/BasicBlock.vue';
 import PageTemplate from '@/components/core/PageTemplate.vue';
 import RichTextEditor from '@/components/core/RichTextEditor.vue';
 import {relativeLuminance} from '@/helpers/colorContrast';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useRpcPermissions} from '@/helpers/rpcPermissions';
 import {ZITADEL_EMAIL_TOKENS} from '@/helpers/zitadelEmailTokens';
 import {
@@ -232,7 +233,7 @@ onBeforeUnmount(() => {
 });
 
 function fail(err: unknown): void {
-    error.value = err instanceof Error ? err.message : String(err);
+    error.value = rpcErrorMessage(err);
     status.value = null;
 }
 

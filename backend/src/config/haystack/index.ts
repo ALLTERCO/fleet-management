@@ -2,8 +2,10 @@
  * Industry-standard equipment + signal vocabulary.
  *
  * Backed by the Project Haystack normalized definitions grid
- * (https://project-haystack.org/download, AFL-3.0). The vendored
- * defs.json + LICENSE in this directory are the source of truth.
+ * (https://project-haystack.org/download, AFL-3.0). The vendored data +
+ * LICENSE live in backend/static/haystack/ so they ship in the runtime
+ * image (which copies static/, not src/); tz.txt + units.txt in this
+ * directory are refresh-reference only, never read at runtime.
  *
  * Public surface exposes the vocabulary in product-friendly names —
  * "equipment types", "standard terms" — no Haystack jargon. The Haystack
@@ -65,7 +67,10 @@ export interface StandardTerm {
     wikipedia: string | null;
 }
 
-const DEFS_PATH = path.resolve(__dirname, 'defs.json');
+// Runtime asset lives under static/ (copied into the image); resolved from
+// the process cwd (backend/), same convention as the IR catalog loader.
+// __dirname would point into dist/ at runtime, where the JSON is not emitted.
+const DEFS_PATH = path.join(process.cwd(), 'static/haystack/defs.json');
 
 let cachedTerms: ReadonlyMap<string, StandardTerm> | null = null;
 let cachedEquipment: ReadonlyArray<StandardTerm> | null = null;

@@ -1,5 +1,7 @@
 <template>
-    <Modal :visible="visible" @close="$emit('close')">
+    <!-- persistent on the reveal screen only: the key is shown once, so a
+         stray Escape, backdrop click or X must not be able to throw it away. -->
+    <Modal :visible="visible" :persistent="!!result" @close="$emit('close')">
         <template #title>
             {{ result ? 'Service user created' : 'Create service user' }}
         </template>
@@ -136,6 +138,119 @@
                     </template>
 
                     <template v-else>
+                        <FormField label="What is this key for?">
+                            <div
+                                class="suc-purpose"
+                                role="radiogroup"
+                                aria-label="What is this key for?"
+                            >
+                                <label
+                                    v-for="opt in KEY_PURPOSE_OPTIONS"
+                                    :key="opt.value"
+                                    class="suc-purpose__opt"
+                                    :class="{
+                                        'suc-purpose__opt--active':
+                                            form.keyPurpose === opt.value
+                                    }"
+                                >
+                                    <input
+                                        type="radio"
+                                        name="suc-key-purpose"
+                                        :value="opt.value"
+                                        :checked="form.keyPurpose === opt.value"
+                                        class="suc-purpose__input"
+                                        @change="form.keyPurpose = opt.value"
+                                    />
+                                    <i
+                                        :class="`fas ${opt.icon} suc-purpose__icon`"
+                                        aria-hidden="true"
+                                    />
+                                    <span class="suc-purpose__body">
+                                        <span class="suc-purpose__label">
+                                            {{ opt.label }}
+                                        </span>
+                                        <span class="suc-purpose__hint">
+                                            {{ opt.hint }}
+                                        </span>
+                                    </span>
+                                </label>
+                            </div>
+                        </FormField>
+
+                        <FormField
+                            v-if="form.keyPurpose === 'mcp'"
+                            label="What does this agent work on?"
+                            hint="Narrows the agent to one area. It can never reach outside it, whatever it is asked."
+                        >
+                            <div
+                                class="suc-levels"
+                                role="radiogroup"
+                                aria-label="What does this agent work on?"
+                            >
+                                <label
+                                    v-for="role in MCP_ROLE_OPTIONS"
+                                    :key="role.value || 'any'"
+                                    class="suc-levels__opt"
+                                    :class="{
+                                        'suc-levels__opt--active':
+                                            form.mcpRole === role.value
+                                    }"
+                                >
+                                    <input
+                                        type="radio"
+                                        name="suc-mcp-role"
+                                        :value="role.value"
+                                        :checked="form.mcpRole === role.value"
+                                        class="suc-purpose__input"
+                                        @change="form.mcpRole = role.value"
+                                    />
+                                    <span class="suc-levels__label">
+                                        {{ role.label }}
+                                    </span>
+                                    <span class="suc-levels__hint">
+                                        {{ role.hint }}
+                                    </span>
+                                </label>
+                            </div>
+                        </FormField>
+
+                        <FormField
+                            v-if="form.keyPurpose === 'mcp'"
+                            label="What may the agent do?"
+                            hint="The role above still applies. This only caps how much of it the agent can use."
+                        >
+                            <div
+                                class="suc-levels"
+                                role="radiogroup"
+                                aria-label="What may the agent do?"
+                            >
+                                <label
+                                    v-for="lvl in MCP_LEVEL_OPTIONS"
+                                    :key="lvl.value"
+                                    class="suc-levels__opt"
+                                    :class="{
+                                        'suc-levels__opt--active':
+                                            form.mcpLevel === lvl.value
+                                    }"
+                                >
+                                    <input
+                                        type="radio"
+                                        name="suc-mcp-level"
+                                        :value="lvl.value"
+                                        :checked="form.mcpLevel === lvl.value"
+                                        class="suc-purpose__input"
+                                        @change="form.mcpLevel = lvl.value"
+                                    />
+                                    <span class="suc-levels__label">
+                                        {{ lvl.label }}
+                                    </span>
+                                    <span class="suc-levels__hint">
+                                        {{ lvl.hint }}
+                                    </span>
+                                </label>
+                            </div>
+                        </FormField>
+
                         <FormField label="Key expires after">
                             <Dropdown
                                 :groups="GRANT_EXPIRY_GROUPS"
@@ -148,11 +263,11 @@
                         </FormField>
                         <FormField
                             label="Key label"
-                            optional
                             hint="Helps you tell keys apart later."
                         >
                             <Input
                                 v-model="form.keyName"
+                                required
                                 placeholder="e.g. CI runner"
                             />
                         </FormField>
@@ -185,7 +300,7 @@
                                 </li>
                                 <li>
                                     <i class="fas fa-key" aria-hidden="true" />
-                                    API key shown once, expires in
+                                    {{ keySummary }}, shown once, expires in
                                     {{ form.expirationDays }} days
                                 </li>
                             </ul>
@@ -226,7 +341,7 @@
                         v-else
                         type="green"
                         :loading="creating"
-                        :disabled="!detailsReady || !accessReady"
+                        :disabled="!detailsReady || !accessReady || !keyReady"
                         @click="$emit('submit')"
                     >
                         Create &amp; generate key
@@ -247,6 +362,8 @@ import ScopeModeSelector from '@/components/core/ScopeModeSelector.vue';
 import SecretReveal from '@/components/core/SecretReveal.vue';
 import Modal from '@/components/modals/Modal.vue';
 import {buildScope, type ScopeSelection} from '@/helpers/scopeDimensions';
+import {MCP_ROLE_KEYS, type McpRoleKey} from '@api/authzCatalog';
+import type {McpKeyLevel, McpKeyRole} from '@/helpers/scopedPatCreate';
 import {serviceUserScopeLabel} from '@/helpers/serviceUserAccessPlan';
 import {
     deriveServiceUsername,
@@ -271,6 +388,9 @@ export interface ServiceUserCreateForm {
     accessExpiresDays: string;
     keyName: string;
     expirationDays: string;
+    keyPurpose: KeyPurpose;
+    mcpLevel: McpKeyLevel;
+    mcpRole: McpKeyRole | '';
 }
 
 export interface ServiceUserCreateErrors {
@@ -288,6 +408,79 @@ export interface ServiceUserCreatedKey {
 
 type WizardStep = 'details' | 'access' | 'key';
 const STEP_ORDER: WizardStep[] = ['details', 'access', 'key'];
+
+// An MCP key is a different credential (an FM scoped token carrying an `mcp`
+// audience), so the wizard has to ask before it mints one: a plain key can
+// never be used at /mcp.
+export type KeyPurpose = 'integration' | 'mcp';
+
+const KEY_PURPOSE_OPTIONS: {
+    value: KeyPurpose;
+    label: string;
+    hint: string;
+    icon: string;
+}[] = [
+    {
+        value: 'integration',
+        label: 'A script or integration',
+        hint: 'Calls the API directly. CI jobs, dashboards, backups.',
+        icon: 'fa-terminal'
+    },
+    {
+        value: 'mcp',
+        label: 'An AI agent',
+        hint: 'Connects over MCP. Deletes, new access and automations ask you first. Everything is logged.',
+        icon: 'fa-robot'
+    }
+];
+
+// Which slice of the product the agent works in. These are the persona names
+// the product already uses for people, so a key and a colleague mean the same
+// thing by "installer". "Anything" is every key that exists today.
+// Wording per role, keyed on the shared list so a role added server-side
+// shows up here rather than being silently unofferable.
+const ROLE_WORDING: Record<McpRoleKey, {label: string; hint: string}> = {
+    operator: {
+        label: 'Day to day',
+        hint: 'Devices, alerts, lights and heating.'
+    },
+    installer: {
+        label: 'Installing',
+        hint: 'Adding hardware, firmware, network setup.'
+    },
+    manager: {
+        label: 'Energy and billing',
+        hint: 'Consumption, tariffs, reports.'
+    },
+    automation_admin: {
+        label: 'Automations',
+        hint: 'Alert rules, schedules, scripts, webhooks.'
+    },
+    auditor: {
+        label: 'Reviewing',
+        hint: 'The record only: who did what, and permissions.'
+    }
+};
+
+const MCP_ROLE_OPTIONS: {
+    value: McpKeyRole | '';
+    label: string;
+    hint: string;
+}[] = [
+    {value: '', label: 'Anything', hint: 'No limit on which area it works in.'},
+    ...MCP_ROLE_KEYS.map((value) => ({value, ...ROLE_WORDING[value]}))
+];
+
+
+const MCP_LEVEL_OPTIONS: {value: McpKeyLevel; label: string; hint: string}[] = [
+    {value: 'read', label: 'Read', hint: 'Look at data only.'},
+    {value: 'write', label: 'Write', hint: 'Read plus everyday changes.'},
+    {
+        value: 'full',
+        label: 'Full',
+        hint: 'Everything the role allows, including devices and credentials.'
+    }
+];
 
 // One duration list for both the key lifetime and the grant expiry.
 const GRANT_EXPIRY_GROUPS: ServiceRoleGroup[] = [
@@ -361,6 +554,8 @@ const accessReady = computed(() =>
     serviceUserAccessReady(props.form, props.personaKey)
 );
 
+const keyReady = computed(() => props.form.keyName.trim() !== '');
+
 const canAdvance = computed(() =>
     step.value === 'details' ? detailsReady.value : accessReady.value
 );
@@ -418,6 +613,14 @@ const personaLabel = computed(() => {
         if (match) return match.label;
     }
     return 'No role picked';
+});
+
+const keySummary = computed(() => {
+    if (props.form.keyPurpose !== 'mcp') return 'API key';
+    const level = MCP_LEVEL_OPTIONS.find(
+        (option) => option.value === props.form.mcpLevel
+    );
+    return `AI agent key (${level?.label.toLowerCase() ?? 'read'})`;
 });
 
 const scopeSummary = computed(() => {
@@ -589,5 +792,121 @@ const scopeSummary = computed(() => {
     margin: 0;
     color: var(--color-text-tertiary);
     font-size: var(--type-caption);
+}
+
+/* Choice cards: same language as ScopeModeSelector so the two decisions in
+   this wizard read as one pattern. position:relative keeps the visually
+   hidden radio inside its card, or keyboard focus scrolls to the wrong place. */
+.suc-purpose {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--space-2);
+}
+.suc-purpose__opt {
+    position: relative;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: flex-start;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border-medium);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition:
+        border-color var(--motion-hover),
+        background var(--motion-hover);
+}
+.suc-purpose__opt:hover {
+    border-color: var(--color-border-strong);
+    background: var(--color-surface-2);
+}
+.suc-purpose__opt--active {
+    border-color: var(--color-primary);
+    background: color-mix(
+        in srgb,
+        var(--color-primary) 12%,
+        var(--color-surface-2)
+    );
+    box-shadow: var(--shadow-brand-ring);
+}
+.suc-purpose__input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+.suc-purpose__icon {
+    color: var(--color-text-tertiary);
+    font-size: var(--icon-size-md);
+    margin-top: var(--space-0-5);
+}
+.suc-purpose__opt--active .suc-purpose__icon {
+    color: var(--color-primary-text);
+}
+.suc-purpose__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    min-width: 0;
+}
+.suc-purpose__label {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+}
+.suc-purpose__hint {
+    font-size: var(--type-body);
+    color: var(--color-text-tertiary);
+    line-height: 1.4;
+}
+
+/* Levels are a narrower, denser choice: three short options on one row. */
+.suc-levels {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: var(--space-2);
+}
+.suc-levels__opt {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-0-5);
+    padding: var(--gap-xs) var(--gap-sm);
+    background: var(--color-surface-1);
+    border: 1px solid var(--color-border-medium);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition:
+        border-color var(--motion-hover),
+        background var(--motion-hover);
+}
+.suc-levels__opt:hover {
+    border-color: var(--color-border-strong);
+    background: var(--color-surface-2);
+}
+.suc-levels__opt--active {
+    border-color: var(--color-primary);
+    background: color-mix(
+        in srgb,
+        var(--color-primary) 12%,
+        var(--color-surface-2)
+    );
+}
+.suc-levels__label {
+    font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+}
+.suc-levels__hint {
+    font-size: var(--type-caption);
+    color: var(--color-text-tertiary);
+    line-height: 1.4;
+}
+
+/* The real radio is visually hidden, so the card carries the focus ring. */
+.suc-purpose__opt:focus-within,
+.suc-levels__opt:focus-within {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
 }
 </style>

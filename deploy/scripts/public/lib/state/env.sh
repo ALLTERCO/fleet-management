@@ -1,5 +1,7 @@
 # shellcheck shell=bash
 # state/env.sh — persisted public deploy environment state.
+# shellcheck source=deploy/scripts/common/checksum.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../common" && pwd)/checksum.sh"
 
 load_state_env() {
     if [ -f "$STATE_DIR/.env" ]; then
@@ -15,7 +17,74 @@ load_state_env() {
         export FM_JWT_KID_CURRENT FM_JWT_SECRET_PREVIOUS FM_JWT_KID_PREVIOUS
         export FM_ADMIN_PASSWORD FM_PLATFORM_ADMIN_PASSWORD
         export REDIS_ADMIN_PASSWORD REDIS_FM_PASSWORD REDIS_ZITADEL_PASSWORD
+        export ZITADEL_SESSION_COOKIE_SECRET
     fi
+}
+
+public_kdf_salt_preflight() {
+    local container
+    container="$(container_name fleet-manager)"
+    if docker inspect "$container" >/dev/null 2>&1; then
+        # The container is the evidence again, so an older fingerprint must not outlive it.
+        rm -f "$(public_kdf_salt_fingerprint_file)"
+    elif _public_kdf_salt_matches_down_fingerprint; then
+        info "KDF salt matches the value verified when 'down' removed Fleet Manager"
+        return 0
+    fi
+    kdf_salt_preflight \
+        "Public Fleet Manager deployment" \
+        "$STATE_DIR/.env" \
+        "$container" \
+        "$STATE_DIR/deploy-meta.env"
+}
+
+# SHA-256 of the salt a clean `down` verified against its running container.
+# Never the salt itself; only `down` writes it, any salt check with a
+# container removes it, and every command that creates the container runs
+# that check at once (public_kdf_salt_confirm_container).
+public_kdf_salt_fingerprint_file() {
+    printf '%s/kdf-salt-verified.sha256' "$STATE_DIR"
+}
+
+# Called by `down` before it removes the container that proves the salt. A
+# container that is already gone leaves any earlier fingerprint as it was.
+public_kdf_salt_record_before_down() {
+    local container fingerprint_file tmp
+    container="$(container_name fleet-manager)"
+    docker inspect "$container" >/dev/null 2>&1 || return 0
+    public_kdf_salt_preflight || return 1
+    fingerprint_file="$(public_kdf_salt_fingerprint_file)"
+    tmp="$(mktemp "${fingerprint_file}.XXXXXX")" || return 1
+    chmod 0600 "$tmp"
+    if ! printf '%s' "$FM_SECRET_KDF_SALT" | sha256_stream >"$tmp"; then
+        rm -f "$tmp"
+        return 1
+    fi
+    mv "$tmp" "$fingerprint_file"
+}
+
+# Called right after a command creates Fleet Manager. The new container is the
+# salt evidence from now on, so the salt check verifies it and spends the
+# fingerprint; a later failure cannot leave a fingerprint behind for a
+# container someone removes by hand.
+public_kdf_salt_confirm_container() {
+    if ! docker inspect "$(container_name fleet-manager)" >/dev/null 2>&1; then
+        error "Fleet Manager container is missing after start; its KDF salt cannot be verified"
+        return 1
+    fi
+    public_kdf_salt_preflight
+}
+
+_public_kdf_salt_matches_down_fingerprint() {
+    local fingerprint_file persisted recorded=""
+    fingerprint_file="$(public_kdf_salt_fingerprint_file)"
+    [ -f "$fingerprint_file" ] || return 1
+    persisted="$(kdf_salt_from_env_file "$STATE_DIR/.env")"
+    if [ -z "$persisted" ] || [ "${FM_SECRET_KDF_SALT:-}" != "$persisted" ]; then
+        return 1
+    fi
+    read -r recorded <"$fingerprint_file" || true
+    [ -n "$recorded" ] && [ "$(printf '%s' "$persisted" | sha256_stream)" = "$recorded" ]
 }
 
 save_env() {
@@ -34,6 +103,7 @@ save_env() {
         export JWT_SECRET
         export FM_JWT_KID_CURRENT FM_JWT_SECRET_PREVIOUS FM_JWT_KID_PREVIOUS
         export FM_ADMIN_PASSWORD FM_PLATFORM_ADMIN_PASSWORD
+        export ZITADEL_SESSION_COOKIE_SECRET
 
         # Persist any secret the prior file lacked. Catches both legacy
         # installs predating a given key and partial-vault hydration paths
@@ -126,6 +196,8 @@ save_env() {
         _backfill_random FM_DEVICE_INGRESS_TOKEN_PEPPER 64
         _backfill_random FM_NOTIFICATION_RECEIPT_SIGNING_SECRET 64
         _backfill_random JWT_SECRET 64
+        # Persisted once: a new value signs every user out of the Zitadel login.
+        _backfill_random ZITADEL_SESSION_COOKIE_SECRET 64
         if [ -z "${FM_ADMIN_PASSWORD:-}" ]; then
             FM_ADMIN_PASSWORD="$(_random_zitadel_admin)"
             export FM_ADMIN_PASSWORD
@@ -179,6 +251,7 @@ FM_PLATFORM_ADMIN_PASSWORD=${FM_PLATFORM_ADMIN_PASSWORD}
 REDIS_ADMIN_PASSWORD=${REDIS_ADMIN_PASSWORD}
 REDIS_FM_PASSWORD=${REDIS_FM_PASSWORD}
 REDIS_ZITADEL_PASSWORD=${REDIS_ZITADEL_PASSWORD}
+ZITADEL_SESSION_COOKIE_SECRET=${ZITADEL_SESSION_COOKIE_SECRET}
 EOF
         chmod 0600 "$tmp"
         mv "$tmp" "$env_file"
@@ -229,4 +302,20 @@ Rotate:
   ./deploy/deploy-public.sh rotate-secrets
 EOF
     chmod 0600 "$creds_file"
+}
+
+# Docker creates a missing bind-mount folder as root. The public installer
+# takes such folders back with the same sudo it uses to install Docker; if
+# that is not possible, ensure_state_bind_dirs stops and prints the fix.
+public_ensure_state_dirs() {
+    local blocked
+    local -a dirs=()
+    blocked="$(state_dirs_not_writable "$STATE_DIR" "${STATE_BIND_DIRS[@]}")"
+    if [ -n "$blocked" ]; then
+        mapfile -t dirs <<<"$blocked"
+        info "Docker created ${#dirs[@]} state folder(s) as root; changing their owner back to you (sudo may ask for your password)"
+        run_privileged chown "$(id -u):$(id -g)" "${dirs[@]}" \
+            || warn "Could not change the owner of the state folders"
+    fi
+    ensure_state_bind_dirs "$STATE_DIR" "${STATE_BIND_DIRS[@]}"
 }

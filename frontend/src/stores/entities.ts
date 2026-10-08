@@ -4,9 +4,11 @@ import {
     entityCommandLatestIntentKey,
     predictedStatusPatchFor
 } from '@/helpers/entityCommandCatalog';
+import {debugWarn} from '../tools/debug';
 import * as ws from '../tools/websocket';
 import type {entity_t} from '../types';
 import {useDevicesStore} from './devices';
+import {createIdBatchReads} from './idBatchReads';
 import {createRefreshCoordinator} from './refreshCoordinator';
 import {createStaleGuard} from './staleGuard';
 
@@ -37,6 +39,9 @@ interface CommandLane {
     queued?: QueuedCommand;
 }
 
+/** entity.list's largest page; a read of 100 devices fits in one. */
+const ENTITY_READ_PAGE_LIMIT = 5000;
+
 export const useEntityStore = defineStore('entities', () => {
     const entities = shallowRef<Record<string, entity_t>>({});
     // Version counter to force reactivity when entities change (shallowRef doesn't track deep changes)
@@ -47,6 +52,14 @@ export const useEntityStore = defineStore('entities', () => {
     >();
 
     const entityRefresh = createRefreshCoordinator(refreshEntities);
+    // The full list is read once at start; after that, devices are read by id.
+    let bulkLoaded = false;
+    let bulkInFlight = false;
+    const ownerReads = createIdBatchReads({
+        read: readEntitiesOfDevices,
+        onError: (reason) =>
+            debugWarn('[entities] read by device failed', reason)
+    });
     // Guards the entities map: WS mutations bump; a stale refresh replays them.
     const entitiesGuard = createStaleGuard();
     // Writes recorded while a bulk refresh is in flight (null = removal).
@@ -62,6 +75,7 @@ export const useEntityStore = defineStore('entities', () => {
         const token = entitiesGuard.bump();
         const writes = new Map<string, entity_t | null>();
         refreshWrites = writes;
+        bulkInFlight = true;
         const collected: Record<string, entity_t> = {};
         try {
             await ws.listEntitiesChunked((chunk) => {
@@ -69,11 +83,40 @@ export const useEntityStore = defineStore('entities', () => {
             });
         } finally {
             refreshWrites = null;
+            bulkInFlight = false;
         }
         // Writes landed mid-flight: replay them on top instead of dropping the load.
         if (entitiesGuard.isStale(token)) replayWrites(collected, writes);
         entities.value = collected;
         version.value++;
+        bulkLoaded = true;
+    }
+
+    /** One entity.list read of the named devices, every page of it. */
+    async function readEntitiesOfDevices(shellyIDs: string[]): Promise<void> {
+        let cursor: string | null = null;
+        do {
+            const page: {items?: entity_t[]; next_cursor?: string | null} =
+                await ws.sendRPC('FLEET_MANAGER', 'entity.list', {
+                    shellyIDs,
+                    limit: ENTITY_READ_PAGE_LIMIT,
+                    ...(cursor ? {cursor} : {})
+                });
+            if (page.items?.length) upsertEntities(page.items);
+            cursor = page.next_cursor ?? null;
+        } while (cursor);
+    }
+
+    /**
+     * Entities of devices that just appeared or changed shape. Before the first
+     * full load lands they are part of it, so nothing is read twice.
+     */
+    function fetchEntitiesOfDevices(
+        shellyIDs: readonly string[]
+    ): Promise<void> {
+        if (bulkLoaded) return ownerReads.request(shellyIDs);
+        if (bulkInFlight) return Promise.resolve();
+        return fetchEntities();
     }
 
     function replayWrites(
@@ -375,6 +418,7 @@ export const useEntityStore = defineStore('entities', () => {
         version,
         typesBySource,
         fetchEntities,
+        fetchEntitiesOfDevices,
         invokeAction,
         addEntity,
         upsertEntities,

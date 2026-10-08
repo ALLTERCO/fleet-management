@@ -17,7 +17,9 @@ const NON_SPA_PREFIXES = [
     '/auth/login_flow',
     '/admin',
     '/mcp',
-    '/llms.txt'
+    '/.well-known/oauth-protected-resource',
+    '/llms.txt',
+    '/automation-hooks'
 ];
 
 // A path ending in a file extension is a static asset; a miss must 404, not

@@ -22,7 +22,7 @@
                 <div class="batt-shell">
                     <div class="batt-fill" :class="levelClass" :style="{ width: fillPct + '%' }" />
                 </div>
-                <div class="batt-readout">{{ percentText }}<span class="batt-unit">%</span></div>
+                <div v-if="percentText" class="batt-readout">{{ percentText }}<span class="ec-u ec-u--float">%</span></div>
             </div>
         </template>
         <template #badges>
@@ -55,7 +55,7 @@
                     <div class="batt-shell">
                         <div class="batt-fill" :class="levelClass" :style="{ width: fillPct + '%' }" />
                     </div>
-                    <div class="batt-readout">{{ percentText }}<span class="batt-unit">%</span></div>
+                    <div v-if="percentText" class="batt-readout">{{ percentText }}<span class="ec-u ec-u--float">%</span></div>
                 </div>
                 <div class="ec-wr">
                     <div class="ec-cols">
@@ -120,8 +120,9 @@ const percent = computed<number | null>(() => {
     return typeof bluValue === 'number' ? bluValue : null;
 });
 
-const percentText = computed(() =>
-    percent.value !== null ? String(Math.round(percent.value)) : '—'
+// null, not a dash — the percent sign only shows with a real reading.
+const percentText = computed<string | null>(() =>
+    percent.value !== null ? String(Math.round(percent.value)) : null
 );
 const fillPct = computed(() => Math.max(0, Math.min(100, percent.value ?? 0)));
 const levelClass = computed(() => {
@@ -203,11 +204,9 @@ const stats = computed(() => {
 .batt-fill--crit {
     background: var(--color-danger);
 }
-/* Number in the shared gradient value style; the unit gets its own solid
-   colour so it stays visible (gradient-clipped text renders a nested unit
-   span nearly transparent). */
 /* The number is centred under the battery shell; the unit is taken out of flow
-   so its width doesn't shift the number off-centre. */
+   so its width doesn't shift the number off-centre. Typography comes from
+   .ec-u (card-units.css) — only the positioning is this card's. */
 .batt-readout {
     position: relative;
     font-size: var(--type-heading);
@@ -217,15 +216,5 @@ const stats = computed(() => {
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-}
-.batt-unit {
-    position: absolute;
-    left: 100%;
-    bottom: 0.06em;
-    margin-left: 3px;
-    font-size: var(--type-body);
-    font-weight: 600;
-    color: var(--color-text-secondary);
-    -webkit-text-fill-color: var(--color-text-secondary);
 }
 </style>

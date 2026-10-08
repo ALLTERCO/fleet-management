@@ -2,6 +2,7 @@ import log4js from 'log4js';
 import {tuning} from '../../config';
 import type {ShellyDeviceExternal} from '../../types';
 import * as Observability from '../Observability';
+import {isRedisWriteBackpressureError} from '../redis/commandBackpressure';
 import type {RedisStream} from '../redis/RedisStream';
 import {rateLimiter} from '../redis/services';
 import {blockingStream, commandStream} from '../redis/streamClients';
@@ -21,7 +22,7 @@ export interface DeviceSnapshotEntry {
 
 function getStream(): RedisStream {
     if (!stream) {
-        stream = commandStream(tuning.deviceSnapshot.streamKey);
+        stream = commandStream('snapshot', tuning.deviceSnapshot.streamKey);
     }
     return stream;
 }
@@ -69,12 +70,14 @@ async function observeSaturation(s: RedisStream): Promise<void> {
     );
 }
 
-async function appendWithTimeout(
+async function appendSnapshot(
     s: RedisStream,
     fields: Record<string, string>
 ): Promise<string | null> {
-    const timeoutMs = tuning.ingest.xaddTimeoutMs;
-    const append = s.append(fields, {
+    // Await Redis' actual result. A local timeout cannot cancel XADD and would
+    // turn a late success into an ambiguous failure. The shared RedisStream
+    // pending-command guard is the bounded backpressure mechanism.
+    return s.append(fields, {
         maxlen: tuning.deviceSnapshot.streamMaxlen,
         ttlMs: tuning.deviceSnapshot.streamTtlMs,
         rateCheck: tuning.redis.rateLimitEnabled
@@ -87,41 +90,13 @@ async function appendWithTimeout(
             : undefined,
         rateLabel: 'device_snapshot'
     });
-    if (timeoutMs <= 0) return append;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-        return await Promise.race([
-            append,
-            new Promise<never>((_, reject) => {
-                timer = setTimeout(
-                    () =>
-                        reject(
-                            new Error(
-                                `device snapshot stream XADD timed out after ${timeoutMs}ms`
-                            )
-                        ),
-                    timeoutMs
-                );
-            })
-        ]);
-    } catch (err) {
-        append.catch((lateErr) =>
-            logger.warn(
-                'late device snapshot stream append failed: %s',
-                lateErr
-            )
-        );
-        throw err;
-    } finally {
-        if (timer) clearTimeout(timer);
-    }
 }
 
 export async function appendDeviceSnapshot(
     entry: DeviceSnapshotEntry
 ): Promise<void> {
     const s = getStream();
-    const id = await appendWithTimeout(s, snapshotFields(entry));
+    const id = await appendSnapshot(s, snapshotFields(entry));
     if (id === null) {
         Observability.incrementCounter('device_snapshot_stream_degraded');
         return;
@@ -137,6 +112,7 @@ export async function appendDeviceSnapshotBestEffort(
         await appendDeviceSnapshot(entry);
     } catch (err) {
         Observability.incrementCounter('device_snapshot_stream_append_errors');
+        if (isRedisWriteBackpressureError(err)) return;
         logger.error('device snapshot stream append failed: %s', err);
     }
 }

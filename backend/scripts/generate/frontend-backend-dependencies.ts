@@ -15,18 +15,15 @@
  * Output: docs/generated/frontend-backend-dependencies.{json,md}
  */
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import ts from 'typescript';
 import {
-    FRONTEND_SRC,
     lineOf,
     nodeText,
     provenanceHeader,
     readFile,
     readStringArg,
     relPath,
-    walkFiles,
+    walkAuthoritativeFrontendFiles,
     writeOutputs
 } from './_shared.js';
 
@@ -157,7 +154,7 @@ function scanSourceFile(
 }
 
 export function generate(): FrontendDeps {
-    const files = walkFiles(FRONTEND_SRC, ['.ts', '.vue', '.js']);
+    const files = walkAuthoritativeFrontendFiles(['.ts', '.vue', '.js']);
     const calls: FrontendCall[] = [];
     const touchedFiles = new Set<string>();
 

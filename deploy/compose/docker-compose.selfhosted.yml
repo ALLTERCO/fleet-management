@@ -16,3 +16,7 @@ services:
       -c wal_buffers=8MB
       -c checkpoint_completion_target=0.9
       -c random_page_cost=1.1
+      -c shared_preload_libraries=timescaledb,pg_stat_statements
+      -c pg_stat_statements.max=10000
+      -c track_io_timing=on
+      -c track_wal_io_timing=on

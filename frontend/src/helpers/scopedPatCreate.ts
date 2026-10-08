@@ -1,3 +1,4 @@
+import type {McpRoleKey} from '@api/authzCatalog';
 import {buildScope, type ScopeSelection} from './scopeDimensions';
 
 // The picked boundary is any subset of the contract's scope dimensions —
@@ -5,6 +6,16 @@ import {buildScope, type ScopeSelection} from './scopeDimensions';
 export type PickedScopedPatBoundary = ScopeSelection;
 
 export type McpKeyLevel = 'read' | 'write' | 'full';
+
+/**
+ * Which slice of the product an agent key works in. Orthogonal to the level:
+ * the level is how much power, the role is where.
+ *
+ * Taken from the contract, not redeclared here. A role this UI offers that the
+ * server does not know would mint a key that resolves to "invalid" and reaches
+ * nothing at all, so the two lists must be one list.
+ */
+export type McpKeyRole = McpRoleKey;
 
 export interface ScopedPatCreateInput {
     userId: string | undefined;
@@ -16,7 +27,9 @@ export interface ScopedPatCreateInput {
     // Scopes the key for the MCP surface at a level (audience `mcp:<level>`).
     // Undefined = not for MCP.
     mcpLevel?: McpKeyLevel;
-    // Optional human label for the key (Zitadel PATs only — stored FM-side).
+    // Narrows the key to one work slice. Only meaningful alongside mcpLevel.
+    mcpRole?: McpKeyRole;
+    // Human label for the key, required for Zitadel PATs (stored FM-side).
     name?: string;
 }
 
@@ -26,7 +39,7 @@ export type PatCreatePlan =
           createMethod: 'User.CreatePAT';
           createParams: {
               userId: string;
-              name?: string;
+              name: string;
               expirationDays?: number;
           };
       }
@@ -51,8 +64,7 @@ export function buildPatCreatePlan(input: ScopedPatCreateInput): PatCreatePlan {
     const userId = requireUserId(input.userId);
     const expirationDays = parseExpirationDays(input.expirationDaysText);
     if (!input.scoped) {
-        const trimmedName = input.name?.trim();
-        const base = trimmedName ? {userId, name: trimmedName} : {userId};
+        const base = {userId, name: requireName(input.name)};
         return {
             kind: 'zitadel_pat',
             createMethod: 'User.CreatePAT',
@@ -61,8 +73,16 @@ export function buildPatCreatePlan(input: ScopedPatCreateInput): PatCreatePlan {
     }
     const purpose = requirePurpose(input.purpose);
     const boundaryScope = buildBoundaryScope(input);
-    const base = input.mcpLevel
-        ? {userId, boundaryScope, purpose, audience: [`mcp:${input.mcpLevel}`]}
+    // A role without a level would reach the MCP surface with no capability:
+    // a key that can do nothing, which reads as a bug to whoever holds it.
+    const audience = input.mcpLevel
+        ? [
+              `mcp:${input.mcpLevel}`,
+              ...(input.mcpRole ? [`mcp.role:${input.mcpRole}`] : [])
+          ]
+        : undefined;
+    const base = audience
+        ? {userId, boundaryScope, purpose, audience}
         : {userId, boundaryScope, purpose};
     return {
         kind: 'fm_scoped_pat',
@@ -88,6 +108,12 @@ export function buildBoundaryScope(
 function requireUserId(userId: string | undefined): string {
     const value = userId?.trim();
     if (!value) throw new Error('No target user selected.');
+    return value;
+}
+
+function requireName(name: string | undefined): string {
+    const value = name?.trim();
+    if (!value) throw new Error('Key name is required');
     return value;
 }
 

@@ -6,19 +6,16 @@ export function isNodeRedPath(path: string): boolean {
     return path === '/node-red' || path.startsWith('/node-red/');
 }
 
-export function selectHttpAuthToken(
-    req: AuthTokenRequest,
-    nodeRedCookieName: string
-): string {
+export function selectHttpAuthToken(req: AuthTokenRequest): string {
     if (typeof req.headers.authorization === 'string') {
         const authHeader = req.headers.authorization;
         if (authHeader.includes(' ')) return authHeader.split(' ').at(-1)!;
         return '';
     }
 
-    if (isNodeRedPath(req.path) && req.cookies[nodeRedCookieName]) {
-        return req.cookies[nodeRedCookieName];
-    }
+    // Editor browsers authenticate with the editor session cookie, which is
+    // not a Fleet Manager token; no cookie may stand in for one there.
+    if (isNodeRedPath(req.path)) return '';
 
     return req.cookies.token || '';
 }

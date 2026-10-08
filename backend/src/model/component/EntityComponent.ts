@@ -7,10 +7,12 @@ import {
     requireComponentPermissionAsync
 } from '../../modules/authz/evaluator';
 import * as DeviceCollector from '../../modules/DeviceCollector';
+import {assertNodeRedServiceMayCall} from '../../modules/nodeRed/serviceDenylist';
 import * as PostgresProvider from '../../modules/PostgresProvider';
 import {
     getBluetoothDevice,
-    listBluetoothDevices
+    listBluetoothDevices,
+    listBluetoothDevicesByExternalIds
 } from '../../modules/virtualDevice/bluetoothRepository';
 import {invokeVirtualDeviceRoleCommand} from '../../modules/virtualDevice/commandRouter';
 import {
@@ -33,7 +35,6 @@ import {
     type VirtualEntityResolution
 } from '../../modules/virtualDevice/virtualEntityResolver';
 import type {DescribeOutput} from '../../rpc/describe';
-import {buildListResponse} from '../../rpc/listResponse';
 import RpcError from '../../rpc/RpcError';
 import {validateOrThrow} from '../../rpc/validateOrThrow';
 import type {entity_t} from '../../types';
@@ -43,6 +44,7 @@ import {
     ENTITY_GET_CAPABILITIES_PARAMS_SCHEMA,
     ENTITY_GET_PARAMS_SCHEMA,
     ENTITY_INVOKE_ACTION_PARAMS_SCHEMA,
+    ENTITY_LIST_MAX_LIMIT,
     ENTITY_LIST_PARAMS_SCHEMA,
     type EntityCapabilityResponse,
     type EntityGetActionSchemaParams,
@@ -54,6 +56,7 @@ import {
     type EntityInvokeActionResponse,
     type EntityListParams
 } from '../../types/api/entity';
+import type AbstractDevice from '../AbstractDevice';
 import type CommandSender from '../CommandSender';
 import {
     type ActionKind,
@@ -64,6 +67,12 @@ import {
     translateAction
 } from '../entity/actionAdapter';
 import Component from './Component';
+import {
+    type EntityListItem,
+    type EntityListSegment,
+    type EntityOwner,
+    pageEntityList
+} from './entityListPaging';
 import {
     assertDeviceReadAccessAsync,
     canReadDeviceFieldAsync
@@ -276,7 +285,9 @@ async function invokeVirtualEntityAction(
                     'devices',
                     'execute',
                     deviceExternalId
-                ).then(() => undefined)
+                ).then(() => undefined),
+            authorizeDeviceCall: (call) =>
+                assertNodeRedServiceMayCall(sender, call)
         }
     );
     return {
@@ -341,9 +352,16 @@ function virtualEntityListItem(
 
 async function readableBluetoothEntities(
     sender: CommandSender,
-    organizationId: string
+    organizationId: string,
+    scope?: ReadonlySet<string>
 ): Promise<Array<entity_t & {source: string; online: boolean}>> {
-    const result = await listBluetoothDevices(organizationId, {limit: 0});
+    const result = scope
+        ? {
+              items: await listBluetoothDevicesByExternalIds(organizationId, [
+                  ...scope
+              ])
+          }
+        : await listBluetoothDevices(organizationId, {limit: 0});
     if (result.items.length === 0) return [];
     const allowed = canCrossOrganizationBoundary(sender)
         ? new Set(result.items.map((device) => device.externalId))
@@ -373,6 +391,124 @@ async function readableBluetoothEntities(
             snapshot.presence === 'online'
         ) as Array<entity_t & {source: string; online: boolean}>;
     });
+}
+
+/** Reads a value once per request, on first use. */
+function once<T>(read: () => Promise<T>): () => Promise<T> {
+    let value: Promise<T> | undefined;
+    return () => {
+        value ??= read();
+        return value;
+    };
+}
+
+function ownersOf(items: readonly EntityListItem[]): EntityOwner[] {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+        counts.set(item.source, (counts.get(item.source) ?? 0) + 1);
+    }
+    return [...counts]
+        .map(([owner, count]) => ({owner, count}))
+        .sort((a, b) => (a.owner < b.owner ? -1 : a.owner > b.owner ? 1 : 0));
+}
+
+function physicalEntitySegment(
+    sender: CommandSender,
+    scope: ReadonlySet<string> | undefined
+): EntityListSegment {
+    const visible = new Map<string, AbstractDevice>();
+    return {
+        owners: once(async () => {
+            const candidates = scope
+                ? [...scope].flatMap(
+                      (shellyID) => DeviceCollector.getDevice(shellyID) ?? []
+                  )
+                : DeviceCollector.getAll();
+            const accessible = await sender.filterAccessibleDevices(
+                candidates.map((device) => device.shellyID)
+            );
+            for (const device of candidates) {
+                if (accessible.has(device.shellyID)) {
+                    visible.set(device.shellyID, device);
+                }
+            }
+            return [...visible.values()]
+                .map((device) => ({
+                    owner: device.shellyID,
+                    count: device.entities.length
+                }))
+                .sort((a, b) =>
+                    a.owner < b.owner ? -1 : a.owner > b.owner ? 1 : 0
+                );
+        }),
+        async load(owners) {
+            return owners.flatMap((owner) => {
+                const device = visible.get(owner);
+                if (!device) return [];
+                const online = device.presence === 'online';
+                return device.entities.map((entity) => ({
+                    ...entity,
+                    source: device.shellyID,
+                    online
+                }));
+            });
+        }
+    };
+}
+
+function virtualEntitySegment(
+    sender: CommandSender,
+    input: {
+        organizationId: string | undefined;
+        scope: ReadonlySet<string> | undefined;
+    }
+): EntityListSegment {
+    const {organizationId, scope} = input;
+    return {
+        owners: once(async () => {
+            if (!organizationId) return [];
+            const owners = await accessibleVirtualEntityOwners(
+                sender,
+                organizationId
+            );
+            return owners
+                .filter((owner) => !scope || scope.has(owner.deviceExternalId))
+                .map((owner) => ({
+                    owner: owner.deviceExternalId,
+                    count: owner.entityCount
+                }));
+        }),
+        async load(owners) {
+            if (!organizationId) return [];
+            const entities = await listVirtualEntities(
+                {organizationId, deviceExternalIds: owners},
+                virtualEntityDeps(organizationId)
+            );
+            return entities.map(virtualEntityListItem);
+        }
+    };
+}
+
+function bluetoothEntitySegment(
+    sender: CommandSender,
+    input: {
+        organizationId: string | undefined;
+        scope: ReadonlySet<string> | undefined;
+    }
+): EntityListSegment {
+    const {organizationId, scope} = input;
+    const items = once(async () =>
+        organizationId
+            ? readableBluetoothEntities(sender, organizationId, scope)
+            : []
+    );
+    return {
+        owners: async () => ownersOf(await items()),
+        async load(owners) {
+            const wanted = new Set(owners);
+            return (await items()).filter((item) => wanted.has(item.source));
+        }
+    };
 }
 
 function statusRecord(value: unknown): Record<string, unknown> {
@@ -817,91 +953,30 @@ export default class EntityComponent extends Component<any> {
             rawParams ?? {},
             ENTITY_LIST_PARAMS_SCHEMA
         );
-        const allDevices = DeviceCollector.getAll();
-        const uniqueSources = [
-            ...new Set(allDevices.map((d) => d.shellyID as string))
-        ];
-        const accessible = await sender.filterAccessibleDevices(uniqueSources);
-
-        const rawLimit =
-            typeof params?.limit === 'number'
-                ? params.limit
-                : tuning.db.entityListPageMax;
-        const limit = rawLimit === 0 ? Number.POSITIVE_INFINITY : rawLimit;
-        const offset =
-            typeof params?.offset === 'number' && params.offset >= 0
-                ? params.offset
-                : 0;
-        const pageEnd = offset + limit;
+        const scope = params.shellyIDs ? new Set(params.shellyIDs) : undefined;
         const organizationId = sender.getOrganizationId();
-        const virtualOwners = organizationId
-            ? await accessibleVirtualEntityOwners(sender, organizationId)
-            : [];
-        const virtualTotal = virtualOwners.reduce(
-            (sum, owner) => sum + owner.entityCount,
-            0
-        );
-        const bluetoothEntities = organizationId
-            ? await readableBluetoothEntities(sender, organizationId)
-            : [];
-        const bluetoothTotal = bluetoothEntities.length;
-
-        // Single pass: count all, collect only [offset, pageEnd).
-        // Avoids materializing the full N-entity array before slicing.
-        let total = 0;
-        const page: (entity_t & {source: string; online: boolean})[] = [];
-        for (const device of allDevices) {
-            if (!accessible.has(device.shellyID as string)) continue;
-            const online = device.presence === 'online';
-            for (const entity of device.entities) {
-                if (total >= offset && total < pageEnd) {
-                    page.push({
-                        ...entity,
-                        source: device.shellyID as string,
-                        online
-                    });
+        const page = await pageEntityList(
+            [
+                physicalEntitySegment(sender, scope),
+                virtualEntitySegment(sender, {organizationId, scope}),
+                bluetoothEntitySegment(sender, {organizationId, scope})
+            ],
+            {
+                request: params,
+                bounds: {
+                    defaultLimit: tuning.db.entityListPageMax,
+                    maxLimit: ENTITY_LIST_MAX_LIMIT
                 }
-                total++;
             }
-        }
-        const physicalTotal = total;
-        const virtualOffset = Math.max(0, offset - physicalTotal);
-        const virtualLimit = Number.isFinite(limit)
-            ? Math.max(0, limit - page.length)
-            : undefined;
-        const virtualEntities =
-            organizationId && virtualOwners.length > 0 && virtualLimit !== 0
-                ? await listVirtualEntities(
-                      {
-                          organizationId,
-                          deviceExternalIds: virtualOwners.map(
-                              (owner) => owner.deviceExternalId
-                          ),
-                          limit: virtualLimit,
-                          offset: virtualOffset
-                      },
-                      virtualEntityDeps(organizationId)
-                  )
-                : [];
-        for (const virtualEntity of virtualEntities) {
-            page.push(virtualEntityListItem(virtualEntity));
-        }
-        const bluetoothOffset = Math.max(
-            0,
-            offset - physicalTotal - virtualTotal
         );
-        const bluetoothLimit = Number.isFinite(limit)
-            ? Math.max(0, limit - page.length)
-            : bluetoothTotal;
-        page.push(
-            ...bluetoothEntities.slice(
-                bluetoothOffset,
-                bluetoothOffset + bluetoothLimit
-            )
-        );
-        total = physicalTotal + virtualTotal + bluetoothTotal;
-
-        return buildListResponse(page, total, rawLimit, offset);
+        return {
+            items: page.items,
+            ...(page.total === undefined ? {} : {total: page.total}),
+            limit: page.limit,
+            ...(page.offset === undefined ? {} : {offset: page.offset}),
+            has_more: page.has_more,
+            next_cursor: page.nextCursor
+        };
     }
 
     protected override getDefaultConfig() {

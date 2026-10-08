@@ -39,9 +39,10 @@
     >
         <template #default>
             <div class="vc-num">
-                <div class="vc-num__readout">
+                <div v-if="numberDisplay" class="ec-vu">
                     <span class="vc-num__val">{{ numberDisplay }}</span>
-                    <span v-if="numberUnit" class="vc-num__unit">{{ numberUnit }}</span>
+                    <!-- 2x2 grows the value, so the unit takes the larger tier there. -->
+                    <span v-if="numberUnit" class="ec-u" :class="{'ec-u--sm': size !== '2x2'}">{{ numberUnit }}</span>
                 </div>
                 <div v-if="numberGaugePct !== null" class="vc-num__gauge">
                     <div
@@ -73,7 +74,7 @@
     >
         <template #default>
             <div class="vc-text">
-                <span class="vc-text__val" :title="textDisplay">
+                <span v-if="textDisplay" class="vc-text__val" :title="textDisplay">
                     {{ textDisplay }}
                 </span>
             </div>
@@ -97,8 +98,8 @@
     >
         <template #default>
             <div class="vc-enum">
-                <span class="vc-enum__val">{{ enumDisplayLabel }}</span>
-                <div v-if="enumChips.length > 0" class="vc-enum__chips">
+                <span v-if="enumDisplayLabel" class="vc-enum__val">{{ enumDisplayLabel }}</span>
+                <div v-if="enumChips.length > 0" class="vc-enum__chips" @click.stop>
                     <button
                         v-for="opt in enumChips"
                         :key="opt.key"
@@ -134,9 +135,26 @@
         @delete="$emit('delete')" @cycle-size="$emit('cycle-size')"
     >
         <template #default>
-            <div class="vc-mini vc-mini--clickable" @click="pressButton">
-                <i class="fas fa-circle-play vc-mini__play-icon"></i>
-                <span class="vc-mini__hint">Press</span>
+            <div class="vc-btn">
+                <div class="vc-mini vc-mini--clickable" @click.stop="pressButton('single_push')">
+                    <i v-if="pressing === 'single_push'" class="fas fa-spinner fa-spin vc-mini__play-icon"></i>
+                    <i v-else class="fas fa-circle-play vc-mini__play-icon"></i>
+                    <span class="vc-mini__hint">Press</span>
+                </div>
+                <div v-if="canExecute" class="vc-btn__kinds" @click.stop>
+                    <button
+                        v-for="kind in SECONDARY_PRESS_KINDS"
+                        :key="kind.event"
+                        type="button"
+                        class="vc-btn__kind"
+                        :disabled="pressing !== null"
+                        :title="kind.title"
+                        @click="pressButton(kind.event)"
+                    >
+                        <i v-if="pressing === kind.event" class="fas fa-spinner fa-spin" />
+                        <span v-else>{{ kind.label }}</span>
+                    </button>
+                </div>
             </div>
         </template>
         <template #badges>
@@ -146,7 +164,7 @@
 </template>
 
 <script setup lang="ts">
-import {computed} from 'vue';
+import {computed, onBeforeUnmount, ref} from 'vue';
 import {useCardRpc} from '@/composables/useCardRpc';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
@@ -246,9 +264,10 @@ const numberDecimals = computed(() => {
     return dot < 0 ? 0 : Math.min(20, str.length - dot - 1);
 });
 
-const numberDisplay = computed(() => {
+// null, not a placeholder — a virtual number never set renders no unit.
+const numberDisplay = computed<string | null>(() => {
     const val = status.value?.value;
-    if (val == null) return '--';
+    if (val == null) return null;
     if (typeof val !== 'number') return String(val);
     return val.toFixed(numberDecimals.value);
 });
@@ -275,9 +294,9 @@ const numberRangeLabel = computed(() => {
 
 // ── Text helpers ──
 
-const textDisplay = computed(() => {
+const textDisplay = computed<string | null>(() => {
     const val = status.value?.value;
-    if (val == null || val === '') return '--';
+    if (val == null || val === '') return null;
     return String(val);
 });
 
@@ -289,9 +308,9 @@ const enumRawValue = computed(() => {
     return val != null ? String(val) : '--';
 });
 
-const enumDisplayLabel = computed(() => {
+const enumDisplayLabel = computed<string | null>(() => {
     const val = status.value?.value;
-    if (val == null) return '--';
+    if (val == null) return null;
     const options = enumEntity.value.properties?.options;
     if (options && val in options) return options[val];
     return String(val);
@@ -314,9 +333,76 @@ function setEnum(value: string) {
 
 // ── Button helpers ──
 
-function pressButton() {
-    if (!canExecute.value) return;
-    rpc.invokeAction(props.entity.id, 'press');
+// Scripts key off the exact press kind, so each firmware event is its own
+// explicit control (same pattern as EntityTemplate_VirtualButton).
+type PressEvent = 'single_push' | 'double_push' | 'triple_push' | 'long_push';
+
+const SECONDARY_PRESS_KINDS: Array<{
+    event: PressEvent;
+    label: string;
+    title: string;
+}> = [
+    {event: 'double_push', label: '2x', title: 'Double push'},
+    {event: 'triple_push', label: '3x', title: 'Triple push'},
+    {event: 'long_push', label: 'Long', title: 'Long push'}
+];
+
+const pressing = ref<PressEvent | null>(null);
+let pressReleaseTimer: ReturnType<typeof setTimeout> | undefined;
+
+function pressButton(event: PressEvent) {
+    if (!canExecute.value || pressing.value !== null) return;
+    pressing.value = event;
+    rpc.invokeAction(props.entity.id, 'press', {event});
     emit('press');
+    if (pressReleaseTimer !== undefined) clearTimeout(pressReleaseTimer);
+    pressReleaseTimer = setTimeout(() => {
+        pressing.value = null;
+        pressReleaseTimer = undefined;
+    }, 1000);
 }
+
+onBeforeUnmount(() => {
+    if (pressReleaseTimer !== undefined) clearTimeout(pressReleaseTimer);
+});
 </script>
+
+<style scoped>
+/* Press-kind chips match the enum chip visual language (card-sensors.css). */
+.vc-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    flex: 1;
+}
+.vc-btn__kinds {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+}
+.vc-btn__kind {
+    padding: 2px var(--gap-xs);
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-secondary);
+    background: var(--color-surface-3);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    transition:
+        background var(--duration-fast),
+        border-color var(--duration-fast),
+        color var(--duration-fast);
+}
+.vc-btn__kind:hover:not(:disabled) {
+    background: var(--color-surface-4);
+    border-color: var(--color-border-medium);
+}
+.vc-btn__kind:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+</style>

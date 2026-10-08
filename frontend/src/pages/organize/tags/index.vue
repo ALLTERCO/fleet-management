@@ -114,7 +114,8 @@
 
 <script setup lang="ts">
 import type {Tag as ApiTag} from '@api/tag';
-import {type ComputedRef, computed, inject, onMounted, ref} from 'vue';
+import {type ComputedRef, computed, inject, onMounted, ref, watch} from 'vue';
+import {useRoute, useRouter} from 'vue-router';
 import CardValue_Tag from '@/components/cards/CardValue_Tag.vue';
 import Button from '@/components/core/Button.vue';
 import FilterChips, {type FilterChip} from '@/components/core/FilterChips.vue';
@@ -284,7 +285,7 @@ const filterChips = computed<FilterChip[]>(() => {
     for (const v of selectedClasses.value) {
         chips.push({
             key: `source::${v}`,
-            section: 'Class',
+            section: 'Device type',
             label: DEVICE_TYPE_LABELS[v as DeviceType]
         });
     }
@@ -357,6 +358,30 @@ function openEdit(tag: ApiTag) {
     editTarget.value = tag;
     editVisible.value = true;
 }
+
+// Deep-link `?preview=N` (dashboard tag tiles) opens the tag's edit modal —
+// this page's only detail surface. Watches the store too because the list
+// fetch may still be in flight when the route lands; unknown ids simply
+// never match, mirroring the groups page's tolerance.
+const route = useRoute();
+const router = useRouter();
+watch(
+    [() => route.query.preview, () => store.tags],
+    ([raw]) => {
+        if (raw == null || editVisible.value) return;
+        const value = Array.isArray(raw) ? raw[0] : raw;
+        const id = Number(value);
+        if (!Number.isInteger(id) || id <= 0) return;
+        const tag = store.tags[id];
+        if (tag) openEdit(tag);
+    },
+    {immediate: true}
+);
+watch(editVisible, (open) => {
+    if (open || route.query.preview == null) return;
+    const {preview: _, ...rest} = route.query;
+    void router.replace({query: rest});
+});
 
 // Bulk delete — driven by PageTemplate's selection bar.
 const bulkDeleteRef = ref<InstanceType<typeof ConfirmationModal>>();

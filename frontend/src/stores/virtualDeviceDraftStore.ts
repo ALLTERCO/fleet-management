@@ -1,4 +1,9 @@
-import type {EnergyMeterRole} from '@api/energy';
+import {
+    commodityForTag,
+    type EnergyMeasurementPoint,
+    type EnergyMeterRole,
+    type EnergyUtilityType
+} from '@api/energy';
 import {
     type BindingDraftItem,
     type CreateVirtualDeviceRequest,
@@ -22,6 +27,7 @@ import {
     toLogicalMeterPoint
 } from '@/helpers/energyAssignment';
 import {humaniseLabel} from '@/helpers/partLabels';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {uploadVisualAsset} from '@/helpers/uploadVisualAsset';
 import {manualVisual, profileVisual} from '@/helpers/virtualDeviceTemplates';
 import {useToastStore} from '@/stores/toast';
@@ -149,6 +155,31 @@ export const useVirtualDeviceDraftStore = defineStore(
             return roles.value.some((row) => row.source !== null);
         });
 
+        // A pairing writes the sensor into the gateway and stays there after
+        // the wizard closes. Adding it to the fleet is what the user came for,
+        // so only a pairing left behind is worth stopping them over.
+        const pairedInRun = ref(0);
+        const addedInRun = ref(0);
+        function notePaired(): void {
+            pairedInRun.value += 1;
+        }
+        function noteAdded(): void {
+            addedInRun.value += 1;
+        }
+
+        // Anything the user would be upset to lose, or leave behind.
+        // Drives the leave guard.
+        const isDirty = computed(() => {
+            if (kind.value === 'bluetooth')
+                return pairedInRun.value > addedInRun.value;
+            if (!isCustom.value) return false;
+            if (profile.value !== null || manualMode.value) return true;
+            if (details.value.name.trim()) return true;
+            if (details.value.tagIds.length > 0) return true;
+            if (details.value.groupIds.length > 0) return true;
+            return roles.value.some((row) => row.source !== null);
+        });
+
         const pickedParts = computed(() => roles.value);
 
         // Draft-local preview; never inserted into the global stores.
@@ -259,6 +290,8 @@ export const useVirtualDeviceDraftStore = defineStore(
             roles.value = [];
             energyRole.value = null;
             pickedKeys.value.clear();
+            pairedInRun.value = 0;
+            addedInRun.value = 0;
             previewState.value = null;
             previewError.value = null;
             validation.value = null;
@@ -459,8 +492,7 @@ export const useVirtualDeviceDraftStore = defineStore(
                 const res = await virtualDevices.profiles.list({query});
                 availableProfiles.value = res.items;
             } catch (err) {
-                profilesError.value =
-                    err instanceof Error ? err.message : String(err);
+                profilesError.value = rpcErrorMessage(err);
                 availableProfiles.value = [];
             } finally {
                 profilesLoading.value = false;
@@ -515,8 +547,7 @@ export const useVirtualDeviceDraftStore = defineStore(
                 validation.value = res.validation;
                 return res;
             } catch (err) {
-                previewError.value =
-                    err instanceof Error ? err.message : String(err);
+                previewError.value = rpcErrorMessage(err);
                 previewState.value = null;
                 return null;
             } finally {
@@ -536,13 +567,26 @@ export const useVirtualDeviceDraftStore = defineStore(
                     valid: false,
                     errors: [
                         {
-                            message:
-                                err instanceof Error ? err.message : String(err)
+                            message: rpcErrorMessage(err)
                         }
                     ]
                 };
                 return validation.value;
             }
+        }
+
+        /** Read the commodity off the points instead of assuming electricity.
+         *  A hardcoded 'electric' made every extracted water or heat meter wrong
+         *  at birth, and the backend now rejects that pair outright. */
+        function utilityForPoints(
+            points: readonly EnergyMeasurementPoint[]
+        ): EnergyUtilityType {
+            for (const point of points) {
+                const commodity = commodityForTag(point.tag);
+                if (commodity === 'water') return 'water';
+                if (commodity === 'heat') return 'heat';
+            }
+            return 'electric';
         }
 
         async function applyEnergyRole(externalId: string): Promise<void> {
@@ -556,7 +600,7 @@ export const useVirtualDeviceDraftStore = defineStore(
             const name = details.value.name.trim() || DEFAULT_ENERGY_METER_NAME;
             await saveLogicalMeter({
                 name,
-                utilityType: 'electric',
+                utilityType: utilityForPoints(points),
                 role,
                 kindId: null,
                 phaseMode: deriveEnergyPhaseMode(points),
@@ -654,6 +698,9 @@ export const useVirtualDeviceDraftStore = defineStore(
             allRequiredBound,
             hasBoundParts,
             templateChosen,
+            isDirty,
+            notePaired,
+            noteAdded,
             readyForDetails,
             canPreview,
             pickedParts,

@@ -31,3 +31,11 @@ export function availableAuthMethods(
         certificate: false
     };
 }
+
+// record_only admits devices without reading their key.
+export function deviceKeysChecked(input: {
+    enabled: boolean;
+    enforcementMode: IngressEnforcementMode;
+}): boolean {
+    return input.enabled && input.enforcementMode !== 'record_only';
+}

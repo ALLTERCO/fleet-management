@@ -80,10 +80,13 @@ import {
     type FloorPlanScene,
     type LightingMode
 } from '@/helpers/floor-plan-3d';
+import type {DrawDraft} from '@/helpers/floor-plan-draw';
 import {hasWebGL} from '@/helpers/webgl';
 import type {
     DevicePlacementMap,
     FloorPlanRef,
+    PlanPoint,
+    WallSegment,
     ZoneShape
 } from '@/types/floor-plan';
 
@@ -91,10 +94,14 @@ const props = withDefaults(
     defineProps<{
         plan: FloorPlanRef | null;
         zones?: ZoneShape[];
+        walls?: WallSegment[];
         placements?: DevicePlacementMap;
         devices?: FloorPlanDevice[];
         layerVisibility?: {floor: boolean; walls: boolean; devices: boolean};
         editMode?: boolean;
+        /** The zone or wall being drawn. Non-null turns clicks into
+         *  vertices — same contract the 2D canvas honours. */
+        drawing?: DrawDraft | null;
         /** Render the inline view-preset and lighting-mode button groups.
          *  Off by default — the host wraps the canvas in its own chrome
          *  (top-bar + layer chips), so these float-on-canvas controls are
@@ -103,10 +110,12 @@ const props = withDefaults(
     }>(),
     {
         zones: () => [],
+        walls: () => [],
         placements: () => ({}),
         devices: () => [],
         layerVisibility: () => ({floor: true, walls: true, devices: true}),
         editMode: false,
+        drawing: null,
         showInlineControls: false
     }
 );
@@ -114,6 +123,7 @@ const props = withDefaults(
 const emit = defineEmits<{
     'device-click': [id: string];
     'device-move': [id: string, position: {x: number; y: number}];
+    'draft-vertex': [point: PlanPoint];
 }>();
 
 const hostRef = ref<HTMLElement | null>(null);
@@ -137,8 +147,10 @@ function setLighting(mode: LightingMode): void {
 const sceneInput = computed(() => ({
     plan: props.plan,
     zones: props.zones,
+    walls: props.walls,
     placements: props.placements,
-    devices: props.devices
+    devices: props.devices,
+    draft: props.drawing
 }));
 
 function sync(): void {
@@ -156,6 +168,7 @@ onMounted(() => {
         scene = createFloorPlanScene();
         scene.onDeviceClick((id) => emit('device-click', id));
         scene.onDeviceMove((id, position) => emit('device-move', id, position));
+        scene.onDraftVertex((point) => emit('draft-vertex', point));
         scene.setEditMode(props.editMode);
         // The layerVisibility watch fired during setup when `scene` was
         // null, so the toggles never landed on this fresh scene (matters
@@ -196,6 +209,14 @@ onBeforeUnmount(() => {
     scene?.dispose();
     scene = null;
 });
+
+// Lets the host place a palette drop where the cursor actually points.
+// A perspective camera makes flat screen-rect fractions wrong, so the
+// drop has to be projected onto the floor plane by the scene itself.
+defineExpose({
+    normalizedPointAt: (clientX: number, clientY: number) =>
+        scene?.normalizedPointAt(clientX, clientY) ?? null
+});
 </script>
 
 <style scoped>
@@ -218,7 +239,6 @@ onBeforeUnmount(() => {
     z-index: 1;
     background: var(--glass-4-bg);
     backdrop-filter: var(--glass-4-filter);
-    -webkit-backdrop-filter: var(--glass-4-filter);
     box-shadow: inset 0 1px 0 var(--glass-highlight);
     padding: 2px;
     border-radius: var(--radius-md);

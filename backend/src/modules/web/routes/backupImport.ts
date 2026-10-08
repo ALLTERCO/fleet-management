@@ -4,10 +4,9 @@ import express from 'express';
 import log4js from 'log4js';
 import multer from 'multer';
 import {tuning} from '../../../config';
-import type BackupComponent from '../../../model/component/BackupComponent';
 import RpcError from '../../../rpc/RpcError';
 import {httpStatusFor} from '../../../types/api/errors';
-import * as Commander from '../../Commander';
+import {processBackupImportUpload} from '../../uploads/fileTransfer';
 import {bestEffort} from '../../util/fireAndForget';
 import {httpRouteLimit} from '../rateLimit';
 import {requiresAnyPermission} from '../utils/authMiddleware';
@@ -50,16 +49,8 @@ router.post(
         }
 
         try {
-            const component = Commander.getComponent('backup') as
-                | BackupComponent
-                | undefined;
-            if (!component) {
-                res.status(500).json({error: 'Backup service unavailable'});
-                return;
-            }
-            const fileBuffer = await fsAsync.readFile(file.path);
-            const backup = await component.importBackup({
-                fileBuffer,
+            const backup = await processBackupImportUpload({
+                filePath: file.path,
                 organizationId: req.user?.organizationId ?? null,
                 requestedName: req.body?.name,
                 originalFileName: originalName

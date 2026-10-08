@@ -136,6 +136,21 @@ export function objIdsByName(...names: string[]): Set<number> {
     return ids;
 }
 
+// Alert evaluation asks this per reading, so the catalog is indexed once.
+const OBJ_IDS_BY_NAME: ReadonlyMap<string, readonly number[]> = (() => {
+    const out = new Map<string, number[]>();
+    for (const [id, info] of Object.entries(bthomeObjectInfos)) {
+        const ids = out.get(info.name) ?? [];
+        ids.push(Number(id));
+        out.set(info.name, ids);
+    }
+    return out;
+})();
+
+export function objIdsForName(name: string): readonly number[] {
+    return OBJ_IDS_BY_NAME.get(name) ?? [];
+}
+
 export type BTHomeBinaryStateWords = {on: string; off: string};
 
 /** Display words for binary sensor states, keyed by objName.
@@ -332,6 +347,12 @@ export const BLU_DEVICES: Record<string, BLUDeviceInfo> = {
         productName: 'Shelly BLU Distance',
         modelId: 4,
         reportCadenceSec: 300 // maximum configured measurement interval
+    },
+    'SBMS-001A': {
+        productName: 'Shelly BLU Soil',
+        // 10 is the only gap below the ZB block (17+); 12 is BLU H&T Display.
+        modelId: 10,
+        reportCadenceSec: 300 // "measurements are done periodically on a 5 minute interval"
     }
 };
 

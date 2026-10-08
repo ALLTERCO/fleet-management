@@ -172,6 +172,7 @@ import {
     visibleStepsForKind,
     type WizardStep
 } from '@/helpers/location-drawer-steps';
+import {buildLocationKindFields} from '@/helpers/location-form-payload';
 import {isPlanFriendlyKind} from '@/helpers/location-kinds';
 import {NAME_MAX_LENGTH} from '@/helpers/validation-limits';
 import {useLocationsStore} from '@/stores/locations';
@@ -485,26 +486,15 @@ function isSaveAllowed(): boolean {
 // Answer — kindFields payload assembled from current form state. Backend
 // kindSchemas accept geo.precision, tags, and notes on every kind.
 function buildKindFieldsPayload(): LocationKindFields {
-    const out: Record<string, unknown> = {...formKindFields.value};
-    if (hasPin.value) {
-        out.geo = {
-            lat: geo.value.lat,
-            lng: geo.value.lng,
-            precision: precision.value
-        };
-    }
-    if (tags.value.length > 0) {
-        out.tags = [...tags.value];
-    } else {
-        delete out.tags;
-    }
-    const trimmedNotes = notes.value.trim();
-    if (trimmedNotes) {
-        out.notes = trimmedNotes;
-    } else {
-        delete out.notes;
-    }
-    return out as LocationKindFields;
+    return buildLocationKindFields({
+        mode: props.mode,
+        kindFields: formKindFields.value,
+        geo: geo.value,
+        hasPin: hasPin.value,
+        precision: precision.value,
+        tags: tags.value,
+        notes: notes.value
+    });
 }
 
 // Do — dispatch create or update against the store, returning the saved row.
@@ -557,7 +547,6 @@ function readSaveErrorMessage(err: unknown): string {
     inset: 0;
     background: rgba(0, 0, 0, 0.42);
     backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
 }
 
 /* ── Drawer panel ─────────────────────────────────────────────────────── */
@@ -569,7 +558,6 @@ function readSaveErrorMessage(err: unknown): string {
     flex-direction: column;
     background: rgba(28, 30, 34, 0.92);
     backdrop-filter: blur(28px) saturate(180%);
-    -webkit-backdrop-filter: blur(28px) saturate(180%);
     border-left: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.08),

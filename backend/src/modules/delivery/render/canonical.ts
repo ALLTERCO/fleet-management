@@ -46,6 +46,7 @@ export interface CanonicalAlertPayload {
     source?: {subjectType: string; subjectId: string};
     /** ISO timestamp; renderers format per locale. */
     firedAt: string;
+    imageUrl?: string;
 }
 
 export function toCanonical(payload: DeliveryPayload): CanonicalAlertPayload {
@@ -60,7 +61,8 @@ export function toCanonical(payload: DeliveryPayload): CanonicalAlertPayload {
         labels: payload.labels ?? {},
         context: payload.context ?? {},
         source: payload.source ?? undefined,
-        firedAt: payload.firedAt
+        firedAt: payload.firedAt,
+        ...(payload.deviceImageUrl ? {imageUrl: payload.deviceImageUrl} : {})
     };
 }
 
@@ -105,11 +107,10 @@ function deriveFields(payload: DeliveryPayload): CanonicalField[] {
 }
 
 function deriveActions(payload: DeliveryPayload): CanonicalAction[] {
-    if (payload.alertId == null) return [];
+    if (payload.alertId == null || payload.state !== 'active') return [];
     return [
         {id: `ack:${payload.alertId}`, label: 'Acknowledge', style: 'primary'},
-        {id: `snooze:${payload.alertId}`, label: 'Snooze 1h'},
-        {id: `resolve:${payload.alertId}`, label: 'Resolve', style: 'danger'}
+        {id: `snooze:${payload.alertId}`, label: 'Silence'}
     ];
 }
 

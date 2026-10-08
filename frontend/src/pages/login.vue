@@ -114,6 +114,7 @@
 import {computed, onBeforeMount, ref} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import Spinner from '@/components/core/Spinner.vue';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {getZitadelAuth} from '@/helpers/zitadelAuth';
 import {useAuthStore} from '@/stores/auth';
 
@@ -135,6 +136,21 @@ function returnToTarget(): string | undefined {
 }
 const year = new Date().getFullYear();
 
+const ORG_MISMATCH_MESSAGE =
+    "This account belongs to a different organisation and cannot open this platform. Sign in with this platform's own account.";
+
+// The operator running this instance is the administrator, so point at the setup steps, not at a third party.
+const NO_SIGN_IN_SERVICE_MESSAGE =
+    'No sign-in service is set up for this Fleet Manager. Set up Zitadel with deploy/deploy-public.sh, or start the backend with FM_DEV_MODE=true for local sign-in.';
+
+// The callback page sends the user back here with this reason after the
+// backend refused a token minted for another organisation.
+function isOrgMismatchReturn(): boolean {
+    const raw = route.query.reason;
+    const reason = Array.isArray(raw) ? raw[0] : raw;
+    return reason === 'org_mismatch';
+}
+
 const zitadelAuth = computed(() => getZitadelAuth());
 
 const username = ref('');
@@ -143,7 +159,9 @@ const usernameError = ref('');
 const passwordError = ref('');
 const loading = ref(false);
 const ssoLoading = ref(false);
-const ssoError = ref<string | null>(null);
+const ssoError = ref<string | null>(
+    isOrgMismatchReturn() ? ORG_MISMATCH_MESSAGE : null
+);
 
 const isFormValid = computed(
     () => username.value.trim().length > 0 && password.value.length > 0
@@ -153,7 +171,7 @@ const currentError = computed(() => {
     if (ssoError.value) return ssoError.value;
     if (authStore.loginError) return authStore.loginError;
     if (!authStore.devMode && !zitadelAuth.value) {
-        return 'Authentication is not configured. Please contact your administrator.';
+        return NO_SIGN_IN_SERVICE_MESSAGE;
     }
     return '';
 });
@@ -182,7 +200,7 @@ function requiresKeychainTrust(): boolean {
 
 function interpretOidcError(err: unknown): string {
     const message =
-        err instanceof Error ? err.message : String(err ?? 'unknown error');
+        rpcErrorMessage(err, 'unknown error');
     if (/subtle|crypto|pkce|secure context/i.test(message)) {
         return 'SSO login failed before redirect. Safari may require the Fleet Manager CA to be trusted in Keychain before PKCE can start.';
     }
@@ -193,8 +211,7 @@ async function signIn() {
     ssoError.value = null;
     const authInstance = getZitadelAuth();
     if (!authInstance) {
-        ssoError.value =
-            'Authentication is not configured. Please contact your administrator.';
+        ssoError.value = NO_SIGN_IN_SERVICE_MESSAGE;
         return;
     }
     if (requiresKeychainTrust()) {
@@ -205,7 +222,11 @@ async function signIn() {
 
     ssoLoading.value = true;
     try {
-        await authInstance.oidcAuth.signIn(returnToTarget());
+        // A session Zitadel would reuse is the one that was just refused.
+        await authInstance.oidcAuth.signIn(
+            returnToTarget(),
+            isOrgMismatchReturn() ? {prompt: 'login'} : undefined
+        );
     } catch (err: unknown) {
         console.error('OIDC sign-in start failed:', err);
         ssoError.value = interpretOidcError(err);

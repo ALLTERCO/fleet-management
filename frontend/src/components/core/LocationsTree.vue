@@ -56,7 +56,7 @@
                 <span
                     class="lt__dot"
                     :style="{background: kindDotColor(row.location.kind)}"
-                    :aria-label="row.location.kind"
+                    :aria-label="store.kindLabel(row.location.kind)"
                 />
                 <span class="lt__name" @click="$emit('open', row.location.id)">
                     {{ row.location.name }}

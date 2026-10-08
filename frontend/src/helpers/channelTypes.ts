@@ -111,6 +111,7 @@ const CONFIGURABLE_CHANNEL_TYPES: readonly ChannelType[] = [
     'slack_webhook',
     'teams_workflow_webhook',
     'telegram_bot',
+    'push_fcm',
     'webhook_signed',
     'generic_webhook'
 ];

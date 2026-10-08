@@ -8,9 +8,10 @@
 // stamped too, unlike the old identity-keyed write. Posture is last-observed:
 // how the device connected this time, stamped alongside its liveness.
 //
-// The stamp time is the flush's now() — "last seen" is presence and tolerates
-// up to one flush interval of staleness; live connectivity is the in-memory
-// connection registry, not this durable mirror.
+// The stamp is "the last moment Fleet knew the device was connected": a connect,
+// a disconnect, or a periodic stamp of the devices this process holds. Each row
+// carries its own time, and the flush keeps the newest, so a late stamp from
+// one process never moves the time back.
 
 import type {
     DeviceIngressRiskLevel,
@@ -18,8 +19,7 @@ import type {
     DeviceIngressTransport
 } from '../../types/api/deviceIngress';
 
-export interface DeviceSeenRow {
-    reportedExternalId: string;
+export interface DeviceSeenPosture {
     transport: DeviceIngressTransport;
     securityModel: DeviceIngressSecurityModel;
     riskLevel: DeviceIngressRiskLevel;
@@ -27,20 +27,49 @@ export interface DeviceSeenRow {
     credentialId: string | null;
 }
 
+export interface DeviceSeenRow {
+    reportedExternalId: string;
+    seenAtMs: number;
+    // How the device connected; null for a disconnect or a periodic stamp.
+    posture: DeviceSeenPosture | null;
+}
+
 export interface DeviceSeenBatch {
     p_external: string[];
-    p_transport: DeviceIngressTransport[];
-    p_security: DeviceIngressSecurityModel[];
-    p_risk: DeviceIngressRiskLevel[];
+    p_seen_at: string[];
+    p_transport: (DeviceIngressTransport | null)[];
+    p_security: (DeviceIngressSecurityModel | null)[];
+    p_risk: (DeviceIngressRiskLevel | null)[];
     p_credential: (string | null)[];
 }
 
+export interface ConnectedDevice {
+    shellyID: string;
+    presence: string;
+}
+
 export class DeviceSeenQueue {
-    // Latest stamp per device — repeated connects coalesce to one row.
+    // One row per device: the newest time, and the latest connect's posture.
     #latest = new Map<string, DeviceSeenRow>();
 
     enqueue(row: DeviceSeenRow): void {
-        this.#latest.set(row.reportedExternalId, row);
+        const previous = this.#latest.get(row.reportedExternalId);
+        this.#latest.set(
+            row.reportedExternalId,
+            previous ? mergeSeen(previous, row) : row
+        );
+    }
+
+    // The devices this process holds a connection for were seen just now.
+    stampConnected(devices: Iterable<ConnectedDevice>, atMs: number): void {
+        for (const device of devices) {
+            if (device.presence !== 'online') continue;
+            this.enqueue({
+                reportedExternalId: device.shellyID,
+                seenAtMs: atMs,
+                posture: null
+            });
+        }
     }
 
     size(): number {
@@ -52,28 +81,72 @@ export class DeviceSeenQueue {
         this.#latest.clear();
         return {
             p_external: rows.map((r) => r.reportedExternalId),
-            p_transport: rows.map((r) => r.transport),
-            p_security: rows.map((r) => r.securityModel),
-            p_risk: rows.map((r) => r.riskLevel),
-            p_credential: rows.map((r) => r.credentialId)
+            p_seen_at: rows.map((r) => new Date(r.seenAtMs).toISOString()),
+            p_transport: rows.map((r) => r.posture?.transport ?? null),
+            p_security: rows.map((r) => r.posture?.securityModel ?? null),
+            p_risk: rows.map((r) => r.posture?.riskLevel ?? null),
+            p_credential: rows.map((r) => r.posture?.credentialId ?? null)
         };
     }
 
-    // Re-queue a failed batch, but never clobber a fresher stamp that arrived
-    // since the flush started — the newest connect for a device always wins.
+    // Re-queue a failed batch under anything that arrived since the flush
+    // started: the newer posture wins and the time never moves back.
     prepend(batch: DeviceSeenBatch): void {
         for (let i = 0; i < batch.p_external.length; i++) {
-            const externalId = batch.p_external[i];
-            if (this.#latest.has(externalId)) continue;
-            this.#latest.set(externalId, {
-                reportedExternalId: externalId,
-                transport: batch.p_transport[i],
-                securityModel: batch.p_security[i],
-                riskLevel: batch.p_risk[i],
-                credentialId: batch.p_credential[i]
-            });
+            const failed = failedRow(batch, i);
+            const newer = this.#latest.get(failed.reportedExternalId);
+            this.#latest.set(
+                failed.reportedExternalId,
+                newer ? mergeSeen(failed, newer) : failed
+            );
         }
     }
+}
+
+// The rows of a batch that belong to the given devices, for a retry.
+export function seenBatchFor(
+    batch: DeviceSeenBatch,
+    externalIds: readonly string[]
+): DeviceSeenBatch {
+    const wanted = new Set(externalIds);
+    const keep = batch.p_external
+        .map((externalId, i) => (wanted.has(externalId) ? i : -1))
+        .filter((i) => i >= 0);
+    return {
+        p_external: keep.map((i) => batch.p_external[i]),
+        p_seen_at: keep.map((i) => batch.p_seen_at[i]),
+        p_transport: keep.map((i) => batch.p_transport[i]),
+        p_security: keep.map((i) => batch.p_security[i]),
+        p_risk: keep.map((i) => batch.p_risk[i]),
+        p_credential: keep.map((i) => batch.p_credential[i])
+    };
+}
+
+function mergeSeen(older: DeviceSeenRow, newer: DeviceSeenRow): DeviceSeenRow {
+    return {
+        reportedExternalId: newer.reportedExternalId,
+        seenAtMs: Math.max(older.seenAtMs, newer.seenAtMs),
+        posture: newer.posture ?? older.posture
+    };
+}
+
+function failedRow(batch: DeviceSeenBatch, i: number): DeviceSeenRow {
+    const transport = batch.p_transport[i];
+    const securityModel = batch.p_security[i];
+    const riskLevel = batch.p_risk[i];
+    return {
+        reportedExternalId: batch.p_external[i],
+        seenAtMs: Date.parse(batch.p_seen_at[i]),
+        posture:
+            transport && securityModel && riskLevel
+                ? {
+                      transport,
+                      securityModel,
+                      riskLevel,
+                      credentialId: batch.p_credential[i]
+                  }
+                : null
+    };
 }
 
 // Process-wide singleton — production wiring point (gate enqueues, flusher drains).

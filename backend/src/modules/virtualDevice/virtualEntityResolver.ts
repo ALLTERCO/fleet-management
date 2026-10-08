@@ -1,4 +1,3 @@
-import type {VirtualDeviceKind} from '../../types/api/virtualdevice';
 import * as postgres from '../PostgresProvider';
 import {runBoundedParallel} from '../util/runBoundedParallel';
 import {
@@ -7,8 +6,17 @@ import {
     virtualEntityId
 } from './entityProjection';
 import type {SourceSnapshot} from './readModel';
+import {
+    projectRoleScalar,
+    resolveRoleProjection,
+    shapeProjectedRoleStatus
+} from './roleProjection';
+import type {VirtualEntityBinding} from './virtualEntityBinding';
+
+export type {VirtualEntityBinding} from './virtualEntityBinding';
 
 export interface VirtualEntityResolution {
+    deviceListId: number;
     deviceExternalId: string;
     roleKey: string;
     entity: ProjectedVirtualEntity;
@@ -34,21 +42,6 @@ export interface VirtualEntityResolverDeps {
     ): SourceSnapshot | null | Promise<SourceSnapshot | null>;
 }
 
-interface VirtualEntityRow {
-    device_list_id: number;
-    external_id: string;
-    organization_id: string;
-    kind: VirtualDeviceKind;
-    role_key: string;
-    source_device_list_id: number;
-    source_external_id: string;
-    source_component_key: string;
-    writable: boolean | null;
-    required: boolean | null;
-    source_snapshot_json: Record<string, unknown> | null;
-    role_metadata_json: Record<string, unknown> | null;
-}
-
 interface VirtualEntityOwnerRow {
     external_id: string;
     entity_count: number | string;
@@ -63,7 +56,7 @@ export async function resolveVirtualEntity(
     input: {organizationId: string; entityId: string},
     deps: VirtualEntityResolverDeps = defaultDeps
 ): Promise<VirtualEntityResolution | null> {
-    const rows = await deps.queryRows<VirtualEntityRow>(
+    const rows = await deps.queryRows<VirtualEntityBinding>(
         `${virtualEntitySelect()}
           WHERE vd.organization_id = $1
             AND vd.deleted_at IS NULL
@@ -78,14 +71,20 @@ export async function listVirtualEntities(
     input: {
         organizationId: string;
         deviceExternalIds?: readonly string[];
+        sourceDeviceExternalIds?: readonly string[];
         limit?: number;
         offset?: number;
     },
     deps: VirtualEntityResolverDeps = defaultDeps
 ): Promise<VirtualEntityResolution[]> {
-    if (input.deviceExternalIds?.length === 0) return [];
+    if (
+        input.deviceExternalIds?.length === 0 ||
+        input.sourceDeviceExternalIds?.length === 0
+    ) {
+        return [];
+    }
     const query = listVirtualEntityQuery(input);
-    const rows = await deps.queryRows<VirtualEntityRow>(
+    const rows = await deps.queryRows<VirtualEntityBinding>(
         query.sql,
         query.params
     );
@@ -123,13 +122,47 @@ export async function listVirtualEntityOwners(
     return rows.map(rowToOwnerSummary);
 }
 
+// Every active binding in one organization, in the same order as
+// listVirtualEntities, so a cache can serve any source from one read.
+export async function listVirtualEntityBindings(
+    organizationId: string,
+    deps: Pick<VirtualEntityResolverDeps, 'queryRows'> = defaultDeps
+): Promise<VirtualEntityBinding[]> {
+    const query = listVirtualEntityQuery({organizationId});
+    return deps.queryRows<VirtualEntityBinding>(query.sql, query.params);
+}
+
+// Resolves already loaded bindings against live source snapshots, no query.
+export function resolveVirtualEntityBindings(
+    bindings: readonly VirtualEntityBinding[],
+    deps: Pick<VirtualEntityResolverDeps, 'getSourceSnapshot'>
+): Promise<VirtualEntityResolution[]> {
+    return Promise.all(bindings.map((row) => rowToResolution(row, deps)));
+}
+
 async function rowToResolution(
-    row: VirtualEntityRow,
+    row: VirtualEntityBinding,
     deps: Pick<VirtualEntityResolverDeps, 'getSourceSnapshot'>
 ): Promise<VirtualEntityResolution> {
     const snapshot = await deps.getSourceSnapshot(row.source_external_id);
-    const status = readComponentStatus(snapshot, row.source_component_key);
-    const available = snapshot?.presence === 'online' && status !== null;
+    const componentStatus = readComponentStatus(
+        snapshot,
+        row.source_component_key
+    );
+    const projection = resolveRoleProjection({
+        roleKey: row.role_key,
+        sourceComponentKey: row.source_component_key,
+        unit: row.unit,
+        valueType: row.value_type,
+        sourceSnapshot: row.source_snapshot_json,
+        roleMetadata: row.role_metadata_json,
+        transformJson: row.transform_json
+    });
+    const scalar = projectRoleScalar(componentStatus, projection);
+    const available =
+        snapshot?.presence === 'online' &&
+        scalar !== null &&
+        scalar !== undefined;
     const entity = projectVirtualEntity({
         device: {externalId: row.external_id},
         binding: {
@@ -138,16 +171,18 @@ async function rowToResolution(
             sourceComponentKey: row.source_component_key,
             writable: row.writable,
             sourceSnapshot: row.source_snapshot_json,
-            roleMetadata: row.role_metadata_json
+            roleMetadata: row.role_metadata_json,
+            unit: row.unit
         },
         available
     });
     return {
+        deviceListId: row.device_list_id,
         deviceExternalId: row.external_id,
         roleKey: row.role_key,
         entity,
         online: available,
-        status: status ?? {},
+        status: shapeProjectedRoleStatus(entity.type, scalar),
         sourceDeviceExternalId: row.source_external_id,
         sourceComponentKey: row.source_component_key,
         writable: row.writable === true
@@ -157,6 +192,7 @@ async function rowToResolution(
 function listVirtualEntityQuery(input: {
     organizationId: string;
     deviceExternalIds?: readonly string[];
+    sourceDeviceExternalIds?: readonly string[];
     limit?: number;
     offset?: number;
 }): {sql: string; params: unknown[]} {
@@ -165,6 +201,10 @@ function listVirtualEntityQuery(input: {
     if (input.deviceExternalIds) {
         params.push(input.deviceExternalIds);
         filters.push(`dl.external_id = ANY($${params.length}::text[])`);
+    }
+    if (input.sourceDeviceExternalIds) {
+        params.push(input.sourceDeviceExternalIds);
+        filters.push(`src.external_id = ANY($${params.length}::text[])`);
     }
 
     let sql = `${virtualEntitySelect()}
@@ -194,7 +234,10 @@ function virtualEntitySelect(): string {
             b.writable,
             b.required,
             b.source_snapshot_json,
-            b.role_metadata_json
+            b.role_metadata_json,
+            b.transform_json,
+            b.unit,
+            b.value_type
            FROM device.virtual_device vd
            JOIN device.list dl
              ON dl.id = vd.device_list_id

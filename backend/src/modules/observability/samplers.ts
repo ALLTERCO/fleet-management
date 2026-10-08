@@ -8,6 +8,7 @@ import {
 import * as log4js from 'log4js';
 import {tuning} from '../../config/tuning';
 import {safeInterval} from '../util/faultGuard';
+import {startEventLoopWindow, stopEventLoopWindow} from './eventLoopWindow';
 import {liveGauge} from './processMetrics';
 import type {ObsLevel} from './types';
 import {percentile} from './util/percentile';
@@ -261,6 +262,7 @@ function startLagMeasurement(): void {
 
     elHistogram = monitorEventLoopDelay({resolution: 20});
     elHistogram.enable();
+    startEventLoopWindow({withDelay: tuning.observability.dbTimingDetail});
 
     startGcObserver();
 }
@@ -315,6 +317,7 @@ function stopLagMeasurement(): void {
         elHistogram.disable();
         elHistogram = undefined;
     }
+    stopEventLoopWindow();
     if (gcObserver) {
         gcObserver.disconnect();
         gcObserver = undefined;

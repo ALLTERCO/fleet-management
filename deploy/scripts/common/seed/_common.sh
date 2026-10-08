@@ -55,13 +55,26 @@ seed_wait_until_ready() {
 }
 
 _seed_validate_environment() {
+    # bm-demo is a Business Manager demo platform: its whole reason to exist is
+    # the seeded fixture, and the launcher asks for it on purpose.
     case "${FM_ENVIRONMENT_ID:-${ENV_NAME:-}}" in
-        dev|local|office-test|cloud-test|public) return 0 ;;
+        dev|local|office-test|cloud-test|public|bm-demo) return 0 ;;
         *)
             error "Demo seed is not allowed in ${FM_ENVIRONMENT_ID:-${ENV_NAME:-unknown}}."
             return 1
             ;;
     esac
+}
+
+# A customer-shaped fixture owns every object its story shows, so the generic
+# office demo furniture (tags, demo groups, demo virtual devices, demo certs)
+# is scenery its operator never created. Opt out with "genericDemo": false;
+# a fixture without the key keeps the demo objects.
+_seed_generic_demo_enabled() {
+    local fixture="${DEPLOY_DIR:-}/seed/${FM_SEED_PROFILE:-}.json"
+    [ -n "${DEPLOY_DIR:-}" ] && [ -n "${FM_SEED_PROFILE:-}" ] \
+        && [ -f "$fixture" ] || return 0
+    ! jq -e '.genericDemo == false' "$fixture" >/dev/null 2>&1
 }
 
 seed_load_token_zitadel() {
@@ -140,6 +153,25 @@ _seed_rpc_log() {
     info "$label"
 }
 
+_seed_fixture_simulator_profiles_json() {
+    local fixture="$1"
+    if [ -n "${FM_SEED_SIMULATOR_DEVICE_PROFILES:-}" ]; then
+        jq -Rsc '
+            split(",")
+            | map(gsub("^\\s+|\\s+$"; ""))
+            | map(select(length > 0))
+        ' <<<"$FM_SEED_SIMULATOR_DEVICE_PROFILES"
+        return
+    fi
+    jq -c '
+        .simulator.profiles as $profiles
+        | if ($profiles | type) == "object" then
+            [$profiles | to_entries[] | .key as $key | range(.value) | $key]
+          elif ($profiles | type) == "array" then $profiles
+          else [] end
+    ' "$fixture"
+}
+
 _seed_wait_for_requested_devices() {
     local expected="${FM_SEED_DEVICE_IDS_JSON:-[]}" attempts i=0
     attempts="${FM_SEED_DEVICE_WAIT_ATTEMPTS:-60}"
@@ -152,14 +184,14 @@ _seed_wait_for_requested_devices() {
         local devices pending present missing
         devices=$(_seed_rpc 'Device.List' '{"limit":0}')
         pending=$(_seed_rpc 'WaitingRoom.List' '{"limit":500,"state":"open"}')
-        present=$(jq -cn \
-            --argjson devices "$devices" \
-            --argjson pending "$pending" '
-                [($devices.items[]?.shellyID), ($pending.items[]?.shellyID)]
+        # Feed the (potentially huge) device and waiting-room lists to jq on
+        # stdin, not as argv — a full Device.List on a busy env overflows
+        # ARG_MAX when passed via --argjson.
+        present=$(printf '%s\n%s\n' "$devices" "$pending" | jq -sc '
+                [(.[0].items[]?.shellyID), (.[1].items[]?.shellyID)]
                 | unique
             ')
-        missing=$(jq -cn --argjson expected "$expected" --argjson present "$present" \
-            '$expected - $present')
+        missing=$(jq -c --argjson expected "$expected" '$expected - .' <<<"$present")
         if [ "$(jq 'length' <<<"$missing")" -eq 0 ]; then
             info "  All requested simulator devices are available."
             return 0
@@ -234,26 +266,62 @@ _seed_already_seeded() {
 }
 
 _seed_reset() {
-    _seed_reset_stale_simulator_bluetooth
+    _seed_reconcile_managed_simulator_bluetooth
     _seed_reset_locations
     _seed_delete_managed_dashboards
 }
 
-_seed_reset_stale_simulator_bluetooth() {
-    local expected="${FM_SEED_BLU_DEVICE_IDS_JSON:-[]}" prefixes devices stale
-    if ! jq -e 'type == "array" and length > 0' <<<"$expected" >/dev/null; then
+_seed_validate_bluetooth_inventory() {
+    jq -e '
+        type == "array"
+        and all(.[]; type == "string" and length > 0)
+        and length == (unique | length)
+    ' >/dev/null 2>&1
+}
+
+# API inventory alone is not ownership proof, so first runs delete nothing.
+_seed_reconcile_managed_simulator_bluetooth() {
+    local desired="${FM_SEED_BLU_DEVICE_IDS_JSON:-[]}"
+    local managed="${FM_SEED_MANAGED_BLU_DEVICES_JSON:-[]}"
+    local devices stale
+
+    if ! _seed_validate_bluetooth_inventory <<<"$desired"; then
+        error "Desired simulator BLU inventory must contain unique, non-empty device IDs."
+        return 1
+    fi
+    if ! jq -e '
+        type == "array"
+        and all(.[];
+            type == "object"
+            and (.externalId | type == "string" and length > 0)
+            and (.deviceListId | type == "number" and floor == . and . > 0)
+            and (.stableId | type == "string" and length > 0)
+        )
+        and (map(.externalId) | length) == (map(.externalId) | unique | length)
+    ' <<<"$managed" >/dev/null 2>&1; then
+        error "Managed simulator BLU ownership identities are invalid."
+        return 1
+    fi
+    if [ "$(jq 'length' <<<"$managed")" -eq 0 ]; then
         return 0
     fi
-    prefixes=$(jq -c 'map(.[0:-2]) | unique' <<<"$expected")
-    devices=$(_seed_rpc 'VirtualDevice.Bluetooth.List' '{"limit":1000}')
-    stale=$(jq -r \
-        --argjson expected "$expected" \
-        --argjson prefixes "$prefixes" '
-            .items[]?.externalId as $id
-            | select($prefixes | any(. as $prefix | $id | startswith($prefix)))
-            | select($expected | index($id) | not)
-            | $id
-        ' <<<"$devices")
+
+    devices=$(_seed_rpc 'VirtualDevice.Bluetooth.List' '{"limit":0}')
+    if ! jq -e '.items | type == "array"' <<<"$devices" >/dev/null 2>&1; then
+        error "Could not list BLU devices while reconciling simulator ownership."
+        return 1
+    fi
+    stale=$(jq -r --argjson desired "$desired" --argjson managed "$managed" '
+        $managed[] as $owned
+        | select($desired | index($owned.externalId) | not)
+        | .items[]?
+        | select(
+            .externalId == $owned.externalId
+            and .deviceListId == $owned.deviceListId
+            and .stableId == $owned.stableId
+        )
+        | .externalId
+    ' <<<"$devices")
 
     local id body response deleted=0
     while IFS= read -r id; do
@@ -262,13 +330,13 @@ _seed_reset_stale_simulator_bluetooth() {
             '{externalId:$id,retention:"purge",unpairFromGateway:false}')
         response=$(_seed_rpc 'VirtualDevice.Bluetooth.Delete' "$body")
         if ! jq -e '.deleted == true' <<<"$response" >/dev/null; then
-            error "Failed to purge stale simulator BLU child $id"
+            error "Failed to purge managed simulator BLU child $id"
             return 1
         fi
         deleted=$((deleted + 1))
     done <<<"$stale"
     if [ "$deleted" -gt 0 ]; then
-        info "Purged $deleted stale simulator BLU child device(s)."
+        info "Purged $deleted stale managed simulator BLU child device(s)."
     fi
     return 0
 }

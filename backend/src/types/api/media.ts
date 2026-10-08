@@ -35,6 +35,21 @@ const IMAGE_LIST_RESPONSE: JsonSchema = {
         originals: {type: 'array', items: {type: 'string', minLength: 1}}
     }
 };
+export interface MediaReportImageAssignParams {
+    fileName: string;
+    organizationId: string;
+}
+
+export const MEDIA_REPORT_IMAGE_ASSIGN_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['fileName', 'organizationId'],
+    additionalProperties: false,
+    properties: {
+        fileName: {type: 'string', minLength: 1},
+        organizationId: {type: 'string', minLength: 1}
+    }
+};
+
 export const MEDIA_BACKGROUND_DELETE_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
     required: ['fileName'],
@@ -169,6 +184,20 @@ b.registerMethod('Background.CreateUploadTicket', {
     response: UPLOAD_TICKET_RESPONSE_SCHEMA,
     permission: {note: 'admin-only'},
     description: 'Mint a short-lived ticket for POST /media/uploadBackground.'
+});
+b.registerMethod('ReportImage.Assign', {
+    params: MEDIA_REPORT_IMAGE_ASSIGN_PARAMS_SCHEMA,
+    response: {
+        type: 'object',
+        required: ['success', 'path'],
+        additionalProperties: false,
+        properties: {success: {type: 'boolean'}, path: {type: 'string'}}
+    },
+    permission: {note: 'provider-support-only (cross-organization authority)'},
+    description:
+        'Give a report image from the shared root folder to one tenant. ' +
+        'Root files predate per-tenant folders and have no owner, so this is ' +
+        'a hand decision by provider support, audited like every RPC.'
 });
 b.registerMethod('Background.Delete', {
     safety: {operation: 'delete'},

@@ -6,6 +6,9 @@
 import {DescribeBuilder, type DescribeOutput} from './_describe';
 import type {JsonSchema} from './_schema';
 import {
+    keysetListResponseSchema,
+    LIST_CURSOR_SCHEMA,
+    LIST_OFFSET_SCHEMA,
     MAX_BATCH_SIZE,
     NAME_SCHEMA,
     ORG_ID_SCHEMA,
@@ -67,6 +70,66 @@ export const LOCATION_KIND_LABELS: Record<LocationKind, string> = {
     room: 'Room',
     zone: 'Zone'
 };
+
+// Closed set because the placement schema rejects anything else. Shared with
+// the frontend fixture registry via @api/location so the two cannot drift.
+export const FIXTURE_KINDS = [
+    // Lighting
+    'ceiling-light',
+    'pendant',
+    'spotlight',
+    'chandelier',
+    'street-light',
+    'floor-lamp',
+    'table-lamp',
+    'wall-sconce',
+    'led-strip',
+    // HVAC
+    'ac-wall',
+    'ac-ceiling',
+    'radiator',
+    'water-heater',
+    'ceiling-fan',
+    'thermostat',
+    'vent',
+    // Appliances
+    'fridge',
+    'oven',
+    'dishwasher',
+    'microwave',
+    'washing-machine',
+    'dryer',
+    // Solar / energy
+    'solar-panel',
+    'solar-inverter',
+    'battery-wall',
+    // Smart fixtures
+    'doorbell',
+    'smoke-detector',
+    'motion-sensor',
+    'smart-blind',
+    'smart-curtain',
+    'houseplant',
+    // Wall controls
+    'wall-outlet',
+    'wall-switch',
+    // Entertainment
+    'tv',
+    'monitor',
+    'computer',
+    // Smart access
+    'smart-lock',
+    'door',
+    'garage',
+    // Furniture (context — controlled indirectly via smart plugs)
+    'sofa',
+    'chair',
+    'table',
+    'bed',
+    'bookshelf',
+    'window'
+] as const;
+export type FixtureKind = (typeof FIXTURE_KINDS)[number];
 
 /** Free-form key/value escape hatch for org-specific metadata the built-in
  *  kind schema doesn't cover. Validated in modules/location/kindSchemas.ts. */
@@ -238,6 +301,9 @@ export const LOCATION_DELETE_PARAMS: JsonSchema = {
     }
 };
 
+export const LOCATION_DELETE_SUBTREE_PARAMS: JsonSchema =
+    LOCATION_DELETE_PARAMS;
+
 export const LOCATION_GET_PARAMS: JsonSchema = {
     type: 'object',
     required: ['id'],
@@ -285,6 +351,18 @@ const DELETED_SCHEMA: JsonSchema = {
     type: 'object',
     required: ['deleted'],
     properties: {deleted: {type: 'boolean'}}
+};
+
+const DELETED_SUBTREE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['rootId', 'deletedIds', 'deletedCount', 'removedAssignments'],
+    properties: {
+        rootId: {type: 'integer'},
+        deletedIds: {type: 'array', items: {type: 'integer'}},
+        deletedCount: {type: 'integer', minimum: 0},
+        removedAssignments: {type: 'integer', minimum: 0}
+    }
 };
 
 // Signal heatmap (live RSSI projected onto location geo).
@@ -381,6 +459,17 @@ export interface LocationAssignment {
     updatedAt: string | null;
 }
 
+export interface LocationDeviceAssignmentProfile {
+    organizationId: string;
+    locationId: number;
+    shellyID: string;
+    /** null means every device entity contributes at this location. */
+    selectedEntityKeys: string[] | null;
+    catalogKind: string | null;
+    createdAt: string;
+    updatedAt: string | null;
+}
+
 export interface LocationBreadcrumbEntry {
     id: number;
     name: string;
@@ -395,6 +484,46 @@ const SUBJECT_ID_SCHEMA: JsonSchema = {
     type: 'string',
     minLength: 1,
     maxLength: 255
+};
+const DEVICE_ENTITY_KEY_SCHEMA: JsonSchema = {
+    type: 'string',
+    minLength: 1,
+    maxLength: 255,
+    pattern: '^[A-Za-z0-9_.:-]+$'
+};
+const DEVICE_ENTITY_SELECTION_SCHEMA: JsonSchema = {
+    oneOf: [
+        {
+            type: 'array',
+            maxItems: 256,
+            uniqueItems: true,
+            items: DEVICE_ENTITY_KEY_SCHEMA
+        },
+        {type: 'null'}
+    ]
+};
+
+const DEVICE_ASSIGNMENT_PROFILE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+        'organizationId',
+        'locationId',
+        'shellyID',
+        'selectedEntityKeys',
+        'catalogKind',
+        'createdAt',
+        'updatedAt'
+    ],
+    properties: {
+        organizationId: ORG_ID_SCHEMA,
+        locationId: {type: 'integer'},
+        shellyID: SUBJECT_ID_SCHEMA,
+        selectedEntityKeys: DEVICE_ENTITY_SELECTION_SCHEMA,
+        catalogKind: {type: ['string', 'null'], maxLength: 120},
+        createdAt: {type: 'string'},
+        updatedAt: {type: ['string', 'null']}
+    }
 };
 
 const ASSIGNMENT_SCHEMA: JsonSchema = {
@@ -429,17 +558,8 @@ const BREADCRUMB_ENTRY_SCHEMA: JsonSchema = {
     }
 };
 
-const ASSIGNMENT_LIST_ENVELOPE: JsonSchema = {
-    type: 'object',
-    required: ['items', 'total', 'limit', 'offset', 'has_more'],
-    properties: {
-        items: {type: 'array', items: ASSIGNMENT_SCHEMA},
-        total: {type: 'integer'},
-        limit: {type: 'integer'},
-        offset: {type: 'integer'},
-        has_more: {type: 'boolean'}
-    }
-};
+const ASSIGNMENT_LIST_ENVELOPE: JsonSchema =
+    keysetListResponseSchema(ASSIGNMENT_SCHEMA);
 
 export const LOCATION_CHILDREN_PARAMS: JsonSchema = {
     type: 'object',
@@ -465,6 +585,17 @@ export const LOCATION_PATH_PARAMS: JsonSchema = {
     }
 };
 
+export const LOCATION_DESCENDANTS_PARAMS: JsonSchema = {
+    type: 'object',
+    required: ['id'],
+    additionalProperties: false,
+    properties: {
+        organizationId: ORG_ID_SCHEMA,
+        id: {type: 'integer'},
+        includeSelf: {type: 'boolean'}
+    }
+};
+
 export const LOCATION_SET_ASSIGNMENT_PARAMS: JsonSchema = {
     type: 'object',
     required: ['subjectType', 'subjectId', 'locationId'],
@@ -474,6 +605,55 @@ export const LOCATION_SET_ASSIGNMENT_PARAMS: JsonSchema = {
         subjectType: SUBJECT_TYPE_SCHEMA,
         subjectId: SUBJECT_ID_SCHEMA,
         locationId: {type: 'integer'}
+    }
+};
+
+export const LOCATION_CONFIGURE_DEVICE_ASSIGNMENT_PARAMS: JsonSchema = {
+    type: 'object',
+    required: ['locationId', 'shellyID', 'selectedEntityKeys'],
+    additionalProperties: false,
+    properties: {
+        organizationId: ORG_ID_SCHEMA,
+        locationId: {type: 'integer'},
+        shellyID: SUBJECT_ID_SCHEMA,
+        selectedEntityKeys: DEVICE_ENTITY_SELECTION_SCHEMA,
+        catalogKind: {type: ['string', 'null'], maxLength: 120}
+    }
+};
+
+export const LOCATION_LIST_DEVICE_ASSIGNMENT_PROFILES_PARAMS: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+        organizationId: ORG_ID_SCHEMA,
+        locationIds: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 1000,
+            uniqueItems: true,
+            items: {type: 'integer'}
+        },
+        shellyIDs: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 1000,
+            uniqueItems: true,
+            items: SUBJECT_ID_SCHEMA
+        },
+        limit: {type: 'integer', minimum: 1, maximum: 1000},
+        offset: {type: 'integer', minimum: 0}
+    }
+};
+
+const DEVICE_ASSIGNMENT_PROFILE_LIST_ENVELOPE: JsonSchema = {
+    type: 'object',
+    required: ['items', 'total', 'limit', 'offset', 'has_more'],
+    properties: {
+        items: {type: 'array', items: DEVICE_ASSIGNMENT_PROFILE_SCHEMA},
+        total: {type: 'integer'},
+        limit: {type: 'integer'},
+        offset: {type: 'integer'},
+        has_more: {type: 'boolean'}
     }
 };
 
@@ -538,7 +718,8 @@ export const LOCATION_LIST_ASSIGNMENTS_PARAMS: JsonSchema = {
             maxItems: 1000
         },
         limit: {type: 'integer', minimum: 1, maximum: 1000},
-        offset: {type: 'integer', minimum: 0}
+        offset: LIST_OFFSET_SCHEMA,
+        cursor: LIST_CURSOR_SCHEMA
     }
 };
 
@@ -594,7 +775,8 @@ const FIELD_DESCRIPTOR_SCHEMA: JsonSchema = {
                 'geo',
                 'contact',
                 'operatingHours',
-                'environmentalSetpoint'
+                'environmentalSetpoint',
+                'keyValue'
             ]
         },
         optionSet: {type: 'string'},
@@ -675,6 +857,23 @@ export interface LocationSearchPlacesParams {
     precision?: 'place' | 'street';
 }
 
+export interface LocationReverseGeocodeParams {
+    lat: number;
+    lng: number;
+    language?: string;
+}
+
+export const LOCATION_REVERSE_GEOCODE_PARAMS: JsonSchema = {
+    type: 'object',
+    required: ['lat', 'lng'],
+    additionalProperties: false,
+    properties: {
+        lat: {type: 'number', minimum: -90, maximum: 90},
+        lng: {type: 'number', minimum: -180, maximum: 180},
+        language: {type: 'string', minLength: 2, maxLength: 35}
+    }
+};
+
 export const LOCATION_SEARCH_PLACES_PARAMS: JsonSchema = {
     type: 'object',
     required: ['query'],
@@ -720,6 +919,16 @@ export const LOCATION_SEARCH_PLACES_RESPONSE: JsonSchema = {
             type: 'string',
             enum: ['local', 'cache', 'nominatim', 'local-weak']
         }
+    }
+};
+
+export const LOCATION_REVERSE_GEOCODE_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['candidate', 'source'],
+    additionalProperties: false,
+    properties: {
+        candidate: {oneOf: [{type: 'null'}, GEOCODE_CANDIDATE_SCHEMA]},
+        source: {type: 'string', enum: ['cache', 'nominatim', 'unavailable']}
     }
 };
 
@@ -826,6 +1035,82 @@ export const LOCATION_BACKFILL_GEO_RESPONSE: JsonSchema = {
     }
 };
 
+/** Why Fleet left a location's geography tree alone. Stable identifiers —
+ *  clients match on these, never on message text. */
+export const GEOGRAPHY_SKIP_REASONS = [
+    'already-parented',
+    'no-country-code',
+    'kind-cannot-nest',
+    'name-taken-by-other-kind'
+] as const;
+export type GeographySkipReason = (typeof GEOGRAPHY_SKIP_REASONS)[number];
+
+export interface LocationBackfillGeographyParams {
+    organizationId?: string;
+    batchSize?: number;
+    afterId?: number;
+}
+
+export const LOCATION_BACKFILL_GEOGRAPHY_PARAMS: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+        organizationId: ORG_ID_SCHEMA,
+        batchSize: {type: 'integer', minimum: 1, maximum: 200},
+        afterId: {type: 'integer', minimum: 0}
+    }
+};
+
+export interface GeographyBackfillSkip {
+    locationId: number;
+    reason: GeographySkipReason;
+}
+
+export interface BackfillGeographySummary {
+    processed: number;
+    created: number;
+    adopted: number;
+    skipped: number;
+    /** Cursor for the next page, null when the last page is done. */
+    nextAfterId: number | null;
+    skips: GeographyBackfillSkip[];
+}
+
+export const LOCATION_BACKFILL_GEOGRAPHY_RESPONSE: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+        'processed',
+        'created',
+        'adopted',
+        'skipped',
+        'nextAfterId',
+        'skips'
+    ],
+    properties: {
+        processed: {type: 'integer', minimum: 0},
+        created: {type: 'integer', minimum: 0},
+        adopted: {type: 'integer', minimum: 0},
+        skipped: {type: 'integer', minimum: 0},
+        nextAfterId: {type: ['integer', 'null']},
+        skips: {
+            type: 'array',
+            items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['locationId', 'reason'],
+                properties: {
+                    locationId: {type: 'integer'},
+                    reason: {
+                        type: 'string',
+                        enum: [...GEOGRAPHY_SKIP_REASONS]
+                    }
+                }
+            }
+        }
+    }
+};
+
 export const LOCATION_LIST_REGIONS_PARAMS: JsonSchema = {
     type: 'object',
     required: ['countryCode'],
@@ -884,7 +1169,7 @@ export const LOCATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
         response: LOCATION_SCHEMA,
         permission: {component: 'locations', operation: 'update'},
         description:
-            'Partial-update a location. Cycle-safe parent changes. kindFields replaces the stored object.'
+            'Partial-update a location. Cycle-safe parent changes. kindFields and customFields are shallow-merged with the stored objects.'
     })
     .registerMethod('Delete', {
         params: LOCATION_DELETE_PARAMS,
@@ -892,6 +1177,13 @@ export const LOCATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
         permission: {component: 'locations', operation: 'delete'},
         description:
             'Delete a location. Blocked if it has children or assignments.'
+    })
+    .registerMethod('DeleteSubtree', {
+        params: LOCATION_DELETE_SUBTREE_PARAMS,
+        response: DELETED_SUBTREE_SCHEMA,
+        permission: {component: 'locations', operation: 'delete'},
+        description:
+            'Atomically remove a location subtree and its location assignments. Device and appliance records remain intact.'
     })
     .registerMethod('Get', {
         params: LOCATION_GET_PARAMS,
@@ -912,6 +1204,19 @@ export const LOCATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
         response: LIST_ENVELOPE,
         permission: {component: 'locations', operation: 'read'},
         description: 'Direct children of the given location.'
+    })
+    .registerMethod('Descendants', {
+        params: LOCATION_DESCENDANTS_PARAMS,
+        response: {
+            type: 'object',
+            required: ['items'],
+            properties: {
+                items: {type: 'array', items: {type: 'integer'}}
+            }
+        },
+        permission: {component: 'locations', operation: 'read'},
+        description:
+            'Canonical descendant location ids, optionally including the selected location.'
     })
     .registerMethod('Path', {
         params: LOCATION_PATH_PARAMS,
@@ -940,6 +1245,13 @@ export const LOCATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
         description:
             'Typeahead place lookup over GeoNames (countries, admin, cities) with Nominatim fallback.'
     })
+    .registerMethod('ReverseGeocode', {
+        params: LOCATION_REVERSE_GEOCODE_PARAMS,
+        response: LOCATION_REVERSE_GEOCODE_RESPONSE,
+        permission: {component: 'locations', operation: 'read'},
+        description:
+            'Resolve map coordinates to one normalized address candidate through Fleet geocoding.'
+    })
     .registerMethod('ListCountries', {
         safety: {operation: 'read'},
         params: LOCATION_LIST_COUNTRIES_PARAMS,
@@ -962,6 +1274,13 @@ export const LOCATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
         permission: {component: 'locations', operation: 'update'},
         description:
             'Resolve missing geo coords for legacy locations. Paginated; call repeatedly until remaining=0.'
+    })
+    .registerMethod('BackfillGeography', {
+        params: LOCATION_BACKFILL_GEOGRAPHY_PARAMS,
+        response: LOCATION_BACKFILL_GEOGRAPHY_RESPONSE,
+        permission: {component: 'locations', operation: 'create'},
+        description:
+            'Build the country/region/city tree above addressed, parentless locations. Existing nodes are adopted, never duplicated, and a location that already has a parent is left where it is. Cursor-paginated; pass nextAfterId until it comes back null.'
     })
     .registerMethod('FloorPlan.CreateUploadTicket', {
         params: LOCATION_UPLOAD_TICKET_PARAMS_SCHEMA,
@@ -997,6 +1316,17 @@ export const LOCATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
         description:
             'Assign many subjects to one location in a single atomic call.'
     })
+    .registerMethod('ConfigureDeviceAssignment', {
+        params: LOCATION_CONFIGURE_DEVICE_ASSIGNMENT_PARAMS,
+        response: DEVICE_ASSIGNMENT_PROFILE_SCHEMA,
+        permission: {
+            component: 'locations',
+            operation: 'update',
+            note: 'catalogKind updates also require devices / update for shellyID'
+        },
+        description:
+            'Atomically assign one device to a location, persist its selected entity keys, and optionally update its catalog kind.'
+    })
     .registerMethod('RemoveAssignment', {
         params: LOCATION_REMOVE_ASSIGNMENT_PARAMS,
         response: {
@@ -1015,6 +1345,14 @@ export const LOCATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
         params: LOCATION_LIST_ASSIGNMENTS_PARAMS,
         response: ASSIGNMENT_LIST_ENVELOPE,
         permission: {component: 'locations', operation: 'read'},
-        description: 'List location assignments with optional filters.'
+        description:
+            'List location assignments with optional filters. Page with `cursor`; `offset` stops at 10,000.'
+    })
+    .registerMethod('ListDeviceAssignmentProfiles', {
+        params: LOCATION_LIST_DEVICE_ASSIGNMENT_PROFILES_PARAMS,
+        response: DEVICE_ASSIGNMENT_PROFILE_LIST_ENVELOPE,
+        permission: {component: 'locations', operation: 'read'},
+        description:
+            'List device location assignments with canonical entity selection and catalog classification.'
     })
     .build();

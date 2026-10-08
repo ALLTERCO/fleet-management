@@ -131,16 +131,20 @@ import {
     isDiscovered
 } from '@/helpers/device';
 import {modals} from '@/helpers/ui';
-import {buildWidgetPayload} from '@/helpers/widgetBuilders';
+import {
+    buildWidgetPayload,
+    createWidgetCfgBundle
+} from '@/helpers/widgetBuilders';
 import {
     WIDGET_CATEGORIES as ALL_CATEGORIES,
-    defaultSizeForEntityType
+    defaultSizeForEntity
 } from '@/helpers/widgetCatalog';
 import {
     CATALOG_UI_WIDGETS,
     UI_WIDGET_META,
     WIDGET_SAMPLE_CONFIG
 } from '@/helpers/widgetSamples';
+import {useWidgetDeviceList} from '@/composables/useWidgetDeviceList';
 import {useDevicesStore} from '@/stores/devices';
 import {useEntityStore} from '@/stores/entities';
 import {useGroupsStore} from '@/stores/groups';
@@ -194,58 +198,18 @@ const selectedLocation = ref(-1);
 const selectedTag = ref(-1);
 const selectedAction = ref('');
 const selectedUIWidget = ref<UiWidgetId | ''>('');
-const chartCfg = reactive({
-    shellyId: '',
-    metric: 'power' as
-        | 'power'
-        | 'consumption'
-        | 'returned_energy'
-        | 'voltage'
-        | 'current'
-        | 'temperature'
-        | 'humidity'
-        | 'luminance',
-    chartType: 'bar' as 'bar' | 'line'
-});
-const gaugeCfg = reactive({
-    entityId: '',
-    field: '',
-    label: '',
-    unit: '',
-    min: 0,
-    max: 3500
-});
-const statsCfg = reactive({
-    shellyId: '',
-    metric: 'temperature' as
-        | 'temperature'
-        | 'humidity'
-        | 'power'
-        | 'consumption',
-    name: ''
-});
-const topCfg = reactive({entityIdsRaw: '', limit: 10});
-const timelineCfg = reactive({shellyId: '', field: '', name: ''});
-const heatmapCfg = reactive({
-    shellyId: '',
-    metric: 'temperature' as
-        | 'temperature'
-        | 'humidity'
-        | 'power'
-        | 'consumption'
-});
-const siteGridCfg = reactive({
-    metric: 'power' as 'power' | 'devices' | 'alerts'
-});
-const maintCfg = reactive({maxItems: 20});
-const crossBarCfg = reactive({
-    metric: 'live_power' as
-        | 'live_power'
-        | 'energy_24h'
-        | 'energy_7d'
-        | 'energy_30d',
-    limit: 10
-});
+// Widget config bags: defaults come from the one factory, shared with the
+// config modal, so add and edit start identical.
+const cfgBundle = createWidgetCfgBundle();
+const chartCfg = reactive(cfgBundle.chartCfg);
+const gaugeCfg = reactive(cfgBundle.gaugeCfg);
+const statsCfg = reactive(cfgBundle.statsCfg);
+const topCfg = reactive(cfgBundle.topCfg);
+const timelineCfg = reactive(cfgBundle.timelineCfg);
+const heatmapCfg = reactive(cfgBundle.heatmapCfg);
+const siteGridCfg = reactive(cfgBundle.siteGridCfg);
+const maintCfg = reactive(cfgBundle.maintCfg);
+const crossBarCfg = reactive(cfgBundle.crossBarCfg);
 const actions = ref<action_t[]>([]);
 const actionsLoading = ref(false);
 
@@ -253,73 +217,23 @@ const actionsLoading = ref(false);
 // look up the full action record by id (matches dash/[id].vue).
 provide(ACTIONS_LIST_KEY, actions);
 
-/** Live-preview entry: assembles a DashboardEntry from the user's current
- *  config form values for the selected widget. Empty/partial config falls
- *  back to the WIDGET_SAMPLE_CONFIG fixture so the preview always renders. */
+/** Live-preview entry: the same builder the real add uses, so config shaping
+ *  has one home. An incomplete form makes the builder decline; then the sample
+ *  fixture stands in so the preview still renders. */
 const livePreviewEntry = computed<DashboardEntry>(() => {
     const id = (selectedUIWidget.value || 'clock_widget') as UiWidgetId;
-    const sample = WIDGET_SAMPLE_CONFIG[id]?.() ?? {id};
-    let data: Record<string, any> = sample;
-    switch (id) {
-        case 'chart_widget':
-            data = {...sample, ...chartCfg};
-            break;
-        case 'gauge_widget':
-            data = {...sample, ...gaugeCfg};
-            break;
-        case 'stats_summary_widget':
-            data = {
-                ...sample,
-                entries: statsCfg.shellyId
-                    ? [
-                          {
-                              shellyId: statsCfg.shellyId,
-                              metric: statsCfg.metric,
-                              name: statsCfg.name || statsCfg.metric
-                          }
-                      ]
-                    : sample.entries
-            };
-            break;
-        case 'top_consumers_widget':
-            data = {
-                ...sample,
-                entityIds: topCfg.entityIdsRaw
-                    .split(',')
-                    .map((s) => s.trim())
-                    .filter(Boolean),
-                limit: topCfg.limit
-            };
-            break;
-        case 'state_timeline_widget':
-            data = {
-                ...sample,
-                entities: timelineCfg.shellyId
-                    ? [
-                          {
-                              shellyId: timelineCfg.shellyId,
-                              field: timelineCfg.field,
-                              name: timelineCfg.name || 'State'
-                          }
-                      ]
-                    : sample.entities
-            };
-            break;
-        case 'activity_heatmap_widget':
-            data = {...sample, ...heatmapCfg};
-            break;
-        case 'site_grid_widget':
-            data = {...sample, ...siteGridCfg};
-            break;
-        case 'maintenance_list_widget':
-            data = {...sample, maxItems: maintCfg.maxItems};
-            break;
-        case 'cross_site_bar_widget':
-            data = {...sample, ...crossBarCfg};
-            break;
-        // energy_flow_sankey_widget, fleet_kpi_strip_widget, data_table_widget,
-        // clock_widget: no inline config to fold in — use sample as-is.
-    }
+    const built = buildWidgetPayload(id, {
+        chartCfg,
+        gaugeCfg,
+        statsCfg,
+        topCfg,
+        timelineCfg,
+        heatmapCfg,
+        siteGridCfg,
+        maintCfg,
+        crossBarCfg
+    });
+    const data = built.ok ? built.data : (WIDGET_SAMPLE_CONFIG[id]?.() ?? {id});
     return {type: 'ui_widget', size: '1x1', data};
 });
 
@@ -355,15 +269,7 @@ const CATEGORIES = computed(() =>
     })
 );
 
-const chartDeviceList = computed(() =>
-    Object.values(deviceStore.devices)
-        .filter((d) => !isDiscovered(d.shellyID))
-        .sort((a, b) =>
-            getDeviceName(a.info, a.shellyID).localeCompare(
-                getDeviceName(b.info, b.shellyID)
-            )
-        )
-);
+const chartDeviceList = useWidgetDeviceList();
 
 
 /** Entities grouped by selected device — for step 2 */
@@ -478,7 +384,7 @@ function stageChanged(newStage: number) {
         for (const id of selectedEntities.value) {
             if (!entitySizes[id]) {
                 const ent = entityStore.entities[id];
-                entitySizes[id] = defaultSizeForEntityType(ent?.type);
+                entitySizes[id] = defaultSizeForEntity(ent);
             }
         }
     }
@@ -608,24 +514,16 @@ function resetState() {
     selectedTag.value = -1;
     selectedAction.value = '';
     selectedUIWidget.value = '';
-    chartCfg.shellyId = '';
-    chartCfg.metric = 'power';
-    chartCfg.chartType = 'bar';
-    Object.assign(gaugeCfg, {
-        entityId: '',
-        field: '',
-        label: '',
-        unit: '',
-        min: 0,
-        max: 3500
-    });
-    Object.assign(statsCfg, {shellyId: '', metric: 'temperature', name: ''});
-    Object.assign(topCfg, {entityIdsRaw: '', limit: 10});
-    Object.assign(timelineCfg, {shellyId: '', field: '', name: ''});
-    Object.assign(heatmapCfg, {shellyId: '', metric: 'temperature'});
-    Object.assign(siteGridCfg, {metric: 'power'});
-    Object.assign(maintCfg, {maxItems: 20});
-    Object.assign(crossBarCfg, {metric: 'live_power', limit: 10});
+    const d = createWidgetCfgBundle();
+    Object.assign(chartCfg, d.chartCfg);
+    Object.assign(gaugeCfg, d.gaugeCfg);
+    Object.assign(statsCfg, d.statsCfg);
+    Object.assign(topCfg, d.topCfg);
+    Object.assign(timelineCfg, d.timelineCfg);
+    Object.assign(heatmapCfg, d.heatmapCfg);
+    Object.assign(siteGridCfg, d.siteGridCfg);
+    Object.assign(maintCfg, d.maintCfg);
+    Object.assign(crossBarCfg, d.crossBarCfg);
 }
 </script>
 
@@ -1130,7 +1028,7 @@ function resetState() {
 }
 
 /* Prevent glow clipping on selected device/group cards */
-:deep(.cat-grid) { padding: var(--space-1); margin: -4px; }
+.awm .cat-grid { padding: var(--space-1); margin: -4px; }
 
 /* ── Selection count bar (devices) ── */
 .awm-sel-bar {

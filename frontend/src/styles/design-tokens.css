@@ -95,10 +95,12 @@
     /* --- Info (Cyan) --- */
     --primitive-cyan-400: #22d3ee;
     --primitive-cyan-500: #06b6d4;
+    --primitive-cyan-600: #0891b2;
 
     /* --- Accent (Purple) --- */
     --primitive-purple-400: #c084fc;
     --primitive-purple-500: #a855f7;
+    --primitive-purple-600: #9333ea;
 
     /* --- Teal --- */
     --primitive-teal-400: #2dd4bf;
@@ -109,6 +111,10 @@
     --primitive-orange-500: #f97316;
     --primitive-orange-600: #ea580c;
     --primitive-orange-800: #9a3412;
+
+    /* --- Pink --- */
+    --primitive-pink-400: #f472b6;
+    --primitive-pink-600: #db2777;
 }
 
 /* ==========================================================================
@@ -136,6 +142,8 @@
     --color-text-tertiary: #8a929b; /* captions, labels — neutral dim */
     --color-text-quaternary: #6b737c; /* low-emphasis metadata, subtle hints */
     --color-text-disabled: #515960; /* disabled text */
+    --color-text-placeholder: #767f8b; /* hint text — 4.6:1 on --input-bg */
+    --color-caret: var(--color-primary-text); /* typing cursor */
     --color-text-inverse: var(
         --primitive-neutral-900
     ); /* text on light backgrounds */
@@ -547,6 +555,7 @@
     --type-display: 4.25rem; /* 68px = 42 × 1.618 */
 
     /* --- Golden Ratio Spacing (8 × 1.618 each step) --- */
+    --gap-2xs: 5px; /* 8 ÷ 1.618 — label/value pairs inside one block */
     --gap-xs: 8px;
     --gap-sm: 13px; /* 8 × 1.618 */
     --gap-md: 21px; /* 13 × 1.618 */
@@ -786,7 +795,7 @@
     --input-padding: var(--space-2);
     --input-font-size: var(--type-body);
     --input-focus-ring: var(--color-border-focus);
-    --input-placeholder: var(--color-text-disabled);
+    --input-placeholder: var(--color-text-placeholder);
 
     /* --- Cards / Blocks --- */
     --card-bg: var(--color-surface-1);
@@ -805,6 +814,11 @@
     --modal-width-compact: 26.25rem;
     --modal-width-default: 34rem;
     --modal-width-default-lg: 40rem;
+    /* Sits in the gap between large (40rem) and wide (76rem). A three-step
+       form had no size that fit: 40rem crushed the device grid, 76rem left the
+       form steps mostly empty. 60rem is within the range major systems ship
+       (Atlassian's largest modal is 968px) and still fits 3 device cards. */
+    --modal-width-xlarge: 60rem;
     --modal-width-wide: 76rem; /* fits 5 device cards with gaps */
     --modal-width-wide-fluid: 94vw;
     --modal-width-xl: 108rem; /* integration-endpoint modal — rail + form + preview */
@@ -856,6 +870,25 @@
     --toast-filter: var(--glass-3-filter);
     --toast-radius: var(--radius-lg);
     --toast-shadow: var(--shadow-md);
+
+    /* --- Alert cards and rows --- */
+    --alert-card-height: 234px; /* rule tile, same family as the inbox row */
+    --alert-pulse-size: 7px; /* live dot on an unacknowledged alert */
+    --alert-row-min-height: 3.5rem; /* 56px: one line of title plus its meta */
+
+    /* --- System banner — glass-4, the product talking to its admins --- */
+    --banner-bg: var(--glass-4-bg);
+    --banner-filter: var(--glass-4-filter);
+    --banner-border: var(--glass-border);
+    --banner-radius: var(--radius-2xl);
+    --banner-shadow: var(--shadow-lg);
+    --banner-width: 30rem; /* one line of title, never a paragraph */
+    --banner-icon-size: var(--space-8);
+    --banner-icon-bg: rgba(var(--color-surface-2-rgb), 0.9);
+    --banner-depth-scale: 0.04; /* each older banner is 4% smaller behind */
+    --banner-depth-offset: var(--space-2); /* and tucked up by one rhythm step */
+    --banner-depth-dim: 0.18;
+    --banner-hidden-offset: 96px; /* JS spring: where a banner rests off screen */
 
     /* --- Tabs --- */
     --tab-active-border: var(--color-border-focus);
@@ -926,7 +959,8 @@
     --search-w-min: 320px;
     --search-w-max: 480px;
 
-    /* --- Bento Card Grid (default, overridden by BentoGrid.vue responsive rules) --- */
+    /* --- Bento Card Grid (desktop default; per-breakpoint overrides live on
+       .bento-grid in styles/cards/card-base.css) --- */
     --grid-cell: 200px;
     --card-grid-gap: 12px; /* tighter grid */
     --radius-card: var(
@@ -1008,6 +1042,16 @@
     /* --- Prose constraints (WCAG SC 1.4.8: ≤80 CPL, optimal 50-75) --- */
     --prose-max-width: 72ch; /* ~66 CPL at body size */
 
+    /* --- Wizard step shell + pick row (components/core/wizard) --- */
+    --wizard-lede-width: 65ch; /* craft floor for body measure */
+    --pick-row-lead: 2.5rem; /* 40px — lead tile, optically = a 44px row */
+    --pick-row-lead-sm: 1.875rem; /* 30px — dense nested lists */
+    --pick-row-check: 1.375rem; /* 22px — trailing selection mark */
+    --pick-row-grid-min: 11.875rem; /* 190px — auto-fit card column floor */
+    --wizard-state-min-height: 11.25rem; /* 180px — keeps a step from collapsing */
+    --dds-preview-width: 12.25rem; /* 196px — one fleet card, no reflow */
+    --duration-scan-tick: 1s; /* BLU scan bar advances once per second */
+
     /* --- Form validation backgrounds --- */
     --input-error-bg: color-mix(
         in srgb,
@@ -1026,20 +1070,23 @@
    ========================================================================== */
 
 :root {
-    --chart-grid: rgba(255, 255, 255, 0.08);
+    --chart-grid: var(--color-chart-overlay-subtle);
     --chart-axis: var(--primitive-neutral-500);
     --chart-tooltip-bg: var(--primitive-neutral-900);
     --chart-tooltip-border: var(--primitive-neutral-700);
 
-    /* Categorical palette (8 distinct colors for data series) */
-    --chart-color-1: var(--primitive-blue-400); /* #60a5fa */
-    --chart-color-2: var(--primitive-green-400); /* #4ade80 */
-    --chart-color-3: var(--primitive-amber-400); /* #fbbf24 */
-    --chart-color-4: var(--primitive-red-400); /* #f87171 */
-    --chart-color-5: var(--primitive-purple-400); /* #c084fc */
-    --chart-color-6: var(--primitive-cyan-400); /* #22d3ee */
-    --chart-color-7: var(--primitive-orange-400); /* #fb923c */
-    --chart-color-8: #f472b6; /* pink-400 */
+    /* Series colours, in order, never cycled. 600 steps: the 400s sit outside
+       the lightness band for a dark surface. 1-5 pass every validator check;
+       6-8 do not, so use them only where colours never sit adjacent. Past five
+       series, add labels or fold the tail into "Other". */
+    --chart-color-1: var(--primitive-blue-600);
+    --chart-color-2: var(--primitive-amber-600);
+    --chart-color-3: var(--primitive-purple-600);
+    --chart-color-4: var(--primitive-cyan-600);
+    --chart-color-5: var(--primitive-pink-600);
+    --chart-color-6: var(--primitive-teal-500);
+    --chart-color-7: var(--primitive-orange-600);
+    --chart-color-8: var(--primitive-green-600);
 
     /* Gauge / compass / sensor track — slate-400 axis lines on cards */
     --color-chart-axis-rgb: 148, 163, 184;
@@ -1252,6 +1299,29 @@
     }
 }
 
+/* Someone who asks for less transparency gets solid surfaces, not a blur they
+   cannot read through. Redefining the tokens covers every glass surface at
+   once, so no component has to know about the preference. */
+@media (prefers-reduced-transparency: reduce) {
+    :root {
+        --glass-1-bg: var(--color-surface-2);
+        --glass-2-bg: var(--color-surface-1);
+        --glass-3-bg: var(--color-surface-0);
+        --glass-4-bg: var(--color-surface-0);
+        --glass-5-bg: var(--color-surface-0);
+        --glass-1-filter: none;
+        --glass-2-filter: none;
+        --glass-3-filter: none;
+        --glass-4-filter: none;
+        --glass-5-filter: none;
+        --glass-1-blur: 0px;
+        --glass-2-blur: 0px;
+        --glass-3-blur: 0px;
+        --glass-4-blur: 0px;
+        --glass-5-blur: 0px;
+    }
+}
+
 @media (prefers-contrast: more) {
     :root {
         --color-border-default: rgba(184, 197, 212, 0.3);
@@ -1293,9 +1363,8 @@
         display: none;
     }
     .ec-hv,
-    .ec-hu,
+    .ec-u,
     .ec-dpct,
-    .ec-dpct span,
     .ec-cpos,
     .ec-state,
     .ec-state-lg,
@@ -1828,7 +1897,6 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
 .widget-badge {
     background: var(--glass-bg);
     backdrop-filter: blur(var(--glass-1-blur));
-    -webkit-backdrop-filter: blur(var(--glass-1-blur));
     border: 1px solid var(--glass-border);
 }
 
@@ -2166,7 +2234,6 @@ a:not([class*="btn"]):not([class*="tab"]):not([class*="nav"]):not(
 .glass-menu {
     background: var(--glass-1-bg);
     backdrop-filter: var(--glass-1-filter);
-    -webkit-backdrop-filter: var(--glass-1-filter);
     border: 1px solid var(--glass-border);
     box-shadow:
         var(--glass-shadow),

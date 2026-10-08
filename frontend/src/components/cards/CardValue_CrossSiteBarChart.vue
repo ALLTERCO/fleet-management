@@ -18,6 +18,9 @@
             <div v-if="loading" class="csbc-body">
                 <Skeleton v-for="n in 5" :key="n" variant="row" />
             </div>
+            <p v-else-if="failed" class="csbc-empty">
+                <i class="fas fa-triangle-exclamation" /> Failed to load
+            </p>
             <div v-else-if="!bars.length" class="csbc-empty">No data</div>
             <div v-else class="csbc-body">
                 <div class="csbc-bars">
@@ -26,7 +29,7 @@
                         <div class="csbc-track">
                             <div
                                 class="csbc-fill"
-                                :style="{width: bar.pct + '%', background: barColor(bar.pct)}"
+                                :style="{width: bar.pct + '%', background: chartColors.chart1}"
                             />
                         </div>
                         <span class="csbc-val">{{ bar.label }}</span>
@@ -40,9 +43,17 @@
 <script setup lang="ts">
 import {computed, onScopeDispose, ref, watch} from 'vue';
 import Skeleton from '@/components/core/Skeleton.vue';
+import {useDashboardContext} from '@/composables/useDashboardContext';
 import {useLocationDeviceScope} from '@/composables/useLocationDeviceScope';
+import {useSiteLocations} from '@/composables/useSiteLocations';
+import {chartColors} from '@/helpers/chartUtils';
+import {
+    formatKilowattHours,
+    formatPower,
+    metricText
+} from '@/helpers/powerMetrics';
 import {useDevicesStore} from '@/stores/devices';
-import {useLocationsStore} from '@/stores/locations';
+import {extractDevicePower} from '@/stores/energyDashboard';
 import * as ws from '@/tools/websocket';
 import CardShell from './CardShell.vue';
 
@@ -79,22 +90,17 @@ defineEmits<{
     drop: [e: DragEvent];
 }>();
 
-const locationsStore = useLocationsStore();
 const devicesStore = useDevicesStore();
-const siteLocations = computed(() => {
-    const allSites = Object.values(locationsStore.locations)
-        .filter((loc) => loc.kind === 'site')
-        .sort((a, b) => a.name.localeCompare(b.name));
-    if (!props.config.locationIds?.length) return allSites;
-    const allow = new Set(props.config.locationIds);
-    return allSites.filter((loc) => allow.has(loc.id));
-});
+const siteLocations = useSiteLocations(
+    computed(() => props.config.locationIds)
+);
 const {allDeviceIds, deviceIdsByRoot} = useLocationDeviceScope(
     computed(() => siteLocations.value.map((loc) => loc.id))
 );
 
 // Energy data from RPC — only used for energy_* metrics
 const loading = ref(false);
+const failed = ref(false);
 const energyByLocation = ref<Map<number, number>>(new Map());
 
 let abortId = 0;
@@ -111,6 +117,7 @@ async function fetchEnergy() {
     }
     const id = ++abortId;
     loading.value = true;
+    failed.value = false;
     const daysBack =
         props.config.metric === 'energy_24h'
             ? 1
@@ -163,7 +170,10 @@ async function fetchEnergy() {
         if (disposed || id !== abortId) return;
         energyByLocation.value = new Map(rows);
     } catch {
-        // ignore
+        // Say so. Swallowing this left the last good kWh on screen forever.
+        if (disposed || id !== abortId) return;
+        energyByLocation.value = new Map();
+        failed.value = true;
     } finally {
         if (!disposed && id === abortId) loading.value = false;
     }
@@ -179,23 +189,18 @@ watch(
     {immediate: true}
 );
 
+// Without this the card showed mount-time energy forever on a wall dashboard.
+const dashCtx = useDashboardContext();
+watch(
+    () => dashCtx.value.refreshSignal.value,
+    () => fetchEnergy()
+);
+
 function groupLivePower(devices: string[]): number {
-    return devices.reduce((s, sid) => {
-        const d = devicesStore.devices[sid] as any;
-        if (!d?.status) return s;
-        let pw = 0;
-        for (const key of Object.keys(d.status)) {
-            if (
-                key.startsWith('switch:') ||
-                key.startsWith('pm1:') ||
-                key.startsWith('em:') ||
-                key.startsWith('em1:')
-            ) {
-                pw += +(d.status[key]?.apower ?? d.status[key]?.act_power ?? 0);
-            }
-        }
-        return s + pw;
-    }, 0);
+    return devices.reduce(
+        (s, sid) => s + extractDevicePower(devicesStore.devices[sid]?.status),
+        0
+    );
 }
 
 const bars = computed(() => {
@@ -219,18 +224,11 @@ const bars = computed(() => {
         name: r.name,
         pct: (r.val / maxVal) * 100,
         label: isLive
-            ? r.val >= 1000
-                ? `${(r.val / 1000).toFixed(1)} kW`
-                : `${Math.round(r.val)} W`
-            : `${r.val.toFixed(2)} kWh`
+            ? metricText(formatPower(r.val))
+            : metricText(formatKilowattHours(r.val))
     }));
 });
 
-function barColor(pct: number): string {
-    if (pct > 80) return '#ef4444';
-    if (pct > 50) return '#f59e0b';
-    return '#6366f1';
-}
 </script>
 
 <style scoped>

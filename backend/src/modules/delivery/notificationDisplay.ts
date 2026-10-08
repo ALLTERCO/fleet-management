@@ -1,8 +1,9 @@
 // Single source of truth for severity/state display across all delivery
 // adapters (email, telegram, teams, slack). Every value is env-overridable.
-// See docs/env-reference.md § Notification display.
+// See docs/public/reference/env-reference.md § Notification display.
 
 import {envStr} from '../../config/envReader';
+import {NOTIFICATION_BRAND} from '../notification/brand';
 import type {DeliveryPayload} from './types';
 
 type Severity = DeliveryPayload['severity'];
@@ -17,12 +18,12 @@ const SEVERITY_EMOJI_DEFAULTS: Record<Severity, string> = {
 const SEVERITY_COLOR_DEFAULTS: Record<Severity, string> = {
     critical: '#dc2626',
     warning: '#d97706',
-    info: '#2563eb'
+    info: NOTIFICATION_BRAND.shellyBlue
 };
 
 const STATE_EMOJI_DEFAULTS: Record<State, string> = {
     pending: '⏳',
-    active: '',
+    active: '●',
     acknowledged: '✅',
     recovering: '🟢',
     cleared_unack: '🟢',
@@ -33,15 +34,15 @@ const STATE_EMOJI_DEFAULTS: Record<State, string> = {
 };
 
 const STATE_LABEL_DEFAULTS: Record<State, string> = {
-    pending: 'pending',
-    active: 'active',
-    acknowledged: 'acknowledged',
-    recovering: 'recovering',
-    cleared_unack: 'cleared',
-    cleared_ack: 'cleared and acknowledged',
-    no_data: 'no data',
-    evaluation_error: 'evaluation error',
-    resolved: 'resolved'
+    pending: 'Pending',
+    active: 'Active',
+    acknowledged: 'Acknowledged',
+    recovering: 'Recovering',
+    cleared_unack: 'Cleared',
+    cleared_ack: 'Cleared and acknowledged',
+    no_data: 'No data',
+    evaluation_error: 'Evaluation error',
+    resolved: 'Resolved'
 };
 
 // Slack flavor — kept separate so operators can toggle shortcode vs
@@ -84,9 +85,8 @@ export function stateLabel(state: State): string {
     );
 }
 
-// Combined "emoji label" for inline banners. Returns '' when state=active.
+// Combined emoji and label for compact provider status rows.
 export function stateBadge(state: State): string {
-    if (state === 'active') return '';
     const emoji = stateEmoji(state);
     const label = stateLabel(state);
     return `${emoji} ${label}`.trim();
@@ -99,16 +99,62 @@ export function slackSeverityEmoji(severity: Severity): string {
     );
 }
 
+export function notificationTimeLabel(
+    value: string,
+    timeZone = 'UTC',
+    locale = 'en-US'
+): string {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    const parts = new Intl.DateTimeFormat(locale, {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+        timeZone,
+        timeZoneName: 'short'
+    }).formatToParts(date);
+    const part = (type: Intl.DateTimeFormatPartTypes) =>
+        parts.find((entry) => entry.type === type)?.value ?? '';
+    return `${part('day')} ${part('month')} ${part('year')} · ${part('hour')}:${part('minute')} ${part('timeZoneName')}`;
+}
+
 export function notificationDisplayContext(
     severity: Severity,
     state: State
 ): Record<string, string> {
+    const resolved = state === 'resolved';
+    const active = state === 'active';
     return {
         severityLabel: severityLabel(severity),
         severityEmoji: severityEmoji(severity),
         severityColor: severityColor(severity),
         stateLabel: stateLabel(state),
         stateEmoji: stateEmoji(state),
+        stateColor: resolved
+            ? NOTIFICATION_BRAND.resolvedGreen
+            : NOTIFICATION_BRAND.mediumBlue,
+        stateBackground: active
+            ? NOTIFICATION_BRAND.mediumBlue
+            : resolved
+              ? NOTIFICATION_BRAND.resolvedGreen
+              : NOTIFICATION_BRAND.white,
+        stateBorderColor: resolved
+            ? NOTIFICATION_BRAND.resolvedGreen
+            : NOTIFICATION_BRAND.shellyBlue,
+        stateTextColor: active
+            ? NOTIFICATION_BRAND.white
+            : resolved
+              ? NOTIFICATION_BRAND.darkBlue
+              : NOTIFICATION_BRAND.mediumBlue,
+        stateIconColor: active
+            ? NOTIFICATION_BRAND.white
+            : resolved
+              ? NOTIFICATION_BRAND.darkBlue
+              : NOTIFICATION_BRAND.mediumBlue,
+        stateTeamsColor: resolved ? 'Good' : 'Default',
         stateBadge: stateBadge(state),
         slackSeverityEmoji: slackSeverityEmoji(severity)
     };

@@ -93,7 +93,7 @@ const SPECS: readonly Gen4Spec[] = [
             app: 'Dimmer010G4'
         },
         doc: 'ShellyDimmer0110VPMG4',
-        components: dimmerComponents({lights: 1, inputs: 2})
+        components: dimmerComponents({lights: 1, inputs: 2, metered: true})
     },
     {
         identity: {
@@ -105,7 +105,7 @@ const SPECS: readonly Gen4Spec[] = [
             app: 'DimmerG4'
         },
         doc: 'ShellyDimmerG4',
-        components: dimmerComponents({lights: 1, inputs: 2})
+        components: dimmerComponents({lights: 1, inputs: 2, metered: false})
     },
     {
         identity: {
@@ -117,7 +117,7 @@ const SPECS: readonly Gen4Spec[] = [
             app: 'DimmerUSG4'
         },
         doc: 'ShellyDimmerG4US',
-        components: dimmerComponents({lights: 1, inputs: 2})
+        components: dimmerComponents({lights: 1, inputs: 2, metered: false})
     },
     {
         identity: {

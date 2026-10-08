@@ -3,7 +3,7 @@
 //
 // Per-phase 15-minute energy dump: one row per device per bucket carrying the
 // consumed (act) and returned (ret) energy for EACH phase a/b/c, read straight
-// from device_em.energy_15min WITHOUT summing the phases. The standard
+// from the 15-minute rows WITHOUT summing the phases. The standard
 // consumption/returned_energy reports collapse phases into one device total;
 // this one preserves them so callers can apply their own clamp-orientation
 // correction (e.g. abs per phase for reversed CT clamps).
@@ -21,7 +21,9 @@ import {GRANULARITY_MAP} from '../../config/energy';
 import {type CsvMeta, UPLOADS_DIR} from '../../modules/csvExport';
 import * as PostgresProvider from '../../modules/PostgresProvider';
 import RpcError from '../../rpc/RpcError';
+import {requireOrganizationId} from '../../rpc/scope';
 import type CommandSender from '../CommandSender';
+import {virtualDeviceAliasSql} from '../energy/streamingExport';
 import {streamFormattedReportToGzip} from '../energy/streamingExportRunner';
 import {
     bindReportArtifactOwner,
@@ -29,7 +31,11 @@ import {
     resolveScopeForGenerate
 } from './engineHelpers';
 import {writeReportGeneratedAudit} from './reportAudit';
-import type {ReportJobContext} from './reportJobContext';
+import {
+    enterReportPhase,
+    type ReportJobContext,
+    reportWritingProgress
+} from './reportJobContext';
 import {
     assertReportSafety,
     bucketSizeMs,
@@ -51,11 +57,12 @@ const HEADER_COLS = [
 // Build the formatted COPY SELECT for one window. All inlined values are
 // numeric device ids, a granularity token from GRANULARITY_MAP, and ISO
 // timestamps — no caller-supplied strings reach the SQL.
-function buildWindowSql(
+export function buildWindowSql(
     ids: number[],
     interval: string,
     from: Date,
-    to: Date
+    to: Date,
+    deviceAliases?: Readonly<Record<number, string>>
 ): string {
     const idList = ids.map((n) => Math.trunc(Number(n))).join(',');
     const cols = PHASES.flatMap((p) => [
@@ -67,15 +74,16 @@ function buildWindowSql(
     return (
         `SELECT to_char(e.tb AT TIME ZONE 'UTC', 'Dy Mon DD YYYY HH24:MI:SS')` +
         ` || ' GMT+0000 (Coordinated Universal Time)' AS bucket, ` +
-        `COALESCE(max(dl.jdoc->>'name'), max(dl.external_id),` +
+        `COALESCE(max(${virtualDeviceAliasSql('e.device', deviceAliases)}), ` +
+        `max(dl.jdoc->>'name'), max(dl.external_id),` +
         ` e.device::text) AS device, ${cols} ` +
         `FROM (SELECT time_bucket('${interval}', bucket) AS tb, device,` +
-        ` tag, phase, sum_val FROM device_em.energy_15min ` +
-        `WHERE device = ANY(ARRAY[${idList}]::integer[]) ` +
-        `AND tag IN ('total_act_energy', 'total_act_ret_energy') ` +
-        `AND phase IN ('a', 'b', 'c') ` +
-        `AND bucket >= '${from.toISOString()}'::timestamptz ` +
-        `AND bucket < '${to.toISOString()}'::timestamptz) e ` +
+        ` tag, phase, sum_val FROM device_em.fn_logical_energy_15min_rows(` +
+        `ARRAY[${idList}]::integer[], ` +
+        `'${from.toISOString()}'::timestamptz, ` +
+        `'${to.toISOString()}'::timestamptz, ` +
+        `ARRAY['total_act_energy', 'total_act_ret_energy']::varchar(30)[]) ` +
+        `WHERE phase IN ('a', 'b', 'c')) e ` +
         `LEFT JOIN device.list dl ON dl.id = e.device ` +
         `GROUP BY e.tb, e.device ORDER BY e.tb, e.device`
     );
@@ -108,7 +116,11 @@ export async function generatePerPhaseIntervalReport(
         params as never,
         sender
     );
-    const {internalIds} = await PostgresProvider.resolveDeviceIds(shellyIDs);
+    const resolved = await PostgresProvider.resolveDeviceIds(shellyIDs);
+    requireOrganizationId(sender, {
+        organizationId: (params as {organizationId?: string}).organizationId
+    });
+    const {internalIds, idMap} = resolved;
     if (!internalIds.length) throw RpcError.NotFound('device_ids');
 
     const safety = {
@@ -120,10 +132,8 @@ export async function generatePerPhaseIntervalReport(
     };
     assertReportSafety(safety);
     if (context) context.estimatedRows = estimateReportRows(safety);
-    await context?.update({
-        currentPhase: 'streaming',
-        estimatedRows: context?.estimatedRows,
-        percent: 0
+    await enterReportPhase(context, 'streaming', {
+        estimatedRows: context?.estimatedRows
     });
     await context?.throwIfCancelled();
 
@@ -155,7 +165,17 @@ export async function generatePerPhaseIntervalReport(
         });
     }
     const windowSqls = windows.map((w) =>
-        buildWindowSql(internalIds, interval, w.from, w.to)
+        buildWindowSql(
+            internalIds,
+            interval,
+            w.from,
+            w.to,
+            Object.fromEntries(
+                Object.entries(idMap).filter(([, externalId]) =>
+                    externalId.startsWith('vdev_')
+                )
+            )
+        )
     );
 
     const ts = Date.now();
@@ -175,19 +195,12 @@ export async function generatePerPhaseIntervalReport(
             filePath,
             headerCols: HEADER_COLS,
             windowSqls,
+            workMemMb: tuning.report.queryWorkMemMb,
             onProgress: async (rows, bytes) => {
                 rowCount = rows;
-                await context?.update({
-                    currentPhase: 'writing',
-                    estimatedRows: context?.estimatedRows,
+                await reportWritingProgress(context, {
                     rowsWritten: rows,
-                    bytesWritten: bytes,
-                    percent: context?.estimatedRows
-                        ? Math.min(
-                              99,
-                              Math.floor((rows / context.estimatedRows) * 100)
-                          )
-                        : 0
+                    bytesWritten: bytes
                 });
                 await context?.throwIfCancelled();
             }
@@ -221,11 +234,9 @@ export async function generatePerPhaseIntervalReport(
         meta,
         generateStart
     });
-    await context?.update({
-        currentPhase: 'ready',
+    await enterReportPhase(context, 'ready', {
         rowsWritten: rowCount,
-        bytesWritten: meta.size,
-        percent: 100
+        bytesWritten: meta.size
     });
     return meta;
 }

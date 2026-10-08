@@ -3,8 +3,24 @@
 import type {AuthzCache} from './cache';
 import type {AuthzConfig} from './config';
 
-interface L1Entry {
+// One decision: who did what to which resource, under which request context.
+export interface L1DecisionKey {
+    tenantId: string;
+    userId: string;
+    action: string;
+    resourceType: string;
+    resourceId: string | number;
+    contextKey: string;
+}
+
+// A decision also depends on the resource's place, groups and tags, which the
+// org access version stamps; a decision from older membership data is a miss.
+export interface L1Decision {
     decision: boolean;
+    accessVersion: number;
+}
+
+interface L1Entry extends L1Decision {
     expiresAt: number;
 }
 
@@ -19,58 +35,32 @@ export class L1AuthzCache {
         this.#ttlMs = cfg.l1TtlSeconds * 1000;
     }
 
-    get(
-        tenantId: string,
-        userId: string,
-        action: string,
-        resourceType: string,
-        resourceId: string | number,
-        contextKey: string
-    ): boolean | undefined {
-        const key = this.#key(
-            tenantId,
-            userId,
-            action,
-            resourceType,
-            resourceId,
-            contextKey
-        );
-        const entry = this.#map.get(key);
+    get(key: L1DecisionKey, accessVersion: number): boolean | undefined {
+        const mapKey = this.#key(key);
+        const entry = this.#map.get(mapKey);
         if (!entry) return undefined;
-        if (entry.expiresAt < Date.now()) {
-            this.#map.delete(key);
+        if (
+            entry.expiresAt < Date.now() ||
+            entry.accessVersion !== accessVersion
+        ) {
+            this.#map.delete(mapKey);
             return undefined;
         }
         // Re-insert to refresh LRU order.
-        this.#map.delete(key);
-        this.#map.set(key, entry);
+        this.#map.delete(mapKey);
+        this.#map.set(mapKey, entry);
         return entry.decision;
     }
 
-    set(
-        tenantId: string,
-        userId: string,
-        action: string,
-        resourceType: string,
-        resourceId: string | number,
-        decision: boolean,
-        contextKey: string
-    ): void {
-        const key = this.#key(
-            tenantId,
-            userId,
-            action,
-            resourceType,
-            resourceId,
-            contextKey
-        );
-        if (this.#map.size >= this.#maxEntries && !this.#map.has(key)) {
+    set(key: L1DecisionKey, value: L1Decision): void {
+        const mapKey = this.#key(key);
+        if (this.#map.size >= this.#maxEntries && !this.#map.has(mapKey)) {
             // Map iteration order = insertion → first key is oldest. O(1) eviction.
             const firstKey = this.#map.keys().next().value;
             if (firstKey !== undefined) this.#map.delete(firstKey);
         }
-        this.#map.set(key, {
-            decision,
+        this.#map.set(mapKey, {
+            ...value,
             expiresAt: Date.now() + this.#ttlMs
         });
     }
@@ -121,14 +111,7 @@ export class L1AuthzCache {
         this.#map.clear();
     }
 
-    #key(
-        tenantId: string,
-        userId: string,
-        action: string,
-        resourceType: string,
-        resourceId: string | number,
-        contextKey: string
-    ): string {
-        return `${tenantId}|${userId}|${action}|${resourceType}|${resourceId}|${contextKey}`;
+    #key(key: L1DecisionKey): string {
+        return `${key.tenantId}|${key.userId}|${key.action}|${key.resourceType}|${key.resourceId}|${key.contextKey}`;
     }
 }

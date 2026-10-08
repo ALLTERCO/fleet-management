@@ -99,6 +99,7 @@ export async function previewExtractedDevice(
 export async function previewExtractionReplacement(
     organizationId: string,
     input: VirtualDeviceExtractionReplacementPreviewParams,
+    authorizeSources: (externalIds: string[]) => Promise<void>,
     deps: ExtractionRepositoryDeps = defaultDeps
 ): Promise<VirtualDeviceExtractionReplacementPreviewDto> {
     const currentBindings = await loadCurrentRoleBindings(
@@ -109,6 +110,9 @@ export async function previewExtractionReplacement(
     if (currentBindings.length === 0) {
         throw RpcError.NotFound('virtual_device', input.externalId);
     }
+    await authorizeSources([
+        ...new Set(currentBindings.map((binding) => binding.source_external_id))
+    ]);
     const newHost = await requireHostDevice(
         deps,
         organizationId,
@@ -224,6 +228,7 @@ function computeReplacementScore(
 }
 
 interface CurrentRoleBindingRow {
+    source_external_id: string;
     role_key: string;
     source_component_key: string;
     value_type: 'boolean' | 'number' | 'string' | 'event' | 'json' | null;
@@ -236,7 +241,8 @@ async function loadCurrentRoleBindings(
 ): Promise<CurrentRoleBindingRow[]> {
     return queryRows<CurrentRoleBindingRow>(
         deps,
-        `SELECT b.role_key, b.source_component_key, b.value_type
+        `SELECT b.role_key, b.source_component_key, b.value_type,
+                source.external_id AS source_external_id
            FROM device.virtual_device vd
            JOIN device.list dl
              ON dl.id = vd.device_list_id
@@ -245,6 +251,9 @@ async function loadCurrentRoleBindings(
              ON b.virtual_device_list_id = vd.device_list_id
             AND b.organization_id = vd.organization_id
             AND b.effective_to IS NULL
+           JOIN device.list source
+             ON source.id = b.source_device_list_id
+            AND source.organization_id = b.organization_id
           WHERE vd.organization_id = $1
             AND dl.external_id = $2
             AND vd.deleted_at IS NULL
@@ -303,7 +312,7 @@ export async function createExtractedDevice(
             });
             await replaceVirtualDeviceMemberships(tx, {
                 organizationId,
-                externalId,
+                deviceListId,
                 locationId: input.locationId,
                 groupIds: input.groupIds,
                 tagIds: input.tagIds

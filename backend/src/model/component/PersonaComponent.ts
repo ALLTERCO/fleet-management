@@ -1,10 +1,12 @@
 import {authzAuditWriter} from '../../modules/authz/audit';
+import {invalidateAuthzTenant} from '../../modules/authz/runtime';
 import * as EventDistributor from '../../modules/EventDistributor';
 import * as store from '../../modules/PostgresProvider';
 import {buildListResponse} from '../../rpc/listResponse';
 import RpcError from '../../rpc/RpcError';
 import {requireOrganizationId} from '../../rpc/scope';
 import {validateOrThrow} from '../../rpc/validateOrThrow';
+import {authzScopeTypesForPersona} from '../../types/api/authzCatalog';
 import {
     PERSONA_CREATE_PARAMS_SCHEMA,
     PERSONA_DELETE_PARAMS_SCHEMA,
@@ -27,12 +29,17 @@ interface Config {
     enable: boolean;
 }
 
+// One place to enrich persona rows, so List/Get/Create/Update cannot drift.
 async function callPersonaRows(
     fn: string,
     params: Record<string, unknown>
 ): Promise<PersonaResponse[]> {
     const result = await store.callMethod(fn, params);
-    return (result?.rows ?? []) as PersonaResponse[];
+    const rows = (result?.rows ?? []) as PersonaResponse[];
+    return rows.map((row) => ({
+        ...row,
+        scope_types: authzScopeTypesForPersona(row.key, row.is_system_managed)
+    }));
 }
 
 export default class PersonaComponent extends Component<Config> {
@@ -96,6 +103,7 @@ export default class PersonaComponent extends Component<Config> {
             p_description: p.description ?? null,
             p_statements: JSON.stringify(p.statements)
         });
+        await invalidateAuthzTenant(orgId);
         await authzAuditWriter.writePersonaEvent({
             tenantId: orgId,
             actorId,
@@ -143,6 +151,7 @@ export default class PersonaComponent extends Component<Config> {
             p_clear_description: clearDescription
         });
         if (rows.length === 0) throw RpcError.NotFound('persona');
+        await invalidateAuthzTenant(orgId);
         await authzAuditWriter.writePersonaEvent({
             tenantId: orgId,
             actorId: sender.getUser()?.username ?? 'unknown',
@@ -181,6 +190,7 @@ export default class PersonaComponent extends Component<Config> {
                 'persona (or system-managed — cannot delete)'
             );
         }
+        await invalidateAuthzTenant(orgId);
         await authzAuditWriter.writePersonaEvent({
             tenantId: orgId,
             actorId: sender.getUser()?.username ?? 'unknown',

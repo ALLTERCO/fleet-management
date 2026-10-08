@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import {
     factoryNamespaces,
     moduleRpcLiterals,
+    rebindTargets,
     sdkSourceFiles
 } from './_hostSdkSource.js';
 import {readGeneratedJson} from './_inventories.js';
@@ -73,8 +74,16 @@ function moduleNamespaceIndex(catalog: ApiCatalog): {
     for (const [namespace, files] of factoryNamespaces()) {
         for (const file of files) add(moduleName(file), namespace);
     }
-    for (const [module, literals] of moduleRpcLiterals()) {
+    const literalsByModule = moduleRpcLiterals();
+    for (const [module, literals] of literalsByModule) {
         for (const literal of literals) {
+            const namespace = namespaceOfId.get(literal);
+            if (namespace) add(module, namespace);
+        }
+    }
+    // A module that only re-binds a core domain owns that domain's namespaces.
+    for (const [module, domain] of rebindTargets()) {
+        for (const literal of literalsByModule.get(domain) ?? []) {
             const namespace = namespaceOfId.get(literal);
             if (namespace) add(module, namespace);
         }

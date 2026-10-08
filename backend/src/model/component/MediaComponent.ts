@@ -1,11 +1,13 @@
 import {tuning} from '../../config/tuning';
 import {
+    assignReportImage,
     deleteBackground,
     listBackgrounds,
     listReportImages,
     MediaAssetNotFoundError,
     MediaAssetPermissionError,
-    MediaAssetValidationError
+    MediaAssetValidationError,
+    type MediaImageList
 } from '../../modules/mediaAssetLibrary';
 import {
     issueUploadTicket,
@@ -28,6 +30,7 @@ import {
     MEDIA_RADIO_LIST_FAVOURITES_PARAMS_SCHEMA,
     MEDIA_RADIO_PLAY_FAVOURITE_PARAMS_SCHEMA,
     MEDIA_RELOAD_PARAMS_SCHEMA,
+    MEDIA_REPORT_IMAGE_ASSIGN_PARAMS_SCHEMA,
     MEDIA_SET_VOLUME_PARAMS_SCHEMA,
     MEDIA_SHELLY_ONLY_PARAMS_SCHEMA,
     type MediaDeleteParams,
@@ -39,6 +42,7 @@ import {
     type MediaRadioListFavouritesParams,
     type MediaRadioPlayFavouriteParams,
     type MediaReloadParams,
+    type MediaReportImageAssignParams,
     type MediaSetVolumeParams,
     type MediaShellyOnlyParams
 } from '../../types/api/media';
@@ -46,6 +50,7 @@ import {EMPTY_PARAMS_SCHEMA} from '../../types/api/upload';
 import type CommandSender from '../CommandSender';
 import {getDeviceOrThrow, wrapDeviceRpc} from '../deviceAdminRpc';
 import {
+    canCrossOrganizationSupport,
     canManageSharedMediaAssets,
     canViewSharedMediaAssets
 } from './authzPermissions';
@@ -81,18 +86,18 @@ function mediaAssetErrorToRpc(err: unknown): RpcError {
     return RpcError.OperationFailed('media asset operation', err);
 }
 
+// displays[] is the FHD variant the settings page paints, so it has to be
+// signed and returned like the other two.
 function signMediaImageList(
     kind: 'background' | 'reportImage',
-    list: {thumbnails: string[]; originals: string[]}
-) {
+    list: MediaImageList
+): MediaImageList {
     const ttlSec = tuning.upload.assetUrlTtlSec;
+    const sign = (file: string) => appendUploadAssetToken(kind, file, ttlSec);
     return {
-        thumbnails: list.thumbnails.map((file) =>
-            appendUploadAssetToken(kind, file, ttlSec)
-        ),
-        originals: list.originals.map((file) =>
-            appendUploadAssetToken(kind, file, ttlSec)
-        )
+        thumbnails: list.thumbnails.map(sign),
+        displays: list.displays.map(sign),
+        originals: list.originals.map(sign)
     };
 }
 
@@ -156,13 +161,34 @@ export default class MediaComponent extends Component<any> {
     @Component.NoAudit
     @Component.Expose('ReportImage.List')
     @Component.CheckPermissions(canViewSharedMediaAssets)
-    async reportImageList(params: unknown) {
+    async reportImageList(params: unknown, sender: CommandSender) {
         validateOrThrow<Record<string, never>>(
             params ?? {},
             EMPTY_PARAMS_SCHEMA
         );
-        const list = await listReportImages();
+        const list = await listReportImages(mediaAssetUserFromSender(sender));
         return signMediaImageList('reportImage', list);
+    }
+
+    @Component.Expose('ReportImage.Assign')
+    @Component.CheckPermissions(canCrossOrganizationSupport)
+    async reportImageAssign(params: unknown, sender: CommandSender) {
+        const p = validateOrThrow<MediaReportImageAssignParams>(
+            params,
+            MEDIA_REPORT_IMAGE_ASSIGN_PARAMS_SCHEMA
+        );
+        try {
+            return await assignReportImage(
+                {
+                    ...mediaAssetUserFromSender(sender),
+                    isPlatformAdmin: canCrossOrganizationSupport(sender)
+                },
+                p.fileName,
+                p.organizationId
+            );
+        } catch (err) {
+            throw mediaAssetErrorToRpc(err);
+        }
     }
 
     @Component.NoAudit

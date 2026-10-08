@@ -1,12 +1,26 @@
-import exposeMethods from 'expose-sql-methods/lib/postgres';
 import * as log4js from 'log4js';
 import migration from 'migration-collection/lib/postgres';
-import {Client, Pool, type PoolClient} from 'pg';
+import {Client, Pool, type PoolClient, type PoolConfig} from 'pg';
 import type {config_rc_t} from '../config';
 import {envInt} from '../config/envReader';
 import {tuning} from '../config/tuning';
 import type ShellyDeviceFactoryType from '../model/ShellyDeviceFactory';
 import * as Observability from '../modules/Observability';
+import {
+    type DbCallTiming,
+    type DbQueryTarget,
+    dbCallSiteLabel,
+    markDbCall,
+    runWithDbCallTiming,
+    sendDbQuery
+} from './dbCallTiming';
+import {
+    clearFailure,
+    getFailure,
+    pruneFailuresNotIn,
+    recordFailure,
+    recordRun
+} from './device/deviceLoadLedger';
 import {unwrapDefaultExport} from './dynamicImport';
 import {getDeploymentTopology} from './identity';
 import {
@@ -15,12 +29,32 @@ import {
     normalizeMigrationLedgerName
 } from './migrationLedger';
 import {
+    startHoldPeaks,
+    watchDbGate,
+    watchPoolConnections
+} from './observability/dbPoolMetrics';
+import {
     buildDbRuntimeErrorSnapshot,
     buildDbRuntimeSnapshot,
     getDbRuntimeSnapshot,
     readExpectedTimescaleImage,
     setDbRuntimeSnapshot
 } from './observability/dbRuntime';
+import {startDbStats, stopDbStats} from './observability/dbStats';
+import {
+    type PoolStatsLike,
+    PriorityPool,
+    priorityPoolStats
+} from './postgresPriorityPool';
+import {
+    createPostgresStoredProcedureBridge,
+    type PostgresStoredProcedureBridge,
+    StoredProcedureBridgeError
+} from './postgresStoredProcedureBridge';
+import {
+    assertNoOpenTransaction,
+    runInTransactionScope
+} from './postgresTransactionScope';
 import {formatError} from './util/formatError';
 
 const logger = log4js.getLogger('postgres');
@@ -62,9 +96,9 @@ let callDbMethod: <T = any>(
     txId?: number
 ) => Promise<T>;
 
-// Module-level reference so shutdown() can end the pg pool on SIGTERM.
-let expDBInstance: any;
-let queryPool: Pool | undefined;
+let mainDbBridge: PostgresStoredProcedureBridge | undefined;
+// The one pool behind both the stored-procedure bridge and queryRows.
+let sharedPool: Pool | undefined;
 let dbRuntimeRefreshTimer: NodeJS.Timeout | undefined;
 let lastDbRuntimeWarning = '';
 
@@ -73,10 +107,53 @@ export interface PoolPressure {
     usage: number;
 }
 
-interface PoolStatsLike {
-    totalCount?: number;
-    idleCount?: number;
-    waitingCount?: number;
+export interface PoolObservabilityStats
+    extends Record<string, number | string> {
+    totalCount: number;
+    idleCount: number;
+    waitingCount: number;
+    status: 'healthy' | 'warning' | 'critical';
+}
+
+export function poolObservabilityStats(
+    pool: PoolStatsLike
+): PoolObservabilityStats {
+    const totalCount = pool.totalCount ?? 0;
+    const idleCount = pool.idleCount ?? 0;
+    const waitingCount = pool.waitingCount ?? 0;
+    const usage = totalCount > 0 ? (totalCount - idleCount) / totalCount : 0;
+    return {
+        totalCount,
+        idleCount,
+        waitingCount,
+        status: usage > 0.9 ? 'critical' : usage > 0.7 ? 'warning' : 'healthy'
+    };
+}
+
+// Both handlers are needed: a dropped idle or checked-out connection emits
+// 'error' and, with no listener, crashes the process.
+// The application name lets pg_stat_activity tell the pools apart.
+export function createManagedPool(
+    connectionString: string,
+    max: number,
+    applicationName?: string
+): Pool {
+    const pool = new Pool({
+        connectionString,
+        max,
+        idleTimeoutMillis: tuning.db.idleTimeoutMs,
+        maxLifetimeSeconds: tuning.db.maxLifetimeSeconds,
+        ...(applicationName ? {application_name: applicationName} : {})
+    });
+    pool.on('error', (error) => {
+        logger.warn('pool idle-client error: %s', error.message);
+    });
+    pool.on('connect', (client) => {
+        client.on('error', (error) => {
+            logger.warn('pool active-client error: %s', error.message);
+        });
+    });
+    return pool;
 }
 
 // Pure pressure readout for a pg pool: usage is the busy fraction, waitingCount
@@ -100,11 +177,34 @@ export function poolPressureFromStats(
     };
 }
 
-// Pressure of the query/report pool. The em-sync catch-up brake watches this so
-// it backs off when reports are blocked: report queries queue here whenever
-// ingest saturates Postgres, so waitingCount > 0 means reports are suffering.
-export function getQueryPoolPressure(): PoolPressure {
-    return poolPressureFromStats(queryPool as PoolStatsLike | undefined);
+// Pressure of the shared pool. With `exceptWorkload`, that kind's own
+// connections and waiters are left out: em-sync borrows idle connections, and
+// its catch-up brake must back off for other work, never for itself.
+export function getQueryPoolPressure(exceptWorkload?: string): PoolPressure {
+    if (!sharedPool) return poolPressureFromStats(undefined);
+    const stats = priorityPoolStats(sharedPool);
+    if (exceptWorkload === undefined || !(sharedPool instanceof PriorityPool)) {
+        return poolPressureFromStats(stats);
+    }
+    const own = sharedPool.workloadGateStats(exceptWorkload);
+    const total = stats.totalCount;
+    const busy = Math.max(0, total - stats.idleCount - own.inUse);
+    // pg-pool's own queue, after the gate, belongs to no kind.
+    const pgWaiting = sharedPool.waitingCount ?? 0;
+    return poolPressureFromStats({
+        totalCount: total,
+        idleCount: total - busy,
+        waitingCount: pgWaiting + own.othersWaiting
+    });
+}
+
+// Connections em-sync may use now: its guaranteed share always, more while
+// other work leaves connections idle, never past the borrowing ceiling.
+export function getEmSyncWriteConnections(): number {
+    const share = tuning.db.workloadCaps['em-sync'];
+    if (!(sharedPool instanceof PriorityPool)) return share;
+    const own = sharedPool.workloadGateStats('em-sync');
+    return Math.min(own.ceiling, Math.max(own.share, own.inUse + own.room));
 }
 
 export async function rawCall(name: string, params: any) {
@@ -158,11 +258,19 @@ function recordPgQueryTimeout(sql: string): void {
     }
 }
 
+// Both call paths check out from one pool, so a transaction open on either
+// path would wait on itself for a second connection.
+function assertNoOpenSharedPoolTransaction(operation: string): void {
+    assertNoOpenTransaction('main', operation);
+    assertNoOpenTransaction('query', operation);
+}
+
 export async function queryRows<T = any>(
     sql: string,
     params: readonly unknown[] = []
 ): Promise<T[]> {
-    if (!queryPool) {
+    assertNoOpenSharedPoolTransaction('queryRows');
+    if (!sharedPool) {
         // The under-test signal that the test forgot to install a pool stub.
         // Production callers see this only when initDatabase hasn't run.
         throw new Error(
@@ -171,10 +279,17 @@ export async function queryRows<T = any>(
                 : 'Database not ready'
         );
     }
+    const pool = sharedPool;
     const timed = Observability.getLevel() >= 2;
     const t0 = timed ? performance.now() : 0;
     try {
-        const result = await queryPool.query(sql, [...params]);
+        const result = await Observability.timeDbCall(
+            {path: 'sql', method: () => `sql:${dbCallSiteLabel()}`},
+            (timing) =>
+                runWithDbCallTiming(timing, () =>
+                    sendDbQuery(pool, sql, [...params], timing)
+                )
+        );
         if (timed)
             Observability.recordDbTiming(
                 'postgres.queryRows',
@@ -194,14 +309,27 @@ export interface QueryTxClient {
 }
 
 // Minimal pg client surface used by the transaction body. Pulled out as an
-// interface so the body is testable without a live pool.
-export interface PgLikeClient {
-    query(sql: string, params?: unknown[]): Promise<{rows: unknown[]}>;
+// interface so the body is testable without a live pool. Timed statements
+// use pg's callback form.
+export interface PgLikeClient extends DbQueryTarget<{rows: unknown[]}> {
     release(): void;
 }
 
 export interface PgLikePool {
     connect(): Promise<PgLikeClient>;
+}
+
+async function queryInTransaction<U>(
+    client: PgLikeClient,
+    sql: string,
+    params?: readonly unknown[]
+): Promise<U[]> {
+    const result = await Observability.timeDbCall(
+        {path: 'sql', method: () => `sql:${dbCallSiteLabel()}`},
+        (timing) =>
+            sendDbQuery(client, sql, params ? [...params] : undefined, timing)
+    );
+    return result.rows as U[];
 }
 
 // BEGIN/COMMIT/ROLLBACK around a callback. Exported separately so tests can
@@ -210,18 +338,29 @@ export async function runInTransaction<T>(
     pool: PgLikePool,
     fn: (client: QueryTxClient) => Promise<T>
 ): Promise<T> {
-    const client = await pool.connect();
+    assertNoOpenSharedPoolTransaction('BEGIN');
+    return await Observability.timeDbCall(
+        {path: 'sql', method: () => `tx:${dbCallSiteLabel()}`},
+        (timing) => transactOn({pool, timing}, fn)
+    );
+}
+
+interface TransactionCheckout {
+    pool: PgLikePool;
+    timing: DbCallTiming | undefined;
+}
+
+async function transactOn<T>(
+    checkout: TransactionCheckout,
+    fn: (client: QueryTxClient) => Promise<T>
+): Promise<T> {
+    const client = await runWithDbCallTiming(checkout.timing, () =>
+        checkout.pool.connect()
+    );
+    markDbCall(checkout.timing, 'checkoutResumedAt');
     const tx: QueryTxClient = {
-        async query<U = any>(
-            sql: string,
-            params?: readonly unknown[]
-        ): Promise<U[]> {
-            const result = await client.query(
-                sql,
-                params ? [...params] : undefined
-            );
-            return result.rows as U[];
-        }
+        query: <U = any>(sql: string, params?: readonly unknown[]) =>
+            queryInTransaction<U>(client, sql, params)
     };
     try {
         await client.query('BEGIN');
@@ -236,7 +375,7 @@ export async function runInTransaction<T>(
                 `SET LOCAL statement_timeout = ${stmtTimeoutMs}`
             );
         }
-        const result = await fn(tx);
+        const result = await runInTransactionScope('query', () => fn(tx));
         await client.query('COMMIT');
         return result;
     } catch (err) {
@@ -251,13 +390,13 @@ export async function runInTransaction<T>(
     }
 }
 
-// Multi-statement transaction over the queryPool. Use when several
+// Multi-statement SQL transaction on the shared pool. Use when several
 // queryRows calls must share a snapshot or hold an advisory lock.
 export async function withQueryTransaction<T>(
     fn: (client: QueryTxClient) => Promise<T>
 ): Promise<T> {
-    if (!queryPool) throw new Error('Database not ready');
-    return runInTransaction(queryPool as unknown as PgLikePool, fn);
+    if (!sharedPool) throw new Error('Database not ready');
+    return runInTransaction(sharedPool as unknown as PgLikePool, fn);
 }
 
 // Raw pooled client for streaming reads (COPY TO STDOUT). Wraps the work in a
@@ -267,8 +406,9 @@ export async function withQueryTransaction<T>(
 export async function withPooledClient<T>(
     fn: (client: PoolClient) => Promise<T>
 ): Promise<T> {
-    if (!queryPool) throw new Error('Database not ready');
-    const client = await queryPool.connect();
+    if (!sharedPool) throw new Error('Database not ready');
+    assertNoOpenSharedPoolTransaction('withPooledClient');
+    const client = await sharedPool.connect();
     try {
         await client.query('BEGIN');
         const timeoutMs = envInt('FM_EXPORT_STATEMENT_TIMEOUT_MS', 900_000, 0);
@@ -303,7 +443,7 @@ export function __setQueryPoolForTests(
           }
         | undefined
 ): void {
-    queryPool = fake as unknown as Pool | undefined;
+    sharedPool = fake as unknown as Pool | undefined;
 }
 
 export function __setCallDbMethodForTests(
@@ -316,13 +456,18 @@ export function __setCallDbMethodForTests(
 
 export async function get(
     shellyID: string | null = null,
-    controlAccess: number | null = null
+    controlAccess: number | null = null,
+    txId?: number
 ): Promise<get_resp_t[]> {
     if (!callDbMethod) throw new Error('Database not ready');
-    const result = await callDbMethod('device.fn_fetch', {
-        p_external_id: shellyID,
-        p_control_access: controlAccess || null
-    });
+    const result = await callDbMethod(
+        'device.fn_fetch',
+        {
+            p_external_id: shellyID,
+            p_control_access: controlAccess || null
+        },
+        txId
+    );
 
     return result.rows;
 }
@@ -412,10 +557,16 @@ export async function allowAccessControl(id: number, txId?: number) {
  * p_control_access: 2=denied, 3=allowed (1=pending default).
  * organizationId stamps org in the same write; null for deny/quarantine.
  */
+// overrideDenied: true lets the write change a row already DENIED (operator
+// revive); false leaves it untouched and returns it as-is.
+// createMissing: true inserts a row for an unknown id; false updates only what
+// already exists, so a deny never conjures a device.
 export async function admitBatch(
     admissions: Array<{externalId: string; jdoc?: unknown}>,
     controlAccess: 2 | 3,
-    organizationId: string | null
+    organizationId: string | null,
+    overrideDenied: boolean,
+    createMissing: boolean
 ): Promise<get_resp_t[]> {
     if (!callDbMethod) throw new Error('Database not ready');
     if (admissions.length === 0) return [];
@@ -426,8 +577,49 @@ export async function admitBatch(
     const result = await callDbMethod('device.fn_admit_batch', {
         p_admissions: asJsonbParam(payload),
         p_control_access: controlAccess,
-        p_organization_id: organizationId
+        p_organization_id: organizationId,
+        p_override_denied: overrideDenied,
+        p_create_missing: createMissing
     });
+    return result.rows;
+}
+
+export interface RevokedAccessRow {
+    external_id: string;
+    id: number;
+    // Null: the row was deleted.
+    control_access: number | null;
+    access_changed_at: Date;
+}
+
+// One owner group's devices whose access left ALLOWED or whose row was
+// deleted, after the keyset position (changed at, row id), oldest change
+// first. '' is the group of rows with no organization.
+export async function listAccessRevoked(input: {
+    organizationId: string;
+    afterAt: Date;
+    afterId: number;
+    limit: number;
+}): Promise<RevokedAccessRow[]> {
+    if (!callDbMethod) throw new Error('Database not ready');
+    const result = await callDbMethod('device.fn_list_access_revoked', {
+        p_organization_id: input.organizationId,
+        p_after_at: input.afterAt,
+        p_after_id: input.afterId,
+        p_limit: input.limit
+    });
+    return result.rows;
+}
+
+/** Narrow row list for the reconcile: no snapshot column, so no TOAST read. */
+export type DeviceRowVersion = Pick<
+    get_resp_t,
+    'external_id' | 'id' | 'updated'
+>;
+
+export async function listDeviceRowVersions(): Promise<DeviceRowVersion[]> {
+    if (!callDbMethod) throw new Error('Database not ready');
+    const result = await callDbMethod('device.fn_list_row_versions', {});
     return result.rows;
 }
 
@@ -491,12 +683,16 @@ export async function userList({
     });
 }
 
-export async function deviceDelete(shellyID: string) {
-    const device = (await get(shellyID))[0];
+export async function deviceDelete(shellyID: string, txId?: number) {
+    const device = (await get(shellyID, null, txId))[0];
     if (!device) throw new Error(`Device ${shellyID} not found`);
-    return await callDbMethod<void>('device.fn_full_delete', {
-        p_id: device.id
-    });
+    return await callDbMethod<void>(
+        'device.fn_full_delete',
+        {
+            p_id: device.id
+        },
+        txId
+    );
 }
 
 // Soft delete: hide the device but keep its id and history (reversible).
@@ -696,78 +892,86 @@ async function runMigrationsUnderLock(
     }
 }
 
-// Build the closure stored in `callDbMethod`. Owns the magic-string `tx`
-// branch (transaction-handle factory) and the per-call timing wrapper.
 function buildCallDbMethod(
-    expDB: Awaited<ReturnType<typeof exposeMethods<Record<string, any>>>>
+    bridge: PostgresStoredProcedureBridge
 ): typeof callDbMethod {
-    return async (name: string, params: any, txId?: number) => {
-        const m = expDB.methods[name];
-        if (!m) {
-            if (name === 'tx') {
-                return {
-                    async begin() {
-                        return await expDB.txBegin();
-                    },
-                    async end(id: number, query: string) {
-                        return await expDB.txEnd(id, query);
-                    }
-                };
-            }
-            throw new Error('MethodNotFound');
+    return async function invokeDatabaseMethod<T = any>(
+        name: string,
+        params: any,
+        txId?: number
+    ): Promise<T> {
+        if (name === 'tx') {
+            return {
+                async begin(label?: string) {
+                    assertNoOpenSharedPoolTransaction('BEGIN');
+                    return await bridge.beginTransaction(label);
+                },
+                async end(id: number, action: 'COMMIT' | 'ROLLBACK') {
+                    return await bridge.endTransaction(id, action);
+                }
+            } as T;
         }
+        if (!txId) assertNoOpenSharedPoolTransaction(name);
         const timed = Observability.getLevel() >= 2;
         const t0 = timed ? performance.now() : 0;
-        const result = await m(params, txId);
-        if (timed) Observability.recordDbTiming(name, performance.now() - t0);
-        return result;
+        try {
+            const result = await bridge.call(name, params, txId);
+            if (timed)
+                Observability.recordDbTiming(name, performance.now() - t0);
+            return result as T;
+        } catch (error) {
+            if (
+                error instanceof StoredProcedureBridgeError &&
+                error.code === 'DB_METHOD_NOT_FOUND'
+            ) {
+                throw new Error('MethodNotFound', {cause: error});
+            }
+            throw error;
+        }
     };
 }
 
-function registerDbPoolStats(
-    expDB: Awaited<ReturnType<typeof exposeMethods<Record<string, any>>>>
-): void {
-    try {
-        type PoolStats = {
-            totalCount: number;
-            idleCount: number;
-            waitingCount: number;
-        };
-        const db = expDB as {
-            pool?: PoolStats;
-            client?: {pool?: PoolStats};
-        };
-        const pool = db.pool ?? db.client?.pool;
-        if (pool && typeof pool.totalCount === 'number') {
-            Observability.registerModule('dbPool', {
-                stats: () => {
-                    const total = pool.totalCount;
-                    const idle = pool.idleCount;
-                    const usage = total > 0 ? (total - idle) / total : 0;
-                    return {
-                        totalCount: total,
-                        idleCount: idle,
-                        waitingCount: pool.waitingCount,
-                        status:
-                            usage > 0.9
-                                ? 'critical'
-                                : usage > 0.7
-                                  ? 'warning'
-                                  : 'healthy'
-                    };
-                },
-                topology: {
-                    role: 'sink',
-                    cluster: 'storage',
-                    upstreams: ['statusQueue', 'emSync', 'audit', 'geo'],
-                    label: 'Database',
-                    description: 'PostgreSQL connection pool',
-                    route: '/monitoring/database'
-                }
-            });
+function registerDbPoolStats(pool: PriorityPool): void {
+    Observability.registerModule('dbPool', {
+        stats: () => {
+            const stats = priorityPoolStats(pool);
+            return {
+                total: stats.totalCount,
+                idle: stats.idleCount,
+                waiting: stats.waitingCount,
+                foregroundWaiting: stats.foregroundWaiting,
+                backgroundWaiting: stats.backgroundWaiting,
+                foregroundCheckedOut: stats.foregroundCheckedOut,
+                backgroundCheckedOut: stats.backgroundCheckedOut
+            };
+        },
+        topology: {
+            role: 'sink',
+            cluster: 'storage',
+            upstreams: ['statusQueue', 'emSync', 'audit', 'geo', 'uiClients'],
+            label: 'Database',
+            description:
+                'PostgreSQL connection pool for stored procedures and SQL',
+            route: '/monitoring/database'
         }
-    } catch {
-        /* pool stats not available — skip */
+    });
+}
+
+async function createMainDatabaseBridge(
+    pool: PriorityPool,
+    schemas: readonly string[]
+): Promise<PostgresStoredProcedureBridge> {
+    try {
+        return await createPostgresStoredProcedureBridge({
+            pool,
+            schemas,
+            onPoolError: (error) => {
+                logger.error('postgres pool idle-client error', error);
+            }
+        });
+    } catch (error) {
+        await pool.end();
+        throw error;
     }
 }
 
@@ -785,6 +989,7 @@ function registerDbRuntimeStats(): void {
                 postgresVersion: snap.postgresVersion,
                 postgresMajor: snap.postgresMajor,
                 timescaleVersion: snap.timescaleVersion,
+                rawRetentionSeconds: snap.rawRetentionSeconds,
                 expectedTimescaleImage: snap.expectedTimescaleImage,
                 expectedTimescaleVersion: snap.expectedTimescaleVersion,
                 error: snap.error
@@ -805,19 +1010,26 @@ function registerDbRuntimeStats(): void {
 }
 
 async function refreshDbRuntimeStats(): Promise<void> {
-    if (!queryPool) return;
+    const pool = sharedPool;
+    if (!pool) return;
     try {
-        const [pgVersion, timescaleVersion] = await Promise.all([
-            queryPool.query<{version: string}>(
+        const [pgVersion, timescaleVersion, rawRetention] = await Promise.all([
+            pool.query<{version: string}>(
                 `SELECT current_setting('server_version') AS version`
             ),
-            queryPool.query<{version: string}>(
+            pool.query<{version: string}>(
                 `SELECT COALESCE((SELECT extversion FROM pg_extension WHERE extname = 'timescaledb'), '') AS version`
-            )
+            ),
+            pool
+                .query<{seconds: number}>(
+                    `SELECT EXTRACT(EPOCH FROM device_em.fn_stats_retention_interval())::bigint AS seconds`
+                )
+                .catch(() => ({rows: []}))
         ]);
         const snap = buildDbRuntimeSnapshot({
             postgresVersion: pgVersion.rows[0]?.version ?? '',
             timescaleVersion: timescaleVersion.rows[0]?.version ?? '',
+            rawRetentionSeconds: Number(rawRetention.rows[0]?.seconds ?? -1),
             expectedTimescaleImage: readExpectedTimescaleImage()
         });
         setDbRuntimeSnapshot(snap);
@@ -859,6 +1071,55 @@ function startDbRuntimeRefresh(): void {
     dbRuntimeRefreshTimer.unref?.();
 }
 
+export function withStatementTimeout<T extends Record<string, unknown>>(
+    connection: T,
+    timeoutMs: number
+): T & {statement_timeout?: number} {
+    return {
+        ...connection,
+        ...(timeoutMs > 0 ? {statement_timeout: timeoutMs} : {})
+    };
+}
+
+// Test seam: the lock-clear-migrate sequence on a real database, without
+// the pools and bridges initDatabase builds around it.
+export function __runMigrationsUnderLockForTests(
+    config: NonNullable<config_rc_t['internalStorage']>
+): Promise<void> {
+    return runMigrationsUnderLock(config);
+}
+
+// Kinds that may pass their cap on connections nothing else waits for.
+export const SHARED_POOL_BORROWING_WORKLOADS: readonly string[] = ['em-sync'];
+
+// Stored procedures and plain SQL draw from this one pool, so background work
+// on either path may use any connection but the foreground reserve.
+export async function openSharedDatabasePool(
+    poolConfig: PoolConfig,
+    schemas: readonly string[]
+): Promise<void> {
+    const pool = new PriorityPool(
+        {application_name: 'fleet-shared', ...poolConfig},
+        tuning.db.foregroundReserve,
+        {
+            caps: tuning.db.workloadCaps,
+            borrowing: SHARED_POOL_BORROWING_WORKLOADS
+        }
+    );
+    watchDbGate('shared', pool);
+    watchPoolConnections('shared', pool);
+    startHoldPeaks();
+    // The bridge logs each idle-client error; the counter is for dashboards.
+    pool.on('error', () => {
+        Observability.incrementCounter('pg_pool_idle_errors');
+    });
+    const bridge = await createMainDatabaseBridge(pool, schemas);
+    mainDbBridge = bridge;
+    sharedPool = pool;
+    callDbMethod = buildCallDbMethod(bridge);
+    registerDbPoolStats(pool);
+}
+
 export async function initDatabase(
     storageConfig: config_rc_t['internalStorage']
 ) {
@@ -876,39 +1137,26 @@ export async function initDatabase(
         await runMigrationsUnderLock(config);
     }
 
-    const expConfig = {...config, schemas: config.link.schemas};
-    const expDB = await exposeMethods<Record<string, any>>(expConfig, {
-        log: (level: 'error' | 'info' | 'warn', ...rest: [any]) => {
-            logger[level](...rest);
-        }
-    });
-    expDBInstance = expDB;
-    // 0 disables; tx path uses FM_DB_TX_STATEMENT_TIMEOUT_MS, same idea.
+    // One statement ceiling for every pooled call; 0 disables. Transactions
+    // set their own with FM_DB_TX_STATEMENT_TIMEOUT_MS.
     const queryTimeoutMs = envInt(
         'FM_DB_QUERY_STATEMENT_TIMEOUT_MS',
         30_000,
         0
     );
-    queryPool = new Pool({
-        ...config.connection,
-        ...(queryTimeoutMs > 0 ? {statement_timeout: queryTimeoutMs} : {})
-    });
-    // Without a listener, idle-client errors become uncaughtException.
-    // Rate-limit logs so a flapping pool can't spam stdout; counter is
-    // the durable signal for ops dashboards.
-    let lastIdleErrLog = 0;
-    queryPool.on('error', (err) => {
-        Observability.incrementCounter('pg_pool_idle_errors');
-        const now = Date.now();
-        if (now - lastIdleErrLog > 30_000) {
-            lastIdleErrLog = now;
-            logger.warn('pg pool idle-client error', err);
-        }
-    });
-    callDbMethod = buildCallDbMethod(expDB);
-    registerDbPoolStats(expDB);
+    const connection = withStatementTimeout(config.connection, queryTimeoutMs);
+    await openSharedDatabasePool(connection, config.link.schemas);
     registerDbRuntimeStats();
     startDbRuntimeRefresh();
+    startDbStats(queryRows, {
+        intervalMs: envInt('FM_OBSERVABILITY_DBSTAT_INTERVAL_MS', 30_000),
+        expensiveIntervalMs: envInt(
+            'FM_OBSERVABILITY_DBSTAT_EXPENSIVE_INTERVAL_MS',
+            5 * 60_000
+        ),
+        topN: envInt('FM_OBSERVABILITY_DBSTAT_TOPN', 50),
+        topModels: envInt('FM_OBSERVABILITY_DBSTAT_TOP_MODELS', 20)
+    });
 
     logger.debug('init finished');
 }
@@ -975,12 +1223,11 @@ export interface LocationParentRow {
 export async function listDeviceMemberships(
     organizationId: string
 ): Promise<DeviceMembershipRow[]> {
-    if (!callDbMethod) throw new Error('Database not ready');
-    const result = await callDbMethod<{rows: DeviceMembershipRow[]}>(
-        'organization.fn_device_memberships',
-        {p_organization_id: organizationId}
+    // A read, so it stays off the main pool that device writes share.
+    return queryRows<DeviceMembershipRow>(
+        'SELECT subject_id, group_ids, location_id, tag_ids, tag_keys FROM organization.fn_device_memberships($1)',
+        [organizationId]
     );
-    return result.rows;
 }
 
 /** Source-of-truth shellyID set for an org — bounds `scope: 'ALL'` to caller's org. */
@@ -1068,6 +1315,8 @@ export async function groupAddDevicesBatch(
 
 export interface VirtualMetadataRow {
     organization_id: string;
+    // The row keys off the logical device id; host_shelly_id is the label.
+    host_device_id: number;
     host_shelly_id: string;
     component_key: string;
     glyph: string | null;
@@ -1218,6 +1467,117 @@ async function runBoundedBackfills(
     return written;
 }
 
+// Ids on the gap line, so a fleet-wide gap cannot produce a megabyte log line.
+const GAP_LOG_ID_LIMIT = 50;
+
+// A row with no usable `updated` cannot be compared across runs, so it reads
+// as unchanged and is retried only once the row itself changes.
+function rowUpdatedMs(row: Pick<get_resp_t, 'updated'>): number {
+    return row.updated instanceof Date ? row.updated.getTime() : 0;
+}
+
+// The collector is keyed by shellyID; a row whose jdoc lost it can still be
+// tracked under the external id it was stored with.
+function rowDeviceKey(row: get_resp_t): string {
+    const shellyID = (row.jdoc as {shellyID?: unknown})?.shellyID;
+    return typeof shellyID === 'string' ? shellyID : row.external_id;
+}
+
+// A row that never reaches the collector is a device the fleet has lost, so
+// the reason is kept next to the count instead of being discarded.
+function recordDeviceLoadFailure(row: get_resp_t, error: unknown): void {
+    const err = error instanceof Error ? error : new Error(String(error));
+    logger.error(
+        'failed to load saved device id=[%s] err=[%s]',
+        row.external_id,
+        err.stack ?? err.message
+    );
+    Observability.incrementCounter('device_load_failures');
+    recordFailure({
+        rowId: row.id,
+        externalId: row.external_id,
+        updatedMs: rowUpdatedMs(row),
+        errorName: err.name,
+        message: err.message,
+        stack: err.stack,
+        failedAtMs: Date.now()
+    });
+}
+
+// An unchanged row fails the same way it failed last time, so only a changed
+// row is worth building again.
+function failedUnchanged(
+    row: Pick<get_resp_t, 'external_id' | 'updated'>
+): boolean {
+    const failure = getFailure(row.external_id);
+    return failure !== undefined && failure.updatedMs === rowUpdatedMs(row);
+}
+
+type DeviceCollectorModule = typeof import('../modules/DeviceCollector.js');
+
+interface LoadSelection {
+    rows: get_resp_t[];
+    totalRows: number;
+    skippedForeign: number;
+    skippedRegistered: number;
+    // Rows held back because their last failure is for this same row version.
+    // They are not fetched, but they are still a gap.
+    heldBack: string[];
+    // Every external id the store holds, so a deleted row stops being a gap.
+    presentIds: Set<string>;
+}
+
+// Boot builds every row it is allowed to, so the full snapshot read is the
+// price of a cold start.
+async function selectRowsForBoot(
+    allowedSet: Set<string> | null
+): Promise<LoadSelection> {
+    const devices = await get();
+    const rows = allowedSet
+        ? devices.filter((row) => allowedSet.has(row.external_id))
+        : devices;
+    return {
+        rows,
+        totalRows: devices.length,
+        skippedForeign: devices.length - rows.length,
+        skippedRegistered: 0,
+        heldBack: [],
+        presentIds: new Set(devices.map((row) => row.external_id))
+    };
+}
+
+// A reconcile tick reads only row versions and fetches a snapshot for the
+// rows memory lacks, so a healthy tick never reads a JSONB column.
+async function selectRowsForReconcile(
+    allowedSet: Set<string> | null,
+    DeviceCollector: DeviceCollectorModule
+): Promise<LoadSelection> {
+    const versions = await listDeviceRowVersions();
+    let skippedForeign = 0;
+    let skippedRegistered = 0;
+    const heldBack: string[] = [];
+    const missingIds: number[] = [];
+    for (const version of versions) {
+        if (allowedSet && !allowedSet.has(version.external_id)) {
+            skippedForeign++;
+        } else if (DeviceCollector.getDevice(version.external_id)) {
+            skippedRegistered++;
+        } else if (failedUnchanged(version)) {
+            heldBack.push(version.external_id);
+        } else {
+            missingIds.push(version.id);
+        }
+    }
+    return {
+        rows: await getBatchByIds(missingIds),
+        totalRows: versions.length,
+        skippedForeign,
+        skippedRegistered,
+        heldBack,
+        presentIds: new Set(versions.map((row) => row.external_id))
+    };
+}
+
 /**
  * Register saved devices from the store into the in-memory collector.
  *
@@ -1244,39 +1604,39 @@ export async function loadSavedDevices(options?: {
             allowedSet.size
         );
     }
-    const devices = await get();
-    logger.info('found %s saved devices', devices.length);
-    let registered = 0;
-    let skippedForeign = 0;
-    let skippedRegistered = 0;
     const ShellyDeviceFactory = unwrapDefaultExport<
         typeof ShellyDeviceFactoryType
     >(await import('../model/ShellyDeviceFactory.js'));
     const DeviceCollector = await import('../modules/DeviceCollector.js');
+    const selection = options?.skipRegistered
+        ? await selectRowsForReconcile(allowedSet, DeviceCollector)
+        : await selectRowsForBoot(allowedSet);
+    const {rows, totalRows, skippedForeign} = selection;
+    pruneFailuresNotIn(selection.presentIds);
+    let {skippedRegistered} = selection;
+    logger.info('found %s saved devices', totalRows);
+    let registered = 0;
     // Defer legacy-snapshot backfills so the boot loop is pure reads; the
     // writes run concurrently (pool-bounded) after every device is in
     // memory. A 10k-device boot used to block on N serial writes.
     const backfills: Array<{externalId: string; jdoc: any}> = [];
-    for (const external of devices) {
-        if (allowedSet && !allowedSet.has(external.external_id)) {
-            skippedForeign++;
+    // Every row the run is responsible for, so the gap is membership in the
+    // collector rather than arithmetic on a counter.
+    const attempted: string[] = [...selection.heldBack];
+    for (const external of rows) {
+        const deviceKey = rowDeviceKey(external);
+        // The snapshot key can differ from the row key; memory wins either way.
+        if (options?.skipRegistered && DeviceCollector.getDevice(deviceKey)) {
+            skippedRegistered++;
             continue;
         }
-        if (options?.skipRegistered) {
-            const shellyID = (external.jdoc as {shellyID?: unknown})?.shellyID;
-            if (
-                typeof shellyID === 'string' &&
-                DeviceCollector.getDevice(shellyID)
-            ) {
-                skippedRegistered++;
-                continue;
-            }
-        }
+        attempted.push(deviceKey);
         try {
             const device = ShellyDeviceFactory.fromDatabase(external);
             if (device) {
                 DeviceCollector.register(device);
                 registered++;
+                clearFailure(external.external_id);
                 const stored = (external.jdoc as {methods?: unknown}).methods;
                 const stale = !Array.isArray(stored) || stored.length === 0;
                 if (stale && device.methods.length > 0) {
@@ -1286,17 +1646,13 @@ export async function loadSavedDevices(options?: {
                     });
                 }
             } else {
-                logger.warn(
-                    'Cannot create device from db entry id=[%s]',
-                    external.external_id
+                recordDeviceLoadFailure(
+                    external,
+                    new Error('stored row rejected by the device factory')
                 );
             }
         } catch (error) {
-            logger.warn(
-                'failed to load saved device id=[%s] err=[%s]',
-                external.external_id,
-                String(error)
-            );
+            recordDeviceLoadFailure(external, error);
         }
     }
     const backfilledMethods = await runBoundedBackfills(backfills);
@@ -1307,10 +1663,17 @@ export async function loadSavedDevices(options?: {
         );
     }
 
-    if (registered < devices.length - skippedForeign - skippedRegistered) {
-        logger.warn(
-            'failed to load %s saved devices',
-            devices.length - registered - skippedForeign - skippedRegistered
+    const missing = attempted.filter((key) => !DeviceCollector.getDevice(key));
+    recordRun({
+        rows: totalRows,
+        registered,
+        gap: missing.length
+    });
+    if (missing.length > 0) {
+        logger.error(
+            'device load gap: %s saved device(s) missing from the collector: %s',
+            missing.length,
+            missing.slice(0, GAP_LOG_ID_LIMIT).join(', ')
         );
     }
     if (skippedForeign > 0) {
@@ -1346,24 +1709,25 @@ export function buildConnectionString(
 // Release the pg pool on SIGTERM. Prevents orphan Postgres connections
 // when the process exits before GC finalizers run.
 export async function shutdown(): Promise<void> {
+    stopDbStats();
     if (dbRuntimeRefreshTimer) {
         clearInterval(dbRuntimeRefreshTimer);
         dbRuntimeRefreshTimer = undefined;
     }
-    if (queryPool) {
+    // The bridge owns the shared pool and ends it once, after its rollbacks.
+    if (mainDbBridge) {
         try {
-            await queryPool.end();
+            await mainDbBridge.stop();
         } catch (err) {
-            logger.warn('query pool stop() failed: %s', err);
+            logger.warn('database pool stop() failed: %s', err);
+        }
+    } else if (sharedPool) {
+        try {
+            await sharedPool.end();
+        } catch (err) {
+            logger.warn('database pool stop() failed: %s', err);
         }
     }
-    if (expDBInstance?.stop) {
-        try {
-            await expDBInstance.stop();
-        } catch (err) {
-            logger.warn('expose-sql-methods stop() failed: %s', err);
-        }
-    }
-    queryPool = undefined;
-    expDBInstance = undefined;
+    sharedPool = undefined;
+    mainDbBridge = undefined;
 }

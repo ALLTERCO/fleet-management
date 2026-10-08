@@ -7,6 +7,7 @@
 // Set/Delete/Get classification + preset methods — all other facts are
 // auto-derived by the classifier.
 
+import {commodityForTag} from '../../modules/energyClassifier';
 import type {EnergyOverrideCache} from '../../modules/energyOverrideCache';
 import RpcError from '../../rpc/RpcError';
 import type {
@@ -43,6 +44,37 @@ export interface PointOverrideHandlerDeps {
     overrideCache: EnergyOverrideCache;
 }
 
+/**
+ * Tag and domain were two independent enums, so a point could be declared a
+ * water volume AND an electrical mains at once. The commodity derived from that
+ * pair went to electricity, and cubic metres were summed as watt-hours.
+ */
+function assertTagAgreesWithDomain(
+    tag: EnergyClassificationRow['tag'],
+    domain: EnergyClassificationRow['domain']
+): void {
+    if (tag === 'volume_returned_m3' && domain !== 'gas') {
+        throw RpcError.InvalidParams(
+            "tag 'volume_returned_m3' is an explicit gas injection counter and requires electricalDomain 'gas'"
+        );
+    }
+    const implied = commodityForTag(tag);
+    if (implied === null || implied === 'electricity') return;
+    if (ELECTRICAL_DOMAINS.has(domain)) {
+        throw RpcError.InvalidParams(
+            `tag '${tag}' measures ${implied}, so it cannot also be '${domain}'. ` +
+                `Use 'unspecified'${implied === 'water' ? " or 'gas'" : ''} instead.`
+        );
+    }
+}
+
+const ELECTRICAL_DOMAINS: ReadonlySet<string> = new Set([
+    'ac_mains',
+    'dc_pv',
+    'dc_battery',
+    'dc_bus'
+]);
+
 export async function handleSetPointOverride(
     params: EnergySetPointOverrideParams,
     deps: PointOverrideHandlerDeps
@@ -50,6 +82,7 @@ export async function handleSetPointOverride(
     if (!(await senderCanAccessDevice(params.deviceId, deps.sender))) {
         throw RpcError.Domain('PermissionDenied');
     }
+    assertTagAgreesWithDomain(params.tag, params.electricalDomain);
     await deps.repo.upsertClassification({
         device: params.deviceId,
         componentKey: params.componentKey,

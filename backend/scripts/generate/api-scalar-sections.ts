@@ -116,6 +116,38 @@ ws.onmessage = (evt) =&gt; {
       </div>
     </section>`;
 
+export const SECTION_MCP_HTML = `    <section id="mcp" class="fm-panel">
+      <div class="fm-panel-head">
+        <p class="fm-panel-eyebrow">MCP</p>
+        <h2>The same API, for AI agents.</h2>
+        <p>Fleet Manager speaks <strong>Model Context Protocol</strong> at <code>/mcp</code>. An agent connects once and gets the whole surface as tools, with the same permissions as the user whose key it holds. There is no second API and no separate permission model.</p>
+      </div>
+      <div class="fm-panel-split">
+        <div class="fm-panel-body">
+          <p><strong>Reading</strong> — <code>fm_read</code> runs any read-only method. Results are redacted and row-capped; follow the cursor when one comes back. Device firmware methods and raw RPC tunnels are refused.</p>
+          <p><strong>Writing</strong> — <code>fm_write</code> defaults to <code>mode:"prepare"</code>, which previews the change in plain language. Additive writes can run straight away with <code>mode:"execute"</code>. Anything destructive returns <code>confirmation_required</code> plus a single-use token, and only <code>fm_confirm_write</code> can spend it, on the exact user, method and params it was issued for.</p>
+          <p><strong>Starting cold</strong> — <code>fm_situation</code> groups causes rather than symptoms, so a whole site going dark reads as one problem instead of twelve offline devices.</p>
+          <p><strong>Finding things</strong> — <code>find_place</code> turns "the kitchen" or "Store 12" into an id and a scope. It refuses to guess when two places share a name.</p>
+          <p><span class="fm-pill">Capability level</span> &nbsp; A scoped key carries <code>read</code>, <code>write</code> or <code>full</code>. Device firmware and sensitive namespaces need <code>full</code>. The level can only narrow the user's own RBAC, never widen it.</p>
+        </div>
+        <div class="fm-codeblock">
+          <pre><span class="fm-tok-com">// Preview first — this is the default</span>
+{ <span class="fm-tok-key">"tool"</span>: <span class="fm-tok-str">"fm_write"</span>,
+  <span class="fm-tok-key">"method"</span>: <span class="fm-tok-str">"group.Delete"</span>,
+  <span class="fm-tok-key">"params"</span>: { <span class="fm-tok-key">"id"</span>: <span class="fm-tok-num">42</span> } }
+
+<span class="fm-tok-com">// → destructive, so it comes back to be confirmed</span>
+{ <span class="fm-tok-key">"status"</span>: <span class="fm-tok-str">"confirmation_required"</span>,
+  <span class="fm-tok-key">"summary"</span>: <span class="fm-tok-str">"Delete group Warehouse (8 devices)"</span>,
+  <span class="fm-tok-key">"confirmationToken"</span>: <span class="fm-tok-str">"..."</span> }
+
+<span class="fm-tok-com">// A human approves, then the token is spent once</span>
+{ <span class="fm-tok-key">"tool"</span>: <span class="fm-tok-str">"fm_confirm_write"</span>,
+  <span class="fm-tok-key">"confirmationToken"</span>: <span class="fm-tok-str">"..."</span> }</pre>
+        </div>
+      </div>
+    </section>`;
+
 export const SECTION_RESOURCES_HTML = `    <section id="resources" class="fm-panel">
       <div class="fm-panel-head">
         <p class="fm-panel-eyebrow">SDKs &amp; Resources</p>

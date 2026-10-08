@@ -8,13 +8,13 @@ makes the device, permission, and dashboard APIs fall into place.
 ### Organizations
 
 An **organization** is the top-level tenant boundary. Every user belongs to
-exactly one, and isolation is strict — one org never sees another's data. A
+exactly one, and isolation is strict: one org never sees another's data. A
 device attaches to an org when it is first approved (before that it has no
 owner). The org profile carries the defaults everything else inherits:
 `timezoneDefault`, `localeDefault`, `currencyDefault`, `unitSystemDefault`.
 
 `organization` methods: `GetProfile`, `SetProfile`, `GetDefaults`, and
-`GetScopeModel` — the last returns the building blocks (location kinds, group
+`GetScopeModel`: the last returns the building blocks (location kinds, group
 types, tag subject types) so a client can build forms without hardcoding them.
 
 ### Groups
@@ -22,9 +22,9 @@ types, tag subject types) so a client can build forms without hardcoding them.
 A **group** is a per-org collection of devices, entities, or locations, with a
 parent/child hierarchy. Groups have two independent axes:
 
-- `groupType` — a policy tier (`standard`, `operational`, `critical`, `custom`)
+- `groupType`: a policy tier (`standard`, `operational`, `critical`, `custom`)
   that drives alert-severity floors and retention defaults.
-- `kind` — a semantic class from a catalog (default `manual`).
+- `kind`: a semantic class from a catalog (default `manual`).
 
 Membership is manual. `group` methods include `Create`/`Update`/`Delete`,
 `Get`/`List`, `Children`/`Path`, `ListMembers`, and `AddMembers`/`RemoveMembers`
@@ -50,11 +50,11 @@ idempotent), and `ListForSubject`.
 
 ### Fleet vs a scope
 
-"Fleet" is not an entity — it is the whole-org slice with no axis selected. A
+"Fleet" is not an entity: it is the whole-org slice with no axis selected. A
 scope narrows to a single axis (one group, one location, or one tag). The
 `fleet` namespace aggregates live metrics for whatever slice you pass
 (`GetMetrics`, `GetCapabilities`).
 
-These same axes — `device_ids`, `location_ids`, `device_group_ids`,
-`device_tags` — are exactly the scope dimensions used to narrow a permission
+These same axes (`device_ids`, `location_ids`, `device_group_ids`,
+`device_tags`) are exactly the scope dimensions used to narrow a permission
 grant. See [Authorization and permissions](#authorization-and-permissions).

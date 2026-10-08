@@ -3,9 +3,10 @@ import log4js from 'log4js';
 import {tuning} from '../../config';
 import type {AuditLogEntry} from '../AuditLogger';
 import * as Observability from '../Observability';
-import {getSharedRedis} from '../redis/RedisClients';
-import {RedisStream} from '../redis/RedisStream';
+import {isRedisWriteBackpressureError} from '../redis/commandBackpressure';
+import type {RedisStream} from '../redis/RedisStream';
 import {rateLimiter} from '../redis/services';
+import {blockingStream, commandStream} from '../redis/streamClients';
 
 const logger = log4js.getLogger('audit-overflow');
 
@@ -13,9 +14,8 @@ let stream: RedisStream | undefined;
 let drainerStream: RedisStream | undefined;
 let lastSaturationCheckMs = 0;
 
-// Approximate MAXLEN (~) silently drops the oldest un-acked entries once the
-// backlog hits the cap, so probe XLEN (O(1), time-throttled) and surface
-// saturation as a loud counter + warn instead of losing audit rows silently.
+// Accepted audit entries are never trimmed. At the configured capacity, a new
+// spill is rejected loudly while every older accepted entry remains intact.
 async function observeSaturation(s: RedisStream): Promise<void> {
     const interval = tuning.audit.overflowSaturationCheckMs;
     if (interval <= 0) return;
@@ -34,9 +34,9 @@ async function observeSaturation(s: RedisStream): Promise<void> {
     if (depth < tuning.audit.overflowMaxlen) return;
     Observability.incrementCounter('audit_overflow_saturated');
     logger.warn(
-        'audit overflow DLQ saturated depth=%d cap=%d — approximate ' +
-            'MAXLEN may trim oldest un-drained audit entries; raise ' +
-            'FM_AUDIT_OVERFLOW_MAXLEN or restore Postgres throughput',
+        'audit overflow DLQ saturated depth=%d cap=%d — new spills are ' +
+            'rejected without trimming accepted audit entries; restore ' +
+            'Postgres throughput',
         depth,
         tuning.audit.overflowMaxlen
     );
@@ -48,34 +48,30 @@ export function resetSaturationStateForTests(): void {
 
 // In-flight spill tracker. fire-and-forget callers add their promise here so
 // shutdown can wait for all pending stream writes to land before Redis quits.
-const inFlight = new Set<Promise<void>>();
+const inFlight = new Set<Promise<boolean>>();
 
 function getStream(): RedisStream {
     if (!stream) {
-        const {cmd} = getSharedRedis();
-        stream = new RedisStream(cmd, tuning.audit.overflowStreamKey);
+        stream = commandStream('audit', tuning.audit.overflowStreamKey);
     }
     return stream;
 }
 
 function getDrainerStream(): RedisStream {
     if (!drainerStream) {
-        const {auditBlocking} = getSharedRedis();
-        drainerStream = new RedisStream(
-            auditBlocking,
-            tuning.audit.overflowStreamKey
-        );
+        drainerStream = blockingStream('audit', tuning.audit.overflowStreamKey);
     }
     return drainerStream;
 }
 
-export async function spillAuditEntry(entry: AuditLogEntry): Promise<void> {
-    const work = (async () => {
+// Resolves true once the entry is in the stream; never rejects.
+export async function spillAuditEntry(entry: AuditLogEntry): Promise<boolean> {
+    const work = (async (): Promise<boolean> => {
         try {
-            const id = await getStream().append(
+            const id = await getStream().appendIfBelowCap(
                 {entry: JSON.stringify(entry)},
                 {
-                    maxlen: tuning.audit.overflowMaxlen,
+                    cap: tuning.audit.overflowMaxlen,
                     ttlMs: tuning.audit.overflowTtlMs,
                     rateCheck: tuning.redis.rateLimitEnabled
                         ? () =>
@@ -91,11 +87,27 @@ export async function spillAuditEntry(entry: AuditLogEntry): Promise<void> {
             if (id !== null) {
                 Observability.incrementCounter('audit_overflow_spilled');
                 await observeSaturation(getStream());
+                return true;
             }
+            const atCapacity =
+                (await getStream().length()) >= tuning.audit.overflowMaxlen;
+            if (atCapacity) {
+                Observability.incrementCounter(
+                    'audit_overflow_capacity_rejected_total'
+                );
+            }
+            await observeSaturation(getStream());
+            throw new Error(
+                atCapacity
+                    ? `audit overflow stream at capacity (${tuning.audit.overflowMaxlen})`
+                    : 'audit overflow stream append was rate-limited'
+            );
         } catch (err) {
             // Stream itself is down — last-resort loud log.
             Observability.incrementCounter('audit_overflow_spill_errors');
+            if (isRedisWriteBackpressureError(err)) return false;
             logger.error('audit spill failed: %s', err);
+            return false;
         }
     })();
     inFlight.add(work);

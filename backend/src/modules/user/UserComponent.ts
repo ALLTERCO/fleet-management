@@ -10,16 +10,13 @@ import Component from '../../model/component/Component';
 import type {DescribeOutput} from '../../rpc/describe';
 import RpcError from '../../rpc/RpcError';
 import {validateOrThrow} from '../../rpc/validateOrThrow';
-import {
-    ASSIGNMENT_CREATE_PARAMS_SCHEMA,
-    type AssignmentCreateParams,
-    type AssignmentScope
-} from '../../types/api/assignment';
+import type {AssignmentScope} from '../../types/api/assignment';
 import {AUTHZ_SYSTEM_PERSONA_KEYS} from '../../types/api/authzCatalog';
 import {USERNAME_UPLOAD_TICKET_PARAMS_SCHEMA} from '../../types/api/upload';
 import {USER_DESCRIBE} from '../../types/api/user';
 import * as AuditLogger from '../AuditLogger';
-import {createAssignmentGrant, loadAttachablePersona} from '../authz/admin';
+import {assertKnownAuthzAction} from '../authz/actionMap';
+import {createAssignmentGrant} from '../authz/admin';
 import {
     canCrossOrganizationBoundary,
     canUseAuthenticatedRead,
@@ -36,8 +33,8 @@ import {
     buildEffectiveShape,
     simulate as resolverSimulate
 } from '../authz/resolver';
+import {assertScopeRefsBelongToOrg} from '../authz/resources';
 import {tryGetAuthzRuntime} from '../authz/runtime';
-import {isExplicitScope, SCOPE_NOT_EXPLICIT_MESSAGE} from '../authz/scopeGuard';
 import {identityDirectory} from '../identity';
 import {
     issueUploadTicket,
@@ -48,6 +45,11 @@ import {appendUploadAssetToken} from '../web/utils/uploadAssetTokens';
 import {profilePicturesPath} from '../web/utils/uploadPaths';
 import type {ConnectionContext} from '../web/ws/ConnectionContext';
 import {
+    type AttachPersonaDeps,
+    type AttachPersonaParams,
+    attachPersonaToUser
+} from './personaAttach';
+import {
     createScopedPATImpl,
     listScopedPATsImpl,
     previewScopedPATImpl,
@@ -55,6 +57,7 @@ import {
     revokeScopedPATImpl,
     rotateScopedPATImpl
 } from './scopedPats';
+import {buildSelfIdentity} from './selfIdentity';
 import {
     createServiceUser as createServiceUserImpl,
     deleteServiceUser as deleteServiceUserImpl,
@@ -148,6 +151,13 @@ function canReadEffectivePermissions(
     if (hasTenantAdminAuthority(sender)) return true;
     return sender.getUserId() === (params as {userId?: string})?.userId;
 }
+
+const attachPersonaDeps: AttachPersonaDeps = {
+    ensureZitadelManagement,
+    assertTargetInTenant,
+    assertScopeRefsBelongToOrg,
+    createAssignmentGrant
+};
 
 export interface UserComponentConfig {
     allowDebugUser: boolean;
@@ -255,7 +265,8 @@ export default class UserComponent extends Component<UserComponentConfig> {
             isPlatformAdmin: canUsePlatformAdmin(sender),
             isViewer: sender.isViewer(),
             effectiveShape: sender.getEffectiveShape(),
-            uiCapabilities: resolveUiCapabilities(sender)
+            uiCapabilities: resolveUiCapabilities(sender),
+            ...(await buildSelfIdentity(sender))
         };
     }
 
@@ -420,6 +431,14 @@ export default class UserComponent extends Component<UserComponentConfig> {
                 'userId, action, resourceType required'
             );
         }
+        // An unrecognised action matches wildcard grants and lies "allowed".
+        try {
+            assertKnownAuthzAction(params.action);
+        } catch (err) {
+            throw RpcError.InvalidParams(
+                err instanceof Error ? err.message : String(err)
+            );
+        }
         const tenantId = sender.getOrganizationId();
         if (!tenantId) throw RpcError.InvalidParams('tenant context missing');
         // Target must be in the sender's tenant — otherwise simulate would
@@ -466,62 +485,10 @@ export default class UserComponent extends Component<UserComponentConfig> {
     @Component.Expose('AttachCustomPersona')
     @Component.CheckPermissions(canManageOrganizationSettings)
     async attachCustomPersona(
-        rawParams: {
-            userId: string;
-            personaId: string;
-            scope: AssignmentScope;
-            reason?: string | null;
-            comment?: string | null;
-            expiresAt?: string | null;
-        },
+        rawParams: AttachPersonaParams,
         sender: CommandSender
     ) {
-        // Same guards as Assignment.Create.
-        const candidate = {
-            subjectType: 'user' as const,
-            subjectId: rawParams?.userId,
-            personaId: rawParams?.personaId,
-            scope: rawParams?.scope,
-            reason: rawParams?.reason,
-            comment: rawParams?.comment,
-            expiresAt: rawParams?.expiresAt
-        };
-        const p = validateOrThrow<AssignmentCreateParams>(
-            candidate,
-            ASSIGNMENT_CREATE_PARAMS_SCHEMA
-        );
-        if (!isExplicitScope(p.scope)) {
-            throw RpcError.InvalidParams(SCOPE_NOT_EXPLICIT_MESSAGE);
-        }
-        const tenantId = sender.getOrganizationId();
-        if (!tenantId) throw RpcError.InvalidParams('tenant context missing');
-        // ensureZitadelManagement() closes the DEV-mode fail-open path where
-        // userBelongsToTenant returns true unconditionally; assertTargetInTenant
-        // also accepts FM-presence + service-user metadata branches.
-        ensureZitadelManagement();
-        await assertTargetInTenant(sender, p.subjectId, tenantId);
-        const actorId = sender.getUser()?.username ?? 'unknown';
-        const persona = await loadAttachablePersona(p.personaId, tenantId);
-        if (persona.is_system_managed) {
-            throw RpcError.InvalidParams(
-                'system-managed personas must be granted through Zitadel roles'
-            );
-        }
-        const assignment = await createAssignmentGrant({
-            tenantId,
-            actorId,
-            grantor: sender,
-            subjectType: 'user',
-            subjectId: p.subjectId,
-            personaId: p.personaId,
-            scope: p.scope,
-            metadata: {
-                reason: p.reason,
-                comment: p.comment,
-                expiresAt: p.expiresAt
-            }
-        });
-        return {success: true, assignmentId: assignment.id};
+        return attachPersonaToUser(rawParams, sender, attachPersonaDeps);
     }
 
     @Component.Expose('CreateZitadelUser')
@@ -535,6 +502,8 @@ export default class UserComponent extends Component<UserComponentConfig> {
             displayName?: string;
             password?: string;
             passwordChangeRequired?: boolean;
+            personaId: string;
+            scope?: AssignmentScope;
         },
         sender: CommandSender
     ) {

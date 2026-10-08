@@ -53,8 +53,8 @@ export const BTHOME_ENERGY_SPEC: Readonly<Record<number, BTHomeEnergySpec>> = {
         scale: 1
     },
     74: {tag: 'voltage', domain: 'ac_mains', isDelta: false, scale: 1},
-    75: {tag: 'volume_m3', domain: 'unspecified', isDelta: true, scale: 1},
-    76: {tag: 'volume_m3', domain: 'unspecified', isDelta: true, scale: 1},
+    75: {tag: 'volume_m3', domain: 'gas', isDelta: true, scale: 1},
+    76: {tag: 'volume_m3', domain: 'gas', isDelta: true, scale: 1},
     77: {
         tag: 'total_act_energy',
         retTag: 'total_act_ret_energy',

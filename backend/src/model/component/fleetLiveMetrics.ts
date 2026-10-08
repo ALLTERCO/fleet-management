@@ -14,6 +14,8 @@
  */
 
 import * as Observability from '../../modules/Observability';
+import {virtualEnergyCounterValueKWh} from '../../modules/virtualDevice/energySources';
+import type {VirtualDeviceMetricRole} from '../../modules/virtualDevice/readModel';
 import {
     AC_ACTIVE_POWER_COMPONENTS,
     CONSUMED_ENERGY_PATH,
@@ -27,6 +29,18 @@ import {
 } from '../../types/api/componentPower';
 import type {FleetMetricsDevice, ScopeKind} from '../../types/api/fleet';
 import type AbstractDevice from '../AbstractDevice';
+
+export interface ProjectedFleetDevice {
+    id: number;
+    shellyID: string;
+    online?: boolean;
+    status?: Record<string, unknown>;
+    info?: {name?: string | null};
+    entities?: Array<{type: string}>;
+    virtualMetricRoles?: readonly VirtualDeviceMetricRole[];
+}
+
+export type FleetMetricDeviceSource = AbstractDevice | ProjectedFleetDevice;
 
 /** Stats-style metric: average/min/max over samples. */
 interface StatsBucket {
@@ -150,6 +164,8 @@ const ENV_SOURCES: readonly {
 const ENTITY_CAPABILITIES: Readonly<Record<string, readonly string[]>> = {
     em: ['voltage', 'current', 'power', 'consumption', 'returned_energy'],
     em1: ['voltage', 'current', 'power', 'consumption', 'returned_energy'],
+    emdata: ['consumption', 'returned_energy'],
+    em1data: ['consumption', 'returned_energy'],
     switch: ['voltage', 'current', 'power', 'consumption'],
     pm1: ['voltage', 'current', 'power', 'consumption'],
     cover: ['voltage', 'current', 'power', 'consumption'],
@@ -231,7 +247,7 @@ type EmChannel = EmPhaseChannel;
 
 /** Collect live-status metrics from one device into shared accumulators. */
 function collectDeviceMetrics(
-    device: AbstractDevice,
+    device: FleetMetricDeviceSource,
     metrics: Metrics,
     phases: PhaseAggregator
 ): FleetMetricsDevice {
@@ -241,6 +257,18 @@ function collectDeviceMetrics(
 
     const uptime = readNumber(status, 'sys.uptime');
     if (uptime !== null) pushStat(metrics.uptime, deviceId, uptime, name);
+
+    if ('virtualMetricRoles' in device && device.virtualMetricRoles) {
+        collectVirtualRoleMetrics(device, metrics);
+        return {
+            id: deviceId,
+            shellyID: device.shellyID,
+            name,
+            online: device.online ?? false,
+            hasEmChannels: false,
+            hasEm1Channels: false
+        };
+    }
 
     let hasEm = false;
     let hasEm1 = false;
@@ -334,6 +362,65 @@ function collectDeviceMetrics(
         hasEmChannels: hasEm,
         hasEm1Channels: hasEm1
     };
+}
+
+function collectVirtualRoleMetrics(
+    device: ProjectedFleetDevice,
+    metrics: Metrics
+): void {
+    for (const role of device.virtualMetricRoles ?? []) {
+        if (!role.available || typeof role.value !== 'number') continue;
+        const field = role.projection.field.toLowerCase();
+        if (role.projection.series === 'energy') {
+            if (field === 'power') {
+                pushTotal(metrics.power, device.id, role.value);
+            } else if (field === 'voltage') {
+                pushStat(metrics.voltage, device.id, role.value);
+            } else if (field === 'current') {
+                pushStat(metrics.current, device.id, role.value);
+            } else if (field === 'total_act_energy') {
+                pushTotal(
+                    metrics.consumption,
+                    device.id,
+                    virtualRoleEnergyKwh(role)
+                );
+            } else if (field === 'total_act_ret_energy') {
+                pushTotal(
+                    metrics.returned_energy,
+                    device.id,
+                    virtualRoleEnergyKwh(role)
+                );
+            }
+            continue;
+        }
+        if (role.projection.series !== 'sensor_numeric') continue;
+        const semantic = role.projection.field.toLowerCase();
+        if (semantic.includes('temperature')) {
+            pushStat(metrics.temperature, device.id, role.value);
+        } else if (semantic.includes('humidity')) {
+            pushStat(metrics.humidity, device.id, role.value);
+        } else if (
+            semantic.includes('illuminance') ||
+            semantic.includes('luminance') ||
+            semantic.includes('lux')
+        ) {
+            pushStat(metrics.luminance, device.id, role.value);
+        }
+    }
+}
+
+function virtualRoleEnergyKwh(role: VirtualDeviceMetricRole): number {
+    return (
+        virtualEnergyCounterValueKWh(
+            {
+                tag: role.projection.field as never,
+                unit: role.unit,
+                transformJson: role.projection.transform,
+                roleMetadata: null
+            },
+            role.value
+        ) ?? 0
+    );
 }
 
 /** Finalize avg/min/max + totals over accumulated sample lists. */
@@ -468,7 +555,7 @@ export interface ScopeMetricsResult {
 export function computeFleetMetrics(
     scopeKind: ScopeKind,
     scopeId: number | null,
-    devices: readonly AbstractDevice[]
+    devices: readonly FleetMetricDeviceSource[]
 ): ScopeMetricsResult {
     const metrics = emptyMetrics();
     const phases = new PhaseAggregator();
@@ -500,7 +587,7 @@ export function computeFleetMetrics(
 export function computeFleetCapabilities(
     scopeKind: ScopeKind,
     scopeId: number | null,
-    devices: readonly AbstractDevice[],
+    devices: readonly FleetMetricDeviceSource[],
     deviceCount: number
 ): {
     scopeKind: ScopeKind;
@@ -511,10 +598,40 @@ export function computeFleetCapabilities(
     const out = new Set<string>();
     for (const device of devices) {
         out.add('uptime');
+        for (const role of 'virtualMetricRoles' in device
+            ? (device.virtualMetricRoles ?? [])
+            : []) {
+            addVirtualRoleCapabilities(out, role);
+        }
         for (const entity of device.entities ?? []) {
             const caps = ENTITY_CAPABILITIES[entity.type];
             if (caps) for (const c of caps) out.add(c);
         }
     }
     return {scopeKind, scopeId, capabilities: [...out], deviceCount};
+}
+
+function addVirtualRoleCapabilities(
+    out: Set<string>,
+    role: VirtualDeviceMetricRole
+): void {
+    if (role.projection.series === 'energy') {
+        const field = role.projection.field;
+        if (field === 'power') out.add('power');
+        else if (field === 'voltage') out.add('voltage');
+        else if (field === 'current') out.add('current');
+        else if (field === 'total_act_energy') out.add('consumption');
+        else if (field === 'total_act_ret_energy') out.add('returned_energy');
+        return;
+    }
+    if (role.projection.series !== 'sensor_numeric') return;
+    const semantic = role.projection.field.toLowerCase();
+    if (semantic.includes('temperature')) out.add('temperature');
+    else if (semantic.includes('humidity')) out.add('humidity');
+    else if (
+        semantic.includes('illuminance') ||
+        semantic.includes('luminance') ||
+        semantic.includes('lux')
+    )
+        out.add('luminance');
 }

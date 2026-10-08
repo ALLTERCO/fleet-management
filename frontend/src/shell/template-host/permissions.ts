@@ -49,77 +49,48 @@ export function usePermissions() {
         return auth.hasComponentPermission(componentName, parsed.operation);
     }
 
-    /**
-     * Aggregate device_group_ids across every Allow statement in the
-     * user's effective permissions shape. This is the canonical "which
-     * showrooms can this user see" list for templates that render groups
-     * (supermarket, sportsdealership, etc.).
-     *
-     * Why expose this directly: scopeIncludesItem in stores/auth.ts only
-     * scope-matches 'devices' / 'locations' / 'dashboards' / 'plugins'.
-     * For 'groups' it returns false unless scope.all — because the
-     * scope.device_group_ids field is designed to filter DEVICES that
-     * live in those groups, not the groups themselves. Templates that
-     * render groups as user-facing entities (showrooms, stores, sites)
-     * need a direct list. Admins get an empty array here but should also
-     * receive an `unlimited: true` signal.
-     */
-    function aggregateScopedGroupIds(): {ids: number[]; unlimited: boolean} {
+    // The backend unions a Zitadel role (scope.all) with scoped assignments.
+    // For "which sites is this person responsible for" the explicit scope is
+    // the answer, so a scoped Allow wins over an unscoped one. Location ids
+    // arrive already expanded to every descendant, so a template can match a
+    // child site without knowing the tree.
+    function aggregateScopedIds(field: 'device_group_ids' | 'location_ids'): {
+        ids: number[];
+        unlimited: boolean;
+    } {
         if (auth.isAdmin) return {ids: [], unlimited: true};
         const shape =
             (auth as any).effectiveShape?.value ?? (auth as any).effectiveShape;
         if (!shape || !Array.isArray(shape.statements)) {
             return {ids: [], unlimited: false};
         }
-        // Two passes — narrowing semantics:
-        //   1. Collect every device_group_ids list from Allow statements.
-        //   2. Also note if any Allow has scope.all.
-        //
-        // FM's union semantics give a user with [Zitadel viewer role +
-        // custom scoped assignment] both Allow statements:
-        //   A: Allow read on group, scope.all=true      (from Zitadel role)
-        //   B: Allow read on group, scope.device_group_ids=[6,7]  (custom)
-        //
-        // A naive union → unlimited (user sees everything), which defeats
-        // the whole point of attaching the scoped custom persona.
-        //
-        // Our narrowing rule: if the user has at least one explicitly-
-        // scoped Allow on group/device, treat that as the authoritative
-        // group scope and IGNORE the scope.all signal. Admin users
-        // bypass this entirely. Production deployments that want the
-        // pure-union behaviour can grant admin (or no Zitadel role at all).
         const scopedIds = new Set<number>();
         let hasUnscopedAllow = false;
         for (const s of shape.statements) {
             if (s.effect !== 'Allow') continue;
-            if (
-                Array.isArray(s.scope?.device_group_ids) &&
-                s.scope.device_group_ids.length > 0
-            ) {
-                for (const id of s.scope.device_group_ids) {
-                    scopedIds.add(Number(id));
-                }
+            const ids = s.scope?.[field];
+            if (Array.isArray(ids) && ids.length > 0) {
+                for (const id of ids) scopedIds.add(Number(id));
             } else if (s.scope?.all) {
                 hasUnscopedAllow = true;
             }
         }
-        if (scopedIds.size > 0) {
-            // Explicit scope wins — narrows even when an unscoped role
-            // grant is also present.
-            return {ids: [...scopedIds], unlimited: false};
-        }
+        if (scopedIds.size > 0) return {ids: [...scopedIds], unlimited: false};
         return {ids: [], unlimited: hasUnscopedAllow};
     }
 
     return computed(() => {
-        const scoped = aggregateScopedGroupIds();
+        const groups = aggregateScopedIds('device_group_ids');
+        const locations = aggregateScopedIds('location_ids');
         return {
             isAdmin: auth.isAdmin,
+            isViewer: auth.isViewer,
+            roles: auth.roles,
             can,
-            /** Group IDs this user is scoped to (from their assignments). */
-            scopedGroupIds: scoped.ids,
-            /** True iff user has unscoped access (admin or scope.all). */
-            scopedGroupsUnlimited: scoped.unlimited
+            scopedGroupIds: groups.ids,
+            scopedGroupsUnlimited: groups.unlimited,
+            scopedLocationIds: locations.ids,
+            scopedLocationsUnlimited: locations.unlimited
         };
     });
 }

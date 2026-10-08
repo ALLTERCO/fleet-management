@@ -6,13 +6,13 @@ Regenerate with `cd backend && npm run generate`.
 - Sources: `backend/src/model/entity/capabilities.ts`, `backend/src/model/entity/actionAdapter.ts`
 
 ---
-Total entity types: **52**
-Total buildable actions: **295**
+Total entity types: **51**
+Total buildable actions: **312**
 
 | Entity type | Shelly component | Actions (RPC) |
 |---|---|---|
 | `blutrv` | — | `setTarget` → `BluTrv.Call`<br>`setSchedule` → `BluTrv.Call`<br>`setEnabled` → `BluTrv.Call`<br>`startBoost` → `BluTrv.Call`<br>`clearBoost` → `BluTrv.Call` |
-| `bm` | `BM` | `toggle` → `BM.Toggle`<br>`toggleAfter` → `BM.Set`<br>`setOutput` → `BM.Set`<br>`setBrightness` → `BM.Set`<br>`setColor` → `BM.Set`<br>`setWhite` → `BM.Set`<br>`setMode` → `BM.Set`<br>`setPosition` → `BM.GoToPosition`<br>`open` → `BM.Open`<br>`close` → `BM.Close`<br>`stop` → `BM.Stop`<br>`calibrate` → `BM.Calibrate`<br>`resetCounters` → `BM.ResetCounters` |
+| `bm` | `BM` | `toggle` → `BM.Toggle`<br>`toggleAfter` → `BM.Set`<br>`setOutput` → `BM.Set`<br>`setBrightness` → `BM.Set`<br>`setColor` → `BM.Set`<br>`setWhite` → `BM.Set`<br>`setMode` → `BM.Set`<br>`setPosition` → `BM.GoToPosition`<br>`open` → `BM.Open`<br>`close` → `BM.Close`<br>`stop` → `BM.Stop`<br>`calibrate` → `BM.Calibrate`<br>`resetCounters` → `BM.ResetCounters`<br>`resetCharge` → `BM.ResetCharge`<br>`replaceBattery` → `BM.ReplaceBattery` |
 | `boolean` | — | `setValue` → `Boolean.Set` |
 | `bthomecontrol` | — | — |
 | `bthomedevice` | — | — |
@@ -28,8 +28,6 @@ Total buildable actions: **295**
 | `devicepower` | — | — |
 | `em` | — | — |
 | `em1` | — | — |
-| `em1data` | — | — |
-| `emdata` | — | — |
 | `enum` | — | `setValue` → `Enum.Set` |
 | `fan` | `Fan` | `toggle` → `Fan.Toggle`<br>`toggleAfter` → `Fan.Set`<br>`setOutput` → `Fan.Set`<br>`setBrightness` → `Fan.Set`<br>`setColor` → `Fan.Set`<br>`setWhite` → `Fan.Set`<br>`setMode` → `Fan.Set`<br>`setPosition` → `Fan.GoToPosition`<br>`open` → `Fan.Open`<br>`close` → `Fan.Close`<br>`stop` → `Fan.Stop`<br>`calibrate` → `Fan.Calibrate`<br>`resetCounters` → `Fan.ResetCounters` |
 | `flood` | — | — |
@@ -37,6 +35,7 @@ Total buildable actions: **295**
 | `humidity` | — | — |
 | `illuminance` | — | — |
 | `input` | `Input` | `toggle` → `Input.Toggle`<br>`toggleAfter` → `Input.Set`<br>`setOutput` → `Input.Set`<br>`setBrightness` → `Input.Set`<br>`setColor` → `Input.Set`<br>`setWhite` → `Input.Set`<br>`setMode` → `Input.Set`<br>`setPosition` → `Input.GoToPosition`<br>`open` → `Input.Open`<br>`close` → `Input.Close`<br>`stop` → `Input.Stop`<br>`calibrate` → `Input.Calibrate`<br>`resetCounters` → `Input.ResetCounters` |
+| `irdevice` | `IRDevice` | `toggle` → `IRDevice.Toggle`<br>`toggleAfter` → `IRDevice.Set`<br>`setOutput` → `IRDevice.Set`<br>`setBrightness` → `IRDevice.Set`<br>`setColor` → `IRDevice.Set`<br>`setWhite` → `IRDevice.Set`<br>`setMode` → `IRDevice.Set`<br>`setPosition` → `IRDevice.GoToPosition`<br>`open` → `IRDevice.Open`<br>`close` → `IRDevice.Close`<br>`stop` → `IRDevice.Stop`<br>`calibrate` → `IRDevice.Calibrate`<br>`learn` → `IRDevice.LearnCode`<br>`resetCounters` → `IRDevice.ResetCounters` |
 | `ledstrip` | `LedStrip` | `toggle` → `LedStrip.Toggle`<br>`toggleAfter` → `LedStrip.Set`<br>`setOutput` → `LedStrip.Set`<br>`setBrightness` → `LedStrip.Set`<br>`setColor` → `LedStrip.Set`<br>`setWhite` → `LedStrip.Set`<br>`setMode` → `LedStrip.Set`<br>`setPosition` → `LedStrip.GoToPosition`<br>`open` → `LedStrip.Open`<br>`close` → `LedStrip.Close`<br>`stop` → `LedStrip.Stop`<br>`calibrate` → `LedStrip.Calibrate`<br>`resetCounters` → `LedStrip.ResetCounters`<br>`setLedStripField` → `LedStrip.Set`<br>`nextLedStripEffect` → `LedStrip.NextEffect` |
 | `light` | `Light` | `toggle` → `Light.Toggle`<br>`toggleAfter` → `Light.Set`<br>`setOutput` → `Light.Set`<br>`setBrightness` → `Light.Set`<br>`setColor` → `Light.Set`<br>`setWhite` → `Light.Set`<br>`setColorTemperature` → `Light.Set`<br>`setMode` → `Light.Set`<br>`setPosition` → `Light.GoToPosition`<br>`open` → `Light.Open`<br>`close` → `Light.Close`<br>`stop` → `Light.Stop`<br>`calibrate` → `Light.Calibrate`<br>`resetCounters` → `Light.ResetCounters`<br>`setDaliGroup` → `Group.Set` |
 | `lnm` | `LNM` | `toggle` → `LNM.Toggle`<br>`toggleAfter` → `LNM.Set`<br>`setOutput` → `LNM.Set`<br>`setBrightness` → `LNM.Set`<br>`setColor` → `LNM.Set`<br>`setWhite` → `LNM.Set`<br>`setMode` → `LNM.Set`<br>`setPosition` → `LNM.GoToPosition`<br>`open` → `LNM.Open`<br>`close` → `LNM.Close`<br>`stop` → `LNM.Stop`<br>`calibrate` → `LNM.Calibrate`<br>`resetCounters` → `LNM.ResetCounters` |
@@ -53,7 +52,7 @@ Total buildable actions: **295**
 | `rgbcct` | `RGBCCT` | `toggle` → `RGBCCT.Toggle`<br>`toggleAfter` → `RGBCCT.Set`<br>`setOutput` → `RGBCCT.Set`<br>`setBrightness` → `RGBCCT.Set`<br>`setColor` → `RGBCCT.Set`<br>`setWhite` → `RGBCCT.Set`<br>`setColorTemperature` → `RGBCCT.Set`<br>`setMode` → `RGBCCT.Set`<br>`setPosition` → `RGBCCT.GoToPosition`<br>`open` → `RGBCCT.Open`<br>`close` → `RGBCCT.Close`<br>`stop` → `RGBCCT.Stop`<br>`calibrate` → `RGBCCT.Calibrate`<br>`resetCounters` → `RGBCCT.ResetCounters` |
 | `rgbw` | `RGBW` | `toggle` → `RGBW.Toggle`<br>`toggleAfter` → `RGBW.Set`<br>`setOutput` → `RGBW.Set`<br>`setBrightness` → `RGBW.Set`<br>`setColor` → `RGBW.Set`<br>`setWhite` → `RGBW.Set`<br>`setMode` → `RGBW.Set`<br>`setPosition` → `RGBW.GoToPosition`<br>`open` → `RGBW.Open`<br>`close` → `RGBW.Close`<br>`stop` → `RGBW.Stop`<br>`calibrate` → `RGBW.Calibrate`<br>`resetCounters` → `RGBW.ResetCounters` |
 | `schedule` | — | — |
-| `script` | `Script` | `toggle` → `Script.Toggle`<br>`toggleAfter` → `Script.Set`<br>`setOutput` → `Script.Set`<br>`setBrightness` → `Script.Set`<br>`setColor` → `Script.Set`<br>`setWhite` → `Script.Set`<br>`setMode` → `Script.Set`<br>`setPosition` → `Script.GoToPosition`<br>`open` → `Script.Open`<br>`close` → `Script.Close`<br>`stop` → `Script.Stop`<br>`calibrate` → `Script.Calibrate`<br>`resetCounters` → `Script.ResetCounters` |
+| `script` | `Script` | `toggle` → `Script.Toggle`<br>`toggleAfter` → `Script.Set`<br>`setOutput` → `Script.Set`<br>`setBrightness` → `Script.Set`<br>`setColor` → `Script.Set`<br>`setWhite` → `Script.Set`<br>`setMode` → `Script.Set`<br>`setPosition` → `Script.GoToPosition`<br>`open` → `Script.Open`<br>`close` → `Script.Close`<br>`start` → `Script.Start`<br>`stop` → `Script.Stop`<br>`calibrate` → `Script.Calibrate`<br>`resetCounters` → `Script.ResetCounters` |
 | `service` | — | `trigger` → `Button.Trigger`<br>`setVariable` → `Boolean.Set` |
 | `smoke` | — | `mute` → `Smoke.SetConfig` |
 | `switch` | `Switch` | `toggle` → `Switch.Toggle`<br>`toggleAfter` → `Switch.Set`<br>`setOutput` → `Switch.Set`<br>`setBrightness` → `Switch.Set`<br>`setColor` → `Switch.Set`<br>`setWhite` → `Switch.Set`<br>`setMode` → `Switch.Set`<br>`setPosition` → `Switch.GoToPosition`<br>`open` → `Switch.Open`<br>`close` → `Switch.Close`<br>`stop` → `Switch.Stop`<br>`calibrate` → `Switch.Calibrate`<br>`resetCounters` → `Switch.ResetCounters` |

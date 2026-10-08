@@ -9,7 +9,6 @@ import {
     reportHandledPeerError
 } from '../../../util/faultGuard';
 import {AdmissionGate} from '../admissionGate';
-import {buildPerMessageDeflate} from '../perMessageDeflate';
 import {applyTcpKeepalive, extractTcpSocket} from '../tcpKeepalive';
 
 const logger = getLogger('ws-server');
@@ -144,7 +143,6 @@ export default abstract class AbstractWebsocketHandler {
     constructor(options: Options = {noServer: true}, heartbeatMs?: number) {
         const opts = {
             maxPayload: MAX_PAYLOAD_BYTES,
-            perMessageDeflate: buildPerMessageDeflate(tuning.ws),
             ...(options ?? {})
         };
         this._server = new WebSocket.Server(opts);

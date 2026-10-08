@@ -1,32 +1,87 @@
+import {tuning} from '../../config';
 import {getSharedRedis} from './RedisClients';
-import {RedisStream} from './RedisStream';
+import {RedisStream, type RedisStreamOptions} from './RedisStream';
+
+type LaneStreamOptions = Pick<RedisStreamOptions, 'byteLedger'>;
 
 export type BlockingStreamLane =
     | 'audit'
     | 'device-event'
     | 'em-sync'
+    | 'sensor-capture'
     | 'snapshot'
     | 'status';
 
-export function commandStream(key: string): RedisStream {
-    return new RedisStream(getSharedRedis().cmd, key);
+export type CommandStreamLane =
+    | 'audit'
+    | 'device-event'
+    | 'em-sync'
+    | 'sensor-capture'
+    | 'snapshot'
+    | 'status';
+
+/**
+ * Split the existing stream-write allowance between two producer clients.
+ * The two limits always add up to the existing process-wide allowance, so
+ * isolation cannot silently double the bounded stream-write backlog.
+ */
+export function commandStreamLaneMaximum(
+    lane: CommandStreamLane,
+    total: number = tuning.redis.writeMaxPendingCommands
+): number {
+    if (total <= 0) return total;
+    return isDurableLane(lane) ? Math.ceil(total / 2) : Math.floor(total / 2);
+}
+
+function isDurableLane(
+    lane: CommandStreamLane
+): lane is 'audit' | 'device-event' | 'em-sync' | 'sensor-capture' {
+    return (
+        lane === 'audit' ||
+        lane === 'device-event' ||
+        lane === 'em-sync' ||
+        lane === 'sensor-capture'
+    );
+}
+
+export function commandStream(
+    lane: CommandStreamLane,
+    key: string,
+    options: LaneStreamOptions = {}
+): RedisStream {
+    const clients = getSharedRedis();
+    return new RedisStream(
+        isDurableLane(lane) ? clients.durableWrite : clients.telemetryWrite,
+        key,
+        {
+            ...options,
+            maxPendingWrites: commandStreamLaneMaximum(lane)
+        }
+    );
 }
 
 export function blockingStream(
     lane: BlockingStreamLane,
-    key: string
+    key: string,
+    options: LaneStreamOptions = {}
 ): RedisStream {
+    return new RedisStream(blockingClient(lane), key, options);
+}
+
+function blockingClient(lane: BlockingStreamLane) {
     const clients = getSharedRedis();
     switch (lane) {
         case 'audit':
-            return new RedisStream(clients.auditBlocking, key);
+            return clients.auditBlocking;
         case 'device-event':
-            return new RedisStream(clients.deviceEventBlocking, key);
+            return clients.deviceEventBlocking;
         case 'em-sync':
-            return new RedisStream(clients.emSyncBlocking, key);
+            return clients.emSyncBlocking;
+        case 'sensor-capture':
+            return clients.sensorCaptureBlocking;
         case 'snapshot':
-            return new RedisStream(clients.snapshotBlocking, key);
+            return clients.snapshotBlocking;
         case 'status':
-            return new RedisStream(clients.statusBlocking, key);
+            return clients.statusBlocking;
     }
 }

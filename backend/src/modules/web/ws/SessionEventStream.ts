@@ -3,6 +3,7 @@ import type {Redis} from 'ioredis';
 import log4js from 'log4js';
 import {tuning} from '../../../config';
 import * as Observability from '../../Observability';
+import {isRedisWriteBackpressureError} from '../../redis/commandBackpressure';
 import {RedisStream} from '../../redis/RedisStream';
 import {rateLimiter} from '../../redis/services';
 
@@ -28,7 +29,9 @@ export class SessionEventStream {
     constructor(opts: SessionEventStreamOptions) {
         this.#client = opts.client;
         this.#key = `${tuning.ws.streamPrefix}:${opts.userId}:${opts.connectionId}`;
-        this.#stream = new RedisStream(opts.client, this.#key);
+        this.#stream = new RedisStream(opts.client, this.#key, {
+            maxPendingWrites: tuning.redis.writeMaxPendingCommands
+        });
         this.#readerStream = new RedisStream(
             opts.readerClient ?? opts.client,
             this.#key
@@ -93,8 +96,9 @@ export class SessionEventStream {
         return streamIdLessThan(lastSeenStreamId, oldestId);
     }
 
-    async append(kind: string, payload: string): Promise<void> {
-        if (this.#destroyed) return;
+    /** Resolves true only when the entry reached the stream. */
+    async append(kind: string, payload: string): Promise<boolean> {
+        if (this.#destroyed) return false;
         try {
             // No ttlMs here on purpose: the periodic touch() owns the TTL,
             // so the hot append path stays a single XADD round trip.
@@ -106,19 +110,18 @@ export class SessionEventStream {
                     rateLabel: 'ws'
                 }
             );
-            if (id !== null) {
-                Observability.incrementLabeledCounter('event_xadd_total', {
-                    kind
-                });
-            }
+            if (id === null) return false;
+            Observability.incrementLabeledCounter('event_xadd_total', {kind});
+            return true;
         } catch (err) {
-            logger.warn(
-                'append failed key=%s kind=%s: %s',
-                this.#key,
-                kind,
-                err
-            );
+            this.#logAppendFailure(kind, err);
+            return false;
         }
+    }
+
+    #logAppendFailure(kind: string, err: unknown): void {
+        if (isRedisWriteBackpressureError(err)) return;
+        logger.warn('append failed key=%s kind=%s: %s', this.#key, kind, err);
     }
 
     async drop(): Promise<void> {

@@ -51,7 +51,6 @@ export interface AttributeWindowRepo {
 
 export interface AttributeWindowSender {
     getOrganizationId(): string | undefined;
-    isAdmin(): boolean;
     canCrossOrganizations?(): boolean;
 }
 

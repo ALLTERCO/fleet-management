@@ -7,6 +7,8 @@ type HostUser = {
     name?: string;
     username?: string;
     isAdmin: boolean;
+    isViewer: boolean;
+    roles: readonly string[];
     loggedIn: boolean;
 };
 
@@ -14,14 +16,15 @@ export function useCurrentUser() {
     const auth = useAuthStore();
 
     return computed<HostUser>(() => ({
-        id:
-            auth.zitadelUser?.id == null
-                ? undefined
-                : String(auth.zitadelUser.id),
-        email: auth.zitadelUser?.email,
-        name: auth.displayName || auth.zitadelUser?.name,
+        // Session isolation keys off this, so it is the store's signed-in
+        // identity rather than an optional profile field.
+        id: auth.currentUserId ?? undefined,
+        email: auth.identity?.email ?? undefined,
+        name: auth.displayName ?? undefined,
         username: auth.username ?? undefined,
         isAdmin: auth.isAdmin,
+        isViewer: auth.isViewer,
+        roles: auth.roles,
         loggedIn: auth.loggedIn
     }));
 }

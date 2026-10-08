@@ -17,8 +17,9 @@
                     placeholder="Name (optional)"
                 />
                 <button
+                    type="button"
                     class="vcm__add-btn"
-                    :disabled="busy"
+                    :disabled="busy || !canCreate"
                     @click="addComponent"
                 >
                     <i
@@ -27,6 +28,14 @@
                     Add
                 </button>
             </div>
+        </div>
+
+        <div v-if="newType === 'enum'" class="vcm__enum-setup">
+            <VirtualConfigFields
+                v-model="createDraft"
+                family="enum"
+                :options-error="enumOptionsError"
+            />
         </div>
 
         <div v-if="error" class="vcm__error">
@@ -59,7 +68,12 @@
 </template>
 
 <script setup lang="ts">
-import {computed, ref} from 'vue';
+import {computed, ref, watch} from 'vue';
+import VirtualConfigFields, {
+    emptyVirtualConfigDraft,
+    type VirtualConfigDraft,
+    virtualConfigDelta
+} from '@/components/modals/VirtualConfigFields.vue';
 import VirtualEditModal from '@/components/modals/VirtualEditModal.vue';
 import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useDevicesStore} from '@/stores/devices';
@@ -74,6 +88,24 @@ const error = ref<string | null>(null);
 const newType = ref('boolean');
 const newName = ref('');
 const editingKey = ref<string | null>(null);
+const createDraft = ref<VirtualConfigDraft>(emptyVirtualConfigDraft());
+
+watch(newType, (type) => {
+    createDraft.value = emptyVirtualConfigDraft();
+    // Seed one row so the enum editor starts ready to type into.
+    if (type === 'enum') createDraft.value.options.push({value: '', title: ''});
+});
+
+const hasEnumOption = computed(() =>
+    createDraft.value.options.some((option) => option.value.trim().length > 0)
+);
+// The device rejects enums without options, so block the call up front.
+const canCreate = computed(
+    () => newType.value !== 'enum' || hasEnumOption.value
+);
+const enumOptionsError = computed(() =>
+    hasEnumOption.value ? undefined : 'At least one option is required'
+);
 
 interface TypeOption {
     value: string;
@@ -114,10 +146,14 @@ function componentName(key: string): string {
 }
 
 async function addComponent(): Promise<void> {
+    if (busy.value || !canCreate.value) return;
     busy.value = true;
     error.value = null;
     try {
-        const config: Record<string, unknown> = {};
+        const config: Record<string, unknown> =
+            newType.value === 'enum'
+                ? virtualConfigDelta('enum', createDraft.value, {})
+                : {};
         if (newName.value) config.name = newName.value;
         await sendRPC('FLEET_MANAGER', 'Virtual.Add', {
             shellyID: props.shellyID,
@@ -125,6 +161,10 @@ async function addComponent(): Promise<void> {
             config: Object.keys(config).length ? config : undefined
         });
         newName.value = '';
+        createDraft.value = emptyVirtualConfigDraft();
+        if (newType.value === 'enum') {
+            createDraft.value.options.push({value: '', title: ''});
+        }
     } catch (err) {
         error.value = rpcErrorMessage(err, 'Virtual.Add failed');
     } finally {
@@ -186,6 +226,13 @@ async function addComponent(): Promise<void> {
 .vcm__add-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+}
+
+.vcm__enum-setup {
+    padding: var(--space-3);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-1);
 }
 
 .vcm__error {

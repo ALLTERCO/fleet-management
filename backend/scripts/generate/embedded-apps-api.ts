@@ -97,9 +97,9 @@ export function generate(): EmbeddedApp[] {
             feature: 'node-red',
             proxyBase: '/node-red/red',
             authExternal:
-                'FM session or Bearer PAT with node-red access; FM injects x-fm-node-red-proxy-secret upstream',
+                'Editor session cookie (POST /node-red/session) or Bearer PAT with node-red access; FM injects x-fm-node-red-proxy-secret and a signed x-fm-node-red-user upstream',
             authInternal:
-                'Direct to node-red:1880 with header x-fm-node-red-proxy-secret',
+                'Direct to node-red:1880 with headers x-fm-node-red-proxy-secret and x-fm-node-red-user (HMAC-signed with the proxy secret, 5 min expiry)',
             endpoints: [
                 {
                     method: 'GET',

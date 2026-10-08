@@ -31,11 +31,13 @@ export const IDENTITY_ROTATE_SCHEMA: JsonSchema = {
 };
 const IDENTITY_ROTATE_RESPONSE: JsonSchema = {
     type: 'object',
-    required: ['gdprTargetId', 'grantTargetId'],
+    required: ['gdprTargetId', 'grantTargetId', 'rotatedAt', 'correlationId'],
     properties: {
         gdprTargetId: ID_STR,
         grantTargetId: ID_STR,
-        rotatedAt: {type: 'string', format: 'date-time'}
+        rotatedAt: {type: 'string', format: 'date-time'},
+        // Ties the rotation to its log lines when operators chase a swap.
+        correlationId: {type: 'string'}
     }
 };
 
@@ -115,11 +117,13 @@ export const IDENTITY_SET_SCIM_SCHEMA: JsonSchema = {
 };
 const SCIM_RESP: JsonSchema = {
     type: 'object',
-    required: ['enabled', 'endpoint'],
+    required: ['enabled', 'endpoint', 'rotatedAt'],
     properties: {
         enabled: {type: 'boolean'},
         endpoint: {type: 'string'},
-        managementApiHint: {type: 'string'}
+        managementApiHint: {type: 'string'},
+        // null until the signing keys are rotated the first time.
+        rotatedAt: {type: ['string', 'null'], format: 'date-time'}
     }
 };
 

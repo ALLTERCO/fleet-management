@@ -1,6 +1,7 @@
 // Pure transform; kept config-free so tests skip the config barrel.
 
 import type {AuditLogEntry} from './AuditLogger';
+import {redactJsonString} from './util/redactJsonString';
 import {sanitizeErrorMessageForPersistence} from './util/sanitizeErrorMessage';
 
 // params stays an object so SQL e->'params' is queryable JSONB, not a string.
@@ -19,6 +20,8 @@ export interface AuditBatchRow {
     error_message: string | null;
     ip_address: string | null;
     organization_id: string | null;
+    agent_key_id: string | null;
+    correlation_id: string | null;
 }
 
 export const REDACTED_PLACEHOLDER = '[REDACTED]';
@@ -63,6 +66,13 @@ export function isSensitiveParamKey(key: string): boolean {
 // reference (allocation-free) when nothing was scrubbed; never mutates input.
 // Exported as the single home for deep param redaction (audit + WS debug log).
 export function scrubSensitiveValues(value: unknown): unknown {
+    if (typeof value === 'string') {
+        return redactJsonString(
+            value,
+            scrubSensitiveValues,
+            REDACTED_PLACEHOLDER
+        );
+    }
     if (Array.isArray(value)) {
         let changed = false;
         const out = value.map((item) => {
@@ -90,6 +100,9 @@ export function scrubSensitiveValues(value: unknown): unknown {
     return changed ? out : value;
 }
 
+/** Params key carrying the Node-RED flow and node behind a call. */
+export const AUTOMATION_SOURCE_PARAM = '_automationSource';
+
 // Scrub first (so secrets never persist), then length-cap.
 // Returns input/scrubbed object or a small marker — always an object.
 export function truncateForJsonb(
@@ -99,7 +112,19 @@ export function truncateForJsonb(
     const scrubbed = scrubSensitiveValues(obj) as Record<string, unknown>;
     const json = JSON.stringify(scrubbed);
     if (json.length <= maxChars) return scrubbed;
-    return {_truncated: true, _originalLength: json.length};
+    return {
+        _truncated: true,
+        _originalLength: json.length,
+        ...automationSourceOf(scrubbed)
+    };
+}
+
+// The source is small and is the only way to tell flows apart; keep it.
+function automationSourceOf(
+    params: Record<string, unknown>
+): Record<string, unknown> {
+    const source = params[AUTOMATION_SOURCE_PARAM];
+    return source === undefined ? {} : {[AUTOMATION_SOURCE_PARAM]: source};
 }
 
 export function entryToBatchRow(
@@ -132,6 +157,8 @@ export function entryToBatchRow(
             errorMessageMaxChars
         ),
         ip_address: entry.ipAddress || null,
-        organization_id: entry.organizationId || null
+        organization_id: entry.organizationId || null,
+        agent_key_id: entry.agentKeyId || null,
+        correlation_id: entry.correlationId || null
     };
 }

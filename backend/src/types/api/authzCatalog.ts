@@ -1,7 +1,11 @@
 // Authz vocabulary (resource types, verbs, action suggestions, system
 // persona keys). One source — backend + frontend both read from here.
 
-import type {ComponentName} from './permissions';
+import {
+    type ComponentName,
+    CRUD_OPERATIONS,
+    type CrudOperation
+} from './permissions';
 
 export const AUTHZ_RESOURCE_TYPES = [
     'device',
@@ -20,7 +24,10 @@ export const AUTHZ_RESOURCE_TYPES = [
     'integration',
     'automation',
     'grafana',
-    'analytics'
+    'analytics',
+    // The tenant access-change trail. Read-only, granted by the auditor
+    // persona; no component of its own, like automation.
+    'authz_audit'
 ] as const;
 
 export type AuthzResourceType = (typeof AUTHZ_RESOURCE_TYPES)[number];
@@ -38,10 +45,7 @@ export const AUTHZ_VERBS = [
 
 export type AuthzVerb = (typeof AUTHZ_VERBS)[number];
 
-export const AUTHZ_RESOURCE_BY_COMPONENT: Record<
-    ComponentName,
-    AuthzResourceType
-> = {
+export const AUTHZ_RESOURCE_BY_COMPONENT = {
     devices: 'device',
     actions: 'action',
     groups: 'group',
@@ -58,17 +62,57 @@ export const AUTHZ_RESOURCE_BY_COMPONENT: Record<
     integrations: 'integration',
     grafana: 'grafana',
     analytics: 'analytics'
-};
+} as const satisfies Record<ComponentName, AuthzResourceType>;
 
-export const AUTHZ_ACTION_SUGGESTIONS: readonly string[] = (() => {
-    const out: string[] = ['*'];
-    for (const r of AUTHZ_RESOURCE_TYPES) {
-        for (const v of AUTHZ_VERBS) {
-            out.push(`${r}:${v}`);
+type ComponentResourceType =
+    (typeof AUTHZ_RESOURCE_BY_COMPONENT)[ComponentName];
+
+// Checked directly (authzPermissions.ts) with no CRUD component behind them.
+const AUTHZ_ACTIONS_WITHOUT_COMPONENT = [
+    'authz_audit:read',
+    'automation:update'
+] as const;
+
+// Devices fold create/update/delete into write; the type and the runtime list share this rule.
+type FoldedAction<R extends string> = R extends 'device'
+    ? 'device:read' | 'device:execute' | 'device:write'
+    : `${R}:${CrudOperation}`;
+
+export function foldAuthzAction(
+    resourceType: string,
+    operation: CrudOperation
+): string {
+    if (resourceType === 'device') {
+        if (operation === 'read') return `${resourceType}:read`;
+        if (operation === 'execute') return `${resourceType}:execute`;
+        return `${resourceType}:write`;
+    }
+    return `${resourceType}:${operation}`;
+}
+
+// Typed so a direct check for an action the server does not know fails to compile.
+export type AuthzAction =
+    | FoldedAction<ComponentResourceType>
+    | (typeof AUTHZ_ACTIONS_WITHOUT_COMPONENT)[number];
+
+// The one runtime list of real actions; the simulator gate and its dropdown both read it.
+export const AUTHZ_ACTIONS: readonly AuthzAction[] = (() => {
+    const out = new Set<string>();
+    for (const resourceType of Object.values(AUTHZ_RESOURCE_BY_COMPONENT)) {
+        for (const op of CRUD_OPERATIONS) {
+            out.add(foldAuthzAction(resourceType, op));
         }
     }
-    return out;
+    for (const action of AUTHZ_ACTIONS_WITHOUT_COMPONENT) out.add(action);
+    return [...out] as AuthzAction[];
 })();
+
+// Policy editing accepts patterns, but suggesting actions the server never checks misleads.
+export const AUTHZ_ACTION_SUGGESTIONS: readonly string[] = [
+    '*',
+    ...AUTHZ_RESOURCE_TYPES.map((r) => `${r}:*`),
+    ...AUTHZ_ACTIONS
+];
 
 export const AUTHZ_RESOURCE_SUGGESTIONS: readonly string[] = [
     '*',
@@ -95,6 +139,23 @@ export const AUTHZ_SYSTEM_PERSONA_KEYS = [
 ] as const;
 
 export type AuthzSystemPersonaKey = (typeof AUTHZ_SYSTEM_PERSONA_KEYS)[number];
+
+/**
+ * The persona keys that also describe an MCP work slice.
+ *
+ * On the contract surface on purpose: the key-minting UI offers exactly these,
+ * and the MCP server enforces exactly these. Two lists would drift, and a UI
+ * offering a role the server does not know mints a key that reaches nothing.
+ */
+export const MCP_ROLE_KEYS = [
+    'installer',
+    'operator',
+    'manager',
+    'automation_admin',
+    'auditor'
+] as const satisfies readonly AuthzSystemPersonaKey[];
+
+export type McpRoleKey = (typeof MCP_ROLE_KEYS)[number];
 
 // Aliases tolerated by extractRolesFromClaims when reading JWT role claims
 // from external IdPs that use slightly different vocab.
@@ -145,6 +206,9 @@ export const AUTHZ_SYSTEM_PERSONA_SCOPE_TYPES: Record<
     viewer: TENANT_READ_SCOPE_TYPES,
     auditor: TENANT_READ_SCOPE_TYPES,
     operator: [
+        // Each persona defaults to its full access org-wide; narrowing to
+        // specific resources is optional. The persona caps capability depth.
+        'tenant',
         'device',
         'device_group',
         'location',
@@ -154,6 +218,9 @@ export const AUTHZ_SYSTEM_PERSONA_SCOPE_TYPES: Record<
         'notification'
     ],
     installer: [
+        // Org-wide installer accounts are the common field-service setup, so
+        // the whole-tenant grant is allowed; capability depth stays limited.
+        'tenant',
         'device',
         'device_group',
         'location',
@@ -164,6 +231,7 @@ export const AUTHZ_SYSTEM_PERSONA_SCOPE_TYPES: Record<
         'report'
     ],
     editor: [
+        'tenant',
         'dashboard',
         'device',
         'device_group',
@@ -177,6 +245,7 @@ export const AUTHZ_SYSTEM_PERSONA_SCOPE_TYPES: Record<
     ],
     manager: TENANT_READ_SCOPE_TYPES,
     automation_admin: [
+        'tenant',
         'automation',
         'action',
         'integration',
@@ -185,6 +254,18 @@ export const AUTHZ_SYSTEM_PERSONA_SCOPE_TYPES: Record<
     ],
     admin: TENANT_READ_SCOPE_TYPES
 };
+
+// Scope types a persona may be assigned on, so a picker needs no copy of this.
+export function authzScopeTypesForPersona(
+    personaKey: string,
+    isSystemManaged: boolean
+): readonly AuthzScopeType[] {
+    if (personaKey === 'super_admin') return [];
+    if (!isSystemManaged) return AUTHZ_SCOPE_TYPES;
+    const matrix: Readonly<Record<string, readonly AuthzScopeType[]>> =
+        AUTHZ_SYSTEM_PERSONA_SCOPE_TYPES;
+    return matrix[personaKey] ?? [];
+}
 
 // Full tenant access by these personas is high-risk: the backend requires a
 // reason and an expiry on such grants. Enforcement and every grant UI read

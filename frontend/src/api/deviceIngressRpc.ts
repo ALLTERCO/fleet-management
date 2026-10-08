@@ -23,6 +23,19 @@ export function listProfiles(): Promise<IngressList<IngressProfile>> {
     return sendRPC(TARGET, 'deviceIngress.Profile.List', {});
 }
 
+// Which device auth methods this deployment accepts. keysChecked is false
+// when record_only (or disabled) admits devices without reading their key.
+export interface AuthMethods {
+    token: boolean;
+    approvedId: boolean;
+    certificate: boolean;
+    keysChecked: boolean;
+}
+
+export function getAuthMethods(): Promise<AuthMethods> {
+    return sendRPC(TARGET, 'deviceIngress.AuthMethods', {});
+}
+
 // Quick token: device-agnostic. The device has `validityMinutes` to connect
 // using it — no device id needed up front.
 export interface EnrollmentToken {
@@ -129,6 +142,91 @@ export interface IngressIdentity {
     createdAt: string;
 }
 
-export function listIdentities(): Promise<IngressList<IngressIdentity>> {
-    return sendRPC(TARGET, 'deviceIngress.Identity.List', {});
+// The schema maximum, used only for the expiring-credentials lookup below.
+const LIST_LIMIT = 500;
+
+// Rows per page for the identity and rotation job tables.
+export const PAGE_SIZE = 100;
+
+export function listIdentities(page: {
+    limit: number;
+    offset: number;
+}): Promise<IngressList<IngressIdentity>> {
+    return sendRPC(TARGET, 'deviceIngress.Identity.List', page);
+}
+
+// Credentials nearing expiry, and identity enable/disable + rotation.
+export interface ExpiringCredential {
+    id: string;
+    identityId: string;
+    credentialType: string;
+    state: string;
+    tokenPrefix: string | null;
+    notAfter: string | null;
+    expectedExternalId: string | null;
+}
+
+export function listExpiringCredentials(
+    days?: number
+): Promise<IngressList<ExpiringCredential>> {
+    return sendRPC(TARGET, 'deviceIngress.Credential.ListExpiring', {
+        limit: LIST_LIMIT,
+        ...(days ? {days} : {})
+    });
+}
+
+export function enableIdentity(
+    id: string
+): Promise<{success: boolean; identity: IngressIdentity}> {
+    return sendRPC(TARGET, 'deviceIngress.Identity.Enable', {id});
+}
+
+export function disableIdentity(
+    id: string
+): Promise<{success: boolean; identity: IngressIdentity}> {
+    return sendRPC(TARGET, 'deviceIngress.Identity.Disable', {id});
+}
+
+export type RotationJobState =
+    | 'queued'
+    | 'sent'
+    | 'waiting'
+    | 'finalized'
+    | 'failed'
+    | 'cancelled';
+
+export interface RotationJob {
+    id: string;
+    batchId: string;
+    identityId: string;
+    state: RotationJobState;
+    errorCode: string | null;
+    sentAt: string | null;
+    createdBy: string;
+    createdAt: string;
+    updatedAt: string;
+    // The device id the job rotates, so a job names its device without the
+    // identity list. Null when the identity row is gone.
+    expectedExternalId: string | null;
+}
+
+export function startRotation(
+    identityIds: string[]
+): Promise<{batchId: string; jobs: RotationJob[]}> {
+    return sendRPC(TARGET, 'deviceIngress.Rotation.Start', {identityIds});
+}
+
+export function listRotationJobs(filter: {
+    batchId?: string;
+    state?: RotationJobState;
+    limit: number;
+    offset: number;
+}): Promise<IngressList<RotationJob>> {
+    return sendRPC(TARGET, 'deviceIngress.Rotation.List', filter);
+}
+
+export function cancelRotationJob(
+    id: string
+): Promise<{success: boolean; job: RotationJob}> {
+    return sendRPC(TARGET, 'deviceIngress.Rotation.Cancel', {id});
 }

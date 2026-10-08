@@ -9,10 +9,7 @@
 </template>
 
 <script setup lang="ts">
-import maplibregl, {
-    type Map as MapLibreMap,
-    type Marker
-} from 'maplibre-gl';
+import {Marker, type Map as MapLibreMap} from 'maplibre-gl';
 import {computed, onBeforeUnmount, ref, watch} from 'vue';
 // biome-ignore lint/style/useImportType: Vue SFC template registration needs the value binding at runtime.
 import MapCanvas from '@/components/core/maps/MapCanvas.vue';
@@ -99,7 +96,7 @@ watch(
 );
 
 function createDraggableMarker(map: MapLibreMap): Marker {
-    const marker = new maplibregl.Marker({draggable: true, color: '#4495D1'});
+    const marker = new Marker({draggable: true, color: '#4495D1'});
     marker.setLngLat([props.center.lng, props.center.lat]).addTo(map);
     marker.on('dragend', () => {
         const lngLat = marker.getLngLat();

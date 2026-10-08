@@ -19,6 +19,8 @@
  */
 
 import {bucketUsesRollup} from '../../config/energy';
+import * as Observability from '../Observability';
+import {sleep} from '../util/sleep';
 
 /**
  * Default cache sizing used when callers construct the repository
@@ -35,6 +37,15 @@ const DEFAULT_CACHE_CONFIG: EnergyCacheConfig = {
 interface CacheEntry {
     internalIds: readonly number[];
     idMap: Readonly<Record<number, string>>;
+    expiresAt: number;
+}
+
+interface JoinDateCacheEntry {
+    // `found: false` is a device.list miss, cached like any other answer: an
+    // id the fleet does not know always refuses loudly, so a stale miss can
+    // only keep a refusal at the level it already had.
+    found: boolean;
+    joinedAt: Date | null;
     expiresAt: number;
 }
 
@@ -71,6 +82,106 @@ export interface EnergyCacheConfig {
     idMapMaxEntries: number;
 }
 
+export interface RollupReadConfig {
+    waitMs: number;
+    pollMs: number;
+}
+
+export interface RollupReadScheduler {
+    now(): number;
+    sleep(ms: number): Promise<void>;
+}
+
+/**
+ * Rollup work in a report scope, by state. Ready work is due now; scheduled
+ * work waits for its bucket to close and makes a period provisional, not
+ * incomplete. Held and abandoned by reason.
+ */
+export interface RollupBacklogInScope {
+    ready: number;
+    scheduled: number;
+    held: Readonly<Record<string, number>>;
+    abandoned: Readonly<Record<string, number>>;
+}
+
+/** An open incomplete EM history range, as the completeness check stores it. */
+export interface EmIncompleteRange {
+    device: number;
+    channel: number;
+    kind: 'missing_records' | 'counter_mismatch';
+    tag: string;
+    from: Date;
+    to: Date;
+    expectedWh: number | null;
+    storedWh: number | null;
+}
+
+interface EmIncompleteRangeRow {
+    device: number;
+    channel: number;
+    kind: EmIncompleteRange['kind'];
+    tag: string;
+    range_from: Date | string;
+    range_to: Date | string;
+    expected_wh: number | null;
+    stored_wh: number | null;
+}
+
+export function hasBlockedRollup(backlog: RollupBacklogInScope): boolean {
+    return (
+        Object.keys(backlog.held).length > 0 ||
+        Object.keys(backlog.abandoned).length > 0
+    );
+}
+
+// Work a reader must wait for or report; scheduled work is not pending.
+export function rollupBacklogTotal(backlog: RollupBacklogInScope): number {
+    const sum = (counts: Readonly<Record<string, number>>) =>
+        Object.values(counts).reduce((total, count) => total + count, 0);
+    return backlog.ready + sum(backlog.held) + sum(backlog.abandoned);
+}
+
+function invalidBacklog(): Error {
+    return Object.assign(new Error('EM_ROLLUP_INVALID_PENDING'), {
+        code: 'EM_ROLLUP_INVALID_PENDING'
+    });
+}
+
+function backlogCount(value: unknown): number {
+    const count =
+        typeof value === 'number' ||
+        (typeof value === 'string' && value.trim() !== '')
+            ? Number(value)
+            : Number.NaN;
+    if (!Number.isSafeInteger(count) || count < 0) throw invalidBacklog();
+    return count;
+}
+
+function backlogReason(value: unknown): string {
+    if (typeof value !== 'string' || value === '') throw invalidBacklog();
+    return value;
+}
+
+function parseRollupBacklog(rows: unknown[] | undefined): RollupBacklogInScope {
+    if (!Array.isArray(rows)) throw invalidBacklog();
+    let ready = 0;
+    let scheduled = 0;
+    const held: Record<string, number> = {};
+    const abandoned: Record<string, number> = {};
+    for (const row of rows) {
+        if (!row || typeof row !== 'object') throw invalidBacklog();
+        const {state, reason, buckets} = row as Record<string, unknown>;
+        const count = backlogCount(buckets);
+        if (state === 'ready') ready += count;
+        else if (state === 'scheduled') scheduled += count;
+        else if (state === 'held') held[backlogReason(reason)] = count;
+        else if (state === 'abandoned')
+            abandoned[backlogReason(reason)] = count;
+        else throw invalidBacklog();
+    }
+    return {ready, scheduled, held, abandoned};
+}
+
 export interface EnergyRepositoryDeps {
     resolveDeviceIds: DeviceIdResolver;
     groupDevices: GroupDeviceResolver;
@@ -78,6 +189,10 @@ export interface EnergyRepositoryDeps {
     callDb: DbCaller;
     /** Optional — falls back to DEFAULT_CACHE_CONFIG when omitted. */
     cacheConfig?: EnergyCacheConfig;
+    /** Production report consistency guard. */
+    rollupReadConfig?: RollupReadConfig;
+    /** Time boundary for the consistency guard; injectable for deterministic tests. */
+    rollupReadScheduler?: RollupReadScheduler;
 }
 
 export interface ReportStatsOpts {
@@ -112,6 +227,14 @@ export interface EnergyStatsByPhaseRow extends EnergyStatsRow {
     phase: 'a' | 'b' | 'c';
 }
 
+/** One bucket of device-total average power (W or VA), phases already summed. */
+export interface DevicePowerAvgRow {
+    /** timestamptz — the pg driver hands back a Date, not a string. */
+    bucket: string | Date;
+    device: number;
+    avg_w: number | string;
+}
+
 /** One 15-minute energy bucket for one device channel — the cost-pass grain. */
 export interface Energy15minByChannelRow {
     bucket: string;
@@ -119,6 +242,32 @@ export interface Energy15minByChannelRow {
     channel: number;
     tag: string;
     energy_wh: number;
+}
+
+export interface OperationalMetric15minByChannelRow {
+    bucket: string | Date;
+    device: number;
+    channel: number;
+    tag: string;
+    value: number | string;
+}
+
+export interface CurrentHistoryByChannelRow {
+    observed_at: string | Date;
+    amps: number | string;
+}
+
+/** One stored point's daily energy interval for consumption anomaly evaluation. */
+export interface DailyConsumptionRow {
+    device: number;
+    channel: number | null;
+    tag: string;
+    local_day: string | Date;
+    local_day_start: string | Date;
+    raw_total: number | string;
+    max_bucket_value: number | string;
+    observed_buckets: number | string;
+    expected_buckets: number | string;
 }
 
 // One distinct stored point per (device, channel, phase, tag, domain) with its
@@ -145,16 +294,33 @@ export interface EnvironmentalStatsRow {
     source?: string;
 }
 
+export interface EmSyncStatusRow {
+    device: number;
+    channel: number;
+    sync_created: number | string | null;
+    rollup_pending: number | string;
+    oldest_rollup_dirty: string | null;
+    rollup_scheduled: number | string;
+}
+
 // --- Repository ---------------------------------------------------------
 
 export class EnergyRepository {
     readonly #deviceIdCache = new Map<string, CacheEntry>();
+    readonly #joinDateCache = new Map<number, JoinDateCacheEntry>();
     readonly #deps: EnergyRepositoryDeps;
     readonly #cacheConfig: EnergyCacheConfig;
+    readonly #rollupReadConfig?: RollupReadConfig;
+    readonly #rollupReadScheduler: RollupReadScheduler;
 
     constructor(deps: EnergyRepositoryDeps) {
         this.#deps = deps;
         this.#cacheConfig = deps.cacheConfig ?? DEFAULT_CACHE_CONFIG;
+        this.#rollupReadConfig = deps.rollupReadConfig;
+        this.#rollupReadScheduler = deps.rollupReadScheduler ?? {
+            now: Date.now,
+            sleep
+        };
     }
 
     /**
@@ -184,6 +350,116 @@ export class EnergyRepository {
         const frozen = Object.freeze(resolved);
         this.#storeCacheEntry(key, frozen, now);
         return frozen;
+    }
+
+    /** Internal row ids to product-wide identities. Tariff assignment is keyed
+     * by external id while a logical meter stores internal ones, so billing a
+     * meter needs the translation the other accessors do not. */
+    async resolveExternalIds(
+        internalIds: readonly number[]
+    ): Promise<Readonly<Record<number, string>>> {
+        if (internalIds.length === 0) return {};
+        const res = await this.#deps.callDb('device.fn_resolve_external_ids', {
+            p_ids: [...internalIds]
+        });
+        const rows =
+            (res?.rows as Array<{id: number; external_id: string}>) ?? [];
+        return Object.fromEntries(rows.map((row) => [row.id, row.external_id]));
+    }
+
+    /**
+     * When each device joined the fleet (`device.list.created`), by internal
+     * id. A device the fleet does not know is left out of the map rather than
+     * guessed at, so the caller can tell "joined then" from "cannot say".
+     *
+     * `created` never changes for a row, so answers and misses alike are
+     * cached; the id-map TTL and cap are reused rather than adding a knob.
+     */
+    async resolveDeviceJoinDates(
+        internalIds: readonly number[]
+    ): Promise<ReadonlyMap<number, Date | null>> {
+        const joined = new Map<number, Date | null>();
+        if (internalIds.length === 0) return joined;
+        const now = Date.now();
+        const unread: number[] = [];
+        for (const internalId of internalIds) {
+            const hit = this.#joinDateCache.get(internalId);
+            if (!hit || hit.expiresAt <= now) unread.push(internalId);
+            else if (hit.found) joined.set(internalId, hit.joinedAt);
+        }
+        if (unread.length === 0) return joined;
+        const res = await this.#deps.callDb('device.fn_device_join_dates', {
+            p_ids: unread
+        });
+        const rows =
+            (res?.rows as Array<{
+                id: number;
+                created: Date | string | null;
+            }>) ?? [];
+        const answered = new Set<number>();
+        for (const row of rows) {
+            const joinedAt = row.created ? new Date(row.created) : null;
+            this.#storeJoinDate(row.id, true, joinedAt, now);
+            joined.set(row.id, joinedAt);
+            answered.add(row.id);
+        }
+        for (const internalId of unread) {
+            if (!answered.has(internalId))
+                this.#storeJoinDate(internalId, false, null, now);
+        }
+        return joined;
+    }
+
+    async queryEmSyncStatus(
+        channels: readonly {device: number; channel: number}[]
+    ): Promise<EmSyncStatusRow[]> {
+        if (channels.length === 0) return [];
+        const result = await this.#deps.callDb('device_em.fn_sync_status_v2', {
+            p_devices: channels.map((item) => item.device),
+            p_channels: channels.map((item) => item.channel)
+        });
+        return (result?.rows as EmSyncStatusRow[]) ?? [];
+    }
+
+    async queryRollupBacklogInScope(
+        internalIds: readonly number[],
+        from: Date,
+        to: Date
+    ): Promise<RollupBacklogInScope> {
+        if (internalIds.length === 0)
+            return {ready: 0, scheduled: 0, held: {}, abandoned: {}};
+        const result = await this.#deps.callDb(
+            'device_em.fn_rollup_backlog_in_scope',
+            {
+                p_devices: [...internalIds],
+                p_from: from,
+                p_to: to
+            }
+        );
+        return parseRollupBacklog(result?.rows);
+    }
+
+    /** Open incomplete EM ranges overlapping [from, to), never as zero. */
+    async queryEmIncompleteRanges(
+        internalIds: readonly number[],
+        from: Date,
+        to: Date
+    ): Promise<EmIncompleteRange[]> {
+        if (internalIds.length === 0) return [];
+        const result = await this.#deps.callDb(
+            'device_em.fn_em_incomplete_ranges',
+            {p_devices: [...internalIds], p_from: from, p_to: to}
+        );
+        return ((result?.rows ?? []) as EmIncompleteRangeRow[]).map((row) => ({
+            device: row.device,
+            channel: row.channel,
+            kind: row.kind,
+            tag: row.tag,
+            from: new Date(row.range_from),
+            to: new Date(row.range_to),
+            expectedWh: row.expected_wh,
+            storedWh: row.stored_wh
+        }));
     }
 
     /** Resolve a group's membership to internal ids + shellyID map. */
@@ -233,6 +509,35 @@ export class EnergyRepository {
         return this.#callReportStats(baseFn, pagedFn, opts);
     }
 
+    /**
+     * Average power per bucket as a DEVICE total, phases and channels summed.
+     * queryEnergyStats cannot answer this: its sum_val/sample_count over
+     * per-phase rows is a per-phase MEAN, about a third of a 3-phase meter.
+     */
+    async queryDevicePowerAvg(opts: {
+        internalIds: readonly number[];
+        from: Date;
+        to: Date;
+        bucket: string;
+        /** Tag pair for the metric billed: active power or apparent power. */
+        phaseTag: string;
+        totalTag: string;
+    }): Promise<DevicePowerAvgRow[]> {
+        if (opts.internalIds.length === 0) return [];
+        const method = bucketUsesRollup(opts.bucket)
+            ? 'device_em.fn_device_power_avg'
+            : 'device_em.fn_device_power_avg_raw';
+        const res = await this.#deps.callDb(method, {
+            p_devices: [...opts.internalIds],
+            p_from: opts.from,
+            p_to: opts.to,
+            p_bucket: opts.bucket,
+            p_phase_tag: opts.phaseTag,
+            p_total_tag: opts.totalTag
+        });
+        return (res?.rows as DevicePowerAvgRow[]) ?? [];
+    }
+
     /** By-phase variant of queryEnergyStats — same raw/rollup routing. */
     async queryEnergyStatsByPhase(
         opts: ReportStatsOpts
@@ -261,6 +566,9 @@ export class EnergyRepository {
         from: Date;
         to: Date;
         tags: readonly string[];
+        /** Optional clean-axis filters; omitted preserves report all-domain reads. */
+        commodity?: string;
+        electricalSource?: string;
     }): Promise<Energy15minByChannelRow[]> {
         if (opts.internalIds.length === 0 || opts.tags.length === 0) {
             return [];
@@ -271,10 +579,76 @@ export class EnergyRepository {
                 p_devices: [...opts.internalIds],
                 p_from: opts.from,
                 p_to: opts.to,
-                p_tags: [...opts.tags]
+                p_tags: [...opts.tags],
+                p_commodity: opts.commodity ?? null,
+                p_electrical_source: opts.electricalSource ?? null
             }
         );
         return (res?.rows as Energy15minByChannelRow[]) ?? [];
+    }
+
+    /** Per-channel instantaneous 15-minute values for operational verdicts. */
+    async queryOperationalMetric15minByChannel(opts: {
+        internalIds: readonly number[];
+        from: Date;
+        to: Date;
+        tags: readonly string[];
+        commodity?: string;
+    }): Promise<OperationalMetric15minByChannelRow[]> {
+        if (opts.internalIds.length === 0 || opts.tags.length === 0) return [];
+        const res = await this.#deps.callDb(
+            'device_em.fn_operational_metric_15min_by_channel',
+            {
+                p_devices: [...opts.internalIds],
+                p_from: opts.from,
+                p_to: opts.to,
+                p_tags: [...opts.tags],
+                p_commodity: opts.commodity ?? null
+            }
+        );
+        return (res?.rows as OperationalMetric15minByChannelRow[]) ?? [];
+    }
+
+    /** Raw per-channel current history used to prove a sustained overload. */
+    async queryCurrentHistoryByChannel(opts: {
+        internalId: number;
+        channel: number;
+        from: Date;
+        to: Date;
+    }): Promise<CurrentHistoryByChannelRow[]> {
+        const res = await this.#deps.callDb(
+            'device_em.fn_current_history_by_channel',
+            {
+                p_device: opts.internalId,
+                p_channel: opts.channel,
+                p_from: opts.from,
+                p_to: opts.to
+            }
+        );
+        return (res?.rows as CurrentHistoryByChannelRow[]) ?? [];
+    }
+
+    /** SQL owns organization isolation and local-day/DST bucketing for daily point energy. */
+    async queryDailyConsumption(opts: {
+        organizationId: string;
+        internalIds: readonly number[];
+        from: Date;
+        to: Date;
+        tags: readonly string[];
+        timezone: string;
+    }): Promise<DailyConsumptionRow[]> {
+        if (opts.internalIds.length === 0 || opts.tags.length === 0) {
+            return [];
+        }
+        const res = await this.#deps.callDb('device_em.fn_daily_consumption', {
+            p_organization_id: opts.organizationId,
+            p_devices: [...opts.internalIds],
+            p_tags: [...opts.tags],
+            p_from: opts.from,
+            p_to: opts.to,
+            p_tz: opts.timezone
+        });
+        return (res?.rows as DailyConsumptionRow[]) ?? [];
     }
 
     /** Distinct stored measurement points for a device set — the wizard's history source. */
@@ -462,6 +836,43 @@ export class EnergyRepository {
         return (res?.rows as T[]) ?? [];
     }
 
+    // Waits only for ready work; held or abandoned work never finishes alone.
+    async waitForRollup(
+        internalIds: readonly number[],
+        from: Date,
+        to: Date
+    ): Promise<RollupBacklogInScope> {
+        const config = this.#rollupReadConfig;
+        const none: RollupBacklogInScope = {
+            ready: 0,
+            scheduled: 0,
+            held: {},
+            abandoned: {}
+        };
+        if (!config || internalIds.length === 0) return none;
+        const deadline = this.#rollupReadScheduler.now() + config.waitMs;
+        let observed = false;
+        while (true) {
+            const backlog = await this.queryRollupBacklogInScope(
+                internalIds,
+                from,
+                to
+            );
+            if (backlog.ready <= 0 || hasBlockedRollup(backlog)) return backlog;
+            if (!observed) {
+                Observability.incrementCounter('em_report_waiting_for_rollup');
+                observed = true;
+            }
+            if (this.#rollupReadScheduler.now() >= deadline) {
+                Observability.incrementCounter('em_report_rollup_timeout');
+                throw new Error(
+                    `energy report is waiting for ${backlog.ready} rollup buckets`
+                );
+            }
+            await this.#rollupReadScheduler.sleep(config.pollMs);
+        }
+    }
+
     /**
      * Numeric sensor history from the forever rollup
      * (device_sensor.fn_numeric_history). `field` carries the sensor kind
@@ -477,12 +888,16 @@ export class EnergyRepository {
         to: Date;
         bucket: string;
         limit?: number;
+        offset?: number;
     }): Promise<EnvironmentalStatsRow[]> {
         if (opts.internalIds.length === 0) {
             return [];
         }
+        const paged = opts.offset !== undefined;
         const res = await this.#deps.callDb(
-            'device_sensor.fn_numeric_history',
+            paged
+                ? 'device_sensor.fn_numeric_history_paged'
+                : 'device_sensor.fn_numeric_history',
             {
                 p_organization_id: opts.organizationId,
                 p_device_ids: [...opts.internalIds],
@@ -491,7 +906,8 @@ export class EnergyRepository {
                 p_from: opts.from.toISOString(),
                 p_to: opts.to.toISOString(),
                 p_bucket: opts.bucket,
-                p_limit: opts.limit ?? null
+                p_limit: opts.limit ?? null,
+                ...(paged ? {p_offset: opts.offset} : {})
             }
         );
         return (res?.rows as EnvironmentalStatsRow[]) ?? [];
@@ -517,6 +933,26 @@ export class EnergyRepository {
     /** Test/ops hook — invalidate all cached id resolutions. */
     invalidate(): void {
         this.#deviceIdCache.clear();
+        this.#joinDateCache.clear();
+    }
+
+    #storeJoinDate(
+        internalId: number,
+        found: boolean,
+        joinedAt: Date | null,
+        now: number
+    ): void {
+        if (this.#joinDateCache.size >= this.#cacheConfig.idMapMaxEntries) {
+            // Same FIFO eviction as the id map — Map iterates in insertion
+            // order, so the first key is the oldest.
+            const firstKey = this.#joinDateCache.keys().next().value;
+            if (firstKey !== undefined) this.#joinDateCache.delete(firstKey);
+        }
+        this.#joinDateCache.set(internalId, {
+            found,
+            joinedAt,
+            expiresAt: now + this.#cacheConfig.idMapTtlMs
+        });
     }
 
     /** Current cache population — for observability hooks. */
@@ -581,6 +1017,10 @@ export function defaultEnergyRepository(): Promise<EnergyRepository> {
                 cacheConfig: {
                     idMapTtlMs: t.energy.idMapCacheTtlMs,
                     idMapMaxEntries: t.energy.idMapCacheMax
+                },
+                rollupReadConfig: {
+                    waitMs: t.energy.rollupReportWaitMs,
+                    pollMs: t.energy.rollupReportPollMs
                 }
             });
         })();

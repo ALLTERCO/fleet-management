@@ -1,3 +1,4 @@
+import {isDeepStrictEqual} from 'node:util';
 import * as log4js from 'log4js';
 import {tuning} from '../config/tuning';
 import {appendDeviceFrame} from '../modules/device/IngestStream';
@@ -14,7 +15,7 @@ import {applyStatusProjection} from './curyVialProjection';
 import {enrichCapabilities} from './deviceCapabilities';
 import type {DeviceEventCatalog} from './deviceEventCatalog';
 import type {DeviceInfo} from './deviceInfo';
-import {buildProfile, type DeviceProfile} from './deviceProfile';
+import {buildProfile, type DeviceProfile, toWireProfile} from './deviceProfile';
 // Leaf file so coverage callers consume it without an init cycle.
 import {NON_COMPONENT_KEYS} from './deviceStatusKeys';
 import {mergeStatusAndDiff} from './statusMerge';
@@ -70,6 +71,33 @@ function normalizeComponentKeys(
     return result;
 }
 
+// Mirrors ShellyDevice's parseComponentKey without importing it, because
+// that import direction would recreate the AbstractDevice/ShellyDevice cycle.
+function splitComponentKey(key: string): {type: string; id?: number} {
+    const separatorIndex = key.indexOf(':');
+    if (separatorIndex === -1) return {type: key};
+    const id = Number.parseInt(key.slice(separatorIndex + 1), 10);
+    return {
+        type: key.slice(0, separatorIndex),
+        ...(Number.isFinite(id) ? {id} : {})
+    };
+}
+
+// Same matching rules as updateEntityNameFromConfig: entity ids may carry a
+// suffix that differs from the component type (switch entities end in ':out').
+function entityMatchesComponent(
+    entity: entity_t,
+    componentType: string,
+    componentId: number | undefined
+): boolean {
+    if ('id' in entity.properties && entity.properties.id !== componentId) {
+        return false;
+    }
+    if (entity.type === componentType) return true;
+    if (entity.id.endsWith(`:${componentType}`)) return true;
+    return entity.id.endsWith(':out') && componentType === 'switch';
+}
+
 // Resolved-field projections (e.g. cury vials) run wherever status is stored,
 // so every payload and broadcast carries them without per-caller wiring.
 function projectAllComponentStatus(
@@ -79,6 +107,25 @@ function projectAllComponentStatus(
         status[key] = applyStatusProjection(key, status[key]);
     }
     return status;
+}
+
+// A number or a list of numbers that moved (power, energy per minute, uptime).
+// A boolean or text change, or a field that appeared or vanished, is a change
+// of state.
+function isMeasuredValue(value: unknown): boolean {
+    return (
+        typeof value === 'number' ||
+        (Array.isArray(value) &&
+            value.every((item) => typeof item === 'number'))
+    );
+}
+
+function isMeasuredNumberChange(change: PathChange): boolean {
+    return isMeasuredValue(change.prev) && isMeasuredValue(change.next);
+}
+
+function saveUrgencyOf(changes: readonly PathChange[]): 'routine' | 'state' {
+    return changes.every(isMeasuredNumberChange) ? 'routine' : 'state';
 }
 
 export default abstract class AbstractDevice {
@@ -95,6 +142,7 @@ export default abstract class AbstractDevice {
     #methods: string[];
     protected _meta: Record<string, any>;
     #lastReportTs: number;
+    #disconnectedAtMs: number | undefined;
     // toJSON cache — version-based invalidation for O(1) cache hits
     #jsonCache: ShellyDeviceExternal | null = null;
     #jsonVersion = 0;
@@ -141,8 +189,11 @@ export default abstract class AbstractDevice {
         this.setTransport(transport);
     }
 
-    protected abstract onStateChange(): void;
+    // 'routine': only measured numbers moved, so the snapshot save can wait.
+    protected abstract onStateChange(change?: 'routine' | 'state'): void;
     protected abstract onMessage(message: any, request?: any): void;
+    // Shutdown saves a debounced snapshot now, while the database is still up.
+    abstract flushPersist(): Promise<void>;
 
     // ----------------------------------------------------
     // Remote Procedure Call logic
@@ -206,6 +257,51 @@ export default abstract class AbstractDevice {
 
         this.#entities.splice(index, 1);
         ShellyEvents.emitEntityRemoved(entity);
+    }
+
+    /**
+     * Replace an entity's compose-time snapshot with a freshly composed one.
+     * Mutates the existing object instead of swapping it: the DeviceCollector
+     * entity index holds direct references and only invalidates on
+     * Entity.Added / Entity.Removed.
+     */
+    replaceEntity(entity: entity_t) {
+        const existing = this.#entities.find((en) => en.id === entity.id);
+        if (!existing) {
+            this.addEntity(entity);
+            return;
+        }
+        const target = existing as unknown as Record<string, unknown>;
+        const source = entity as unknown as Record<string, unknown>;
+        for (const field of Object.keys(target)) {
+            if (!(field in source)) delete target[field];
+        }
+        Object.assign(target, source);
+        this.#currentVersion++;
+        logger.info('Entity updated', existing);
+        ShellyEvents.emitEntityUpdated(existing);
+    }
+
+    /**
+     * Recompose the entities backed by one component and replace any whose
+     * compose-time snapshot (enum options, number ranges, boolean titles,
+     * view, ...) drifted from the current config. Emits Entity.Updated per
+     * replaced entity. Name-only changes are already applied in place by
+     * updateEntityNameFromConfig, so an otherwise-identical recompose stays
+     * silent.
+     */
+    protected recomposeEntitiesForComponent(componentKey: string) {
+        const {type, id} = splitComponentKey(componentKey);
+        const affected = this.#entities.filter((entity) =>
+            entityMatchesComponent(entity, type, id)
+        );
+        if (affected.length === 0) return;
+        const fresh = this.generateEntities();
+        for (const existing of affected) {
+            const next = fresh.find((en) => en.id === existing.id);
+            if (!next || isDeepStrictEqual(existing, next)) continue;
+            this.replaceEntity(next);
+        }
     }
 
     /**
@@ -284,7 +380,7 @@ export default abstract class AbstractDevice {
         const reason = this.findMessageReason(key, status);
         ShellyEvents.emitShellyStatus(this, reason, changes);
 
-        this.onStateChange();
+        this.onStateChange(saveUrgencyOf(changes));
     }
 
     protected setRuntimeComponentStatus(
@@ -314,7 +410,10 @@ export default abstract class AbstractDevice {
      * values from the in-event diff (Phase 2.2a — eliminates the per-
      * field fn_status_last_value N+1 in ShellyMessageHandler).
      */
-    batchSetComponentStatus(data: Record<string, any>): PathChange[] {
+    batchSetComponentStatus(
+        data: Record<string, any>,
+        journal?: {tsEpochSec?: number}
+    ): PathChange[] {
         const normalized = normalizeComponentKeys(data);
         const reasons: string[] = [];
         const allChanges: PathChange[] = [];
@@ -330,8 +429,8 @@ export default abstract class AbstractDevice {
         }
         this.#currentVersion++;
         // Emit once with all reasons — EventDistributor matches if ANY reason fits
-        ShellyEvents.emitShellyStatus(this, reasons, allChanges);
-        this.onStateChange();
+        ShellyEvents.emitShellyStatus(this, reasons, allChanges, journal);
+        this.onStateChange(saveUrgencyOf(allChanges));
         return allChanges;
     }
 
@@ -364,6 +463,7 @@ export default abstract class AbstractDevice {
             }
             this.#transport = undefined;
             this.#presence = 'offline';
+            this.#disconnectedAtMs = Date.now();
             this.#currentVersion++;
             // Suppressed on reconnect-replace — the fresh connection already
             // emitted connected, so a disconnect here is a spurious flicker.
@@ -444,7 +544,7 @@ export default abstract class AbstractDevice {
             this.#status[key] = applyStatusProjection(key, merged);
         }
         this.#currentVersion++;
-        this.onStateChange();
+        this.onStateChange(saveUrgencyOf(allChanges));
         ShellyEvents.emitShellyStatus(this, reason, allChanges);
     }
 
@@ -504,7 +604,7 @@ export default abstract class AbstractDevice {
             capabilities: this.wireCapabilities,
             methods: this.#methods,
             meta: {lastReportTs: this.#lastReportTs},
-            profile: this.profile,
+            derivedProfile: toWireProfile(this.profile),
             ...(this.#lastSeenSleepingMs !== undefined
                 ? {lastSeenSleepingMs: this.#lastSeenSleepingMs}
                 : {})
@@ -617,7 +717,7 @@ export default abstract class AbstractDevice {
             capabilities: this.wireCapabilities,
             methods: this.#methods,
             meta: {lastReportTs: this.#lastReportTs},
-            profile: this.profile,
+            derivedProfile: toWireProfile(this.profile),
             ...(this.#lastSeenSleepingMs !== undefined
                 ? {lastSeenSleepingMs: this.#lastSeenSleepingMs}
                 : {})
@@ -724,6 +824,12 @@ export default abstract class AbstractDevice {
     // RuleSweep for heartbeat (telemetry-stopped) detection.
     get lastReportTs(): number {
         return this.#lastReportTs;
+    }
+
+    // When this process lost the device's connection. The offline judge counts
+    // quiet time from here; the stored last_seen can lag by a flush interval.
+    get disconnectedAtMs(): number | undefined {
+        return this.#disconnectedAtMs;
     }
 
     set reconnected(reconnected: boolean) {

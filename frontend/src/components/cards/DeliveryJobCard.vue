@@ -20,6 +20,7 @@
                 {{ job.state }}
             </span>
         </div>
+        <p v-if="errorMessage" class="djc-error">{{ errorMessage }}</p>
         <div class="djc-footer">
             <span class="djc-attempts">
                 <i class="fas fa-arrows-rotate djc-icon" />
@@ -40,6 +41,8 @@ import ProviderLogo from '@/components/core/ProviderLogo.vue';
 defineProps<{
     job: DeliveryJob;
     endpoint?: Channel | null;
+    /** Text of the last failed attempt, when the parent has loaded it. */
+    errorMessage?: string | null;
 }>();
 
 defineEmits<{open: []}>();
@@ -128,6 +131,13 @@ function formatTs(ts: string): string {
     background: var(--color-info-subtle);
     border-color: var(--color-info);
 }
+.djc-error {
+    margin: var(--space-2) 0 0;
+    font-size: var(--type-caption);
+    color: var(--color-status-red);
+    word-break: break-word;
+}
+
 .djc-footer {
     display: flex;
     gap: var(--space-3);

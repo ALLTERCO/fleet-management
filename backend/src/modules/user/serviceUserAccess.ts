@@ -10,6 +10,7 @@ import {
     createAssignmentGrant
 } from '../authz/admin';
 import {authzAuditWriter, type UserGroupAuditInput} from '../authz/audit';
+import {invalidateAuthzTenant} from '../authz/runtime';
 import * as store from '../PostgresProvider';
 
 export interface ServiceUserAssignmentInput {
@@ -121,6 +122,7 @@ async function addServiceUserToGroups(
             added: [request.userId]
         });
     }
+    if (addedGroups.length > 0) await invalidateAuthzTenant(request.tenantId);
     return addedGroups;
 }
 

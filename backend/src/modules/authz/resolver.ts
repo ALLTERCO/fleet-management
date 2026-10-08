@@ -2,9 +2,11 @@
 
 import {createHash} from 'node:crypto';
 import log4js from 'log4js';
+import {BoundedMap} from '../boundedMap';
 import * as Observability from '../Observability';
+import {getOrganizationAccessVersion} from '../organizationCacheVersions';
 import type {AuthzCache} from './cache';
-import type {L1AuthzCache} from './l1-cache';
+import type {L1AuthzCache, L1DecisionKey} from './l1-cache';
 import {isExplicitScope} from './scopeGuard';
 import type {
     EffectiveShape,
@@ -25,6 +27,15 @@ function hashRoles(roles: readonly string[]): string {
 }
 
 const logger = log4js.getLogger('authz-resolver');
+
+// last_used_at feeds a days-long "unused assignment" report, so one write per
+// assignment per minute per process loses nothing and spares a write per check.
+const ASSIGNMENT_USE_MARK_INTERVAL_MS = 60_000;
+const ASSIGNMENT_USE_MARK_MAX_KEYS = 10_000;
+const recentlyMarkedAssignments = new BoundedMap<string, true>({
+    maxSize: ASSIGNMENT_USE_MARK_MAX_KEYS,
+    ttlMs: ASSIGNMENT_USE_MARK_INTERVAL_MS
+});
 
 // ─── Public types ─────────────────────────────────────────────────
 
@@ -163,20 +174,30 @@ export function intersectActions(
     boundaryActions: readonly string[]
 ): string[] {
     if (boundaryActions.includes('*')) return [...statementActions];
-    const out: string[] = [];
+    const out = new Set<string>();
     for (const action of statementActions) {
-        const [stmtType, stmtVerb] = action.split(':');
+        const [stmtType, stmtVerb] = (action === '*' ? '*:*' : action).split(
+            ':'
+        );
         for (const pattern of boundaryActions) {
             const [patType, patVerb] = pattern.split(':');
-            const typeMatches = patType === '*' || patType === stmtType;
-            const verbMatches = patVerb === '*' || patVerb === stmtVerb;
-            if (typeMatches && verbMatches) {
-                out.push(action);
-                break;
-            }
+            if (!stmtType || !stmtVerb || !patType || !patVerb) continue;
+            const type =
+                stmtType === '*'
+                    ? patType
+                    : patType === '*' || patType === stmtType
+                      ? stmtType
+                      : undefined;
+            const verb =
+                stmtVerb === '*'
+                    ? patVerb
+                    : patVerb === '*' || patVerb === stmtVerb
+                      ? stmtVerb
+                      : undefined;
+            if (type && verb) out.add(`${type}:${verb}`);
         }
     }
-    return out;
+    return [...out];
 }
 
 export function applyBoundary(
@@ -208,12 +229,9 @@ export function scopeIsExplicit(scope: Scope): boolean {
 export function scopeMatches(scope: Scope, resource: ResourceRef): boolean {
     if (!scopeIsExplicit(scope)) return false;
     if (scope.all === true) return true;
-    if (
-        scope.device_ids?.length &&
-        !scope.device_ids.includes(String(resource.id))
-    ) {
-        return false;
-    }
+    // Alerts and entities of a device reach the caller through the alert and
+    // entity reach rules, never through an id that happens to equal a device id.
+    if (!stringScopeMatches(scope.device_ids, 'device', resource)) return false;
     if (scope.location_ids?.length) {
         const resourceLocationIds =
             resource.locationIds ??
@@ -238,27 +256,26 @@ export function scopeMatches(scope: Scope, resource: ResourceRef): boolean {
         const has = scope.device_tags.some((t) => resource.tags!.includes(t));
         if (!has) return false;
     }
+    if (!numberScopeMatches(scope.dashboard_ids, 'dashboard', resource))
+        return false;
+    if (!stringScopeMatches(scope.plugin_keys, 'plugin', resource))
+        return false;
+    if (!stringScopeMatches(scope.waiting_room_ids, 'waiting_room', resource))
+        return false;
     if (
-        scope.dashboard_ids?.length &&
-        !scope.dashboard_ids.includes(Number(resource.id))
-    ) {
+        !stringScopeMatches(scope.configuration_keys, 'configuration', resource)
+    )
         return false;
-    }
-    if (
-        scope.plugin_keys?.length &&
-        !scope.plugin_keys.includes(String(resource.id))
-    ) {
+    if (!numberScopeMatches(scope.report_ids, 'report', resource)) return false;
+    if (!stringScopeMatches(scope.organization_ids, 'organization', resource))
         return false;
-    }
-    if (!stringScopeMatches(scope.waiting_room_ids, resource.id)) return false;
-    if (!stringScopeMatches(scope.configuration_keys, resource.id))
+    if (!stringScopeMatches(scope.alert_ids, 'alert', resource)) return false;
+    if (!stringScopeMatches(scope.notification_ids, 'notification', resource))
         return false;
-    if (!numberScopeMatches(scope.report_ids, resource.id)) return false;
-    if (!stringScopeMatches(scope.organization_ids, resource.id)) return false;
-    if (!stringScopeMatches(scope.alert_ids, resource.id)) return false;
-    if (!stringScopeMatches(scope.notification_ids, resource.id)) return false;
-    if (!stringScopeMatches(scope.integration_keys, resource.id)) return false;
-    if (!stringScopeMatches(scope.automation_ids, resource.id)) return false;
+    if (!stringScopeMatches(scope.integration_keys, 'integration', resource))
+        return false;
+    if (!stringScopeMatches(scope.automation_ids, 'automation', resource))
+        return false;
     return true;
 }
 
@@ -272,18 +289,28 @@ function isDeviceGroupResourceInScope(
     );
 }
 
+// An id selector names one resource type. Ids of different types come from
+// separate sequences, so an equal id of another type is never a match.
 function stringScopeMatches(
     values: readonly string[] | undefined,
-    resourceId: string | number
+    selectorType: string,
+    resource: ResourceRef
 ): boolean {
-    return !values?.length || values.includes(String(resourceId));
+    if (!values?.length) return true;
+    return (
+        resource.type === selectorType && values.includes(String(resource.id))
+    );
 }
 
 function numberScopeMatches(
     values: readonly number[] | undefined,
-    resourceId: string | number
+    selectorType: string,
+    resource: ResourceRef
 ): boolean {
-    return !values?.length || values.includes(Number(resourceId));
+    if (!values?.length) return true;
+    return (
+        resource.type === selectorType && values.includes(Number(resource.id))
+    );
 }
 
 export function actionInStatement(
@@ -475,13 +502,7 @@ interface AssignmentTrace {
 }
 
 /**
- * Build effective shape from JWT built-in roles + DB assignments + scopes.
- * The expensive cold-path computation; result is cached at L2 by callers.
- *
- *   - JWT built-in roles → seeded persona shapes (implicit scope=all)
- *   - User's groups → group assignments → custom personas + scopes
- *   - Direct user assignments → custom personas + narrow scopes
- *   - Union all → effective shape
+ * Assignments alone when the user holds any; JWT built-ins only for an unassigned user.
  */
 export async function buildEffectiveShape(
     deps: ResolverDeps,
@@ -528,19 +549,16 @@ async function collectAssignmentTraces(
         personaList.map((p) => [p.id, p])
     );
 
-    // Narrowing: system persona keys with an assignment skip their JWT
-    // scope:{all} — the assignment's scope wins. AWS-IAM boundary semantic.
-    const narrowedSystemKeys = new Set<string>();
-    for (const a of assignments) {
-        const p = personaById.get(a.persona_id);
-        if (p?.is_system_managed) narrowedSystemKeys.add(p.key);
+    const grants: Array<{assignment: AssignmentRow; persona: PersonaRow}> = [];
+    for (const assignment of assignments) {
+        const persona = personaById.get(assignment.persona_id);
+        if (persona) grants.push({assignment, persona});
     }
 
-    // Step a: JWT built-ins; skip those with an assignment (narrowing).
-    if (builtInRoles.length > 0) {
+    // Built-ins are the legacy shape for a user nobody has assigned anything to.
+    if (grants.length === 0 && builtInRoles.length > 0) {
         const builtIns = await deps.db.getSystemPersonas(builtInRoles);
         for (const persona of builtIns) {
-            if (narrowedSystemKeys.has(persona.key)) continue;
             for (const statement of persona.statements) {
                 traces.push({
                     statement: {
@@ -556,9 +574,7 @@ async function collectAssignmentTraces(
         }
     }
 
-    for (const assignment of assignments) {
-        const persona = personaById.get(assignment.persona_id);
-        if (!persona) continue;
+    for (const {assignment, persona} of grants) {
         for (const statement of persona.statements) {
             traces.push({
                 statement: {
@@ -602,29 +618,32 @@ function assignmentExpiresAtMs(assignment: AssignmentRow): number | undefined {
     return Number.isFinite(expiresAt) ? expiresAt : 0;
 }
 
-// L1 GET runs before shape build — entries only exist when the set-side
-// already cleared shapeHasExpiringAssignments, and L1 invalidation is wired
-// to L2 tenant-version bumps. So a hit is always safe to serve.
+// L1 GET runs before shape build. Entries exist only when the set-side
+// already cleared shapeHasExpiringAssignments; tenant-version bumps clear them,
+// and the org access version read here retires any decision computed from
+// older membership data, on every process that heard the change.
 export async function check(
     deps: ResolverDeps,
     req: CheckRequest
 ): Promise<boolean> {
-    const ctxKey = requestContextCacheKey(req.context);
-    const cached = deps.l1?.get(
-        req.tenantId,
-        req.userId,
-        req.action,
-        req.resource.type,
-        req.resource.id,
-        ctxKey
-    );
+    const l1Key: L1DecisionKey = {
+        tenantId: req.tenantId,
+        userId: req.userId,
+        action: req.action,
+        resourceType: req.resource.type,
+        resourceId: req.resource.id,
+        contextKey: requestContextCacheKey(req.context)
+    };
+    // Read before any await, so a change that lands mid-check retires the entry.
+    const accessVersion = getOrganizationAccessVersion(req.tenantId);
+    const cached = deps.l1?.get(l1Key, accessVersion);
     if (cached !== undefined) {
         Observability.incrementCounter('authz_l1_hits');
         return cached;
     }
     Observability.incrementCounter('authz_l1_misses');
     const t0 = performance.now();
-    const shape = await getOrBuildShape(deps, req);
+    const shape = await loadCachedEffectiveShape(deps, req);
     const {decision, matchedAllowAssignmentIds} = actionAllowedWithTrace(
         shape,
         req.action,
@@ -632,15 +651,7 @@ export async function check(
         req.context
     );
     if (!shapeHasExpiringAssignments(shape)) {
-        deps.l1?.set(
-            req.tenantId,
-            req.userId,
-            req.action,
-            req.resource.type,
-            req.resource.id,
-            decision,
-            ctxKey
-        );
+        deps.l1?.set(l1Key, {decision, accessVersion});
     }
     if (matchedAllowAssignmentIds.length > 0) {
         markMatchedAssignmentsUsed(deps, {
@@ -656,8 +667,26 @@ function markMatchedAssignmentsUsed(
     deps: ResolverDeps,
     input: {tenantId: string; assignmentIds: string[]}
 ): void {
+    const due = input.assignmentIds.filter(
+        (id) =>
+            !recentlyMarkedAssignments.has(assignmentUseKey(input.tenantId, id))
+    );
+    if (due.length === 0) return;
+    for (const id of due) {
+        recentlyMarkedAssignments.set(
+            assignmentUseKey(input.tenantId, id),
+            true
+        );
+    }
     // Best-effort telemetry. The authorization decision has already been made.
-    void markMatchedAssignmentsUsedAsync(deps, input);
+    void markMatchedAssignmentsUsedAsync(deps, {
+        tenantId: input.tenantId,
+        assignmentIds: due
+    });
+}
+
+function assignmentUseKey(tenantId: string, assignmentId: string): string {
+    return `${tenantId}|${assignmentId}`;
 }
 
 async function markMatchedAssignmentsUsedAsync(
@@ -667,6 +696,12 @@ async function markMatchedAssignmentsUsedAsync(
     try {
         await deps.db.markAssignmentsUsed(input.tenantId, input.assignmentIds);
     } catch (error) {
+        // Forget the mark so a later check writes it again.
+        for (const id of input.assignmentIds) {
+            recentlyMarkedAssignments.delete(
+                assignmentUseKey(input.tenantId, id)
+            );
+        }
         Observability.incrementCounter('authz_mark_used_failures');
         logger.warn('markAssignmentsUsed failed: %s', error);
     }
@@ -862,9 +897,16 @@ async function resolveTenantVersion(
     return deps.cache.seedVersionIfMissing(tenantId, durable);
 }
 
-async function getOrBuildShape(
+export interface ShapeRequest {
+    userId: string;
+    tenantId: string;
+    builtInRoles: string[];
+}
+
+// Version-keyed L2 read; rebuilds only when the tenant version or roles move.
+export async function loadCachedEffectiveShape(
     deps: ResolverDeps,
-    req: CheckRequest
+    req: ShapeRequest
 ): Promise<EffectiveShape> {
     const rolesHash = hashRoles(req.builtInRoles);
     const cached = await deps.cache.getEffective(req.userId, req.tenantId);

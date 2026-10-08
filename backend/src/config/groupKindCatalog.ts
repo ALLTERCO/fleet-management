@@ -7,7 +7,7 @@
 
 import type {JsonSchema} from '../types/api/_schema';
 import {CONSUMER_KINDS} from './groupKindConsumers';
-import type {GroupKindDefinition} from './groupKindTypes';
+import {type GroupKindDefinition, SCHEMA_EMPTY} from './groupKindTypes';
 
 export type {GroupKindCategory, GroupKindDefinition} from './groupKindTypes';
 
@@ -157,7 +157,19 @@ export const GROUP_KIND_CATALOG: readonly GroupKindDefinition[] = [
                 location_id: {type: 'integer'}
             }
         },
-        sortOrder: 11
+        sortOrder: 11,
+        metrics: [
+            {
+                name: 'energy_kwh',
+                semantic: 'energy',
+                rollup: {kind: 'sum', over: 'children.energy_kwh'}
+            },
+            {
+                name: 'peak_w',
+                semantic: 'power',
+                rollup: {kind: 'max', over: 'children.power_w'}
+            }
+        ]
     },
     {
         id: 'feeder',
@@ -176,7 +188,19 @@ export const GROUP_KIND_CATALOG: readonly GroupKindDefinition[] = [
                 length_m: POSITIVE_NUMBER
             }
         },
-        sortOrder: 12
+        sortOrder: 12,
+        metrics: [
+            {
+                name: 'energy_kwh',
+                semantic: 'energy',
+                rollup: {kind: 'sum', over: 'children.energy_kwh'}
+            },
+            {
+                name: 'peak_w',
+                semantic: 'power',
+                rollup: {kind: 'max', over: 'children.power_w'}
+            }
+        ]
     },
     {
         id: 'switchgear',
@@ -286,7 +310,19 @@ export const GROUP_KIND_CATALOG: readonly GroupKindDefinition[] = [
                 setpoint_cool_c: {type: 'number'}
             }
         },
-        sortOrder: 20
+        sortOrder: 20,
+        metrics: [
+            {
+                name: 'energy_kwh',
+                semantic: 'energy',
+                rollup: {kind: 'sum', over: 'children.energy_kwh'}
+            },
+            {
+                name: 'peak_w',
+                semantic: 'power',
+                rollup: {kind: 'max', over: 'children.power_w'}
+            }
+        ]
     },
     {
         id: 'lighting_zone',
@@ -303,7 +339,90 @@ export const GROUP_KIND_CATALOG: readonly GroupKindDefinition[] = [
                 daylight_harvest: {type: 'boolean'}
             }
         },
-        sortOrder: 21
+        sortOrder: 21,
+        metrics: [
+            {
+                name: 'energy_kwh',
+                semantic: 'energy',
+                rollup: {kind: 'sum', over: 'children.energy_kwh'}
+            },
+            {
+                name: 'peak_w',
+                semantic: 'power',
+                rollup: {kind: 'max', over: 'children.power_w'}
+            }
+        ]
+    },
+    {
+        id: 'space_heating',
+        appliesTo: 'both',
+        displayName: 'Space Heating',
+        description: 'Energy used to heat occupied spaces.',
+        category: 'building',
+        icon: 'fa-temperature-arrow-up',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 22
+    },
+    {
+        id: 'space_cooling',
+        appliesTo: 'both',
+        displayName: 'Space Cooling',
+        description: 'Energy used to cool occupied spaces.',
+        category: 'building',
+        icon: 'fa-snowflake',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 23
+    },
+    {
+        id: 'water_heating',
+        appliesTo: 'both',
+        displayName: 'Water Heating',
+        description: 'Energy used to heat water for final consumption.',
+        category: 'building',
+        icon: 'fa-droplet',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 24
+    },
+    {
+        id: 'cooking',
+        appliesTo: 'both',
+        displayName: 'Cooking',
+        description: 'Energy used for cooking.',
+        category: 'building',
+        icon: 'fa-kitchen-set',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 25
+    },
+    {
+        id: 'lighting_and_appliances',
+        appliesTo: 'both',
+        displayName: 'Lighting and Appliances',
+        description: 'Energy used by lighting and appliances.',
+        category: 'building',
+        icon: 'fa-lightbulb',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 26
+    },
+    {
+        id: 'process_cooling',
+        appliesTo: 'both',
+        displayName: 'Process Cooling',
+        description:
+            'Energy used for industrial or commercial process cooling.',
+        category: 'industrial',
+        icon: 'fa-temperature-low',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 27
+    },
+    {
+        id: 'other',
+        appliesTo: 'both',
+        displayName: 'Other End Use',
+        description: 'Final energy use not covered by another built-in kind.',
+        category: 'general',
+        icon: 'fa-shapes',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 28
     },
     {
         id: 'occupancy_group',
@@ -803,7 +922,19 @@ export const GROUP_KIND_CATALOG: readonly GroupKindDefinition[] = [
                 site_max_kw: POSITIVE_NUMBER
             }
         },
-        sortOrder: 71
+        sortOrder: 71,
+        metrics: [
+            {
+                name: 'energy_kwh',
+                semantic: 'energy',
+                rollup: {kind: 'sum', over: 'children.energy_kwh'}
+            },
+            {
+                name: 'peak_w',
+                semantic: 'power',
+                rollup: {kind: 'max', over: 'children.power_w'}
+            }
+        ]
     },
     {
         id: 'charge_session',
@@ -856,7 +987,19 @@ export const GROUP_KIND_CATALOG: readonly GroupKindDefinition[] = [
                 priority_rule: CODE
             }
         },
-        sortOrder: 74
+        sortOrder: 74,
+        metrics: [
+            {
+                name: 'energy_kwh',
+                semantic: 'energy',
+                rollup: {kind: 'sum', over: 'children.energy_kwh'}
+            },
+            {
+                name: 'peak_w',
+                semantic: 'power',
+                rollup: {kind: 'max', over: 'children.power_w'}
+            }
+        ]
     },
 
     // ─── datacenter ───────────────────────────────────────────────────
@@ -1446,7 +1589,24 @@ export const GROUP_KIND_CATALOG: readonly GroupKindDefinition[] = [
                 rated_mw: POSITIVE_NUMBER
             }
         },
-        sortOrder: 121
+        sortOrder: 121,
+        metrics: [
+            {
+                name: 'total_kwh',
+                semantic: 'energy',
+                rollup: {kind: 'sum', over: 'children.energy_kwh'}
+            },
+            {
+                name: 'peak_kw',
+                semantic: 'power',
+                rollup: {kind: 'max', over: 'children.power_w'}
+            },
+            {
+                name: 'turbine_count',
+                semantic: 'count',
+                rollup: {kind: 'count', over: 'children'}
+            }
+        ]
     },
     {
         id: 'hydro_turbine',
@@ -2753,6 +2913,53 @@ export const GROUP_KIND_CATALOG: readonly GroupKindDefinition[] = [
         sortOrder: 30
     },
 
+    // ─── building (HVAC equipment) ────────────────────────────────────
+    // Common HVAC equipment kinds not already covered by CONSUMER_KINDS
+    // (which carries chiller, boiler, ahu, rtu, heat_pump, vav_box, vrf,
+    // fan_coil, cooling_tower, humidifier, makeup_air_unit, and more).
+    // Names and descriptions are seeded from the Project Haystack equipment
+    // vocabulary. Each can tag a single device or a group, so appliesTo:
+    // 'both'. Structural entries carry a capacity schema; the CONSUMER_KINDS
+    // rows are schema-less reference kinds.
+    {
+        id: 'dedicated_outdoor_air_unit',
+        appliesTo: 'both',
+        displayName: 'Dedicated Outdoor Air Unit',
+        description:
+            'Air handler that supplies 100% outdoor air to ventilate a space.',
+        category: 'building',
+        icon: 'fa-wind',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                rated_airflow_cmh: POSITIVE_NUMBER,
+                cooling_capacity_kw: POSITIVE_NUMBER,
+                heating_capacity_kw: POSITIVE_NUMBER
+            }
+        },
+        sortOrder: 31
+    },
+    {
+        id: 'unit_ventilator',
+        appliesTo: 'both',
+        displayName: 'Unit Ventilator',
+        description:
+            'Room air unit with an outdoor-air intake for space ventilation.',
+        category: 'building',
+        icon: 'fa-fan',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                rated_airflow_cmh: POSITIVE_NUMBER,
+                cooling_capacity_kw: POSITIVE_NUMBER,
+                heating_capacity_kw: POSITIVE_NUMBER
+            }
+        },
+        sortOrder: 32
+    },
+
     // ─── property (extended) ─────────────────────────────────────────
     {
         id: 'short_term_rental',
@@ -3306,6 +3513,557 @@ export const GROUP_KIND_CATALOG: readonly GroupKindDefinition[] = [
             properties: {atm_count: POSITIVE_INT}
         },
         sortOrder: 394
+    },
+
+    // ─── audit additions: sensors ─────────────────────────────────────
+    // Shelly's own sensor line. The catalog classified actuators but had no
+    // sensor kinds. Reference kinds carry no metadata (SCHEMA_EMPTY) and each
+    // can tag a single device or a group (appliesTo 'both').
+    {
+        id: 'climate_sensor',
+        appliesTo: 'both',
+        displayName: 'Temperature and Humidity Sensor',
+        description:
+            'A sensor that reports temperature and humidity for a space.',
+        category: 'building',
+        icon: 'fa-temperature-half',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 33
+    },
+    {
+        id: 'control_panel',
+        appliesTo: 'both',
+        displayName: 'Wall Control Panel',
+        description:
+            'A wall-mounted panel that shows status and controls devices.',
+        category: 'building',
+        icon: 'fa-display',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 34
+    },
+    {
+        id: 'scene_controller',
+        appliesTo: 'both',
+        displayName: 'Button / Scene Controller',
+        description: 'A button or remote that triggers scenes and controls.',
+        category: 'general',
+        icon: 'fa-wand-magic-sparkles',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 1
+    },
+    {
+        id: 'motion_sensor',
+        appliesTo: 'both',
+        displayName: 'Motion Sensor',
+        description: 'A sensor that detects movement in an area.',
+        category: 'public_safety',
+        icon: 'fa-person-running',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 224
+    },
+    {
+        id: 'contact_sensor',
+        appliesTo: 'both',
+        displayName: 'Door or Window Sensor',
+        description: 'A sensor that reports whether a door or window is open.',
+        category: 'public_safety',
+        icon: 'fa-door-open',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 225
+    },
+    {
+        id: 'soil_moisture_sensor',
+        appliesTo: 'both',
+        displayName: 'Soil Moisture Sensor',
+        description:
+            'A soil probe that reports moisture for irrigation decisions.',
+        category: 'agriculture',
+        icon: 'fa-seedling',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 188
+    },
+    {
+        id: 'weather_station',
+        appliesTo: 'both',
+        displayName: 'Weather Station',
+        description: 'A weather sensor reporting rain and outdoor conditions.',
+        category: 'agriculture',
+        icon: 'fa-cloud-sun-rain',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 189
+    },
+    {
+        id: 'leak_sensor',
+        appliesTo: 'both',
+        displayName: 'Water Leak Sensor',
+        description: 'A sensor that detects water leaks.',
+        category: 'public_safety',
+        icon: 'fa-droplet',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 226
+    },
+    {
+        id: 'smoke_detector',
+        appliesTo: 'both',
+        displayName: 'Smoke Detector',
+        description: 'A detector that senses smoke and raises a fire alarm.',
+        category: 'public_safety',
+        icon: 'fa-smog',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 227
+    },
+    {
+        id: 'gas_detector',
+        appliesTo: 'both',
+        displayName: 'Gas Detector',
+        description: 'A detector that senses hazardous or combustible gas.',
+        category: 'public_safety',
+        icon: 'fa-triangle-exclamation',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 228
+    },
+    {
+        id: 'battery_monitor',
+        appliesTo: 'both',
+        displayName: 'Battery Monitor',
+        description: "A sensor that monitors a battery's charge and voltage.",
+        category: 'energy_storage',
+        icon: 'fa-battery-half',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 244
+    },
+
+    // ─── audit additions: commodity meters ────────────────────────────
+    // FM models gas, heat, and water as commodities but had no meter kind
+    // (only the water_meter_zone billing zone). Small identity schema mirrors
+    // water_meter_zone.
+    {
+        id: 'gas_meter',
+        appliesTo: 'both',
+        displayName: 'Gas Meter',
+        description: 'A meter that measures gas consumption.',
+        category: 'building',
+        icon: 'fa-gauge',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                meter_serial: CODE,
+                meter_size_mm: POSITIVE_NUMBER
+            }
+        },
+        sortOrder: 35
+    },
+    {
+        id: 'heat_meter',
+        appliesTo: 'both',
+        displayName: 'Heat Meter',
+        description:
+            'A meter that measures thermal energy delivered to a space.',
+        category: 'building',
+        icon: 'fa-temperature-half',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                meter_serial: CODE,
+                meter_size_mm: POSITIVE_NUMBER
+            }
+        },
+        sortOrder: 36
+    },
+    {
+        id: 'water_meter',
+        appliesTo: 'both',
+        displayName: 'Water Meter',
+        description: 'A meter that measures water consumption.',
+        category: 'water_utility',
+        icon: 'fa-droplet',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                meter_serial: CODE,
+                meter_size_mm: POSITIVE_NUMBER
+            }
+        },
+        sortOrder: 164
+    },
+
+    // ─── audit additions: building equipment ──────────────────────────
+    {
+        id: 'furnace',
+        appliesTo: 'both',
+        displayName: 'Furnace',
+        description:
+            'A fuel-fired or electric furnace that heats air for a building.',
+        category: 'building',
+        icon: 'fa-fire',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                heating_capacity_kw: POSITIVE_NUMBER,
+                fuel_type: SHORT_TEXT
+            }
+        },
+        sortOrder: 37
+    },
+    {
+        id: 'fire_pump',
+        appliesTo: 'both',
+        displayName: 'Fire Pump',
+        description:
+            "A pump that supplies water pressure to a building's fire-suppression system.",
+        category: 'building',
+        icon: 'fa-fire-extinguisher',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                rated_kw: POSITIVE_NUMBER,
+                rated_lps: POSITIVE_NUMBER
+            }
+        },
+        sortOrder: 38
+    },
+    {
+        id: 'condensing_unit',
+        appliesTo: 'both',
+        displayName: 'Condensing Unit',
+        description:
+            'An outdoor unit that rejects heat for an air-conditioning or refrigeration system.',
+        category: 'building',
+        icon: 'fa-snowflake',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                cooling_capacity_kw: POSITIVE_NUMBER,
+                refrigerant: SHORT_TEXT
+            }
+        },
+        sortOrder: 39
+    },
+    {
+        id: 'packaged_terminal_ac',
+        appliesTo: 'both',
+        displayName: 'Packaged Terminal AC (PTAC)',
+        description:
+            'A through-the-wall unit that heats and cools a single room.',
+        category: 'building',
+        icon: 'fa-snowflake',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                cooling_capacity_kw: POSITIVE_NUMBER,
+                heating_capacity_kw: POSITIVE_NUMBER
+            }
+        },
+        sortOrder: 40
+    },
+    {
+        id: 'baseboard_heater',
+        appliesTo: 'both',
+        displayName: 'Baseboard Heater',
+        description: "An electric baseboard heater along a room's wall.",
+        category: 'building',
+        icon: 'fa-temperature-high',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {rated_kw: POSITIVE_NUMBER}
+        },
+        sortOrder: 41
+    },
+    {
+        id: 'refrigeration_rack',
+        appliesTo: 'both',
+        displayName: 'Refrigeration Rack',
+        description:
+            'A rack of compressors serving refrigerated cases in a store.',
+        category: 'retail',
+        icon: 'fa-snowflake',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                compressor_count: POSITIVE_INT,
+                rated_kw: POSITIVE_NUMBER
+            }
+        },
+        sortOrder: 55
+    },
+    {
+        id: 'fire_alarm_panel',
+        appliesTo: 'both',
+        displayName: 'Fire Alarm Panel',
+        description:
+            "The control panel for a building's fire-detection and alarm system.",
+        category: 'public_safety',
+        icon: 'fa-bell',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {zone_count: POSITIVE_INT}
+        },
+        sortOrder: 229
+    },
+
+    // ─── audit additions: generation & storage ────────────────────────
+    {
+        id: 'hybrid_inverter',
+        appliesTo: 'both',
+        displayName: 'Hybrid Inverter',
+        description:
+            'An inverter that manages solar, battery, and grid power together.',
+        category: 'solar',
+        icon: 'fa-bolt',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                rated_kw: POSITIVE_NUMBER,
+                battery_kwh: POSITIVE_NUMBER
+            }
+        },
+        sortOrder: 64
+    },
+    {
+        id: 'combiner_box',
+        appliesTo: 'both',
+        displayName: 'Solar Combiner Box',
+        description:
+            'A box that combines several PV strings into one DC output.',
+        category: 'solar',
+        icon: 'fa-network-wired',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {input_count: POSITIVE_INT}
+        },
+        sortOrder: 65
+    },
+    {
+        id: 'battery_rack',
+        appliesTo: 'both',
+        displayName: 'Battery Rack',
+        description:
+            'A rack of battery modules within a larger storage system.',
+        category: 'energy_storage',
+        icon: 'fa-battery-full',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                capacity_kwh: POSITIVE_NUMBER,
+                module_count: POSITIVE_INT
+            }
+        },
+        sortOrder: 245
+    },
+    {
+        id: 'fuel_cell',
+        appliesTo: 'both',
+        displayName: 'Fuel Cell',
+        description:
+            'A cell that generates electricity from hydrogen or other fuel.',
+        category: 'energy_storage',
+        icon: 'fa-bolt',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                rated_kw: POSITIVE_NUMBER,
+                fuel_type: SHORT_TEXT
+            }
+        },
+        sortOrder: 246
+    },
+
+    // ─── audit additions: industrial / connector ──────────────────────
+    // Automation and process-instrument kinds for the connector protocols.
+    // Reference kinds (SCHEMA_EMPTY) unless a small size/identity fits.
+    {
+        id: 'plc',
+        appliesTo: 'both',
+        displayName: 'PLC (Programmable Controller)',
+        description:
+            'A programmable controller that automates machinery and processes.',
+        category: 'industrial',
+        icon: 'fa-microchip',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 50
+    },
+    {
+        id: 'remote_terminal_unit',
+        appliesTo: 'both',
+        displayName: 'Remote Terminal Unit',
+        description:
+            'A field unit that collects data and controls equipment for a SCADA system.',
+        category: 'industrial',
+        icon: 'fa-microchip',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 51
+    },
+    {
+        id: 'protocol_gateway',
+        appliesTo: 'both',
+        displayName: 'Protocol Gateway',
+        description:
+            'A device that translates between industrial communication protocols.',
+        category: 'industrial',
+        icon: 'fa-network-wired',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 52
+    },
+    {
+        id: 'process_transmitter',
+        appliesTo: 'both',
+        displayName: 'Process Transmitter',
+        description:
+            'A field instrument that measures a process value and transmits it.',
+        category: 'industrial',
+        icon: 'fa-gauge',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 53
+    },
+    {
+        id: 'control_valve',
+        appliesTo: 'both',
+        displayName: 'Control Valve',
+        description: 'A valve that regulates the flow of a fluid in a process.',
+        category: 'industrial',
+        icon: 'fa-faucet',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {valve_size_mm: POSITIVE_NUMBER}
+        },
+        sortOrder: 54
+    },
+    {
+        id: 'flow_meter',
+        appliesTo: 'both',
+        displayName: 'Flow Meter',
+        description: 'A meter that measures the flow rate of a fluid.',
+        category: 'industrial',
+        icon: 'fa-gauge',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                meter_serial: CODE,
+                meter_size_mm: POSITIVE_NUMBER
+            }
+        },
+        sortOrder: 55
+    },
+    {
+        id: 'level_sensor',
+        appliesTo: 'both',
+        displayName: 'Level Sensor',
+        description:
+            'A sensor that measures the fill level of a tank or vessel.',
+        category: 'industrial',
+        icon: 'fa-gauge',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 56
+    },
+    {
+        id: 'storage_tank',
+        appliesTo: 'both',
+        displayName: 'Storage Tank',
+        description:
+            'A tank that stores a liquid or bulk material in a process.',
+        category: 'industrial',
+        icon: 'fa-gas-pump',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                volume_m3: POSITIVE_NUMBER,
+                contents: SHORT_TEXT
+            }
+        },
+        sortOrder: 57
+    },
+    {
+        id: 'compressed_air_meter',
+        appliesTo: 'both',
+        displayName: 'Compressed Air Meter',
+        description:
+            'A meter that measures compressed-air flow to plant loads.',
+        category: 'industrial',
+        icon: 'fa-gauge',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {meter_serial: CODE}
+        },
+        sortOrder: 58
+    },
+
+    // ─── audit additions: electrical gear & sensors ───────────────────
+    // breaker makes the appliesTo:'both' doc example in groupKindTypes real.
+    {
+        id: 'breaker',
+        appliesTo: 'both',
+        displayName: 'Circuit Breaker',
+        description:
+            'A breaker that protects a circuit by interrupting overcurrent.',
+        category: 'electrical',
+        icon: 'fa-bolt',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                rated_amps: POSITIVE_NUMBER,
+                poles: {type: 'integer', minimum: 1, maximum: 3}
+            }
+        },
+        sortOrder: 21
+    },
+    {
+        id: 'motor_control_center',
+        appliesTo: 'both',
+        displayName: 'Motor Control Center',
+        description:
+            'A lineup of enclosures housing motor starters and breakers.',
+        category: 'electrical',
+        icon: 'fa-server',
+        metadataSchema: {
+            type: 'object',
+            additionalProperties: true,
+            properties: {
+                rated_amps: POSITIVE_NUMBER,
+                section_count: POSITIVE_INT
+            }
+        },
+        sortOrder: 22
+    },
+    {
+        id: 'ct_clamp',
+        appliesTo: 'both',
+        displayName: 'Current Sensor (CT clamp)',
+        description: 'A clip-on sensor that measures the current in a wire.',
+        category: 'electrical',
+        icon: 'fa-bolt',
+        metadataSchema: SCHEMA_EMPTY,
+        sortOrder: 23
+    },
+
+    // ─── audit additions: org tier ────────────────────────────────────
+    {
+        id: 'portfolio',
+        appliesTo: 'group',
+        displayName: 'Portfolio',
+        description: 'A top-level collection of properties or sites.',
+        category: 'property',
+        icon: 'fa-building',
+        metadataSchema: SCHEMA_PERMISSIVE,
+        sortOrder: 47
     },
 
     // ─── defense ─────────────────────────────────────────────────────

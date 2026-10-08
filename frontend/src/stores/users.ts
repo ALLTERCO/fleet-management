@@ -39,6 +39,9 @@ export interface ZitadelUser {
     lastName?: string;
     displayName?: string;
     state?: string;
+    // Project roles held in the identity provider. Empty means the account
+    // exists but cannot sign in, which the list has to show rather than hide.
+    roles?: string[];
 }
 
 export interface CreateUserResult {
@@ -107,6 +110,7 @@ export const useUsersStore = defineStore('users', () => {
         displayName?: string;
         password?: string;
         passwordChangeRequired?: boolean;
+        personaId: string;
     }): Promise<{userId: string} | null> {
         createError.value = '';
         try {
@@ -135,6 +139,7 @@ export const useUsersStore = defineStore('users', () => {
         displayName?: string;
         password?: string;
         passwordChangeRequired?: boolean;
+        personaId: string;
         groupIds?: string[];
         assignments?: ServiceUserAccessAssignment[];
     }): Promise<CreateUserResult | null> {

@@ -35,7 +35,7 @@
             </section>
         </template>
 
-        <p v-else class="akp__empty">No alert types match “{{ props.query }}”.</p>
+        <p v-else class="akp__empty">No rule types match “{{ props.query }}”.</p>
     </div>
 </template>
 

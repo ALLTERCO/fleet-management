@@ -2,12 +2,18 @@
 // Both log at debug + bump a labeled counter.
 
 import * as log4js from 'log4js';
+import {runAsBackgroundDbWork} from '../dbWorkPriority';
 import * as Observability from '../Observability';
 
 const logger = log4js.getLogger('fireAndForget');
 
-export function fireAndForget(label: string, work: Promise<unknown>): void {
-    void work.catch((err) => {
+// Takes the work as a function so it starts as background database work:
+// nobody waits for it, so it must not hold the foreground reserve.
+export function fireAndForget(
+    label: string,
+    work: () => Promise<unknown>
+): void {
+    void runAsBackgroundDbWork(work).catch((err) => {
         Observability.incrementLabeledCounter(
             'background_signal_failed_total',
             {label}

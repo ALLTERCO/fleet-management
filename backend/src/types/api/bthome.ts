@@ -63,6 +63,42 @@ export const BTHOME_START_DISCOVERY_PARAMS_SCHEMA: JsonSchema = {
     }
 };
 
+export interface BthomeListDiscoveredParams {
+    shellyID: string;
+}
+export const BTHOME_LIST_DISCOVERED_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['shellyID'],
+    additionalProperties: false,
+    properties: {shellyID: SHELLY_ID}
+};
+
+const DISCOVERED_BLU: JsonSchema = {
+    type: 'object',
+    required: ['shellyID', 'mac', 'type', 'name', 'isRemote'],
+    properties: {
+        shellyID: SHELLY_ID,
+        mac: {type: 'string', description: 'BLE address the device reported'},
+        type: {type: 'string', description: 'Model string, else the BLE name'},
+        name: {type: 'string', description: 'Best name to show a person'},
+        productName: {type: 'string'},
+        modelString: {type: 'string'},
+        localName: {type: 'string'},
+        modelId: {type: 'integer'},
+        isRemote: {
+            type: 'boolean',
+            description: 'Supports BTHomeControl learning'
+        },
+        rssi: {type: 'integer'},
+        ts: {type: 'number', description: 'When the gateway last heard it'},
+        heardAtMs: {
+            type: 'number',
+            description:
+                'Server time (ms) it was last heard; the scan list ages by this'
+        }
+    }
+};
+
 export interface BthomeDeviceAddManualParams {
     shellyID: string;
     mac: string;
@@ -292,6 +328,19 @@ b.registerMethod('StartDiscovery', {
     },
     permission: PERM_EXECUTE,
     description: 'Start BTHome device discovery on a gateway.'
+});
+
+b.registerMethod('ListDiscovered', {
+    params: BTHOME_LIST_DISCOVERED_PARAMS_SCHEMA,
+    response: {
+        type: 'object',
+        required: ['items'],
+        properties: {items: {type: 'array', items: DISCOVERED_BLU}}
+    },
+    permission: PERM_READ,
+    description:
+        'List the BLU devices a gateway has heard, most recent first. ' +
+        'Survives a page reload, unlike the live discovery event.'
 });
 
 b.registerMethod('Device.AddManual', {

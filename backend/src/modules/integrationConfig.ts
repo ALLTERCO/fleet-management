@@ -263,6 +263,34 @@ export function splitIntegrationConfig(
     };
 }
 
+/**
+ * Masked view of the stored secrets, keyed by config path.
+ *
+ * First and last 4 characters only, so an operator can recognise which value
+ * is stored without the API ever returning it. Anything short enough that the
+ * two halves would meet is masked whole.
+ */
+export function maskIntegrationSecrets(
+    provider: ChannelProvider,
+    secretConfig: unknown
+): Record<string, string> {
+    const stored = cloneRecord(secretConfig);
+    const masked: Record<string, string> = {};
+    for (const path of SECRET_PATHS[provider]) {
+        const value = getAtPath(stored, path);
+        if (typeof value !== 'string' || value.length === 0) continue;
+        masked[path] = maskSecretValue(value);
+    }
+    return masked;
+}
+
+const MASK_EDGE = 4;
+
+function maskSecretValue(value: string): string {
+    if (value.length <= MASK_EDGE * 2) return '•'.repeat(value.length);
+    return `${value.slice(0, MASK_EDGE)}${'•'.repeat(4)}${value.slice(-MASK_EDGE)}`;
+}
+
 export function mergeIntegrationConfig(
     provider: ChannelProvider,
     publicConfig: unknown,

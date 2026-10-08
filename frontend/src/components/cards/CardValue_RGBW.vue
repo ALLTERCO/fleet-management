@@ -14,7 +14,7 @@
         @delete="$emit('delete')" @cycle-size="$emit('cycle-size')"
     >
         <template #default>
-            <div role="status" class="ec-dpct">{{ brightnessDisplay }}<span>%</span></div>
+            <div role="status" class="ec-dpct">{{ brightnessDisplay }}<span class="ec-u">%</span></div>
             <div v-if="hasPM && isCCT" class="ec-sub ec-sub--sensor">{{ powerDisplay }} {{ powerUnit }} / {{ ctDisplay }}K</div>
             <div v-else-if="hasPM" class="ec-sub ec-sub--sensor">{{ powerDisplay }} {{ powerUnit }} / {{ hexColor }}</div>
             <div v-else-if="isCCT" class="ec-sub ec-sub--sensor">{{ ctDisplay }}K</div>
@@ -44,54 +44,45 @@
     >
         <template #default>
             <!-- Same RGB/CCT mode pill as the 2x2, top-left; swaps warmth↔colour. -->
-            <div class="bulb-mode-pill">
+            <div v-if="hasMode" class="bulb-mode-pill">
                 <button class="bulb-mp" :class="{act: !isCCT}" :disabled="!isOperable" @click.stop="setMode('rgb')">RGB</button>
                 <button class="bulb-mp" :class="{act: isCCT}" :disabled="!isOperable" @click.stop="setMode('cct')">CCT</button>
             </div>
             <div class="ec-wide-row">
                 <div class="ec-wl">
-                    <div role="status" class="ec-dpct ec-dpct--flush">{{ brightnessDisplay }}<span>%</span></div>
+                    <div role="status" class="ec-dpct ec-dpct--flush">{{ brightnessDisplay }}<span class="ec-u">%</span></div>
                     <div v-if="hasPM" class="ec-sub--power">{{ powerDisplay }} {{ powerUnit }} / {{ isCCT ? ctDisplay + 'K' : hexColor }}</div>
                     <div v-else class="ec-sub--power">{{ isCCT ? ctDisplay + 'K' : hexColor }}</div>
                 </div>
                 <div class="ec-wr">
                     <!-- Top slider: warmth (CCT) or hue (Color) depending on mode -->
-                    <div class="ec-clr-track">
-                        <input
-                            v-if="isCCT"
-                            type="range"
-                            class="sld-r sld-cct"
-                            min="0" max="100"
-                            :value="displayCct"
-                            :disabled="!isOperable"
-                            @input="onCctInput"
-                            @change="onCctChange"
-                            @click.stop
-                        />
-                        <input
-                            v-else
-                            type="range"
-                            class="sld-r sld-hue"
-                            min="0" max="360"
-                            :value="displayHue"
-                            :disabled="!isOperable"
-                            @input="onHueInput"
-                            @change="onHueChange"
-                            @click.stop
-                        />
-                    </div>
-                    <div class="ec-clr-track">
-                        <input
-                            type="range"
-                            class="sld-r sld-bri"
-                            min="0" max="100"
-                            :value="displayBrightness"
-                            :disabled="controlsDisabled || isOffline"
-                            @input="onBriInput"
-                            @change="onBriChange"
-                            @click.stop
-                        />
-                    </div>
+                    <CardSlider
+                        v-if="isCCT"
+                        variant="cct"
+                        :value="displayCct"
+                        :disabled="!isOperable"
+                        aria-label="Warmth"
+                        @input="onCctInput"
+                        @change="onCctChange"
+                    />
+                    <CardSlider
+                        v-else
+                        variant="hue"
+                        :max="360"
+                        :value="displayHue"
+                        :disabled="!isOperable"
+                        aria-label="Colour"
+                        @input="onHueInput"
+                        @change="onHueChange"
+                    />
+                    <CardSlider
+                        variant="bri"
+                        :value="displayBrightness"
+                        :disabled="controlsDisabled || isOffline"
+                        aria-label="Brightness"
+                        @input="onBriInput"
+                        @change="onBriChange"
+                    />
                     <CardToggle :is-on="isOn" :disabled="!isOperable" @toggle="toggle" />
                 </div>
             </div>
@@ -117,7 +108,7 @@
     >
         <template #default>
             <!-- Mode toggle pill — top left -->
-            <div class="bulb-mode-pill">
+            <div v-if="hasMode" class="bulb-mode-pill">
                 <button class="bulb-mp" :class="{act: !isCCT}" :disabled="!isOperable" @click.stop="setMode('rgb')">RGB</button>
                 <button class="bulb-mp" :class="{act: isCCT}" :disabled="!isOperable" @click.stop="setMode('cct')">CCT</button>
             </div>
@@ -155,7 +146,7 @@
                     </svg>
                 </div>
                 <div class="ec-cct-val">
-                    <div class="ec-cct-pct">{{ brightnessDisplay }}<span>%</span></div>
+                    <div class="ec-cct-pct">{{ brightnessDisplay }}<span class="ec-u">%</span></div>
                 </div>
             </div>
 
@@ -171,18 +162,14 @@
                     <span v-else class="dh-cal-progress">Calibrating… {{ calibrationProgress }}%</span>
                 </div>
                 <div v-else class="ec-clr-srow">
-                    <div class="ec-clr-track">
-                        <input
-                            type="range"
-                            class="sld-r sld-bri"
-                            min="0" max="100"
-                            :value="displayBrightness"
-                            :disabled="controlsDisabled || isOffline"
-                            @input="onBriInput"
-                            @change="onBriChange"
-                            @click.stop
-                        />
-                    </div>
+                    <CardSlider
+                        variant="bri"
+                        :value="displayBrightness"
+                        :disabled="controlsDisabled || isOffline"
+                        aria-label="Brightness"
+                        @input="onBriInput"
+                        @change="onBriChange"
+                    />
                 </div>
             </div>
 
@@ -275,7 +262,7 @@
                     </svg>
                 </div>
                 <div class="ec-cct-val">
-                    <div class="ec-cct-pct">{{ brightnessDisplay }}<span>%</span></div>
+                    <div class="ec-cct-pct">{{ brightnessDisplay }}<span class="ec-u">%</span></div>
                 </div>
             </div>
 
@@ -291,18 +278,14 @@
                     <span v-else class="dh-cal-progress">Calibrating… {{ calibrationProgress }}%</span>
                 </div>
                 <div v-else class="ec-clr-srow">
-                    <div class="ec-clr-track">
-                        <input
-                            type="range"
-                            class="sld-r sld-bri"
-                            min="0" max="100"
-                            :value="displayBrightness"
-                            :disabled="controlsDisabled || isOffline"
-                            @input="onBriInput"
-                            @change="onBriChange"
-                            @click.stop
-                        />
-                    </div>
+                    <CardSlider
+                        variant="bri"
+                        :value="displayBrightness"
+                        :disabled="controlsDisabled || isOffline"
+                        aria-label="Brightness"
+                        @input="onBriInput"
+                        @change="onBriChange"
+                    />
                 </div>
             </div>
 
@@ -357,12 +340,17 @@ import {
     formatCurrent,
     formatEnergy,
     formatPower,
-    formatVoltage
+    formatTemperature,
+    formatVoltage,
+    hasMetric,
+    type Metric,
+    metricText
 } from '@/helpers/powerMetrics';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
 import {loadDailyEnergy} from '@/tools/dailyEnergyLoader';
 import type {entity_t} from '@/types';
+import CardSlider from '../core/CardSlider.vue';
 import CardBadges from './CardBadges.vue';
 import CardShell from './CardShell.vue';
 import CardToggle from './CardToggle.vue';
@@ -437,6 +425,9 @@ const cardIcon = computed(() =>
     isBulb.value ? 'fas fa-lightbulb' : 'fas fa-palette'
 );
 
+// Only RGBCCT reports `mode`; without it there is nothing to switch.
+const hasMode = computed(() => status.value?.mode !== undefined);
+
 const isCCT = computed(() => {
     const mode = status.value?.mode;
     if (mode === 'cct' || mode === 'white') return true;
@@ -493,15 +484,11 @@ const ctDisplay = computed(() => {
     return ct != null ? String(ct) : '—';
 });
 
-const powerDisplay = computed(() => {
-    const w = status.value?.apower;
-    if (w == null) return '—';
-    return w >= 1000 ? (w / 1000).toFixed(1) : String(Math.round(w));
-});
-const powerUnit = computed(() => {
-    const w = status.value?.apower;
-    return w != null && w >= 1000 ? 'kW' : 'W';
-});
+// Same rounding rule as every other surface — the compact sizes split the
+// metric so the unit can be styled apart from its value.
+const powerMetric = computed(() => formatPower(status.value?.apower));
+const powerDisplay = computed(() => powerMetric.value.value);
+const powerUnit = computed(() => powerMetric.value.unit);
 
 // "Today" is the real 1-day rollup, like the dimmer, not lifetime aenergy.total.
 const dailyEnergy = ref<{today: number; yesterday: number} | null>(null);
@@ -517,28 +504,24 @@ const todayMetric = computed(() =>
     formatEnergy(dailyEnergy.value ? dailyEnergy.value.today * 1000 : null)
 );
 
-// Footer mirrors the dimmer: values only. Colour temp (kelvin) first; electrical
-// metrics appear only when the device reports them.
+// Footer mirrors the dimmer: values only. Colour temp (kelvin) first; every
+// electrical reading is "shown if applicable" on RGB/RGBW/CCT and absent
+// entirely on RGBCCT, so each cell stands or falls on its own.
 const footerStats = computed<{key: string; text: string}[]>(() => {
     const s = status.value;
-    const out: {key: string; text: string}[] = [
-        {key: 'ct', text: isCCT.value ? `${ctDisplay.value}K` : hexColor.value}
+    const readings: [string, Metric][] = [
+        ['power', formatPower(s?.apower)],
+        ['current', formatCurrent(s?.current)],
+        ['voltage', formatVoltage(s?.voltage)],
+        ['temp', formatTemperature(s?.temperature?.tC)],
+        ['today', todayMetric.value]
     ];
-    if (hasPM.value) {
-        const p = formatPower(s?.apower);
-        out.push({key: 'power', text: `${p.value} ${p.unit}`});
-        if (s?.current != null) {
-            const c = formatCurrent(s.current);
-            out.push({key: 'current', text: `${c.value} ${c.unit}`});
-        }
-        if (s?.voltage != null) {
-            const v = formatVoltage(s.voltage);
-            out.push({key: 'voltage', text: `${v.value} ${v.unit}`});
-        }
-        const e = todayMetric.value;
-        out.push({key: 'today', text: `${e.value} ${e.unit}`});
-    }
-    return out;
+    return [
+        {key: 'ct', text: isCCT.value ? `${ctDisplay.value}K` : hexColor.value},
+        ...readings
+            .filter(([, m]) => hasMetric(m))
+            .map(([key, m]) => ({key, text: metricText(m)}))
+    ];
 });
 
 // CCT slider: maps ct range to 0-100
@@ -716,15 +699,12 @@ function setMode(mode: 'rgb' | 'cct') {
     flex: 0 0 auto;
     transform: translateY(-10px);
 }
-/* Bigger brightness readout; keep the % proportional to the number. Scale
-   nudges it past --type-display without adding an off-scale font size. */
+/* Bigger brightness readout. Scale nudges it past --type-display without
+   adding an off-scale font size. */
 .ec-cct-pct {
     font-size: var(--type-display);
     transform: scale(1.12);
     transform-origin: center;
-}
-.ec-cct-pct span {
-    font-size: var(--type-heading);
 }
 
 /* Breathing room between the presets and the ON/OFF switch, matched across both
@@ -752,7 +732,6 @@ function setMode(mode: 'rgb' | 'cct') {
 .bulb-cct-row .ec-cct-pre {
     background: rgba(255, 255, 255, 0.05);
     backdrop-filter: blur(12px) saturate(150%);
-    -webkit-backdrop-filter: blur(12px) saturate(150%);
     border: 1px solid var(--glass-border);
     box-shadow: inset 0 1px 0 var(--glass-highlight);
     color: var(--color-text-primary);
@@ -777,11 +756,5 @@ function setMode(mode: 'rgb' | 'cct') {
 }
 .ec-wide .ec-dpct {
     font-size: var(--type-display);
-}
-.ec-wide .ec-wr {
-    gap: var(--space-5);
-}
-.ec-wide .ec-wr .ec-switch {
-    margin-top: var(--space-3);
 }
 </style>

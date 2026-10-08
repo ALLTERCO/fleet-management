@@ -2,6 +2,7 @@
 
 import {authzAuditWriter} from '../../modules/authz/audit';
 import {canUsePlatformAdmin} from '../../modules/authz/evaluator';
+import {invalidateAuthzTenant} from '../../modules/authz/runtime';
 import {identityDirectory, identityRoleManager} from '../../modules/identity';
 import {clearUserinfoCache} from '../../modules/user/cache';
 import {evictUserSessionEverywhere} from '../../modules/user/evictUserSession';
@@ -114,6 +115,7 @@ export default class PermissionComponent extends Component {
         });
         clearUserinfoCache();
         evictUserSessionEverywhere(v.userId, 'permission.revokeRoles');
+        await invalidateAuthzTenant(orgId);
         await authzAuditWriter.writePermissionRoleEvent({
             tenantId: orgId,
             actorId: sender.getUser()?.username ?? 'unknown',
@@ -144,8 +146,8 @@ export default class PermissionComponent extends Component {
         });
         clearUserinfoCache();
         evictUserSessionEverywhere(v.userId, 'permission.grantRoles');
-        // Audit + invalidate tenant cache so mid-session role changes
-        // propagate to live WS sessions without waiting for JWT refresh.
+        // Live WS sessions see the role change without waiting for a JWT refresh.
+        await invalidateAuthzTenant(orgId);
         await authzAuditWriter.writePermissionRoleEvent({
             tenantId: orgId,
             actorId: sender.getUser()?.username ?? 'unknown',

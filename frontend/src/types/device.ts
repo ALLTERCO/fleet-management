@@ -1,3 +1,4 @@
+import type {DeviceSource} from '@api/deviceSource';
 export type presence = 'online' | 'offline' | 'pending';
 
 export interface DeviceStatus {
@@ -24,6 +25,10 @@ export interface DeviceSettings {
 export interface DeviceUiCapabilities {
     /** Device advertises Pill.SetConfig — pin-mode configuration UI */
     pillPinMode: boolean;
+    /** Device advertises PillUart.GetConfig — firmware has the uart mode */
+    pillUartMode?: boolean;
+    /** Pill modes the device enumerated at discovery (newer firmware) */
+    pillModes?: string[];
     /** Device reports a cury:N component in status */
     cury: boolean;
     /** LED settings via a device-reported `*_ui` component (plugs_ui, …) */
@@ -36,6 +41,8 @@ export interface DeviceCapabilities {
     backup?: boolean;
     /** Device advertises the RPCs the FM restore flow sends */
     restore?: boolean;
+    /** Device advertises the IR namespace (IR.GetConfig) — IR Controller */
+    ir?: boolean;
     firmwareUpdate?: boolean;
     firmwareCheck?: boolean;
     otaCommit?: boolean;
@@ -60,7 +67,7 @@ export interface shelly_device_t {
     id: number;
     shellyID: string;
     /** Backend identity classification — drives logo + card variant resolution. */
-    source?: 'shelly' | 'virtual' | 'bluetooth';
+    source?: DeviceSource;
     status: DeviceStatus;
     settings: DeviceSettings;
     info: any;
@@ -82,7 +89,7 @@ export interface ShellyDeviceExternal {
     id: number;
     presence: presence;
     shellyID: string;
-    source: string;
+    source: DeviceSource;
     info: any;
     status: DeviceStatus;
     _statusTs: number | undefined;

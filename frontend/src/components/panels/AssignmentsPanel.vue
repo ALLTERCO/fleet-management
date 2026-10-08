@@ -35,7 +35,23 @@
                         >
                             {{ usageLabel(a.last_used_at) }}
                         </div>
+                        <!-- An expired grant used to look identical to a live
+                             one, so access could lapse with no sign of why. -->
+                        <div
+                            v-if="a.expires_at"
+                            class="ap-row__expiry"
+                            :class="{
+                                'ap-row__expiry--gone': hasExpired(a.expires_at)
+                            }"
+                        >
+                            {{ expiryLabel(a.expires_at) }}
+                        </div>
                     </div>
+                    <!-- The create flow makes this mandatory; showing it back
+                         is what makes it an audit trail rather than a form. -->
+                    <p v-if="a.reason" class="ap-row__reason">
+                        {{ a.reason }}
+                    </p>
                     <button
                         v-if="canDelete"
                         type="button"
@@ -48,14 +64,28 @@
                     </button>
                 </li>
             </ul>
+            <p v-else-if="loadError" class="ap-empty ap-empty--error">
+                {{ loadError }}
+            </p>
             <p v-else class="ap-empty">No roles yet — add one to grant access.</p>
         </template>
 
         <Modal :visible="addVisible" @close="closeAdd">
             <template #title>Add role</template>
             <div class="ap-add">
-                <FormField label="Role">
-                    <select v-model="form.personaId" class="ap-select">
+                <FormField
+                    label="Role"
+                    :hint="
+                        availablePersonas.length
+                            ? undefined
+                            : 'No roles are available to add. Every role this subject can hold is already assigned, or none are defined yet.'
+                    "
+                >
+                    <select
+                        v-model="form.personaId"
+                        class="ap-select"
+                        :disabled="!availablePersonas.length"
+                    >
                         <option value="" disabled>Select a role…</option>
                         <option
                             v-for="p in availablePersonas"
@@ -111,6 +141,20 @@
             </template>
         </Modal>
     </div>
+    <ConfirmationModal ref="detachRef">
+        <template #title><h3>Remove this role?</h3></template>
+        <template #subText>
+            <p class="ap-confirm">
+                {{
+                    detachTarget
+                        ? personaLabel(detachTarget.persona_id)
+                        : 'This role'
+                }}
+                will lose the access it grants, right away. This cannot be
+                undone.
+            </p>
+        </template>
+    </ConfirmationModal>
 </template>
 
 <script setup lang="ts">
@@ -121,8 +165,10 @@ import Dropdown from '@/components/core/Dropdown.vue';
 import FormField from '@/components/core/FormField.vue';
 import Input from '@/components/core/Input.vue';
 import ScopeModeSelector from '@/components/core/ScopeModeSelector.vue';
+import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
 import Modal from '@/components/modals/Modal.vue';
 import {AUTHZ_UNUSED_THRESHOLD_DAYS} from '@/constants';
+import {formatRpcError} from '@/helpers/domainErrors';
 import {useRpcPermissions} from '@/helpers/rpcPermissions';
 import {buildScope, type ScopeSelection} from '@/helpers/scopeDimensions';
 import {serviceUserScopeLabel} from '@/helpers/serviceUserAccessPlan';
@@ -176,6 +222,28 @@ const availablePersonas = computed(() =>
         a.name.localeCompare(b.name)
     )
 );
+
+function hasExpired(iso: string): boolean {
+    const at = Date.parse(iso);
+    return Number.isFinite(at) && at <= Date.now();
+}
+
+// Local calendar date as a day count, so DST-length days still differ by 1.
+function localDayNumber(ms: number): number {
+    const d = new Date(ms);
+    return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86_400_000;
+}
+
+function expiryLabel(iso: string): string {
+    const at = Date.parse(iso);
+    if (!Number.isFinite(at)) return '';
+    const now = Date.now();
+    if (at <= now) return 'Expired';
+    const days = localDayNumber(at) - localDayNumber(now);
+    if (days <= 0) return 'Expires today';
+    if (days === 1) return 'Expires tomorrow';
+    return `Expires in ${days} days`;
+}
 
 function personaLabel(id: string): string {
     return personasStore.personas[id]?.name ?? id;
@@ -251,13 +319,19 @@ function closeAdd(): void {
     addVisible.value = false;
 }
 
+// The throwing loaders keep a failed load distinct from "no roles yet".
+const loadError = ref('');
+
 async function refresh() {
     loading.value = true;
+    loadError.value = '';
     try {
         await Promise.all([
-            personasStore.fetchAll(true),
-            assignmentsStore.listForSubject(props.subjectType, props.subjectId)
+            personasStore.loadAll(true),
+            assignmentsStore.loadForSubject(props.subjectType, props.subjectId)
         ]);
+    } catch (e: unknown) {
+        loadError.value = `Could not load roles. ${formatRpcError(e)}`;
     } finally {
         loading.value = false;
     }
@@ -287,10 +361,18 @@ async function attach() {
     }
 }
 
-async function detach(a: AssignmentResponse) {
+// Revoking access is destructive and has no undo, so it asks first — the same
+// bar every other irreversible action on this page already meets.
+const detachRef = ref<InstanceType<typeof ConfirmationModal>>();
+const detachTarget = ref<AssignmentResponse | null>(null);
+
+function detach(a: AssignmentResponse) {
     if (!canDelete.value) return;
-    const ok = await assignmentsStore.remove(a.id);
-    if (ok) toast.success('Role removed');
+    detachTarget.value = a;
+    detachRef.value?.storeAction(async () => {
+        const ok = await assignmentsStore.remove(a.id);
+        if (ok) toast.success('Role removed');
+    });
 }
 
 onMounted(() => {
@@ -375,7 +457,7 @@ watch(
     user-select: none;
 }
 .ap-row__usage--fresh {
-    color: var(--color-status-success);
+    color: var(--color-success-text);
 }
 .ap-row__usage--warn {
     color: var(--color-status-warn);
@@ -427,5 +509,30 @@ watch(
 .ap-select:focus {
     outline: none;
     border-color: var(--color-primary);
+}
+.ap-row__expiry {
+    font-size: var(--type-caption);
+    color: var(--color-text-tertiary);
+}
+.ap-row__expiry--gone {
+    color: var(--color-danger-text);
+    font-weight: var(--font-semibold);
+}
+.ap-row__reason {
+    margin: var(--gap-2xs) 0 0;
+    font-size: var(--type-caption);
+    color: var(--color-text-tertiary);
+}
+.ap-confirm {
+    font-size: var(--type-body);
+    color: var(--color-text-tertiary);
+}
+/* A select whose only focus cue is a 1px border is not a focus cue. */
+.ap-select:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+}
+.ap-empty--error {
+    color: var(--color-danger-text);
 }
 </style>

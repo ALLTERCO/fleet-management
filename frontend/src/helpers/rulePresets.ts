@@ -71,3 +71,123 @@ export function presetsForKind(
             config: template.config
         }));
 }
+
+/** The component family a preset watches, e.g. "bthomesensor" or "switch". */
+export function presetComponentFamily(preset: RulePresetChoice): string {
+    return String(preset.config.component ?? '').split(':')[0] ?? '';
+}
+
+/**
+ * Narrow the quick-picks to signals the chosen devices can actually produce.
+ *
+ * Every preset of the matching kind used to show at once — fourteen of them for
+ * component_state — so a fleet of covers was offered "Carbon monoxide detected"
+ * and a chosen preset sat unmarked among thirteen alternatives. The available
+ * set comes from the same catalog that fills the signal list below the chips,
+ * so the two agree by construction.
+ *
+ * An empty available set means nothing is known yet — before any device is
+ * chosen, or while the catalog loads — and everything is offered rather than
+ * nothing.
+ */
+export function presetsForDevices(
+    presets: readonly RulePresetChoice[],
+    availableComponents: ReadonlySet<string>
+): RulePresetChoice[] {
+    if (availableComponents.size === 0) return [...presets];
+    return presets.filter((preset) => {
+        const family = presetComponentFamily(preset);
+        // A wildcard preset (bthomesensor:*) matches on family alone.
+        return family === '' || availableComponents.has(family);
+    });
+}
+
+export interface RulePresetGroup {
+    readonly label: string;
+    readonly presets: readonly RulePresetChoice[];
+}
+
+// Presentation only, exactly like COMPONENT_ICON above — which family a signal
+// belongs to is a scanning aid, never a contract fact. Order is fixed so the
+// row does not reshuffle as the device filter changes what is on offer.
+const PRESET_GROUPS: ReadonlyArray<{
+    readonly label: string;
+    readonly families: readonly string[];
+}> = [
+    {
+        label: 'Switches & power',
+        families: ['switch', 'em', 'em1', 'pm1', 'voltmeter', 'devicepower']
+    },
+    {
+        label: 'Doors & access',
+        families: ['cover', 'contact', 'input', 'garage_door', 'lock']
+    },
+    {
+        label: 'Presence & security',
+        families: [
+            'presence',
+            'occupancy',
+            'motion',
+            'tamper',
+            'vibration',
+            'sound'
+        ]
+    },
+    {label: 'Climate', families: ['temperature', 'humidity', 'pressure']},
+    {
+        label: 'Air quality & safety',
+        families: ['co2', 'tvoc', 'carbon_monoxide', 'gas']
+    },
+    // Promoted BLU sensors carry one family for several unrelated signals
+    // (door/window, carbon monoxide, gas), so the family alone cannot place
+    // them and they keep their own heading.
+    {label: 'BLU sensors', families: ['bthomesensor']}
+];
+
+// A family nobody has classified still has to reach the user — a quick-pick
+// that works is worse than useless if it is hidden.
+const FALLBACK_GROUP_LABEL = 'Other';
+
+function groupLabelFor(preset: RulePresetChoice): string {
+    const family = presetComponentFamily(preset);
+    const group = PRESET_GROUPS.find((candidate) =>
+        candidate.families.includes(family)
+    );
+    return group?.label ?? FALLBACK_GROUP_LABEL;
+}
+
+/** Answer: the quick-picks arranged under the headings a person scans by. */
+export function groupPresets(
+    presets: readonly RulePresetChoice[]
+): RulePresetGroup[] {
+    const byLabel = new Map<string, RulePresetChoice[]>();
+    for (const preset of presets) {
+        const label = groupLabelFor(preset);
+        const bucket = byLabel.get(label);
+        if (bucket) bucket.push(preset);
+        else byLabel.set(label, [preset]);
+    }
+    const ordered = [
+        ...PRESET_GROUPS.map((g) => g.label),
+        FALLBACK_GROUP_LABEL
+    ];
+    return ordered
+        .filter((label) => byLabel.has(label))
+        .map((label) => ({
+            label,
+            presets: byLabel.get(label) as RulePresetChoice[]
+        }));
+}
+
+/** Answer: is this the quick-pick the condition currently holds? */
+export function isPresetActive(
+    preset: RulePresetChoice,
+    config: Record<string, unknown>
+): boolean {
+    const keys = Object.keys(preset.config);
+    if (keys.length === 0) return false;
+    return keys.every(
+        (key) =>
+            JSON.stringify(config[key]) === JSON.stringify(preset.config[key])
+    );
+}

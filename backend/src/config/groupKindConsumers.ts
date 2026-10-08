@@ -57,11 +57,14 @@ const CONSUMER_KIND_DATA: readonly ConsumerKindRow[] = [
         'solar',
         'fa-bolt'
     ],
+    // generator (fuel/diesel genset), standby_generator, and
+    // emergency_generator_site are three distinct kinds — keep all three. The
+    // base genset is electrical, not renewable.
     [
         'generator',
         'Generator',
         'Fuel or backup generator set.',
-        'renewables',
+        'electrical',
         'fa-bolt'
     ],
     [
@@ -1358,19 +1361,22 @@ const CONSUMER_KIND_DATA: readonly ConsumerKindRow[] = [
         'datacenter',
         'fa-snowflake'
     ],
-    ['busway', 'Busway', 'Overhead busway.', 'datacenter', 'fa-plug'],
+    // General distribution gear, not datacenter-specific — categorized
+    // 'electrical' so an electrical filter catches it. Datacenter-specific
+    // gear (pdu, crac) stays 'datacenter'.
+    ['busway', 'Busway', 'Overhead busway.', 'electrical', 'fa-plug'],
     [
         'standby_generator',
         'Standby generator',
         'Backup generator.',
-        'datacenter',
+        'electrical',
         'fa-bolt'
     ],
     [
         'automatic_transfer_switch',
         'Automatic transfer switch',
         'ATS.',
-        'datacenter',
+        'electrical',
         'fa-bolt'
     ],
     [

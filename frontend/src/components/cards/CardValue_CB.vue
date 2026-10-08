@@ -64,7 +64,7 @@
                     <div class="brk-ls">
                         <div v-for="p in phases" :key="p.label" class="brk-l">
                             <span class="brk-l-l">{{ p.label }}</span>
-                            <span class="brk-l-v" :class="'v--' + p.state">{{ p.v }}<small>V</small></span>
+                            <span v-if="p.v" class="brk-l-v" :class="'v--' + p.state">{{ p.v }}<small>V</small></span>
                         </div>
                     </div>
                     <div class="brk-tgl">
@@ -108,7 +108,7 @@
                     <div class="brk-ls" :class="{ 'brk-ls--single': phases.length === 1 }">
                         <div v-for="p in phases" :key="p.label" class="brk-l">
                             <span class="brk-l-l">{{ p.label }}</span>
-                            <span class="brk-l-v" :class="'v--' + p.state">{{ p.v }}<small>V</small></span>
+                            <span v-if="p.v" class="brk-l-v" :class="'v--' + p.state">{{ p.v }}<small>V</small></span>
                         </div>
                     </div>
                     <div class="brk-tgl">
@@ -122,10 +122,10 @@
         </template>
         <template #footer>
             <div class="ec-hero-info ec-hero-info--values">
-                <div class="ec-hero-stat">
+                <div v-if="tempDisplay" class="ec-hero-stat">
                     <div class="ec-hero-stat-v">{{ tempDisplay }}</div>
                 </div>
-                <div class="ec-hero-stat">
+                <div v-if="cyclesDisplay" class="ec-hero-stat">
                     <div class="ec-hero-stat-v">{{ cyclesDisplay }}</div>
                 </div>
                 <div class="ec-hero-stat">
@@ -141,7 +141,7 @@ import {computed} from 'vue';
 import BreakerGlyph from '@/components/cards/BreakerGlyph.vue';
 import CardToggle from '@/components/cards/CardToggle.vue';
 import {useCardRpc} from '@/composables/useCardRpc';
-import {formatVoltage} from '@/helpers/powerMetrics';
+import {formatVoltage, hasMetric} from '@/helpers/powerMetrics';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
 import type {entity_t} from '@/types';
@@ -268,20 +268,22 @@ const phases = computed(() => {
     const st = device.value?.status ?? {};
     return Array.from({length: poleCount.value}, (_, i) => {
         const raw = (st[`voltmeter:${i}`] as {voltage?: number})?.voltage;
+        const m = formatVoltage(raw);
+        // Empty, not a dash — a pole that has not reported renders no "— V".
         return {
             label: `L${i + 1}`,
-            v: formatVoltage(raw).value,
+            v: hasMetric(m) ? m.value : '',
             state: voltageState(raw)
         };
     });
 });
-const tempDisplay = computed(() => {
+const tempDisplay = computed<string | null>(() => {
     const t = status.value?.temperature?.tC;
-    return typeof t === 'number' ? `${t.toFixed(1)}°C` : '—';
+    return typeof t === 'number' ? `${t.toFixed(1)}°C` : null;
 });
-const cyclesDisplay = computed(() => {
+const cyclesDisplay = computed<string | null>(() => {
     const c = status.value?.total_cycles;
-    return typeof c === 'number' ? `${c} cyc` : '—';
+    return typeof c === 'number' ? `${c} cyc` : null;
 });
 const lockShort = computed(() => (isLocked.value ? 'Locked' : 'OK'));
 

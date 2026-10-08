@@ -1,11 +1,13 @@
 import * as log4js from 'log4js';
+import {dbCallSiteLabel} from './dbCallTiming';
 import * as Observability from './Observability';
 import * as postgres from './PostgresProvider';
+import {runInTransactionScope} from './postgresTransactionScope';
 
 const logger = log4js.getLogger('postgresTx');
 
 interface TxHandle {
-    begin(): Promise<number>;
+    begin(label?: string): Promise<number>;
     end(id: number, query: string): Promise<number>;
 }
 
@@ -21,8 +23,12 @@ export interface PostgresTxContext {
 export async function withPostgresTransaction<T>(
     fn: (txId: number, ctx: PostgresTxContext) => Promise<T>
 ): Promise<T> {
+    // Read before the first await, while the caller is still on the stack.
+    const label = Observability.isDbCallDetailOn()
+        ? dbCallSiteLabel()
+        : undefined;
     const tx = (await postgres.callMethod('tx', {})) as TxHandle;
-    const txId = await tx.begin();
+    const txId = await tx.begin(label);
     const hooks: Array<() => void | Promise<void>> = [];
     const ctx: PostgresTxContext = {
         txId,
@@ -33,7 +39,7 @@ export async function withPostgresTransaction<T>(
 
     let committed = false;
     try {
-        const result = await fn(txId, ctx);
+        const result = await runInTransactionScope('main', () => fn(txId, ctx));
         await tx.end(txId, 'COMMIT');
         committed = true;
         await runCommitHooks(hooks);

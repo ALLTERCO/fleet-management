@@ -1,16 +1,15 @@
+import {moveToFront} from '@/helpers/recentList';
+
 export type DashboardId = number | string;
 
-// Order-preserving dedupe: re-viewing moves an id to the head.
+// Ids arrive both as numbers and as strings, so the text of an id is what
+// makes two of them the same dashboard.
 export function pushRecent(
     previous: readonly DashboardId[],
     id: DashboardId,
     limit = 8
 ): readonly DashboardId[] {
-    if (limit <= 0) return [];
-    const head = String(id);
-    const rest = previous.filter((existing) => String(existing) !== head);
-    const next: DashboardId[] = [id, ...rest];
-    return next.slice(0, limit);
+    return moveToFront({list: previous, entry: id, identify: String, limit});
 }
 
 export function removeRecent(

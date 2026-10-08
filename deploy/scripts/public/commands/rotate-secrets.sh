@@ -62,6 +62,10 @@ cmd_rotate_secrets() {
         return 1
     fi
 
+    # shellcheck source=/dev/null
+    source "$STATE_DIR/.env"
+    public_kdf_salt_preflight || return 1
+
     phase "Phase 1/4 — Backup state"
     local stamp
     stamp=$(date +%Y%m%d-%H%M%S)
@@ -71,9 +75,6 @@ cmd_rotate_secrets() {
     cp "$STATE_DIR/.env" "$backup"
     chmod 0600 "$backup"
     ok "State backed up to $(_color_path "$backup")"
-
-    # shellcheck source=/dev/null
-    source "$STATE_DIR/.env"
 
     phase "Phase 2/4 — Generate new values"
     local new_jwt="" new_fm_enc="" new_pg=""
@@ -203,12 +204,15 @@ EOF
     ok "state/.env updated"
 
     phase "Phase 4/4 — Restart fleet-manager"
+    public_kdf_salt_preflight || return 1
+    public_resolve_build_identity "${FM_VERSION:-latest}"
     if run_quiet "Restarting fleet-manager" compose_cmd up -d fleet-manager; then
         ok "fleet-manager restarted with new secrets"
     else
         error "Restart failed — restore from $backup if needed"
         return 1
     fi
+    public_kdf_salt_confirm_container || return 1
 
     echo ""
     info "Rotation complete. Backup: $(_color_path "$backup")"

@@ -6,7 +6,14 @@ build_spa_oidc_configuration() {
         --arg postLogoutRedirectUri "${FM_BASE_URL}/" \
         '{
             responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
-            grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
+            # The SPA asks for offline_access and runs automaticSilentRenew;
+            # without the refresh grant Zitadel issues no refresh token, so the
+            # renew has nothing to renew with and the access token simply
+            # expires — the user is bounced to the login screen mid-session.
+            grantTypes: [
+                "OIDC_GRANT_TYPE_AUTHORIZATION_CODE",
+                "OIDC_GRANT_TYPE_REFRESH_TOKEN"
+            ],
             applicationType: "OIDC_APP_TYPE_USER_AGENT",
             authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",
             redirectUris: [$redirectUri],
@@ -224,55 +231,198 @@ ensure_oidc_introspection_key() {
     fi
 }
 
-ensure_spa_app() {
-    local existing_spa_app spa_oidc_config create_body spa_response update_body update_response
+# Search-before-create, then push the wanted config on every run so drift
+# heals; Zitadel answers "No changes" when nothing differs.
+# Sets OIDC_APP_ID and OIDC_APP_CLIENT_ID.
+ensure_oidc_app() {
+    local name="$1"
+    local oidc_config="$2"
+    local existing_app create_body create_response update_body update_response
 
-    echo ""
-    echo "--- SPA App: $SPA_APP_NAME ---"
+    OIDC_APP_ID=""
+    OIDC_APP_CLIENT_ID=""
+    existing_app=$(search_app_by_name "$PROJECT_ID" "$name")
 
-    existing_spa_app=$(search_app_by_name "$PROJECT_ID" "$SPA_APP_NAME")
-    spa_oidc_config=$(build_spa_oidc_configuration)
-    FRONTEND_CLIENT_ID=""
-
-    if [ -n "$existing_spa_app" ]; then
-        FRONTEND_APP_ID=$(echo "$existing_spa_app" | jq -r '.applicationId')
-        FRONTEND_CLIENT_ID=$(echo "$existing_spa_app" | jq -r '.oidcConfiguration.clientId // empty')
-        echo "  SPA app exists: $FRONTEND_APP_ID (clientId: $FRONTEND_CLIENT_ID)"
-    else
-        echo "  Creating SPA app (PKCE, devMode=true)..."
-        echo "  Redirect URI: ${FM_BASE_URL}/callback"
-        create_body=$(jq -cn \
-            --arg projectId "$PROJECT_ID" \
-            --arg name "$SPA_APP_NAME" \
-            --argjson oidc "$spa_oidc_config" \
-            '{projectId:$projectId,name:$name,oidcConfiguration:$oidc}')
-        spa_response=$(zitadel_api "POST" \
-            "/zitadel.application.v2.ApplicationService/CreateApplication" \
-            "$create_body" "$TOKEN" "$ZITADEL_URL")
-        FRONTEND_APP_ID=$(echo "$spa_response" | jq -r '.applicationId // empty')
-        FRONTEND_CLIENT_ID=$(echo "$spa_response" | jq -r '.oidcConfiguration.clientId // empty')
-        if [ -z "$FRONTEND_APP_ID" ] || [ -z "$FRONTEND_CLIENT_ID" ]; then
-            echo "ERROR: SPA app creation did not return expected fields" >&2
-            echo "$spa_response" >&2
+    if [ -n "$existing_app" ]; then
+        OIDC_APP_ID=$(echo "$existing_app" | jq -r '.applicationId')
+        OIDC_APP_CLIENT_ID=$(echo "$existing_app" | jq -r '.oidcConfiguration.clientId // empty')
+        if [ -z "$OIDC_APP_CLIENT_ID" ]; then
+            echo "ERROR: App $name ($OIDC_APP_ID) has no OIDC client id" >&2
             exit 1
         fi
-        echo "  Created SPA app: $FRONTEND_APP_ID (clientId: $FRONTEND_CLIENT_ID)"
+        echo "  App exists: $OIDC_APP_ID (clientId: $OIDC_APP_CLIENT_ID)"
+    else
+        echo "  Creating app $name..."
+        create_body=$(jq -cn \
+            --arg projectId "$PROJECT_ID" \
+            --arg name "$name" \
+            --argjson oidc "$oidc_config" \
+            '{projectId:$projectId,name:$name,oidcConfiguration:$oidc}')
+        create_response=$(zitadel_api "POST" \
+            "/zitadel.application.v2.ApplicationService/CreateApplication" \
+            "$create_body" "$TOKEN" "$ZITADEL_URL")
+        OIDC_APP_ID=$(echo "$create_response" | jq -r '.applicationId // empty')
+        OIDC_APP_CLIENT_ID=$(echo "$create_response" | jq -r '.oidcConfiguration.clientId // empty')
+        if [ -z "$OIDC_APP_ID" ] || [ -z "$OIDC_APP_CLIENT_ID" ]; then
+            echo "ERROR: Creating app $name did not return expected fields" >&2
+            echo "$create_response" >&2
+            exit 1
+        fi
+        echo "  Created app: $OIDC_APP_ID (clientId: $OIDC_APP_CLIENT_ID)"
     fi
 
-    echo "  Updating SPA OIDC config (devMode=true, redirect URIs)..."
+    echo "  Updating OIDC config of $name..."
     update_body=$(jq -cn \
         --arg projectId "$PROJECT_ID" \
-        --arg applicationId "$FRONTEND_APP_ID" \
-        --argjson oidc "$spa_oidc_config" \
+        --arg applicationId "$OIDC_APP_ID" \
+        --argjson oidc "$oidc_config" \
         '{projectId:$projectId,applicationId:$applicationId,oidcConfiguration:$oidc}')
     update_response=$(zitadel_api "POST" \
         "/zitadel.application.v2.ApplicationService/UpdateApplication" \
         "$update_body" "$TOKEN" "$ZITADEL_URL")
     if ! echo "$update_response" | jq -e '.changeDate' >/dev/null 2>&1 && \
        ! echo "$update_response" | is_zitadel_no_change; then
-        echo "ERROR: Failed to update SPA OIDC config" >&2
+        echo "ERROR: Failed to update OIDC config of $name" >&2
         echo "$update_response" >&2
         exit 1
     fi
-    echo "  SPA config updated"
+    echo "  OIDC config of $name is current"
+}
+
+ensure_spa_app() {
+    echo ""
+    echo "--- SPA App: $SPA_APP_NAME (PKCE, devMode=true) ---"
+    echo "  Redirect URI: ${FM_BASE_URL}/callback"
+    ensure_oidc_app "$SPA_APP_NAME" "$(build_spa_oidc_configuration)"
+    FRONTEND_APP_ID="$OIDC_APP_ID"
+    FRONTEND_CLIENT_ID="$OIDC_APP_CLIENT_ID"
+    echo "  SPA app: $FRONTEND_APP_ID (clientId: $FRONTEND_CLIENT_ID)"
+}
+
+# stdout: the name prefix of the MCP apps of a Fleet project ("<project>-mcp").
+# Bootstrap and the update-time sync both name the apps through this.
+mcp_app_name_prefix() {
+    printf '%s-mcp' "$1"
+}
+
+# Levels an MCP app may exist for. Browser login reaches read and write; full
+# stays key-only, but a leftover full app is still removed.
+MCP_OAUTH_APP_LEVELS="read write full"
+
+# Redirects of the MCP clients Fleet supports. Zitadel matches a NATIVE app's
+# loopback redirect on any port, so loopback entries carry none.
+MCP_OAUTH_CLIENT_REDIRECT_URIS=(
+    "https://claude.ai/api/mcp/auth_callback"
+    "http://localhost/callback"
+    "http://127.0.0.1/callback"
+    "http://127.0.0.1"
+    "https://vscode.dev/redirect"
+    "https://www.cursor.com/agents/mcp/oauth/callback"
+)
+
+# stdout: the enabled levels from FM_MCP_OAUTH_LEVELS, one per line, in a
+# fixed order. Unset or empty means read,write; "none" turns browser login off.
+mcp_oauth_levels() {
+    local raw="${FM_MCP_OAUTH_LEVELS:-read,write}"
+    local level wanted=" "
+    [ "$raw" = "none" ] && return 0
+    local IFS=','
+    for level in $raw; do
+        level="${level//[[:space:]]/}"
+        case "$level" in
+            read|write) wanted="${wanted}${level} " ;;
+            full)
+                echo "ERROR: FM_MCP_OAUTH_LEVELS cannot enable full; full stays key-only" >&2
+                return 1
+                ;;
+            *)
+                echo "ERROR: FM_MCP_OAUTH_LEVELS has unknown level '${level}' (use read, write or none)" >&2
+                return 1
+                ;;
+        esac
+    done
+    for level in read write; do
+        case "$wanted" in *" ${level} "*) printf '%s\n' "$level" ;; esac
+    done
+}
+
+# stdout: one redirect URI per line; the built-in list, then the operator's
+# FM_MCP_OAUTH_EXTRA_REDIRECT_URIS (comma-separated), without duplicates.
+mcp_oauth_redirect_uris() {
+    local uri extra
+    local -a extras=() uris=("${MCP_OAUTH_CLIENT_REDIRECT_URIS[@]}")
+    IFS=',' read -r -a extras <<<"${FM_MCP_OAUTH_EXTRA_REDIRECT_URIS:-}"
+    for extra in "${extras[@]:-}"; do
+        uri="${extra//[[:space:]]/}"
+        [ -z "$uri" ] && continue
+        case "$uri" in
+            https://?*|http://localhost|http://localhost[:/]*|http://127.0.0.1|http://127.0.0.1[:/]*) ;;
+            http://*)
+                echo "ERROR: FM_MCP_OAUTH_EXTRA_REDIRECT_URIS allows plain http only for loopback: $uri" >&2
+                return 1
+                ;;
+            [a-z]*://?*) ;;
+            *)
+                echo "ERROR: FM_MCP_OAUTH_EXTRA_REDIRECT_URIS entry is not a URI: $uri" >&2
+                return 1
+                ;;
+        esac
+        uris+=("$uri")
+    done
+    printf '%s\n' "${uris[@]}" | awk '!seen[$0]++'
+}
+
+# A public PKCE client: no secret, code + refresh, opaque bearer tokens that
+# Fleet introspects, and devMode off so Zitadel enforces the redirect list.
+build_mcp_oidc_configuration() {
+    local redirect_uris="$1"
+    jq -cn --argjson redirectUris "$redirect_uris" '{
+        responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
+        grantTypes: [
+            "OIDC_GRANT_TYPE_AUTHORIZATION_CODE",
+            "OIDC_GRANT_TYPE_REFRESH_TOKEN"
+        ],
+        applicationType: "OIDC_APP_TYPE_NATIVE",
+        authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",
+        redirectUris: $redirectUris,
+        postLogoutRedirectUris: [],
+        version: "OIDC_VERSION_1_0",
+        developmentMode: false,
+        accessTokenType: "OIDC_TOKEN_TYPE_BEARER",
+        accessTokenRoleAssertion: true,
+        idTokenRoleAssertion: true,
+        idTokenUserinfoAssertion: true
+    }'
+}
+
+# One NATIVE app per enabled MCP level; apps of disabled levels are deleted so
+# no unmapped app can mint project tokens. Sets FM_MCP_OAUTH_CLIENT_IDS.
+ensure_mcp_apps() {
+    local levels redirect_lines redirect_uris oidc_config level name existing_app app_id
+
+    echo ""
+    echo "--- MCP Apps: ${MCP_APP_NAME_PREFIX}-<level> ---"
+    levels=$(mcp_oauth_levels) || exit 1
+    redirect_lines=$(mcp_oauth_redirect_uris) || exit 1
+    redirect_uris=$(printf '%s\n' "$redirect_lines" | jq -R . | jq -sc .)
+    oidc_config=$(build_mcp_oidc_configuration "$redirect_uris")
+    FM_MCP_OAUTH_CLIENT_IDS=""
+
+    for level in $MCP_OAUTH_APP_LEVELS; do
+        name="${MCP_APP_NAME_PREFIX}-${level}"
+        if printf '%s\n' "$levels" | grep -qx "$level"; then
+            ensure_oidc_app "$name" "$oidc_config"
+            FM_MCP_OAUTH_CLIENT_IDS="${FM_MCP_OAUTH_CLIENT_IDS:+${FM_MCP_OAUTH_CLIENT_IDS},}${level}=${OIDC_APP_CLIENT_ID}"
+            continue
+        fi
+        existing_app=$(search_app_by_name "$PROJECT_ID" "$name")
+        [ -n "$existing_app" ] || continue
+        app_id=$(echo "$existing_app" | jq -r '.applicationId')
+        if ! delete_app "$PROJECT_ID" "$app_id"; then
+            echo "ERROR: Could not delete disabled MCP app $name ($app_id)" >&2
+            exit 1
+        fi
+        echo "  Deleted disabled MCP app: $name"
+    done
+    echo "  MCP browser login: ${FM_MCP_OAUTH_CLIENT_IDS:-off}"
 }

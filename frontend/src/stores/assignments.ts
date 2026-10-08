@@ -43,7 +43,8 @@ export const useAssignmentsStore = defineStore('assignments', () => {
         return guard;
     }
 
-    async function listForSubject(
+    // Throws on failure, for a caller that renders its own error state.
+    async function loadForSubject(
         subjectType: AssignmentSubjectType,
         subjectId: string
     ): Promise<AssignmentResponse[]> {
@@ -64,11 +65,20 @@ export const useAssignmentsStore = defineStore('assignments', () => {
                 };
             }
             return res.items;
+        } finally {
+            loading.value = false;
+        }
+    }
+
+    async function listForSubject(
+        subjectType: AssignmentSubjectType,
+        subjectId: string
+    ): Promise<AssignmentResponse[]> {
+        try {
+            return await loadForSubject(subjectType, subjectId);
         } catch (err) {
             toastRpcError(toast, err, 'Failed to load assignments');
             return [];
-        } finally {
-            loading.value = false;
         }
     }
 
@@ -162,6 +172,7 @@ export const useAssignmentsStore = defineStore('assignments', () => {
         bySubject,
         byPersona,
         loading,
+        loadForSubject,
         listForSubject,
         listForPersona,
         listForResource,

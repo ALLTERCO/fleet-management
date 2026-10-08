@@ -7,6 +7,7 @@
 
 import {DescribeBuilder, type DescribeOutput} from './_describe';
 import type {JsonSchema} from './_schema';
+import {DELETED_RESPONSE_SCHEMA} from './_shared';
 
 const PERM_READ = {component: 'reports', operation: 'read' as const};
 const PERM_WRITE = {component: 'reports', operation: 'update' as const};
@@ -136,6 +137,27 @@ const REPORT_TEMPLATE_RESPONSE: JsonSchema = {
     }
 };
 
+const REPORT_TEMPLATE_LIST_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['templates'],
+    additionalProperties: false,
+    properties: {
+        templates: {type: 'array', items: REPORT_TEMPLATE_RESPONSE}
+    }
+};
+
+// Run only queues the job; the file arrives via report.GetReport, so the
+// status here is always the freshly-created 'pending'.
+const REPORT_TEMPLATE_RUN_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['jobId', 'status'],
+    additionalProperties: false,
+    properties: {
+        jobId: {type: 'string', format: 'uuid'},
+        status: {type: 'string', enum: ['pending']}
+    }
+};
+
 const b = new DescribeBuilder('reporttemplate', {
     kind: 'fleet-manager',
     description: 'Saved, named report configurations an org can re-run.'
@@ -149,7 +171,7 @@ b.registerMethod('Create', {
 });
 b.registerMethod('List', {
     params: REPORT_TEMPLATE_LIST_PARAMS_SCHEMA,
-    response: {type: 'object', description: 'templates: array of templates'},
+    response: REPORT_TEMPLATE_LIST_RESPONSE,
     permission: PERM_READ,
     description: "List the caller org's report templates."
 });
@@ -167,16 +189,13 @@ b.registerMethod('Update', {
 });
 b.registerMethod('Delete', {
     params: REPORT_TEMPLATE_DELETE_PARAMS_SCHEMA,
-    response: {type: 'object', description: '{deleted: true} on success'},
+    response: DELETED_RESPONSE_SCHEMA,
     permission: PERM_WRITE,
     description: 'Delete a report template.'
 });
 b.registerMethod('Run', {
     params: REPORT_TEMPLATE_RUN_PARAMS_SCHEMA,
-    response: {
-        type: 'object',
-        description: '{jobId, status} — poll report.GetReport for the file'
-    },
+    response: REPORT_TEMPLATE_RUN_RESPONSE,
     permission: PERM_WRITE,
     description:
         "Run a template's saved report via report.Generate; returns a jobId."

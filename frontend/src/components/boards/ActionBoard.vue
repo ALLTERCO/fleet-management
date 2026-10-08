@@ -294,7 +294,6 @@ watch(
     margin: 0 calc(-1 * var(--gap-sm)) calc(-1 * var(--gap-sm));
     background: var(--glass-1-bg);
     backdrop-filter: var(--glass-1-filter);
-    -webkit-backdrop-filter: var(--glass-1-filter);
     border-top: 1px solid var(--glass-border);
     box-shadow: inset 0 1px 0 var(--glass-highlight);
     border-radius: 0 0 var(--radius-lg) 0;

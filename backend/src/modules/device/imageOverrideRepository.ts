@@ -48,21 +48,33 @@ function rowToDecoration(row: DeviceDecorationRow): DeviceDecoration {
     };
 }
 
-// Batch read for the device list — overrides for many devices at once.
-export async function listDeviceDecorations(
-    organizationId: string | undefined,
-    shellyIDs: readonly string[]
-): Promise<Map<string, DeviceDecoration>> {
-    if (!organizationId || shellyIDs.length === 0) return new Map();
-    const rows = await postgres.queryRows<DeviceDecorationRow>(
-        `SELECT external_id, image_asset_id::text, visual_json
-           FROM device.list
-          WHERE organization_id = $1 AND external_id = ANY($2)`,
-        [organizationId, [...shellyIDs]]
+// Device.List reads kind and decoration of one page in a single query.
+export async function listDeviceKindsAndDecorations(
+    organizationId: string,
+    shellyIDs: readonly string[],
+    physicalIDs: readonly string[]
+): Promise<{
+    kinds: Map<string, string>;
+    decorations: Map<string, DeviceDecoration>;
+}> {
+    const kinds = new Map<string, string>();
+    const decorations = new Map<string, DeviceDecoration>();
+    if (shellyIDs.length === 0) return {kinds, decorations};
+    const rows = await postgres.queryRows<
+        DeviceDecorationRow & {kind: string | null}
+    >(
+        `SELECT external_id, image_asset_id::text, visual_json, catalog_kind AS kind FROM device.list
+          WHERE external_id = ANY($1::varchar[]) AND organization_id = $2`,
+        [[...shellyIDs], organizationId]
     );
-    const map = new Map<string, DeviceDecoration>();
-    for (const row of rows) map.set(row.external_id, rowToDecoration(row));
-    return map;
+    const physical = new Set(physicalIDs);
+    for (const row of rows) {
+        if (row.kind) kinds.set(row.external_id, row.kind);
+        if (physical.has(row.external_id)) {
+            decorations.set(row.external_id, rowToDecoration(row));
+        }
+    }
+    return {kinds, decorations};
 }
 
 function decorationToVisualJson(decoration: DeviceDecoration): {

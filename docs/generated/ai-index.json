@@ -123,8 +123,8 @@
       "audience": "operators",
       "kind": "stable-doc",
       "format": "markdown",
-      "role": "Fleet Manager deploy.sh install, update, environment, and flag guide.",
-      "aiUse": "Use for Fleet Manager install/deploy commands and deploy.sh parameters.",
+      "role": "Fleet Manager deploy-public.sh install, update, environment, and flag guide.",
+      "aiUse": "Use for Fleet Manager install/deploy commands and deploy-public.sh parameters.",
       "readFirst": true
     },
     {
@@ -139,11 +139,11 @@
     },
     {
       "id": "deploy-reference",
-      "path": "docs/architecture/deploy-reference.md",
+      "path": "docs/public/reference/deploy-public-reference.md",
       "audience": "operators",
       "kind": "stable-doc",
       "format": "markdown",
-      "role": "Detailed deploy.sh architecture, topology, routing, SSL, and mode reference.",
+      "role": "deploy-public.sh commands, flags, TLS, update and rollback reference.",
       "aiUse": "Use after the deployment guide when deploy behavior needs deeper explanation.",
       "readFirst": false
     },
@@ -239,12 +239,12 @@
     },
     {
       "id": "docs-readme",
-      "path": "docs/README.md",
+      "path": "docs/public/README.md",
       "audience": "ai-agents",
       "kind": "stable-doc",
       "format": "markdown",
-      "role": "Docs folder convention and audience rules.",
-      "aiUse": "Use before creating or moving documentation.",
+      "role": "Map of the public documentation.",
+      "aiUse": "Use to find the right public guide or reference.",
       "readFirst": true
     }
   ],
@@ -308,6 +308,48 @@
       "source": "docs/generated/api.openapi.json",
       "role": "Future controlled API execution through OpenAPI/Scalar MCP.",
       "safeMode": "read-write-deferred"
+    },
+    {
+      "uri": "fm://docs/ai-and-mcp",
+      "source": "docs/reference/ai-and-mcp.md",
+      "role": "MCP and Host SDK entrypoint.",
+      "safeMode": "read-only"
+    },
+    {
+      "uri": "fm://docs/ai-mcp-operations",
+      "source": "docs/reference/ai-mcp-operations.md",
+      "role": "Governed MCP operation workflow.",
+      "safeMode": "read-only"
+    },
+    {
+      "uri": "fm://docs/separate-ui-host-sdk",
+      "source": "docs/reference/separate-ui-host-sdk.md",
+      "role": "Separate UI and template Host SDK guide.",
+      "safeMode": "read-only"
+    },
+    {
+      "uri": "fm://docs/deployment",
+      "source": "deploy/public/deployment.md",
+      "role": "Public installation and deployment guide.",
+      "safeMode": "read-only"
+    },
+    {
+      "uri": "fm://docs/deploy-reference",
+      "source": "docs/public/reference/deploy-public-reference.md",
+      "role": "Deployment architecture reference.",
+      "safeMode": "read-only"
+    },
+    {
+      "uri": "fm://docs/readme",
+      "source": "docs/public/README.md",
+      "role": "Public documentation map.",
+      "safeMode": "read-only"
+    },
+    {
+      "uri": "fm://docs/doc-drift-report",
+      "source": "docs/generated/doc-drift-report.md",
+      "role": "Generated documentation drift report.",
+      "safeMode": "read-only"
     }
   ],
   "mcpSearchResources": [
@@ -333,13 +375,13 @@
     },
     {
       "id": "deploy-reference",
-      "source": "docs/architecture/deploy-reference.md",
+      "source": "docs/public/reference/deploy-public-reference.md",
       "role": "Deployment architecture reference."
     },
     {
       "id": "docs-readme",
-      "source": "docs/README.md",
-      "role": "Documentation map and conventions."
+      "source": "docs/public/README.md",
+      "role": "Public documentation map."
     },
     {
       "id": "doc-drift-report",
@@ -366,7 +408,7 @@
         "deploy-reference",
         "ai-and-mcp-reference"
       ],
-      "reason": "The deploy docs define deploy.sh commands, flags, environments, modes, and routing behavior."
+      "reason": "The deploy docs define deploy-public.sh commands, flags, environments, modes, and routing behavior."
     },
     {
       "task": "Change backend RPC contract",

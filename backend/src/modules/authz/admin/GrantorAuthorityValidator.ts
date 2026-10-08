@@ -15,12 +15,16 @@ import {
 
 type Grantor = Pick<
     CommandSender,
-    'getRoles' | 'hasCredentialBoundary' | 'isAdmin' | 'isPlatformAdmin'
+    | 'getRoles'
+    | 'hasCredentialBoundary'
+    | 'hasFullTenantAuthority'
+    | 'isPlatformAdmin'
 >;
 
 export interface GrantorAuthorityRequest {
     grantor: Grantor;
     personaKey: string;
+    personaIsSystemManaged: boolean;
     scope: AssignmentScope;
     subjectType: AssignmentSubjectType;
 }
@@ -65,7 +69,7 @@ function assertGrantorHasFullAdminAuthority(grantor: Grantor): void {
     if (grantor.hasCredentialBoundary()) {
         throw RpcError.Unauthorized();
     }
-    if (!grantor.isAdmin()) {
+    if (!grantor.hasFullTenantAuthority()) {
         throw RpcError.Unauthorized();
     }
 }
@@ -76,6 +80,7 @@ function assertGrantorPolicyAllowsAssignment(
     const decision = evaluateAssignmentGrantAuthority({
         grantorPersonas: grantorPersonas(request.grantor),
         personaKey: request.personaKey,
+        personaIsSystemManaged: request.personaIsSystemManaged,
         scope: request.scope,
         subjectType: request.subjectType
     });

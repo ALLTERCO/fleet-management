@@ -1,7 +1,7 @@
 <template>
     <div class="bsp">
         <div class="bsp__pickers">
-            <FormField label="What kind of resource?">
+            <FormField label="Resource type">
                 <Dropdown
                     :groups="kindGroups"
                     :default="activeKind"

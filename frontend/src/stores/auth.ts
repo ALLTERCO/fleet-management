@@ -7,12 +7,17 @@ import {
     AUTHZ_RESOURCE_BY_COMPONENT,
     type AUTHZ_SYSTEM_PERSONA_KEYS
 } from '@api/authzCatalog';
+import type {SelfIdentity} from '@api/user';
 import {defineStore} from 'pinia';
 import {computed, onScopeDispose, ref, watch} from 'vue';
-import {clearRegistryCaches} from '@/composables/useRegistry';
-import {clearRpcCaches} from '@/composables/useWsRpc';
-import {LOGIN_PATH} from '@/constants';
+import {deleteNodeRedSession} from '@/api/nodeRedSession';
+import {LOGIN_PATH, NODE_RED_ENABLED} from '@/constants';
+import {isRoutePath} from '@/helpers/appPath';
 import {redirectToLogin} from '@/helpers/authNavigation';
+import {
+    clearCredentialStorage,
+    clearSessionScopedStorage
+} from '@/helpers/sessionScopedStorage';
 import type {
     ComponentCapabilityMap,
     ComponentName,
@@ -22,7 +27,7 @@ import type {
 import {getZitadelAuth, setAuthLifecycleHandlers} from '@/helpers/zitadelAuth';
 import {createStaleGuard} from '@/stores/staleGuard';
 import {debug} from '@/tools/debug';
-import {sendRPC} from '@/tools/http';
+import {getAccessToken, sendRPC} from '@/tools/http';
 import * as ws from '@/tools/websocket';
 
 // Drive the wire role enum off the catalog so adding/removing a persona
@@ -42,6 +47,9 @@ interface UserPermissions {
     uiCapabilities?: UiCapabilities;
 }
 
+// Caller identity fields of User.GetMe, which is the source of truth.
+type CallerIdentity = SelfIdentity;
+
 const DEV_MODE_TOKEN_KEY = 'dev_mode_token';
 const DEV_MODE_USERNAME_KEY = 'dev_mode_username';
 
@@ -55,6 +63,12 @@ async function clearServerSessionCookie(): Promise<void> {
     } catch (error) {
         debug('clearServerSessionCookie failed', error);
     }
+}
+
+// Needs the sign-in token, so it runs before credentials are cleared.
+async function endNodeRedEditorSession(): Promise<void> {
+    if (!NODE_RED_ENABLED) return;
+    await deleteNodeRedSession(await getAccessToken().catch(() => null));
 }
 
 const NO_PERMISSIONS: UserPermissions = {
@@ -196,6 +210,14 @@ function scopeIncludesItem(
     return true;
 }
 
+function readIdentity(me: unknown): CallerIdentity | null {
+    if (!me || typeof me !== 'object') return null;
+    const record = me as Partial<CallerIdentity>;
+    return typeof record.actorKind === 'string'
+        ? (record as CallerIdentity)
+        : null;
+}
+
 // Launch payload from Mobile.GetBootstrap — read by other stores on first paint.
 export interface LaunchBootstrap {
     serverTime: string;
@@ -304,8 +326,11 @@ export const useAuthStore = defineStore('auth', () => {
         }
     });
 
-    // Get username from Zitadel profile or dev mode
+    // GetMe identity; the login claims below only stand in until it loads.
+    const identity = ref<CallerIdentity | null>(null);
+
     const username = computed(() => {
+        if (identity.value?.username) return identity.value.username;
         if (devMode.value) {
             return devModeUsername.value;
         }
@@ -316,13 +341,18 @@ export const useAuthStore = defineStore('auth', () => {
 
     // Display name: prefer human-readable name over email
     const displayName = computed(() => {
+        const me = identity.value;
+        if (me) return me.displayName || me.username || me.email;
         if (devMode.value) {
             return devModeUsername.value;
         }
         const u = zitadelUser.value;
         return u?.name || u?.given_name || u?.preferred_username || u?.email;
     });
+    // Dev mode authenticates a username, not an OIDC subject.
     const currentUserId = computed(() => {
+        if (identity.value?.userId) return identity.value.userId;
+        if (devMode.value) return devModeUsername.value;
         const sub = zitadelUser.value?.sub;
         return typeof sub === 'string' && sub.length > 0 ? sub : null;
     });
@@ -397,8 +427,15 @@ export const useAuthStore = defineStore('auth', () => {
     );
     const isViewer = computed(() => userPermissions.value?.isViewer ?? false);
     const isAuditor = computed(() => roles.value.includes('auditor'));
-    // Admin OR auditor — mirrors backend canViewAuditLog / canReadPolicies.
-    const canViewAuditLog = computed(() => isAdmin.value || isAuditor.value);
+    // Mirrors backend canViewAuditLog: admin, the auditor role, or any grant
+    // that carries the auditor persona's authz_audit:read action.
+    const canViewAuditLog = computed(
+        () =>
+            isAdmin.value ||
+            isAuditor.value ||
+            shapeGrants('authz_audit:read', 'authz_audit')
+    );
+    // Admin OR auditor — mirrors backend canReadPolicies.
     const canReadPolicies = computed(() => isAdmin.value || isAuditor.value);
     function hasRole(r: UserRole): boolean {
         return roles.value.includes(r);
@@ -407,6 +444,12 @@ export const useAuthStore = defineStore('auth', () => {
     const effectiveShape = computed<EffectiveShape | null>(
         () => userPermissions.value?.effectiveShape ?? null
     );
+    // Any Allow statement for an action on a resource that has no CRUD
+    // component (authz_audit). Scope is not consulted: tenant-wide resource.
+    function shapeGrants(action: string, resource: string): boolean {
+        const shape = effectiveShape.value;
+        return shape !== null && allowedBy(shape, action, resource).length > 0;
+    }
     const uiCapabilities = computed<UiCapabilities>(
         () => userPermissions.value?.uiCapabilities ?? EMPTY_UI_CAPABILITIES
     );
@@ -418,6 +461,15 @@ export const useAuthStore = defineStore('auth', () => {
         if (!shape) return false;
         return allowedBy(shape, 'grafana:read', 'grafana').length > 0;
     });
+
+    // Mirrors backend canManageAutomations for a browser session: admin,
+    // platform admin, or any grant carrying automation:update.
+    const canManageAutomations = computed(
+        () =>
+            isAdmin.value ||
+            canAccessPlatformAdmin.value ||
+            shapeGrants('automation:update', 'automation')
+    );
 
     const hasNoPermissions = computed(() => {
         if (!permissionsLoaded.value) return false;
@@ -554,6 +606,7 @@ export const useAuthStore = defineStore('auth', () => {
             } else {
                 userPermissions.value = NO_PERMISSIONS;
             }
+            identity.value = readIdentity(perms);
 
             launchBootstrap.value = {
                 serverTime: bootstrap.serverTime,
@@ -577,6 +630,7 @@ export const useAuthStore = defineStore('auth', () => {
                 const response = await sendRPC('User.GetMe', {});
                 if (!isCurrent()) return;
                 userPermissions.value = response as UserPermissions;
+                identity.value = readIdentity(response);
                 permissionsLoaded.value = true;
             } catch (fallbackError) {
                 if (!isCurrent()) return;
@@ -627,10 +681,25 @@ export const useAuthStore = defineStore('auth', () => {
             loginLifecycleInFlight = null;
             ws.close();
             userPermissions.value = null;
+            identity.value = null;
             permissionsLoaded.value = false;
             launchBootstrap.value = null;
             status.value = 'unauthenticated';
         }
+    }
+
+    /** Resolve once the initial authentication lifecycle has settled.
+     * Route guards use this to avoid mounting authenticated pages while the
+     * WebSocket session and permissions are still being restored. */
+    function waitForSessionReady(): Promise<SessionStatus> {
+        if (status.value !== 'booting') return Promise.resolve(status.value);
+        return new Promise((resolve) => {
+            const stop = watch(status, (next) => {
+                if (next === 'booting') return;
+                stop();
+                resolve(next);
+            });
+        });
     }
 
     async function completeLoginLifecycle(epoch: number) {
@@ -655,18 +724,18 @@ export const useAuthStore = defineStore('auth', () => {
         status.value = 'unauthenticated';
         ws.close();
         userPermissions.value = null;
+        identity.value = null;
         permissionsLoaded.value = false;
         launchBootstrap.value = null;
         devModeToken.value = null;
         devModeUsername.value = null;
+        await endNodeRedEditorSession();
         const zAuth = getZitadelAuth();
         if (zAuth) {
             await removeOidcUserBestEffort(zAuth);
         }
-        sessionStorage.removeItem('access_token');
-        localStorage.removeItem(DEV_MODE_TOKEN_KEY);
-        localStorage.removeItem(DEV_MODE_USERNAME_KEY);
-        localStorage.removeItem('dev_mode_refresh_token');
+        clearCredentialStorage();
+        clearSessionScopedStorage();
         await clearServerSessionCookie();
         // Expire the dev-mode mirror cookie (non-HttpOnly, used for <img> auth).
         // biome-ignore lint/suspicious/noDocumentCookie: CookieStore is not Baseline yet; auth runs everywhere.
@@ -679,8 +748,9 @@ export const useAuthStore = defineStore('auth', () => {
                 tabId: TAB_ID
             });
         }
-        const path = window.location.pathname;
-        if (path !== LOGIN_PATH && path !== '/callback') {
+        // Compared against the raw pathname this never matched under /admin/,
+        // so signing out of the operator SPA redirected to login from login.
+        if (!isRoutePath(LOGIN_PATH) && !isRoutePath('/callback')) {
             await redirectToLogin();
         }
     }
@@ -714,19 +784,17 @@ export const useAuthStore = defineStore('auth', () => {
         });
         localStorage.setItem('last_logout_time', String(Date.now()));
         userPermissions.value = null;
+        identity.value = null;
         permissionsLoaded.value = false;
 
-        // Clear composable caches to prevent cross-session data bleed
-        clearSessionCaches();
+        await endNodeRedEditorSession();
+        clearCredentialStorage();
+        clearSessionScopedStorage();
 
         await clearServerSessionCookie();
         if (devMode.value) {
-            // Dev mode logout - clear local tokens
             devModeToken.value = null;
             devModeUsername.value = null;
-            localStorage.removeItem(DEV_MODE_TOKEN_KEY);
-            localStorage.removeItem(DEV_MODE_USERNAME_KEY);
-            localStorage.removeItem('dev_mode_refresh_token');
             // biome-ignore lint/suspicious/noDocumentCookie: CookieStore is not Baseline yet; auth runs everywhere.
             document.cookie =
                 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict';
@@ -738,11 +806,6 @@ export const useAuthStore = defineStore('auth', () => {
                 debug('Error during logout:', error);
             }
         }
-    }
-
-    function clearSessionCaches(): void {
-        clearRpcCaches();
-        clearRegistryCaches();
     }
 
     // Watch login state and connect/disconnect websocket
@@ -763,9 +826,10 @@ export const useAuthStore = defineStore('auth', () => {
         username,
         displayName,
         currentUserId,
+        identity,
         logout,
         handleLoginChanged,
-        zitadelUser,
+        waitForSessionReady,
 
         // Dev mode
         devMode,
@@ -785,6 +849,7 @@ export const useAuthStore = defineStore('auth', () => {
         canViewAuditLog,
         canReadPolicies,
         hasGrafanaAccess,
+        canManageAutomations,
         isReadOnly,
         permissionsLoaded,
         fetchUserPermissions,

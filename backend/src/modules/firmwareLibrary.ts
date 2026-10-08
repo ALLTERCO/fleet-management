@@ -27,6 +27,8 @@ import * as log4js from 'log4js';
 import {tuning} from '../config/tuning';
 import type {FirmwareLibraryItem} from '../types/api/firmware';
 import * as Registry from './Registry';
+import {kv} from './redis/services';
+import type {UploadSessionOwner} from './uploads/uploadSessions';
 import {bestEffort} from './util/fireAndForget';
 
 export type {FirmwareLibraryItem};
@@ -56,26 +58,115 @@ export type TemporaryFirmwareFile = {
     deleteOnExpire: boolean;
 };
 
+export interface TemporaryFirmwareArtifact {
+    artifactId: string;
+    storageFileName: string;
+    fileName: string;
+    contentType: string;
+    sizeBytes: number;
+    sha256: string;
+    owner: UploadSessionOwner;
+    expiresAt: number;
+}
+
+const TEMP_FIRMWARE_ARTIFACT_PREFIX = 'firmware-temp-artifact:';
+const TEMP_FIRMWARE_CLEANUP_BATCH_SIZE = 200;
+const TEMP_FIRMWARE_REGISTRATION_GRACE_MS = 60_000;
+const UUID_PATTERN =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export const temporaryFirmwareFiles = new Map<string, TemporaryFirmwareFile>();
 
 // Boot-time cleanup of stale firmware files from previous runs. Called
 // from app.ts; module load is side-effect-free.
-export async function cleanupStaleTemporaryFirmwareFiles(): Promise<void> {
-    try {
-        if (!fs.existsSync(temporaryFirmwareUploadsPath)) return;
-        const files = await fsAsync.readdir(temporaryFirmwareUploadsPath);
-        for (const file of files) {
-            await bestEffort(
-                'unlink.firmware-stale-temp',
-                fsAsync.unlink(path.join(temporaryFirmwareUploadsPath, file))
-            );
-        }
-        if (files.length > 0) {
-            logger.info('Cleaned up %d stale firmware upload(s)', files.length);
-        }
-    } catch {
-        // Non-fatal — directory may not exist yet
+let staleCleanupDirectory: Awaited<ReturnType<typeof fsAsync.opendir>> | null =
+    null;
+let staleCleanupRun: Promise<{
+    inspected: number;
+    removed: number;
+    more: boolean;
+}> | null = null;
+
+async function closeStaleCleanupDirectory(): Promise<void> {
+    const directory = staleCleanupDirectory;
+    staleCleanupDirectory = null;
+    await directory?.close().catch(() => undefined);
+}
+
+function artifactKey(artifactId: string): string {
+    return `${TEMP_FIRMWARE_ARTIFACT_PREFIX}${artifactId}`;
+}
+
+function artifactIdFromStorageName(fileName: string): string | null {
+    const match = /-([0-9a-f-]{36})(?:\.[a-z0-9]+)$/i.exec(fileName);
+    return match && UUID_PATTERN.test(match[1]) ? match[1] : null;
+}
+
+function isActiveTemporaryFirmwarePath(filePath: string, now: number): boolean {
+    for (const file of temporaryFirmwareFiles.values()) {
+        if (file.filePath === filePath && file.expiresAt > now) return true;
     }
+    return false;
+}
+
+// Each pass is bounded. Redis failures abort without deleting undecided files.
+async function cleanupStaleTemporaryFirmwareBatch(): Promise<{
+    inspected: number;
+    removed: number;
+    more: boolean;
+}> {
+    await fsAsync.mkdir(temporaryFirmwareUploadsPath, {recursive: true});
+    staleCleanupDirectory ??= await fsAsync.opendir(
+        temporaryFirmwareUploadsPath
+    );
+    let inspected = 0;
+    let removed = 0;
+    const now = Date.now();
+    try {
+        while (inspected < TEMP_FIRMWARE_CLEANUP_BATCH_SIZE) {
+            const entry = await staleCleanupDirectory.read();
+            if (!entry) {
+                await closeStaleCleanupDirectory();
+                return {inspected, removed, more: false};
+            }
+            inspected++;
+            if (!entry.isFile()) continue;
+            const filePath = path.join(
+                temporaryFirmwareUploadsPath,
+                entry.name
+            );
+            if (isActiveTemporaryFirmwarePath(filePath, now)) continue;
+
+            const artifactId = artifactIdFromStorageName(entry.name);
+            if (artifactId && (await kv.get(artifactKey(artifactId)))) continue;
+
+            const stat = await fsAsync.stat(filePath).catch(() => null);
+            if (
+                stat &&
+                now - stat.mtimeMs < TEMP_FIRMWARE_REGISTRATION_GRACE_MS
+            ) {
+                continue;
+            }
+
+            await deleteFileIfExists(filePath);
+            removed++;
+        }
+        return {inspected, removed, more: true};
+    } catch (error) {
+        await closeStaleCleanupDirectory();
+        throw error;
+    }
+}
+
+export async function cleanupStaleTemporaryFirmwareFiles(): Promise<{
+    inspected: number;
+    removed: number;
+    more: boolean;
+}> {
+    staleCleanupRun ??= cleanupStaleTemporaryFirmwareBatch().finally(() => {
+        staleCleanupRun = null;
+    });
+    return staleCleanupRun;
 }
 
 export async function deleteFileIfExists(filePath: string) {
@@ -110,6 +201,127 @@ export function registerTemporaryFirmwareFile(
         deleteOnExpire: options?.deleteOnExpire ?? true
     });
     return token;
+}
+
+function isTemporaryFirmwareArtifact(
+    value: unknown
+): value is TemporaryFirmwareArtifact {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return false;
+    }
+    const record = value as Record<string, unknown>;
+    const owner = record.owner as Record<string, unknown> | null;
+    return (
+        typeof record.artifactId === 'string' &&
+        UUID_PATTERN.test(record.artifactId) &&
+        typeof record.storageFileName === 'string' &&
+        path.basename(record.storageFileName) === record.storageFileName &&
+        typeof record.fileName === 'string' &&
+        path.basename(record.fileName) === record.fileName &&
+        typeof record.contentType === 'string' &&
+        typeof record.sizeBytes === 'number' &&
+        typeof record.sha256 === 'string' &&
+        /^[a-f0-9]{64}$/i.test(record.sha256) &&
+        owner !== null &&
+        typeof owner === 'object' &&
+        (owner.organizationId === undefined ||
+            typeof owner.organizationId === 'string') &&
+        typeof owner.userId === 'string' &&
+        (owner.username === undefined || typeof owner.username === 'string') &&
+        (owner.credentialId === undefined ||
+            typeof owner.credentialId === 'string') &&
+        typeof record.expiresAt === 'number'
+    );
+}
+
+function sameTemporaryFirmwareOwner(
+    stored: UploadSessionOwner,
+    caller: UploadSessionOwner
+): boolean {
+    return (
+        stored.organizationId === caller.organizationId &&
+        stored.userId === caller.userId &&
+        stored.username === caller.username &&
+        stored.credentialId === caller.credentialId
+    );
+}
+
+export async function registerTemporaryFirmwareArtifact(input: {
+    artifactId: string;
+    filePath: string;
+    storageFileName: string;
+    fileName: string;
+    contentType: string;
+    sizeBytes: number;
+    sha256: string;
+    owner: UploadSessionOwner;
+}): Promise<{artifactId: string; token: string; expiresAt: number}> {
+    if (!UUID_PATTERN.test(input.artifactId)) {
+        throw new Error('invalid temporary firmware artifact id');
+    }
+    const expectedPath = path.join(
+        temporaryFirmwareUploadsPath,
+        path.basename(input.storageFileName)
+    );
+    if (
+        input.filePath !== expectedPath ||
+        !input.storageFileName.includes(input.artifactId)
+    ) {
+        throw new Error('invalid temporary firmware artifact path');
+    }
+    const expiresAt = Date.now() + TEMP_FIRMWARE_URL_TTL_MS;
+    const artifact: TemporaryFirmwareArtifact = {
+        artifactId: input.artifactId,
+        storageFileName: input.storageFileName,
+        fileName: path.basename(input.fileName),
+        contentType: input.contentType,
+        sizeBytes: input.sizeBytes,
+        sha256: input.sha256.toLowerCase(),
+        owner: input.owner,
+        expiresAt
+    };
+    await kv.set(
+        artifactKey(input.artifactId),
+        JSON.stringify(artifact),
+        Math.ceil(TEMP_FIRMWARE_URL_TTL_MS / 1000)
+    );
+    const token = registerTemporaryFirmwareFile(
+        input.filePath,
+        artifact.fileName,
+        {deleteOnExpire: true}
+    );
+    return {artifactId: input.artifactId, token, expiresAt};
+}
+
+export async function resolveTemporaryFirmwareArtifact(
+    artifactId: string,
+    owner: UploadSessionOwner
+): Promise<TemporaryFirmwareArtifact | null> {
+    if (!UUID_PATTERN.test(artifactId)) return null;
+    const raw = await kv.get(artifactKey(artifactId));
+    if (!raw) return null;
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(raw);
+    } catch {
+        return null;
+    }
+    if (
+        !isTemporaryFirmwareArtifact(parsed) ||
+        parsed.artifactId !== artifactId ||
+        !parsed.storageFileName.includes(artifactId) ||
+        !sameTemporaryFirmwareOwner(parsed.owner, owner)
+    ) {
+        return null;
+    }
+    if (parsed.expiresAt <= Date.now()) {
+        await kv.delete(artifactKey(artifactId));
+        await deleteFileIfExists(
+            path.join(temporaryFirmwareUploadsPath, parsed.storageFileName)
+        );
+        return null;
+    }
+    return parsed;
 }
 
 export function sanitizeOptionalText(value: unknown): string | undefined {
@@ -254,15 +466,16 @@ let cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
 export function startTemporaryFirmwareCleanup(): void {
     if (cleanupTimer) return;
-    cleanupTimer = setInterval(
-        () => cleanupExpiredTemporaryFirmwareFiles(),
-        tuning.firmware.tempCleanupIntervalMs
-    );
+    cleanupTimer = setInterval(() => {
+        cleanupExpiredTemporaryFirmwareFiles();
+        void cleanupStaleTemporaryFirmwareFiles().catch(() => undefined);
+    }, tuning.firmware.tempCleanupIntervalMs);
     cleanupTimer.unref?.();
 }
 
-export function stopTemporaryFirmwareCleanup(): void {
-    if (!cleanupTimer) return;
-    clearInterval(cleanupTimer);
+export async function stopTemporaryFirmwareCleanup(): Promise<void> {
+    if (cleanupTimer) clearInterval(cleanupTimer);
     cleanupTimer = null;
+    await staleCleanupRun?.catch(() => undefined);
+    await closeStaleCleanupDirectory();
 }

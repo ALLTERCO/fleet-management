@@ -1,14 +1,33 @@
+import {randomUUID} from 'node:crypto';
 import {getLogger} from 'log4js';
 import {bthomeObjectInfos} from '../config/BTHomeData';
+import {tuning} from '../config/tuning';
 import * as Observability from './Observability';
+import {extractScalar} from './PostgresProvider';
+import type {
+    SensorCaptureCommitBatch,
+    SensorCaptureWriteResult
+} from './sensor/SensorCaptureDrainer';
+import {
+    appendSensorCaptureBatch,
+    type IdentifiedSensorCaptureBatch,
+    type SensorCaptureBatch
+} from './sensor/SensorCaptureStream';
 import {toEpochSeconds} from './util/epochSeconds';
 
 const logger = getLogger('sensorCapture');
 
-export type SensorSource = 'internal' | 'builtin' | 'addon' | 'blu' | 'weather';
+export type SensorSource =
+    | 'internal'
+    | 'builtin'
+    | 'addon'
+    | 'blu'
+    | 'weather'
+    | 'virtual';
 
 export interface SensorCaptureDeps {
     callDb: (method: string, params: unknown) => Promise<unknown>;
+    appendBatch?: (batch: IdentifiedSensorCaptureBatch) => Promise<void>;
 }
 
 export interface NumericRow {
@@ -119,6 +138,111 @@ function eventArgs(rows: readonly EventRow[]) {
         p_ts: rows.map((r) => toEpochSeconds(r.ts, fallbackSeconds)),
         p_state: rows.map((r) => r.state)
     };
+}
+
+export async function writeSensorCaptureBatch(
+    batch: SensorCaptureCommitBatch,
+    deps: SensorCaptureDeps
+): Promise<SensorCaptureWriteResult> {
+    const numeric = numericArgs(batch.numeric);
+    const events = eventArgs(batch.events);
+    const result = await deps.callDb(
+        'device_sensor.fn_append_capture_batches',
+        {
+            p_batch_ids: batch.batchIds,
+            p_numeric_batch_ids: batch.numericBatchIds,
+            p_numeric_device: numeric.p_device,
+            p_numeric_source: numeric.p_source,
+            p_numeric_kind: numeric.p_kind,
+            p_numeric_channel: numeric.p_channel,
+            p_numeric_ts: numeric.p_ts,
+            p_numeric_val: numeric.p_val,
+            p_event_batch_ids: batch.eventBatchIds,
+            p_event_device: events.p_device,
+            p_event_source: events.p_source,
+            p_event_kind: events.p_kind,
+            p_event_channel: events.p_channel,
+            p_event_ts: events.p_ts,
+            p_event_state: events.p_state
+        }
+    );
+    const value = extractScalar(
+        (result as {rows?: readonly unknown[]})?.rows
+    ) as Partial<SensorCaptureWriteResult> | undefined;
+    const committedBatches = Number(value?.committedBatches);
+    const committedRows = Number(value?.committedRows);
+    if (
+        !Number.isSafeInteger(committedBatches) ||
+        committedBatches < 0 ||
+        !Number.isSafeInteger(committedRows) ||
+        committedRows < 0
+    ) {
+        throw new Error('invalid sensor-capture database result');
+    }
+    return {committedBatches, committedRows};
+}
+
+export async function captureSensorRows(
+    batch: SensorCaptureBatch,
+    deps: SensorCaptureDeps
+): Promise<void> {
+    if (batch.numeric.length === 0 && batch.events.length === 0) return;
+    if (tuning.sensorCapture.redisFirst) {
+        const identified = {...batch, batchId: randomUUID()};
+        try {
+            await (deps.appendBatch ?? appendSensorCaptureBatch)(identified);
+        } catch (redisError) {
+            await persistSensorCaptureFallback(identified, deps, redisError);
+        }
+        return;
+    }
+    await Promise.all([
+        appendNumeric(batch.numeric, deps),
+        appendEvents(batch.events, deps)
+    ]);
+}
+
+async function persistSensorCaptureFallback(
+    batch: IdentifiedSensorCaptureBatch,
+    deps: SensorCaptureDeps,
+    redisError: unknown
+): Promise<void> {
+    Observability.incrementCounter('sensor_capture_postgres_fallback_total');
+    logger.error(
+        'sensor capture Redis append failed; using idempotent PostgreSQL fallback: %s',
+        redisError instanceof Error ? redisError.message : String(redisError)
+    );
+    try {
+        await writeSensorCaptureBatch(
+            {
+                ...batch,
+                batchIds: [batch.batchId],
+                numericBatchIds: batch.numeric.map(() => batch.batchId),
+                eventBatchIds: batch.events.map(() => batch.batchId)
+            },
+            deps
+        );
+        Observability.incrementCounter(
+            'sensor_capture_postgres_fallback_succeeded_total'
+        );
+    } catch (postgresError) {
+        Observability.incrementCounter(
+            'sensor_capture_durable_accept_failed_total'
+        );
+        logger.error(
+            'sensor capture durable acceptance failed in Redis and PostgreSQL: Redis=%s PostgreSQL=%s',
+            redisError instanceof Error
+                ? redisError.message
+                : String(redisError),
+            postgresError instanceof Error
+                ? postgresError.message
+                : String(postgresError)
+        );
+        throw new AggregateError(
+            [redisError, postgresError],
+            'sensor capture could not be stored in Redis or PostgreSQL'
+        );
+    }
 }
 
 // Append numeric rows to the forever rollup. Isolated: never throws.

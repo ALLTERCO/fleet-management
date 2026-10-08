@@ -26,13 +26,16 @@ export async function runCleanup(): Promise<void> {
     const result = await runRetentionCleanup({
         waitingRoomRetentionDays: tuning.deviceIngress.waitingRoomRetentionDays,
         connectionHistoryRetentionDays:
-            tuning.deviceIngress.connectionHistoryRetentionDays
+            tuning.deviceIngress.connectionHistoryRetentionDays,
+        setupSessionRetentionDays:
+            tuning.deviceIngress.setupSessionRetentionDays
     });
     Observability.incrementCounter(
-        'fm_device_ingress_cleanup_rows',
+        'device_ingress_cleanup_rows_total',
         result.expiredCredentials +
             result.expiredSetupSessions +
             result.expiredWaitingRoomEntries +
-            result.disconnectedConnections
+            result.disconnectedConnections +
+            result.deletedSetupSessions
     );
 }

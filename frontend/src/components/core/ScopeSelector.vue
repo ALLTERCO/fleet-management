@@ -109,7 +109,7 @@
 
 <script setup lang="ts">
 import type {AlertScopeType, ScopeSelector} from '@api/alert';
-import {computed, onMounted, ref} from 'vue';
+import {computed, onMounted, ref, watch} from 'vue';
 import CardValue_Group from '@/components/cards/CardValue_Group.vue';
 import CardValue_Location from '@/components/cards/CardValue_Location.vue';
 import CardValue_Tag from '@/components/cards/CardValue_Tag.vue';
@@ -123,6 +123,7 @@ import {useFuzzySearch} from '@/composables/useFuzzySearch';
 import {buildPromotedBluByMac} from '@/helpers/bluCardDedup';
 import {getDeviceName} from '@/helpers/device';
 import {listBluSensorTargets} from '@/helpers/componentStateTargets';
+import {useAlertsStore} from '@/stores/alerts';
 import {useDevicesStore} from '@/stores/devices';
 import {useEntityStore} from '@/stores/entities';
 import {useGroupsStore} from '@/stores/groups';
@@ -135,8 +136,14 @@ const model = defineModel<ScopeSelector>({required: true});
 const props = defineProps<{
     supportedScopeTypes: AlertScopeType[];
     single?: boolean;
+    /** Alert kind + config being scoped. Given these, the list narrows to the
+     *  devices that can actually produce the signal, so a smoke rule does not
+     *  offer plugs. Omit to list every device. */
+    kind?: string;
+    kindConfig?: Record<string, unknown>;
 }>();
 
+const alertsStore = useAlertsStore();
 const devicesStore = useDevicesStore();
 const entityStore = useEntityStore();
 const groupsStore = useGroupsStore();
@@ -167,6 +174,9 @@ onMounted(() => {
     if (!supports('device') && catOptions.value[0]) {
         cat.value = catOptions.value[0].value;
     }
+    // Every category loads its own data. Devices were the one left out, so the
+    // picker read an empty cache and reported no devices on a fresh page load.
+    if (supports('device')) devicesStore.fetchDevices();
     if (supports('group')) groupsStore.fetchGroups();
     if (supports('location')) locationsStore.fetchLocations();
     if (supports('tag')) tagsStore.fetchTags();
@@ -180,8 +190,36 @@ function showSection(type: Cat): boolean {
     return cat.value === type && supports(type);
 }
 
+// Server-side capability check (Alert.Rule.ListEligibleDevices). Null means
+// "not filtered" — either no kind was given or the lookup has not returned.
+const eligibleIds = ref<Set<string> | null>(null);
+
+async function loadEligibleDevices(): Promise<void> {
+    if (!props.kind || !supports('device')) {
+        eligibleIds.value = null;
+        return;
+    }
+    const res = await alertsStore.listEligibleDevices(
+        props.kind,
+        props.kindConfig ?? {}
+    );
+    eligibleIds.value = res ? new Set(res) : null;
+}
+
+watch(
+    () => [props.kind, JSON.stringify(props.kindConfig ?? {})] as const,
+    () => void loadEligibleDevices(),
+    {immediate: true}
+);
+
+const scopableDevices = computed(() => {
+    const all = Object.values(devicesStore.devices);
+    const ids = eligibleIds.value;
+    return ids ? all.filter((d) => ids.has(d.shellyID)) : all;
+});
+
 const sortedDevices = computed(() =>
-    Object.values(devicesStore.devices)
+    scopableDevices.value
         .map((dev) => ({
             dev: dev as shelly_device_t,
             shellyID: dev.shellyID,
@@ -242,6 +280,16 @@ const filteredTags = useFuzzySearch(sortedTags, query, {keys: ['name', 'key']});
 
 const emptyMessage = computed(() => {
     if (query.value.trim()) return `No matches for “${query.value}”.`;
+    // Distinguish "nothing here" from "nothing here that fits this alert" —
+    // the second is the filter working, and saying "not available yet" made it
+    // read as a loading failure.
+    if (
+        cat.value === 'device' &&
+        eligibleIds.value &&
+        Object.keys(devicesStore.devices).length > 0
+    ) {
+        return 'None of your devices report this signal.';
+    }
     return `No ${CAT_LABELS[cat.value].toLowerCase()} available yet.`;
 });
 

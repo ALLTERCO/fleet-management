@@ -156,7 +156,7 @@ export async function getBulkAccept(
     jobId: string
 ): Promise<BulkAcceptJobRecord | null> {
     const record = await bulkAcceptJobStore.get(organizationId, jobId);
-    if (!record || record.state !== 'running') return record;
+    if (record?.state !== 'running') return record;
     const staleMs = tuning.waitingRoom.bulkJobStaleSec * 1000;
     if (Date.now() - record.updatedAt > staleMs) {
         return {...record, state: 'error'};
@@ -170,7 +170,7 @@ export async function cancelBulkAccept(
     jobId: string
 ): Promise<{canceled: boolean}> {
     const record = await bulkAcceptJobStore.get(organizationId, jobId);
-    if (!record || record.state !== 'running') return {canceled: false};
+    if (record?.state !== 'running') return {canceled: false};
     await bulkAcceptJobStore.markCancel(organizationId, jobId, ttlSec());
     return {canceled: true};
 }

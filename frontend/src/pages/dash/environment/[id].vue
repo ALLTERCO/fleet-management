@@ -26,11 +26,10 @@
             v-if="hasData"
             :d="dashboardData"
             :loading="loading"
-            :refresh-interval="refreshInterval"
+            :range-key="rangeKey"
             @refresh="load"
             @open-filter="filterOpen = true"
             @pick-range="onPickRange"
-            @set-interval="onSetInterval"
             @generate-report="onGenerateReport"
             @save-settings="onSaveSettings"
         />
@@ -105,7 +104,6 @@ import {
     type DeviceType,
     deviceTypeOf
 } from '@/helpers/deviceTypeFilter';
-import {buildLiveMetricsFromDevices} from '@/helpers/liveMetrics';
 import {generateReportFile} from '@/helpers/reportGeneration';
 import {useDashboardChromeStore} from '@/stores/dashboardChrome';
 import {useDevicesStore} from '@/stores/devices';
@@ -145,6 +143,11 @@ const locationsList = computed(() => Object.values(locationsStore.locations));
 const dashboardId = computed(() => Number((route.params as {id: string}).id));
 const dashboardName = ref('Environment');
 const groupId = ref<number | null>(null);
+const dashboardApiScope = ref<{
+    groupId?: number;
+    locationId?: number;
+    tagId?: number;
+}>({});
 const loading = ref(false);
 const liveMetrics = ref<any>(null);
 const error = ref<string | null>(null);
@@ -164,6 +167,9 @@ function defaultDateRange() {
     return {from: from.toISOString(), to: to.toISOString()};
 }
 const dateRange = ref(defaultDateRange());
+// Preset key behind dateRange — the toolbar chip shows the preset's words
+// ("Last 7 days") instead of dates. '7d' matches defaultDateRange().
+const rangeKey = ref('7d');
 
 // Resolve a range-chip preset key → concrete from/to (mirrors the energy page).
 function onPickRange(p: {key: string; from?: string; to?: string}) {
@@ -173,9 +179,11 @@ function onPickRange(p: {key: string; from?: string; to?: string}) {
         const to = new Date(`${p.to}T23:59:59.999Z`);
         if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to)
             return;
+        rangeKey.value = p.key;
         dateRange.value = {from: from.toISOString(), to: to.toISOString()};
         return;
     }
+    rangeKey.value = p.key;
     const to = new Date();
     const from = new Date(to);
     if (p.key === '24h') from.setDate(to.getDate() - 1);
@@ -335,19 +343,10 @@ function clearFilters() {
     selectedDevices.value = new Set();
 }
 
-// Devices this dashboard covers: its bound group (if any), else the whole
-// fleet. The funnel narrows within this; nothing outside it is ever queried,
-// so charts, events and the device count all stay consistent on a group board.
-function inDashboardScope(shellyID: string): boolean {
-    const gid = groupId.value;
-    if (gid == null) return true;
-    return (deviceStore.devices[shellyID]?.groupIds ?? []).includes(gid);
-}
-
 const allShellyIds = computed(() =>
-    Object.keys(deviceStore.devices).filter(
-        (id) => inDashboardScope(id) && inScope(id)
-    )
+    (liveMetrics.value?.devices ?? [])
+        .map((device: {shellyID: string}) => device.shellyID)
+        .filter(inScope)
 );
 const hasData = computed(() => allShellyIds.value.length > 0);
 
@@ -470,22 +469,20 @@ function pickBucket(from: string, to: string): EnergyBucket {
 }
 
 function mapRows(rows: SensorQueryRow[]): EnvHistoryRow[] {
-    // Environment = ambient only. Drop source='internal' (device chip temps
-    // from switches/lights); those are electronics temps, not room temps, and
-    // the live KPI path already ignores them.
-    return rows
-        .filter((r) => r.source !== 'internal')
-        .map((r) => ({
-            bucket: r.bucket,
-            deviceId: r.device,
-            kind: r.kind,
-            value: Number(r.value),
-            min: r.min,
-            max: r.max,
-            source: r.source,
-            channel: r.channel,
-            sampleCount: r.sampleCount
-        }));
+    // Environment = ambient only. Sensor.Query enforces that server-side for a
+    // request with no `source`, so the chip temps never cross the wire and this
+    // page does not re-filter what it asked not to receive.
+    return rows.map((r) => ({
+        bucket: r.bucket,
+        deviceId: r.device,
+        kind: r.kind,
+        value: Number(r.value),
+        min: r.min,
+        max: r.max,
+        source: r.source,
+        channel: r.channel,
+        sampleCount: r.sampleCount
+    }));
 }
 
 // Name events at the page — the raw SensorEventRow carries no device name.
@@ -505,7 +502,9 @@ function mapEvents(rows: SensorEventRow[]): EnvEventRow[] {
 }
 
 function scopeParam(): Record<string, unknown> {
-    return groupId.value ? {scope: {groupId: groupId.value}} : {};
+    return Object.keys(dashboardApiScope.value).length > 0
+        ? {scope: dashboardApiScope.value}
+        : {};
 }
 
 async function queryHistory(
@@ -554,33 +553,36 @@ async function loadEvents() {
 }
 
 async function fetchLiveMetrics() {
-    if (groupId.value) {
-        liveMetrics.value = await ws.sendRPC('FLEET_MANAGER', 'fleet.GetMetrics', {
-            scope: {groupId: groupId.value}
-        });
-    } else if (allShellyIds.value.length > 0) {
-        liveMetrics.value = buildLiveMetricsFromDevices(deviceStore.devices);
-    }
+    liveMetrics.value = await ws.sendRPC(
+        'FLEET_MANAGER',
+        'fleet.GetMetrics',
+        scopeParam()
+    );
 }
 
 async function fetchDashboardRecord() {
     const dashboard = await fetchDashboardRecordSummary(dashboardId.value);
     if (dashboard) {
         dashboardName.value = dashboard.name ?? 'Environment';
-        groupId.value = dashboard.groupId;
+        dashboardApiScope.value = dashboard.apiScope;
+        groupId.value = dashboard.apiScope.groupId ?? null;
     }
 }
 
 // Comfort/air thresholds ride in chartSettings.envThresholds (no schema
 // change); missing/legacy dashboards fall back to the defaults.
 async function fetchDashboardSettings() {
-    const res = await ws.sendRPC<{chartSettings?: Record<string, unknown>}>(
-        'FLEET_MANAGER',
-        'dashboard.getsettings',
-        {dashboardId: dashboardId.value}
-    );
+    const res = await ws.sendRPC<{
+        chartSettings?: Record<string, unknown>;
+        refreshInterval?: number;
+    }>('FLEET_MANAGER', 'dashboard.getsettings', {
+        dashboardId: dashboardId.value
+    });
     const chart = res?.chartSettings ?? {};
     chartSettingsRaw.value = chart;
+    // Stored cadence wins; dashboards without one keep the 60s default.
+    if (typeof res?.refreshInterval === 'number')
+        refreshInterval.value = res.refreshInterval;
     const stored = chart.envThresholds;
     if (stored && typeof stored === 'object') {
         settings.value = {
@@ -697,7 +699,15 @@ async function onGenerateReport(opts: {
         if (!file) throw new Error('Report produced no file');
         await downloadFile(
             file,
-            `${fileRef.name}.${opts.format === 'html' ? 'html' : 'csv'}`
+            `${fileRef.name}.${
+                opts.format === 'html'
+                    ? 'html'
+                    : opts.format === 'xlsx'
+                      ? 'xlsx'
+                      : opts.format === 'pdf'
+                        ? 'pdf'
+                      : 'csv'
+            }`
         );
     } catch (err: any) {
         if (
@@ -731,8 +741,9 @@ async function onSaveSettings(next: EnvSettings) {
     }
 }
 
-// ── Auto-refresh: live snapshot only; history follows a live range. Interval
-// is user-picked from the toolbar (0 = off), same control as the energy view. ──
+// ── Auto-refresh: live snapshot only; history follows a live range. Cadence
+// is picked from the shell ⋮ menu (0 = off) and persisted per-dashboard, same
+// as the energy view. ──
 
 function rangeIsLive(to: string): boolean {
     return Math.abs(new Date(to).getTime() - Date.now()) < 2 * 60 * 60 * 1000;
@@ -760,9 +771,21 @@ function startRefresh() {
     }, refreshInterval.value);
 }
 
-function onSetInterval(ms: number) {
+async function onSetInterval(ms: number) {
+    const prev = refreshInterval.value; // roll back the optimistic apply on failure
     refreshInterval.value = ms;
     startRefresh();
+    try {
+        await ws.sendRPC('FLEET_MANAGER', 'dashboard.setsettings', {
+            dashboardId: dashboardId.value,
+            refreshInterval: ms
+        });
+    } catch (err: any) {
+        refreshInterval.value = prev;
+        startRefresh();
+        console.error('[Environment] save refresh interval failed:', err);
+        reportError.value = err?.message ?? 'Failed to save auto-refresh';
+    }
 }
 
 watch(
@@ -775,7 +798,7 @@ watch(
 );
 
 watch(allShellyIds, (ids) => {
-    if (ids.length > 0 && !groupId.value && !liveMetrics.value) load();
+    if (ids.length > 0 && !liveMetrics.value) load();
 });
 
 onMounted(async () => {
@@ -800,6 +823,8 @@ const {renameVisible, renameSaving, renameName, saveRename} =
         dashboardId: () => dashboardId.value,
         loading: () => loading.value,
         currentName: () => dashboardName.value,
+        refreshInterval: () => refreshInterval.value,
+        onSetInterval: (ms) => void onSetInterval(ms),
         onRenamed: (name) => {
             dashboardName.value = name;
         }

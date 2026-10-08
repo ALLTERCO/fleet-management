@@ -5,7 +5,11 @@ import {DEV_MODE, tuning} from '../../../config';
 import {reportHandledPeerError} from '../../util/faultGuard';
 import {isNodeRedPath} from '../authToken';
 import {handleDeviceGuiUpgrade, isDeviceGuiUpgrade} from '../deviceGuiOrigin';
-import {isViteHmrUpgrade, proxyViteHmrUpgrade} from '../viteDevProxy';
+import {
+    isViteHmrUpgrade,
+    proxyViteHmrUpgrade,
+    viteHmrPortFor
+} from '../viteDevProxy';
 import type ClientWebsocketHandler from './handlers/ClientWebsocketHandler';
 import type ShellyWebsocketHandler from './handlers/ShellyWebsocketHandler';
 
@@ -101,9 +105,17 @@ export default class WebsocketController {
             }
 
             // Dev: Vite's HMR socket shares '/' with the client WS; tell them
-            // apart by subprotocol and forward HMR to the Vite dev server.
-            if (DEV_MODE && pathname === '/' && isViteHmrUpgrade(request)) {
-                proxyViteHmrUpgrade(request, socket, head);
+            // apart by subprotocol and forward HMR to the Vite dev server that
+            // owns that path. The operator SPA connects under '/admin/', so
+            // matching only '/' left its socket to fall through to the
+            // authenticated branch below and be rejected.
+            if (DEV_MODE && isViteHmrUpgrade(request)) {
+                proxyViteHmrUpgrade(
+                    request,
+                    socket,
+                    head,
+                    viteHmrPortFor(request)
+                );
                 return;
             }
 

@@ -63,6 +63,11 @@
                 :subtree-ids="rollups.subtreeIds.value"
                 :scope-label="scopeLabel"
             />
+            <LocationGroupsTab
+                v-else-if="activeTab === 'groups'"
+                :location-id="locationId"
+                :scope-label="scopeLabel"
+            />
             <LocationSettingsTab
                 v-else
                 :can-delete="canDelete"
@@ -87,6 +92,7 @@ import LocationBreadcrumbs from '@/components/core/LocationBreadcrumbs.vue';
 import SubjectTagPicker from '@/components/core/SubjectTagPicker.vue';
 import LocationDevicesTab from '@/components/locations/LocationDevicesTab.vue';
 import LocationGeoInset from '@/components/locations/LocationGeoInset.vue';
+import LocationGroupsTab from '@/components/locations/LocationGroupsTab.vue';
 import LocationKpiStrip from '@/components/locations/LocationKpiStrip.vue';
 import LocationOverviewTab from '@/components/locations/LocationOverviewTab.vue';
 import LocationPlanTab from '@/components/locations/LocationPlanTab.vue';
@@ -97,7 +103,11 @@ import {useLocationRollups} from '@/composables/useLocationRollups';
 import {usePermissions} from '@/composables/usePermissions';
 import {tabFromDigit} from '@/helpers/keyboardShortcuts';
 import {locationGeoLatLng} from '@/helpers/location-geo';
-import type {DetailTabKey} from '@/helpers/locationsUrlState';
+import {
+    ALL_TABS,
+    type DetailTabKey,
+    isDetailTabKey
+} from '@/helpers/locationsUrlState';
 import type {ApiLocation, LocationBreadcrumbEntry} from '@/stores/locations';
 import {useLocationsStore} from '@/stores/locations';
 import {trackInteraction} from '@/tools/observability';
@@ -126,6 +136,25 @@ const selectedRef = computed<number | null>(() => props.locationId);
 const rollups = useLocationRollups(selectedRef);
 const locationGeo = computed(() =>
     location.value ? locationGeoLatLng(location.value) : null
+);
+
+// Location rollups and the Devices tab derive their contents from the
+// assignment store. A fresh Organize session only loads the location tree,
+// so fetch assignments for the selected location and every descendant before
+// rendering those views. The store de-duplicates pages and protects concurrent
+// reads from overwriting a newer assignment mutation.
+watch(
+    () => rollups.subtreeIds.value.join(','),
+    async () => {
+        const ids = [...rollups.subtreeIds.value];
+        const missing = ids.filter(
+            (id) => locations.assignmentsByLocation[id] == null
+        );
+        if (missing.length > 0) {
+            await locations.fetchAssignmentsBulk(missing);
+        }
+    },
+    {immediate: true}
 );
 
 const path = ref<LocationBreadcrumbEntry[]>([]);
@@ -160,6 +189,7 @@ const tabs = computed<{id: DetailTabKey; label: string; icon: string}[]>(() => [
     {id: 'overview', label: 'Overview', icon: 'fas fa-circle-info'},
     {id: 'plan', label: 'Plan', icon: 'fas fa-cube'},
     {id: 'devices', label: 'Devices', icon: 'fas fa-plug'},
+    {id: 'groups', label: 'Groups', icon: 'fas fa-folder-tree'},
     {id: 'settings', label: 'Settings', icon: 'fas fa-sliders'}
 ]);
 
@@ -167,10 +197,7 @@ const canEdit = computed(() => canWrite.value);
 const canDelete = computed(() => canWrite.value);
 
 function onTabChange(tabId: string): void {
-    const allowed: DetailTabKey[] = ['overview', 'plan', 'devices', 'settings'];
-    if (allowed.includes(tabId as DetailTabKey)) {
-        emit('tab-change', tabId as DetailTabKey);
-    }
+    if (isDetailTabKey(tabId)) emit('tab-change', tabId);
 }
 
 function openEdit(): void {
@@ -178,7 +205,10 @@ function openEdit(): void {
     editVisible.value = true;
 }
 
-// Keyboard shortcuts — 1-4 switch tabs, e opens edit.
+// One digit per tab, so adding a tab extends the shortcuts with it.
+const TAB_DIGIT_KEYS = ALL_TABS.map((_, index) => String(index + 1));
+
+// Keyboard shortcuts — one digit per tab, e opens edit.
 // Editable-target guard in useKeyboardShortcuts skips when typing.
 function switchTabByDigit(event: KeyboardEvent): void {
     const tab = tabFromDigit(event.key);
@@ -187,7 +217,7 @@ function switchTabByDigit(event: KeyboardEvent): void {
 
 useKeyboardShortcuts({
     bindings: [
-        {key: ['1', '2', '3', '4'], handler: switchTabByDigit},
+        {key: TAB_DIGIT_KEYS, handler: switchTabByDigit},
         {
             key: 'e',
             handler: () => {

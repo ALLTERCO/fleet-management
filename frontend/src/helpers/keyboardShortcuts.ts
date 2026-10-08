@@ -4,21 +4,17 @@
  *  component should apply. Components stay thin event-routers; the
  *  state transitions live here where they can be tested without a DOM. */
 
-import type {DetailTabKey} from '@/helpers/locationsUrlState';
+import {ALL_TABS, type DetailTabKey} from '@/helpers/locationsUrlState';
 
-/** Map the digit keys `1` … `4` to the right-pane tab keys.
+/** Map a digit key to the right-pane tab at that position, so the shortcuts
+ *  follow ALL_TABS instead of a second copy of the tab order.
  *  Returns null for any other input so the component can decide whether
  *  to ignore the event or surface it. */
 export function tabFromDigit(digit: string): DetailTabKey | null {
-    return DIGIT_TO_TAB[digit] ?? null;
+    const index = Number(digit) - 1;
+    if (!Number.isInteger(index)) return null;
+    return ALL_TABS[index] ?? null;
 }
-
-const DIGIT_TO_TAB: Readonly<Record<string, DetailTabKey>> = {
-    '1': 'overview',
-    '2': 'plan',
-    '3': 'devices',
-    '4': 'settings'
-};
 
 /** Move tree-row selection one step in the given direction.
  *

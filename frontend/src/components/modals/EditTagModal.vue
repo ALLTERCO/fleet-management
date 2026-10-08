@@ -71,7 +71,7 @@
                     <div class="etm__applied-bar">
                         <div
                             v-if="totalAssignments > 0"
-                            class="search-pill etm__applied-search"
+                            class="search-pill search-pill--buttons etm__applied-search"
                             :class="{'search-pill__input--filtered': hasActiveFilter}"
                         >
                             <i class="fas fa-search search-pill__icon" />
@@ -97,7 +97,7 @@
                                 :class="{
                                     'search-pill__filter--active': hasActiveFilter
                                 }"
-                                aria-label="Filter by type"
+                                aria-label="Filter assignments"
                                 @click="filterModalVisible = true"
                             >
                                 <i class="fas fa-filter" />
@@ -205,7 +205,7 @@
                     <FilterModal
                         v-if="filterModalVisible"
                         :visible="filterModalVisible"
-                        title="Filter by type"
+                        title="Filter assignments"
                         match-label="subjects"
                         :match-count="matchCount"
                         :sections="filterSections"
@@ -342,7 +342,7 @@ type DeviceKind = 'physical' | 'bluetooth' | 'virtual';
 const KIND_ORDER: readonly DeviceKind[] = ['physical', 'bluetooth', 'virtual'];
 const KIND_LABELS: Record<DeviceKind, string> = {
     physical: 'Physical',
-    bluetooth: 'Bluetooth',
+    bluetooth: 'BLU',
     virtual: 'Virtual'
 };
 const KIND_ICONS: Record<DeviceKind, string> = {
@@ -583,7 +583,7 @@ const filterSections = computed<FilterSection[]>(() => {
     const sections: FilterSection[] = [
         {
             key: 'type',
-            label: 'Type',
+            label: 'Applies to',
             icon: 'fa-shapes',
             options: availableTypes.value.map((t) => ({
                 key: t,
@@ -602,7 +602,7 @@ const filterSections = computed<FilterSection[]>(() => {
     if (kindOptions.length > 0) {
         sections.push({
             key: 'kind',
-            label: 'Device kind',
+            label: 'Device type',
             icon: 'fa-microchip',
             options: kindOptions
         });

@@ -1,6 +1,5 @@
 <template>
-    <div class="rss">
-        <!-- The tabs say it all — no intro line repeating them. -->
+    <WizardStep name="source">
         <ViewToggle v-model="activeLane" :options="laneOptions" />
 
         <section v-if="activeLane === 'token'" class="rss__lane">
@@ -18,19 +17,18 @@
                     />
                 </FormField>
                 <Button
-                    type="blue"
+                    type="blue-hollow"
                     size="sm"
                     :loading="probing"
                     :disabled="!ipInput.trim().length || probing"
                     @click="onProbe"
                 >
-                    <i class="fas fa-magnifying-glass" aria-hidden="true" />
                     Probe device
                 </Button>
             </form>
-            <div v-if="probeError" class="rss__state rss__state--error">
+            <WizardState v-if="probeError" tone="error">
                 {{ probeError }}
-            </div>
+            </WizardState>
             <DiscoveredDeviceCard
                 v-if="probedDevice"
                 :device="probedDevice"
@@ -43,28 +41,27 @@
         <section v-else-if="activeLane === 'scan'" class="rss__lane">
             <div class="rss__form">
                 <Button
-                    type="blue"
+                    type="blue-hollow"
                     size="sm"
                     :loading="scanning"
                     @click="onScan"
                 >
-                    <i class="fas fa-radar" aria-hidden="true" />
                     {{ scanHits.length ? 'Re-scan network' : 'Scan network' }}
                 </Button>
                 <span v-if="lastScanLabel" class="rss__scan-meta">
                     {{ lastScanLabel }}
                 </span>
             </div>
-            <div v-if="scanError" class="rss__state rss__state--error">
+            <WizardState v-if="scanError" tone="error">
                 {{ scanError }}
-            </div>
-            <div
+            </WizardState>
+            <WizardState
                 v-else-if="!scanning && scanHits.length === 0 && hasScanned"
-                class="rss__state rss__state--empty"
+                tone="empty"
+                icon="fas fa-radar"
             >
-                <i class="fas fa-radar" aria-hidden="true" />
-                <span>No Shelly devices answered on the LAN.</span>
-            </div>
+                No Shelly devices answered on the network.
+            </WizardState>
             <div v-else-if="scanHits.length" class="dc-grid">
                 <DiscoveredDeviceCard
                     v-for="hit in scanHits"
@@ -81,33 +78,21 @@
         </section>
 
         <!-- Admission progress — shared by the IP and scan lanes. -->
-        <div
-            v-if="ipReconnect?.status === 'waiting'"
-            class="rss__state rss__state--info"
-        >
-            <Spinner size="sm" />
-            <span>
-                Device {{ ipReconnect.shellyId }} is rebooting and
-                connecting to FM. The wizard continues automatically.
-            </span>
-        </div>
-        <div
+        <WizardState v-if="ipReconnect?.status === 'waiting'" tone="loading">
+            Device {{ ipReconnect.shellyId }} is restarting and connecting.
+            The wizard continues on its own.
+        </WizardState>
+        <WizardState
             v-else-if="ipReconnect?.status === 'connected'"
-            class="rss__state rss__state--success"
+            tone="success"
         >
-            <i class="fas fa-check-circle" aria-hidden="true" />
             Device {{ ipReconnect.shellyId }} joined the fleet.
-        </div>
-        <div
-            v-else-if="ipReconnect?.status === 'timeout'"
-            class="rss__state rss__state--error"
-        >
-            <i class="fas fa-triangle-exclamation" aria-hidden="true" />
-            Device {{ ipReconnect.shellyId }} did not reconnect within
-            the expected window. Power-cycle the device and try again.
-            The admission intent is still valid.
-        </div>
-    </div>
+        </WizardState>
+        <WizardState v-else-if="ipReconnect?.status === 'timeout'" tone="error">
+            Device {{ ipReconnect.shellyId }} did not come back in time.
+            Power-cycle it and try again. It is still allowed to join.
+        </WizardState>
+    </WizardStep>
 </template>
 
 <script setup lang="ts">
@@ -122,12 +107,14 @@ import {
 import Button from '@/components/core/Button.vue';
 import FormField from '@/components/core/FormField.vue';
 import Input from '@/components/core/Input.vue';
-import Spinner from '@/components/core/Spinner.vue';
 import ViewToggle, {
     type ViewToggleOption
 } from '@/components/core/ViewToggle.vue';
+import WizardState from '@/components/core/wizard/WizardState.vue';
+import WizardStep from '@/components/core/wizard/WizardStep.vue';
 import EnrollmentTokenPanel from '@/components/ingress/EnrollmentTokenPanel.vue';
 import {useDevicesStore} from '@/stores/devices';
+import {actionableError} from '@/helpers/rpcError';
 import {useSystemStore} from '@/stores/system';
 import DiscoveredDeviceCard from './DiscoveredDeviceCard.vue';
 
@@ -216,7 +203,10 @@ async function onProbe(): Promise<void> {
         probedDevice.value = result;
     } catch (err) {
         if (myToken !== probeToken) return;
-        probeError.value = errorMessage(err);
+        probeError.value = actionableError(
+            err,
+            'No Shelly answered at that address. Check the address and that the device is powered on.'
+        );
     } finally {
         if (myToken === probeToken) probing.value = false;
     }
@@ -236,7 +226,10 @@ async function admitProbed(): Promise<void> {
         const result = await admitByHost(dev.ip, ipPassword.value || undefined);
         startReconnectWatch(result.shellyId, result.expectedConnectionWithinSec);
     } catch (err) {
-        probeError.value = errorMessage(err);
+        probeError.value = actionableError(
+            err,
+            'Could not add that device. Check the password if it needs one, then try again.'
+        );
     } finally {
         admitting.value = false;
     }
@@ -268,14 +261,6 @@ function stopReconnectWatch(): void {
     }
 }
 
-function errorMessage(err: unknown): string {
-    if (!err) return 'Unknown error';
-    if (err instanceof Error) return err.message;
-    const maybe = err as {message?: unknown};
-    if (typeof maybe.message === 'string') return maybe.message;
-    return String(err);
-}
-
 function rpcErrorCode(err: unknown): number | null {
     if (!err || typeof err !== 'object') return null;
     const code = (err as {code?: unknown}).code;
@@ -304,7 +289,10 @@ async function onScan(): Promise<void> {
         hasScanned.value = true;
         void enrichScanHits(result.hits, generation);
     } catch (err) {
-        scanError.value = err instanceof Error ? err.message : String(err);
+        scanError.value = actionableError(
+            err,
+            'The network scan failed. Check that Fleet Manager can reach your network, then rescan.'
+        );
     } finally {
         scanning.value = false;
     }
@@ -368,7 +356,10 @@ async function admitScanHit(hit: DiscoveryScanHit): Promise<void> {
             scanError.value =
                 'Device requires a password. Enter it on the card and try again.';
         } else {
-            scanError.value = errorMessage(err);
+            scanError.value = actionableError(
+                err,
+                'Could not add that device. Try again in a moment.'
+            );
         }
     } finally {
         admittingScanId.value = null;
@@ -383,78 +374,32 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.rss {
-    display: grid;
-    gap: var(--gap-md);
-}
 .rss__lane {
     display: grid;
     gap: var(--gap-md);
 }
+
 /* Triage cards were built for the devices grid; inside the modal they
    size to their content so the modal never scrolls. */
 .rss__lane :deep(.dtc) {
     height: auto;
     max-width: 30rem;
 }
+
 .rss__lane .dc-grid :deep(.dtc) {
     max-width: none;
 }
+
 .rss__form {
     display: flex;
     align-items: flex-end;
     gap: var(--gap-md);
     flex-wrap: wrap;
 }
+
 .rss__scan-meta {
+    font-variant-numeric: tabular-nums;
     color: var(--color-text-tertiary);
     font-size: var(--type-caption);
-}
-.rss__state {
-    display: grid;
-    place-items: center;
-    gap: var(--gap-sm);
-    padding: var(--gap-xl);
-    text-align: center;
-    color: var(--color-text-secondary);
-    background: var(--color-surface-2);
-    border: 1px dashed var(--color-border-subtle);
-    border-radius: var(--radius-md);
-    min-height: 180px;
-}
-.rss__state--error {
-    color: var(--color-warning-text);
-    background: var(--color-warning-subtle);
-    border-style: solid;
-    min-height: 0;
-    padding: var(--gap-md);
-}
-.rss__state--success {
-    color: var(--color-success-text);
-    background: var(--color-success-subtle);
-    border-style: solid;
-    min-height: 0;
-    padding: var(--gap-md);
-    flex-direction: row;
-    display: flex;
-    justify-content: flex-start;
-    gap: var(--gap-sm);
-    align-items: center;
-}
-.rss__state--info {
-    color: var(--color-info-text);
-    background: var(--color-info-subtle);
-    border-style: solid;
-    min-height: 0;
-    padding: var(--gap-md);
-    flex-direction: row;
-    display: flex;
-    justify-content: flex-start;
-    gap: var(--gap-sm);
-    align-items: center;
-}
-.rss__state--empty i {
-    color: var(--brand-light);
-    font-size: var(--type-subheading);
 }
 </style>

@@ -27,6 +27,10 @@ export class ZitadelIdentityDirectory implements IdentityDirectory {
         return zitadelService.userBelongsToTenant(query.userId, query.tenantId);
     }
 
+    async userAccountActive(userId: string): Promise<boolean> {
+        return zitadelService.userAccountActive(userId);
+    }
+
     async hasInstanceAdministratorRole(query: {
         userId: string;
         roleKey: string;

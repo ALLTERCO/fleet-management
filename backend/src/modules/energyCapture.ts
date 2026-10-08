@@ -12,6 +12,7 @@ import {
     classifyFromOverride,
     componentUsesDomainDetection,
     type DomainSignals,
+    keepsLiveHistory,
     pickConfigClassifier
 } from './energyClassifier';
 import type {EnergyClassifierCache} from './energyClassifierCache';
@@ -154,6 +155,14 @@ interface EmitContext extends ResolvedInput {
 }
 
 function emitIfValuePresent(ri: ResolvedInput, deps: CaptureDeps): void {
+    if (
+        !keepsLiveHistory({
+            componentKey: ri.input.componentKey,
+            tag: ri.resolved.tag
+        })
+    ) {
+        return;
+    }
     const value = computeStoredValue(ri.resolved, ri.input);
     if (value === null) return;
     const ctx: EmitContext = {...ri, value};
@@ -287,7 +296,8 @@ function enqueueStatsRow(ctx: EmitContext, queue: EmStatsQueue): void {
         phase: ctx.resolved.phase,
         channel: ctx.resolved.channel,
         ts: Math.trunc(ctx.input.ts),
-        value: ctx.value
+        value: ctx.value,
+        isDelta: ctx.resolved.isDelta
     });
 }
 
@@ -323,7 +333,10 @@ function scaleValue(v: number, scale: number): number {
 
 // Cumulative counters only contribute when they advance. First
 // reading (no prev) and resets (current < prev) both produce no row.
-function positiveDelta(current: number, last: number): number | null {
+// Exported because role-declared counters (an XT1 water meter) resolve their
+// tag from the device's own role rather than the heuristic, but must age
+// exactly the same way: one home for "how a cumulative reading becomes a row".
+export function positiveDelta(current: number, last: number): number | null {
     const delta = current - last;
     return delta > 0 ? delta : null;
 }

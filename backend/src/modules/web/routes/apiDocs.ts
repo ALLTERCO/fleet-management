@@ -16,6 +16,7 @@ import log4js from 'log4js';
 import {configRc, tuning} from '../../../config';
 import {httpRouteLimit} from '../rateLimit';
 import {isLoggedInOrRedirect} from '../utils/authMiddleware';
+import {sendFileByName} from '../utils/sendFileByName';
 
 const docsRateLimit = httpRouteLimit({
     name: 'api-docs',
@@ -119,7 +120,7 @@ router.get('/', isLoggedInOrRedirect, docsRateLimit, (_req, res) => {
     }
     res.setHeader('Cache-Control', 'public, max-age=60');
     res.setHeader('Content-Security-Policy', SCALAR_CSP);
-    res.sendFile(HTML_PATH);
+    sendFileByName(res, HTML_PATH);
 });
 
 // Agent entrypoint (llms.txt convention). Same login gate as the docs:
@@ -130,7 +131,7 @@ export function serveLlmsTxt(_req: express.Request, res: express.Response) {
         return;
     }
     res.setHeader('Cache-Control', 'public, max-age=60');
-    res.sendFile(LLMS_TXT_PATH);
+    sendFileByName(res, LLMS_TXT_PATH);
 }
 
 export const llmsTxtRouter = express.Router();

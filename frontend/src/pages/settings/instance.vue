@@ -42,6 +42,7 @@ import {type ComputedRef, computed, inject, onMounted, ref} from 'vue';
 import BasicBlock from '@/components/core/BasicBlock.vue';
 import DataList, {type DataColumn} from '@/components/core/DataList.vue';
 import PageTemplate from '@/components/core/PageTemplate.vue';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useAuthStore} from '@/stores/auth';
 import {sendRPC} from '@/tools/websocket';
 import type {RouteTab} from '@/types/page-template';
@@ -87,7 +88,7 @@ async function refresh(): Promise<void> {
             {}
         );
     } catch (err) {
-        error.value = err instanceof Error ? err.message : String(err);
+        error.value = rpcErrorMessage(err);
         info.value = null;
     } finally {
         loading.value = false;

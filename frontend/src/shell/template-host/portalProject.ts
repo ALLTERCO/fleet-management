@@ -42,13 +42,7 @@ export function usePortalDashboardBlocks(): ComputedRef<
     DashboardBlock[] | null
 > {
     const blocks = useCustomizationField('dashboardBlocks');
-    return computed(
-        () =>
-            blocks.value?.map((block) => ({
-                ...block,
-                dataSources: block.dataSources ?? {}
-            })) ?? null
-    );
+    return computed(() => blocks.value ?? null);
 }
 
 export function usePortalHiddenSections(): ComputedRef<unknown[] | null> {

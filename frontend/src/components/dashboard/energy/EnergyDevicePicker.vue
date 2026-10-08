@@ -1,6 +1,11 @@
 <template>
     <div class="edp">
-        <input v-model="q" class="edp-search" type="search" :placeholder="placeholder ?? 'Search devices…'" />
+        <input
+            v-model="q"
+            class="edp-search core-input border text-base rounded-lg block w-full p-2"
+            type="search"
+            :placeholder="placeholder ?? 'Search devices…'"
+        />
         <div class="edp-list">
             <label v-for="dev in filtered" :key="dev.shellyId" class="edp-row">
                 <input type="checkbox" :checked="selected.has(dev.shellyId)" @change="toggle(dev.shellyId)" />
@@ -40,49 +45,46 @@ function toggle(shellyId: string) {
 
 <style scoped>
 .edp-search {
-    width: 100%;
-    background: #0e1116;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    padding: 9px 11px;
-    color: #f5f6f8;
-    font: 500 13px 'Inter', system-ui, sans-serif;
-    margin-bottom: 8px;
+    margin-bottom: var(--space-2);
 }
 .edp-list {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    max-height: 260px;
+    gap: var(--space-0-5);
+    max-height: 16rem;
     overflow: auto;
-    border: 1px solid rgba(255, 255, 255, 0.055);
-    border-radius: 12px;
-    padding: 6px;
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-lg);
+    padding: var(--space-1-5);
 }
 .edp-row {
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 9px 10px;
-    border-radius: 9px;
+    gap: var(--space-2-5);
+    padding: var(--space-2) var(--space-2-5);
+    border-radius: var(--radius-md);
     cursor: pointer;
     font-size: var(--type-caption);
+    color: var(--color-text-primary);
 }
 .edp-row:hover {
-    background: #181c23;
+    background: var(--color-surface-3);
+}
+.edp-row input {
+    accent-color: var(--color-primary);
 }
 .edp-name {
     flex: 1;
-    font-weight: 500;
+    font-weight: var(--font-medium);
 }
 .edp-id {
-    color: #5d646f;
+    color: var(--color-text-tertiary);
     font-size: var(--type-caption);
     font-variant-numeric: tabular-nums;
 }
 .edp-empty {
     font-size: var(--type-caption);
-    color: #5d646f;
-    padding: 6px 10px;
+    color: var(--color-text-tertiary);
+    padding: var(--space-1-5) var(--space-2-5);
 }
 </style>

@@ -6,7 +6,7 @@
 import type {AlertRuleKind} from '../../../types/api/alert';
 import {fingerprintV2} from '../fingerprint';
 import {collectSignals, type Signal} from '../signals';
-import type {Evaluator, MatchResult} from '../types';
+import type {ClearMatch, Evaluator, MatchResult} from '../types';
 
 export interface SensorAlarmSpec {
     kind: AlertRuleKind;
@@ -26,13 +26,22 @@ export function makeSensorAlarmEvaluator(spec: SensorAlarmSpec): Evaluator {
         clearKinds: ['device_status_changed'],
 
         match(event, rule): MatchResult | null {
-            if (rule.kind !== spec.kind) return null;
-            if (event.kind !== 'device_status_changed') return null;
-            if (!event.device) return null;
-            for (const signal of collectSignals(event.device)) {
+            return this.matchAll?.(event, rule)[0] ?? null;
+        },
+
+        // One gateway can carry several sensors in alarm; each gets its own alert.
+        matchAll(event, rule): MatchResult[] {
+            if (rule.kind !== spec.kind) return [];
+            if (event.kind !== 'device_status_changed') return [];
+            if (!event.device) return [];
+            const out: MatchResult[] = [];
+            for (const signal of collectSignals(
+                event.device,
+                event.promotedAway
+            )) {
                 const channel = spec.detect(signal);
                 if (!channel) continue;
-                return {
+                out.push({
                     fingerprintV2: fingerprintV2({
                         ruleId: rule.id,
                         subjectType: signal.subjectType,
@@ -43,33 +52,36 @@ export function makeSensorAlarmEvaluator(spec: SensorAlarmSpec): Evaluator {
                     ...(spec.severity ? {severity: spec.severity} : {}),
                     subject: {type: signal.subjectType, id: signal.subjectId},
                     context: {shellyID: signal.gatewayShellyID, channel}
-                };
+                });
             }
-            return null;
+            return out;
         },
 
         // Resolve every cleared subject, not just the first.
-        matchClearAll(event, rule): string[] {
+        matchClearAll(event, rule): ClearMatch[] {
             if (rule.kind !== spec.kind) return [];
             if (event.kind !== 'device_status_changed') return [];
             if (!event.device) return [];
-            const out: string[] = [];
-            for (const signal of collectSignals(event.device)) {
+            const out: ClearMatch[] = [];
+            for (const signal of collectSignals(
+                event.device,
+                event.promotedAway
+            )) {
                 if (!spec.isClear(signal)) continue;
-                out.push(
-                    fingerprintV2({
+                out.push({
+                    fingerprintV2: fingerprintV2({
                         ruleId: rule.id,
                         subjectType: signal.subjectType,
                         subjectId: signal.subjectId
                     })
-                );
+                });
             }
             return out;
         },
 
         matchClear(event, rule) {
             const [first] = this.matchClearAll?.(event, rule) ?? [];
-            return first ? {fingerprintV2: first} : null;
+            return first ?? null;
         }
     };
 }

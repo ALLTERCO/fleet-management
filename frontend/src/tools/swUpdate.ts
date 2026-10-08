@@ -1,5 +1,6 @@
 import {registerSW} from 'virtual:pwa-register';
 import {SW_UPDATE_POLL_INTERVAL_MS} from '@/constants';
+import {isRoutePath, isUnderRoutePath} from '@/helpers/appPath';
 import {debug} from './debug';
 
 let updatePending = false;
@@ -78,9 +79,11 @@ function canActivateUpdate(): boolean {
     return true;
 }
 
+// Reloading mid-callback drops the authorization code and the sign-in fails.
+// Raw pathnames stopped recognising both routes under /admin/, so the guard
+// quietly stopped guarding exactly where a reload hurts most.
 function isBlockedUpdateRoute(): boolean {
-    const path = window.location.pathname;
-    return path === '/callback' || path.startsWith('/auth/signinwin');
+    return isRoutePath('/callback') || isUnderRoutePath('/auth/signinwin');
 }
 
 function hasReloadBlocker(): boolean {

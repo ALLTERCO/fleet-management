@@ -1,6 +1,7 @@
 import type {EnergyTag} from '../modules/energyClassifier';
 import type {
     DeviceReplacementAvailablePoint,
+    DeviceReplacementBindingCandidate,
     DeviceReplacementCandidate,
     DeviceReplacementRequirement
 } from './deviceReplacementTypes';
@@ -15,6 +16,13 @@ export interface NormalizedRemapEntry {
     toChannel: number;
     toPhase: 'a' | 'b' | 'c' | 'z';
     toTag: EnergyTag;
+}
+
+export interface NormalizedBindingRemapEntry {
+    bindingId: string;
+    fromComponentKey: string;
+    toComponentKey: string;
+    sourceSnapshot: Record<string, unknown>;
 }
 
 interface TargetRef {
@@ -147,6 +155,60 @@ export function validateConfirmedMapping(
         }
     }
 
+    if (problems.length > 0) {
+        throw new Error(`invalid confirmedMapping: ${problems.join('; ')}`);
+    }
+    return entries;
+}
+
+export function validateConfirmedBindingMapping(
+    remapCandidates: readonly DeviceReplacementBindingCandidate[],
+    confirmedMapping: unknown
+): NormalizedBindingRemapEntry[] {
+    if (
+        confirmedMapping === null ||
+        typeof confirmedMapping !== 'object' ||
+        Array.isArray(confirmedMapping)
+    ) {
+        throw new Error('confirmedMapping must be an object');
+    }
+    const provided = confirmedMapping as Record<string, unknown>;
+    const expectedKeys = new Set(
+        remapCandidates.map(
+            (candidate) => `binding:${candidate.required.bindingId}`
+        )
+    );
+    const unknown = Object.keys(provided).filter(
+        (key) => !expectedKeys.has(key)
+    );
+    if (unknown.length > 0) {
+        throw new Error(
+            `confirmedMapping has unknown binding entries: ${unknown.join(', ')}`
+        );
+    }
+    const entries: NormalizedBindingRemapEntry[] = [];
+    const problems: string[] = [];
+    for (const candidate of remapCandidates) {
+        const key = `binding:${candidate.required.bindingId}`;
+        const value = provided[key];
+        const componentKey =
+            value && typeof value === 'object' && !Array.isArray(value)
+                ? (value as Record<string, unknown>).componentKey
+                : null;
+        const target = candidate.candidates.find(
+            (item) => item.componentKey === componentKey
+        );
+        if (!target) {
+            problems.push(`missing or invalid mapping for ${key}`);
+            continue;
+        }
+        entries.push({
+            bindingId: candidate.required.bindingId,
+            fromComponentKey: candidate.required.componentKey,
+            toComponentKey: target.componentKey,
+            sourceSnapshot: target.sourceSnapshot
+        });
+    }
     if (problems.length > 0) {
         throw new Error(`invalid confirmedMapping: ${problems.join('; ')}`);
     }

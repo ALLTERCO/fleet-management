@@ -157,7 +157,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "power_kwh{domain=\"sensor\", entity=\"sensor.power_freels_vue_123_1mon\", friendly_name=\"Total Power 1Mon\", instance=\"192.168.2.233:8123\", job=\"zzzz\"}"
+              "options": "power_kwh{domain=\"sensor\", entity=\"sensor.power_freels_vue_123_1mon\", friendly_name=\"Total Power 1Mon\", instance=\"localhost:8123\", job=\"zzzz\"}"
             },
             "properties": [
               {
@@ -257,7 +257,7 @@
               },
               {
                 "id": "unit",
-                "value": "currencyBGN"
+                "value": "kwatth"
               }
             ]
           }
@@ -295,7 +295,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n    SUM(t1.diff) * $watt_price AS price\nFROM (\n    SELECT\n      s.device,\n      s.bucket::date,\n      SUM(s.sum_val) diff\n    FROM device_em.energy_15min s\n    WHERE\n        1 = 1\n        AND s.device IN($devices)\n        AND s.tag = 'total_act_energy'\n        AND s.bucket BETWEEN date_trunc('month', current_date) AND NOW()\n    GROUP BY\n      s.device,\n      s.bucket::date\n  ) t1\n",
+          "rawSql": "SELECT\n    SUM(s.sum_val) / 1000 AS consumption_kwh\nFROM device_em.energy_15min s\nWHERE\n    s.device IN($devices)\n    AND s.tag = 'total_act_energy'\n    AND s.commodity = 'electricity'\n    AND s.electrical_source IS NOT DISTINCT FROM 'ac_mains'\n    AND s.bucket BETWEEN date_trunc('month', current_date) AND NOW()\n",
           "refId": "A",
           "sql": {
             "columns": [
@@ -316,7 +316,7 @@
           }
         }
       ],
-      "title": "Current Month Bill ",
+      "title": "Current Month Imported Energy",
       "type": "stat"
     },
     {
@@ -342,7 +342,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "power_kwh{domain=\"sensor\", entity=\"sensor.power_freels_vue_123_1d\", friendly_name=\"Total Power 1D\", instance=\"192.168.2.233:8123\", job=\"zzzz\"}"
+              "options": "power_kwh{domain=\"sensor\", entity=\"sensor.power_freels_vue_123_1d\", friendly_name=\"Total Power 1D\", instance=\"localhost:8123\", job=\"zzzz\"}"
             },
             "properties": [
               {
@@ -437,7 +437,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "power_kwh{domain=\"sensor\", entity=\"sensor.power_freels_vue_123_1d\", friendly_name=\"Total Power 1D\", instance=\"192.168.2.233:8123\", job=\"zzzz\"}"
+              "options": "power_kwh{domain=\"sensor\", entity=\"sensor.power_freels_vue_123_1d\", friendly_name=\"Total Power 1D\", instance=\"localhost:8123\", job=\"zzzz\"}"
             },
             "properties": [
               {
@@ -480,7 +480,7 @@
           "editorMode": "code",
           "format": "table",
           "rawQuery": true,
-          "rawSql": "SELECT\n    SUM(t1.diff) * $watt_price AS price\nFROM (\n    SELECT\n      s.device,\n      s.bucket::date,\n      SUM(s.sum_val) diff\n    FROM device_em.energy_15min s\n    WHERE\n        1 = 1\n        AND s.device IN($devices)\n        AND s.tag = 'total_act_energy'\n        AND s.bucket BETWEEN now()::date::timestamp AND NOW()\n    GROUP BY\n      s.device,\n      s.bucket::date\n  ) t1",
+          "rawSql": "SELECT\n    SUM(s.sum_val) / 1000 AS consumption_kwh\nFROM device_em.energy_15min s\nWHERE\n    s.device IN($devices)\n    AND s.tag = 'total_act_energy'\n    AND s.commodity = 'electricity'\n    AND s.electrical_source IS NOT DISTINCT FROM 'ac_mains'\n    AND s.bucket BETWEEN now()::date::timestamp AND NOW()",
           "refId": "A",
           "sql": {
             "columns": [
@@ -502,7 +502,7 @@
         }
       ],
       "timeFrom": "now/d",
-      "title": "Current Day Power Cost",
+      "title": "Current Day Imported Energy",
       "type": "stat"
     },
     {
@@ -1214,24 +1214,6 @@
   "tags": [],
   "templating": {
     "list": [
-      {
-        "current": {
-          "text": "0.00015",
-          "value": "0.00015"
-        },
-        "includeAll": false,
-        "label": "Price per Watt",
-        "name": "watt_price",
-        "options": [
-          {
-            "selected": true,
-            "text": "0.00015",
-            "value": "0.00015"
-          }
-        ],
-        "query": "0.00015",
-        "type": "custom"
-      },
       {
         "current": {
           "text": [

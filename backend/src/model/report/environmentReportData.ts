@@ -11,6 +11,7 @@ import {getLogger} from 'log4js';
 import {tuning} from '../../config';
 import {GRANULARITY_MAP} from '../../config/energy';
 import * as PostgresProvider from '../../modules/PostgresProvider';
+import {defaultEnergyRepository} from '../../modules/repositories/EnergyRepository';
 import {
     defaultSensorRepository,
     type SensorEventsRow,
@@ -20,9 +21,20 @@ import {
 import {runBoundedParallel} from '../../modules/util/runBoundedParallel';
 import RpcError from '../../rpc/RpcError';
 import {requireOrganizationId} from '../../rpc/scope';
-import type {ReportGenerateEnvironmentParams} from '../../types/api/report';
-import type {SensorQueryRow} from '../../types/api/sensor';
+import type {EnergyBucket} from '../../types/api/energy';
+import {
+    ENVIRONMENT_REPORT_READING_KINDS,
+    type EnvironmentReportReadingKind,
+    type ReportGenerateEnvironmentParams
+} from '../../types/api/report';
+import {
+    type SensorQueryRow,
+    type SensorSource,
+    sensorSourceAccepted
+} from '../../types/api/sensor';
 import type CommandSender from '../CommandSender';
+import {handleSensorEvents} from '../sensor/eventsHandler';
+import {handleSensorQuery} from '../sensor/queryHandler';
 import {
     assertDashboardOwnedBySender,
     reportTimezoneFor,
@@ -36,10 +48,9 @@ import {
 } from './engineHelpers';
 import type {EnvironmentReportRow} from './environmentReportRow';
 import {composeEnvironmentReportRows} from './environmentReportSections';
-import {
-    ENVIRONMENT_REPORT_KINDS,
-    type EnvironmentEvent,
-    type EnvironmentReading
+import type {
+    EnvironmentEvent,
+    EnvironmentReading
 } from './environmentReportStats';
 import {resolveReportPeriod} from './reportPeriod';
 
@@ -105,7 +116,10 @@ export async function buildEnvironmentReportData(
         orgId,
         internalIds,
         deviceMap,
+        shellyIDs,
+        sender: request.sender,
         source: request.params.source ?? null,
+        kinds: request.params.kinds ?? [...ENVIRONMENT_REPORT_READING_KINDS],
         from: range.fromDate,
         to: range.toDate,
         bucket
@@ -114,6 +128,8 @@ export async function buildEnvironmentReportData(
         orgId,
         internalIds,
         deviceMap,
+        shellyIDs,
+        sender: request.sender,
         from: range.fromDate,
         to: range.toDate
     });
@@ -236,7 +252,10 @@ interface ReadEnvironmentReadingsRequest {
     orgId: string | null;
     internalIds: readonly number[];
     deviceMap: Map<number, string>;
+    shellyIDs: readonly string[];
+    sender: CommandSender;
     source: string | null;
+    kinds: readonly EnvironmentReportReadingKind[];
     from: Date;
     to: Date;
     bucket: string;
@@ -249,9 +268,25 @@ async function readEnvironmentReadings(
 ): Promise<EnvironmentReading[]> {
     if (req.internalIds.length === 0) return [];
     const repo = await defaultSensorRepository();
-    const tasks = ENVIRONMENT_REPORT_KINDS.map(
-        (kind) => () => queryKind(repo, kind, req)
-    );
+    if (req.shellyIDs.some((id) => id.startsWith('vdev_'))) {
+        const response = await handleSensorQuery(
+            {
+                from: req.from.toISOString(),
+                to: req.to.toISOString(),
+                devices: [...req.shellyIDs],
+                kinds: [...req.kinds],
+                bucket: req.bucket as EnergyBucket,
+                ...(req.source ? {source: req.source as SensorSource} : {})
+            },
+            req.sender,
+            await defaultEnergyRepository(),
+            repo
+        );
+        return response.items.filter((row) =>
+            sensorSourceAccepted(row.source, req.source)
+        );
+    }
+    const tasks = req.kinds.map((kind) => () => queryKind(repo, kind, req));
     const settled = await runBoundedParallel({
         tasks,
         run: (task) => task(),
@@ -283,7 +318,7 @@ async function readEnvironmentReadings(
 
 async function queryKind(
     repo: SensorRepository,
-    kind: string,
+    kind: EnvironmentReportReadingKind,
     req: ReadEnvironmentReadingsRequest
 ): Promise<EnvironmentReading[]> {
     const rows = await repo.queryNumeric({
@@ -297,13 +332,11 @@ async function queryKind(
         // +1 detects overflow; the merged cap is enforced after the fan-out.
         limit: MAX_READINGS + 1
     });
-    return (
-        rows
-            .map((r) => toReading(kind, r, req.deviceMap))
-            // Environment = ambient. Drop chip temps (source='internal') unless
-            // the caller asked for that source explicitly — matches the dashboard.
-            .filter((r) => req.source != null || r.source !== 'internal')
-    );
+    // This path reads the repository directly, so it applies the ambient rule
+    // itself; Sensor.Query applies the same one for the virtual-device path.
+    return rows
+        .map((r) => toReading(kind, r, req.deviceMap))
+        .filter((r) => sensorSourceAccepted(r.source, req.source));
 }
 
 // Discrete events for the presence + safety sections. One fn_events_query read
@@ -313,11 +346,40 @@ async function readEnvironmentEvents(req: {
     orgId: string | null;
     internalIds: readonly number[];
     deviceMap: Map<number, string>;
+    shellyIDs: readonly string[];
+    sender: CommandSender;
     from: Date;
     to: Date;
 }): Promise<EnvironmentEvent[]> {
     if (req.internalIds.length === 0) return [];
     const repo = await defaultSensorRepository();
+    if (req.shellyIDs.some((id) => id.startsWith('vdev_'))) {
+        const response = await handleSensorEvents(
+            {
+                from: req.from.toISOString(),
+                to: req.to.toISOString(),
+                devices: [...req.shellyIDs],
+                limit: MAX_READINGS + 1
+            },
+            req.sender,
+            repo,
+            PostgresProvider.resolveDeviceIds
+        );
+        if (response.items.length > MAX_READINGS) {
+            throw RpcError.Domain('ValidationFailed', {
+                message: `Result too large (${response.items.length} events). Use a shorter range.`,
+                field: 'range'
+            });
+        }
+        return response.items.map((row) => ({
+            ts: row.ts,
+            device: row.device,
+            shellyID: row.shellyID,
+            kind: row.kind,
+            state: row.state,
+            source: row.source
+        }));
+    }
     const rows = await repo.queryEvents({
         organizationId: req.orgId,
         internalIds: req.internalIds,

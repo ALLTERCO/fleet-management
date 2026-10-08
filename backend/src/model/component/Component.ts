@@ -12,6 +12,7 @@ import {
     notifyComponentEvent,
     notifyComponentStatus
 } from '../../modules/ShellyEvents';
+import type {RateLimitPool} from '../../modules/web/rateLimitPool';
 import type {ConnectionContext} from '../../modules/web/ws/ConnectionContext';
 import RpcError from '../../rpc/RpcError';
 import type {Context} from '../../types';
@@ -38,7 +39,7 @@ function requireOrgLazy(): RequireOrgFn {
         _requireOrgFn = require('../../rpc/scope').requireOrganizationId;
     return _requireOrgFn as RequireOrgFn;
 }
-type RegisterPoolFn = (method: string, pool: 'general' | 'expensive') => void;
+type RegisterPoolFn = (method: string, pool: RateLimitPool) => void;
 let _registerPoolFn: RegisterPoolFn | undefined;
 function rateLimitPoolRegisterLazy(): RegisterPoolFn {
     if (!_registerPoolFn)
@@ -103,8 +104,8 @@ type DecoratedRpcMethod = {
     noAudit?: boolean;
     /** @RequiresOrganization — framework asserts sender has org context. */
     requiresOrganization?: boolean;
-    /** @RateLimit('expensive') — declares the bucket; replaces the CSV. */
-    rateLimitPool?: 'general' | 'expensive';
+    /** @RateLimit('<pool>') declares the bucket; replaces the CSV. */
+    rateLimitPool?: RateLimitPool;
     /** @AcceptsScopedToken('<purpose>') — Bearer scoped token consumes here. */
     acceptsScopedToken?: string;
 };
@@ -129,7 +130,26 @@ function isRecord(value: unknown): value is Record<string, any> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-async function canPerformCrudOperation(
+// Item id for a guard that declares no extractor: the item's own id or a
+// device's shellyID. A null field is "no item", so the component-level rule
+// applies; never invent an id from an unrelated field such as groupId.
+export function defaultCrudItemId(
+    params: unknown
+): string | number | undefined {
+    if (!params || typeof params !== 'object') return undefined;
+    const p = params as Record<string, unknown>;
+    const candidate = p.id ?? p.shellyID ?? p.shellyId;
+    return candidate === null ||
+        (typeof candidate !== 'string' && typeof candidate !== 'number')
+        ? undefined
+        : candidate;
+}
+
+/**
+ * The one place a CRUD decision is made. Exported so a bulk method can ask the
+ * same question once per item instead of growing a second, divergent check.
+ */
+export async function canPerformCrudOperation(
     sender: CommandSender,
     component: ComponentName,
     operation: CrudOperation,
@@ -363,7 +383,7 @@ export default abstract class Component<
         const {exec, checkParams, checkPermissions} = bundle;
 
         if (!(await checkPermissions(sender, params))) {
-            throw RpcError.PermissionDenied(sender.isAuthenticated());
+            throw this.permissionDeniedError(sender);
         }
 
         if (!checkParams(params)) {
@@ -377,6 +397,22 @@ export default abstract class Component<
         }
 
         return response;
+    }
+
+    /** The error for a failed permission gate; a component may say why. */
+    protected permissionDeniedError(sender: CommandSender): RpcError {
+        return RpcError.PermissionDenied(sender.isAuthenticated());
+    }
+
+    /** Answers whether the sender passes this method's permission gate. */
+    async isCallPermitted(
+        sender: CommandSender,
+        method: string,
+        params?: unknown
+    ): Promise<boolean> {
+        const bundle = this.methods.get(method.toLowerCase());
+        if (!bundle) return false;
+        return bundle.checkPermissions(sender, params);
     }
 
     protected addMethod<Params>(
@@ -826,10 +862,10 @@ export default abstract class Component<
         context.metadata[context.name].requiresOrganization = true;
     }
 
-    // Declare which rate-limit bucket the method consumes. Today the CSV
-    // tuning.http.rateLimitExpensiveMethods drives this; the decorator is the
-    // strongly-typed replacement and the source of truth going forward.
-    static RateLimit(pool: 'general' | 'expensive') {
+    // Declare which rate-limit bucket the method consumes. The decorator is
+    // the strongly typed source of truth; the CSV remains the fallback for
+    // methods that have not migrated yet.
+    static RateLimit(pool: RateLimitPool) {
         return (_target: (...args: any) => any, context: Context) => {
             context.metadata ??= {};
             context.metadata[context.name] ??= {};
@@ -870,10 +906,7 @@ export default abstract class Component<
             ) => {
                 const itemId = extractItemId
                     ? extractItemId(params)
-                    : (params?.id ??
-                      params?.shellyID ??
-                      params?.shellyId ??
-                      params?.groupId);
+                    : defaultCrudItemId(params);
                 return canPerformCrudOperation(
                     sender,
                     component,

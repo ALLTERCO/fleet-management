@@ -3,18 +3,19 @@
 
 set -euo pipefail
 
+_SEED_SERVICE_USER_SPECS=(
+    'svc-grafana:Grafana dashboard scraper'
+    'svc-nodered:Node-RED bridge'
+)
+
 _seed_service_users() {
     info "Seeding service users..."
     if [ "${FM_SEED_AUTH_MODE:-}" = "dev" ]; then
         info "  skipped — dev-mode has no Zitadel service users"
         return 0
     fi
-    local users=(
-        'svc-grafana:Grafana dashboard scraper'
-        'svc-nodered:Node-RED bridge'
-    )
     local entry uname desc
-    for entry in "${users[@]}"; do
+    for entry in "${_SEED_SERVICE_USER_SPECS[@]}"; do
         uname="${entry%%:*}"
         desc="${entry#*:}"
         if _seed_rpc 'User.CreateServiceUser' \
@@ -54,16 +55,17 @@ _seed_persona_assignments() {
     done
 }
 
-_seed_persona_id_by_key() {
-    local key="$1"
-    _seed_rpc 'Persona.List' '{}' 2>/dev/null \
-        | jq -r --arg k "$key" '.items[]? | select(.key == $k) | .id' \
-        | head -1
+_seed_service_user_ids() {
+    _seed_service_user_rows | jq -r '.userId // .id // empty'
 }
 
-_seed_service_user_ids() {
+_seed_service_user_rows() {
+    local names
+    names=$(printf '%s\n' "${_SEED_SERVICE_USER_SPECS[@]}" \
+        | jq -R 'split(":")[0]' | jq -s '.')
     _seed_rpc 'User.ListServiceUsers' '{}' 2>/dev/null \
-        | jq -r '.items[]? | .userId // .id // empty'
+        | jq -c --argjson names "$names" \
+            '.items[]? | select((.userName // .name) as $name | $names | index($name))'
 }
 
 _seed_assign_persona_to_subject() {
@@ -95,9 +97,6 @@ _seed_scoped_pats() {
     mkdir -p "$(dirname "$out_file")"
     printf '{}\n' >"$out_file"
     chmod 0600 "$out_file"
-    local users_resp
-    users_resp=$(_seed_rpc 'User.ListServiceUsers' '{}' 2>/dev/null \
-        || echo '{}')
     local count=0 user_row
     while IFS= read -r user_row; do
         [ -z "$user_row" ] && continue
@@ -107,7 +106,7 @@ _seed_scoped_pats() {
         [ -z "$uid" ] && continue
         _seed_mint_one_scoped_pat "$uid" "$uname" "$sofia_id" "$out_file" \
             && count=$((count + 1))
-    done < <(echo "$users_resp" | jq -c '.items[]? // empty')
+    done < <(_seed_service_user_rows)
     info "  minted $count PAT(s); tokens at $out_file"
 }
 

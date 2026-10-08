@@ -7,12 +7,14 @@ import WebSocketTransport from '../../../../model/transport/WebsocketTransport';
 import * as AuditLogger from '../../../../modules/AuditLogger';
 import * as DeviceCollector from '../../../../modules/DeviceCollector';
 import {
+    bindDeviceRuntimeOwnership,
     claimDeviceRuntimeOwnership,
     releaseDeviceRuntimeOwnership
 } from '../../../../modules/deviceIdentityRuntime';
 import {markConnectionDisconnected} from '../../../../modules/deviceIngress/deviceIngressRepository';
 import {
     dropGatheredData,
+    GatherAbandonedError,
     gatherDeviceDataOnce,
     takeGatheredData
 } from '../../../../modules/deviceIngress/gatheredDeviceData';
@@ -59,6 +61,7 @@ import {
     CLOSE_DEVICE_INVALID_INIT,
     CLOSE_TRY_AGAIN_LATER
 } from '../closeCodes';
+import {deviceSocketDeflate} from '../perMessageDeflate';
 import AbstractWebsocketHandler from './AbstractWebsocketHandler';
 import {acquireClusterInitSlot, releaseClusterSlot} from './clusterInitSlot';
 import {
@@ -72,6 +75,7 @@ import {
     performAdmittedRegistration
 } from './shellyAdmissionFlow';
 import {
+    admitRecognizedConnection,
     evaluateShellyIngressGate,
     unregisterShellyIngressConnection
 } from './shellyIngressGate';
@@ -82,9 +86,17 @@ import {
     recordShellyIngressRejected
 } from './shellyIngressRecorder';
 import {type InitMessage, isInitMessage} from './shellyInitMessage';
-import {clientAddress} from './shellyProxyTrust';
+import {clientAddress, observedTransport} from './shellyProxyTrust';
 
 const logger = log4js.getLogger('shelly-ws');
+
+// What the server saw on this socket, for the durable ingress trail.
+function socketTransport(session: {request: IncomingMessage}): 'ws' | 'wss' {
+    return observedTransport(
+        session.request,
+        tuning.deviceIngress.trustedProxyCidrs
+    );
+}
 
 // Thrown so auto-admit aborts DB intent consume + audit (WS already closed by caller).
 export class ApproveRejectedError extends Error {
@@ -139,24 +151,23 @@ interface AdmissionContext {
     shellyID: string;
     message: InitMessage;
     handle: SlotHandle;
+    openAdmission: boolean;
 }
 
 export function getInitStats() {
     return initSlotRegistry.stats();
 }
 
-// A successful init taking longer than 3/4 of the probe timeout indicates
-// the device was on the edge of failing — count it as a failure so the
-// cooldown ladder catches flapping devices.
+// Slow success is a capacity signal, not a device failure. The probe timeout is
+// per RPC while this duration covers the whole registration flow, so comparing
+// the two must never arm the per-device failure cooldown.
 function isInitDurationSlow(durationMs: number): boolean {
     return durationMs >= (tuning.rpc.initProbeTimeoutMs * 3) / 4;
 }
 
-function recordInitOutcome(shellyID: string, durationMs: number): void {
+export function recordInitOutcome(shellyID: string, durationMs: number): void {
     if (isInitDurationSlow(durationMs)) {
-        deviceInitFailureTracker.recordFailure(shellyID);
-        Observability.incrementCounter('device_inits_slow_call_counted');
-        return;
+        Observability.incrementCounter('device_inits_slow_success');
     }
     deviceInitFailureTracker.recordSuccess(shellyID);
     Observability.incrementCounter('device_inits_succeeded');
@@ -203,6 +214,7 @@ const defaultAdmissionDeps: AdmissionDeps = {
     observability: Observability,
     statusSelectivePush,
     claimRuntimeOwnership: claimDeviceRuntimeOwnership,
+    bindRuntimeOwnership: bindDeviceRuntimeOwnership,
     releaseRuntimeOwnership: releaseDeviceRuntimeOwnership,
     logger
 };
@@ -223,6 +235,9 @@ interface SessionState {
     listener: (rawData: WebSocket.RawData) => void;
     ingressConnectionId: string | null;
     ingressOrganizationId: string | null;
+    // Registry slot of a socket admitted without a credential (waiting-room
+    // approval or grandfathered device); released on close.
+    recognizedConnectionId: string | null;
     ingressWaitingRoomRecorded: boolean;
     ingressWaitingRoomProbe: WaitingRoomProbeRegistration | null;
     waitingStoreKey: {organizationId: string; shellyID: string} | null;
@@ -248,6 +263,31 @@ interface AdmissionRequest {
         onQuarantine: () => void;
     };
     needsFullStatus: boolean;
+}
+
+// A failed gather costs the device a fresh probe at accept, so an org admin has
+// to be able to see it; debug-only logging hid the deadline entirely.
+function reportGatherFailure(shellyID: string, err: unknown): void {
+    if (err instanceof GatherAbandonedError && err.reason === 'deadline') {
+        logger.warn(
+            'Waiting Room gather for %s hit its %dms deadline',
+            shellyID,
+            err.deadlineMs ?? tuning.waitingRoom.gatherMaxMs
+        );
+    }
+    ingressStage(shellyID, 'gather-failed', gatherFailureDetail(err));
+}
+
+// One short trace string, never a stack: the abandon reason, else the RPC error
+// code, else the error name.
+function gatherFailureDetail(err: unknown): string {
+    if (err instanceof GatherAbandonedError) return err.reason;
+    if (typeof err !== 'object' || err === null) return String(err);
+    const code = 'code' in err ? err.code : undefined;
+    if (typeof code === 'number' || typeof code === 'string') {
+        return `code ${code}`;
+    }
+    return err instanceof Error ? err.name : 'unknown';
 }
 
 function parseInitMessage(rawData: WebSocket.RawData): unknown | null {
@@ -308,17 +348,16 @@ function admissionQueue(
         onApprove: request.callbacks.onApprove,
         onDeny: request.callbacks.onDeny,
         onEvict: request.callbacks.onEvict,
-        onQuarantine: request.callbacks.onQuarantine
+        onQuarantine: request.callbacks.onQuarantine,
+        // The gate files the entry before this; the legacy path files it
+        // under the default organization.
+        organizationId:
+            request.session.waitingStoreKey?.organizationId ??
+            gatelessDeviceOrg()
     };
     return request.session.ingressWaitingRoomRecorded
         ? WaitingRoom.queueDevice(input)
-        : WaitingRoom.addDevice(
-              input.shellyID,
-              input.onApprove,
-              input.onDeny,
-              input.onEvict,
-              input.onQuarantine
-          );
+        : WaitingRoom.admitOrQueueDevice(input);
 }
 
 export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
@@ -327,7 +366,10 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
     readonly #evaluateIngressGate: typeof evaluateShellyIngressGate;
 
     constructor(deps: ShellyWebsocketHandlerDeps = {}) {
-        super();
+        super({
+            noServer: true,
+            perMessageDeflate: deviceSocketDeflate(tuning.ws)
+        });
         this.#execInternal = deps.execInternal ?? execInternal;
         this.#admissionDeps = deps.admission ?? defaultAdmissionDeps;
         this.#evaluateIngressGate =
@@ -345,6 +387,7 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
             listener: () => {},
             ingressConnectionId: null,
             ingressOrganizationId: null,
+            recognizedConnectionId: null,
             ingressWaitingRoomRecorded: false,
             ingressWaitingRoomProbe: null,
             waitingStoreKey: null,
@@ -492,6 +535,10 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
             unregisterWaitingRoomProbe(session.ingressWaitingRoomProbe);
         }
         this.#dropWaitingStoreEntry(session);
+        if (session.recognizedConnectionId) {
+            unregisterShellyIngressConnection(session.recognizedConnectionId);
+            session.recognizedConnectionId = null;
+        }
         if (!session.ingressConnectionId) return;
         void this.#markIngressSocketClosed(session, code, reason);
         unregisterShellyIngressConnection(session.ingressConnectionId);
@@ -564,7 +611,7 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
             return 'continue';
         }
         if (decision.action === 'waiting_room') {
-            if (await this.#inRejectCooldown(decision, message.src)) {
+            if (await this.#inRejectCooldown(session, decision, message.src)) {
                 ingressDropped(message.src, 'reject_cooldown');
                 this.#closeRejected(session, 'reject_cooldown');
                 return 'rejected';
@@ -606,13 +653,23 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
     }
 
     async #inRejectCooldown(
+        session: SessionState,
         decision: {organizationId: string | null},
         shellyID: string
     ): Promise<boolean> {
         const {organizationId} = decision;
         if (!organizationId) return false;
         try {
-            return await isRejected(organizationId, shellyID);
+            return await isRejected(
+                organizationId,
+                shellyID,
+                hashRemoteAddress(
+                    clientAddress(
+                        session.request,
+                        tuning.deviceIngress.trustedProxyCidrs
+                    )
+                ) ?? 'noip'
+            );
         } catch (err) {
             logger.warn(
                 'Reject-cooldown check failed for %s: %s',
@@ -624,9 +681,12 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
     }
 
     // Legacy path: cooldown keyed by the configured default org.
-    async #legacyInRejectCooldown(shellyID: string): Promise<boolean> {
+    async #legacyInRejectCooldown(
+        session: SessionState,
+        shellyID: string
+    ): Promise<boolean> {
         const organizationId = gatelessDeviceOrg() ?? '';
-        return this.#inRejectCooldown({organizationId}, shellyID);
+        return this.#inRejectCooldown(session, {organizationId}, shellyID);
     }
 
     #closeRejected(session: SessionState, reason: string): void {
@@ -686,21 +746,15 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
         const transport = session.transport;
         const startedAt = Date.now();
         void runBoundedGather(async () => {
-            const bundle = await gatherDeviceDataOnce(shellyID, () =>
-                ShellyDeviceFactory.gatherDeviceData(transport)
+            const bundle = await gatherDeviceDataOnce(shellyID, (signal) =>
+                ShellyDeviceFactory.gatherDeviceData(transport, signal)
             );
             ingressStage(
                 shellyID,
                 'gather-done',
                 `${Date.now() - startedAt}ms gather, ${bundle.componentPages ?? 0} pages`
             );
-        }).catch((err) => {
-            logger.debug(
-                'Waiting Room gather failed for %s: %s',
-                shellyID,
-                err
-            );
-        });
+        }).catch((err) => reportGatherFailure(shellyID, err));
     }
 
     // Returns false when the org is at its size cap (the entry was refused).
@@ -816,7 +870,7 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
             return;
         }
 
-        if (await this.#legacyInRejectCooldown(shellyID)) {
+        if (await this.#legacyInRejectCooldown(session, shellyID)) {
             ingressDropped(shellyID, 'reject_cooldown');
             this.#closeRejected(session, 'reject_cooldown');
             return;
@@ -842,11 +896,12 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
             typeof config.enable === 'boolean' &&
             !config.enable
         ) {
-            void callbacks
-                .onApprove()
-                .catch((err) =>
-                    logger.error('onApprove failed for %s: %s', shellyID, err)
-                );
+            // Waiting Room off: no decision, so no ALLOWED row is required.
+            void this.#onApprove(session, shellyID, message, undefined, {
+                openAdmission: true
+            }).catch((err) =>
+                logger.error('onApprove failed for %s: %s', shellyID, err)
+            );
             return;
         }
 
@@ -890,6 +945,7 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
                     );
                     void recordIngressRejectedSafe({
                         shellyID: request.shellyID,
+                        transport: socketTransport(request.session),
                         reasonCode: 'rate_limit_exceeded',
                         detail: {retryAfterMs: admission.retryAfterMs}
                     });
@@ -911,6 +967,7 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
                 if (request.session.ingressWaitingRoomRecorded) return;
                 void recordQueuedSafe({
                     shellyID: request.shellyID,
+                    transport: socketTransport(request.session),
                     detail: {needsFullStatus: request.needsFullStatus}
                 });
                 // Await the record before enriching so the probe's merge lands
@@ -936,11 +993,13 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
         session: SessionState,
         shellyID: string,
         message: InitMessage,
-        intent?: WaitingRoom.AdmissionIntent
+        intent?: WaitingRoom.AdmissionIntent,
+        options: {openAdmission: boolean} = {openAdmission: false}
     ): Promise<void> {
         try {
             this.#refuseIfClosed(session, shellyID);
             this.#refuseIfInCooldown(session, shellyID);
+            this.#takeRecognizedSlot(session, shellyID, intent);
             const handle = await this.#waitForLocalSlot(session, shellyID);
             // Slot in hand — time up to here is init-queue wait, not build work.
             ingressStage(shellyID, 'slot-acquired');
@@ -953,10 +1012,15 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
                     session,
                     shellyID,
                     message,
-                    handle
+                    handle,
+                    openAdmission: options.openAdmission
                 });
                 if (!session.ingressConnectionId) {
-                    void recordIngressAcceptedSafe({shellyID, intent});
+                    void recordIngressAcceptedSafe({
+                        shellyID,
+                        transport: socketTransport(session),
+                        intent
+                    });
                 }
             } finally {
                 detachReclaim();
@@ -969,12 +1033,44 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
             ingressDropped(shellyID, reasonCode);
             void recordIngressRejectedSafe({
                 shellyID,
+                transport: socketTransport(session),
                 intent,
                 reasonCode,
                 detail: err instanceof Error ? err.message : String(err)
             });
             throw err;
         }
+    }
+
+    // Every socket the credentialed gate did not already register goes
+    // through the one shared admission check here, whatever path approved it.
+    #takeRecognizedSlot(
+        session: SessionState,
+        shellyID: string,
+        intent?: WaitingRoom.AdmissionIntent
+    ): void {
+        if (session.ingressConnectionId || session.recognizedConnectionId) {
+            return;
+        }
+        const admission = admitRecognizedConnection({
+            request: session.request,
+            reportedExternalId: shellyID,
+            organizationId:
+                intent?.organization_id ||
+                session.ingressOrganizationId ||
+                gatelessDeviceOrg() ||
+                '',
+            closeConnection: (reason) => {
+                if (session.ws.readyState === session.ws.OPEN) {
+                    session.ws.close(1008, reason);
+                }
+            }
+        });
+        if (admission.reason) {
+            session.ws.close(1008, admission.reason);
+            throw new ApproveRejectedError(shellyID, admission.reason);
+        }
+        session.recognizedConnectionId = admission.connectionId;
     }
 
     #refuseIfClosed(session: SessionState, shellyID: string): void {
@@ -1058,7 +1154,9 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
                     session: ctx.session,
                     admittedShellyID: ctx.shellyID,
                     message: ctx.message,
-                    setStage: ctx.handle.setStage
+                    setStage: ctx.handle.setStage,
+                    signal: ctx.handle.signal,
+                    openAdmission: ctx.openAdmission
                 },
                 this.#admissionDeps
             );
@@ -1079,6 +1177,7 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
         session.ws.removeListener('message', session.listener);
         void recordIngressRejectedSafe({
             shellyID,
+            transport: socketTransport(session),
             reasonCode: 'identity_disabled',
             detail: 'wr_denied'
         });
@@ -1092,6 +1191,7 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
         session.ws.removeListener('message', session.listener);
         void recordIngressRejectedSafe({
             shellyID,
+            transport: socketTransport(session),
             reasonCode: 'connection_cap_reached',
             detail: 'wr_evicted'
         });
@@ -1113,6 +1213,7 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
         }
         void recordIngressRejectedSafe({
             shellyID,
+            transport: socketTransport(session),
             reasonCode: 'operator_quarantine',
             detail: 'wr_quarantined'
         });
@@ -1126,7 +1227,11 @@ function reasonCodeForApproveError(
     err: unknown
 ): 'connection_cap_reached' | 'malformed_handshake' {
     if (!(err instanceof ApproveRejectedError)) return 'malformed_handshake';
-    if (err.reason.includes('queue') || err.reason.includes('cluster')) {
+    if (
+        err.reason === 'connection_cap_reached' ||
+        err.reason.includes('queue') ||
+        err.reason.includes('cluster')
+    ) {
         return 'connection_cap_reached';
     }
     return 'malformed_handshake';
@@ -1163,7 +1268,8 @@ async function recordQueuedSafe(
 }
 
 // Fail-open on Redis outage (consume default): an infra blip must not lock
-// the fleet out; the per-instance AdmissionGate still bounds the burst.
+// the fleet out. A local burst backstop is available when
+// FM_WS_ADMISSION_MAX_PER_SEC is configured explicitly.
 // Exported for test: the per-IP throttle is a trust-boundary gate.
 export async function legacyIpHandshakeAllowed(
     request: IncomingMessage

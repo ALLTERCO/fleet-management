@@ -1,6 +1,7 @@
 /** fleetMap.* — per-location pin snapshots for map overlays. Cached ~5s. */
 
 import * as log4js from 'log4js';
+import {alertNeedsAttention} from '../../modules/alert/states';
 import * as DeviceCollector from '../../modules/DeviceCollector';
 import {callMethod} from '../../modules/PostgresProvider';
 import {resolveLocationShellyIDs} from '../../modules/scopeResolver';
@@ -86,7 +87,10 @@ export default class FleetMapComponent extends Component {
             if (cached) return cached;
         }
 
-        const locations = await listLocations(orgId);
+        const locations = await listLocations(
+            orgId,
+            await sender.accessibleLocationIds()
+        );
         const byLocation = await visibleDevicesByLocation(
             sender,
             await devicesForLocations(orgId, locations),
@@ -117,7 +121,10 @@ export default class FleetMapComponent extends Component {
             if (cached) return cached;
         }
 
-        const locations = await listLocations(orgId);
+        const locations = await listLocations(
+            orgId,
+            await sender.accessibleLocationIds()
+        );
         const byLocation = await visibleDevicesByLocation(
             sender,
             await devicesForLocations(orgId, locations),
@@ -153,7 +160,8 @@ export default class FleetMapComponent extends Component {
 
         const pins = await aggregateAlertsByLocation(
             orgId,
-            unrestricted ? null : sender
+            unrestricted ? null : sender,
+            await sender.accessibleLocationIds()
         );
         const snapshot: FleetMapAlertSnapshot = {pins, asOf: nowIso()};
         if (unrestricted) writeCache(this.#alertCache, orgId, snapshot);
@@ -188,12 +196,21 @@ interface LocationRow {
     id: number;
 }
 
-async function listLocations(orgId: string): Promise<LocationRow[]> {
+// A pin exists only for a place the caller may see; null keeps every place.
+async function listLocations(
+    orgId: string,
+    allowedIds: number[] | null
+): Promise<LocationRow[]> {
+    // p_roots_only must be passed: the SQL binder only fills in arguments
+    // whose SQL default is NULL, so omitting a FALSE-defaulted one raises
+    // requiredArgumentNotFound and takes every map pin down with it.
     const {rows} = await callMethod('organization.fn_location_list', {
         p_organization_id: orgId,
+        p_roots_only: false,
         p_include_summary: false,
         p_limit: LOCATION_LIST_LIMIT,
-        p_offset: 0
+        p_offset: 0,
+        p_allowed_ids: allowedIds
     });
     const list = (rows ?? []) as Array<{id?: number}>;
     if (list.length >= LOCATION_LIST_LIMIT) {
@@ -294,7 +311,8 @@ interface OpenAlertBucket {
 
 async function aggregateAlertsByLocation(
     orgId: string,
-    restrictTo: CommandSender | null
+    restrictTo: CommandSender | null,
+    allowedLocationIds: number[] | null
 ): Promise<FleetMapAlertPin[]> {
     const {rows} = await callMethod('notifications.fn_alert_instance_list', {
         p_organization_id: orgId,
@@ -358,7 +376,7 @@ async function aggregateAlertsByLocation(
         }
     }
 
-    const locations = await listLocations(orgId);
+    const locations = await listLocations(orgId, allowedLocationIds);
     const shellyIDsByLocation = await resolveLocationShellyIDs(
         orgId,
         locations.map((l) => l.id)
@@ -399,13 +417,9 @@ function rollUpLocationAlerts(
     };
 }
 
-function isOpenState(state: string | undefined): boolean {
-    return (
-        state === 'active' ||
-        state === 'acknowledged' ||
-        state === 'cleared_unack'
-    );
-}
+// Was a private copy of the same three states. One rule now, in
+// modules/alert/states.ts, so the map and every other reader agree.
+const isOpenState = alertNeedsAttention;
 
 function isSeverity(v: string | undefined): v is AlertSeverity {
     return v === 'critical' || v === 'warning' || v === 'info';

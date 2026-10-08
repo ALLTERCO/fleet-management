@@ -8,7 +8,9 @@ import type {
     EnergyLogicalMeter,
     EnergyMeasurementPoint,
     EnergySaveLogicalMeterParams,
-    EnergySaveLogicalMeterResponse
+    EnergySaveLogicalMeterResponse,
+    EnergySetPointOverrideParams,
+    EnergySetPointOverrideResponse
 } from '@api/energy';
 import * as ws from '@/tools/websocket';
 
@@ -56,4 +58,14 @@ export function deleteLogicalMeter(id: number): Promise<boolean> {
             {id}
         )
         .then((r) => r.deleted);
+}
+
+export function setPointOverride(
+    params: EnergySetPointOverrideParams
+): Promise<EnergySetPointOverrideResponse> {
+    return ws.sendRPC<EnergySetPointOverrideResponse>(
+        DST,
+        'energy.SetPointOverride',
+        params
+    );
 }

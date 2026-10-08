@@ -39,7 +39,11 @@ export interface JsonSchema {
     oneOf?: JsonSchema[];
     /** Value must satisfy every listed schema. */
     allOf?: JsonSchema[];
+    /** Value must not satisfy this schema. `{not: {}}` forbids a property. */
+    not?: JsonSchema;
     default?: unknown;
+    /** Preferred generated example values. */
+    examples?: readonly unknown[];
     /** Human-readable label for this field. */
     title?: string;
     /** Free-form description shown to external clients. */

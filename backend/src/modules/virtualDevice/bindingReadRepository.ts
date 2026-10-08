@@ -14,6 +14,7 @@ export interface ActiveVirtualDeviceBinding {
     unit: string | null;
     sourceSnapshot: Record<string, unknown> | null;
     roleMetadata: Record<string, unknown> | null;
+    transformJson: Record<string, unknown> | null;
 }
 
 export interface ActiveBindingReadDeps {
@@ -36,6 +37,7 @@ interface ActiveBindingRow {
     unit: string | null;
     source_snapshot_json: Record<string, unknown> | null;
     role_metadata_json: Record<string, unknown> | null;
+    transform_json: Record<string, unknown> | null;
 }
 
 const defaultDeps: ActiveBindingReadDeps = {
@@ -63,7 +65,8 @@ export async function loadActiveVirtualDeviceBindings(
             b.required,
             b.unit,
             b.source_snapshot_json,
-            b.role_metadata_json
+            b.role_metadata_json,
+            b.transform_json
            FROM device.virtual_device_binding b
            JOIN device.list src
              ON src.id = b.source_device_list_id
@@ -103,6 +106,7 @@ function rowToBinding(row: ActiveBindingRow): ActiveVirtualDeviceBinding {
         required: row.required,
         unit: row.unit,
         sourceSnapshot: row.source_snapshot_json,
-        roleMetadata: row.role_metadata_json
+        roleMetadata: row.role_metadata_json,
+        transformJson: row.transform_json
     };
 }

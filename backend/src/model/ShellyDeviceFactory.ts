@@ -3,7 +3,11 @@ import {tuning} from '../config';
 import * as Observability from '../modules/Observability';
 import type {get_resp_t} from '../modules/PostgresProvider';
 import * as postgres from '../modules/PostgresProvider';
-import {StageTimer} from '../modules/util/stageTimer';
+import {StageTimer, type StageTiming} from '../modules/util/stageTimer';
+import {
+    endAccessChangeWatch,
+    watchAccessChange
+} from '../modules/WaitingRoom/accessChangeWatch';
 import RpcError from '../rpc/RpcError';
 import type {DeviceCapabilities} from '../types';
 import type {LedStripCatalog, LedStripUiField} from '../types/api/ledstrip';
@@ -15,6 +19,22 @@ import type RpcTransport from './transport/RpcTransport';
 import type WebSocketTransport from './transport/WebsocketTransport';
 
 const logger = getLogger('ShellyDeviceFactory');
+
+// Every RPC issued while assembling a device gets its own bounded deadline.
+// The four base probes already had this protection; metadata/pagination calls
+// did not and could hold an init slot until the 60s transport sweep.
+// The optional gather signal is combined in so the whole gather can be
+// abandoned as one unit, not one stalled probe at a time.
+function sendInitRpc(
+    transport: RpcTransport,
+    method: string,
+    params: unknown = null,
+    signal?: AbortSignal
+) {
+    const perCall = AbortSignal.timeout(tuning.rpc.initProbeTimeoutMs);
+    const combined = signal ? AbortSignal.any([signal, perCall]) : perCall;
+    return transport.sendRPC(method, params, false, combined);
+}
 
 // Per-namespace fallback method sets for offline devices whose persisted
 // snapshot predates the methods plumbing. Keys mirror Shelly.ListMethods
@@ -82,6 +102,51 @@ function deriveMethodsFromSettings(settings: unknown): string[] {
     return Array.from(out);
 }
 
+// typeof null === 'object', so a plain typeof check lets a null snapshot through.
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+}
+
+// Set when an admission decision let this device in: its registration then
+// needs the device row to be ALLOWED at that moment.
+export interface RegistrationAdmission {
+    shellyID: string;
+}
+
+// Registration refused: the device row was not ALLOWED when it registered.
+export class AdmissionRevokedError extends Error {
+    readonly code = 'admission_revoked';
+    constructor(readonly shellyID: string) {
+        super(`device ${shellyID} is no longer allowed`);
+        this.name = 'AdmissionRevokedError';
+    }
+}
+
+// The database decides at the latest point. Nothing awaits between this read
+// and DeviceCollector.register, so a deny signal handled after it finds the
+// device live and closes it; one handled while the read was in flight refuses.
+// A device reporting another id is left to the identity check. Without an
+// admission the device keeps id 0 when no row is ALLOWED.
+async function readRegistrationRowId(
+    shellyID: string,
+    admission?: RegistrationAdmission
+): Promise<number> {
+    const watch =
+        admission?.shellyID === shellyID ? watchAccessChange(shellyID) : null;
+    try {
+        const [dev] = await postgres.get(
+            shellyID,
+            postgres.ACCESS_CONTROL.ALLOWED
+        );
+        if (watch && (!dev || watch.changed)) {
+            throw new AdmissionRevokedError(shellyID);
+        }
+        return dev?.id || 0;
+    } finally {
+        if (watch) endAccessChangeWatch(watch);
+    }
+}
+
 export function shouldProbeVirtualComponents(methods: string[]): boolean {
     // Ask any device that can list its components. The advertised method list
     // is the single source of truth — no firmware-version or capability guess.
@@ -89,12 +154,20 @@ export function shouldProbeVirtualComponents(methods: string[]): boolean {
 }
 
 export default class ShellyDeviceFactory {
-    static fromHttp(transport: HttpTransport) {
-        return ShellyDeviceFactory.fromOnlineTransport(transport);
+    static fromHttp(transport: HttpTransport, signal?: AbortSignal) {
+        return ShellyDeviceFactory.fromOnlineTransport(transport, signal);
     }
 
-    static fromWebsocket(transport: WebSocketTransport) {
-        return ShellyDeviceFactory.fromOnlineTransport(transport);
+    static fromWebsocket(
+        transport: WebSocketTransport,
+        signal?: AbortSignal,
+        admission?: RegistrationAdmission
+    ) {
+        return ShellyDeviceFactory.fromOnlineTransport(
+            transport,
+            signal,
+            admission
+        );
     }
 
     static fromDatabase(entry: get_resp_t): ShellyDevice | undefined {
@@ -107,9 +180,9 @@ export default class ShellyDeviceFactory {
             typeof jdoc.shellyID !== 'string' ||
             typeof id !== 'number' ||
             typeof jdoc.source !== 'string' ||
-            typeof jdoc.info !== 'object' ||
-            typeof jdoc.status !== 'object' ||
-            typeof jdoc.settings !== 'object'
+            !isRecord(jdoc.info) ||
+            !isRecord(jdoc.status) ||
+            !isRecord(jdoc.settings)
         ) {
             return undefined;
         }
@@ -142,7 +215,8 @@ export default class ShellyDeviceFactory {
     }
 
     private static async getData(
-        transport: RpcTransport
+        transport: RpcTransport,
+        signal?: AbortSignal
     ): Promise<
         [
             info: any,
@@ -156,33 +230,12 @@ export default class ShellyDeviceFactory {
         // RPC can't drag the other 3 down. Per-call abort signal at 20s
         // (gRPC keepalive default) cuts hold time vs the 60s rpcTimeoutMs
         // fallback, so a slow device frees its init slot 3× faster.
-        const timeoutMs = tuning.rpc.initProbeTimeoutMs;
         const [infoRes, statusRes, configRes, methodsRes] =
             await Promise.allSettled([
-                transport.sendRPC(
-                    'Shelly.GetDeviceInfo',
-                    null,
-                    false,
-                    AbortSignal.timeout(timeoutMs)
-                ),
-                transport.sendRPC(
-                    'Shelly.GetStatus',
-                    null,
-                    false,
-                    AbortSignal.timeout(timeoutMs)
-                ),
-                transport.sendRPC(
-                    'Shelly.GetConfig',
-                    null,
-                    false,
-                    AbortSignal.timeout(timeoutMs)
-                ),
-                transport.sendRPC(
-                    'Shelly.ListMethods',
-                    null,
-                    false,
-                    AbortSignal.timeout(timeoutMs)
-                )
+                sendInitRpc(transport, 'Shelly.GetDeviceInfo', null, signal),
+                sendInitRpc(transport, 'Shelly.GetStatus', null, signal),
+                sendInitRpc(transport, 'Shelly.GetConfig', null, signal),
+                sendInitRpc(transport, 'Shelly.ListMethods', null, signal)
             ]);
         if (infoRes.status === 'rejected') throw infoRes.reason;
         if (statusRes.status === 'rejected') throw statusRes.reason;
@@ -203,18 +256,23 @@ export default class ShellyDeviceFactory {
         return [info, status, config, deriveCapabilities(methods), methods];
     }
 
-    private static async fromOnlineTransport(transport: RpcTransport) {
+    private static async fromOnlineTransport(
+        transport: RpcTransport,
+        signal?: AbortSignal,
+        admission?: RegistrationAdmission
+    ) {
         // Per-stage timing — a device that shows up slowly after accept is slow
         // in exactly one of these probe steps; the log below names which.
         const timer = new StageTimer();
         const bundle = await ShellyDeviceFactory.gatherOverTransport(
             transport,
-            timer
+            timer,
+            signal
         );
         return ShellyDeviceFactory.assembleOverTransport(
             transport,
             bundle,
-            timer
+            admission
         );
     }
 
@@ -224,10 +282,11 @@ export default class ShellyDeviceFactory {
     // be reused at accept. Marks the shared timer's probe stages.
     private static async gatherOverTransport(
         transport: RpcTransport,
-        timer: StageTimer
+        timer: StageTimer,
+        signal?: AbortSignal
     ): Promise<DeviceDataBundle> {
         const [info, status, config, capabilities, methods] =
-            await ShellyDeviceFactory.getData(transport);
+            await ShellyDeviceFactory.getData(transport, signal);
         timer.mark('probe');
 
         let componentPages = 0;
@@ -235,24 +294,41 @@ export default class ShellyDeviceFactory {
             componentPages = await addVirtualComponents(
                 transport,
                 status,
-                config
+                config,
+                signal
             );
+        }
+        // The pill component is static, so the dynamic_only load above skips
+        // it — but its attrs carry the firmware's supported-mode list on
+        // newer builds. One extra keyed probe captures them.
+        if (
+            shouldProbeVirtualComponents(methods) &&
+            methods.includes('Pill.GetConfig')
+        ) {
+            await fetchPillComponentAttrs(transport, config, signal);
         }
         timer.mark('components');
 
         // XT1 service devices: fetch service metadata (actions, errors, resources)
         if (capabilities.service) {
-            await fetchServiceMeta(transport, config);
+            await fetchServiceMeta(transport, config, signal);
         }
         timer.mark('service');
 
         // LedStrip: stash per-firmware catalogs so the UI renders dynamically.
-        await fetchLedStripMeta(transport, config);
+        await fetchLedStripMeta(transport, config, signal);
         timer.mark('ledstrip');
 
-        const eventCatalog = await fetchEventCatalog(transport, info.fw_id);
+        const eventCatalog = await fetchEventCatalog(
+            transport,
+            info.fw_id,
+            signal
+        );
         timer.mark('eventcatalog');
 
+        // The safe* helpers swallow failures, so an abort in the last stage
+        // would otherwise still hand back a bundle nobody is waiting for.
+        signal?.throwIfAborted();
         return {
             info,
             status,
@@ -260,7 +336,11 @@ export default class ShellyDeviceFactory {
             capabilities,
             methods,
             eventCatalog,
-            componentPages
+            componentPages,
+            gatherTiming: {
+                totalMs: timer.totalMs(),
+                stages: [...timer.stages()]
+            }
         };
     }
 
@@ -269,16 +349,18 @@ export default class ShellyDeviceFactory {
     private static async assembleOverTransport(
         transport: RpcTransport,
         bundle: DeviceDataBundle,
-        timer: StageTimer
+        admission?: RegistrationAdmission
     ): Promise<ShellyDevice> {
-        const [dev] = await postgres.get(bundle.info.id, 3);
+        const timer = new StageTimer();
+        const rowId = await readRegistrationRowId(bundle.info.id, admission);
         timer.mark('db');
 
+        const gatherTiming = bundle.gatherTiming ?? {totalMs: 0, stages: []};
         Observability.recordBuildTiming({
             shellyID: bundle.info.id,
-            totalMs: timer.totalMs(),
+            totalMs: gatherTiming.totalMs + timer.totalMs(),
             componentPages: bundle.componentPages,
-            stages: timer.stages()
+            stages: [...gatherTiming.stages, ...timer.stages()]
         });
         const device = new ShellyDevice(
             bundle.info.id,
@@ -288,7 +370,7 @@ export default class ShellyDeviceFactory {
             bundle.status,
             bundle.config,
             false,
-            dev?.id || 0,
+            rowId,
             undefined,
             bundle.capabilities,
             bundle.methods
@@ -300,11 +382,13 @@ export default class ShellyDeviceFactory {
     // Gather device data over a live socket WITHOUT building the device, so the
     // waiting room can pre-warm the heavy fetch while a device sits idle.
     static gatherDeviceData(
-        transport: RpcTransport
+        transport: RpcTransport,
+        signal?: AbortSignal
     ): Promise<DeviceDataBundle> {
         return ShellyDeviceFactory.gatherOverTransport(
             transport,
-            new StageTimer()
+            new StageTimer(),
+            signal
         );
     }
 
@@ -312,12 +396,13 @@ export default class ShellyDeviceFactory {
     // RPCs, so accepting many at once doesn't re-run the heavy fetch per device.
     static assembleFromGathered(
         transport: RpcTransport,
-        bundle: DeviceDataBundle
+        bundle: DeviceDataBundle,
+        admission?: RegistrationAdmission
     ): Promise<ShellyDevice> {
         return ShellyDeviceFactory.assembleOverTransport(
             transport,
             bundle,
-            new StageTimer()
+            admission
         );
     }
 }
@@ -337,6 +422,40 @@ export interface DeviceDataBundle {
     methods: string[];
     eventCatalog: Awaited<ReturnType<typeof fetchEventCatalog>>;
     componentPages: number;
+    gatherTiming?: {
+        totalMs: number;
+        stages: readonly StageTiming[];
+    };
+}
+
+// The supported-mode list rides the static pill component's attrs, which the
+// dynamic_only load skips. Same _attrs merge shape as addVirtualComponents.
+// Pre-normalization layer: the device-sent key is 'pill'.
+async function fetchPillComponentAttrs(
+    transport: RpcTransport,
+    deviceConfig: Record<string, any>,
+    signal?: AbortSignal
+): Promise<void> {
+    let pill: {config?: unknown; attrs?: unknown} | undefined;
+    try {
+        const result = await sendInitRpc(
+            transport,
+            'Shelly.GetComponents',
+            {keys: ['pill']},
+            signal
+        );
+        pill = result?.components?.find(
+            (c: {key?: string}) => c?.key === 'pill'
+        );
+    } catch {
+        // Older firmware rejects the keys filter — no list to capture.
+        return;
+    }
+    if (!pill?.attrs) return;
+    deviceConfig.pill = {
+        ...(deviceConfig.pill ?? pill.config ?? {}),
+        _attrs: pill.attrs
+    };
 }
 
 // Hard cap protects against a buggy device whose total never converges.
@@ -346,16 +465,20 @@ const MAX_COMPONENT_PAGES = 100;
 async function addVirtualComponents(
     transport: RpcTransport,
     deviceStatus: any,
-    deviceConfig: any
+    deviceConfig: any,
+    signal?: AbortSignal
 ): Promise<number> {
     let offset = 0;
     let total = 0;
     let pages = 0;
     for (let pageIndex = 0; pageIndex < MAX_COMPONENT_PAGES; pageIndex++) {
-        const result = await transport.sendRPC('Shelly.GetComponents', {
-            offset,
-            dynamic_only: true
-        });
+        signal?.throwIfAborted();
+        const result = await sendInitRpc(
+            transport,
+            'Shelly.GetComponents',
+            {offset, dynamic_only: true},
+            signal
+        );
         pages++;
         total = result.total;
         const components = result.components;
@@ -388,9 +511,16 @@ async function addVirtualComponents(
  * JWT and the JSON-RPC API both allow N > 0). Stored under each component's
  * own key in config so the entity composer surfaces per-service metadata.
  */
-async function fetchServiceMeta(transport: RpcTransport, deviceConfig: any) {
+async function fetchServiceMeta(
+    transport: RpcTransport,
+    deviceConfig: any,
+    signal?: AbortSignal
+) {
     for (const id of listServiceIds(deviceConfig)) {
-        await fetchOneServiceMeta(transport, deviceConfig, id);
+        // The safe* helpers below swallow failures, so the loop itself has to
+        // see the abort or it keeps probing a gather nobody owns any more.
+        signal?.throwIfAborted();
+        await fetchOneServiceMeta(transport, deviceConfig, id, signal);
     }
 }
 
@@ -407,21 +537,34 @@ function listServiceIds(deviceConfig: Record<string, unknown>): number[] {
 async function fetchOneServiceMeta(
     transport: RpcTransport,
     deviceConfig: any,
-    id: number
+    id: number,
+    signal?: AbortSignal
 ): Promise<void> {
     const svcKey = `service:${id}`;
-    await safeFetchServiceInfo(transport, deviceConfig, svcKey, id);
-    await safeFetchServiceConfigOptions(transport, deviceConfig, svcKey, id);
+    await safeFetchServiceInfo(transport, deviceConfig, svcKey, id, signal);
+    await safeFetchServiceConfigOptions(
+        transport,
+        deviceConfig,
+        svcKey,
+        id,
+        signal
+    );
 }
 
 async function safeFetchServiceInfo(
     transport: RpcTransport,
     deviceConfig: any,
     svcKey: string,
-    id: number
+    id: number,
+    signal?: AbortSignal
 ): Promise<void> {
     try {
-        const info = await transport.sendRPC('Service.GetInfo', {id});
+        const info = await sendInitRpc(
+            transport,
+            'Service.GetInfo',
+            {id},
+            signal
+        );
         if (!info || typeof info !== 'object') return;
         if (!deviceConfig[svcKey] || typeof deviceConfig[svcKey] !== 'object') {
             return;
@@ -435,7 +578,7 @@ async function safeFetchServiceInfo(
             errors: info.meta?.ui?.svc_errors ?? {}
         };
     } catch (err) {
-        warnIfUnexpected('Service.GetInfo', id, err);
+        warnIfUnexpected('Service.GetInfo', id, err, signal);
     }
 }
 
@@ -443,22 +586,35 @@ async function safeFetchServiceConfigOptions(
     transport: RpcTransport,
     deviceConfig: any,
     svcKey: string,
-    id: number
+    id: number,
+    signal?: AbortSignal
 ): Promise<void> {
     try {
-        const opts = await transport.sendRPC('Service.ListConfigOptions', {id});
+        const opts = await sendInitRpc(
+            transport,
+            'Service.ListConfigOptions',
+            {id},
+            signal
+        );
         if (!opts?.props || !Array.isArray(opts.props)) return;
         if (!deviceConfig[svcKey] || typeof deviceConfig[svcKey] !== 'object') {
             return;
         }
         deviceConfig[svcKey]._configOptions = opts.props;
     } catch (err) {
-        warnIfUnexpected('Service.ListConfigOptions', id, err);
+        warnIfUnexpected('Service.ListConfigOptions', id, err, signal);
     }
 }
 
-// Method-not-supported is the expected null path; surface anything else.
-function warnIfUnexpected(method: string, id: number, err: unknown): void {
+// Method-not-supported is the expected null path, and an abandoned gather is an
+// operator decision, not a device fault; surface anything else.
+function warnIfUnexpected(
+    method: string,
+    id: number,
+    err: unknown,
+    signal?: AbortSignal
+): void {
+    if (signal?.aborted) return;
     if (isMethodNotSupportedError(err)) return;
     logger.warn('%s for id=%d failed: %s', method, id, errorMessage(err));
 }
@@ -512,12 +668,16 @@ export {MAX_CATALOG_PAGES};
 // Exported for tests only.
 export async function fetchEventCatalog(
     transport: RpcTransport,
-    fwId: string | undefined
+    fwId: string | undefined,
+    signal?: AbortSignal
 ): Promise<DeviceEventCatalog | undefined> {
     const pages = [];
     let offset = 0;
     for (let pageIndex = 0; pageIndex < MAX_CATALOG_PAGES; pageIndex++) {
-        const page = await safeFetchCatalogPage(transport, offset);
+        // safeFetchCatalogPage swallows the abort as "no page", so the loop
+        // itself has to see it or it paginates on past the gather's deadline.
+        signal?.throwIfAborted();
+        const page = await safeFetchCatalogPage(transport, offset, signal);
         if (!page) {
             return pages.length > 0
                 ? buildEventCatalog({pages, nowMs: Date.now(), fwId})
@@ -551,12 +711,16 @@ function warnPartialCatalogIfShort(
 
 async function safeFetchCatalogPage(
     transport: RpcTransport,
-    offset: number
+    offset: number,
+    signal?: AbortSignal
 ): Promise<{types?: ReadonlyArray<any>; total?: number} | null> {
     try {
-        const resp = await transport.sendRPC('Webhook.ListAllSupported', {
-            offset
-        });
+        const resp = await sendInitRpc(
+            transport,
+            'Webhook.ListAllSupported',
+            {offset},
+            signal
+        );
         if (!resp || typeof resp !== 'object') return null;
         return resp as {types?: ReadonlyArray<any>; total?: number};
     } catch (err) {
@@ -583,10 +747,18 @@ function errorMessage(err: unknown): string {
 
 async function fetchLedStripMeta(
     transport: RpcTransport,
-    deviceConfig: Record<string, any>
+    deviceConfig: Record<string, any>,
+    signal?: AbortSignal
 ): Promise<void> {
     for (const key of ledStripKeys(deviceConfig)) {
-        await loadCatalogForLedStrip(transport, {config: deviceConfig, key});
+        // The safe* fetchers below swallow the abort, so the loop has to check
+        // it or one dead socket costs a full catalog sweep per strip.
+        signal?.throwIfAborted();
+        await loadCatalogForLedStrip(
+            transport,
+            {config: deviceConfig, key},
+            signal
+        );
     }
 }
 
@@ -618,12 +790,13 @@ interface ArrayFetchSpec {
 
 async function loadCatalogForLedStrip(
     transport: RpcTransport,
-    target: Omit<LedStripTarget, 'id'>
+    target: Omit<LedStripTarget, 'id'>,
+    signal?: AbortSignal
 ): Promise<void> {
     const id = parseComponentId(target.key);
     if (id === null) return;
     const fullTarget: LedStripTarget = {...target, id};
-    const catalog = await fetchLedStripCatalog(transport, id);
+    const catalog = await fetchLedStripCatalog(transport, id, signal);
     if (catalogIsEmpty(catalog)) return;
     stashCatalogOnConfig(fullTarget, catalog);
     stashUiFieldsOnConfig(fullTarget, {
@@ -634,20 +807,29 @@ async function loadCatalogForLedStrip(
 
 async function fetchLedStripCatalog(
     transport: RpcTransport,
-    id: number
+    id: number,
+    signal?: AbortSignal
 ): Promise<LedStripCatalog> {
     const [protocols, palettes, effects] = await Promise.all([
-        safeFetchArrayField(transport, {
-            id,
-            method: 'LedStrip.ListAllProtocols',
-            field: 'protocols'
-        }),
-        safeFetchArrayField(transport, {
-            id,
-            method: 'LedStrip.ListAllPalettes',
-            field: 'palettes'
-        }),
-        safeFetchAllEffects(transport, id)
+        safeFetchArrayField(
+            transport,
+            {
+                id,
+                method: 'LedStrip.ListAllProtocols',
+                field: 'protocols'
+            },
+            signal
+        ),
+        safeFetchArrayField(
+            transport,
+            {
+                id,
+                method: 'LedStrip.ListAllPalettes',
+                field: 'palettes'
+            },
+            signal
+        ),
+        safeFetchAllEffects(transport, id, signal)
     ]);
     return {
         protocols: protocols as string[] | undefined,
@@ -658,26 +840,33 @@ async function fetchLedStripCatalog(
 
 export async function safeFetchArrayField(
     transport: RpcTransport,
-    spec: ArrayFetchSpec
+    spec: ArrayFetchSpec,
+    signal?: AbortSignal
 ): Promise<unknown[] | undefined> {
     try {
-        const r = await transport.sendRPC(spec.method, {id: spec.id});
+        const r = await sendInitRpc(
+            transport,
+            spec.method,
+            {id: spec.id},
+            signal
+        );
         const value = (r as Record<string, unknown>)?.[spec.field];
         return Array.isArray(value) ? value : undefined;
     } catch (err) {
-        warnIfUnexpected(spec.method, spec.id, err);
+        warnIfUnexpected(spec.method, spec.id, err, signal);
         return undefined;
     }
 }
 
 async function safeFetchAllEffects(
     transport: RpcTransport,
-    id: number
+    id: number,
+    signal?: AbortSignal
 ): Promise<unknown[] | undefined> {
     try {
-        return await paginateEffects(transport, id);
+        return await paginateEffects(transport, id, signal);
     } catch (err) {
-        warnIfUnexpected('LedStrip.ListAllEffects', id, err);
+        warnIfUnexpected('LedStrip.ListAllEffects', id, err, signal);
         return undefined;
     }
 }
@@ -688,12 +877,16 @@ export const MAX_EFFECT_PAGES = 100;
 
 export async function paginateEffects(
     transport: RpcTransport,
-    id: number
+    id: number,
+    signal?: AbortSignal
 ): Promise<unknown[]> {
     const collected: unknown[] = [];
     let offset = 0;
     for (let pageIndex = 0; pageIndex < MAX_EFFECT_PAGES; pageIndex++) {
-        const page = await fetchEffectPage(transport, {id, offset});
+        // The caller swallows failures, so the loop has to see the abort or it
+        // keeps paging an effect list the gather already gave up on.
+        signal?.throwIfAborted();
+        const page = await fetchEffectPage(transport, {id, offset}, signal);
         if (page.length === 0) return collected;
         collected.push(...page);
         offset += page.length;
@@ -710,9 +903,15 @@ export async function paginateEffects(
 
 async function fetchEffectPage(
     transport: RpcTransport,
-    page: {id: number; offset: number}
+    page: {id: number; offset: number},
+    signal?: AbortSignal
 ): Promise<unknown[]> {
-    const r = await transport.sendRPC('LedStrip.ListAllEffects', page);
+    const r = await sendInitRpc(
+        transport,
+        'LedStrip.ListAllEffects',
+        page,
+        signal
+    );
     const effects = (r as {effects?: unknown})?.effects;
     return Array.isArray(effects) ? effects : [];
 }

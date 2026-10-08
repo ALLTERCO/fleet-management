@@ -1,9 +1,9 @@
+import type {ComponentName, CrudOperation} from '../../model/permissions';
 import {
-    type ComponentName,
-    CRUD_OPERATIONS,
-    type CrudOperation
-} from '../../model/permissions';
-import {AUTHZ_RESOURCE_BY_COMPONENT} from '../../types/api/authzCatalog';
+    AUTHZ_ACTIONS,
+    AUTHZ_RESOURCE_BY_COMPONENT,
+    foldAuthzAction
+} from '../../types/api/authzCatalog';
 
 export function authzResourceType(component: ComponentName): string {
     return AUTHZ_RESOURCE_BY_COMPONENT[component] ?? component;
@@ -13,31 +13,19 @@ export function authzAction(
     component: ComponentName,
     operation: CrudOperation
 ): string {
-    const resourceType = authzResourceType(component);
-    // Devices: read / execute (control) / write (config umbrella over CUD).
-    if (component === 'devices') {
-        if (operation === 'read') return `${resourceType}:read`;
-        if (operation === 'execute') return `${resourceType}:execute`;
-        return `${resourceType}:write`;
-    }
-    return `${resourceType}:${operation}`;
+    return foldAuthzAction(authzResourceType(component), operation);
 }
 
-// Actions authzAction() emits. Devices: read/execute/write only.
-let cachedRealActions: Set<string> | undefined;
-
+// The one list of actions the server checks lives in types/api/authzCatalog.ts.
 export function enumerateActionVocabulary(): Set<string> {
-    if (cachedRealActions) return cachedRealActions;
-    const out = new Set<string>();
-    for (const component of Object.keys(
-        AUTHZ_RESOURCE_BY_COMPONENT
-    ) as ComponentName[]) {
-        for (const op of CRUD_OPERATIONS) {
-            out.add(authzAction(component, op));
-        }
+    return new Set(AUTHZ_ACTIONS);
+}
+
+// A simulated action that does not exist would report a decision the runtime never honours.
+export function assertKnownAuthzAction(action: string): void {
+    if (!enumerateActionVocabulary().has(action)) {
+        throw new Error(`Unknown authz action: ${action}`);
     }
-    cachedRealActions = out;
-    return out;
 }
 
 // Accepts '*', '<type>:*', '*:<verb>', '<type>:<verb>'. device:delete/update

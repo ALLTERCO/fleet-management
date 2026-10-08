@@ -19,6 +19,7 @@
 
 import {DescribeBuilder, type DescribeOutput} from './_describe';
 import type {JsonSchema} from './_schema';
+import {listResponseSchema, SUCCESS_RESPONSE_SCHEMA} from './_shared';
 import {UPLOAD_TICKET_RESPONSE_SCHEMA} from './upload';
 
 // --- Domain type ---------------------------------------------------------
@@ -143,17 +144,42 @@ export const FIRMWARE_LIST_LIBRARY_PARAMS_SCHEMA: JsonSchema = {
     properties: {}
 };
 
-export const FIRMWARE_LIST_LIBRARY_RESPONSE_SCHEMA: JsonSchema = {
+// One stored binary, exactly as the upload route writes it
+// (modules/web/routes/firmwareUpload.ts). Items were `{type: 'object'}`.
+export const FIRMWARE_LIBRARY_ITEM_SCHEMA: JsonSchema = {
     type: 'object',
-    required: ['items', 'total', 'limit', 'offset', 'has_more'],
+    required: [
+        'id',
+        'name',
+        'originalFileName',
+        'storedFileName',
+        'uploadedAt',
+        'uploadedBy',
+        'fileSize',
+        'checksum',
+        'tags'
+    ],
+    additionalProperties: false,
     properties: {
-        items: {type: 'array', items: {type: 'object'}},
-        total: {type: 'number'},
-        limit: {type: 'number'},
-        offset: {type: 'number'},
-        has_more: {type: 'boolean'}
+        id: ID_FIELD_SCHEMA,
+        name: {type: 'string'},
+        originalFileName: {type: 'string'},
+        storedFileName: {type: 'string'},
+        uploadedAt: {type: 'integer'},
+        uploadedBy: {type: 'string'},
+        fileSize: {type: 'integer', minimum: 0},
+        checksum: {type: 'string'},
+        app: {type: 'string'},
+        model: {type: 'string'},
+        ver: {type: 'string'},
+        fwId: {type: 'string'},
+        channel: {type: 'string', enum: ['stable', 'beta', 'custom']},
+        tags: {type: 'array', items: {type: 'string'}}
     }
 };
+
+export const FIRMWARE_LIST_LIBRARY_RESPONSE_SCHEMA: JsonSchema =
+    listResponseSchema(FIRMWARE_LIBRARY_ITEM_SCHEMA);
 
 export const FIRMWARE_CREATE_LIBRARY_DOWNLOAD_URL_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
@@ -190,7 +216,7 @@ export const FIRMWARE_UPDATE_LIBRARY_ENTRY_RESPONSE_SCHEMA: JsonSchema = {
     required: ['success', 'item'],
     properties: {
         success: {type: 'boolean', const: true},
-        item: {type: 'object'}
+        item: FIRMWARE_LIBRARY_ITEM_SCHEMA
     }
 };
 
@@ -215,10 +241,92 @@ const SHELLY_ID_LIST: JsonSchema = {
     minItems: 1
 };
 
-const ACK: JsonSchema = {type: 'object', additionalProperties: true};
+// Same ids on the way back, but a result list is allowed to be empty.
+const SHELLY_ID_LIST_RESULT: JsonSchema = {
+    type: 'array',
+    items: {type: 'string', minLength: 1}
+};
 
 const AUTO_UPDATE_MODE_VALUES = ['off', 'stable', 'beta'] as const;
 export type FirmwareAutoUpdateMode = (typeof AUTO_UPDATE_MODE_VALUES)[number];
+
+// Thirteen methods declared `response: {type: 'object'}`, which generates as
+// Record<string, unknown>. Shapes below are read off FirmwareComponent.ts.
+const AUTO_UPDATE_MODE_SCHEMA: JsonSchema = {
+    type: 'string',
+    enum: [...AUTO_UPDATE_MODE_VALUES]
+};
+const FIRMWARE_CHANNEL_SCHEMA: JsonSchema = {
+    type: 'string',
+    enum: ['stable', 'beta']
+};
+
+const FIRMWARE_LOCKED_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['locked'],
+    additionalProperties: false,
+    properties: {locked: SHELLY_ID_LIST_RESULT}
+};
+
+const FIRMWARE_RELEASED_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['released'],
+    additionalProperties: false,
+    properties: {released: SHELLY_ID_LIST_RESULT}
+};
+
+// Both bulk setters answer with only the devices they actually changed.
+const FIRMWARE_UPDATED_IDS_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['updated'],
+    additionalProperties: false,
+    properties: {updated: SHELLY_ID_LIST_RESULT}
+};
+
+const FIRMWARE_AUTO_UPDATE_STATUS_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['enabled'],
+    additionalProperties: false,
+    properties: {enabled: {type: 'boolean'}}
+};
+
+const FIRMWARE_AUTO_UPDATE_MODE_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['mode'],
+    additionalProperties: false,
+    properties: {mode: AUTO_UPDATE_MODE_SCHEMA}
+};
+
+const FIRMWARE_AUTO_UPDATE_CHANNEL_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['channel'],
+    additionalProperties: false,
+    properties: {channel: FIRMWARE_CHANNEL_SCHEMA}
+};
+
+// null until the scheduler has run at least once.
+const FIRMWARE_LAST_AUTO_UPDATE_RUN_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['timestamp'],
+    additionalProperties: false,
+    properties: {timestamp: {type: ['integer', 'null']}}
+};
+
+// GetAutoUpdateDevices lists bare shelly ids; GetAutoUpdateModes pairs each
+// id with its mode. Both go through buildListResponse.
+const FIRMWARE_AUTO_UPDATE_DEVICES_RESPONSE_SCHEMA: JsonSchema =
+    listResponseSchema({type: 'string', minLength: 1});
+
+const FIRMWARE_AUTO_UPDATE_MODES_RESPONSE_SCHEMA: JsonSchema =
+    listResponseSchema({
+        type: 'object',
+        required: ['shellyID', 'mode'],
+        additionalProperties: false,
+        properties: {
+            shellyID: {type: 'string', minLength: 1},
+            mode: AUTO_UPDATE_MODE_SCHEMA
+        }
+    });
 
 export interface FirmwareRegisterManualUpdateParams {
     shellyIDs: string[];
@@ -583,14 +691,14 @@ export const FIRMWARE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('RegisterManualUpdate', {
         safety: {operation: 'create'},
         params: FIRMWARE_REGISTER_MANUAL_UPDATE_PARAMS_SCHEMA,
-        response: ACK,
+        response: FIRMWARE_LOCKED_RESPONSE_SCHEMA,
         permission: {note: 'per-device execute or admin'},
         description: 'Register a manual update for one or more devices.'
     })
     .registerMethod('UnregisterManualUpdate', {
         safety: {operation: 'delete'},
         params: FIRMWARE_UNREGISTER_MANUAL_UPDATE_PARAMS_SCHEMA,
-        response: ACK,
+        response: FIRMWARE_RELEASED_RESPONSE_SCHEMA,
         permission: {note: 'per-device execute or admin'},
         description: 'Cancel a previously registered manual update.'
     })
@@ -613,70 +721,70 @@ export const FIRMWARE_DESCRIBE: DescribeOutput = new DescribeBuilder(
     })
     .registerMethod('GetAutoUpdateDevices', {
         params: FIRMWARE_GET_AUTO_UPDATE_DEVICES_PARAMS_SCHEMA,
-        response: ACK,
+        response: FIRMWARE_AUTO_UPDATE_DEVICES_RESPONSE_SCHEMA,
         permission: {component: 'devices', operation: 'read'},
         description: 'List devices with auto-update configured.'
     })
     .registerMethod('GetAutoUpdateModes', {
         params: FIRMWARE_GET_AUTO_UPDATE_MODES_PARAMS_SCHEMA,
-        response: ACK,
+        response: FIRMWARE_AUTO_UPDATE_MODES_RESPONSE_SCHEMA,
         permission: {component: 'devices', operation: 'read'},
         description: 'Return the supported auto-update modes.'
     })
     .registerMethod('SetAutoUpdate', {
         params: FIRMWARE_SET_AUTO_UPDATE_PARAMS_SCHEMA,
-        response: ACK,
+        response: SUCCESS_RESPONSE_SCHEMA,
         permission: {component: 'devices', operation: 'update'},
         description: 'Enable or disable auto-update for a single device.'
     })
     .registerMethod('SetAutoUpdateBulk', {
         params: FIRMWARE_SET_AUTO_UPDATE_BULK_PARAMS_SCHEMA,
-        response: ACK,
+        response: FIRMWARE_UPDATED_IDS_RESPONSE_SCHEMA,
         permission: {component: 'devices', operation: 'update'},
         description: 'Bulk enable/disable auto-update.'
     })
     .registerMethod('GetAutoUpdateStatus', {
         params: FIRMWARE_GET_AUTO_UPDATE_STATUS_PARAMS_SCHEMA,
-        response: ACK,
+        response: FIRMWARE_AUTO_UPDATE_STATUS_RESPONSE_SCHEMA,
         permission: {component: 'devices', operation: 'read'},
         description: 'Return the current auto-update status for a device.'
     })
     .registerMethod('GetAutoUpdateMode', {
         params: FIRMWARE_GET_AUTO_UPDATE_MODE_PARAMS_SCHEMA,
-        response: ACK,
+        response: FIRMWARE_AUTO_UPDATE_MODE_RESPONSE_SCHEMA,
         permission: {component: 'devices', operation: 'read'},
         description: 'Return the auto-update mode for a device.'
     })
     .registerMethod('SetAutoUpdateMode', {
         params: FIRMWARE_SET_AUTO_UPDATE_MODE_PARAMS_SCHEMA,
-        response: ACK,
+        response: SUCCESS_RESPONSE_SCHEMA,
         permission: {component: 'devices', operation: 'update'},
         description: 'Set the auto-update mode for a single device.'
     })
     .registerMethod('SetAutoUpdateModeBulk', {
         params: FIRMWARE_SET_AUTO_UPDATE_MODE_BULK_PARAMS_SCHEMA,
-        response: ACK,
+        response: FIRMWARE_UPDATED_IDS_RESPONSE_SCHEMA,
         permission: {component: 'devices', operation: 'update'},
         description: 'Bulk set the auto-update mode for a list of devices.'
     })
     .registerMethod('GetAutoUpdateChannel', {
         safety: {operation: 'read'},
         params: FIRMWARE_GET_AUTO_UPDATE_CHANNEL_PARAMS_SCHEMA,
-        response: ACK,
+        response: FIRMWARE_AUTO_UPDATE_CHANNEL_RESPONSE_SCHEMA,
         permission: {note: 'provider-support-only'},
         description: 'Return the global default firmware channel (stable/beta).'
     })
     .registerMethod('SetAutoUpdateChannel', {
         safety: {operation: 'update'},
         params: FIRMWARE_SET_AUTO_UPDATE_CHANNEL_PARAMS_SCHEMA,
-        response: ACK,
+        response: SUCCESS_RESPONSE_SCHEMA,
         permission: {note: 'provider-support-only'},
         description:
             'Set the global default firmware channel (stable/beta) for legacy enables.'
     })
     .registerMethod('GetLastAutoUpdateRun', {
         params: FIRMWARE_GET_LAST_AUTO_UPDATE_RUN_PARAMS_SCHEMA,
-        response: ACK,
+        response: FIRMWARE_LAST_AUTO_UPDATE_RUN_RESPONSE_SCHEMA,
         permission: {component: 'devices', operation: 'read'},
         description: 'Return metadata for the most recent scheduler run.'
     })

@@ -358,7 +358,6 @@ function onKebab(): void {
     min-width: 180px;
     background: var(--glass-4-bg);
     backdrop-filter: blur(var(--glass-4-blur));
-    -webkit-backdrop-filter: blur(var(--glass-4-blur));
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-xl);

@@ -3,7 +3,7 @@
         <template #title>
             <h3 class="sd-title">
                 <i class="fas fa-share-nodes sd-title__icon" />
-                Share {{ resourceLabel }}
+                Share {{ displayResourceLabel }}
             </h3>
         </template>
 
@@ -107,6 +107,11 @@
                 Scope: <strong>{{ scopeSummary }}</strong>
             </div>
 
+            <div v-if="accessNotice" class="sd-access-notice" role="note">
+                <i class="fas fa-shield-halved" />
+                <span><strong>Layout access only.</strong> {{ accessNotice }}</span>
+            </div>
+
             <!-- Shared with — existing assignments on this resource. -->
             <div class="sd-current">
                 <div class="sd-current__header">
@@ -145,7 +150,7 @@
                             class="sd-current__revoke"
                             type="button"
                             :disabled="revokingId === row.id"
-                            :aria-label="'Revoke ' + subjectLabel(row)"
+                            :aria-label="`Revoke ${subjectLabel(row)}`"
                             @click="revoke(row.id)"
                         >
                             <i
@@ -193,11 +198,15 @@
 </template>
 
 <script setup lang="ts">
+import type {AuthzScopeType} from '@api/authzCatalog';
 import {computed, onMounted, reactive, ref, toRef, watch} from 'vue';
 import Button from '@/components/core/Button.vue';
 import Input from '@/components/core/Input.vue';
 import Modal from '@/components/modals/Modal.vue';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useRpcPermissions} from '@/helpers/rpcPermissions';
+import {personaAllowsScopeType} from '@/helpers/scopeDimensions';
+import {shareAccessNotice} from '@/helpers/shareAccessNotice';
 import {
     buildShareSubjectOptions,
     type ShareSubjectType
@@ -215,21 +224,16 @@ import {
 import {useUserGroupsStore} from '@/stores/userGroups';
 import {useUsersStore} from '@/stores/users';
 
-// Fallback copy when a system persona ships without a description.
-const SYSTEM_PERSONA_BLURB: Record<string, string> = {
-    admin: 'Full access — manage resources, settings, members.',
-    manager: 'Manage resources and members; cannot change tenant settings.',
-    editor: 'Create, edit, and configure resources.',
-    operator: 'Run runtime actions (toggle, restart) but no config changes.',
-    viewer: 'Read-only access — view resources and telemetry.',
-    installer: 'Add new devices and assign them to locations / groups.',
-    auditor: 'Read-only access to authz state and audit history.'
-};
-
 // Resource-scoped Share dialog. Wraps assignment.create with the
 // boilerplate already used elsewhere in the app — picks a subject,
 // picks a persona, derives the scope from the page context.
 type ShareResourceType = 'dashboard' | 'location' | 'group' | 'device';
+const SHARE_RESOURCE_SCOPE_TYPES = {
+    dashboard: 'dashboard',
+    location: 'location',
+    group: 'device_group',
+    device: 'device'
+} as const satisfies Record<ShareResourceType, AuthzScopeType>;
 
 const props = defineProps<{
     visible: boolean;
@@ -326,7 +330,7 @@ watch(toRef(props, 'visible'), (open) => {
         personasStore.fetchAll(),
         refreshShares()
     ]).catch((e) => {
-        loadError.value = e instanceof Error ? e.message : String(e);
+        loadError.value = rpcErrorMessage(e);
     });
 });
 
@@ -356,17 +360,23 @@ function setSubjectType(subjectType: ShareSubjectType): void {
     userSearch.value = '';
 }
 
+const resourceScopeType = computed<AuthzScopeType>(
+    () => SHARE_RESOURCE_SCOPE_TYPES[props.resourceType]
+);
+const compatiblePersonas = computed(() =>
+    Object.values(personasStore.personas).filter((persona) =>
+        personaAllowsScopeType(persona.key, resourceScopeType.value)
+    )
+);
 const tenantPersonas = computed(() =>
-    Object.values(personasStore.personas).filter((p) => !p.is_system_managed)
+    compatiblePersonas.value.filter((p) => !p.is_system_managed)
 );
 const systemPersonas = computed(() =>
-    Object.values(personasStore.personas).filter((p) => p.is_system_managed)
+    compatiblePersonas.value.filter((p) => p.is_system_managed)
 );
 
 function personaDescription(p: PersonaResponse): string {
-    if (p.description) return p.description;
-    if (p.is_system_managed) return SYSTEM_PERSONA_BLURB[p.key] ?? '';
-    return '';
+    return p.description ?? '';
 }
 
 function personaTooltip(p: PersonaResponse): string {
@@ -401,7 +411,9 @@ const scopeSummary = computed(() =>
     `${props.resourceType} #${props.resourceId}${props.resourceLabel ? ` (${props.resourceLabel})` : ''}`
 );
 
-const resourceLabel = computed(
+const accessNotice = computed(() => shareAccessNotice(props.resourceType));
+
+const displayResourceLabel = computed(
     () => props.resourceLabel || `this ${props.resourceType}`
 );
 
@@ -542,6 +554,21 @@ onMounted(() => {
 }
 .sd-scope__icon {
     color: var(--color-primary);
+}
+.sd-access-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface-1));
+    border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent);
+    color: var(--color-text-secondary);
+    font-size: var(--type-caption);
+}
+.sd-access-notice i {
+    color: var(--color-warning);
+    margin-top: 0.15em;
 }
 .sd-error {
     color: var(--color-status-red);

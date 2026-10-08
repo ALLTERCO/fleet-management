@@ -22,7 +22,8 @@ interface Sample {
 
 export class RollingMaxWindow {
     readonly #windowMs: number;
-    readonly #samples: Sample[] = [];
+    #samples: Sample[] = [];
+    #head = 0;
 
     constructor(windowMs: number) {
         assertPositiveMs(windowMs);
@@ -38,7 +39,8 @@ export class RollingMaxWindow {
     peak(now: number = Date.now()): number {
         const cutoff = now - this.#windowMs;
         let max = 0;
-        for (const s of this.#samples) {
+        for (let i = this.#head; i < this.#samples.length; i++) {
+            const s = this.#samples[i];
             if (s.ts >= cutoff && s.value > max) max = s.value;
         }
         return max;
@@ -46,15 +48,26 @@ export class RollingMaxWindow {
 
     reset(): void {
         this.#samples.length = 0;
+        this.#head = 0;
     }
 
     size(): number {
-        return this.#samples.length;
+        return this.#samples.length - this.#head;
     }
 
     #dropExpired(cutoffTs: number): void {
-        while (this.#samples.length > 0 && this.#samples[0].ts < cutoffTs) {
-            this.#samples.shift();
+        while (
+            this.#head < this.#samples.length &&
+            this.#samples[this.#head].ts < cutoffTs
+        ) {
+            this.#head++;
+        }
+        // Front deletion with Array.shift() copies the remaining array for
+        // every sample and was a measured CPU hotspot under device bursts.
+        // Compact only occasionally, keeping queue operations amortized O(1).
+        if (this.#head >= 4096 && this.#head * 2 >= this.#samples.length) {
+            this.#samples = this.#samples.slice(this.#head);
+            this.#head = 0;
         }
     }
 }

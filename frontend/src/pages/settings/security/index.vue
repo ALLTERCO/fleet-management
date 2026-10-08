@@ -98,6 +98,18 @@
                 </div>
             </section>
 
+            <!-- ── Device identities ─────────────────────────────────── -->
+            <section>
+                <h2 class="sr-only">Device identities</h2>
+                <DeviceIdentityPanel ref="identityPanel" />
+            </section>
+
+            <!-- ── Rotation jobs ─────────────────────────────────────── -->
+            <section>
+                <h2 class="sr-only">Rotation jobs</h2>
+                <RotationJobsPanel ref="jobsPanel" />
+            </section>
+
         </div>
         <ConfirmationModal ref="revokeConfirm" />
     </PageTemplate>
@@ -118,6 +130,8 @@ import CountdownRing from '@/components/core/CountdownRing.vue';
 import PageTemplate from '@/components/core/PageTemplate.vue';
 import Pill from '@/components/core/Pill.vue';
 import Spinner from '@/components/core/Spinner.vue';
+import DeviceIdentityPanel from '@/components/ingress/DeviceIdentityPanel.vue';
+import RotationJobsPanel from '@/components/ingress/RotationJobsPanel.vue';
 import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
 import DeviceAuthSubTabs from '@/components/pages/device-auth/DeviceAuthSubTabs.vue';
 import {
@@ -185,8 +199,15 @@ function confirmRevoke(token: EnrollmentTokenSummary): void {
     });
 }
 
+const identityPanel = ref<InstanceType<typeof DeviceIdentityPanel> | null>(
+    null
+);
+const jobsPanel = ref<InstanceType<typeof RotationJobsPanel> | null>(null);
+
 onMounted(() => {
     void load();
+    void identityPanel.value?.load();
+    void jobsPanel.value?.load();
 });
 </script>
 

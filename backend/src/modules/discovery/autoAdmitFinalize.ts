@@ -1,35 +1,40 @@
 import {getLogger} from 'log4js';
 import * as AuditLogger from '../AuditLogger';
+import {invalidateAccessControl} from '../deviceIngress/deviceTrustCache';
 import * as EventDistributor from '../EventDistributor';
 import * as Observability from '../Observability';
 import {
-    groupAddDevicesBatch,
-    setDeviceOrganizationBatch
+    ACCESS_CONTROL,
+    admitBatch,
+    type get_resp_t,
+    groupAddDevicesBatch
 } from '../PostgresProvider';
 import type {AdmissionIntent} from '../WaitingRoom/types';
 
 const logger = getLogger('auto-admit-finalize');
 
 export interface AutoAdmitFinalizeDeps {
-    setDeviceOrganizationBatch: (
-        externalIds: string[],
-        organizationId: string
-    ) => Promise<string[]>;
+    admitBatch: typeof admitBatch;
     groupAddDevicesBatch: (
         organizationId: string,
         groupId: number,
         shellyIds: string[]
     ) => Promise<number>;
     setDeviceOrg: (shellyId: string, organizationId: string) => void;
-    invalidateGroupCache: (orgId: string) => void;
+    invalidateOrganizationAccess: (orgId: string) => void;
+    invalidateGroupMembership: (
+        orgId: string,
+        externalIds?: readonly string[]
+    ) => void;
     logAutoAdmitViaDiscovery: typeof AuditLogger.logAutoAdmitViaDiscovery;
 }
 
 const defaultDeps: AutoAdmitFinalizeDeps = {
-    setDeviceOrganizationBatch,
+    admitBatch,
     groupAddDevicesBatch,
     setDeviceOrg: EventDistributor.setDeviceOrg,
-    invalidateGroupCache: EventDistributor.invalidateGroupCache,
+    invalidateOrganizationAccess: EventDistributor.invalidateOrganizationAccess,
+    invalidateGroupMembership: EventDistributor.invalidateGroupMembership,
     logAutoAdmitViaDiscovery: AuditLogger.logAutoAdmitViaDiscovery
 };
 
@@ -40,16 +45,32 @@ export function __setAutoAdmitFinalizeDepsForTests(
     activeDeps = overrides ? {...defaultDeps, ...overrides} : defaultDeps;
 }
 
-// false → caller must skip approve + audit (device not actually bound).
+// 'refused': the row is DENIED and the guarded write left it untouched.
+// 'failed': nothing was admitted (write threw, retired id, foreign org).
+// Both make the caller skip approve + audit and keep the intent for the
+// next reconnect.
+export type AutoAdmitBindResult = 'bound' | 'refused' | 'failed';
+
+// Create-or-claim the row and mark it ALLOWED in one guarded write, so a
+// device Fleet has never seen is bound before Shelly.Connect fires.
 export async function bindAutoAdmittedDeviceOrg(
     shellyID: string,
     intent: AdmissionIntent
-): Promise<boolean> {
+): Promise<AutoAdmitBindResult> {
     const bound = await bindDeviceOrg(shellyID, intent.organization_id);
-    if (!bound) return false;
-    activeDeps.invalidateGroupCache(intent.organization_id);
-    await addToGroupSafe(shellyID, intent);
-    return true;
+    if (bound !== 'bound') return bound;
+    // The intake read cached PENDING moments ago; the next reconnect must
+    // see ALLOWED.
+    await invalidateAccessControl(shellyID);
+    const groupMembershipChanged = await addToGroupSafe(shellyID, intent);
+    if (groupMembershipChanged) {
+        activeDeps.invalidateGroupMembership(intent.organization_id, [
+            shellyID
+        ]);
+    } else {
+        activeDeps.invalidateOrganizationAccess(intent.organization_id);
+    }
+    return 'bound';
 }
 
 export function recordAutoAdmitAudit(
@@ -67,36 +88,56 @@ export function recordAutoAdmitAudit(
 async function bindDeviceOrg(
     shellyID: string,
     organizationId: string
-): Promise<boolean> {
-    const matched = await runBindBatch(shellyID, organizationId);
-    if (matched === null) return false;
-    if (matched.length === 0) {
+): Promise<AutoAdmitBindResult> {
+    const rows = await runAdmitBatch(shellyID, organizationId);
+    if (rows === null) return 'failed';
+    const row = rows.find((r) => r.external_id === shellyID);
+    if (!row) {
         logger.error(
-            'auto-admit bind matched zero rows for %s org=%s — device unknown to FM',
+            'auto-admit matched no row for %s org=%s — retired or owned by another org',
             shellyID,
             organizationId
         );
-        return false;
+        return 'failed';
     }
-    for (const ext of matched) activeDeps.setDeviceOrg(ext, organizationId);
-    return true;
+    if (row.control_access === ACCESS_CONTROL.DENIED) {
+        Observability.incrementCounter('waiting_room_auto_admit_refused');
+        logger.warn(
+            'auto-admit refused for %s org=%s — device is DENIED',
+            shellyID,
+            organizationId
+        );
+        return 'refused';
+    }
+    if (row.control_access !== ACCESS_CONTROL.ALLOWED) {
+        logger.error(
+            'auto-admit left %s org=%s at control_access=%d',
+            shellyID,
+            organizationId,
+            row.control_access
+        );
+        return 'failed';
+    }
+    activeDeps.setDeviceOrg(shellyID, organizationId);
+    return 'bound';
 }
 
-async function runBindBatch(
+// Never override a DENIED row from an unattended path; only an operator may.
+// Auto-admit still creates the row: a first-seen device has none yet.
+async function runAdmitBatch(
     shellyID: string,
     organizationId: string
-): Promise<string[] | null> {
+): Promise<get_resp_t[] | null> {
     try {
-        return await activeDeps.setDeviceOrganizationBatch(
-            [shellyID],
-            organizationId
+        return await activeDeps.admitBatch(
+            [{externalId: shellyID}],
+            ACCESS_CONTROL.ALLOWED,
+            organizationId,
+            false,
+            true
         );
     } catch (err) {
-        logger.error(
-            'setDeviceOrganizationBatch threw for auto-admit %s: %s',
-            shellyID,
-            err
-        );
+        logger.error('admitBatch threw for auto-admit %s: %s', shellyID, err);
         return null;
     }
 }
@@ -104,14 +145,15 @@ async function runBindBatch(
 async function addToGroupSafe(
     shellyID: string,
     intent: AdmissionIntent
-): Promise<void> {
-    if (intent.group_id === null) return;
+): Promise<boolean> {
+    if (intent.group_id === null) return false;
     try {
         await activeDeps.groupAddDevicesBatch(
             intent.organization_id,
             intent.group_id,
             [shellyID]
         );
+        return true;
     } catch (err) {
         // Bind already committed, so the device is admitted but missing from
         // its group. Fail loud (error + metric) instead of a silent warn.
@@ -122,5 +164,6 @@ async function addToGroupSafe(
             intent.group_id,
             err
         );
+        return false;
     }
 }

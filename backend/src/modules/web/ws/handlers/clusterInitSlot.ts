@@ -38,8 +38,9 @@ export async function acquireClusterInitSlot(
     const port = deps.reservation ?? defaultReservation;
     const r = await port.reserve(CLUSTER_INIT_KEY, cfg.cap, cfg.ttlSec);
     if (r.ok) return r;
-    // Fail open on a Redis outage: the per-instance AdmissionGate still bounds
-    // the burst, so losing the global cap beats locking the fleet out.
+    // Fail open on a Redis outage so a coordination failure cannot lock the
+    // fleet out. Deployments that require a local burst backstop must configure
+    // FM_WS_ADMISSION_MAX_PER_SEC explicitly.
     if (r.reason === 'backend_error') {
         Observability.incrementCounter('device_inits_cluster_degraded_open');
         return {ok: true, release: async () => {}};

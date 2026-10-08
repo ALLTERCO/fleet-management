@@ -51,6 +51,8 @@ export interface AddDeviceInput {
     onDeny: () => void;
     onEvict: () => void;
     onQuarantine: () => void;
+    // The Waiting Room organization the socket is filed under, if any.
+    organizationId?: string | null;
 }
 
 // Per-process socket-handle entry. Holds only the live admission callbacks and
@@ -64,6 +66,7 @@ export interface PendingEntry {
     // Destructive — rewrites device WS config (server='#', enable=false) +
     // reboot. Used only via the explicit Quarantine admin action.
     onQuarantine: () => void;
+    organizationId: string | null;
     // Map-internal TTL marker (refreshed on touch); not device data.
     touchedAt: number;
 }

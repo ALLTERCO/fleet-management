@@ -1,7 +1,6 @@
 // Canonical energy/power classifier. One function maps any incoming
 // (component, field, value) into the storage primitive (tag, domain).
-// Five-tier cascade documented at docs/architecture/energy-storage-reference.md
-// section 5.1.
+// Five-tier cascade; the tiers are listed below.
 //   Tier 2 (native registry) — classify()
 //   Tier 3 (BTHome spec)     — classifyBTHomeComponent()
 //   Tier 4 (VC heuristic)    — classifyVirtualComponent()
@@ -24,6 +23,8 @@ import {classifyVcConfig} from './vcHeuristic';
 // Tag names match what's currently written to device_em.stats by the
 // legacy regex path — renaming requires a backfill migration of every
 // existing row. Closed enum.
+export {commodityForTag, type EnergyCommodity} from '../types/api/energy';
+
 export type EnergyTag =
     | 'power'
     | 'apparent_power'
@@ -43,6 +44,7 @@ export type EnergyTag =
     | 'temperature_f'
     | 'volume_l'
     | 'volume_m3'
+    | 'volume_returned_m3'
     | 'volume_storage_l'
     | 'volume_flow_m3h'
     | 'thermal_energy_kwh'
@@ -78,6 +80,8 @@ export const DELTA_TAGS: ReadonlySet<EnergyTag> = new Set([
     'total_act_ret_energy',
     'volume_l',
     'volume_m3',
+    // Explicit operator/device mapping only; never inferred from sign or unit.
+    'volume_returned_m3',
     'thermal_energy_kwh',
     // bm charge/discharge are cumulative Amp-hour counters.
     'charge_ah',
@@ -207,6 +211,30 @@ const COMPONENT_REGISTRY: Record<string, ComponentEntry> = {
 const DOMAIN_DETECTION_COMPONENTS: ReadonlySet<string> = new Set(
     AC_ACTIVE_POWER_COMPONENTS.filter((c) => c !== 'em' && c !== 'em1')
 );
+
+// em/em1 meters keep their own 1-minute records; em-sync stores those as the
+// meter's history, so a live reading of these components is display state only.
+const DEVICE_RECORDED_COMPONENTS: ReadonlySet<string> = new Set(['em', 'em1']);
+
+// The meter's record has no frequency, so that one live reading stays history.
+const LIVE_TAGS_OF_RECORDED_COMPONENTS: ReadonlySet<string> = new Set([
+    'frequency'
+]);
+
+export function hasDeviceRecordedHistory(componentKey: string): boolean {
+    const type = extractComponentType(componentKey);
+    return type !== null && DEVICE_RECORDED_COMPONENTS.has(type);
+}
+
+export function keepsLiveHistory(input: {
+    componentKey: string;
+    tag: string;
+}): boolean {
+    return (
+        !hasDeviceRecordedHistory(input.componentKey) ||
+        LIVE_TAGS_OF_RECORDED_COMPONENTS.has(input.tag)
+    );
+}
 
 // The component's own latest freq (Hz) and voltage (V), from merged status so a
 // partial frame that omits them still resolves.

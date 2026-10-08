@@ -5,6 +5,16 @@ import {
     VISUAL_DECORATION_SCHEMA,
     type VisualDecoration
 } from './_visualMetadata';
+import {
+    ELECTRICAL_SOURCES,
+    type ElectricalSource,
+    ENERGY_BUCKETS,
+    ENERGY_COMMODITIES,
+    type EnergyBucket,
+    type EnergyCommodity,
+    type EnergyQueryTag
+} from './energy';
+import {SENSOR_SOURCES, type SensorSource} from './sensor';
 
 export const DEVICE_KINDS = [
     'physical',
@@ -804,6 +814,7 @@ const BINDING_DRAFT_ITEM_SCHEMA: JsonSchema = {
     properties: {
         roleKey: ROLE_KEY_SCHEMA,
         source: SOURCE_COMPONENT_REF_SCHEMA,
+        effectiveFrom: {type: 'string'},
         visual: VIRTUAL_ROLE_VISUAL_SCHEMA
     }
 };
@@ -1351,6 +1362,7 @@ export const VIRTUAL_DEVICE_BINDING_LIST_SOURCES_PARAMS_SCHEMA: JsonSchema = {
         query: {type: 'string', minLength: 1, maxLength: 120},
         componentType: {type: 'string', minLength: 1, maxLength: 80},
         roleKey: ROLE_KEY_SCHEMA,
+        profileId: UUID_SCHEMA,
         limit: {type: 'integer', minimum: 0, maximum: 1000, default: 200},
         offset: {type: 'integer', minimum: 0, default: 0}
     }
@@ -1406,7 +1418,7 @@ export const VIRTUAL_DEVICE_DRAFT_PREVIEW_RESPONSE_SCHEMA: JsonSchema = {
 export const VIRTUAL_DEVICE_HISTORY_READ_ROLE_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
     additionalProperties: false,
-    required: ['externalId', 'roleKey', 'field', 'from', 'to'],
+    required: ['externalId', 'roleKey', 'from', 'to'],
     properties: {
         externalId: EXTERNAL_ID_SCHEMA,
         roleKey: ROLE_KEY_SCHEMA,
@@ -1414,10 +1426,40 @@ export const VIRTUAL_DEVICE_HISTORY_READ_ROLE_PARAMS_SCHEMA: JsonSchema = {
             type: 'string',
             minLength: 1,
             maxLength: 120,
-            pattern: '^[a-zA-Z][\\w:.\\-]*$'
+            pattern: '^[a-zA-Z][\\w:.\\-]*$',
+            description:
+                'Deprecated compatibility assertion. The server derives the field from the bound role.'
         },
+        series: {
+            enum: ['status', 'sensor_numeric', 'sensor_event', 'energy'],
+            description:
+                'Deprecated compatibility assertion. The server derives the canonical store from the bound role.'
+        },
+        bucket: {
+            enum: [...ENERGY_BUCKETS],
+            description:
+                'Aggregation bucket for sensor_numeric and energy series. Defaults to 1 hour.'
+        },
+        sensorSource: {
+            enum: [...SENSOR_SOURCES],
+            description:
+                'Optional device_sensor source filter for sensor_numeric history.'
+        },
+        channel: {
+            type: 'integer',
+            minimum: 0,
+            maximum: 32767,
+            description:
+                'Deprecated and rejected. The source channel is fixed by the bound component.'
+        },
+        commodity: {enum: [...ENERGY_COMMODITIES]},
+        electricalSource: {enum: [...ELECTRICAL_SOURCES]},
         from: {type: 'string'},
         to: {type: 'string'},
+        order: {
+            enum: ['asc', 'desc'],
+            description: 'Timestamp order. Defaults to ascending.'
+        },
         limit: {type: 'integer', minimum: 1, maximum: 2000000}
     }
 };
@@ -1529,6 +1571,14 @@ const HISTORY_POINT_SCHEMA: JsonSchema = {
         ts: {type: 'string'},
         value: {type: ['number', 'string', 'null']},
         prevValue: {type: ['number', 'string', 'null']},
+        min: {type: ['number', 'null']},
+        max: {type: ['number', 'null']},
+        sampleCount: {type: 'integer', minimum: 0},
+        channel: {type: ['integer', 'null']},
+        readingSource: {type: 'string'},
+        tag: {type: 'string'},
+        domain: {type: 'string'},
+        phase: {type: 'string'},
         bindingId: UUID_SCHEMA,
         roleKey: ROLE_KEY_SCHEMA,
         mode: HISTORY_MODE_SCHEMA,
@@ -1756,20 +1806,31 @@ export const VIRTUAL_DEVICE_HISTORY_BACKFILL_PARAMS_SCHEMA: JsonSchema = {
         field: {type: 'string', minLength: 1, maxLength: 100},
         from: {type: 'string'},
         to: {type: 'string'},
-        limit: {type: 'integer', minimum: 1, maximum: 1000000}
+        limit: {type: 'integer', minimum: 1, maximum: 1000000},
+        cursor: {type: 'integer', minimum: 0, maximum: 10000000}
     }
 };
 
 const HISTORY_BACKFILL_RESPONSE_SCHEMA: JsonSchema = {
     type: 'object',
     additionalProperties: false,
-    required: ['externalId', 'roleKey', 'field', 'insertedRows', 'scannedRows'],
+    required: [
+        'externalId',
+        'roleKey',
+        'field',
+        'insertedRows',
+        'scannedRows',
+        'hasMore',
+        'nextCursor'
+    ],
     properties: {
         externalId: EXTERNAL_ID_SCHEMA,
         roleKey: ROLE_KEY_SCHEMA,
         field: {type: 'string'},
         insertedRows: {type: 'integer', minimum: 0},
-        scannedRows: {type: 'integer', minimum: 0}
+        scannedRows: {type: 'integer', minimum: 0},
+        hasMore: {type: 'boolean'},
+        nextCursor: {type: ['integer', 'null'], minimum: 0}
     }
 };
 
@@ -2224,6 +2285,9 @@ export interface VirtualDeviceBindingListSourcesParams {
     query?: string;
     componentType?: string;
     roleKey?: string;
+    /** Identifies which profile the roleKey belongs to, so the server can read
+     *  what the role expects and narrow the candidates to what it can use. */
+    profileId?: string;
     limit?: number;
     offset?: number;
 }
@@ -2231,6 +2295,7 @@ export interface VirtualDeviceBindingListSourcesParams {
 export interface VirtualDeviceBindingDraftItem {
     roleKey: string;
     source: VirtualDeviceBindingSourceRef;
+    effectiveFrom?: string;
     visual?: VirtualRoleVisual;
 }
 
@@ -2256,9 +2321,18 @@ export interface VirtualDeviceDraftPreviewDto {
 export interface VirtualDeviceHistoryReadRoleParams {
     externalId: string;
     roleKey: string;
-    field: string;
+    /** Deprecated compatibility assertion; normally omitted. */
+    field?: string;
+    /** Canonical retained-history store. Defaults to the legacy status timeline. */
+    series?: 'status' | 'sensor_numeric' | 'sensor_event' | 'energy';
+    bucket?: EnergyBucket;
+    sensorSource?: SensorSource;
+    channel?: number;
+    commodity?: EnergyCommodity;
+    electricalSource?: ElectricalSource;
     from: string;
     to: string;
+    order?: 'asc' | 'desc';
     limit?: number;
 }
 
@@ -2285,6 +2359,14 @@ export interface VirtualDeviceHistoryPointDto {
     ts: string;
     value: number | string | null;
     prevValue: number | string | null;
+    min?: number | null;
+    max?: number | null;
+    sampleCount?: number;
+    channel?: number | null;
+    readingSource?: string;
+    tag?: EnergyQueryTag | string;
+    domain?: string;
+    phase?: string;
     bindingId: string;
     roleKey: string;
     mode: VirtualDeviceHistoryMode;
@@ -2424,6 +2506,8 @@ export interface VirtualDeviceHistoryBackfillParams {
     from: string;
     to: string;
     limit?: number;
+    /** Stable source-history row offset returned as nextCursor. */
+    cursor?: number;
 }
 
 export interface VirtualDeviceHistoryBackfillDto {
@@ -2432,6 +2516,8 @@ export interface VirtualDeviceHistoryBackfillDto {
     field: string;
     insertedRows: number;
     scannedRows: number;
+    hasMore: boolean;
+    nextCursor: number | null;
 }
 
 export interface VirtualDeviceReplacementReportParams {
@@ -2745,7 +2831,7 @@ b.registerMethod('History.ReadRole', {
     response: HISTORY_ROLE_RESPONSE_SCHEMA,
     permission: PERM_READ,
     description:
-        'virtualdevice.History.ReadRole — read a stitched role time series across binding replacements.'
+        'virtualdevice.History.ReadRole — read a stitched role time series across binding replacements from status, retained sensor, discrete-event, or energy history.'
 });
 b.registerMethod('History.ReadProvenance', {
     params: VIRTUAL_DEVICE_HISTORY_READ_PROVENANCE_PARAMS_SCHEMA,

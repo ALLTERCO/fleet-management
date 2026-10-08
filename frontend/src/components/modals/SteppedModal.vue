@@ -11,7 +11,12 @@
                 <slot name="title" />
             </span>
             <div class="sm-steps">
-                <Steps :current="stage" :steps="maxSteps" @click="(selected) => fastforward(selected)">
+                <Steps
+                    :current="stage"
+                    :steps="maxSteps"
+                    :max-reachable="maxSteps + 1"
+                    @click="(selected) => fastforward(selected)"
+                >
                     <template #stepTitle="{ id }">
                         <slot name="stepTitle" :stage="id" />
                     </template>

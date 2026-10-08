@@ -71,7 +71,11 @@ export async function createVirtualDevice(
     },
     deps: RepositoryDeps = defaultDeps
 ): Promise<VirtualDeviceDto> {
-    await assertAssetBelongsToOrg(input.organizationId, input.imageAssetId);
+    await assertAssetBelongsToOrg(
+        input.organizationId,
+        input.imageAssetId,
+        deps.queryRows
+    );
     return retryExternalIdCollisions(() =>
         deps.withTransaction(async (tx) => {
             const externalId = deps.makeExternalId();
@@ -125,7 +129,7 @@ export async function createVirtualDevice(
             );
             await replaceVirtualDeviceMemberships(tx, {
                 organizationId: input.organizationId,
-                externalId,
+                deviceListId,
                 locationId: input.locationId,
                 groupIds: input.groupIds,
                 tagIds: input.tagIds
@@ -198,7 +202,7 @@ async function resolveProfileIdForOrg(
 export async function getVirtualDevice(
     organizationId: string,
     externalId: string,
-    deps: RepositoryDeps = defaultDeps
+    deps: Pick<RepositoryDeps, 'queryRows'> = defaultDeps
 ): Promise<VirtualDeviceDto | null> {
     const rows = await deps.queryRows<VirtualDeviceRow>(
         `${virtualDeviceSelect()}
@@ -236,7 +240,7 @@ export async function listVirtualDevices(
     const rows = await deps.queryRows<VirtualDeviceRow>(
         `${virtualDeviceSelect()}
          WHERE ${filters.where.join(' AND ')}
-         ORDER BY ${sortExpression(params.sortBy)} ${sortDirection(params.sortDir)}
+         ORDER BY ${sortExpression(params.sortBy)} ${sortDirection(params.sortDir)}, vd.device_list_id ASC
          ${pagination.sql}`,
         [...filters.values, ...pagination.params(offset)]
     );
@@ -282,7 +286,11 @@ export async function updateVirtualDevice(
     input: VirtualDeviceUpdateParams,
     deps: RepositoryDeps = defaultDeps
 ): Promise<VirtualDeviceDto> {
-    await assertAssetBelongsToOrg(organizationId, input.imageAssetId);
+    await assertAssetBelongsToOrg(
+        organizationId,
+        input.imageAssetId,
+        deps.queryRows
+    );
     // Distinguish "absent" (keep current) from "explicit null" (clear).
     const clearImage = input.imageAssetId === null;
     return deps.withTransaction(async (tx) => {
@@ -329,11 +337,11 @@ export async function updateVirtualDevice(
             organizationId,
             input.externalId,
             rows,
-            deps
+            transactionReads(tx)
         );
         await replaceVirtualDeviceMemberships(tx, {
             organizationId,
-            externalId: input.externalId,
+            deviceListId: updated.device_list_id,
             locationId: input.locationId,
             groupIds: input.groupIds,
             tagIds: input.tagIds
@@ -365,19 +373,47 @@ async function tombstoneVirtualDevice(
     deps: RepositoryDeps
 ): Promise<void> {
     const rows = await deps.queryRows<{device_list_id: number}>(
-        `UPDATE device.virtual_device
-            SET deleted_at = NOW(),
-                enabled = FALSE,
-                revision = revision + 1,
-                updated_at = NOW()
-          WHERE organization_id = $1
-            AND device_list_id = (
-                SELECT id FROM device.list
-                 WHERE organization_id = $1 AND external_id = $2
-            )
-            AND revision = $3
-            AND deleted_at IS NULL
-          RETURNING device_list_id`,
+        `WITH deleted_virtual AS (
+            UPDATE device.virtual_device
+               SET deleted_at = NOW(),
+                   enabled = FALSE,
+                   revision = revision + 1,
+                   updated_at = NOW()
+             WHERE organization_id = $1
+               AND device_list_id = (
+                    SELECT id FROM device.list
+                     WHERE organization_id = $1 AND external_id = $2
+               )
+               AND revision = $3
+               AND deleted_at IS NULL
+             RETURNING device_list_id
+        ), deleted_list AS (
+            UPDATE device.list dl
+               SET deleted_at = NOW()
+              FROM deleted_virtual deleted
+             WHERE dl.id = deleted.device_list_id
+               AND dl.organization_id = $1
+            RETURNING dl.id
+        ), removed_groups AS (
+            DELETE FROM organization.group_members member
+             USING deleted_list deleted
+             WHERE member.organization_id = $1
+               AND member.subject_type = 'device'
+               AND member.device_id = deleted.id
+        ), removed_tags AS (
+            DELETE FROM organization.tag_assignments assignment
+             USING deleted_list deleted
+             WHERE assignment.organization_id = $1
+               AND assignment.subject_type = 'device'
+               AND assignment.device_id = deleted.id
+        ), removed_locations AS (
+            DELETE FROM organization.location_assignments assignment
+             USING deleted_list deleted
+             WHERE assignment.organization_id = $1
+               AND assignment.subject_type = 'device'
+               AND assignment.device_id = deleted.id
+        )
+        SELECT id AS device_list_id FROM deleted_list`,
         [organizationId, input.externalId, input.expectedRevision]
     );
     await requireMutationRow(organizationId, input.externalId, rows, deps);
@@ -405,7 +441,7 @@ async function purgeVirtualDevice(
                 organizationId,
                 input.externalId,
                 rows,
-                deps
+                transactionReads(tx)
             );
             return;
         }
@@ -442,20 +478,20 @@ function virtualDeviceSelect(): string {
       LEFT JOIN organization.location_assignments la
         ON la.organization_id = vd.organization_id
        AND la.subject_type = 'device'
-       AND la.subject_id = dl.external_id
+       AND la.device_id = vd.device_list_id
       LEFT JOIN LATERAL (
         SELECT ARRAY_AGG(group_id ORDER BY group_id) AS group_ids
           FROM organization.group_members
          WHERE organization_id = vd.organization_id
            AND subject_type = 'device'
-           AND subject_id = dl.external_id
+           AND device_id = vd.device_list_id
       ) gm ON TRUE
       LEFT JOIN LATERAL (
         SELECT ARRAY_AGG(tag_id ORDER BY tag_id) AS tag_ids
           FROM organization.tag_assignments
          WHERE organization_id = vd.organization_id
            AND subject_type = 'device'
-           AND subject_id = dl.external_id
+           AND device_id = vd.device_list_id
       ) ta ON TRUE`;
 }
 
@@ -548,7 +584,7 @@ async function requireMutationRow<T>(
     organizationId: string,
     externalId: string,
     rows: T[],
-    deps: RepositoryDeps
+    deps: Pick<RepositoryDeps, 'queryRows'>
 ): Promise<T> {
     const row = rows[0];
     if (row) return row;
@@ -558,6 +594,15 @@ async function requireMutationRow<T>(
         message: 'virtual device revision conflict',
         details: {resourceType: 'virtual_device', identifier: externalId}
     });
+}
+
+// Reads inside a transaction stay on its connection; a pool read there would
+// need a second connection from the pool the transaction holds.
+function transactionReads(tx: QueryClient): Pick<RepositoryDeps, 'queryRows'> {
+    return {
+        queryRows: <T>(sql: string, params?: readonly unknown[]) =>
+            tx.query<T>(sql, params)
+    };
 }
 
 async function retryExternalIdCollisions<T>(fn: () => Promise<T>): Promise<T> {
@@ -583,7 +628,9 @@ function isExternalIdConflict(err: unknown): boolean {
 
 interface MembershipPatch {
     organizationId: string;
-    externalId: string;
+    // Membership rows reference the durable device.list id, not the hardware
+    // identifier — see organization.fn_normalize_subject_reference.
+    deviceListId: number;
     locationId?: number | null;
     groupIds?: number[];
     tagIds?: number[];
@@ -607,8 +654,8 @@ async function replaceLocationAssignment(
         `DELETE FROM organization.location_assignments
           WHERE organization_id = $1
             AND subject_type = 'device'
-            AND subject_id = $2`,
-        [patch.organizationId, patch.externalId]
+            AND device_id = $2`,
+        [patch.organizationId, patch.deviceListId]
     );
     if (patch.locationId === null) return;
     await assertLocationsBelongToOrg(tx, patch.organizationId, [
@@ -618,11 +665,11 @@ async function replaceLocationAssignment(
         `INSERT INTO organization.location_assignments (
             organization_id,
             subject_type,
-            subject_id,
+            device_id,
             location_id
         )
         VALUES ($1, 'device', $2, $3)`,
-        [patch.organizationId, patch.externalId, patch.locationId]
+        [patch.organizationId, patch.deviceListId, patch.locationId]
     );
 }
 
@@ -636,8 +683,8 @@ async function replaceGroupAssignments(
         `DELETE FROM organization.group_members
           WHERE organization_id = $1
             AND subject_type = 'device'
-            AND subject_id = $2`,
-        [patch.organizationId, patch.externalId]
+            AND device_id = $2`,
+        [patch.organizationId, patch.deviceListId]
     );
     await insertGroupAssignments(tx, patch);
 }
@@ -652,8 +699,8 @@ async function replaceTagAssignments(
         `DELETE FROM organization.tag_assignments
           WHERE organization_id = $1
             AND subject_type = 'device'
-            AND subject_id = $2`,
-        [patch.organizationId, patch.externalId]
+            AND device_id = $2`,
+        [patch.organizationId, patch.deviceListId]
     );
     await insertTagAssignments(tx, patch);
 }
@@ -720,11 +767,11 @@ async function insertGroupAssignments(
             organization_id,
             group_id,
             subject_type,
-            subject_id
+            device_id
         )
         SELECT $1, UNNEST($2::integer[]), 'device', $3
         ON CONFLICT DO NOTHING`,
-        [patch.organizationId, ids, patch.externalId]
+        [patch.organizationId, ids, patch.deviceListId]
     );
 }
 
@@ -739,11 +786,11 @@ async function insertTagAssignments(
             organization_id,
             tag_id,
             subject_type,
-            subject_id
+            device_id
         )
         SELECT $1, UNNEST($2::integer[]), 'device', $3
         ON CONFLICT DO NOTHING`,
-        [patch.organizationId, ids, patch.externalId]
+        [patch.organizationId, ids, patch.deviceListId]
     );
 }
 

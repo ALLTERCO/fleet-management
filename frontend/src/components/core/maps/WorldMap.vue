@@ -553,7 +553,6 @@ defineExpose({
     border-radius: 999px;
     background: rgba(28, 30, 34, 0.62);
     backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.06),
@@ -599,7 +598,6 @@ defineExpose({
     border-radius: 999px;
     background: rgba(28, 30, 34, 0.62);
     backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.08);
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.06),
@@ -659,7 +657,6 @@ defineExpose({
     border-radius: 14px;
     background: rgba(28, 30, 34, 0.78);
     backdrop-filter: blur(28px) saturate(180%);
-    -webkit-backdrop-filter: blur(28px) saturate(180%);
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.08),

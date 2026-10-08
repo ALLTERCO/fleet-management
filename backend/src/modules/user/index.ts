@@ -13,6 +13,7 @@ import {
 import * as Observability from '../Observability';
 import {ensureOrganizationProfile} from '../organizationModel';
 import {ANONYMOUS_USERNAME} from './anonymous';
+import {attachEffectiveShape} from './authShape';
 import {
     clearUserinfoCache,
     evictCachedUser,
@@ -131,8 +132,11 @@ export async function getUserFromToken(
     token: string | undefined
 ): Promise<user_t | undefined> {
     const user = await getUserFromTokenInner(token);
-    if (user?.organizationId) ensureTenantProfileOnce(user.organizationId);
-    return user;
+    if (!user) return user;
+    if (user.organizationId) ensureTenantProfileOnce(user.organizationId);
+    // Every authenticated principal carries its shape from here on, so the
+    // sync HTTP gates read the same permissions the RPC path does.
+    return attachEffectiveShape(user);
 }
 
 async function getUserFromTokenInner(

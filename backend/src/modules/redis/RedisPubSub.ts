@@ -77,6 +77,8 @@ export class RedisPubSub {
             try {
                 await this.#sub.subscribe(channel);
             } catch (err) {
+                // Not listening: forget the handler so a retry subscribes again.
+                forgetHandler(this.#channelHandlers, channel, handler);
                 Observability.incrementCounter('redis_sub_errors_total');
                 logger.warn('subscribe failed channel=%s: %s', channel, err);
                 throw err;
@@ -93,6 +95,8 @@ export class RedisPubSub {
             try {
                 await this.#sub.psubscribe(pattern);
             } catch (err) {
+                // Not listening: forget the handler so a retry subscribes again.
+                forgetHandler(this.#patternHandlers, pattern, handler);
                 Observability.incrementCounter('redis_sub_errors_total');
                 logger.warn('psubscribe failed pattern=%s: %s', pattern, err);
                 throw err;
@@ -179,4 +183,15 @@ export function getSharedPubSub(): RedisPubSub {
 
 export function resetSharedPubSubForTests(): void {
     shared = undefined;
+}
+
+function forgetHandler<H>(
+    handlersByKey: Map<string, Set<H>>,
+    key: string,
+    handler: H
+): void {
+    const handlers = handlersByKey.get(key);
+    if (!handlers) return;
+    handlers.delete(handler);
+    if (handlers.size === 0) handlersByKey.delete(key);
 }

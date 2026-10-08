@@ -1,31 +1,16 @@
 <template>
     <Modal :visible="visible" wide @close="emit('close')">
         <template #title>
-            <div class="ccm__title">
-                <span>{{ isEditing ? 'Edit channel' : 'New channel' }}</span>
-                <button
-                    v-if="canTest"
-                    type="button"
-                    class="ccm__test-btn"
-                    :disabled="testingNow"
-                    @click="onTest"
-                >
-                    <i
-                        :class="
-                            testingNow
-                                ? 'fa-solid fa-spinner fa-spin'
-                                : 'fa-solid fa-paper-plane'
-                        "
-                        aria-hidden="true"
-                    />
-                    {{ testingNow ? 'Sending…' : 'Send test' }}
-                </button>
-            </div>
+            <span>{{ isEditing ? 'Edit channel' : 'New channel' }}</span>
         </template>
 
         <form class="ccm" @submit.prevent="onSave">
             <SectionCard title="Channel type">
-                <ChannelTypePicker v-model="form.type" />
+                <ChannelTypePicker v-model="form.type" :locked="isEditing" />
+                <p v-if="isEditing" class="ccm__hint">
+                    A channel keeps its type for life. Create a new channel to
+                    deliver through a different service.
+                </p>
             </SectionCard>
 
             <SectionCard :title="detailsTitle">
@@ -47,6 +32,7 @@
                     v-model="form.config.email"
                     :show-errors="showErrors"
                     :errors="configErrors"
+                    :masked-fields="maskedFields"
                 />
                 <WebhookFieldset
                     v-else-if="form.type === 'generic_webhook'"
@@ -59,16 +45,31 @@
                     v-model="form.config.slack"
                     :show-errors="showErrors"
                     :errors="configErrors"
+                    :masked-fields="maskedFields"
                 />
                 <TeamsFieldset
                     v-else-if="form.type === 'teams_workflow_webhook'"
                     v-model="form.config.teams"
                     :show-errors="showErrors"
                     :errors="configErrors"
+                    :masked-fields="maskedFields"
                 />
                 <TelegramFieldset
                     v-else-if="form.type === 'telegram_bot'"
                     v-model="form.config.telegram"
+                    :show-errors="showErrors"
+                    :errors="configErrors"
+                    :masked-fields="maskedFields"
+                />
+                <PushFcmFieldset
+                    v-else-if="form.type === 'push_fcm'"
+                    v-model="form.config.pushFcm"
+                    :show-errors="showErrors"
+                    :errors="configErrors"
+                />
+                <WebhookSignedFieldset
+                    v-else-if="form.type === 'webhook_signed'"
+                    v-model="form.config.webhookSigned"
                     :show-errors="showErrors"
                     :errors="configErrors"
                 />
@@ -102,76 +103,50 @@ import QuietHoursSummary, {
 } from '@/components/core/QuietHoursSummary.vue';
 import SectionCard from '@/components/core/SectionCard.vue';
 import EmailFieldset from '@/components/modals/channelFields/EmailFieldset.vue';
+import PushFcmFieldset from '@/components/modals/channelFields/PushFcmFieldset.vue';
 import SlackFieldset from '@/components/modals/channelFields/SlackFieldset.vue';
 import TeamsFieldset from '@/components/modals/channelFields/TeamsFieldset.vue';
 import TelegramFieldset from '@/components/modals/channelFields/TelegramFieldset.vue';
 import WebhookFieldset from '@/components/modals/channelFields/WebhookFieldset.vue';
+import WebhookSignedFieldset from '@/components/modals/channelFields/WebhookSignedFieldset.vue';
 import Modal from '@/components/modals/Modal.vue';
 import {
+    type ChannelDraft,
+    createBlankChannelDraft
+} from '@/helpers/channelDraft';
+import {
     type ChannelType,
-    canTestChannelType,
     describeChannelType,
     isChannelType
 } from '@/helpers/channelTypes';
 import {
     type ErrorMap,
+    omitStoredSecretErrors, 
     validateChannelName,
     validateEmailForm,
+    validatePushFcmForm,
     validateSlackForm,
     validateTeamsForm,
     validateTelegramForm,
-    validateWebhookForm
+    validateWebhookForm,
+    validateWebhookSignedForm
 } from '@/helpers/channelValidators';
-import {
-    createEmailChannelConfigForm,
-    type EmailChannelConfigForm
-} from '@/helpers/notificationEmailConfig';
 
-interface WebhookConfig {
-    url: string;
-    signingSecret: string;
-    timeoutMs: number;
-}
-interface SlackConfig {
-    url: string;
-    channelOverride: string;
-}
-interface TeamsConfig {
-    url: string;
-}
-interface TelegramConfig {
-    botToken: string;
-    chatId: string;
-    parseMode: '' | 'MarkdownV2' | 'HTML';
-}
-
-export interface ChannelDraft {
-    channelId: number | null;
-    name: string;
-    type: ChannelType;
-    config: {
-        email: EmailChannelConfigForm;
-        webhook: WebhookConfig;
-        slack: SlackConfig;
-        teams: TeamsConfig;
-        telegram: TelegramConfig;
-    };
-    quietHours: QuietHoursForm;
-}
+export type {ChannelDraft};
 
 const props = defineProps<{
     visible: boolean;
     initialDraft?: ChannelDraft;
-    testingNow?: boolean;
+    /** Masked stored secrets from Channel.Get, keyed by config path. */
+    maskedFields?: Record<string, string>;
 }>();
 
 const emit = defineEmits<{
     close: [];
     save: [draft: ChannelDraft];
-    test: [];
 }>();
 
-const form = reactive(createBlankDraft());
+const form = reactive(createBlankChannelDraft());
 const showErrors = ref(false);
 
 const quietHoursForm = computed<QuietHoursForm>({
@@ -204,13 +179,10 @@ onMounted(() => {
 
 const isEditing = computed(() => form.channelId !== null);
 
-const canTest = computed(
-    () => isEditing.value && canTestChannelType(form.type)
-);
-
 const detailsTitle = computed(
     () => `${describeChannelType(form.type).label} settings`
 );
+
 
 const nameError = computed(() => {
     const result = validateChannelName(form.name);
@@ -218,32 +190,33 @@ const nameError = computed(() => {
 });
 
 const configErrors = computed<ErrorMap>(() =>
-    runValidatorFor(form.type, form.config)
+    omitStoredSecretErrors(
+        runValidatorFor(form.type, form.config),
+        activeSection(form.type, form.config),
+        props.maskedFields ?? {}
+    )
 );
 
 const visibleErrors = computed(() => ({
     name: showErrors.value ? nameError.value : ''
 }));
 
-function createBlankDraft(): ChannelDraft {
-    return {
-        channelId: null,
-        name: '',
-        type: 'email_smtp',
-        config: {
-            email: createEmailChannelConfigForm(),
-            webhook: {url: '', signingSecret: '', timeoutMs: 10000},
-            slack: {url: '', channelOverride: ''},
-            teams: {url: ''},
-            telegram: {botToken: '', chatId: '', parseMode: ''}
-        },
-        quietHours: {start: '', end: '', timezone: ''}
-    };
+function syncFromProps(): void {
+    Object.assign(form, props.initialDraft ?? createBlankChannelDraft());
+    showErrors.value = false;
 }
 
-function syncFromProps(): void {
-    Object.assign(form, props.initialDraft ?? createBlankDraft());
-    showErrors.value = false;
+// The config section the active type edits; its field names are the error
+// keys the validators produce and the paths the server masks secrets under.
+function activeSection(type: ChannelType, config: ChannelDraft['config']): object {
+    if (type === 'email_smtp') return config.email;
+    if (type === 'generic_webhook') return config.webhook;
+    if (type === 'slack_webhook') return config.slack;
+    if (type === 'teams_workflow_webhook') return config.teams;
+    if (type === 'telegram_bot') return config.telegram;
+    if (type === 'push_fcm') return config.pushFcm;
+    if (type === 'webhook_signed') return config.webhookSigned;
+    return {};
 }
 
 function runValidatorFor(type: ChannelType, config: ChannelDraft['config']): ErrorMap {
@@ -253,6 +226,9 @@ function runValidatorFor(type: ChannelType, config: ChannelDraft['config']): Err
     if (type === 'slack_webhook') return validateSlackForm(config.slack);
     if (type === 'teams_workflow_webhook') return validateTeamsForm(config.teams);
     if (type === 'telegram_bot') return validateTelegramForm(config.telegram);
+    if (type === 'push_fcm') return validatePushFcmForm(config.pushFcm);
+    if (type === 'webhook_signed')
+        return validateWebhookSignedForm(config.webhookSigned);
     return {};
 }
 
@@ -267,9 +243,6 @@ function onSave(): void {
     emit('save', JSON.parse(JSON.stringify(form)) as ChannelDraft);
 }
 
-function onTest(): void {
-    emit('test');
-}
 </script>
 
 <style scoped>
@@ -317,43 +290,19 @@ function onTest(): void {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 22%, transparent);
 }
 
-.ccm__title {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    width: 100%;
-}
 
-.ccm__test-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-1-5) var(--space-3);
-    background-color: transparent;
-    border: 1px solid var(--color-border-subtle);
-    border-radius: var(--radius-md);
-    color: var(--color-text-secondary);
-    font-size: var(--type-caption);
-    cursor: pointer;
-}
 
-.ccm__test-btn:hover:not(:disabled) {
-    background-color: var(--color-surface-3);
-    color: var(--color-text-primary);
-    border-color: var(--color-primary);
-}
-
-.ccm__test-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
 
 .ccm__footer {
     display: flex;
     justify-content: flex-end;
     gap: var(--space-2);
 }
+
+/* Test sits opposite Cancel/Save so it reads as its own action, not a
+   dismiss control. It was previously beside the modal's X. */
+
+
 </style>
 
 <style>

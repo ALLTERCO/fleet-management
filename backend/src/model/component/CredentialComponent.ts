@@ -7,8 +7,10 @@ import {
     generatePassword
 } from '../../modules/credential/passwordGen';
 import * as EventDistributor from '../../modules/EventDistributor';
+import {snapshotJobAuthority} from '../../modules/jobs/control';
 import {createCredentialJob} from '../../modules/jobs/repository';
 import * as store from '../../modules/PostgresProvider';
+import {jsonbParam} from '../../modules/postgresJsonb';
 import {
     classifyByCode,
     withOutcomeCounter
@@ -18,6 +20,11 @@ import {
     encryptStringSecret
 } from '../../modules/secretCrypto';
 import {runBoundedParallel} from '../../modules/util/runBoundedParallel';
+import {
+    isMicrosecondTimeUuidKey,
+    keysetListPage,
+    keysetPageRequest
+} from '../../rpc/keysetPage';
 import {buildListResponse, totalFromRows} from '../../rpc/listResponse';
 import RpcError from '../../rpc/RpcError';
 import {requireOrganizationId} from '../../rpc/scope';
@@ -26,6 +33,7 @@ import {
     CREDENTIAL_CLEAR_PARAMS_SCHEMA,
     CREDENTIAL_CONFIRM_OLD_PARAMS_SCHEMA,
     CREDENTIAL_DESCRIBE,
+    CREDENTIAL_GET_MANY_PARAMS_SCHEMA,
     CREDENTIAL_GET_PARAMS_SCHEMA,
     CREDENTIAL_LIST_FAILED_PARAMS_SCHEMA,
     CREDENTIAL_LIST_PARAMS_SCHEMA,
@@ -37,6 +45,8 @@ import {
     CREDENTIAL_SET_PARAMS_SCHEMA,
     type CredentialClearParams,
     type CredentialConfirmOldParams,
+    type CredentialGetManyParams,
+    type CredentialGetManyResult,
     type CredentialGetParams,
     type CredentialJobResponse,
     type CredentialListFailedParams,
@@ -101,6 +111,9 @@ async function callCredRows(
 // List fns emit COUNT(*) OVER() AS total_count on every row.
 type Counted<T> = T & {total_count?: number};
 
+// List fns with keyset paging also emit the row's sort key.
+type Keyed<T> = T & {total_count?: number | null; cursor_key?: unknown};
+
 // Strip total_count so items keep their wire shape.
 function withoutTotalCount<T>(rows: Array<Counted<T>>): T[] {
     return rows.map(({total_count: _, ...item}) => item as T);
@@ -127,21 +140,25 @@ export default class CredentialComponent extends Component<Config> {
             CREDENTIAL_LIST_PARAMS_SCHEMA
         );
         const orgId = requireOrganizationId(sender);
-        const limit = p.limit ?? 100;
-        const offset = p.offset ?? 0;
-        const rows = (await callCredRows('organization.fn_credential_list', {
+        const page = keysetPageRequest(p, {
+            defaultLimit: 100,
+            isKey: isMicrosecondTimeUuidKey
+        });
+        const rows = (await callCredRows('organization.fn_credential_page', {
             p_tenant_id: orgId,
             p_device_id: p.deviceId ?? null,
             p_status: p.status ?? null,
-            p_limit: limit,
-            p_offset: offset
-        })) as Array<Counted<DeviceCredentialResponse>>;
-        return buildListResponse(
-            withoutTotalCount(rows),
-            totalFromRows(rows),
-            limit,
-            offset
-        );
+            p_limit: page.fetchLimit,
+            p_offset: page.offset,
+            p_after: page.after ? jsonbParam(page.after) : null,
+            p_skip_total: page.after !== null
+        })) as Array<Keyed<DeviceCredentialResponse>>;
+        return keysetListPage(rows, {
+            page,
+            isRow: () => true,
+            toItem: ({total_count: _, cursor_key: __, ...item}) =>
+                item as DeviceCredentialResponse
+        });
     }
 
     @Component.NoAudit
@@ -159,6 +176,27 @@ export default class CredentialComponent extends Component<Config> {
         });
         if (rows.length === 0) throw RpcError.NotFound('device_credential');
         return rows[0];
+    }
+
+    @Component.NoAudit
+    @Component.Expose('GetMany')
+    @Component.CheckPermissions(canViewAuthz)
+    async getMany(
+        params: unknown,
+        sender: CommandSender
+    ): Promise<CredentialGetManyResult> {
+        const p = validateOrThrow<CredentialGetManyParams>(
+            params,
+            CREDENTIAL_GET_MANY_PARAMS_SCHEMA
+        );
+        const orgId = requireOrganizationId(sender);
+        const items = await callCredRows(
+            'organization.fn_credential_get_many',
+            {p_tenant_id: orgId, p_device_ids: p.deviceIds}
+        );
+        const found = new Set(items.map((item) => item.device_id));
+        const missingIds = p.deviceIds.filter((id) => !found.has(id));
+        return {items, missingIds};
     }
 
     @Component.Expose('Reveal')
@@ -325,7 +363,8 @@ export default class CredentialComponent extends Component<Config> {
             tenantId: orgId,
             mode: 'set',
             target: {deviceIds: [p.deviceId]},
-            createdBy: actorId
+            createdBy: actorId,
+            authority: snapshotJobAuthority(sender, orgId, 'update')
         });
         const pushId = await this.stagePush(
             orgId,
@@ -409,7 +448,8 @@ export default class CredentialComponent extends Component<Config> {
             tenantId: orgId,
             mode: 'rotate',
             target: {deviceIds: ids},
-            createdBy: actorId
+            createdBy: actorId,
+            authority: snapshotJobAuthority(sender, orgId, 'update')
         });
 
         // Distinct devices take distinct advisory locks, so staging in
@@ -487,7 +527,8 @@ export default class CredentialComponent extends Component<Config> {
             tenantId: orgId,
             mode: 'clear',
             target: {deviceIds: ids},
-            createdBy: actorId
+            createdBy: actorId,
+            authority: snapshotJobAuthority(sender, orgId, 'update')
         });
         const results: Array<{deviceId: string; pushId: number}> = [];
         for (const id of ids) {

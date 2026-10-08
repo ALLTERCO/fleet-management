@@ -1,8 +1,10 @@
 import {
+    assertDeviceUpdateAccess,
     canCrossOrganizationBoundary,
     requireComponentPermissionAsync
 } from '../../modules/authz/evaluator';
 import * as EventDistributor from '../../modules/EventDistributor';
+import {assertNodeRedServiceMayCall} from '../../modules/nodeRed/serviceDenylist';
 import * as PostgresProvider from '../../modules/PostgresProvider';
 import {
     issueUploadTicket,
@@ -66,6 +68,15 @@ import {
     listVirtualDevices,
     updateVirtualDevice
 } from '../../modules/virtualDevice/repository';
+import {
+    filterReadableDeviceIds,
+    filterReadableVirtualDeviceIds,
+    redactUnreadableBluetoothGateways,
+    redactUnreadableTransportGateways,
+    requireDeviceReads,
+    requireVirtualDeviceSourceReads,
+    requireVirtualSourceReads
+} from '../../modules/virtualDevice/sourceAccessPolicy';
 import type {DescribeOutput} from '../../rpc/describe';
 import RpcError from '../../rpc/RpcError';
 import {requireOrganizationId} from '../../rpc/scope';
@@ -82,7 +93,9 @@ import {
     BLUETOOTH_TRANSPORT_SET_PRIMARY_PARAMS_SCHEMA,
     BLUETOOTH_UPDATE_PARAMS_SCHEMA,
     type BluetoothDeleteParams,
+    type BluetoothDeviceCandidateDto,
     type BluetoothDeviceCandidateListParams,
+    type BluetoothDeviceDto,
     type BluetoothDeviceGetParams,
     type BluetoothDeviceListParams,
     type BluetoothKeyClearParams,
@@ -202,6 +215,12 @@ export default class VirtualDeviceComponent extends Component {
             organizationId,
             p
         );
+        await requireVirtualSourceReads(
+            sender,
+            (withDefaults.bindings ?? []).map(
+                (binding) => binding.source.deviceExternalId
+            )
+        );
         const device = await runVirtualDeviceMutation(organizationId, () =>
             createVirtualDevice({
                 ...withDefaults,
@@ -228,6 +247,9 @@ export default class VirtualDeviceComponent extends Component {
         const organizationId = requireOrganizationId(sender);
         const row = await getVirtualDevice(organizationId, p.externalId);
         if (!row) throw RpcError.NotFound('virtual_device', p.externalId);
+        await requireVirtualDeviceSourceReads(organizationId, sender, [
+            p.externalId
+        ]);
         return row;
     }
 
@@ -239,7 +261,7 @@ export default class VirtualDeviceComponent extends Component {
             VIRTUAL_DEVICE_LIST_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender, p);
-        return listVirtualDevices(organizationId, p);
+        return listReadableVirtualDevicePage(organizationId, p, sender);
     }
 
     @Component.Expose('Update')
@@ -305,6 +327,7 @@ export default class VirtualDeviceComponent extends Component {
             VIRTUAL_DEVICE_EXTRACTION_CREATE_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender, p);
+        await requireVirtualSourceReads(sender, [p.hostExternalId]);
         const withDefaults = await applyProfileVisualDefaults(
             organizationId,
             p
@@ -325,7 +348,7 @@ export default class VirtualDeviceComponent extends Component {
     }
 
     @Component.Expose('Extraction.ReplacementPreview')
-    @Component.CrudPermission('devices', 'read')
+    @Component.CrudPermission('devices', 'read', (p) => p?.externalId)
     async previewExtractionReplacement(
         params: unknown,
         sender: CommandSender
@@ -336,7 +359,10 @@ export default class VirtualDeviceComponent extends Component {
                 VIRTUAL_DEVICE_EXTRACTION_REPLACEMENT_PREVIEW_PARAMS_SCHEMA
             );
         const organizationId = requireOrganizationId(sender);
-        return previewExtractionReplacement(organizationId, p);
+        await requireDeviceReads(sender, [p.externalId, p.newHostExternalId]);
+        return previewExtractionReplacement(organizationId, p, (sourceIds) =>
+            requireDeviceReads(sender, sourceIds)
+        );
     }
 
     @Component.Expose('Profile.List')
@@ -441,6 +467,12 @@ export default class VirtualDeviceComponent extends Component {
             VIRTUAL_DEVICE_BINDING_LIST_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender);
+        await requireVirtualDeviceSourceReads(
+            organizationId,
+            sender,
+            [p.externalId],
+            true
+        );
         return listVirtualDeviceBindings(organizationId, p);
     }
 
@@ -492,6 +524,10 @@ export default class VirtualDeviceComponent extends Component {
             VIRTUAL_DEVICE_BINDING_VALIDATE_DRAFT_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender);
+        await requireVirtualSourceReads(
+            sender,
+            p.bindings.map((binding) => binding.source.deviceExternalId)
+        );
         return validateVirtualDeviceBindingDraft(organizationId, p);
     }
 
@@ -506,6 +542,10 @@ export default class VirtualDeviceComponent extends Component {
             VIRTUAL_DEVICE_DRAFT_PREVIEW_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender, p.device);
+        await requireVirtualSourceReads(
+            sender,
+            p.bindings.map((binding) => binding.source.deviceExternalId)
+        );
         return previewVirtualDeviceDraft(organizationId, p);
     }
 
@@ -520,6 +560,7 @@ export default class VirtualDeviceComponent extends Component {
             VIRTUAL_DEVICE_BINDING_CREATE_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender);
+        await requireVirtualSourceReads(sender, [p.source.deviceExternalId]);
         const binding = await runVirtualDeviceMutation(organizationId, () =>
             createVirtualDeviceBinding(
                 organizationId,
@@ -546,6 +587,10 @@ export default class VirtualDeviceComponent extends Component {
             VIRTUAL_DEVICE_BINDING_REPLACE_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender);
+        await requireVirtualSourceReads(sender, [p.source.deviceExternalId]);
+        await requireVirtualDeviceSourceReads(organizationId, sender, [
+            p.externalId
+        ]);
         const binding = await runVirtualDeviceMutation(organizationId, () =>
             replaceVirtualDeviceBinding(
                 organizationId,
@@ -572,6 +617,9 @@ export default class VirtualDeviceComponent extends Component {
             VIRTUAL_DEVICE_BINDING_RETIRE_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender);
+        await requireVirtualDeviceSourceReads(organizationId, sender, [
+            p.externalId
+        ]);
         const binding = await runVirtualDeviceMutation(organizationId, () =>
             retireVirtualDeviceBinding(
                 organizationId,
@@ -609,7 +657,9 @@ export default class VirtualDeviceComponent extends Component {
                     'devices',
                     'execute',
                     deviceExternalId
-                ).then(() => undefined)
+                ).then(() => undefined),
+            authorizeDeviceCall: (call) =>
+                assertNodeRedServiceMayCall(sender, call)
         });
     }
 
@@ -624,6 +674,16 @@ export default class VirtualDeviceComponent extends Component {
             VIRTUAL_DEVICE_HISTORY_READ_ROLE_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender);
+        await requireVirtualDeviceSourceReads(
+            organizationId,
+            sender,
+            [p.externalId],
+            {
+                includeHistorical: true,
+                roleKey: p.roleKey,
+                window: {from: p.from, to: p.to}
+            }
+        );
         return readVirtualDeviceRoleHistory(organizationId, p);
     }
 
@@ -638,6 +698,16 @@ export default class VirtualDeviceComponent extends Component {
             VIRTUAL_DEVICE_HISTORY_READ_PROVENANCE_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender);
+        await requireVirtualDeviceSourceReads(
+            organizationId,
+            sender,
+            [p.externalId],
+            {
+                includeHistorical: true,
+                roleKey: p.roleKey,
+                window: {from: p.from, to: p.to}
+            }
+        );
         return readVirtualDeviceRoleProvenance(organizationId, p);
     }
 
@@ -652,6 +722,16 @@ export default class VirtualDeviceComponent extends Component {
             VIRTUAL_DEVICE_HISTORY_BACKFILL_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender);
+        await requireVirtualDeviceSourceReads(
+            organizationId,
+            sender,
+            [p.externalId],
+            {
+                includeHistorical: true,
+                roleKey: p.roleKey,
+                window: {from: p.from, to: p.to}
+            }
+        );
         return backfillVirtualDeviceHistory(organizationId, p);
     }
 
@@ -666,6 +746,12 @@ export default class VirtualDeviceComponent extends Component {
             VIRTUAL_DEVICE_REPLACEMENT_REPORT_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender);
+        await requireVirtualDeviceSourceReads(
+            organizationId,
+            sender,
+            [p.externalId],
+            true
+        );
         return readVirtualDeviceReplacementReport(organizationId, p);
     }
 
@@ -690,7 +776,23 @@ export default class VirtualDeviceComponent extends Component {
             VIRTUAL_DEVICE_MANIFEST_EXPORT_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender, p);
-        return exportVirtualDeviceManifest(organizationId, p.externalIds);
+        const candidates =
+            p.externalIds ??
+            (
+                await listVirtualDevices(organizationId, {
+                    limit: 0,
+                    offset: 0
+                })
+            ).items.map((item) => item.externalId);
+        const readable = await filterReadableVirtualDeviceIds(
+            organizationId,
+            sender,
+            candidates
+        );
+        return exportVirtualDeviceManifest(
+            organizationId,
+            candidates.filter((externalId) => readable.has(externalId))
+        );
     }
 
     @Component.Expose('Manifest.Plan')
@@ -740,7 +842,7 @@ export default class VirtualDeviceComponent extends Component {
             BLUETOOTH_CANDIDATE_LIST_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender, p);
-        return listBluetoothCandidates(organizationId, p);
+        return listReadableBluetoothCandidatePage(organizationId, p, sender);
     }
 
     @Component.Expose('Bluetooth.PromoteFromGateway')
@@ -754,6 +856,7 @@ export default class VirtualDeviceComponent extends Component {
             BLUETOOTH_PROMOTE_FROM_GATEWAY_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender, p);
+        await requireDeviceReads(sender, [p.gatewayExternalId]);
         const device = await runVirtualDeviceMutation(organizationId, () =>
             promoteBluetoothFromGateway(
                 organizationId,
@@ -766,7 +869,7 @@ export default class VirtualDeviceComponent extends Component {
             source: BLUETOOTH_DEVICE_INVENTORY_SOURCE,
             orgId: organizationId
         });
-        return device;
+        return redactBluetoothDevice(sender, device);
     }
 
     @Component.Expose('Bluetooth.List')
@@ -780,7 +883,7 @@ export default class VirtualDeviceComponent extends Component {
             BLUETOOTH_DEVICE_LIST_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender, p);
-        return listBluetoothDevices(organizationId, p);
+        return listReadableBluetoothDevicePage(organizationId, p, sender);
     }
 
     @Component.Expose('Bluetooth.Get')
@@ -796,7 +899,7 @@ export default class VirtualDeviceComponent extends Component {
         const organizationId = requireOrganizationId(sender);
         const row = await getBluetoothDevice(organizationId, p.externalId);
         if (!row) throw RpcError.NotFound('bluetooth_device', p.externalId);
-        return row;
+        return redactBluetoothDevice(sender, row);
     }
 
     @Component.Expose('Bluetooth.Delete')
@@ -811,10 +914,8 @@ export default class VirtualDeviceComponent extends Component {
         );
         const organizationId = requireOrganizationId(sender);
         if (p.unpairFromGateway !== false) {
-            await unpairBluetoothFromGateways(
-                organizationId,
-                p,
-                p.ignoreGatewayErrors === true
+            await unpairBluetoothFromGateways(organizationId, p, (gatewayIds) =>
+                assertDeviceUpdateAccess(sender, gatewayIds)
             );
         }
         const result = await runVirtualDeviceMutation(organizationId, () =>
@@ -865,7 +966,11 @@ export default class VirtualDeviceComponent extends Component {
             BLUETOOTH_TRANSPORT_LIST_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender);
-        return listBluetoothTransports(organizationId, p.externalId);
+        const {items} = await listBluetoothTransports(
+            organizationId,
+            p.externalId
+        );
+        return {items: await redactUnreadableTransportGateways(sender, items)};
     }
 
     @Component.Expose('Bluetooth.Transport.SetPrimary')
@@ -879,7 +984,30 @@ export default class VirtualDeviceComponent extends Component {
             BLUETOOTH_TRANSPORT_SET_PRIMARY_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender);
-        return setPrimaryBluetoothTransportRepository(organizationId, p);
+        const outcome = await setPrimaryBluetoothTransportRepository(
+            organizationId,
+            p
+        );
+        const primaryGateway =
+            outcome.items.find((transport) => transport.primary)
+                ?.shellyDeviceExternalId ?? undefined;
+        // Cached routes on both gateways still name the old primary.
+        EventDistributor.emitDeviceUpdated({
+            externalId: p.externalId,
+            source: BLUETOOTH_DEVICE_INVENTORY_SOURCE,
+            orgId: organizationId,
+            gatewayExternalId: primaryGateway,
+            staleRouteGatewayExternalIds:
+                outcome.previousPrimaryGatewayExternalIds.filter(
+                    (gateway) => gateway !== primaryGateway
+                )
+        });
+        return {
+            items: await redactUnreadableTransportGateways(
+                sender,
+                outcome.items
+            )
+        };
     }
 
     @Component.Expose('Bluetooth.Key.SetRef')
@@ -893,10 +1021,13 @@ export default class VirtualDeviceComponent extends Component {
             BLUETOOTH_KEY_SET_REF_PARAMS_SCHEMA
         );
         const organizationId = requireOrganizationId(sender);
-        return setBluetoothKeyRefRepository(
-            organizationId,
-            p,
-            sender.getUser()?.username ?? sender.getUserId() ?? null
+        return redactBluetoothDevice(
+            sender,
+            await setBluetoothKeyRefRepository(
+                organizationId,
+                p,
+                sender.getUser()?.username ?? sender.getUserId() ?? null
+            )
         );
     }
 
@@ -921,7 +1052,7 @@ export default class VirtualDeviceComponent extends Component {
             orgId: organizationId,
             reason: 'Bluetooth.Key.Clear'
         });
-        return result;
+        return redactBluetoothDevice(sender, result);
     }
 
     @Component.Expose('Bluetooth.Update')
@@ -941,7 +1072,7 @@ export default class VirtualDeviceComponent extends Component {
             source: BLUETOOTH_DEVICE_INVENTORY_SOURCE,
             orgId: organizationId
         });
-        return device;
+        return redactBluetoothDevice(sender, device);
     }
 
     @Component.NoAudit
@@ -1078,4 +1209,155 @@ function manifestBindingTargetId(ref: string): string {
 
 function canAttemptManifestApply(sender: CommandSender): boolean {
     return sender.canWrite();
+}
+
+const AUTH_LIST_SCAN_BATCH = 250;
+
+async function listReadableBluetoothCandidatePage(
+    organizationId: string,
+    params: BluetoothDeviceCandidateListParams,
+    sender: CommandSender
+): Promise<{
+    items: BluetoothDeviceCandidateDto[];
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+}> {
+    // Candidate discovery is already evaluated as one ordered set in the
+    // repository. Authorize its owning gateways before applying the public
+    // page so denied rows cannot create short or misleading pages.
+    const raw = await listBluetoothCandidates(organizationId, {
+        ...params,
+        limit: 0,
+        offset: 0
+    });
+    const readableGateways = await filterReadableDeviceIds(
+        sender,
+        raw.items.map((item) => item.gatewayExternalId)
+    );
+    const readable = raw.items.filter((item) =>
+        readableGateways.has(item.gatewayExternalId)
+    );
+    return paginateAuthorizedItems(readable, params);
+}
+
+async function listReadableBluetoothDevicePage(
+    organizationId: string,
+    params: BluetoothDeviceListParams,
+    sender: CommandSender
+): Promise<{
+    items: BluetoothDeviceDto[];
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+}> {
+    const limit = params.limit ?? 200;
+    const offset = params.offset ?? 0;
+    const items: BluetoothDeviceDto[] = [];
+    let total = 0;
+    let scanOffset = 0;
+    let hasRawMore = true;
+    while (hasRawMore) {
+        const batch = await listBluetoothDevices(organizationId, {
+            ...params,
+            limit: AUTH_LIST_SCAN_BATCH,
+            offset: scanOffset
+        });
+        const readable = await filterReadableDeviceIds(
+            sender,
+            batch.items.map((item) => item.externalId)
+        );
+        for (const item of batch.items) {
+            if (!readable.has(item.externalId)) continue;
+            if (total >= offset && (limit === 0 || items.length < limit)) {
+                items.push(item);
+            }
+            total += 1;
+        }
+        scanOffset += batch.items.length;
+        hasRawMore = batch.has_more && batch.items.length > 0;
+    }
+    return {
+        items: await redactUnreadableBluetoothGateways(sender, items),
+        total,
+        limit,
+        offset,
+        has_more: offset + items.length < total
+    };
+}
+
+async function redactBluetoothDevice(
+    sender: CommandSender,
+    device: BluetoothDeviceDto
+): Promise<BluetoothDeviceDto> {
+    const [redacted] = await redactUnreadableBluetoothGateways(sender, [
+        device
+    ]);
+    return redacted;
+}
+
+function paginateAuthorizedItems<T>(
+    items: readonly T[],
+    params: {limit?: number; offset?: number}
+): {
+    items: T[];
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+} {
+    const limit = params.limit ?? 200;
+    const offset = params.offset ?? 0;
+    const page =
+        limit === 0 ? items.slice(offset) : items.slice(offset, offset + limit);
+    return {
+        items: page,
+        total: items.length,
+        limit,
+        offset,
+        has_more: limit !== 0 && offset + page.length < items.length
+    };
+}
+
+async function listReadableVirtualDevicePage(
+    organizationId: string,
+    params: VirtualDeviceListParams,
+    sender: CommandSender
+): Promise<unknown> {
+    const limit = params.limit ?? 200;
+    const offset = params.offset ?? 0;
+    const items: Awaited<ReturnType<typeof listVirtualDevices>>['items'] = [];
+    let total = 0;
+    let scanOffset = 0;
+    let hasRawMore = true;
+    while (hasRawMore) {
+        const batch = await listVirtualDevices(organizationId, {
+            ...params,
+            limit: AUTH_LIST_SCAN_BATCH,
+            offset: scanOffset
+        });
+        const readable = await filterReadableVirtualDeviceIds(
+            organizationId,
+            sender,
+            batch.items.map((item) => item.externalId)
+        );
+        for (const item of batch.items) {
+            if (!readable.has(item.externalId)) continue;
+            if (total >= offset && (limit === 0 || items.length < limit)) {
+                items.push(item);
+            }
+            total += 1;
+        }
+        scanOffset += batch.items.length;
+        hasRawMore = batch.has_more && batch.items.length > 0;
+    }
+    return {
+        items,
+        total,
+        limit,
+        offset,
+        has_more: limit !== 0 && offset + items.length < total
+    };
 }

@@ -197,7 +197,6 @@ function formatTime(iso: string): string {
     border-radius: 50%;
     background: var(--glass-2-bg);
     backdrop-filter: blur(24px) saturate(1.2);
-    -webkit-backdrop-filter: blur(24px) saturate(1.2);
     border: 1px solid var(--glass-border);
     box-shadow: var(--glass-shadow);
     color: var(--color-text-secondary);
@@ -278,7 +277,6 @@ function formatTime(iso: string): string {
     border-radius: var(--radius-xl);
     background: var(--glass-3-bg);
     backdrop-filter: var(--glass-3-filter);
-    -webkit-backdrop-filter: var(--glass-3-filter);
     border: 1px solid var(--color-border-medium);
     box-shadow: var(--shadow-xl);
     overflow: hidden;

@@ -11,10 +11,10 @@
         >
             <div class="usr-warning__header">
                 <i class="fas fa-exclamation-triangle" />
-                <span>Zitadel Management API Not Available</span>
+                <span>User directory not available</span>
             </div>
             <p class="usr-warning__body">
-                The Zitadel Management PAT is not configured. User management requires a valid Personal Access Token.
+                Fleet Manager cannot reach the user directory. Managing users needs that connection configured.
             </p>
         </div>
 
@@ -24,7 +24,7 @@
             class="usr-devnote"
         >
             <i class="fas fa-flask" aria-hidden="true" />
-            <span>Dev preview — Zitadel isn't configured, so creating or editing users won't persist.</span>
+            <span>Dev preview — the user directory is not configured, so changes will not be saved.</span>
         </div>
 
         <!-- Loading state -->
@@ -34,7 +34,7 @@
         >
             <div class="usr-panel__body usr-panel__body--center">
                 <Spinner />
-                <p class="usr-hint">Checking Zitadel availability...</p>
+                <p class="usr-hint">Checking the user directory...</p>
             </div>
         </div>
 
@@ -42,12 +42,15 @@
         <template v-if="store.zitadelAvailable || devPreview">
             <div class="usr-panel">
                 <div class="usr-panel__head">
-                    <div v-if="canManageUsers || devPreview" class="route-tabs">
+                    <div
+                        v-if="canManageUsers || canManageServiceUsers || devPreview"
+                        class="route-tabs"
+                    >
                         <div class="route-tabs__track" :class="{'route-tabs__track--end': usersView === 'service'}" />
                         <button type="button" class="route-tabs__btn" :class="{'route-tabs__btn--active': usersView === 'human'}" @click="usersView = 'human'">Users</button>
                         <button type="button" class="route-tabs__btn" :class="{'route-tabs__btn--active': usersView === 'service'}" @click="usersView = 'service'">Service</button>
                     </div>
-                    <div class="search-pill usr-search">
+                    <div class="search-pill search-pill--buttons usr-search">
                         <i class="fas fa-search search-pill__icon" />
                         <input v-model.trim="userSearch" type="text" class="search-pill__input" :placeholder="usersView === 'human' ? 'Search users…' : 'Search service users…'" aria-label="Search" />
                         <button v-if="userSearch" type="button" class="search-pill__clear" @click="userSearch = ''"><i class="fas fa-xmark" /></button>
@@ -104,22 +107,26 @@
                         :columns="serviceColumns"
                         row-key="userId"
                         :loading="svcLoading"
+                        :error-message="svcLoadError || null"
                         empty-message="No service users yet. Service users are used for API access and automation."
                     >
                         <template #cell-role="{row}">
-                            <span class="usr-status usr-status--active">{{ row.role || 'No built-in role' }}</span>
+                            <span v-if="row.role" class="usr-status usr-status--active">{{ row.role }}</span>
+                            <button v-else type="button" class="usr-role-link" @click="openEditServiceUser(row, 'assignments')">
+                                See roles
+                            </button>
                         </template>
                         <template #cell-tokenCount="{row}">
                             <span class="svc-token-count">{{ row.tokenCount ?? 0 }}</span>
                         </template>
                         <template #cell-signIn>
-                            <span class="usr-status usr-status--inactive">{{ SERVICE_USER_CREDENTIAL_MODE.signInLabel }}</span>
+                            <span class="usr-status usr-status--neutral" :title="SERVICE_USER_CREDENTIAL_MODE.hint">API key only</span>
                         </template>
                         <template #cell-actions="{row}">
                             <button type="button" class="user-action-btn" title="Copy username" @click="copySvcUsername(row.userName)"><i class="fas fa-copy" /></button>
-                            <button v-if="canManageServiceUsers" type="button" class="user-action-btn" title="Assignments" @click="openEditServiceUser(row, 'assignments')"><i class="fas fa-id-badge" /></button>
-                            <button v-if="canManagePats" type="button" class="user-action-btn" title="Generate PAT" @click="openCreatePAT(row)"><i class="fas fa-key" /></button>
-                            <button v-if="canManagePats && row.tokenCount > 0" type="button" class="user-action-btn" title="View tokens" @click="openListPATs(row)"><i class="fas fa-list" /></button>
+                            <button v-if="canManageServiceUsers" type="button" class="user-action-btn" title="Edit roles and permissions" @click="openEditServiceUser(row, 'assignments')"><i class="fas fa-id-badge" /></button>
+                            <button v-if="canManagePats" type="button" class="user-action-btn" title="Generate API key" @click="openCreatePAT(row)"><i class="fas fa-key" /></button>
+                            <button v-if="canManagePats && row.tokenCount > 0" type="button" class="user-action-btn" title="View API keys" @click="openListPATs(row)"><i class="fas fa-list" /></button>
                             <button v-if="canManageServiceUsers" type="button" class="user-action-btn user-action-btn--danger" :title="`Delete ${row.name || row.userName} (permanent)`" :aria-label="`Delete ${row.name || row.userName}`" @click="confirmDeleteServiceUser(row)">
                                 <i class="fas fa-trash" />
                             </button>
@@ -177,7 +184,8 @@
             :zitadel-pats="patList"
             :scoped-pats="scopedPatList"
             :rotated="rotatedPats"
-            @close="patListVisible = false"
+            :load-error="patListError"
+            @close="closeListPATs"
             @bulk-rotate="bulkRotatePATs"
             @rotate="rotatePAT"
             @revoke-zitadel="revokePATConfirm"
@@ -194,6 +202,7 @@
             :creating="creatingUser"
             :form="createForm"
             :errors="createErrors"
+            :form-error="createUserFormError"
             :password-rules="passwordRules"
             v-model:picture-file="createPictureFile"
             @close="showCreateModal = false"
@@ -228,8 +237,14 @@
             <template #title>
                 <h3>Permanently delete {{ deleteTargetLabel }}?</h3>
             </template>
-            <p>
-                This removes the Zitadel account immediately and cannot be
+            <p v-if="deleteTargetIsServiceUser">
+                This removes the service user and every key it owns,
+                immediately and for good. Anything signing in with those keys
+                stops working. Revoke a single key instead if you only need to
+                rotate a credential.
+            </p>
+            <p v-else>
+                This removes the account immediately and cannot be
                 undone. Use Deactivate if you might restore the user later.
             </p>
         </ConfirmationModal>
@@ -261,6 +276,7 @@ import UsersCreatePatModal, {
     type CreatedPat
 } from '@/components/pages/users/UsersCreatePatModal.vue';
 import UsersCreateServiceUserModal, {
+    type KeyPurpose,
     type ServiceRoleGroup,
     type ServiceUserCreatedKey
 } from '@/components/pages/users/UsersCreateServiceUserModal.vue';
@@ -282,6 +298,8 @@ import {useRpcPermissions} from '@/helpers/rpcPermissions';
 import type {ScopeSelection} from '@/helpers/scopeDimensions';
 import {
     buildPatCreatePlan,
+    type McpKeyLevel,
+    type McpKeyRole,
     type PickedScopedPatBoundary
 } from '@/helpers/scopedPatCreate';
 import {
@@ -336,13 +354,27 @@ const humanColumns: DataColumn<ZitadelUser>[] = [
         accessor: (u) => u.email || '—'
     },
     {key: 'userName', label: 'Username', role: 'meta'},
+    {
+        key: 'access',
+        label: 'Access',
+        role: 'meta',
+        accessor: (u) => accessLabel(u)
+    },
     {key: 'status', label: 'Status', role: 'status', align: 'center'},
     {key: 'actions', label: '', role: 'action', align: 'right'}
 ];
 
+// A user with no project role authenticates and is then refused a token, so
+// the list names that state instead of rendering a blank cell.
+function accessLabel(user: ZitadelUser): string {
+    const roles = user.roles ?? [];
+    return roles.length > 0 ? roles.join(', ') : 'No access';
+}
+
 const serviceColumns: DataColumn<ServiceUser>[] = [
     {key: 'name', label: 'Name', role: 'primary'},
     {key: 'userName', label: 'Username', role: 'secondary'},
+    {key: 'description', label: 'What it is for', role: 'secondary'},
     {key: 'role', label: 'Role', role: 'meta'},
     {key: 'signIn', label: 'Sign-in', role: 'status', align: 'center'},
     {key: 'tokenCount', label: 'Tokens', role: 'meta', align: 'center'},
@@ -392,7 +424,8 @@ const CREATE_USER_FIELDS: CreateUserField[] = [
     'userName',
     'firstName',
     'lastName',
-    'password'
+    'password',
+    'personaId'
 ];
 
 const createForm = reactive<CreateUserForm>({
@@ -401,6 +434,7 @@ const createForm = reactive<CreateUserForm>({
     firstName: '',
     lastName: '',
     password: '',
+    personaId: '',
     passwordChangeRequired: true,
     groupIds: [],
     assignments: []
@@ -408,12 +442,17 @@ const createForm = reactive<CreateUserForm>({
 const createPictureFile = ref<File | null>(null);
 
 // Inline validation
+// A rejection that belongs to no single field still has to be visible on the
+// form, not only in a toast.
+const createUserFormError = ref('');
+
 const createErrors = reactive<Record<CreateUserField, string>>({
     email: '',
     userName: '',
     firstName: '',
     lastName: '',
-    password: ''
+    password: '',
+    personaId: ''
 });
 
 const FIELD_LABELS: Record<CreateUserField, string> = {
@@ -421,7 +460,8 @@ const FIELD_LABELS: Record<CreateUserField, string> = {
     userName: 'Username',
     firstName: 'First name',
     lastName: 'Last name',
-    password: 'Password'
+    password: 'Password',
+    personaId: 'Persona'
 };
 
 const passwordRules = computed(() => passwordRulesFor(createForm.password));
@@ -451,12 +491,29 @@ function validateAllFields(): boolean {
     return Object.values(createErrors).every((e) => !e);
 }
 
+// A server rejection has to land on the field that caused it. Only password
+// rules were routed before, so a duplicate username or a bad email left the
+// modal open, unchanged, with a toast the user had already scrolled past.
+const CREATE_ERROR_ROUTES: {field: CreateUserField; match: RegExp}[] = [
+    {field: 'password', match: /Password must[^".}]*/i},
+    {field: 'userName', match: /user\s*name[^".}]*(taken|exists|invalid)[^".}]*/i},
+    {field: 'userName', match: /(already exists|duplicate)[^".}]*/i},
+    {field: 'email', match: /e-?mail[^".}]*(invalid|taken|exists|format)[^".}]*/i}
+];
+
 function applyCreateErrorToFields(message: string) {
+    createUserFormError.value = '';
     if (!message) return;
-    const passwordMatch = message.match(/Password must[^".}]*/i);
-    if (passwordMatch) {
-        createErrors.password = passwordMatch[0];
+    for (const {field, match} of CREATE_ERROR_ROUTES) {
+        const hit = message.match(match);
+        if (hit && !createErrors[field]) {
+            createErrors[field] = hit[0];
+            return;
+        }
     }
+    // Nothing matched a known field. Say so somewhere the user is looking
+    // rather than only in a toast that disappears.
+    createUserFormError.value = message;
 }
 
 onMounted(async () => {
@@ -472,11 +529,13 @@ function isActive(user: ZitadelUser): boolean {
 }
 
 function openCreateModal() {
+    createUserFormError.value = '';
     createForm.email = '';
     createForm.userName = '';
     createForm.firstName = '';
     createForm.lastName = '';
     createForm.password = '';
+    createForm.personaId = '';
     createForm.passwordChangeRequired = true;
     createForm.groupIds = [];
     createForm.assignments = [];
@@ -486,6 +545,7 @@ function openCreateModal() {
     createErrors.firstName = '';
     createErrors.lastName = '';
     createErrors.password = '';
+    createErrors.personaId = '';
     store.createError = '';
     showCreateModal.value = true;
 }
@@ -499,6 +559,7 @@ async function handleCreateUser() {
             userName: createForm.userName,
             firstName: createForm.firstName,
             lastName: createForm.lastName,
+            personaId: createForm.personaId,
             groupIds: [...createForm.groupIds],
             assignments: [...createForm.assignments]
         };
@@ -570,14 +631,19 @@ async function toggleActive(user: ZitadelUser) {
 
 const confirmDeleteRef = ref<ConfirmationModalHandle | null>(null);
 const deleteTargetLabel = ref('');
+// The confirm dialog is shared; only a human user has a Deactivate to fall
+// back on, so the wording has to know which kind it is about to delete.
+const deleteTargetIsServiceUser = ref(false);
 
 function confirmDeleteUser(user: ZitadelUser) {
     deleteTargetLabel.value = user.displayName || user.userName;
+    deleteTargetIsServiceUser.value = false;
     confirmDeleteRef.value?.storeAction(() => store.deleteUser(user.userId));
 }
 
 function confirmDeleteServiceUser(row: ServiceUser) {
     deleteTargetLabel.value = row.name || row.userName;
+    deleteTargetIsServiceUser.value = true;
     confirmDeleteRef.value?.storeAction(async () => {
         const ok = await store.deleteServiceUser(row.userId);
         if (ok) await loadServiceUsers();
@@ -700,6 +766,9 @@ const canManagePats = computed(() => rpc.canCall('User.CreatePAT'));
 
 const serviceUsers = ref<ServiceUser[]>([]);
 const svcLoading = ref(false);
+// Distinguishes "nothing here" from "we could not look", which the empty
+// state alone cannot say.
+const svcLoadError = ref('');
 const svcCreateVisible = ref(false);
 const svcCreating = ref(false);
 const svcResult = ref<ServiceUserCreatedKey | null>(null);
@@ -713,7 +782,11 @@ const svcForm = reactive({
     accessReason: '',
     accessExpiresDays: '365',
     keyName: '',
-    expirationDays: '365'
+    expirationDays: '365',
+    keyPurpose: 'integration' as KeyPurpose,
+    mcpLevel: 'read' as McpKeyLevel,
+    // Empty = no role, which is every key that existed before roles.
+    mcpRole: '' as McpKeyRole | ''
 });
 const svcErrors = reactive({userName: '', name: ''});
 
@@ -721,9 +794,15 @@ const svcErrors = reactive({userName: '', name: ''});
 const servicePersonaOptions = computed<ServiceRoleGroup[]>(() => [
     {
         label: 'Roles',
-        items: Object.values(personasStore.personas)
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .map((p) => ({value: p.id, label: p.name}))
+        // The empty first entry is load-bearing: without it the dropdown shows
+        // a blank trigger for the unset form value, and can auto-display a
+        // role it never emitted.
+        items: [
+            {value: '', label: 'Choose a role'},
+            ...Object.values(personasStore.personas)
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((p) => ({value: p.id, label: p.name}))
+        ]
     }
 ]);
 
@@ -785,6 +864,9 @@ function resetServiceUserCreateForm() {
     svcForm.accessExpiresDays = '365';
     svcForm.keyName = '';
     svcForm.expirationDays = '365';
+    svcForm.keyPurpose = 'integration';
+    svcForm.mcpLevel = 'read';
+    svcForm.mcpRole = '';
     svcErrors.userName = '';
     svcErrors.name = '';
 }
@@ -793,8 +875,11 @@ async function loadServiceUsers() {
     // ListServiceUsers scopes to the caller; provider support sees all orgs.
     if (!canManageServiceUsers.value) {
         serviceUsers.value = [];
+        svcLoadError.value =
+            'You do not have permission to view service users.';
         return;
     }
+    svcLoadError.value = '';
     const epoch = serviceEpoch.value;
     svcLoading.value = true;
     try {
@@ -829,8 +914,10 @@ async function loadServiceUsers() {
             tokenCount:
                 (u.tokenCount ?? 0) + (scopedCountByUser.get(u.userId) ?? 0)
         }));
-    } catch {
-        if (epoch === serviceEpoch.value) serviceUsers.value = [];
+    } catch (e: any) {
+        if (epoch !== serviceEpoch.value) return;
+        serviceUsers.value = [];
+        svcLoadError.value = rpcErrorMessage(e, 'Could not load service users');
     } finally {
         if (epoch === serviceEpoch.value) svcLoading.value = false;
     }
@@ -846,6 +933,11 @@ async function createServiceUser() {
         toastStore.error(
             'Finish the Access step — role, scope, and a reason for full access.'
         );
+        return;
+    }
+    // Checked before the user exists: a key without a label is refused later.
+    if (!svcForm.keyName.trim()) {
+        toastStore.error('Give the API key a label.');
         return;
     }
     const epoch = serviceEpoch.value;
@@ -868,13 +960,22 @@ async function createServiceUser() {
         // exists — fall through to the key modal so it can be retried there.
         let key: CreatedPat | null = null;
         try {
+            // An MCP key must be an FM scoped token: only those carry the
+            // `mcp:<level>` audience that /mcp requires. A plain Zitadel PAT
+            // is fine for everything else.
+            const forMcp = svcForm.keyPurpose === 'mcp';
             const plan = buildPatCreatePlan({
                 userId: result.userId,
                 expirationDaysText: keyExpiration,
-                scoped: false,
-                scopeAll: false,
+                scoped: forMcp,
+                scopeAll: true,
                 pickedScope: {},
-                purpose: '',
+                purpose: forMcp
+                    ? keyName || `AI agent key for ${result.userName}`
+                    : '',
+                mcpLevel: forMcp ? svcForm.mcpLevel : undefined,
+                mcpRole:
+                    forMcp && svcForm.mcpRole ? svcForm.mcpRole : undefined,
                 name: keyName
             });
             key = await sendRPC<CreatedPat>(
@@ -962,6 +1063,7 @@ const patResult = ref<CreatedPat | null>(null);
 const patListVisible = ref(false);
 const patListLoading = ref(false);
 const patList = ref<ZitadelPatRow[]>([]);
+const patListError = ref('');
 type ScopedPatRow = {
     tokenId: string;
     purpose?: string;
@@ -1063,18 +1165,33 @@ function onCreatePatDone() {
 }
 
 async function openListPATs(svc: ServiceUser) {
-    const epoch = serviceEpoch.value;
     patTargetUser.value = svc;
-    patListLoading.value = true;
+    // Rotated tokens are plaintext secrets belonging to whoever was open
+    // before. They must never survive into another user's list.
+    rotatedPats.value = [];
     patListVisible.value = true;
+    await reloadPatList(svc);
+}
+
+// Closing drops the shown secrets; they are displayed once.
+function closeListPATs() {
+    patListVisible.value = false;
+    rotatedPats.value = [];
+}
+
+// Refreshes the open user's lists; keeps freshly rotated tokens on screen.
+async function reloadPatList(svc: ServiceUser) {
+    const epoch = serviceEpoch.value;
+    patListLoading.value = true;
+    patListError.value = '';
     try {
         const [zit, scoped] = await Promise.all([
             sendRPC<{items: any[]}>('FLEET_MANAGER', 'User.ListPATs', {
                 userId: svc.userId
-            }).catch(() => ({items: []})),
+            }),
             sendRPC<{items: any[]}>('FLEET_MANAGER', 'User.ListScopedPATs', {
                 userId: svc.userId
-            }).catch(() => ({items: []}))
+            })
         ]);
         if (epoch !== serviceEpoch.value) return; // demoted mid-flight
         patList.value = (zit?.items ?? []).map((t: any) => ({
@@ -1090,10 +1207,11 @@ async function openListPATs(svc: ServiceUser) {
             expiresAt: t.expiresAt,
             lastUsedAt: t.lastUsedAt
         }));
-    } catch {
+    } catch (e: any) {
         if (epoch === serviceEpoch.value) {
             patList.value = [];
             scopedPatList.value = [];
+            patListError.value = rpcErrorMessage(e, 'Could not load API keys');
         }
     } finally {
         if (epoch === serviceEpoch.value) patListLoading.value = false;
@@ -1109,7 +1227,7 @@ function revokeScopedPATConfirm(tokenId: string) {
             await sendRPC('FLEET_MANAGER', 'User.RevokeScopedPAT', {tokenId});
             if (epoch !== serviceEpoch.value) return; // demoted mid-flight
             toastStore.success('Scoped token revoked');
-            if (patTargetUser.value) await openListPATs(patTargetUser.value);
+            if (patTargetUser.value) await reloadPatList(patTargetUser.value);
         } catch (e: any) {
             if (epoch !== serviceEpoch.value) return;
             toastStore.error(rpcErrorMessage(e, 'Failed to revoke scoped token'));
@@ -1130,7 +1248,7 @@ function revokePATConfirm(tokenId: string) {
             });
             if (epoch !== serviceEpoch.value) return;
             toastStore.success('Token revoked');
-            if (patTargetUser.value) await openListPATs(patTargetUser.value);
+            if (patTargetUser.value) await reloadPatList(patTargetUser.value);
             await loadServiceUsers();
         } catch (e: any) {
             if (epoch !== serviceEpoch.value) return;
@@ -1144,6 +1262,15 @@ const rotatedPats = ref<
     Array<{tokenId: string; token: string; replacedTokenId: string}>
 >([]);
 
+// A shown key that a later rotation replaced is no longer valid, so it leaves.
+function addRotatedPats(fresh: typeof rotatedPats.value) {
+    const replaced = new Set(fresh.map((r) => r.replacedTokenId));
+    rotatedPats.value = [
+        ...rotatedPats.value.filter((r) => !replaced.has(r.tokenId)),
+        ...fresh
+    ];
+}
+
 // Bumped on every demotion. Service-user async actions snapshot this
 // at entry; after await, a mismatch means demotion happened mid-flight
 // and the continuation must drop its result instead of repopulating
@@ -1153,8 +1280,12 @@ const serviceEpoch = ref(0);
 // SoT for live-demotion cleanup. Loading flags reset too so a later
 // re-promotion doesn't open the UI with stuck spinners from a fetch
 // the epoch check bailed.
-watch(canManageUsers, (now) => {
-    if (now) return;
+// Fires on a DEMOTION only — a permission going true -> false. Reacting to
+// "any of these is false" would wrongly wipe the view for an operator who
+// simply never had one of them.
+watch([canManageUsers, canManageServiceUsers, canManagePats], (now, before) => {
+    if (!before) return;
+    if (!now.some((held, i) => before[i] && !held)) return;
     serviceEpoch.value++;
     if (usersView.value === 'service') usersView.value = 'human';
     serviceUsers.value = [];
@@ -1164,6 +1295,7 @@ watch(canManageUsers, (now) => {
     patResult.value = null;
     rotatedPats.value = [];
     patList.value = [];
+    patListError.value = '';
     scopedPatList.value = [];
     patTargetUser.value = null;
     svcLoading.value = false;
@@ -1189,9 +1321,9 @@ async function rotatePAT(tokenId: string) {
             tokenId
         });
         if (epoch !== serviceEpoch.value) return; // demoted mid-flight
-        rotatedPats.value = [...rotatedPats.value, r];
+        addRotatedPats([r]);
         toastStore.success('Token rotated — copy the new value now');
-        if (patTargetUser.value) await openListPATs(patTargetUser.value);
+        if (patTargetUser.value) await reloadPatList(patTargetUser.value);
     } catch (e: any) {
         if (epoch !== serviceEpoch.value) return;
         toastStore.error(rpcErrorMessage(e, 'Failed to rotate token'));
@@ -1221,14 +1353,13 @@ async function bulkRotatePATs() {
         const ok = (r.results ?? []).filter(
             (x) => x.ok && x.tokenId && x.token
         );
-        rotatedPats.value = [
-            ...rotatedPats.value,
-            ...ok.map((x) => ({
+        addRotatedPats(
+            ok.map((x) => ({
                 tokenId: x.tokenId as string,
                 token: x.token as string,
                 replacedTokenId: x.replacedTokenId
             }))
-        ];
+        );
         const failed = (r.results ?? []).length - ok.length;
         if (failed > 0) {
             toastStore.warning(
@@ -1237,7 +1368,7 @@ async function bulkRotatePATs() {
         } else {
             toastStore.success(`Rotated ${ok.length} token(s)`);
         }
-        if (patTargetUser.value) await openListPATs(patTargetUser.value);
+        if (patTargetUser.value) await reloadPatList(patTargetUser.value);
     } catch (e: any) {
         if (epoch !== serviceEpoch.value) return;
         toastStore.error(rpcErrorMessage(e, 'Failed to bulk-rotate tokens'));
@@ -1317,11 +1448,6 @@ onMounted(() => {
     border-bottom: 1px solid var(--color-border-default);
     background-color: var(--color-surface-2);
 }
-.usr-panel__title {
-    font-size: var(--type-body);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-primary);
-}
 .usr-panel__body {
     padding: 0;
 }
@@ -1333,57 +1459,6 @@ onMounted(() => {
 }
 
 /* ── Table ── */
-.usr-table {
-    width: 100%;
-    font-size: var(--type-body);
-}
-.usr-table__head-row {
-    border-bottom: 1px solid var(--color-border-default);
-}
-.usr-table__th {
-    text-align: left;
-    padding: var(--gap-xs) var(--gap-sm);
-    font-size: var(--type-body);
-    font-weight: var(--font-semibold);
-    text-transform: none;
-    letter-spacing: var(--tracking-wide);
-    color: var(--color-text-tertiary);
-}
-.usr-table__th--center { text-align: center; }
-.usr-table__th--right { text-align: right; }
-.usr-table__row {
-    border-bottom: 1px solid var(--color-border-default);
-    transition: background-color var(--duration-fast) var(--ease-default);
-}
-.usr-table__row:last-child { border-bottom: none; }
-.usr-table__row:hover { background-color: var(--color-surface-2); }
-.usr-table__td {
-    padding: var(--gap-xs) var(--gap-sm);
-    color: var(--color-text-secondary);
-}
-.usr-table__td--name {
-    font-weight: var(--font-medium);
-    color: var(--color-text-primary);
-}
-.usr-table__td--email { color: var(--color-text-tertiary); }
-.usr-table__td--username {
-    font-family: var(--font-mono);
-    font-size: var(--type-body);
-    color: var(--color-text-tertiary);
-}
-.usr-table__td--center { text-align: center; }
-.usr-table__td--right { text-align: right; }
-.usr-table__actions {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: var(--gap-xs);
-}
-.usr-table__empty {
-    padding: var(--gap-md) var(--gap-sm);
-    text-align: center;
-    color: var(--color-text-tertiary);
-}
 .usr-status {
     display: inline-block;
     padding: 1px var(--gap-xs);
@@ -1398,6 +1473,21 @@ onMounted(() => {
 .usr-status--inactive {
     color: var(--color-danger-text);
     background-color: var(--color-danger-subtle);
+}
+/* A fact, not a fault: machine identities are meant to have no browser login. */
+.usr-status--neutral {
+    color: var(--color-text-tertiary);
+    background-color: var(--color-surface-3);
+}
+.usr-role-link {
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    color: var(--color-primary-text);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
 }
 
 .user-action-btn {
@@ -1437,195 +1527,12 @@ onMounted(() => {
     background-color: var(--color-success-subtle);
 }
 
-/* ── Edit User modal ── */
-.edit-user-header {
-    display: flex;
-    align-items: center;
-    gap: var(--gap-xs);
-}
-.edit-user-profile {
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap-sm);
-}
-.edit-user-profile__row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--gap-sm);
-}
-@media (max-width: 640px) {
-    .edit-user-profile__row {
-        grid-template-columns: 1fr;
-    }
-}
-.edit-user-profile__readonly {
-    display: flex;
-    align-items: baseline;
-    gap: var(--gap-xs);
-    padding: var(--gap-xs);
-    border-radius: var(--radius-md);
-    background-color: var(--color-surface-2);
-    border: 1px solid var(--color-border-default);
-}
-.edit-user-profile__readonly-value {
-    font-family: var(--font-mono);
-    font-size: var(--type-body);
-    color: var(--color-text-secondary);
-}
-.edit-user-profile__readonly-hint {
-    font-size: var(--type-body);
-    color: var(--color-text-quaternary);
-}
-.edit-user-status {
-    flex-shrink: 0;
-    font-size: var(--type-body);
-    font-weight: var(--font-semibold);
-    padding: 1px var(--gap-xs);
-    border-radius: var(--radius-full);
-}
-.edit-user-status--active {
-    color: var(--color-success-text);
-    background-color: color-mix(in srgb, var(--color-success) 15%, transparent);
-}
-.edit-user-status--inactive {
-    color: var(--color-danger-text);
-    background-color: color-mix(in srgb, var(--color-danger) 15%, transparent);
-}
-.edit-user-loading {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: var(--gap-xs);
-    padding: var(--gap-lg) 0;
-    color: var(--color-text-tertiary);
-    font-size: var(--type-body);
-}
-.edit-user-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-}
-.edit-user-footer__actions {
-    display: flex;
-    gap: var(--gap-xs);
-}
-.edit-user-footer__right {
-    display: flex;
-    align-items: center;
-    gap: var(--gap-xs);
-}
-.edit-user-footer__saving {
-    display: flex;
-    align-items: center;
-    gap: var(--gap-xs);
-    color: var(--color-text-tertiary);
-    font-size: var(--type-body);
-}
-
 /* ── Shared utility classes (replacing Tailwind) ── */
 .usr-hint {
     color: var(--color-text-tertiary);
     margin-top: var(--gap-xs);
 }
-.usr-skeleton-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap-sm);
-    padding: var(--gap-md) var(--gap-sm);
-}
-.usr-table-wrap {
-    overflow-x: auto;
-}
-.usr-form {
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap-md);
-}
-.usr-form__row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--gap-sm);
-}
 @media (max-width: 640px) {
-    .usr-form__row,
-    .usr-password-rules {
-        grid-template-columns: 1fr;
-    }
-}
-.usr-form__note {
-    color: var(--color-text-quaternary);
-    font-size: var(--type-body);
-}
-.usr-select {
-    width: 100%;
-    padding: var(--gap-xs) var(--gap-sm);
-    background-color: var(--color-surface-3);
-    border: 1px solid var(--color-border-strong);
-    border-radius: var(--radius-md);
-    color: var(--color-text-secondary);
-    font-size: var(--type-body);
-}
-.usr-select:focus {
-    outline: none;
-    border-color: var(--color-primary);
-}
-.usr-checkbox-label {
-    display: flex;
-    align-items: center;
-    gap: var(--gap-xs);
-    font-size: var(--type-body);
-    color: var(--color-text-tertiary);
-    cursor: pointer;
-}
-.usr-checkbox {
-    border-radius: var(--radius-sm);
-    background-color: var(--color-surface-3);
-    border: 1px solid var(--color-border-strong);
-}
-.usr-checkbox:disabled {
-    opacity: 0.75;
-    cursor: not-allowed;
-}
-.usr-password-rules {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--gap-xs);
-    margin-top: calc(var(--gap-sm) * -1);
-    font-size: var(--type-body);
-}
-.usr-password-rules__item {
-    display: flex;
-    align-items: center;
-    gap: var(--gap-xs);
-    min-width: 0;
-    color: var(--color-text-tertiary);
-}
-.usr-password-rules__item i {
-    width: 1rem;
-    font-size: var(--type-caption);
-}
-.usr-password-rules__item--ok {
-    color: var(--color-success-text);
-}
-.usr-password-rules__item--pending {
-    color: var(--color-text-quaternary);
-}
-.usr-modal-footer {
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--gap-xs);
-}
-.usr-loading {
-    text-align: center;
-    padding: var(--gap-lg) 0;
-}
-.usr-saving {
-    display: flex;
-    align-items: center;
-    gap: var(--gap-xs);
-    color: var(--color-text-tertiary);
-    font-size: var(--type-body);
 }
 
 /* ── Users view toggle + search ── */
@@ -1633,76 +1540,5 @@ onMounted(() => {
 
 /* ── Service user / PAT ── */
 .svc-token-count { font-size: var(--type-body); font-weight: var(--font-bold); color: var(--color-text-secondary); font-family: var(--font-mono); }
-.svc-credential-mode {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--gap-xs);
-    padding: var(--gap-xs);
-    border: 1px solid var(--color-border-default);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-2);
-    color: var(--color-text-secondary);
-}
-.svc-credential-mode span {
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap-2xs);
-}
-.svc-credential-mode small {
-    color: var(--color-text-tertiary);
-    font-size: var(--type-caption);
-}
 .svc-pat-hint { font-size: var(--type-body); color: var(--color-text-tertiary); }
-.svc-token-model {
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap-2xs);
-    padding: var(--gap-xs);
-    border: 1px solid var(--color-border-default);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-1);
-    color: var(--color-text-secondary);
-}
-.svc-token-model strong { color: var(--color-text-primary); }
-.svc-token-model span { font-size: var(--type-body); color: var(--color-text-tertiary); }
-.svc-pat-preview-result {
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap-2xs);
-    padding: var(--gap-xs);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: var(--radius-sm);
-    font-size: var(--type-body);
-}
-.svc-pat-preview-result--ok {
-    border-color: var(--color-success-text);
-    color: var(--color-success-text);
-}
-.svc-pat-preview-result--warn {
-    border-color: var(--color-warning-text);
-    color: var(--color-warning-text);
-}
-.svc-pat-result { display: flex; flex-direction: column; gap: var(--gap-sm); margin-top: var(--gap-sm); }
-.svc-pat-result__meta { font-size: var(--type-caption); color: var(--color-text-quaternary); font-family: var(--font-mono); }
-.svc-pat-sections { display: flex; flex-direction: column; gap: var(--gap-sm); }
-.svc-pat-list { display: flex; flex-direction: column; gap: var(--gap-xs); }
-.svc-pat-item {
-    display: flex; align-items: center; justify-content: space-between; gap: var(--gap-sm);
-    padding: var(--gap-xs) var(--gap-sm); border-radius: var(--radius-md);
-    background: var(--color-surface-1); border: 1px solid var(--color-border-default);
-}
-.svc-pat-item__info { display: flex; flex-direction: column; gap: var(--space-0-5); }
-.svc-pat-item__id { font-family: var(--font-mono); font-size: var(--type-body); color: var(--color-text-primary); }
-.svc-pat-item__exp { font-size: var(--type-caption); color: var(--color-text-quaternary); }
-.svc-pat-item__actions { display: flex; gap: var(--space-2); }
-.svc-pat-toolbar { display: flex; justify-content: flex-end; margin-bottom: var(--space-2); }
-.svc-pat-rotated {
-    margin-top: var(--space-3); padding: var(--space-3);
-    border: 1px solid var(--color-warning); border-radius: var(--radius-sm);
-    background: var(--color-warning-subtle);
-}
-.svc-pat-rotated__list { list-style: none; margin: var(--space-2) 0 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
-.svc-pat-rotated__row { display: flex; gap: var(--space-2); align-items: center; }
-.svc-pat-rotated__replaced { font-size: var(--type-caption); color: var(--color-text-quaternary); flex: 0 0 220px; }
-.svc-pat-rotated__token { font-family: var(--font-mono); background: var(--color-surface-2); padding: var(--space-px) var(--space-2); border-radius: var(--radius-sm); word-break: break-all; flex: 1; }
 </style>

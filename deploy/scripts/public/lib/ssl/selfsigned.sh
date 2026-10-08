@@ -1,11 +1,20 @@
 # shellcheck shell=bash
 # Self-signed TLS certificate generation.
 
+# Traefik drops DAC override and reads the key through the host user's group
+# (group_add in the traefik compose files); keys from older installs are 0600.
+public_tls_key_group_readable() {
+    local key="$STATE_DIR/tls/server.key"
+    [ -f "$key" ] || return 0
+    chmod 0640 "$key"
+}
+
 generate_selfsigned_cert() {
     local hostname="$1"
     local tls_dir="$STATE_DIR/tls"
     local dyn_dir="$tls_dir/dynamic"
     mkdir -p "$dyn_dir"
+    public_tls_key_group_readable
 
     if [ -f "$tls_dir/server.crt" ] && [ -f "$tls_dir/server.key" ]; then
         if is_ip_address "$hostname"; then
@@ -32,7 +41,8 @@ generate_selfsigned_cert() {
     fm_generate_ca "$tls_dir" "Fleet Manager Local CA" 3650
     fm_issue_server_cert "$tls_dir" "$hostname" 3650
 
-    chmod 0600 "$tls_dir/ca.key" "$tls_dir/server.key"
+    chmod 0600 "$tls_dir/ca.key"
+    public_tls_key_group_readable
     chmod 0644 "$tls_dir/ca.crt" "$tls_dir/server.crt"
 
     ok "Certificate generated (valid 10 years, SAN: ${san})"

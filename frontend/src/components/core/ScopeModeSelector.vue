@@ -16,6 +16,7 @@
             >
                 <input
                     type="radio"
+                    :name="groupName"
                     :value="opt.value"
                     :checked="scopeAll === (opt.value === 'all')"
                     class="scope-mode__input"
@@ -37,6 +38,7 @@
 </template>
 
 <script setup lang="ts">
+import {useId} from 'vue';
 import BoundaryScopePicker from '@/components/core/BoundaryScopePicker.vue';
 import type {ScopeSelection} from '@/helpers/scopeDimensions';
 
@@ -47,6 +49,9 @@ defineProps<{
     // System-role key of the picked role; narrows offered scope kinds.
     personaKey?: string;
 }>();
+
+// Per-instance group name so two selectors on one page never share a radio group.
+const groupName = `scope-mode-${useId()}`;
 
 const SCOPE_OPTIONS = [
     {
@@ -76,6 +81,7 @@ const SCOPE_OPTIONS = [
     gap: var(--space-2);
 }
 .scope-mode__opt {
+    position: relative;
     display: grid;
     grid-template-columns: auto 1fr;
     align-items: flex-start;
@@ -130,5 +136,11 @@ const SCOPE_OPTIONS = [
     font-size: var(--type-body);
     color: var(--color-text-tertiary);
     line-height: 1.4;
+}
+
+/* The real radio is visually hidden, so the card carries the focus ring. */
+.scope-mode__opt:focus-within {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
 }
 </style>

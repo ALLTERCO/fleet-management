@@ -45,7 +45,9 @@ export const AUTH_DESCRIBE: DescribeOutput = new DescribeBuilder('auth', {
         safety: {operation: 'create'},
         params: AUTH_MINT_SCOPED_TOKEN_PARAMS_SCHEMA,
         response: AUTH_MINT_SCOPED_TOKEN_RESPONSE,
-        permission: {note: 'authenticated; bounded PATs rejected'},
+        permission: {
+            note: 'holds the purpose permission; bounded PATs rejected'
+        },
         description:
             'Issue a short-lived, single-purpose bearer token bound to the callers org. Plaintext is returned once; only its SHA-256 hash is persisted.'
     })

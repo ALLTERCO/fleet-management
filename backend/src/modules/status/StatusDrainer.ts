@@ -3,6 +3,7 @@
 
 import log4js from 'log4js';
 import {tuning} from '../../config';
+import * as Observability from '../Observability';
 import {getInstanceId} from '../redis/instanceId';
 import type {StreamEntry} from '../redis/RedisStream';
 import {
@@ -13,7 +14,8 @@ import {
 import {
     type CoalescedBatch,
     coalesceStatusBatches,
-    type StatusBatch
+    type StatusBatch,
+    type StatusSourceDevice
 } from './batchCoalescer';
 import {getStatusDrainerStream} from './StatusStream';
 
@@ -22,7 +24,15 @@ const GROUP = 'status-drainer';
 const LEADER_NAME = 'status-drainer';
 const CONSUMER = `d-${getInstanceId()}`;
 
-export type StatusBatchWriter = (batch: StatusBatch) => Promise<void>;
+export interface StatusBatchContext {
+    sourceDevices: readonly StatusSourceDevice[];
+    legacySourceMetadata: boolean;
+}
+
+export type StatusBatchWriter = (
+    batch: StatusBatch,
+    context: StatusBatchContext
+) => Promise<void>;
 
 // Kept for the existing tests that drive processBatch with a fake stream.
 export type ProcessBatchStream = ProcessStream;
@@ -37,7 +47,18 @@ function makeDrainer(writer: StatusBatchWriter): StreamDrainer {
         coalesce: (entries) =>
             coalesceStatusBatches(entries, tuning.status.drainerMaxRowsPerCall),
         sourceIdsOf: (b) => b.sourceIds,
-        writeBatch: (b) => writer(b.batch),
+        deleteAcked: true,
+        deletedCounter: 'status_stream_entries_deleted_total',
+        writeBatch: async (b) => {
+            await writer(b.batch, {
+                sourceDevices: b.sourceDevices,
+                legacySourceMetadata: b.legacySourceMetadata
+            });
+            Observability.incrementCounter(
+                'status_stream_rows_drained_total',
+                b.batch.p_ts.length
+            );
+        },
         counters: {
             poison: 'status_overflow_poison',
             poisonDropped: 'status_overflow_poison_dropped',
@@ -49,6 +70,7 @@ function makeDrainer(writer: StatusBatchWriter): StreamDrainer {
         },
         drainTuning: {
             batchSize: tuning.status.drainerBatchSize,
+            batchWindowMs: tuning.status.drainerBatchWindowMs,
             blockMs: tuning.status.drainerBlockMs,
             retryMs: tuning.status.drainerRetryMs,
             poisonDeliveries: tuning.status.drainerPoisonDeliveries

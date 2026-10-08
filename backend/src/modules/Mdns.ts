@@ -4,6 +4,7 @@ import ShellyDeviceFactory from '../model/ShellyDeviceFactory';
 import HttpTransport from '../model/transport/HttpTransport';
 import * as DeviceCollector from './DeviceCollector';
 import {
+    bindDeviceRuntimeOwnership,
     claimDeviceRuntimeOwnership,
     releaseDeviceRuntimeOwnership
 } from './deviceIdentityRuntime';
@@ -59,23 +60,27 @@ export function start() {
             return;
         }
         const ip = nameRec.data;
-        let ownershipHeld = false;
+        let ownershipLease = null;
         try {
             // mDNS is a separate door — the LAN discovery is this device's birth.
             ingressConnect(shellyId);
-            ownershipHeld = await claimDeviceRuntimeOwnership(shellyId);
-            if (!ownershipHeld) {
+            ownershipLease = await claimDeviceRuntimeOwnership(shellyId);
+            if (!ownershipLease) {
                 ingressDropped(shellyId, 'mdns_owned_by_peer');
                 return;
             }
             const transport = new HttpTransport(ip);
             const shellyDevice = await ShellyDeviceFactory.fromHttp(transport);
-            DeviceCollector.register(shellyDevice);
+            bindDeviceRuntimeOwnership(shellyDevice, ownershipLease);
+            if (!DeviceCollector.register(shellyDevice)) {
+                await releaseDeviceRuntimeOwnership(ownershipLease);
+                return;
+            }
             Observability.incrementCounter('mdns_discovered');
             ingressRegistered(shellyId, `mdns ${shellyDevice.shellyID}`);
         } catch (err) {
-            if (ownershipHeld) {
-                await releaseDeviceRuntimeOwnership(shellyId);
+            if (ownershipLease) {
+                await releaseDeviceRuntimeOwnership(ownershipLease);
             }
             ingressDropped(shellyId, 'mdns_fetch_failed');
             logger.warn('Failed to register mDNS device at %s: %s', ip, err);

@@ -1,3 +1,4 @@
+import {parsePurpose} from '../../modules/auth/scopedTokenAccess';
 import {mintScopedToken} from '../../modules/auth/scopedTokenRepo';
 import {
     classifyByCode,
@@ -28,6 +29,7 @@ const MAX_TTL_SEC = 1800;
 const MINT_METRIC = 'auth_mint_scoped_token_total';
 const UNAUTHORIZED_CODE = -32000;
 const INVALID_PARAMS_CODE = -32602;
+const PERMISSION_DENIED_CODE = DOMAIN_ERRORS.PermissionDenied.code;
 
 function rejectIfBoundedPat(sender: CommandSender): void {
     if (!sender.hasCredentialBoundary()) return;
@@ -41,11 +43,28 @@ function rejectIfUnauthenticated(sender: CommandSender): string {
     return actorId;
 }
 
+// A token never grants more than its issuer holds. The purpose names the
+// permission the token will carry, so the issuer must already pass the same
+// gate the unlocked RPC applies.
+async function rejectIfPurposeNotHeld(
+    purpose: string,
+    sender: CommandSender
+): Promise<void> {
+    const parsed = parsePurpose(purpose);
+    if (!parsed) throw RpcError.InvalidParams(`unknown purpose ${purpose}`);
+    const held = await sender.evaluateComponentPermissionAsync({
+        component: parsed.component,
+        operation: parsed.operation
+    });
+    if (!held) throw RpcError.PermissionDenied(sender.isAuthenticated());
+}
+
 // Map only known RpcError shapes; anything else (PG outage, network) lands
 // as 'error' so oncall is not misled by an 'unauthorized' label.
 const MINT_OUTCOME_BY_CODE: Record<number, string> = {
     [UNAUTHORIZED_CODE]: 'unauthorized',
     [DOMAIN_ERRORS.OrgScopeRequired.code]: 'unauthorized',
+    [PERMISSION_DENIED_CODE]: 'forbidden',
     [INVALID_PARAMS_CODE]: 'invalid_params'
 };
 
@@ -67,8 +86,9 @@ export default class AuthComponent extends Component<Config> {
         return AUTH_DESCRIBE;
     }
 
-    // requireOrganizationId() throws Unauthorized when the caller has no orgId;
-    // the issued token then inherits the caller's existing rights at consume-time.
+    // requireOrganizationId() throws Unauthorized when the caller has no orgId.
+    // The token carries exactly the purpose's permission, so minting demands
+    // that the caller already holds it.
     @Component.Expose('MintScopedToken')
     @Component.NoPermissions
     async mintScopedToken(
@@ -96,6 +116,7 @@ export default class AuthComponent extends Component<Config> {
     ): Promise<AuthMintScopedTokenResult> {
         const organizationId = requireOrganizationId(sender, p);
         const actorId = rejectIfUnauthenticated(sender);
+        await rejectIfPurposeNotHeld(p.purpose, sender);
         const ttlSec = Math.min(p.ttlSec ?? DEFAULT_TTL_SEC, MAX_TTL_SEC);
         return mintScopedToken({
             organizationId,

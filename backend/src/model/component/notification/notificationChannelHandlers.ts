@@ -16,6 +16,7 @@ import {probeAttachments} from '../../../modules/delivery/attachmentProbe';
 import {parseEmailAttachments} from '../../../modules/delivery/emailAttachments';
 import {resolveEmailTemplateConfig} from '../../../modules/delivery/emailTemplateResolver';
 import type {DeliveryPayload} from '../../../modules/delivery/types';
+import {getOrganizationProfile} from '../../../modules/organizationModel';
 import * as PostgresProvider from '../../../modules/PostgresProvider';
 import {toIso} from '../../../rpc/pgRows';
 import RpcError from '../../../rpc/RpcError';
@@ -23,9 +24,9 @@ import {requireOrganizationId} from '../../../rpc/scope';
 import {validateOrThrow} from '../../../rpc/validateOrThrow';
 import {
     type AlertRuleKind,
-    type AlertScopeType,
-    publicAlertScopeType,
-    type StoredAlertScopeType
+    type AlertSourceType,
+    publicAlertSourceType,
+    type StoredAlertSourceType
 } from '../../../types/api/alert';
 import {
     type EmailAttachment,
@@ -139,6 +140,11 @@ async function samplePayload(
         ruleName?: string;
     }
 ): Promise<DeliveryPayload> {
+    const profile = await getOrganizationProfile(orgId);
+    const presentation = {
+        locale: profile.localeDefault,
+        timeZone: profile.timezoneDefault
+    };
     if (p.sampleAlertId) {
         const res = await PostgresProvider.callMethod(
             'notifications.fn_alert_instance_get',
@@ -151,7 +157,7 @@ async function samplePayload(
                   rule_kind: AlertRuleKind;
                   state: 'active' | 'acknowledged' | 'resolved';
                   severity: 'info' | 'warning' | 'critical';
-                  source_subject_type: StoredAlertScopeType;
+                  source_subject_type: StoredAlertSourceType;
                   source_subject_id: string;
                   title: string;
                   message: string;
@@ -165,6 +171,7 @@ async function samplePayload(
             message: row.message,
             severity: row.severity,
             organizationId: orgId,
+            ...presentation,
             alertId: row.id,
             ruleId: row.rule_id,
             ruleName: p.ruleName ?? 'Rule',
@@ -173,7 +180,7 @@ async function samplePayload(
             firedAt: toIso(row.last_triggered_at) ?? '',
             activeSince: toIso(row.active_since) ?? '',
             source: {
-                subjectType: publicAlertScopeType(row.source_subject_type),
+                subjectType: publicAlertSourceType(row.source_subject_type),
                 subjectId: row.source_subject_id
             }
         };
@@ -186,7 +193,7 @@ async function samplePayload(
             message: string;
             severity: 'info' | 'warning' | 'critical';
             state: 'active' | 'acknowledged' | 'resolved';
-            source: {type: AlertScopeType; id: string};
+            source: {type: AlertSourceType; id: string};
             firedAt: string;
             activeSince: string;
         };
@@ -197,6 +204,7 @@ async function samplePayload(
         message: ctx.alert.message,
         severity: ctx.alert.severity,
         organizationId: orgId,
+        ...presentation,
         alertId: ctx.alert.id,
         ruleId: ctx.rule.id,
         ruleName: ctx.rule.name,

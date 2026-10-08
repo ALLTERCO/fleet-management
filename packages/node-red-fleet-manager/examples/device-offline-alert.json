@@ -1,0 +1,58 @@
+[
+    {
+        "id": "flow-offline",
+        "type": "tab",
+        "label": "Device offline alert",
+        "disabled": false,
+        "info": "Sends a notification through one channel when a device stays offline for 5 minutes. Set channelId in the function node to an id from channel.List."
+    },
+    {
+        "id": "fm-server-offline",
+        "type": "fm-server",
+        "name": "Fleet Manager",
+        "baseUrl": "",
+        "wsUrl": ""
+    },
+    {
+        "id": "offline-trigger",
+        "type": "fm-trigger-status",
+        "z": "flow-offline",
+        "name": "Offline for 5 minutes",
+        "server": "fm-server-offline",
+        "watch": "offline",
+        "forSeconds": 300,
+        "outputCurrent": false,
+        "scopeType": "all",
+        "deviceIds": "",
+        "groupId": "",
+        "locationId": "",
+        "refreshMinutes": 5,
+        "x": 190,
+        "y": 200,
+        "wires": [["build-notification"]]
+    },
+    {
+        "id": "build-notification",
+        "type": "function",
+        "z": "flow-offline",
+        "name": "Build channel.Test params",
+        "func": "const channelId = 1;\nmsg.params = {\n    id: channelId,\n    payload: {\n        title: 'Device offline',\n        message: `${msg.payload.shellyID} has been offline for 5 minutes`\n    }\n};\nreturn msg;",
+        "outputs": 1,
+        "x": 430,
+        "y": 200,
+        "wires": [["send-notification"]]
+    },
+    {
+        "id": "send-notification",
+        "type": "fm-notification",
+        "z": "flow-offline",
+        "name": "Send through channel",
+        "server": "fm-server-offline",
+        "operation": "channel.Test",
+        "paramsSource": "msg.params",
+        "paramsJson": "{}",
+        "x": 670,
+        "y": 200,
+        "wires": [[]]
+    }
+]

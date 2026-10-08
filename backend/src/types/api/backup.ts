@@ -4,6 +4,7 @@
 
 import {DescribeBuilder, type DescribeOutput} from './_describe';
 import type {JsonSchema} from './_schema';
+import {listResponseSchema, SUCCESS_RESPONSE_SCHEMA} from './_shared';
 
 const SHELLY_ID: JsonSchema = {type: 'string', minLength: 1};
 const ID: JsonSchema = {
@@ -14,22 +15,78 @@ const ID: JsonSchema = {
 };
 const NAME: JsonSchema = {type: 'string', minLength: 1, maxLength: 200};
 
-const ACK: JsonSchema = {type: 'object', additionalProperties: true};
-
-const LIST_RESPONSE: JsonSchema = {
+// One stored backup record, as normalizeStoredBackup builds it. Every read and
+// every mutation answers with this; the file bytes come from GetFile.
+const BACKUP_METADATA_SCHEMA: JsonSchema = {
     type: 'object',
-    required: ['items', 'total', 'limit', 'offset', 'has_more'],
+    additionalProperties: false,
+    required: [
+        'id',
+        'organizationId',
+        'device',
+        'name',
+        'shellyID',
+        'deviceName',
+        'model',
+        'app',
+        'fwVersion',
+        'createdAt',
+        'createdDateKey',
+        'fileSize',
+        'contents',
+        'contentsSummary',
+        'groupIds',
+        'groupNames',
+        'source',
+        'metadata'
+    ],
     properties: {
-        items: {
-            type: 'array',
-            items: {type: 'object', additionalProperties: true}
+        id: ID,
+        // Null on legacy records captured before the owner was stamped.
+        organizationId: {type: ['string', 'null']},
+        device: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['id', 'external_id'],
+            properties: {
+                id: {type: ['integer', 'null']},
+                external_id: {type: 'string'}
+            }
         },
-        total: {type: 'integer'},
-        limit: {type: 'integer'},
-        offset: {type: 'integer'},
-        has_more: {type: 'boolean'}
+        name: {type: 'string'},
+        shellyID: {type: 'string'},
+        deviceName: {type: 'string'},
+        model: {type: 'string'},
+        app: {type: 'string'},
+        fwVersion: {type: 'string'},
+        createdAt: {type: 'integer', description: 'epoch milliseconds'},
+        createdDateKey: {type: 'string'},
+        fileSize: {type: 'integer', minimum: 0},
+        contents: {type: 'object', additionalProperties: {type: 'boolean'}},
+        contentsSummary: {type: 'string'},
+        groupIds: {type: 'array', items: {type: 'integer'}},
+        groupNames: {type: 'array', items: {type: 'string'}},
+        source: {type: 'string', enum: ['device', 'imported']},
+        metadata: {type: 'object', additionalProperties: true}
     }
 };
+
+// Create and rename may overwrite a same-named backup; the replaced id is
+// reported only when that happened.
+const BACKUP_MUTATION_RESPONSE: JsonSchema = {
+    ...BACKUP_METADATA_SCHEMA,
+    properties: {
+        ...(BACKUP_METADATA_SCHEMA.properties ?? {}),
+        replacedBackupId: ID
+    }
+};
+
+const BACKUP_GET_RESPONSE: JsonSchema = {
+    anyOf: [BACKUP_METADATA_SCHEMA, {type: 'null'}],
+    description: 'Null when no backup carries that id.'
+};
+
+const LIST_RESPONSE = listResponseSchema(BACKUP_METADATA_SCHEMA);
 
 export const BACKUP_LIST_PARAMS: JsonSchema = {
     type: 'object',
@@ -153,13 +210,13 @@ export const BACKUP_DESCRIBE: DescribeOutput = new DescribeBuilder('backup', {
     })
     .registerMethod('Get', {
         params: BACKUP_GET_PARAMS,
-        response: ACK,
+        response: BACKUP_GET_RESPONSE,
         permission: {component: 'devices', operation: 'read'},
         description: 'Fetch backup metadata by id.'
     })
     .registerMethod('DownloadFromDevice', {
         params: BACKUP_DOWNLOAD_PARAMS,
-        response: ACK,
+        response: BACKUP_MUTATION_RESPONSE,
         permission: {component: 'devices', operation: 'update'},
         description: 'Pull a fresh backup from a device and persist it.'
     })
@@ -172,19 +229,19 @@ export const BACKUP_DESCRIBE: DescribeOutput = new DescribeBuilder('backup', {
     })
     .registerMethod('Rename', {
         params: BACKUP_RENAME_PARAMS,
-        response: ACK,
+        response: BACKUP_MUTATION_RESPONSE,
         permission: {component: 'devices', operation: 'update'},
         description: 'Rename a stored backup.'
     })
     .registerMethod('Delete', {
         params: BACKUP_DELETE_PARAMS,
-        response: ACK,
+        response: SUCCESS_RESPONSE_SCHEMA,
         permission: {component: 'devices', operation: 'delete'},
         description: 'Delete a backup by id.'
     })
     .registerMethod('RestoreToDevice', {
         params: BACKUP_RESTORE_PARAMS,
-        response: ACK,
+        response: SUCCESS_RESPONSE_SCHEMA,
         permission: {component: 'devices', operation: 'update'},
         description: 'Restore a backup to a device.'
     })

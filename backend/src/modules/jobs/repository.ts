@@ -9,7 +9,9 @@ import {
     type CredentialPushRow,
     createJobRepository,
     type FirmwareQueuedUnit,
-    type FirmwareUnitCounts
+    type FirmwareUnitCounts,
+    type JobAuthority,
+    type JobControlContext
 } from './repositoryFactory';
 
 export type {
@@ -21,7 +23,9 @@ export type {
     CreatedFirmwareJob,
     CredentialPushRow,
     FirmwareQueuedUnit,
-    FirmwareUnitCounts
+    FirmwareUnitCounts,
+    JobAuthority,
+    JobControlContext
 };
 
 const defaultRepository = createJobRepository(
@@ -62,3 +66,8 @@ export const createBackupJob = defaultRepository.createBackupJob;
 export const enqueueBackupTargets = defaultRepository.enqueueBackupTargets;
 export const createFirmwareJob = defaultRepository.createFirmwareJob;
 export const enqueueFirmwareTargets = defaultRepository.enqueueFirmwareTargets;
+export const prepareUnitDispatch = defaultRepository.prepareUnitDispatch;
+export const stopUnitBeforeDispatch = defaultRepository.stopUnitBeforeDispatch;
+export const cancelJob = defaultRepository.cancelJob;
+export const resumeJob = defaultRepository.resumeJob;
+export const getJobControlContext = defaultRepository.getJobControlContext;

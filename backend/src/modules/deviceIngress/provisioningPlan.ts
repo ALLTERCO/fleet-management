@@ -11,7 +11,7 @@ import type {
     DeviceIngressIdentity,
     DeviceIngressSetupSession
 } from './deviceIngressRepository';
-import {requirePublicWsBaseUrl} from './publicWsBaseUrl';
+import {plainServerUrl, tokenServerUrl} from './serverUrl';
 import {
     attachCertificateInstallMaterial,
     type CertificateInstallMaterial,
@@ -76,7 +76,11 @@ export async function createSetupPlan(
         credential,
         profile
     );
-    const storedBundle = storedProvisioningBundle(publicBundle);
+    const storedBundle = storedProvisioningBundle(
+        publicBundle,
+        input.params.reportedExternalId,
+        credential
+    );
     const session = await input.repository.createSetupSession({
         organizationId: input.organizationId,
         reportedExternalId: input.params.reportedExternalId,
@@ -131,7 +135,8 @@ async function createProvisioningIdentity(
         securityModel: profile.securityModel,
         transport: profile.transport,
         riskLevel: profile.riskLevel,
-        status: 'pending',
+        // Setup.Plan is the authorization step, so the identity starts usable.
+        status: 'active',
         expectedExternalId: input.params.reportedExternalId
     });
 }
@@ -196,17 +201,29 @@ function publicProvisioningBundle(
 }
 
 function storedProvisioningBundle(
-    publicBundle: Record<string, unknown>
+    publicBundle: Record<string, unknown>,
+    reportedExternalId: string,
+    credential: (DeviceIngressCredential & {tokenOnce?: string}) | null
 ): Record<string, unknown> {
     const {tokenOnce: _secret, ...safe} = publicBundle;
-    return redactCertificateInstallMaterial(safe);
+    // The saved copy must never carry the one-time key: rebuild the address without it.
+    const credentialWithoutTokenOnce = credential
+        ? {...credential, tokenOnce: undefined}
+        : null;
+    return redactCertificateInstallMaterial({
+        ...safe,
+        deviceConfig: deviceConfig(
+            reportedExternalId,
+            credentialWithoutTokenOnce
+        )
+    });
 }
 
 function certificateBundle(
     credential: DeviceIngressCredential | null,
     installMaterial?: CertificateInstallMaterial | null
 ): Record<string, unknown> | undefined {
-    if (!credential || credential.credentialType !== 'certificate') {
+    if (credential?.credentialType !== 'certificate') {
         return undefined;
     }
     const bundle = {
@@ -236,7 +253,7 @@ function deviceConfig(
         return {
             ws: {
                 enable: true,
-                server: `${requirePublicWsBaseUrl()}?id=${encodeURIComponent(reportedExternalId)}`,
+                server: plainServerUrl(reportedExternalId),
                 ssl_ca: 'user_ca.pem'
             }
         };
@@ -246,8 +263,8 @@ function deviceConfig(
         ws: {
             enable: true,
             server: token
-                ? `${requirePublicWsBaseUrl()}?id=${encodeURIComponent(reportedExternalId)}&token=${encodeURIComponent(token)}`
-                : `${requirePublicWsBaseUrl()}?id=${encodeURIComponent(reportedExternalId)}`
+                ? tokenServerUrl(reportedExternalId, token)
+                : plainServerUrl(reportedExternalId)
         }
     };
 }

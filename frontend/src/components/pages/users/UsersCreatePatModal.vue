@@ -1,5 +1,11 @@
 <template>
-    <Modal :visible="visible" wide @close="$emit('close')">
+    <!-- persistent once the token is on screen: it is shown exactly once. -->
+    <Modal
+        :visible="visible"
+        wide
+        :persistent="!!result"
+        @close="$emit('close')"
+    >
         <template #title>{{ SERVICE_USER_TOKEN_MODEL.modalTitle }}</template>
         <template #default>
             <div class="usr-form">
@@ -14,11 +20,15 @@
                     <span>{{ activeMode.description }}</span>
                 </div>
                 <FormField
+                    v-if="!scopedModel"
                     label="Key name"
-                    optional
                     hint="A label so you can tell this key apart later."
                 >
-                    <Input v-model="nameModel" placeholder="e.g. CI runner" />
+                    <Input
+                        v-model="nameModel"
+                        required
+                        placeholder="e.g. CI runner"
+                    />
                 </FormField>
                 <FormField label="Expiration (days)">
                     <Input
@@ -189,3 +199,79 @@ defineEmits<{
     done: [];
 }>();
 </script>
+
+<style scoped>
+/* Scoped here, not in the parent page: a parent's scoped styles never reach a
+   child component's inner elements. */
+.usr-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-md);
+}
+.usr-select {
+    width: 100%;
+    padding: var(--gap-xs) var(--gap-sm);
+    background-color: var(--color-surface-3);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    font-size: var(--type-body);
+    transition: border-color var(--motion-state);
+}
+/* A 1px border-colour change is not a focus indicator on its own. */
+.usr-select:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+}
+
+.svc-pat-hint {
+    font-size: var(--type-body);
+    color: var(--color-text-tertiary);
+}
+.svc-token-model {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-2xs);
+    padding: var(--gap-xs) var(--gap-sm);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-1);
+    color: var(--color-text-secondary);
+}
+.svc-token-model strong {
+    color: var(--color-text-primary);
+}
+.svc-token-model span {
+    font-size: var(--type-caption);
+    color: var(--color-text-tertiary);
+}
+
+.svc-pat-preview-result {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-2xs);
+    padding: var(--gap-xs);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-sm);
+    font-size: var(--type-body);
+}
+.svc-pat-preview-result--ok {
+    border-color: var(--color-success-text);
+    color: var(--color-success-text);
+}
+.svc-pat-preview-result--warn {
+    border-color: var(--color-warning-text);
+    color: var(--color-warning-text);
+}
+.svc-pat-result {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-sm);
+    margin-top: var(--gap-sm);
+}
+.svc-pat-result__meta {
+    font-size: var(--type-caption);
+    color: var(--color-text-quaternary);
+    font-family: var(--font-mono);
+}
+</style>

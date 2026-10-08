@@ -66,7 +66,7 @@ install_custom_cert() {
     cp "$SSL_CERT_FILE" "$tls_dir/server.crt"
     cp "$SSL_KEY_FILE" "$tls_dir/server.key"
     chmod 0644 "$tls_dir/server.crt"
-    chmod 0600 "$tls_dir/server.key"
+    public_tls_key_group_readable
 
     write_traefik_tls_config
     ok "Custom TLS certificate installed"

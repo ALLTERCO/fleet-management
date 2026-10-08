@@ -144,6 +144,12 @@ const SEED: readonly ComposerEntry[] = [
     },
     {
         role: 'actuator',
+        componentType: 'irdevice',
+        title: 'IR Device',
+        shellyNamespace: 'IRDevice'
+    },
+    {
+        role: 'actuator',
         componentType: 'dali',
         title: 'DALI Fixture',
         shellyNamespace: 'DALI'
@@ -160,14 +166,11 @@ const SEED: readonly ComposerEntry[] = [
         componentType: 'script',
         title: 'Script',
         shellyNamespace: 'Script'
-    },
-    // emdata/em1data are flash-archive; live em values flow via em/em1.
-    {role: 'sensor', componentType: 'emdata', title: 'Energy Archive'},
-    {
-        role: 'sensor',
-        componentType: 'em1data',
-        title: 'Energy Archive (single phase)'
     }
+    // emdata/em1data are not entities: they are historical energy counter
+    // stores whose data the em/em1 meter card reads straight from the raw
+    // emdata:N / em1data:N status keys. Their RPC surface still lives in
+    // EmDataComponent / Em1DataComponent (EMData.* / EM1Data.* namespaces).
 ];
 
 export function seedComposerRegistry(): void {

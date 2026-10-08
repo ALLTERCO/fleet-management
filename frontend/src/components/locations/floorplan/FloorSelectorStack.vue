@@ -72,7 +72,6 @@ function buildTooltip(f: FloorOption): string {
     padding: var(--space-1);
     background: var(--glass-3-bg);
     backdrop-filter: var(--glass-3-filter);
-    -webkit-backdrop-filter: var(--glass-3-filter);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-md);
     box-shadow:

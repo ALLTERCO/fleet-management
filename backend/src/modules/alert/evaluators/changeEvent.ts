@@ -1,10 +1,4 @@
-// Phase 7: change-event evaluator.
-//
-// Fires when a categorical/state field transitions in a specified way
-// (e.g. cover position open->closed, switch off->on, climate mode
-// heat->cool). The engine retrieves the previous and current values
-// from per-device attribute storage and hands them here; this module
-// is pure.
+// Keep previous readings per rule and field so each transition has its own history.
 
 import {BoundedMap} from '../../boundedMap';
 import {fieldFingerprintV2} from '../fingerprint';
@@ -125,6 +119,7 @@ function readFieldValue(
 }
 
 export const changeEventEvaluator: Evaluator = {
+    stateful: true,
     triggerKinds: ['device_status_changed'],
     clearKinds: ['device_status_changed'],
     match(event, rule, opts): MatchResult | null {

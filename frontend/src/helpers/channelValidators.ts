@@ -18,8 +18,10 @@ function invalid(message: string): ValidationResult {
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TIMEZONE_PATTERN = /^[A-Za-z]+(?:[/_+\-A-Za-z0-9]+)*$/;
 const SLACK_WEBHOOK_HOST = 'hooks.slack.com';
-const TEAMS_WORKFLOW_HOST_SUFFIX = '.logic.azure.com';
 const TELEGRAM_TOKEN_PATTERN = /^\d{6,}:[A-Za-z0-9_-]{20,}$/;
+// Mirrors TELEGRAM_BOT_CONFIG_SCHEMA.chatId in backend/src/types/api/channel.ts:
+// numeric id, negative group id, or @public_channel_username.
+const TELEGRAM_CHAT_ID_PATTERN = /^(-?\d+|@[a-zA-Z0-9_]{5,32})$/;
 
 const CHANNEL_NAME_MAX = 64;
 const CHANNEL_NAME_MIN = 2;
@@ -101,30 +103,38 @@ export function validateSlackWebhookUrl(value: string): ValidationResult {
     return VALID;
 }
 
-/** Teams workflow URL must be on a logic.azure.com subdomain. */
+/**
+ * Teams workflow URL must be a well-formed https endpoint.
+ *
+ * Deliberately no host allowlist here. Microsoft has moved Teams workflow URLs
+ * between hosts (logic.azure.com for Logic Apps, environment.api.powerplatform.com
+ * for Power Automate) and a list baked into the page goes stale each time,
+ * blocking URLs the delivery path accepts. Host restriction is an SSRF control,
+ * so it belongs server-side where it cannot be bypassed by editing the page:
+ * FM_TEAMS_WEBHOOK_ALLOWED_HOSTS in backend/src/modules/delivery/adapters/teamsWorkflow.ts.
+ */
 export function validateTeamsWorkflowUrl(value: string): ValidationResult {
-    const base = validateWebhookUrl(value);
-    if (!base.valid) return base;
-    const parsed = new URL(value.trim());
-    if (!parsed.host.endsWith(TEAMS_WORKFLOW_HOST_SUFFIX))
-        return invalid('Teams URL must be a logic.azure.com workflow endpoint');
-    return VALID;
+    return validateWebhookUrl(value);
 }
 
-/** Telegram bot token shape: digits, colon, 20+ token chars. */
+/** Telegram bot token shape: digits, colon, 20+ token chars. A token is
+ *  pasted from BotFather, so surrounding whitespace is not part of it. */
 export function validateTelegramBotToken(value: string): ValidationResult {
-    if (value.length === 0) return invalid('Bot token is required');
-    if (!TELEGRAM_TOKEN_PATTERN.test(value))
+    const trimmed = value.trim();
+    if (trimmed.length === 0) return invalid('Bot token is required');
+    if (!TELEGRAM_TOKEN_PATTERN.test(trimmed))
         return invalid('Token does not match the expected Telegram format');
     return VALID;
 }
 
-/** Telegram chat ID may be negative for groups; must be a non-empty integer. */
+/** Telegram chat ID: numeric id, negative group id, or @channel handle. */
 export function validateTelegramChatId(value: string): ValidationResult {
     const trimmed = value.trim();
     if (trimmed.length === 0) return invalid('Chat ID is required');
-    if (!/^-?\d+$/.test(trimmed))
-        return invalid('Chat ID must be a positive or negative integer');
+    if (!TELEGRAM_CHAT_ID_PATTERN.test(trimmed))
+        return invalid(
+            'Chat ID must be a number, a negative group id, or @channel_name'
+        );
     return VALID;
 }
 
@@ -254,6 +264,27 @@ export function validateWebhookForm(form: WebhookFormShape): ErrorMap {
 
 export interface SlackFormShape {
     url: string;
+}
+
+/**
+ * A secret the server only masks is stored, not missing: the update patch
+ * drops the blank field and the stored value stays. A field the operator
+ * typed into is validated as usual.
+ */
+export function omitStoredSecretErrors(
+    errors: ErrorMap,
+    section: object,
+    maskedFields: Record<string, string>
+): ErrorMap {
+    const values = section as Record<string, unknown>;
+    const kept: Record<string, string> = {};
+    for (const [field, message] of Object.entries(errors)) {
+        const stored = Boolean(maskedFields[field]);
+        const blank = values[field] === '' || values[field] == null;
+        if (stored && blank) continue;
+        kept[field] = message;
+    }
+    return kept;
 }
 
 export function validateSlackForm(form: SlackFormShape): ErrorMap {

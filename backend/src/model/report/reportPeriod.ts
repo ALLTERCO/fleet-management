@@ -104,7 +104,76 @@ function yearStart(
     );
 }
 
-function shiftMonth(
+// Billing-period index for a local date: periods reset on billingDay, so a date
+// before billingDay still belongs to the previous month's period. Shared by
+// every charge that bills "once per period" — standing, demand and blocks must
+// agree on where one period ends and the next begins.
+export function billingPeriodIndex(
+    date: LocalDate,
+    billingDay: number
+): number {
+    const monthIndex = date.year * 12 + (date.month - 1);
+    return date.day < billingDay ? monthIndex - 1 : monthIndex;
+}
+
+/** Billing-period index of an instant, anchored in the tariff's own zone. */
+export function billingPeriodIndexAt(
+    at: Date,
+    timezone: string | null,
+    billingDay: number
+): number {
+    return billingPeriodIndex(dateInZone(at, timezone), billingDay);
+}
+
+/** UTC instant a billing period opens: local midnight on its billingDay.
+ * Private: callers want a period, and a period is a pair — use
+ * `billingPeriodBounds` so nobody has to remember to ask for index + 1. */
+function billingPeriodAnchor(
+    periodIndex: number,
+    billingDay: number,
+    timezone: string | null
+): Date {
+    const year = Math.floor(periodIndex / 12);
+    const month = periodIndex - year * 12 + 1;
+    return localMidnightToUtc({year, month, day: billingDay}, timezone);
+}
+
+/** Calendar month a billing period opens in, as 'YYYY-MM'. A period runs from
+ * its billingDay in this month to the same day of the next, so the key names
+ * the opening month, not every month the period touches. */
+export function billingPeriodCalendarKey(periodIndex: number): string {
+    const year = Math.floor(periodIndex / 12);
+    const month = periodIndex - year * 12 + 1;
+    return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+/** Half-open bounds of a billing period, in the tariff's own zone. */
+export function billingPeriodBounds(
+    periodIndex: number,
+    billingDay: number,
+    timezone: string | null
+): {from: Date; to: Date} {
+    return {
+        from: billingPeriodAnchor(periodIndex, billingDay, timezone),
+        to: billingPeriodAnchor(periodIndex + 1, billingDay, timezone)
+    };
+}
+
+// Whole local days in a billing period. Counted on the calendar, not from the
+// bounds: a period crossing a DST change is an hour short of a whole number of
+// days, and a per-day charge still bills every one of them.
+export function billingPeriodDays(
+    periodIndex: number,
+    billingDay: number
+): number {
+    const year = Math.floor(periodIndex / 12);
+    const month = periodIndex - year * 12;
+    const start = Date.UTC(year, month, billingDay);
+    const end = Date.UTC(year, month + 1, billingDay);
+    return Math.round((end - start) / 86_400_000);
+}
+
+export function shiftMonth(
     year: number,
     month: number,
     delta: number
@@ -116,21 +185,33 @@ function shiftMonth(
     };
 }
 
-// Map a local wall-clock midnight to its UTC instant. The zone's UTC offset is
+// Map a local wall-clock time to its UTC instant. The zone's UTC offset is
 // itself date-dependent (DST), so we derive the offset at the candidate instant
 // from dateInZone, correct, then re-check once to settle any DST edge.
-function localMidnightToUtc(local: LocalDate, timezone: string | null): Date {
-    if (!timezone)
-        return new Date(Date.UTC(local.year, local.month - 1, local.day));
-    let guess = Date.UTC(local.year, local.month - 1, local.day);
+export function localTimeToUtc(
+    local: LocalDate,
+    minutesOfDay: number,
+    timezone: string | null
+): Date {
+    const wallMs =
+        Date.UTC(local.year, local.month - 1, local.day) +
+        minutesOfDay * 60_000;
+    if (!timezone) return new Date(wallMs);
+    let guess = wallMs;
     for (let i = 0; i < 2; i++) {
-        const offsetMs = zoneOffsetMs(new Date(guess), timezone);
-        const corrected =
-            Date.UTC(local.year, local.month - 1, local.day) - offsetMs;
+        const corrected = wallMs - zoneOffsetMs(new Date(guess), timezone);
         if (corrected === guess) break;
         guess = corrected;
     }
     return new Date(guess);
+}
+
+/** Midnight is the local time every calendar boundary is anchored at. */
+export function localMidnightToUtc(
+    local: LocalDate,
+    timezone: string | null
+): Date {
+    return localTimeToUtc(local, 0, timezone);
 }
 
 // Zone offset (ms, east-positive) at an instant: local wall-clock minus UTC

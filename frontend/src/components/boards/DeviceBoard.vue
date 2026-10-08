@@ -293,16 +293,14 @@
             <div v-if="profileOptions && device.online && canUpdateDevice && showsPhysicalPanels" class="device-section">
                 <span class="device-section__label">Device Profile</span>
                 <div class="profile-picker">
-                    <select
-                        class="profile-picker__select"
-                        :value="deviceProfile"
+                    <Dropdown
+                        :key="`profile-${profileResetTick}`"
+                        aria-label="Device profile"
+                        :options="profileLabels"
+                        :default="profileLabel"
                         :disabled="profileChanging"
-                        @change="(e: Event) => changeProfile((e.target as HTMLSelectElement).value)"
-                    >
-                        <option v-for="opt in profileOptions" :key="opt.value" :value="opt.value">
-                            {{ opt.label }}
-                        </option>
-                    </select>
+                        @selected="(label: string) => changeProfile(profileFromLabel(label))"
+                    />
                     <div class="profile-picker__warning">
                         <i class="fas fa-triangle-exclamation" /> Changing profile reboots the device
                     </div>
@@ -321,19 +319,24 @@
                 <BluAssistPanel :shelly-i-d="shellyID" />
             </div>
 
+            <!-- IR controller: org code library (import, learn, push) -->
+            <div v-if="isIrController && device.online && canExecute" class="device-section">
+                <span class="device-section__label">IR Code Library</span>
+                <IrLibraryPanel :shelly-i-d="shellyID" />
+            </div>
+
             <!-- Wall Display mode switching -->
             <div v-if="isWallDisplay && device.online && canUpdateDevice && showsPhysicalPanels" class="device-section">
                 <span class="device-section__label">Operating Mode</span>
                 <div class="profile-picker">
-                    <select
-                        class="profile-picker__select"
-                        :value="wallDisplayMode"
+                    <Dropdown
+                        :key="`wdmode-${wallDisplayModeResetTick}`"
+                        aria-label="Operating mode"
+                        :options="wallDisplayModeLabels"
+                        :default="wallDisplayModeLabel"
                         :disabled="wallDisplayModeChanging"
-                        @change="(e: Event) => changeWallDisplayMode((e.target as HTMLSelectElement).value)"
-                    >
-                        <option value="relay">Relay</option>
-                        <option value="thermostat">Thermostat</option>
-                    </select>
+                        @selected="(label: string) => changeWallDisplayMode(wallDisplayModeFromLabel(label))"
+                    />
                     <div class="profile-picker__warning">
                         <i class="fas fa-triangle-exclamation" /> Changing mode reboots the device
                     </div>
@@ -346,20 +349,15 @@
             <div v-if="isPillDevice && device.online && canUpdateDevice" class="device-section">
                 <span class="device-section__label">Peripheral mode</span>
                 <div class="profile-picker">
-                    <select
-                        class="profile-picker__select"
-                        :value="pillMode"
-                        :disabled="pillModeChanging || pillPinChanging"
-                        @change="(e: Event) => changePillMode((e.target as HTMLSelectElement).value)"
-                    >
-                        <option
-                            v-for="opt in pillModeOptions"
-                            :key="opt.value"
-                            :value="opt.value"
-                        >
-                            {{ opt.label }}
-                        </option>
-                    </select>
+                    <Dropdown
+                        :key="`pillmode-${pillModeResetTick}`"
+                        aria-label="Peripheral mode"
+                        :options="pillModeLabels"
+                        :default="pillSettingsLoaded ? pillModeSelectedLabel : undefined"
+                        :placeholder="pillSettingsLoaded ? undefined : 'Loading…'"
+                        :disabled="!pillSettingsLoaded || pillModeChanging || pillPinChanging"
+                        @selected="(label: string) => changePillMode(pillModeFromLabel(label))"
+                    />
                     <div v-if="pillModeChanging" class="profile-picker__status">
                         <Spinner /> Applying...
                     </div>
@@ -375,22 +373,17 @@
                         class="pill-pins__row"
                     >
                         <span class="pill-pins__label">{{ pin.label }}</span>
-                        <select
-                            class="profile-picker__select"
-                            :value="pillPins[pin.key]"
-                            :disabled="pillModeChanging || pillPinChanging || pillPins[pin.key] === 'reserved'"
+                        <Dropdown
+                            :key="`pillpin-${pin.key}-${pillPinResetTick}`"
+                            class="pill-pins__dropdown"
+                            :aria-label="`${pin.label} mode`"
+                            :options="pillPinDropdownLabels[pin.key]"
+                            :default="pillSettingsLoaded ? pillPinLabel(pillPins[pin.key]) : undefined"
+                            :placeholder="pillSettingsLoaded ? undefined : 'Loading…'"
+                            :disabled="!pillSettingsLoaded || pillModeChanging || pillPinChanging || pillPins[pin.key] === 'reserved'"
                             :title="pillPins[pin.key] === 'reserved' ? 'Reserved by current peripheral mode' : undefined"
-                            @change="(e: Event) => changePillPin(pin.key, (e.target as HTMLSelectElement).value)"
-                        >
-                            <option
-                                v-for="opt in PILL_PIN_OPTIONS"
-                                :key="opt.value"
-                                :value="opt.value"
-                                :disabled="opt.disabled"
-                            >
-                                {{ opt.label }}
-                            </option>
-                        </select>
+                            @selected="(label: string) => changePillPin(pin.key, pillPinFromLabel(label))"
+                        />
                     </div>
                     <div v-if="pillPinChanging" class="profile-picker__status">
                         <Spinner /> Applying...
@@ -402,7 +395,7 @@
             </div>
 
             <ConnectedComponentsSection
-                v-if="sortedEntities.length || isVirtualDevice || isBluetoothDevice"
+                v-if="ungroupedEntities.length || sensorGroups.length || isVirtualDevice || isBluetoothDevice"
                 :shelly-i-d="shellyID"
                 :title="componentSectionTitle"
                 :entities="ungroupedEntities"
@@ -532,6 +525,18 @@
                     </div>
                 </template>
             </ConnectedComponentsSection>
+
+            <DeviceVirtualPanel
+                v-if="showVirtualPanel"
+                :entities="virtualPanelEntities"
+                :source="shellyID"
+                :device-name="getDeviceName(device?.info, shellyID)"
+                :online="!!device?.online"
+                class="device-section"
+                @open="entityClicked"
+                @edit-group="onEditVirtualEntity"
+                @extract-group="onExtractVirtualEntity"
+            />
 
         </template>
         </template>
@@ -888,6 +893,11 @@
                                         <DeviceEnergySettings
                                             :shelly-i-d="shellyID"
                                             :device-name="deviceEnergyName"
+                                            @dirty-change="setSettingsSectionDirty(
+                                                'appearance',
+                                                'energy-settings',
+                                                $event
+                                            )"
                                         />
                                     </div>
                                 </template>
@@ -908,6 +918,20 @@
                                             View relationships
                                         </Button>
                                     </div>
+                                </div>
+
+                                <div class="settings-group">
+                                    <div class="settings-group__heading">
+                                        <i class="fas fa-plug" aria-hidden="true" />
+                                        <div>
+                                            <h4>Parts</h4>
+                                            <p>Swap or remove what this device reads from.</p>
+                                        </div>
+                                    </div>
+                                    <VirtualDevicePartsPanel
+                                        v-if="activeSettingsSection === 'relationships'"
+                                        :external-id="shellyID"
+                                    />
                                 </div>
                             </section>
 
@@ -1199,6 +1223,9 @@ import DeviceCardStatus from '@/components/devices/DeviceCardStatus.vue';
 import DeviceDiagnosticsPanel from '@/components/devices/DeviceDiagnosticsPanel.vue';
 import DeviceEnergySettings from '@/components/devices/DeviceEnergySettings.vue';
 import DeviceRelationshipsPanel from '@/components/devices/DeviceRelationshipsPanel.vue';
+import DeviceVirtualPanel from '@/components/devices/DeviceVirtualPanel.vue';
+import VirtualDevicePartsPanel from '@/components/devices/VirtualDevicePartsPanel.vue';
+import IrLibraryPanel from '@/components/ir/IrLibraryPanel.vue';
 import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
 import DeviceDeleteModal from '@/components/modals/DeviceDeleteModal.vue';
 import DeviceEditModal from '@/components/modals/DeviceEditModal.vue';
@@ -1255,13 +1282,14 @@ import {useRightSideMenuStore} from '@/stores/right-side';
 import {useToastStore} from '@/stores/toast';
 import {debugWarn} from '@/tools/debug';
 import * as ws from '@/tools/websocket';
-import {type bthomedevice_entity, em_entity, type entity_t} from '@/types';
+import type {bthomedevice_entity, em_entity, entity_t} from '@/types';
 import AddonConfig from '../core/AddonConfig.vue';
 import BasicBlock from '../core/BasicBlock.vue';
 import BtHomeConfig from '../core/BtHomeConfig.vue';
 import Button from '../core/Button.vue';
 import Collapse from '../core/Collapse.vue';
 import DeviceLedConfig from '../core/DeviceLedConfig.vue';
+import Dropdown from '../core/Dropdown.vue';
 import Input from '../core/Input.vue';
 import EntityEM from '../core/Meters/EntityEM.vue';
 import Notification from '../core/Notification.vue';
@@ -1405,7 +1433,10 @@ function setSettingsSectionDirty(
     settingsDirtySources.value = next;
 }
 
-provide(settingsDirtyTrackerKey, {setDirty: setSettingsSectionDirty});
+provide(settingsDirtyTrackerKey, {
+    setDirty: setSettingsSectionDirty,
+    requestExit: requestSettingsExit
+});
 
 function isSettingsSectionDirty(sectionId: string): boolean {
     return settingsDirtySources.value.has(sectionId);
@@ -1542,8 +1573,8 @@ const settingsGroups = computed<SettingsNavGroup[]>(() => {
     if (isVirtualDevice.value) {
         deviceItems.push({
             id: 'relationships',
-            label: 'Relationships',
-            description: 'Inspect source devices and component bindings',
+            label: 'Parts and relationships',
+            description: 'Swap the components this device is built from',
             icon: 'fas fa-diagram-project'
         });
     }
@@ -1876,7 +1907,7 @@ const deviceAboutRows = computed<DeviceAboutRow[]>(() => {
                   tone: cloud.connected ? 'on' : undefined
               }
             : null,
-        info?.app ? {label: 'Type', value: info.app} : null,
+        info?.app ? {label: 'Model', value: info.app} : null,
         info?.model ? {label: 'Model', value: info.model} : null,
         typeof info?.gen === 'number'
             ? {label: 'Generation', value: `Gen ${info.gen}`}
@@ -1975,10 +2006,26 @@ function onExtractGroup(group: SensorGroup): void {
     extractGroupModalVisible.value = true;
 }
 
+function virtualGroupSourceKey(entity: entity_t): string | null {
+    const id = entityNumericProp(entity, 'id');
+    return entity.type === 'group' && id != null ? `group:${id}` : null;
+}
+
+function onExtractVirtualEntity(entity: entity_t): void {
+    const sourceKey = virtualGroupSourceKey(entity);
+    if (!sourceKey) return;
+    extractGroupSourceKey.value = sourceKey;
+    extractGroupModalVisible.value = true;
+}
+
 const virtualEditKey = ref<string | null>(null);
 function onEditVirtualGroup(group: SensorGroup): void {
     if (!group.sourceComponentKey) return;
     virtualEditKey.value = group.sourceComponentKey;
+}
+
+function onEditVirtualEntity(entity: entity_t): void {
+    virtualEditKey.value = virtualGroupSourceKey(entity);
 }
 
 function onGroupExtracted(externalId: string): void {
@@ -1992,12 +2039,10 @@ const selectedEMDevices = ref<EmDevice[]>([]);
 // snapshot, so fetch + cache it locally.
 const physicalAssetId = ref<string | null>(null);
 const physicalIcon = ref<string | null>(null);
-const hasApplicationSettings = computed(
-    () =>
-        canUpdateDevice.value &&
-        !isVirtualDevice.value &&
-        !isBluetoothDevice.value
-);
+// Any device the caller may edit can carry measurement points — an extracted
+// group meter and a BLU water sensor most of all. Whether this one actually
+// does is the panel's own answer, shown as its empty state.
+const hasApplicationSettings = computed(() => canUpdateDevice.value);
 const canSendDiagnosticCommand = computed(
     () =>
         canExecute.value &&
@@ -2073,6 +2118,24 @@ const componentSectionTitle = computed(() =>
         : 'Entities'
 );
 
+// Virtual components (boolean/number/enum/text/button/object) render as one
+// control panel per device rather than individual tiles. When shown, the panel
+// replaces those tiles (ungroupedEntities) and supersedes the virtual-group
+// header (sensorGroups).
+const VIRTUAL_PANEL_TYPES = new Set([
+    'boolean',
+    'number',
+    'enum',
+    'text',
+    'button',
+    'object',
+    'group'
+]);
+const virtualPanelEntities = computed(() =>
+    sortedEntities.value.filter((e) => VIRTUAL_PANEL_TYPES.has(e.type))
+);
+const showVirtualPanel = computed(() => virtualPanelEntities.value.length > 0);
+
 // Sensor groups: BLE groups from bthomedevice entities, addon groups computed,
 // virtual groups from group:N entities.
 interface SensorGroup {
@@ -2138,7 +2201,9 @@ const sensorGroups = computed((): SensorGroup[] => {
 
     // Virtual groups: device-side `group:N` entities listing virtual-component
     // members (e.g. Pill scripts publishing 9 numbers as one Marstek battery).
+    // The device-wide control panel replaces these headers when it is shown.
     for (const e of sortedEntities.value) {
+        if (showVirtualPanel.value) break;
         if (e.type !== 'group') continue;
         const members = entityStringListProp(e, 'members');
         const children = members
@@ -2201,6 +2266,8 @@ const ungroupedEntities = computed(() => {
         if (e.type === 'bthomedevice') return false;
         // Hide virtual group entities — they become sensor-group headers
         if (e.type === 'group') return false;
+        // Virtual components render in the device control panel, not as tiles.
+        if (showVirtualPanel.value && VIRTUAL_PANEL_TYPES.has(e.type)) return false;
         // Hide child sensors / members that belong to a group
         if (groupedIds.has(e.id)) return false;
         // Hide bthomesensors with a parent device (even if not in childSensorIds — safety)
@@ -2376,6 +2443,9 @@ const isPillDevice = computed(
     () => !!device.value?.capabilities?.ui?.pillPinMode
 );
 
+// Backend capability: device advertises IR.GetConfig (IR controller).
+const isIrController = computed(() => !!device.value?.capabilities?.ir);
+
 // Virtual component management — user can add/delete virtual components
 const hasVirtualComponents = computed(
     () => !!device.value?.capabilities?.virtualComponents
@@ -2416,10 +2486,30 @@ const deviceProfile = computed(
 );
 const profileChanging = ref(false);
 const profileError = ref<string | null>(null);
+// Bumped on a failed change so the keyed Dropdown remounts and snaps back
+// to the store's real value instead of keeping the failed pick.
+const profileResetTick = ref(0);
 const profileList = ref<{value: string; label: string}[] | null>(null);
 
 // Fetch available profiles dynamically from device via Shelly.ListProfiles
 const profileOptions = computed(() => profileList.value);
+
+// The core Dropdown is label-keyed: it takes labels as options and hands
+// the picked label back, so each control needs a label<->value mapping.
+const profileLabels = computed(
+    () => profileOptions.value?.map((o) => o.label) ?? []
+);
+const profileLabel = computed(
+    () =>
+        profileOptions.value?.find((o) => o.value === deviceProfile.value)
+            ?.label ?? deviceProfile.value
+);
+
+function profileFromLabel(label: string): string {
+    const option = profileOptions.value?.find((o) => o.label === label);
+    if (!option) throw new Error(`Unknown profile option: ${label}`);
+    return option.value;
+}
 
 async function loadProfiles(
     targetShellyID = shellyID.value,
@@ -2434,12 +2524,17 @@ async function loadProfiles(
         });
         if (!ownsProfileRequest(targetShellyID, generation, requestId)) return;
         if (resp?.profiles && typeof resp.profiles === 'object') {
-            profileList.value = Object.keys(resp.profiles).map((name) => ({
-                value: name,
-                label:
+            // Labels key the profile Dropdown — if two prettified names
+            // ever collide, keep the raw name so every label stays unique.
+            const seen = new Set<string>();
+            profileList.value = Object.keys(resp.profiles).map((name) => {
+                const pretty =
                     name.charAt(0).toUpperCase() +
-                    name.slice(1).replace(/_/g, ' ')
-            }));
+                    name.slice(1).replace(/_/g, ' ');
+                const label = seen.has(pretty) ? name : pretty;
+                seen.add(label);
+                return {value: name, label};
+            });
         }
     } catch (error) {
         if (!ownsProfileRequest(targetShellyID, generation, requestId)) return;
@@ -2473,6 +2568,7 @@ async function changeProfile(newProfile: string) {
         );
     } catch (error) {
         if (!ownsDeviceGeneration(targetShellyID, generation)) return;
+        profileResetTick.value++;
         profileError.value = rpcErrorMessage(
             error,
             'Failed to change profile'
@@ -2502,6 +2598,25 @@ const wallDisplayMode = computed(() => {
 });
 
 const wallDisplayModeChanging = ref(false);
+// Failed change: bump remounts the keyed Dropdown to the store value.
+const wallDisplayModeResetTick = ref(0);
+
+const WALL_DISPLAY_MODE_LABELS: Record<string, string> = {
+    relay: 'Relay',
+    thermostat: 'Thermostat'
+};
+const wallDisplayModeLabels = Object.values(WALL_DISPLAY_MODE_LABELS);
+const wallDisplayModeLabel = computed(
+    () => WALL_DISPLAY_MODE_LABELS[wallDisplayMode.value]
+);
+
+function wallDisplayModeFromLabel(label: string): string {
+    const entry = Object.entries(WALL_DISPLAY_MODE_LABELS).find(
+        ([, optionLabel]) => optionLabel === label
+    );
+    if (!entry) throw new Error(`Unknown operating mode option: ${label}`);
+    return entry[0];
+}
 
 async function changeWallDisplayMode(newMode: string) {
     if (
@@ -2531,6 +2646,7 @@ async function changeWallDisplayMode(newMode: string) {
         }
     } catch (error) {
         if (!ownsDeviceGeneration(targetShellyID, generation)) return;
+        wallDisplayModeResetTick.value++;
         toastStore.error(rpcErrorMessage(error, 'Failed to change mode'));
     } finally {
         if (ownsDeviceGeneration(targetShellyID, generation)) {
@@ -2539,22 +2655,39 @@ async function changeWallDisplayMode(newMode: string) {
     }
 }
 
-const pillMode = computed<string>(
-    () => (device.value?.settings?.pill?.mode as string) ?? 'onewire'
+// The wire key is 'pill:0' — singleton component keys get the :0 suffix at
+// backend construction (normalizeComponentKeys), so bare 'pill' never arrives.
+const pillSettings = computed(
+    () =>
+        device.value?.settings?.['pill:0'] as
+            | Record<string, unknown>
+            | undefined
 );
 
-// usePillModes' internal `watch` eagerly evaluates its source getters at
-// setup, so `pillMode` must be initialized before this call (TDZ otherwise).
-// `enabled` gate keeps non-Pill devices from issuing Shelly.GetComponents.
+const pillMode = computed<string>(
+    () => (pillSettings.value?.mode as string) ?? 'onewire'
+);
+
+// Pill settings arrive with the full device load; until then the pickers
+// must not assert a made-up mode as if it were the device's real config.
+const pillSettingsLoaded = computed(() => pillSettings.value != null);
+
 const {modes: pillModes} = usePillModes(
-    () => shellyID.value,
-    () => device.value?.info?.ver,
-    () => pillMode.value,
-    () => isPillDevice.value
+    () => device.value,
+    () => (pillSettings.value?.mode as string | undefined)
 );
-const pillModeOptions = computed(() =>
-    pillModes.value.map((m) => ({value: m, label: pillModeLabel(m)}))
+const pillModeLabels = computed(() =>
+    pillModes.value.map((mode) => pillModeLabel(mode))
 );
+const pillModeSelectedLabel = computed(() => pillModeLabel(pillMode.value));
+
+function pillModeFromLabel(label: string): string {
+    const mode = pillModes.value.find((m) => pillModeLabel(m) === label);
+    if (mode === undefined) {
+        throw new Error(`Unknown peripheral mode option: ${label}`);
+    }
+    return mode;
+}
 const PILL_PIN_OPTIONS: Array<{
     value: string;
     label: string;
@@ -2571,17 +2704,45 @@ const PILL_PIN_FIELDS = [
     {key: 'pin2_mode' as const, label: 'Pin 2'}
 ] as const;
 const pillPins = computed(() => {
-    const cfg = device.value?.settings?.pill ?? {};
+    const cfg = pillSettings.value ?? {};
     return {
         pin0_mode: (cfg.pin0_mode as string) ?? 'none',
         pin1_mode: (cfg.pin1_mode as string) ?? 'none',
         pin2_mode: (cfg.pin2_mode as string) ?? 'none'
     };
 });
+
+// Dropdown has no per-option disabled, so the locked "reserved" entry is
+// listed only while it is a pin's current value — the whole control is
+// disabled then, and it can never be picked on an unlocked pin.
+const pillPinDropdownLabels = computed(() => {
+    const labelsFor = (key: (typeof PILL_PIN_FIELDS)[number]['key']) =>
+        PILL_PIN_OPTIONS.filter(
+            (o) => !o.disabled || o.value === pillPins.value[key]
+        ).map((o) => o.label);
+    return {
+        pin0_mode: labelsFor('pin0_mode'),
+        pin1_mode: labelsFor('pin1_mode'),
+        pin2_mode: labelsFor('pin2_mode')
+    };
+});
+
+function pillPinLabel(value: string): string {
+    return PILL_PIN_OPTIONS.find((o) => o.value === value)?.label ?? value;
+}
+
+function pillPinFromLabel(label: string): string {
+    const option = PILL_PIN_OPTIONS.find((o) => o.label === label);
+    if (!option) throw new Error(`Unknown pin mode option: ${label}`);
+    return option.value;
+}
 const pillModeChanging = ref(false);
 const pillPinChanging = ref(false);
 const pillModeError = ref<string | null>(null);
 const pillPinError = ref<string | null>(null);
+// Failed change: bump remounts the keyed Dropdown to the store value.
+const pillModeResetTick = ref(0);
+const pillPinResetTick = ref(0);
 
 async function changePillMode(newMode: string) {
     if (
@@ -2615,6 +2776,7 @@ async function changePillMode(newMode: string) {
         }
     } catch (error) {
         if (!ownsDeviceGeneration(targetShellyID, generation)) return;
+        pillModeResetTick.value++;
         pillModeError.value = rpcErrorMessage(error, 'Failed to change mode');
     } finally {
         if (ownsDeviceGeneration(targetShellyID, generation)) {
@@ -2657,6 +2819,7 @@ async function changePillPin(
         }
     } catch (error) {
         if (!ownsDeviceGeneration(targetShellyID, generation)) return;
+        pillPinResetTick.value++;
         pillPinError.value = rpcErrorMessage(
             error,
             'Failed to change pin mode'
@@ -2757,7 +2920,7 @@ async function denyDeviceAccess() {
     } catch (error) {
         if (!ownsDeviceGeneration(targetShellyID, generation)) return;
         toastStore.error(
-            error instanceof Error ? error.message : String(error)
+            rpcErrorMessage(error)
         );
     }
 }
@@ -3528,6 +3691,12 @@ onUnmounted(() => {
     background: var(--color-surface-0);
     overflow: hidden;
 }
+
+/* The pill fills a toolbar's spare width; in this column that same
+   rule made it grow downwards and drag its centred icon with it. */
+.device-settings-nav .search-pill {
+    flex: 0 0 auto;
+}
 .device-settings-nav__sections {
     display: flex;
     min-height: 0;
@@ -3888,7 +4057,6 @@ onUnmounted(() => {
 .settings-surface--panel {
     background: var(--glass-2-bg);
     backdrop-filter: blur(var(--glass-2-blur));
-    -webkit-backdrop-filter: blur(var(--glass-2-blur));
     border: var(--space-px) solid var(--glass-border);
     border-radius: var(--radius-xl);
     padding: var(--gap-md);
@@ -4386,22 +4554,16 @@ onUnmounted(() => {
     color: var(--color-text-secondary);
     min-width: var(--space-12);
 }
+.pill-pins__dropdown {
+    flex: 1;
+    min-width: 0;
+}
 
 /* Profile picker */
 .profile-picker {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
-}
-.profile-picker__select {
-    padding: var(--space-1-5) var(--space-2);
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--color-border-default);
-    background-color: var(--color-surface-2);
-    color: var(--color-text-primary);
-    font-size: var(--type-body);
-    cursor: pointer;
-    width: 100%;
 }
 .profile-picker__warning {
     font-size: var(--type-body);

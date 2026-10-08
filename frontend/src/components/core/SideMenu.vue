@@ -336,7 +336,6 @@ function isActive(link: string) {
 .nav-sidebar--glass {
     background: var(--glass-2-bg);
     backdrop-filter: var(--glass-2-filter);
-    -webkit-backdrop-filter: var(--glass-2-filter);
     box-shadow: inset 0 1px 0 var(--glass-highlight);
 }
 .nav-sidebar--expanded { width: var(--sidebar-w); }
@@ -360,7 +359,6 @@ function isActive(link: string) {
     inset: 0;
     z-index: calc(var(--z-sticky) - 1);
     background: var(--color-overlay-light);
-    -webkit-backdrop-filter: blur(var(--scrim-blur));
     backdrop-filter: blur(var(--scrim-blur));
 }
 .scrim-enter-active,

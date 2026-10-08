@@ -200,7 +200,6 @@ function bgClicked() {
     z-index: var(--z-dropdown);
     background-color: var(--color-overlay-heavy);
     backdrop-filter: blur(var(--scrim-blur));
-    -webkit-backdrop-filter: blur(var(--scrim-blur));
     pointer-events: auto;
     transition: left var(--duration-normal) ease;
 }

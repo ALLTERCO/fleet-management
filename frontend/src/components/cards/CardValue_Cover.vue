@@ -15,7 +15,7 @@
             <!-- Watts to the top-right corner (only while the motor runs) so the
                  position number can own the whole tile. -->
             <div v-if="isMoving && !isOffline && powerDisplay !== '—'" class="ec-cover-watts">{{ powerDisplay }} {{ powerUnit }}</div>
-            <div role="status" class="ec-cpos">{{ posDisplay }}<span>%</span></div>
+            <div v-if="posDisplay" role="status" class="ec-cpos">{{ posDisplay }}<span class="ec-u">%</span></div>
         </template>
         <template #badges>
             <CardBadges :is-offline="isOffline" :shelly-id="entity.source" />
@@ -50,24 +50,19 @@
         <template #default>
             <div class="ec-split ec-split--40-60">
                 <div class="ec-wl">
-                    <div role="status" class="ec-cpos">{{ posDisplay }}<span>%</span></div>
+                    <div v-if="posDisplay" role="status" class="ec-cpos">{{ posDisplay }}<span class="ec-u">%</span></div>
                     <div v-if="isMoving && !isOffline && powerDisplay !== '—'" class="ec-sub--power">{{ powerDisplay }} {{ powerUnit }}</div>
-                    <div v-else-if="hasTilt" class="ec-sub--power">{{ tiltDisplay }}</div>
+                    <div v-else-if="tiltDisplay" class="ec-sub--power">{{ tiltDisplay }}</div>
                 </div>
                 <div class="ec-wr">
-                    <div class="ec-clr-track">
-                        <input
-                            type="range"
-                            class="sld-r sld-cover"
-                            min="0"
-                            max="100"
-                            :value="posSliderValue"
-                            :disabled="!isOperable"
-                            @input="onPosInput"
-                            @change="onPosChange"
-                            @click.stop
-                        />
-                    </div>
+                    <CardSlider
+                        variant="cover"
+                        :value="posSliderValue"
+                        :disabled="!isOperable"
+                        aria-label="Position"
+                        @input="onPosInput"
+                        @change="onPosChange"
+                    />
                     <div class="ec-qrow">
                         <button
                             v-for="pct in [0, 25, 50, 100]"
@@ -130,9 +125,9 @@
                     <div class="ec-shutter-light" />
                 </div>
                 <div class="ec-shutter-side">
-                    <div class="ec-shutter-pct">
+                    <div v-if="posDisplay" class="ec-shutter-pct">
                         <div class="ec-shutter-pct-v">{{ posDisplay }}</div>
-                        <div class="ec-shutter-pct-u">%</div>
+                        <div class="ec-u">%</div>
                     </div>
                 </div>
             </div>
@@ -143,40 +138,30 @@
                      beside it; a lone slider needs no letter. -->
                 <div class="ec-cover-sld">
                     <div v-if="hasTilt" class="ec-sld-cap">P</div>
-                    <div class="ec-clr-track">
-                        <input
-                            type="range"
-                            class="sld-r sld-cover"
-                            min="0"
-                            max="100"
-                            :value="posSliderValue"
-                            :disabled="!isOperable"
-                            @input="onPosInput"
-                            @change="onPosChange"
-                            @click.stop
-                        />
-                    </div>
+                    <CardSlider
+                        variant="cover"
+                        :value="posSliderValue"
+                        :disabled="!isOperable"
+                        aria-label="Position"
+                        @input="onPosInput"
+                        @change="onPosChange"
+                    />
                     <!-- Position value only when a Tilt row sits beside it (top
                          already shows position); keeps the two rows aligned. -->
-                    <div v-if="hasTilt" class="ec-sld-val">{{ posDisplay }}%</div>
+                    <div v-if="hasTilt && posDisplay" class="ec-sld-val">{{ posDisplay }}%</div>
                 </div>
                 <!-- Tilt slider (only when device supports tilt) -->
                 <div v-if="hasTilt" class="ec-cover-sld">
                     <div class="ec-sld-cap">T</div>
-                    <div class="ec-clr-track">
-                        <input
-                            type="range"
-                            class="sld-r sld-tilt"
-                            min="0"
-                            max="100"
-                            :value="tiltSliderValue"
-                            :disabled="!isOperable"
-                            @input="onTiltInput"
-                            @change="onTiltChange"
-                            @click.stop
-                        />
-                    </div>
-                    <div class="ec-sld-val">{{ tiltDisplay }}</div>
+                    <CardSlider
+                        variant="tilt"
+                        :value="tiltSliderValue"
+                        :disabled="!isOperable"
+                        aria-label="Tilt"
+                        @input="onTiltInput"
+                        @change="onTiltChange"
+                    />
+                    <div v-if="tiltDisplay" class="ec-sld-val">{{ tiltDisplay }}</div>
                 </div>
 
                 <!-- Presets -->
@@ -218,6 +203,7 @@ import {useOptimisticSlider} from '@/composables/useOptimisticSlider';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
 import type {entity_t} from '@/types';
+import CardSlider from '../core/CardSlider.vue';
 import CardBadges from './CardBadges.vue';
 import CardShell from './CardShell.vue';
 
@@ -310,8 +296,9 @@ const {
     onChange: onTiltChange
 } = useOptimisticSlider(tiltAngle, coverSetTilt);
 
-const posDisplay = computed(() => {
-    if (status.value?.current_pos == null && !isMoving.value) return '—';
+// An uncalibrated cover reports no position — null so no "—%" is drawn.
+const posDisplay = computed<string | null>(() => {
+    if (status.value?.current_pos == null && !isMoving.value) return null;
     return String(Math.round(posSliderValue.value));
 });
 
@@ -336,8 +323,8 @@ const powerUnit = computed(() => {
     return w != null && w >= 1000 ? 'kW' : 'W';
 });
 
-const tiltDisplay = computed(() => {
-    if (status.value?.slat_pos == null) return '—';
+const tiltDisplay = computed<string | null>(() => {
+    if (status.value?.slat_pos == null) return null;
     return `${Math.round(tiltSliderValue.value)}%`;
 });
 
@@ -376,9 +363,8 @@ function coverSetTilt(slat_pos: number) {
 
 <style scoped>
 /* Compact shutter tiles (1×1 + 2×1): a big position number that sits dead-centre.
-   The % unit is pulled out of the flow (absolute, to the number's right) and
-   shrunk, so the NUMBER centres — not the number+unit pair. Scoped data-v wins
-   over the shared cover rules. */
+   The % unit is pulled out of the flow (absolute, to the number's right) so the
+   NUMBER centres — not the number+unit pair. Its size stays with .ec-u. */
 .ec[data-type='cover'].ec-wide .ec-cpos,
 .ec[data-type='cover']:not(.ec-wide):not(.ec-hero) .ec-cpos {
     position: relative;
@@ -398,7 +384,6 @@ function coverSetTilt(slat_pos: number) {
     left: 100%;
     bottom: 0.12em;
     margin-left: 3px;
-    font-size: var(--type-subheading);
 }
 /* Watts (2×1) a touch larger; shown only while moving. */
 .ec[data-type='cover'].ec-wide .ec-sub--power {

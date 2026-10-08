@@ -1,0 +1,79 @@
+[
+    {
+        "id": "flow-energy",
+        "type": "tab",
+        "label": "Hourly energy rollup",
+        "disabled": false,
+        "info": "Every hour, sums active energy of the last hour and stores it in the FM variable lastHourActiveEnergy."
+    },
+    {
+        "id": "fm-server-energy",
+        "type": "fm-server",
+        "name": "Fleet Manager",
+        "baseUrl": "",
+        "wsUrl": ""
+    },
+    {
+        "id": "hourly-tick",
+        "type": "inject",
+        "z": "flow-energy",
+        "name": "Every hour",
+        "props": [],
+        "repeat": "3600",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 150,
+        "y": 200,
+        "wires": [["last-hour-window"]]
+    },
+    {
+        "id": "last-hour-window",
+        "type": "function",
+        "z": "flow-energy",
+        "name": "Last hour window",
+        "func": "const to = new Date();\nconst from = new Date(to.getTime() - 3600 * 1000);\nmsg.params = {\n    from: from.toISOString(),\n    to: to.toISOString(),\n    tags: ['total_act_energy'],\n    bucket: '1 hour'\n};\nreturn msg;",
+        "outputs": 1,
+        "x": 330,
+        "y": 200,
+        "wires": [["query-energy"]]
+    },
+    {
+        "id": "query-energy",
+        "type": "fm-energy",
+        "z": "flow-energy",
+        "name": "energy.Query",
+        "server": "fm-server-energy",
+        "operation": "energy.Query",
+        "paramsSource": "msg.params",
+        "paramsJson": "{}",
+        "x": 520,
+        "y": 200,
+        "wires": [["sum-energy"]]
+    },
+    {
+        "id": "sum-energy",
+        "type": "function",
+        "z": "flow-energy",
+        "name": "Sum and build variables.Set",
+        "func": "const items = (msg.payload && msg.payload.items) || [];\nconst total = items.reduce((sum, item) => sum + (Number(item.value) || 0), 0);\nmsg.params = {key: 'lastHourActiveEnergy', value: String(total)};\nreturn msg;",
+        "outputs": 1,
+        "x": 730,
+        "y": 200,
+        "wires": [["store-variable"]]
+    },
+    {
+        "id": "store-variable",
+        "type": "fm-variable",
+        "z": "flow-energy",
+        "name": "Store lastHourActiveEnergy",
+        "server": "fm-server-energy",
+        "operation": "variables.Set",
+        "paramsSource": "msg.params",
+        "paramsJson": "{}",
+        "x": 960,
+        "y": 200,
+        "wires": [[]]
+    }
+]

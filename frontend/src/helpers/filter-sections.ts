@@ -243,7 +243,7 @@ export function deviceClassSection(
 ): FilterSection {
     return enumSection(
         'source',
-        'Class',
+        'Device type',
         'fa-shapes',
         counts,
         (k) => DEVICE_TYPE_LABELS[k]

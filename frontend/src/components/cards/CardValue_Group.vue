@@ -552,7 +552,6 @@ const policyBadges = computed<PolicyBadge[]>(() => {
 .gc-1x1 {
     height: var(--grid-cell, 200px);
     background: var(--glass-1-bg);
-    -webkit-backdrop-filter: var(--glass-1-filter);
     backdrop-filter: var(--glass-1-filter);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);

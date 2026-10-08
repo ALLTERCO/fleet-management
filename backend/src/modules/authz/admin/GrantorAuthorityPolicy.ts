@@ -22,6 +22,7 @@ export type GrantorCredentialOperation =
 export interface GrantorAuthorityRule {
     grantorPersona: GrantorPersona;
     grantablePersonas: readonly string[];
+    canGrantCustomPersonas: boolean;
     grantableScopeTypes: readonly GrantorScopeType[];
     principalKinds: readonly AssignmentSubjectType[];
     canGrantServiceUsers: boolean;
@@ -32,6 +33,7 @@ export interface GrantorAuthorityRule {
 export interface GrantorAuthorityPolicyRequest {
     grantorPersonas: readonly GrantorPersona[];
     personaKey: string;
+    personaIsSystemManaged: boolean;
     scope: AssignmentScope;
     subjectType: AssignmentSubjectType;
 }
@@ -109,6 +111,7 @@ function createFullGrantorRule(
     return {
         grantorPersona,
         grantablePersonas: AUTHZ_SYSTEM_PERSONA_KEYS,
+        canGrantCustomPersonas: true,
         grantableScopeTypes: ALL_SCOPE_TYPES,
         principalKinds: ['user', 'user_group'],
         canGrantServiceUsers: true,
@@ -133,7 +136,9 @@ function ruleAllowsAssignment(
     scopeTypes: readonly GrantorScopeType[]
 ): boolean {
     return (
-        rule.grantablePersonas.includes(request.personaKey) &&
+        (request.personaIsSystemManaged
+            ? rule.grantablePersonas.includes(request.personaKey)
+            : rule.canGrantCustomPersonas) &&
         rule.principalKinds.includes(request.subjectType) &&
         scopeTypes.every((scopeType) =>
             rule.grantableScopeTypes.includes(scopeType)

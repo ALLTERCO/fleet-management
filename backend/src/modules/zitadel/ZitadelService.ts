@@ -28,11 +28,16 @@ import {makeJwtServiceTokenSource} from './serviceAuth';
 import * as brandingClient from './zitadelBrandingClient';
 import * as emailClient from './zitadelEmailClient';
 import {
+    makeZitadelErrorReference,
+    zitadelRefusalError
+} from './zitadelErrorMap';
+import {
     type FleetProjectRef,
     type FleetUserMetadata,
     METADATA_KEYS,
     normalizeUser,
     type ZitadelHttpContext,
+    type ZitadelRequestOptions,
     type ZitadelUser,
     type ZitadelV2User
 } from './zitadelHttp';
@@ -209,7 +214,7 @@ class ZitadelService implements ZitadelHttpContext {
         method: string,
         path: string,
         body?: unknown,
-        opts: {orgId?: string} = {}
+        opts: ZitadelRequestOptions = {}
     ): Promise<T> {
         const token = await this.getServiceToken();
         const timeoutMs = zitadelHttpTimeoutMs();
@@ -255,10 +260,13 @@ class ZitadelService implements ZitadelHttpContext {
             const text = await response.text();
             const safeText =
                 sanitizeErrorMessageForPersistence(text, 4_000) ?? '';
+            // The reference is the only thing a caller sees of this line.
+            const reference = makeZitadelErrorReference();
             logger.error(
-                'Zitadel API error [%s %s]: %s',
+                'Zitadel API error [%s %s] ref=%s: %s',
                 method,
                 path,
+                reference,
                 safeText
             );
             if (response.status === 401 || response.status === 403) {
@@ -268,8 +276,13 @@ class ZitadelService implements ZitadelHttpContext {
                 throw RpcError.NotFound('zitadel', path);
             }
             if (response.status >= 400 && response.status < 500) {
-                throw RpcError.InvalidParams(
-                    `Zitadel rejected request: ${safeText}`
+                throw zitadelRefusalError(
+                    {
+                        status: response.status,
+                        body: safeText,
+                        reference
+                    },
+                    opts.refusalContext
                 );
             }
             throw RpcError.Unavailable(
@@ -355,6 +368,19 @@ class ZitadelService implements ZitadelHttpContext {
         return userClient.getUserMetadata(this, userId);
     }
 
+    async listProjectRoleKeysByUser(
+        userIds: string[],
+        restrictToOrgId?: string
+    ): Promise<Map<string, string[]>> {
+        const projectId = await this.getFleetProjectId();
+        return userClient.listProjectRoleKeysByUser(
+            this,
+            userIds,
+            projectId,
+            restrictToOrgId
+        );
+    }
+
     async getUserRoles(
         userId: string,
         restrictToOrgId?: string
@@ -411,6 +437,10 @@ class ZitadelService implements ZitadelHttpContext {
         tenantId: string
     ): Promise<boolean> {
         return userClient.userBelongsToTenant(this, userId, tenantId);
+    }
+
+    async userAccountActive(userId: string): Promise<boolean> {
+        return userClient.userAccountActive(this, userId);
     }
 
     async createHumanUser(params: {

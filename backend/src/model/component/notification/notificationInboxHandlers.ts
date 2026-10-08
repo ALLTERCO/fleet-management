@@ -3,14 +3,21 @@
 import * as AlertEvents from '../../../modules/AlertEvents';
 import {deriveInboxAvailableActions} from '../../../modules/notificationInboxModel';
 import * as PostgresProvider from '../../../modules/PostgresProvider';
+import {jsonbParam} from '../../../modules/postgresJsonb';
+import {
+    isMicrosecondTimeIdKey,
+    keysetListPage,
+    keysetPageRequest
+} from '../../../rpc/keysetPage';
 import {buildListResponse} from '../../../rpc/listResponse';
 import {toIso} from '../../../rpc/pgRows';
 import RpcError from '../../../rpc/RpcError';
 import {requireOrganizationId} from '../../../rpc/scope';
 import {validateOrThrow} from '../../../rpc/validateOrThrow';
-import type {AlertRuleKind, AlertScopeType} from '../../../types/api/alert';
+import type {AlertRuleKind, AlertSourceType} from '../../../types/api/alert';
 import {
     type InboxState,
+    NOTIFICATION_INBOX_GET_MANY_PARAMS_SCHEMA,
     NOTIFICATION_INBOX_GET_PARAMS_SCHEMA,
     NOTIFICATION_INBOX_LIST_PARAMS_SCHEMA,
     NOTIFICATION_INBOX_MARK_ALL_READ_PARAMS_SCHEMA,
@@ -18,6 +25,7 @@ import {
     NOTIFICATION_INBOX_MARK_UNREAD_PARAMS_SCHEMA,
     NOTIFICATION_LIST_TOKENS_PARAMS_SCHEMA,
     NOTIFICATION_SUBSCRIBE_PARAMS_SCHEMA,
+    type NotificationInboxGetManyResult,
     type NotificationInboxItem,
     type NotificationKind
 } from '../../../types/api/notification';
@@ -31,7 +39,7 @@ interface InboxRow {
     kind: NotificationKind;
     state: InboxState;
     alert_id: number | null;
-    source_subject_type: AlertScopeType | null;
+    source_subject_type: AlertSourceType | null;
     source_subject_id: string | null;
     title: string;
     message: string;
@@ -43,7 +51,10 @@ interface InboxRow {
     alert_silenced_until: Date | string | null;
 }
 
-type InboxListRow = Partial<InboxRow> & {total_count?: number | string};
+type InboxListRow = Partial<InboxRow> & {
+    total_count?: number | string | null;
+    cursor_key?: unknown;
+};
 
 function toStringArray(value: unknown): string[] {
     if (Array.isArray(value)) {
@@ -243,37 +254,66 @@ export async function listInbox(params: unknown, sender: CommandSender) {
         query?: string;
         limit?: number;
         offset?: number;
+        cursor?: string;
     }>(params, NOTIFICATION_INBOX_LIST_PARAMS_SCHEMA);
     const organizationId = requireOrganizationId(sender, p);
     const userId = requireAuthenticatedUser(sender);
-    const limit = p.limit ?? 200;
-    const offset = p.offset ?? 0;
+    const page = keysetPageRequest(p, {
+        defaultLimit: 200,
+        isKey: isMicrosecondTimeIdKey
+    });
 
     try {
         const result = await PostgresProvider.callMethod(
-            'notifications.fn_notification_inbox_list',
+            'notifications.fn_notification_inbox_page',
             {
                 p_organization_id: organizationId,
                 p_user_id: userId,
                 p_state: p.state ?? null,
                 p_kind: p.kind ?? null,
                 p_query: p.query?.trim() || null,
-                p_limit: limit,
-                p_offset: offset
+                p_limit: page.fetchLimit,
+                p_offset: page.offset,
+                p_after: page.after ? jsonbParam(page.after) : null,
+                p_skip_total: page.after !== null
             }
         );
-        const rows = (result?.rows ?? []) as InboxListRow[];
-        const total = rows.length > 0 ? Number(rows[0].total_count ?? 0) : 0;
-        const items: NotificationInboxItem[] = [];
-
-        for (const row of rows) {
-            if (row.id == null) continue;
-            items.push(rowToInboxItem(row as InboxRow));
-        }
-
-        return buildListResponse(items, total, limit, offset);
+        return keysetListPage((result?.rows ?? []) as InboxListRow[], {
+            page,
+            isRow: (row) => row.id != null,
+            toItem: (row) => rowToInboxItem(row as InboxRow)
+        });
     } catch (err: unknown) {
         throw RpcError.OperationFailed('Notification.Inbox.List', err);
+    }
+}
+
+// Only the caller's own items: the recipient is the authorization.
+export async function getInboxMany(
+    params: unknown,
+    sender: CommandSender
+): Promise<NotificationInboxGetManyResult> {
+    const p = validateOrThrow<{organizationId?: string; ids: number[]}>(
+        params,
+        NOTIFICATION_INBOX_GET_MANY_PARAMS_SCHEMA
+    );
+    const organizationId = requireOrganizationId(sender, p);
+    const userId = requireAuthenticatedUser(sender);
+
+    try {
+        const result = await PostgresProvider.callMethod(
+            'notifications.fn_notification_inbox_get_many',
+            {
+                p_organization_id: organizationId,
+                p_user_id: userId,
+                p_ids: p.ids
+            }
+        );
+        const items = ((result?.rows ?? []) as InboxRow[]).map(rowToInboxItem);
+        const found = new Set(items.map((item) => item.id));
+        return {items, missingIds: p.ids.filter((id) => !found.has(id))};
+    } catch (err: unknown) {
+        throw RpcError.OperationFailed('Notification.Inbox.GetMany', err);
     }
 }
 

@@ -1,23 +1,10 @@
-import crypto from 'node:crypto';
 import * as fsAsync from 'node:fs/promises';
 import * as path from 'node:path';
 import express from 'express';
 import log4js from 'log4js';
 import multer from 'multer';
 import {tuning} from '../../../config';
-import {
-    computeSha256,
-    FIRMWARE_LIBRARY_REGISTRY,
-    type FirmwareLibraryItem,
-    firmwareLibraryPath,
-    invalidateFirmwareLibraryCache,
-    moveUploadedFirmwareFile,
-    parseTags,
-    registerTemporaryFirmwareFile,
-    sanitizeOptionalText,
-    temporaryFirmwareUploadsPath
-} from '../../firmwareLibrary';
-import * as Registry from '../../Registry';
+import {processFirmwareUpload} from '../../uploads/fileTransfer';
 import {consumeUploadTicket} from '../../uploadTickets';
 import {bestEffort} from '../../util/fireAndForget';
 import {httpRouteLimit} from '../rateLimit';
@@ -71,87 +58,40 @@ router.post(
             return;
         }
 
-        const safeBase = path
-            .basename(originalName, ext)
-            .replace(/[^a-zA-Z0-9._-]+/g, '_')
-            .slice(0, 80);
-        const retention =
-            req.body?.retention === 'library' ? 'library' : 'temporary';
-        const fileName = `${safeBase || 'firmware'}-${Date.now()}${ext}`;
-        const destPath = path.join(
-            retention === 'library'
-                ? firmwareLibraryPath
-                : temporaryFirmwareUploadsPath,
-            fileName
-        );
-        let promotedDest = false;
-        let stored = false;
-
         try {
-            await moveUploadedFirmwareFile(file.path, destPath);
-            promotedDest = true;
-            if (retention === 'library') {
-                const id = crypto.randomUUID();
-                const checksum = await computeSha256(destPath);
-                const item: FirmwareLibraryItem = {
-                    id,
-                    name:
-                        sanitizeOptionalText(req.body?.name) ||
-                        path.basename(originalName, ext),
-                    originalFileName: originalName,
-                    storedFileName: fileName,
-                    uploadedAt: Date.now(),
-                    uploadedBy: req.user?.username || 'unknown',
-                    fileSize: req.file?.size || 0,
-                    checksum,
-                    app: sanitizeOptionalText(req.body?.app),
-                    model: sanitizeOptionalText(req.body?.model),
-                    ver: sanitizeOptionalText(req.body?.ver),
-                    fwId: sanitizeOptionalText(req.body?.fwId),
+            const result = await processFirmwareUpload({
+                tempPath: file.path,
+                originalName,
+                sizeBytes: file.size,
+                uploadedBy: req.user?.username || 'unknown',
+                options: {
+                    retention:
+                        req.body?.retention === 'library'
+                            ? 'library'
+                            : 'temporary',
+                    name: req.body?.name,
+                    app: req.body?.app,
+                    model: req.body?.model,
+                    ver: req.body?.ver,
+                    fwId: req.body?.fwId,
                     channel:
                         req.body?.channel === 'stable' ||
                         req.body?.channel === 'beta' ||
                         req.body?.channel === 'custom'
                             ? req.body.channel
                             : undefined,
-                    tags: parseTags(req.body?.tags)
-                };
-
-                await Registry.addToRegistry(
-                    FIRMWARE_LIBRARY_REGISTRY,
-                    id,
-                    item
-                );
-                invalidateFirmwareLibraryCache();
-                stored = true;
-
-                res.json({success: true, fileName, item});
-                return;
-            }
-
-            const token = registerTemporaryFirmwareFile(destPath, fileName, {
-                deleteOnExpire: true
+                    tags: req.body?.tags
+                }
             });
-            stored = true;
-            res.json({
-                success: true,
-                fileName,
-                url: `/media/firmware-file/${token}`
-            });
+            res.json({success: true, ...result});
         } catch (err) {
-            if (promotedDest && !stored) {
-                await bestEffort(
-                    'unlink.firmware-upload-dest',
-                    fsAsync.unlink(destPath)
-                );
-            } else if (!promotedDest) {
-                await bestEffort(
-                    'unlink.firmware-upload-temp',
-                    fsAsync.unlink(file.path)
-                );
-            }
             logger.error('Firmware file upload failed: %s', err);
             res.status(500).json({error: 'Failed to store firmware file'});
+        } finally {
+            await bestEffort(
+                'unlink.firmware-upload-temp',
+                fsAsync.unlink(file.path)
+            );
         }
     }
 );

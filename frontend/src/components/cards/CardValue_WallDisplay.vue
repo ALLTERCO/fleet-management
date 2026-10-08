@@ -15,13 +15,13 @@
         <template #default>
             <div class="wd-1x1">
                 <div class="wd-temps">
-                    <div class="wd-temp-item">
-                        <div class="wd-temp-v">{{ targetDisplay }}°</div>
+                    <div v-if="targetDisplay" class="wd-temp-item">
+                        <div class="wd-temp-v">{{ targetDisplay }}<span class="ec-u ec-u--sm ec-u--sup">°</span></div>
                         <div class="wd-temp-l">Target</div>
                     </div>
-                    <div class="wd-sep" />
-                    <div class="wd-temp-item">
-                        <div class="wd-temp-v">{{ currentDisplay }}°</div>
+                    <div v-if="targetDisplay && currentDisplay" class="wd-sep" />
+                    <div v-if="currentDisplay" class="wd-temp-item">
+                        <div class="wd-temp-v">{{ currentDisplay }}<span class="ec-u ec-u--sm ec-u--sup">°</span></div>
                         <div class="wd-temp-l">Current</div>
                     </div>
                 </div>
@@ -56,8 +56,8 @@
         <template #default>
             <div class="wd-wide">
                 <div class="wd-wide-left">
-                    <div class="wd-target">{{ targetDisplay }}<span>°</span></div>
-                    <div class="wd-cur-sm">{{ currentDisplay }}° current</div>
+                    <div v-if="targetDisplay" class="wd-target">{{ targetDisplay }}<span class="ec-u ec-u--sup">°</span></div>
+                    <div v-if="currentDisplay" class="wd-cur-sm">{{ currentDisplay }}° current</div>
                     <div class="wd-state">
                         <i :class="stateIcon" :style="{color: stateColor}" />
                         <span class="wd-state-label" :style="{color: stateColor}">{{ stateLabel }}</span>
@@ -102,12 +102,12 @@
     >
         <template #default>
             <div class="wd-hero-temps">
-                <div class="wd-hero-set">
-                    <div class="wd-hero-set-v">{{ targetDisplay }}<span>°</span></div>
+                <div v-if="targetDisplay" class="wd-hero-set">
+                    <div class="wd-hero-set-v">{{ targetDisplay }}<span class="ec-u ec-u--sup">°</span></div>
                     <div class="wd-hero-set-l">TARGET</div>
                 </div>
-                <div class="wd-hero-now">
-                    <div class="wd-hero-now-v">{{ currentDisplay }}<span>°</span></div>
+                <div v-if="currentDisplay" class="wd-hero-now">
+                    <div class="wd-hero-now-v">{{ currentDisplay }}<span class="ec-u ec-u--sm ec-u--sup">°</span></div>
                     <div class="wd-hero-now-l">CURRENT</div>
                 </div>
             </div>
@@ -219,11 +219,12 @@ const lux = computed(
 
 // ── Display helpers (answer, don't do) ───────────────────────────────────
 
-const targetDisplay = computed(() =>
-    target.value != null ? target.value.toFixed(1) : '—'
+// null, not a dash — the degree sign never renders without a temperature.
+const targetDisplay = computed<string | null>(() =>
+    target.value != null ? target.value.toFixed(1) : null
 );
-const currentDisplay = computed(() =>
-    current.value != null ? current.value.toFixed(1) : '—'
+const currentDisplay = computed<string | null>(() =>
+    current.value != null ? current.value.toFixed(1) : null
 );
 const modeLabel = computed(() =>
     thermoType.value === 'cooling' ? 'Cool' : 'Heat'
@@ -313,7 +314,6 @@ function decreaseTarget() {
     flex: 0 0 42%; gap: var(--space-1);
 }
 .wd-target { font-size: var(--type-heading); font-weight: 800; letter-spacing: -2px; line-height: 1; color: var(--color-text-primary); }
-.wd-target span { font-size: var(--type-body); font-weight: 600; color: var(--color-text-tertiary); }
 .wd-cur-sm { font-size: var(--type-body); font-weight: 600; color: var(--color-text-tertiary); }
 .wd-wide-right {
     flex: 1; display: flex; flex-direction: column; justify-content: center;
@@ -372,11 +372,9 @@ function decreaseTarget() {
 }
 .wd-hero-set { text-align: center; }
 .wd-hero-set-v { font-size: var(--type-heading); font-weight: 800; letter-spacing: -3px; line-height: 1; color: var(--color-text-primary); }
-.wd-hero-set-v span { font-size: var(--type-subheading); font-weight: 600; color: var(--color-text-tertiary); }
 .wd-hero-set-l { font-size: var(--type-body); font-weight: 700; color: var(--color-text-quaternary); letter-spacing: .05em; margin-top: var(--space-1); }
 .wd-hero-now { text-align: center; }
 .wd-hero-now-v { font-size: var(--type-subheading); font-weight: 700; letter-spacing: -1.5px; line-height: 1; color: var(--color-text-secondary); }
-.wd-hero-now-v span { font-size: var(--type-body); font-weight: 600; color: var(--color-text-tertiary); }
 .wd-hero-now-l { font-size: var(--type-body); font-weight: 700; color: var(--color-text-quaternary); letter-spacing: .05em; margin-top: var(--space-1); }
 
 .wd-hero-controls {

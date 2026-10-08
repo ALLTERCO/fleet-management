@@ -1,10 +1,14 @@
+import {randomUUID} from 'node:crypto';
 import {tuning} from '../../config/tuning';
 import {readFmCaCertificatePem} from '../../modules/certificate/fmCaSigner';
 import {
     type DeviceIngressAuditKind,
     logDeviceIngressAudit
 } from '../../modules/deviceIngress/audit';
-import {availableAuthMethods} from '../../modules/deviceIngress/authMethods';
+import {
+    availableAuthMethods,
+    deviceKeysChecked
+} from '../../modules/deviceIngress/authMethods';
 import {createCertificateCredential} from '../../modules/deviceIngress/certificateCredentials';
 import {
     getConfigTemplate,
@@ -12,23 +16,32 @@ import {
 } from '../../modules/deviceIngress/configTemplates';
 import {
     closeConnection,
+    closeCredentialConnections,
     closeIdentityConnections
 } from '../../modules/deviceIngress/connectionRegistry';
 import * as repository from '../../modules/deviceIngress/deviceIngressRepository';
-import {invalidateIdentity} from '../../modules/deviceIngress/deviceTrustCache';
+import {
+    invalidateCredential,
+    invalidateIdentity
+} from '../../modules/deviceIngress/deviceTrustCache';
 import {createEnrollmentToken} from '../../modules/deviceIngress/enrollmentTokens';
+import {assertIdentityTransition} from '../../modules/deviceIngress/identityState';
 import {
     recordCertificateBindingMetric,
     recordProvisioningSessionMetric,
     recordTokenRotationMetric
 } from '../../modules/deviceIngress/metrics';
 import {createSetupPlan} from '../../modules/deviceIngress/provisioningPlan';
+import {requirePublicWsBaseUrl} from '../../modules/deviceIngress/publicWsBaseUrl';
 import {enforceDeviceIngressRateLimit} from '../../modules/deviceIngress/rateLimits';
 import {resolveRejection} from '../../modules/deviceIngress/rejections';
 import {
     riskForIngress,
     riskMatchesIngress
 } from '../../modules/deviceIngress/riskPolicy';
+import type {RotationCandidate} from '../../modules/deviceIngress/rotationJobRepository';
+import * as rotationJobRepository from '../../modules/deviceIngress/rotationJobRepository';
+import {ROTATION_JOB_CANCELLABLE_STATES} from '../../modules/deviceIngress/rotationJobState';
 import {
     attachCertificateInstallMaterial,
     type CertificateInstallMaterial
@@ -44,13 +57,14 @@ import {buildListResponse} from '../../rpc/listResponse';
 import RpcError from '../../rpc/RpcError';
 import {requireOrganizationId} from '../../rpc/scope';
 import {validateOrThrow} from '../../rpc/validateOrThrow';
-import type {CertificateResponse} from '../../types/api/certificate';
+import type {CertificateImportedResponse} from '../../types/api/certificate';
 import {
     DEVICE_INGRESS_CONNECTION_DISCONNECT_PARAMS_SCHEMA,
     DEVICE_INGRESS_CONNECTION_GET_PARAMS_SCHEMA,
     DEVICE_INGRESS_CONNECTION_LIST_PARAMS_SCHEMA,
     DEVICE_INGRESS_CREDENTIAL_CREATE_TOKEN_PARAMS_SCHEMA,
     DEVICE_INGRESS_CREDENTIAL_ID_PARAMS_SCHEMA,
+    DEVICE_INGRESS_CREDENTIAL_LIST_EXPIRING_PARAMS_SCHEMA,
     DEVICE_INGRESS_CREDENTIAL_ROTATE_PARAMS_SCHEMA,
     DEVICE_INGRESS_DESCRIBE,
     DEVICE_INGRESS_EMPTY_PARAMS_SCHEMA,
@@ -62,6 +76,8 @@ import {
     DEVICE_INGRESS_IDENTITY_UPDATE_PARAMS_SCHEMA,
     DEVICE_INGRESS_REJECTION_LIST_PARAMS_SCHEMA,
     DEVICE_INGRESS_REJECTION_RESOLVE_PARAMS_SCHEMA,
+    DEVICE_INGRESS_ROTATION_LIST_PARAMS_SCHEMA,
+    DEVICE_INGRESS_ROTATION_START_PARAMS_SCHEMA,
     DEVICE_INGRESS_SETUP_BUNDLE_PARAMS_SCHEMA,
     DEVICE_INGRESS_SETUP_PLAN_PARAMS_SCHEMA,
     DEVICE_INGRESS_SETUP_REPORT_APPLY_PARAMS_SCHEMA,
@@ -70,15 +86,19 @@ import {
     type DeviceIngressConnectionListParams,
     type DeviceIngressCredentialCreateTokenParams,
     type DeviceIngressCredentialIdParams,
+    type DeviceIngressCredentialListExpiringParams,
     type DeviceIngressCredentialRotateParams,
     type DeviceIngressEnrollmentTokenCreateParams,
     type DeviceIngressEnrollmentTokenRevokeParams,
     type DeviceIngressIdentityCreateParams,
     type DeviceIngressIdentityGetParams,
     type DeviceIngressIdentityListParams,
+    type DeviceIngressIdentityState,
     type DeviceIngressIdentityUpdateParams,
     type DeviceIngressRejectionListParams,
     type DeviceIngressRejectionResolveParams,
+    type DeviceIngressRotationListParams,
+    type DeviceIngressRotationStartParams,
     type DeviceIngressSetupBundleParams,
     type DeviceIngressSetupPlanParams,
     type DeviceIngressSetupReportApplyParams
@@ -90,8 +110,14 @@ import Component from './Component';
 
 const DEVICE_INGRESS_COLLECTION = () => undefined;
 
+const IDENTITY_ENABLE_FROM_STATES: readonly DeviceIngressIdentityState[] = [
+    'pending',
+    'disabled'
+];
+
 interface DeviceIngressDeps {
     repository: typeof repository;
+    rotationJobs: typeof rotationJobRepository;
     certificates: DeviceIngressCertificateIssuer;
     certificateCredentials?: DeviceIngressCertificateCredentialFactory;
     readUserCaPem: () => string;
@@ -101,15 +127,15 @@ interface DeviceIngressCertificateIssuer {
     signCsr(
         params: unknown,
         sender: CommandSender
-    ): Promise<CertificateResponse>;
+    ): Promise<CertificateImportedResponse>;
     issueDeviceCert(
         params: unknown,
         sender: CommandSender
-    ): Promise<CertificateResponse>;
+    ): Promise<CertificateImportedResponse>;
     issueProvisioningDeviceCert(
         params: unknown,
         sender: CommandSender
-    ): Promise<CertificateResponse>;
+    ): Promise<CertificateImportedResponse>;
     export(
         params: unknown,
         sender: CommandSender
@@ -134,6 +160,7 @@ interface DeviceIngressCertificateCredentialFactory {
 
 const defaultDeps: DeviceIngressDeps = {
     repository,
+    rotationJobs: rotationJobRepository,
     certificates: new CertificateComponent(),
     readUserCaPem: readFmCaCertificatePem
 };
@@ -149,6 +176,7 @@ export default class DeviceIngressComponent extends Component {
         });
         this.deps = {
             repository: deps.repository ?? defaultDeps.repository,
+            rotationJobs: deps.rotationJobs ?? defaultDeps.rotationJobs,
             certificates: deps.certificates ?? defaultDeps.certificates,
             certificateCredentials: deps.certificateCredentials,
             readUserCaPem: deps.readUserCaPem ?? defaultDeps.readUserCaPem
@@ -187,7 +215,13 @@ export default class DeviceIngressComponent extends Component {
             params,
             DEVICE_INGRESS_EMPTY_PARAMS_SCHEMA
         );
-        return availableAuthMethods(tuning.deviceIngress.enforcementMode);
+        return {
+            ...availableAuthMethods(tuning.deviceIngress.enforcementMode),
+            keysChecked: deviceKeysChecked({
+                enabled: tuning.deviceIngress.enabled,
+                enforcementMode: tuning.deviceIngress.enforcementMode
+            })
+        };
     }
 
     @Component.Expose('Identity.Create')
@@ -250,6 +284,43 @@ export default class DeviceIngressComponent extends Component {
             riskLevel: identity.riskLevel
         });
         return identity;
+    }
+
+    @Component.Expose('Identity.Enable')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
+    async enableIdentity(params: unknown, sender: CommandSender) {
+        await this.limitMutation(sender, 'Identity.Enable');
+        const p = validateOrThrow<DeviceIngressIdentityGetParams>(
+            params,
+            DEVICE_INGRESS_IDENTITY_GET_PARAMS_SCHEMA
+        );
+        const organizationId = requireOrganizationId(sender);
+        const current = await this.deps.repository.getIdentity({
+            organizationId,
+            id: p.id
+        });
+        if (!current) throw RpcError.NotFound('deviceIngress.identity', p.id);
+        if (current.status === 'active') {
+            return {success: true, identity: current};
+        }
+        if (!IDENTITY_ENABLE_FROM_STATES.includes(current.status)) {
+            throw identityEnableConflict(p.id, current.status);
+        }
+        assertIdentityTransition({from: current.status, to: 'active'});
+        const identity = await this.deps.repository.updateIdentityStatusFrom({
+            organizationId,
+            id: p.id,
+            from: current.status,
+            to: 'active'
+        });
+        // A null row means the status moved after we read it; never retry blindly.
+        if (!identity) throw identityEnableConflict(p.id, current.status);
+        await invalidateIdentity(identity.id);
+        await this.audit(sender, 'identity_enabled', identity.id, {
+            previousStatus: current.status,
+            status: identity.status
+        });
+        return {success: true, identity};
     }
 
     @Component.Expose('Identity.Disable')
@@ -490,6 +561,25 @@ export default class DeviceIngressComponent extends Component {
     }
 
     @Component.NoAudit
+    @Component.Expose('Credential.ListExpiring')
+    @Component.CrudPermission('devices', 'read', DEVICE_INGRESS_COLLECTION)
+    async listExpiringCredentials(params: unknown, sender: CommandSender) {
+        const p = validateOrThrow<DeviceIngressCredentialListExpiringParams>(
+            params,
+            DEVICE_INGRESS_CREDENTIAL_LIST_EXPIRING_PARAMS_SCHEMA
+        );
+        const limit = p.limit ?? defaultListLimit();
+        const offset = p.offset ?? 0;
+        const page = await this.deps.repository.listExpiringCredentials({
+            organizationId: requireOrganizationId(sender),
+            withinDays: p.days ?? tuning.deviceIngress.credentialExpiryWarnDays,
+            limit,
+            offset
+        });
+        return buildListResponse(page.items, page.total, limit, offset);
+    }
+
+    @Component.NoAudit
     @Component.Expose('Connection.List')
     @Component.CrudPermission('devices', 'read', DEVICE_INGRESS_COLLECTION)
     async listConnections(params: unknown, sender: CommandSender) {
@@ -691,6 +781,115 @@ export default class DeviceIngressComponent extends Component {
             applyMethod: session.applyMethod
         });
         return {success: true, session};
+    }
+
+    @Component.Expose('Rotation.Start')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
+    @Component.RateLimit('expensive')
+    async startRotation(params: unknown, sender: CommandSender) {
+        await this.limitMutation(sender, 'Rotation.Start');
+        const p = validateOrThrow<DeviceIngressRotationStartParams>(
+            params,
+            DEVICE_INGRESS_ROTATION_START_PARAMS_SCHEMA
+        );
+        // The schema documents uniqueItems but the validator does not enforce it,
+        // and a repeated id would open two jobs for one device.
+        const identityIds = [...new Set(p.identityIds)];
+        if (identityIds.length > tuning.deviceIngress.rotationBatchMax) {
+            throw RpcError.InvalidParams(
+                `at most ${tuning.deviceIngress.rotationBatchMax} identities per batch`
+            );
+        }
+        // Every job hands the device a new address; an unconfigured deployment
+        // must fail at the operator, not once per minted key.
+        requirePublicWsBaseUrl();
+        const organizationId = requireOrganizationId(sender);
+        const candidates = await this.deps.rotationJobs.findRotationCandidates({
+            organizationId,
+            identityIds
+        });
+        assertRotationCandidates(candidates);
+        const batchId = randomUUID();
+        const jobs = await this.deps.rotationJobs.createRotationBatch({
+            organizationId,
+            batchId,
+            createdBy: actorFor(sender),
+            jobs: candidates.map((c) => ({
+                identityId: c.identityId,
+                oldCredentialId: c.activeTokenCredentialId as string
+            }))
+        });
+        await this.audit(sender, 'rotation_batch_started', batchId, {
+            identityIds,
+            jobCount: jobs.length
+        });
+        return {batchId, jobs};
+    }
+
+    @Component.NoAudit
+    @Component.Expose('Rotation.List')
+    @Component.CrudPermission('devices', 'read', DEVICE_INGRESS_COLLECTION)
+    async listRotation(params: unknown, sender: CommandSender) {
+        const p = validateOrThrow<DeviceIngressRotationListParams>(
+            params,
+            DEVICE_INGRESS_ROTATION_LIST_PARAMS_SCHEMA
+        );
+        const limit = p.limit ?? defaultListLimit();
+        const offset = p.offset ?? 0;
+        const page = await this.deps.rotationJobs.listJobs({
+            organizationId: requireOrganizationId(sender),
+            batchId: p.batchId,
+            state: p.state,
+            limit,
+            offset
+        });
+        return buildListResponse(page.items, page.total, limit, offset);
+    }
+
+    @Component.Expose('Rotation.Cancel')
+    @Component.CrudPermission('devices', 'update', DEVICE_INGRESS_COLLECTION)
+    async cancelRotationJob(params: unknown, sender: CommandSender) {
+        await this.limitMutation(sender, 'Rotation.Cancel');
+        const p = validateOrThrow<DeviceIngressIdentityGetParams>(
+            params,
+            DEVICE_INGRESS_IDENTITY_GET_PARAMS_SCHEMA
+        );
+        const organizationId = requireOrganizationId(sender);
+        const job = await this.deps.rotationJobs.getJob({
+            organizationId,
+            id: p.id
+        });
+        if (!job) throw RpcError.NotFound('deviceIngress.rotationJob', p.id);
+        if (!ROTATION_JOB_CANCELLABLE_STATES.includes(job.state)) {
+            throw rotationJobConflict(p.id, job.state);
+        }
+        // One statement owns both rows: a job that moved first leaves the key live.
+        const cancelled = await this.deps.rotationJobs.settleJobRevokingKey({
+            jobId: job.id,
+            newCredentialId: job.newCredentialId,
+            from: ROTATION_JOB_CANCELLABLE_STATES,
+            to: 'cancelled',
+            errorCode: 'cancelled_by_operator'
+        });
+        if (!cancelled) throw rotationJobConflict(p.id, job.state);
+        if (job.newCredentialId) {
+            await invalidateCredential({
+                credentialId: job.newCredentialId,
+                identityId: job.identityId
+            });
+            closeCredentialConnections(
+                job.newCredentialId,
+                'credential_rotation_cancelled'
+            );
+        }
+        await invalidateIdentity(job.identityId);
+        await this.audit(sender, 'rotation_job_state_changed', job.identityId, {
+            jobId: job.id,
+            batchId: job.batchId,
+            from: job.state,
+            to: 'cancelled'
+        });
+        return {success: true, job: cancelled};
     }
 
     private async requireIdentity(organizationId: string, id: string) {
@@ -950,6 +1149,56 @@ function assertRiskPolicy(input: DeviceIngressIdentityCreateParams): void {
     throw RpcError.InvalidParams(
         `riskLevel must be ${riskForIngress(input)} for ${input.securityModel}/${input.transport}`
     );
+}
+
+function identityEnableConflict(
+    id: string,
+    status: DeviceIngressIdentityState
+): RpcError {
+    return RpcError.Domain('ResourceConflict', {
+        message: `ingress identity is ${status} and cannot be enabled`,
+        details: {
+            resourceType: 'deviceIngress.identity',
+            identifier: id,
+            status
+        }
+    });
+}
+
+function rotationJobConflict(id: string, state: string): RpcError {
+    return RpcError.Domain('ResourceConflict', {
+        message: `rotation job is ${state}`,
+        details: {
+            resourceType: 'deviceIngress.rotationJob',
+            identifier: id,
+            state
+        }
+    });
+}
+
+// Every identity must be active with one active token key and no open job.
+function assertRotationCandidates(candidates: RotationCandidate[]): void {
+    const blocked = candidates.filter(
+        (c) =>
+            c.identityStatus !== 'active' ||
+            !c.activeTokenCredentialId ||
+            c.hasOpenJob
+    );
+    if (blocked.length === 0) return;
+    throw RpcError.Domain('ResourceConflict', {
+        message: 'some identities cannot be rotated',
+        details: {
+            resourceType: 'deviceIngress.identity',
+            blocked: blocked.map((c) => ({
+                identityId: c.identityId,
+                reason: c.hasOpenJob
+                    ? 'already_rotating'
+                    : c.identityStatus !== 'active'
+                      ? 'identity_not_active'
+                      : 'no_active_token'
+            }))
+        }
+    });
 }
 
 function defaultListLimit(): number {

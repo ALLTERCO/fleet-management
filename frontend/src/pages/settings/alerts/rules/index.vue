@@ -3,40 +3,31 @@
         fill
         :tabs="tabs"
         v-model:search="query"
-        title="Alert Rules"
+        title="Alerts"
         :searchable="true"
-        search-placeholder="Search rules…"
+        search-placeholder="Search alerts…"
         :scope="scope"
         :filterable="true"
         :has-active-filter="activeFilterCount > 0"
         :filter-count="activeFilterCount"
         :loading="store.rulesLoading && filtered.length === 0"
         :empty="filtered.length === 0 && !store.rulesLoading"
-        :empty-title="query ? 'No rules match that search' : 'No alert rules yet'"
-        empty-sub="Alert rules define which conditions trigger which severity alerts, scoped to devices / entities / groups / locations / tags."
+        :empty-title="query ? 'No alerts match that search' : 'No alerts yet'"
+        empty-sub="An alert watches for a condition on the devices you choose, and tells the people you choose when it happens."
         :skeleton-count="3"
         @filter-click="filterModalVisible = true"
     >
         <template #actions>
-            <Button
-                v-if="canWrite"
-                type="green"
-                size="sm"
-                title="New rule"
-                aria-label="New rule"
-                @click="createVisible = true"
-            >
-                <i class="fas fa-plus" />
-            </Button>
+            <NewAlertMenu v-if="canWrite" @pick="onNewAlert" />
         </template>
 
         <template #empty-cta>
             <Button
                 v-if="canWrite && !query"
                 type="green"
-                @click="createVisible = true"
+                @click="quickVisible = true"
             >
-                Create Rule
+                Create alert
             </Button>
         </template>
 
@@ -53,6 +44,7 @@
         </div>
 
         <template #modals>
+            <QuickAlertModal v-model="quickVisible" />
             <EditAlertRuleModal
                 v-model="createVisible"
                 mode="create"
@@ -64,8 +56,8 @@
             />
             <FilterModal
                 :visible="filterModalVisible"
-                title="Filter Rules"
-                match-label="rules"
+                title="Filter alerts"
+                match-label="alerts"
                 :match-count="filtered.length"
                 :sections="filterSections"
                 :initial-state="activeFilterState"
@@ -82,9 +74,13 @@ import {type ComputedRef, computed, inject, onMounted, ref} from 'vue';
 import AlertRuleCard from '@/components/cards/AlertRuleCard.vue';
 import Button from '@/components/core/Button.vue';
 import FilterModal from '@/components/core/FilterModal.vue';
+import NewAlertMenu, {
+    type NewAlertPath
+} from '@/components/core/NewAlertMenu.vue';
 import PageTemplate from '@/components/core/PageTemplate.vue';
 import AlertRulePreviewModal from '@/components/modals/AlertRulePreviewModal.vue';
 import EditAlertRuleModal from '@/components/modals/EditAlertRuleModal.vue';
+import QuickAlertModal from '@/components/modals/QuickAlertModal.vue';
 import {useFuzzySearch} from '@/composables/useFuzzySearch';
 import {usePermissions} from '@/composables/usePermissions';
 import {
@@ -103,6 +99,14 @@ const {canWrite} = usePermissions();
 
 const query = ref('');
 const createVisible = ref(false);
+// Quick is the default way in — a built-in alert answers everything except
+// which devices and who to tell. Custom stays one click away for the rest.
+const quickVisible = ref(false);
+
+function onNewAlert(path: NewAlertPath): void {
+    if (path === 'quick') quickVisible.value = true;
+    else createVisible.value = true;
+}
 const previewVisible = ref(false);
 const previewRuleId = ref<number | null>(null);
 

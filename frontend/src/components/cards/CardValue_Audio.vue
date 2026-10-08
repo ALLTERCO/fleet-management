@@ -22,7 +22,7 @@
                 <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
             </div>
             <div class="ec-aud-track">{{ trackDisplay }}</div>
-            <div class="ec-aud-artist">{{ sourceLabel ? `${artistDisplay} · ` : '' }}<span v-if="sourceLabel" :style="{ color: sourceColor }">{{ sourceLabel }}</span><template v-else>{{ artistDisplay }}</template></div>
+            <div v-if="artistDisplay || sourceLabel" class="ec-aud-artist">{{ sourceLabel && artistDisplay ? `${artistDisplay} · ` : '' }}<span v-if="sourceLabel" :style="{ color: sourceColor }">{{ sourceLabel }}</span><template v-else>{{ artistDisplay }}</template></div>
             <div class="ec-aud-controls">
                 <button class="ec-aud-btn" :disabled="!canExecute" aria-label="Previous" @click.stop="playPrev">
                     <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
@@ -68,11 +68,11 @@
                             <div class="ec-aud-track ec-aud-track--2x1">{{ trackDisplay }}</div>
                             <span v-if="sourceLabel" class="ec-aud-source-badge" :style="{ color: sourceColor, background: sourceBg }">{{ sourceLabel }}</span>
                         </div>
-                        <div class="ec-aud-artist ec-aud-artist--2x1">{{ artistDisplay }}</div>
+                        <div v-if="artistDisplay" class="ec-aud-artist ec-aud-artist--2x1">{{ artistDisplay }}</div>
                         <div v-if="!isRadio" class="ec-aud-progress-row">
-                            <span class="ec-aud-tick">{{ elapsedDisplay }}</span>
+                            <span v-if="elapsedDisplay" class="ec-aud-tick">{{ elapsedDisplay }}</span>
                             <div class="ec-aud-progress ec-aud-progress--flex"><div class="ec-aud-progress-fill" :style="{ width: progressPct + '%' }"></div></div>
-                            <span class="ec-aud-tick">{{ durationDisplay }}</span>
+                            <span v-if="durationDisplay" class="ec-aud-tick">{{ durationDisplay }}</span>
                         </div>
                         <div v-else class="ec-aud-progress ec-aud-progress--radio ec-aud-progress--radio-2x1"><div class="ec-aud-progress-fill ec-aud-progress-fill--full"></div></div>
                     </div>
@@ -89,7 +89,7 @@
                     <button class="ec-aud-btn" :disabled="!canExecute" aria-label="Next" @click.stop="playNext">
                         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zm-3.5 6L4 6v12z"/></svg>
                     </button>
-                    <div class="ec-aud-vol ec-aud-vol--abs">
+                    <div v-if="volumeDisplay" class="ec-aud-vol ec-aud-vol--abs">
                         <svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>{{ volumeDisplay }}/10
                     </div>
                 </div>
@@ -123,9 +123,9 @@
                     <svg v-else aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="4"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>
                 </div>
                 <div class="ec-aud-hero-track">{{ trackDisplay }}</div>
-                <div class="ec-aud-hero-artist">{{ artistDisplay }}</div>
+                <div v-if="artistDisplay" class="ec-aud-hero-artist">{{ artistDisplay }}</div>
                 <div class="ec-aud-progress ec-aud-progress--hero"><div class="ec-aud-progress-fill" :style="{ width: progressPct + '%' }"></div></div>
-                <div class="ec-aud-hero-times"><span>{{ elapsedDisplay }}</span><span>{{ durationDisplay }}</span></div>
+                <div v-if="elapsedDisplay || durationDisplay" class="ec-aud-hero-times"><span>{{ elapsedDisplay }}</span><span>{{ durationDisplay }}</span></div>
                 <div class="ec-aud-controls ec-aud-controls--hero">
                     <button class="ec-aud-btn" :disabled="!canExecute" aria-label="Previous" @click.stop="playPrev">
                         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
@@ -141,7 +141,7 @@
                 <div class="ec-aud-vol-row">
                     <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/></svg>
                     <div class="ec-aud-vol-bar"><div class="ec-aud-vol-fill" :style="{ width: volumePct + '%' }"></div></div>
-                    <span class="ec-aud-vol-pct">{{ volumeDisplay }}/10</span>
+                    <span v-if="volumeDisplay" class="ec-aud-vol-pct">{{ volumeDisplay }}/10</span>
                 </div>
             </div>
         </template>
@@ -223,14 +223,14 @@ const trackDisplay = computed(() => {
     return title || 'Not playing';
 });
 
-const artistDisplay = computed(() => {
-    const artist = status.value?.playback?.media_meta?.artist;
-    return artist || '—';
-});
+// null, not a dash — a line with nothing to say is not rendered.
+const artistDisplay = computed<string | null>(
+    () => status.value?.playback?.media_meta?.artist || null
+);
 
-const volumeDisplay = computed(() => {
+const volumeDisplay = computed<string | null>(() => {
     const v = status.value?.playback?.volume;
-    return v != null ? String(v) : '—';
+    return v != null ? String(v) : null;
 });
 
 const volumePct = computed(() => {
@@ -248,8 +248,8 @@ const progressPct = computed(() => {
     return 0;
 });
 
-function formatTime(seconds: number | null | undefined): string {
-    if (seconds == null || seconds < 0) return '—';
+function formatTime(seconds: number | null | undefined): string | null {
+    if (seconds == null || seconds < 0) return null;
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${s.toString().padStart(2, '0')}`;

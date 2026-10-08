@@ -198,7 +198,11 @@ BEGIN
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION organization.fn_tariff_list_assignments(
+-- Drop before recreating: a later migration widened this function's return
+-- type, and CREATE OR REPLACE cannot change one. Restoring the older shape
+-- has to remove the live function first.
+DROP FUNCTION IF EXISTS organization.fn_tariff_list_assignments(VARCHAR);
+CREATE FUNCTION organization.fn_tariff_list_assignments(
     p_org VARCHAR
 )
 RETURNS TABLE (

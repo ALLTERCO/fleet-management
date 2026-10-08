@@ -5,7 +5,7 @@
  * (100 users × 50 personas × 5000 devices × groups + assignments)
  * and measures the SQL the future resolver will run.
  *
- * Targets (per docs/plans/2026-04-30-authz-redesign.md §16):
+ * Targets:
  *   p95 single Check  : < 5ms  (warm cache)
  *   p95 cold resolve  : < 15ms
  *   ListAccessible    : < 100ms for 5k devices

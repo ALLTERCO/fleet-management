@@ -2,8 +2,8 @@
   "generator": "backend-event-inventory",
   "version": 1,
   "totals": {
-    "events": 91,
-    "uniqueNames": 89
+    "events": 92,
+    "uniqueNames": 90
   },
   "events": [
     {
@@ -62,7 +62,7 @@
         "state"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 436,
+      "sourceLine": 446,
       "frontendListeners": 1
     },
     {
@@ -72,7 +72,7 @@
         "shellyID"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 447,
+      "sourceLine": 457,
       "frontendListeners": 1
     },
     {
@@ -83,7 +83,7 @@
         "discoveredDevicesCount"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 425,
+      "sourceLine": 435,
       "frontendListeners": 1
     },
     {
@@ -99,10 +99,11 @@
         "isRemote",
         "modelId",
         "localName",
-        "rssi"
+        "rssi",
+        "heardAtMs"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 370,
+      "sourceLine": 379,
       "frontendListeners": 1
     },
     {
@@ -113,7 +114,7 @@
         "name"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 655,
+      "sourceLine": 844,
       "frontendListeners": 1
     },
     {
@@ -123,7 +124,7 @@
         "id"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 673,
+      "sourceLine": 862,
       "frontendListeners": 1
     },
     {
@@ -169,7 +170,7 @@
         "id"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 666,
+      "sourceLine": 855,
       "frontendListeners": 1
     },
     {
@@ -222,7 +223,7 @@
         "category"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 454,
+      "sourceLine": 464,
       "frontendListeners": 1
     },
     {
@@ -232,7 +233,7 @@
         "batch"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 467,
+      "sourceLine": 477,
       "frontendListeners": 1
     },
     {
@@ -242,7 +243,7 @@
         "deviceId"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 681,
+      "sourceLine": 870,
       "frontendListeners": 1
     },
     {
@@ -253,7 +254,7 @@
         "row"
       ],
       "sourceFile": "backend/src/modules/credential/pushWorker.ts",
-      "sourceLine": 147,
+      "sourceLine": 188,
       "frontendListeners": 1
     },
     {
@@ -264,7 +265,7 @@
         "name"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 856,
+      "sourceLine": 1315,
       "frontendListeners": 1
     },
     {
@@ -274,7 +275,7 @@
         "id"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 870,
+      "sourceLine": 1329,
       "frontendListeners": 1
     },
     {
@@ -284,7 +285,7 @@
         "id"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 877,
+      "sourceLine": 1336,
       "frontendListeners": 1
     },
     {
@@ -295,7 +296,7 @@
         "ids"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 894,
+      "sourceLine": 1353,
       "frontendListeners": 1
     },
     {
@@ -305,7 +306,7 @@
         "id"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 884,
+      "sourceLine": 1343,
       "frontendListeners": 1
     },
     {
@@ -316,7 +317,7 @@
         "name"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 863,
+      "sourceLine": 1322,
       "frontendListeners": 1
     },
     {
@@ -366,7 +367,7 @@
         "reason"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 841,
+      "sourceLine": 1300,
       "frontendListeners": 1
     },
     {
@@ -377,7 +378,7 @@
         "changes"
       ],
       "sourceFile": "backend/src/modules/DeviceEventLogger.ts",
-      "sourceLine": 228,
+      "sourceLine": 254,
       "frontendListeners": 1
     },
     {
@@ -388,7 +389,7 @@
         "entity"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 327,
+      "sourceLine": 324,
       "frontendListeners": 1
     },
     {
@@ -399,7 +400,7 @@
         "event"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 347,
+      "sourceLine": 356,
       "frontendListeners": 1
     },
     {
@@ -409,7 +410,18 @@
         "entityId"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 337,
+      "sourceLine": 346,
+      "frontendListeners": 1
+    },
+    {
+      "emitFunction": "emitEntityUpdated",
+      "eventName": "Entity.Updated",
+      "paramsKeys": [
+        "entityId",
+        "entity"
+      ],
+      "sourceFile": "backend/src/modules/ShellyEvents.ts",
+      "sourceLine": 334,
       "frontendListeners": 1
     },
     {
@@ -420,7 +432,7 @@
         "name"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 510,
+      "sourceLine": 675,
       "frontendListeners": 1
     },
     {
@@ -430,7 +442,7 @@
         "id"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 524,
+      "sourceLine": 695,
       "frontendListeners": 1
     },
     {
@@ -441,7 +453,7 @@
         "members"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 528,
+      "sourceLine": 702,
       "frontendListeners": 1
     },
     {
@@ -452,7 +464,7 @@
         "members"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 540,
+      "sourceLine": 718,
       "frontendListeners": 1
     },
     {
@@ -463,7 +475,7 @@
         "name"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 517,
+      "sourceLine": 685,
       "frontendListeners": 1
     },
     {
@@ -493,7 +505,7 @@
         "locationId"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 920,
+      "sourceLine": 1379,
       "frontendListeners": 1
     },
     {
@@ -505,7 +517,7 @@
         "locationId"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 905,
+      "sourceLine": 1364,
       "frontendListeners": 1
     },
     {
@@ -515,7 +527,7 @@
         "locationId"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 937,
+      "sourceLine": 1396,
       "frontendListeners": 1
     },
     {
@@ -526,7 +538,7 @@
         "name"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 626,
+      "sourceLine": 815,
       "frontendListeners": 1
     },
     {
@@ -536,7 +548,7 @@
         "id"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 640,
+      "sourceLine": 829,
       "frontendListeners": 1
     },
     {
@@ -547,7 +559,7 @@
         "name"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 633,
+      "sourceLine": 822,
       "frontendListeners": 1
     },
     {
@@ -581,7 +593,7 @@
         "id"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 648,
+      "sourceLine": 837,
       "frontendListeners": 1
     },
     {
@@ -592,7 +604,7 @@
         "name"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 688,
+      "sourceLine": 877,
       "frontendListeners": 1
     },
     {
@@ -602,7 +614,7 @@
         "id"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 702,
+      "sourceLine": 891,
       "frontendListeners": 1
     },
     {
@@ -613,7 +625,7 @@
         "name"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 695,
+      "sourceLine": 884,
       "frontendListeners": 1
     },
     {
@@ -621,7 +633,7 @@
       "eventName": "Report.Anomaly",
       "paramsKeys": [],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 568,
+      "sourceLine": 753,
       "frontendListeners": 1
     },
     {
@@ -629,7 +641,7 @@
       "eventName": "Report.Progress",
       "paramsKeys": [],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 580,
+      "sourceLine": 765,
       "frontendListeners": 1
     },
     {
@@ -637,7 +649,7 @@
       "eventName": "Report.Ready",
       "paramsKeys": [],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 605,
+      "sourceLine": 791,
       "frontendListeners": 1
     },
     {
@@ -649,7 +661,7 @@
         "emittedAt"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 66,
+      "sourceLine": 67,
       "frontendListeners": 1
     },
     {
@@ -659,7 +671,7 @@
         "shellyID"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 111,
+      "sourceLine": 113,
       "frontendListeners": 1
     },
     {
@@ -670,7 +682,7 @@
         "emittedAt"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 90,
+      "sourceLine": 94,
       "frontendListeners": 1
     },
     {
@@ -681,7 +693,7 @@
         "info"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 125,
+      "sourceLine": 126,
       "frontendListeners": 1
     },
     {
@@ -693,7 +705,7 @@
         "req"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 286,
+      "sourceLine": 283,
       "frontendListeners": 1
     },
     {
@@ -706,7 +718,7 @@
         "msg"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 407,
+      "sourceLine": 417,
       "frontendListeners": 1
     },
     {
@@ -717,7 +729,7 @@
         "presence"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 318,
+      "sourceLine": 315,
       "frontendListeners": 1
     },
     {
@@ -729,7 +741,7 @@
         "ts"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 299,
+      "sourceLine": 296,
       "frontendListeners": 1
     },
     {
@@ -740,7 +752,7 @@
         "settings"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 277,
+      "sourceLine": 274,
       "frontendListeners": 1
     },
     {
@@ -751,7 +763,7 @@
         "status"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 134,
+      "sourceLine": 135,
       "frontendListeners": 1
     },
     {
@@ -762,7 +774,7 @@
         "subjects"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 975,
+      "sourceLine": 1434,
       "frontendListeners": 1
     },
     {
@@ -774,7 +786,7 @@
         "name"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 947,
+      "sourceLine": 1406,
       "frontendListeners": 1
     },
     {
@@ -784,7 +796,7 @@
         "id"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 971,
+      "sourceLine": 1430,
       "frontendListeners": 1
     },
     {
@@ -795,7 +807,7 @@
         "subjects"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 987,
+      "sourceLine": 1446,
       "frontendListeners": 1
     },
     {
@@ -807,7 +819,7 @@
         "name"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 959,
+      "sourceLine": 1418,
       "frontendListeners": 1
     },
     {
@@ -817,7 +829,7 @@
         "userId"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 754,
+      "sourceLine": 943,
       "frontendListeners": 1
     },
     {
@@ -827,7 +839,7 @@
         "userId"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 768,
+      "sourceLine": 957,
       "frontendListeners": 1
     },
     {
@@ -837,7 +849,7 @@
         "userId"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 761,
+      "sourceLine": 950,
       "frontendListeners": 1
     },
     {
@@ -848,7 +860,7 @@
         "name"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 709,
+      "sourceLine": 898,
       "frontendListeners": 1
     },
     {
@@ -858,7 +870,7 @@
         "id"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 723,
+      "sourceLine": 912,
       "frontendListeners": 1
     },
     {
@@ -869,7 +881,7 @@
         "userIds"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 730,
+      "sourceLine": 919,
       "frontendListeners": 1
     },
     {
@@ -880,7 +892,7 @@
         "userIds"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 742,
+      "sourceLine": 931,
       "frontendListeners": 1
     },
     {
@@ -891,7 +903,7 @@
         "name"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 716,
+      "sourceLine": 905,
       "frontendListeners": 1
     },
     {
@@ -902,7 +914,7 @@
         "operation"
       ],
       "sourceFile": "backend/src/modules/EventDistributor.ts",
-      "sourceLine": 1001,
+      "sourceLine": 1460,
       "frontendListeners": 1
     },
     {
@@ -912,7 +924,7 @@
         "id"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 482,
+      "sourceLine": 492,
       "frontendListeners": 1
     },
     {
@@ -922,7 +934,7 @@
         "ids"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 494,
+      "sourceLine": 504,
       "frontendListeners": 1
     },
     {
@@ -932,7 +944,7 @@
         "id"
       ],
       "sourceFile": "backend/src/modules/ShellyEvents.ts",
-      "sourceLine": 503,
+      "sourceLine": 513,
       "frontendListeners": 0
     }
   ]

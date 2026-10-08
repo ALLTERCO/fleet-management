@@ -1,5 +1,6 @@
 import {getLogger} from 'log4js';
 import {type DeploymentMode, runtimeMetadata} from '../config';
+import {isSaasDeploymentMode} from '../config/deploymentMode';
 import RpcError from '../rpc/RpcError';
 import {getDeploymentTopology} from './identity';
 import {zitadelService} from './zitadel';
@@ -13,7 +14,7 @@ interface SaasZitadelOrganizationConfig {
 }
 
 export function isSaasMode(): boolean {
-    return runtimeMetadata.deploymentMode !== 'oss';
+    return isSaasDeploymentMode(runtimeMetadata.deploymentMode);
 }
 
 export function requireSaasMode(feature?: string): void {

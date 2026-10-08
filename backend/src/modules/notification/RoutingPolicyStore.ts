@@ -45,13 +45,15 @@ interface RoutingPolicyRow {
 export async function listRoutingPolicies(input: {
     organizationId: string;
     enabledOnly: boolean;
+    txId?: number;
 }): Promise<StoredRoutingPolicy[]> {
     const result = await PostgresProvider.callMethod(
         'notifications.fn_routing_policy_list',
         {
             p_organization_id: input.organizationId,
             p_enabled_only: input.enabledOnly
-        }
+        },
+        input.txId
     );
     return ((result?.rows ?? []) as RoutingPolicyRow[]).map(rowToPolicy);
 }

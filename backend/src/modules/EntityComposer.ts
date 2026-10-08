@@ -23,6 +23,7 @@ import type {
     cover_entity,
     cury_entity,
     entity_t,
+    irdevice_entity,
     matter_entity,
     media_entity,
     presence_entity,
@@ -37,6 +38,7 @@ import type {
     virtual_number_entity,
     virtual_text_entity
 } from '../types';
+import {DEVICE_HEALTH_SENSOR_SOURCE} from '../types/api/sensor';
 import {UNKNOWN_COMPONENT_TYPE_COUNTER} from './coverageConstants';
 import {incrementLabeledCounter} from './Observability';
 import {isPlainObject} from './util/isPlainObject';
@@ -1240,6 +1242,84 @@ function composeBluTrv(shelly: ShellyDevice): blutrv_entity[] {
     return entities;
 }
 
+// ----------------------------------------------------------------------------------
+// IRDevice Component (IR controller appliance slots, e.g. Gen4 app IRG4)
+// Keyed dynamic component (ids 200+). Pre-market firmware documents only
+// {id, name} on IRDevice.GetConfig and no status shape, so detection is
+// tolerant by design: an irdevice:N key in status OR config is the signal
+// (the observed unit exposes the key via IRDevice.GetConfig; its presence
+// in Shelly.GetStatus is unconfirmed). Every field beyond id/name is
+// ignored until real hardware pins it.
+// ----------------------------------------------------------------------------------
+
+function irDeviceComponentId(
+    key: string,
+    config: any,
+    status: any
+): number | undefined {
+    if (typeof config?.id === 'number') return config.id;
+    if (typeof status?.id === 'number') return status.id;
+    // Neither side carries an id field — fall back to the key suffix so a
+    // bare `irdevice:200: {}` status entry still composes.
+    const suffix = Number.parseInt(key.split(':')[1], 10);
+    return Number.isFinite(suffix) ? suffix : undefined;
+}
+
+function composeIrDevices(shelly: ShellyDevice): irdevice_entity[] {
+    const keys = getAllInstancesKeys('irdevice:', shelly.status, shelly.config);
+    const entities: irdevice_entity[] = [];
+    for (const key of keys) {
+        const rawStatus = shelly.status[key];
+        const rawConfig = shelly.config[key];
+        const status = isPlainObject(rawStatus) ? rawStatus : undefined;
+        const config = isPlainObject(rawConfig) ? rawConfig : undefined;
+        // Key present but neither side is an object — a malformed report,
+        // not a component. Skip loudly instead of composing a blank entity.
+        if (!status && !config) {
+            logger.warn(
+                '%s: %s has no object-valued status or config, skipping',
+                shelly.shellyID,
+                key
+            );
+            continue;
+        }
+        const id = irDeviceComponentId(key, config, status);
+        if (id === undefined) {
+            logger.warn(
+                '%s: %s has no numeric component id, skipping',
+                shelly.shellyID,
+                key
+            );
+            continue;
+        }
+        // The slot names an external appliance (e.g. an HVAC), so the
+        // fallback is per-slot — never the host device name.
+        const name =
+            typeof config?.name === 'string' && config.name
+                ? config.name
+                : `IR Device ${id}`;
+        // Same tolerant errors coercion as composeComponents — one malformed
+        // report must not unwind device admission.
+        const rawErrors = status?.errors;
+        const errors: string[] = Array.isArray(rawErrors)
+            ? rawErrors
+            : rawErrors
+              ? [String(rawErrors)]
+              : [];
+        entities.push({
+            name,
+            id: `${shelly.id}_${id}:irdevice`,
+            type: 'irdevice' as const,
+            source: shelly.shellyID,
+            properties: {
+                id,
+                ...(errors.length ? {errors} : {})
+            }
+        });
+    }
+    return entities;
+}
+
 function composeSchedule(shelly: ShellyDevice): schedule_entity {
     const deviceName = shelly.info.name as string;
     return {
@@ -1384,6 +1464,10 @@ const COMPONENT_REGISTRY: ComponentDef[] = [
     {key: 'camera', title: 'Camera'},
     {key: 'blutrv', title: 'BLU TRV', custom: composeBluTrv},
     {key: 'blugw', title: 'BLU Gateway'},
+    // Custom (not the generic loop): the key must auto-detect from status OR
+    // config — the observed IR controller proves irdevice:N only via
+    // IRDevice.GetConfig, and the generic loop reads status alone.
+    {key: 'irdevice', title: 'IR Device', custom: composeIrDevices},
 
     // Generic pass-through composers. Match the `:N` instance form only;
     // bare device-singleton keys (sys/wifi/dali/modbus/...) stay in
@@ -1416,9 +1500,13 @@ const COMPONENT_REGISTRY: ComponentDef[] = [
     {key: 'pill', title: 'The Pill'},
     {key: 'dali', title: 'DALI Fixture'},
     {key: 'modbus', title: 'Modbus'},
-    {key: 'script', title: 'Script'},
-    {key: 'emdata', title: 'Energy Archive'},
-    {key: 'em1data', title: 'Energy Archive (single phase)'}
+    {key: 'script', title: 'Script'}
+    // emdata/em1data are historical energy counter stores, not display
+    // entities — lifetime totals only, no live power. The em/em1 meter card
+    // already renders their data by reading the raw emdata:N / em1data:N
+    // status keys directly, so composing them here only produced a card the
+    // frontend has no renderer for (a blank tile). Intentionally absent, like
+    // `object` above; composition never touches status, so the raw keys stay.
 ];
 
 // Snapshot of registry keys for the coverage endpoint and unknown-type
@@ -1490,6 +1578,10 @@ export function proposeEntities(shelly: ShellyDevice): entity_t[] {
     // Synthetic temperature entities from components that embed temperature
     // (e.g. light:0.temperature.tC on dimmers, switch:0.temperature.tC on relays)
     // Only if the device doesn't already have standalone temperature:N components.
+    // These are the board's own temperature: device health, never the air around
+    // it. `sensorSource: 'internal'` is the marker every reader keys off — the
+    // same value sensor capture stamps on these readings — so nothing has to
+    // rediscover it from the entity's shape or its value.
     const hasStandaloneTemp = Object.keys(shelly.status).some((k) =>
         k.startsWith('temperature:')
     );
@@ -1508,7 +1600,8 @@ export function proposeEntities(shelly: ShellyDevice): entity_t[] {
                     source: shelly.shellyID,
                     properties: {
                         id,
-                        embeddedIn: key
+                        embeddedIn: key,
+                        sensorSource: DEVICE_HEALTH_SENSOR_SOURCE
                     }
                 });
                 // One synthetic temp entity per device is enough

@@ -75,7 +75,7 @@ _public_upgrade_audit_compare() {
 }
 
 _public_upgrade_audit_zitadel_plan() {
-    local target_zitadel="${ZITADEL_VERSION:-v4.14.0}" target_pg="${ZITADEL_POSTGRES_VERSION:-18.3-alpine3.23}" out=""
+    local target_zitadel="${ZITADEL_VERSION:-v4.19.4}" target_pg="${ZITADEL_POSTGRES_VERSION:-18.6-alpine3.23}" out=""
     while [ $# -gt 0 ]; do
         case "$1" in
             --target-zitadel) target_zitadel="${2:?--target-zitadel requires a value}"; shift 2 ;;

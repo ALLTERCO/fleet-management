@@ -76,6 +76,14 @@ const CONTEXT_TOKEN_META: Record<string, {label: string; description: string}> =
             label: 'Expected interval (s)',
             description: 'Heartbeat interval that was missed.'
         },
+        endsAt: {
+            label: 'Key ends at',
+            description: 'When the device key ends (credential_expiring).'
+        },
+        daysLeft: {
+            label: 'Days left',
+            description: 'Days until the device key ends (credential_expiring).'
+        },
         rate: {label: 'Rate', description: 'Observed rate of change.'},
         deltaValue: {
             label: 'Delta',
@@ -293,6 +301,7 @@ export interface RenderResult {
 
 export interface RenderOptions {
     escapeMode?: TemplateEscapeMode;
+    maxOutputChars?: number;
 }
 
 // Conditional block: {{#is_critical}}…{{/is_critical}}. Supported flags:
@@ -300,6 +309,8 @@ export interface RenderOptions {
 //   is_active / is_acknowledged / is_resolved — state
 //   is_recovery — state === 'resolved'
 //   is_renotify — re-notification context (passed in via context.isRenotify)
+//   is_grouped / is_single — grouped-delivery presentation
+//   is_has_device_image — a delivery image URL was resolved
 const BLOCK_RE = /\{\{#(is_[a-z_]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g;
 
 function evaluateConditional(
@@ -329,6 +340,16 @@ function evaluateConditional(
                 (context.context as Record<string, unknown> | undefined)
                     ?.isRenotify
             );
+        case 'is_grouped':
+            return Boolean(
+                (context.group as Record<string, unknown> | undefined)
+                    ?.isGrouped
+            );
+        case 'is_single':
+            return !(context.group as Record<string, unknown> | undefined)
+                ?.isGrouped;
+        case 'is_has_device_image':
+            return context.is_has_device_image === true;
         default:
             return false;
     }
@@ -338,9 +359,17 @@ function expandConditionalBlocks(
     template: string,
     context: Record<string, unknown>
 ): string {
-    return template.replace(BLOCK_RE, (_match, flag: string, body: string) =>
-        evaluateConditional(flag, context) ? body : ''
-    );
+    let expanded = template;
+    for (let depth = 0; depth < 8; depth += 1) {
+        const next = expanded.replace(
+            BLOCK_RE,
+            (_match, flag: string, body: string) =>
+                evaluateConditional(flag, context) ? body : ''
+        );
+        if (next === expanded) break;
+        expanded = next;
+    }
+    return expanded;
 }
 
 export function renderTemplate(
@@ -365,7 +394,8 @@ export function renderTemplate(
         }
     );
 
-    const cap = envInt('FM_TEMPLATE_MAX_OUTPUT_CHARS', 4000);
+    const cap =
+        options.maxOutputChars ?? envInt('FM_TEMPLATE_MAX_OUTPUT_CHARS', 4000);
     const truncated = rendered.length > cap;
     return {
         rendered: truncated ? rendered.slice(0, cap) : rendered,

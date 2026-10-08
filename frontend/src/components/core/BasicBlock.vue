@@ -67,7 +67,6 @@ withDefaults(defineProps<props_t>(), {
 .basic-block--glass {
     background: var(--glass-1-bg);
     backdrop-filter: var(--glass-1-filter);
-    -webkit-backdrop-filter: var(--glass-1-filter);
     border: 1px solid var(--glass-border);
     box-shadow: inset 0 1px 0 var(--glass-highlight);
 }

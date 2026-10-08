@@ -10,10 +10,14 @@ import type {
 } from '../../types/api/certificate';
 import type {OperationJobSnapshot} from '../../types/api/job';
 import * as DeviceCollector from '../DeviceCollector';
+import {jobAuthorityAllowsDispatch} from '../jobs/control';
 import {
     finishJob,
+    type JobAuthority,
     markCertificateUnit,
-    markJobRunning
+    markJobRunning,
+    prepareUnitDispatch,
+    stopUnitBeforeDispatch
 } from '../jobs/repository';
 import {LOGICAL_DEVICE_LOCK_NAMESPACE} from '../jobs/repositoryFactory';
 import * as store from '../PostgresProvider';
@@ -45,6 +49,8 @@ interface QueuedRow {
     pem: string | null;
     private_key_encrypted: string | null;
     fingerprint_sha256: string | null;
+    authority: JobAuthority;
+    execution_id: string;
 }
 
 // Same AAD shape as CertificateComponent — bound to (tenant, fingerprint).
@@ -68,8 +74,10 @@ function pushTimeoutMs(): number {
 async function reclaimStaleInFlight(): Promise<void> {
     const stale = (await store.queryRows(
         `UPDATE organization.certificate_pushes
-            SET status='failed',
-                last_error='fm_restart_during_push'
+            SET outcome_state = CASE WHEN dispatch_state='dispatched' THEN 'unknown' ELSE 'stopped' END,
+                last_error = CASE WHEN dispatch_state='dispatched'
+                    THEN 'fm_restart_after_certificate_dispatch'
+                    ELSE 'fm_restart_before_certificate_dispatch' END
           WHERE status='in_progress'
             AND (picked_up_at IS NULL OR picked_up_at < now() - ($1 || ' ms')::interval)
       RETURNING id::text`,
@@ -85,12 +93,33 @@ async function reclaimStaleInFlight(): Promise<void> {
 
 async function selectQueued(limit: number): Promise<QueuedRow[]> {
     return (await store.queryRows(
-        `WITH candidates AS MATERIALIZED (
-             SELECT push.id, push.logical_device_id
-               FROM organization.certificate_pushes push
+        `WITH job_service AS MATERIALIZED (
+             SELECT job_id, MAX(picked_up_at) AS last_picked
+               FROM organization.certificate_pushes
+              GROUP BY job_id
+         ), ranked AS MATERIALIZED (
+             SELECT push.id,
+                    push.job_id,
+                    push.logical_device_id,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY push.job_id ORDER BY push.id
+                    ) AS job_rank,
+                    service.last_picked AS job_last_picked
+              FROM organization.certificate_pushes push
+               JOIN organization.certificate_jobs job ON job.id = push.job_id
+               JOIN job_service service ON service.job_id = push.job_id
               WHERE push.status='queued'
+                AND job.control_state='active'
+                AND push.outcome_state='active'
+                AND push.dispatch_state='queued'
                 AND push.logical_device_id IS NOT NULL
-              ORDER BY push.id ASC
+         ), candidates AS MATERIALIZED (
+             SELECT id, logical_device_id
+               FROM ranked
+              ORDER BY job_rank,
+                       job_last_picked ASC NULLS FIRST,
+                       job_id,
+                       id
               LIMIT $1
          ), bound AS MATERIALIZED (
              SELECT candidates.id,
@@ -119,12 +148,19 @@ async function selectQueued(limit: number): Promise<QueuedRow[]> {
                FROM locked
                JOIN organization.certificate_pushes push
                  ON push.id = locked.id
+               JOIN organization.certificate_jobs job
+                 ON job.id = push.job_id
               WHERE push.status='queued'
-              FOR UPDATE OF push SKIP LOCKED
+                AND push.outcome_state='active'
+                AND push.dispatch_state='queued'
+                AND job.control_state='active'
+              FOR UPDATE OF push, job SKIP LOCKED
          ), claimed AS (
              UPDATE organization.certificate_pushes push
                 SET status='in_progress',
-                    picked_up_at=now()
+                    picked_up_at=now(),
+                    execution_id=gen_random_uuid(),
+                    dispatch_state='claimed'
                FROM claimable
               WHERE push.id = claimable.id
           RETURNING push.id,
@@ -132,6 +168,7 @@ async function selectQueued(limit: number): Promise<QueuedRow[]> {
                     push.certificate_id,
                     push.tenant_id,
                     push.slot,
+                    push.execution_id,
                     claimable.logical_device_id,
                     claimable.external_id
          )
@@ -142,12 +179,15 @@ async function selectQueued(limit: number): Promise<QueuedRow[]> {
                 claimed.logical_device_id,
                 claimed.external_id AS device_id,
                 claimed.slot,
+                claimed.execution_id::text,
+                job.authority,
                 certificate.pem,
                 certificate.private_key_encrypted,
                 certificate.fingerprint_sha256
            FROM claimed
            JOIN organization.certificates certificate
              ON certificate.id = claimed.certificate_id
+           JOIN organization.certificate_jobs job ON job.id = claimed.job_id
           ORDER BY claimed.id`,
         [limit]
     )) as unknown as QueuedRow[];
@@ -258,6 +298,7 @@ async function rebootDevice(row: QueuedRow): Promise<void> {
 
 async function processRow(row: QueuedRow): Promise<void> {
     let release: (() => void) | null = null;
+    let dispatched = false;
     try {
         await markJobRunning({
             kind: 'certificate',
@@ -267,24 +308,53 @@ async function processRow(row: QueuedRow): Promise<void> {
         release = await acquireLock(row.device_id, row.slot, lockTimeoutMs());
         await assertDeviceStillBelongsToTenant(row);
         const pem = payloadForSlot(row);
+        if (
+            !(await jobAuthorityAllowsDispatch(
+                row.authority,
+                row.tenant_id,
+                row.device_id
+            ))
+        ) {
+            await stopUnitBeforeDispatch({
+                kind: 'certificate',
+                id: row.id,
+                executionId: row.execution_id,
+                reason: 'job_authority_no_longer_allows_dispatch'
+            });
+            return;
+        }
+        if (
+            !(await prepareUnitDispatch({
+                kind: 'certificate',
+                id: row.id,
+                executionId: row.execution_id
+            }))
+        ) {
+            return;
+        }
+        dispatched = true;
         const {requiresReboot} = await pushChunkedToDevice(row, pem);
         const updated = await markCertificateUnit({
             id: row.id,
             status: 'applied',
             lastError: null,
-            requiresReboot
+            requiresReboot,
+            executionId: row.execution_id
         });
+        if (!updated) return;
         emitPushRow(row.job_id, updated, row.tenant_id);
         if (requiresReboot) await rebootDevice(row);
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        await rollbackSlotSafely(row);
         const updated = await markCertificateUnit({
             id: row.id,
             status: 'failed',
             lastError: msg,
-            requiresReboot: false
+            requiresReboot: false,
+            executionId: row.execution_id
         });
+        if (!updated) return;
+        if (dispatched) await rollbackSlotSafely(row);
         emitPushRow(row.job_id, updated, row.tenant_id);
     } finally {
         if (release) release();
@@ -318,8 +388,10 @@ async function maybeFinalizeJob(
 ): Promise<void> {
     const counts = (await store.queryRows(
         `SELECT
-             COUNT(*) FILTER (WHERE status IN ('queued', 'in_progress')) AS pending,
-             COUNT(*) FILTER (WHERE status='failed') AS failed,
+             COUNT(*) FILTER (WHERE outcome_state='active' AND status IN ('queued', 'in_progress')) AS pending,
+             COUNT(*) FILTER (
+                 WHERE status='failed' OR outcome_state IN ('stopped', 'unknown')
+             ) AS failed,
              COUNT(*) FILTER (WHERE status='applied') AS applied
            FROM organization.certificate_pushes
           WHERE job_id=$1`,

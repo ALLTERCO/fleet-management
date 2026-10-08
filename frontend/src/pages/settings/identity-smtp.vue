@@ -275,6 +275,7 @@ import {
 import Button from '@/components/core/Button.vue';
 import Checkbox from '@/components/core/Checkbox.vue';
 import PageTemplate from '@/components/core/PageTemplate.vue';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {
     defaultPortForEncryption,
     encryptionFromPort,
@@ -406,7 +407,7 @@ async function save(): Promise<void> {
         await refresh();
         notice.value = 'Saved.';
     } catch (err) {
-        error.value = err instanceof Error ? err.message : String(err);
+        error.value = rpcErrorMessage(err);
     } finally {
         busy.value = false;
     }
@@ -425,7 +426,7 @@ async function test(): Promise<void> {
         );
         notice.value = 'Test email accepted by Zitadel.';
     } catch (err) {
-        error.value = err instanceof Error ? err.message : String(err);
+        error.value = rpcErrorMessage(err);
     } finally {
         busy.value = false;
     }
@@ -476,7 +477,7 @@ function emptyToUndefined(value: string): string | undefined {
 
 onMounted(() => {
     void refresh().catch((err) => {
-        error.value = err instanceof Error ? err.message : String(err);
+        error.value = rpcErrorMessage(err);
     });
 });
 </script>

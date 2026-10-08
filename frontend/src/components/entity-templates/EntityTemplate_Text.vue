@@ -9,7 +9,7 @@
         </div>
 
         <!-- Editable field -->
-        <form v-if="canExecute && view === 'field'" class="et-text__field" @submit.prevent="submitValue">
+        <form v-if="canExecute && isFieldView" class="et-text__field" @submit.prevent="submitValue">
             <input
                 v-model="inputValue"
                 type="text"
@@ -38,6 +38,12 @@ const emit = defineEmits<{
 }>();
 
 const maxLength = computed(() => props.maxLength ?? 256);
+
+// Shelly X manifests name the editable text view 'text_input'; FM renders
+// it as the plain 'field' editor.
+const isFieldView = computed(
+    () => props.view === 'field' || props.view === 'text_input'
+);
 
 /** Only allow http(s) URLs for device-controlled image source */
 const safeImageSrc = computed(() => {

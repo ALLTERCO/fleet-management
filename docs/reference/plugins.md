@@ -1,3 +1,4 @@
+<!-- audience: public -->
 # How to develop and deploy a Shelly Fleet Manager plugin?
 
 The Fleet Manager supports plugins written or built into javascript (you can write your plugin in typescript but you have to build its backend in javascript). Plugins are executed in a worker thread attached to the main process. Plugins can register components that are accessible from everywhere in Fleet Management and can also make calls to other registered components.

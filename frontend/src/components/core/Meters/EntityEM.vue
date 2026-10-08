@@ -133,12 +133,11 @@ const totalsInfo = computed<PhaseMetric[]>(() => [
     {label: 'Current', value: entityStatus.value?.total_current, unit: 'A'}
 ]);
 
+// `n_current` presence is the only signal that this meter measures neutral;
+// `user_calibrated_phase` is unrelated and must not gate it.
 const neutralCurrent = computed(() => {
-    const calibrated = entityStatus.value?.user_calibrated_phase;
-    if (Array.isArray(calibrated) && calibrated.includes('n')) {
-        return `${entityStatus.value?.n_current ?? 'N/A'} A`;
-    }
-    return null;
+    const n = entityStatus.value?.n_current;
+    return n == null ? null : `${n} A`;
 });
 
 // Energy data from emdata:N sibling status key

@@ -70,7 +70,7 @@
                     class="ard__muted"
                 >
                     <i class="fas fa-circle-info" aria-hidden="true" />
-                    {{ previewResult.note ?? 'Preview not available for this rule kind.' }}
+                    {{ previewResult.note ?? 'Preview not available for this rule type.' }}
                 </p>
                 <template v-else-if="previewResult">
                     <p class="ard__preview-sum">

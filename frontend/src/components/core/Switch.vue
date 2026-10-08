@@ -2,10 +2,12 @@
     <button
         type="button"
         class="core-switch"
-        :class="{'core-switch--on': modelValue}"
+        :class="{'core-switch--on': modelValue, 'core-switch--busy': busy}"
         role="switch"
         :aria-checked="modelValue"
         :aria-label="label"
+        :aria-busy="busy ? 'true' : undefined"
+        :disabled="disabled || busy"
         @click="toggle"
     >
         <span class="core-switch__thumb" />
@@ -15,10 +17,17 @@
 <script setup lang="ts">
 // Compact on/off switch — green when on. Single source for the rule card and
 // the rule form so they always look identical.
-const props = defineProps<{modelValue: boolean; label?: string}>();
+// busy: a change is saving; looks and acts locked until it settles.
+const props = defineProps<{
+    modelValue: boolean;
+    label?: string;
+    disabled?: boolean;
+    busy?: boolean;
+}>();
 const emit = defineEmits<{'update:modelValue': [boolean]}>();
 
 function toggle(): void {
+    if (props.disabled || props.busy) return;
     emit('update:modelValue', !props.modelValue);
 }
 </script>
@@ -51,6 +60,13 @@ function toggle(): void {
 }
 .core-switch--on .core-switch__thumb {
     left: calc(100% - var(--space-4) - var(--space-0-5));
+}
+.core-switch:disabled {
+    opacity: var(--state-disabled-opacity);
+    cursor: not-allowed;
+}
+.core-switch--busy:disabled {
+    cursor: progress;
 }
 .core-switch:focus-visible {
     outline: var(--focus-ring-width) solid var(--focus-ring-color);

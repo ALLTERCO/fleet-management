@@ -4,14 +4,10 @@
  *  active right-pane tab. Extracted from `LocationsLayout.vue` so the
  *  parsing rules are testable without mounting the component or a router. */
 
-export type DetailTabKey = 'overview' | 'plan' | 'devices' | 'settings';
+// Tab order is the on-screen order, and the digit-shortcut order.
+const ALL_TABS = ['overview', 'plan', 'devices', 'groups', 'settings'] as const;
 
-const ALL_TABS: readonly DetailTabKey[] = [
-    'overview',
-    'plan',
-    'devices',
-    'settings'
-];
+export type DetailTabKey = (typeof ALL_TABS)[number];
 
 /** Coerce a query-param value (string, array, or undefined) to the single
  *  string the URL actually carries. Vue Router passes arrays for repeated
@@ -42,12 +38,7 @@ export function parseDetailTab(raw: unknown): DetailTabKey {
 }
 
 export function isDetailTabKey(value: unknown): value is DetailTabKey {
-    return (
-        value === 'overview' ||
-        value === 'plan' ||
-        value === 'devices' ||
-        value === 'settings'
-    );
+    return ALL_TABS.includes(value as DetailTabKey);
 }
 
 export {ALL_TABS};

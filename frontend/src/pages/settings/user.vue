@@ -31,10 +31,10 @@
                         />
                     </figure>
                     <div class="us-profile__info">
-                        <template v-if="!authStore.devMode && zitadelUser">
-                            <span class="us-profile__name">{{ zitadelUser.name }}</span>
-                            <span class="us-profile__username">{{ zitadelUser.nickname }}</span>
-                            <span class="us-profile__email">{{ zitadelUser.email }}</span>
+                        <template v-if="!authStore.devMode && identity">
+                            <span class="us-profile__name">{{ identity.displayName }}</span>
+                            <span class="us-profile__username">{{ identity.username }}</span>
+                            <span class="us-profile__email">{{ identity.email }}</span>
                         </template>
                         <template v-else>
                             <span class="us-profile__name">{{ authStore.username }}</span>
@@ -146,8 +146,8 @@ const tabs = inject<ComputedRef<RouteTab[]>>(
 
 const fileInput = ref<HTMLInputElement | null>(null);
 
-const {zitadelUser} = storeToRefs(authStore);
-const zitadelUserSub = computed(() => zitadelUser.value?.sub ?? null);
+const {identity} = storeToRefs(authStore);
+const zitadelUserSub = computed(() => identity.value?.userId ?? null);
 
 const userImg = ref<string>('');
 

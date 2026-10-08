@@ -32,12 +32,12 @@ function round2(value: number): number {
     return +value.toFixed(2);
 }
 
-function round3(value: number): number {
-    return +value.toFixed(3);
+export function whToKWh(wh: number): number {
+    return wh / 1000;
 }
 
-export function whToKWh(wh: number): number {
-    return round3(wh / 1000);
+export function roundReportTotalKWh(kWh: number): number {
+    return +kWh.toFixed(12);
 }
 
 // Day vs night by the hour in ctx.timezone. End is exclusive, so hour 23 with a
@@ -73,7 +73,7 @@ export function deriveRowEconomics(input: {
     const isDay = isDayHour(input.bucketDate, input.rate);
     const rate = rateFor(input.rate, isDay);
     return {
-        netKWh: round3(input.consumptionKWh - input.returnedKWh),
+        netKWh: +(input.consumptionKWh - input.returnedKWh).toFixed(3),
         rate,
         cost: round2(input.consumptionKWh * rate),
         isDay

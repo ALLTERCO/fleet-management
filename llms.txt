@@ -11,9 +11,9 @@ Use this file as the small entrypoint before reading large docs.
 - host-sdk: frontend/src/shell/template-host/index.ts — Use to discover the supported UI-facing domains and helpers.
 - host-sdk-index: docs/generated/host-sdk-index.json — Use to find the right @host domain before touching UI/template code.
 - ai-and-mcp-reference: docs/reference/ai-and-mcp.md — Use before UI, docs, or MCP work so agents follow the right contract layer.
-- deployment-guide: deploy/public/deployment.md — Use for Fleet Manager install/deploy commands and deploy.sh parameters.
+- deployment-guide: deploy/public/deployment.md — Use for Fleet Manager install/deploy commands and deploy-public.sh parameters.
 - separate-ui-host-sdk-guide: docs/reference/separate-ui-host-sdk.md — Use before building a separate UI, BM template UI, or Host SDK adapter.
-- docs-readme: docs/README.md — Use before creating or moving documentation.
+- docs-readme: docs/public/README.md — Use to find the right public guide or reference.
 
 ## Main Rule
 

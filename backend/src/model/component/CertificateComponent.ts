@@ -12,6 +12,7 @@ import {parseCertificateChain} from '../../modules/certificate/parser';
 import {preflight} from '../../modules/certificate/preflight';
 import {resolvePushTargetDevices} from '../../modules/certificate/targetResolver';
 import * as EventDistributor from '../../modules/EventDistributor';
+import {snapshotJobAuthority} from '../../modules/jobs/control';
 import {
     createCertificateJob,
     enqueueCertificateTargets
@@ -47,10 +48,13 @@ import {
     CERTIFICATE_SET_TAGS_PARAMS_SCHEMA,
     CERTIFICATE_SIGN_CSR_PARAMS_SCHEMA,
     CERTIFICATE_UPDATE_PARAMS_SCHEMA,
+    type CertificateCoreResponse,
     type CertificateDeleteParams,
     type CertificateExportParams,
     type CertificateGetIssueDefaultsParams,
     type CertificateGetParams,
+    type CertificateGetResponse,
+    type CertificateImportedResponse,
     type CertificateImportParams,
     type CertificateIssueDeviceParams,
     type CertificateListParams,
@@ -133,12 +137,12 @@ const SET_GROUPS_OUTCOME_BY_CODE: Record<number, string> = {
 
 const classifySetGroups = classifyByCode(SET_GROUPS_OUTCOME_BY_CODE);
 
-async function callCertRows(
+async function callCertRows<T>(
     fn: string,
     params: Record<string, unknown>
-): Promise<CertificateResponse[]> {
+): Promise<T[]> {
     const result = await store.callMethod(fn, params);
-    return (result?.rows ?? []) as CertificateResponse[];
+    return (result?.rows ?? []) as T[];
 }
 
 // List fns emit COUNT(*) OVER() AS total_count on every row.
@@ -190,17 +194,20 @@ export default class CertificateComponent extends Component<Config> {
         const orgId = requireOrganizationId(sender);
         const limit = p.limit ?? 100;
         const offset = p.offset ?? 0;
-        const rows = (await callCertRows('organization.fn_certificate_list', {
-            p_tenant_id: orgId,
-            p_kind: p.kind ?? null,
-            p_source: p.source ?? null,
-            p_slot: p.slot ?? null,
-            p_tag: p.tag ?? null,
-            p_group_id: p.groupId ?? null,
-            p_expiring_within_days: p.expiringWithinDays ?? null,
-            p_limit: limit,
-            p_offset: offset
-        })) as Array<Counted<CertificateResponse>>;
+        const rows = await callCertRows<Counted<CertificateResponse>>(
+            'organization.fn_certificate_list',
+            {
+                p_tenant_id: orgId,
+                p_kind: p.kind ?? null,
+                p_source: p.source ?? null,
+                p_slot: p.slot ?? null,
+                p_tag: p.tag ?? null,
+                p_group_id: p.groupId ?? null,
+                p_expiring_within_days: p.expiringWithinDays ?? null,
+                p_limit: limit,
+                p_offset: offset
+            }
+        );
         return buildListResponse(
             withoutTotalCount(rows),
             totalFromRows(rows),
@@ -220,11 +227,10 @@ export default class CertificateComponent extends Component<Config> {
         );
         const orgId = requireOrganizationId(sender);
         const includePem = p.includePem === true && canManageAuthz(sender);
-        const rows = await callCertRows('organization.fn_certificate_get', {
-            p_id: p.id,
-            p_tenant_id: orgId,
-            p_include_pem: includePem
-        });
+        const rows = await callCertRows<CertificateGetResponse>(
+            'organization.fn_certificate_get',
+            {p_id: p.id, p_tenant_id: orgId, p_include_pem: includePem}
+        );
         if (rows.length === 0) throw RpcError.NotFound('certificate');
         return rows[0];
     }
@@ -279,9 +285,7 @@ export default class CertificateComponent extends Component<Config> {
                 p_tags: p.tags ?? []
             }
         );
-        const rows = (result?.rows ?? []) as Array<
-            CertificateResponse & {was_existing: boolean}
-        >;
+        const rows = (result?.rows ?? []) as CertificateImportedResponse[];
         const wasExisting = rows[0]?.was_existing === true;
 
         await authzAuditWriter.writeCertificateEvent({
@@ -318,7 +322,7 @@ export default class CertificateComponent extends Component<Config> {
         if (p.name === undefined) {
             throw RpcError.InvalidParams('nothing to update');
         }
-        const rows = await callCertRows(
+        const rows = await callCertRows<CertificateCoreResponse>(
             'organization.fn_certificate_update_name',
             {p_id: p.id, p_tenant_id: orgId, p_name: p.name}
         );
@@ -533,7 +537,7 @@ export default class CertificateComponent extends Component<Config> {
         p: CertificateIssueDeviceParams,
         orgId: string,
         actorId: string
-    ): Promise<CertificateResponse> {
+    ): Promise<CertificateImportedResponse> {
         if (!isFmCaAvailable()) {
             throw RpcError.Unavailable(
                 'fm-ca',
@@ -592,7 +596,7 @@ export default class CertificateComponent extends Component<Config> {
                 p_tags: []
             }
         );
-        const rows = (result?.rows ?? []) as CertificateResponse[];
+        const rows = (result?.rows ?? []) as CertificateImportedResponse[];
 
         await authzAuditWriter.writeCertificateEvent({
             tenantId: orgId,
@@ -625,7 +629,7 @@ export default class CertificateComponent extends Component<Config> {
     async #signCsrIssued(
         p: CertificateSignCsrParams,
         sender: CommandSender
-    ): Promise<CertificateResponse> {
+    ): Promise<CertificateImportedResponse> {
         const orgId = requireOrganizationId(sender);
         const actorId = sender.getUser()?.username;
         if (!actorId) throw RpcError.Unauthorized();
@@ -689,7 +693,7 @@ export default class CertificateComponent extends Component<Config> {
                 p_tags: []
             }
         );
-        const rows = (result?.rows ?? []) as CertificateResponse[];
+        const rows = (result?.rows ?? []) as CertificateImportedResponse[];
 
         await authzAuditWriter.writeCertificateEvent({
             tenantId: orgId,
@@ -768,7 +772,8 @@ export default class CertificateComponent extends Component<Config> {
             certificateId: p.certificateId,
             slot: p.slot,
             target: p.target,
-            createdBy: actorId
+            createdBy: actorId,
+            authority: snapshotJobAuthority(sender, orgId, 'update')
         });
 
         await enqueueCertificateTargets({

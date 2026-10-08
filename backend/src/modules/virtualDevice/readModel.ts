@@ -9,6 +9,7 @@ import {
     loadActiveVirtualDeviceBindings
 } from './bindingReadRepository';
 import {
+    assignVirtualComponentIds,
     type ProjectedVirtualEntity,
     projectVirtualEntity,
     virtualEntityType
@@ -21,6 +22,12 @@ import {
     type VirtualDeviceRoleHealth,
     type VirtualDeviceRoleStatus
 } from './health';
+import {
+    projectRoleScalar,
+    resolveRoleProjection,
+    shapeProjectedRoleStatus,
+    type VirtualRoleProjection
+} from './roleProjection';
 
 export type {
     DeviceHealth,
@@ -38,11 +45,20 @@ export interface VirtualDeviceRoleStatusEntry {
     };
 }
 
+export interface VirtualDeviceMetricRole {
+    roleKey: string;
+    available: boolean;
+    value: unknown;
+    unit: string | null;
+    projection: VirtualRoleProjection;
+}
+
 export type VirtualDeviceEntity = ProjectedVirtualEntity;
 
 export interface VirtualDeviceReadModel {
     externalId: string;
     statusRoles: Record<string, VirtualDeviceRoleStatusEntry>;
+    metricRoles?: VirtualDeviceMetricRole[];
     entityIds: string[];
     entityDetails: VirtualDeviceEntity[];
     capabilities: Record<string, unknown>;
@@ -97,31 +113,31 @@ function projectDevice(
     deps: VirtualDeviceReadModelDeps
 ): VirtualDeviceReadModel {
     const statusRoles: Record<string, VirtualDeviceRoleStatusEntry> = {};
+    const metricRoles: VirtualDeviceMetricRole[] = [];
     const entityIds: string[] = [];
     const entityDetails: VirtualDeviceEntity[] = [];
     const roleHealth: Record<string, VirtualDeviceRoleHealth> = {};
     const readRoles: string[] = [];
     const writableRoles: string[] = [];
-    const componentIds = assignVirtualComponentIds(bindings);
+    const componentIds = assignVirtualComponentIds(
+        bindings.map((binding) => ({
+            roleKey: binding.roleKey,
+            sourceComponentKey: binding.sourceComponentKey,
+            entityType: virtualEntityType(binding)
+        }))
+    );
 
     for (const binding of bindings) {
         const snapshot = deps.getSourceSnapshot(binding.sourceExternalId);
         const sourceComponentStatus = snapshot
             ? readComponentStatus(snapshot.status, binding.sourceComponentKey)
             : null;
+        const projection = resolveRoleProjection(binding);
+        const scalar = projectRoleScalar(sourceComponentStatus, projection);
         const sourcePresent = snapshot !== null;
         const sourceOnline = snapshot?.presence === 'online';
-        const componentPresent = sourceComponentStatus !== null;
+        const componentPresent = scalar !== null && scalar !== undefined;
         const available = sourceOnline && componentPresent;
-
-        statusRoles[binding.roleKey] = {
-            available,
-            value: sourceComponentStatus,
-            source: {
-                deviceExternalId: binding.sourceExternalId,
-                componentKey: binding.sourceComponentKey
-            }
-        };
 
         const writable = binding.writable === true;
         const entity = projectVirtualEntity({
@@ -129,6 +145,21 @@ function projectDevice(
             binding,
             available,
             componentId: componentIds.get(binding.roleKey)
+        });
+        statusRoles[binding.roleKey] = {
+            available,
+            value: shapeProjectedRoleStatus(entity.type, scalar),
+            source: {
+                deviceExternalId: binding.sourceExternalId,
+                componentKey: binding.sourceComponentKey
+            }
+        };
+        metricRoles.push({
+            roleKey: binding.roleKey,
+            available,
+            value: scalar,
+            unit: binding.unit,
+            projection
         });
         entityIds.push(entity.id);
         entityDetails.push(entity);
@@ -161,6 +192,7 @@ function projectDevice(
     return {
         externalId: device.externalId,
         statusRoles,
+        metricRoles,
         entityIds,
         entityDetails,
         capabilities: {
@@ -184,49 +216,6 @@ function hostPresenceForExtracted(
     if (!hostId) return null;
     const snapshot = deps.getSourceSnapshot(hostId);
     return snapshot?.presence ?? null;
-}
-
-function assignVirtualComponentIds(
-    bindings: readonly ActiveVirtualDeviceBinding[]
-): Map<string, number> {
-    const usedByType = new Map<string, Set<number>>();
-    const out = new Map<string, number>();
-    for (const binding of bindings) {
-        const type = virtualEntityType(binding);
-        const used = usedIdsForType(usedByType, type);
-        const preferred = sourceComponentId(binding.sourceComponentKey);
-        const id = nextAvailableComponentId(used, preferred);
-        used.add(id);
-        out.set(binding.roleKey, id);
-    }
-    return out;
-}
-
-function usedIdsForType(
-    usedByType: Map<string, Set<number>>,
-    type: string
-): Set<number> {
-    const existing = usedByType.get(type);
-    if (existing) return existing;
-    const created = new Set<number>();
-    usedByType.set(type, created);
-    return created;
-}
-
-function nextAvailableComponentId(
-    used: Set<number>,
-    preferred: number
-): number {
-    if (!used.has(preferred)) return preferred;
-    let next = 0;
-    while (used.has(next)) next += 1;
-    return next;
-}
-
-function sourceComponentId(componentKey: string): number {
-    const raw = componentKey.split(':')[1] ?? '';
-    const value = Number.parseInt(raw, 10);
-    return Number.isFinite(value) ? value : 0;
 }
 
 export const defaultReadModelDeps: Omit<
@@ -264,8 +253,15 @@ export function mergeReadModelIntoRow<Row extends MergeableRow>(
         const role = model.statusRoles[entity.properties.roleKey];
         if (!role || role.value === null || role.value === undefined) continue;
         const key = `${entity.type}:${entity.properties.id}`;
-        if (baseStatus[key] !== undefined) continue;
-        projectedTopLevel[key] = role.value;
+        if (baseStatus[key] === undefined) {
+            projectedTopLevel[key] = role.value;
+        }
+        // Logical entity-target alert rules address component:<entity.id>.
+        // Mirror the same projected status under that stable identity so
+        // Device.List, initial evaluation, and Rule.Preview share one shape.
+        if (baseStatus[entity.id] === undefined) {
+            projectedTopLevel[entity.id] = role.value;
+        }
     }
     const merged = {
         ...row,

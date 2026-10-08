@@ -7,22 +7,30 @@
 import {envInt} from '../../config/envReader';
 import type AbstractDevice from '../../model/AbstractDevice';
 import {ALERT_RULE_KIND_DESCRIPTOR_BY_KEY} from '../../types/api/alert';
+import {offlineForSecOf} from '../AlertEngine';
 import * as DeviceCollector from '../DeviceCollector';
 import * as EventDistributor from '../EventDistributor';
 import * as PostgresProvider from '../PostgresProvider';
+import {
+    attachVirtualRoleContext,
+    enrichVirtualAlertMatch
+} from '../virtualDeviceAlerts';
+import {
+    deviceSnapshotFromStoredRow,
+    promotedComponentsByGateway,
+    storedDeviceSnapshots
+} from './deviceSnapshots';
 import {getEvaluator} from './evaluators';
 import {buildDeviceOfflineMatch} from './evaluators/deviceOffline';
+import {bluetoothDevicesForPresence, deviceReachability} from './reachability';
 import {matchesScope} from './scope';
 import {collectEntityIds} from './signals';
-import {storedDevicePresence, timestampMs} from './storedPresence';
+import {storedDevicePresence} from './storedPresence';
 import {resolveSubjectForEvent} from './subjectForEvent';
-import type {LoadedAlertRule} from './types';
+import type {LoadedAlertRule, MatchResult} from './types';
 
 export interface PreviewMatch {
-    subject: {
-        type: 'device' | 'entity' | 'group' | 'location' | 'tag';
-        id: string;
-    };
+    subject: MatchResult['subject'];
     title: string;
     message: string;
     severity: string;
@@ -45,11 +53,6 @@ const STATUS_BASED_TRIGGER = 'device_status_changed';
 function isStatusBased(rule: LoadedAlertRule): boolean {
     const evaluator = getEvaluator(rule.kind);
     return evaluator?.triggerKinds.includes(STATUS_BASED_TRIGGER) ?? false;
-}
-
-function offlineForSec(rule: LoadedAlertRule): number | null {
-    const v = rule.config.offlineForSec;
-    return typeof v === 'number' && v > 0 ? v : null;
 }
 
 interface PreviewInputs {
@@ -109,13 +112,26 @@ export async function previewRuleAgainstOrg(
         (rule.scope.locationIds?.length ?? 0) > 0 ||
         (rule.scope.tagIds?.length ?? 0) > 0;
 
+    const currentDevices: AbstractDevice[] = [];
+    const seenDeviceIds = new Set<string>();
     for (const device of DeviceCollector.getAll()) {
+        if (EventDistributor.getDeviceOrg(device.shellyID) !== organizationId) {
+            continue;
+        }
+        seenDeviceIds.add(device.shellyID);
+        currentDevices.push(device);
+    }
+    const storedRows = await storedDeviceSnapshots(organizationId);
+    const promoted = promotedComponentsByGateway(storedRows);
+    for (const row of storedRows) {
+        if (seenDeviceIds.has(row.external_id)) continue;
+        currentDevices.push(deviceSnapshotFromStoredRow(row));
+    }
+
+    for (const device of currentDevices) {
         if (scanned >= maxDevices) {
             truncated = true;
             break;
-        }
-        if (EventDistributor.getDeviceOrg(device.shellyID) !== organizationId) {
-            continue;
         }
         if (
             accessibleDeviceIds !== undefined &&
@@ -150,20 +166,27 @@ export async function previewRuleAgainstOrg(
             continue;
         }
 
+        const promotedAway = promoted.get(device.shellyID);
         const event = {
             kind: 'device_status_changed' as const,
             organizationId,
             shellyID: device.shellyID,
             device,
-            status: (device as AbstractDevice).status ?? {}
+            status: (device as AbstractDevice).status ?? {},
+            ...(promotedAway ? {promotedAway} : {})
         };
         const results = evaluator.matchAll
-            ? evaluator.matchAll(event, rule)
+            ? evaluator.matchAll(event, rule, {preview: true})
             : [evaluator.match(event, rule, {preview: true})].filter(
                   (m): m is NonNullable<typeof m> => m !== null
               );
 
-        for (const result of results) {
+        for (const rawResult of results) {
+            const contextualResult = attachVirtualRoleContext(rawResult, event);
+            const result = await enrichVirtualAlertMatch(
+                organizationId,
+                contextualResult
+            );
             if (seenFingerprints.has(result.fingerprintV2)) continue;
             seenFingerprints.add(result.fingerprintV2);
             matchCount++;
@@ -205,9 +228,14 @@ async function previewOfflineRule(
     let truncated = false;
     let noData = 0;
     const now = Date.now();
-    const requiredOfflineSec = offlineForSec(rule);
+    const requiredOfflineSec = offlineForSecOf(rule);
+    const presence = await storedDevicePresence(organizationId);
+    const bluetooth = await bluetoothDevicesForPresence(
+        organizationId,
+        presence
+    );
 
-    for (const row of await storedDevicePresence(organizationId)) {
+    for (const row of presence) {
         if (scanned >= maxDevices) {
             truncated = true;
             break;
@@ -222,31 +250,33 @@ async function previewOfflineRule(
             PostgresProvider.callMethod
         );
         if (!matchesScope(rule.scope, subject)) continue;
-        if (live?.presence === 'online' || live?.online === true) continue;
-
-        const lastSeenMs =
-            timestampMs(row.last_seen) ?? timestampMs(live?.lastReportTs);
-        if (lastSeenMs === null) {
+        const reach = deviceReachability({
+            row,
+            live,
+            bluetooth: bluetooth.get(shellyID),
+            collector: DeviceCollector,
+            offlineForSec: requiredOfflineSec,
+            now
+        });
+        if (reach.state === 'online') continue;
+        if (reach.state === 'unknown') {
             noData++;
             continue;
         }
 
-        const offlineForMs =
-            requiredOfflineSec === null ? null : requiredOfflineSec * 1000;
-        const elapsedMs = now - lastSeenMs;
-        const pending =
-            offlineForMs !== null && elapsedMs >= 0 && elapsedMs < offlineForMs;
+        const pending = reach.state === 'silent';
         const match = buildDeviceOfflineMatch(
             rule.id,
             rule.name,
             shellyID,
             row.name ?? (live?.info?.name as string | undefined),
             {
-                offlineSince: new Date(lastSeenMs).toISOString(),
+                offlineSince: new Date(reach.lastSeenMs).toISOString(),
                 offlineForSec: requiredOfflineSec ?? undefined,
+                reason: reach.reason,
                 pending,
                 remainingSec: pending
-                    ? Math.ceil((offlineForMs! - elapsedMs) / 1000)
+                    ? Math.ceil((reach.dueAtMs - now) / 1000)
                     : 0
             }
         );

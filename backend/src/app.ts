@@ -25,6 +25,8 @@ import {envInt} from './config/envReader';
 import {isComponentEnabled} from './config/featureFlags';
 import initGrafana from './config/grafana';
 import {groupPolicy} from './config/groupPolicy';
+import {deviceIngressTransportSettingIgnored} from './config/tuning';
+import {mcpOAuthClientLevels} from './config/zitadel';
 import {createAttributeWindowRepo} from './model/analytics/attributeWindowRepo';
 // Components — grouped for registration; see registerDefaultComponents() below.
 import AddonComponent from './model/component/AddonComponent';
@@ -40,6 +42,7 @@ import AuditComponent, {
 } from './model/component/AuditComponent';
 import AuthComponent from './model/component/AuthComponent';
 import AuthzAuditComponent from './model/component/AuthzAuditComponent';
+import AutomationComponent from './model/component/AutomationComponent';
 import BackupComponent from './model/component/BackupComponent';
 import BillActualComponent from './model/component/BillActualComponent';
 import BleComponent from './model/component/BleComponent';
@@ -52,6 +55,7 @@ import BTHomeDeviceComponent from './model/component/BTHomeDeviceComponent';
 import BTHomeSensorComponent from './model/component/BTHomeSensorComponent';
 import ButtonComponent from './model/component/ButtonComponent';
 import CameraComponent from './model/component/CameraComponent';
+import CarbonComponent from './model/component/CarbonComponent';
 import CbComponent from './model/component/CbComponent';
 import CctComponent from './model/component/CctComponent';
 import CertificateComponent from './model/component/CertificateComponent';
@@ -77,17 +81,23 @@ import EnergyComponent from './model/component/EnergyComponent';
 import EntityComponent from './model/component/EntityComponent';
 import EthComponent from './model/component/EthComponent';
 import FanComponent from './model/component/FanComponent';
+import FileTransferComponent from './model/component/FileTransferComponent';
 import FirmwareComponent from './model/component/FirmwareComponent';
 import FleetComponent from './model/component/FleetComponent';
 import FleetMapComponent from './model/component/FleetMapComponent';
 import FleetSummaryComponent from './model/component/FleetSummaryComponent';
 import FloodComponent from './model/component/FloodComponent';
+import GasConversionComponent from './model/component/GasConversionComponent';
 import GrafanaComponent from './model/component/GrafanaComponent';
 import GroupComponent from './model/component/GroupComponent';
 import HttpComponent from './model/component/HttpComponent';
 import HumidityComponent from './model/component/HumidityComponent';
 import IlluminanceComponent from './model/component/IlluminanceComponent';
 import InputComponent from './model/component/InputComponent';
+import IrCodeComponent from './model/component/IrCodeComponent';
+import IrComponent from './model/component/IrComponent';
+import IrDeviceComponent from './model/component/IrDeviceComponent';
+import IrLibraryComponent from './model/component/IrLibraryComponent';
 import JobComponent from './model/component/JobComponent';
 import KindComponent from './model/component/KindComponent';
 import KnxComponent from './model/component/KnxComponent';
@@ -100,6 +110,7 @@ import LoginTextComponent from './model/component/LoginTextComponent';
 import MailComponent from './model/component/MailComponent';
 import MatterComponent from './model/component/MatterComponent';
 import MbRtuClientComponent from './model/component/MbRtuClientComponent';
+import McpApprovalComponent from './model/component/McpApprovalComponent';
 import MdnsComponent from './model/component/MdnsComponent';
 import MediaComponent from './model/component/MediaComponent';
 import MessageTextComponent from './model/component/MessageTextComponent';
@@ -108,11 +119,13 @@ import MqttComponent from './model/component/MqttComponent';
 import NotificationComponent from './model/component/NotificationComponent';
 import NotificationPolicyComponent from './model/component/NotificationPolicyComponent';
 import ObjectComponent from './model/component/ObjectComponent';
+import OperationsComponent from './model/component/OperationsComponent';
 import OrganizationComponent from './model/component/OrganizationComponent';
 import OtaComponent from './model/component/OtaComponent';
 import PermissionComponent from './model/component/PermissionComponent';
 import PersonaComponent from './model/component/PersonaComponent';
 import PillComponent from './model/component/PillComponent';
+import PillUartComponent from './model/component/PillUartComponent';
 import PluginManagerComponent from './model/component/PluginManagerComponent';
 import Pm1Component from './model/component/Pm1Component';
 import PolicyComponent from './model/component/PolicyComponent';
@@ -126,6 +139,7 @@ import RgbCctComponent from './model/component/RgbCctComponent';
 import RgbComponent from './model/component/RgbComponent';
 import RgbwComponent from './model/component/RgbwComponent';
 import ScheduleComponent from './model/component/ScheduleComponent';
+import ScopedAutomationComponent from './model/component/ScopedAutomationComponent';
 import ScriptComponent from './model/component/ScriptComponent';
 import SecurityComponent from './model/component/SecurityComponent';
 import SensorComponent from './model/component/SensorComponent';
@@ -164,10 +178,13 @@ import {
 } from './model/report/reportArtifactCleanup';
 import * as AlertEngine from './modules/AlertEngine';
 import * as AuditLogger from './modules/AuditLogger';
+import {startEventJournal, stopEventJournal} from './modules/ai/eventJournal';
+import * as McpOperationRecovery from './modules/ai/operationRecovery';
 import * as RuleSweep from './modules/alert/RuleSweep';
 import * as AuditRetentionScheduler from './modules/auditRetentionScheduler';
 import {initAuthzRuntime, shutdownAuthzRuntime} from './modules/authz';
 import * as BackupJobWorker from './modules/backup/jobWorker';
+import * as BaselineScheduler from './modules/baselineScheduler';
 import * as Commander from './modules/Commander';
 import * as CertificateExpiryMonitor from './modules/certificate/expiryMonitor';
 import * as CertificatePushWorker from './modules/certificate/pushWorker';
@@ -181,6 +198,7 @@ import {
 } from './modules/delivery/oauthConsent';
 import {drainTransporterPool} from './modules/delivery/transporterPool';
 import * as CustomKindGaugeScheduler from './modules/device/CustomKindGaugeScheduler';
+import * as DeviceLoadReconcile from './modules/device/deviceLoadReconcile';
 import {startDeviceEventDrainer} from './modules/deviceEvents/DeviceEventDrainer';
 import {
     setDeviceEventLogCallMethod,
@@ -198,12 +216,14 @@ import {
     startIngressAuditFlusher,
     stopIngressAuditFlusher
 } from './modules/deviceIngress/ingressAuditFlusher';
+import * as DeviceIngressRotationWorker from './modules/deviceIngress/rotationWorker';
 import {assertIngressTokenPepperConfigured} from './modules/deviceIngress/tokenHash';
 import {
     bindAutoAdmittedDeviceOrg,
     recordAutoAdmitAudit
 } from './modules/discovery/autoAdmitFinalize';
-import * as EmSumCheckScheduler from './modules/emSumCheckScheduler';
+import * as EmCompletenessScheduler from './modules/emCompletenessScheduler';
+import {emLiveDebugCapture} from './modules/emLiveDebugCapture';
 import {seedAllOverrides} from './modules/energyOverrideLoader';
 import * as FirmwareScheduler from './modules/FirmwareScheduler';
 import * as FirmwareJobWorker from './modules/firmware/jobWorker';
@@ -213,8 +233,16 @@ import {seedPolicyDefaults} from './modules/groupPolicySeed';
 import IdentityComponent from './modules/identity/IdentityComponent';
 import * as Mdns from './modules/Mdns';
 import MobileComponent from './modules/mobile/MobileComponent';
+import {
+    startEditorSessionRevocation,
+    stopEditorSocketSweep
+} from './modules/nodeRed/editorSession';
 import * as Observability from './modules/Observability';
-import {registerClientDeviceUsageQuery} from './modules/observability/clientDeviceUsage';
+import {
+    registerClientDeviceUsageQuery,
+    startClientDeviceUsageSampling,
+    stopClientDeviceUsageSampling
+} from './modules/observability/clientDeviceUsage';
 import * as postgres from './modules/PostgresProvider';
 import {PluginLoader} from './modules/plugins';
 import Workers from './modules/plugins/Workers';
@@ -227,7 +255,13 @@ import {
     assertSaasZitadelManagementApiConfigured,
     assertSaasZitadelOrganizationsConfigured
 } from './modules/saasMode';
+import {startSensorCaptureDrainer} from './modules/sensor/SensorCaptureDrainer';
+import {writeSensorCaptureBatch} from './modules/sensorCapture';
 import * as LiveTariffPullScheduler from './modules/tariff/liveTariffPullScheduler';
+import {
+    startUploadStagingCleanup,
+    stopUploadStagingCleanup
+} from './modules/uploads/uploadCleanup';
 import {assertJwtSecretConfigured, getUserComponent} from './modules/user';
 import {
     evictCachedUserByCredentialId,
@@ -237,12 +271,22 @@ import {
 } from './modules/user/cache';
 import * as PatRevokeWorker from './modules/user/patRevokeWorker';
 import {startScopedPatRetentionSweep} from './modules/user/tokenStore';
-import {fireAndForget} from './modules/util/fireAndForget';
 import {armForceExit} from './modules/util/forceExitWatchdog';
+import {
+    startBluetoothProvenanceRetention,
+    stopBluetoothProvenanceRetention
+} from './modules/virtualDevice/bluetoothProvenanceRetention';
 import * as WaitingRoom from './modules/WaitingRoom';
+import {
+    startAccessRecheck,
+    stopAccessRecheck
+} from './modules/WaitingRoom/accessRecheck';
 import * as web from './modules/web';
 import {start as startWeb} from './modules/web';
 import {stopRateLimitSweep} from './modules/web/rateLimit';
+import {drainMcpEventStreams} from './modules/web/routes/mcp';
+import {assertProxyTrustConfigured} from './modules/web/ws/handlers/shellyProxyTrust';
+import * as ZitadelActionInboxWorker from './modules/zitadelActions/inboxWorker';
 
 // ------------------------------------------------------------------------------------------------
 // Configure
@@ -327,7 +371,23 @@ async function onShutdown(exitCode = 0) {
         stopPendingFilterSweep();
     });
 
+    // 0c. Hand back every device ownership lease BEFORE the sockets close.
+    //     A lease left behind blocks that device from registering anywhere for up
+    //     to its 30s TTL — including with this process after a restart, which is
+    //     how one restart of a 350-device fleet became a five-minute outage: each
+    //     refusal counted against the device's reconnect budget and the limiter
+    //     threw it into a 5-minute throttle.
+    await runShutdownStep('deviceOwnership.releaseAll', async () => {
+        const {releaseAllDeviceRuntimeOwnership} = await import(
+            './modules/deviceIdentityRuntime.js'
+        );
+        const released = await releaseAllDeviceRuntimeOwnership();
+        if (released > 0)
+            logger.info('Released %d device ownership leases', released);
+    });
+
     // 1. Stop accepting new work.
+    await runShutdownStep('mcp.events.drain', () => drainMcpEventStreams());
     await runShutdownStep('web.stop', () => web.stop(10_000));
 
     // 2. Reject new RPCs + wait for in-flight to finish.
@@ -343,14 +403,28 @@ async function onShutdown(exitCode = 0) {
         await flushPendingOnShutdown();
     });
 
+    // 2c. Save pending device snapshots while PG is up: the next boot rebuilds
+    //     each device from its saved status and diffs its reconnect against it.
+    await runShutdownStep('deviceSnapshots.flushPending', () =>
+        Promise.all(
+            DeviceCollector.getAll().map((shelly) => shelly.flushPersist())
+        )
+    );
+
     // 3. Stop schedulers + workers + drainers in dependency order.
     const steps: Array<[string, () => Promise<unknown> | unknown]> = [
+        ['DeviceLoadReconcile.stop', () => DeviceLoadReconcile.stop()],
         ['FirmwareScheduler.stop', () => FirmwareScheduler.stopScheduler()],
         [
             'AuditRetentionScheduler.stop',
             () => AuditRetentionScheduler.stopScheduler()
         ],
-        ['EmSumCheckScheduler.stop', () => EmSumCheckScheduler.stopScheduler()],
+        [
+            'EmCompletenessScheduler.stop',
+            () => EmCompletenessScheduler.stopScheduler()
+        ],
+        ['emLiveDebugCapture.stop', () => emLiveDebugCapture.stop()],
+        ['BaselineScheduler.stop', () => BaselineScheduler.stopScheduler()],
         [
             'LiveTariffPullScheduler.stop',
             () => LiveTariffPullScheduler.stopScheduler()
@@ -360,9 +434,19 @@ async function onShutdown(exitCode = 0) {
             () => firmwareLibrary.stopTemporaryFirmwareCleanup()
         ],
         ['stopAuditExportsCleanup', () => stopAuditExportsCleanup()],
+        ['stopEditorSocketSweep', () => stopEditorSocketSweep()],
         ['stopReportArtifactCleanup', () => stopReportArtifactCleanup()],
+        ['stopUploadStagingCleanup', () => stopUploadStagingCleanup()],
         ['stopUserCacheSweep', () => stopUserCacheSweep()],
         ['stopDeviceIngressCleanup', () => stopDeviceIngressCleanup()],
+        [
+            'stopBluetoothProvenanceRetention',
+            () => stopBluetoothProvenanceRetention()
+        ],
+        [
+            'stopDeviceIngressRotationWorker',
+            () => DeviceIngressRotationWorker.stop()
+        ],
         ['stopDeviceSeenFlusher', () => stopDeviceSeenFlusher()],
         // Just stop the timer — the tail stays in the durable Redis buffer and
         // the next process drains it on boot, so no audit rows are lost.
@@ -374,6 +458,10 @@ async function onShutdown(exitCode = 0) {
         ],
         ['RuleSweep.stop', () => RuleSweep.stopScheduler()],
         ['AlertEngine.stop', () => AlertEngine.stop()],
+        // After the listeners stop and before the outbox stops: committed
+        // fires queue their deliveries there.
+        ['AlertEngine.drainAlertFires', () => AlertEngine.drainAlertFires()],
+        ['stopAccessRecheck', () => stopAccessRecheck()],
         ['WaitingRoom.stop', () => WaitingRoom.stop()],
         [
             'Mdns.stop',
@@ -382,11 +470,17 @@ async function onShutdown(exitCode = 0) {
             }
         ],
         ['OutboxWorker.stop', () => OutboxWorker.stop()],
+        ['McpOperationRecovery.stop', () => McpOperationRecovery.stop()],
+        ['stopEventJournal', () => stopEventJournal()],
         ['BackupJobWorker.stop', () => BackupJobWorker.stop()],
         ['FirmwareJobWorker.stop', () => FirmwareJobWorker.stop()],
         ['CertificatePushWorker.stop', () => CertificatePushWorker.stop()],
         ['CredentialPushWorker.stop', () => CredentialPushWorker.stop()],
         ['PatRevokeWorker.stop', () => PatRevokeWorker.stop()],
+        [
+            'ZitadelActionInboxWorker.stop',
+            () => ZitadelActionInboxWorker.stop()
+        ],
         [
             'CertificateExpiryMonitor.stop',
             () => CertificateExpiryMonitor.stop()
@@ -421,6 +515,33 @@ async function onShutdown(exitCode = 0) {
             }
         ],
         [
+            'stopSystemHealthSweep',
+            async () => {
+                const {stopSystemHealthSweep} = await import(
+                    './modules/alert/systemHealthSweep.js'
+                );
+                stopSystemHealthSweep();
+            }
+        ],
+        [
+            'stopEmStatsOverflowDrainer',
+            async () => {
+                const {stopEmStatsOverflowDrainer} = await import(
+                    './modules/emStatsOverflow.js'
+                );
+                await stopEmStatsOverflowDrainer();
+            }
+        ],
+        [
+            'stopEnergyRollupWorker',
+            async () => {
+                const {stopEnergyRollupWorker} = await import(
+                    './modules/energyRollupWorker.js'
+                );
+                await stopEnergyRollupWorker();
+            }
+        ],
+        [
             'stopIngestDrainer',
             async () => {
                 const {stopIngestDrainer} = await import(
@@ -436,6 +557,15 @@ async function onShutdown(exitCode = 0) {
                     './modules/deviceEvents/DeviceEventDrainer.js'
                 );
                 await stopDeviceEventDrainer();
+            }
+        ],
+        [
+            'stopSensorCaptureDrainer',
+            async () => {
+                const {stopSensorCaptureDrainer} = await import(
+                    './modules/sensor/SensorCaptureDrainer.js'
+                );
+                await stopSensorCaptureDrainer();
             }
         ],
         ['drainTransporterPool', () => drainTransporterPool()],
@@ -474,6 +604,8 @@ async function onShutdown(exitCode = 0) {
         await awaitInflightSpills();
     });
 
+    stopClientDeviceUsageSampling();
+
     // 5. Close pg pool last among storage so all earlier writes land.
     await runShutdownStep('postgres.shutdown', () => postgres.shutdown());
     await runShutdownStep('authz runtime shutdown', () =>
@@ -484,6 +616,7 @@ async function onShutdown(exitCode = 0) {
     await runShutdownStep('Observability.shutdown', () =>
         Observability.shutdown()
     );
+    await runShutdownStep('tracing flush', () => Observability.stopTracing());
 
     // 7. Release device connections. Promise.resolve wrap future-proofs
     //    against an async destroy override.
@@ -518,8 +651,7 @@ async function onShutdown(exitCode = 0) {
 // Register default components.
 //
 // Three concern groups, enforced by section below. Adding a new component
-// means deciding which group it belongs to — per the architectural split
-// documented in docs/architecture/api.md § "Namespace inventory".
+// means deciding which group it belongs to.
 //
 //   Group A — Device Operations   (physical Shelly control)
 //   Group B — Fleet Operations    (organize + analyze across devices)
@@ -555,6 +687,10 @@ function registerDefaultComponents() {
     Commander.registerComponent(new IdentityComponent());
     Commander.registerComponent(new IlluminanceComponent());
     Commander.registerComponent(new InputComponent());
+    Commander.registerComponent(new IrComponent());
+    Commander.registerComponent(new IrDeviceComponent());
+    Commander.registerComponent(new IrCodeComponent());
+    Commander.registerComponent(new IrLibraryComponent());
     Commander.registerComponent(new KnxComponent());
     Commander.registerComponent(new KvsComponent());
     Commander.registerComponent(new LedStripComponent());
@@ -573,6 +709,7 @@ function registerDefaultComponents() {
     Commander.registerComponent(new ObjectComponent());
     Commander.registerComponent(new OtaComponent());
     Commander.registerComponent(new PillComponent());
+    Commander.registerComponent(new PillUartComponent());
     Commander.registerComponent(new Pm1Component());
     Commander.registerComponent(new RgbComponent());
     Commander.registerComponent(new RgbCctComponent());
@@ -602,6 +739,7 @@ function registerDefaultComponents() {
     Commander.registerComponent(new WaitingRoomComponent());
     Commander.registerComponent(new DiscoveryComponent());
     Commander.registerComponent(new AssetComponent());
+    Commander.registerComponent(new FileTransferComponent());
     Commander.registerComponent(new AuthComponent());
     if (isComponentEnabled('schedule')) {
         Commander.registerComponent(new ScheduleComponent());
@@ -627,8 +765,10 @@ function registerDefaultComponents() {
     Commander.registerComponent(new FleetSummaryComponent());
     Commander.registerComponent(new FleetMapComponent());
     Commander.registerComponent(new EnergyComponent());
+    Commander.registerComponent(new CarbonComponent());
     Commander.registerComponent(new SensorComponent());
     Commander.registerComponent(new TariffComponent());
+    Commander.registerComponent(new GasConversionComponent());
     Commander.registerComponent(
         new AnalyticsComponent(createAttributeWindowRepo())
     );
@@ -650,6 +790,7 @@ function registerDefaultComponents() {
     Commander.registerComponent(new UserGroupComponent());
     Commander.registerComponent(new AssignmentComponent());
     Commander.registerComponent(new AuthzAuditComponent());
+    Commander.registerComponent(new McpApprovalComponent());
     Commander.registerComponent(new JobComponent());
     Commander.registerComponent(new CertificateComponent());
     Commander.registerComponent(new CredentialComponent());
@@ -660,9 +801,12 @@ function registerDefaultComponents() {
     Commander.registerComponent(new MessageTextComponent());
     Commander.registerComponent(new LoginTextComponent());
     Commander.registerComponent(new NotificationPolicyComponent());
+    Commander.registerComponent(new OperationsComponent());
     Commander.registerComponent(new RestrictionsComponent());
     Commander.registerComponent(new DomainPolicyComponent());
     Commander.registerComponent(new AuditComponent());
+    Commander.registerComponent(new AutomationComponent());
+    Commander.registerComponent(new ScopedAutomationComponent());
     Commander.registerComponent(new DeviceEventComponent());
     Commander.registerComponent(new PluginManagerComponent());
     Commander.registerComponent(new MailComponent());
@@ -717,6 +861,8 @@ function logBootSafety(): void {
     warnIfInsecureProduction();
     // Fail fast on invalid FM_GROUP_POLICY_* env values.
     groupPolicy();
+    // Fail fast on a malformed FM_MCP_OAUTH_CLIENT_IDS.
+    mcpOAuthClientLevels();
     assertSaasZitadelOrganizationsConfigured();
     assertSaasZitadelManagementApiConfigured();
 }
@@ -726,6 +872,7 @@ async function initPersistenceAndAuthz(): Promise<void> {
     // Inject the DB query primitive into the device-usage exporter so it never
     // imports PostgresProvider directly (would close an Observability↔DB cycle).
     registerClientDeviceUsageQuery(postgres.queryRows);
+    startClientDeviceUsageSampling();
     // Seed the runtime-editable policy table from env once per deploy.
     // ON CONFLICT DO NOTHING — admin edits survive.
     await seedPolicyDefaults();
@@ -764,43 +911,74 @@ async function initRedisAndDrainers(): Promise<void> {
     }
     const {installRedisServices} = await import('./modules/redis/services.js');
     installRedisServices();
-    // Stream-length watchdog (opt-in: FM_STREAM_HEALTH_MONITOR_ENABLED).
-    if (tuning.observability.healthMonitorEnabled) {
+    // Redis runtime telemetry always runs. Per-stream XLEN probes are opt-in.
+    {
         const {getSharedRedis} = await import(
             './modules/redis/RedisClients.js'
         );
         const {StreamHealthMonitor} = await import(
             './modules/redis/StreamHealthMonitor.js'
         );
+        const {getRedisRuntimeSnapshot} = await import(
+            './modules/redis/runtimeInfo.js'
+        );
         const {cmd} = getSharedRedis();
+        const streams = tuning.observability.healthMonitorEnabled
+            ? [
+                  {
+                      key: tuning.audit.overflowStreamKey,
+                      maxlen: tuning.audit.overflowMaxlen,
+                      label: 'audit-overflow'
+                  },
+                  {
+                      key: tuning.status.streamKey,
+                      maxlen: tuning.status.streamMaxlen,
+                      label: 'status-telemetry'
+                  },
+                  {
+                      key: tuning.deviceSnapshot.streamKey,
+                      maxlen: tuning.deviceSnapshot.streamMaxlen,
+                      label: 'device-snapshot'
+                  },
+                  {
+                      key: tuning.deviceEvents.streamKey,
+                      maxlen: tuning.deviceEvents.streamMaxlen,
+                      label: 'device-event'
+                  },
+                  {
+                      key: tuning.energy.emSyncStreamKey,
+                      maxlen: tuning.energy.emSyncStreamMaxlen,
+                      label: 'em-sync'
+                  }
+              ]
+            : [];
         const monitor = new StreamHealthMonitor(
             cmd,
-            [
-                {
-                    key: tuning.audit.overflowStreamKey,
-                    maxlen: tuning.audit.overflowMaxlen,
-                    label: 'audit-overflow'
-                },
-                {
-                    key: tuning.status.overflowStreamKey,
-                    maxlen: tuning.status.overflowMaxlen,
-                    label: 'status-overflow'
-                },
-                {
-                    key: tuning.deviceSnapshot.streamKey,
-                    maxlen: tuning.deviceSnapshot.streamMaxlen,
-                    label: 'device-snapshot'
-                },
-                {
-                    key: tuning.deviceEvents.streamKey,
-                    maxlen: tuning.deviceEvents.streamMaxlen,
-                    label: 'device-event'
-                }
-            ],
+            streams,
             tuning.observability.healthMonitorPollMs,
             tuning.observability.healthOverflowRatio
         );
         monitor.start();
+        Observability.registerModule('redisRuntime', {
+            stats: () => {
+                const snapshot = getRedisRuntimeSnapshot();
+                return {
+                    ...snapshot,
+                    aofEnabled: snapshot.aofEnabled ?? 'unknown'
+                };
+            },
+            topology: {
+                role: 'sink',
+                cluster: 'storage',
+                upstreams: ['statusQueue', 'emSync', 'audit'],
+                label: 'Redis Runtime',
+                description:
+                    'Live Redis version, durability, and eviction configuration',
+                route: '/monitoring/activity',
+                criticality: 'high',
+                dataClasses: ['runtime_identity']
+            }
+        });
     }
     // Cross-instance signals — fail-safe boot, never crash FM here.
     // Subscribe BEFORE the audit drainer starts so the drainer doesn't
@@ -837,10 +1015,46 @@ async function initRedisAndDrainers(): Promise<void> {
         const {startAuditDrainer} = await import(
             './modules/audit/AuditDrainer.js'
         );
-        setAuditSpillHook((entry) => {
-            fireAndForget('audit-spill', spillAuditEntry(entry));
-        });
+        // The logger needs the outcome to count a row that could not be kept.
+        setAuditSpillHook((entry) => spillAuditEntry(entry));
         startAuditDrainer();
+    }
+    // A single-tenant install owns the files from before per-tenant report
+    // image folders. The tenant is certain when it is pinned by config or when
+    // the database holds exactly one organization; otherwise provider support
+    // assigns files by hand.
+    {
+        const {fmClientOrgId} = await import('./config/zitadel.js');
+        const {readSoleOrganizationId} = await import(
+            './modules/organizationModel.js'
+        );
+        const tenant = fmClientOrgId() ?? (await readSoleOrganizationId());
+        if (tenant) {
+            const {adoptLegacyReportImages} = await import(
+                './modules/mediaAssetLibrary.js'
+            );
+            const moved = await adoptLegacyReportImages(tenant);
+            if (moved.length > 0) {
+                logger.info(
+                    'adopted %d legacy report images for tenant',
+                    moved.length
+                );
+            }
+        }
+    }
+    // The product watches its own counters and tells admins what to do.
+    {
+        const {startSystemHealthSweep} = await import(
+            './modules/alert/systemHealthSweep.js'
+        );
+        startSystemHealthSweep();
+    }
+    // Live energy rows that did not fit in memory while PostgreSQL failed.
+    {
+        const {startEmStatsOverflowDrainer} = await import(
+            './modules/emStatsOverflow.js'
+        );
+        startEmStatsOverflowDrainer();
     }
     try {
         const {subscribeDeviceTrustInvalidations} = await import(
@@ -896,6 +1110,17 @@ async function initRedisAndDrainers(): Promise<void> {
     } catch (err) {
         logger.warn('SessionSignals subscribe failed (continuing): %s', err);
     }
+    if (tuning.nodeRed.enabled) {
+        try {
+            await startEditorSessionRevocation();
+        } catch (err) {
+            // Local revocation is wired; only peers' signals are missed.
+            logger.error(
+                'Node-RED editor session revocation subscribe failed: %s',
+                err
+            );
+        }
+    }
     // Status flush DLQ.
     {
         const {startStatusDrainer} = await import(
@@ -907,9 +1132,9 @@ async function initRedisAndDrainers(): Promise<void> {
         );
         const Observability = await import('./modules/Observability.js');
         const projectionLogger = log4js.getLogger('virtual-projection');
-        startStatusDrainer(async (batch) => {
+        startStatusDrainer(async (batch, context) => {
             await PG.rawCall('device.fn_status_push', batch);
-            await projectPersistedStatusBatch(batch).catch((err) => {
+            await projectPersistedStatusBatch(batch, context).catch((err) => {
                 Observability.incrementCounter(
                     'virtual_projection_drain_errors'
                 );
@@ -951,10 +1176,12 @@ async function initRedisAndDrainers(): Promise<void> {
         const {startEmSyncDrainer} = await import(
             './modules/device/EmSyncDrainer.js'
         );
-        const {appendEmStatsSynced} = await import('./modules/energyRollup.js');
+        const {appendEmStatsSyncedBatch} = await import(
+            './modules/energyRollup.js'
+        );
         const PG = await import('./modules/PostgresProvider.js');
         startEmSyncDrainer((batch) =>
-            appendEmStatsSynced(batch.rows, batch.cursor, {
+            appendEmStatsSyncedBatch(batch.rows, batch.cursors, {
                 callDb: PG.callMethod
             })
         );
@@ -1009,6 +1236,11 @@ function armInProcessCaches(): void {
         (tuning.deviceEvents.redisFirst || tuning.deviceEvents.redisShadow)
     ) {
         startDeviceEventDrainer(writeDeviceEventRowBatch);
+    }
+    if (!tuning.redis.disabled && tuning.sensorCapture.redisFirst) {
+        startSensorCaptureDrainer((batch) =>
+            writeSensorCaptureBatch(batch, {callDb: postgres.rawCall})
+        );
     }
     // Periodic batch-flush of the device-event-log queue. Lifecycle pair —
     // stopFlushTimer is called in onShutdown.
@@ -1079,13 +1311,20 @@ async function startBackgroundWorkers(): Promise<void> {
     // Periodic sweep of expired audit-log CSV exports.
     startAuditExportsCleanup();
     startReportArtifactCleanup();
+    startUploadStagingCleanup();
     FirmwareScheduler.startScheduler();
     AuditRetentionScheduler.startScheduler();
-    EmSumCheckScheduler.startScheduler();
+    EmCompletenessScheduler.startScheduler();
+    emLiveDebugCapture.start();
+    BaselineScheduler.startScheduler();
     LiveTariffPullScheduler.startScheduler();
     await startDeviceIngressCleanup();
+    await startBluetoothProvenanceRetention();
+    await DeviceIngressRotationWorker.start();
     startDeviceSeenFlusher();
     startIngressAuditFlusher();
+    // Every process, not only a leader: each closes the sockets it holds.
+    startAccessRecheck();
     CustomKindGaugeScheduler.start(tuning.observability.kindGaugePollMs);
     // Tier 1 cache must be warm before the first energy frame; failure
     // here would silently let tier 2 misclassify a row the operator
@@ -1097,11 +1336,16 @@ async function startBackgroundWorkers(): Promise<void> {
     }
     OutboxWorker.registerReportExportHandler(runReportExportJob);
     await OutboxWorker.start(configRc.internalStorage);
+    await McpOperationRecovery.start();
+    startEventJournal({
+        connectedDevices: () => DeviceCollector.getAll().length
+    });
     await BackupJobWorker.start();
     await FirmwareJobWorker.start();
     await CertificatePushWorker.start();
     await CredentialPushWorker.start();
     await PatRevokeWorker.start();
+    await ZitadelActionInboxWorker.start();
     await CertificateExpiryMonitor.start();
     startOAuthStatePruner();
     // Alert engine subscribes to device events + evaluates rules — must
@@ -1116,8 +1360,31 @@ async function main() {
     console.time('boot');
 
     logBootSafety();
+    if (Observability.startTracing()) {
+        logger.info('OpenTelemetry tracing on: MCP requests export spans');
+    }
     assertIngressTokenPepperConfigured();
+    assertProxyTrustConfigured(tuning.deviceIngress);
+    if (deviceIngressTransportSettingIgnored()) {
+        logger.warn(
+            'FM_DEVICE_INGRESS_SHELLY_WS_TRANSPORT is set but ignored: the transport is observed per socket now'
+        );
+    }
     await initPersistenceAndAuthz();
+    {
+        const {startEnergyRollupWorker} = await import(
+            './modules/energyRollupWorker.js'
+        );
+        const {applyHeldCorrectionWindow} = await import(
+            './modules/energyHeldCorrection.js'
+        );
+        const PG = await import('./modules/PostgresProvider.js');
+        await applyHeldCorrectionWindow(
+            PG.callMethod,
+            tuning.energy.heldCorrectionDays
+        );
+        startEnergyRollupWorker(PG.callMethod);
+    }
     await initRedisAndDrainers();
     // Subscribe to Entity.Added / Entity.Removed before loadSavedDevices
     // emits any — the lazy entity index then sees a consistent post-load
@@ -1136,7 +1403,10 @@ async function main() {
     enableObservabilityAndMdns();
     await startBackgroundWorkers();
     await restoreSessionSnapshot();
-    startWeb();
+    // A web server that failed to start must fail boot, not leave a process
+    // that runs without serving.
+    await startWeb();
+    DeviceLoadReconcile.start();
 
     console.timeEnd('boot');
 }

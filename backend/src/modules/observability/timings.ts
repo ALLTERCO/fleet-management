@@ -56,27 +56,37 @@ mirrorLabeledCounter('fm_rpc_calls_total', 'Total RPC calls per method', (c) =>
     )
 );
 mirrorLabeledCounter(
-    'fm_rpc_duration_ms_total',
-    'Total RPC duration per method in ms',
+    'fm_rpc_duration_seconds_total',
+    'Total RPC duration per method in seconds',
     (c) =>
-        emitPerMethod(rpcTimings, 'fm_rpc_duration_ms_total', (method, s) =>
-            c.inc({method}, Math.round(s.totalMs))
+        emitPerMethod(
+            rpcTimings,
+            'fm_rpc_duration_seconds_total',
+            (method, s) => c.inc({method}, s.totalMs / 1000)
         )
 );
 mirrorLabeledGauge(
-    'fm_rpc_duration_ms_max',
-    'Max RPC duration per method in ms',
+    'fm_rpc_duration_max_seconds',
+    'Maximum RPC duration per method in seconds',
     (g) =>
-        emitPerMethod(rpcTimings, 'fm_rpc_duration_ms_max', (method, s) =>
-            g.set({method}, Math.round(s.maxMs))
+        emitPerMethod(rpcTimings, 'fm_rpc_duration_max_seconds', (method, s) =>
+            g.set({method}, s.maxMs / 1000)
         )
 );
 mirrorLabeledGauge(
-    'fm_rpc_duration_ms_avg',
-    'Avg RPC duration per method in ms',
+    'fm_rpc_duration_avg_seconds',
+    'Average RPC duration per method in seconds',
     (g) =>
-        emitPerMethod(rpcTimings, 'fm_rpc_duration_ms_avg', (method, s) =>
-            g.set({method}, avgMs(s))
+        emitPerMethod(rpcTimings, 'fm_rpc_duration_avg_seconds', (method, s) =>
+            g.set({method}, avgMs(s) / 1000)
+        )
+);
+mirrorLabeledGauge(
+    'fm_rpc_duration_p95_seconds',
+    'Rolling P95 RPC duration per method in seconds',
+    (g) =>
+        emitPerMethod(rpcTimings, 'fm_rpc_duration_p95_seconds', (method) =>
+            g.set({method}, methodP95(method) / 1000)
         )
 );
 mirrorLabeledCounter('fm_db_calls_total', 'Total DB calls per query', (c) =>
@@ -85,27 +95,27 @@ mirrorLabeledCounter('fm_db_calls_total', 'Total DB calls per query', (c) =>
     )
 );
 mirrorLabeledCounter(
-    'fm_db_duration_ms_total',
-    'Total DB duration per query in ms',
+    'fm_db_duration_seconds_total',
+    'Total DB duration per query in seconds',
     (c) =>
-        emitPerMethod(dbTimings, 'fm_db_duration_ms_total', (method, s) =>
-            c.inc({method}, Math.round(s.totalMs))
+        emitPerMethod(dbTimings, 'fm_db_duration_seconds_total', (method, s) =>
+            c.inc({method}, s.totalMs / 1000)
         )
 );
 mirrorLabeledGauge(
-    'fm_db_duration_ms_max',
-    'Max DB duration per query in ms',
+    'fm_db_duration_max_seconds',
+    'Maximum DB duration per query in seconds',
     (g) =>
-        emitPerMethod(dbTimings, 'fm_db_duration_ms_max', (method, s) =>
-            g.set({method}, Math.round(s.maxMs))
+        emitPerMethod(dbTimings, 'fm_db_duration_max_seconds', (method, s) =>
+            g.set({method}, s.maxMs / 1000)
         )
 );
 mirrorLabeledGauge(
-    'fm_db_duration_ms_avg',
-    'Avg DB duration per query in ms',
+    'fm_db_duration_avg_seconds',
+    'Average DB duration per query in seconds',
     (g) =>
-        emitPerMethod(dbTimings, 'fm_db_duration_ms_avg', (method, s) =>
-            g.set({method}, avgMs(s))
+        emitPerMethod(dbTimings, 'fm_db_duration_avg_seconds', (method, s) =>
+            g.set({method}, avgMs(s) / 1000)
         )
 );
 

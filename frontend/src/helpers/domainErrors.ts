@@ -38,6 +38,8 @@ const MESSAGES: Partial<Record<keyof typeof DOMAIN_ERRORS, string>> = {
         'Delete the child locations first, then delete this one.',
     LocationDeleteBlockedHasAssignments:
         'Unassign the devices/entities first, then delete this location.',
+    LocationSubtreeChanged:
+        'The location tree changed. Review the updated contents before deleting it.',
     TagNotFound: 'Tag not found — it may have been removed.',
     TagKeyConflict: 'A tag with that key already exists.',
     TagKeyInvalid:
@@ -107,6 +109,12 @@ export function domainErrorKind(
     const rpc = extractRpcError(err);
     if (rpc?.code === undefined) return null;
     return ByCode[rpc.code] ?? null;
+}
+
+/** The stable `data.details.reason` the server attached, or null. */
+export function domainErrorReason(err: unknown): string | null {
+    const reason = extractRpcError(err)?.data?.details?.reason;
+    return typeof reason === 'string' && reason ? reason : null;
 }
 
 function extractRpcError(err: unknown): RpcCallError | null {

@@ -98,9 +98,35 @@ interface BluetoothCandidateQuery extends BluetoothDeviceCandidateListParams {
     componentKey?: string;
 }
 
+interface BluetoothDeviceRef {
+    deviceListId: number;
+    externalId: string;
+}
+
 interface BluetoothPromotionCandidate {
     candidate: BluetoothDeviceCandidateDto;
     imageModel?: string;
+}
+
+export interface BluetoothGatewayPromotionOutcome {
+    componentKey: string;
+    device: BluetoothDeviceDto;
+    created: boolean;
+    changed: boolean;
+    /** Other gateways whose cached status routes no longer match this child. */
+    staleRouteGatewayExternalIds: string[];
+}
+
+export interface BluetoothStatusRoute {
+    deviceListId: number;
+    externalId: string;
+    organizationId: string;
+    transportId: string;
+    primary: boolean;
+    components: BluetoothSourceComponentDto[];
+    modelId: string | null;
+    productName: string | null;
+    bleAddress: string | null;
 }
 
 const defaultDeps: RepositoryDeps = {
@@ -123,7 +149,7 @@ export async function listBluetoothDevices(
     const rows = await deps.queryRows<BluetoothDeviceRow>(
         `${bluetoothDeviceSelect()}
          WHERE ${filters.where.join(' AND ')}
-         ORDER BY COALESCE(bd.product_name, dl.external_id) ASC
+         ORDER BY COALESCE(bd.product_name, dl.external_id) ASC, bd.device_list_id ASC
          ${pagination.sql}`,
         [...filters.values, ...pagination.params(offset)]
     );
@@ -151,6 +177,23 @@ export async function getBluetoothDevice(
     return rows[0] ? rowToBluetoothDevice(rows[0]) : null;
 }
 
+export async function listBluetoothDevicesByExternalIds(
+    organizationId: string,
+    externalIds: readonly string[],
+    deps: RepositoryDeps = defaultDeps
+): Promise<BluetoothDeviceDto[]> {
+    const ids = [...new Set(externalIds)];
+    if (ids.length === 0) return [];
+    const rows = await deps.queryRows<BluetoothDeviceRow>(
+        `${bluetoothDeviceSelect()}
+         WHERE bd.organization_id = $1
+           AND dl.external_id = ANY($2::varchar[])
+           AND bd.deleted_at IS NULL`,
+        [organizationId, ids]
+    );
+    return rows.map(rowToBluetoothDevice);
+}
+
 export async function listBluetoothSourceKeysByGateway(
     organizationId: string | undefined,
     gatewayExternalIds: readonly string[],
@@ -163,7 +206,7 @@ export async function listBluetoothSourceKeysByGateway(
     }>(
         `SELECT
             gateway.external_id AS gateway_external_id,
-            component->>'componentKey' AS source_component_key
+            component.component_key AS source_component_key
            FROM device.blu_device bd
            JOIN device.blu_transport bt
              ON bt.blu_device_list_id = bd.device_list_id
@@ -173,16 +216,60 @@ export async function listBluetoothSourceKeysByGateway(
            JOIN device.list gateway
              ON gateway.id = bt.shelly_device_list_id
             AND gateway.organization_id = bd.organization_id
-           CROSS JOIN LATERAL jsonb_array_elements(
-             COALESCE(bd.source_components_json, '[]'::jsonb)
-           ) component
+           JOIN device.blu_transport_component component
+             ON component.transport_id = bt.id
           WHERE bd.organization_id = $1
             AND bd.deleted_at IS NULL
-            AND gateway.external_id = ANY($2::varchar[])
-            AND component->>'componentKey' IS NOT NULL`,
+            AND gateway.external_id = ANY($2::varchar[])`,
         [organizationId, [...new Set(gatewayExternalIds)]]
     );
     return rowsToGatewaySourceKeys(rows);
+}
+
+export async function listBluetoothStatusRoutesByGateway(
+    organizationId: string | undefined,
+    gatewayExternalIds: readonly string[],
+    deps: Pick<RepositoryDeps, 'queryRows'> = defaultDeps
+): Promise<Map<string, Map<string, BluetoothStatusRoute>>> {
+    if (!organizationId || gatewayExternalIds.length === 0) return new Map();
+    const rows = await deps.queryRows<GatewayStatusRouteRow>(
+        `SELECT
+            gateway.external_id AS gateway_external_id,
+            bd.device_list_id,
+            dl.external_id,
+            bd.organization_id,
+            bt.id AS transport_id,
+            bt.is_primary,
+            component.component_key AS source_component_key,
+            component.position,
+            component.component_json,
+            bd.model_id,
+            bd.product_name,
+            bd.ble_address
+           FROM device.blu_device bd
+           JOIN device.blu_transport bt
+             ON bt.blu_device_list_id = bd.device_list_id
+            AND bt.organization_id = bd.organization_id
+            AND bt.mode = 'bthome_gateway'
+            AND bt.enabled IS TRUE
+           JOIN device.list gateway
+             ON gateway.id = bt.shelly_device_list_id
+            AND gateway.organization_id = bd.organization_id
+           JOIN device.list dl
+             ON dl.id = bd.device_list_id
+            AND dl.organization_id = bd.organization_id
+           JOIN device.blu_transport_component component
+             ON component.transport_id = bt.id
+          WHERE bd.organization_id = $1
+            AND bd.deleted_at IS NULL
+            AND gateway.external_id = ANY($2::varchar[])
+          ORDER BY gateway.external_id,
+                   component.component_key,
+                   bt.is_primary DESC,
+                   bd.device_list_id`,
+        [organizationId, [...new Set(gatewayExternalIds)]]
+    );
+    return rowsToGatewayStatusRoutes(rows);
 }
 
 // Reverse of promotion: given a gateway and one of its bound child component
@@ -208,17 +295,41 @@ export async function getBluetoothDeviceExternalIdBySource(
            JOIN device.list dl
              ON dl.id = bd.device_list_id
             AND dl.organization_id = bd.organization_id
-           CROSS JOIN LATERAL jsonb_array_elements(
-             COALESCE(bd.source_components_json, '[]'::jsonb)
-           ) component
+           JOIN device.blu_transport_component component
+             ON component.transport_id = bt.id
+            AND component.component_key = $3
           WHERE bd.organization_id = $1
             AND bd.deleted_at IS NULL
             AND gateway.external_id = $2
-            AND component->>'componentKey' = $3
+          ORDER BY bt.is_primary DESC, bd.device_list_id
           LIMIT 1`,
         [organizationId, gatewayExternalId, componentKey]
     );
     return rows[0]?.external_id ?? null;
+}
+
+// Keys each transport's gateway assigned, in the order the pass stored them.
+export async function listBluetoothTransportComponentKeys(
+    organizationId: string,
+    deviceListId: number,
+    deps: Pick<RepositoryDeps, 'queryRows'> = defaultDeps
+): Promise<Map<string, string[]>> {
+    const rows = await deps.queryRows<{
+        transport_id: string;
+        component_keys: string[];
+    }>(
+        `SELECT bt.id AS transport_id,
+                array_agg(component.component_key ORDER BY component.position)
+                    AS component_keys
+           FROM device.blu_transport bt
+           JOIN device.blu_transport_component component
+             ON component.transport_id = bt.id
+          WHERE bt.organization_id = $1
+            AND bt.blu_device_list_id = $2
+          GROUP BY bt.id`,
+        [organizationId, deviceListId]
+    );
+    return new Map(rows.map((row) => [row.transport_id, row.component_keys]));
 }
 
 export async function deleteBluetoothDevice(
@@ -226,14 +337,31 @@ export async function deleteBluetoothDevice(
     input: BluetoothDeleteParams,
     deps: RepositoryDeps = defaultDeps
 ): Promise<{externalId: string; deleted: boolean}> {
+    const {externalId, deleted} = await deleteBluetoothDeviceWithOutcome(
+        organizationId,
+        input,
+        deps
+    );
+    return {externalId, deleted};
+}
+
+// Also names the gateways whose cached status routes still list the device.
+export async function deleteBluetoothDeviceWithOutcome(
+    organizationId: string,
+    input: BluetoothDeleteParams,
+    deps: RepositoryDeps = defaultDeps
+): Promise<{
+    externalId: string;
+    deleted: boolean;
+    staleRouteGatewayExternalIds: string[];
+}> {
     return deps.withTransaction(async (tx) => {
-        const device = await lockBluetoothDevice(
-            tx,
+        const device = await lockBluetoothDeviceForRemoval(tx, {
             organizationId,
-            input.externalId
-        );
+            externalId: input.externalId
+        });
         if (input.retention === 'purge') {
-            await purgeBluetoothDevice(tx, organizationId, device.deviceListId);
+            await purgeBluetoothDevice(tx, device.deviceListId);
         } else {
             await tombstoneBluetoothDevice(
                 tx,
@@ -241,7 +369,11 @@ export async function deleteBluetoothDevice(
                 device.deviceListId
             );
         }
-        return {externalId: input.externalId, deleted: true};
+        return {
+            externalId: input.externalId,
+            deleted: true,
+            staleRouteGatewayExternalIds: device.linkedGatewayExternalIds
+        };
     });
 }
 
@@ -256,6 +388,77 @@ function rowsToGatewaySourceKeys(
         const keys = out.get(row.gateway_external_id) ?? new Set<string>();
         keys.add(row.source_component_key);
         out.set(row.gateway_external_id, keys);
+    }
+    return out;
+}
+
+interface GatewayStatusRouteRow {
+    gateway_external_id: string;
+    device_list_id: number;
+    external_id: string;
+    organization_id: string;
+    transport_id: string;
+    is_primary: boolean;
+    source_component_key: string;
+    position: number;
+    component_json: unknown;
+    model_id: string | null;
+    product_name: string | null;
+    ble_address: string | null;
+}
+
+// Rows come ordered so a key held by two transports of one gateway (a pass
+// not yet run) resolves the same way on every load: primary first.
+function rowsToGatewayStatusRoutes(
+    rows: readonly GatewayStatusRouteRow[]
+): Map<string, Map<string, BluetoothStatusRoute>> {
+    const out = new Map<string, Map<string, BluetoothStatusRoute>>();
+    const transports = new Map<
+        string,
+        {
+            route: BluetoothStatusRoute;
+            components: Array<{
+                position: number;
+                component: BluetoothSourceComponentDto;
+            }>;
+        }
+    >();
+    for (const row of rows) {
+        const transportKey = `${row.gateway_external_id}|${row.transport_id}`;
+        let transport = transports.get(transportKey);
+        if (!transport) {
+            transport = {
+                route: {
+                    deviceListId: row.device_list_id,
+                    externalId: row.external_id,
+                    organizationId: row.organization_id,
+                    transportId: row.transport_id,
+                    primary: row.is_primary,
+                    components: [],
+                    modelId: row.model_id,
+                    productName: row.product_name,
+                    bleAddress: row.ble_address
+                },
+                components: []
+            };
+            transports.set(transportKey, transport);
+        }
+        const component = parseSourceComponent(row.component_json);
+        if (component) {
+            transport.components.push({position: row.position, component});
+        }
+        const routes =
+            out.get(row.gateway_external_id) ??
+            new Map<string, BluetoothStatusRoute>();
+        if (!routes.has(row.source_component_key)) {
+            routes.set(row.source_component_key, transport.route);
+        }
+        out.set(row.gateway_external_id, routes);
+    }
+    for (const {route, components} of transports.values()) {
+        route.components = components
+            .sort((a, b) => a.position - b.position)
+            .map((entry) => entry.component);
     }
     return out;
 }
@@ -283,36 +486,87 @@ export async function promoteBluetoothFromGateway(
     actorId: string | null = null,
     deps: RepositoryDeps = defaultDeps
 ): Promise<BluetoothDeviceDto> {
+    const outcome = await promoteBluetoothFromGatewayWithOutcome(
+        organizationId,
+        input,
+        actorId,
+        deps
+    );
+    return outcome.device;
+}
+
+// Internal auto-promotion needs the transaction's authoritative created flag.
+// A preflight "already promoted" read is stale when several gateways discover
+// the same child concurrently and must not drive Created/Updated events.
+export async function promoteBluetoothFromGatewayWithOutcome(
+    organizationId: string,
+    input: BluetoothPromoteFromGatewayParams,
+    actorId: string | null = null,
+    deps: RepositoryDeps = defaultDeps
+): Promise<Omit<BluetoothGatewayPromotionOutcome, 'componentKey'>> {
     return deps.withTransaction(async (tx) => {
         const promotion = await readGatewayCandidate(tx, organizationId, input);
-        const {candidate} = promotion;
-        const promoted = await upsertBluetoothDevice(
-            tx,
-            candidate,
-            promotion.imageModel
+        const [outcome] = await promoteGatewayChildren(
+            {tx, actorId, makeUuid: deps.makeUuid},
+            [{...promotion, makePrimary: input.makePrimary !== false}]
         );
-        await upsertGatewayTransport(tx, {
-            candidate,
-            bluetoothDeviceListId: promoted.device.deviceListId,
-            makePrimary: input.makePrimary !== false,
-            transportId: deps.makeUuid()
-        });
-        if (promoted.created) {
-            await writeBluetoothKeyEvent(tx, {
+        return {
+            device: await requireBluetoothDevice(
+                tx,
                 organizationId,
-                deviceListId: promoted.device.deviceListId,
-                eventType: 'promote',
-                keyRef: null,
-                actorId,
-                reason: `${candidate.gatewayExternalId}:${candidate.componentKey}`,
-                id: deps.makeUuid()
-            });
-        }
-        return requireBluetoothDevice(
+                outcome.ref.externalId
+            ),
+            created: outcome.created,
+            changed: outcome.changed,
+            staleRouteGatewayExternalIds: outcome.staleRouteGatewayExternalIds
+        };
+    });
+}
+
+export async function promoteBluetoothGatewayChildrenWithOutcome(
+    organizationId: string,
+    gatewayExternalId: string,
+    componentKeys: readonly string[],
+    actorId: string | null = null,
+    deps: RepositoryDeps = defaultDeps
+): Promise<BluetoothGatewayPromotionOutcome[]> {
+    if (componentKeys.length === 0) return [];
+    const requested = new Set(componentKeys);
+    return deps.withTransaction(async (tx) => {
+        const rows = await tx.query<GatewayCandidateRow>(
+            bluetoothCandidateSql({gatewayExternalId}),
+            [organizationId, gatewayExternalId]
+        );
+        const promotions = rows
+            .filter((row) => requested.has(row.component_key))
+            .map(rowToBluetoothPromotionCandidate)
+            .filter(
+                (promotion): promotion is BluetoothPromotionCandidate =>
+                    !!promotion
+            );
+        const found = new Set(
+            promotions.map(({candidate}) => candidate.componentKey)
+        );
+        const missing = componentKeys.find((key) => !found.has(key));
+        if (missing) throw RpcError.NotFound('bluetooth_candidate', missing);
+
+        const outcomes = await promoteGatewayChildren(
+            {tx, actorId, makeUuid: deps.makeUuid},
+            promotions.map((promotion) => ({...promotion, makePrimary: false}))
+        );
+        // One read for the whole pass: the per-child reads held a connection per child.
+        const devices = await requireBluetoothDevices(
             tx,
             organizationId,
-            promoted.device.externalId
+            outcomes.map((outcome) => outcome.ref)
         );
+        return outcomes.map((outcome, index) => ({
+            componentKey: outcome.componentKey,
+            device: devices[index],
+            created: outcome.created,
+            changed: outcome.changed,
+            staleRouteGatewayExternalIds: outcome.staleRouteGatewayExternalIds
+        }));
     });
 }
 
@@ -333,11 +587,16 @@ export async function listBluetoothTransports(
     return {items: rows.map(rowToBluetoothTransport)};
 }
 
+// Also names the gateways that held the primary before, whose cached status
+// routes still mark it primary.
 export async function setPrimaryBluetoothTransport(
     organizationId: string,
     input: BluetoothTransportSetPrimaryParams,
     deps: RepositoryDeps = defaultDeps
-): Promise<{items: BluetoothTransportDto[]}> {
+): Promise<{
+    items: BluetoothTransportDto[];
+    previousPrimaryGatewayExternalIds: string[];
+}> {
     return deps.withTransaction(async (tx) => {
         const device = await lockBluetoothDevice(
             tx,
@@ -349,12 +608,18 @@ export async function setPrimaryBluetoothTransport(
             deviceListId: device.deviceListId,
             transportId: input.transportId
         });
-        await tx.query(
-            `UPDATE device.blu_transport
+        const previous = await tx.query<{gateway_external_id: string | null}>(
+            `UPDATE device.blu_transport bt
                 SET is_primary = FALSE,
                     updated_at = NOW()
-              WHERE organization_id = $1
-                AND blu_device_list_id = $2`,
+              WHERE bt.organization_id = $1
+                AND bt.blu_device_list_id = $2
+                AND bt.is_primary IS TRUE
+              RETURNING (
+                    SELECT gateway.external_id
+                      FROM device.list gateway
+                     WHERE gateway.id = bt.shelly_device_list_id
+                ) AS gateway_external_id`,
             [organizationId, device.deviceListId]
         );
         await tx.query(
@@ -374,7 +639,16 @@ export async function setPrimaryBluetoothTransport(
              ORDER BY bt.is_primary DESC, bt.created_at ASC`,
             [organizationId, device.deviceListId]
         );
-        return {items: rows.map(rowToBluetoothTransport)};
+        return {
+            items: rows.map(rowToBluetoothTransport),
+            previousPrimaryGatewayExternalIds: [
+                ...new Set(
+                    previous.flatMap((row) =>
+                        row.gateway_external_id ? [row.gateway_external_id] : []
+                    )
+                )
+            ]
+        };
     });
 }
 
@@ -483,7 +757,8 @@ function bluetoothDeviceSelect(): string {
         bd.model_id,
         bd.capability,
         bd.encryption_key_ref,
-        bd.source_components_json,
+        COALESCE(pc.components, bd.source_components_json)
+            AS source_components_json,
         bd.visual_json,
         bd.image_asset_id,
         pt.id            AS primary_transport_id,
@@ -519,6 +794,13 @@ function bluetoothDeviceSelect(): string {
          ORDER BY enabled DESC, last_seen_at DESC NULLS LAST
          LIMIT 1
       ) pt ON TRUE
+ LEFT JOIN LATERAL (
+        -- The device's components are the keys its primary gateway assigned;
+        -- a primary without stored keys keeps the last stored list.
+        SELECT jsonb_agg(component_json ORDER BY position) AS components
+          FROM device.blu_transport_component
+         WHERE transport_id = pt.id
+      ) pc ON TRUE
  LEFT JOIN device.list shelly
         ON shelly.id = pt.shelly_device_list_id
        AND shelly.organization_id = bd.organization_id
@@ -576,15 +858,11 @@ async function tombstoneBluetoothDevice(
 
 async function purgeBluetoothDevice(
     tx: QueryClient,
-    organizationId: string,
     deviceListId: number
 ): Promise<void> {
-    await tx.query(
-        `DELETE FROM device.list
-          WHERE organization_id = $1
-            AND id = $2`,
-        [organizationId, deviceListId]
-    );
+    // The wired delete. A plain DELETE trips the RESTRICT foreign key from
+    // alert history; fn_full_delete detaches and unscopes first.
+    await tx.query('SELECT device.fn_full_delete($1)', [deviceListId]);
 }
 
 function buildBluetoothListFilters(
@@ -770,10 +1048,20 @@ async function readGatewayCandidate(
          LIMIT 1`,
         [organizationId, input.gatewayExternalId, input.componentKey]
     );
-    const candidate = rows[0] ? rowToBluetoothCandidate(rows[0]) : null;
-    if (!candidate)
+    const promotion = rows[0]
+        ? rowToBluetoothPromotionCandidate(rows[0])
+        : null;
+    if (!promotion)
         throw RpcError.NotFound('bluetooth_candidate', input.componentKey);
-    const meta = asRecord(asRecord(rows[0]?.config).meta);
+    return promotion;
+}
+
+function rowToBluetoothPromotionCandidate(
+    row: GatewayCandidateRow
+): BluetoothPromotionCandidate | null {
+    const candidate = rowToBluetoothCandidate(row);
+    if (!candidate) return null;
+    const meta = asRecord(asRecord(row.config).meta);
     const visual = asRecord(meta.visual);
     return {
         candidate,
@@ -784,75 +1072,324 @@ async function readGatewayCandidate(
     };
 }
 
-async function upsertBluetoothDevice(
-    tx: QueryClient,
-    candidate: BluetoothDeviceCandidateDto,
-    imageModel?: string
-): Promise<{device: BluetoothDeviceDto; created: boolean}> {
-    const existing = await findBluetoothDeviceByStableId(
-        tx,
-        candidate.gatewayDeviceListId,
-        candidate.stableId
-    );
-    if (existing) {
-        await updateBluetoothDeviceMetadata(
-            tx,
-            existing.deviceListId,
-            candidate,
-            imageModel
-        );
-        return {
-            device: await requireBluetoothDevice(
-                tx,
-                await organizationIdForDevice(
-                    tx,
-                    candidate.gatewayDeviceListId
-                ),
-                existing.externalId
-            ),
-            created: false
-        };
+// Bounds the array size bound into one statement.
+const MAX_CHILDREN_PER_STATEMENT = 200;
+
+interface ChildPromotion extends BluetoothPromotionCandidate {
+    makePrimary: boolean;
+}
+
+interface ChildPromotionOutcome {
+    componentKey: string;
+    ref: BluetoothDeviceRef;
+    created: boolean;
+    changed: boolean;
+    staleRouteGatewayExternalIds: string[];
+}
+
+interface DeviceRefresh {
+    changed: Set<number>;
+    /** Rows whose routed details (address, name, model) or tombstone
+     *  changed; other gateways cache those details. */
+    detailsChanged: Set<number>;
+}
+
+interface TransportRefresh {
+    changed: Set<number>;
+    /** This gateway's transport per child, in child order. */
+    transportIds: string[];
+    lostPrimary: Map<number, string[]>;
+    linkedGateways: Map<number, string[]>;
+}
+
+interface PromotionScope {
+    tx: QueryClient;
+    actorId: string | null;
+    makeUuid(): string;
+}
+
+interface PromotionContext extends PromotionScope {
+    organizationId: string;
+    gatewayDeviceListId: number;
+}
+
+type DeviceState = 'existing' | 'tombstoned' | 'created';
+
+type DevicePlacement =
+    | {state: DeviceState; ref: BluetoothDeviceRef}
+    | {state: 'rejected'; error: RpcError};
+
+interface LockedChild {
+    promotion: ChildPromotion;
+    ref: BluetoothDeviceRef;
+    state: DeviceState;
+}
+
+interface PlacedChild extends LockedChild {
+    transportId: string;
+    keyEventId: string | null;
+}
+
+interface StoredBluetoothDeviceRow {
+    device_list_id: number;
+    external_id: string;
+    stable_id: string;
+    live: boolean;
+    list_in_org: boolean;
+}
+
+interface GatewayTransportStateRow {
+    blu_device_list_id: number;
+    stale_changed: boolean;
+    has_no_primary: boolean;
+    gateway_transport_id: string | null;
+    linked_gateway_external_ids: string[];
+}
+
+// A gateway pass runs a fixed number of statements per group of children
+// instead of about twelve per child. Children sharing one BLE address go to
+// later groups, so each group touches a BLU device once, in the given order.
+async function promoteGatewayChildren(
+    scope: PromotionScope,
+    children: readonly ChildPromotion[]
+): Promise<ChildPromotionOutcome[]> {
+    if (children.length === 0) return [];
+    const {gatewayDeviceListId} = children[0].candidate;
+    const ctx: PromotionContext = {
+        ...scope,
+        gatewayDeviceListId,
+        organizationId: await organizationIdForDevice(
+            scope.tx,
+            gatewayDeviceListId
+        )
+    };
+    const outcomes: ChildPromotionOutcome[] = [];
+    for (const group of independentChildGroups(children)) {
+        outcomes.push(...(await promoteIndependentChildren(ctx, group)));
     }
-    const organizationId = await organizationIdForDevice(
-        tx,
-        candidate.gatewayDeviceListId
-    );
-    // Re-promoting a soft-deleted beacon resurrects the tombstoned row rather
-    // than colliding on its still-present blu_<MAC> device.list id.
-    const resurrected = await resurrectTombstonedBluetoothDevice(
-        tx,
-        organizationId,
-        candidate,
-        imageModel
-    );
-    if (resurrected) return {device: resurrected, created: false};
-    // blu_<MAC> is global; a duplicate insert here means another org owns it.
-    const externalId = `blu_${candidate.stableId}`;
-    let rows: {id: number}[];
-    try {
-        rows = await tx.query<{id: number}>(
-            `INSERT INTO device.list (
-                external_id,
-                control_access,
-                jdoc,
-                organization_id,
-                kind
-            )
-            VALUES ($1, 3, '{}'::jsonb, $2, 'bluetooth')
-            RETURNING id`,
-            [externalId, organizationId]
-        );
-    } catch (err) {
-        if ((err as {code?: string}).code === '23505') {
-            throw RpcError.InvalidParams(
-                `Bluetooth device ${externalId} is already registered to another organization`
-            );
+    return outcomes;
+}
+
+function independentChildGroups(
+    children: readonly ChildPromotion[]
+): ChildPromotion[][] {
+    const groups: ChildPromotion[][] = [];
+    let group: ChildPromotion[] = [];
+    let stableIds = new Set<string>();
+    for (const child of children) {
+        const {stableId} = child.candidate;
+        if (
+            stableIds.has(stableId) ||
+            group.length === MAX_CHILDREN_PER_STATEMENT
+        ) {
+            groups.push(group);
+            group = [];
+            stableIds = new Set();
         }
-        throw err;
+        group.push(child);
+        stableIds.add(stableId);
     }
-    const deviceListId = rows[0]?.id;
-    if (!deviceListId) throw RpcError.OperationFailed('bluetooth promote');
-    await tx.query(
+    groups.push(group);
+    return groups;
+}
+
+async function promoteIndependentChildren(
+    ctx: PromotionContext,
+    children: readonly ChildPromotion[]
+): Promise<ChildPromotionOutcome[]> {
+    const placements = await placeBluetoothDevices(ctx, children);
+    const lockedLive = await lockPlacedBluetoothDevices(ctx, placements);
+    const placed = assignPromotionIds(
+        ctx,
+        requirePlacedChildren(children, {placements, lockedLive})
+    );
+    const transports = await refreshGatewayTransports(ctx, placed);
+    const componentsChanged = await writeTransportComponents(
+        ctx,
+        placed,
+        transports.transportIds
+    );
+    const devices = await refreshPlacedBluetoothDevices(ctx, placed);
+    await writePromoteKeyEvents(ctx, placed);
+    return placed.map((child) => {
+        const id = child.ref.deviceListId;
+        return {
+            componentKey: child.promotion.candidate.componentKey,
+            ref: child.ref,
+            created: child.state === 'created',
+            changed:
+                devices.changed.has(id) ||
+                transports.changed.has(id) ||
+                componentsChanged.has(id),
+            staleRouteGatewayExternalIds: staleRouteGateways(id, {
+                devices,
+                transports
+            })
+        };
+    });
+}
+
+// Other gateways whose cached routes no longer match: the one that lost the
+// primary, and every linked gateway when the routed details changed.
+function staleRouteGateways(
+    deviceListId: number,
+    input: {devices: DeviceRefresh; transports: TransportRefresh}
+): string[] {
+    const gateways = new Set(
+        input.transports.lostPrimary.get(deviceListId) ?? []
+    );
+    if (input.devices.detailsChanged.has(deviceListId)) {
+        for (const gateway of input.transports.linkedGateways.get(
+            deviceListId
+        ) ?? []) {
+            gateways.add(gateway);
+        }
+    }
+    return [...gateways].sort();
+}
+
+// Reads without locks; rows are locked later in one id order, after the
+// device.list inserts, so concurrent gateway passes cannot wait on each other
+// in a cycle.
+async function placeBluetoothDevices(
+    ctx: PromotionContext,
+    children: readonly ChildPromotion[]
+): Promise<DevicePlacement[]> {
+    const stored = await readStoredBluetoothDevices(
+        ctx,
+        children.map((child) => child.candidate.stableId)
+    );
+    const found = children.map((child) =>
+        storedPlacement(stored.get(child.candidate.stableId) ?? [])
+    );
+    const inserted = await insertBluetoothDevices(
+        ctx,
+        children.filter((_, index) => found[index] === null)
+    );
+    return children.map(
+        (child, index) =>
+            found[index] ??
+            inserted.get(child.candidate.stableId) ?? {
+                state: 'rejected',
+                error: RpcError.OperationFailed('bluetooth promote')
+            }
+    );
+}
+
+async function readStoredBluetoothDevices(
+    ctx: PromotionContext,
+    stableIds: readonly string[]
+): Promise<Map<string, StoredBluetoothDeviceRow[]>> {
+    const rows = await ctx.tx.query<StoredBluetoothDeviceRow>(
+        `SELECT bd.device_list_id,
+                dl.external_id,
+                bd.stable_id,
+                bd.deleted_at IS NULL AS live,
+                COALESCE(dl.organization_id = bd.organization_id, FALSE)
+                    AS list_in_org
+           FROM device.blu_device bd
+           JOIN device.list dl
+             ON dl.id = bd.device_list_id
+          WHERE bd.organization_id = $1
+            AND bd.stable_id = ANY($2::varchar[])`,
+        [ctx.organizationId, stableIds]
+    );
+    const byStableId = new Map<string, StoredBluetoothDeviceRow[]>();
+    for (const row of rows) {
+        byStableId.set(row.stable_id, [
+            ...(byStableId.get(row.stable_id) ?? []),
+            row
+        ]);
+    }
+    return byStableId;
+}
+
+// A live row is reused; a same-org tombstone is resurrected rather than
+// colliding on its still-present blu_<MAC> device.list id.
+function storedPlacement(
+    rows: readonly StoredBluetoothDeviceRow[]
+): DevicePlacement | null {
+    const live = rows.find((row) => row.live && row.list_in_org);
+    if (live) return {state: 'existing', ref: storedRef(live)};
+    const tombstoned = rows.find((row) => !row.live);
+    if (tombstoned) return {state: 'tombstoned', ref: storedRef(tombstoned)};
+    return null;
+}
+
+function storedRef(row: StoredBluetoothDeviceRow): BluetoothDeviceRef {
+    return {deviceListId: row.device_list_id, externalId: row.external_id};
+}
+
+// blu_<MAC> is global. Concurrent gateways in one org can both miss the
+// initial lookup, so avoid a unique-violation (which aborts the tx), then
+// inspect the row that won. device.list carries both the canonical global
+// external-id index and an older non-physical partial index; omitting a
+// conflict target makes PostgreSQL arbitrate every applicable uniqueness
+// constraint instead of allowing the non-target index to race. The insert
+// waits for the winner, and the following statement gets a fresh READ
+// COMMITTED snapshot of its row. Sorted inserts keep that wait order stable.
+async function insertBluetoothDevices(
+    ctx: PromotionContext,
+    children: readonly ChildPromotion[]
+): Promise<Map<string, DevicePlacement>> {
+    const placements = new Map<string, DevicePlacement>();
+    if (children.length === 0) return placements;
+    const insertedIds = await insertBluetoothListRows(
+        ctx,
+        children.map(bluetoothExternalId)
+    );
+    const created = children.flatMap((child) => {
+        const externalId = bluetoothExternalId(child);
+        const deviceListId = insertedIds.get(externalId);
+        return deviceListId === undefined
+            ? []
+            : [{child, ref: {deviceListId, externalId}}];
+    });
+    await insertBluetoothDeviceRows(ctx, created);
+    for (const {child, ref} of created) {
+        placements.set(child.candidate.stableId, {state: 'created', ref});
+    }
+    const lost = children.filter(
+        (child) => !insertedIds.has(bluetoothExternalId(child))
+    );
+    for (const [stableId, placement] of await placeConflictWinners(ctx, lost)) {
+        placements.set(stableId, placement);
+    }
+    return placements;
+}
+
+function bluetoothExternalId(child: ChildPromotion): string {
+    return `blu_${child.candidate.stableId}`;
+}
+
+async function insertBluetoothListRows(
+    ctx: PromotionContext,
+    externalIds: readonly string[]
+): Promise<Map<string, number>> {
+    const rows = await ctx.tx.query<{id: number; external_id: string}>(
+        `INSERT INTO device.list (
+            external_id,
+            control_access,
+            jdoc,
+            organization_id,
+            kind
+        )
+        SELECT child.external_id, 3, '{}'::jsonb, $2, 'bluetooth'
+          FROM unnest($1::varchar[]) AS child(external_id)
+         ORDER BY child.external_id
+        ON CONFLICT DO NOTHING
+        RETURNING id, external_id`,
+        [externalIds, ctx.organizationId]
+    );
+    return new Map(rows.map((row) => [row.external_id, row.id]));
+}
+
+async function insertBluetoothDeviceRows(
+    ctx: PromotionContext,
+    created: ReadonlyArray<{child: ChildPromotion; ref: BluetoothDeviceRef}>
+): Promise<void> {
+    if (created.length === 0) return;
+    await ctx.tx.query(
         `INSERT INTO device.blu_device (
             device_list_id,
             organization_id,
@@ -864,192 +1401,643 @@ async function upsertBluetoothDevice(
             source_components_json,
             visual_json
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb)`,
+        SELECT child.device_list_id,
+               $1,
+               child.stable_id,
+               child.ble_address,
+               child.product_name,
+               child.model_id,
+               child.capability,
+               child.source_components_json::jsonb,
+               child.visual_json::jsonb
+          FROM unnest(
+                $2::integer[],
+                $3::varchar[],
+                $4::varchar[],
+                $5::varchar[],
+                $6::varchar[],
+                $7::varchar[],
+                $8::text[],
+                $9::text[]
+               ) AS child(
+                device_list_id,
+                stable_id,
+                ble_address,
+                product_name,
+                model_id,
+                capability,
+                source_components_json,
+                visual_json
+               )
+         ORDER BY child.device_list_id`,
         [
-            deviceListId,
-            organizationId,
-            candidate.stableId,
-            candidate.bleAddress,
-            candidate.productName ?? candidate.name,
-            candidate.modelId,
-            candidate.capability,
-            jsonbParam(candidate.components),
-            jsonbParam(imageModel ? {imageModel} : {})
+            ctx.organizationId,
+            created.map(({ref}) => ref.deviceListId),
+            created.map(({child}) => child.candidate.stableId),
+            ...bluetoothMetadataColumns(created.map(({child}) => child))
         ]
     );
+}
+
+async function placeConflictWinners(
+    ctx: PromotionContext,
+    children: readonly ChildPromotion[]
+): Promise<Map<string, DevicePlacement>> {
+    const placements = new Map<string, DevicePlacement>();
+    if (children.length === 0) return placements;
+    const owners = await ctx.tx.query<{
+        id: number;
+        external_id: string;
+        organization_id: string | null;
+    }>(
+        `SELECT id, external_id, organization_id
+           FROM device.list
+          WHERE external_id = ANY($1::varchar[])`,
+        [children.map(bluetoothExternalId)]
+    );
+    const byExternalId = new Map(owners.map((row) => [row.external_id, row]));
+    for (const child of children) {
+        const externalId = bluetoothExternalId(child);
+        placements.set(
+            child.candidate.stableId,
+            conflictWinnerPlacement(ctx, {
+                externalId,
+                owner: byExternalId.get(externalId)
+            })
+        );
+    }
+    return placements;
+}
+
+function conflictWinnerPlacement(
+    ctx: PromotionContext,
+    input: {
+        externalId: string;
+        owner?: {id: number; organization_id: string | null};
+    }
+): DevicePlacement {
+    if (!input.owner) {
+        return {
+            state: 'rejected',
+            error: RpcError.OperationFailed('bluetooth promote')
+        };
+    }
+    if (input.owner.organization_id !== ctx.organizationId) {
+        return {
+            state: 'rejected',
+            error: RpcError.InvalidParams(
+                `Bluetooth device ${input.externalId} is already registered to another organization`
+            )
+        };
+    }
     return {
-        device: await requireBluetoothDevice(tx, organizationId, externalId),
-        created: true
+        state: 'existing',
+        ref: {deviceListId: input.owner.id, externalId: input.externalId}
     };
 }
 
-// Un-delete a same-org tombstoned beacon and refresh its metadata; null when
-// none exists. Lets a re-promote reuse the row instead of a colliding insert.
-async function resurrectTombstonedBluetoothDevice(
-    tx: QueryClient,
-    organizationId: string,
-    candidate: BluetoothDeviceCandidateDto,
-    imageModel?: string
-): Promise<BluetoothDeviceDto | null> {
-    const rows = await tx.query<{device_list_id: number; external_id: string}>(
-        `UPDATE device.blu_device bd
-            SET deleted_at = NULL, updated_at = NOW()
-           FROM device.list dl
-          WHERE dl.id = bd.device_list_id
-            AND bd.organization_id = $1
-            AND bd.stable_id = $2
-            AND bd.deleted_at IS NOT NULL
-          RETURNING bd.device_list_id, dl.external_id`,
-        [organizationId, candidate.stableId]
+// Primary transport replacement is a read-modify-write sequence protected by
+// a partial unique index. Serialize only contenders for these BLU devices, in
+// one id order, so concurrent gateways cannot both insert an enabled primary
+// transport and cannot deadlock on each other's devices.
+async function lockPlacedBluetoothDevices(
+    ctx: PromotionContext,
+    placements: readonly DevicePlacement[]
+): Promise<Map<number, boolean>> {
+    const ids = placements.flatMap((placement) =>
+        placement.state === 'rejected' ? [] : [placement.ref.deviceListId]
     );
-    const row = rows[0];
-    if (!row) return null;
-    await updateBluetoothDeviceMetadata(
-        tx,
-        row.device_list_id,
-        candidate,
-        imageModel
+    if (ids.length === 0) return new Map();
+    const rows = await ctx.tx.query<{device_list_id: number; live: boolean}>(
+        `SELECT bd.device_list_id, bd.deleted_at IS NULL AS live
+           FROM device.list gateway
+           JOIN device.blu_device bd
+             ON bd.device_list_id = ANY($2::integer[])
+            AND bd.organization_id = gateway.organization_id
+          WHERE gateway.id = $1
+          ORDER BY bd.device_list_id
+          FOR UPDATE OF bd`,
+        [ctx.gatewayDeviceListId, ids]
     );
-    return requireBluetoothDevice(tx, organizationId, row.external_id);
+    return new Map(rows.map((row) => [row.device_list_id, row.live]));
 }
 
-async function findBluetoothDeviceByStableId(
-    tx: QueryClient,
-    gatewayDeviceListId: number,
-    stableId: string
-): Promise<BluetoothDeviceDto | null> {
-    const organizationId = await organizationIdForDevice(
-        tx,
-        gatewayDeviceListId
-    );
-    const rows = await tx.query<BluetoothDeviceRow>(
-        `${bluetoothDeviceSelect()}
-         WHERE bd.organization_id = $1
-           AND bd.stable_id = $2
-           AND bd.deleted_at IS NULL
-         LIMIT 1`,
-        [organizationId, stableId]
-    );
-    return rows[0] ? rowToBluetoothDevice(rows[0]) : null;
+// Raises the first failure in child order, as one child at a time would.
+function requirePlacedChildren(
+    children: readonly ChildPromotion[],
+    input: {
+        placements: readonly DevicePlacement[];
+        lockedLive: ReadonlyMap<number, boolean>;
+    }
+): LockedChild[] {
+    return children.map((promotion, index) => {
+        const placement = input.placements[index];
+        if (placement.state === 'rejected') throw placement.error;
+        const live = input.lockedLive.get(placement.ref.deviceListId);
+        if (live === undefined) {
+            throw RpcError.NotFound('device', placement.ref.deviceListId);
+        }
+        const state: DeviceState =
+            placement.state === 'tombstoned' && live
+                ? 'existing'
+                : placement.state;
+        return {promotion, ref: placement.ref, state};
+    });
 }
 
-async function updateBluetoothDeviceMetadata(
-    tx: QueryClient,
-    deviceListId: number,
-    candidate: BluetoothDeviceCandidateDto,
-    imageModel?: string
+// Ids are drawn per child in the order one child at a time would draw them.
+function assignPromotionIds(
+    ctx: PromotionContext,
+    children: readonly LockedChild[]
+): PlacedChild[] {
+    return children.map((child) => {
+        const transportId = ctx.makeUuid();
+        const keyEventId = child.state === 'created' ? ctx.makeUuid() : null;
+        return {...child, transportId, keyEventId};
+    });
+}
+
+async function refreshPlacedBluetoothDevices(
+    ctx: PromotionContext,
+    children: readonly PlacedChild[]
+): Promise<DeviceRefresh> {
+    const resurrected = children
+        .filter((child) => child.state === 'tombstoned')
+        .map((child) => child.ref.deviceListId);
+    await resurrectBluetoothDevices(ctx, resurrected);
+    const {updated, routedChanged} = await updateBluetoothDeviceMetadata(
+        ctx,
+        children.filter((child) => child.state !== 'created')
+    );
+    const created = children
+        .filter((child) => child.state === 'created')
+        .map((child) => child.ref.deviceListId);
+    return {
+        changed: new Set([...created, ...resurrected, ...updated]),
+        detailsChanged: new Set([...resurrected, ...routedChanged])
+    };
+}
+
+async function resurrectBluetoothDevices(
+    ctx: PromotionContext,
+    deviceListIds: readonly number[]
 ): Promise<void> {
-    await tx.query(
+    if (deviceListIds.length === 0) return;
+    await ctx.tx.query(
         `UPDATE device.blu_device
-            SET ble_address = COALESCE($2, ble_address),
-                product_name = COALESCE($3, product_name),
-                model_id = COALESCE($4, model_id),
-                capability = $5,
-                source_components_json = $6::jsonb,
+            SET deleted_at = NULL, updated_at = NOW()
+          WHERE organization_id = $1
+            AND device_list_id = ANY($2::integer[])
+            AND deleted_at IS NOT NULL`,
+        [ctx.organizationId, deviceListIds]
+    );
+}
+
+// The stored component list follows the primary gateway, the one whose status
+// the device list reads; a secondary pass leaves it alone.
+async function updateBluetoothDeviceMetadata(
+    ctx: PromotionContext,
+    children: readonly PlacedChild[]
+): Promise<{updated: number[]; routedChanged: number[]}> {
+    if (children.length === 0) return {updated: [], routedChanged: []};
+    const rows = await ctx.tx.query<{
+        device_list_id: number;
+        routed_changed: boolean;
+    }>(
+        `UPDATE device.blu_device bd
+            SET ble_address = COALESCE(child.ble_address, bd.ble_address),
+                product_name = COALESCE(child.product_name, bd.product_name),
+                model_id = COALESCE(child.model_id, bd.model_id),
+                capability = child.capability,
+                source_components_json = CASE
+                    WHEN child.holds_primary
+                    THEN child.source_components_json::jsonb
+                    ELSE bd.source_components_json
+                END,
                 visual_json = CASE
-                    WHEN COALESCE(visual_json, '{}'::jsonb) = '{}'::jsonb
-                    THEN $7::jsonb
-                    ELSE visual_json
+                    WHEN COALESCE(bd.visual_json, '{}'::jsonb) = '{}'::jsonb
+                    THEN child.visual_json::jsonb
+                    ELSE bd.visual_json
                 END,
                 updated_at = NOW()
-          WHERE device_list_id = $1`,
+           FROM (
+                SELECT input.*,
+                       EXISTS (
+                           SELECT 1
+                             FROM device.blu_transport bt
+                            WHERE bt.organization_id = $8
+                              AND bt.blu_device_list_id = input.device_list_id
+                              AND bt.shelly_device_list_id = $9
+                              AND bt.is_primary IS TRUE
+                              AND bt.enabled IS TRUE
+                       ) AS holds_primary
+                  FROM unnest(
+                        $1::integer[],
+                        $2::varchar[],
+                        $3::varchar[],
+                        $4::varchar[],
+                        $5::varchar[],
+                        $6::text[],
+                        $7::text[]
+                       ) AS input(
+                        device_list_id,
+                        ble_address,
+                        product_name,
+                        model_id,
+                        capability,
+                        source_components_json,
+                        visual_json
+                       )
+           ) AS child
+           JOIN device.blu_device prev
+             ON prev.device_list_id = child.device_list_id
+          WHERE bd.device_list_id = child.device_list_id
+            AND (
+                bd.ble_address IS DISTINCT FROM COALESCE(child.ble_address, bd.ble_address)
+                OR bd.product_name IS DISTINCT FROM COALESCE(child.product_name, bd.product_name)
+                OR bd.model_id IS DISTINCT FROM COALESCE(child.model_id, bd.model_id)
+                OR bd.capability IS DISTINCT FROM child.capability
+                OR (
+                    child.holds_primary
+                    AND bd.source_components_json IS DISTINCT FROM child.source_components_json::jsonb
+                )
+                OR bd.visual_json IS DISTINCT FROM CASE
+                    WHEN COALESCE(bd.visual_json, '{}'::jsonb) = '{}'::jsonb
+                    THEN child.visual_json::jsonb
+                    ELSE bd.visual_json
+                END
+            )
+          RETURNING bd.device_list_id,
+                    (
+                        prev.ble_address IS DISTINCT FROM bd.ble_address
+                        OR prev.product_name IS DISTINCT FROM bd.product_name
+                        OR prev.model_id IS DISTINCT FROM bd.model_id
+                    ) AS routed_changed`,
         [
-            deviceListId,
-            candidate.bleAddress,
-            candidate.productName ?? candidate.name,
-            candidate.modelId,
-            candidate.capability,
-            jsonbParam(candidate.components),
-            jsonbParam(imageModel ? {imageModel} : {})
+            children.map((child) => child.ref.deviceListId),
+            ...bluetoothMetadataColumns(
+                children.map((child) => child.promotion)
+            ),
+            ctx.organizationId,
+            ctx.gatewayDeviceListId
         ]
+    );
+    return {
+        updated: rows.map((row) => row.device_list_id),
+        routedChanged: rows
+            .filter((row) => row.routed_changed)
+            .map((row) => row.device_list_id)
+    };
+}
+
+// This gateway's keys replace its transports' stored keys. A key now held by
+// another device on this gateway is dropped there: a gateway key names one
+// paired device.
+async function writeTransportComponents(
+    ctx: PromotionContext,
+    children: readonly PlacedChild[],
+    transportIds: readonly string[]
+): Promise<Set<number>> {
+    const claimed = children.flatMap((child, index) =>
+        child.promotion.candidate.components.map((component, position) => ({
+            transportId: transportIds[index],
+            deviceListId: child.ref.deviceListId,
+            component,
+            position
+        }))
+    );
+    const deviceByTransport = new Map(
+        children.map((child, index) => [
+            transportIds[index],
+            child.ref.deviceListId
+        ])
+    );
+    const removed = await ctx.tx.query<{transport_id: string}>(
+        `DELETE FROM device.blu_transport_component component
+          USING device.blu_transport bt
+          WHERE bt.id = component.transport_id
+            AND bt.organization_id = $1
+            AND bt.shelly_device_list_id = $2
+            AND (
+                component.transport_id = ANY($3::uuid[])
+                OR component.component_key = ANY($5::varchar[])
+            )
+            AND NOT EXISTS (
+                SELECT 1
+                  FROM unnest($4::uuid[], $5::varchar[])
+                       AS kept(transport_id, component_key)
+                 WHERE kept.transport_id = component.transport_id
+                   AND kept.component_key = component.component_key
+            )
+          RETURNING component.transport_id`,
+        [
+            ctx.organizationId,
+            ctx.gatewayDeviceListId,
+            [...deviceByTransport.keys()],
+            claimed.map((row) => row.transportId),
+            claimed.map((row) => row.component.componentKey)
+        ]
+    );
+    const written =
+        claimed.length === 0
+            ? []
+            : await ctx.tx.query<{transport_id: string}>(
+                  `INSERT INTO device.blu_transport_component AS component (
+                        transport_id,
+                        component_key,
+                        position,
+                        component_json
+                    )
+                    SELECT input.transport_id,
+                           input.component_key,
+                           input.position,
+                           input.component_json::jsonb
+                      FROM unnest(
+                            $1::uuid[],
+                            $2::varchar[],
+                            $3::integer[],
+                            $4::text[]
+                           ) AS input(
+                            transport_id,
+                            component_key,
+                            position,
+                            component_json
+                           )
+                     ORDER BY input.transport_id, input.component_key
+                    ON CONFLICT (transport_id, component_key) DO UPDATE
+                       SET position = EXCLUDED.position,
+                           component_json = EXCLUDED.component_json
+                     WHERE component.position IS DISTINCT FROM EXCLUDED.position
+                        OR component.component_json IS DISTINCT FROM EXCLUDED.component_json
+                    RETURNING component.transport_id`,
+                  [
+                      claimed.map((row) => row.transportId),
+                      claimed.map((row) => row.component.componentKey),
+                      claimed.map((row) => row.position),
+                      claimed.map((row) => jsonbParam(row.component))
+                  ]
+              );
+    const changed = new Set<number>();
+    for (const row of [...removed, ...written]) {
+        const deviceListId = deviceByTransport.get(row.transport_id);
+        if (deviceListId !== undefined) changed.add(deviceListId);
+    }
+    return changed;
+}
+
+// Column arrays in the order: address, product name, model, capability,
+// source components (JSON), presentation (JSON).
+function bluetoothMetadataColumns(
+    children: readonly ChildPromotion[]
+): unknown[][] {
+    return [
+        children.map((child) => child.candidate.bleAddress),
+        children.map(
+            (child) => child.candidate.productName ?? child.candidate.name
+        ),
+        children.map((child) => child.candidate.modelId),
+        children.map((child) => child.candidate.capability),
+        children.map((child) => jsonbParam(child.candidate.components)),
+        children.map((child) =>
+            jsonbParam(child.imageModel ? {imageModel: child.imageModel} : {})
+        )
+    ];
+}
+
+async function refreshGatewayTransports(
+    ctx: PromotionContext,
+    children: readonly PlacedChild[]
+): Promise<TransportRefresh> {
+    const states = await readGatewayTransportStates(ctx, children);
+    const changed = new Set(
+        states
+            .filter((state) => state.stale_changed)
+            .map((state) => state.blu_device_list_id)
+    );
+    const plans = children.map((child, index) => ({
+        child,
+        transportId: states[index].gateway_transport_id,
+        makePrimary:
+            child.promotion.makePrimary || states[index].has_no_primary,
+        canWrite: candidateTransportCanWrite(child.promotion.candidate)
+    }));
+    const cleared = await clearPrimaryTransports(
+        ctx,
+        plans
+            .filter((plan) => plan.makePrimary)
+            .map((plan) => plan.child.ref.deviceListId)
+    );
+    const updated = await updateGatewayTransports(
+        ctx,
+        plans.flatMap(({transportId, ...plan}) =>
+            transportId ? [{...plan, transportId}] : []
+        )
+    );
+    const inserted = await insertGatewayTransports(
+        ctx,
+        plans.filter((plan) => !plan.transportId)
+    );
+    const lostPrimary = new Map<number, string[]>();
+    for (const row of cleared) {
+        changed.add(row.blu_device_list_id);
+        if (
+            row.gateway_external_id === null ||
+            row.shelly_device_list_id === ctx.gatewayDeviceListId
+        ) {
+            continue;
+        }
+        lostPrimary.set(row.blu_device_list_id, [
+            ...(lostPrimary.get(row.blu_device_list_id) ?? []),
+            row.gateway_external_id
+        ]);
+    }
+    for (const id of [...updated, ...inserted]) changed.add(id);
+    return {
+        changed,
+        transportIds: plans.map(
+            (plan) => plan.transportId ?? plan.child.transportId
+        ),
+        lostPrimary,
+        linkedGateways: new Map(
+            states.map((state) => [
+                state.blu_device_list_id,
+                state.linked_gateway_external_ids
+            ])
+        )
+    };
+}
+
+// Retires gateway transports whose gateway row was purged. A primary held by
+// a purged or retired gateway no longer counts, so a live gateway in this
+// pass adopts; the main query sees the snapshot before the retirement, hence
+// the explicit exclusion. A retired gateway's own pass never adopts.
+async function readGatewayTransportStates(
+    ctx: PromotionContext,
+    children: readonly PlacedChild[]
+): Promise<GatewayTransportStateRow[]> {
+    const rows = await ctx.tx.query<GatewayTransportStateRow>(
+        `WITH child AS (
+            SELECT *
+              FROM unnest($2::integer[], $3::boolean[])
+                   AS c(blu_device_list_id, retire_stale)
+        ),
+        stale AS (
+            UPDATE device.blu_transport bt
+               SET enabled = FALSE,
+                   is_primary = FALSE,
+                   updated_at = NOW()
+              FROM child
+             WHERE child.retire_stale
+               AND bt.organization_id = $1
+               AND bt.blu_device_list_id = child.blu_device_list_id
+               AND bt.mode = 'bthome_gateway'
+               AND bt.shelly_device_list_id IS NULL
+               AND (bt.enabled IS TRUE OR bt.is_primary IS TRUE)
+             RETURNING bt.blu_device_list_id
+        )
+        SELECT child.blu_device_list_id,
+               EXISTS (
+                   SELECT 1
+                     FROM stale
+                    WHERE stale.blu_device_list_id = child.blu_device_list_id
+               ) AS stale_changed,
+               child.retire_stale AND EXISTS (
+                   SELECT 1
+                     FROM device.list pass_gateway
+                    WHERE pass_gateway.id = $4
+                      AND pass_gateway.deleted_at IS NULL
+               ) AND NOT EXISTS (
+                   SELECT 1
+                     FROM device.blu_transport bt
+                     LEFT JOIN device.list holder
+                       ON holder.id = bt.shelly_device_list_id
+                    WHERE bt.organization_id = $1
+                      AND bt.blu_device_list_id = child.blu_device_list_id
+                      AND bt.enabled IS TRUE
+                      AND bt.is_primary IS TRUE
+                      AND NOT (
+                          bt.mode = 'bthome_gateway'
+                          AND bt.shelly_device_list_id IS NULL
+                      )
+                      AND holder.deleted_at IS NULL
+               ) AS has_no_primary,
+               (
+                   SELECT bt.id
+                     FROM device.blu_transport bt
+                    WHERE bt.organization_id = $1
+                      AND bt.blu_device_list_id = child.blu_device_list_id
+                      AND bt.mode = 'bthome_gateway'
+                      AND bt.shelly_device_list_id = $4
+                    LIMIT 1
+               ) AS gateway_transport_id,
+               ARRAY(
+                   SELECT gateway.external_id
+                     FROM device.blu_transport bt
+                     JOIN device.list gateway
+                       ON gateway.id = bt.shelly_device_list_id
+                      AND gateway.organization_id = bt.organization_id
+                    WHERE bt.organization_id = $1
+                      AND bt.blu_device_list_id = child.blu_device_list_id
+                      AND bt.mode = 'bthome_gateway'
+                      AND bt.enabled IS TRUE
+                      AND bt.shelly_device_list_id <> $4
+                    ORDER BY gateway.external_id
+               ) AS linked_gateway_external_ids
+          FROM child`,
+        [
+            ctx.organizationId,
+            children.map((child) => child.ref.deviceListId),
+            children.map((child) => !child.promotion.makePrimary),
+            ctx.gatewayDeviceListId
+        ]
+    );
+    const byDevice = new Map(rows.map((row) => [row.blu_device_list_id, row]));
+    return children.map((child) => {
+        const row = byDevice.get(child.ref.deviceListId);
+        if (!row) throw RpcError.OperationFailed('bluetooth promote');
+        return row;
+    });
+}
+
+// Returns each transport that lost the primary with its gateway, so that
+// gateway's cached routes can be refreshed.
+async function clearPrimaryTransports(
+    ctx: PromotionContext,
+    deviceListIds: readonly number[]
+): Promise<
+    Array<{
+        blu_device_list_id: number;
+        shelly_device_list_id: number | null;
+        gateway_external_id: string | null;
+    }>
+> {
+    if (deviceListIds.length === 0) return [];
+    return ctx.tx.query(
+        `UPDATE device.blu_transport bt
+            SET is_primary = FALSE,
+                updated_at = NOW()
+          WHERE bt.organization_id = $1
+            AND bt.blu_device_list_id = ANY($2::integer[])
+            AND bt.is_primary IS TRUE
+          RETURNING bt.blu_device_list_id,
+                    bt.shelly_device_list_id,
+                    (
+                        SELECT gateway.external_id
+                          FROM device.list gateway
+                         WHERE gateway.id = bt.shelly_device_list_id
+                    ) AS gateway_external_id`,
+        [ctx.organizationId, deviceListIds]
     );
 }
 
-async function upsertGatewayTransport(
-    tx: QueryClient,
-    input: {
-        candidate: BluetoothDeviceCandidateDto;
-        bluetoothDeviceListId: number;
-        makePrimary: boolean;
+async function updateGatewayTransports(
+    ctx: PromotionContext,
+    plans: ReadonlyArray<{
+        child: PlacedChild;
         transportId: string;
-    }
-): Promise<void> {
-    const organizationId = await organizationIdForDevice(
-        tx,
-        input.candidate.gatewayDeviceListId
-    );
-    let makePrimary = input.makePrimary;
-    if (!makePrimary) {
-        const rows = await tx.query<{needs_primary: boolean}>(
-            `WITH stale AS (
-                UPDATE device.blu_transport
-                   SET enabled = FALSE,
-                       is_primary = FALSE,
-                       updated_at = NOW()
-                 WHERE organization_id = $1
-                   AND blu_device_list_id = $2
-                   AND mode = 'bthome_gateway'
-                   AND shelly_device_list_id IS NULL
-                 RETURNING id
+        makePrimary: boolean;
+        canWrite: boolean;
+    }>
+): Promise<number[]> {
+    if (plans.length === 0) return [];
+    const rows = await ctx.tx.query<{blu_device_list_id: number}>(
+        `UPDATE device.blu_transport bt
+            SET enabled = TRUE,
+                is_primary = CASE WHEN child.make_primary THEN TRUE ELSE bt.is_primary END,
+                can_write = CASE WHEN child.can_write THEN TRUE ELSE bt.can_write END,
+                updated_at = NOW()
+           FROM unnest($2::uuid[], $3::integer[], $4::boolean[], $5::boolean[])
+                AS child(id, blu_device_list_id, make_primary, can_write)
+          WHERE bt.organization_id = $1
+            AND bt.blu_device_list_id = child.blu_device_list_id
+            AND bt.id = child.id
+            AND (
+                bt.enabled IS DISTINCT FROM TRUE
+                OR (child.make_primary AND bt.is_primary IS DISTINCT FROM TRUE)
+                OR (child.can_write AND bt.can_write IS DISTINCT FROM TRUE)
             )
-            SELECT NOT EXISTS (
-                SELECT 1
-                  FROM device.blu_transport
-                 WHERE organization_id = $1
-                   AND blu_device_list_id = $2
-                   AND enabled IS TRUE
-                   AND is_primary IS TRUE
-            ) AS needs_primary`,
-            [organizationId, input.bluetoothDeviceListId]
-        );
-        makePrimary = rows[0]?.needs_primary === true;
-    }
-    if (makePrimary) {
-        await tx.query(
-            `UPDATE device.blu_transport
-                SET is_primary = FALSE,
-                    updated_at = NOW()
-              WHERE organization_id = $1
-                AND blu_device_list_id = $2`,
-            [organizationId, input.bluetoothDeviceListId]
-        );
-    }
-    const existing = await tx.query<{id: string}>(
-        `SELECT id
-           FROM device.blu_transport
-          WHERE organization_id = $1
-            AND blu_device_list_id = $2
-            AND mode = 'bthome_gateway'
-            AND shelly_device_list_id = $3
-          LIMIT 1`,
+          RETURNING bt.blu_device_list_id`,
         [
-            organizationId,
-            input.bluetoothDeviceListId,
-            input.candidate.gatewayDeviceListId
+            ctx.organizationId,
+            plans.map((plan) => plan.transportId),
+            plans.map((plan) => plan.child.ref.deviceListId),
+            plans.map((plan) => plan.makePrimary),
+            plans.map((plan) => plan.canWrite)
         ]
     );
-    if (existing[0]) {
-        const canWrite = candidateTransportCanWrite(input.candidate);
-        await tx.query(
-            `UPDATE device.blu_transport
-                SET enabled = TRUE,
-                    is_primary = CASE WHEN $4 THEN TRUE ELSE is_primary END,
-                    can_write = CASE WHEN $5 THEN TRUE ELSE can_write END,
-                    updated_at = NOW()
-              WHERE organization_id = $1
-                AND blu_device_list_id = $2
-                AND id = $3`,
-            [
-                organizationId,
-                input.bluetoothDeviceListId,
-                existing[0].id,
-                makePrimary,
-                canWrite
-            ]
-        );
-        return;
-    }
-    await tx.query(
+    return rows.map((row) => row.blu_device_list_id);
+}
+
+async function insertGatewayTransports(
+    ctx: PromotionContext,
+    plans: ReadonlyArray<{
+        child: PlacedChild;
+        makePrimary: boolean;
+        canWrite: boolean;
+    }>
+): Promise<number[]> {
+    if (plans.length === 0) return [];
+    await ctx.tx.query(
         `INSERT INTO device.blu_transport (
             id,
             blu_device_list_id,
@@ -1060,14 +2048,60 @@ async function upsertGatewayTransport(
             shelly_device_list_id,
             enabled
         )
-        VALUES ($1, $2, $3, 'bthome_gateway', $4, $6, $5, TRUE)`,
+        SELECT child.id,
+               child.blu_device_list_id,
+               $1,
+               'bthome_gateway',
+               child.make_primary,
+               child.can_write,
+               $2,
+               TRUE
+          FROM unnest($3::uuid[], $4::integer[], $5::boolean[], $6::boolean[])
+               AS child(id, blu_device_list_id, make_primary, can_write)
+         ORDER BY child.blu_device_list_id`,
         [
-            input.transportId,
-            input.bluetoothDeviceListId,
-            organizationId,
-            makePrimary,
-            input.candidate.gatewayDeviceListId,
-            candidateTransportCanWrite(input.candidate)
+            ctx.organizationId,
+            ctx.gatewayDeviceListId,
+            plans.map((plan) => plan.child.transportId),
+            plans.map((plan) => plan.child.ref.deviceListId),
+            plans.map((plan) => plan.makePrimary),
+            plans.map((plan) => plan.canWrite)
+        ]
+    );
+    return plans.map((plan) => plan.child.ref.deviceListId);
+}
+
+async function writePromoteKeyEvents(
+    ctx: PromotionContext,
+    children: readonly PlacedChild[]
+): Promise<void> {
+    const events = children.flatMap((child) =>
+        child.keyEventId ? [{child, id: child.keyEventId}] : []
+    );
+    if (events.length === 0) return;
+    await ctx.tx.query(
+        `INSERT INTO device.blu_key_event (
+            id,
+            blu_device_list_id,
+            organization_id,
+            event_type,
+            key_ref,
+            actor_id,
+            reason
+        )
+        SELECT event.id, event.blu_device_list_id, $1, 'promote', NULL, $2, event.reason
+          FROM unnest($3::uuid[], $4::integer[], $5::varchar[])
+               WITH ORDINALITY AS event(id, blu_device_list_id, reason, position)
+         ORDER BY event.position`,
+        [
+            ctx.organizationId,
+            ctx.actorId,
+            events.map((event) => event.id),
+            events.map((event) => event.child.ref.deviceListId),
+            events.map(
+                ({child}) =>
+                    `${child.promotion.candidate.gatewayExternalId}:${child.promotion.candidate.componentKey}`
+            )
         ]
     );
 }
@@ -1089,6 +2123,30 @@ async function requireBluetoothDevice(
     return rowToBluetoothDevice(rows[0]);
 }
 
+async function requireBluetoothDevices(
+    tx: QueryClient,
+    organizationId: string,
+    refs: readonly BluetoothDeviceRef[]
+): Promise<BluetoothDeviceDto[]> {
+    if (refs.length === 0) return [];
+    const rows = await tx.query<BluetoothDeviceRow>(
+        `${bluetoothDeviceSelect()}
+         WHERE bd.organization_id = $1
+           AND bd.device_list_id = ANY($2::integer[])
+           AND bd.deleted_at IS NULL`,
+        [organizationId, [...new Set(refs.map((ref) => ref.deviceListId))]]
+    );
+    const byId = new Map(
+        rows.map((row) => [row.device_list_id, rowToBluetoothDevice(row)])
+    );
+    return refs.map((ref) => {
+        const device = byId.get(ref.deviceListId);
+        if (!device)
+            throw RpcError.NotFound('bluetooth_device', ref.externalId);
+        return device;
+    });
+}
+
 async function lockBluetoothDevice(
     tx: QueryClient,
     organizationId: string,
@@ -1104,6 +2162,47 @@ async function lockBluetoothDevice(
     );
     if (!rows[0]) throw RpcError.NotFound('bluetooth_device', externalId);
     return rowToBluetoothDevice(rows[0]);
+}
+
+// The lock also reads the gateways that route the device now (enabled
+// gateway transports), since removal disables or deletes those transports.
+async function lockBluetoothDeviceForRemoval(
+    tx: QueryClient,
+    input: {organizationId: string; externalId: string}
+): Promise<{deviceListId: number; linkedGatewayExternalIds: string[]}> {
+    const rows = await tx.query<{
+        device_list_id: number;
+        linked_gateway_external_ids: string[];
+    }>(
+        `SELECT bd.device_list_id,
+                ARRAY(
+                    SELECT gateway.external_id
+                      FROM device.blu_transport bt
+                      JOIN device.list gateway
+                        ON gateway.id = bt.shelly_device_list_id
+                       AND gateway.organization_id = bt.organization_id
+                     WHERE bt.organization_id = bd.organization_id
+                       AND bt.blu_device_list_id = bd.device_list_id
+                       AND bt.mode = 'bthome_gateway'
+                       AND bt.enabled IS TRUE
+                     ORDER BY gateway.external_id
+                ) AS linked_gateway_external_ids
+           FROM device.blu_device bd
+           JOIN device.list dl
+             ON dl.id = bd.device_list_id
+            AND dl.organization_id = bd.organization_id
+          WHERE bd.organization_id = $1
+            AND dl.external_id = $2
+            AND bd.deleted_at IS NULL
+          FOR UPDATE OF bd`,
+        [input.organizationId, input.externalId]
+    );
+    const row = rows[0];
+    if (!row) throw RpcError.NotFound('bluetooth_device', input.externalId);
+    return {
+        deviceListId: row.device_list_id,
+        linkedGatewayExternalIds: row.linked_gateway_external_ids
+    };
 }
 
 async function requireTransportForDevice(

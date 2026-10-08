@@ -34,6 +34,7 @@ generate_passwords() {
     : "${REDIS_ZITADEL_PASSWORD:=$(_random_passwd 32)}"
     : "${FM_ADMIN_PASSWORD:=$(_random_zitadel_admin)}"
     : "${FM_PLATFORM_ADMIN_PASSWORD:=$(_random_zitadel_admin)}"
+    : "${ZITADEL_SESSION_COOKIE_SECRET:=$(_random_passwd 64)}"
 
     export POSTGRES_PASSWORD ZITADEL_POSTGRES_PASSWORD ZITADEL_DB_USER_PASSWORD
     export ZITADEL_ADMIN_PASSWORD ZITADEL_MASTERKEY
@@ -43,6 +44,7 @@ generate_passwords() {
     export FM_GRAFANA_DB_PASSWORD
     export REDIS_ADMIN_PASSWORD REDIS_FM_PASSWORD REDIS_ZITADEL_PASSWORD
     export FM_ADMIN_PASSWORD FM_PLATFORM_ADMIN_PASSWORD
+    export ZITADEL_SESSION_COOKIE_SECRET
 }
 
 migrate_legacy_secret_encryption_key() {
@@ -83,7 +85,7 @@ validate_no_demo_literals() {
         ZITADEL_DB_USER_PASSWORD ZITADEL_ADMIN_PASSWORD ZITADEL_MASTERKEY \
         FM_SECRET_ENCRYPTION_KEY FM_SECRET_KDF_SALT \
         FM_DEVICE_INGRESS_TOKEN_PEPPER FM_NOTIFICATION_RECEIPT_SIGNING_SECRET \
-        JWT_SECRET; do
+        JWT_SECRET ZITADEL_SESSION_COOKIE_SECRET; do
         local val="${!var:-}"
         if [ -z "$val" ]; then
             _secrets_error "$var is empty — refusing to start"
@@ -93,9 +95,27 @@ validate_no_demo_literals() {
         if echo "$val" | grep -Eq "$DEMO_LITERAL_REGEX"; then
             _secrets_error "$var holds a known demo literal — rotate before deploy"
             bad=$((bad + 1))
+            continue
+        fi
+        if _is_weak_secret "$val"; then
+            _secrets_error "$var holds a known weak secret — rotate before deploy"
+            bad=$((bad + 1))
+            continue
+        fi
+        if [ "${#val}" -lt "$(_secret_min_length "$var")" ]; then
+            _secrets_error "$var must be at least $(_secret_min_length "$var") characters"
+            bad=$((bad + 1))
         fi
     done
     return $bad
+}
+
+# The Zitadel login reports not ready with a cookie secret under 32 characters.
+_secret_min_length() {
+    case "$1" in
+        ZITADEL_SESSION_COOKIE_SECRET) printf '32' ;;
+        *) printf '1' ;;
+    esac
 }
 
 validate_bootstrap_admin_passwords() {
@@ -103,6 +123,8 @@ validate_bootstrap_admin_passwords() {
 
     case "$env_name" in
         prod|staging|public) ;;
+        # cloud-test runs a fixed, known test credential on purpose so the
+        # team can always sign in; it is exempt from the strength rules.
         *) return 0 ;;
     esac
 
@@ -133,6 +155,14 @@ _is_demo_admin_password() {
         Admin123!|Admin1234!|admin|password|Password123!|CHANGEME*) return 0 ;;
     esac
     echo "$value" | grep -Eq "$DEMO_LITERAL_REGEX"
+}
+
+_is_weak_secret() {
+    local value="$1"
+    case "$value" in
+        admin|password|postgres|zitadel|secret|test|dev) return 0 ;;
+    esac
+    return 1
 }
 
 # Public flow defines error(); private flow defines log_error().

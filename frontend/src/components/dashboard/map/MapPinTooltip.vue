@@ -54,7 +54,6 @@ const STATUS_LABEL: Record<string, string> = {
     border-radius: var(--radius-md);
     background: var(--glass-4-bg);
     backdrop-filter: var(--glass-4-filter);
-    -webkit-backdrop-filter: var(--glass-4-filter);
     border: 1px solid var(--color-border-medium);
     box-shadow: var(--glass-shadow);
     color: var(--color-text-primary);

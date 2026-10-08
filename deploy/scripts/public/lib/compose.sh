@@ -19,14 +19,8 @@ verify_images() {
         return 0
     fi
 
+    # The pins are already in the environment (lib/common/env.sh).
     local images=()
-    local versions_file="$VERSIONS_FILE"
-
-    if [ -f "$versions_file" ]; then
-        # shellcheck source=/dev/null
-        source "$versions_file"
-    fi
-
     images=(
         "timescale/timescaledb:${TIMESCALEDB_VERSION:-latest}"
         "${DOCKER_HUB_IMAGE}:${FM_VERSION:-latest}"
@@ -44,6 +38,11 @@ verify_images() {
     if [ "$WITH_MDNS" = "true" ]; then
         images+=("shellygroup/mdns-repeater:${MDNS_REPEATER_VERSION:-latest}")
     fi
+    if [ "${WITH_NODERED:-false}" = "true" ]; then
+        local nodered_ref
+        nodered_ref="$(nodered_image)" || return 1
+        images+=("$nodered_ref")
+    fi
 
     local missing=0
     for img in "${images[@]}"; do
@@ -60,8 +59,50 @@ verify_images() {
     fi
 }
 
+# Compose labels every container with FM_BUILD_COMMIT, and smoke compares the
+# Fleet Manager label with /version, which reports the commit baked into the
+# image. So each command that starts Fleet Manager reads it from the image it
+# starts. An image without the label keeps a commit the operator exported.
+# Usage: public_resolve_build_identity <Fleet Manager image tag>
+public_resolve_build_identity() {
+    local tag="$1" commit
+    commit="$(docker image inspect \
+        --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' \
+        "${DOCKER_HUB_IMAGE:-shellygroup/fleet-management}:${tag}" 2>/dev/null || true)"
+    [ -n "$commit" ] || return 0
+    FM_BUILD_COMMIT="$commit"
+    export FM_BUILD_COMMIT
+}
+
+# The logging overlay names the users file in every Compose model, but only a
+# command that starts containers mounts it. `down` must work after the file
+# is gone; the path itself comes from the environment or the saved deploy.
+# Usage: validate_dozzle_users_file <compose subcommand>
+validate_dozzle_users_file() {
+    local subcommand="$1"
+    if [ -z "${DOZZLE_USERS_FILE:-}" ]; then
+        error "--logging requires DOZZLE_USERS_FILE (absolute path to a Dozzle users.yml)"
+        return 1
+    fi
+    case "$DOZZLE_USERS_FILE" in
+        /*) ;;
+        *) error "DOZZLE_USERS_FILE must be an absolute path"; return 1 ;;
+    esac
+    case "$subcommand" in
+        up|create|run|start|restart) ;;
+        *) return 0 ;;
+    esac
+    if [ ! -r "$DOZZLE_USERS_FILE" ]; then
+        error "DOZZLE_USERS_FILE is not readable: $DOZZLE_USERS_FILE"
+        return 1
+    fi
+}
+
 compose_cmd() {
     local env_args=()
+    # Traefik joins this group to read the TLS key (see the traefik compose files).
+    export FM_HOST_GID
+    FM_HOST_GID="$(id -g)"
     local compose_files=()
 
     # Load VERSIONS.env
@@ -84,28 +125,31 @@ compose_cmd() {
         env_args+=(--env-file "$STATE_DIR/fm-runtime.env")
     fi
 
-    # Core compose files. Quick mode skips Zitadel (FM auto-DEV_MODE).
-    compose_files=(
-        -f "$COMPOSE_DIR/docker-compose.yml"
-        -f "$COMPOSE_DIR/docker-compose.fleet-image.yml"
-        -f "$COMPOSE_DIR/docker-compose.selfhosted.yml"
-    )
-    if [ "$FM_DEV_MODE" != "true" ]; then
-        compose_files+=(-f "$COMPOSE_DIR/docker-compose.zitadel.yml")
+    compose_files=(-f "$COMPOSE_DIR/docker-compose.yml")
+    if [ "$FM_DEV_MODE" = "true" ]; then
+        # Dev runs Fleet Manager from source, so only the database and Redis are containers.
+        compose_files+=(
+            -f "$COMPOSE_DIR/docker-compose.selfhosted.yml"
+            -f "$COMPOSE_DIR/docker-compose.dev-ports.yml"
+        )
+    else
+        compose_files+=(
+            -f "$COMPOSE_DIR/docker-compose.fleet-image.yml"
+            -f "$COMPOSE_DIR/docker-compose.selfhosted.yml"
+            -f "$COMPOSE_DIR/docker-compose.zitadel.yml"
+        )
         if zitadel_identity_smtp_enabled; then
             validate_zitadel_identity_smtp || return 1
             compose_files+=(-f "$COMPOSE_DIR/docker-compose.zitadel-smtp.yml")
         fi
-    fi
 
-    # Direct public FM port publication: only when NOT behind Traefik (SSL)
-    if [ "$WITH_SSL" != "true" ] && [ -f "$COMPOSE_DIR/docker-compose.fleet-image-ports.yml" ]; then
-        compose_files+=(-f "$COMPOSE_DIR/docker-compose.fleet-image-ports.yml")
-    fi
-
-    # Zitadel port publication: only when NOT behind Traefik (SSL) and not quick mode
-    if [ "$WITH_SSL" != "true" ] && [ "$FM_DEV_MODE" != "true" ]; then
-        compose_files+=(-f "$COMPOSE_DIR/docker-compose.zitadel-ports.yml")
+        # Direct FM and Zitadel port publication only when NOT behind Traefik (SSL).
+        if [ "$WITH_SSL" != "true" ] && [ -f "$COMPOSE_DIR/docker-compose.fleet-image-ports.yml" ]; then
+            compose_files+=(-f "$COMPOSE_DIR/docker-compose.fleet-image-ports.yml")
+        fi
+        if [ "$WITH_SSL" != "true" ]; then
+            compose_files+=(-f "$COMPOSE_DIR/docker-compose.zitadel-ports.yml")
+        fi
     fi
 
     # Optional: mDNS repeater
@@ -126,7 +170,15 @@ compose_cmd() {
 
     # Optional: Dozzle log viewer
     if [ "$WITH_LOGGING" = "true" ] && [ -f "$COMPOSE_DIR/docker-compose.logging.yml" ]; then
+        validate_dozzle_users_file "${1:-}" || return 1
         compose_files+=(-f "$COMPOSE_DIR/docker-compose.logging.yml")
+    fi
+
+    # Optional: Node-RED automations (pinned by NODE_RED_VERSION in VERSIONS.env)
+    if [ "${WITH_NODERED:-false}" = "true" ]; then
+        nodered_check_files || return 1
+        nodered_refresh_runtime_env || return 1
+        compose_files+=(-f "$COMPOSE_DIR/docker-compose.nodered.yml")
     fi
 
     # Optional: Traefik with SSL — explicit mode selection

@@ -3,6 +3,11 @@
 // Report.GetReport until the file is ready, then returns the owner-bound file
 // reference (plus the optional HTML twin for energy reports).
 
+import type {
+    ReportCoverageInterval,
+    ReportMeasuredUsageCost
+} from '@api/report';
+
 interface RpcClient {
     sendRPC<T>(target: string, method: string, params: unknown): Promise<T>;
 }
@@ -27,6 +32,8 @@ interface ReportStatus {
     downloadUrl: string | null;
     htmlUrl: string | null;
     progress: ReportProgress | null;
+    coverage: ReportCoverageInterval | null;
+    measuredUsageCost: ReportMeasuredUsageCost | null;
     error: string | null;
 }
 
@@ -34,6 +41,8 @@ export interface ReportFileRef {
     file: string;
     name: string;
     htmlFile?: string;
+    coverage?: ReportCoverageInterval;
+    measuredUsageCost?: ReportMeasuredUsageCost;
 }
 
 // Thrown when a job ends in `cancelled` — a user action, not a failure, so
@@ -94,8 +103,21 @@ function toFileRef(job: ReportStatus, name: string): ReportFileRef {
     return {
         file: job.downloadUrl ? fileFromUrl(job.downloadUrl) : '',
         name,
-        htmlFile: job.htmlUrl ? fileFromUrl(job.htmlUrl) : undefined
+        htmlFile: job.htmlUrl ? fileFromUrl(job.htmlUrl) : undefined,
+        coverage: job.coverage ?? undefined,
+        measuredUsageCost: job.measuredUsageCost ?? undefined
     };
+}
+
+export function partialCoverageMessage(
+    coverage: ReportCoverageInterval | undefined
+): string | null {
+    if (coverage?.status !== 'partial') return null;
+    return (
+        `Partial report: requested ${coverage.requestedFrom} to ${coverage.requestedTo}; ` +
+        `measured ${coverage.coveredFrom} to ${coverage.coveredTo}. ` +
+        'The artifact includes measured usage and usage cost only; full-period charges and comparisons are withheld.'
+    );
 }
 
 export async function pollUntilReady(

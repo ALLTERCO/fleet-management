@@ -1,5 +1,8 @@
+import {tuning} from '../../config/tuning';
 import * as Observability from '../Observability';
+import type {GaugeName} from '../observability/counters';
 import * as PostgresProvider from '../PostgresProvider';
+import {persistReportWorkerObservation} from '../reportPerformanceObservations';
 import {fireAndForget} from '../util/fireAndForget';
 import {formatError} from '../util/formatError';
 
@@ -16,16 +19,24 @@ export interface DeliveryMetricsSnapshot {
     autoDisabledEndpointCount: number;
 }
 
+export interface ReportQueueSnapshot {
+    queuedCount: number;
+    processingCount: number;
+    workerOccupiedCount: number;
+    oldestQueuedAgeMs: number;
+}
+
 let lastSnapshot: DeliveryMetricsSnapshot = emptySnapshot();
 let timer: ReturnType<typeof setInterval> | null = null;
 
 export function startDeliveryMetricsPolling(intervalMs: number): void {
     if (timer) return;
-    fireAndForget('delivery-metrics.initial-refresh', refreshDeliveryMetrics());
+    fireAndForget('delivery-metrics.initial-refresh', () =>
+        refreshDeliveryMetrics()
+    );
     timer = setInterval(
         () =>
-            fireAndForget(
-                'delivery-metrics.scheduled-refresh',
+            fireAndForget('delivery-metrics.scheduled-refresh', () =>
                 refreshDeliveryMetrics()
             ),
         intervalMs
@@ -51,11 +62,77 @@ export async function refreshDeliveryMetrics(): Promise<DeliveryMetricsSnapshot>
         );
         lastSnapshot = normalizeDeliveryMetricsRow(result?.rows?.[0]);
         publishDeliveryMetrics(lastSnapshot);
+        try {
+            const reportRows = await PostgresProvider.queryRows<
+                Record<string, unknown>
+            >(
+                `SELECT
+                    COUNT(*) FILTER (
+                        WHERE locked_at IS NULL
+                          AND task_identifier = 'report_export'
+                    ) AS queued_count,
+                    COUNT(*) FILTER (
+                        WHERE locked_at IS NOT NULL
+                          AND task_identifier = 'report_export'
+                    ) AS processing_count,
+                    COUNT(*) FILTER (WHERE locked_at IS NOT NULL)
+                        AS worker_occupied_count,
+                    COALESCE(
+                        EXTRACT(
+                            EPOCH FROM (
+                                NOW() - MIN(created_at)
+                                FILTER (
+                                    WHERE locked_at IS NULL
+                                      AND task_identifier = 'report_export'
+                                )
+                            )
+                        )::bigint * 1000,
+                        0
+                    ) AS oldest_queued_age_ms
+                 FROM graphile_worker.jobs`
+            );
+            const reportSnapshot = normalizeReportQueueRow(reportRows[0]);
+            publishReportQueueMetrics(reportSnapshot);
+            await persistReportWorkerObservation(reportSnapshot);
+        } catch {
+            Observability.incrementCounter(
+                'report_queue_metrics_refresh_errors'
+            );
+        }
         return lastSnapshot;
     } catch (err) {
         Observability.incrementCounter('delivery_metrics_refresh_errors');
         throw new Error(`delivery metrics refresh failed: ${formatError(err)}`);
     }
+}
+
+export function normalizeReportQueueRow(
+    row: Record<string, unknown> | undefined
+): ReportQueueSnapshot {
+    return {
+        queuedCount: readNumber(row?.queued_count),
+        processingCount: readNumber(row?.processing_count),
+        workerOccupiedCount: readNumber(row?.worker_occupied_count),
+        oldestQueuedAgeMs: readNumber(row?.oldest_queued_age_ms)
+    };
+}
+
+export function publishReportQueueMetrics(snapshot: ReportQueueSnapshot): void {
+    const available = Math.max(
+        0,
+        tuning.delivery.outboxConcurrency - snapshot.workerOccupiedCount
+    );
+    Observability.setGauge('report_jobs_queued', snapshot.queuedCount);
+    Observability.setGauge('report_jobs_processing', snapshot.processingCount);
+    Observability.setGauge(
+        'report_oldest_queued_age_seconds',
+        snapshot.oldestQueuedAgeMs / 1000
+    );
+    Observability.setGauge('report_worker_capacity_available', available);
+    Observability.setGauge(
+        'report_worker_saturated',
+        available === 0 && snapshot.queuedCount > 0 ? 1 : 0
+    );
 }
 
 export function publishDeliveryMetrics(
@@ -94,8 +171,24 @@ export function normalizeDeliveryMetricsRow(
     };
 }
 
-function setDeliveryGauge(name: string, value: number): void {
-    Observability.setGauge(`notification_delivery_${name}`, value);
+const DELIVERY_GAUGE_NAMES = {
+    jobs_queued: 'notification_delivery_jobs_queued',
+    jobs_processing: 'notification_delivery_jobs_processing',
+    jobs_dead_letter: 'notification_delivery_jobs_dead_letter',
+    jobs_failed_legacy: 'notification_delivery_jobs_failed_legacy',
+    oldest_queued_age_ms: 'notification_delivery_oldest_queued_age_ms',
+    attempts_15m: 'notification_delivery_attempts_15m',
+    failed_attempts_15m: 'notification_delivery_failed_attempts_15m',
+    terminal_latency_avg_ms: 'notification_delivery_terminal_latency_avg_ms',
+    disabled_endpoints: 'notification_delivery_disabled_endpoints',
+    auto_disabled_endpoints: 'notification_delivery_auto_disabled_endpoints'
+} as const satisfies Record<string, GaugeName>;
+
+function setDeliveryGauge(
+    name: keyof typeof DELIVERY_GAUGE_NAMES,
+    value: number
+): void {
+    Observability.setGauge(DELIVERY_GAUGE_NAMES[name], value);
 }
 
 function readNumber(value: unknown): number {

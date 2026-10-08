@@ -24,6 +24,13 @@
             Couldn't load effective permissions.
         </p>
 
+        <!-- Without this the panel is blank until the first RPC lands and then
+             pops into place, which reads as "this user has nothing". -->
+        <p v-else-if="loading && !accessLoaded" class="epp__loading">
+            <i class="fas fa-spinner fa-spin" aria-hidden="true" />
+            Working out what this user can do…
+        </p>
+
         <section
             v-if="!errorState && accessLoaded"
             class="epp__summary"
@@ -451,5 +458,12 @@ watch(() => props.userId, refresh);
     border: none;
     border-top: 1px solid var(--color-border-default);
     margin: var(--space-2) 0 0;
+}
+.epp__loading {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-xs);
+    color: var(--color-text-tertiary);
+    font-size: var(--type-body);
 }
 </style>

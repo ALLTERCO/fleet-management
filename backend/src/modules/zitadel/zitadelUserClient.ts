@@ -5,6 +5,7 @@
 // route through `svc` so test method-swaps on the singleton stay visible.
 
 import {DEV_MODE, runtimeMetadata} from '../../config';
+import {isSaasDeploymentMode} from '../../config/deploymentMode';
 import {fmPlatformAdminRole, zitadelListPageSize} from '../../config/zitadel';
 import {
     authzRolePriorityIndex,
@@ -177,6 +178,44 @@ export async function listAuthorizationsForUser(
     );
 
     return response.authorizations ?? [];
+}
+
+// Roles for a whole list of users in ONE call. Listing users and then asking
+// per user would be N round trips for a screen that renders in one shot.
+export async function listProjectRoleKeysByUser(
+    svc: ZitadelHttpContext,
+    userIds: string[],
+    projectId: string,
+    restrictToOrgId?: string
+): Promise<Map<string, string[]>> {
+    const byUser = new Map<string, string[]>();
+    if (userIds.length === 0) return byUser;
+
+    const response = await svc.request<{
+        authorizations?: ZitadelV2Authorization[];
+    }>(
+        'POST',
+        '/zitadel.authorization.v2.AuthorizationService/ListAuthorizations',
+        {
+            pagination: {limit: zitadelListPageSize()},
+            filters: [{inUserIds: {ids: userIds}}]
+        }
+    );
+
+    for (const authorization of response.authorizations ?? []) {
+        if (authorization.project.id !== projectId) continue;
+        if (
+            restrictToOrgId !== undefined &&
+            authorizationOrganizationId(authorization) !== restrictToOrgId
+        ) {
+            continue;
+        }
+        const existing = byUser.get(authorization.user.id) ?? [];
+        byUser.set(authorization.user.id, [
+            ...new Set([...existing, ...authorizationRoleKeys([authorization])])
+        ]);
+    }
+    return byUser;
 }
 
 export async function getUserMetadata(
@@ -563,6 +602,31 @@ export async function getUserResourceOwner(
     }
 }
 
+// Zitadel keeps owner and grants on a stopped account, so the state decides.
+const SIGN_IN_ALLOWED_STATES: ReadonlySet<string> = new Set([
+    'USER_STATE_ACTIVE',
+    'USER_STATE_INITIAL'
+]);
+
+// Account gate for authority used without a live sign-in (schedules, jobs).
+export async function userAccountActive(
+    svc: ZitadelHttpContext,
+    userId: string
+): Promise<boolean> {
+    if (!svc.isConfigured()) return !tenantAuthorityRequired();
+    validateId(userId, 'userId');
+    try {
+        const resp = await svc.request<{user?: {state?: string}}>(
+            'GET',
+            `/v2/users/${userId}`
+        );
+        return SIGN_IN_ALLOWED_STATES.has(resp.user?.state ?? '');
+    } catch (err) {
+        if (isResourceNotFound(err as RpcCallError)) return false;
+        throw err;
+    }
+}
+
 // Tenant gate. Humans match by resourceOwner; FM service users match
 // by fleet_organization_id metadata. With no tenant authority, fail closed
 // in multi-tenant (SaaS) modes; OSS is single-tenant so it may pass.
@@ -578,10 +642,10 @@ export async function userBelongsToTenant(
     return metadata.organizationId === tenantId;
 }
 
-// SSOT: runtimeMetadata.deploymentMode. SaaS modes are multi-tenant and
+// SaaS modes are multi-tenant and
 // require an external tenant authority; OSS is single-tenant and does not.
 function tenantAuthorityRequired(): boolean {
-    return runtimeMetadata.deploymentMode !== 'oss';
+    return isSaasDeploymentMode(runtimeMetadata.deploymentMode);
 }
 
 /**
@@ -644,7 +708,8 @@ export async function createHumanUser(
     const response = await svc.request<{id: string}>(
         'POST',
         '/v2/users/new',
-        body
+        body,
+        {refusalContext: 'CreateUser'}
     );
 
     logger.info(

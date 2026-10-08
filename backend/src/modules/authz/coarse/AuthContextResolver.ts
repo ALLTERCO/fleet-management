@@ -81,7 +81,7 @@ export async function resolveAuthContext(input: {
         userId: input.userId,
         tenantId: effectiveOrgId,
         roles,
-        isPlatformAdmin,
+        isPlatformAdmin: async () => isPlatformAdmin,
         hasFineGrainedAccess: input.hasFineGrainedAccess
     });
     return {
@@ -98,18 +98,20 @@ export async function resolveAuthContext(input: {
     };
 }
 
-async function hasFleetManagerAccess(input: {
+// Single admission rule for sessions and Fleet-issued keys. Lookups are lazy
+// because keys run this on every request.
+export async function hasFleetManagerAccess(input: {
     userId: string;
     tenantId: string;
     roles: readonly FleetRole[];
-    isPlatformAdmin: boolean;
+    isPlatformAdmin: () => Promise<boolean>;
     hasFineGrainedAccess: (input: {
         userId: string;
         tenantId: string;
     }) => Promise<boolean>;
 }): Promise<boolean> {
-    if (input.isPlatformAdmin) return true;
     if (input.roles.some((role) => role !== 'none')) return true;
+    if (await input.isPlatformAdmin()) return true;
     return input.hasFineGrainedAccess({
         userId: input.userId,
         tenantId: input.tenantId

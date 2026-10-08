@@ -12,9 +12,9 @@ import {
 } from './energyEngineHelpers';
 import {computeLoadFactor} from './loadFactor';
 import {computeDelta, formatDeltaPct} from './periodDeltas';
-import {computePowerFactorPenalty} from './powerFactorPenalty';
 import type {ProjectionResult} from './projection';
-import {projectPeriodTotal} from './projection';
+import {projectionRange, projectPeriodTotal} from './projection';
+import {roundReportTotalKWh} from './rowEconomics';
 import {evaluateVoltageQuality} from './voltageQualityBadge';
 
 type ReportRow = Record<string, any>;
@@ -42,6 +42,8 @@ export interface EnergySummarySectionRequest {
     onlineCount: number;
     tsRows: readonly ReportRow[];
     phaseRows: readonly ReportRow[];
+    precomputedAvgPowerFactor?: number | null;
+    precomputedDataQuality?: DataQualityResult;
     totalCons: number;
     totalRet: number;
     totalCost: number;
@@ -59,37 +61,28 @@ export interface EnergySummarySectionResult {
     alwaysOn: AlwaysOnResult;
     priorAlwaysOn: AlwaysOnResult;
     avgPowerFactor: number | null;
-    pfPenalty: {
-        fires: boolean;
-        avgPf: number;
-        penaltyCost: number;
-        upliftFactor: number;
-    } | null;
 }
 
 export async function appendEnergySummarySections(
     request: EnergySummarySectionRequest
 ): Promise<EnergySummarySectionResult> {
-    const dq = await fetchDataQuality({
-        deviceIds: request.internalIds,
-        from: request.fromDate,
-        to: request.toDate,
-        granularity: request.granularity
-    });
+    const dq =
+        request.precomputedDataQuality ??
+        (await fetchDataQuality({
+            deviceIds: request.internalIds,
+            from: request.fromDate,
+            to: request.toDate,
+            granularity: request.granularity
+        }));
     const fromLabel = utcDateLabel(request.from);
     const toLabel = utcDateLabel(request.to);
     appendReportHeader({request, dq, fromLabel, toLabel});
 
-    const avgPowerFactor = averagePowerFactor(request.tsRows);
-    const pfPenalty =
-        avgPowerFactor !== null && request.tariff > 0
-            ? computePowerFactorPenalty({
-                  avgPowerFactor,
-                  kWh: request.totalCons,
-                  tariff: request.tariff
-              })
-            : null;
-    appendFleetSummary({request, avgPowerFactor, pfPenalty});
+    const avgPowerFactor =
+        request.precomputedAvgPowerFactor === undefined
+            ? averagePowerFactor(request.tsRows)
+            : request.precomputedAvgPowerFactor;
+    appendFleetSummary(request);
 
     const {alwaysOn, priorAlwaysOn} = await fetchAlwaysOnPair(request);
     appendAlwaysOnRow({request, alwaysOn});
@@ -99,7 +92,17 @@ export async function appendEnergySummarySections(
         costSoFar: request.totalCost,
         from: request.fromDate,
         to: request.toDate,
-        now: new Date()
+        now: new Date(),
+        // The buckets are already loaded here. Passing them moves the
+        // projection onto whole days and lets the confidence band be measured
+        // from how steady this site actually is.
+        series: request.tsRows as unknown as {
+            date: string;
+            consumption_kwh: number;
+        }[],
+        // Already computed above. Baseload is flat, so only the variable part
+        // should scale with the remaining days.
+        baselineKWhPerDay: alwaysOnPerDay(alwaysOn, request)
     });
     appendProjectionRow({request, projection});
     request.rows.push({...energyRowBlank()});
@@ -111,8 +114,7 @@ export async function appendEnergySummarySections(
         projection,
         alwaysOn,
         priorAlwaysOn,
-        avgPowerFactor,
-        pfPenalty
+        avgPowerFactor
     };
 }
 
@@ -142,15 +144,10 @@ function appendReportHeader(input: {
     );
 }
 
-function appendFleetSummary(input: {
-    request: EnergySummarySectionRequest;
-    avgPowerFactor: number | null;
-    pfPenalty: EnergySummarySectionResult['pfPenalty'];
-}): void {
-    input.request.rows.push(fleetTotalRow(input.request));
-    appendLoadFactorRow(input.request);
-    appendPowerFactorRow(input);
-    appendVoltageQualityRow(input.request);
+function appendFleetSummary(request: EnergySummarySectionRequest): void {
+    request.rows.push(fleetTotalRow(request));
+    appendLoadFactorRow(request);
+    appendVoltageQualityRow(request);
 }
 
 function fleetTotalRow(request: EnergySummarySectionRequest): ReportRow {
@@ -175,9 +172,9 @@ function fleetTotalRow(request: EnergySummarySectionRequest): ReportRow {
     return energyRow({
         section: 'SUMMARY',
         device: 'Fleet total',
-        consumption_kwh: +request.totalCons.toFixed(3),
-        returned_kwh: +request.totalRet.toFixed(3),
-        net_kwh: +(request.totalCons - request.totalRet).toFixed(3),
+        consumption_kwh: roundReportTotalKWh(request.totalCons),
+        returned_kwh: roundReportTotalKWh(request.totalRet),
+        net_kwh: roundReportTotalKWh(request.totalCons - request.totalRet),
         cost: `${request.currencySymbol}${request.totalCost.toFixed(2)}`,
         power_w: +request.peakPower.toFixed(0),
         voltage_v: request.avgVoltage,
@@ -199,22 +196,6 @@ function appendLoadFactorRow(request: EnergySummarySectionRequest): void {
             section: 'SUMMARY',
             device: 'Load factor',
             notes: `${(loadFactor * 100).toFixed(1)}% — avg ${avgFleetKW.toFixed(2)} kW / peak ${peakFleetKW.toFixed(2)} kW`
-        })
-    );
-}
-
-function appendPowerFactorRow(input: {
-    request: EnergySummarySectionRequest;
-    avgPowerFactor: number | null;
-    pfPenalty: EnergySummarySectionResult['pfPenalty'];
-}): void {
-    if (!input.pfPenalty?.fires) return;
-    input.request.rows.push(
-        energyRow({
-            section: 'SUMMARY',
-            device: 'Power factor penalty',
-            cost: `${input.request.currencySymbol}${input.pfPenalty.penaltyCost.toFixed(2)}`,
-            notes: `Avg PF ${input.pfPenalty.avgPf} below target 0.9 — uplift ${(input.pfPenalty.upliftFactor * 100).toFixed(1)}%`
         })
     );
 }
@@ -305,11 +286,11 @@ function appendAlwaysOnRow(input: {
               )
             : 0;
     const detail = cost.splitByDayNight
-        ? `Continuous baseline across ${input.alwaysOn.perDeviceWatts.size} devices — day ${cost.dayKWh} kWh / night ${cost.nightKWh} kWh`
-        : `Continuous baseline load across ${input.alwaysOn.perDeviceWatts.size} devices`;
+        ? `Estimated continuous baseline across ${input.alwaysOn.perDeviceWatts.size} devices — day ${cost.dayKWh} kWh / night ${cost.nightKWh} kWh`
+        : `Estimated continuous baseline across ${input.alwaysOn.perDeviceWatts.size} devices`;
     input.request.rows.push(
         energyRow({
-            device: 'ALWAYS-ON',
+            device: 'ESTIMATED BASELINE',
             consumption_kwh: input.alwaysOn.totalKWh,
             cost: `${input.request.currencySymbol}${cost.totalCost.toFixed(2)}`,
             share_pct: `${share}%`,
@@ -318,18 +299,40 @@ function appendAlwaysOnRow(input: {
     );
 }
 
+/** The always-on figure is a period total; the projection wants per day. */
+function alwaysOnPerDay(
+    alwaysOn: AlwaysOnResult | null,
+    request: EnergySummarySectionRequest
+): number | undefined {
+    if (!alwaysOn || !Number.isFinite(alwaysOn.totalKWh)) return undefined;
+    const days =
+        (request.toDate.getTime() - request.fromDate.getTime()) /
+        (24 * 60 * 60 * 1000);
+    if (!Number.isFinite(days) || days <= 0) return undefined;
+    return alwaysOn.totalKWh / days;
+}
+
 function appendProjectionRow(input: {
     request: EnergySummarySectionRequest;
     projection: ProjectionResult;
 }): void {
     if (!input.projection.extrapolated) return;
-    const band = Math.round(input.projection.confidenceBand * 100);
+    // Null means the spread could not be measured. Saying "confidence unknown"
+    // is the honest reading; printing a number would invent one.
+    const {confidenceBand} = input.projection;
+    const range = projectionRange(input.projection);
+    // A range is read correctly far more often than a percentage.
+    const notes = range
+        ? `End-of-period forecast (${range} kWh)`
+        : confidenceBand === null
+          ? 'End-of-period forecast (confidence unknown)'
+          : 'End-of-period forecast';
     input.request.rows.push(
         energyRow({
             device: 'PROJECTION',
             consumption_kwh: input.projection.projectedKWh,
             cost: `${input.request.currencySymbol}${input.projection.projectedCost.toFixed(2)}`,
-            notes: `End-of-period forecast (±${band}%)`
+            notes
         })
     );
 }

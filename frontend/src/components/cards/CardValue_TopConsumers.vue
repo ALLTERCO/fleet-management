@@ -16,11 +16,14 @@
     >
         <div class="tc">
             <div class="tc-header">
-                <ChartRangeTabs v-model="range" accent-color="#f59e0b" />
+                <ChartRangeTabs v-model="range" :accent-color="chartColors.chart2" />
             </div>
             <div v-if="loading" class="tc-list">
                 <Skeleton v-for="n in 4" :key="n" variant="row" />
             </div>
+            <p v-else-if="failed" class="tc-empty">
+                <i class="fas fa-triangle-exclamation" /> Failed to load
+            </p>
             <div v-else-if="!ranked.length" class="tc-empty">No data</div>
             <div v-else class="tc-list">
                 <div v-for="(item, i) in ranked" :key="item.entityId" class="tc-row">
@@ -45,6 +48,11 @@ import Skeleton from '@/components/core/Skeleton.vue';
 import type {ChartRange} from '@/composables/useChartData';
 import {rangeToParams} from '@/composables/useChartData';
 import {useDashboardContext} from '@/composables/useDashboardContext';
+import {chartColors} from '@/helpers/chartUtils';
+import {
+    formatKilowattHours,
+    metricText
+} from '@/helpers/powerMetrics';
 import {useEntityStore} from '@/stores/entities';
 import * as ws from '@/tools/websocket';
 import CardShell from './CardShell.vue';
@@ -82,6 +90,7 @@ const range = ref<ChartRange>(props.config.range ?? '24h');
 const limit = props.config.limit ?? 10;
 
 const loading = ref(false);
+const failed = ref(false);
 const totalsByShelly = ref<Map<string, number>>(new Map());
 let abortId = 0;
 let disposed = false;
@@ -109,6 +118,7 @@ async function fetchTotals() {
     }
     const id = ++abortId;
     loading.value = true;
+    failed.value = false;
     const {from, to, bucket} = rangeToParams(range.value);
     try {
         const res = await ws.sendRPC<{
@@ -134,6 +144,7 @@ async function fetchTotals() {
     } catch {
         if (disposed || id !== abortId) return;
         totalsByShelly.value = new Map();
+        failed.value = true;
     } finally {
         if (!disposed && id === abortId) loading.value = false;
     }
@@ -177,10 +188,8 @@ const ranked = computed(() => {
     return sorted.map((it) => ({
         ...it,
         pct: Math.round((it.total / maxTotal) * 100),
-        displayValue:
-            it.total >= 1000
-                ? `${(it.total / 1000).toFixed(2)} kWh`
-                : `${it.total.toFixed(1)} Wh`
+        // energy.query already returns kWh; the label rule has one home.
+        displayValue: metricText(formatKilowattHours(it.total))
     }));
 });
 </script>

@@ -49,6 +49,7 @@ export interface IdentityDirectory {
     getDeploymentRoleScopeId(): Promise<string>;
     getProjectRoles(query: ProjectRoleQuery): Promise<ProjectRoleAssignment>;
     userBelongsToTenant(query: TenantMembershipQuery): Promise<boolean>;
+    userAccountActive(userId: string): Promise<boolean>;
     hasInstanceAdministratorRole(
         query: InstanceAdminRoleQuery
     ): Promise<boolean>;

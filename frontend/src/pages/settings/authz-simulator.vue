@@ -208,7 +208,7 @@
 
 <script setup lang="ts">
 import {
-    AUTHZ_ACTION_SUGGESTIONS,
+    AUTHZ_ACTIONS,
     AUTHZ_RESOURCE_SUGGESTIONS,
     AUTHZ_SYSTEM_PERSONA_KEYS
 } from '@api/authzCatalog';
@@ -224,6 +224,7 @@ import FormField from '@/components/core/FormField.vue';
 import Input from '@/components/core/Input.vue';
 import PageTemplate from '@/components/core/PageTemplate.vue';
 import Spinner from '@/components/core/Spinner.vue';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useAuthStore} from '@/stores/auth';
 import {useUsersStore, type ZitadelUser } from '@/stores/users';
 import {sendRPC} from '@/tools/websocket';
@@ -263,8 +264,8 @@ const users = computed(() => {
     );
 });
 
-// Dropdown takes flat T[] — build the option lists once.
-const ACTION_OPTIONS = [...AUTHZ_ACTION_SUGGESTIONS];
+// Concrete actions only: a simulated call is never a wildcard pattern.
+const ACTION_OPTIONS = [...AUTHZ_ACTIONS];
 const RESOURCE_OPTIONS = [...AUTHZ_RESOURCE_SUGGESTIONS];
 
 const userId = ref('');
@@ -331,7 +332,7 @@ async function loadActualRoles(id: string): Promise<void> {
         actualRoles.value = res.roleKeys ?? [];
     } catch (err) {
         if (userId.value !== id) return;
-        rolesError.value = err instanceof Error ? err.message : String(err);
+        rolesError.value = rpcErrorMessage(err);
     } finally {
         if (userId.value === id) rolesLoading.value = false;
     }
@@ -371,7 +372,7 @@ async function run(): Promise<void> {
             params
         );
     } catch (err) {
-        error.value = err instanceof Error ? err.message : String(err);
+        error.value = rpcErrorMessage(err);
     } finally {
         running.value = false;
     }

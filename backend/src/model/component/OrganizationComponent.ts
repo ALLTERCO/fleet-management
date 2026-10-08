@@ -4,6 +4,8 @@ import * as EventDistributor from '../../modules/EventDistributor';
 import {
     buildOrganizationScopeModel,
     getOrganizationProfile,
+    ORGANIZATION_DEFAULT_LOCALE,
+    ORGANIZATION_DEFAULT_TIMEZONE,
     readOrganizationProfile,
     rowToOrganizationProfile
 } from '../../modules/organizationModel';
@@ -158,8 +160,10 @@ export default class OrganizationComponent extends Component {
         const orgId = requireOrganizationId(sender);
         const existing = await readOrganizationProfile(orgId);
         return {
-            timezoneDefault: existing?.timezoneDefault ?? null,
-            localeDefault: existing?.localeDefault ?? null
+            timezoneDefault:
+                existing?.timezoneDefault ?? ORGANIZATION_DEFAULT_TIMEZONE,
+            localeDefault:
+                existing?.localeDefault ?? ORGANIZATION_DEFAULT_LOCALE
         };
     }
 

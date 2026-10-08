@@ -203,6 +203,8 @@ export function rowToDashboard(row: any, isPinnedFallback = false): Dashboard {
     return {
         id: row.id,
         organizationId: row.organization_id,
+        ownerUserId:
+            typeof row.owner_user_id === 'string' ? row.owner_user_id : null,
         name: row.name,
         dashboardType: (row.dashboard_type ?? 'classic') as DashboardType,
         scope: rowToScope(row),

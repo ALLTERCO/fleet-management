@@ -2113,20 +2113,10 @@
     line-height: 1;
     display: flex;
     align-items: baseline;
-    gap: 2px;
-}
-.ec-trv-hero-set-v,
-.ec-trv-hero-set-v span {
     background: var(--gradient-value-text);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-}
-/* Degree symbol scales with the value — golden ratio below the hero digit. */
-.ec-trv-hero-set-v span {
-    font-size: var(--type-heading);
-    font-weight: var(--font-semibold);
-    letter-spacing: 0;
 }
 /* Label reads as demotion: same 16 px body, tertiary colour, uppercase. */
 .ec-trv-hero-set-l {
@@ -2152,11 +2142,6 @@
     letter-spacing: var(--tracking-tight);
     line-height: 1;
     color: var(--color-text-secondary);
-}
-.ec-trv-hero-now-v span {
-    font-size: var(--type-body);
-    font-weight: var(--font-medium);
-    color: var(--color-text-tertiary);
 }
 .ec-trv-hero-now-l {
     font-size: var(--type-caption);
@@ -2422,11 +2407,6 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
     filter: none;
-}
-.dh-pct span {
-    font-size: var(--type-subheading);
-    font-weight: 600;
-    letter-spacing: 0;
 }
 .dh-sub {
     font-size: var(--type-caption);
@@ -2887,6 +2867,7 @@
     background-clip: text;
     filter: none;
 }
+/* Label line above the hero reading — not a unit; units use .ec-u. */
 .ec-hero-top-u {
     font-size: var(--type-caption);
     font-weight: var(--font-semibold);
@@ -3352,10 +3333,11 @@
 .ec-hero-top-v--uv-amber {
     color: #f59e0b;
 }
+/* 2x2 reading size — see the sensor reading standard in card-sensors.css. */
 .ec-chan-badge--lg {
-    width: 80px;
-    height: 80px;
-    font-size: var(--type-heading);
+    width: 116px;
+    height: 116px;
+    font-size: var(--type-display);
 }
 .ec-sensor-padded--noshrink {
     padding: 0 var(--space-5);

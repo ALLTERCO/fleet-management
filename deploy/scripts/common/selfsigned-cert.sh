@@ -37,7 +37,24 @@ fm_generate_ca() {
   openssl req -x509 -new -nodes \
     -key "$tls_dir/ca.key" -sha256 -days "$days" \
     -subj "/CN=${ca_cn}" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,keyCertSign,cRLSign" \
+    -addext "subjectKeyIdentifier=hash" \
     -out "$tls_dir/ca.crt" 2>/dev/null
+}
+
+# Create the local CA once. FM_LOCAL_CA_CN wins so each deploy path keeps its own CA name.
+ensure_local_ca() {
+  local tls_dir="$1"
+  local ca_cn="${FM_LOCAL_CA_CN:-${FM_LOCAL_CA_NAME:-Fleet Manager Root CA}}"
+  if [ -f "$tls_dir/ca.crt" ] && [ -f "$tls_dir/ca.key" ]; then
+    return 0
+  fi
+  mkdir -p "$tls_dir"
+  printf '[setup] Generating local CA: %s\n' "$ca_cn"
+  fm_generate_ca "$tls_dir" "$ca_cn" 3650
+  chmod 0600 "$tls_dir/ca.key"
+  chmod 0644 "$tls_dir/ca.crt"
 }
 
 # Issue a server cert (server.key + server.crt) in tls_dir, signed by the CA
@@ -61,6 +78,14 @@ fm_issue_server_cert() {
   openssl x509 -req -in "$csr" \
     -CA "$tls_dir/ca.crt" -CAkey "$tls_dir/ca.key" -CAcreateserial \
     -out "$tls_dir/server.crt" -days "$days" -sha256 \
-    -extfile <(printf 'subjectAltName=%s' "$san") 2>/dev/null
+    -extfile <(
+      printf '%s\n' \
+        "subjectAltName=${san}" \
+        "basicConstraints=critical,CA:FALSE" \
+        "keyUsage=critical,digitalSignature,keyEncipherment" \
+        "extendedKeyUsage=serverAuth" \
+        "subjectKeyIdentifier=hash" \
+        "authorityKeyIdentifier=keyid,issuer"
+    ) 2>/dev/null
   rm -f "$csr"
 }

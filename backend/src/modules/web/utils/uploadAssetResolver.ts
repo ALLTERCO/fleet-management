@@ -80,12 +80,17 @@ export function resolveUploadAsset(
         };
     }
 
-    const file = parts[0];
-    if (
-        parts.length !== 1 ||
-        !extensionAllowed(file, ALLOWED_REPORT_IMAGE_EXT)
-    ) {
-        return null;
+    const file = parts.at(-1)!;
+    if (!extensionAllowed(file, ALLOWED_REPORT_IMAGE_EXT)) return null;
+    if (signedPath) {
+        return {root: reportImagesPath, file: path.join(...parts)};
     }
-    return {root: reportImagesPath, file};
+    if (parts.length === 1) {
+        // Root files have no tenant owner; provider support only.
+        if (!userCanCrossOrganizations(user)) return null;
+        return {root: reportImagesPath, file};
+    }
+    const orgSeg = safeOrgSegment(user?.organizationId);
+    if (!userCanCrossOrganizations(user) && parts[0] !== orgSeg) return null;
+    return {root: reportImagesPath, file: path.join(parts[0], file)};
 }

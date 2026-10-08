@@ -6,10 +6,35 @@ import * as tls from 'node:tls';
 import express from 'express';
 import log4js from 'log4js';
 import {tuning} from '../../../config/tuning';
+import RpcError from '../../../rpc/RpcError';
 import type {user_t} from '../../../types';
+import {permissionMatches} from '../../nodeRed/access';
+import {mayUseNodeRedEditor} from '../../nodeRed/editorAccess';
+import {
+    checkEditorSession,
+    closeEditorSession,
+    type EditorSessionRefusal,
+    type OpenedEditorSession,
+    openEditorSession,
+    revokeEditorSessionHolder,
+    revokeEditorSessionsForUser
+} from '../../nodeRed/editorSession';
+import {trackEditorTunnel} from '../../nodeRed/editorTunnels';
+import {
+    type NodeRedEditorIdentity,
+    nodeRedUserHeader
+} from '../../nodeRed/editorUserToken';
+import {isNodeRedAdminPath} from '../../nodeRed/flowClient';
+import {
+    NODE_RED_WRONG_ORGANIZATION,
+    nodeRedOrgAllows
+} from '../../nodeRed/orgLock';
+import {readNodeRedStatus} from '../../nodeRed/statusProbe';
 import * as Observability from '../../Observability';
+import {ANONYMOUS_USERNAME} from '../../user/anonymous';
 import {reportHandledPeerError} from '../../util/faultGuard';
 import {isNodeRedPath} from '../authToken';
+import {isLoggedIn} from '../utils/authMiddleware';
 import {isSecureRequest} from '../utils/secureCookie';
 
 const logger = log4js.getLogger('node-red-proxy');
@@ -56,52 +81,23 @@ export function targetUrl(path: string | undefined): URL {
     return url;
 }
 
-function segmentMatches(granted: string, required: string): boolean {
-    return granted === '*' || granted === required;
-}
-
-export function permissionMatches(granted: string, required: string): boolean {
-    if (granted === '*' || granted === required) return true;
-
-    const grantedSegments = granted.split(':');
-    const requiredSegments = required.split(':');
-    if (grantedSegments.length !== requiredSegments.length) return false;
-    if (grantedSegments.length < 2) return false;
-
-    return grantedSegments.every((segment, index) =>
-        segmentMatches(segment, requiredSegments[index]!)
-    );
-}
-
-function hasNodeRedPermission(user: user_t | undefined): boolean {
-    if (!user || user.username === '<UNAUTHORIZED>') return false;
-    // user.permissions is unfiltered; boundary not applied here → deny.
-    if (user.credentialBoundary) return false;
-    if (user.group === 'admin' || user.isPlatformAdmin === true) {
-        return true;
-    }
-    if (user.permissions.includes('*')) return true;
-
-    // `integration:*` is accepted during rollout for existing integration
-    // administrators; new grants should use `automation:update`.
-    const required = [
-        ...tuning.nodeRed.uiPermissions,
-        'integration:*',
-        'integration:update'
-    ];
-    return required.some((need) =>
-        user.permissions.some((granted) => permissionMatches(granted, need))
-    );
-}
+// The permission rule itself lives in modules/nodeRed/access.ts, because the
+// RPC surface enforces the same one. Re-exported so existing importers of this
+// route module keep working.
+export {permissionMatches};
 
 // Fail closed: the shared upstream relies on this secret to reject requests
 // that bypass FM auth; an empty secret in production would skip that gate.
-function requireProxySecret(): string {
-    const secret = tuning.nodeRed.proxySecret;
-    if (!secret && tuning.nodeRed.proxySecretRequired) {
+export function requireProxySecret(): string {
+    if (proxySecretMissing()) {
         throw new Error('FM_NODE_RED_PROXY_SECRET is required');
     }
-    return secret;
+    return tuning.nodeRed.proxySecret;
+}
+
+/** A required secret that is empty is a server misconfig, not a bad request. */
+export function proxySecretMissing(): boolean {
+    return !tuning.nodeRed.proxySecret && tuning.nodeRed.proxySecretRequired;
 }
 
 function callerOrg(user: user_t | undefined): string {
@@ -115,24 +111,68 @@ function hasCallerOrg(user: user_t | undefined): boolean {
     return Boolean(user?.organizationId);
 }
 
-export function requireNodeRedPermission(
+type EditorAccessProblem =
+    | 'wrongOrganization'
+    | 'permissionRequired'
+    | 'organizationRequired';
+
+// Throws when the permission shape cannot be loaded: unknown, not "no".
+async function editorAccessProblem(
+    user: user_t | undefined
+): Promise<EditorAccessProblem | undefined> {
+    // Cheap and fail-closed, so it runs before the permission lookup.
+    if (!nodeRedOrgAllows(user?.organizationId)) return 'wrongOrganization';
+    if (!(await mayUseNodeRedEditor(user))) return 'permissionRequired';
+    if (!hasCallerOrg(user)) return 'organizationRequired';
+    return undefined;
+}
+
+function sendPermissionCheckFailure(
+    res: express.Response,
+    error: unknown
+): void {
+    const status = error instanceof RpcError ? 503 : 500;
+    logger.error('Node-RED permission check failed: %s', error);
+    res.status(status).json({error: 'Node-RED permission check failed'});
+}
+
+export async function requireNodeRedPermission(
     req: express.Request,
     res: express.Response,
     next: express.NextFunction
-) {
+): Promise<void> {
     if (!tuning.nodeRed.enabled) {
         res.status(404).json({error: 'Node-RED is not enabled'});
         return;
     }
-    if (!hasNodeRedPermission(req.user)) {
-        res.status(403).json({error: 'Node-RED permission required'});
+    let problem: EditorAccessProblem | undefined;
+    try {
+        problem = await editorAccessProblem(req.user);
+    } catch (error) {
+        sendPermissionCheckFailure(res, error);
         return;
     }
-    if (!hasCallerOrg(req.user)) {
-        res.status(403).json({error: 'Node-RED organization required'});
+    if (problem) {
+        sendProxyError(res, problem);
         return;
     }
     next();
+}
+
+function editorIdentity(user: user_t): NodeRedEditorIdentity {
+    return {
+        username: user.username,
+        ...(user.displayName ? {displayName: user.displayName} : {})
+    };
+}
+
+// Only the editor and admin API learn the user; flows must not read the token.
+function editorUserHeaders(
+    target: URL,
+    user: user_t | undefined
+): Record<string, string> {
+    if (!user || !isNodeRedAdminPath(target.pathname)) return {};
+    return nodeRedUserHeader(editorIdentity(user));
 }
 
 function proxyHeaders(req: express.Request): http.OutgoingHttpHeaders {
@@ -153,15 +193,67 @@ function proxyHeaders(req: express.Request): http.OutgoingHttpHeaders {
     if (secret) headers['x-fm-node-red-proxy-secret'] = secret;
     if (req.user?.username) headers['x-fm-user'] = req.user.username;
     headers['x-fm-organization-id'] = callerOrg(req.user);
-    return headers;
+    return {...headers, ...editorUserHeaders(target, req.user)};
 }
 
-function writeJsonError(
+// Stable codes so the UI can show a clear sentence instead of a blank page.
+const PROXY_ERRORS = {
+    unavailable: {
+        status: 502,
+        code: 'node_red_unavailable',
+        error: 'Node-RED is unavailable. It may be stopped or still starting.'
+    },
+    wrongOrganization: {
+        status: 403,
+        code: NODE_RED_WRONG_ORGANIZATION,
+        error: 'This Node-RED belongs to another organization.'
+    },
+    secretMissing: {
+        status: 500,
+        code: 'node_red_misconfigured',
+        error: 'Node-RED proxy secret is not configured'
+    },
+    badPath: {
+        status: 400,
+        code: 'node_red_bad_path',
+        error: 'Invalid Node-RED proxy path'
+    },
+    sessionExpired: {
+        status: 401,
+        code: 'node_red_session_expired',
+        error: 'The Node-RED editor session has ended. Reopen the editor.'
+    },
+    permissionRequired: {
+        status: 403,
+        code: 'node_red_permission_required',
+        error: 'Node-RED permission required'
+    },
+    organizationRequired: {
+        status: 403,
+        code: 'node_red_organization_required',
+        error: 'Node-RED organization required'
+    },
+    signInRequired: {
+        status: 401,
+        code: 'node_red_sign_in_required',
+        error: 'Missing Fleet Manager token'
+    },
+    sessionUnavailable: {
+        status: 503,
+        code: 'node_red_session_unavailable',
+        error: 'The Node-RED editor session could not be checked. Try again.'
+    }
+} as const;
+
+export type NodeRedProxyError = keyof typeof PROXY_ERRORS;
+
+export function sendProxyError(
     res: express.Response,
-    status: number,
-    message: string
-) {
-    if (!res.headersSent) res.status(status).json({error: message});
+    kind: NodeRedProxyError
+): void {
+    if (res.headersSent) return;
+    const {status, code, error} = PROXY_ERRORS[kind];
+    res.status(status).json({error, code});
 }
 
 function requestOrigin(req: express.Request): string | undefined {
@@ -216,7 +308,7 @@ function applySessionCors(
 
     res.setHeader('Access-Control-Allow-Origin', allowed);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, DELETE, OPTIONS');
     res.setHeader(
         'Access-Control-Allow-Headers',
         'authorization, content-type'
@@ -239,12 +331,21 @@ export function nodeRedSessionPreflight(
 
 router.options('/session', nodeRedSessionPreflight);
 
-router.post('/session', (req, res) => {
-    if (!applySessionCors(req, res)) return;
-    if (!req.token) {
-        res.status(401).json({error: 'Missing Fleet Manager token'});
-        return;
-    }
+// Same checks the proxy would hit on the first editor request, answered with
+// the same JSON, so the UI never loads an error body into the iframe.
+async function editorSessionProblem(
+    req: express.Request
+): Promise<NodeRedProxyError | undefined> {
+    if (!nodeRedOrgAllows(req.user?.organizationId)) return 'wrongOrganization';
+    if (proxySecretMissing()) return 'secretMissing';
+    const status = await readNodeRedStatus();
+    return status.reachable ? undefined : 'unavailable';
+}
+
+function clearLegacySessionCookies(
+    req: express.Request,
+    res: express.Response
+): void {
     res.clearCookie(LEGACY_NODE_RED_AUTH_COOKIE, {
         path: '/node-red',
         sameSite: 'strict'
@@ -256,22 +357,233 @@ router.post('/session', (req, res) => {
             secure: true
         });
     }
-    res.cookie(NODE_RED_AUTH_COOKIE, req.token, {
+}
+
+function editorCookieOptions(req: express.Request): express.CookieOptions {
+    return {
         httpOnly: true,
         secure:
             isSecureRequest(req) ||
             tuning.nodeRed.sessionCookieSameSite === 'none',
         sameSite: tuning.nodeRed.sessionCookieSameSite,
         path: '/node-red'
+    };
+}
+
+// Whole seconds, rounded up: the cookie may outlive the session, never the reverse.
+function cookieMaxAgeMs(session: OpenedEditorSession): number {
+    return Math.ceil((session.expiresAt - Date.now()) / 1000) * 1000;
+}
+
+function setEditorSessionCookie(
+    req: express.Request,
+    res: express.Response,
+    session: OpenedEditorSession
+): void {
+    res.cookie(NODE_RED_AUTH_COOKIE, session.sessionId, {
+        ...editorCookieOptions(req),
+        maxAge: cookieMaxAgeMs(session)
     });
+}
+
+function clearEditorSessionCookie(
+    req: express.Request,
+    res: express.Response
+): void {
+    res.clearCookie(NODE_RED_AUTH_COOKIE, editorCookieOptions(req));
+}
+
+function editorSessionCookie(req: express.Request): string | undefined {
+    const value: unknown = req.cookies?.[NODE_RED_AUTH_COOKIE];
+    return typeof value === 'string' && value ? value : undefined;
+}
+
+type KeepaliveVerdict =
+    | {ok: true; user: user_t}
+    | {ok: false; error: NodeRedProxyError; revoke: boolean};
+
+// Only a definite "no" ends sessions; a check that could not finish does not.
+async function keepaliveVerdict(
+    req: express.Request
+): Promise<KeepaliveVerdict> {
+    if (!req.token) {
+        return {ok: false, error: 'signInRequired', revoke: false};
+    }
+    if (req.authFailure === 'unavailable') {
+        return {ok: false, error: 'sessionUnavailable', revoke: false};
+    }
+    if (req.authFailure === 'org_mismatch') {
+        return {ok: false, error: 'wrongOrganization', revoke: true};
+    }
+    const user = req.user;
+    if (!user || user.username === ANONYMOUS_USERNAME) {
+        return {ok: false, error: 'sessionExpired', revoke: true};
+    }
+    const problem = await editorAccessProblem(user);
+    return problem
+        ? {ok: false, error: problem, revoke: true}
+        : {ok: true, user};
+}
+
+// The sign-in behind this browser is gone or lost the right: end the user's
+// sessions and sockets, not just this cookie.
+async function revokeRefusedKeepalive(req: express.Request): Promise<void> {
+    const sessionId = editorSessionCookie(req);
+    if (sessionId) await revokeEditorSessionHolder(sessionId);
+    const userId = signedInUserId(req);
+    if (userId) await revokeEditorSessionsForUser(userId);
+}
+
+async function renewEditorSession(
+    req: express.Request,
+    res: express.Response
+): Promise<void> {
+    if (!applySessionCors(req, res)) return;
+    let verdict: KeepaliveVerdict;
+    try {
+        verdict = await keepaliveVerdict(req);
+    } catch (error) {
+        sendPermissionCheckFailure(res, error);
+        return;
+    }
+    if (!verdict.ok) {
+        if (verdict.revoke) {
+            await revokeRefusedKeepalive(req);
+            clearEditorSessionCookie(req, res);
+        }
+        sendProxyError(res, verdict.error);
+        return;
+    }
+    const problem = await editorSessionProblem(req);
+    if (problem) {
+        sendProxyError(res, problem);
+        return;
+    }
+    const session = await openEditorSession({
+        user: verdict.user,
+        presentedId: editorSessionCookie(req)
+    });
+    clearLegacySessionCookies(req, res);
+    setEditorSessionCookie(req, res, session);
     res.status(204).end();
-});
+}
+
+function handleSessionFailure(res: express.Response, error: unknown): void {
+    logger.error('Node-RED editor session store failed: %s', error);
+    sendProxyError(res, 'sessionUnavailable');
+}
+
+/**
+ * POST /node-red/session: the only way to open or renew an editor session,
+ * so a session outlives its Fleet Manager sign-in by one idle period at most.
+ * Mounted before the editor proxy so a refused keepalive can end the user's
+ * sessions instead of meeting a generic 401.
+ */
+export function renewNodeRedSession(
+    req: express.Request,
+    res: express.Response
+): void {
+    if (!tuning.nodeRed.enabled) {
+        res.status(404).end();
+        return;
+    }
+    renewEditorSession(req, res).catch((error) =>
+        handleSessionFailure(res, error)
+    );
+}
+
+function signedInUserId(req: express.Request): string | undefined {
+    if (!req.token || req.user?.username === ANONYMOUS_USERNAME) {
+        return undefined;
+    }
+    return req.user?.userId;
+}
+
+// Logout from this browser; a signed-in caller also ends its other sessions.
+async function endEditorSessions(req: express.Request): Promise<void> {
+    const sessionId = editorSessionCookie(req);
+    if (sessionId) await closeEditorSession(sessionId);
+    const userId = signedInUserId(req);
+    if (userId) await revokeEditorSessionsForUser(userId);
+}
+
+/** DELETE /node-red/session. Open on purpose, like the app's own logout:
+ *  only the server can clear an httpOnly cookie. */
+export function closeNodeRedSession(
+    req: express.Request,
+    res: express.Response
+): void {
+    if (!tuning.nodeRed.enabled) {
+        res.status(404).end();
+        return;
+    }
+    if (!applySessionCors(req, res)) return;
+    endEditorSessions(req).then(
+        () => {
+            clearEditorSessionCookie(req, res);
+            res.status(204).end();
+        },
+        (error) => handleSessionFailure(res, error)
+    );
+}
+
+const REFUSAL_ERRORS: Record<EditorSessionRefusal, NodeRedProxyError> = {
+    expired: 'sessionExpired',
+    wrongOrganization: 'wrongOrganization',
+    permissionLost: 'permissionRequired'
+};
+
+async function useEditorSession(
+    route: {
+        req: express.Request;
+        res: express.Response;
+        next: express.NextFunction;
+    },
+    sessionId: string
+): Promise<void> {
+    const {req, res, next} = route;
+    const check = await checkEditorSession(sessionId);
+    if (!check.ok) {
+        clearEditorSessionCookie(req, res);
+        sendProxyError(res, REFUSAL_ERRORS[check.refusal]);
+        return;
+    }
+    req.user = check.user;
+    next();
+}
+
+function handleSessionCheckFailure(
+    res: express.Response,
+    error: unknown
+): void {
+    // Unknown is not "no": a store or policy outage must not read as logout.
+    logger.error('Node-RED editor session check failed: %s', error);
+    sendProxyError(res, 'sessionUnavailable');
+}
+
+/**
+ * Bearer callers (API clients, the session endpoint) take the normal login
+ * check. A browser brings only the editor session cookie.
+ */
+export function authenticateNodeRedRequest(
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction
+): void {
+    const sessionId = editorSessionCookie(req);
+    if (req.headers.authorization !== undefined || !sessionId) {
+        isLoggedIn(req, res, next);
+        return;
+    }
+    useEditorSession({req, res, next}, sessionId).catch((error) =>
+        handleSessionCheckFailure(res, error)
+    );
+}
 
 router.use((req, res) => {
     Observability.incrementCounter('node_red_proxy_requests');
-    // A missing required secret is a server misconfig, not a bad request path.
-    if (!tuning.nodeRed.proxySecret && tuning.nodeRed.proxySecretRequired) {
-        writeJsonError(res, 500, 'Node-RED proxy secret is not configured');
+    if (proxySecretMissing()) {
+        sendProxyError(res, 'secretMissing');
         return;
     }
     let target: URL;
@@ -280,7 +592,7 @@ router.use((req, res) => {
         target = targetUrl(req.originalUrl);
         headers = proxyHeaders(req);
     } catch {
-        writeJsonError(res, 400, 'Invalid Node-RED proxy path');
+        sendProxyError(res, 'badPath');
         return;
     }
     const transport = target.protocol === 'https:' ? https : http;
@@ -318,7 +630,7 @@ router.use((req, res) => {
     });
     proxyReq.on('error', (error) => {
         logger.warn('Node-RED proxy failed: %s', error);
-        writeJsonError(res, 502, 'Node-RED is unavailable');
+        sendProxyError(res, 'unavailable');
     });
 
     if (Buffer.isBuffer(rawBody)) {
@@ -367,6 +679,11 @@ export function buildNodeRedUpgradeRequest(
     const secret = requireProxySecret();
     if (secret) headers.push(`X-FM-Node-RED-Proxy-Secret: ${secret}`);
     if (user.username) headers.push(`X-FM-User: ${user.username}`);
+    for (const [name, value] of Object.entries(
+        editorUserHeaders(target, user)
+    )) {
+        headers.push(`${name}: ${value}`);
+    }
 
     for (const [key, value] of Object.entries(request.headers)) {
         const lower = key.toLowerCase();
@@ -396,6 +713,20 @@ export function filterNodeRedUpgradeResponseHeaders(
     return `${filtered.join('\r\n')}\r\n\r\n`;
 }
 
+// The editor socket lives for hours and idles between heartbeats. The
+// connect-phase timeout must not outlive the handshake; keepalive takes over.
+function enterLongLivedMode(
+    upstream: net.Socket | tls.TLSSocket,
+    socket: Duplex
+): void {
+    upstream.setTimeout(0);
+    upstream.setKeepAlive(true, tuning.nodeRed.wsKeepAliveMs);
+    if (socket instanceof net.Socket) {
+        socket.setTimeout(0);
+        socket.setKeepAlive(true, tuning.nodeRed.wsKeepAliveMs);
+    }
+}
+
 function pipeFilteredUpgradeResponse(
     upstream: net.Socket | tls.TLSSocket,
     socket: Duplex
@@ -415,6 +746,7 @@ function pipeFilteredUpgradeResponse(
         }
 
         upstream.off('data', onData);
+        enterLongLivedMode(upstream, socket);
         const rawHeaders = buffered.subarray(0, headerEnd).toString('latin1');
         const body = buffered.subarray(headerEnd + 4);
         socket.write(filterNodeRedUpgradeResponseHeaders(rawHeaders), 'latin1');
@@ -425,21 +757,76 @@ function pipeFilteredUpgradeResponse(
     upstream.on('data', onData);
 }
 
+interface AuthorizedUpgrade {
+    user: user_t;
+    sessionId: string;
+}
+
 async function authorizeUpgrade(
     request: http.IncomingMessage
-): Promise<user_t | null> {
-    const token = parseCookies(request.headers.cookie)[NODE_RED_AUTH_COOKIE];
-    if (!token) return null;
+): Promise<AuthorizedUpgrade | null> {
+    const sessionId = parseCookies(request.headers.cookie)[
+        NODE_RED_AUTH_COOKIE
+    ];
+    if (!sessionId) return null;
     try {
-        const {getUserFromToken} = await import('../../user/index.js');
-        const user = await getUserFromToken(token);
-        if (!hasNodeRedPermission(user ?? undefined)) return null;
-        if (!hasCallerOrg(user ?? undefined)) return null;
-        return user ?? null;
+        const check = await checkEditorSession(sessionId);
+        return check.ok ? {user: check.user, sessionId} : null;
     } catch (error) {
         logger.warn('Node-RED websocket auth failed: %s', error);
         return null;
     }
+}
+
+/** Opens the upstream socket for an already authorized editor upgrade. */
+export function tunnelNodeRedUpgrade(input: {
+    request: http.IncomingMessage;
+    socket: Duplex;
+    head: Buffer;
+    user: user_t;
+    /** The editor session the socket belongs to; it closes with it. */
+    sessionId: string;
+}): void {
+    const {request, socket, head, user, sessionId} = input;
+    const target = targetUrl(request.url);
+    const port = Number(
+        target.port || (target.protocol === 'https:' ? 443 : 80)
+    );
+    const upstream =
+        target.protocol === 'https:'
+            ? tls.connect(port, target.hostname)
+            : net.connect(port, target.hostname);
+
+    upstream.setTimeout(tuning.nodeRed.proxyTimeoutMs);
+    upstream.once(
+        target.protocol === 'https:' ? 'secureConnect' : 'connect',
+        () => {
+            upstream.write(buildNodeRedUpgradeRequest(request, target, user));
+            if (head.length > 0) upstream.write(head);
+            socket.pipe(upstream);
+            pipeFilteredUpgradeResponse(upstream, socket);
+        }
+    );
+    upstream.on('timeout', () => {
+        upstream.destroy();
+        if (!socket.destroyed) socket.destroy();
+    });
+    upstream.on('error', (error) => {
+        logger.warn('Node-RED websocket proxy failed: %s', error);
+        if (!socket.destroyed) rejectUpgrade(socket, '502 Bad Gateway');
+    });
+    // Tear down upstream once the client socket is done. A clean
+    // FIN finishes the socket without an 'error', so use the stream
+    // lifecycle (covers end / close / error) instead of a raw close
+    // listener — the latter is reserved for ConnectionContext.
+    socket.on('error', () => upstream.destroy());
+    const untrack = user.userId
+        ? trackEditorTunnel({userId: user.userId, sessionId}, socket)
+        : () => undefined;
+    finished(socket, () => {
+        untrack();
+        if (!upstream.destroyed) upstream.destroy();
+    });
 }
 
 export function registerNodeRedUpgradeProxy(server: http.Server) {
@@ -463,50 +850,13 @@ export function registerNodeRedUpgradeProxy(server: http.Server) {
 
         void (async () => {
             try {
-                const user = await authorizeUpgrade(request);
-                if (!user) {
+                const authorized = await authorizeUpgrade(request);
+                if (!authorized) {
                     rejectUpgrade(socket, '403 Forbidden');
                     return;
                 }
 
-                const target = targetUrl(request.url);
-                const port = Number(
-                    target.port || (target.protocol === 'https:' ? 443 : 80)
-                );
-                const upstream =
-                    target.protocol === 'https:'
-                        ? tls.connect(port, target.hostname)
-                        : net.connect(port, target.hostname);
-
-                upstream.setTimeout(tuning.nodeRed.proxyTimeoutMs);
-                upstream.once(
-                    target.protocol === 'https:' ? 'secureConnect' : 'connect',
-                    () => {
-                        upstream.write(
-                            buildNodeRedUpgradeRequest(request, target, user)
-                        );
-                        if (head.length > 0) upstream.write(head);
-                        socket.pipe(upstream);
-                        pipeFilteredUpgradeResponse(upstream, socket);
-                    }
-                );
-                upstream.on('timeout', () => {
-                    upstream.destroy();
-                    if (!socket.destroyed) socket.destroy();
-                });
-                upstream.on('error', (error) => {
-                    logger.warn('Node-RED websocket proxy failed: %s', error);
-                    if (!socket.destroyed)
-                        rejectUpgrade(socket, '502 Bad Gateway');
-                });
-                // Tear down upstream once the client socket is done. A clean
-                // FIN finishes the socket without an 'error', so use the stream
-                // lifecycle (covers end / close / error) instead of a raw close
-                // listener — the latter is reserved for ConnectionContext.
-                socket.on('error', () => upstream.destroy());
-                finished(socket, () => {
-                    if (!upstream.destroyed) upstream.destroy();
-                });
+                tunnelNodeRedUpgrade({request, socket, head, ...authorized});
             } catch (err) {
                 logger.warn('Node-RED upgrade auth threw: %s', err);
                 if (!socket.destroyed) socket.destroy();

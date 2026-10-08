@@ -1,55 +1,54 @@
-// Per-source CO2 attribution from grid-side metering only.
-// solar_self is a min() heuristic, not measured — flagged for UI.
+// Grid-side meters measure imports and exports, not on-site generation or
+// self-consumption. Keep those measured directions separate so Scope 2 is
+// never reduced by an unsupported generation estimate.
+
+import {computeCarbonAccounting} from './carbonAccounting.js';
 
 export interface CarbonSourceInput {
-    readonly totalConsumedKWh: number;
-    readonly totalReturnedKWh: number;
+    readonly totalImportedKWh: number;
+    readonly totalExportedKWh: number;
     readonly factorGPerKWh: number;
 }
 
 export interface CarbonSourceBreakdown {
-    readonly gridKWh: number;
-    readonly solarSelfConsumedKWh: number;
-    readonly solarExportedKWh: number;
-    readonly gridKgCO2: number;
-    readonly solarKgCO2: number;
-    readonly avoidedKgCO2: number;
-    /** True whenever solarSelfConsumedKWh > 0 — value is a floor estimate. */
-    readonly solarSelfEstimated: boolean;
+    readonly importedKWh: number;
+    readonly exportedKWh: number;
+    readonly scope2KgCO2: number;
 }
 
 const EMPTY: CarbonSourceBreakdown = {
-    gridKWh: 0,
-    solarSelfConsumedKWh: 0,
-    solarExportedKWh: 0,
-    gridKgCO2: 0,
-    solarKgCO2: 0,
-    avoidedKgCO2: 0,
-    solarSelfEstimated: false
+    importedKWh: 0,
+    exportedKWh: 0,
+    scope2KgCO2: 0
 };
 
 export function computeCarbonSourceBreakdown(
     input: CarbonSourceInput
 ): CarbonSourceBreakdown {
     if (!isValid(input)) return EMPTY;
-    const grid = Math.max(0, input.totalConsumedKWh - input.totalReturnedKWh);
-    const solarSelf = Math.min(input.totalConsumedKWh, input.totalReturnedKWh);
-    const solarExport = input.totalReturnedKWh;
+    const accounted = computeCarbonAccounting({
+        quantity: input.totalImportedKWh,
+        factor: {
+            id: null,
+            factorKgPerUnit: input.factorGPerKWh / 1000,
+            source: 'deployment_default',
+            sourceReference: 'legacy:g-per-kwh',
+            revision: null,
+            accountingBasis: 'location_based',
+            emissionsScope: 'scope2'
+        }
+    });
     return {
-        gridKWh: +grid.toFixed(3),
-        solarSelfConsumedKWh: +solarSelf.toFixed(3),
-        solarExportedKWh: +solarExport.toFixed(3),
-        gridKgCO2: +((grid * input.factorGPerKWh) / 1000).toFixed(2),
-        solarKgCO2: 0,
-        avoidedKgCO2: +((solarExport * input.factorGPerKWh) / 1000).toFixed(2),
-        solarSelfEstimated: solarSelf > 0
+        importedKWh: +input.totalImportedKWh.toFixed(3),
+        exportedKWh: +input.totalExportedKWh.toFixed(3),
+        scope2KgCO2: +(accounted.scope2KgCO2e ?? 0).toFixed(2)
     };
 }
 
 function isValid(input: CarbonSourceInput): boolean {
-    if (!Number.isFinite(input.totalConsumedKWh) || input.totalConsumedKWh < 0)
+    if (!Number.isFinite(input.totalImportedKWh) || input.totalImportedKWh < 0)
         return false;
-    if (!Number.isFinite(input.totalReturnedKWh) || input.totalReturnedKWh < 0)
+    if (!Number.isFinite(input.totalExportedKWh) || input.totalExportedKWh < 0)
         return false;
     if (!Number.isFinite(input.factorGPerKWh) || input.factorGPerKWh <= 0)
         return false;

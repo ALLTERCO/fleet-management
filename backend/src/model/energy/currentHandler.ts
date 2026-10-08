@@ -10,6 +10,10 @@
  */
 
 import type {EnergyRepository} from '../../modules/repositories/EnergyRepository';
+import {
+    loadVirtualRoleSources,
+    type VirtualRoleSource
+} from '../../modules/virtualDevice/energySources';
 import RpcError from '../../rpc/RpcError';
 import {validateOrThrow} from '../../rpc/validateOrThrow';
 import {
@@ -41,12 +45,15 @@ export type LiveDeviceLookup = (
 
 export type ListMeters = (org: string) => Promise<EnergyLogicalMeter[]>;
 
+export type LoadVirtualPowerSources = typeof loadVirtualRoleSources;
+
 export async function handleEnergyCurrent(
     params: unknown,
     sender: SenderCapabilities,
     repo: EnergyRepository,
     lookup: LiveDeviceLookup,
-    listMeters?: ListMeters
+    listMeters?: ListMeters,
+    loadVirtualSources: LoadVirtualPowerSources = loadVirtualRoleSources
 ): Promise<EnergyCurrentResponse> {
     const validated = validateOrThrow<EnergyCurrentParams>(
         params,
@@ -73,16 +80,44 @@ export async function handleEnergyCurrent(
         ? new Set(validated.components)
         : null;
 
-    const {idMap} = await resolveScope(sender, validated, repo);
+    const {idMap, internalIds} = await resolveScope(sender, validated, repo);
+    const organizationId = sender.getOrganizationId();
+    const virtualIds = internalIds.filter((id) =>
+        idMap[id]?.startsWith('vdev_')
+    );
+    const virtualRoles =
+        organizationId && virtualIds.length > 0
+            ? await loadVirtualSources(organizationId, virtualIds)
+            : new Map<number, VirtualRoleSource[]>();
+    const selectedIds = new Set(internalIds);
+    const aliasedComponents = new Set<string>();
+    for (const roles of virtualRoles.values()) {
+        for (const role of roles) {
+            if (
+                role.series === 'energy' &&
+                role.field === 'power' &&
+                selectedIds.has(role.sourceDeviceListId)
+            ) {
+                aliasedComponents.add(
+                    `${role.sourceDeviceListId}|${role.sourceComponentKey}`
+                );
+            }
+        }
+    }
 
     let total = 0;
     let onlineDevices = 0;
     const devices: EnergyCurrentDevice[] = [];
 
-    for (const shellyID of Object.values(idMap)) {
+    for (const [rawId, shellyID] of Object.entries(idMap)) {
+        const internalId = Number(rawId);
+        if (virtualRoles.has(internalId)) continue;
         const dev = lookup(shellyID);
         const online = dev?.online ?? false;
         let channels = dev ? devicePowerChannels(dev) : [];
+        channels = channels.filter(
+            (c) => !aliasedComponents.has(`${internalId}|${c.componentKey}`)
+        );
         if (componentFilter) {
             channels = channels.filter((c) =>
                 componentFilter.has(c.componentKey)
@@ -92,6 +127,38 @@ export async function handleEnergyCurrent(
         total += watts;
         if (online) onlineDevices++;
 
+        if (detail !== 'total') {
+            devices.push(deviceRow(shellyID, online, watts, channels, detail));
+        }
+    }
+
+    for (const [virtualId, roles] of virtualRoles) {
+        const shellyID = idMap[virtualId];
+        const channels: PowerChannel[] = [];
+        let online = false;
+        const seen = new Set<string>();
+        for (const role of roles) {
+            if (role.series !== 'energy' || role.field !== 'power') continue;
+            if (
+                componentFilter &&
+                !componentFilter.has(role.roleKey) &&
+                !componentFilter.has(role.sourceComponentKey)
+            ) {
+                continue;
+            }
+            const dev = lookup(role.sourceExternalId);
+            online ||= dev?.online ?? false;
+            for (const channel of dev ? devicePowerChannels(dev) : []) {
+                if (channel.componentKey !== role.sourceComponentKey) continue;
+                const lineage = `${role.sourceDeviceListId}|${channel.componentKey}|${channel.phase}`;
+                if (seen.has(lineage)) continue;
+                seen.add(lineage);
+                channels.push({...channel, componentKey: role.roleKey});
+            }
+        }
+        const watts = sumChannels(channels);
+        total += watts;
+        if (online) onlineDevices++;
         if (detail !== 'total') {
             devices.push(deviceRow(shellyID, online, watts, channels, detail));
         }

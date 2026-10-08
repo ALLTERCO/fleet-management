@@ -11,15 +11,15 @@ import {
     check as resolverCheck,
     conditionMatches as resolverConditionMatches
 } from '../modules/authz/resolver';
-import {tryGetAuthzRuntime} from '../modules/authz/runtime';
+import {tryGetAuthzRuntime} from '../modules/authz/runtimeHandle';
 import type {
     AccessProvenance,
     EffectiveShape,
     Scope
 } from '../modules/authz/types';
 import {BoundedMap} from '../modules/boundedMap';
-import {getGroupVersion} from '../modules/groupVersion';
 import * as Observability from '../modules/Observability';
+import {getOrganizationAccessVersion} from '../modules/organizationCacheVersions';
 import {
     listDeviceMemberships,
     listGroupDeviceMemberships,
@@ -30,7 +30,10 @@ import {ANONYMOUS_USERNAME} from '../modules/user/anonymous';
 import {withTimeout} from '../modules/util/withTimeout';
 import type {PrincipalType} from '../types';
 import type {EffectiveShape as WireEffectiveShape} from '../types/api/authz';
-import {authzRolePriorityIndex} from '../types/api/authzCatalog';
+import {
+    type AuthzAction,
+    authzRolePriorityIndex
+} from '../types/api/authzCatalog';
 import {expandLocationScope} from './locationScope';
 import type {ComponentName, CrudOperation} from './permissions';
 
@@ -51,6 +54,52 @@ interface ComponentPermissionRequest {
     component: ComponentName;
     operation: CrudOperation;
     itemId?: string | number;
+    // Where the item lives, so a location grant can reach it.
+    locationId?: number;
+}
+
+/** What a caller's scoped reads reach. See CommandSender.accessibleReach(). */
+export interface AccessibleReach {
+    deviceIds: ReadonlySet<string>;
+    locationIds: ReadonlySet<number>;
+    groupIds: ReadonlySet<number>;
+    tagIds: ReadonlySet<number>;
+}
+
+const READ_REACH_KEY = 'read-reach';
+
+const EMPTY_REACH: AccessibleReach = {
+    deviceIds: new Set(),
+    locationIds: new Set(),
+    groupIds: new Set(),
+    tagIds: new Set()
+};
+
+// What both reaches cover; null is unrestricted. Exact for the alert reach
+// test, which checks each alert against one dimension only.
+export function intersectReach(
+    left: AccessibleReach | null,
+    right: AccessibleReach | null
+): AccessibleReach | null {
+    if (left === null) return right;
+    if (right === null) return left;
+    return {
+        deviceIds: intersectSet(left.deviceIds, right.deviceIds),
+        locationIds: intersectSet(left.locationIds, right.locationIds),
+        groupIds: intersectSet(left.groupIds, right.groupIds),
+        tagIds: intersectSet(left.tagIds, right.tagIds)
+    };
+}
+
+function intersectSet<T>(left: ReadonlySet<T>, right: ReadonlySet<T>): Set<T> {
+    return new Set([...left].filter((value) => right.has(value)));
+}
+
+// The shape generation and access version say when the answer went stale.
+interface AccessibleReachCache {
+    reach: AccessibleReach | null;
+    shapeGeneration: number;
+    accessVersion: number;
 }
 
 // Shape consumed by resolverActionAllowed / resolverCheck. Built per-call by
@@ -75,6 +124,22 @@ const authzLogger = log4js.getLogger('authz');
 
 // Retry cadence after a failed effective-shape rebuild (deny-all until fixed).
 const SHAPE_REBUILD_RETRY_MS = 30_000;
+
+// Every action on every resource: what an admin persona's statement grants.
+const FULL_TENANT_QUERY: StatementGrantQuery = {
+    action: '*',
+    resourceType: '*'
+};
+
+function orgWideQuery(
+    component: ComponentName,
+    operation: CrudOperation
+): StatementGrantQuery {
+    return {
+        action: authzAction(component, operation),
+        resourceType: authzResourceType(component)
+    };
+}
 
 const DIRECT_SCOPE_FIELDS: readonly (keyof Scope)[] = [
     'device_ids',
@@ -123,8 +188,25 @@ export function statementGrantsAction(
     query: StatementGrantQuery,
     ctx: {mfaPresent: boolean; sourceIp?: string}
 ): boolean {
+    return stmt.effect === 'Allow' && statementCoversAction(stmt, query, ctx);
+}
+
+export function statementDeniesAction(
+    stmt: EffectiveShape['statements'][number],
+    query: StatementGrantQuery,
+    ctx: {mfaPresent: boolean; sourceIp?: string}
+): boolean {
+    return stmt.effect === 'Deny' && statementCoversAction(stmt, query, ctx);
+}
+
+// Effect-agnostic: does the statement name this action on this resource type
+// under the session context? Scope is deliberately not consulted here.
+function statementCoversAction(
+    stmt: EffectiveShape['statements'][number],
+    query: StatementGrantQuery,
+    ctx: {mfaPresent: boolean; sourceIp?: string}
+): boolean {
     const {action, resourceType} = query;
-    if (stmt.effect !== 'Allow') return false;
     if (!resolverActionInStatement(action, stmt.actions)) return false;
     if (stmt.notActions && resolverActionInStatement(action, stmt.notActions))
         return false;
@@ -211,7 +293,10 @@ export default class CommandSender {
     private roles: readonly string[];
     private socket?: WebSocket;
     private username?: string;
+    private credentialId?: string;
     private displayName?: string;
+    private email?: string;
+    private emailVerified?: boolean;
     private organizationId?: string;
     private tenantPinned: boolean;
     private platformAdmin: boolean;
@@ -221,10 +306,12 @@ export default class CommandSender {
     private sourceIp?: string;
     // FM-issued scoped PAT only. Narrows the effective shape at the gate.
     private credentialBoundary?: Scope;
+    // Surfaces a scoped credential is limited to (e.g. 'mcp:read').
+    private credentialAudience: readonly string[];
     // Human vs automation vs internal — for slow-operation diagnostics.
     private principalType: PrincipalType;
     #accessCacheLoaded = false;
-    #groupListVersion = -1;
+    #organizationAccessVersion = -1;
     // Reverse index: shellyID → Set<groupId> for O(1) membership lookups
     #deviceToGroups: Map<string, Set<number>> | null = null;
     #deviceToLocation: Map<string, number> | null = null;
@@ -240,6 +327,8 @@ export default class CommandSender {
     // Bumped on every invalidation; a rebuild applies its result only if
     // unchanged since it started, so it can't restore a revoked shape.
     #shapeGeneration = 0;
+    // Keyed by the grant query the reach was built from.
+    #reachByGrant = new Map<string, AccessibleReachCache>();
 
     constructor(opts: {
         permissions: string[];
@@ -247,6 +336,8 @@ export default class CommandSender {
         socket?: WebSocket;
         username?: string;
         displayName?: string;
+        email?: string;
+        emailVerified?: boolean;
         organizationId?: string;
         tenantPinned?: boolean;
         isPlatformAdmin?: boolean;
@@ -256,7 +347,10 @@ export default class CommandSender {
         sourceIp?: string;
         v2Shape?: EffectiveShape;
         credentialBoundary?: Scope;
+        credentialAudience?: readonly string[];
         principalType?: PrincipalType;
+        /** Scoped credential this sender authenticated with, if any. */
+        credentialId?: string;
     }) {
         this.permissions = new Set(opts.permissions);
         const sorted = [...opts.roles].sort(
@@ -268,7 +362,10 @@ export default class CommandSender {
         this.group = this.roles[0] ?? '';
         this.socket = opts.socket;
         this.username = opts.username;
+        this.credentialId = opts.credentialId;
         this.displayName = opts.displayName;
+        this.email = opts.email;
+        this.emailVerified = opts.emailVerified;
         this.organizationId = opts.organizationId;
         this.tenantPinned = opts.tenantPinned ?? false;
         this.platformAdmin = opts.isPlatformAdmin ?? false;
@@ -278,6 +375,9 @@ export default class CommandSender {
         this.sourceIp = opts.sourceIp;
         this.#v2EffectiveShape = opts.v2Shape ?? null;
         this.credentialBoundary = opts.credentialBoundary;
+        this.credentialAudience = Object.freeze([
+            ...(opts.credentialAudience ?? [])
+        ]);
         this.principalType = opts.principalType ?? 'user';
     }
 
@@ -323,6 +423,8 @@ export default class CommandSender {
                 // Skip if invalidated mid-rebuild (stale state).
                 if (this.#shapeGeneration === startGen) {
                     this.#v2EffectiveShape = shaped;
+                    // A rebuild keeps the generation, so drop this by hand.
+                    this.#reachByGrant.clear();
                 }
             } catch (err) {
                 // A null shape denies everything — this is availability
@@ -376,8 +478,8 @@ export default class CommandSender {
         this.#deviceToTags = new Map();
         this.#locationParents = cache.locationParents ?? new Map();
         this.#accessCacheLoaded = true;
-        this.#groupListVersion = this.organizationId
-            ? getGroupVersion(this.organizationId)
+        this.#organizationAccessVersion = this.organizationId
+            ? getOrganizationAccessVersion(this.organizationId)
             : 0;
     }
 
@@ -401,6 +503,22 @@ export default class CommandSender {
             };
         }
         return undefined;
+    }
+
+    /**
+     * The scoped credential this sender authenticated with, or undefined for a
+     * person in a browser. Stamped on audit rows so "what did this agent key
+     * change?" has an answer.
+     */
+    getCredentialId(): string | undefined {
+        return this.credentialId;
+    }
+
+    /** Caller's own email from the login token; kept out of getUser() so
+     *  audit and actor snapshots do not start copying personal data. */
+    getEmail(): {address: string; verified?: boolean} | undefined {
+        if (!this.email) return undefined;
+        return {address: this.email, verified: this.emailVerified};
     }
 
     /** Zitadel sub claim — stable identifier for the authz resolver.
@@ -436,14 +554,24 @@ export default class CommandSender {
         return this.credentialBoundary !== undefined;
     }
 
-    /** Effective admin within their own organization. Provider support also passes this. */
-    isAdmin(): boolean {
+    // A scope-all Allow naming the action, unless a scope-all Deny wins.
+    #grantsOrgWide(query: StatementGrantQuery): boolean {
+        const shape = this.#v2EffectiveShape;
+        if (!shape) return false;
+        const ctx = {mfaPresent: this.mfaPresent, sourceIp: this.sourceIp};
+        const orgWide = shape.statements.filter((s) => s.scope.all === true);
+        if (orgWide.some((s) => statementDeniesAction(s, query, ctx))) {
+            return false;
+        }
+        return orgWide.some((s) => statementGrantsAction(s, query, ctx));
+    }
+
+    // What the admin persona grants: every action, every resource, scope all.
+    // No shape means no grant: authentication loads one for every principal.
+    hasFullTenantAuthority(): boolean {
         if (this.hasCredentialBoundary()) return false;
-        return (
-            this.group === 'admin' ||
-            this.isPlatformAdmin() ||
-            this.permissions.has('*')
-        );
+        if (this.trusted || this.isPlatformAdmin()) return true;
+        return this.#grantsOrgWide(FULL_TENANT_QUERY);
     }
 
     /** Platform-admin authority. Scoped PATs never keep admin shortcuts. */
@@ -465,28 +593,40 @@ export default class CommandSender {
      * without the cache fast path — never the reverse (no over-disclosure).
      */
     hasUnrestrictedDeviceRead(): boolean {
-        return this.canCrossOrganizations() || this.isAdmin();
+        return this.hasFullTenantAuthority();
+    }
+
+    // Org-wide grant for an operation: a statement whose scope is `all`, not
+    // one that merely reaches some items. Mutations with no item to check
+    // against (a new root location, detaching a subtree to the root) need
+    // this so a tree-bound grant cannot act outside its tree. Deny wins.
+    async hasOrgWideAllowAsync(
+        component: ComponentName,
+        operation: CrudOperation
+    ): Promise<boolean> {
+        if (this.trusted || this.canCrossOrganizations()) return true;
+        if (this.credentialBoundary) return false;
+        if (!this.#v2EffectiveShape) await this.loadV2EffectiveShape();
+        return this.#grantsOrgWide(orgWideQuery(component, operation));
     }
 
     // Read access exists, write does not.
     isViewer(): boolean {
-        if (this.isAdmin()) return false;
+        if (this.canWrite()) return false;
         if (this.group === 'viewer') return true;
-        return (
-            this.#anyAllowedAction((a) => a.endsWith(':read')) &&
-            !this.canWrite()
-        );
+        return this.#anyAllowedAction((a) => a.endsWith(':read'));
     }
 
-    // True when user has no Allow statements (and not admin).
+    // True when no Allow statement reaches this caller at all.
     hasNoPermissions(): boolean {
-        if (this.isAdmin()) return false;
+        if (this.trusted) return false;
         return !this.#anyAllowedAction(() => true);
     }
 
     // True when user has any non-read Allow.
     canWrite(): boolean {
-        if (this.isAdmin()) return true;
+        if (this.trusted) return true;
+        if (this.#nodeRedLegacyActionAllowed('*')) return true;
         return this.#anyAllowedAction((action) => !action.endsWith(':read'));
     }
 
@@ -505,6 +645,17 @@ export default class CommandSender {
 
     // Any Allow statement granting `action` on `resourceType`. Ignores scope —
     // used for component-level "does the user have any access?" checks.
+    // Component-free any-allow check for resources that have no CRUD
+    // component (authz_audit). Same shape, same statement rule as the
+    // component path; no scope, because the resource is tenant-wide.
+    allowsAction(action: AuthzAction, resourceType: string): boolean {
+        if (this.trusted) return true;
+        return (
+            this.#hasAnyAllow(action, resourceType) ||
+            this.#nodeRedLegacyActionAllowed(action)
+        );
+    }
+
     #hasAnyAllow(action: string, resourceType: string): boolean {
         const shape = this.#v2EffectiveShape;
         if (!shape) return false;
@@ -530,16 +681,14 @@ export default class CommandSender {
         return this.credentialBoundary;
     }
 
-    hasRole(role: string): boolean {
-        if (this.hasCredentialBoundary()) return false;
-        return this.roles.includes(role);
+    getCredentialAudience(): readonly string[] {
+        return this.credentialAudience;
     }
 
     getEffectiveShape(): WireEffectiveShape | null {
         if (this.trusted) return null;
-        // Admin with boundary surfaces the narrowed shape; admin without
-        // boundary skips the wire-shape entirely (UI shows full access).
-        if (this.isAdmin() && !this.credentialBoundary) return null;
+        // Nothing to narrow in the UI when the caller may already do it all.
+        if (this.hasFullTenantAuthority()) return null;
         const shape = this.#v2EffectiveShape;
         if (!shape) return null;
         const ctx = {mfaPresent: this.mfaPresent, sourceIp: this.sourceIp};
@@ -696,6 +845,7 @@ export default class CommandSender {
     clearAuthzDecisionCaches(): void {
         this.#shapeGeneration++; // discard any in-flight (stale) rebuild
         this.#v2EffectiveShape = null;
+        this.#reachByGrant.clear();
         const pending = this.#shapeRebuildInFlight;
         // If one is mid-flight, rebuild fresh only after it frees the slot.
         if (pending)
@@ -754,7 +904,7 @@ export default class CommandSender {
             if (!this.#orgDeviceIds?.has(String(itemId))) return false;
         }
 
-        if (!this.credentialBoundary && this.isAdmin()) return true;
+        if (this.hasFullTenantAuthority()) return true;
         if (!this.userId || !this.organizationId) return false;
         const shape = this.#v2EffectiveShape;
         if (!shape) {
@@ -778,7 +928,8 @@ export default class CommandSender {
         const resource = this.#buildPermissionResource(
             component,
             resourceType,
-            itemId
+            itemId,
+            request.locationId
         );
         const action = authzAction(component, operation);
         return (
@@ -795,7 +946,8 @@ export default class CommandSender {
     #buildPermissionResource(
         component: ComponentName,
         resourceType: string,
-        itemId: string | number
+        itemId: string | number,
+        locationId?: number
     ): PermissionResource {
         const resource: PermissionResource = {type: resourceType, id: itemId};
         if (component === 'devices') {
@@ -815,6 +967,10 @@ export default class CommandSender {
             const locId = Number(itemId);
             resource.locationId = locId;
             resource.locationIds = this.#locationAncestorIds(locId);
+        } else if (locationId !== undefined) {
+            // A location grant reaches this item through its place, not its id.
+            resource.locationId = locationId;
+            resource.locationIds = this.#locationAncestorIds(locationId);
         }
         return resource;
     }
@@ -827,14 +983,17 @@ export default class CommandSender {
 
     // In-memory shape is authoritative when present, the access cache is
     // current, and no scoped-PAT boundary needs re-application per call.
-    // invalidateAuthzTenant() bumps the group version before the awaited L2
+    // invalidateAuthzTenant() bumps the access version before the awaited L2
     // invalidate, so a version mismatch means an invalidation is in flight.
     #canUseSyncShape(): boolean {
         if (this.credentialBoundary) return false;
         if (!this.#v2EffectiveShape) return false;
         if (!this.#accessCacheLoaded) return false;
         if (!this.organizationId) return false;
-        return this.#groupListVersion === getGroupVersion(this.organizationId);
+        return (
+            this.#organizationAccessVersion ===
+            getOrganizationAccessVersion(this.organizationId)
+        );
     }
 
     async #evaluateComponentPermissionAsync(
@@ -854,7 +1013,11 @@ export default class CommandSender {
         const rt = tryGetAuthzRuntime();
         if (!rt) return false;
 
-        if (component === 'devices' || component === 'locations') {
+        if (
+            component === 'devices' ||
+            component === 'locations' ||
+            request.locationId !== undefined
+        ) {
             await this.#warmGroupListCache();
         }
 
@@ -863,7 +1026,7 @@ export default class CommandSender {
             if (!this.#orgDeviceIds?.has(String(itemId))) return false;
         }
 
-        if (!this.credentialBoundary && this.isAdmin()) return true;
+        if (this.hasFullTenantAuthority()) return true;
 
         const resourceType = authzResourceType(component);
 
@@ -881,7 +1044,8 @@ export default class CommandSender {
         const resource = this.#buildPermissionResource(
             component,
             resourceType,
-            itemId
+            itemId,
+            request.locationId
         );
         const action = authzAction(component, operation);
 
@@ -957,25 +1121,149 @@ export default class CommandSender {
         return ids;
     }
 
-    // SQL allowlist for `location:read`. null = no filter (admin / scope:all).
-    // Returns an expanded subtree of allowed location ids.
-    async getAllowedLocationIds(): Promise<number[] | null> {
+    // Devices, places, groups and tags this caller's reads reach; null = no
+    // narrowing. Per-item denies stay with the resolver.
+    async accessibleReach(): Promise<AccessibleReach | null> {
         if (this.trusted) return null;
-        if (!this.credentialBoundary && this.isAdmin()) return null;
-        const ids = this.getAllowedIdsForResource<number>(
-            'location',
-            'location_ids'
+        if (this.hasFullTenantAuthority()) return null;
+        return this.#cachedReach(READ_REACH_KEY, () =>
+            this.#readScopesNarrowedByReach()
         );
-        if (ids === null) return null;
+    }
+
+    // What the grants allowing this operation reach; null = tenant-wide. Only
+    // the granting statements count, so one grant's reach never lends another
+    // grant's rights. Scoped denies stay with the per-item resolver.
+    async reachForOperation(
+        component: ComponentName,
+        operation: CrudOperation
+    ): Promise<AccessibleReach | null> {
+        if (this.trusted) return null;
+        if (this.hasFullTenantAuthority()) return null;
+        if (!this.#v2EffectiveShape) await this.loadV2EffectiveShape();
+        const query = orgWideQuery(component, operation);
+        return this.#cachedReach(query.action, () =>
+            this.#scopesGranting(query)
+        );
+    }
+
+    async #cachedReach(
+        key: string,
+        scopesOf: () => Scope[] | null
+    ): Promise<AccessibleReach | null> {
+        const accessVersion = this.#currentOrganizationAccessVersion();
+        const cached = this.#reachByGrant.get(key);
+        if (
+            cached &&
+            cached.shapeGeneration === this.#shapeGeneration &&
+            cached.accessVersion === accessVersion
+        ) {
+            return cached.reach;
+        }
+        const shapeGeneration = this.#shapeGeneration;
+        const reach = await this.#buildAccessibleReach(scopesOf());
+        this.#reachByGrant.set(key, {reach, shapeGeneration, accessVersion});
+        return reach;
+    }
+
+    // The places of accessibleReach(). null = unrestricted.
+    async accessibleLocationIds(): Promise<number[] | null> {
+        const reach = await this.accessibleReach();
+        return reach === null ? null : Array.from(reach.locationIds);
+    }
+
+    // The name the authz evaluator calls; accessibleReach() is the one home.
+    async getAllowedLocationIds(): Promise<number[] | null> {
+        return this.accessibleLocationIds();
+    }
+
+    async #buildAccessibleReach(
+        scopes: Scope[] | null
+    ): Promise<AccessibleReach | null> {
+        if (scopes === null) return null;
+        if (scopes.length === 0) return EMPTY_REACH;
         await this.#warmGroupListCache();
-        return expandLocationScope(ids, this.#locationParents ?? new Map());
+        const deviceIds = new Set<string>();
+        const grantedPlaces: number[] = [];
+        for (const scope of scopes) {
+            for (const id of scope.location_ids ?? []) grantedPlaces.push(id);
+            for (const id of this.#expandDeviceIds(scope) ?? []) {
+                deviceIds.add(id);
+            }
+        }
+        // Only a granted place opens its descendants, never a device's own.
+        const locationIds = new Set(
+            expandLocationScope(
+                grantedPlaces,
+                this.#locationParents ?? new Map()
+            )
+        );
+        const groupIds = new Set<number>();
+        const tagIds = new Set<number>();
+        for (const id of deviceIds) {
+            const place = this.#deviceToLocation?.get(id);
+            if (place !== undefined) locationIds.add(place);
+            for (const g of this.#deviceToGroups?.get(id) ?? [])
+                groupIds.add(g);
+            for (const t of this.#deviceToTags?.get(id) ?? []) tagIds.add(t);
+        }
+        return {deviceIds, locationIds, groupIds, tagIds};
+    }
+
+    // null = one of these read grants has scope all, so nothing narrows.
+    #readScopesNarrowedByReach(): Scope[] | null {
+        if (this.#nodeRedLegacyReadsWholeTenant()) return null;
+        const shape = this.#v2EffectiveShape;
+        if (!shape) return [];
+        const ctx = {mfaPresent: this.mfaPresent, sourceIp: this.sourceIp};
+        const scopes: Scope[] = [];
+        for (const stmt of shape.statements) {
+            const grantsRead =
+                statementGrantsAction(
+                    stmt,
+                    {action: 'location:read', resourceType: 'location'},
+                    ctx
+                ) ||
+                statementGrantsAction(
+                    stmt,
+                    {action: 'device:read', resourceType: 'device'},
+                    ctx
+                );
+            if (!grantsRead) continue;
+            if (stmt.scope.all === true) return null;
+            scopes.push(stmt.scope);
+        }
+        return scopes;
+    }
+
+    // null = a tenant-wide grant allows it; [] = nothing does.
+    #scopesGranting(query: StatementGrantQuery): Scope[] | null {
+        if (this.#nodeRedLegacyActionAllowed(query.action)) return null;
+        if (this.#grantsOrgWide(query)) return null;
+        const shape = this.#v2EffectiveShape;
+        if (!shape) return [];
+        const ctx = {mfaPresent: this.mfaPresent, sourceIp: this.sourceIp};
+        const deniedTenantWide = shape.statements.some(
+            (stmt) =>
+                stmt.scope.all === true &&
+                statementDeniesAction(stmt, query, ctx)
+        );
+        if (deniedTenantWide) return [];
+        return shape.statements
+            .filter((stmt) => statementGrantsAction(stmt, query, ctx))
+            .map((stmt) => stmt.scope);
+    }
+
+    #currentOrganizationAccessVersion(): number {
+        return this.organizationId
+            ? getOrganizationAccessVersion(this.organizationId)
+            : 0;
     }
 
     // SQL allowlist for `device:read`, including group/location/tag scopes.
     async getAllowedDeviceIds(): Promise<string[] | null> {
         if (this.trusted) return null;
-        if (this.canCrossOrganizations()) return null;
-        if (!this.credentialBoundary && this.isAdmin()) return null;
+        if (this.hasFullTenantAuthority()) return null;
         await this.#warmGroupListCache();
         const orgDeviceIds = this.#orgDeviceIds;
         if (!orgDeviceIds) return [];
@@ -994,10 +1282,11 @@ export default class CommandSender {
         scopeField: keyof Scope
     ): T[] | null {
         if (this.trusted) return null;
-        if (!this.credentialBoundary && this.isAdmin()) return null;
+        const action = `${resourceType}:read`;
+        // Service static perms are tenant-wide, like a scope.all statement.
+        if (this.#nodeRedLegacyActionAllowed(action)) return null;
         const shape = this.#v2EffectiveShape;
         if (!shape) return [];
-        const action = `${resourceType}:read`;
         const ids = new Set<T>();
         for (const stmt of shape.statements) {
             if (stmt.effect !== 'Allow') continue;
@@ -1030,7 +1319,7 @@ export default class CommandSender {
         component: ComponentName
     ): T[] | null {
         if (this.trusted) return null;
-        if (!this.credentialBoundary && this.isAdmin()) return null;
+        if (this.hasFullTenantAuthority()) return null;
         const resourceType = authzResourceType(component);
         const idScope: Record<string, keyof Scope> = {
             device: 'device_ids',
@@ -1073,12 +1362,24 @@ export default class CommandSender {
         // Boundary set -> deny legacy permission strings entirely; bounded
         // credentials must pass through V2 checks where the boundary is applied.
         if (this.hasCredentialBoundary()) return false;
-        return this.isAdmin() || this.#hasPermissionRule(permission);
+        return (
+            this.hasFullTenantAuthority() || this.#hasPermissionRule(permission)
+        );
     }
 
     hasExactPermission(permission: string): boolean {
         if (this.hasCredentialBoundary()) return false;
-        return this.isAdmin() || this.permissions.has(permission);
+        return (
+            this.hasFullTenantAuthority() || this.permissions.has(permission)
+        );
+    }
+
+    // Same reads that open the whole reach for a scope.all statement.
+    #nodeRedLegacyReadsWholeTenant(): boolean {
+        return (
+            this.#nodeRedLegacyActionAllowed('location:read') ||
+            this.#nodeRedLegacyActionAllowed('device:read')
+        );
     }
 
     #nodeRedLegacyActionAllowed(action: string): boolean {
@@ -1112,11 +1413,11 @@ export default class CommandSender {
             this.#deviceToTagKeys = new Map();
             this.#locationParents = new Map();
             this.#orgDeviceIds = new Set();
-            this.#groupListVersion = 0;
+            this.#organizationAccessVersion = 0;
             return;
         }
         const orgKey = this.organizationId;
-        const currentVersion = getGroupVersion(orgKey);
+        const currentVersion = getOrganizationAccessVersion(orgKey);
 
         const cached = sharedAccessDataByOrg.get(orgKey);
         if (cached && cached.version === currentVersion) {
@@ -1127,16 +1428,16 @@ export default class CommandSender {
             this.#deviceToTagKeys = cached.deviceToTagKeys;
             this.#locationParents = cached.locationParents;
             this.#orgDeviceIds = cached.orgDeviceIds;
-            this.#groupListVersion = currentVersion;
+            this.#organizationAccessVersion = currentVersion;
             touchAccessCache(orgKey, cached);
             return;
         }
 
         if (
             !this.#accessCacheLoaded ||
-            this.#groupListVersion !== currentVersion
+            this.#organizationAccessVersion !== currentVersion
         ) {
-            if (this.#groupListVersion !== currentVersion) {
+            if (this.#organizationAccessVersion !== currentVersion) {
                 this.#deviceToGroups = null;
                 this.#deviceToLocation = null;
                 this.#deviceToTags = null;
@@ -1159,7 +1460,7 @@ export default class CommandSender {
             await rebuild;
 
             this.#accessCacheLoaded = true;
-            this.#groupListVersion = currentVersion;
+            this.#organizationAccessVersion = currentVersion;
             const built = sharedAccessDataByOrg.get(orgKey);
             if (built) {
                 this.#deviceToGroups = built.deviceToGroups;
@@ -1245,8 +1546,10 @@ export default class CommandSender {
         if (this.trusted) return true;
         if (this.canCrossOrganizations()) return true;
         if (this.organizationId) {
-            const currentVersion = getGroupVersion(this.organizationId);
-            if (this.#groupListVersion !== currentVersion) return null;
+            const currentVersion = getOrganizationAccessVersion(
+                this.organizationId
+            );
+            if (this.#organizationAccessVersion !== currentVersion) return null;
         }
         return this.evaluateComponentPermission({
             component: 'devices',

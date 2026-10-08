@@ -5,6 +5,8 @@
     @import "./cards/card-sensors.css";
     @import "./cards/card-entities.css";
     @import "./cards/card-detail.css";
+    /* Last: the value+unit rule must win over any card-level leftovers. */
+    @import "./cards/card-units.css";
     /* card-dashboard.css is imported via JS in pages/dash.vue: lightningcss
        drops it when @import'd into this @layer chain. */
 }

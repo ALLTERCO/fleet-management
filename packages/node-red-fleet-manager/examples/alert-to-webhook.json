@@ -1,0 +1,60 @@
+[
+    {
+        "id": "flow-alert",
+        "type": "tab",
+        "label": "Alerts to an outside system",
+        "disabled": false,
+        "info": "Posts every new and resolved Fleet Manager alert to an outside URL. Change the URL in the http request node."
+    },
+    {
+        "id": "fm-server-alert",
+        "type": "fm-server",
+        "name": "Fleet Manager",
+        "baseUrl": "",
+        "wsUrl": ""
+    },
+    {
+        "id": "alert-event",
+        "type": "fm-device-event",
+        "z": "flow-alert",
+        "name": "Alert events",
+        "server": "fm-server-alert",
+        "events": "Alert.Created,Alert.Resolved",
+        "filterJson": "{}",
+        "scopeType": "all",
+        "deviceIds": "",
+        "groupId": "",
+        "locationId": "",
+        "refreshMinutes": 5,
+        "x": 160,
+        "y": 220,
+        "wires": [["enrich-payload"]]
+    },
+    {
+        "id": "enrich-payload",
+        "type": "function",
+        "z": "flow-alert",
+        "name": "Build webhook body",
+        "func": "msg.payload = {event: msg.topic, alert: msg.payload, source: 'fleet-manager-node-red', ts: Date.now()};\nreturn msg;",
+        "outputs": 1,
+        "x": 380,
+        "y": 220,
+        "wires": [["post-webhook"]]
+    },
+    {
+        "id": "post-webhook",
+        "type": "http request",
+        "z": "flow-alert",
+        "name": "POST to outside system",
+        "method": "POST",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "https://example.com/incidents",
+        "tls": "",
+        "persist": false,
+        "headers": [{"keyType": "other", "keyValue": "Content-Type", "valueType": "other", "valueValue": "application/json"}],
+        "x": 620,
+        "y": 220,
+        "wires": [[]]
+    }
+]

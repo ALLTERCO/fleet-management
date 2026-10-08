@@ -35,10 +35,19 @@
             <MultiChannelTemplateEditor v-model="formBodies" />
         </form>
 
+        <TemplatePreviewModal
+            :visible="previewOpen"
+            :bodies="formBodies"
+            @close="previewOpen = false"
+        />
+
         <template #footer>
             <ModalFooter>
                 <template #secondary>
                     <Button type="blue-hollow" @click="close">Cancel</Button>
+                    <Button type="blue-hollow" @click="previewOpen = true">
+                        <i class="fas fa-eye" aria-hidden="true" /> Preview
+                    </Button>
                 </template>
                 <template #primary>
                     <Button
@@ -62,6 +71,7 @@ import Button from '@/components/core/Button.vue';
 import Input from '@/components/core/Input.vue';
 import ModalFooter from '@/components/core/ModalFooter.vue';
 import ModalHeader from '@/components/core/ModalHeader.vue';
+import TemplatePreviewModal from '@/components/modals/TemplatePreviewModal.vue';
 import MultiChannelTemplateEditor, {
     type MultiChannelTemplate
 } from '@/components/core/MultiChannelTemplateEditor.vue';
@@ -80,6 +90,7 @@ const props = defineProps<{
 const emit = defineEmits<{saved: [MessageTemplate]}>();
 
 const store = useAlertsStore();
+const previewOpen = ref(false);
 const nameId = useId();
 const descId = useId();
 

@@ -10,18 +10,24 @@ import {getLogger} from 'log4js';
 // outside DEV_MODE.
 const logger = getLogger('vite-dev-proxy');
 const VITE_HOST = 'localhost';
-const VITE_PORT = 5173;
+
+// Two dev servers, mirroring the two bundles a runtime-bm image ships: the
+// template on / and the operator FM SPA on /admin/. In full-FM dev only the
+// first one runs.
+export const VITE_PORT = 5173;
+export const VITE_ADMIN_PORT = 5174;
 
 // Forward a UI/asset request to Vite. Registered after all API routes, so only
 // unmatched (frontend) requests reach here.
 export function viteDevHttpProxy(
     req: express.Request,
-    res: express.Response
+    res: express.Response,
+    port: number = VITE_PORT
 ): void {
     const upstream = http.request(
         {
             host: VITE_HOST,
-            port: VITE_PORT,
+            port,
             method: req.method,
             path: req.originalUrl,
             headers: req.headers
@@ -47,13 +53,28 @@ export function isViteHmrUpgrade(request: http.IncomingMessage): boolean {
     return typeof proto === 'string' && proto.includes('vite-hmr');
 }
 
+/**
+ * Which dev server owns this HMR socket.
+ *
+ * Both bundles are told to reach HMR on the backend's port (vite.config pins
+ * hmr.clientPort), so the only thing separating them is the path their base
+ * gives them: the operator SPA connects under /admin/, the template under /.
+ * Send an admin socket to the template server and the tab starts pulling
+ * modules from the wrong graph.
+ */
+export function viteHmrPortFor(request: http.IncomingMessage): number {
+    const url = request.url ?? '/';
+    return url.startsWith('/admin') ? VITE_ADMIN_PORT : VITE_PORT;
+}
+
 // Forward Vite's HMR websocket to the Vite dev server.
 export function proxyViteHmrUpgrade(
     request: http.IncomingMessage,
     socket: Duplex,
-    head: Buffer
+    head: Buffer,
+    port: number = VITE_PORT
 ): void {
-    const upstream = net.connect(VITE_PORT, VITE_HOST, () => {
+    const upstream = net.connect(port, VITE_HOST, () => {
         upstream.write(buildUpgradeRequest(request));
         if (head.length > 0) upstream.write(head);
         socket.pipe(upstream);

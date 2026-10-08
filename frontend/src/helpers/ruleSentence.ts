@@ -106,15 +106,73 @@ function energyConsumptionSentence(config: Config): string | null {
     return `energy use over ${formatWindow(windowSec)} goes ${word} ${thresholdKWh} kWh`;
 }
 
+function costBudgetSentence(config: Config): string | null {
+    const {budgetAmount, currency, thresholdPercentages, billingDay} = config;
+    if (
+        typeof budgetAmount !== 'number' ||
+        typeof currency !== 'string' ||
+        !Array.isArray(thresholdPercentages)
+    ) {
+        return null;
+    }
+    const thresholds = thresholdPercentages
+        .filter((value): value is number => typeof value === 'number')
+        .join(', ');
+    return `recorded import-energy charges reach ${thresholds}% of the ${currency} ${budgetAmount} billing-period budget${typeof billingDay === 'number' ? ` (day ${billingDay})` : ''}`;
+}
+
+function recordIncompleteSentence(config: Config): string | null {
+    const {roleKey, deadlineHour, timeZone} = config;
+    if (typeof roleKey !== 'string' || typeof deadlineHour !== 'number') return null;
+    const hour = `${String(deadlineHour).padStart(2, '0')}:00`;
+    return `the ${roleKey} role has no reading today after ${hour}${typeof timeZone === 'string' ? ` (${timeZone})` : ''}`;
+}
+
+function approachingNewPeakSentence(config: Config): string | null {
+    const {intervalMinutes, warningRatio} = config;
+    if (typeof intervalMinutes !== 'number' || typeof warningRatio !== 'number') return null;
+    return `${intervalMinutes}-minute demand reaches ${Math.round(warningRatio * 100)}% of the current billing peak`;
+}
+
 function batterySentence(config: Config): string | null {
     const pct = config.thresholdPct;
     return typeof pct === 'number' ? `battery drops below ${pct}%` : null;
 }
 
+function offlineSentence(config: Config): string | null {
+    const sec = config.forSec ?? config.graceSec ?? config.offlineAfterSec;
+    return typeof sec === 'number' && sec > 0
+        ? `a device stops reporting for ${formatWindow(sec)}`
+        : 'a device stops reporting';
+}
+
+function heartbeatSentence(config: Config): string | null {
+    const sec = config.intervalSec ?? config.forSec;
+    return typeof sec === 'number' && sec > 0
+        ? `no heartbeat arrives for ${formatWindow(sec)}`
+        : 'no heartbeat arrives';
+}
+
+function motionSentence(config: Config): string {
+    const sec = config.clearAfterSec;
+    return typeof sec === 'number' && sec > 0
+        ? `motion is detected, clearing after ${formatWindow(sec)}`
+        : 'motion is detected';
+}
+
 const PHRASERS: Partial<Record<AlertRuleKind, (c: Config) => string | null>> = {
+    device_offline: offlineSentence,
+    device_back_online: () => 'a device starts reporting again',
+    heartbeat: heartbeatSentence,
+    motion_detected: motionSentence,
+    smoke_alarm: () => 'smoke is detected',
+    flood_alarm: () => 'water is detected',
     component_state: stateSentence,
     component_threshold: thresholdSentence,
     energy_consumption_threshold: energyConsumptionSentence,
+    cost_budget_threshold: costBudgetSentence,
+    record_incomplete: recordIncompleteSentence,
+    approaching_new_peak: approachingNewPeakSentence,
     battery_below: batterySentence
 };
 

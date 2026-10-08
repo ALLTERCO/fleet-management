@@ -3,6 +3,7 @@ import {envInt} from '../../config/envReader';
 import CommandSender from '../../model/CommandSender';
 import type {json_rpc_event, ShellyEvent} from '../../types';
 import * as EventDistributor from '../EventDistributor';
+import {jobAuthorityAllowsDispatch} from '../jobs/control';
 import {emitJobUnitUpdated, emitJobUpdated} from '../jobs/events';
 import {
     type FirmwareQueuedUnit,
@@ -13,7 +14,9 @@ import {
     markFirmwareUnitFailed,
     markFirmwareUnitProgress,
     markJobRunning,
-    reclaimStaleFirmwareUnits
+    prepareUnitDispatch,
+    reclaimStaleFirmwareUnits,
+    stopUnitBeforeDispatch
 } from '../jobs/repository';
 import {isLeader, startLeaderGate} from '../redis/leaderGate';
 import {formatError} from '../util/formatError';
@@ -123,10 +126,12 @@ async function finalizeJob(unit: FirmwareQueuedUnit): Promise<void> {
 
 async function markUnitFailed(unit: FirmwareQueuedUnit, error: string) {
     failedUnits.add(unit.id);
-    await markFirmwareUnitFailed({
+    const settled = await markFirmwareUnitFailed({
         id: unit.id,
+        executionId: unit.execution_id,
         lastError: error
     });
+    if (!settled) return false;
     emitJobUnitUpdated(
         {
             jobId: unit.job_id,
@@ -138,6 +143,7 @@ async function markUnitFailed(unit: FirmwareQueuedUnit, error: string) {
         },
         unit.tenant_id
     );
+    return true;
 }
 
 async function applyOtaProgressEvent(
@@ -150,11 +156,13 @@ async function applyOtaProgressEvent(
     }
 
     const progress = progressPhase(params);
-    await markFirmwareUnitProgress({
+    const settled = await markFirmwareUnitProgress({
         id: unit.id,
+        executionId: unit.execution_id,
         phase: progress.phase,
         progressPercent: progress.progressPercent
     });
+    if (!settled) return;
     emitJobUnitUpdated(
         {
             jobId: unit.job_id,
@@ -224,18 +232,44 @@ async function processUnit(unit: FirmwareQueuedUnit): Promise<void> {
         tenantId: unit.tenant_id,
         jobId: unit.job_id
     });
+    const authorized = await jobAuthorityAllowsDispatch(
+        unit.authority,
+        unit.tenant_id,
+        unit.device_id
+    );
+    if (!authorized) {
+        await stopUnitBeforeDispatch({
+            kind: 'firmware',
+            id: unit.id,
+            executionId: unit.execution_id,
+            reason: 'job_authority_no_longer_allows_dispatch'
+        });
+        await finalizeFirmwareJobSafely(unit);
+        return;
+    }
+    const dispatchable = await prepareUnitDispatch({
+        kind: 'firmware',
+        id: unit.id,
+        executionId: unit.execution_id
+    });
+    if (!dispatchable) {
+        await finalizeFirmwareJobSafely(unit);
+        return;
+    }
 
     activeUnitsByKey.set(activeUnitKey(unit.tenant_id, unit.device_id), unit);
     failedUnits.delete(unit.id);
     try {
         const result = await processor(unit);
         if (failedUnits.has(unit.id)) return;
-        await markFirmwareUnitDone({
+        const settled = await markFirmwareUnitDone({
             id: unit.id,
+            executionId: unit.execution_id,
             finalVersion: result.finalVersion,
             finalFwId: result.finalFwId,
             result: result.result
         });
+        if (!settled) return;
         emitJobUnitUpdated(
             {
                 jobId: unit.job_id,

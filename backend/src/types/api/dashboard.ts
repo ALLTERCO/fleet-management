@@ -361,11 +361,20 @@ export const DASHBOARD_GET_UI_CONFIG_PARAMS_SCHEMA: JsonSchema = {
     properties: {}
 };
 
+// ui.fn_config_fetch rows, verbatim. `icon_path` is the misnamed `json`
+// column: arbitrary JSON, not a path — the seeded value is a boolean.
 export const DASHBOARD_GET_UI_CONFIG_RESPONSE_SCHEMA: JsonSchema = {
-    type: 'object',
-    description:
-        'UI registry snapshot (widgets, menu items, dashboard descriptors).',
-    additionalProperties: true
+    type: 'array',
+    description: 'Key/value rows from the ui.config table.',
+    items: {
+        type: 'object',
+        required: ['name', 'icon_path'],
+        additionalProperties: false,
+        properties: {
+            name: {type: ['string', 'null']},
+            icon_path: {description: 'Arbitrary JSON value.'}
+        }
+    }
 };
 
 // =====================================================================
@@ -483,6 +492,7 @@ export interface PvMeterRef {
 export interface Dashboard {
     id: number;
     organizationId: string;
+    ownerUserId: string | null;
     name: string;
     dashboardType: DashboardType;
     scope: DashboardScope;
@@ -667,6 +677,7 @@ export const DASHBOARD_SCHEMA: JsonSchema = {
     required: [
         'id',
         'organizationId',
+        'ownerUserId',
         'name',
         'dashboardType',
         'scope',
@@ -681,6 +692,7 @@ export const DASHBOARD_SCHEMA: JsonSchema = {
     properties: {
         id: {type: 'integer'},
         organizationId: {type: 'string'},
+        ownerUserId: {type: ['string', 'null']},
         name: {type: 'string'},
         dashboardType: {type: 'string', enum: [...DASHBOARD_TYPES]},
         scope: DASHBOARD_SCOPE_SCHEMA,

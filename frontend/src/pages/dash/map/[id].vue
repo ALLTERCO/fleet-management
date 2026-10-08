@@ -20,6 +20,7 @@
         <ReconnectBanner />
 
         <div class="map-dash__top-bar">
+            <GlobalSearch />
             <MapPulseStrip :stats="fleetStats" />
             <div class="map-dash__viewtoggle" role="group" aria-label="View mode">
                 <button
@@ -157,6 +158,7 @@
 <script setup lang="ts">
 import {computed, nextTick, onBeforeUnmount, onMounted, ref, watch} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
+import GlobalSearch from '@/components/core/GlobalSearch.vue';
 import WorldMap from '@/components/core/maps/WorldMap.vue';
 import MapAlertBell from '@/components/dashboard/map/MapAlertBell.vue';
 import MapBuildingStage from '@/components/dashboard/map/MapBuildingStage.vue';

@@ -16,6 +16,17 @@ export function peekDeploymentMode(): DeploymentMode | null {
     return parseDeploymentMode(envStr('FM_DEPLOYMENT_MODE', ''));
 }
 
+// Single key for "not OSS"; config-only so it is safe at module load.
+export function isSaasDeploymentMode(mode: DeploymentMode | null): boolean {
+    return mode === 'shared_saas' || mode === 'dedicated_saas';
+}
+
+export function isSharedSaasDeploymentMode(
+    mode: DeploymentMode | null
+): boolean {
+    return mode === 'shared_saas';
+}
+
 function parseDeploymentMode(raw: string): DeploymentMode | null {
     if (raw === 'oss' || raw === 'shared_saas' || raw === 'dedicated_saas') {
         return raw;

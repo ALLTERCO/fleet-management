@@ -36,6 +36,8 @@ export function buildSender(
         roles,
         username: user.username,
         displayName: user.displayName,
+        email: user.email,
+        emailVerified: user.emailVerified,
         userId: user.userId,
         organizationId: user.organizationId,
         tenantPinned: user.tenantPinned,
@@ -44,8 +46,10 @@ export function buildSender(
         sourceIp: options.sourceIp,
         socket: options.socket,
         credentialBoundary: user.credentialBoundary,
+        credentialAudience: user.credentialAudience,
         v2Shape: user.effectiveShape,
-        principalType: principalTypeOf(user)
+        principalType: principalTypeOf(user),
+        credentialId: user.credentialId
     });
 }
 

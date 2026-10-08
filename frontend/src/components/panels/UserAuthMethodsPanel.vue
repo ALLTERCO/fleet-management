@@ -60,6 +60,7 @@
 <script setup lang="ts">
 import {ref, watch} from 'vue';
 import Spinner from '@/components/core/Spinner.vue';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {sendRPC} from '@/tools/websocket';
 
 interface AuthMethods {
@@ -86,7 +87,7 @@ async function refresh(): Promise<void> {
             {userId: props.userId}
         );
     } catch (err) {
-        error.value = err instanceof Error ? err.message : String(err);
+        error.value = rpcErrorMessage(err);
     } finally {
         loading.value = false;
     }

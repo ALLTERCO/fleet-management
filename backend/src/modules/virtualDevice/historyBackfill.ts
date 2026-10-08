@@ -4,18 +4,16 @@ import type {
     VirtualDeviceHistoryBackfillParams
 } from '../../types/api/virtualdevice';
 import * as postgres from '../PostgresProvider';
+import {
+    type HistoryRepositoryDeps,
+    readVirtualDeviceRoleSourceHistoryPage,
+    type VirtualDeviceSourceHistoryPoint
+} from './historyRepository';
 
-interface BackfillDeps {
-    queryRows<T = unknown>(
-        sql: string,
-        params?: readonly unknown[]
-    ): Promise<Array<T>>;
-}
+interface BackfillDeps extends HistoryRepositoryDeps {}
 
 interface BackfillRow {
     inserted_rows: number | string;
-    provenance_rows: number | string;
-    scanned_rows: number | string;
 }
 
 const DEFAULT_BACKFILL_LIMIT = 100_000;
@@ -32,85 +30,107 @@ export async function backfillVirtualDeviceHistory(
 ): Promise<VirtualDeviceHistoryBackfillDto> {
     assertBackfillField(input.field);
     assertBackfillWindow(input.from, input.to);
+    const limit = input.limit ?? DEFAULT_BACKFILL_LIMIT;
+    const offset = input.cursor ?? 0;
+    const page = await readVirtualDeviceRoleSourceHistoryPage(
+        organizationId,
+        {
+            externalId: input.externalId,
+            roleKey: input.roleKey,
+            from: input.from,
+            to: input.to
+        },
+        {offset, limit, expectedField: input.field},
+        deps
+    );
+    const insertedRows = await writeProjectedPage(
+        organizationId,
+        page.items,
+        deps
+    );
+    return {
+        externalId: input.externalId,
+        roleKey: input.roleKey,
+        field: input.field,
+        insertedRows,
+        scannedRows: page.items.length,
+        hasMore: page.hasMore,
+        nextCursor: page.hasMore ? offset + page.items.length : null
+    };
+}
+
+async function writeProjectedPage(
+    organizationId: string,
+    items: readonly VirtualDeviceSourceHistoryPoint[],
+    deps: BackfillDeps
+): Promise<number> {
+    if (items.length === 0) return 0;
+    const payload = items.map((point) => ({
+        ts: point.ts,
+        virtualDeviceListId: point.virtualDeviceListId,
+        bindingId: point.bindingId,
+        roleKey: point.roleKey,
+        series: point.series,
+        field: point.field,
+        value: point.value,
+        prevValue: point.prevValue,
+        sourceDeviceListId: point.sourceDeviceListId,
+        sourceExternalId: point.source.deviceExternalId,
+        sourceComponentKey: point.source.componentKey,
+        sourceTs: point.ts
+    }));
     const rows = await deps.queryRows<BackfillRow>(
-        `WITH target AS (
-            SELECT vd.device_list_id
-              FROM device.virtual_device vd
-              JOIN device.list dl
-                ON dl.id = vd.device_list_id
-               AND dl.organization_id = vd.organization_id
-             WHERE vd.organization_id = $1
-               AND dl.external_id = $2
-               AND vd.deleted_at IS NULL
-             LIMIT 1
-        ),
-        segments AS (
-            SELECT
-                b.id AS binding_id,
-                b.virtual_device_list_id,
-                b.source_device_list_id,
-                src.external_id AS source_external_id,
-                b.source_component_key,
-                GREATEST(b.effective_from, $5::timestamptz) AS segment_from,
-                LEAST(COALESCE(b.effective_to, $6::timestamptz), $6::timestamptz) AS segment_to
-              FROM device.virtual_device_binding b
-              JOIN target t ON t.device_list_id = b.virtual_device_list_id
-              JOIN device.list src
-                ON src.id = b.source_device_list_id
-               AND src.organization_id = b.organization_id
-             WHERE b.organization_id = $1
-               AND b.role_key = $3
-               AND b.mode IN ('linked', 'materialized')
-               AND b.effective_from < $6::timestamptz
-               AND COALESCE(b.effective_to, 'infinity'::timestamptz) > $5::timestamptz
-        ),
-        source_rows AS (
-            SELECT
-                s.binding_id,
-                s.virtual_device_list_id,
-                s.source_device_list_id,
-                s.source_external_id,
-                s.source_component_key,
-                tl.ts,
-                tl.value,
-                tl.prev_value
-              FROM segments s
-              CROSS JOIN LATERAL device.fn_status_timeline(
-                ARRAY[s.source_device_list_id],
-                s.source_component_key || '.' || $4,
-                s.segment_from,
-                s.segment_to
-              ) tl
-             ORDER BY tl.ts ASC
-             LIMIT $7
-        ),
-        inserted_status AS (
-            INSERT INTO device.status (
-                id,
+        `WITH source_rows AS (
+            SELECT *
+              FROM jsonb_to_recordset($2::jsonb) AS row(
+                ts timestamptz,
+                "virtualDeviceListId" integer,
+                "bindingId" uuid,
+                "roleKey" varchar,
+                series varchar,
+                field varchar,
+                value jsonb,
+                "prevValue" jsonb,
+                "sourceDeviceListId" integer,
+                "sourceExternalId" varchar,
+                "sourceComponentKey" varchar,
+                "sourceTs" timestamptz
+              )
+        ), inserted_projection AS (
+            INSERT INTO device.virtual_device_projected_sample (
                 ts,
+                organization_id,
+                virtual_device_list_id,
+                binding_id,
+                role_key,
+                series,
                 field,
-                field_group,
                 value,
-                prev_value
+                prev_value,
+                source_device_list_id,
+                source_external_id,
+                source_component_key,
+                source_ts
             )
             SELECT
-                source_rows.virtual_device_list_id,
-                source_rows.ts,
-                $3 || '.' || $4,
-                $3,
-                source_rows.value,
-                source_rows.prev_value
-              FROM source_rows
-             WHERE NOT EXISTS (
-                SELECT 1
-                  FROM device.status existing
-                 WHERE existing.id = source_rows.virtual_device_list_id
-                   AND existing.ts = source_rows.ts
-                   AND existing.field = $3 || '.' || $4
-             )
+                row.ts,
+                $1,
+                row."virtualDeviceListId",
+                row."bindingId",
+                row."roleKey",
+                row.series,
+                row.field,
+                row.value,
+                row."prevValue",
+                row."sourceDeviceListId",
+                row."sourceExternalId",
+                row."sourceComponentKey",
+                row."sourceTs"
+              FROM source_rows row
+            ON CONFLICT ON CONSTRAINT virtual_device_projected_sample_idempotency
+                DO NOTHING
             RETURNING 1
-        ),
-        inserted_sources AS (
+        ), inserted_sources AS (
             INSERT INTO device.virtual_device_sample_source (
                 ts,
                 organization_id,
@@ -123,47 +143,23 @@ export async function backfillVirtualDeviceHistory(
                 source_ts
             )
             SELECT
-                source_rows.ts,
+                row.ts,
                 $1,
-                source_rows.virtual_device_list_id,
-                source_rows.binding_id,
-                $3,
-                source_rows.source_device_list_id,
-                source_rows.source_external_id,
-                source_rows.source_component_key,
-                source_rows.ts
-              FROM source_rows
-             WHERE NOT EXISTS (
-                SELECT 1
-                  FROM device.virtual_device_sample_source existing
-                 WHERE existing.virtual_device_list_id = source_rows.virtual_device_list_id
-                   AND existing.role_key = $3
-                   AND existing.ts = source_rows.ts
-                   AND existing.binding_id = source_rows.binding_id
-             )
+                row."virtualDeviceListId",
+                row."bindingId",
+                row."roleKey",
+                row."sourceDeviceListId",
+                row."sourceExternalId",
+                row."sourceComponentKey",
+                row."sourceTs"
+              FROM source_rows row
+            ON CONFLICT DO NOTHING
             RETURNING 1
         )
-        SELECT
-            (SELECT COUNT(*) FROM inserted_status) AS inserted_rows,
-            (SELECT COUNT(*) FROM inserted_sources) AS provenance_rows,
-            (SELECT COUNT(*) FROM source_rows) AS scanned_rows`,
-        [
-            organizationId,
-            input.externalId,
-            input.roleKey,
-            input.field,
-            input.from,
-            input.to,
-            input.limit ?? DEFAULT_BACKFILL_LIMIT
-        ]
+        SELECT COUNT(*) AS inserted_rows FROM inserted_projection`,
+        [organizationId, JSON.stringify(payload)]
     );
-    return {
-        externalId: input.externalId,
-        roleKey: input.roleKey,
-        field: input.field,
-        insertedRows: Number(rows[0]?.inserted_rows ?? 0),
-        scannedRows: Number(rows[0]?.scanned_rows ?? 0)
-    };
+    return Number(rows[0]?.inserted_rows ?? 0);
 }
 
 function assertBackfillField(field: string): void {

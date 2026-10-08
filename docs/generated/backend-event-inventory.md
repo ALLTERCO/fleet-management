@@ -9,8 +9,8 @@ Regenerate with `cd backend && npm run generate`.
 
 ## Totals
 
-- Emit functions: **91**
-- Unique event names: **89**
+- Emit functions: **92**
+- Unique event names: **90**
 
 ## Events
 
@@ -22,88 +22,89 @@ Regenerate with `cd backend && npm run generate`.
 | `Alert.RuleDeleted` | `emitAlertRuleDeleted` |  | 1 | [backend/src/modules/AlertEvents.ts:130](../../backend/src/modules/AlertEvents.ts#L130) |
 | `Alert.RuleUpdated` | `emitAlertRuleUpdated` |  | 1 | [backend/src/modules/AlertEvents.ts:123](../../backend/src/modules/AlertEvents.ts#L123) |
 | `Alert.Updated` | `emitAlertUpdated` |  | 2 | [backend/src/modules/AlertEvents.ts:25](../../backend/src/modules/AlertEvents.ts#L25) |
-| `BTHome.ControlLearning` | `emitBTHomeControlLearning` | `shellyID`, `state` | 1 | [backend/src/modules/ShellyEvents.ts:436](../../backend/src/modules/ShellyEvents.ts#L436) |
-| `BTHome.ControlsUpdated` | `emitBTHomeControlsUpdated` | `shellyID` | 1 | [backend/src/modules/ShellyEvents.ts:447](../../backend/src/modules/ShellyEvents.ts#L447) |
-| `BTHome.DiscoveryDone` | `emitShellyDiscoveryDone` | `shellyID`, `discoveredDevicesCount` | 1 | [backend/src/modules/ShellyEvents.ts:425](../../backend/src/modules/ShellyEvents.ts#L425) |
-| `BTHome.DiscoveryResult` | `emitBTHomeDiscoveryResult` | `type`, `mac`, `shellyID`, `name`, `productName`, `modelString`, `isRemote`, `modelId`, `localName`, `rssi` | 1 | [backend/src/modules/ShellyEvents.ts:370](../../backend/src/modules/ShellyEvents.ts#L370) |
-| `Certificate.Created` | `emitCertificateCreated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:655](../../backend/src/modules/EventDistributor.ts#L655) |
-| `Certificate.Deleted` | `emitCertificateDeleted` | `id` | 1 | [backend/src/modules/EventDistributor.ts:673](../../backend/src/modules/EventDistributor.ts#L673) |
+| `BTHome.ControlLearning` | `emitBTHomeControlLearning` | `shellyID`, `state` | 1 | [backend/src/modules/ShellyEvents.ts:446](../../backend/src/modules/ShellyEvents.ts#L446) |
+| `BTHome.ControlsUpdated` | `emitBTHomeControlsUpdated` | `shellyID` | 1 | [backend/src/modules/ShellyEvents.ts:457](../../backend/src/modules/ShellyEvents.ts#L457) |
+| `BTHome.DiscoveryDone` | `emitShellyDiscoveryDone` | `shellyID`, `discoveredDevicesCount` | 1 | [backend/src/modules/ShellyEvents.ts:435](../../backend/src/modules/ShellyEvents.ts#L435) |
+| `BTHome.DiscoveryResult` | `emitBTHomeDiscoveryResult` | `type`, `mac`, `shellyID`, `name`, `productName`, `modelString`, `isRemote`, `modelId`, `localName`, `rssi`, `heardAtMs` | 1 | [backend/src/modules/ShellyEvents.ts:379](../../backend/src/modules/ShellyEvents.ts#L379) |
+| `Certificate.Created` | `emitCertificateCreated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:844](../../backend/src/modules/EventDistributor.ts#L844) |
+| `Certificate.Deleted` | `emitCertificateDeleted` | `id` | 1 | [backend/src/modules/EventDistributor.ts:862](../../backend/src/modules/EventDistributor.ts#L862) |
 | `Certificate.Expiring` | `emitWarnNotification` | `tenantId`, `certificateId`, `name`, `fingerprint_sha256`, `subject_cn`, `source`, `threshold`, `daysLeft`, `severity` | 1 | [backend/src/modules/certificate/expiryMonitor.ts:70](../../backend/src/modules/certificate/expiryMonitor.ts#L70) |
 | `Certificate.JobUpdated` | `emitJobUpdated` | `job` | 1 | [backend/src/modules/certificate/pushEvents.ts:27](../../backend/src/modules/certificate/pushEvents.ts#L27) |
 | `Certificate.PushRow` | `emitPushRow` |  | 1 | [backend/src/modules/certificate/pushEvents.ts:15](../../backend/src/modules/certificate/pushEvents.ts#L15) |
-| `Certificate.Updated` | `emitCertificateUpdated` | `id` | 1 | [backend/src/modules/EventDistributor.ts:666](../../backend/src/modules/EventDistributor.ts#L666) |
+| `Certificate.Updated` | `emitCertificateUpdated` | `id` | 1 | [backend/src/modules/EventDistributor.ts:855](../../backend/src/modules/EventDistributor.ts#L855) |
 | `Channel.AutoDisabled` | `emitEndpointAutoDisabled` |  | 1 | [backend/src/modules/AlertEvents.ts:92](../../backend/src/modules/AlertEvents.ts#L92) |
 | `Channel.Created` | `emitChannelCreated` |  | 1 | [backend/src/modules/AlertEvents.ts:146](../../backend/src/modules/AlertEvents.ts#L146) |
 | `Channel.Deleted` | `emitChannelDeleted` |  | 1 | [backend/src/modules/AlertEvents.ts:160](../../backend/src/modules/AlertEvents.ts#L160) |
 | `Channel.HealthReset` | `emitEndpointHealthReset` |  | 1 | [backend/src/modules/AlertEvents.ts:101](../../backend/src/modules/AlertEvents.ts#L101) |
 | `Channel.Updated` | `emitChannelUpdated` |  | 1 | [backend/src/modules/AlertEvents.ts:153](../../backend/src/modules/AlertEvents.ts#L153) |
-| `Console.Log` | `emitConsoleLog` | `coloredPart`, `log`, `color`, `category` | 1 | [backend/src/modules/ShellyEvents.ts:454](../../backend/src/modules/ShellyEvents.ts#L454) |
-| `Console.Log` | `emitConsoleLogBatch` | `batch` | 1 | [backend/src/modules/ShellyEvents.ts:467](../../backend/src/modules/ShellyEvents.ts#L467) |
-| `Credential.Changed` | `emitCredentialChanged` | `deviceId` | 1 | [backend/src/modules/EventDistributor.ts:681](../../backend/src/modules/EventDistributor.ts#L681) |
-| `Credential.PushRow` | `emitPushRow` | `jobId`, `row` | 1 | [backend/src/modules/credential/pushWorker.ts:147](../../backend/src/modules/credential/pushWorker.ts#L147) |
-| `Dashboard.Created` | `emitDashboardCreated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:856](../../backend/src/modules/EventDistributor.ts#L856) |
-| `Dashboard.Deleted` | `emitDashboardDeleted` | `id` | 1 | [backend/src/modules/EventDistributor.ts:870](../../backend/src/modules/EventDistributor.ts#L870) |
-| `Dashboard.ItemsChanged` | `emitDashboardItemsChanged` | `id` | 1 | [backend/src/modules/EventDistributor.ts:877](../../backend/src/modules/EventDistributor.ts#L877) |
-| `Dashboard.OrderChanged` | `emitDashboardOrderChanged` | `userId`, `ids` | 1 | [backend/src/modules/EventDistributor.ts:894](../../backend/src/modules/EventDistributor.ts#L894) |
-| `Dashboard.SettingsChanged` | `emitDashboardSettingsChanged` | `id` | 1 | [backend/src/modules/EventDistributor.ts:884](../../backend/src/modules/EventDistributor.ts#L884) |
-| `Dashboard.Updated` | `emitDashboardUpdated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:863](../../backend/src/modules/EventDistributor.ts#L863) |
+| `Console.Log` | `emitConsoleLog` | `coloredPart`, `log`, `color`, `category` | 1 | [backend/src/modules/ShellyEvents.ts:464](../../backend/src/modules/ShellyEvents.ts#L464) |
+| `Console.Log` | `emitConsoleLogBatch` | `batch` | 1 | [backend/src/modules/ShellyEvents.ts:477](../../backend/src/modules/ShellyEvents.ts#L477) |
+| `Credential.Changed` | `emitCredentialChanged` | `deviceId` | 1 | [backend/src/modules/EventDistributor.ts:870](../../backend/src/modules/EventDistributor.ts#L870) |
+| `Credential.PushRow` | `emitPushRow` | `jobId`, `row` | 1 | [backend/src/modules/credential/pushWorker.ts:188](../../backend/src/modules/credential/pushWorker.ts#L188) |
+| `Dashboard.Created` | `emitDashboardCreated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:1315](../../backend/src/modules/EventDistributor.ts#L1315) |
+| `Dashboard.Deleted` | `emitDashboardDeleted` | `id` | 1 | [backend/src/modules/EventDistributor.ts:1329](../../backend/src/modules/EventDistributor.ts#L1329) |
+| `Dashboard.ItemsChanged` | `emitDashboardItemsChanged` | `id` | 1 | [backend/src/modules/EventDistributor.ts:1336](../../backend/src/modules/EventDistributor.ts#L1336) |
+| `Dashboard.OrderChanged` | `emitDashboardOrderChanged` | `userId`, `ids` | 1 | [backend/src/modules/EventDistributor.ts:1353](../../backend/src/modules/EventDistributor.ts#L1353) |
+| `Dashboard.SettingsChanged` | `emitDashboardSettingsChanged` | `id` | 1 | [backend/src/modules/EventDistributor.ts:1343](../../backend/src/modules/EventDistributor.ts#L1343) |
+| `Dashboard.Updated` | `emitDashboardUpdated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:1322](../../backend/src/modules/EventDistributor.ts#L1322) |
 | `Destination.Created` | `emitDestinationCreated` |  | 1 | [backend/src/modules/AlertEvents.ts:176](../../backend/src/modules/AlertEvents.ts#L176) |
 | `Destination.Deleted` | `emitDestinationDeleted` |  | 1 | [backend/src/modules/AlertEvents.ts:194](../../backend/src/modules/AlertEvents.ts#L194) |
 | `Destination.MembersAdded` | `emitDestinationMembersAdded` |  | 1 | [backend/src/modules/AlertEvents.ts:210](../../backend/src/modules/AlertEvents.ts#L210) |
 | `Destination.MembersRemoved` | `emitDestinationMembersRemoved` |  | 1 | [backend/src/modules/AlertEvents.ts:220](../../backend/src/modules/AlertEvents.ts#L220) |
 | `Destination.Updated` | `emitDestinationUpdated` |  | 1 | [backend/src/modules/AlertEvents.ts:185](../../backend/src/modules/AlertEvents.ts#L185) |
-| `Device.RelationshipsChanged` | `emitDeviceRelationshipChanged` | `reason` | 1 | [backend/src/modules/EventDistributor.ts:841](../../backend/src/modules/EventDistributor.ts#L841) |
-| `DeviceEvent.Change` | `emitDeviceChange` | `shellyId`, `changes` | 1 | [backend/src/modules/DeviceEventLogger.ts:228](../../backend/src/modules/DeviceEventLogger.ts#L228) |
-| `Entity.Added` | `emitEntityAdded` | `entityId`, `entity` | 1 | [backend/src/modules/ShellyEvents.ts:327](../../backend/src/modules/ShellyEvents.ts#L327) |
-| `Entity.Event` | `emitEntityEvent` | `entityId`, `event` | 1 | [backend/src/modules/ShellyEvents.ts:347](../../backend/src/modules/ShellyEvents.ts#L347) |
-| `Entity.Removed` | `emitEntityRemoved` | `entityId` | 1 | [backend/src/modules/ShellyEvents.ts:337](../../backend/src/modules/ShellyEvents.ts#L337) |
-| `Group.Created` | `emitGroupCreated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:510](../../backend/src/modules/EventDistributor.ts#L510) |
-| `Group.Deleted` | `emitGroupDeleted` | `id` | 1 | [backend/src/modules/EventDistributor.ts:524](../../backend/src/modules/EventDistributor.ts#L524) |
-| `Group.MembersAdded` | `emitGroupMembersAdded` | `id`, `members` | 1 | [backend/src/modules/EventDistributor.ts:528](../../backend/src/modules/EventDistributor.ts#L528) |
-| `Group.MembersRemoved` | `emitGroupMembersRemoved` | `id`, `members` | 1 | [backend/src/modules/EventDistributor.ts:540](../../backend/src/modules/EventDistributor.ts#L540) |
-| `Group.Updated` | `emitGroupUpdated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:517](../../backend/src/modules/EventDistributor.ts#L517) |
+| `Device.RelationshipsChanged` | `emitDeviceRelationshipChanged` | `reason` | 1 | [backend/src/modules/EventDistributor.ts:1300](../../backend/src/modules/EventDistributor.ts#L1300) |
+| `DeviceEvent.Change` | `emitDeviceChange` | `shellyId`, `changes` | 1 | [backend/src/modules/DeviceEventLogger.ts:254](../../backend/src/modules/DeviceEventLogger.ts#L254) |
+| `Entity.Added` | `emitEntityAdded` | `entityId`, `entity` | 1 | [backend/src/modules/ShellyEvents.ts:324](../../backend/src/modules/ShellyEvents.ts#L324) |
+| `Entity.Event` | `emitEntityEvent` | `entityId`, `event` | 1 | [backend/src/modules/ShellyEvents.ts:356](../../backend/src/modules/ShellyEvents.ts#L356) |
+| `Entity.Removed` | `emitEntityRemoved` | `entityId` | 1 | [backend/src/modules/ShellyEvents.ts:346](../../backend/src/modules/ShellyEvents.ts#L346) |
+| `Entity.Updated` | `emitEntityUpdated` | `entityId`, `entity` | 1 | [backend/src/modules/ShellyEvents.ts:334](../../backend/src/modules/ShellyEvents.ts#L334) |
+| `Group.Created` | `emitGroupCreated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:675](../../backend/src/modules/EventDistributor.ts#L675) |
+| `Group.Deleted` | `emitGroupDeleted` | `id` | 1 | [backend/src/modules/EventDistributor.ts:695](../../backend/src/modules/EventDistributor.ts#L695) |
+| `Group.MembersAdded` | `emitGroupMembersAdded` | `id`, `members` | 1 | [backend/src/modules/EventDistributor.ts:702](../../backend/src/modules/EventDistributor.ts#L702) |
+| `Group.MembersRemoved` | `emitGroupMembersRemoved` | `id`, `members` | 1 | [backend/src/modules/EventDistributor.ts:718](../../backend/src/modules/EventDistributor.ts#L718) |
+| `Group.Updated` | `emitGroupUpdated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:685](../../backend/src/modules/EventDistributor.ts#L685) |
 | `Job.UnitUpdated` | `emitJobUnitUpdated` |  | 1 | [backend/src/modules/jobs/events.ts:23](../../backend/src/modules/jobs/events.ts#L23) |
 | `Job.Updated` | `emitJobUpdated` | `job` | 1 | [backend/src/modules/jobs/events.ts:16](../../backend/src/modules/jobs/events.ts#L16) |
-| `Location.AssignmentRemoved` | `emitLocationAssignmentRemoved` | `subjectType`, `subjectId`, `locationId` | 1 | [backend/src/modules/EventDistributor.ts:920](../../backend/src/modules/EventDistributor.ts#L920) |
-| `Location.AssignmentSet` | `emitLocationAssignmentSet` | `subjectType`, `subjectId`, `locationId` | 1 | [backend/src/modules/EventDistributor.ts:905](../../backend/src/modules/EventDistributor.ts#L905) |
-| `Location.AssignmentsSet` | `emitLocationAssignmentsSet` | `locationId` | 1 | [backend/src/modules/EventDistributor.ts:937](../../backend/src/modules/EventDistributor.ts#L937) |
-| `Location.Created` | `emitLocationCreated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:626](../../backend/src/modules/EventDistributor.ts#L626) |
-| `Location.Deleted` | `emitLocationDeleted` | `id` | 1 | [backend/src/modules/EventDistributor.ts:640](../../backend/src/modules/EventDistributor.ts#L640) |
-| `Location.Updated` | `emitLocationUpdated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:633](../../backend/src/modules/EventDistributor.ts#L633) |
+| `Location.AssignmentRemoved` | `emitLocationAssignmentRemoved` | `subjectType`, `subjectId`, `locationId` | 1 | [backend/src/modules/EventDistributor.ts:1379](../../backend/src/modules/EventDistributor.ts#L1379) |
+| `Location.AssignmentSet` | `emitLocationAssignmentSet` | `subjectType`, `subjectId`, `locationId` | 1 | [backend/src/modules/EventDistributor.ts:1364](../../backend/src/modules/EventDistributor.ts#L1364) |
+| `Location.AssignmentsSet` | `emitLocationAssignmentsSet` | `locationId` | 1 | [backend/src/modules/EventDistributor.ts:1396](../../backend/src/modules/EventDistributor.ts#L1396) |
+| `Location.Created` | `emitLocationCreated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:815](../../backend/src/modules/EventDistributor.ts#L815) |
+| `Location.Deleted` | `emitLocationDeleted` | `id` | 1 | [backend/src/modules/EventDistributor.ts:829](../../backend/src/modules/EventDistributor.ts#L829) |
+| `Location.Updated` | `emitLocationUpdated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:822](../../backend/src/modules/EventDistributor.ts#L822) |
 | `Notification.Created` | `emitNotificationCreated` |  | 1 | [backend/src/modules/AlertEvents.ts:47](../../backend/src/modules/AlertEvents.ts#L47) |
 | `Notification.DeliveryUpdated` | `emitNotificationDeliveryUpdated` |  | 1 | [backend/src/modules/AlertEvents.ts:78](../../backend/src/modules/AlertEvents.ts#L78) |
 | `Notification.ReadStateChanged` | `emitNotificationReadStateChanged` |  | 1 | [backend/src/modules/AlertEvents.ts:62](../../backend/src/modules/AlertEvents.ts#L62) |
-| `Organization.ProfileUpdated` | `emitOrganizationProfileUpdated` | `id` | 1 | [backend/src/modules/EventDistributor.ts:648](../../backend/src/modules/EventDistributor.ts#L648) |
-| `Persona.Created` | `emitPersonaCreated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:688](../../backend/src/modules/EventDistributor.ts#L688) |
-| `Persona.Deleted` | `emitPersonaDeleted` | `id` | 1 | [backend/src/modules/EventDistributor.ts:702](../../backend/src/modules/EventDistributor.ts#L702) |
-| `Persona.Updated` | `emitPersonaUpdated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:695](../../backend/src/modules/EventDistributor.ts#L695) |
-| `Report.Anomaly` | `emitReportAnomaly` |  | 1 | [backend/src/modules/EventDistributor.ts:568](../../backend/src/modules/EventDistributor.ts#L568) |
-| `Report.Progress` | `emitReportProgress` |  | 1 | [backend/src/modules/EventDistributor.ts:580](../../backend/src/modules/EventDistributor.ts#L580) |
-| `Report.Ready` | `emitReportReady` |  | 1 | [backend/src/modules/EventDistributor.ts:605](../../backend/src/modules/EventDistributor.ts#L605) |
-| `Shelly.Connect` | `emitShellyConnected` | `shellyID`, `device`, `emittedAt` | 1 | [backend/src/modules/ShellyEvents.ts:66](../../backend/src/modules/ShellyEvents.ts#L66) |
-| `Shelly.Delete` | `emitShellyDeleted` | `shellyID` | 1 | [backend/src/modules/ShellyEvents.ts:111](../../backend/src/modules/ShellyEvents.ts#L111) |
-| `Shelly.Disconnect` | `emitShellyDisconnected` | `shellyID`, `emittedAt` | 1 | [backend/src/modules/ShellyEvents.ts:90](../../backend/src/modules/ShellyEvents.ts#L90) |
-| `Shelly.Info` | `emitShellyDeviceInfo` | `shellyID`, `info` | 1 | [backend/src/modules/ShellyEvents.ts:125](../../backend/src/modules/ShellyEvents.ts#L125) |
-| `Shelly.Message` | `emitShellyMessage` | `shellyID`, `message`, `req` | 1 | [backend/src/modules/ShellyEvents.ts:286](../../backend/src/modules/ShellyEvents.ts#L286) |
-| `Shelly.OtaProgress` | `emitShellyOtaProgress` | `shellyID`, `event`, `progress_percent`, `msg` | 1 | [backend/src/modules/ShellyEvents.ts:407](../../backend/src/modules/ShellyEvents.ts#L407) |
-| `Shelly.Presence` | `emitShellyPresence` | `shellyID`, `presence` | 1 | [backend/src/modules/ShellyEvents.ts:318](../../backend/src/modules/ShellyEvents.ts#L318) |
-| `Shelly.PresenceTrack` | `emitShellyPresenceTrack` | `shellyID`, `objects`, `ts` | 1 | [backend/src/modules/ShellyEvents.ts:299](../../backend/src/modules/ShellyEvents.ts#L299) |
-| `Shelly.Settings` | `emitShellySettings` | `shellyID`, `settings` | 1 | [backend/src/modules/ShellyEvents.ts:277](../../backend/src/modules/ShellyEvents.ts#L277) |
-| `Shelly.Status` | `emitShellyStatus` | `shellyID`, `status` | 1 | [backend/src/modules/ShellyEvents.ts:134](../../backend/src/modules/ShellyEvents.ts#L134) |
-| `Tag.Assigned` | `emitTagAssigned` | `id`, `subjects` | 1 | [backend/src/modules/EventDistributor.ts:975](../../backend/src/modules/EventDistributor.ts#L975) |
-| `Tag.Created` | `emitTagCreated` | `id`, `key`, `name` | 1 | [backend/src/modules/EventDistributor.ts:947](../../backend/src/modules/EventDistributor.ts#L947) |
-| `Tag.Deleted` | `emitTagDeleted` | `id` | 1 | [backend/src/modules/EventDistributor.ts:971](../../backend/src/modules/EventDistributor.ts#L971) |
-| `Tag.Unassigned` | `emitTagUnassigned` | `id`, `subjects` | 1 | [backend/src/modules/EventDistributor.ts:987](../../backend/src/modules/EventDistributor.ts#L987) |
-| `Tag.Updated` | `emitTagUpdated` | `id`, `key`, `name` | 1 | [backend/src/modules/EventDistributor.ts:959](../../backend/src/modules/EventDistributor.ts#L959) |
-| `User.Created` | `emitUserCreated` | `userId` | 1 | [backend/src/modules/EventDistributor.ts:754](../../backend/src/modules/EventDistributor.ts#L754) |
-| `User.Deleted` | `emitUserDeleted` | `userId` | 1 | [backend/src/modules/EventDistributor.ts:768](../../backend/src/modules/EventDistributor.ts#L768) |
-| `User.Updated` | `emitUserUpdated` | `userId` | 1 | [backend/src/modules/EventDistributor.ts:761](../../backend/src/modules/EventDistributor.ts#L761) |
-| `UserGroup.Created` | `emitUserGroupCreated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:709](../../backend/src/modules/EventDistributor.ts#L709) |
-| `UserGroup.Deleted` | `emitUserGroupDeleted` | `id` | 1 | [backend/src/modules/EventDistributor.ts:723](../../backend/src/modules/EventDistributor.ts#L723) |
-| `UserGroup.MembersAdded` | `emitUserGroupMembersAdded` | `id`, `userIds` | 1 | [backend/src/modules/EventDistributor.ts:730](../../backend/src/modules/EventDistributor.ts#L730) |
-| `UserGroup.MembersRemoved` | `emitUserGroupMembersRemoved` | `id`, `userIds` | 1 | [backend/src/modules/EventDistributor.ts:742](../../backend/src/modules/EventDistributor.ts#L742) |
-| `UserGroup.Updated` | `emitUserGroupUpdated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:716](../../backend/src/modules/EventDistributor.ts#L716) |
-| `Variables.Changed` | `emitVariablesChanged` | `key`, `operation` | 1 | [backend/src/modules/EventDistributor.ts:1001](../../backend/src/modules/EventDistributor.ts#L1001) |
-| `WaitingRoomEvent.Accepted` | `emitWaitingRoomAccepted` | `id` | 1 | [backend/src/modules/ShellyEvents.ts:482](../../backend/src/modules/ShellyEvents.ts#L482) |
-| `WaitingRoomEvent.Accepted` | `emitWaitingRoomAcceptedBatch` | `ids` | 1 | [backend/src/modules/ShellyEvents.ts:494](../../backend/src/modules/ShellyEvents.ts#L494) |
-| `WaitingRoomEvent.Denied` | `emitWaitingRoomDenied` | `id` | 0 | [backend/src/modules/ShellyEvents.ts:503](../../backend/src/modules/ShellyEvents.ts#L503) |
+| `Organization.ProfileUpdated` | `emitOrganizationProfileUpdated` | `id` | 1 | [backend/src/modules/EventDistributor.ts:837](../../backend/src/modules/EventDistributor.ts#L837) |
+| `Persona.Created` | `emitPersonaCreated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:877](../../backend/src/modules/EventDistributor.ts#L877) |
+| `Persona.Deleted` | `emitPersonaDeleted` | `id` | 1 | [backend/src/modules/EventDistributor.ts:891](../../backend/src/modules/EventDistributor.ts#L891) |
+| `Persona.Updated` | `emitPersonaUpdated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:884](../../backend/src/modules/EventDistributor.ts#L884) |
+| `Report.Anomaly` | `emitReportAnomaly` |  | 1 | [backend/src/modules/EventDistributor.ts:753](../../backend/src/modules/EventDistributor.ts#L753) |
+| `Report.Progress` | `emitReportProgress` |  | 1 | [backend/src/modules/EventDistributor.ts:765](../../backend/src/modules/EventDistributor.ts#L765) |
+| `Report.Ready` | `emitReportReady` |  | 1 | [backend/src/modules/EventDistributor.ts:791](../../backend/src/modules/EventDistributor.ts#L791) |
+| `Shelly.Connect` | `emitShellyConnected` | `shellyID`, `device`, `emittedAt` | 1 | [backend/src/modules/ShellyEvents.ts:67](../../backend/src/modules/ShellyEvents.ts#L67) |
+| `Shelly.Delete` | `emitShellyDeleted` | `shellyID` | 1 | [backend/src/modules/ShellyEvents.ts:113](../../backend/src/modules/ShellyEvents.ts#L113) |
+| `Shelly.Disconnect` | `emitShellyDisconnected` | `shellyID`, `emittedAt` | 1 | [backend/src/modules/ShellyEvents.ts:94](../../backend/src/modules/ShellyEvents.ts#L94) |
+| `Shelly.Info` | `emitShellyDeviceInfo` | `shellyID`, `info` | 1 | [backend/src/modules/ShellyEvents.ts:126](../../backend/src/modules/ShellyEvents.ts#L126) |
+| `Shelly.Message` | `emitShellyMessage` | `shellyID`, `message`, `req` | 1 | [backend/src/modules/ShellyEvents.ts:283](../../backend/src/modules/ShellyEvents.ts#L283) |
+| `Shelly.OtaProgress` | `emitShellyOtaProgress` | `shellyID`, `event`, `progress_percent`, `msg` | 1 | [backend/src/modules/ShellyEvents.ts:417](../../backend/src/modules/ShellyEvents.ts#L417) |
+| `Shelly.Presence` | `emitShellyPresence` | `shellyID`, `presence` | 1 | [backend/src/modules/ShellyEvents.ts:315](../../backend/src/modules/ShellyEvents.ts#L315) |
+| `Shelly.PresenceTrack` | `emitShellyPresenceTrack` | `shellyID`, `objects`, `ts` | 1 | [backend/src/modules/ShellyEvents.ts:296](../../backend/src/modules/ShellyEvents.ts#L296) |
+| `Shelly.Settings` | `emitShellySettings` | `shellyID`, `settings` | 1 | [backend/src/modules/ShellyEvents.ts:274](../../backend/src/modules/ShellyEvents.ts#L274) |
+| `Shelly.Status` | `emitShellyStatus` | `shellyID`, `status` | 1 | [backend/src/modules/ShellyEvents.ts:135](../../backend/src/modules/ShellyEvents.ts#L135) |
+| `Tag.Assigned` | `emitTagAssigned` | `id`, `subjects` | 1 | [backend/src/modules/EventDistributor.ts:1434](../../backend/src/modules/EventDistributor.ts#L1434) |
+| `Tag.Created` | `emitTagCreated` | `id`, `key`, `name` | 1 | [backend/src/modules/EventDistributor.ts:1406](../../backend/src/modules/EventDistributor.ts#L1406) |
+| `Tag.Deleted` | `emitTagDeleted` | `id` | 1 | [backend/src/modules/EventDistributor.ts:1430](../../backend/src/modules/EventDistributor.ts#L1430) |
+| `Tag.Unassigned` | `emitTagUnassigned` | `id`, `subjects` | 1 | [backend/src/modules/EventDistributor.ts:1446](../../backend/src/modules/EventDistributor.ts#L1446) |
+| `Tag.Updated` | `emitTagUpdated` | `id`, `key`, `name` | 1 | [backend/src/modules/EventDistributor.ts:1418](../../backend/src/modules/EventDistributor.ts#L1418) |
+| `User.Created` | `emitUserCreated` | `userId` | 1 | [backend/src/modules/EventDistributor.ts:943](../../backend/src/modules/EventDistributor.ts#L943) |
+| `User.Deleted` | `emitUserDeleted` | `userId` | 1 | [backend/src/modules/EventDistributor.ts:957](../../backend/src/modules/EventDistributor.ts#L957) |
+| `User.Updated` | `emitUserUpdated` | `userId` | 1 | [backend/src/modules/EventDistributor.ts:950](../../backend/src/modules/EventDistributor.ts#L950) |
+| `UserGroup.Created` | `emitUserGroupCreated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:898](../../backend/src/modules/EventDistributor.ts#L898) |
+| `UserGroup.Deleted` | `emitUserGroupDeleted` | `id` | 1 | [backend/src/modules/EventDistributor.ts:912](../../backend/src/modules/EventDistributor.ts#L912) |
+| `UserGroup.MembersAdded` | `emitUserGroupMembersAdded` | `id`, `userIds` | 1 | [backend/src/modules/EventDistributor.ts:919](../../backend/src/modules/EventDistributor.ts#L919) |
+| `UserGroup.MembersRemoved` | `emitUserGroupMembersRemoved` | `id`, `userIds` | 1 | [backend/src/modules/EventDistributor.ts:931](../../backend/src/modules/EventDistributor.ts#L931) |
+| `UserGroup.Updated` | `emitUserGroupUpdated` | `id`, `name` | 1 | [backend/src/modules/EventDistributor.ts:905](../../backend/src/modules/EventDistributor.ts#L905) |
+| `Variables.Changed` | `emitVariablesChanged` | `key`, `operation` | 1 | [backend/src/modules/EventDistributor.ts:1460](../../backend/src/modules/EventDistributor.ts#L1460) |
+| `WaitingRoomEvent.Accepted` | `emitWaitingRoomAccepted` | `id` | 1 | [backend/src/modules/ShellyEvents.ts:492](../../backend/src/modules/ShellyEvents.ts#L492) |
+| `WaitingRoomEvent.Accepted` | `emitWaitingRoomAcceptedBatch` | `ids` | 1 | [backend/src/modules/ShellyEvents.ts:504](../../backend/src/modules/ShellyEvents.ts#L504) |
+| `WaitingRoomEvent.Denied` | `emitWaitingRoomDenied` | `id` | 0 | [backend/src/modules/ShellyEvents.ts:513](../../backend/src/modules/ShellyEvents.ts#L513) |

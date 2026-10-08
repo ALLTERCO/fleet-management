@@ -1,5 +1,12 @@
 import {useDocumentVisibility, useIntervalFn} from '@vueuse/core';
-import {computed, onUnmounted, ref, shallowRef, triggerRef, watch} from 'vue';
+import {
+    computed,
+    onScopeDispose,
+    ref,
+    shallowRef,
+    triggerRef,
+    watch
+} from 'vue';
 import {
     approveDeviceIngressEntry,
     type PendingDevice
@@ -18,7 +25,10 @@ import {formatMac} from '@/helpers/device';
 import {domainErrorKind, toastRpcError} from '@/helpers/domainErrors';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
+import {createRefreshCoordinator} from '@/stores/refreshCoordinator';
 import {useToastStore} from '@/stores/toast';
+import {createTrailingCoalescer} from '@/tools/coalesce';
+import {deferWhileHidden} from '@/tools/hiddenTabDeferral';
 import * as ws from '@/tools/websocket';
 import {
     reconcileAcceptedDevices,
@@ -98,6 +108,9 @@ const RPC_METHOD: Record<WaitingRoomMode, string> = {
 };
 
 const DEVICE_INGRESS_PREFIX = 'deviceIngress:';
+// The update event has no payload: a burst becomes one read of the list.
+const UPDATE_EVENT_QUIET_MS = 400;
+const UPDATE_EVENT_MAX_WAIT_MS = 2000;
 
 const LINK_LABELS: Record<string, string> = {
     eth: 'Ethernet',
@@ -313,6 +326,12 @@ export function useWaitingRoomList(mode: WaitingRoomMode) {
         else selected.value.push(id);
     }
 
+    // While a selection is open a card click edits it; otherwise it opens details.
+    function cardClicked(id: string) {
+        if (selected.value.length > 0) deviceClicked(id);
+        else openDetail(id);
+    }
+
     // ── Table model ───────────────────────────────────────────────────
     interface TableRow {
         internalId: string;
@@ -493,7 +512,7 @@ export function useWaitingRoomList(mode: WaitingRoomMode) {
             if (outcome.error.length > 0) {
                 restoreEntries(snap, outcome.error);
                 toast.error(
-                    `Could not accept ${outcome.error.length} device(s) — already accepted elsewhere or no longer connected.`
+                    `Could not accept ${outcome.error.length} device(s). They are not waiting or denied here.`
                 );
             }
             // No immediate refresh — it can resurrect a row mid-admit; the WS
@@ -933,17 +952,28 @@ export function useWaitingRoomList(mode: WaitingRoomMode) {
         );
     }
 
-    // Auto-refresh while page visible. Interval is configurable via
-    // runtime config / VITE_WAITING_ROOM_REFRESH_MS / default.
+    // Background reads: one in flight, one follow-up, none while hidden.
+    // Interval is configurable via runtime config / VITE_WAITING_ROOM_REFRESH_MS.
     const visibility = useDocumentVisibility();
-    const offWaitingRoomUpdated = ws.onWaitingRoomUpdated(() => {
-        if (visibility.value === 'visible') refresh();
+    const backgroundRead = createRefreshCoordinator(() => refresh());
+    const updateRead = deferWhileHidden(() => {
+        void backgroundRead.request();
     });
+    const updateBurst = createTrailingCoalescer(
+        () => updateRead.request(),
+        UPDATE_EVENT_QUIET_MS,
+        UPDATE_EVENT_MAX_WAIT_MS
+    );
+    const offWaitingRoomUpdated = ws.onWaitingRoomUpdated(() =>
+        updateBurst.schedule()
+    );
     useIntervalFn(() => {
-        if (visibility.value === 'visible') refresh();
+        if (visibility.value === 'visible') void backgroundRead.request();
     }, WAITING_ROOM_REFRESH_MS);
-    onUnmounted(() => {
+    onScopeDispose(() => {
         offWaitingRoomUpdated();
+        updateBurst.cancel();
+        updateRead.dispose();
         if (acceptFlushTimer) clearTimeout(acceptFlushTimer);
         if (bulkPollTimer) clearTimeout(bulkPollTimer);
     });
@@ -969,6 +999,7 @@ export function useWaitingRoomList(mode: WaitingRoomMode) {
         toggleSelectAll,
         clearSelection,
         deviceClicked,
+        cardClicked,
         // filters / search
         nameFilter,
         filterModalVisible,

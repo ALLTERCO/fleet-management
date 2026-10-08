@@ -1,3 +1,4 @@
+import type {ChannelProvider} from '../../types/api/channel';
 import {
     type StoredOnCallSchedule,
     setOnCallSchedule
@@ -208,13 +209,31 @@ async function applyChannel(
         input.channelMappings[operation.key] ?? input.channelMappings[name];
     if (!channelId) return false;
     const existing = input.existingChannels.find((row) => row.name === name);
+    const targetId = existing?.id ?? channelId;
     await dependencies.setBundleChannel({
         organizationId: input.organizationId,
-        channelId: existing?.id ?? channelId,
+        channelId: targetId,
         name,
+        provider: providerOfChannel(input.existingChannels, targetId),
         config: readObject(channel.config)
     });
     return true;
+}
+
+// The provider decides which config schema the row must satisfy, and a channel
+// can never change provider. Importing into a row we cannot identify would mean
+// writing a config nothing validated.
+function providerOfChannel(
+    existingChannels: StoredBundleChannel[],
+    channelId: number
+): ChannelProvider {
+    const row = existingChannels.find((channel) => channel.id === channelId);
+    if (!row) {
+        throw new Error(
+            `bundle import targets unknown channel id ${channelId}`
+        );
+    }
+    return row.type as ChannelProvider;
 }
 
 function findBundleObject(

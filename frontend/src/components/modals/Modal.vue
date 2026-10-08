@@ -9,8 +9,13 @@
                 :aria-labelledby="$slots.title ? titleId : undefined"
                 :style="{'--modal-depth': stackDepth}"
                 @keydown="handleKeydown"
+                @pointerdown="armBackdropClose"
             >
-                <div class="modal-overlay modal-backdrop" @click="bgClicked" />
+                <div
+                    ref="overlayRef"
+                    class="modal-overlay modal-backdrop"
+                    @click="bgClicked"
+                />
 
                 <div
                     ref="panelRef"
@@ -19,6 +24,7 @@
                     :class="panelClass"
                 >
                     <button
+                        v-if="!persistent"
                         type="button"
                         aria-label="Close modal"
                         class="modal-close-btn"
@@ -53,9 +59,12 @@
                     <div class="modal-body-shell flex-1 min-h-0">
                         <div
                             class="modal-body min-h-0"
-                            :class="
-                                compact ? 'overflow-visible' : 'overflow-y-auto'
-                            "
+                            :class="[
+                                compact
+                                    ? 'overflow-visible'
+                                    : 'overflow-y-auto',
+                                ownScroll && 'flex flex-col'
+                            ]"
                         >
                             <slot />
                         </div>
@@ -91,13 +100,29 @@ import {getObsLevel, trackInteraction} from '@/tools/observability';
 const props = defineProps<{
     visible: boolean;
     wide?: boolean;
+    /** Between large and wide — forms that also show a card grid. */
+    xlarge?: boolean;
     large?: boolean;
     huge?: boolean;
     compact?: boolean;
     /** Adds a comfortable min-height on top of the width variant. */
     tall?: boolean;
+    /**
+     * The content manages its own scrolling. The body becomes a flex column so
+     * a child asking for `height: 100%` actually resolves: a block parent's
+     * flex-derived height is not definite, so the child grows to its content
+     * and the modal scrolls instead of the region that should.
+     */
+    ownScroll?: boolean;
     /** Uses the entire viewport for long task flows on small screens. */
     fullScreenMobile?: boolean;
+    /**
+     * Blocks every accidental dismissal — Escape, the backdrop, and the X —
+     * leaving only the explicit footer actions. For screens where closing
+     * destroys something unrecoverable, such as a secret shown exactly once.
+     * Use sparingly: it removes the exit every other modal gives you.
+     */
+    persistent?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -105,6 +130,7 @@ const emit = defineEmits<{
 }>();
 
 const panelRef = ref<HTMLElement | null>(null);
+const overlayRef = ref<HTMLElement | null>(null);
 const titleId = `modal-title-${useId()}`;
 const focusableSelector =
     'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -116,6 +142,7 @@ const sizeClass = computed(() => {
     if (props.compact) return 'modal-panel--compact';
     if (props.huge) return 'modal-panel--huge';
     if (props.large) return 'modal-panel--large';
+    if (props.xlarge) return 'modal-panel--xlarge';
     if (props.wide) return 'modal-panel--wide';
     return 'modal-panel--default';
 });
@@ -172,7 +199,7 @@ function handleKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        emit('close');
+        if (!props.persistent) emit('close');
         return;
     }
 
@@ -240,6 +267,7 @@ function restorePreviousFocus() {
 
 async function onOpened() {
     if (getObsLevel() >= 2) trackInteraction('modal', 'open', titleId);
+    backdropCloseArmed = false;
     stackDepth.value = reserveModalDepth();
     lockBodyScroll();
     ownsBodyLock = true;
@@ -272,7 +300,20 @@ onMounted(() => {
 
 onBeforeUnmount(onClosed);
 
+// Backdrop close is pointerdown-armed: native <select> popups that overhang
+// the panel make Chromium dispatch the release click onto the backdrop with
+// no matching pointerdown there, which used to dismiss the whole modal. Only
+// a press that actually started on the overlay may close it.
+let backdropCloseArmed = false;
+
+function armBackdropClose(event: PointerEvent) {
+    backdropCloseArmed = event.target === overlayRef.value;
+}
+
 function bgClicked() {
+    if (!backdropCloseArmed) return;
+    backdropCloseArmed = false;
+    if (props.persistent) return;
     emit('close');
 }
 </script>
@@ -291,7 +332,6 @@ function bgClicked() {
     background-color: var(--modal-overlay);
     /* Frosted backdrop — glass-3 modal tier. */
     backdrop-filter: var(--glass-3-filter);
-    -webkit-backdrop-filter: var(--glass-3-filter);
 }
 
 .modal-panel {
@@ -307,6 +347,10 @@ function bgClicked() {
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
     background-color: var(--glass-3-bg);
+    /* The panel is the frosted surface, not just a translucent one. Without
+       this it is only a semi-transparent dark fill and nothing behind it
+       blurs. The overlay's filter blurs the page, not the panel. */
+    backdrop-filter: var(--glass-3-filter);
     box-shadow: var(--card-shadow-hover), inset 0 1px 0 var(--glass-highlight);
     outline: none;
 }
@@ -372,6 +416,8 @@ function bgClicked() {
 .modal-footer {
     border-top: 1px solid var(--color-border-subtle);
     background-color: var(--modal-bg);
+    border-bottom-left-radius: inherit;
+    border-bottom-right-radius: inherit;
     padding:
         var(--modal-footer-padding-top)
         var(--modal-footer-padding-x)
@@ -439,6 +485,14 @@ function bgClicked() {
         max-height: min(
             calc(100vh - var(--modal-mobile-inset)),
             var(--modal-max-height-default)
+        );
+    }
+
+    .modal-panel--xlarge {
+        width: min(94vw, var(--modal-width-xlarge));
+        max-height: min(
+            calc(100vh - var(--modal-mobile-inset)),
+            var(--modal-max-height-wide)
         );
     }
 

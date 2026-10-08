@@ -160,15 +160,17 @@ function buildFactSet(
     extras: AdditionalFact[]
 ): AdaptiveElement {
     const facts: Array<{title: string; value: string}> = [
-        {title: 'Rule', value: payload.ruleName || '—'},
-        {
-            title: 'Source',
-            value: payload.source
-                ? `${payload.source.subjectType}: ${payload.source.subjectId}`
-                : '—'
-        },
-        {title: 'Fired at', value: payload.firedAt}
+        {title: 'Rule', value: payload.ruleName || '—'}
     ];
+    // A delivery test has no triggering device or group. An empty row reads as
+    // data that failed to load, so leave it out rather than showing a dash.
+    if (payload.source) {
+        facts.push({
+            title: 'Source',
+            value: `${payload.source.subjectType}: ${payload.source.subjectId}`
+        });
+    }
+    facts.push({title: 'Fired at', value: payload.firedAt});
     for (const f of extras) {
         const rendered = renderString(f.value, payload);
         if (rendered) facts.push({title: f.title, value: rendered});
@@ -418,39 +420,6 @@ function byteLength(body: unknown): number {
     return Buffer.byteLength(JSON.stringify(body), 'utf8');
 }
 
-function buildTestEnvelope(): Record<string, unknown> {
-    return wrapEnvelope({
-        $schema: 'http://adaptivecards.io/schemas/adaptive-card.json',
-        type: 'AdaptiveCard',
-        version: cardVersion(),
-        msteams: {width: 'Full'},
-        body: [
-            {
-                type: 'Container',
-                style: 'good',
-                bleed: true,
-                items: [
-                    {
-                        type: 'TextBlock',
-                        text: '🔧 Fleet Manager · connection test',
-                        weight: 'Bolder',
-                        color: 'Good',
-                        wrap: true
-                    }
-                ]
-            },
-            {
-                type: 'TextBlock',
-                text: 'If you can see this card, your Teams webhook is reachable. No alert is attached.',
-                wrap: true,
-                isSubtle: true,
-                size: 'Small',
-                spacing: 'Medium'
-            }
-        ]
-    });
-}
-
 function summarizeHttpFailure(res: HttpPostResult): {
     errorMessage: string;
     retryAfterSec?: number;
@@ -473,24 +442,14 @@ function runUrlFrom(headers: Record<string, string>): string | null {
 export const teamsWorkflowAdapter: DeliveryAdapter = {
     provider: 'teams_workflow_webhook',
 
+    // Config check only. A Teams webhook has no probe that does not deliver,
+    // and this runs before every test send — posting here would put a second
+    // card in the channel. `send` reports an unreachable webhook just as well.
     async verify(context: DeliveryContext): Promise<void> {
         const url = readConfigString(context.config, 'url');
         if (!url) throw new Error('Teams webhook URL is not configured');
         const hostError = assertHostAllowed(url);
         if (hostError) throw new Error(hostError);
-        const res = await postJsonWithTimeout(url, buildTestEnvelope(), {
-            organizationId: context.organizationId
-        });
-        if ('error' in res) {
-            throw new Error(
-                `Teams webhook connection test failed: ${res.error}`
-            );
-        }
-        if (!res.ok) {
-            throw new Error(
-                `Teams webhook connection test failed: HTTP ${res.status}${res.bodySnippet ? ` · ${res.bodySnippet}` : ''}`
-            );
-        }
     },
 
     async send(

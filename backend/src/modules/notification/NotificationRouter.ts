@@ -9,7 +9,9 @@ import {
 import * as OutboxWorker from '../delivery/OutboxWorker';
 import {describeError} from '../errorDescription';
 import * as Observability from '../Observability';
+import type {CounterName} from '../observability/counters';
 import * as PostgresProvider from '../PostgresProvider';
+import type {PostgresTxContext} from '../postgresTx';
 import {type AlertPayloadRow, buildAlertPayload} from './AlertPayloadBuilder';
 import {
     readContactPointIds,
@@ -74,6 +76,14 @@ interface RouterDependencies {
     now: () => number;
 }
 
+// With `tx`, every database call joins the alert's transaction and every
+// queue add waits for its commit.
+interface AlertRouteInput {
+    rule: LoadedAlertRule;
+    instance: RoutableAlertInstance;
+    tx?: PostgresTxContext;
+}
+
 const defaultDependencies: RouterDependencies = {
     callMethod: PostgresProvider.callMethod,
     enqueueGroupFlush: OutboxWorker.enqueueGroupFlush,
@@ -86,10 +96,7 @@ const defaultDependencies: RouterDependencies = {
 };
 
 export async function routeAlertNotification(
-    input: {
-        rule: LoadedAlertRule;
-        instance: RoutableAlertInstance;
-    },
+    input: AlertRouteInput,
     dependencies: RouterDependencies = defaultDependencies
 ): Promise<void> {
     if (isInstanceSilenced(input.instance, dependencies.now())) {
@@ -113,13 +120,30 @@ export async function routeAlertNotification(
         );
         return;
     }
-    try {
+    if (input.tx) {
+        // A failure rolls back the jobs with the alert, so none is orphaned.
         await dispatchAlertToGroup(input, target, jobs, dependencies);
-    } catch (err) {
-        await abortJobsAfterDispatchFailure(input, jobs, err, dependencies);
-        return;
+    } else {
+        try {
+            await dispatchAlertToGroup(input, target, jobs, dependencies);
+        } catch (err) {
+            await abortJobsAfterDispatchFailure(input, jobs, err, dependencies);
+            return;
+        }
     }
     await scheduleEscalationStages(input, target, dependencies);
+}
+
+// Queue adds leave the database, so inside a transaction they wait for COMMIT.
+async function afterCommit(
+    tx: PostgresTxContext | undefined,
+    work: () => Promise<void>
+): Promise<void> {
+    if (tx) {
+        tx.onCommit(work);
+        return;
+    }
+    await work();
 }
 
 export async function routeEscalationStageNotification(
@@ -168,15 +192,13 @@ type DeliveryTarget =
     | {kind: 'rule_destination_groups'};
 
 async function resolveDeliveryTarget(
-    input: {
-        rule: LoadedAlertRule;
-        instance: RoutableAlertInstance;
-    },
+    input: AlertRouteInput,
     dependencies: RouterDependencies
 ): Promise<DeliveryTarget | null> {
     const policies = await dependencies.listRoutingPolicies({
         organizationId: input.rule.organizationId,
-        enabledOnly: true
+        enabledOnly: true,
+        txId: input.tx?.txId
     });
     if (policies.length > 0) {
         return await resolveRoutingPolicyTarget(
@@ -196,10 +218,7 @@ async function resolveDeliveryTarget(
 }
 
 async function resolveRoutingPolicyTarget(
-    input: {
-        rule: LoadedAlertRule;
-        instance: RoutableAlertInstance;
-    },
+    input: AlertRouteInput,
     policies: StoredRoutingPolicy[],
     at: Date,
     dependencies: RouterDependencies
@@ -224,6 +243,7 @@ async function resolveRoutingPolicyTarget(
             instance: input.instance,
             matches: activeMatches,
             labels,
+            txId: input.tx?.txId,
             dependencies
         })
     ) {
@@ -255,12 +275,14 @@ async function targetIsInhibited(input: {
     instance: RoutableAlertInstance;
     matches: Array<{inhibitionRules: unknown[]}>;
     labels: Record<string, string>;
+    txId: number | undefined;
     dependencies: RouterDependencies;
 }): Promise<boolean> {
     const rules = input.matches.flatMap((match) => match.inhibitionRules);
     if (rules.length === 0) return false;
     const sources = await input.dependencies.listActiveInhibitionSourceAlerts({
-        organizationId: input.rule.organizationId
+        organizationId: input.rule.organizationId,
+        txId: input.txId
     });
     const target = {
         id: input.instance.id,
@@ -287,10 +309,7 @@ function sourceToFact(source: InhibitionSourceAlert) {
 }
 
 async function createDeliveryJobs(
-    input: {
-        rule: LoadedAlertRule;
-        instance: RoutableAlertInstance;
-    },
+    input: AlertRouteInput,
     target: DeliveryTarget,
     dependencies: RouterDependencies
 ): Promise<DeliveryJobReference[]> {
@@ -305,16 +324,14 @@ async function createDeliveryJobs(
             p_alert_id: input.instance.id,
             p_inbox_item_id: null,
             p_destination_channel_ids: input.rule.destinationChannelIds
-        }
+        },
+        input.tx?.txId
     );
     return (result?.rows ?? []) as DeliveryJobReference[];
 }
 
 async function createRoutedDeliveryJobs(
-    input: {
-        rule: LoadedAlertRule;
-        instance: RoutableAlertInstance;
-    },
+    input: AlertRouteInput,
     target: Extract<DeliveryTarget, {kind: 'routing_policy'}>,
     dependencies: RouterDependencies
 ): Promise<DeliveryJobReference[]> {
@@ -326,7 +343,8 @@ async function createRoutedDeliveryJobs(
             p_channel_ids: target.channelIds,
             p_alert_id: input.instance.id,
             p_inbox_item_id: null
-        }
+        },
+        input.tx?.txId
     );
     return (result?.rows ?? []) as DeliveryJobReference[];
 }
@@ -352,10 +370,7 @@ function firstNonEmptyGroupingKeys(
 }
 
 async function scheduleEscalationStages(
-    input: {
-        rule: LoadedAlertRule;
-        instance: RoutableAlertInstance;
-    },
+    input: AlertRouteInput,
     target: DeliveryTarget,
     dependencies: RouterDependencies
 ): Promise<void> {
@@ -364,18 +379,22 @@ async function scheduleEscalationStages(
     const stages = target.escalationStages
         .map((raw, index) => readScheduledEscalationStage(raw, index))
         .filter((stage): stage is ScheduledEscalationStage => stage !== null);
-    for (const stage of stages) {
-        await dependencies.enqueueEscalationStage(
-            {
-                organizationId: input.rule.organizationId,
-                alertId: input.instance.id,
-                ruleId: input.rule.id,
-                stageId: stage.stageId,
-                stage: stage.raw
-            },
-            new Date(dependencies.now() + stage.delaySec * 1000)
-        );
-    }
+    if (stages.length === 0) return;
+    const nowMs = dependencies.now();
+    await afterCommit(input.tx, async () => {
+        for (const stage of stages) {
+            await dependencies.enqueueEscalationStage(
+                {
+                    organizationId: input.rule.organizationId,
+                    alertId: input.instance.id,
+                    ruleId: input.rule.id,
+                    stageId: stage.stageId,
+                    stage: stage.raw
+                },
+                new Date(nowMs + stage.delaySec * 1000)
+            );
+        }
+    });
 }
 
 interface ScheduledEscalationStage {
@@ -445,10 +464,7 @@ function readContactPoints(record: Record<string, unknown>): unknown[] {
 }
 
 async function dispatchAlertToGroup(
-    input: {
-        rule: LoadedAlertRule;
-        instance: RoutableAlertInstance;
-    },
+    input: AlertRouteInput,
     target: DeliveryTarget,
     jobs: DeliveryJobReference[],
     dependencies: RouterDependencies
@@ -460,17 +476,19 @@ async function dispatchAlertToGroup(
         dependencies
     );
     if (!row) return;
-    await scheduleGroupFlush(row, dependencies);
+    await scheduleGroupFlush(
+        row,
+        input.instance.severity,
+        input.tx,
+        dependencies
+    );
     if (input.instance.state === 'resolved') {
-        await flushOnGroupResolution(row.group_id, dependencies);
+        await flushOnGroupResolution(row.group_id, input.tx, dependencies);
     }
 }
 
 async function upsertGroupAndAddMembers(
-    input: {
-        rule: LoadedAlertRule;
-        instance: RoutableAlertInstance;
-    },
+    input: AlertRouteInput,
     target: DeliveryTarget,
     endpointIds: number[],
     dependencies: RouterDependencies
@@ -493,21 +511,26 @@ async function upsertGroupAndAddMembers(
             p_group_key: groupKey.values,
             p_alert_id: input.instance.id,
             p_endpoint_ids: endpointIds
-        }
+        },
+        input.tx?.txId
     );
     return upserted?.rows?.[0] as DeliveryGroupRow | undefined;
 }
 
 async function scheduleGroupFlush(
     row: DeliveryGroupRow,
+    severity: string,
+    tx: PostgresTxContext | undefined,
     dependencies: RouterDependencies
 ): Promise<void> {
-    const flushAt = computeFlushRunAt(row, dependencies.now());
+    const flushAt = computeFlushRunAt(row, severity, dependencies.now());
     if (!flushAt) return;
-    await dependencies.enqueueGroupFlush(
-        row.group_id,
-        flushAt,
-        row.member_count >= tuning.alert.groupMaxMembers
+    await afterCommit(tx, () =>
+        dependencies.enqueueGroupFlush(
+            row.group_id,
+            flushAt,
+            row.member_count >= tuning.alert.groupMaxMembers
+        )
     );
 }
 
@@ -517,11 +540,16 @@ function computeFlushRunAt(
         member_count: number;
         last_notified_at: string | null;
     },
+    severity: string,
     nowMs: number
 ): Date | null {
     if (row.member_count >= tuning.alert.groupMaxMembers)
         return new Date(nowMs);
     if (row.is_first_flush) {
+        // An immediate severity does not wait for siblings; a warning does.
+        if (tuning.alert.immediateSeverities.includes(severity)) {
+            return new Date(nowMs);
+        }
         return new Date(nowMs + tuning.alert.groupWaitSec * 1000);
     }
     const lastMs = row.last_notified_at ? Date.parse(row.last_notified_at) : 0;
@@ -531,15 +559,19 @@ function computeFlushRunAt(
 
 async function flushOnGroupResolution(
     groupId: number,
+    tx: PostgresTxContext | undefined,
     dependencies: RouterDependencies
 ): Promise<void> {
     const resolved = await dependencies.callMethod(
         'notifications.fn_delivery_group_resolve_if_all_resolved',
-        {p_group_id: groupId}
+        {p_group_id: groupId},
+        tx?.txId
     );
     const row = resolved?.rows?.[0] as {just_resolved: boolean} | undefined;
     if (row?.just_resolved) {
-        await dependencies.enqueueGroupFlush(groupId, new Date(), true);
+        await afterCommit(tx, () =>
+            dependencies.enqueueGroupFlush(groupId, new Date(), true)
+        );
     }
 }
 
@@ -578,7 +610,7 @@ export async function abortDeliveryJobSafely(
         organizationId: string;
         job: DeliveryJobReference;
         reason: string;
-        abortFailureMetricName: string;
+        abortFailureMetricName: CounterName;
     },
     dependencies: RouterDependencies = defaultDependencies
 ): Promise<void> {

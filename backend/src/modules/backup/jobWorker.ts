@@ -1,5 +1,6 @@
 import log4js from 'log4js';
 import {envInt} from '../../config/envReader';
+import {jobAuthorityAllowsDispatch} from '../jobs/control';
 import {emitJobUnitUpdated, emitJobUpdated} from '../jobs/events';
 import {
     type BackupQueuedUnit,
@@ -9,7 +10,9 @@ import {
     markBackupUnitDone,
     markBackupUnitFailed,
     markJobRunning,
-    reclaimStaleBackupUnits
+    prepareUnitDispatch,
+    reclaimStaleBackupUnits,
+    stopUnitBeforeDispatch
 } from '../jobs/repository';
 import {isLeader, startLeaderGate} from '../redis/leaderGate';
 import {formatError} from '../util/formatError';
@@ -81,13 +84,39 @@ async function processUnit(unit: BackupQueuedUnit): Promise<void> {
         tenantId: unit.tenant_id,
         jobId: unit.job_id
     });
+    const authorized = await jobAuthorityAllowsDispatch(
+        unit.authority,
+        unit.tenant_id,
+        unit.device_id
+    );
+    if (!authorized) {
+        await stopUnitBeforeDispatch({
+            kind: 'backup',
+            id: unit.id,
+            executionId: unit.execution_id,
+            reason: 'job_authority_no_longer_allows_dispatch'
+        });
+        await finalizeBackupJobSafely(unit);
+        return;
+    }
+    const dispatchable = await prepareUnitDispatch({
+        kind: 'backup',
+        id: unit.id,
+        executionId: unit.execution_id
+    });
+    if (!dispatchable) {
+        await finalizeBackupJobSafely(unit);
+        return;
+    }
     try {
         const result = await processor(unit);
-        await markBackupUnitDone({
+        const settled = await markBackupUnitDone({
             id: unit.id,
+            executionId: unit.execution_id,
             backupId: result.backupId,
             result: result.result
         });
+        if (!settled) return;
         emitJobUnitUpdated(
             {
                 jobId: unit.job_id,
@@ -101,10 +130,12 @@ async function processUnit(unit: BackupQueuedUnit): Promise<void> {
         );
     } catch (err) {
         const error = formatError(err);
-        await markBackupUnitFailed({
+        const settled = await markBackupUnitFailed({
             id: unit.id,
+            executionId: unit.execution_id,
             lastError: error
         });
+        if (!settled) return;
         emitJobUnitUpdated(
             {
                 jobId: unit.job_id,

@@ -20,8 +20,13 @@ import type {
     VirtualDeviceRoleValueType
 } from '../../types/api/virtualdevice';
 import * as postgres from '../PostgresProvider';
+import {scoreCandidate} from './profileRoleScoring';
 import {recordAt, recordValue, stringValue} from './recordHelpers';
 import type {QueryClient} from './repository';
+import {
+    persistedProjectionMetadata,
+    resolveRoleProjection
+} from './roleProjection';
 import {
     classifySourceComponent,
     collectBindableComponentKeys
@@ -117,7 +122,10 @@ export async function listVirtualDeviceBindingSources(
     deps: Pick<BindingRepositoryDeps, 'queryRows'> = defaultDeps
 ): Promise<ListResponse<VirtualDeviceBindingSourceCandidateDto>> {
     const rows = await listSourceDeviceRows(organizationId, input, deps);
-    const candidates = sourceCandidatesFromRows(rows, input);
+    const role = await roleForRequest(organizationId, input, deps);
+    const candidates = sourceCandidatesFromRows(rows, input).filter(
+        (candidate) => candidateSuitsRole(role, candidate)
+    );
     const limit = input.limit ?? 200;
     const offset = input.offset ?? 0;
     return buildListResponse(
@@ -262,6 +270,7 @@ async function createInitialBinding(
         roleKey: binding.roleKey,
         source: binding.source,
         expectedRevision: 1,
+        effectiveFrom: binding.effectiveFrom,
         visual: binding.visual
     };
     const inserted = await insertBinding(tx, {
@@ -370,7 +379,11 @@ async function listSourceDeviceRows(
     // detection, lineage dedup and command-loop prevention land in a later
     // phase. Only rows without a virtual_device record (physical, bluetooth,
     // connector) qualify as sources.
-    const where = ['dl.organization_id = $1', 'vd.device_list_id IS NULL'];
+    const where = [
+        'dl.organization_id = $1',
+        'dl.deleted_at IS NULL',
+        'vd.device_list_id IS NULL'
+    ];
     if (input.externalId) {
         values.push(input.externalId);
         where.push(`dl.external_id <> $${values.length}`);
@@ -390,6 +403,45 @@ async function listSourceDeviceRows(
           WHERE ${where.join(' AND ')}
           ORDER BY dl.external_id ASC`,
         values
+    );
+}
+
+/** The role the caller is filling, when the request says enough to name it.
+ *  Without a profile the server cannot know what the role expects, so it
+ *  returns null and every candidate stands. */
+async function roleForRequest(
+    organizationId: string,
+    input: VirtualDeviceBindingListSourcesParams,
+    deps: Pick<BindingRepositoryDeps, 'queryRows'>
+): Promise<VirtualDeviceProfileRole | null> {
+    if (!input.roleKey || !input.profileId) return null;
+    const rows = await deps.queryRows<{
+        roles_json: VirtualDeviceProfileRole[] | null;
+    }>(
+        `SELECT vdp.roles_json
+           FROM device.virtual_device_profile vdp
+          WHERE vdp.id = $1
+            AND (vdp.organization_id = $2 OR vdp.organization_id IS NULL)`,
+        [input.profileId, organizationId]
+    );
+    const roles = rows[0]?.roles_json ?? [];
+    return roles.find((r) => r.roleKey === input.roleKey) ?? null;
+}
+
+/** Reuses scoreCandidate, the matcher Profile.MatchSources already relies on,
+ *  so the rule for "can this component fill this role" has one home. */
+function candidateSuitsRole(
+    role: VirtualDeviceProfileRole | null,
+    candidate: VirtualDeviceBindingSourceCandidateDto
+): boolean {
+    if (role === null) return true;
+    return (
+        scoreCandidate(role, {
+            componentType: candidate.componentType,
+            rawComponentType: candidate.componentType,
+            roleValueType: candidate.valueType,
+            writable: candidate.writable
+        } as Parameters<typeof scoreCandidate>[1]).score > 0
     );
 }
 
@@ -677,7 +729,7 @@ function draftBindings(
         source: binding.source,
         mode: draftBindingMode(device),
         active: true,
-        effectiveFrom: null,
+        effectiveFrom: binding.effectiveFrom ?? null,
         effectiveTo: null,
         visual: binding.visual ?? {},
         createdAt: new Date(0).toISOString()
@@ -808,7 +860,8 @@ async function resolveSourceDevice(
 ): Promise<SourceDeviceRow> {
     // LEFT JOIN exposes whether this row is itself a virtual device so we
     // can reject virtual-to-virtual bindings server-side, not only at the
-    // picker. Virtual-to-virtual bindings are disallowed.
+    // picker. Virtual-to-virtual bindings are disallowed; a deleted device,
+    // custom or not, is no source at all.
     const rows = await tx.query<
         SourceDeviceRow & {virtual_device_list_id: number | null}
     >(
@@ -818,9 +871,9 @@ async function resolveSourceDevice(
       LEFT JOIN device.virtual_device vd
              ON vd.device_list_id = dl.id
             AND vd.organization_id = dl.organization_id
-            AND vd.deleted_at IS NULL
           WHERE dl.organization_id = $1
             AND dl.external_id = $2
+            AND dl.deleted_at IS NULL
           LIMIT 1`,
         [organizationId, input.source.deviceExternalId]
     );
@@ -857,7 +910,8 @@ async function loadSourceDevices(
         `SELECT id, external_id, jdoc
            FROM device.list
           WHERE organization_id = $1
-            AND external_id = ANY($2)`,
+            AND external_id = ANY($2)
+            AND deleted_at IS NULL`,
         [organizationId, distinct]
     );
     return new Map(rows.map((row) => [row.external_id, row]));
@@ -1017,6 +1071,7 @@ interface BindingSemantics {
     unit: string | null;
     sourceSnapshot: Record<string, unknown>;
     roleMetadata: Record<string, unknown> | null;
+    transformJson: Record<string, unknown>;
 }
 
 function resolveBindingSemantics(
@@ -1038,25 +1093,41 @@ function resolveBindingSemantics(
     const writable = profileRole?.writable ?? classification.writable;
     const required = profileRole?.required ?? true;
     const unit = profileRole?.unit ?? classification.unit ?? null;
+    const sourceSnapshot = {
+        roleKey: input.roleKey,
+        componentKey: input.source.componentKey,
+        componentType: classification.componentType,
+        valueType,
+        writable,
+        required,
+        unit,
+        label: classification.label,
+        ...(classification.sourceHints ?? {}),
+        capturedAt: new Date().toISOString()
+    };
+    const projectionInput = {
+        roleKey: input.roleKey,
+        sourceComponentKey: input.source.componentKey,
+        unit,
+        valueType,
+        sourceSnapshot,
+        roleMetadata: profileRole?.metadata ?? null
+    };
+    const roleMetadata = persistedProjectionMetadata(projectionInput);
+    const projection = resolveRoleProjection({
+        ...projectionInput,
+        roleMetadata
+    });
     return {
         valueType,
         writable,
         required,
         unit,
-        sourceSnapshot: {
-            roleKey: input.roleKey,
-            componentKey: input.source.componentKey,
-            componentType: classification.componentType,
-            valueType,
-            writable,
-            required,
-            unit,
-            label: classification.label,
-            capturedAt: new Date().toISOString()
-        },
+        sourceSnapshot,
         // Profile metadata carries display hints (min/max/step/options/etc.)
         // that the card layer reads at render time via entityProjection.
-        roleMetadata: profileRole?.metadata ?? null
+        roleMetadata,
+        transformJson: projection.transform
     };
 }
 
@@ -1103,7 +1174,8 @@ async function insertBinding(
             input.semantics.required,
             input.semantics.unit,
             input.semantics.sourceSnapshot,
-            input.semantics.roleMetadata
+            input.semantics.roleMetadata,
+            input.semantics.transformJson
         ]
     );
     return requireBindingRow(rows, input.id);
@@ -1126,7 +1198,8 @@ function bindingInsertSql(): string {
             required,
             unit,
             source_snapshot_json,
-            role_metadata_json
+            role_metadata_json,
+            transform_json
         )
         VALUES (
             $1,
@@ -1144,7 +1217,8 @@ function bindingInsertSql(): string {
             $14,
             $15,
             $16,
-            $17
+            $17,
+            $18
         )`;
 }
 

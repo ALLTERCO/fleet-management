@@ -3,9 +3,11 @@
 // drainer persist rows identically (mirrors auditBatchRow.ts).
 
 import type {PathChange} from '../../types';
-
-type DeviceEventKind = 'state_change' | 'event' | 'config';
-type DeviceEventSource = 'device' | 'command' | 'unknown';
+import type {
+    DeviceEventKind,
+    DeviceEventSource
+} from '../../types/api/deviceevents';
+import {isJournalWorthy} from './journalFilter';
 
 // Queued entry — one leaf change. `ts` is the device-reported time as ISO,
 // preserved verbatim; stamped NOW() by the logger only when absent.
@@ -91,6 +93,7 @@ export function changesToEntries(input: ChangeCapture): DeviceEventEntry[] {
     const source = input.source ?? 'device';
     const entries: DeviceEventEntry[] = [];
     for (const change of input.changes) {
+        if (!isJournalWorthy(change)) continue;
         const {component, field} = pathToComponentField(change.path);
         const isBthomeSensor = component.startsWith('bthomesensor:');
         // displayValue is a derived reading, never a device state — never audit

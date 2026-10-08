@@ -1,9 +1,15 @@
 import type {Dashboard} from '@api/dashboard';
+import type {DashboardScope as ApiDashboardScope} from '@api/fleet';
+import {
+    fromApiDashboardScope,
+    type DashboardScope
+} from '@/composables/useDashboardScope';
 import * as ws from '@/tools/websocket';
 
 export interface DashboardRecordSummary {
     name: string | null;
-    groupId: number | null;
+    scope: DashboardScope;
+    apiScope: ApiDashboardScope;
 }
 
 export async function fetchDashboardRecordSummary(
@@ -15,6 +21,7 @@ export async function fetchDashboardRecordSummary(
     });
     return {
         name: dashboard.name ?? null,
-        groupId: dashboard.scope?.groupId ?? null
+        scope: fromApiDashboardScope(dashboard.scope),
+        apiScope: dashboard.scope ?? {}
     };
 }

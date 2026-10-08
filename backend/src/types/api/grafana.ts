@@ -30,9 +30,17 @@ export const GRAFANA_GET_DASHBOARD_PARAMS_SCHEMA: JsonSchema = {
     }
 };
 
+// Read back from the cached config.json unfiltered, so unknown keys survive;
+// an unmatched slug returns undefined and the result member is omitted.
 export const GRAFANA_GET_DASHBOARD_RESPONSE_SCHEMA: JsonSchema = {
     type: 'object',
     description: 'Single dashboard entry by slug (or undefined).',
+    required: ['slug'],
+    properties: {
+        slug: {type: 'string'},
+        uid: {type: 'string'},
+        hash: {type: 'string'}
+    },
     additionalProperties: true
 };
 

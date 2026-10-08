@@ -172,108 +172,134 @@ ua_exact_counts_json() {
     printf '%s\n' "$json"
 }
 
-ua_fleet_domain_issues_json() {
+# One invariant, one query: the exact row count plus the primary keys of the
+# broken rows. Identity is what makes "one orphan replaced by another" visible;
+# counts alone cannot see it. The key list is capped, and says when it was.
+ua_domain_issue_json() {
+    local service="$1" db_name="$2" db_user="$3" identity_sql="$4" from_where="$5"
+    local limit="${UPGRADE_AUDIT_ROW_ID_LIMIT:-1000}"
+    ua_psql "$service" "$db_name" "$db_user" "
+        WITH broken AS (SELECT ($identity_sql)::text AS k $from_where),
+             encoded AS (SELECT DISTINCT encode(convert_to(k, 'UTF8'), 'hex') AS h FROM broken)
+        SELECT jsonb_build_object(
+            'count', (SELECT COUNT(*) FROM broken),
+            'truncated', ((SELECT COUNT(*) FROM encoded) > $limit),
+            'rows', COALESCE(
+                (SELECT jsonb_agg(k ORDER BY k)
+                 FROM (SELECT DISTINCT k FROM broken ORDER BY k LIMIT $limit) capped),
+                '[]'::jsonb),
+            'digest', encode(sha256(convert_to(
+                COALESCE((SELECT string_agg(h, E'\n' ORDER BY h) FROM encoded), ''),
+                'UTF8')), 'hex')
+        );
+    "
+}
+
+# {"<issue key>": {"count": N, "rows": [...], "truncated": bool}}
+ua_fleet_domain_report_json() {
     local service="$1" db_name="$2" db_user="$3"
-    local issues="{}"
-    local count
+    local report="{}"
+    local entry
 
     ua_add_issue() {
         local key="$1" value="$2"
-        issues="$(jq -cn --argjson base "$issues" --arg key "$key" --argjson value "$value" '$base + {($key): $value}')"
+        report="$(jq -cn --argjson base "$report" --arg key "$key" --argjson value "$value" '$base + {($key): $value}')"
     }
 
     if ua_table_exists "$service" "$db_name" "$db_user" "device.list" \
         && ua_column_exists "$service" "$db_name" "$db_user" "device.list" "organization_id"; then
-        count="$(ua_query_count "$service" "$db_name" "$db_user" "SELECT COUNT(*) FROM device.list WHERE organization_id IS NULL;")" || return 1
-        ua_add_issue "device_without_org" "$count"
+        entry="$(ua_domain_issue_json "$service" "$db_name" "$db_user" \
+            "id" "FROM device.list WHERE organization_id IS NULL")" || return 1
+        ua_add_issue "device_without_org" "$entry"
     fi
 
     if ua_table_exists "$service" "$db_name" "$db_user" "device.list" \
         && ua_column_exists "$service" "$db_name" "$db_user" "device.list" "external_id"; then
-        count="$(ua_query_count "$service" "$db_name" "$db_user" "
-            SELECT COUNT(*) FROM (
+        entry="$(ua_domain_issue_json "$service" "$db_name" "$db_user" \
+            "external_id" "FROM (
                 SELECT external_id FROM device.list
                 WHERE external_id IS NOT NULL
                 GROUP BY external_id HAVING COUNT(*) > 1
-            ) d;
-        ")" || return 1
-        ua_add_issue "duplicate_device_external_id" "$count"
+            ) d")" || return 1
+        ua_add_issue "duplicate_device_external_id" "$entry"
     fi
 
     if ua_table_exists "$service" "$db_name" "$db_user" "ui.dashboard" \
         && ua_column_exists "$service" "$db_name" "$db_user" "ui.dashboard" "organization_id"; then
-        count="$(ua_query_count "$service" "$db_name" "$db_user" "SELECT COUNT(*) FROM ui.dashboard WHERE organization_id IS NULL;")" || return 1
-        ua_add_issue "dashboard_without_org" "$count"
+        entry="$(ua_domain_issue_json "$service" "$db_name" "$db_user" \
+            "id" "FROM ui.dashboard WHERE organization_id IS NULL")" || return 1
+        ua_add_issue "dashboard_without_org" "$entry"
     fi
 
     if ua_table_exists "$service" "$db_name" "$db_user" "organization.groups" \
         && ua_column_exists "$service" "$db_name" "$db_user" "organization.groups" "organization_id"; then
-        count="$(ua_query_count "$service" "$db_name" "$db_user" "SELECT COUNT(*) FROM organization.groups WHERE organization_id IS NULL;")" || return 1
-        ua_add_issue "group_without_org" "$count"
+        entry="$(ua_domain_issue_json "$service" "$db_name" "$db_user" \
+            "id" "FROM organization.groups WHERE organization_id IS NULL")" || return 1
+        ua_add_issue "group_without_org" "$entry"
     fi
 
     if ua_table_exists "$service" "$db_name" "$db_user" "organization.group_members" \
         && ua_table_exists "$service" "$db_name" "$db_user" "organization.groups"; then
-        count="$(ua_query_count "$service" "$db_name" "$db_user" "
-            SELECT COUNT(*)
-            FROM organization.group_members gm
-            LEFT JOIN organization.groups g ON g.id = gm.group_id
-            WHERE g.id IS NULL;
-        ")" || return 1
-        ua_add_issue "orphan_group_members" "$count"
+        entry="$(ua_domain_issue_json "$service" "$db_name" "$db_user" \
+            "concat_ws(':', gm.group_id, gm.subject_type, gm.subject_id)" \
+            "FROM organization.group_members gm
+             LEFT JOIN organization.groups g ON g.id = gm.group_id
+             WHERE g.id IS NULL")" || return 1
+        ua_add_issue "orphan_group_members" "$entry"
     fi
 
     if ua_table_exists "$service" "$db_name" "$db_user" "device_em.lifetime_counters" \
         && ua_table_exists "$service" "$db_name" "$db_user" "device.list"; then
-        count="$(ua_query_count "$service" "$db_name" "$db_user" "
-            SELECT COUNT(*)
-            FROM device_em.lifetime_counters lc
-            LEFT JOIN device.list d ON d.id = lc.device
-            WHERE d.id IS NULL;
-        ")" || return 1
-        ua_add_issue "orphan_energy_lifetime_counters" "$count"
+        entry="$(ua_domain_issue_json "$service" "$db_name" "$db_user" \
+            "concat_ws(':', lc.device, lc.channel, lc.tag)" \
+            "FROM device_em.lifetime_counters lc
+             LEFT JOIN device.list d ON d.id = lc.device
+             WHERE d.id IS NULL")" || return 1
+        ua_add_issue "orphan_energy_lifetime_counters" "$entry"
     fi
 
     if ua_table_exists "$service" "$db_name" "$db_user" "fm.energy_classification" \
         && ua_table_exists "$service" "$db_name" "$db_user" "device.list"; then
-        count="$(ua_query_count "$service" "$db_name" "$db_user" "
-            SELECT COUNT(*)
-            FROM fm.energy_classification ec
-            LEFT JOIN device.list d ON d.id = ec.device
-            WHERE d.id IS NULL;
-        ")" || return 1
-        ua_add_issue "orphan_energy_classifications" "$count"
+        entry="$(ua_domain_issue_json "$service" "$db_name" "$db_user" \
+            "concat_ws(':', ec.device, ec.component_key)" \
+            "FROM fm.energy_classification ec
+             LEFT JOIN device.list d ON d.id = ec.device
+             WHERE d.id IS NULL")" || return 1
+        ua_add_issue "orphan_energy_classifications" "$entry"
     fi
 
     if ua_table_exists "$service" "$db_name" "$db_user" "fm.energy_preset_classification" \
         && ua_table_exists "$service" "$db_name" "$db_user" "fm.energy_preset"; then
-        count="$(ua_query_count "$service" "$db_name" "$db_user" "
-            SELECT COUNT(*)
-            FROM fm.energy_preset_classification pc
-            LEFT JOIN fm.energy_preset p ON p.preset_id = pc.preset_id
-            WHERE p.preset_id IS NULL;
-        ")" || return 1
-        ua_add_issue "orphan_energy_preset_classifications" "$count"
+        entry="$(ua_domain_issue_json "$service" "$db_name" "$db_user" \
+            "concat_ws(':', pc.preset_id, pc.component_key)" \
+            "FROM fm.energy_preset_classification pc
+             LEFT JOIN fm.energy_preset p ON p.preset_id = pc.preset_id
+             WHERE p.preset_id IS NULL")" || return 1
+        ua_add_issue "orphan_energy_preset_classifications" "$entry"
     fi
 
     if ua_table_exists "$service" "$db_name" "$db_user" "organization.tags" \
         && ua_column_exists "$service" "$db_name" "$db_user" "organization.tags" "organization_id"; then
-        count="$(ua_query_count "$service" "$db_name" "$db_user" "SELECT COUNT(*) FROM organization.tags WHERE organization_id IS NULL;")" || return 1
-        ua_add_issue "tag_without_org" "$count"
+        entry="$(ua_domain_issue_json "$service" "$db_name" "$db_user" \
+            "id" "FROM organization.tags WHERE organization_id IS NULL")" || return 1
+        ua_add_issue "tag_without_org" "$entry"
     fi
 
     if ua_table_exists "$service" "$db_name" "$db_user" "organization.locations" \
         && ua_column_exists "$service" "$db_name" "$db_user" "organization.locations" "organization_id"; then
-        count="$(ua_query_count "$service" "$db_name" "$db_user" "SELECT COUNT(*) FROM organization.locations WHERE organization_id IS NULL;")" || return 1
-        ua_add_issue "location_without_org" "$count"
+        entry="$(ua_domain_issue_json "$service" "$db_name" "$db_user" \
+            "id" "FROM organization.locations WHERE organization_id IS NULL")" || return 1
+        ua_add_issue "location_without_org" "$entry"
     fi
 
     if ua_table_exists "$service" "$db_name" "$db_user" "migration.\"migration.locks\""; then
+        # Reported, never fatal — no identity needed.
+        local count
         count="$(ua_query_count "$service" "$db_name" "$db_user" "SELECT COUNT(*) FROM migration.\"migration.locks\";")" || return 1
-        ua_add_issue "migration_lock_rows" "$count"
+        ua_add_issue "migration_lock_rows" "$(jq -cn --argjson count "$count" '{count: $count, rows: [], truncated: false, digest: null}')"
     fi
 
-    printf '%s\n' "$issues"
+    printf '%s\n' "$report"
 }
 
 ua_pg_summary_json() {
@@ -292,12 +318,15 @@ ua_snapshot_fleet() {
     mkdir -p "$UPGRADE_AUDIT_DIR"
     [ -n "$out_path" ] || out_path="$UPGRADE_AUDIT_DIR/fleet-${label}-$(ua_now).json"
 
-    local pg schemas estimates critical issues
+    local pg schemas estimates critical report issues issue_rows
     pg="$(ua_pg_summary_json "$service" "$db_name" "$db_user")" || return 1
     schemas="$(ua_schema_counts_json "$service" "$db_name" "$db_user")" || return 1
     estimates="$(ua_table_estimates_json "$service" "$db_name" "$db_user")" || return 1
     critical="$(ua_exact_counts_json "$service" "$db_name" "$db_user")" || return 1
-    issues="$(ua_fleet_domain_issues_json "$service" "$db_name" "$db_user")" || return 1
+    # One pass over the invariants; counts and row identity are two views of it.
+    report="$(ua_fleet_domain_report_json "$service" "$db_name" "$db_user")" || return 1
+    issues="$(printf '%s' "$report" | jq -c 'with_entries(.value = .value.count)')" || return 1
+    issue_rows="$(printf '%s' "$report" | jq -c 'with_entries(.value = {rows: .value.rows, truncated: .value.truncated, digest: .value.digest})')" || return 1
 
     jq -n \
         --arg schemaVersion "1" \
@@ -311,6 +340,7 @@ ua_snapshot_fleet() {
         --argjson tableEstimates "$estimates" \
         --argjson criticalCounts "$critical" \
         --argjson domainIssues "$issues" \
+        --argjson domainIssueRows "$issue_rows" \
         '{
             schemaVersion: $schemaVersion,
             kind: $kind,
@@ -321,7 +351,8 @@ ua_snapshot_fleet() {
             schemaCounts: $schemaCounts,
             tableEstimates: $tableEstimates,
             criticalCounts: $criticalCounts,
-            domainIssues: $domainIssues
+            domainIssues: $domainIssues,
+            domainIssueRows: $domainIssueRows
         }' > "$out_path" || return 1
     chmod 0600 "$out_path"
     printf '%s\n' "$out_path"
@@ -416,39 +447,135 @@ ua_compare_snapshots() {
             (($before[0].tableEstimates // {}) | keys_unsorted) as $bk
             | (($after[0].tableEstimates // {}) | keys_unsorted) as $ak
             | [$bk[] | select(($ak | index(.)) | not)];
-        def postDomainFailures:
-            ($after[0].domainIssues // {}) as $i
-            | ["device_without_org", "duplicate_device_external_id",
-               "dashboard_without_org", "group_without_org",
-               "orphan_group_members", "orphan_energy_lifetime_counters",
-               "orphan_energy_classifications",
-               "orphan_energy_preset_classifications",
-               "tag_without_org", "location_without_org"] as $fatal
-            | [$i | to_entries[] as $entry
-                | select(($fatal | index($entry.key)) and ($entry.value | tonumber) > 0)
-                | $entry];
+        def fatalDomainKeys:
+            ["device_without_org", "duplicate_device_external_id",
+             "dashboard_without_org", "group_without_org",
+             "orphan_group_members", "orphan_energy_lifetime_counters",
+             "orphan_energy_classifications",
+             "orphan_energy_preset_classifications",
+             "tag_without_org", "location_without_org"];
+        # One pass per fatal key, feeding both verdicts.
+        #
+        # An update is judged on what it changed. A domain issue that was
+        # already there and is no worse afterwards is old dirt — real, worth
+        # saying, but not this update to roll back.
+        #
+        # Size alone cannot see one old orphan replaced by one new orphan, so
+        # identity decides: rows in both are old dirt, rows only in post are
+        # this update. The sampled row list is capped, so the digest over the
+        # complete sorted set is what makes the answer safe past the cap —
+        # equal digests mean identical sets however long they are.
+        def domainFacts:
+            ($before[0].domainIssues // {}) as $preCount
+            | ($after[0].domainIssues // {}) as $postCount
+            | ($before[0].domainIssueRows // {}) as $preRows
+            | ($after[0].domainIssueRows // {}) as $postRows
+            | [fatalDomainKeys[] as $key
+                | (($preCount[$key] // 0) | tonumber) as $was
+                | (($postCount[$key] // 0) | tonumber) as $now
+                | (($preRows[$key].rows // []) | map(tostring)) as $wasRows
+                | (($postRows[$key].rows // []) | map(tostring)) as $nowRows
+                | ($preRows[$key].digest // null) as $wasDigest
+                | ($postRows[$key].digest // null) as $nowDigest
+                | (($preRows[$key] != null) and ($postRows[$key] != null)) as $comparable
+                | (($preRows[$key].truncated // false)) as $preTruncated
+                | (($postRows[$key].truncated // false)) as $postTruncated
+                | ($preTruncated or $postTruncated) as $truncated
+                | (($wasDigest != null) and ($nowDigest != null)) as $digestKnown
+                | ($digestKnown and ($wasDigest == $nowDigest)) as $digestEqual
+                | ($nowRows - $wasRows) as $sampledAdded
+                | select($now > 0 or ($wasRows | length) > 0 or ($nowRows | length) > 0)
+                | {
+                    key: $key, value: $now, before: $was, after: $now, delta: ($now - $was),
+                    comparable: $comparable,
+                    truncated: $truncated,
+                    preTruncated: $preTruncated,
+                    digestKnown: $digestKnown,
+                    digestEqual: $digestEqual,
+                    countsEqual: ($was == $now),
+                    added: (if $digestEqual then [] else $sampledAdded end),
+                    removed: (if $digestEqual then [] else ($wasRows - $nowRows) end),
+                    carriedOver: (if $digestEqual then $nowRows else ($nowRows - $sampledAdded) end),
+                    # A sampled row missing from a COMPLETE pre list is proof it
+                    # is new. Missing from a truncated pre list proves nothing.
+                    provableAdded: (if ($digestEqual or $preTruncated) then [] else $sampledAdded end)
+                  }];
         (countDrops) as $drops
         | (missingTables) as $missing
-        | (postDomainFailures) as $domainFailures
+        | (domainFacts) as $facts
+        | ($facts | map(select(.after > 0))
+            | map({key, value, before, after, delta})) as $domain
+        | ($domain | map(select(.delta > 0))) as $domainRegressions
+        | ($domain | map(select(.delta <= 0))) as $domainPreExisting
+        # Once the sets are known to differ, passing needs proof that nothing
+        # was added. Within the cap the samples are that proof. Past it only a
+        # complete pre list, or an unchanged size, can settle it — and when
+        # neither can, the audit fails closed rather than hiding a new row
+        # behind a shrinking set.
+        | ($facts | map(select(.comparable and (.digestEqual | not))
+            | . + {identityVerdict: (
+                if ((.provableAdded | length) > 0) then "added"
+                elif (.truncated | not) then "clean"
+                elif (.digestKnown and .countsEqual) then "replaced"
+                else "inconclusive" end)})
+            | map(select(.identityVerdict != "clean"))
+            | map({
+                key, added, removed, truncated, countsEqual,
+                verdict: .identityVerdict,
+                reason: (
+                    if .identityVerdict == "added"
+                    then "rows present only after the update"
+                    elif .identityVerdict == "replaced"
+                    then "set changed beyond the sampled rows"
+                    else "identity comparison inconclusive beyond the sample — rerun with a higher UPGRADE_AUDIT_ROW_ID_LIMIT"
+                    end)
+              })) as $identityRegressions
+        | ($facts | map(select((.carriedOver | length) > 0))
+            | map({key, carriedOver})) as $identityCarriedOver
+        | ($facts | map(select(.comparable | not) | .key)) as $identityUncomparable
+        | ($facts | map(select(.truncated) | .key)) as $identityTruncated
+        | ($facts | map(select(.digestEqual) | .key)) as $identityDigestMatched
         | {
             schemaVersion: "1",
             kind: "upgrade-audit-compare",
             createdAt: $createdAt,
             before: $beforePath,
             after: $afterPath,
-            result: (if (($drops | length) == 0 and ($domainFailures | length) == 0) then "pass" else "fail" end),
+            result: (if (($drops | length) == 0
+                        and ($domainRegressions | length) == 0
+                        and ($identityRegressions | length) == 0)
+                     then "pass" else "fail" end),
             failures: {
                 criticalCountDrops: $drops,
-                domainIssues: $domainFailures
+                domainIssues: $domainRegressions,
+                domainIssueRows: $identityRegressions
             },
             warnings: {
                 missingEstimatedTables: $missing,
-                migrationLockRows: ($after[0].domainIssues.migration_lock_rows // null)
+                migrationLockRows: ($after[0].domainIssues.migration_lock_rows // null),
+                preExistingDomainIssues: $domainPreExisting,
+                carriedOverDomainIssueRows: $identityCarriedOver,
+                domainIssueRowsUncomparable: $identityUncomparable,
+                domainIssueRowsTruncated: $identityTruncated,
+                domainIssueRowsDigestMatched: $identityDigestMatched
             }
         }' > "$out_path" || return 1
     chmod 0600 "$out_path"
 
     jq -e '.result == "pass"' "$out_path" >/dev/null
+}
+
+# One-line summary of the issues an update did not introduce, for the caller to
+# log with its own logger. Prints nothing when there are none.
+ua_preexisting_domain_issue_summary() {
+    local report_path="$1"
+    [ -s "$report_path" ] || return 0
+    jq -r '
+        (.warnings.preExistingDomainIssues // [])
+        | select(length > 0)
+        | map("\(.key)=\(.after) (was \(.before))")
+        | "pre-existing domain issues, not introduced by this update: " + join(", ")
+    ' "$report_path" 2>/dev/null || true
 }
 
 ua_zitadel_major() {

@@ -50,9 +50,9 @@
 
             <!-- Add a role: pick a persona, optionally narrow its scope, add. -->
             <div class="suap__add">
-                <FormField label="Persona">
+                <FormField label="Role">
                     <select v-model="draft.personaId" class="suap__select">
-                        <option value="">Select persona...</option>
+                        <option value="">Choose a role</option>
                         <option
                             v-for="persona in personas"
                             :key="persona.id"

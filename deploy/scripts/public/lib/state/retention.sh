@@ -94,8 +94,7 @@ END \$\$;
 -- device_em.stats — energy meter data (default: 1 year)
 DO \$\$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='device_em' AND table_name='stats') THEN
-    PERFORM remove_retention_policy('device_em.stats', if_exists => true);
-    PERFORM add_retention_policy('device_em.stats', INTERVAL '${em_retention}');
+    PERFORM device_em.fn_configure_stats_retention(INTERVAL '${em_retention}');
     PERFORM remove_compression_policy('device_em.stats', if_exists => true);
     PERFORM add_compression_policy('device_em.stats', compress_created_before => INTERVAL '24 hours');
   END IF;
@@ -120,9 +119,10 @@ SQL
 )
 
     if echo "$sql" | docker exec -i "${COMPOSE_PROJECT_NAME}-fleet-db-1" \
-        psql -U postgres -d fleet --no-psqlrc -q 2>/dev/null; then
+        psql -U postgres -d fleet --no-psqlrc -v ON_ERROR_STOP=1 -q; then
         ok "Retention policies applied"
     else
-        info "Retention policies will be applied after first restart (tables created during initial startup)"
+        error "Could not apply retention policies"
+        return 1
     fi
 }

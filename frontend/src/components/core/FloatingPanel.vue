@@ -236,7 +236,6 @@ defineExpose({
 .floating-panel--glass {
     background: var(--glass-3-bg);
     backdrop-filter: var(--glass-3-filter);
-    -webkit-backdrop-filter: var(--glass-3-filter);
     border: 1px solid var(--glass-border);
     /* Menus were designed on radius-lg (Dropdown, GroupWidget pass the
        same via utility); the base owns it so no consumer needs to. */

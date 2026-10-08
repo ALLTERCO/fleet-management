@@ -6,22 +6,22 @@
 import log4js from 'log4js';
 
 import {envInt} from '../../config/envReader';
-import {invalidateGroupCache} from '../groupVersion';
-import type {AuthzCache} from './cache';
-import {registerAuthzTenantInvalidator} from './invalidation';
-import type {L1AuthzCache} from './l1-cache';
-import type {ResolverDb} from './resolver';
+import {stripUrlUserinfo} from '../../config/redact';
+import {bumpOrganizationAccessVersion} from '../organizationCacheVersions';
+import {registerAuthzTenantCacheInvalidator} from './invalidation';
+import {
+    __setAuthzRuntimeForTests,
+    type AuthzRuntime,
+    setAuthzRuntime,
+    tryGetAuthzRuntime
+} from './runtimeHandle';
+
+export type {AuthzRuntime};
+export {__setAuthzRuntimeForTests, tryGetAuthzRuntime};
 
 const logger = log4js.getLogger('authz-runtime');
 
 const INIT_RETRY_INTERVAL_MS = envInt('FM_AUTHZ_INIT_RETRY_MS', 30_000, 1000);
-
-export interface AuthzRuntime {
-    cache: AuthzCache;
-    db: ResolverDb;
-    l1: L1AuthzCache;
-    unsubscribeWsInvalidation: () => void;
-}
 
 export interface AuthzRuntimeStatus {
     initialized: boolean;
@@ -29,21 +29,13 @@ export interface AuthzRuntimeStatus {
     l1Size: number;
 }
 
-let instance: AuthzRuntime | null = null;
 let initRetryTimer: ReturnType<typeof setInterval> | null = null;
 
-registerAuthzTenantInvalidator(invalidateAuthzTenant);
-
-// Test-only: install a stub runtime so callers that gate on
-// tryGetAuthzRuntime() lets async permission evaluation reach the admin
-// shortcut instead of fail-closing. Production code must never call this.
-export function __setAuthzRuntimeForTests(rt: AuthzRuntime | null): void {
-    instance = rt;
-}
+registerAuthzTenantCacheInvalidator(invalidateAuthzTenantCache);
 
 // Idempotent. Self-heals on Redis recovery; rebuilds shapes on live sessions.
 export async function initAuthzRuntime(): Promise<void> {
-    if (instance) return;
+    if (tryGetAuthzRuntime()) return;
     try {
         const [
             {loadAuthzConfig},
@@ -86,7 +78,7 @@ export async function initAuthzRuntime(): Promise<void> {
                 // Mirror invalidateAuthzTenant's local-process side effects on
                 // every peer instance so the shared group cache + sender shapes
                 // drop on the same hop as L1/L2.
-                invalidateGroupCache(tenantId);
+                bumpOrganizationAccessVersion(tenantId);
                 void import('../web/ws/ConnectionContext.js')
                     .then(({ConnectionContext}) => {
                         ConnectionContext.invalidateTenant(tenantId);
@@ -96,7 +88,7 @@ export async function initAuthzRuntime(): Promise<void> {
                     });
             }
         );
-        instance = {cache, db, l1, unsubscribeWsInvalidation};
+        setAuthzRuntime({cache, db, l1, unsubscribeWsInvalidation});
         const {registerModule} = await import('../Observability.js');
         registerModule('authz', {
             stats: () => ({
@@ -113,7 +105,10 @@ export async function initAuthzRuntime(): Promise<void> {
                 route: '/monitoring/services'
             }
         });
-        logger.info('authz runtime initialised (redis=%s)', cfg.redisUrl);
+        logger.info(
+            'authz runtime initialised (redis=%s)',
+            stripUrlUserinfo(cfg.redisUrl)
+        );
         if (initRetryTimer) {
             clearInterval(initRetryTimer);
             initRetryTimer = null;
@@ -137,7 +132,7 @@ export async function initAuthzRuntime(): Promise<void> {
         logger.warn('authz runtime init failed: %s', err);
         if (!initRetryTimer) {
             initRetryTimer = setInterval(() => {
-                if (instance) {
+                if (tryGetAuthzRuntime()) {
                     if (initRetryTimer) clearInterval(initRetryTimer);
                     initRetryTimer = null;
                     return;
@@ -146,10 +141,6 @@ export async function initAuthzRuntime(): Promise<void> {
             }, INIT_RETRY_INTERVAL_MS);
         }
     }
-}
-
-export function tryGetAuthzRuntime(): AuthzRuntime | null {
-    return instance;
 }
 
 export async function getAuthzRuntimeStatus(): Promise<AuthzRuntimeStatus> {
@@ -163,9 +154,13 @@ export async function getAuthzRuntimeStatus(): Promise<AuthzRuntimeStatus> {
 }
 
 export async function invalidateAuthzTenant(tenantId: string): Promise<void> {
-    // Bump group version so filteredDeviceCache + #orgDeviceIds drop on
-    // the same hop as a persona/assignment/role mutation.
-    invalidateGroupCache(tenantId);
+    // Advance the access version so filteredDeviceCache + #orgDeviceIds drop
+    // on the same hop as a persona/assignment/role mutation.
+    bumpOrganizationAccessVersion(tenantId);
+    await invalidateAuthzTenantCache(tenantId);
+}
+
+async function invalidateAuthzTenantCache(tenantId: string): Promise<void> {
     const rt = tryGetAuthzRuntime();
     if (!rt) {
         logger.error(
@@ -187,13 +182,14 @@ export async function shutdownAuthzRuntime(): Promise<void> {
         clearInterval(initRetryTimer);
         initRetryTimer = null;
     }
-    if (!instance) return;
+    const rt = tryGetAuthzRuntime();
+    if (!rt) return;
     try {
-        instance.l1.close();
-        instance.unsubscribeWsInvalidation();
-        await instance.cache.close();
+        rt.l1.close();
+        rt.unsubscribeWsInvalidation();
+        await rt.cache.close();
     } catch (err) {
         logger.warn('authz runtime shutdown error: %s', err);
     }
-    instance = null;
+    setAuthzRuntime(null);
 }

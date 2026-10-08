@@ -3,6 +3,7 @@ import {
     coverComponents,
     dimmerComponents,
     energyMeterComponents,
+    ledStripComponents,
     makeProfile,
     mergeComponents,
     type ProfileComponents,
@@ -32,7 +33,11 @@ function proProfile(spec: ProSpec): DeviceProfile {
     });
 }
 
-function circuitBreakerComponents(channels: number): ProfileComponents {
+// Hardware measures at most three phases; a fourth pole is neutral and carries
+// no voltmeter. See Shelly Pro CB docs: "Up to 3 instances of Voltmeter".
+const MAX_MEASURED_PHASES = 3;
+
+function circuitBreakerComponents(poles: number): ProfileComponents {
     const config: ProfileComponents['config'] = {
         'cb:0': {
             id: 0,
@@ -51,7 +56,8 @@ function circuitBreakerComponents(channels: number): ProfileComponents {
             safety: false
         }
     };
-    for (let channel = 0; channel < channels; channel++) {
+    const measured = Math.min(poles, MAX_MEASURED_PHASES);
+    for (let channel = 0; channel < measured; channel++) {
         config[`voltmeter:${channel}`] = {
             id: channel,
             name: `Phase ${String.fromCharCode(65 + channel)}`
@@ -109,10 +115,15 @@ const SPECS: readonly ProSpec[] = [
             macPrefix: 'A2010400',
             model: 'SPSW-202PE16EU',
             app: 'Pro2PM',
-            profile: 'cover'
+            // Two metered channels. `cover` is the device's other profile and
+            // is already covered by 2PM Gen3/Gen4, the Shutter and the Pro Dual
+            // Cover PM; a stopped cover motor reports 0 W, so keeping this one
+            // in `switch` is the only way the catalog has a two-channel Pro
+            // relay that actually meters a load.
+            profile: 'switch'
         },
         doc: 'ShellyPro2PM',
-        components: coverComponents({covers: 1, inputs: 2})
+        components: relayComponents({outputs: 2, inputs: 2, metered: true})
     },
     {
         identity: {
@@ -227,7 +238,7 @@ const SPECS: readonly ProSpec[] = [
             app: 'ProDimmer010'
         },
         doc: 'ShellyProDimmer0110VPM',
-        components: dimmerComponents({lights: 1, inputs: 2})
+        components: dimmerComponents({lights: 1, inputs: 2, metered: true})
     },
     {
         identity: {
@@ -239,7 +250,7 @@ const SPECS: readonly ProSpec[] = [
             app: 'ProDimmer1PM'
         },
         doc: 'ShellyProDimmer1PM',
-        components: dimmerComponents({lights: 1, inputs: 2})
+        components: dimmerComponents({lights: 1, inputs: 2, metered: true})
     },
     {
         identity: {
@@ -251,7 +262,7 @@ const SPECS: readonly ProSpec[] = [
             app: 'ProDimmer2PM'
         },
         doc: 'ShellyProDimmer2PM',
-        components: dimmerComponents({lights: 2, inputs: 4})
+        components: dimmerComponents({lights: 2, inputs: 4, metered: true})
     },
     {
         identity: {
@@ -294,28 +305,7 @@ const SPECS: readonly ProSpec[] = [
         },
         doc: 'ShellyProRGBWWPM',
         components: mergeComponents(
-            {
-                config: {
-                    'rgb:0': {id: 0, name: 'RGB strip'},
-                    'cct:0': {id: 0, name: 'White strip'},
-                    pro_rgbwwpm: {hf_mode: false}
-                },
-                status: {
-                    'rgb:0': {
-                        id: 0,
-                        output: true,
-                        brightness: 70,
-                        rgb: [85, 30, 15]
-                    },
-                    'cct:0': {
-                        id: 0,
-                        output: true,
-                        brightness: 62,
-                        ct: 3600
-                    },
-                    pro_rgbwwpm: {}
-                }
-            },
+            ledStripComponents(),
             relayComponents({outputs: 0, inputs: 5, metered: false})
         )
     }

@@ -2,18 +2,19 @@
   "generator": "frontend-backend-dependencies",
   "version": 1,
   "totals": {
-    "calls": 594,
-    "files": 138,
+    "calls": 661,
+    "files": 155,
     "byRouting": {
-      "fleet-manager": 548,
+      "fleet-manager": 598,
       "entity-direct": 0,
-      "device-direct": 43,
+      "device-direct": 59,
       "http-rpc": 0,
-      "http-api": 3
+      "http-api": 4
     }
   },
   "files": [
     "frontend/src/api/assetRpc.ts",
+    "frontend/src/api/automationRpc.ts",
     "frontend/src/api/bthomeRpc.ts",
     "frontend/src/api/deviceIngressRpc.ts",
     "frontend/src/api/deviceRelationshipsRpc.ts",
@@ -38,6 +39,7 @@
     "frontend/src/components/core/BluAssistConnectionsPanel.vue",
     "frontend/src/components/core/BluAssistGattBrowser.vue",
     "frontend/src/components/core/BluAssistScanPanel.vue",
+    "frontend/src/components/core/BluDiscoverPanel.vue",
     "frontend/src/components/core/BtHomeConfig.vue",
     "frontend/src/components/core/DeviceLedConfig.vue",
     "frontend/src/components/core/EthConfigPanel.vue",
@@ -52,6 +54,7 @@
     "frontend/src/components/core/maps/WorldMap.vue",
     "frontend/src/components/dashboard/DashDeviceDrillDown.vue",
     "frontend/src/components/dashboard/DashTimeShift.vue",
+    "frontend/src/components/dashboard/energy/EnergySettingsPanel.vue",
     "frontend/src/components/dashboard/energy/EnergyTariffEditor.vue",
     "frontend/src/components/devices/DeviceDiagnosticsPanel.vue",
     "frontend/src/components/entity-templates/EntityTemplate_BluGw.vue",
@@ -76,6 +79,7 @@
     "frontend/src/components/entity-templates/EntityTemplate_Service.vue",
     "frontend/src/components/entity-templates/EntityTemplate_Switch.vue",
     "frontend/src/components/entity-templates/EntityTemplate_Ui.vue",
+    "frontend/src/components/ir/IrSaveLearnedPanel.vue",
     "frontend/src/components/modals/ConfigDeployModal.vue",
     "frontend/src/components/modals/DeviceEditModal.vue",
     "frontend/src/components/modals/VirtualEditModal.vue",
@@ -85,13 +89,21 @@
     "frontend/src/components/pages/settings/AppSettings.vue",
     "frontend/src/components/pages/settings/Developer.vue",
     "frontend/src/components/pages/settings/OrganizationSettings.vue",
+    "frontend/src/components/pages/settings/accounting/BillsPanel.vue",
+    "frontend/src/components/pages/settings/accounting/CarbonPanel.vue",
+    "frontend/src/components/pages/settings/accounting/HistoricalRepairPanel.vue",
+    "frontend/src/components/pages/settings/accounting/TariffAssignmentsPanel.vue",
+    "frontend/src/components/pages/settings/accounting/TariffCoverageCheck.vue",
+    "frontend/src/components/pages/settings/accounting/TariffLibraryPanel.vue",
+    "frontend/src/components/pages/settings/accounting/tariffAssignmentWrites.ts",
     "frontend/src/components/panels/UserAuthMethodsPanel.vue",
     "frontend/src/components/panels/UserSessionsPanel.vue",
+    "frontend/src/composables/useBluScan.ts",
     "frontend/src/composables/useChartData.ts",
     "frontend/src/composables/useDeviceConfigPanel.ts",
     "frontend/src/composables/useGroupKinds.ts",
     "frontend/src/composables/useGroupLiveMetrics.ts",
-    "frontend/src/composables/usePillModes.ts",
+    "frontend/src/composables/useSensorHistory.ts",
     "frontend/src/composables/useStatusTimeline.ts",
     "frontend/src/composables/useVirtualMeta.ts",
     "frontend/src/composables/useWaitingRoomList.ts",
@@ -112,7 +124,6 @@
     "frontend/src/pages/settings/identity-policies.vue",
     "frontend/src/pages/settings/identity-smtp.vue",
     "frontend/src/pages/settings/instance.vue",
-    "frontend/src/pages/settings/monitoring/audit-log.vue",
     "frontend/src/pages/settings/monitoring/commands.vue",
     "frontend/src/pages/settings/monitoring/connections.vue",
     "frontend/src/pages/settings/monitoring/control-panel.vue",
@@ -123,6 +134,7 @@
     "frontend/src/stores/alerts.ts",
     "frontend/src/stores/analytics.ts",
     "frontend/src/stores/assignments.ts",
+    "frontend/src/stores/auditLog.ts",
     "frontend/src/stores/auth.ts",
     "frontend/src/stores/backups.ts",
     "frontend/src/stores/certificates.ts",
@@ -130,15 +142,19 @@
     "frontend/src/stores/credentials.ts",
     "frontend/src/stores/dashboards.ts",
     "frontend/src/stores/destinations.ts",
+    "frontend/src/stores/devices.ts",
     "frontend/src/stores/energyDashboard.ts",
     "frontend/src/stores/entities.ts",
     "frontend/src/stores/firmware.ts",
     "frontend/src/stores/general.ts",
     "frontend/src/stores/groups.ts",
+    "frontend/src/stores/irLibrary.ts",
     "frontend/src/stores/jobs.ts",
     "frontend/src/stores/locations.ts",
+    "frontend/src/stores/mcpApprovals.ts",
     "frontend/src/stores/monitoring.ts",
     "frontend/src/stores/notifications.ts",
+    "frontend/src/stores/operationalPolicies.ts",
     "frontend/src/stores/organization.ts",
     "frontend/src/stores/personas.ts",
     "frontend/src/stores/policyDefaults.ts",
@@ -148,6 +164,7 @@
     "frontend/src/stores/userGroups.ts",
     "frontend/src/stores/users.ts",
     "frontend/src/tools/dailyEnergyLoader.ts",
+    "frontend/src/tools/logicalMeterMeaning.ts",
     "frontend/src/tools/logicalMeters.ts",
     "frontend/src/tools/observability.ts",
     "frontend/src/tools/websocket.ts"
@@ -173,6 +190,34 @@
       "sourceFile": "frontend/src/api/assetRpc.ts",
       "sourceLine": 53,
       "callText": "sendRPC(FM, 'asset.SetLabel', {id, label})"
+    },
+    {
+      "routing": "device-direct",
+      "target": "automation.GetActivity",
+      "sourceFile": "frontend/src/api/automationRpc.ts",
+      "sourceLine": 33,
+      "callText": "sendRPC(FM, 'automation.GetActivity', flowId ? {flowId} : {})"
+    },
+    {
+      "routing": "device-direct",
+      "target": "automation.GetStatus",
+      "sourceFile": "frontend/src/api/automationRpc.ts",
+      "sourceLine": 27,
+      "callText": "sendRPC(FM, 'automation.GetStatus', {})"
+    },
+    {
+      "routing": "device-direct",
+      "target": "automation.List",
+      "sourceFile": "frontend/src/api/automationRpc.ts",
+      "sourceLine": 17,
+      "callText": "sendRPC(FM, 'automation.List', {includeDisabled: true})"
+    },
+    {
+      "routing": "device-direct",
+      "target": "automation.SetEnabled",
+      "sourceFile": "frontend/src/api/automationRpc.ts",
+      "sourceLine": 23,
+      "callText": "sendRPC(FM, 'automation.SetEnabled', input)"
     },
     {
       "routing": "device-direct",
@@ -204,31 +249,59 @@
     },
     {
       "routing": "device-direct",
+      "target": "deviceIngress.AuthMethods",
+      "sourceFile": "frontend/src/api/deviceIngressRpc.ts",
+      "sourceLine": 36,
+      "callText": "sendRPC(TARGET, 'deviceIngress.AuthMethods', {})"
+    },
+    {
+      "routing": "device-direct",
+      "target": "deviceIngress.Credential.ListExpiring",
+      "sourceFile": "frontend/src/api/deviceIngressRpc.ts",
+      "sourceLine": 172,
+      "callText": "sendRPC(TARGET, 'deviceIngress.Credential.ListExpiring', { limit: LIST_LIMIT, ...(days ? {days} : {}) })"
+    },
+    {
+      "routing": "device-direct",
       "target": "deviceIngress.EnrollmentToken.Create",
       "sourceFile": "frontend/src/api/deviceIngressRpc.ts",
-      "sourceLine": 38,
+      "sourceLine": 51,
       "callText": "sendRPC(TARGET, 'deviceIngress.EnrollmentToken.Create', { validityMinutes, preferredProfileId })"
     },
     {
       "routing": "device-direct",
       "target": "deviceIngress.EnrollmentToken.List",
       "sourceFile": "frontend/src/api/deviceIngressRpc.ts",
-      "sourceLine": 112,
+      "sourceLine": 125,
       "callText": "sendRPC(TARGET, 'deviceIngress.EnrollmentToken.List', {})"
     },
     {
       "routing": "device-direct",
       "target": "deviceIngress.EnrollmentToken.Revoke",
       "sourceFile": "frontend/src/api/deviceIngressRpc.ts",
-      "sourceLine": 116,
+      "sourceLine": 129,
       "callText": "sendRPC(TARGET, 'deviceIngress.EnrollmentToken.Revoke', {id})"
+    },
+    {
+      "routing": "device-direct",
+      "target": "deviceIngress.Identity.Disable",
+      "sourceFile": "frontend/src/api/deviceIngressRpc.ts",
+      "sourceLine": 187,
+      "callText": "sendRPC(TARGET, 'deviceIngress.Identity.Disable', {id})"
+    },
+    {
+      "routing": "device-direct",
+      "target": "deviceIngress.Identity.Enable",
+      "sourceFile": "frontend/src/api/deviceIngressRpc.ts",
+      "sourceLine": 181,
+      "callText": "sendRPC(TARGET, 'deviceIngress.Identity.Enable', {id})"
     },
     {
       "routing": "device-direct",
       "target": "deviceIngress.Identity.List",
       "sourceFile": "frontend/src/api/deviceIngressRpc.ts",
-      "sourceLine": 133,
-      "callText": "sendRPC(TARGET, 'deviceIngress.Identity.List', {})"
+      "sourceLine": 155,
+      "callText": "sendRPC(TARGET, 'deviceIngress.Identity.List', page)"
     },
     {
       "routing": "device-direct",
@@ -239,9 +312,30 @@
     },
     {
       "routing": "device-direct",
+      "target": "deviceIngress.Rotation.Cancel",
+      "sourceFile": "frontend/src/api/deviceIngressRpc.ts",
+      "sourceLine": 231,
+      "callText": "sendRPC(TARGET, 'deviceIngress.Rotation.Cancel', {id})"
+    },
+    {
+      "routing": "device-direct",
+      "target": "deviceIngress.Rotation.List",
+      "sourceFile": "frontend/src/api/deviceIngressRpc.ts",
+      "sourceLine": 225,
+      "callText": "sendRPC(TARGET, 'deviceIngress.Rotation.List', filter)"
+    },
+    {
+      "routing": "device-direct",
+      "target": "deviceIngress.Rotation.Start",
+      "sourceFile": "frontend/src/api/deviceIngressRpc.ts",
+      "sourceLine": 216,
+      "callText": "sendRPC(TARGET, 'deviceIngress.Rotation.Start', {identityIds})"
+    },
+    {
+      "routing": "device-direct",
       "target": "deviceIngress.Setup.Plan",
       "sourceFile": "frontend/src/api/deviceIngressRpc.ts",
-      "sourceLine": 73,
+      "sourceLine": 86,
       "callText": "sendRPC(TARGET, 'deviceIngress.Setup.Plan', { reportedExternalId: externalId, preferredProfileId, issueCertificate: true"
     },
     {
@@ -267,31 +361,66 @@
     },
     {
       "routing": "device-direct",
+      "target": "energy.ApplyLogicalMeterMeaningChange",
+      "sourceFile": "frontend/src/tools/logicalMeterMeaning.ts",
+      "sourceLine": 36,
+      "callText": "ws.sendRPC(DST, 'energy.ApplyLogicalMeterMeaningChange', params)"
+    },
+    {
+      "routing": "device-direct",
       "target": "energy.DeleteLogicalMeter",
       "sourceFile": "frontend/src/tools/logicalMeters.ts",
-      "sourceLine": 52,
+      "sourceLine": 54,
       "callText": "ws .sendRPC<EnergyDeleteLogicalMeterResponse>( DST, 'energy.DeleteLogicalMeter', {id} )"
+    },
+    {
+      "routing": "device-direct",
+      "target": "energy.ListLogicalMeterMeaningHistory",
+      "sourceFile": "frontend/src/tools/logicalMeterMeaning.ts",
+      "sourceLine": 24,
+      "callText": "ws.sendRPC(DST, 'energy.ListLogicalMeterMeaningHistory', params)"
+    },
+    {
+      "routing": "device-direct",
+      "target": "energy.ListLogicalMeterMeaningReviewQueue",
+      "sourceFile": "frontend/src/tools/logicalMeterMeaning.ts",
+      "sourceLine": 18,
+      "callText": "ws.sendRPC(DST, 'energy.ListLogicalMeterMeaningReviewQueue', params)"
     },
     {
       "routing": "device-direct",
       "target": "energy.ListLogicalMeters",
       "sourceFile": "frontend/src/tools/logicalMeters.ts",
-      "sourceLine": 30,
+      "sourceLine": 32,
       "callText": "ws .sendRPC<EnergyListLogicalMetersResponse>( DST, 'energy.ListLogicalMeters', {} )"
     },
     {
       "routing": "device-direct",
       "target": "energy.ListMeasurementPoints",
       "sourceFile": "frontend/src/tools/logicalMeters.ts",
-      "sourceLine": 20,
+      "sourceLine": 22,
       "callText": "ws .sendRPC<EnergyListMeasurementPointsResponse>( DST, 'energy.ListMeasurementPoints', params )"
+    },
+    {
+      "routing": "device-direct",
+      "target": "energy.PreviewLogicalMeterMeaningChange",
+      "sourceFile": "frontend/src/tools/logicalMeterMeaning.ts",
+      "sourceLine": 30,
+      "callText": "ws.sendRPC(DST, 'energy.PreviewLogicalMeterMeaningChange', params)"
     },
     {
       "routing": "device-direct",
       "target": "energy.SaveLogicalMeter",
       "sourceFile": "frontend/src/tools/logicalMeters.ts",
-      "sourceLine": 42,
+      "sourceLine": 44,
       "callText": "ws .sendRPC<EnergySaveLogicalMeterResponse>( DST, 'energy.SaveLogicalMeter', params )"
+    },
+    {
+      "routing": "device-direct",
+      "target": "energy.SetPointOverride",
+      "sourceFile": "frontend/src/tools/logicalMeters.ts",
+      "sourceLine": 66,
+      "callText": "ws.sendRPC<EnergySetPointOverrideResponse>( DST, 'energy.SetPointOverride', params )"
     },
     {
       "routing": "device-direct",
@@ -535,211 +664,239 @@
       "routing": "fleet-manager",
       "target": "alert.instance.ack",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 286,
+      "sourceLine": 624,
       "callText": "ws.sendRPC<AlertInstance>( 'FLEET_MANAGER', 'alert.instance.ack', {id} )"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.instance.get",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 249,
+      "sourceLine": 580,
       "callText": "ws.sendRPC<AlertInstance>( 'FLEET_MANAGER', 'alert.instance.get', {id} )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "alert.instance.getmany",
+      "sourceFile": "frontend/src/stores/alerts.ts",
+      "sourceLine": 516,
+      "callText": "ws.sendRPC<AlertInstanceGetManyResult>( 'FLEET_MANAGER', 'alert.instance.getmany', {ids: chunk} )"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.instance.list",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 225,
-      "callText": "ws.sendRPC<PagedEnvelope<AlertInstance>>( 'FLEET_MANAGER', 'alert.instance.list', {...filters, limit: MAX_PER_PAGE, offs"
+      "sourceLine": 352,
+      "callText": "ws.sendRPC<AlertInstanceListPage>( 'FLEET_MANAGER', 'alert.instance.list', { ...params, limit: MAX_PER_PAGE, ...(cursor "
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "alert.instance.list",
+      "sourceFile": "frontend/src/stores/alerts.ts",
+      "sourceLine": 412,
+      "callText": "ws.sendRPC<AlertInstanceListPage>( 'FLEET_MANAGER', 'alert.instance.list', {open: false, limit: 1, offset: 0} )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "alert.instance.list",
+      "sourceFile": "frontend/src/stores/alerts.ts",
+      "sourceLine": 464,
+      "callText": "ws.sendRPC<AlertInstanceListPage>( 'FLEET_MANAGER', 'alert.instance.list', { ...request.filters, open: false, limit: HIS"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.instance.listtransitions",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 268,
+      "sourceLine": 599,
       "callText": "ws.sendRPC<PagedEnvelope<AlertTransition>>( 'FLEET_MANAGER', 'alert.instance.listtransitions', {id, limit: MAX_PER_PAGE,"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.instance.resolvemanual",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 354,
+      "sourceLine": 692,
       "callText": "ws.sendRPC<AlertInstance>( 'FLEET_MANAGER', 'alert.instance.resolvemanual', {id} )"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.instance.silence",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 322,
+      "sourceLine": 660,
       "callText": "ws.sendRPC<AlertInstance>( 'FLEET_MANAGER', 'alert.instance.silence', {id, until, ...(reason ? {reason} : {})} )"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.instance.unack",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 302,
+      "sourceLine": 640,
       "callText": "ws.sendRPC<AlertInstance>( 'FLEET_MANAGER', 'alert.instance.unack', {id} )"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.instance.unsilence",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 338,
+      "sourceLine": 676,
       "callText": "ws.sendRPC<AlertInstance>( 'FLEET_MANAGER', 'alert.instance.unsilence', {id} )"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.rule.checkduplicate",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 385,
+      "sourceLine": 723,
       "callText": "ws.sendRPC<{ duplicate: {id: number; name: string} | null; }>('FLEET_MANAGER', 'alert.rule.checkduplicate', spec)"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.rule.create",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 172,
+      "sourceLine": 299,
       "callText": "ws.sendRPC<AlertRule>( 'FLEET_MANAGER', 'alert.rule.create', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.rule.createfromtemplate",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 424,
+      "sourceLine": 765,
       "callText": "ws.sendRPC<AlertRule>( 'FLEET_MANAGER', 'alert.rule.createfromtemplate', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.rule.delete",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 207,
+      "sourceLine": 334,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'alert.rule.delete', {id})"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.rule.get",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 155,
+      "sourceLine": 282,
       "callText": "ws.sendRPC<AlertRule>( 'FLEET_MANAGER', 'alert.rule.get', {id} )"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.rule.list",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 133,
+      "sourceLine": 260,
       "callText": "ws.sendRPC<PagedEnvelope<AlertRule>>( 'FLEET_MANAGER', 'alert.rule.list', {limit: MAX_PER_PAGE, offset} )"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.rule.listcomponentpaths",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 510,
+      "sourceLine": 875,
       "callText": "ws.sendRPC<{items: AlertComponentPath[]}>( 'FLEET_MANAGER', 'alert.rule.listcomponentpaths', shellyID ? {shellyID} : {} "
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "alert.rule.listeligibledevices",
+      "sourceFile": "frontend/src/stores/alerts.ts",
+      "sourceLine": 859,
+      "callText": "ws.sendRPC<{shellyIDs: string[]}>( 'FLEET_MANAGER', 'alert.rule.listeligibledevices', {kind, config} )"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.rule.listfirings",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 448,
+      "sourceLine": 789,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'alert.rule.listfirings', { id: ruleId, limit, offset })"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.rule.listkinds",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 109,
+      "sourceLine": 232,
       "callText": "ws.sendRPC<{items: AlertRuleKindDescriptor[]}>( 'FLEET_MANAGER', 'alert.rule.listkinds', {} )"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.rule.listmetricpaths",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 494,
+      "sourceLine": 835,
       "callText": "ws.sendRPC<{items: AlertMetricPath[]}>( 'FLEET_MANAGER', 'alert.rule.listmetricpaths', shellyID ? {shellyID} : {} )"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.rule.listtemplates",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 400,
+      "sourceLine": 738,
       "callText": "ws.sendRPC<{items: AlertRuleTemplate[]}>( 'FLEET_MANAGER', 'alert.rule.listtemplates', category ? {category} : {} )"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.rule.preview",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 476,
+      "sourceLine": 817,
       "callText": "ws.sendRPC( 'FLEET_MANAGER', 'alert.rule.preview', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "alert.rule.update",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 191,
+      "sourceLine": 318,
       "callText": "ws.sendRPC<AlertRule>( 'FLEET_MANAGER', 'alert.rule.update', {id, patch} )"
     },
     {
       "routing": "fleet-manager",
       "target": "Analytics.AttributeWindow",
       "sourceFile": "frontend/src/composables/useWindowAttribution.ts",
-      "sourceLine": 90,
+      "sourceLine": 93,
       "callText": "ws.sendRPC<AttributeWindowResult>( 'FLEET_MANAGER', 'Analytics.AttributeWindow', { metric: toValue(opts.metric), from: r"
     },
     {
       "routing": "fleet-manager",
       "target": "assignment.create",
       "sourceFile": "frontend/src/stores/assignments.ts",
-      "sourceLine": 119,
+      "sourceLine": 129,
       "callText": "ws.sendRPC<AssignmentResponse>( 'FLEET_MANAGER', 'assignment.create', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "assignment.delete",
       "sourceFile": "frontend/src/stores/assignments.ts",
-      "sourceLine": 140,
+      "sourceLine": 150,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'assignment.delete', {id})"
     },
     {
       "routing": "fleet-manager",
       "target": "assignment.listforpersona",
       "sourceFile": "frontend/src/stores/assignments.ts",
-      "sourceLine": 81,
+      "sourceLine": 91,
       "callText": "ws.sendRPC<{items: AssignmentResponse[]}>( 'FLEET_MANAGER', 'assignment.listforpersona', {personaId} )"
     },
     {
       "routing": "fleet-manager",
       "target": "assignment.listforresource",
       "sourceFile": "frontend/src/stores/assignments.ts",
-      "sourceLine": 103,
+      "sourceLine": 113,
       "callText": "ws.sendRPC<{items: AssignmentResponse[]}>( 'FLEET_MANAGER', 'assignment.listforresource', {resourceType, resourceId} )"
     },
     {
       "routing": "fleet-manager",
       "target": "assignment.listforsubject",
       "sourceFile": "frontend/src/stores/assignments.ts",
-      "sourceLine": 55,
+      "sourceLine": 56,
       "callText": "ws.sendRPC<{items: AssignmentResponse[]}>( 'FLEET_MANAGER', 'assignment.listforsubject', {subjectType, subjectId} )"
     },
     {
       "routing": "fleet-manager",
       "target": "Audit.Export",
-      "sourceFile": "frontend/src/pages/settings/monitoring/audit-log.vue",
-      "sourceLine": 687,
-      "callText": "sendRPC<DownloadInfo>( 'FLEET_MANAGER', 'Audit.Export', { from: new Date(filters.from).toISOString(), to: new Date(filte"
+      "sourceFile": "frontend/src/stores/auditLog.ts",
+      "sourceLine": 140,
+      "callText": "ws.sendRPC<AuditExportResponse>( 'FLEET_MANAGER', 'Audit.Export', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "Audit.Query",
-      "sourceFile": "frontend/src/pages/settings/monitoring/audit-log.vue",
-      "sourceLine": 612,
-      "callText": "sendRPC<{items: AuditRow[]; has_more?: boolean}>( 'FLEET_MANAGER', 'Audit.Query', { from, to, eventTypes: activeEventTyp"
+      "sourceFile": "frontend/src/stores/auditLog.ts",
+      "sourceLine": 79,
+      "callText": "ws.sendRPC<AuditQueryResponse>( 'FLEET_MANAGER', 'Audit.Query', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "authz_audit.list",
-      "sourceFile": "frontend/src/pages/settings/monitoring/audit-log.vue",
-      "sourceLine": 625,
-      "callText": "sendRPC<{items: AuthzAuditEntry[]; total?: number}>( 'FLEET_MANAGER', 'authz_audit.list', {from, to, limit: AUDIT_PAGE_S"
+      "sourceFile": "frontend/src/stores/auditLog.ts",
+      "sourceLine": 89,
+      "callText": "ws.sendRPC<AuthzAuditPage>( 'FLEET_MANAGER', 'authz_audit.list', params )"
     },
     {
       "routing": "fleet-manager",
@@ -782,6 +939,41 @@
       "sourceFile": "frontend/src/stores/backups.ts",
       "sourceLine": 581,
       "callText": "ws.sendRPC<BackupJobResponse>( 'FLEET_MANAGER', 'Backup.StartRestoreJob', { id: backupId, shellyID: targetShellyID, rest"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "bill.delete",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/BillsPanel.vue",
+      "sourceLine": 546,
+      "callText": "sendRPC('FLEET_MANAGER', 'bill.delete', {id: row.id})"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "bill.import",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/BillsPanel.vue",
+      "sourceLine": 524,
+      "callText": "sendRPC('FLEET_MANAGER', 'bill.import', { bills: importRows.value })"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "bill.list",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/BillsPanel.vue",
+      "sourceLine": 441,
+      "callText": "sendRPC('FLEET_MANAGER', 'bill.list', { limit: 100, cursor: nextCursor.value })"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "bill.list",
+      "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
+      "sourceLine": 700,
+      "callText": "ws.sendRPC('FLEET_MANAGER', 'bill.list', { from: periodStart, to: periodEnd, limit: 200, ...(cursor ? {cursor} : {}) })"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "bill.set",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/BillsPanel.vue",
+      "sourceLine": 425,
+      "callText": "sendRPC('FLEET_MANAGER', 'bill.set', input)"
     },
     {
       "routing": "fleet-manager",
@@ -892,175 +1084,175 @@
       "routing": "fleet-manager",
       "target": "Branding.Activate",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 569,
+      "sourceLine": 570,
       "callText": "sendRPC('FLEET_MANAGER', 'Branding.Activate', { orgId: orgId.value })"
     },
     {
       "routing": "fleet-manager",
       "target": "Branding.DeleteFont",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 525,
+      "sourceLine": 526,
       "callText": "sendRPC('FLEET_MANAGER', 'Branding.DeleteFont', { orgId: orgId.value })"
     },
     {
       "routing": "fleet-manager",
       "target": "Branding.GetMailTemplate",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 803,
+      "sourceLine": 804,
       "callText": "sendRPC<{template: string; isDefault: boolean}>( 'FLEET_MANAGER', 'Branding.GetMailTemplate', {orgId: orgId.value} )"
     },
     {
       "routing": "fleet-manager",
       "target": "Branding.GetPolicy",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 257,
+      "sourceLine": 258,
       "callText": "sendRPC<BrandingPolicy>('FLEET_MANAGER', 'Branding.GetPolicy', { orgId: orgId.value })"
     },
     {
       "routing": "fleet-manager",
       "target": "Branding.GetPreview",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 534,
+      "sourceLine": 535,
       "callText": "sendRPC<Record<string, string | boolean>>( 'FLEET_MANAGER', 'Branding.GetPreview', {orgId: orgId.value} )"
     },
     {
       "routing": "fleet-manager",
       "target": "Branding.Reset",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 577,
+      "sourceLine": 578,
       "callText": "sendRPC('FLEET_MANAGER', 'Branding.Reset', {orgId: orgId.value})"
     },
     {
       "routing": "fleet-manager",
       "target": "Branding.ResetMailTemplate",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 835,
+      "sourceLine": 836,
       "callText": "sendRPC('FLEET_MANAGER', 'Branding.ResetMailTemplate', { orgId: orgId.value })"
     },
     {
       "routing": "fleet-manager",
       "target": "Branding.SetFont",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 513,
+      "sourceLine": 514,
       "callText": "sendRPC('FLEET_MANAGER', 'Branding.SetFont', { orgId: orgId.value, fileBase64: base64, contentType: type })"
     },
     {
       "routing": "fleet-manager",
       "target": "Branding.SetMailTemplate",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 823,
+      "sourceLine": 824,
       "callText": "sendRPC('FLEET_MANAGER', 'Branding.SetMailTemplate', { orgId: orgId.value, html: mailTemplate.value })"
     },
     {
       "routing": "fleet-manager",
       "target": "Branding.SetPolicy",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 320,
+      "sourceLine": 321,
       "callText": "sendRPC( 'FLEET_MANAGER', 'Branding.SetPolicy', buildBrandingSetPayload( (branding.value ?? {}) as Record<string, unknow"
     },
     {
       "routing": "fleet-manager",
       "target": "BTHome.Control.Delete",
       "sourceFile": "frontend/src/components/core/BtHomeConfig.vue",
-      "sourceLine": 825,
+      "sourceLine": 745,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'BTHome.Control.Delete', { shellyID: props.shellyID, id })"
     },
     {
       "routing": "fleet-manager",
       "target": "BTHome.Control.GetLearningState",
       "sourceFile": "frontend/src/components/core/BtHomeConfig.vue",
-      "sourceLine": 1018,
+      "sourceLine": 835,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'BTHome.Control.GetLearningState', { shellyID: props.shellyID })"
     },
     {
       "routing": "fleet-manager",
       "target": "BTHome.Control.List",
       "sourceFile": "frontend/src/components/core/BtHomeConfig.vue",
-      "sourceLine": 788,
+      "sourceLine": 701,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'BTHome.Control.List', { shellyID: props.shellyID })"
     },
     {
       "routing": "fleet-manager",
       "target": "BTHome.Control.StartLearning",
       "sourceFile": "frontend/src/components/core/BtHomeConfig.vue",
-      "sourceLine": 762,
+      "sourceLine": 675,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'BTHome.Control.StartLearning', { shellyID: props.shellyID, inputId: learningInputId.value }"
     },
     {
       "routing": "fleet-manager",
       "target": "BTHome.Control.StopLearning",
       "sourceFile": "frontend/src/components/core/BtHomeConfig.vue",
-      "sourceLine": 777,
+      "sourceLine": 690,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'BTHome.Control.StopLearning', { shellyID: props.shellyID })"
     },
     {
       "routing": "fleet-manager",
       "target": "BTHome.Control.StopLearning",
       "sourceFile": "frontend/src/components/core/BtHomeConfig.vue",
-      "sourceLine": 1004,
+      "sourceLine": 818,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'BTHome.Control.StopLearning', { shellyID: props.shellyID })"
     },
     {
       "routing": "fleet-manager",
       "target": "BTHome.Device.AddManual",
-      "sourceFile": "frontend/src/components/core/BtHomeConfig.vue",
-      "sourceLine": 530,
-      "callText": "ws.sendRPC('FLEET_MANAGER', 'BTHome.Device.AddManual', { shellyID: props.shellyID, mac: addr })"
-    },
-    {
-      "routing": "fleet-manager",
-      "target": "BTHome.Device.AddManual",
-      "sourceFile": "frontend/src/components/core/BtHomeConfig.vue",
-      "sourceLine": 958,
-      "callText": "ws.sendRPC( 'FLEET_MANAGER', 'BTHome.Device.AddManual', { shellyID: props.shellyID, mac, productName: discovered?.produc"
+      "sourceFile": "frontend/src/components/core/BluDiscoverPanel.vue",
+      "sourceLine": 352,
+      "callText": "ws.sendRPC('FLEET_MANAGER', 'BTHome.Device.AddManual', { shellyID: props.shellyID, mac, ...extra })"
     },
     {
       "routing": "fleet-manager",
       "target": "BTHome.Device.GetKnownObjects",
       "sourceFile": "frontend/src/components/core/BtHomeConfig.vue",
-      "sourceLine": 479,
+      "sourceLine": 391,
       "callText": "ws.sendRPC( 'FLEET_MANAGER', 'BTHome.Device.GetKnownObjects', {shellyID: props.shellyID, id} )"
     },
     {
       "routing": "fleet-manager",
       "target": "BTHome.Device.Remove",
       "sourceFile": "frontend/src/components/core/BtHomeConfig.vue",
-      "sourceLine": 554,
+      "sourceLine": 445,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'BTHome.Device.Remove', { shellyID: props.shellyID, id })"
     },
     {
       "routing": "fleet-manager",
       "target": "BTHome.Device.SetKey",
       "sourceFile": "frontend/src/components/core/BtHomeConfig.vue",
-      "sourceLine": 845,
+      "sourceLine": 777,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'BTHome.Device.SetKey', { shellyID: props.shellyID, id: dev.id, key: key || null })"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "BTHome.ListDiscovered",
+      "sourceFile": "frontend/src/components/core/BluDiscoverPanel.vue",
+      "sourceLine": 331,
+      "callText": "ws.sendRPC('FLEET_MANAGER', 'BTHome.ListDiscovered', { shellyID: props.shellyID })"
     },
     {
       "routing": "fleet-manager",
       "target": "BTHome.Object.ListInfos",
       "sourceFile": "frontend/src/components/core/BtHomeConfig.vue",
-      "sourceLine": 371,
+      "sourceLine": 326,
       "callText": "ws.sendRPC( 'FLEET_MANAGER', 'BTHome.Object.ListInfos', {shellyID: props.shellyID, objIds: missing} )"
     },
     {
       "routing": "fleet-manager",
       "target": "BTHome.Sensor.Add",
       "sourceFile": "frontend/src/components/core/BtHomeConfig.vue",
-      "sourceLine": 596,
+      "sourceLine": 502,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'BTHome.Sensor.Add', { shellyID: props.shellyID, addr: dev.addr, obj_id: obj.obj_id, idx: ob"
     },
     {
       "routing": "fleet-manager",
       "target": "BTHome.Sensor.Add",
       "sourceFile": "frontend/src/components/core/BtHomeConfig.vue",
-      "sourceLine": 637,
+      "sourceLine": 543,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'BTHome.Sensor.Add', { shellyID: props.shellyID, addr: dev.addr, obj_id: obj.obj_id, idx: ob"
     },
     {
       "routing": "fleet-manager",
       "target": "BTHome.Sensor.Delete",
       "sourceFile": "frontend/src/components/core/BtHomeConfig.vue",
-      "sourceLine": 670,
+      "sourceLine": 583,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'BTHome.Sensor.Delete', { shellyID: props.shellyID, id: sensorId })"
     },
     {
@@ -1073,9 +1265,9 @@
     {
       "routing": "fleet-manager",
       "target": "BTHome.StartDiscovery",
-      "sourceFile": "frontend/src/components/core/BtHomeConfig.vue",
-      "sourceLine": 930,
-      "callText": "ws.sendRPC('FLEET_MANAGER', 'BTHome.StartDiscovery', { shellyID: props.shellyID, duration: 10 })"
+      "sourceFile": "frontend/src/composables/useBluScan.ts",
+      "sourceLine": 116,
+      "callText": "sendRPC( 'FLEET_MANAGER', 'BTHome.StartDiscovery', {shellyID: gatewayId.value} )"
     },
     {
       "routing": "fleet-manager",
@@ -1153,6 +1345,34 @@
       "sourceFile": "frontend/src/components/entity-templates/EntityTemplate_CameraZone.vue",
       "sourceLine": 141,
       "callText": "sendRPC('FLEET_MANAGER', 'Camera.Zone.SetConfig', { shellyID: props.shellyID, id: props.status?.id ?? 200, config })"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "carbon.addemissionfactor",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/CarbonPanel.vue",
+      "sourceLine": 417,
+      "callText": "sendRPC('FLEET_MANAGER', 'carbon.addemissionfactor', input)"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "carbon.addprice",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/CarbonPanel.vue",
+      "sourceLine": 449,
+      "callText": "sendRPC('FLEET_MANAGER', 'carbon.addprice', input)"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "carbon.listemissionfactors",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/CarbonPanel.vue",
+      "sourceLine": 282,
+      "callText": "sendRPC('FLEET_MANAGER', 'carbon.listemissionfactors', { limit: 100, ...(beforeId ? {beforeId} : {}) })"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "carbon.listprices",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/CarbonPanel.vue",
+      "sourceLine": 291,
+      "callText": "sendRPC('FLEET_MANAGER', 'carbon.listprices', { limit: 100, ...(beforeId ? {beforeId} : {}) })"
     },
     {
       "routing": "fleet-manager",
@@ -1242,84 +1462,91 @@
       "routing": "fleet-manager",
       "target": "channel.create",
       "sourceFile": "frontend/src/stores/channels.ts",
-      "sourceLine": 111,
+      "sourceLine": 114,
       "callText": "ws.sendRPC<Channel>( 'FLEET_MANAGER', 'channel.create', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "channel.create",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 751,
+      "sourceLine": 908,
       "callText": "ws.sendRPC<Channel>( 'FLEET_MANAGER', 'channel.create', { provider: draft.type, name: draft.name, config: draft.config }"
     },
     {
       "routing": "fleet-manager",
       "target": "channel.delete",
       "sourceFile": "frontend/src/stores/channels.ts",
-      "sourceLine": 146,
+      "sourceLine": 149,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'channel.delete', { id })"
     },
     {
       "routing": "fleet-manager",
       "target": "channel.delete",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 781,
+      "sourceLine": 938,
       "callText": "ws.sendRPC<{deleted: boolean}>( 'FLEET_MANAGER', 'channel.delete', {id: channelId} )"
     },
     {
       "routing": "fleet-manager",
       "target": "channel.get",
       "sourceFile": "frontend/src/stores/channels.ts",
-      "sourceLine": 92,
+      "sourceLine": 95,
       "callText": "ws.sendRPC<Channel>( 'FLEET_MANAGER', 'channel.get', {id} )"
     },
     {
       "routing": "fleet-manager",
       "target": "channel.list",
       "sourceFile": "frontend/src/stores/channels.ts",
-      "sourceLine": 70,
-      "callText": "ws.sendRPC<PagedEnvelope<Channel>>( 'FLEET_MANAGER', 'channel.list', {limit: MAX_ENDPOINTS_PER_PAGE, offset} )"
+      "sourceLine": 73,
+      "callText": "ws.sendRPC<PagedEnvelope<ChannelListItem>>( 'FLEET_MANAGER', 'channel.list', {limit: MAX_ENDPOINTS_PER_PAGE, offset} )"
     },
     {
       "routing": "fleet-manager",
       "target": "channel.list",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 727,
+      "sourceLine": 884,
       "callText": "ws.sendRPC<{items: Channel[]}>( 'FLEET_MANAGER', 'channel.list', type ? {provider: type} : {} )"
     },
     {
       "routing": "fleet-manager",
       "target": "channel.listproviders",
       "sourceFile": "frontend/src/stores/channels.ts",
-      "sourceLine": 53,
+      "sourceLine": 56,
       "callText": "ws.sendRPC<{ items: ChannelProviderDescriptor[]; }>('FLEET_MANAGER', 'channel.listproviders', {})"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "channel.resethealth",
+      "sourceFile": "frontend/src/stores/channels.ts",
+      "sourceLine": 169,
+      "callText": "ws.sendRPC('FLEET_MANAGER', 'channel.resethealth', {id})"
     },
     {
       "routing": "fleet-manager",
       "target": "channel.test",
       "sourceFile": "frontend/src/stores/channels.ts",
-      "sourceLine": 166,
+      "sourceLine": 184,
       "callText": "ws.sendRPC<ChannelTestResult>( 'FLEET_MANAGER', 'channel.test', {id, dryRun, ...(payload ? {payload} : {})} )"
     },
     {
       "routing": "fleet-manager",
       "target": "channel.test",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 799,
+      "sourceLine": 956,
       "callText": "ws.sendRPC<ChannelTestResult>( 'FLEET_MANAGER', 'channel.test', {id: channelId, dryRun} )"
     },
     {
       "routing": "fleet-manager",
       "target": "channel.update",
       "sourceFile": "frontend/src/stores/channels.ts",
-      "sourceLine": 130,
+      "sourceLine": 133,
       "callText": "ws.sendRPC<Channel>( 'FLEET_MANAGER', 'channel.update', {id, patch} )"
     },
     {
       "routing": "fleet-manager",
       "target": "channel.update",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 760,
+      "sourceLine": 917,
       "callText": "ws.sendRPC<Channel>( 'FLEET_MANAGER', 'channel.update', { id: draft.channelId, patch: { name: draft.name, config: draft."
     },
     {
@@ -1333,56 +1560,63 @@
       "routing": "fleet-manager",
       "target": "credential.clear",
       "sourceFile": "frontend/src/stores/credentials.ts",
-      "sourceLine": 220,
+      "sourceLine": 284,
       "callText": "ws.sendRPC<{ jobId: string; results: Array<{deviceId: string; pushId: number}>; }>('FLEET_MANAGER', 'credential.clear', "
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "credential.getmany",
+      "sourceFile": "frontend/src/stores/credentials.ts",
+      "sourceLine": 157,
+      "callText": "ws.sendRPC<CredentialGetManyResult>( 'FLEET_MANAGER', 'credential.getmany', {deviceIds} )"
     },
     {
       "routing": "fleet-manager",
       "target": "credential.list",
       "sourceFile": "frontend/src/stores/credentials.ts",
-      "sourceLine": 135,
-      "callText": "ws.sendRPC('FLEET_MANAGER', 'credential.list', { ...params, limit: BACKEND_LIST_MAX_LIMIT, offset })"
+      "sourceLine": 195,
+      "callText": "ws.sendRPC<CursorPage<DeviceCredentialResponse>>( 'FLEET_MANAGER', 'credential.list', { ...params, limit: BACKEND_LIST_M"
     },
     {
       "routing": "fleet-manager",
       "target": "credential.listpushes",
       "sourceFile": "frontend/src/stores/credentials.ts",
-      "sourceLine": 286,
+      "sourceLine": 350,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'credential.listpushes', { ...params, limit: BACKEND_LIST_MAX_LIMIT, offset })"
     },
     {
       "routing": "fleet-manager",
       "target": "credential.pushstatus",
       "sourceFile": "frontend/src/stores/credentials.ts",
-      "sourceLine": 261,
+      "sourceLine": 325,
       "callText": "ws.sendRPC<{ job: CredentialJobResponse; rows: CredentialPushRow[]; }>('FLEET_MANAGER', 'credential.pushstatus', params)"
     },
     {
       "routing": "fleet-manager",
       "target": "credential.reveal",
       "sourceFile": "frontend/src/stores/credentials.ts",
-      "sourceLine": 246,
+      "sourceLine": 310,
       "callText": "ws.sendRPC<{password: string}>( 'FLEET_MANAGER', 'credential.reveal', {deviceId, justification} )"
     },
     {
       "routing": "fleet-manager",
       "target": "credential.rotate",
       "sourceFile": "frontend/src/stores/credentials.ts",
-      "sourceLine": 193,
+      "sourceLine": 257,
       "callText": "ws.sendRPC<{ jobId: string; results: RotateResultEntry[]; }>('FLEET_MANAGER', 'credential.rotate', params)"
     },
     {
       "routing": "fleet-manager",
       "target": "credential.set",
       "sourceFile": "frontend/src/stores/credentials.ts",
-      "sourceLine": 163,
+      "sourceLine": 227,
       "callText": "ws.sendRPC<CredentialSetResult>( 'FLEET_MANAGER', 'credential.set', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "Cury.GetVialInfo",
       "sourceFile": "frontend/src/components/cards/CardValue_Cury.vue",
-      "sourceLine": 341,
+      "sourceLine": 340,
       "callText": "sendRPC( 'FLEET_MANAGER', 'Cury.GetVialInfo', { shellyID: props.entity.source, id: props.entity.properties.id ?? 0 } )"
     },
     {
@@ -1473,7 +1707,7 @@
       "routing": "fleet-manager",
       "target": "dashboard.Get",
       "sourceFile": "frontend/src/helpers/dashboardRecord.ts",
-      "sourceLine": 13,
+      "sourceLine": 19,
       "callText": "ws.sendRPC<Dashboard>('FLEET_MANAGER', 'dashboard.Get', { id })"
     },
     {
@@ -1494,8 +1728,8 @@
       "routing": "fleet-manager",
       "target": "dashboard.getsettings",
       "sourceFile": "frontend/src/pages/dash/environment/[id].vue",
-      "sourceLine": 577,
-      "callText": "ws.sendRPC<{chartSettings?: Record<string, unknown>}>( 'FLEET_MANAGER', 'dashboard.getsettings', {dashboardId: dashboard"
+      "sourceLine": 575,
+      "callText": "ws.sendRPC<{ chartSettings?: Record<string, unknown>; refreshInterval?: number; }>('FLEET_MANAGER', 'dashboard.getsettin"
     },
     {
       "routing": "fleet-manager",
@@ -1508,28 +1742,28 @@
       "routing": "fleet-manager",
       "target": "dashboard.getsettings",
       "sourceFile": "frontend/src/stores/energyDashboard.ts",
-      "sourceLine": 356,
+      "sourceLine": 633,
       "callText": "ws.sendRPC<DashboardSettings>( 'FLEET_MANAGER', 'dashboard.getsettings', {dashboardId} )"
     },
     {
       "routing": "fleet-manager",
       "target": "Dashboard.Item.Add",
       "sourceFile": "frontend/src/tools/websocket.ts",
-      "sourceLine": 2060,
+      "sourceLine": 2329,
       "callText": "sendRPC<T>('FLEET_MANAGER', 'Dashboard.Item.Add', { dashboardId: params.dashboardId, kind: params.kind, deviceId: params"
     },
     {
       "routing": "fleet-manager",
       "target": "Dashboard.Item.SetAll",
       "sourceFile": "frontend/src/pages/dash/[id].vue",
-      "sourceLine": 992,
+      "sourceLine": 964,
       "callText": "sendRPC<{ id: number; name: string; items?: DashboardItem[]; }>('FLEET_MANAGER', 'Dashboard.Item.SetAll', { dashboardId:"
     },
     {
       "routing": "fleet-manager",
       "target": "Dashboard.Item.SetAll",
       "sourceFile": "frontend/src/pages/dash/[id].vue",
-      "sourceLine": 1044,
+      "sourceLine": 1022,
       "callText": "sendRPC('FLEET_MANAGER', 'Dashboard.Item.SetAll', { dashboardId: dashId, items: dashboard.value.items.map((item: any, i:"
     },
     {
@@ -1543,7 +1777,7 @@
       "routing": "fleet-manager",
       "target": "dashboard.RemoveItem",
       "sourceFile": "frontend/src/tools/websocket.ts",
-      "sourceLine": 2081,
+      "sourceLine": 2350,
       "callText": "sendRPC<{removed: number}>( 'FLEET_MANAGER', 'dashboard.RemoveItem', { dashboard: params.dashboard, itemId: params.itemI"
     },
     {
@@ -1557,15 +1791,22 @@
       "routing": "fleet-manager",
       "target": "dashboard.setsettings",
       "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
-      "sourceLine": 1308,
+      "sourceLine": 1693,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'dashboard.setsettings', { dashboardId: dashboardId.value, ...normaliseDashboardSettings(set"
     },
     {
       "routing": "fleet-manager",
       "target": "dashboard.setsettings",
       "sourceFile": "frontend/src/pages/dash/environment/[id].vue",
-      "sourceLine": 722,
+      "sourceLine": 732,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'dashboard.setsettings', { dashboardId: dashboardId.value, chartSettings })"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "dashboard.setsettings",
+      "sourceFile": "frontend/src/pages/dash/environment/[id].vue",
+      "sourceLine": 779,
+      "callText": "ws.sendRPC('FLEET_MANAGER', 'dashboard.setsettings', { dashboardId: dashboardId.value, refreshInterval: ms })"
     },
     {
       "routing": "fleet-manager",
@@ -1613,28 +1854,28 @@
       "routing": "fleet-manager",
       "target": "Device.Call",
       "sourceFile": "frontend/src/helpers/commands.ts",
-      "sourceLine": 10,
+      "sourceLine": 11,
       "callText": "sendRPC('FLEET_MANAGER', 'Device.Call', { shellyID: dst, method, params: params ?? {} })"
     },
     {
       "routing": "fleet-manager",
       "target": "device.Get",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 3192,
+      "sourceLine": 3355,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'device.Get', { shellyID: targetShellyID })"
     },
     {
       "routing": "fleet-manager",
       "target": "device.Get",
       "sourceFile": "frontend/src/components/boards/EntityBoard.vue",
-      "sourceLine": 230,
+      "sourceLine": 231,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'device.Get', { shellyID })"
     },
     {
       "routing": "fleet-manager",
       "target": "device.Get",
       "sourceFile": "frontend/src/components/cards/DetailOverlay.vue",
-      "sourceLine": 254,
+      "sourceLine": 272,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'device.Get', { shellyID: props.entity.source })"
     },
     {
@@ -1648,7 +1889,7 @@
       "routing": "fleet-manager",
       "target": "device.getdevicechannels",
       "sourceFile": "frontend/src/stores/energyDashboard.ts",
-      "sourceLine": 503,
+      "sourceLine": 729,
       "callText": "ws.sendRPC<{ emChannels: EmChannel[]; em1Channels: EmChannel[]; }>('FLEET_MANAGER', 'device.getdevicechannels', {shellyI"
     },
     {
@@ -1661,16 +1902,23 @@
     {
       "routing": "fleet-manager",
       "target": "device.list",
+      "sourceFile": "frontend/src/stores/devices.ts",
+      "sourceLine": 578,
+      "callText": "ws.sendRPC<{items?: ShellyDeviceExternal[]}>( 'FLEET_MANAGER', 'device.list', {shellyIDs, limit: shellyIDs.length} )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "device.list",
       "sourceFile": "frontend/src/tools/websocket.ts",
-      "sourceLine": 2118,
+      "sourceLine": 2391,
       "callText": "sendRPC<DeviceListPage | ShellyDeviceExternal[]>( 'FLEET_MANAGER', 'device.list', {limit: DEVICE_PAGE_SIZE, offset: 0} )"
     },
     {
       "routing": "fleet-manager",
       "target": "device.list",
       "sourceFile": "frontend/src/tools/websocket.ts",
-      "sourceLine": 2136,
-      "callText": "sendRPC<DeviceListPage>( 'FLEET_MANAGER', 'device.list', {limit: DEVICE_PAGE_SIZE, offset} )"
+      "sourceLine": 2409,
+      "callText": "sendRPC<DeviceListPage>('FLEET_MANAGER', 'device.list', { limit: DEVICE_PAGE_SIZE, offset })"
     },
     {
       "routing": "fleet-manager",
@@ -1683,21 +1931,21 @@
       "routing": "fleet-manager",
       "target": "domain_policy.GetPolicy",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 263,
+      "sourceLine": 264,
       "callText": "sendRPC<DomainPolicy>('FLEET_MANAGER', 'domain_policy.GetPolicy', { orgId: orgId.value })"
     },
     {
       "routing": "fleet-manager",
       "target": "domain_policy.Reset",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 658,
+      "sourceLine": 659,
       "callText": "sendRPC('FLEET_MANAGER', 'domain_policy.Reset', { orgId: orgId.value })"
     },
     {
       "routing": "fleet-manager",
       "target": "domain_policy.SetPolicy",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 647,
+      "sourceLine": 648,
       "callText": "sendRPC( 'FLEET_MANAGER', 'domain_policy.SetPolicy', domainPolicySetPayload() )"
     },
     {
@@ -1732,35 +1980,35 @@
       "routing": "fleet-manager",
       "target": "Em1.CalibrateFrom",
       "sourceFile": "frontend/src/components/entity-templates/EntityTemplate_Meter.vue",
-      "sourceLine": 400,
+      "sourceLine": 410,
       "callText": "sendRPC('FLEET_MANAGER', 'Em1.CalibrateFrom', { shellyID: props.shellyID, id: props.status?.id ?? 0, other_id: calibrate"
     },
     {
       "routing": "fleet-manager",
       "target": "Em1.GetCTTypes",
       "sourceFile": "frontend/src/components/entity-templates/EntityTemplate_Meter.vue",
-      "sourceLine": 473,
+      "sourceLine": 483,
       "callText": "sendRPC<{supported?: string[]}>( 'FLEET_MANAGER', 'Em1.GetCTTypes', {shellyID: props.shellyID, id: props.status?.id ?? 0"
     },
     {
       "routing": "fleet-manager",
       "target": "Em1.RevertToFactoryCalibration",
       "sourceFile": "frontend/src/components/entity-templates/EntityTemplate_Meter.vue",
-      "sourceLine": 444,
+      "sourceLine": 454,
       "callText": "sendRPC( 'FLEET_MANAGER', 'Em1.RevertToFactoryCalibration', {shellyID: props.shellyID, id: props.status?.id ?? 0} )"
     },
     {
       "routing": "fleet-manager",
       "target": "Em1Data.DeleteAllData",
       "sourceFile": "frontend/src/components/entity-templates/EntityTemplate_Meter.vue",
-      "sourceLine": 428,
+      "sourceLine": 438,
       "callText": "sendRPC('FLEET_MANAGER', 'Em1Data.DeleteAllData', { shellyID: props.shellyID, id: props.status?.id ?? 0 })"
     },
     {
       "routing": "fleet-manager",
       "target": "Em1Data.GetNetEnergies",
       "sourceFile": "frontend/src/components/entity-templates/EntityTemplate_Meter.vue",
-      "sourceLine": 346,
+      "sourceLine": 356,
       "callText": "sendRPC<{data?: any[]}>( 'FLEET_MANAGER', 'Em1Data.GetNetEnergies', {shellyID: props.shellyID, id, ts, period} )"
     },
     {
@@ -1779,30 +2027,58 @@
     },
     {
       "routing": "fleet-manager",
+      "target": "energy.applycommodityrepair",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/HistoricalRepairPanel.vue",
+      "sourceLine": 396,
+      "callText": "sendRPC('FLEET_MANAGER', 'energy.applycommodityrepair', { previewId: preview.value.previewId, deviceId: form.deviceId })"
+    },
+    {
+      "routing": "fleet-manager",
       "target": "energy.listlogicalmeters",
       "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
-      "sourceLine": 964,
+      "sourceLine": 1331,
       "callText": "ws.sendRPC<{meters?: {role: string; costCenter?: string | null; points?: {deviceId: number}[]}[]}>( 'FLEET_MANAGER', 'en"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "energy.listmeasurementpoints",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/HistoricalRepairPanel.vue",
+      "sourceLine": 303,
+      "callText": "sendRPC( 'FLEET_MANAGER', 'energy.listmeasurementpoints', {shellyID: device.shellyID, includeAssigned: true} )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "energy.previewcommodityrepair",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/HistoricalRepairPanel.vue",
+      "sourceLine": 371,
+      "callText": "sendRPC('FLEET_MANAGER', 'energy.previewcommodityrepair', { deviceId: form.deviceId, channel: Number(form.channel), tag:"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "energy.projection",
+      "sourceFile": "frontend/src/stores/energyDashboard.ts",
+      "sourceLine": 531,
+      "callText": "ws.sendRPC<EnergyProjectionResponse>( 'FLEET_MANAGER', 'energy.projection', { ...(request.scope && Object.keys(request.s"
     },
     {
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/components/cards/CardValue_CrossSiteBarChart.vue",
-      "sourceLine": 133,
+      "sourceLine": 140,
       "callText": "ws.sendRPC<{ items?: Array<{shellyID?: string | null; value: number}>; }>('FLEET_MANAGER', 'energy.query', { from: from."
     },
     {
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/components/cards/CardValue_StatsSummary.vue",
-      "sourceLine": 133,
+      "sourceLine": 112,
       "callText": "ws.sendRPC<{ items?: Array<{ shellyID?: string | null; tag: string; value: number; min?: number | null; max?: number | n"
     },
     {
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/components/cards/CardValue_TopConsumers.vue",
-      "sourceLine": 114,
+      "sourceLine": 124,
       "callText": "ws.sendRPC<{ items?: Array<{shellyID?: string | null; value: number}>; }>('FLEET_MANAGER', 'energy.query', { from, to, t"
     },
     {
@@ -1823,120 +2099,85 @@
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/composables/useChartData.ts",
-      "sourceLine": 118,
+      "sourceLine": 272,
       "callText": "ws.sendRPC<EnergyQueryResponse>( 'FLEET_MANAGER', 'energy.query', { devices: [id], from: params.from, to: params.to, tag"
     },
     {
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
-      "sourceLine": 560,
-      "callText": "ws.sendRPC<{items: any[]}>( 'FLEET_MANAGER', 'energy.query', {...commonParams, scope: {groupId: groupId.value}} )"
+      "sourceLine": 946,
+      "callText": "ws.sendRPC<{items: any[]}>( 'FLEET_MANAGER', 'energy.query', {...commonParams, ...dashboardScopeParams()} )"
     },
     {
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
-      "sourceLine": 565,
-      "callText": "ws.sendRPC<{items: any[]}>( 'FLEET_MANAGER', 'energy.query', commonParams )"
+      "sourceLine": 1114,
+      "callText": "ws.sendRPC<{items: any[]}>('FLEET_MANAGER', 'energy.query', { ...params, ...dashboardScopeParams() })"
     },
     {
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
-      "sourceLine": 738,
-      "callText": "ws.sendRPC<{items: any[]}>('FLEET_MANAGER', 'energy.query', { ...params, scope: {groupId: groupId.value} })"
-    },
-    {
-      "routing": "fleet-manager",
-      "target": "energy.query",
-      "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
-      "sourceLine": 742,
-      "callText": "ws.sendRPC<{items: any[]}>( 'FLEET_MANAGER', 'energy.query', params )"
-    },
-    {
-      "routing": "fleet-manager",
-      "target": "energy.query",
-      "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
-      "sourceLine": 1023,
+      "sourceLine": 1380,
       "callText": "ws.sendRPC<{groups?: {label: string; value: number; unit: string}[]}>('FLEET_MANAGER', 'energy.query', {...base, groupBy"
     },
     {
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
-      "sourceLine": 1024,
+      "sourceLine": 1381,
       "callText": "ws.sendRPC<{groups?: {label: string; value: number; unit: string}[]}>('FLEET_MANAGER', 'energy.query', {...base, groupBy"
     },
     {
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
-      "sourceLine": 1026,
+      "sourceLine": 1383,
       "callText": "ws.sendRPC<{items?: {value: number}[]}>('FLEET_MANAGER', 'energy.query', { devices: genDevices, from: dateRange.value.fr"
     },
     {
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
-      "sourceLine": 1038,
+      "sourceLine": 1395,
       "callText": "ws.sendRPC<{items?: {bucket: string; tag: string; value: number}[]}>('FLEET_MANAGER', 'energy.query', { ...deviceScope()"
     },
     {
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
-      "sourceLine": 1047,
+      "sourceLine": 1404,
       "callText": "ws.sendRPC<{groups?: {key: string; value: number}[]}>('FLEET_MANAGER', 'energy.query', {...base, groupBy: 'role'})"
     },
     {
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
-      "sourceLine": 1050,
+      "sourceLine": 1407,
       "callText": "ws.sendRPC<{groups?: {key: string; value: number}[]}>('FLEET_MANAGER', 'energy.query', {...base, tags: ['total_act_ret_e"
     },
     {
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
-      "sourceLine": 1053,
-      "callText": "ws.sendRPC<{items?: {tag: string; value: number}[]}>('FLEET_MANAGER', 'energy.query', { ...deviceScope(), from: dateRang"
-    },
-    {
-      "routing": "fleet-manager",
-      "target": "energy.query",
-      "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
-      "sourceLine": 1097,
+      "sourceLine": 1443,
       "callText": "ws.sendRPC<{items?: {bucket: string; device?: number; value: number}[]}>('FLEET_MANAGER', 'energy.query', { ...deviceSco"
     },
     {
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/pages/dash/overview/[id].vue",
-      "sourceLine": 561,
-      "callText": "ws.sendRPC<{items: any[]}>('FLEET_MANAGER', 'energy.query', { ...params, scope: {groupId: groupId.value} })"
+      "sourceLine": 563,
+      "callText": "ws.sendRPC<{items: any[]}>('FLEET_MANAGER', 'energy.query', { ...params, ...dashboardScopeParam() })"
     },
     {
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/pages/dash/overview/[id].vue",
-      "sourceLine": 565,
-      "callText": "ws.sendRPC<{items: any[]}>( 'FLEET_MANAGER', 'energy.query', params )"
-    },
-    {
-      "routing": "fleet-manager",
-      "target": "energy.query",
-      "sourceFile": "frontend/src/pages/dash/overview/[id].vue",
-      "sourceLine": 599,
-      "callText": "ws.sendRPC<any>('FLEET_MANAGER', 'energy.query', { ...tempParams, scope: {groupId: groupId.value} })"
-    },
-    {
-      "routing": "fleet-manager",
-      "target": "energy.query",
-      "sourceFile": "frontend/src/pages/dash/overview/[id].vue",
-      "sourceLine": 603,
-      "callText": "ws.sendRPC<any>( 'FLEET_MANAGER', 'energy.query', tempParams )"
+      "sourceLine": 595,
+      "callText": "ws.sendRPC<any>( 'FLEET_MANAGER', 'energy.query', {...tempParams, ...dashboardScopeParam()} )"
     },
     {
       "routing": "fleet-manager",
@@ -1963,29 +2204,22 @@
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/stores/energyDashboard.ts",
-      "sourceLine": 299,
-      "callText": "ws.sendRPC<EnergyQueryResponse>( 'FLEET_MANAGER', 'energy.query', { scope: {groupId: gId}, from, to, tags: ['total_act_e"
+      "sourceLine": 467,
+      "callText": "ws.sendRPC<EnergyQueryResponse>( 'FLEET_MANAGER', 'energy.query', { ...(Object.keys(scope).length > 0 ? {scope} : {}), f"
     },
     {
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/stores/energyDashboard.ts",
-      "sourceLine": 322,
-      "callText": "ws.sendRPC<EnergyQueryResponse>( 'FLEET_MANAGER', 'energy.query', { scope: {groupId: gId}, from: prevFrom, to: prevTo, t"
+      "sourceLine": 490,
+      "callText": "ws.sendRPC<EnergyQueryResponse>( 'FLEET_MANAGER', 'energy.query', { ...(Object.keys(scope).length > 0 ? {scope} : {}), f"
     },
     {
       "routing": "fleet-manager",
       "target": "energy.query",
       "sourceFile": "frontend/src/stores/energyDashboard.ts",
-      "sourceLine": 384,
-      "callText": "ws.sendRPC<EnergyQueryResponse>( 'FLEET_MANAGER', 'energy.query', { from, to, tags: ['total_act_energy'], // AC grid ele"
-    },
-    {
-      "routing": "fleet-manager",
-      "target": "energy.query",
-      "sourceFile": "frontend/src/stores/energyDashboard.ts",
-      "sourceLine": 397,
-      "callText": "ws.sendRPC<EnergyQueryResponse>( 'FLEET_MANAGER', 'energy.query', { from: prevFrom, to: prevTo, tags: ['total_act_energy"
+      "sourceLine": 593,
+      "callText": "ws.sendRPC<EnergyQueryResponse>( 'FLEET_MANAGER', 'energy.query', { ...common, ...range } )"
     },
     {
       "routing": "fleet-manager",
@@ -1996,58 +2230,72 @@
     },
     {
       "routing": "fleet-manager",
+      "target": "energy.syncstatus",
+      "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
+      "sourceLine": 307,
+      "callText": "ws.sendRPC<EnergySyncStatus>( 'FLEET_MANAGER', 'energy.syncstatus', params )"
+    },
+    {
+      "routing": "fleet-manager",
       "target": "entity.get",
       "sourceFile": "frontend/src/tools/websocket.ts",
-      "sourceLine": 2238,
+      "sourceLine": 2510,
       "callText": "sendRPC('FLEET_MANAGER', 'entity.get', {id})"
     },
     {
       "routing": "fleet-manager",
       "target": "Entity.InvokeAction",
       "sourceFile": "frontend/src/stores/entities.ts",
-      "sourceLine": 173,
+      "sourceLine": 216,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'Entity.InvokeAction', { id: entityID, action: command.action, params: command.params })"
     },
     {
       "routing": "fleet-manager",
       "target": "Entity.InvokeAction",
       "sourceFile": "frontend/src/stores/entities.ts",
-      "sourceLine": 233,
+      "sourceLine": 276,
       "callText": "ws.sendRPC( 'FLEET_MANAGER', 'Entity.InvokeAction', { id: command.entityID, action: command.action, params: command.para"
     },
     {
       "routing": "fleet-manager",
       "target": "entity.list",
+      "sourceFile": "frontend/src/stores/entities.ts",
+      "sourceLine": 100,
+      "callText": "ws.sendRPC('FLEET_MANAGER', 'entity.list', { shellyIDs, limit: ENTITY_READ_PAGE_LIMIT, ...(cursor ? {cursor} : {}) })"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "entity.list",
       "sourceFile": "frontend/src/tools/websocket.ts",
-      "sourceLine": 2154,
+      "sourceLine": 2426,
       "callText": "sendRPC('FLEET_MANAGER', 'entity.list')"
     },
     {
       "routing": "fleet-manager",
       "target": "entity.list",
       "sourceFile": "frontend/src/tools/websocket.ts",
-      "sourceLine": 2176,
+      "sourceLine": 2448,
       "callText": "sendRPC<EntityPageResponse>( 'FLEET_MANAGER', 'entity.list', {limit: ENTITY_PAGE_SIZE, offset: 0} )"
     },
     {
       "routing": "fleet-manager",
       "target": "entity.list",
       "sourceFile": "frontend/src/tools/websocket.ts",
-      "sourceLine": 2201,
+      "sourceLine": 2473,
       "callText": "sendRPC<EntityPageResponse>('FLEET_MANAGER', 'entity.list', { limit: ENTITY_PAGE_SIZE, offset })"
     },
     {
       "routing": "fleet-manager",
       "target": "Eth.ListClients",
       "sourceFile": "frontend/src/components/core/EthConfigPanel.vue",
-      "sourceLine": 285,
+      "sourceLine": 286,
       "callText": "sendRPC< {clients?: EthClient[]} | EthClient[] >('FLEET_MANAGER', 'Eth.ListClients', {shellyID: props.shellyID})"
     },
     {
       "routing": "fleet-manager",
       "target": "Firmware.CheckForUpdateBulk",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 2961,
+      "sourceLine": 3124,
       "callText": "ws.sendRPC<{items?: FirmwareBulkItem[]}>( 'FLEET_MANAGER', 'Firmware.CheckForUpdateBulk', {shellyIDs: [targetShellyID]} "
     },
     {
@@ -2138,15 +2386,15 @@
       "routing": "fleet-manager",
       "target": "fleet.GetMetrics",
       "sourceFile": "frontend/src/pages/dash/environment/[id].vue",
-      "sourceLine": 558,
-      "callText": "ws.sendRPC('FLEET_MANAGER', 'fleet.GetMetrics', { scope: {groupId: groupId.value} })"
+      "sourceLine": 556,
+      "callText": "ws.sendRPC( 'FLEET_MANAGER', 'fleet.GetMetrics', scopeParam() )"
     },
     {
       "routing": "fleet-manager",
       "target": "fleet.GetMetrics",
       "sourceFile": "frontend/src/pages/dash/overview/[id].vue",
-      "sourceLine": 518,
-      "callText": "ws.sendRPC( 'FLEET_MANAGER', 'fleet.GetMetrics', {scope: {groupId: groupId.value}} )"
+      "sourceLine": 525,
+      "callText": "ws.sendRPC( 'FLEET_MANAGER', 'fleet.GetMetrics', dashboardScopeParam() )"
     },
     {
       "routing": "fleet-manager",
@@ -2159,28 +2407,28 @@
       "routing": "fleet-manager",
       "target": "fleet.GetMetrics",
       "sourceFile": "frontend/src/stores/energyDashboard.ts",
-      "sourceLine": 466,
+      "sourceLine": 690,
       "callText": "ws.sendRPC<{ devices: FleetMetricsDevice[]; metrics: {power: {values: {deviceId: number; value: number}[]}}; phaseMetric"
     },
     {
       "routing": "fleet-manager",
       "target": "group.create",
       "sourceFile": "frontend/src/stores/groups.ts",
-      "sourceLine": 344,
+      "sourceLine": 372,
       "callText": "ws.sendRPC<ApiGroup>( 'FLEET_MANAGER', 'group.create', { name: input.name, metadata: input.metadata ?? {}, groupType: in"
     },
     {
       "routing": "fleet-manager",
       "target": "group.delete",
       "sourceFile": "frontend/src/stores/groups.ts",
-      "sourceLine": 375,
+      "sourceLine": 403,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'group.delete', {id})"
     },
     {
       "routing": "fleet-manager",
       "target": "group.get",
       "sourceFile": "frontend/src/stores/groups.ts",
-      "sourceLine": 162,
+      "sourceLine": 173,
       "callText": "ws.sendRPC<ApiGroup>('FLEET_MANAGER', 'group.get', {id})"
     },
     {
@@ -2194,35 +2442,35 @@
       "routing": "fleet-manager",
       "target": "group.list",
       "sourceFile": "frontend/src/stores/groups.ts",
-      "sourceLine": 38,
+      "sourceLine": 50,
       "callText": "ws.sendRPC<PagedEnvelope<ApiGroup>>('FLEET_MANAGER', 'group.list', { ...params, limit: MAX_GROUPS_PER_PAGE, offset })"
     },
     {
       "routing": "fleet-manager",
       "target": "group.listactivity",
       "sourceFile": "frontend/src/stores/groups.ts",
-      "sourceLine": 405,
+      "sourceLine": 433,
       "callText": "ws.sendRPC( 'FLEET_MANAGER', 'group.listactivity', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "group.listdevicememberships",
       "sourceFile": "frontend/src/stores/groups.ts",
-      "sourceLine": 56,
+      "sourceLine": 68,
       "callText": "ws.sendRPC<ItemsResponse<GroupDeviceMembership>>( 'FLEET_MANAGER', 'group.listdevicememberships', {ids: chunk} )"
     },
     {
       "routing": "fleet-manager",
       "target": "group.listmembers",
       "sourceFile": "frontend/src/stores/groups.ts",
-      "sourceLine": 72,
-      "callText": "ws.sendRPC<PagedEnvelope<GroupMemberRef>>( 'FLEET_MANAGER', 'group.listmembers', { id, limit: MAX_MEMBERS_PER_PAGE, offs"
+      "sourceLine": 84,
+      "callText": "ws.sendRPC<CursorPage<GroupMemberRef>>( 'FLEET_MANAGER', 'group.listmembers', {id, limit: MAX_MEMBERS_PER_PAGE, ...(curs"
     },
     {
       "routing": "fleet-manager",
       "target": "group.update",
       "sourceFile": "frontend/src/stores/groups.ts",
-      "sourceLine": 371,
+      "sourceLine": 399,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'group.update', input)"
     },
     {
@@ -2264,7 +2512,7 @@
       "routing": "fleet-manager",
       "target": "Identity.GetSmtpSettings",
       "sourceFile": "frontend/src/pages/settings/identity-smtp.vue",
-      "sourceLine": 372,
+      "sourceLine": 373,
       "callText": "sendRPC<IdentitySmtpSettings>( 'FLEET_MANAGER', 'Identity.GetSmtpSettings', {} )"
     },
     {
@@ -2292,14 +2540,14 @@
       "routing": "fleet-manager",
       "target": "Identity.SetSmtpSettings",
       "sourceFile": "frontend/src/pages/settings/identity-smtp.vue",
-      "sourceLine": 401,
+      "sourceLine": 402,
       "callText": "sendRPC( 'FLEET_MANAGER', 'Identity.SetSmtpSettings', savePayload() )"
     },
     {
       "routing": "fleet-manager",
       "target": "Identity.TestSmtpSettings",
       "sourceFile": "frontend/src/pages/settings/identity-smtp.vue",
-      "sourceLine": 421,
+      "sourceLine": 422,
       "callText": "sendRPC( 'FLEET_MANAGER', 'Identity.TestSmtpSettings', testPayload() )"
     },
     {
@@ -2315,6 +2563,83 @@
       "sourceFile": "frontend/src/components/entity-templates/EntityTemplate_Input.vue",
       "sourceLine": 302,
       "callText": "sendRPC('FLEET_MANAGER', 'Input.SetConfig', { shellyID: props.shellyID, id: props.status?.id ?? 0, config })"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "ircode.getconfig",
+      "sourceFile": "frontend/src/components/ir/IrSaveLearnedPanel.vue",
+      "sourceLine": 81,
+      "callText": "ws.sendRPC('FLEET_MANAGER', 'ircode.getconfig', { shellyID: props.shellyID })"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "ircode.getstatus",
+      "sourceFile": "frontend/src/components/ir/IrSaveLearnedPanel.vue",
+      "sourceLine": 84,
+      "callText": "ws.sendRPC('FLEET_MANAGER', 'ircode.getstatus', { shellyID: props.shellyID })"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "irlibrary.cataloglist",
+      "sourceFile": "frontend/src/stores/irLibrary.ts",
+      "sourceLine": 230,
+      "callText": "ws.sendRPC<PagedEnvelope<IrCatalogRemote>>( 'FLEET_MANAGER', 'irlibrary.cataloglist', {limit: MAX_ENTRIES_PER_PAGE, offs"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "irlibrary.delete",
+      "sourceFile": "frontend/src/stores/irLibrary.ts",
+      "sourceLine": 166,
+      "callText": "ws.sendRPC('FLEET_MANAGER', 'irlibrary.delete', {id})"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "irlibrary.importcatalog",
+      "sourceFile": "frontend/src/stores/irLibrary.ts",
+      "sourceLine": 250,
+      "callText": "ws.sendRPC<IrCatalogImportResult>( 'FLEET_MANAGER', 'irlibrary.importcatalog', {ids} )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "irlibrary.importfile",
+      "sourceFile": "frontend/src/stores/irLibrary.ts",
+      "sourceLine": 186,
+      "callText": "ws.sendRPC<IrImportResult>( 'FLEET_MANAGER', 'irlibrary.importfile', {...params, dryRun: true} )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "irlibrary.importfile",
+      "sourceFile": "frontend/src/stores/irLibrary.ts",
+      "sourceLine": 204,
+      "callText": "ws.sendRPC<IrImportResult>( 'FLEET_MANAGER', 'irlibrary.importfile', params )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "irlibrary.list",
+      "sourceFile": "frontend/src/stores/irLibrary.ts",
+      "sourceLine": 97,
+      "callText": "ws.sendRPC<PagedEnvelope<IrLibraryEntry>>( 'FLEET_MANAGER', 'irlibrary.list', {...filters, limit: MAX_ENTRIES_PER_PAGE, "
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "irlibrary.pushtodevice",
+      "sourceFile": "frontend/src/stores/irLibrary.ts",
+      "sourceLine": 272,
+      "callText": "ws.sendRPC<IrPushResult>( 'FLEET_MANAGER', 'irlibrary.pushtodevice', target )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "irlibrary.save",
+      "sourceFile": "frontend/src/stores/irLibrary.ts",
+      "sourceLine": 125,
+      "callText": "ws.sendRPC<IrLibraryEntry>( 'FLEET_MANAGER', 'irlibrary.save', params )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "irlibrary.update",
+      "sourceFile": "frontend/src/stores/irLibrary.ts",
+      "sourceLine": 150,
+      "callText": "ws.sendRPC<IrLibraryEntry>( 'FLEET_MANAGER', 'irlibrary.update', {id, patch} )"
     },
     {
       "routing": "fleet-manager",
@@ -2362,43 +2687,50 @@
       "routing": "fleet-manager",
       "target": "location.children",
       "sourceFile": "frontend/src/stores/locations.ts",
-      "sourceLine": 184,
+      "sourceLine": 189,
       "callText": "ws.sendRPC<ListResp>('FLEET_MANAGER', 'location.children', { id: parentId, limit: PAGE_MAX, offset, includeSummary: true"
     },
     {
       "routing": "fleet-manager",
       "target": "location.create",
       "sourceFile": "frontend/src/stores/locations.ts",
-      "sourceLine": 264,
+      "sourceLine": 269,
       "callText": "ws.sendRPC<ApiLocation>( 'FLEET_MANAGER', 'location.create', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "location.delete",
       "sourceFile": "frontend/src/stores/locations.ts",
-      "sourceLine": 308,
+      "sourceLine": 313,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'location.delete', {id})"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "location.deletesubtree",
+      "sourceFile": "frontend/src/stores/locations.ts",
+      "sourceLine": 334,
+      "callText": "ws.sendRPC<{deletedIds: number[]}>( 'FLEET_MANAGER', 'location.deletesubtree', {id} )"
     },
     {
       "routing": "fleet-manager",
       "target": "location.get",
       "sourceFile": "frontend/src/stores/locations.ts",
-      "sourceLine": 205,
+      "sourceLine": 210,
       "callText": "ws.sendRPC<ApiLocation>( 'FLEET_MANAGER', 'location.get', {id, includeSummary: true} )"
     },
     {
       "routing": "fleet-manager",
       "target": "location.list",
       "sourceFile": "frontend/src/stores/locations.ts",
-      "sourceLine": 155,
+      "sourceLine": 160,
       "callText": "ws.sendRPC<ListResp>('FLEET_MANAGER', 'location.list', { limit: PAGE_MAX, offset, includeSummary: true })"
     },
     {
       "routing": "fleet-manager",
       "target": "location.listassignments",
       "sourceFile": "frontend/src/stores/locations.ts",
-      "sourceLine": 630,
-      "callText": "ws.sendRPC<PagedEnvelope<LocationAssignment>>( 'FLEET_MANAGER', 'location.listassignments', {...params, limit: PAGE_MAX,"
+      "sourceLine": 634,
+      "callText": "ws.sendRPC<CursorPage<LocationAssignment>>( 'FLEET_MANAGER', 'location.listassignments', {...params, limit: PAGE_MAX, .."
     },
     {
       "routing": "fleet-manager",
@@ -2411,7 +2743,7 @@
       "routing": "fleet-manager",
       "target": "location.listkinds",
       "sourceFile": "frontend/src/stores/locations.ts",
-      "sourceLine": 237,
+      "sourceLine": 242,
       "callText": "ws.sendRPC<LocationListKindsResponse>( 'FLEET_MANAGER', 'location.listkinds', {} )"
     },
     {
@@ -2425,14 +2757,14 @@
       "routing": "fleet-manager",
       "target": "location.path",
       "sourceFile": "frontend/src/stores/locations.ts",
-      "sourceLine": 222,
+      "sourceLine": 227,
       "callText": "ws.sendRPC<ItemsResp<LocationBreadcrumbEntry>>( 'FLEET_MANAGER', 'location.path', {id} )"
     },
     {
       "routing": "fleet-manager",
       "target": "location.removeassignment",
       "sourceFile": "frontend/src/stores/locations.ts",
-      "sourceLine": 421,
+      "sourceLine": 425,
       "callText": "ws.sendRPC( 'FLEET_MANAGER', 'location.removeassignment', { subjectType, subjectId } )"
     },
     {
@@ -2446,14 +2778,14 @@
       "routing": "fleet-manager",
       "target": "location.setassignment",
       "sourceFile": "frontend/src/stores/locations.ts",
-      "sourceLine": 565,
+      "sourceLine": 569,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'location.setassignment', input)"
     },
     {
       "routing": "fleet-manager",
       "target": "location.setassignments",
       "sourceFile": "frontend/src/stores/locations.ts",
-      "sourceLine": 712,
+      "sourceLine": 810,
       "callText": "ws.sendRPC( 'FLEET_MANAGER', 'location.setassignments', {locationId, subjects} )"
     },
     {
@@ -2467,28 +2799,28 @@
       "routing": "fleet-manager",
       "target": "location.update",
       "sourceFile": "frontend/src/stores/locations.ts",
-      "sourceLine": 286,
+      "sourceLine": 291,
       "callText": "ws.sendRPC<ApiLocation>( 'FLEET_MANAGER', 'location.update', {id, ...patch} )"
     },
     {
       "routing": "fleet-manager",
       "target": "login_text.GetText",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 695,
+      "sourceLine": 696,
       "callText": "sendRPC<Record<string, unknown>>( 'FLEET_MANAGER', 'login_text.GetText', {orgId: orgId.value, language: loginTextLanguag"
     },
     {
       "routing": "fleet-manager",
       "target": "login_text.Reset",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 732,
+      "sourceLine": 733,
       "callText": "sendRPC('FLEET_MANAGER', 'login_text.Reset', { orgId: orgId.value, language: loginTextLanguage.value })"
     },
     {
       "routing": "fleet-manager",
       "target": "login_text.SetText",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 720,
+      "sourceLine": 721,
       "callText": "sendRPC('FLEET_MANAGER', 'login_text.SetText', { orgId: orgId.value, language: loginTextLanguage.value, text: parsed })"
     },
     {
@@ -2504,6 +2836,20 @@
       "sourceFile": "frontend/src/components/entity-templates/EntityTemplate_Matter.vue",
       "sourceLine": 153,
       "callText": "sendRPC<{qr_code: string; manual_code: string}>( 'FLEET_MANAGER', 'Matter.GetSetupCode', {shellyID: props.shellyID} )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "mcp_approval.List",
+      "sourceFile": "frontend/src/stores/mcpApprovals.ts",
+      "sourceLine": 44,
+      "callText": "ws.sendRPC<McpApprovalPage>( 'FLEET_MANAGER', 'mcp_approval.List', params )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "mcp_approval.Revoke",
+      "sourceFile": "frontend/src/stores/mcpApprovals.ts",
+      "sourceLine": 52,
+      "callText": "ws.sendRPC<McpApprovalRevokeResult>( 'FLEET_MANAGER', 'mcp_approval.Revoke', {id} )"
     },
     {
       "routing": "fleet-manager",
@@ -2565,42 +2911,42 @@
       "routing": "fleet-manager",
       "target": "message_text.GetText",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 743,
+      "sourceLine": 744,
       "callText": "sendRPC<Record<string, unknown>>( 'FLEET_MANAGER', 'message_text.GetText', { orgId: orgId.value, type: messageTextType.v"
     },
     {
       "routing": "fleet-manager",
       "target": "message_text.Reset",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 791,
+      "sourceLine": 792,
       "callText": "sendRPC('FLEET_MANAGER', 'message_text.Reset', { orgId: orgId.value, type: messageTextType.value, language: messageTextL"
     },
     {
       "routing": "fleet-manager",
       "target": "message_text.SetText",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 778,
+      "sourceLine": 779,
       "callText": "sendRPC('FLEET_MANAGER', 'message_text.SetText', { ...payload, orgId: orgId.value, type: messageTextType.value, language"
     },
     {
       "routing": "fleet-manager",
       "target": "notification_policy.GetPolicy",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 266,
+      "sourceLine": 267,
       "callText": "sendRPC<NotificationPolicy>( 'FLEET_MANAGER', 'notification_policy.GetPolicy', {orgId: orgId.value} )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification_policy.Reset",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 685,
+      "sourceLine": 686,
       "callText": "sendRPC('FLEET_MANAGER', 'notification_policy.Reset', { orgId: orgId.value })"
     },
     {
       "routing": "fleet-manager",
       "target": "notification_policy.SetPolicy",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 674,
+      "sourceLine": 675,
       "callText": "sendRPC( 'FLEET_MANAGER', 'notification_policy.SetPolicy', notificationPolicySetPayload() )"
     },
     {
@@ -2656,246 +3002,295 @@
       "routing": "fleet-manager",
       "target": "notification.emailasset.delete",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 701,
+      "sourceLine": 858,
       "callText": "ws.sendRPC( 'FLEET_MANAGER', 'notification.emailasset.delete', { id } )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.emailasset.get",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 663,
+      "sourceLine": 820,
       "callText": "ws.sendRPC<EmailAsset>( 'FLEET_MANAGER', 'notification.emailasset.get', {id} )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.emailasset.list",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 643,
+      "sourceLine": 800,
       "callText": "ws.sendRPC<PagedEnvelope<EmailAsset>>( 'FLEET_MANAGER', 'notification.emailasset.list', {limit: MAX_PER_PAGE, offset} )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.emailtemplate.create",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 581,
+      "sourceLine": 738,
       "callText": "ws.sendRPC<EmailTemplate>( 'FLEET_MANAGER', 'notification.emailtemplate.create', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.emailtemplate.delete",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 621,
+      "sourceLine": 778,
       "callText": "ws.sendRPC( 'FLEET_MANAGER', 'notification.emailtemplate.delete', { id } )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.emailtemplate.get",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 559,
+      "sourceLine": 716,
       "callText": "ws.sendRPC<EmailTemplate>( 'FLEET_MANAGER', 'notification.emailtemplate.get', {id} )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.emailtemplate.list",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 537,
+      "sourceLine": 694,
       "callText": "ws.sendRPC<PagedEnvelope<EmailTemplate>>( 'FLEET_MANAGER', 'notification.emailtemplate.list', {limit: MAX_PER_PAGE, offs"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.emailtemplate.update",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 606,
+      "sourceLine": 763,
       "callText": "ws.sendRPC<EmailTemplate>( 'FLEET_MANAGER', 'notification.emailtemplate.update', {id, ...patch} )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.history.get",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 432,
+      "sourceLine": 518,
       "callText": "ws.sendRPC<{ job: DeliveryJob; attempts: DeliveryAttempt[]; }>('FLEET_MANAGER', 'notification.history.get', {id})"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.history.list",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 409,
+      "sourceLine": 495,
       "callText": "ws.sendRPC<PagedEnvelope<DeliveryJob>>( 'FLEET_MANAGER', 'notification.history.list', {...filters, limit: MAX_PER_PAGE, "
     },
     {
       "routing": "fleet-manager",
       "target": "notification.history.requeue",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 449,
+      "sourceLine": 535,
       "callText": "ws.sendRPC<DeliveryJob>( 'FLEET_MANAGER', 'notification.history.requeue', {id} )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "notification.inbox.getmany",
+      "sourceFile": "frontend/src/stores/notifications.ts",
+      "sourceLine": 572,
+      "callText": "ws.sendRPC<NotificationInboxGetManyResult>( 'FLEET_MANAGER', 'notification.inbox.getmany', {ids} )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.inbox.list",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 289,
+      "sourceLine": 312,
+      "callText": "ws.sendRPC<{total?: number}>( 'FLEET_MANAGER', 'notification.inbox.list', {state: 'unread', limit: 1} )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "notification.inbox.list",
+      "sourceFile": "frontend/src/stores/notifications.ts",
+      "sourceLine": 375,
       "callText": "ws.sendRPC<PagedEnvelope<NotificationInboxItem>>( 'FLEET_MANAGER', 'notification.inbox.list', { ...(state ? {state} : {}"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.inbox.markallread",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 383,
+      "sourceLine": 469,
       "callText": "ws.sendRPC<{updatedCount: number}>( 'FLEET_MANAGER', 'notification.inbox.markallread', {} )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.inbox.markread",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 366,
+      "sourceLine": 452,
       "callText": "ws.sendRPC<NotificationInboxItem>( 'FLEET_MANAGER', 'notification.inbox.markread', {id} )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.inbox.markunread",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 374,
+      "sourceLine": 460,
       "callText": "ws.sendRPC<NotificationInboxItem>( 'FLEET_MANAGER', 'notification.inbox.markunread', {id} )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.oauth.start",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 1087,
+      "sourceLine": 1244,
       "callText": "ws.sendRPC<OAuthStartResult>( 'FLEET_MANAGER', 'notification.oauth.start', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.oncall.delete",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 939,
+      "sourceLine": 1096,
       "callText": "ws.sendRPC<{deleted: boolean}>( 'FLEET_MANAGER', 'notification.oncall.delete', {scheduleId} )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.oncall.list",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 906,
+      "sourceLine": 1063,
       "callText": "ws.sendRPC<{ items: NotificationOnCallSchedule[]; }>('FLEET_MANAGER', 'notification.oncall.list', {enabledOnly})"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.oncall.set",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 924,
+      "sourceLine": 1081,
       "callText": "ws.sendRPC<NotificationOnCallSchedule>( 'FLEET_MANAGER', 'notification.oncall.set', draft )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.preference.list",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 956,
+      "sourceLine": 1113,
       "callText": "ws.sendRPC<{items: NotificationPreference[]}>( 'FLEET_MANAGER', 'notification.preference.list', {} )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.preference.set",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 985,
+      "sourceLine": 1142,
       "callText": "ws.sendRPC<NotificationPreference>( 'FLEET_MANAGER', 'notification.preference.set', draft )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.renderemailpreview",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 520,
+      "sourceLine": 677,
       "callText": "ws.sendRPC<EmailPreviewResult>( 'FLEET_MANAGER', 'notification.renderemailpreview', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.rendertemplate",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 497,
+      "sourceLine": 654,
       "callText": "ws.sendRPC( 'FLEET_MANAGER', 'notification.rendertemplate', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.routing.delete",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 872,
+      "sourceLine": 1029,
       "callText": "ws.sendRPC<{deleted: boolean}>( 'FLEET_MANAGER', 'notification.routing.delete', {policyId} )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.routing.evaluate",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 891,
+      "sourceLine": 1048,
       "callText": "ws.sendRPC<{matches: NotificationRoutingPolicy[]}>( 'FLEET_MANAGER', 'notification.routing.evaluate', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.routing.list",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 839,
+      "sourceLine": 996,
       "callText": "ws.sendRPC<{ items: NotificationRoutingPolicy[]; }>('FLEET_MANAGER', 'notification.routing.list', {enabledOnly})"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.routing.set",
       "sourceFile": "frontend/src/stores/notifications.ts",
-      "sourceLine": 857,
+      "sourceLine": 1014,
       "callText": "ws.sendRPC<NotificationRoutingPolicy>( 'FLEET_MANAGER', 'notification.routing.set', draft )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.template.create",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 552,
+      "sourceLine": 917,
       "callText": "ws.sendRPC<MessageTemplate>( 'FLEET_MANAGER', 'notification.template.create', draft )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.template.delete",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 587,
+      "sourceLine": 952,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'notification.template.delete', { id })"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.template.list",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 530,
+      "sourceLine": 895,
       "callText": "ws.sendRPC<{items: MessageTemplate[]}>( 'FLEET_MANAGER', 'notification.template.list', {} )"
     },
     {
       "routing": "fleet-manager",
       "target": "notification.template.update",
       "sourceFile": "frontend/src/stores/alerts.ts",
-      "sourceLine": 571,
+      "sourceLine": 936,
       "callText": "ws.sendRPC<MessageTemplate>( 'FLEET_MANAGER', 'notification.template.update', {id, patch} )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "operations.deletepolicy",
+      "sourceFile": "frontend/src/stores/operationalPolicies.ts",
+      "sourceLine": 146,
+      "callText": "ws.sendRPC('FLEET_MANAGER', 'operations.deletepolicy', { organizationId, family, policyId })"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "operations.getpolicies",
+      "sourceFile": "frontend/src/stores/operationalPolicies.ts",
+      "sourceLine": 46,
+      "callText": "ws.sendRPC<OperationalPolicies>( 'FLEET_MANAGER', 'operations.getpolicies', {organizationId} )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "operations.getpolicyregistry",
+      "sourceFile": "frontend/src/stores/operationalPolicies.ts",
+      "sourceLine": 41,
+      "callText": "ws.sendRPC<OperationalPolicyRegistry>( 'FLEET_MANAGER', 'operations.getpolicyregistry', {organizationId} )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "operations.getpolicyselectorcatalog",
+      "sourceFile": "frontend/src/stores/operationalPolicies.ts",
+      "sourceLine": 88,
+      "callText": "ws.sendRPC<OperationalPolicySelectorCatalog>( 'FLEET_MANAGER', 'operations.getpolicyselectorcatalog', {organizationId, f"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "operations.setpolicy",
+      "sourceFile": "frontend/src/stores/operationalPolicies.ts",
+      "sourceLine": 119,
+      "callText": "ws.sendRPC('FLEET_MANAGER', 'operations.setpolicy', { organizationId, family, policy })"
     },
     {
       "routing": "fleet-manager",
       "target": "organization.getprofile",
       "sourceFile": "frontend/src/components/pages/settings/OrganizationSettings.vue",
-      "sourceLine": 84,
+      "sourceLine": 510,
       "callText": "sendRPC<OrganizationProfile>( 'FLEET_MANAGER', 'organization.getprofile', {} )"
     },
     {
       "routing": "fleet-manager",
       "target": "organization.getprofile",
       "sourceFile": "frontend/src/stores/organization.ts",
-      "sourceLine": 27,
+      "sourceLine": 29,
       "callText": "ws.sendRPC<OrganizationProfile>( 'FLEET_MANAGER', 'organization.getprofile', {} )"
     },
     {
       "routing": "fleet-manager",
       "target": "organization.getscopemodel",
       "sourceFile": "frontend/src/stores/scopeModel.ts",
-      "sourceLine": 21,
+      "sourceLine": 22,
       "callText": "ws.sendRPC<OrganizationScopeModel>( 'FLEET_MANAGER', 'organization.getscopemodel', {} )"
     },
     {
       "routing": "fleet-manager",
       "target": "organization.setprofile",
       "sourceFile": "frontend/src/components/pages/settings/OrganizationSettings.vue",
-      "sourceLine": 104,
-      "callText": "sendRPC('FLEET_MANAGER', 'organization.setprofile', { patch: {timezoneDefault} })"
+      "sourceLine": 549,
+      "callText": "sendRPC('FLEET_MANAGER', 'organization.setprofile', { patch: {[field.key]: next} })"
     },
     {
       "routing": "fleet-manager",
@@ -2908,63 +3303,63 @@
       "routing": "fleet-manager",
       "target": "permission.GetRoles",
       "sourceFile": "frontend/src/pages/settings/authz-simulator.vue",
-      "sourceLine": 325,
+      "sourceLine": 326,
       "callText": "sendRPC<{userId: string; roleKeys: string[]}>( 'FLEET_MANAGER', 'permission.GetRoles', {userId: id} )"
     },
     {
       "routing": "fleet-manager",
       "target": "persona.create",
       "sourceFile": "frontend/src/stores/personas.ts",
-      "sourceLine": 70,
+      "sourceLine": 77,
       "callText": "ws.sendRPC<PersonaResponse>( 'FLEET_MANAGER', 'persona.create', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "persona.delete",
       "sourceFile": "frontend/src/stores/personas.ts",
-      "sourceLine": 104,
+      "sourceLine": 111,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'persona.delete', {id})"
     },
     {
       "routing": "fleet-manager",
       "target": "persona.get",
       "sourceFile": "frontend/src/stores/personas.ts",
-      "sourceLine": 51,
+      "sourceLine": 58,
       "callText": "ws.sendRPC<PersonaResponse>( 'FLEET_MANAGER', 'persona.get', {id} )"
     },
     {
       "routing": "fleet-manager",
       "target": "persona.list",
       "sourceFile": "frontend/src/stores/personas.ts",
-      "sourceLine": 29,
+      "sourceLine": 30,
       "callText": "ws.sendRPC<{items: PersonaResponse[]}>( 'FLEET_MANAGER', 'persona.list', {includeSystem} )"
     },
     {
       "routing": "fleet-manager",
       "target": "persona.update",
       "sourceFile": "frontend/src/stores/personas.ts",
-      "sourceLine": 88,
+      "sourceLine": 95,
       "callText": "ws.sendRPC<PersonaResponse>( 'FLEET_MANAGER', 'persona.update', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "Pill.SetConfig",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 2600,
+      "sourceLine": 2761,
       "callText": "ws.sendRPC<{restart_required?: boolean}>( 'FLEET_MANAGER', 'Pill.SetConfig', {shellyID: targetShellyID, config} )"
     },
     {
       "routing": "fleet-manager",
       "target": "Pill.SetConfig",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 2642,
+      "sourceLine": 2804,
       "callText": "ws.sendRPC<{restart_required?: boolean}>( 'FLEET_MANAGER', 'Pill.SetConfig', { shellyID: targetShellyID, config: {[pinKe"
     },
     {
       "routing": "fleet-manager",
       "target": "plugin.list",
       "sourceFile": "frontend/src/tools/websocket.ts",
-      "sourceLine": 2229,
+      "sourceLine": 2501,
       "callText": "sendRPC('FLEET_MANAGER', 'plugin.list')"
     },
     {
@@ -3083,42 +3478,42 @@
       "routing": "fleet-manager",
       "target": "Privacy.GetPolicy",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 260,
+      "sourceLine": 261,
       "callText": "sendRPC<PrivacyPolicy>('FLEET_MANAGER', 'Privacy.GetPolicy', { orgId: orgId.value })"
     },
     {
       "routing": "fleet-manager",
       "target": "Privacy.Reset",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 608,
+      "sourceLine": 609,
       "callText": "sendRPC('FLEET_MANAGER', 'Privacy.Reset', {orgId: orgId.value})"
     },
     {
       "routing": "fleet-manager",
       "target": "Privacy.SetPolicy",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 602,
+      "sourceLine": 603,
       "callText": "sendRPC('FLEET_MANAGER', 'Privacy.SetPolicy', privacySetPayload())"
     },
     {
       "routing": "fleet-manager",
       "target": "report.cancel",
       "sourceFile": "frontend/src/helpers/reportGeneration.ts",
-      "sourceLine": 151,
+      "sourceLine": 173,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'report.cancel', {jobId})"
     },
     {
       "routing": "fleet-manager",
       "target": "report.generate",
       "sourceFile": "frontend/src/helpers/reportGeneration.ts",
-      "sourceLine": 135,
+      "sourceLine": 157,
       "callText": "ws.sendRPC<ReportJob>( 'FLEET_MANAGER', 'report.generate', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "report.getreport",
       "sourceFile": "frontend/src/helpers/reportGeneration.ts",
-      "sourceLine": 111,
+      "sourceLine": 133,
       "callText": "ws.sendRPC<ReportStatus>( 'FLEET_MANAGER', 'report.getreport', {jobId} )"
     },
     {
@@ -3132,28 +3527,28 @@
       "routing": "fleet-manager",
       "target": "Restrictions.Get",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 275,
+      "sourceLine": 276,
       "callText": "sendRPC<RestrictionsPolicy>( 'FLEET_MANAGER', 'Restrictions.Get', {} )"
     },
     {
       "routing": "fleet-manager",
       "target": "Restrictions.Get",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 849,
+      "sourceLine": 850,
       "callText": "sendRPC<RestrictionsPolicy>( 'FLEET_MANAGER', 'Restrictions.Get', {} )"
     },
     {
       "routing": "fleet-manager",
       "target": "Restrictions.Set",
       "sourceFile": "frontend/src/pages/settings/branding.vue",
-      "sourceLine": 621,
+      "sourceLine": 622,
       "callText": "sendRPC('FLEET_MANAGER', 'Restrictions.Set', { disallowPublicOrgRegistration: restrictions.value?.disallowPublicOrgRegis"
     },
     {
       "routing": "fleet-manager",
       "target": "schedule.Create",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 2923,
+      "sourceLine": 3086,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'schedule.Create', { shellyID: shellyID.value, enable: true, timespec: FIRMWARE_AUTO_TIMESPE"
     },
     {
@@ -3174,7 +3569,7 @@
       "routing": "fleet-manager",
       "target": "schedule.Delete",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 2917,
+      "sourceLine": 3080,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'schedule.Delete', { shellyID: shellyID.value, id: firmwareAutoJob.value.id })"
     },
     {
@@ -3202,7 +3597,7 @@
       "routing": "fleet-manager",
       "target": "schedule.List",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 2859,
+      "sourceLine": 3022,
       "callText": "ws.sendRPC<{ items?: Array<{ id: number; timespec: string; enable: boolean; calls?: Array<{method?: string}>; }>; }>('FL"
     },
     {
@@ -3320,15 +3715,36 @@
     {
       "routing": "fleet-manager",
       "target": "sensor.events",
+      "sourceFile": "frontend/src/composables/useSensorHistory.ts",
+      "sourceLine": 221,
+      "callText": "ws.sendRPC<SensorEventsResponse>( 'FLEET_MANAGER', 'sensor.events', { from: midnight.toISOString(), to: new Date().toISO"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "sensor.events",
       "sourceFile": "frontend/src/pages/dash/environment/[id].vue",
-      "sourceLine": 548,
+      "sourceLine": 547,
       "callText": "ws.sendRPC<SensorEventsResponse>( 'FLEET_MANAGER', 'sensor.events', {from, to, devices: capped} )"
     },
     {
       "routing": "fleet-manager",
       "target": "sensor.query",
+      "sourceFile": "frontend/src/composables/useChartData.ts",
+      "sourceLine": 254,
+      "callText": "ws.sendRPC<SensorQueryResponse>( 'FLEET_MANAGER', 'sensor.query', { devices: [id], from: params.from, to: params.to, kin"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "sensor.query",
+      "sourceFile": "frontend/src/composables/useSensorHistory.ts",
+      "sourceLine": 156,
+      "callText": "ws.sendRPC<SensorQueryResponse>( 'FLEET_MANAGER', 'sensor.query', { ...windowNow(DAY_MS), kinds: [...kinds.value], devic"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "sensor.query",
       "sourceFile": "frontend/src/pages/dash/environment/[id].vue",
-      "sourceLine": 517,
+      "sourceLine": 516,
       "callText": "ws.sendRPC<SensorQueryResponse>( 'FLEET_MANAGER', 'sensor.query', {from, to, kinds, bucket, ...scopeParam()} )"
     },
     {
@@ -3356,7 +3772,7 @@
       "routing": "fleet-manager",
       "target": "Shelly.FactoryReset",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 2995,
+      "sourceLine": 3158,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'Shelly.FactoryReset', { shellyID: targetShellyID })"
     },
     {
@@ -3365,20 +3781,6 @@
       "sourceFile": "frontend/src/components/core/LnmPanel.vue",
       "sourceLine": 246,
       "callText": "sendRPC<{ components?: DynamicComponentEntry[]; }>('FLEET_MANAGER', 'Shelly.GetComponents', { shellyID: props.shellyID, "
-    },
-    {
-      "routing": "fleet-manager",
-      "target": "Shelly.GetComponents",
-      "sourceFile": "frontend/src/composables/usePillModes.ts",
-      "sourceLine": 168,
-      "callText": "sendRPC<unknown>('FLEET_MANAGER', 'Shelly.GetComponents', { shellyID: id, keys: ['pill'] })"
-    },
-    {
-      "routing": "fleet-manager",
-      "target": "Shelly.GetComponents",
-      "sourceFile": "frontend/src/composables/usePillModes.ts",
-      "sourceLine": 172,
-      "callText": "sendRPC<unknown>('FLEET_MANAGER', 'Shelly.GetComponents', { shellyID: id })"
     },
     {
       "routing": "fleet-manager",
@@ -3391,21 +3793,21 @@
       "routing": "fleet-manager",
       "target": "Shelly.ListProfiles",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 2432,
+      "sourceLine": 2522,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'Shelly.ListProfiles', { shellyID: targetShellyID })"
     },
     {
       "routing": "fleet-manager",
       "target": "Shelly.Reboot",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 2709,
+      "sourceLine": 2872,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'Shelly.Reboot', { shellyID: targetShellyID })"
     },
     {
       "routing": "fleet-manager",
       "target": "Shelly.Reboot",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 2790,
+      "sourceLine": 2953,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'Shelly.Reboot', { shellyID: targetShellyID })"
     },
     {
@@ -3461,56 +3863,56 @@
       "routing": "fleet-manager",
       "target": "Shelly.SetProfile",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 2466,
+      "sourceLine": 2561,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'Shelly.SetProfile', { shellyID: targetShellyID, name: newProfile })"
     },
     {
       "routing": "fleet-manager",
       "target": "Shelly.Update",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 2900,
+      "sourceLine": 3063,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'Shelly.Update', { shellyID: shellyID.value, stage })"
     },
     {
       "routing": "fleet-manager",
       "target": "Storage.GetAll",
       "sourceFile": "frontend/src/tools/websocket.ts",
-      "sourceLine": 2014,
+      "sourceLine": 2283,
       "callText": "sendRPC<T>('FLEET_MANAGER', 'Storage.GetAll', { registry: name })"
     },
     {
       "routing": "fleet-manager",
       "target": "Storage.GetItem",
       "sourceFile": "frontend/src/tools/websocket.ts",
-      "sourceLine": 2019,
+      "sourceLine": 2288,
       "callText": "sendRPC<T>('FLEET_MANAGER', 'Storage.GetItem', { registry: name, key })"
     },
     {
       "routing": "fleet-manager",
       "target": "Storage.GetItem",
       "sourceFile": "frontend/src/tools/websocket.ts",
-      "sourceLine": 2272,
+      "sourceLine": 2544,
       "callText": "sendRPC('FLEET_MANAGER', 'Storage.GetItem', {registry, key})"
     },
     {
       "routing": "fleet-manager",
       "target": "Storage.Keys",
       "sourceFile": "frontend/src/tools/websocket.ts",
-      "sourceLine": 2039,
+      "sourceLine": 2308,
       "callText": "sendRPC('FLEET_MANAGER', 'Storage.Keys', {registry: name})"
     },
     {
       "routing": "fleet-manager",
       "target": "Storage.RemoveItem",
       "sourceFile": "frontend/src/tools/websocket.ts",
-      "sourceLine": 2032,
+      "sourceLine": 2301,
       "callText": "sendRPC('FLEET_MANAGER', 'Storage.RemoveItem', { registry: name, key, value })"
     },
     {
       "routing": "fleet-manager",
       "target": "Storage.SetItem",
       "sourceFile": "frontend/src/tools/websocket.ts",
-      "sourceLine": 2025,
+      "sourceLine": 2294,
       "callText": "sendRPC('FLEET_MANAGER', 'Storage.SetItem', { registry: name, key, value })"
     },
     {
@@ -3559,7 +3961,7 @@
       "routing": "fleet-manager",
       "target": "system.getconfig",
       "sourceFile": "frontend/src/tools/websocket.ts",
-      "sourceLine": 2233,
+      "sourceLine": 2505,
       "callText": "sendRPC('FLEET_MANAGER', 'system.getconfig')"
     },
     {
@@ -3704,44 +4106,114 @@
     },
     {
       "routing": "fleet-manager",
+      "target": "tariff.assign",
+      "sourceFile": "frontend/src/components/dashboard/energy/EnergySettingsPanel.vue",
+      "sourceLine": 644,
+      "callText": "ws.sendRPC('FLEET_MANAGER', 'tariff.assign', input)"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "tariff.assign",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/tariffAssignmentWrites.ts",
+      "sourceLine": 13,
+      "callText": "sendRPC('FLEET_MANAGER', 'tariff.assign', assignRequest(target))"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "tariff.assign",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/tariffAssignmentWrites.ts",
+      "sourceLine": 17,
+      "callText": "sendRPC('FLEET_MANAGER', 'tariff.assign', removalRequest(row))"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "tariff.delete",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/TariffLibraryPanel.vue",
+      "sourceLine": 234,
+      "callText": "sendRPC('FLEET_MANAGER', 'tariff.delete', { id: deleteCandidate.value.id })"
+    },
+    {
+      "routing": "fleet-manager",
       "target": "tariff.get",
       "sourceFile": "frontend/src/components/dashboard/energy/EnergyTariffEditor.vue",
-      "sourceLine": 243,
+      "sourceLine": 1176,
       "callText": "ws.sendRPC<{tariff: TariffSpec & {id: number}}>( 'FLEET_MANAGER', 'tariff.get', {id: props.editingId} )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "tariff.get",
+      "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
+      "sourceLine": 795,
+      "callText": "ws.sendRPC<{tariff: TariffSpec}>( 'FLEET_MANAGER', 'tariff.get', {id: pricing.tariffIds[0]} )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "tariff.list",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/TariffAssignmentsPanel.vue",
+      "sourceLine": 138,
+      "callText": "sendRPC('FLEET_MANAGER', 'tariff.list', {})"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "tariff.list",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/TariffLibraryPanel.vue",
+      "sourceLine": 185,
+      "callText": "sendRPC<HostResult<'tariff.list'>>( 'FLEET_MANAGER', 'tariff.list', {} )"
     },
     {
       "routing": "fleet-manager",
       "target": "tariff.list",
       "sourceFile": "frontend/src/pages/dash/energy/[id].vue",
-      "sourceLine": 1328,
+      "sourceLine": 1719,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'tariff.list', {})"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "tariff.listassignments",
+      "sourceFile": "frontend/src/components/dashboard/energy/EnergySettingsPanel.vue",
+      "sourceLine": 566,
+      "callText": "ws.sendRPC( 'FLEET_MANAGER', 'tariff.listassignments', {} )"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "tariff.listassignments",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/TariffAssignmentsPanel.vue",
+      "sourceLine": 141,
+      "callText": "sendRPC('FLEET_MANAGER', 'tariff.listassignments', {})"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "tariff.resolveassignments",
+      "sourceFile": "frontend/src/components/pages/settings/accounting/TariffCoverageCheck.vue",
+      "sourceLine": 240,
+      "callText": "sendRPC<HostResult<'tariff.resolveassignments'>>( 'FLEET_MANAGER', 'tariff.resolveassignments', {points: resolutionPoint"
     },
     {
       "routing": "fleet-manager",
       "target": "tariff.setlivesource",
       "sourceFile": "frontend/src/components/dashboard/energy/EnergyTariffEditor.vue",
-      "sourceLine": 306,
+      "sourceLine": 1280,
       "callText": "ws.sendRPC<{token: string; url: string}>( 'FLEET_MANAGER', 'tariff.setlivesource', {tariffId, mode: 'push'} )"
     },
     {
       "routing": "fleet-manager",
       "target": "tariff.setlivesource",
       "sourceFile": "frontend/src/components/dashboard/energy/EnergyTariffEditor.vue",
-      "sourceLine": 317,
+      "sourceLine": 1291,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'tariff.setlivesource', { tariffId, mode: 'pull', provider: editor.liveProvider, providerCon"
     },
     {
       "routing": "fleet-manager",
       "target": "Thermostat.Create",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 2518,
+      "sourceLine": 2633,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'Thermostat.Create', { shellyID: targetShellyID, config: {} })"
     },
     {
       "routing": "fleet-manager",
       "target": "Thermostat.Delete",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 2525,
+      "sourceLine": 2640,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'Thermostat.Delete', { shellyID: targetShellyID, id: 0 })"
     },
     {
@@ -3825,7 +4297,7 @@
       "routing": "fleet-manager",
       "target": "user_group.addmembers",
       "sourceFile": "frontend/src/stores/users.ts",
-      "sourceLine": 149,
+      "sourceLine": 154,
       "callText": "sendRPC('FLEET_MANAGER', 'user_group.addmembers', { id, userIds: [userId] })"
     },
     {
@@ -3874,42 +4346,42 @@
       "routing": "fleet-manager",
       "target": "User.AttachCustomPersona",
       "sourceFile": "frontend/src/stores/users.ts",
-      "sourceLine": 160,
+      "sourceLine": 165,
       "callText": "sendRPC('FLEET_MANAGER', 'User.AttachCustomPersona', { userId, personaId: assignment.personaId, scope: assignment.scope,"
     },
     {
       "routing": "fleet-manager",
       "target": "User.BulkRotatePATs",
       "sourceFile": "frontend/src/pages/settings/users.vue",
-      "sourceLine": 1209,
+      "sourceLine": 1341,
       "callText": "sendRPC<{ results: Array<{ tokenId?: string; token?: string; replacedTokenId: string; ok: boolean; error?: string; }>; }"
     },
     {
       "routing": "fleet-manager",
       "target": "User.CreateServiceUser",
       "sourceFile": "frontend/src/pages/settings/users.vue",
-      "sourceLine": 856,
+      "sourceLine": 948,
       "callText": "sendRPC<{ userId: string; userName: string; role: string; }>( 'FLEET_MANAGER', 'User.CreateServiceUser', buildServiceUse"
     },
     {
       "routing": "fleet-manager",
       "target": "User.CreateZitadelUser",
       "sourceFile": "frontend/src/stores/users.ts",
-      "sourceLine": 113,
+      "sourceLine": 117,
       "callText": "sendRPC<{userId: string}>( 'FLEET_MANAGER', 'User.CreateZitadelUser', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "User.DeactivateUser",
       "sourceFile": "frontend/src/stores/users.ts",
-      "sourceLine": 242,
+      "sourceLine": 247,
       "callText": "sendRPC('FLEET_MANAGER', 'User.DeactivateUser', {userId})"
     },
     {
       "routing": "fleet-manager",
       "target": "User.DeleteServiceUser",
       "sourceFile": "frontend/src/stores/users.ts",
-      "sourceLine": 292,
+      "sourceLine": 297,
       "callText": "sendRPC('FLEET_MANAGER', 'User.DeleteServiceUser', {userId})"
     },
     {
@@ -3923,14 +4395,14 @@
       "routing": "fleet-manager",
       "target": "User.DeleteZitadelUser",
       "sourceFile": "frontend/src/stores/users.ts",
-      "sourceLine": 276,
+      "sourceLine": 281,
       "callText": "sendRPC('FLEET_MANAGER', 'User.DeleteZitadelUser', {userId})"
     },
     {
       "routing": "fleet-manager",
       "target": "User.GetAuthMethods",
       "sourceFile": "frontend/src/components/panels/UserAuthMethodsPanel.vue",
-      "sourceLine": 83,
+      "sourceLine": 84,
       "callText": "sendRPC<AuthMethods>( 'FLEET_MANAGER', 'User.GetAuthMethods', {userId: props.userId} )"
     },
     {
@@ -3944,49 +4416,49 @@
       "routing": "fleet-manager",
       "target": "User.GetEffectivePermissionsV2",
       "sourceFile": "frontend/src/stores/users.ts",
-      "sourceLine": 307,
+      "sourceLine": 312,
       "callText": "sendRPC<EffectivePermissionsResult>( 'FLEET_MANAGER', 'User.GetEffectivePermissionsV2', {userId} )"
     },
     {
       "routing": "fleet-manager",
       "target": "User.GetInstanceInfo",
       "sourceFile": "frontend/src/pages/settings/instance.vue",
-      "sourceLine": 84,
+      "sourceLine": 85,
       "callText": "sendRPC<InstanceInfo>( 'FLEET_MANAGER', 'User.GetInstanceInfo', {} )"
     },
     {
       "routing": "fleet-manager",
       "target": "User.ListPATs",
       "sourceFile": "frontend/src/pages/settings/users.vue",
-      "sourceLine": 1072,
+      "sourceLine": 1189,
       "callText": "sendRPC<{items: any[]}>('FLEET_MANAGER', 'User.ListPATs', { userId: svc.userId })"
     },
     {
       "routing": "fleet-manager",
       "target": "User.ListScopedPATs",
       "sourceFile": "frontend/src/pages/settings/users.vue",
-      "sourceLine": 808,
+      "sourceLine": 893,
       "callText": "sendRPC<{ items: Array<{userId: string; revokedAt?: string | null}>; }>('FLEET_MANAGER', 'User.ListScopedPATs', {})"
     },
     {
       "routing": "fleet-manager",
       "target": "User.ListScopedPATs",
       "sourceFile": "frontend/src/pages/settings/users.vue",
-      "sourceLine": 1075,
+      "sourceLine": 1192,
       "callText": "sendRPC<{items: any[]}>('FLEET_MANAGER', 'User.ListScopedPATs', { userId: svc.userId })"
     },
     {
       "routing": "fleet-manager",
       "target": "User.ListServiceUsers",
       "sourceFile": "frontend/src/pages/settings/authz-simulator.vue",
-      "sourceLine": 296,
+      "sourceLine": 297,
       "callText": "sendRPC<{items: ZitadelUser[]}>( 'FLEET_MANAGER', 'User.ListServiceUsers', {} )"
     },
     {
       "routing": "fleet-manager",
       "target": "User.ListServiceUsers",
       "sourceFile": "frontend/src/pages/settings/users.vue",
-      "sourceLine": 802,
+      "sourceLine": 887,
       "callText": "sendRPC<{items: any[]}>( 'FLEET_MANAGER', 'User.ListServiceUsers', {} )"
     },
     {
@@ -4000,7 +4472,7 @@
       "routing": "fleet-manager",
       "target": "User.ListZitadelUsers",
       "sourceFile": "frontend/src/stores/users.ts",
-      "sourceLine": 86,
+      "sourceLine": 89,
       "callText": "sendRPC<{items: ZitadelUser[]}>( 'FLEET_MANAGER', 'User.ListZitadelUsers', {} )"
     },
     {
@@ -4021,42 +4493,42 @@
       "routing": "fleet-manager",
       "target": "User.ReactivateUser",
       "sourceFile": "frontend/src/stores/users.ts",
-      "sourceLine": 258,
+      "sourceLine": 263,
       "callText": "sendRPC('FLEET_MANAGER', 'User.ReactivateUser', {userId})"
     },
     {
       "routing": "fleet-manager",
       "target": "User.RevokePAT",
       "sourceFile": "frontend/src/pages/settings/users.vue",
-      "sourceLine": 1127,
+      "sourceLine": 1245,
       "callText": "sendRPC('FLEET_MANAGER', 'User.RevokePAT', { userId: target.userId, tokenId })"
     },
     {
       "routing": "fleet-manager",
       "target": "User.RevokeScopedPAT",
       "sourceFile": "frontend/src/pages/settings/users.vue",
-      "sourceLine": 1109,
+      "sourceLine": 1227,
       "callText": "sendRPC('FLEET_MANAGER', 'User.RevokeScopedPAT', {tokenId})"
     },
     {
       "routing": "fleet-manager",
       "target": "User.RotatePAT",
       "sourceFile": "frontend/src/pages/settings/users.vue",
-      "sourceLine": 1183,
+      "sourceLine": 1315,
       "callText": "sendRPC<{ tokenId: string; token: string; replacedTokenId: string; }>('FLEET_MANAGER', 'User.RotatePAT', { userId: targe"
     },
     {
       "routing": "fleet-manager",
       "target": "User.RotateToken",
       "sourceFile": "frontend/src/stores/auth.ts",
-      "sourceLine": 76,
+      "sourceLine": 90,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'User.RotateToken', { access_token: accessToken })"
     },
     {
       "routing": "fleet-manager",
       "target": "User.SendPasswordReset",
       "sourceFile": "frontend/src/stores/users.ts",
-      "sourceLine": 225,
+      "sourceLine": 230,
       "callText": "sendRPC('FLEET_MANAGER', 'User.SendPasswordReset', {userId})"
     },
     {
@@ -4070,28 +4542,28 @@
       "routing": "fleet-manager",
       "target": "User.SimulateV2",
       "sourceFile": "frontend/src/pages/settings/authz-simulator.vue",
-      "sourceLine": 368,
+      "sourceLine": 369,
       "callText": "sendRPC<SimulationResult>( 'FLEET_MANAGER', 'User.SimulateV2', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "User.SimulateV2",
       "sourceFile": "frontend/src/stores/users.ts",
-      "sourceLine": 328,
+      "sourceLine": 333,
       "callText": "sendRPC<SimulateResult>( 'FLEET_MANAGER', 'User.SimulateV2', params )"
     },
     {
       "routing": "fleet-manager",
       "target": "User.UpdateZitadelUser",
       "sourceFile": "frontend/src/stores/users.ts",
-      "sourceLine": 209,
+      "sourceLine": 214,
       "callText": "sendRPC('FLEET_MANAGER', 'User.UpdateZitadelUser', params)"
     },
     {
       "routing": "fleet-manager",
       "target": "User.ZitadelAvailable",
       "sourceFile": "frontend/src/stores/users.ts",
-      "sourceLine": 59,
+      "sourceLine": 62,
       "callText": "sendRPC<{available: boolean}>( 'FLEET_MANAGER', 'User.ZitadelAvailable', {} )"
     },
     {
@@ -4112,7 +4584,7 @@
       "routing": "fleet-manager",
       "target": "virtual_meta.Delete",
       "sourceFile": "frontend/src/components/modals/VirtualEditModal.vue",
-      "sourceLine": 297,
+      "sourceLine": 402,
       "callText": "sendRPC('FLEET_MANAGER', 'virtual_meta.Delete', { shellyID: props.shellyID, componentKey: props.componentKey })"
     },
     {
@@ -4133,77 +4605,84 @@
       "routing": "fleet-manager",
       "target": "Virtual.Add",
       "sourceFile": "frontend/src/components/core/VirtualComponentManager.vue",
-      "sourceLine": 122,
+      "sourceLine": 158,
       "callText": "sendRPC('FLEET_MANAGER', 'Virtual.Add', { shellyID: props.shellyID, type: newType.value, config: Object.keys(config).len"
     },
     {
       "routing": "fleet-manager",
       "target": "Virtual.Delete",
       "sourceFile": "frontend/src/components/modals/VirtualEditModal.vue",
-      "sourceLine": 293,
+      "sourceLine": 398,
       "callText": "sendRPC('FLEET_MANAGER', 'Virtual.Delete', { shellyID: props.shellyID, key: props.componentKey })"
+    },
+    {
+      "routing": "fleet-manager",
+      "target": "Virtual.Group.Set",
+      "sourceFile": "frontend/src/components/modals/VirtualEditModal.vue",
+      "sourceLine": 372,
+      "callText": "sendRPC('FLEET_MANAGER', 'Virtual.Group.Set', { shellyID: props.shellyID, id: parseComponentId(props.componentKey), valu"
     },
     {
       "routing": "fleet-manager",
       "target": "WaitingRoom.AcceptAllStart",
       "sourceFile": "frontend/src/composables/useWaitingRoomList.ts",
-      "sourceLine": 733,
+      "sourceLine": 752,
       "callText": "ws.sendRPC<{ jobId: string; total: number; }>('FLEET_MANAGER', 'WaitingRoom.AcceptAllStart', {})"
     },
     {
       "routing": "fleet-manager",
       "target": "WaitingRoom.AcceptBulkCancel",
       "sourceFile": "frontend/src/composables/useWaitingRoomList.ts",
-      "sourceLine": 843,
+      "sourceLine": 862,
       "callText": "ws.sendRPC<{canceled: boolean}>( 'FLEET_MANAGER', 'WaitingRoom.AcceptBulkCancel', {jobId} )"
     },
     {
       "routing": "fleet-manager",
       "target": "WaitingRoom.AcceptBulkStart",
       "sourceFile": "frontend/src/composables/useWaitingRoomList.ts",
-      "sourceLine": 688,
+      "sourceLine": 707,
       "callText": "ws.sendRPC<{ jobId: string; total: number; }>('FLEET_MANAGER', 'WaitingRoom.AcceptBulkStart', {externalIds})"
     },
     {
       "routing": "fleet-manager",
       "target": "WaitingRoom.AcceptBulkStatus",
       "sourceFile": "frontend/src/composables/useWaitingRoomList.ts",
-      "sourceLine": 759,
+      "sourceLine": 778,
       "callText": "ws.sendRPC<BulkStatus>( 'FLEET_MANAGER', 'WaitingRoom.AcceptBulkStatus', {jobId} )"
     },
     {
       "routing": "fleet-manager",
       "target": "WaitingRoom.AcceptPendingByExternalId",
       "sourceFile": "frontend/src/composables/useWaitingRoomList.ts",
-      "sourceLine": 558,
+      "sourceLine": 577,
       "callText": "ws.sendRPC( 'FLEET_MANAGER', 'WaitingRoom.AcceptPendingByExternalId', {externalIds} )"
     },
     {
       "routing": "fleet-manager",
       "target": "WaitingRoom.AcceptPendingById",
       "sourceFile": "frontend/src/composables/useWaitingRoomList.ts",
-      "sourceLine": 550,
+      "sourceLine": 569,
       "callText": "ws.sendRPC( 'FLEET_MANAGER', 'WaitingRoom.AcceptPendingById', {ids: internalIds} )"
     },
     {
       "routing": "fleet-manager",
       "target": "WaitingRoom.RejectPending",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 2743,
+      "sourceLine": 2906,
       "callText": "ws.sendRPC<{ success: string[]; error: string[]; }>('FLEET_MANAGER', 'WaitingRoom.RejectPending', { shellyIDs: [targetSh"
     },
     {
       "routing": "fleet-manager",
       "target": "WaitingRoom.RejectPending",
       "sourceFile": "frontend/src/composables/useWaitingRoomList.ts",
-      "sourceLine": 874,
+      "sourceLine": 893,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'WaitingRoom.RejectPending', { shellyIDs: [shellyID] })"
     },
     {
       "routing": "fleet-manager",
       "target": "WaitingRoom.RejectPending",
       "sourceFile": "frontend/src/composables/useWaitingRoomList.ts",
-      "sourceLine": 911,
+      "sourceLine": 930,
       "callText": "ws.sendRPC('FLEET_MANAGER', 'WaitingRoom.RejectPending', { shellyIDs })"
     },
     {
@@ -4287,21 +4766,28 @@
       "routing": "fleet-manager",
       "target": "WS.SetConfig",
       "sourceFile": "frontend/src/components/boards/DeviceBoard.vue",
-      "sourceLine": 2687,
+      "sourceLine": 2850,
       "callText": "ws.sendRPC<{restart_required?: boolean}>( 'FLEET_MANAGER', 'WS.SetConfig', { shellyID: targetShellyID, config: { enable:"
     },
     {
       "routing": "http-api",
       "target": "/api/auth/session",
       "sourceFile": "frontend/src/pages/callback.vue",
-      "sourceLine": 167,
+      "sourceLine": 56,
+      "callText": "fetch('/api/auth/session', { method: 'DELETE', credentials: 'same-origin' })"
+    },
+    {
+      "routing": "http-api",
+      "target": "/api/auth/session",
+      "sourceFile": "frontend/src/pages/callback.vue",
+      "sourceLine": 194,
       "callText": "fetch('/api/auth/session', { method: 'POST', headers: {Authorization: `Bearer ${data.access_token}`} })"
     },
     {
       "routing": "http-api",
       "target": "/api/auth/session",
       "sourceFile": "frontend/src/stores/auth.ts",
-      "sourceLine": 51,
+      "sourceLine": 59,
       "callText": "fetch('/api/auth/session', { method: 'DELETE', credentials: 'same-origin' })"
     },
     {

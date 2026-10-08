@@ -5,7 +5,7 @@ import {RPC_URL} from '../constants';
 const DEV_MODE_TOKEN_KEY = 'dev_mode_token';
 const ACCESS_TOKEN_KEY = 'access_token';
 
-async function getAccessToken(): Promise<string | null> {
+export async function getAccessToken(): Promise<string | null> {
     // dev_mode_token: localStorage (cross-tab for dev). access_token:
     // sessionStorage (tab-scoped, XSS-resistant).
     const devToken = localStorage.getItem(DEV_MODE_TOKEN_KEY);

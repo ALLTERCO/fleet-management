@@ -1,169 +1,9 @@
 /*
  * card-controls.css
  * Interactive control styles for entity cards — Phase 17 design library port.
- * Covers sliders, track bars, power buttons, color wheels, CCT, dimmer rings,
- * filament visuals, shutter/cover controls, and bulb mode pills.
+ * Covers power buttons, color wheels, CCT, dimmer rings, filament visuals,
+ * shutter/cover controls, the shared slider track, and bulb mode pills.
  */
-
-/* ── 1. Unified Slider ── */
-
-.slider {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 100%;
-    height: 8px;
-    border-radius: 4px;
-    outline: none;
-    cursor: pointer;
-    background: var(--color-surface-1);
-    border: 1px solid var(--color-border-default);
-    touch-action: pan-y;
-}
-
-.slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: none;
-    cursor: pointer;
-}
-
-.slider::-moz-range-thumb {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: none;
-    cursor: pointer;
-    border: none;
-}
-
-.slider--lg {
-    height: 12px;
-    border-radius: 6px;
-}
-
-.slider--lg::-webkit-slider-thumb {
-    width: 24px;
-    height: 24px;
-}
-
-.slider--lg::-moz-range-thumb {
-    width: 24px;
-    height: 24px;
-}
-
-.slider--sleek {
-    height: 6px;
-    border: none;
-    background: rgba(255, 255, 255, 0.05);
-    box-shadow: none;
-}
-
-.ec[data-type="dimmer"] .slider {
-    background: linear-gradient(
-        90deg,
-        var(--a-dimmer) var(--fill, 0%),
-        var(--color-surface-1) var(--fill, 0%)
-    );
-}
-
-.ec[data-type="cover"] .slider {
-    background: linear-gradient(
-        90deg,
-        var(--a-cover) var(--fill, 0%),
-        var(--color-surface-1) var(--fill, 0%)
-    );
-}
-
-.ec[data-type="audio"] .slider {
-    background: linear-gradient(
-        90deg,
-        var(--a-audio) var(--fill, 0%),
-        var(--color-surface-1) var(--fill, 0%)
-    );
-}
-
-.ec[data-type="rgbw"] .slider,
-.ec[data-type="bulb"] .slider {
-    background: linear-gradient(
-        90deg,
-        #ffd08a var(--fill, 0%),
-        var(--color-surface-1) var(--fill, 0%)
-    );
-}
-
-/* ── 2. Track Bar System (dimmer tracks) ── */
-
-.ec-dtrack--lg {
-    height: 20px;
-    border-radius: var(--radius-md);
-}
-
-.ec-dtrack--lg::before {
-    inset: -14px 0;
-}
-
-.ec-dtrack--lg .ec-dtrack-fill::after {
-    width: 24px;
-    height: 24px;
-    box-shadow: none;
-}
-
-.ec[data-type="dimmer"] .ec-dtrack--lg .ec-dtrack-fill {
-    box-shadow: none;
-}
-
-.ec[data-type="rgbw"] .ec-dtrack--lg .ec-dtrack-fill,
-.ec[data-type="bulb"] .ec-dtrack--lg .ec-dtrack-fill {
-    box-shadow: none;
-}
-
-.ec[data-type="audio"] .ec-dtrack--lg .ec-dtrack-fill {
-    box-shadow: none;
-}
-
-.ec[data-type="cover"] .ec-dtrack--lg .ec-dtrack-fill {
-    box-shadow: none;
-}
-
-.ec-dtrack--sleek {
-    height: 6px;
-    border-radius: 3px;
-    background: rgba(255, 255, 255, 0.05);
-    border: none;
-    box-shadow: none;
-}
-
-.ec-dtrack--sleek .ec-dtrack-fill {
-    border-radius: 3px;
-}
-
-.ec-dtrack--sleek .ec-dtrack-fill::after {
-    width: 22px;
-    height: 22px;
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: none;
-}
-
-.ec[data-type="dimmer"] .ec-dtrack--sleek .ec-dtrack-fill {
-    box-shadow: none;
-}
-
-.ec[data-type="rgbw"] .ec-dtrack--sleek .ec-dtrack-fill,
-.ec[data-type="bulb"] .ec-dtrack--sleek .ec-dtrack-fill {
-    box-shadow: none;
-}
-
-.ec[data-type="audio"] .ec-dtrack--sleek .ec-dtrack-fill {
-    box-shadow: none;
-}
-
-.ec[data-type="cover"] .ec-dtrack--sleek .ec-dtrack-fill {
-    box-shadow: none;
-}
 
 /* ── 3. Vertical Brightness Fill ── */
 
@@ -590,6 +430,23 @@
     );
 }
 
+.ec-clr-track .sld-cury {
+    background: linear-gradient(
+        90deg,
+        rgba(var(--ar), 0.1),
+        rgba(var(--ar), 0.6)
+    );
+}
+
+/* Generic virtual-number track — brand blue, no domain-specific meaning. */
+.ec-clr-track .sld-value {
+    background: linear-gradient(
+        90deg,
+        rgba(68, 149, 209, 0.18),
+        rgba(68, 149, 209, 0.7)
+    );
+}
+
 .ec-clr-track .sld-tilt {
     background: linear-gradient(
         90deg,
@@ -816,12 +673,6 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
     filter: none;
-}
-
-.ec-cct-pct span {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
-    -webkit-text-fill-color: rgba(var(--rgb-c), 0.4);
 }
 
 .ec-cct-temp-sm {
@@ -1166,7 +1017,6 @@
 .ec-shutter-pct {
     display: flex;
     align-items: baseline;
-    gap: 2px;
     justify-content: center;
     overflow: visible;
 }
@@ -1182,12 +1032,6 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
     padding: 0 5px;
-}
-
-.ec-shutter-pct-u {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
-    -webkit-text-fill-color: rgba(255, 255, 255, 0.3);
 }
 
 .ec-shutter-label {
@@ -1214,7 +1058,6 @@
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-full);
     backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
 }
 
 /* ── 11. Cover Controls ── */
@@ -1394,7 +1237,6 @@
     border-radius: var(--radius-sm);
     background: rgba(255, 255, 255, 0.05);
     backdrop-filter: blur(12px) saturate(150%);
-    -webkit-backdrop-filter: blur(12px) saturate(150%);
     border: 1px solid var(--glass-border);
     box-shadow: inset 0 1px 0 var(--glass-highlight);
     padding: 1px;

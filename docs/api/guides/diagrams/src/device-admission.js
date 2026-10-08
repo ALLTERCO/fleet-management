@@ -2,7 +2,7 @@
 //   node docs/api/guides/diagrams/src/device-admission.js
 //
 // Verified against admissionGate.ts + shellyIngressGate.ts: "the gate" is a
-// slow-start rate limiter — over-cap connections have the socket closed and the
+// slow-start rate limiter: over-cap connections have the socket closed and the
 // device reconnects with backoff, they are NOT moved to the terminal DENIED
 // record state. DENIED (control_access = 2) is reached by an operator reject or
 // a bad/expired credential. That is why there is no "blocked at the gate -> Denied"

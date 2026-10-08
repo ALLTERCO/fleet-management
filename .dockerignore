@@ -49,12 +49,11 @@ docs
 # (Also requires docs/api/guides/ in the public export manifest.)
 !docs/api
 !docs/api/**
-!docs/README.md
+!docs/public
+!docs/public/**
 !docs/reference
 !docs/reference/ai-and-mcp.md
 !docs/reference/ai-mcp-operations.md
 !docs/reference/separate-ui-host-sdk.md
-!docs/architecture
-!docs/architecture/deploy-reference.md
 !deploy/public
 !deploy/public/deployment.md

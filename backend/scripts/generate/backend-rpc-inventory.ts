@@ -19,7 +19,6 @@ import ts from 'typescript';
 import {
     BACKEND_SRC,
     decoratorsOf,
-    FRONTEND_SRC,
     getBackendProgram,
     getBackendSourceFiles,
     lineOf,
@@ -30,7 +29,7 @@ import {
     readFile,
     readStringArg,
     relPath,
-    walkFiles,
+    walkAuthoritativeFrontendFiles,
     writeOutputs
 } from './_shared.js';
 
@@ -391,7 +390,7 @@ function findRegistrationSites(program: ts.Program): Map<string, string> {
 /** Count frontend call sites that reference `namespace.method` (case-insensitive) */
 function buildFrontendCallerIndex(): Map<string, number> {
     const counts = new Map<string, number>();
-    const files = walkFiles(FRONTEND_SRC, ['.ts', '.vue', '.js']);
+    const files = walkAuthoritativeFrontendFiles(['.ts', '.vue', '.js']);
     const patterns: RegExp[] = [
         // sendRPC(dst, 'Namespace.Method'  OR sendRPC('FLEET_MANAGER', 'Ns.Method'
         /sendRPC\s*\(\s*[^,)]+,\s*['"]([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)/g,

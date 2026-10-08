@@ -128,6 +128,16 @@ const RULE_KIND_META: Readonly<Record<AlertRuleKind, RuleKindMeta>> = {
         category: 'operation',
         supportedScopeTypes: ['device', 'group', 'location', 'tag']
     },
+    system_health: {
+        key: 'system_health',
+        label: 'System health',
+        description:
+            'Fleet Manager tells you when it is holding or losing data and what to do. Clears itself when the problem is gone.',
+        icon: 'fa-solid fa-heart-pulse',
+        colorToken: '--rule-color-operation',
+        category: 'operation',
+        supportedScopeTypes: ['device', 'group', 'location', 'tag']
+    },
     grafana_alert: {
         key: 'grafana_alert',
         label: 'Grafana alert',
@@ -148,12 +158,52 @@ const RULE_KIND_META: Readonly<Record<AlertRuleKind, RuleKindMeta>> = {
         category: 'connectivity',
         supportedScopeTypes: ['device', 'group', 'location', 'tag']
     },
+    credential_expiring: {
+        key: 'credential_expiring',
+        label: 'Device key ends soon',
+        description:
+            'Fires once per device whose connection key ends within the chosen number of days. Clears after the key is rotated.',
+        icon: 'fa-solid fa-key',
+        colorToken: '--rule-color-connectivity',
+        category: 'connectivity',
+        supportedScopeTypes: ['device', 'group', 'location', 'tag']
+    },
     energy_consumption_threshold: {
         key: 'energy_consumption_threshold',
         label: 'Energy consumption',
         description:
             'Fires when stored energy use over a time window crosses a chosen kWh threshold.',
         icon: 'fa-solid fa-bolt',
+        colorToken: '--rule-color-measurement',
+        category: 'measurement',
+        supportedScopeTypes: ['device', 'group', 'location', 'tag']
+    },
+    cost_budget_threshold: {
+        key: 'cost_budget_threshold',
+        label: 'Energy-cost budget',
+        description:
+            'Fires once per threshold and billing period when recorded import-energy charges cross a percentage of a device budget. Standing, demand and tax charges are excluded.',
+        icon: 'fa-solid fa-wallet',
+        colorToken: '--rule-color-measurement',
+        category: 'measurement',
+        supportedScopeTypes: ['device']
+    },
+    record_incomplete: {
+        key: 'record_incomplete',
+        label: 'Daily record incomplete',
+        description:
+            'Fires after the configured local deadline when a monitored role has no reading dated today.',
+        icon: 'fa-solid fa-clipboard-check',
+        colorToken: '--rule-color-operation',
+        category: 'operation',
+        supportedScopeTypes: ['device', 'group', 'location', 'tag']
+    },
+    approaching_new_peak: {
+        key: 'approaching_new_peak',
+        label: 'Approaching a new demand peak',
+        description:
+            'Fires when the latest complete demand interval approaches the existing local billing-month peak or a higher configured ratchet baseline.',
+        icon: 'fa-solid fa-arrow-trend-up',
         colorToken: '--rule-color-measurement',
         category: 'measurement',
         supportedScopeTypes: ['device', 'group', 'location', 'tag']

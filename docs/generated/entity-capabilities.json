@@ -1,7 +1,7 @@
 {
   "totals": {
-    "entityTypes": 52,
-    "actionCount": 295
+    "entityTypes": 51,
+    "actionCount": 312
   },
   "entities": [
     {
@@ -85,6 +85,14 @@
         {
           "action": "resetCounters",
           "rpc": "BM.ResetCounters"
+        },
+        {
+          "action": "resetCharge",
+          "rpc": "BM.ResetCharge"
+        },
+        {
+          "action": "replaceBattery",
+          "rpc": "BM.ReplaceBattery"
         }
       ]
     },
@@ -440,16 +448,6 @@
       "actions": []
     },
     {
-      "type": "em1data",
-      "shellyComponent": null,
-      "actions": []
-    },
-    {
-      "type": "emdata",
-      "shellyComponent": null,
-      "actions": []
-    },
-    {
       "type": "enum",
       "shellyComponent": null,
       "actions": [
@@ -592,6 +590,68 @@
         {
           "action": "resetCounters",
           "rpc": "Input.ResetCounters"
+        }
+      ]
+    },
+    {
+      "type": "irdevice",
+      "shellyComponent": "IRDevice",
+      "actions": [
+        {
+          "action": "toggle",
+          "rpc": "IRDevice.Toggle"
+        },
+        {
+          "action": "toggleAfter",
+          "rpc": "IRDevice.Set"
+        },
+        {
+          "action": "setOutput",
+          "rpc": "IRDevice.Set"
+        },
+        {
+          "action": "setBrightness",
+          "rpc": "IRDevice.Set"
+        },
+        {
+          "action": "setColor",
+          "rpc": "IRDevice.Set"
+        },
+        {
+          "action": "setWhite",
+          "rpc": "IRDevice.Set"
+        },
+        {
+          "action": "setMode",
+          "rpc": "IRDevice.Set"
+        },
+        {
+          "action": "setPosition",
+          "rpc": "IRDevice.GoToPosition"
+        },
+        {
+          "action": "open",
+          "rpc": "IRDevice.Open"
+        },
+        {
+          "action": "close",
+          "rpc": "IRDevice.Close"
+        },
+        {
+          "action": "stop",
+          "rpc": "IRDevice.Stop"
+        },
+        {
+          "action": "calibrate",
+          "rpc": "IRDevice.Calibrate"
+        },
+        {
+          "action": "learn",
+          "rpc": "IRDevice.LearnCode"
+        },
+        {
+          "action": "resetCounters",
+          "rpc": "IRDevice.ResetCounters"
         }
       ]
     },
@@ -1213,6 +1273,10 @@
         {
           "action": "close",
           "rpc": "Script.Close"
+        },
+        {
+          "action": "start",
+          "rpc": "Script.Start"
         },
         {
           "action": "stop",

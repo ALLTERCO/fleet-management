@@ -7,9 +7,32 @@
 // Kept pure (no Three.js dependency) so the math has direct test coverage
 // and the renderers don't carry extra responsibility.
 
+import type {FloorPlanRef} from '@/types/floor-plan';
+
 export interface FloorSize {
     planW: number;
     planH: number;
+}
+
+/** The rect normalized coordinates map onto. */
+export interface PlanRect {
+    widthPx: number;
+    heightPx: number;
+}
+
+// A floor with no uploaded drawing still needs a rect to draw on — D-032
+// treats hand-drawing as a normal setup path, not a post-import fallback.
+// 16:10 because that is the shape of the viewport it will be drawn in.
+export const BLANK_PLAN_RECT: PlanRect = {widthPx: 1600, heightPx: 1000};
+
+/** The rect to normalize against: the uploaded plan when there is one, the
+ *  blank sheet when there is not. Every geometry path uses this, so a floor
+ *  drawn before its plan arrives keeps identical coordinates after. */
+export function planRect(plan: FloorPlanRef | null | undefined): PlanRect {
+    if (!plan || plan.widthPx <= 0 || plan.heightPx <= 0) {
+        return BLANK_PLAN_RECT;
+    }
+    return {widthPx: plan.widthPx, heightPx: plan.heightPx};
 }
 
 export interface WorldXZ {

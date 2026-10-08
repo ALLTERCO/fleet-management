@@ -7,6 +7,10 @@
         :stats="headerStats"
         :searchable="true"
         search-placeholder="Search channels..."
+        :filterable="true"
+        :has-active-filter="activeFilterCount > 0"
+        :filter-count="activeFilterCount"
+        @filter-click="filterModalVisible = true"
         :loading="loading"
         :empty="visibleRows.length === 0 && !loading"
         empty-title="No channels yet"
@@ -51,7 +55,7 @@
                         />
                     </header>
                     <dl>
-                        <dt>Type</dt>
+                        <dt>Channel</dt>
                         <dd>{{ channelLabel(channel.provider) }}</dd>
                         <dt>Last delivery</dt>
                         <dd>{{ channel.lastDeliveryStatus ?? 'none' }}</dd>
@@ -60,7 +64,10 @@
                             <dd>{{ channel.health.lastFailureAt }}</dd>
                         </template>
                     </dl>
-                    <div v-if="canWrite" class="notification-admin__actions">
+                    <div
+                        v-if="canWrite && channel.access === 'full'"
+                        class="notification-admin__actions"
+                    >
                         <Button
                             type="blue-hollow"
                             size="sm"
@@ -72,6 +79,14 @@
                         </Button>
                         <Button type="blue-hollow" size="sm" @click="openEditModal(channel)">
                             Edit
+                        </Button>
+                        <Button
+                            v-if="channel.health.autoDisabledAt"
+                            type="blue-hollow"
+                            size="sm"
+                            @click="resetHealth(channel.id)"
+                        >
+                            Reset health
                         </Button>
                         <Button type="red" size="sm" @click="channelsStore.deleteChannel(channel.id)">
                             Delete
@@ -88,17 +103,26 @@
             <CreateChannelModal
                 :visible="modalVisible"
                 :initial-draft="modalDraft"
-                :testing-now="modalTesting"
+                :masked-fields="modalMaskedFields"
                 @close="closeModal"
                 @save="onModalSave"
-                @test="onModalTest"
+            />
+            <FilterModal
+                :visible="filterModalVisible"
+                title="Filter channels"
+                match-label="channels"
+                :match-count="visibleRows.length"
+                :sections="filterSections"
+                :initial-state="activeFilterState"
+                @close="filterModalVisible = false"
+                @apply-generic="applyGenericFilters"
             />
         </template>
     </PageTemplate>
 </template>
 
 <script setup lang="ts">
-import type {Channel, ChannelProvider} from '@api/channel';
+import type {Channel, ChannelListItem, ChannelProvider} from '@api/channel';
 import {
     type ComputedRef,
     computed,
@@ -109,22 +133,24 @@ import {
 } from 'vue';
 import Button from '@/components/core/Button.vue';
 import ChannelStatusBadge from '@/components/core/ChannelStatusBadge.vue';
+import FilterModal from '@/components/core/FilterModal.vue';
 import PageTemplate from '@/components/core/PageTemplate.vue';
-import CreateChannelModal, {
-    type ChannelDraft
-} from '@/components/modals/CreateChannelModal.vue';
+import CreateChannelModal from '@/components/modals/CreateChannelModal.vue';
 import {useFuzzySearch} from '@/composables/useFuzzySearch';
 import {usePermissions} from '@/composables/usePermissions';
+import {
+    buildChannelConfigFromDraft,
+    buildDraftFromChannel,
+    type ChannelDraft,
+    createBlankChannelDraft,
+    readQuietHoursPatch
+} from '@/helpers/channelDraft';
 import {
     type ChannelType,
     isChannelType,
     labelForChannelType
 } from '@/helpers/channelTypes';
-import {
-    buildEmailChannelConfig,
-    createEmailChannelConfigForm,
-    fillEmailChannelConfigForm
-} from '@/helpers/notificationEmailConfig';
+import {countByKey} from '@/helpers/filter-sections';
 import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useChannelsStore} from '@/stores/channels';
 import {useToastStore} from '@/stores/toast';
@@ -148,29 +174,12 @@ const testCooldownUntil = reactive<Record<number, number>>({});
 const testCooldownTick = ref(0);
 
 const modalVisible = ref(false);
-const modalDraft = ref<ChannelDraft>(buildBlankDraft());
+const modalDraft = ref<ChannelDraft>(createBlankChannelDraft());
 const modalEditingId = ref<number | null>(null);
-const modalTesting = ref(false);
 
 onMounted(() => {
     void refreshAll();
 });
-
-function buildBlankDraft(): ChannelDraft {
-    return {
-        channelId: null,
-        name: '',
-        type: 'email_smtp',
-        config: {
-            email: createEmailChannelConfigForm(),
-            webhook: {url: '', signingSecret: '', timeoutMs: 10000},
-            slack: {url: '', channelOverride: ''},
-            teams: {url: ''},
-            telegram: {botToken: '', chatId: '', parseMode: ''}
-        },
-        quietHours: {start: '', end: '', timezone: ''}
-    };
-}
 
 async function refreshAll(): Promise<void> {
     await channelsStore.fetchChannels();
@@ -182,9 +191,102 @@ const sortedChannels = computed(() =>
     )
 );
 
-const filteredChannels = useFuzzySearch(sortedChannels, search, {
+const searchedChannels = useFuzzySearch(sortedChannels, search, {
     keys: ['name', 'provider', 'lastTestStatus']
 });
+
+const modalMaskedFields = ref<Record<string, string>>({});
+const filterModalVisible = ref(false);
+const providerFilter = ref<string[]>([]);
+const stateFilter = ref<string[]>([]);
+const healthFilter = ref<string[]>([]);
+
+/** Health is derived, not stored — one place decides what each bucket means. */
+function healthKeyOf(channel: ChannelListItem): string {
+    if (channel.health.autoDisabledAt) return 'auto_disabled';
+    if (channel.health.consecutiveFailures > 0) return 'failing';
+    return 'healthy';
+}
+
+function stateKeyOf(channel: ChannelListItem): string {
+    return channel.enabled ? 'enabled' : 'disabled';
+}
+
+const filteredChannels = computed(() =>
+    searchedChannels.value.filter(
+        (c) =>
+            (providerFilter.value.length === 0 ||
+                providerFilter.value.includes(c.provider)) &&
+            (stateFilter.value.length === 0 ||
+                stateFilter.value.includes(stateKeyOf(c))) &&
+            (healthFilter.value.length === 0 ||
+                healthFilter.value.includes(healthKeyOf(c)))
+    )
+);
+
+const activeFilterCount = computed(
+    () =>
+        providerFilter.value.length +
+        stateFilter.value.length +
+        healthFilter.value.length
+);
+
+const activeFilterState = computed(() => ({
+    provider: providerFilter.value,
+    state: stateFilter.value,
+    health: healthFilter.value
+}));
+
+// Counts come from the search result, so they describe what filtering would
+// actually narrow rather than the whole unsearched list.
+const filterSections = computed(() => {
+    const rows = searchedChannels.value;
+    const byProvider = countByKey(rows, (c) => c.provider as string);
+    const byState = countByKey(rows, stateKeyOf);
+    const byHealth = countByKey(rows, healthKeyOf);
+    return [
+        {
+            key: 'provider',
+            label: 'Channel',
+            icon: 'fa-bullhorn',
+            options: Array.from(byProvider.entries()).map(([k, count]) => ({
+                key: k,
+                label: channelLabel(k as Channel['provider']),
+                count
+            }))
+        },
+        {
+            key: 'state',
+            label: 'State',
+            icon: 'fa-toggle-on',
+            options: [
+                {key: 'enabled', label: 'Enabled', count: byState.get('enabled') ?? 0},
+                {key: 'disabled', label: 'Disabled', count: byState.get('disabled') ?? 0}
+            ]
+        },
+        {
+            key: 'health',
+            label: 'Health',
+            icon: 'fa-heart-pulse',
+            options: [
+                {key: 'healthy', label: 'Healthy', count: byHealth.get('healthy') ?? 0},
+                {key: 'failing', label: 'Failing', count: byHealth.get('failing') ?? 0},
+                {
+                    key: 'auto_disabled',
+                    label: 'Auto-disabled',
+                    count: byHealth.get('auto_disabled') ?? 0
+                }
+            ]
+        }
+    ];
+});
+
+function applyGenericFilters(next: Record<string, string[]>) {
+    providerFilter.value = next.provider ?? [];
+    stateFilter.value = next.state ?? [];
+    healthFilter.value = next.health ?? [];
+    filterModalVisible.value = false;
+}
 
 const loading = computed(() => channelsStore.loading);
 
@@ -199,7 +301,7 @@ function channelLabel(type: string): string {
 }
 
 function openCreateModal(): void {
-    modalDraft.value = buildBlankDraft();
+    modalDraft.value = createBlankChannelDraft();
     modalEditingId.value = null;
     modalVisible.value = true;
 }
@@ -207,8 +309,13 @@ function openCreateModal(): void {
 async function openEditModal(channel: Channel): Promise<void> {
     modalDraft.value = buildDraftFromChannel(channel);
     modalEditingId.value = channel.id;
+    modalMaskedFields.value = {};
     modalVisible.value = true;
-    hydrateQuietHoursForDraft(channel);
+    // Masks come from the single-channel read; the list does not carry them.
+    const full = await channelsStore.fetchChannel(channel.id);
+    if (modalEditingId.value === channel.id) {
+        modalMaskedFields.value = full?.secretState?.maskedFields ?? {};
+    }
 }
 
 function closeModal(): void {
@@ -216,7 +323,7 @@ function closeModal(): void {
 }
 
 async function onModalSave(draft: ChannelDraft): Promise<void> {
-    const config = buildConfigFromDraft(draft);
+    const config = buildChannelConfigFromDraft(draft);
     const saved =
         draft.channelId === null
             ? await channelsStore.createChannel({
@@ -235,17 +342,6 @@ async function onModalSave(draft: ChannelDraft): Promise<void> {
     closeModal();
 }
 
-async function onModalTest(): Promise<void> {
-    const channelId = modalEditingId.value;
-    if (channelId === null) return;
-    modalTesting.value = true;
-    try {
-        await runTestForChannel(channelId);
-    } finally {
-        modalTesting.value = false;
-    }
-}
-
 async function testChannel(channelId: number): Promise<void> {
     if (isTestCoolingDown(channelId)) return;
     testingChannelId.value = channelId;
@@ -255,6 +351,11 @@ async function testChannel(channelId: number): Promise<void> {
         testingChannelId.value = null;
         startTestCooldown(channelId);
     }
+}
+
+async function resetHealth(channelId: number): Promise<void> {
+    const ok = await channelsStore.resetHealth(channelId);
+    if (ok) toast.success('Channel re-enabled');
 }
 
 async function runTestForChannel(channelId: number): Promise<void> {
@@ -282,79 +383,7 @@ function isTestCoolingDown(channelId: number): boolean {
     return typeof until === 'number' && until > Date.now();
 }
 
-function buildConfigFromDraft(draft: ChannelDraft): Record<string, unknown> {
-    if (draft.type === 'email_smtp')
-        return buildEmailChannelConfig(draft.config.email);
-    if (draft.type === 'generic_webhook')
-        return compactRecord(draft.config.webhook);
-    if (draft.type === 'slack_webhook')
-        return compactRecord(draft.config.slack);
-    if (draft.type === 'teams_workflow_webhook')
-        return compactRecord(draft.config.teams);
-    if (draft.type === 'telegram_bot')
-        return compactRecord(draft.config.telegram);
-    return {};
-}
-
-function compactRecord(source: object): Record<string, unknown> {
-    const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(source)) {
-        if (value === '' || value === null || value === undefined) continue;
-        result[key] = value;
-    }
-    return result;
-}
-
-function buildDraftFromChannel(channel: Channel): ChannelDraft {
-    const draft = buildBlankDraft();
-    draft.channelId = channel.id;
-    draft.name = channel.name;
-    draft.type = isChannelType(channel.provider)
-        ? (channel.provider as ChannelType)
-        : 'email_smtp';
-    if (channel.provider === 'email_smtp') {
-        fillEmailChannelConfigForm(draft.config.email, channel.config);
-    }
-    if (channel.provider === 'generic_webhook') {
-        Object.assign(draft.config.webhook, pickKeys(channel.config, draft.config.webhook));
-    }
-    if (channel.provider === 'slack_webhook') {
-        Object.assign(draft.config.slack, pickKeys(channel.config, draft.config.slack));
-    }
-    if (channel.provider === 'teams_workflow_webhook') {
-        Object.assign(draft.config.teams, pickKeys(channel.config, draft.config.teams));
-    }
-    if (channel.provider === 'telegram_bot') {
-        Object.assign(
-            draft.config.telegram,
-            pickKeys(channel.config, draft.config.telegram)
-        );
-    }
-    return draft;
-}
-
-function pickKeys<T extends object>(
-    source: Record<string, unknown>,
-    template: T
-): Partial<T> {
-    const next: Partial<T> = {};
-    for (const key of Object.keys(template) as Array<keyof T>) {
-        if (source[key as string] !== undefined)
-            next[key] = source[key as string] as T[keyof T];
-    }
-    return next;
-}
-
-function hydrateQuietHoursForDraft(channel: Channel): void {
-    if (!channel?.quietHours) return;
-    modalDraft.value.quietHours = {
-        start: String(channel.quietHours.startHour),
-        end: String(channel.quietHours.endHour),
-        timezone: channel.quietHours.timezone ?? ''
-    };
-}
-
-function verificationStatus(channel: Channel): string {
+function verificationStatus(channel: ChannelListItem): string {
     if (channel.lastTestStatus === 'success') return 'verified';
     if (channel.lastTestStatus === 'failed') return 'failed';
     return 'unverified';
@@ -370,25 +399,6 @@ async function patchQuietHoursIfNeeded(
     await channelsStore.updateChannel(channelId, {quietHours: patch});
 }
 
-function readQuietHoursPatch(form: ChannelDraft['quietHours']) {
-    const start = Number(form.start);
-    const end = Number(form.end);
-    if (
-        !Number.isInteger(start) ||
-        !Number.isInteger(end) ||
-        start < 0 ||
-        start > 23 ||
-        end < 0 ||
-        end > 23
-    ) {
-        return null;
-    }
-    return {
-        startHour: start,
-        endHour: end,
-        timezone: form.timezone.trim() || 'UTC'
-    };
-}
 </script>
 
 <style scoped>
@@ -426,7 +436,12 @@ function readQuietHoursPatch(form: ChannelDraft['quietHours']) {
     min-width: 0;
     margin: 0;
     color: var(--color-text-primary);
+    /* The name is the card's subject. It stays on the body step of the scale;
+       the detail rows drop to caption so the order reads without inventing an
+       off-scale size. */
     font-size: var(--type-body);
+    font-weight: var(--font-semibold);
+    line-height: var(--leading-tight);
 }
 
 .notification-admin__card dl {
@@ -435,11 +450,11 @@ function readQuietHoursPatch(form: ChannelDraft['quietHours']) {
     gap: var(--space-1) var(--space-3);
     margin: 0;
     color: var(--color-text-secondary);
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
 }
 
 .notification-admin__card dt {
-    font-weight: 700;
+    font-weight: var(--font-semibold);
 }
 
 .notification-admin__card dd {

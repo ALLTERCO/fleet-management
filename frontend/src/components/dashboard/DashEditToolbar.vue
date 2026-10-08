@@ -103,7 +103,6 @@ defineEmits<{
         var(--glass-3-bg) 94%
     );
     backdrop-filter: blur(var(--glass-2-blur));
-    -webkit-backdrop-filter: blur(var(--glass-2-blur));
     border-bottom: 1px solid var(--color-primary);
 }
 

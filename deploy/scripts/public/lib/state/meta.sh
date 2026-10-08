@@ -25,10 +25,44 @@ DEPLOY_FM_HOSTNAME=${FM_HOSTNAME:-$hostname}
 DEPLOY_FLEET_MANAGER_PORT=${FLEET_MANAGER_PORT}
 DEPLOY_COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
 DEPLOY_WITH_LOGGING=${WITH_LOGGING}
+DEPLOY_DOZZLE_USERS_FILE=$(printf '%q' "${DOZZLE_USERS_FILE:-}")
+DEPLOY_WITH_NODERED=${WITH_NODERED:-false}
 DEPLOY_ENV=${DEPLOY_ENV:-public}
 EOF
 
     chmod 0600 "$DEPLOY_META_FILE"
+}
+
+# Zitadel builds its issuer from these, and the admin key, the saved issuer
+# and every browser sign-in depend on it. Every command that starts Zitadel
+# must pass the same values, so they come from the TLS choice in one place.
+# With TLS, Traefik terminates HTTPS on 443 and Zitadel itself runs plain.
+export_zitadel_external_settings() {
+    if [ "${WITH_SSL:-false}" = "true" ]; then
+        ZITADEL_EXTERNALPORT=443
+        ZITADEL_EXTERNALSECURE=true
+        ZITADEL_TLS_MODE=external
+        ZITADEL_PUBLIC_SCHEME=https
+    else
+        ZITADEL_EXTERNALSECURE=false
+        ZITADEL_TLS_MODE=disabled
+        ZITADEL_PUBLIC_SCHEME=http
+    fi
+    export ZITADEL_EXTERNALPORT ZITADEL_EXTERNALSECURE ZITADEL_TLS_MODE ZITADEL_PUBLIC_SCHEME
+}
+
+# One saved value, without loading the rest of the deploy metadata.
+saved_deploy_meta_value() {
+    [ -f "$DEPLOY_META_FILE" ] || return 0
+    sed -n "s/^$1=//p" "$DEPLOY_META_FILE" | tail -n 1
+}
+
+# Keeps Node-RED on across plain `up` runs; --no-nodered turns it off.
+resolve_nodered_choice() {
+    if [ -z "${WITH_NODERED:-}" ]; then
+        WITH_NODERED="$(saved_deploy_meta_value DEPLOY_WITH_NODERED)"
+    fi
+    WITH_NODERED="${WITH_NODERED:-false}"
 }
 
 load_deploy_meta() {
@@ -63,6 +97,12 @@ load_deploy_meta() {
     if [ "$WITH_LOGGING" != "true" ] && [ "${DEPLOY_WITH_LOGGING:-false}" = "true" ]; then
         WITH_LOGGING="true"
     fi
+    # Later commands rebuild the same Compose model `up --logging` started.
+    if [ -z "${DOZZLE_USERS_FILE:-}" ] && [ -n "${DEPLOY_DOZZLE_USERS_FILE:-}" ]; then
+        DOZZLE_USERS_FILE="$DEPLOY_DOZZLE_USERS_FILE"
+        export DOZZLE_USERS_FILE
+    fi
+    resolve_nodered_choice
     # Migrate legacy state from pre-DEPLOY_ENV deploys (--quick → --env dev).
     if [ -z "${DEPLOY_ENV:-}" ] && [ "${DEPLOY_WITH_QUICK:-false}" = "true" ]; then
         DEPLOY_ENV="dev"
@@ -71,6 +111,6 @@ load_deploy_meta() {
     # exports FM_DEV_MODE and other per-env vars into shell. Same path as `up`.
     DEPLOY_ENV="${DEPLOY_ENV:-public}"
     load_deploy_env_overrides
-    ZITADEL_EXTERNALSECURE="$WITH_SSL"
-    export ZITADEL_HOSTNAME ZITADEL_EXTERNALPORT FLEET_MANAGER_PORT COMPOSE_PROJECT_NAME ZITADEL_EXTERNALSECURE
+    export_zitadel_external_settings
+    export ZITADEL_HOSTNAME FLEET_MANAGER_PORT COMPOSE_PROJECT_NAME
 }

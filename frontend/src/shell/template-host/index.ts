@@ -1,8 +1,11 @@
 import {alerts} from './alerts';
 import {api} from './api';
 import {audit, authzAudit} from './audit';
+import {authorization} from './authorization';
 import {backups} from './backups';
 import {bluetoothDevices} from './bluetoothDevices';
+import {branding} from './branding';
+import {carbon} from './carbon';
 import {channels} from './channels';
 import {configurations} from './configurations';
 import {auth} from './currentUser';
@@ -11,6 +14,7 @@ import {devices} from './devices';
 import {metrics} from './energy';
 import {entities} from './entities';
 import {firmware} from './firmware';
+import {fleetmap} from './fleetmap';
 import {groups} from './groups';
 import {locations} from './locations';
 import {navigation} from './navigation';
@@ -26,6 +30,55 @@ import {waitingRoom} from './waiting-room';
 
 export {useAlerts, useSupervisedAlerts} from './alerts';
 export {api, call, listAll, toRpcMethod} from './api';
+export type {
+    HostUtilityCost,
+    HostUtilityCostParams
+} from './core/data-contract';
+export {type DeviceKeyInput, deviceKey} from './core/device-key';
+export type {HostBrandingRead} from './core/domains/branding';
+export type {
+    HostFleetMapAlertSnapshot,
+    HostFleetMapEnergySnapshot,
+    HostFleetMapSignalSnapshot,
+    HostFleetMapSnapshotParams
+} from './core/domains/fleetmap';
+export {
+    FLEET_PERMISSION_DENIED_MESSAGE,
+    type FleetSdkError,
+    fleetSdkErrorMessage,
+    fleetSdkFieldErrors
+} from './core/errors';
+export {
+    FLEET_LIVE_EVENT,
+    type FleetConnectionState,
+    type FleetConnectionStatus,
+    type FleetLiveEvent,
+    type FleetLiveEventName,
+    type FleetLiveRequest
+} from './core/live-events';
+export {
+    matchSearch,
+    rankSearchMatches,
+    type SearchCandidate,
+    type SearchHit,
+    type SearchRange
+} from './core/search-match';
+export type {FleetSessionIdentity} from './core/session';
+export type {
+    DeviceLeakCapability,
+    DeviceSmokeCapability,
+    FleetFormatDateOptions,
+    FleetFormatNumberOptions,
+    FleetHost,
+    FleetPeriodBaseKey,
+    FleetPeriodBucket,
+    FleetPeriodKey,
+    FleetPeriodOptions,
+    FleetPeriodSelection,
+    FleetPeriods,
+    FleetPeriodWindow,
+    HostDeviceComponent
+} from './core/types';
 export {signOut, useCurrentUser} from './currentUser';
 // Route via the local template-host wrapper, not the raw shell impl, so
 // templates that follow @template-contract get a `Readonly<Ref<…>>` and
@@ -49,6 +102,12 @@ export {
     useMetric,
     useMetricHistory
 } from './energy';
+export {
+    HOST_ESCAPE_HATCHES,
+    HOST_METHOD_METADATA,
+    type HostEscapeHatch,
+    type HostMethodMetadata
+} from './generated/method-metadata';
 export {useGroup, useGroupActions, useGroups} from './groups';
 export {useLocations} from './locations';
 export {useNavLabels, useNavOrder} from './navigation';
@@ -70,7 +129,7 @@ export {
     useVocabulary
 } from './portalProject';
 export {useTemplateRpc} from './rpc';
-export {useThemeTokens} from './theme';
+export {usePresentationCustomization, useThemeTokens} from './theme';
 export type {
     HostContract,
     HostMethod,
@@ -79,12 +138,6 @@ export type {
     HostResult
 } from './typed';
 export {callMethod, HOST_NAMESPACE_GUIDE} from './typed';
-export {
-    HOST_ESCAPE_HATCHES,
-    HOST_METHOD_METADATA,
-    type HostEscapeHatch,
-    type HostMethodMetadata
-} from './generated/method-metadata';
 export type {
     HostAction,
     HostAsyncState,
@@ -92,15 +145,30 @@ export type {
     HostError,
     HostLoadState,
     HostPagedEnvelope,
-    HostResource
+    HostResource,
+    HostResourceFreshness
 } from './types';
+export {
+    useCarbon,
+    useConnection,
+    useFormat,
+    useHost,
+    useNavigation,
+    useOrganizationProfile,
+    usePeriods,
+    useUtilityCost
+} from './vue/composables/useFleetData';
+export {useSession} from './vue/composables/useFleetIdentity';
 export {
     alerts,
     audit,
     auth,
+    authorization,
     authzAudit,
     backups,
     bluetoothDevices,
+    branding,
+    carbon,
     channels,
     configurations,
     dashboards,
@@ -108,6 +176,7 @@ export {
     energyReports,
     entities,
     firmware,
+    fleetmap,
     groups,
     locations,
     metrics,
@@ -129,10 +198,13 @@ export const host = {
     alerts,
     api,
     audit,
+    authorization,
     authzAudit,
     auth,
     backups,
     bluetoothDevices,
+    branding,
+    carbon,
     channels,
     configurations,
     dashboards,
@@ -140,6 +212,7 @@ export const host = {
     energyReports,
     entities,
     firmware,
+    fleetmap,
     groups,
     locations,
     metrics,

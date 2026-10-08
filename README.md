@@ -26,7 +26,7 @@ via outbound WebSocket from a single dashboard.
 - Linux (Ubuntu/Debian, Raspberry Pi arm64, Arch) or macOS
 - 4 GB RAM minimum, 8 GB recommended
 - Docker and Docker Compose (auto-installed if missing)
-- Bash 4.0+ (macOS ships 3.2 — run `brew install bash`)
+- Bash 4.0+ (macOS ships 3.2, run `brew install bash`)
 
 ### One-command bootstrap
 
@@ -36,8 +36,10 @@ cd fleet-management
 ./deploy/deploy-public.sh up
 ```
 
-Once ready, the script prints access URLs and default credentials.
-Default login: `fm-admin` / `Admin123!`.
+Once ready, the script prints the access URLs and the login for each account.
+The passwords are random and made on the first run. They are also saved in
+`deploy/state/initial-credentials.txt`. Copy them to your password manager.
+The admin user name is `fm-admin@<your-hostname-or-ip>`.
 
 ### Connect a Shelly device
 
@@ -57,7 +59,7 @@ The device will appear in the Fleet Manager dashboard.
 
 ### Wall Display
 
-Shelly Wall Display devices connect the same way as other Gen2+ devices, but their firmware only trusts the Allterco CA for TLS — they cannot validate self-signed, Let's Encrypt, or custom certificates.
+Shelly Wall Display devices connect the same way as other Gen2+ devices, but their firmware only trusts the Allterco CA for TLS, they cannot validate self-signed, Let's Encrypt, or custom certificates.
 
 When SSL is enabled, set `FM_PLAIN_WS=true` in `deploy/env/public.env` (enabled by default) to allow plain `ws://` connections on port 80 for the `/shelly` path. All other HTTP traffic is still redirected to HTTPS. Configure the Wall Display to connect to `ws://<your-ip>/shelly` (port 80, no TLS).
 
@@ -66,13 +68,15 @@ When SSL is enabled, set `FM_PLAIN_WS=true` in `deploy/env/public.env` (enabled 
 | Command | Description |
 | --- | --- |
 | `up` | Start Fleet Management (installs Docker if needed, bootstraps or restarts) |
-| `upgrade` | Pull newer images from registry, then restart |
+| `upgrade` | Safe upgrade: backup, pull Fleet Manager, health check, smoke test, automatic rollback on failure |
+| `upgrade --migrate-first --yes` | Run required migration work first, then upgrade |
+| `upgrade --local` | Upgrade to an image built on this machine (set `FM_VERSION` to its tag); never pulls |
 | `migrate --plan-only` | Show required database and Zitadel migration work |
 | `migrate --yes` | Run required migration work before upgrading |
-| `upgrade-audit` | Check whether the current state is ready to upgrade |
-| `rollback` | Revert to the image tagged by the previous upgrade |
-| `backup-db` | Create a database backup |
-| `backup-state` | Create an encrypted deploy-state backup (credentials, keys, certs) |
+| `upgrade-audit` | Save and compare database and Zitadel snapshots (`snapshot`, `snapshot-zitadel`, `compare`, `zitadel-plan`) |
+| `rollback` | Revert to the image from before the last upgrade and restore the pre-update database backup (`--image-only` skips the restore, `--backup PATH` picks a dump) |
+| `backup-db` | Database backups: `list`, `inspect`, `verify`, `create`, `restore` |
+| `backup-state` | Create an encrypted deploy-state backup (credentials, keys, certs). Needs `--age-recipient FILE` or `--passphrase`; `--out DIR` sets the folder |
 | `rotate-secrets` | Rotate JWT secret, encryption key, and database password |
 | `down` | Stop and keep data |
 | `down --volumes` | Stop and delete all data (asks for confirmation; `--yes` to skip) |
@@ -84,20 +88,22 @@ When SSL is enabled, set `FM_PLAIN_WS=true` in `deploy/env/public.env` (enabled 
 
 All commands are run via `./deploy/deploy-public.sh <command>`.
 
-**Image pull behavior:** `up` never contacts the registry — it uses cached images
+**Image pull behavior:** `up` never contacts the registry, it uses cached images
 (Compose pulls automatically on first run when no images exist).
-`upgrade` pulls all images, then runs `up`. Use `upgrade` when a new version is available.
+`upgrade` pulls the Fleet Manager image (and Node-RED when it is on), swaps it, and checks health. Use `upgrade` when a new version is available.
 
 Add `--debug` for raw shell trace and full output.
-Add `--logging` to enable the Dozzle container log viewer on port 9999.
+Add `--logging` to enable the authenticated Dozzle container log viewer. Set
+`DOZZLE_USERS_FILE` to an absolute path containing a Dozzle `users.yml` first.
+The viewer binds only to `127.0.0.1:9999`; use an SSH tunnel for remote access.
 
 ## Updating
 
 Before a major upgrade, make a backup and inspect the migration plan:
 
 ```bash
-./deploy/deploy-public.sh backup-db
-./deploy/deploy-public.sh backup-state
+./deploy/deploy-public.sh backup-db create
+./deploy/deploy-public.sh backup-state --passphrase
 ./deploy/deploy-public.sh migrate --plan-only
 ```
 
@@ -115,7 +121,8 @@ or run both steps together:
 ```
 
 The upgrade command refuses to continue when database or Zitadel migration work
-is pending. See [Deployment Guide](./docs/deployment.md) for the full upgrade
+is pending. Keep `deploy/state/` safe: it holds the secret salt that your stored
+secrets depend on, and it must never change. See [Deployment Guide](./docs/deployment.md) for the full upgrade
 flow.
 
 ## SSL / HTTPS
@@ -212,3 +219,16 @@ Apache License 2.0 - see [LICENSE](./LICENSE).
 ## Contributing
 
 Contributions are welcome via pull requests on GitHub.
+
+To work on the code, run Fleet Manager from source with hot reload:
+
+```bash
+./deploy/deploy-public.sh up --env dev
+```
+
+This needs Node.js 24 and Docker. The database and Redis run in Docker; the
+backend and the UI run from `backend/` and `frontend/`. Open
+`http://localhost:7011` and log in with `admin` / `admin`. Press Ctrl+C to stop.
+Dev mode is for development only: it has no SSO and no MFA, and it runs over
+plain HTTP. Use a separate clone for development, because dev mode shares the
+database of a normal deployment in the same folder.

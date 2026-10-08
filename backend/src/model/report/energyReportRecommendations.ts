@@ -28,13 +28,12 @@ export interface EnergyRecommendationSectionRequest {
     currencySymbol: string;
     onlineCount: number;
     totalDevices: number;
-    avgPowerFactor: number | null;
-    powerFactorPenaltyCost: number | null;
     carbonContext: DashboardCarbonContext;
     internalIds: readonly number[];
     fromDate: Date;
     toDate: Date;
     periodDays: number;
+    hourlyConsumedKWh?: readonly number[];
 }
 
 export async function appendRecommendationSection(
@@ -75,9 +74,7 @@ function buildRecommendations(
         touSavings: request.touSavings,
         currencySymbol: request.currencySymbol,
         offlineCount: request.totalDevices - request.onlineCount,
-        totalDevices: request.totalDevices,
-        avgPowerFactor: request.avgPowerFactor,
-        powerFactorPenaltyCost: request.powerFactorPenaltyCost
+        totalDevices: request.totalDevices
     });
 }
 
@@ -148,6 +145,7 @@ async function appendTimeShiftRow(
         to: request.toDate,
         factorGPerKWh: request.carbonContext.lbmGPerKWh,
         maxShiftableKWh: tuning.energy.timeShiftMaxKWh,
+        hourlyConsumptionKWh: request.hourlyConsumedKWh,
         carbon: {
             zoneCode: tuning.electricityMaps.zone,
             apiKey: tuning.electricityMaps.apiKey,

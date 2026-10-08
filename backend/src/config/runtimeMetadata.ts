@@ -1,3 +1,4 @@
+import {readAppVersion} from './appVersion';
 import {type DeploymentMode, readDeploymentMode} from './deploymentMode';
 import {envBoolRequired, envStr, envStrRequired} from './envReader';
 
@@ -9,6 +10,7 @@ export interface RuntimeMetadataConfig {
     frontendArtifactId: string;
     frontendArtifactVersion: string;
     deploymentMode: DeploymentMode;
+    topologyMode: string;
     clientId: string;
     environmentId: string;
     composeProject: string;
@@ -18,13 +20,26 @@ export interface RuntimeMetadataConfig {
     buildCommit: string;
 }
 
+export function resolveFrontendArtifactVersion(
+    configuredVersion: string,
+    appVersion = readAppVersion()
+): string {
+    return configuredVersion === 'default' ? appVersion : configuredVersion;
+}
+
 export function readRuntimeMetadata(): RuntimeMetadataConfig {
+    const configuredFrontendVersion = envStrRequired(
+        'FM_FRONTEND_ARTIFACT_VERSION'
+    );
     return {
         apiContractVersion: envStrRequired('FM_API_CONTRACT_VERSION'),
         uiContractVersion: envStrRequired('FM_UI_CONTRACT_VERSION'),
         frontendArtifactId: envStrRequired('FM_FRONTEND_ARTIFACT_ID'),
-        frontendArtifactVersion: envStrRequired('FM_FRONTEND_ARTIFACT_VERSION'),
+        frontendArtifactVersion: resolveFrontendArtifactVersion(
+            configuredFrontendVersion
+        ),
         deploymentMode: readDeploymentMode(),
+        topologyMode: envStr('FM_TOPOLOGY_MODE', 'unknown'),
         clientId: envStr('FM_CLIENT_ID', 'unknown'),
         environmentId: envStr(
             'FM_ENVIRONMENT_ID',

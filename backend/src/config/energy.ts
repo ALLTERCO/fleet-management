@@ -9,6 +9,16 @@
  * GRANULARITY_MAP). Phase 1 replaces those copies with imports from here.
  */
 
+import {
+    ENERGY_TABLE_TAGS_LIST,
+    ENV_TABLE_TAGS_LIST
+} from '../types/api/_energyTags';
+
+/** History retained by Shelly EM devices: 60 days of one-minute records. */
+export const EM_DEVICE_HISTORY_SECONDS = 60 * 24 * 60 * 60;
+/** A bookmark inside the normal ten-minute cadence is considered current. */
+export const EM_SYNC_CURRENT_LAG_SECONDS = 10 * 60;
+
 export interface MetricDefinition {
     /** Raw tags in `device_em.stats` that back this metric */
     tags: string[];
@@ -43,10 +53,16 @@ export const METRIC_TYPES: Record<string, MetricDefinition> = {
         precision: 3
     },
     volume: {
-        tags: ['volume_l', 'volume_m3', 'volume_storage_l'],
+        tags: [
+            'volume_l',
+            'volume_m3',
+            'volume_returned_m3',
+            'volume_storage_l'
+        ],
         columns: {
             volume_l: 'volume_l',
             volume_m3: 'volume_m3',
+            volume_returned_m3: 'volume_returned_m3',
             volume_storage_l: 'volume_storage_l'
         },
         unit: 'volume',
@@ -95,6 +111,57 @@ export const METRIC_TYPES: Record<string, MetricDefinition> = {
         unit: 'W',
         divisor: 1,
         precision: 1
+    },
+    // EM meter record values. Apparent power and power factor are derived per
+    // minute record from its active and reactive energy.
+    reactive_energy: {
+        tags: ['lag_react_energy', 'lead_react_energy'],
+        columns: {
+            lag_react_energy: 'lagging_reactive_kvarh',
+            lead_react_energy: 'leading_reactive_kvarh'
+        },
+        unit: 'kvarh',
+        divisor: 1000,
+        precision: 3
+    },
+    fundamental_energy: {
+        tags: ['fund_act_energy', 'fund_act_ret_energy'],
+        columns: {
+            fund_act_energy: 'fundamental_energy_kwh',
+            fund_act_ret_energy: 'fundamental_returned_energy_kwh'
+        },
+        unit: 'kWh',
+        divisor: 1000,
+        precision: 3
+    },
+    apparent_power: {
+        tags: ['apparent_power', 'min_apparent_power', 'max_apparent_power'],
+        columns: {
+            apparent_power: 'avg_apparent_power_va',
+            min_apparent_power: 'min_apparent_power_va',
+            max_apparent_power: 'max_apparent_power_va'
+        },
+        unit: 'VA',
+        divisor: 1,
+        precision: 1
+    },
+    power_factor: {
+        tags: ['power_factor'],
+        columns: {power_factor: 'avg_power_factor'},
+        unit: '',
+        divisor: 1,
+        precision: 3
+    },
+    neutral_current: {
+        tags: ['neutral_current', 'min_neutral_current', 'max_neutral_current'],
+        columns: {
+            neutral_current: 'avg_neutral_current_a',
+            min_neutral_current: 'min_neutral_current_a',
+            max_neutral_current: 'max_neutral_current_a'
+        },
+        unit: 'A',
+        divisor: 1,
+        precision: 3
     }
 };
 
@@ -151,57 +218,14 @@ export const ENV_ROLLUP_FIELD: Record<string, string> = {
     distance: 'distance'
 };
 
-/** Tags that come from `device_em.stats` (vs the device_sensor rollup below) */
-export const ENERGY_TABLE_TAGS: ReadonlySet<string> = new Set([
-    'total_act_energy',
-    'total_act_ret_energy',
-    'volume_l',
-    'volume_m3',
-    'thermal_energy_kwh',
-    'power',
-    'volume_flow_m3h',
-    'volume_storage_l',
-    'voltage',
-    'current',
-    'min_voltage',
-    'max_voltage',
-    'min_current',
-    'max_current',
-    // Battery-monitor (bm) DC telemetry — domain dc_battery in device_em.stats.
-    // soc/soh are %, cycles a count, charge_ah/discharge_ah Amp-hours (divisor 1).
-    'soc',
-    'soh',
-    'cycles',
-    'charge_ah',
-    'discharge_ah'
-]);
-
-/**
- * Tags read from the device_sensor rollup (`device_sensor.numeric_15min`,
- * via `fn_numeric_history`). 'distance' is millimetres (the metre object is
- * skipped at capture). Excludes 'wind_speed'/'wind_gust': they share one BTHome
- * object ('speed', obj_id 68/98) told apart only by channel, which
- * fn_numeric_history does not group by, so they cannot be separated at this read
- * layer yet — deferred, not wired to a misleading mixed average.
- */
-export const ENV_TABLE_TAGS: ReadonlySet<string> = new Set([
-    'temperature',
-    'humidity',
-    'luminance',
-    'pressure',
-    'dewpoint',
-    'co2',
-    'tvoc',
-    'pm25',
-    'pm10',
-    'moisture',
-    'uv',
-    'conductivity',
-    'wind_direction',
-    'precipitation',
-    'battery',
-    'distance'
-]);
+// The tag lists are the single source of truth in the API contract
+// (types/api/_energyTags), so energy.ts stays self-contained. Re-exported here
+// for existing callers; the membership sets below derive from them.
+export {ENERGY_TABLE_TAGS_LIST, ENV_TABLE_TAGS_LIST};
+export const ENERGY_TABLE_TAGS: ReadonlySet<string> = new Set(
+    ENERGY_TABLE_TAGS_LIST
+);
+export const ENV_TABLE_TAGS: ReadonlySet<string> = new Set(ENV_TABLE_TAGS_LIST);
 
 /**
  * Bucket intervals finer than 15 min. These must read raw `device_em.stats`

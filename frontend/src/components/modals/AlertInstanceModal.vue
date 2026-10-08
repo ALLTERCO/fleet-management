@@ -6,7 +6,7 @@
                     v-if="instance"
                     :severity="instance.severity"
                 />
-                <span>Alert</span>
+                <span>{{ instance ? labelForRuleKind(instance.ruleKind) : 'Alert' }}</span>
             </span>
         </template>
 
@@ -25,6 +25,9 @@
                     <h2 class="aim-name">{{ instance.title }}</h2>
                     <p v-if="instance.message" class="aim-msg">
                         {{ instance.message }}
+                    </p>
+                    <p v-if="systemHealth?.action" class="aim-msg aim-msg--action">
+                        {{ systemHealth.action }}
                     </p>
 
                     <div class="aim-source-block">
@@ -58,15 +61,15 @@
                     </div>
 
                     <dl class="aim-facts">
-                        <div class="aim-fact">
-                            <dt>Kind</dt>
-                            <dd>{{ instance.ruleKind }}</dd>
+                        <div v-if="systemHealth?.statValue" class="aim-fact">
+                            <dt>{{ systemHealth.statLabel || 'Value' }}</dt>
+                            <dd class="aim-stat">{{ systemHealth.statValue }}</dd>
                         </div>
                         <div class="aim-fact">
                             <dt>Active since</dt>
                             <dd>{{ formatTs(instance.activeSince) }}</dd>
                         </div>
-                        <div class="aim-fact">
+                        <div v-if="firedAgain" class="aim-fact">
                             <dt>Last triggered</dt>
                             <dd>{{ formatTs(instance.lastTriggeredAt) }}</dd>
                         </div>
@@ -107,15 +110,17 @@
                     </details>
                 </div>
 
-                <!-- Right: what the alert did over time -->
-                <div class="aim-side">
+                <!-- Right: what the alert did over time. Empty history is one line. -->
+                <div v-if="!timeline.length && !deliveryJobs.length" class="aim-side aim-side--quiet">
+                    <p class="aim-empty">No activity yet.</p>
+                </div>
+                <div v-else class="aim-side">
                     <section class="aim-block">
                         <h3 class="aim-block-title">Activity</h3>
                         <TransitionTimeline
-                            v-if="timeline.length"
                             :transitions="timeline"
+                            :failed="historyError"
                         />
-                        <p v-else class="aim-empty">No transitions yet.</p>
                     </section>
 
                     <section class="aim-block">
@@ -125,6 +130,7 @@
                                 v-for="job in deliveryJobs"
                                 :key="job.id"
                                 :job="job"
+                                :error-message="lastErrorFor(job.id)"
                             />
                         </div>
                         <p v-else class="aim-empty">No deliveries recorded.</p>
@@ -143,9 +149,19 @@
         <template #footer>
             <div class="aim-footer">
                 <div v-if="instance && canWrite" class="aim-actions">
+                    <RouterLink
+                        v-if="systemHealth"
+                        :to="systemHealth.to"
+                        class="aim-action-link"
+                        @click="close"
+                    >
+                        <Button type="blue" size="sm">
+                            {{ systemHealth.actionLabel }}
+                        </Button>
+                    </RouterLink>
                     <Button
                         v-if="instance.state === 'active' && !instance.acknowledgedAt"
-                        type="blue"
+                        :type="systemHealth ? 'blue-hollow' : 'blue'"
                         size="sm"
                         @click="ack"
                     >
@@ -157,7 +173,7 @@
                         size="sm"
                         @click="unack"
                     >
-                        <i class="fas fa-rotate-left" /> Un-acknowledge
+                        <i class="fas fa-rotate-left" aria-hidden="true" /> Un-acknowledge
                     </Button>
                     <Button
                         v-if="instance.state !== 'resolved' && !silencedActive"
@@ -165,7 +181,7 @@
                         size="sm"
                         @click="silenceVisible = true"
                     >
-                        <i class="fas fa-bell-slash" /> Silence
+                        <i class="fas fa-bell-slash" aria-hidden="true" /> Silence
                     </Button>
                     <Button
                         v-if="silencedActive"
@@ -173,7 +189,7 @@
                         size="sm"
                         @click="unsilence"
                     >
-                        <i class="fas fa-bell" /> Un-silence
+                        <i class="fas fa-bell" aria-hidden="true" /> Un-silence
                     </Button>
                     <Button
                         v-if="instance.state !== 'resolved'"
@@ -204,6 +220,7 @@ import Button from '@/components/core/Button.vue';
 import EmptyBlock from '@/components/core/EmptyBlock.vue';
 import TransitionTimeline from '@/components/core/TransitionTimeline.vue';
 import {useAlertInstance} from '@/composables/useAlertInstance';
+import {labelForRuleKind} from '@/helpers/ruleKinds';
 import Modal from './Modal.vue';
 import SilenceModal from './SilenceModal.vue';
 
@@ -218,13 +235,17 @@ const {
     sourceDevice,
     sourceGroup,
     timeline,
+    historyError,
     deliveryJobs,
+    lastErrorFor,
     loading,
     silenceVisible,
     silencedActive,
     ageLabel,
     hasContext,
     contextPreview,
+    systemHealth,
+    firedAgain,
     canWrite,
     formatTs,
     ack,
@@ -249,7 +270,7 @@ function close() {
 /* Two columns on desktop; stacks under 768px. */
 .aim-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, var(--split-major)) minmax(0, var(--split-minor));
     gap: var(--space-6);
     align-items: start;
 }
@@ -280,10 +301,9 @@ function close() {
 
 .aim-name {
     margin: 0;
-    font-size: var(--type-subheading);
+    font-size: var(--type-body);
     font-weight: var(--font-bold);
-    line-height: 1.15;
-    letter-spacing: var(--tracking-tight);
+    line-height: 1.35;
     color: var(--color-text-primary);
 }
 
@@ -292,6 +312,19 @@ function close() {
     font-size: var(--type-body);
     color: var(--color-text-secondary);
     line-height: 1.5;
+}
+.aim-msg--action {
+    color: var(--color-text-primary);
+    font-weight: var(--font-medium);
+}
+.aim-stat {
+    font-weight: var(--font-semibold);
+}
+.aim-side--quiet {
+    padding-top: var(--space-1);
+}
+.aim-action-link {
+    text-decoration: none;
 }
 
 .aim-source-block {
@@ -330,10 +363,24 @@ function close() {
 }
 .aim-source--link {
     cursor: pointer;
-    transition: border-color var(--duration-fast);
+    transition: border-color var(--motion-hover), background-color var(--motion-hover);
+}
+.aim-source--link .aim-source-name {
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
 }
 .aim-source--link:hover {
     border-color: var(--color-primary);
+}
+.aim-source--link:visited .aim-source-name {
+    color: var(--color-text-primary);
+}
+.aim-source--link:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+}
+.aim-source--link:active {
+    background: var(--state-hover-bg-strong);
 }
 .aim-source-name {
     font-weight: var(--font-semibold);
@@ -388,8 +435,8 @@ function close() {
     margin: var(--space-2) 0 0;
     padding: var(--space-3);
     border-radius: var(--radius-md);
-    background: var(--color-surface-0);
-    color: var(--color-text-secondary);
+    background: var(--color-code-bg);
+    color: var(--color-code-text);
     font-family: var(--font-mono);
     font-size: var(--type-caption);
     line-height: 1.5;

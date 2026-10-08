@@ -1,17 +1,28 @@
 import {groupPolicy} from '../../config/groupPolicy';
 import {assertAssetBelongsToOrg} from '../../modules/asset/assetRepository';
+import {requireTenantWideComponentPermission} from '../../modules/authz/evaluator';
 import {
     readableResourceAllowlists,
     readableResourceAllowlistsAsync,
     resolveReadableFilterIds
 } from '../../modules/authz/evaluator/readableResourceAllowlists';
+import {
+    type ResolvedSubjects,
+    requireSubjectsReadable
+} from '../../modules/authz/evaluator/subjectScope';
 import * as DeviceCollector from '../../modules/DeviceCollector';
 import * as EventDistributor from '../../modules/EventDistributor';
 import {assertValidGroupKindMetadata} from '../../modules/groupKindValidator';
 import {getGroupKind, listGroupKinds} from '../../modules/kindRepository';
 import * as postgres from '../../modules/PostgresProvider';
+import {jsonbParam} from '../../modules/postgresJsonb';
 import {translatePgError} from '../../rpc/dbErrors';
 import type {DescribeOutput} from '../../rpc/describe';
+import {
+    isMembershipKey,
+    keysetListPage,
+    keysetPageRequest
+} from '../../rpc/keysetPage';
 import {buildListResponse} from '../../rpc/listResponse';
 import {toIso} from '../../rpc/pgRows';
 import RpcError from '../../rpc/RpcError';
@@ -92,11 +103,15 @@ function subjectIntegerId(kind: string, subjectId: string): number {
 // query per subject kind (locations, devices) instead of one per member.
 // Throws the same RpcError.NotFound shape as the per-member path on the first
 // missing reference, preserving caller-visible behavior.
+// Returns what the members resolved to, so the caller can authorize against
+// the same devices and locations without resolving them a second time.
 export async function assertGroupMembersBelongToOrg(
     orgId: string,
     members: readonly GroupMemberRef[]
-): Promise<void> {
-    if (members.length === 0) return;
+): Promise<ResolvedSubjects> {
+    if (members.length === 0) {
+        return {shellyIDs: [], locationIds: [], groupIds: []};
+    }
 
     const locationIds = new Set<number>();
     // Per shellyID, keep the original member so the NotFound error reports the
@@ -123,18 +138,27 @@ export async function assertGroupMembersBelongToOrg(
         }
     }
 
-    const normalizedLegacyEntities = new Set<string>();
+    // Legacy entity id -> the shellyID of the device it lives on.
+    const normalizedLegacyEntities = new Map<string, string>();
     if (legacyEntityMembers.size > 0) {
-        const rows = await postgres.queryRows<{subject_id: string}>(
-            `SELECT input.subject_id
+        const rows = await postgres.queryRows<{
+            subject_id: string;
+            external_id: string;
+        }>(
+            `SELECT input.subject_id, dl.external_id
                FROM unnest($2::text[]) input(subject_id)
                CROSS JOIN LATERAL organization.fn_normalize_entity_subject(
                    $1, input.subject_id
                ) normalized
+               JOIN device.list dl
+                 ON dl.id = normalized.device_id
+                AND dl.organization_id = $1
               WHERE normalized.device_id IS NOT NULL`,
             [orgId, [...legacyEntityMembers.keys()]]
         );
-        for (const row of rows) normalizedLegacyEntities.add(row.subject_id);
+        for (const row of rows) {
+            normalizedLegacyEntities.set(row.subject_id, row.external_id);
+        }
     }
 
     const foundLocations = new Set<number>();
@@ -186,10 +210,20 @@ export async function assertGroupMembersBelongToOrg(
             throw RpcError.NotFound(member.subjectType, member.subjectId);
         }
     }
+
+    return {
+        shellyIDs: [
+            ...foundShellyIds,
+            ...new Set(normalizedLegacyEntities.values())
+        ],
+        locationIds: [...foundLocations],
+        groupIds: []
+    };
 }
 
 type MemberListRow = Partial<MemberRow & {created_at: Date | string}> & {
-    total_count?: number | string;
+    total_count?: number | string | null;
+    cursor_key?: unknown;
 };
 
 interface ActivityRow {
@@ -367,6 +401,9 @@ function translateDbError(err: unknown, op: GroupOp): RpcError {
     });
 }
 
+// A group kind is a tenant catalog entry, not a group: no scope selector names it.
+const NOT_A_GROUP_ID = (): undefined => undefined;
+
 export default class GroupComponent extends Component {
     constructor() {
         super('group', {
@@ -420,7 +457,7 @@ export default class GroupComponent extends Component {
             );
             const row = result?.rows?.[0] as GroupRow | undefined;
             if (!row) throw RpcError.OperationFailed('group create');
-            EventDistributor.invalidateGroupCache(orgId);
+            EventDistributor.invalidateGroupMembership(orgId);
             EventDistributor.emitGroupCreated(row.id, row.name, orgId);
             return rowToGroup(row);
         } catch (err: unknown) {
@@ -495,7 +532,7 @@ export default class GroupComponent extends Component {
             const row = result?.rows?.[0] as GroupRow | undefined;
             if (!row)
                 throw RpcError.Domain('GroupNotFound', {details: {id: p.id}});
-            EventDistributor.invalidateGroupCache(orgId);
+            EventDistributor.invalidateGroupMembership(orgId);
             EventDistributor.emitGroupUpdated(row.id, row.name, orgId);
             return rowToGroup(row);
         } catch (err: unknown) {
@@ -523,7 +560,7 @@ export default class GroupComponent extends Component {
             const row = result?.rows?.[0] as {id: number} | undefined;
             const deleted = row?.id != null;
             if (deleted) {
-                EventDistributor.invalidateGroupCache(orgId);
+                EventDistributor.invalidateGroupMembership(orgId);
                 EventDistributor.emitGroupDeleted(p.id, orgId);
             }
             return {deleted, id: p.id};
@@ -689,32 +726,34 @@ export default class GroupComponent extends Component {
             subjectType?: GroupMemberSubjectType;
             limit?: number;
             offset?: number;
+            cursor?: string;
         }>(params, GROUP_LIST_MEMBERS_PARAMS);
         const orgId = requireOrganizationId(sender, p);
-        const limit = p.limit ?? 200;
-        const offset = p.offset ?? 0;
+        const page = keysetPageRequest(p, {
+            defaultLimit: 200,
+            isKey: isMembershipKey
+        });
 
         const result = await postgres.callMethod(
-            'organization.fn_group_list_members',
+            'organization.fn_group_members_page',
             {
                 p_organization_id: orgId,
                 p_group_id: p.id,
                 p_subject_type: p.subjectType ?? null,
-                p_limit: limit,
-                p_offset: offset
+                p_limit: page.fetchLimit,
+                p_offset: page.offset,
+                p_after: page.after ? jsonbParam(page.after) : null,
+                p_skip_total: page.after !== null
             }
         );
-        const rows = (result?.rows ?? []) as MemberListRow[];
-        const total = rows.length > 0 ? Number(rows[0].total_count ?? 0) : 0;
-        const items: GroupMemberRef[] = [];
-        for (const r of rows) {
-            if (r.subject_id == null || r.subject_type == null) continue;
-            items.push({
-                subjectType: r.subject_type,
-                subjectId: r.subject_id
-            });
-        }
-        return buildListResponse(items, total, limit, offset);
+        return keysetListPage((result?.rows ?? []) as MemberListRow[], {
+            page,
+            isRow: (r) => r.cursor_key != null,
+            toItem: (r): GroupMemberRef | null =>
+                r.subject_id == null || r.subject_type == null
+                    ? null
+                    : {subjectType: r.subject_type, subjectId: r.subject_id}
+        });
     }
 
     @Component.NoAudit
@@ -817,7 +856,8 @@ export default class GroupComponent extends Component {
         }>(params, GROUP_MEMBERS_PARAMS);
         const orgId = requireOrganizationId(sender, p);
 
-        await assertGroupMembersBelongToOrg(orgId, p.members);
+        const resolved = await assertGroupMembersBelongToOrg(orgId, p.members);
+        await requireSubjectsReadable(sender, resolved);
 
         const types = p.members.map((m) => m.subjectType);
         const ids = p.members.map((m) => m.subjectId);
@@ -835,7 +875,7 @@ export default class GroupComponent extends Component {
             const rows = (result?.rows ?? []) as MemberRow[];
             const added = rows.map(memberRow);
             if (added.length > 0) {
-                EventDistributor.invalidateGroupCache(orgId);
+                EventDistributor.invalidateGroupMembership(orgId);
                 EventDistributor.emitGroupMembersAdded(p.id, added, orgId);
             }
             return {id: p.id, added};
@@ -873,7 +913,7 @@ export default class GroupComponent extends Component {
             const rows = (result?.rows ?? []) as MemberRow[];
             const removed = rows.map(memberRow);
             if (removed.length > 0) {
-                EventDistributor.invalidateGroupCache(orgId);
+                EventDistributor.invalidateGroupMembership(orgId);
                 EventDistributor.emitGroupMembersRemoved(p.id, removed, orgId);
             }
             return {id: p.id, removed};
@@ -902,8 +942,9 @@ export default class GroupComponent extends Component {
 
     @Component.NoAudit
     @Component.Expose('Kind.Get')
-    @Component.CrudPermission('groups', 'read')
+    @Component.CrudPermission('groups', 'read', NOT_A_GROUP_ID)
     async kindGet(params: unknown, sender: CommandSender) {
+        await requireTenantWideComponentPermission(sender, 'groups', 'read');
         const p = validateOrThrow<GroupKindGetParams>(
             params,
             GROUP_KIND_GET_PARAMS

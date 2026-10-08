@@ -28,18 +28,34 @@ import {generate as genRpc} from './backend-rpc-inventory.js';
 // auto-derived from the manifest, so scanning it for missing RPCs is
 // tautological and hides drift in the human-prose set.
 const CANONICAL_DOCS = [
-    'docs/architecture/api.md',
+    'docs/internal/architecture/api.md',
     'docs/architecture/rpc-layers.md',
-    'docs/architecture/virtual-devices.md',
-    'docs/architecture/virtual-device-model.md',
-    'docs/architecture/workflows/blu-bthome-promotion.md',
-    'docs/architecture/workflows/composed-device-creation.md',
+    'docs/internal/architecture/virtual-devices.md',
+    'docs/internal/architecture/virtual-device-model.md',
+    'docs/internal/architecture/workflows/blu-bthome-promotion.md',
+    'docs/internal/architecture/workflows/composed-device-creation.md',
     'docs/reference/ai-and-mcp.md',
     'docs/reference/entities.md',
     'docs/reference/events.md',
     'docs/reference/node-red.md',
-    'docs/reference/provisioning.md'
+    'docs/internal/architecture/provisioning.md'
 ];
+
+// The report ships in the public build, so it never names docs/internal paths.
+const PRIVATE_DOC_PREFIX = 'docs/internal/';
+const PUBLIC_CANONICAL_DOCS = CANONICAL_DOCS.filter(
+    (d) => !d.startsWith(PRIVATE_DOC_PREFIX)
+);
+const PRIVATE_CANONICAL_DOC_COUNT =
+    CANONICAL_DOCS.length - PUBLIC_CANONICAL_DOCS.length;
+
+function foundInLabel(files: string[]): string {
+    const shown = files
+        .filter((f) => !f.startsWith(PRIVATE_DOC_PREFIX))
+        .map((f) => `\`${f}\``);
+    if (shown.length < files.length) shown.push('maintainer docs');
+    return shown.join(', ');
+}
 
 const FOCUSED_RPC_METHODS = new Set([
     'bthome.device.rename',
@@ -249,7 +265,7 @@ export function generate(): string {
     };
 
     const header = provenanceHeader('Documentation Drift Report', [
-        ...CANONICAL_DOCS,
+        ...PUBLIC_CANONICAL_DOCS,
         'docs/generated/backend-rpc-inventory.json',
         'docs/generated/backend-http-inventory.json',
         'docs/generated/backend-event-inventory.json'
@@ -270,7 +286,7 @@ export function generate(): string {
         '',
         '> "Match" means the contract name appears verbatim in at least one stable doc file.',
         '',
-        `Canonical docs scanned: ${CANONICAL_DOCS.map((d) => `\`${d}\``).join(', ')}`,
+        `Canonical docs scanned: ${PUBLIC_CANONICAL_DOCS.map((d) => `\`${d}\``).join(', ')}, plus ${PRIVATE_CANONICAL_DOC_COUNT} maintainer docs`,
         ''
     ].join('\n');
 
@@ -291,7 +307,7 @@ export function generate(): string {
         sections.push('|---|---|');
         for (const r of list) {
             sections.push(
-                `| \`${r.contract}\` | ${r.verdict === 'match' ? r.foundIn.map((f) => `\`${f}\``).join(', ') : '**missing**'} |`
+                `| \`${r.contract}\` | ${r.verdict === 'match' ? foundInLabel(r.foundIn) : '**missing**'} |`
             );
         }
         sections.push('');

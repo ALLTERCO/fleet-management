@@ -187,9 +187,10 @@
 </template>
 
 <script setup lang="ts">
-import maplibregl, {
-    type Map as MapLibreMap,
-    type Marker
+import {
+    Map as MapLibreMap,
+    Marker,
+    type MapMouseEvent
 } from 'maplibre-gl';
 import {
     computed,
@@ -219,6 +220,7 @@ import {
 } from '@/helpers/map-config';
 import {getMapStyleUrl} from '@/helpers/map-style';
 import {applyAppleMapsTint} from '@/helpers/map-tint';
+import {configureMapLibreWorker} from '@/helpers/maplibre';
 
 const PRECISION_LABELS: Record<GeoPrecision, string> = {
     geocoded: 'Geocoded',
@@ -306,7 +308,7 @@ function placeOrMoveMarker(lng: number, lat: number): void {
         el.className = 'lf-marker';
         el.innerHTML =
             '<span class="lf-marker__pin"></span><span class="lf-marker__shadow"></span>';
-        marker = new maplibregl.Marker({
+        marker = new Marker({
             element: el,
             draggable: true,
             anchor: 'bottom'
@@ -326,7 +328,7 @@ function onMarkerDragEnd(): void {
     precision.value = 'confirmed';
 }
 
-function onMapClick(e: maplibregl.MapMouseEvent): void {
+function onMapClick(e: MapMouseEvent): void {
     geo.value = {lat: e.lngLat.lat, lng: e.lngLat.lng};
     precision.value = 'manual';
     hasPin.value = true;
@@ -335,7 +337,8 @@ function onMapClick(e: maplibregl.MapMouseEvent): void {
 
 function ensureMap(): void {
     if (mapInstance || !mapHostRef.value) return;
-    mapInstance = new maplibregl.Map({
+    configureMapLibreWorker();
+    mapInstance = new MapLibreMap({
         container: mapHostRef.value,
         style: getMapStyleUrl(),
         center: hasPin.value ? [geo.value.lng, geo.value.lat] : [0, 20],

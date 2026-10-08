@@ -12,7 +12,7 @@ export class SingleFlight<K, V> {
         this.#label = label;
     }
 
-    async run(key: K, fetch: () => Promise<V>): Promise<V> {
+    run(key: K, fetch: () => Promise<V>): Promise<V> {
         // Lazy register: constructor-time would no-op when modules load before setLevel(2).
         if (!this.#registered) {
             this.#registered = true;
@@ -29,9 +29,19 @@ export class SingleFlight<K, V> {
             });
             return existing;
         }
-        const promise = fetch().finally(() => this.#inflight.delete(key));
+        const promise = startFetch(fetch).finally(() => {
+            // Compare-and-delete: a forgotten run must not evict its replacement.
+            if (this.#inflight.get(key) === promise) {
+                this.#inflight.delete(key);
+            }
+        });
         this.#inflight.set(key, promise);
         return promise;
+    }
+
+    /** Drop the in-flight entry so the next run() starts fresh. The run itself keeps going. */
+    forget(key: K): boolean {
+        return this.#inflight.delete(key);
     }
 
     /** The in-flight promise for a key, or undefined if none is running. */
@@ -41,5 +51,15 @@ export class SingleFlight<K, V> {
 
     size(): number {
         return this.#inflight.size;
+    }
+}
+
+// run() must call fetch synchronously so its caller can act on the run it just
+// started; a fetch that throws synchronously still has to reject like any other.
+function startFetch<V>(fetch: () => Promise<V>): Promise<V> {
+    try {
+        return fetch();
+    } catch (error) {
+        return Promise.reject(error);
     }
 }

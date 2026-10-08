@@ -1,8 +1,9 @@
 import type WebSocket from 'ws';
+import type {DeviceSource} from '../../types/api/deviceSource';
 import RpcTransport from './RpcTransport';
 
 export default class WebSocketTransport extends RpcTransport {
-    public override name = 'ws';
+    public override name: DeviceSource = 'ws';
     #ws: WebSocket;
     #torn = false;
     // Named so tearDown can detach exactly these — the socket is co-owned.

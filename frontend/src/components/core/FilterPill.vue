@@ -1,8 +1,11 @@
 <template>
     <div class="filter-pill">
         <div
-            class="search-pill"
-            :class="{'search-pill__input--filtered': hasActiveFilter}"
+            class="search-pill search-pill--buttons"
+            :class="[
+                'search-pill--filtered',
+                {'search-pill__input--filtered': hasActiveFilter}
+            ]"
         >
             <i class="fas fa-search search-pill__icon" aria-hidden="true" />
             <input

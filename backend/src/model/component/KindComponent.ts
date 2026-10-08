@@ -2,6 +2,7 @@
 // the resolver; writes manage only this org's custom kinds.
 
 import {GROUP_KIND_CATALOG} from '../../config/groupKindCatalog';
+import {requireTenantWideComponentPermission} from '../../modules/authz/evaluator';
 import {
     countKindReferences,
     createCustomKind,
@@ -57,6 +58,9 @@ function rejectDuplicateSlug(err: unknown, slug: string): never {
     throw err;
 }
 
+// A kind is a tenant catalog entry, not a device: no scope selector names it.
+const NOT_A_DEVICE_ID = (): undefined => undefined;
+
 export default class KindComponent extends Component {
     constructor() {
         super('kind', {
@@ -90,8 +94,9 @@ export default class KindComponent extends Component {
     }
 
     @Component.Expose('Get')
-    @Component.CrudPermission('devices', 'read')
+    @Component.CrudPermission('devices', 'read', NOT_A_DEVICE_ID)
     async get(params: unknown, sender: CommandSender) {
+        await requireTenantWideComponentPermission(sender, 'devices', 'read');
         const p = validateOrThrow<KindGetParams>(
             params,
             KIND_GET_PARAMS_SCHEMA
@@ -124,8 +129,9 @@ export default class KindComponent extends Component {
     }
 
     @Component.Expose('Update')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', NOT_A_DEVICE_ID)
     async update(params: unknown, sender: CommandSender) {
+        await requireTenantWideComponentPermission(sender, 'devices', 'update');
         const p = validateOrThrow<KindUpdateParams>(
             params,
             KIND_UPDATE_PARAMS_SCHEMA
@@ -142,8 +148,9 @@ export default class KindComponent extends Component {
     }
 
     @Component.Expose('Delete')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', NOT_A_DEVICE_ID)
     async delete(params: unknown, sender: CommandSender) {
+        await requireTenantWideComponentPermission(sender, 'devices', 'update');
         const p = validateOrThrow<KindDeleteParams>(
             params,
             KIND_DELETE_PARAMS_SCHEMA

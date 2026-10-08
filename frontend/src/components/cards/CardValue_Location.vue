@@ -3,10 +3,10 @@
     <div
         v-if="size"
         class="lc lc--tile"
-        :class="[`lc--${size}`, {'lc-selected': selected}]"
-        tabindex="0"
-        @click="$emit('open-preview')"
-        @keydown.enter="$emit('open-preview')"
+        :class="[`lc--${size}`, {'lc-selected': selected, 'lc-static': !clickable && !editMode}]"
+        :tabindex="clickable ? 0 : -1"
+        @click="clickable && $emit('open-preview')"
+        @keydown.enter="clickable && $emit('open-preview')"
     >
         <div class="lc-bar" :class="healthBarClass" />
         <div class="lc-tile-body">
@@ -100,6 +100,10 @@ const props = withDefaults(
         selected?: boolean;
         editMode?: boolean;
         resizable?: boolean;
+        /** False when the tile has no preview target — drops the pointer
+         *  cursor and the open-preview emit (dashboard sets this via the
+         *  detail resolver; the picker keeps the default). */
+        clickable?: boolean;
     }>(),
     {
         location: undefined,
@@ -108,7 +112,8 @@ const props = withDefaults(
         childCount: 0,
         selected: false,
         editMode: false,
-        resizable: true
+        resizable: true,
+        clickable: true
     }
 );
 
@@ -205,6 +210,11 @@ const healthBarClass = computed(() => {
 .lc:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 2px;
+}
+/* No preview target behind the tile — keep it visible, not click-inviting. */
+.lc.lc-static,
+.lc.lc-static:hover {
+    cursor: default;
 }
 .lc-selected {
     border-color: var(--color-primary);

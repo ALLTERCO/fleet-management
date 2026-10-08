@@ -12,8 +12,10 @@ import {
     canPerformComponentOperationAsync,
     isComponentPermissionAllowed
 } from '../../authz/evaluator';
-import {ALLOWED_MIME, saveFloorPlan} from '../../floorPlanUpload';
+import {isPlanConversionError} from '../../floorPlanPdf';
+import {ALLOWED_MIME} from '../../floorPlanUpload';
 import * as postgres from '../../PostgresProvider';
+import {processFloorPlanUpload} from '../../uploads/fileTransfer';
 import {consumeUploadTicket} from '../../uploadTickets';
 import {bestEffort} from '../../util/fireAndForget';
 import {httpRouteLimit} from '../rateLimit';
@@ -130,11 +132,10 @@ router.post(
                 return;
             }
 
-            const bytes = await fs.readFile(file.path);
-            const saved = await saveFloorPlan({
+            const saved = await processFloorPlanUpload({
+                filePath: file.path,
                 locationId,
-                contentType,
-                bytes
+                contentType
             });
 
             res.json({
@@ -150,6 +151,20 @@ router.post(
                 req.user?.username ?? '?',
                 err instanceof Error ? err.message : String(err)
             );
+            // Conversion failures are the user's or the operator's to act on,
+            // and each needs its own words — collapsing them into a generic
+            // 500 is how "we cannot convert this" becomes "0 zones found".
+            // These messages are authored here, so they leak no fs detail.
+            if (isPlanConversionError(err)) {
+                res.status(
+                    err.code === 'converter_unavailable'
+                        ? 501
+                        : err.code === 'converted_too_large'
+                          ? 413
+                          : 422
+                ).json({error: err.message, code: err.code});
+                return;
+            }
             // Generic message — raw err can carry fs paths / internal detail.
             res.status(500).json({error: 'upload failed'});
         } finally {

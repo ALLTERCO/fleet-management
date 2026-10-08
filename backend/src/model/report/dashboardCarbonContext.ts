@@ -11,7 +11,13 @@ export interface DashboardCarbonContext {
     readonly lbmGPerKWh: number;
     readonly mbmGPerKWh: number | null;
     readonly budgetKg: number | null;
-    readonly source: 'dashboard' | 'env_default';
+    readonly source: 'dashboard' | 'factor_store' | 'env_default';
+}
+
+export interface DashboardCarbonOverrides {
+    readonly lbmGPerKWh: number | null;
+    readonly mbmGPerKWh: number | null;
+    readonly budgetKg: number | null;
 }
 
 interface Row {
@@ -35,6 +41,32 @@ export async function fetchDashboardCarbonContext(
     return resolveFromRow(row);
 }
 
+/**
+ * Read only explicit dashboard values. Unlike fetchDashboardCarbonContext,
+ * this does not blend in the deployment default, allowing callers to apply
+ * the documented dashboard > factor store > deployment precedence.
+ */
+export async function fetchDashboardCarbonOverrides(
+    dashboardId: number | null | undefined,
+    orgId: string
+): Promise<DashboardCarbonOverrides> {
+    if (!isValidDashboardId(dashboardId)) return emptyOverrides();
+    if (!(await dashboardBelongsToOrg(dashboardId, orgId))) {
+        return emptyOverrides();
+    }
+    const row = await fetchRowBestEffort(dashboardId);
+    if (!row) return emptyOverrides();
+    return {
+        lbmGPerKWh: isPositiveFinite(row.emission_factor_g_per_kwh)
+            ? row.emission_factor_g_per_kwh
+            : null,
+        mbmGPerKWh: isPositiveFinite(row.emission_factor_mbm_g_per_kwh)
+            ? row.emission_factor_mbm_g_per_kwh
+            : null,
+        budgetKg: isPositiveFinite(row.co2_budget_kg) ? row.co2_budget_kg : null
+    };
+}
+
 function isValidDashboardId(id: unknown): id is number {
     return typeof id === 'number' && Number.isFinite(id) && id > 0;
 }
@@ -46,6 +78,10 @@ function envFallback(): DashboardCarbonContext {
         budgetKg: null,
         source: 'env_default'
     };
+}
+
+function emptyOverrides(): DashboardCarbonOverrides {
+    return {lbmGPerKWh: null, mbmGPerKWh: null, budgetKg: null};
 }
 
 async function fetchRowBestEffort(dashboardId: number): Promise<Row | null> {

@@ -1,95 +1,89 @@
 <template>
-    <div class="mov" :class="{on: visible}" @click.self="emit('close')">
-        <div class="modal" role="dialog" aria-modal="true">
-            <div class="mhd">
-                <div><h3>Dashboard settings</h3><p class="msub">Environment</p></div>
-                <button type="button" class="mx" aria-label="Close" @click="emit('close')">✕</button>
-            </div>
+    <Modal :visible="visible" large tall @close="emit('close')">
+        <template #title>
+            <ModalHeader title="Dashboard settings" description="Environment" />
+        </template>
 
-            <div class="mbody">
-                <nav class="mrail">
-                    <button
-                        v-for="t in TABS"
-                        :key="t.key"
-                        type="button"
-                        class="mtab"
-                        :class="{on: tab === t.key}"
-                        @click="tab = t.key"
-                    >
-                        {{ t.label }}
-                    </button>
-                </nav>
+        <template #default>
+            <div class="envs-body">
+                <ModalTabRail
+                    v-model="tab"
+                    :tabs="TABS"
+                    aria-label="Environment settings sections"
+                />
 
-                <div class="mpanel">
-                    <div class="mview" :class="{on: tab === 'comfort'}">
-                        <div class="frow">
-                            <div class="field">
-                                <div class="fl">Temp min °C</div>
-                                <input v-model.number="form.tempComfortMin" type="number" step="0.5" />
-                            </div>
-                            <div class="field">
-                                <div class="fl">Temp max °C</div>
-                                <input v-model.number="form.tempComfortMax" type="number" step="0.5" />
-                            </div>
+                <div class="envs-panel">
+                    <section v-show="tab === 'comfort'" class="envs-stack">
+                        <div class="envs-row">
+                            <FormField label="Temp min °C">
+                                <input v-model.number="form.tempComfortMin" :class="INPUT_CLASS" type="number" step="0.5" />
+                            </FormField>
+                            <FormField label="Temp max °C">
+                                <input v-model.number="form.tempComfortMax" :class="INPUT_CLASS" type="number" step="0.5" />
+                            </FormField>
                         </div>
-                        <div class="frow">
-                            <div class="field">
-                                <div class="fl">Humidity min %</div>
-                                <input v-model.number="form.humidityComfortMin" type="number" />
-                            </div>
-                            <div class="field">
-                                <div class="fl">Humidity max %</div>
-                                <input v-model.number="form.humidityComfortMax" type="number" />
-                            </div>
+                        <div class="envs-row">
+                            <FormField label="Humidity min %">
+                                <input v-model.number="form.humidityComfortMin" :class="INPUT_CLASS" type="number" />
+                            </FormField>
+                            <FormField label="Humidity max %">
+                                <input v-model.number="form.humidityComfortMax" :class="INPUT_CLASS" type="number" />
+                            </FormField>
                         </div>
-                        <div class="field">
-                            <div class="fl">Mold-risk humidity %</div>
-                            <input v-model.number="form.moldHumidityThreshold" type="number" />
-                        </div>
-                    </div>
+                        <FormField label="Mold-risk humidity %">
+                            <input v-model.number="form.moldHumidityThreshold" :class="INPUT_CLASS" type="number" />
+                        </FormField>
+                    </section>
 
-                    <div class="mview" :class="{on: tab === 'air'}">
-                        <div class="frow">
-                            <div class="field">
-                                <div class="fl">CO₂ fair ppm</div>
-                                <input v-model.number="form.co2FairPpm" type="number" />
-                            </div>
-                            <div class="field">
-                                <div class="fl">CO₂ poor ppm</div>
-                                <input v-model.number="form.co2PoorPpm" type="number" />
-                            </div>
+                    <section v-show="tab === 'air'" class="envs-stack">
+                        <div class="envs-row">
+                            <FormField label="CO₂ fair ppm">
+                                <input v-model.number="form.co2FairPpm" :class="INPUT_CLASS" type="number" />
+                            </FormField>
+                            <FormField label="CO₂ poor ppm">
+                                <input v-model.number="form.co2PoorPpm" :class="INPUT_CLASS" type="number" />
+                            </FormField>
                         </div>
-                        <div class="frow">
-                            <div class="field">
-                                <div class="fl">PM2.5 fair</div>
-                                <input v-model.number="form.pm25FairUgm3" type="number" />
-                            </div>
-                            <div class="field">
-                                <div class="fl">PM2.5 poor</div>
-                                <input v-model.number="form.pm25PoorUgm3" type="number" />
-                            </div>
+                        <div class="envs-row">
+                            <FormField label="PM2.5 fair">
+                                <input v-model.number="form.pm25FairUgm3" :class="INPUT_CLASS" type="number" />
+                            </FormField>
+                            <FormField label="PM2.5 poor">
+                                <input v-model.number="form.pm25PoorUgm3" :class="INPUT_CLASS" type="number" />
+                            </FormField>
                         </div>
-                    </div>
+                    </section>
 
-                    <div class="mview" :class="{on: tab === 'light'}">
-                        <div class="field">
-                            <div class="fl">Daylight threshold lux</div>
-                            <input v-model.number="form.daylightLux" type="number" />
-                        </div>
-                    </div>
+                    <section v-show="tab === 'light'" class="envs-stack">
+                        <FormField label="Daylight threshold lux">
+                            <input v-model.number="form.daylightLux" :class="INPUT_CLASS" type="number" />
+                        </FormField>
+                    </section>
                 </div>
             </div>
+        </template>
 
-            <div class="mft">
-                <button type="button" class="btn-ghost" @click="emit('close')">Cancel</button>
-                <button type="button" class="btn-primary" @click="onSave">Save</button>
-            </div>
-        </div>
-    </div>
+        <template #footer>
+            <ModalFooter>
+                <template #secondary>
+                    <Button type="blue-hollow" @click="emit('close')">Cancel</Button>
+                </template>
+                <template #primary>
+                    <Button type="blue" @click="onSave">Save</Button>
+                </template>
+            </ModalFooter>
+        </template>
+    </Modal>
 </template>
 
 <script setup lang="ts">
 import {reactive, ref, watch} from 'vue';
+import Button from '@/components/core/Button.vue';
+import FormField from '@/components/core/FormField.vue';
+import ModalFooter from '@/components/core/ModalFooter.vue';
+import ModalHeader from '@/components/core/ModalHeader.vue';
+import ModalTabRail, {type TabRailItem} from '@/components/core/ModalTabRail.vue';
+import Modal from '@/components/modals/Modal.vue';
 import {
     DEFAULT_ENV_SETTINGS,
     type EnvSettings
@@ -98,12 +92,16 @@ import {
 const props = defineProps<{visible: boolean; settings: EnvSettings}>();
 const emit = defineEmits<{close: []; save: [settings: EnvSettings]}>();
 
-const TABS = [
-    {key: 'comfort', label: 'Comfort'},
-    {key: 'air', label: 'Air quality'},
-    {key: 'light', label: 'Light'}
-] as const;
-const tab = ref<(typeof TABS)[number]['key']>('comfort');
+// The shared Input atom renders exactly these classes; native number inputs
+// reuse them so every field in the modal looks identical.
+const INPUT_CLASS = 'core-input border text-base rounded-lg block w-full p-2';
+
+const TABS: TabRailItem[] = [
+    {key: 'comfort', label: 'Comfort', icon: 'fa-temperature-half'},
+    {key: 'air', label: 'Air quality', icon: 'fa-wind'},
+    {key: 'light', label: 'Light', icon: 'fa-sun'}
+];
+const tab = ref('comfort');
 
 const form = reactive<EnvSettings>({...props.settings});
 
@@ -128,3 +126,41 @@ function onSave() {
     emit('save', sanitized());
 }
 </script>
+
+<style scoped>
+.envs-body {
+    display: grid;
+    grid-template-columns: var(--form-tab-rail-width) minmax(0, 1fr);
+    gap: var(--gap-md);
+    align-items: start;
+}
+
+.envs-panel {
+    min-width: 0;
+}
+
+.envs-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-md);
+}
+
+.envs-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--gap-sm);
+    align-items: start;
+}
+
+@media (max-width: 900px) {
+    .envs-body {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .envs-row {
+        grid-template-columns: 1fr;
+    }
+}
+</style>

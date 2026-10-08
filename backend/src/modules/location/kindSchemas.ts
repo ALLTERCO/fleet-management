@@ -3,7 +3,7 @@
 // form can't submit unrelated fields for the wrong kind.
 
 import type {JsonSchema} from '../../rpc/validation';
-import type {LocationKind} from '../../types/api/location';
+import {FIXTURE_KINDS, type LocationKind} from '../../types/api/location';
 
 // ---- shared primitives ------------------------------------------------------
 
@@ -108,8 +108,9 @@ const COMPLIANCE_TAGS: JsonSchema = {
 // Free-form user tags — same shape applies to every kind. Lowercase
 // slug-like to keep them queryable + index-friendly. Limits mirror the
 // frontend chip-input guard so the UI and backend reject the same payloads.
+// null on update erases the stored value (fn_location_apply_kind_fields treats null as delete).
 const TAGS_SCHEMA: JsonSchema = {
-    type: 'array',
+    type: ['array', 'null'],
     items: {
         type: 'string',
         minLength: 1,
@@ -122,9 +123,14 @@ const TAGS_SCHEMA: JsonSchema = {
 // Internal notes — single string per location. Length cap matches the
 // frontend MAX_NOTES_LENGTH so the form's counter is the SoT.
 const NOTES_SCHEMA: JsonSchema = {
-    type: 'string',
+    type: ['string', 'null'],
     maxLength: 2000
 };
+
+/** Ceiling on named settings per location. Exported because the form needs
+ * the same number, and a form that lets you add a 33rd only to have the save
+ * rejected is worse than one that stops you. */
+export const LOCATION_CUSTOM_FIELDS_MAX = 32;
 
 const CUSTOM_FIELDS_SCHEMA: JsonSchema = {
     type: 'object',
@@ -132,7 +138,7 @@ const CUSTOM_FIELDS_SCHEMA: JsonSchema = {
         type: ['string', 'number', 'boolean', 'null'],
         maxLength: 500
     },
-    maxProperties: 32
+    maxProperties: LOCATION_CUSTOM_FIELDS_MAX
 };
 
 // Visualisation: floor plan / device placement / zone overlay.
@@ -157,7 +163,9 @@ const PLACEMENT_SCHEMA: JsonSchema = {
     properties: {
         x: {type: 'number', minimum: 0, maximum: 1},
         y: {type: 'number', minimum: 0, maximum: 1},
-        rot: {type: 'number', minimum: 0, maximum: 360}
+        rot: {type: 'number', minimum: 0, maximum: 360},
+        // Which 3D fixture the placed device renders as.
+        fixture: {type: 'string', enum: [...FIXTURE_KINDS]}
     }
 };
 
@@ -199,6 +207,28 @@ const ZONES_SCHEMA: JsonSchema = {
     type: 'array',
     maxItems: 100,
     items: ZONE_SCHEMA
+};
+
+// One straight run of wall, endpoints in the same normalised space as zone
+// points. Hand-drawn walls and SVG-extracted walls share this shape, so the
+// renderer never needs to know which one it is looking at.
+const WALL_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['from', 'to'],
+    properties: {
+        from: ZONE_POINT_SCHEMA,
+        to: ZONE_POINT_SCHEMA
+    }
+};
+
+// Cap is per floor, not per room: an architectural drawing traced by hand
+// runs to a few hundred segments, and a runaway client must not be able to
+// push an unbounded blob into kind_fields.
+const WALLS_SCHEMA: JsonSchema = {
+    type: 'array',
+    maxItems: 2000,
+    items: WALL_SCHEMA
 };
 
 // ---- field fragments --------------------------------------------------------
@@ -270,12 +300,13 @@ const ENV_SETPOINT_FIELD: FieldFragment = {
 const CUSTOM_FIELDS_FIELD: FieldFragment = {customFields: CUSTOM_FIELDS_SCHEMA};
 const TAGS_FIELD: FieldFragment = {tags: TAGS_SCHEMA};
 const NOTES_FIELD: FieldFragment = {notes: NOTES_SCHEMA};
-// Spatial visualisation triplet — applied to every kind that can host
-// a floor plan / map (campus down to zone).
+// Spatial visualisation set — applied to every kind that can host a floor
+// plan / map (campus down to zone).
 const VISUALIZATION_FIELDS: FieldFragment = {
     floorPlan: FLOOR_PLAN_SCHEMA,
     devicePlacements: DEVICE_PLACEMENTS_SCHEMA,
-    zones: ZONES_SCHEMA
+    zones: ZONES_SCHEMA,
+    walls: WALLS_SCHEMA
 };
 
 // ---- per-kind schemas -------------------------------------------------------

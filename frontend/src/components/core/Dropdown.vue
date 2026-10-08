@@ -17,6 +17,8 @@
                 type="button"
                 role="combobox"
                 :aria-label="ariaLabel || undefined"
+                :aria-describedby="describedBy"
+                :aria-invalid="invalid || undefined"
                 :aria-expanded="expanded"
                 :aria-controls="`${id}-listbox`"
                 :aria-activedescendant="activeDescendantId"
@@ -61,32 +63,42 @@
                         type="text"
                         class="dropdown-search"
                         placeholder="Search..."
+                        :aria-label="label ? `Search ${label}` : 'Search options'"
                         @keydown="handleDropdownKeydown"
                     />
                 </div>
 
-                <ul
+                <div
                     :id="`${id}-listbox`"
                     role="listbox"
                     class="dropdown-list"
                     :aria-labelledby="id"
-                    :style="{maxHeight: dropdownMaxHeight + 'px'}"
+                    :style="{maxHeight: `${dropdownMaxHeight}px`}"
                     @keydown="handleDropdownKeydown"
                 >
+                    <div
+                        v-if="filteredEntries.length === 0"
+                        class="dropdown-empty"
+                        role="status"
+                    >
+                        No matching options
+                    </div>
                     <template
                         v-for="(entry, index) in filteredEntries"
                         :key="getEntryKey(entry)"
                     >
-                        <li
+                        <div
                             v-if="entry.startsGroup"
                             class="dropdown-group-label"
                             role="presentation"
                         >
                             {{ entry.groupLabel }}
-                        </li>
-                        <li
+                        </div>
+                        <button
                             :id="`${id}-option-${entry.flatIndex}`"
+                            type="button"
                             role="option"
+                            tabindex="-1"
                             :aria-selected="selectedValue === entry.value"
                             class="dropdown-item"
                             :class="{'dropdown-item--focused': focusedIndex === index}"
@@ -96,9 +108,9 @@
                                 <i :class="['fad', entry.icon]"></i>
                             </span>
                             <span>{{ entry.label }}</span>
-                        </li>
+                        </button>
                     </template>
-                </ul>
+                </div>
             </FloatingPanel>
         </div>
     </div>
@@ -111,9 +123,9 @@ import {
     onBeforeUnmount,
     onMounted,
     ref,
-    useId,
     watch
 } from 'vue';
+import {useFieldId} from '@/composables/useFieldId';
 import FloatingPanel from './FloatingPanel.vue';
 
 interface RichOption<TValue> {
@@ -136,12 +148,17 @@ interface DropdownEntry<TValue> {
     flatIndex: number;
 }
 
-const id = useId();
+// Take the wrapping FormField's id when there is one, so its <label for> finally
+// points at this button. Standalone, useFieldId falls back to its own id.
+const {id: fieldId, describedBy, invalid} = useFieldId();
+const id = fieldId;
 
 const props = withDefaults(
     defineProps<{
         /** Flat options list. Use when there are no categories. */
         options?: T[];
+        /** Optional parallel display labels for the flat `options` list. */
+        labels?: string[];
         /** Optional parallel icons for the flat `options` list. */
         icons?: string[];
         /** Grouped options list. When set, takes precedence over `options`. */
@@ -198,7 +215,7 @@ const allEntries = computed<DropdownEntry<T>[]>(() => {
     }
     return (props.options ?? []).map((option, flatIndex) => ({
         value: option,
-        label: String(option),
+        label: props.labels?.[flatIndex] ?? String(option),
         icon: props.icons?.[flatIndex],
         startsGroup: false,
         flatIndex
@@ -210,6 +227,10 @@ const selectedValue = ref<T | undefined>(
         ? props.default
         : (props.default ?? allEntries.value[0]?.value)
 );
+// A default that arrives before its entry exists must not be dropped: park
+// it here and apply it once the options catch up. A user pick clears it,
+// so the pick wins until the next default change.
+const pendingDefault = ref<T | undefined>();
 const expanded = ref(false);
 const focusedIndex = ref(-1);
 const dropdownAnchor = ref<HTMLElement | null>(null);
@@ -291,6 +312,8 @@ function toggleDropdown() {
 }
 
 function resetDropdown() {
+    // Reset applies the default outright, so nothing stays parked.
+    pendingDefault.value = undefined;
     selectedValue.value =
         props.placeholder !== undefined
             ? props.default
@@ -299,6 +322,7 @@ function resetDropdown() {
 }
 
 function selectEntry(entry: DropdownEntry<T>) {
+    pendingDefault.value = undefined;
     selectedValue.value = entry.value;
     closeDropdown();
     emit('selected', entry.value, entry.flatIndex);
@@ -351,10 +375,18 @@ watch(
 watch(
     () => props.default,
     (newDefault) => {
-        if (newDefault != null) {
-            const found = allEntries.value.find((e) => e.value === newDefault);
-            if (found) selectedValue.value = newDefault;
+        if (newDefault == null) {
+            // Any parked value belongs to the previous default change.
+            pendingDefault.value = undefined;
+            return;
         }
+        const found = allEntries.value.find((e) => e.value === newDefault);
+        if (found) {
+            selectedValue.value = newDefault;
+            pendingDefault.value = undefined;
+            return;
+        }
+        pendingDefault.value = newDefault;
     }
 );
 
@@ -365,6 +397,15 @@ watch(allEntries, (entries) => {
     if (entries.length === 0) {
         selectedValue.value = undefined;
         return;
+    }
+    // A parked default beats a stale selection once its entry shows up.
+    if (pendingDefault.value !== undefined) {
+        const arrived = entries.find((e) => e.value === pendingDefault.value);
+        if (arrived) {
+            selectedValue.value = arrived.value;
+            pendingDefault.value = undefined;
+            return;
+        }
     }
     const stillExists = entries.some((e) => e.value === selectedValue.value);
     if (!stillExists) {
@@ -524,9 +565,15 @@ onBeforeUnmount(() => {
 
 .dropdown-item {
     display: flex;
+    width: 100%;
     min-height: var(--touch-target-min);
     align-items: center;
     padding: var(--input-padding) var(--space-5);
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
     cursor: pointer;
 }
 
@@ -534,5 +581,12 @@ onBeforeUnmount(() => {
 .dropdown-item--focused {
     background-color: var(--glass-hover);
     color: var(--color-text-primary);
+}
+
+.dropdown-empty {
+    min-height: var(--touch-target-min);
+    padding: var(--input-padding) var(--space-5);
+    color: var(--color-text-tertiary);
+    list-style: none;
 }
 </style>

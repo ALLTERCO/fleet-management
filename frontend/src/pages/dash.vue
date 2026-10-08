@@ -7,6 +7,7 @@
                 :active-id="activeDashId"
                 :loading="dashboardsStore.loading"
                 @select="onPillSelect"
+                @share="shareVisible = true"
             />
 
             <!-- Scrolling body; the pill-bar header above stays put. -->
@@ -34,6 +35,14 @@
             @delete="onPaletteDelete"
             @move="onPaletteMove"
         />
+        <ShareDialog
+            v-if="activeDashboard"
+            :visible="shareVisible"
+            resource-type="dashboard"
+            :resource-id="activeDashboard.id"
+            :resource-label="activeDashboard.name"
+            @close="shareVisible = false"
+        />
     </div>
 </template>
 
@@ -47,6 +56,7 @@ import DashboardPalette from '@/components/dashboard/DashboardPalette.vue';
 import type {CreateSubmitPayload} from '@/components/dashboard/DashboardPaletteCreate.vue';
 import type {DashPillItem} from '@/components/dashboard/DashPillBar.vue';
 import DashPillBar from '@/components/dashboard/DashPillBar.vue';
+import ShareDialog from '@/components/modals/ShareDialog.vue';
 import {useDashboardOrder} from '@/composables/useDashboardOrder';
 import {useKeyboardShortcuts} from '@/composables/useKeyboardShortcuts';
 import {useRecentDashboards} from '@/composables/useRecentDashboards';
@@ -83,6 +93,7 @@ const paletteInitialMode = ref<'list' | 'create'>('list');
 // matches its own token, so a stale RPC never unlocks a later create.
 const creatingToken = ref<symbol | null>(null);
 const creating = computed(() => creatingToken.value !== null);
+const shareVisible = ref(false);
 
 const order = useDashboardOrder();
 
@@ -132,6 +143,15 @@ const activeDashId = computed<number | string>(() => {
     const re = new RegExp(`\\/dash\\/(?:${prefixes})?(\\d+)`);
     const match = route.path.match(re);
     return match?.[1] ? Number(match[1]) : '';
+});
+const activeDashboard = computed(() =>
+    sortedDashboards.value.find(
+        (dashboard) => String(dashboard.id) === String(activeDashId.value)
+    )
+);
+
+watch(activeDashId, () => {
+    shareVisible.value = false;
 });
 
 const recentIds = computed(() => recents.ids.value);
@@ -244,6 +264,7 @@ async function performCreate(
     dashboardsStore.upsert({
         id: result.id,
         organizationId: result.organizationId,
+        ownerUserId: result.ownerUserId,
         name: result.name,
         dashboardType: result.dashboardType,
         scope: result.scope ?? {},
@@ -345,7 +366,6 @@ onMounted(async () => {
     min-height: 0;
     background: var(--glass-1-bg);
     backdrop-filter: var(--glass-1-filter);
-    -webkit-backdrop-filter: var(--glass-1-filter);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-xl);
     overflow: hidden;
@@ -362,7 +382,6 @@ onMounted(async () => {
 .dash-surface :deep(.dash-bar) {
     background: transparent;
     backdrop-filter: none;
-    -webkit-backdrop-filter: none;
     box-shadow: none;
     position: relative;
     z-index: 2;

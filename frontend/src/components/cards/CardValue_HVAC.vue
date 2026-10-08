@@ -14,13 +14,13 @@
     >
         <template #default>
             <div class="ec-dual">
-                <div class="ec-dual-item">
-                    <div class="ec-dv">{{ targetTempDisplay }}°</div>
+                <div v-if="targetTempDisplay" class="ec-dual-item">
+                    <div class="ec-dv">{{ targetTempDisplay }}<span class="ec-u ec-u--sm ec-u--sup">°</span></div>
                     <div class="ec-dl">Target</div>
                 </div>
-                <div class="ec-dsep" />
-                <div class="ec-dual-item">
-                    <div class="ec-dv">{{ currentTempDisplay }}°</div>
+                <div v-if="targetTempDisplay && currentTempDisplay" class="ec-dsep" />
+                <div v-if="currentTempDisplay" class="ec-dual-item">
+                    <div class="ec-dv">{{ currentTempDisplay }}<span class="ec-u ec-u--sm ec-u--sup">°</span></div>
                     <div class="ec-dl">Current</div>
                 </div>
             </div>
@@ -56,13 +56,13 @@
                      on the slider's line, then the big on/off button at the base. -->
                 <div class="ec-wl hvac-2x1-wl">
                     <div class="ec-dual hvac-2x1-dual">
-                        <div class="ec-dual-item">
-                            <div class="ec-dv">{{ isHumidityTab ? targetHumDisplay : targetTempDisplay }}{{ isHumidityTab ? '%' : '°' }}</div>
+                        <div v-if="tabTargetDisplay" class="ec-dual-item">
+                            <div class="ec-dv">{{ tabTargetDisplay }}<span class="ec-u" :class="{'ec-u--sup': !isHumidityTab}">{{ isHumidityTab ? '%' : '°' }}</span></div>
                             <div class="ec-dl">Target</div>
                         </div>
-                        <div class="ec-dsep" />
-                        <div class="ec-dual-item">
-                            <div class="ec-dv">{{ isHumidityTab ? humidityDisplay : currentTempDisplay }}{{ isHumidityTab ? '%' : '°' }}</div>
+                        <div v-if="tabTargetDisplay && tabCurrentDisplay" class="ec-dsep" />
+                        <div v-if="tabCurrentDisplay" class="ec-dual-item">
+                            <div class="ec-dv">{{ tabCurrentDisplay }}<span class="ec-u" :class="{'ec-u--sup': !isHumidityTab}">{{ isHumidityTab ? '%' : '°' }}</span></div>
                             <div class="ec-dl">Current</div>
                         </div>
                     </div>
@@ -82,36 +82,31 @@
                         <button class="hvac-tab" :class="{act: !isHumidityTab}" @click.stop="configTab = 'temp'">Temp</button>
                         <button class="hvac-tab" :class="{act: isHumidityTab}" @click.stop="configTab = 'humidity'">Humidity</button>
                     </div>
-                    <div class="ec-clr-track hvac-2x1-track">
-                        <input
-                            v-if="isHumidityTab"
-                            type="range"
-                            class="sld-r sld-hum"
-                            aria-label="Target humidity"
-                            :min="humMin"
-                            :max="humMax"
-                            step="1"
-                            :value="humSliderValue"
-                            :disabled="!isOperable"
-                            @input="onHumInput"
-                            @change="onHumChange"
-                            @click.stop
-                        />
-                        <input
-                            v-else
-                            type="range"
-                            class="sld-r sld-temp"
-                            aria-label="Target temperature"
-                            :min="tempMin"
-                            :max="tempMax"
-                            :step="tempStep"
-                            :value="tempSliderValue"
-                            :disabled="!isOperable"
-                            @input="onTempInput"
-                            @change="onTempChange"
-                            @click.stop
-                        />
-                    </div>
+                    <CardSlider
+                        v-if="isHumidityTab"
+                        class="hvac-2x1-track"
+                        variant="hum"
+                        :min="humMin"
+                        :max="humMax"
+                        :value="humSliderValue"
+                        :disabled="!isOperable"
+                        aria-label="Target humidity"
+                        @input="onHumInput"
+                        @change="onHumChange"
+                    />
+                    <CardSlider
+                        v-else
+                        class="hvac-2x1-track"
+                        variant="temp"
+                        :min="tempMin"
+                        :max="tempMax"
+                        :step="tempStep"
+                        :value="tempSliderValue"
+                        :disabled="!isOperable"
+                        aria-label="Target temperature"
+                        @input="onTempInput"
+                        @change="onTempChange"
+                    />
                     <div class="ec-modes hvac-2x1-modes">
                         <template v-if="isHumidityTab">
                             <button
@@ -185,48 +180,43 @@
 
             <!-- Setpoint: target + current for the selected metric, spaced apart -->
             <div class="hvac-hero">
-                <div class="hvac-hero-item">
-                    <div class="hvac-hero-v">{{ isHumidityTab ? targetHumDisplay : targetTempDisplay }}<span>{{ isHumidityTab ? '%' : '°' }}</span></div>
+                <div v-if="tabTargetDisplay" class="hvac-hero-item">
+                    <div class="hvac-hero-v">{{ tabTargetDisplay }}<span class="ec-u" :class="{'ec-u--sup': !isHumidityTab}">{{ isHumidityTab ? '%' : '°' }}</span></div>
                     <div class="hvac-hero-l">Target</div>
                 </div>
-                <div class="hvac-hero-item">
-                    <div class="hvac-hero-v hvac-hero-v--now">{{ isHumidityTab ? humidityDisplay : currentTempDisplay }}<span>{{ isHumidityTab ? '%' : '°' }}</span></div>
+                <div v-if="tabCurrentDisplay" class="hvac-hero-item">
+                    <div class="hvac-hero-v hvac-hero-v--now">{{ tabCurrentDisplay }}<span class="ec-u" :class="{'ec-u--sup': !isHumidityTab}">{{ isHumidityTab ? '%' : '°' }}</span></div>
                     <div class="hvac-hero-l">Current</div>
                 </div>
             </div>
 
             <div class="ec-trv-hero-controls">
                 <!-- Setpoint slider for the selected metric -->
-                <div class="ec-clr-track hvac-set-track">
-                    <input
-                        v-if="isHumidityTab"
-                        type="range"
-                        class="sld-r sld-hum"
-                        aria-label="Target humidity"
-                        :min="humMin"
-                        :max="humMax"
-                        step="1"
-                        :value="humSliderValue"
-                        :disabled="!isOperable"
-                        @input="onHumInput"
-                        @change="onHumChange"
-                        @click.stop
-                    />
-                    <input
-                        v-else
-                        type="range"
-                        class="sld-r sld-temp"
-                        aria-label="Target temperature"
-                        :min="tempMin"
-                        :max="tempMax"
-                        :step="tempStep"
-                        :value="tempSliderValue"
-                        :disabled="!isOperable"
-                        @input="onTempInput"
-                        @change="onTempChange"
-                        @click.stop
-                    />
-                </div>
+                <CardSlider
+                    v-if="isHumidityTab"
+                    class="hvac-set-track"
+                    variant="hum"
+                    :min="humMin"
+                    :max="humMax"
+                    :value="humSliderValue"
+                    :disabled="!isOperable"
+                    aria-label="Target humidity"
+                    @input="onHumInput"
+                    @change="onHumChange"
+                />
+                <CardSlider
+                    v-else
+                    class="hvac-set-track"
+                    variant="temp"
+                    :min="tempMin"
+                    :max="tempMax"
+                    :step="tempStep"
+                    :value="tempSliderValue"
+                    :disabled="!isOperable"
+                    aria-label="Target temperature"
+                    @input="onTempInput"
+                    @change="onTempChange"
+                />
 
                 <!-- Preset marks on the slider — tap to snap; the slider also
                      sets on click/drag. Present on both tabs so the slider stays
@@ -320,6 +310,7 @@ import {useOptimisticSlider} from '@/composables/useOptimisticSlider';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
 import type {entity_t} from '@/types';
+import CardSlider from '../core/CardSlider.vue';
 import CardBadges from './CardBadges.vue';
 import CardShell from './CardShell.vue';
 import CardToggle from './CardToggle.vue';
@@ -395,17 +386,18 @@ const hasTargetHumidity = computed(() => cmap.value?.target_humidity != null);
 const workingMode = computed(() => vcStatus('working_mode')?.value ?? 'cool');
 const fanSpeed = computed(() => vcStatus('fan_speed')?.value ?? 'auto');
 
-const targetTempDisplay = computed(() =>
-    targetTemp.value != null ? Number(targetTemp.value).toFixed(1) : '—'
+// null, not a dash — the ° or % never renders without a reading.
+const targetTempDisplay = computed<string | null>(() =>
+    targetTemp.value != null ? Number(targetTemp.value).toFixed(1) : null
 );
-const currentTempDisplay = computed(() =>
-    currentTemp.value != null ? Number(currentTemp.value).toFixed(1) : '—'
+const currentTempDisplay = computed<string | null>(() =>
+    currentTemp.value != null ? Number(currentTemp.value).toFixed(1) : null
 );
-const humidityDisplay = computed(() =>
-    currentHumidity.value != null ? String(currentHumidity.value) : '—'
+const humidityDisplay = computed<string | null>(() =>
+    currentHumidity.value != null ? String(currentHumidity.value) : null
 );
-const targetHumDisplay = computed(() =>
-    targetHumidity.value != null ? String(targetHumidity.value) : '—'
+const targetHumDisplay = computed<string | null>(() =>
+    targetHumidity.value != null ? String(targetHumidity.value) : null
 );
 
 // ── Mode/Fan display ───────────────────────────────────────────────────
@@ -517,6 +509,13 @@ function markPos(p: number, min: number, max: number): Record<string, string> {
 // bulb's colour/white tabs). Humidity only when the device exposes a target.
 const configTab = ref<'temp' | 'humidity'>('temp');
 const isHumidityTab = computed(() => configTab.value === 'humidity');
+// The selected tab decides which reading the 2x1/2x2 setpoint pair shows.
+const tabTargetDisplay = computed(() =>
+    isHumidityTab.value ? targetHumDisplay.value : targetTempDisplay.value
+);
+const tabCurrentDisplay = computed(() =>
+    isHumidityTab.value ? humidityDisplay.value : currentTempDisplay.value
+);
 
 // Both sliders follow the finger and commit on release; the setters clamp.
 const {
@@ -767,17 +766,10 @@ function setFan(speed: string) {
     background-clip: text;
     -webkit-text-fill-color: transparent;
 }
-.hvac-hero-v span {
-    font-size: var(--type-subheading);
-    -webkit-text-fill-color: var(--color-text-tertiary);
-}
 .hvac-hero-v--now {
     font-size: var(--type-heading);
     background: none;
     -webkit-text-fill-color: var(--color-text-secondary);
-}
-.hvac-hero-v--now span {
-    font-size: var(--type-body);
 }
 .hvac-hero-l {
     font-size: var(--type-caption);

@@ -4,6 +4,7 @@
 
 import {DescribeBuilder, type DescribeOutput} from './_describe';
 import type {JsonSchema} from './_schema';
+import {listResponseSchema} from './_shared';
 import {
     DEVICE_INGRESS_PROFILE_ID_SCHEMA,
     DEVICE_INGRESS_REJECTION_REASON_SCHEMA,
@@ -16,12 +17,6 @@ import {
     type DeviceIngressSecurityModel,
     type DeviceIngressTransport
 } from './deviceIngress';
-
-const PENDING_MAP: JsonSchema = {
-    type: 'object',
-    description: 'Map of numeric id → pending-device payload.',
-    additionalProperties: true
-};
 
 const EMPTY_PARAMS: JsonSchema = {type: 'object', properties: {}};
 const ENTRY_ID_SCHEMA: JsonSchema = {type: 'string', minLength: 1};
@@ -111,7 +106,13 @@ export const WAITINGROOM_REJECT_PARAMS_SCHEMA: JsonSchema = {
     properties: {
         entryId: ENTRY_ID_SCHEMA,
         reasonCode: DEVICE_INGRESS_REJECTION_REASON_SCHEMA,
-        detail: {type: 'string', minLength: 1, maxLength: 1024}
+        detail: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 1024,
+            description:
+                'Optional free-text note saved with the rejection, next to reasonCode.'
+        }
     }
 };
 
@@ -247,8 +248,6 @@ export const WAITINGROOM_QUARANTINE_PARAMS_SCHEMA: JsonSchema = {
     }
 };
 
-const ACK: JsonSchema = {type: 'object', additionalProperties: true};
-
 const ACCEPT_RESPONSE: JsonSchema = {
     type: 'object',
     required: [
@@ -325,19 +324,119 @@ const BULK_CANCEL_RESPONSE: JsonSchema = {
     properties: {canceled: {type: 'boolean'}}
 };
 
-const LIST_ENVELOPE: JsonSchema = {
+// One canonical entry. Legacy and device-ingress rows share these keys and each
+// carries its own extras on top, so the schema stays open.
+const ENTRY_SCHEMA: JsonSchema = {
     type: 'object',
-    required: ['items', 'total', 'limit', 'offset', 'has_more'],
+    additionalProperties: true,
+    required: [
+        'source',
+        'waitingRoomKind',
+        'entryId',
+        'shellyID',
+        'status',
+        'sortTime'
+    ],
     properties: {
-        items: {
-            type: 'array',
-            items: {type: 'object', additionalProperties: true}
-        },
-        total: {type: 'integer'},
-        limit: {type: 'integer'},
-        offset: {type: 'integer'},
-        has_more: {type: 'boolean'}
+        source: {type: 'string', enum: [...WAITING_ROOM_SOURCES]},
+        waitingRoomKind: {type: 'string', enum: [...WAITING_ROOM_SOURCES]},
+        entryId: ENTRY_ID_SCHEMA,
+        shellyID: {type: 'string'},
+        status: {},
+        sortTime: {type: 'integer'}
     }
+};
+
+const LIST_ENVELOPE = listResponseSchema(ENTRY_SCHEMA);
+
+const PENDING_MAP: JsonSchema = {
+    type: 'object',
+    description: 'Map of entryId → open waiting-room entry.',
+    additionalProperties: ENTRY_SCHEMA
+};
+
+// Denied rows keep only the sanitized device status, not the full entry.
+const DENIED_MAP: JsonSchema = {
+    type: 'object',
+    description: 'Map of Shelly external id → sanitized denied-device payload.',
+    additionalProperties: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['status'],
+        properties: {shellyID: {type: 'string'}, status: {type: 'object'}}
+    }
+};
+
+// Rejecting or quarantining a batch reports each id as done or failed.
+const BATCH_ID_RESULT: JsonSchema = {
+    type: 'object',
+    required: ['success', 'error'],
+    additionalProperties: false,
+    properties: {
+        success: {type: 'array', items: {type: 'string'}},
+        error: {type: 'array', items: {type: 'string'}}
+    }
+};
+
+// Legacy entries have no live socket, so they answer with the stored status
+// instead of a fresh device read.
+const PROBE_RESPONSE: JsonSchema = {
+    anyOf: [
+        {
+            type: 'object',
+            additionalProperties: false,
+            required: ['source', 'live', 'status'],
+            properties: {
+                source: {type: 'string', const: 'legacy'},
+                live: {type: 'boolean', const: false},
+                status: {}
+            }
+        },
+        {
+            type: 'object',
+            additionalProperties: false,
+            required: ['deviceInfo', 'status'],
+            properties: {deviceInfo: {}, status: {}}
+        }
+    ]
+};
+
+// Approve and Reject route by entryId: a legacy id runs the batch path, a
+// device-ingress id runs the identity path.
+const APPROVE_RESPONSE: JsonSchema = {
+    anyOf: [
+        ACCEPT_RESPONSE,
+        {
+            type: 'object',
+            additionalProperties: false,
+            required: ['identity', 'waitingRoom'],
+            properties: {
+                identity: {type: 'object', additionalProperties: true},
+                waitingRoom: {
+                    anyOf: [
+                        {type: 'object', additionalProperties: true},
+                        {type: 'null'}
+                    ]
+                }
+            }
+        }
+    ]
+};
+
+const REJECT_RESPONSE: JsonSchema = {
+    anyOf: [
+        BATCH_ID_RESULT,
+        {
+            type: 'object',
+            additionalProperties: false,
+            required: ['success', 'entry', 'rejection'],
+            properties: {
+                success: {type: 'boolean', const: true},
+                entry: {type: 'object', additionalProperties: true},
+                rejection: {type: 'object', additionalProperties: true}
+            }
+        }
+    ]
 };
 
 export const WAITINGROOM_DESCRIBE: DescribeOutput = new DescribeBuilder(
@@ -358,7 +457,7 @@ export const WAITINGROOM_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('GetDenied', {
         safety: {operation: 'read'},
         params: WAITINGROOM_GET_DENIED_PARAMS_SCHEMA,
-        response: PENDING_MAP,
+        response: DENIED_MAP,
         permission: {note: 'authenticated'},
         description: 'Raw denied-devices map — kept for legacy callers.'
     })
@@ -379,13 +478,13 @@ export const WAITINGROOM_DESCRIBE: DescribeOutput = new DescribeBuilder(
     })
     .registerMethod('Get', {
         params: WAITINGROOM_ENTRY_PARAMS_SCHEMA,
-        response: {type: 'object', additionalProperties: true},
+        response: ENTRY_SCHEMA,
         permission: {component: 'waiting_room', operation: 'read'},
         description: 'Get one canonical waiting-room entry by entryId.'
     })
     .registerMethod('Probe', {
         params: WAITINGROOM_ENTRY_PARAMS_SCHEMA,
-        response: {type: 'object', additionalProperties: true},
+        response: PROBE_RESPONSE,
         permission: {component: 'waiting_room', operation: 'read'},
         description: 'Probe one live waiting-room device when a socket exists.'
     })
@@ -410,7 +509,7 @@ export const WAITINGROOM_DESCRIBE: DescribeOutput = new DescribeBuilder(
     })
     .registerMethod('Approve', {
         params: WAITINGROOM_APPROVE_PARAMS_SCHEMA,
-        response: ACK,
+        response: APPROVE_RESPONSE,
         permission: {component: 'waiting_room', operation: 'create'},
         description:
             'Canonical approve by entryId. Legacy entries use shellyID; device-ingress entries use deviceIngress:<uuid>.'
@@ -445,21 +544,21 @@ export const WAITINGROOM_DESCRIBE: DescribeOutput = new DescribeBuilder(
     })
     .registerMethod('RejectPending', {
         params: WAITINGROOM_REJECT_PENDING_PARAMS_SCHEMA,
-        response: ACK,
+        response: BATCH_ID_RESULT,
         permission: {component: 'waiting_room', operation: 'delete'},
         description:
             'Reject pending devices by numeric id (polite close — reversible).'
     })
     .registerMethod('Reject', {
         params: WAITINGROOM_REJECT_PARAMS_SCHEMA,
-        response: ACK,
+        response: REJECT_RESPONSE,
         permission: {component: 'waiting_room', operation: 'delete'},
         description:
             'Canonical reject by entryId. Legacy entries use shellyID; device-ingress entries use deviceIngress:<uuid>.'
     })
     .registerMethod('Quarantine', {
         params: WAITINGROOM_QUARANTINE_PARAMS_SCHEMA,
-        response: ACK,
+        response: BATCH_ID_RESULT,
         permission: {component: 'waiting_room', operation: 'delete'},
         description:
             'Destructive: rewrite device WS config + reboot. Recovery requires factory-reset on the device. Reserved for adversarial / hammering cases.'

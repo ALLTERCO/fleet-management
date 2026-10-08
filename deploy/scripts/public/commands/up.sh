@@ -10,10 +10,69 @@ zitadel_db_initialized() {
     zitadel_event_store_initialized "$c"
 }
 
+dev_server_stop_infrastructure() {
+    compose_cmd down
+}
+
+# Dev mode is the shared from-source dev server; Fleet Manager never runs in a container.
+_public_up_dev() {
+    WITH_SSL=false
+    SSL_MODE=""
+
+    echo ""
+    echo "  ${BOLD}${WHITE}Fleet Manager dev server${RESET}"
+    echo ""
+
+    phase "Phase 1/3 — Prerequisites"
+    ensure_prereqs_for_up || return 1
+    if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
+        error "Dev mode runs Fleet Manager from source and needs Node.js 24 with npm."
+        return 1
+    fi
+    local node_major
+    node_major="$(node -p 'process.versions.node.split(".")[0]')"
+    if [ "$node_major" != "24" ]; then
+        warn "Fleet Manager targets Node.js 24; found $(node -v)."
+    fi
+    validate_dev_server_ports || return 1
+
+    phase "Phase 2/3 — Configuration"
+    load_state_env
+    migrate_legacy_secret_encryption_key || return 1
+    generate_passwords
+    if ! validate_no_demo_literals; then
+        error "Demo / weak secret detected. Rotate before continuing."
+        return 1
+    fi
+    save_env
+    generate_init_sql
+
+    phase "Phase 3/3 — Database and Redis"
+    if run_quiet "Starting database and Redis" compose_cmd up -d fleet-db redis; then
+        ok "Database and Redis started"
+    else
+        error "Failed to start database and Redis"
+        return 1
+    fi
+    if ! hc_wait_or_dump fleet-db 60; then
+        error "Database did not become healthy within 60s."
+        return 1
+    fi
+    save_deploy_meta "localhost" "up"
+
+    dev_server_start "$FM_DIR" "$DEPLOY_DIR"
+}
+
 cmd_up() {
     parse_runtime_flags "$@" || return 1
+    resolve_nodered_choice
     load_deploy_env_overrides || return 1
     enable_debug_mode
+
+    if [ "$FM_DEV_MODE" = "true" ]; then
+        _public_up_dev
+        return
+    fi
 
     # First run (interactive): ask local-vs-domain instead of requiring flags.
     preflight_choose_mode
@@ -96,13 +155,8 @@ cmd_up() {
     # Waiting-room org for gate-less devices: domain when given, else code default.
     export FM_DEVICE_INGRESS_DEFAULT_ORGANIZATION_ID="${FM_DEVICE_INGRESS_DEFAULT_ORGANIZATION_ID:-${SSL_DOMAIN:-}}"
 
-    # When SSL is active, public HTTPS is always on port 443 (no custom port support).
-    # Traefik terminates TLS; backends are plain HTTP on the Docker bridge.
+    export_zitadel_external_settings
     if [ "$WITH_SSL" = "true" ]; then
-        export ZITADEL_EXTERNALPORT=443
-        export ZITADEL_EXTERNALSECURE=true
-        export ZITADEL_TLS_MODE=external
-        export ZITADEL_PUBLIC_SCHEME=https
         if [ "$SSL_MODE" = "selfsigned" ]; then
             info "SSL enabled — self-signed certificate for $hostname"
         elif [ "$SSL_MODE" = "custom" ]; then
@@ -113,14 +167,10 @@ cmd_up() {
         else
             info "SSL enabled — Traefik will provision Let's Encrypt cert for $SSL_DOMAIN"
         fi
-    else
-        export ZITADEL_EXTERNALPORT
-        export ZITADEL_EXTERNALSECURE=false
-        export ZITADEL_TLS_MODE=disabled
-        export ZITADEL_PUBLIC_SCHEME=http
     fi
 
     phase "Phase 2/4 — Configuration"
+    public_ensure_state_dirs || return 1
     # Existing state must load before generation/validation so persisted weak
     # values are rejected instead of being hidden by temporary random values.
     load_state_env
@@ -139,6 +189,11 @@ cmd_up() {
             fi
         fi
     fi
+    public_kdf_salt_preflight || return 1
+    if [ "$WITH_SSL" = "true" ]; then
+        edge_network_preflight "${FM_EDGE_SUBNET:-}" \
+            "${COMPOSE_PROJECT_NAME:-fleet-public}_fleet-edge" || return 1
+    fi
     migrate_legacy_secret_encryption_key
     generate_passwords
     if ! validate_no_demo_literals; then
@@ -150,7 +205,6 @@ cmd_up() {
         return 1
     fi
     save_env
-    save_deploy_meta "$hostname" "up"
     generate_init_sql
     generate_system_api_keypair
     # docker-compose.zitadel.yml mounts state/redis-users.acl read-only into
@@ -166,18 +220,10 @@ cmd_up() {
     # Generate TLS certs and Traefik routing config
     if [ "$WITH_SSL" = "true" ]; then
         case "$SSL_MODE" in
-            selfsigned)
-                generate_selfsigned_cert "$hostname"
-                write_traefik_routes_selfsigned
-                ;;
-            custom)
-                install_custom_cert
-                write_traefik_routes_selfsigned
-                ;;
-            letsencrypt)
-                write_traefik_routes_letsencrypt "$SSL_DOMAIN"
-                ;;
+            selfsigned) generate_selfsigned_cert "$hostname" ;;
+            custom) install_custom_cert ;;
         esac
+        write_traefik_routes_for_ssl_mode || return 1
     fi
 
     # The machinekey dir holds the Zitadel admin private key, so it must not be
@@ -205,6 +251,8 @@ cmd_up() {
 
     phase "Phase 3/4 — Containers"
     verify_images
+    # Before Compose creates containers, so every label records the image's commit.
+    public_resolve_build_identity "${FM_VERSION:-latest}"
 
     local db_services=(fleet-db)
     [ "$FM_DEV_MODE" != "true" ] && db_services+=(zitadel-db redis)
@@ -292,8 +340,13 @@ cmd_up() {
             if [ "$prev_hostname" != "$hostname" ]; then
                 info "Hostname changed ($prev_hostname -> $hostname), re-running bootstrap"
                 run_bootstrap "$hostname" || return 1
+            elif nodered_identity_missing; then
+                info "Node-RED turned on, re-running bootstrap for its service account"
+                run_bootstrap "$hostname" || return 1
             else
                 ok "Zitadel already bootstrapped (hostname unchanged)"
+                nodered_sync_permissions "$hostname" || return 1
+                sync_mcp_sign_in_apps "$hostname" || return 1
             fi
         fi
 
@@ -313,12 +366,16 @@ cmd_up() {
     # full-mode deploy — compose ignores them otherwise.
     local up_args=(up -d)
     [ "$FM_DEV_MODE" = "true" ] && up_args+=(--remove-orphans)
+    public_kdf_salt_preflight || return 1
+    save_deploy_meta "$hostname" "up"
+    cleanup_orphan_optional_containers nodered || true
     if run_quiet "Starting Fleet Manager containers" compose_cmd "${up_args[@]}"; then
         ok "All services started"
     else
         error "Failed to start Fleet Manager containers"
         return 1
     fi
+    public_kdf_salt_confirm_container || return 1
 
     if [ "$WITH_SSL" != "true" ]; then
         local actual_port
@@ -369,22 +426,34 @@ cmd_up() {
         fi
     fi
 
-    # Action V2 webhook — Zitadel-only; quick mode has no OIDC to wire.
-    if [ "$FM_DEV_MODE" != "true" ]; then
-        run_actions_bootstrap || return 1
-        if generate_fm_config "$hostname"; then
-            FM_RUNTIME_ENV_FILE="$STATE_DIR/fm-runtime.env" \
-              bash "$DEPLOY_DIR/scripts/common/check-zitadel-actions.sh" --quiet || {
-                error "Action V2 signing keys are missing from FM runtime config"
-                return 1
-              }
-            run_quiet "Restarting Fleet Manager with signing key" \
-                compose_cmd up -d fleet-manager || true
+    if nodered_enabled; then
+        spinner_start "Node-RED starting..."
+        if hc_wait_or_dump nodered 240 100; then
+            spinner_stop ok "Node-RED ready"
+        else
+            spinner_stop fail "Node-RED did not become healthy"
+            return 1
         fi
     fi
 
+    # Action V2 webhook — Zitadel-only; quick mode has no OIDC to wire.
+    if [ "$FM_DEV_MODE" != "true" ]; then
+        run_actions_bootstrap "$hostname" || return 1
+        if generate_fm_config "$hostname"; then
+            verify_actions_runtime_config "$hostname" || return 1
+            public_kdf_salt_preflight || return 1
+            run_quiet "Restarting Fleet Manager with signing key" \
+                compose_cmd up -d fleet-manager || return 1
+            if ! hc_wait_or_dump fleet-manager "${FM_STARTUP_TIMEOUT:-180}"; then
+                error "Fleet Manager did not become healthy after the signing key restart"
+                return 1
+            fi
+        fi
+    fi
+    wait_for_fleet_route || return 1
+
     phase "Phase 4/4 — Finalization"
-    apply_retention_policies
+    apply_retention_policies || return 1
     _public_capture_build_identity
     manifest_record_install
 

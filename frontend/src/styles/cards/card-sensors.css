@@ -55,10 +55,6 @@
     font-weight: var(--font-black);
     letter-spacing: var(--tracking-tight);
 }
-.ec-em-split-hero .ec-hu {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
-}
 .ec-em-split-hero .ec-hv-wrap {
     margin-bottom: 0;
 }
@@ -139,13 +135,6 @@
     background-clip: text;
 }
 
-.ec-hero-power-u {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-tertiary);
-    letter-spacing: normal;
-}
-
 .ec-hero-power-sub {
     font-size: var(--type-caption);
     font-weight: var(--font-semibold);
@@ -198,13 +187,6 @@
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-}
-
-.ec-hero-meter-u {
-    font-size: var(--type-caption);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-tertiary);
-    letter-spacing: normal;
 }
 
 /* Hero stats grid 3x2 */
@@ -289,7 +271,7 @@
     color: var(--color-text-tertiary);
 }
 
-/* EM hero section */
+/* EM hero. Sizes to its content so the taller phase grid below gets the room. */
 .ec-em-hero-head {
     text-align: center;
     padding: var(--space-4) 0;
@@ -297,7 +279,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    flex: 1 0 0;
+    flex: 0 1 auto;
 }
 
 .ec-em-hero-inline {
@@ -317,13 +299,6 @@
     color: var(--color-text-primary);
 }
 
-.ec-em-hero-u {
-    font-size: var(--type-subheading);
-    color: var(--color-text-tertiary);
-    font-weight: var(--font-semibold);
-    margin-left: 4px;
-}
-
 .ec-em-hero-sub {
     font-variant-numeric: tabular-nums;
     font-size: var(--type-caption);
@@ -332,6 +307,20 @@
     margin-top: 8px;
     text-transform: uppercase;
     letter-spacing: var(--tracking-wide);
+}
+
+/* Meter error/flag conditions. Sits under the hero, above the readings, so a
+   fault is read before the numbers it explains. Colour comes from .s-fault. */
+.ec-em-fault {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1-5);
+    padding: 0 var(--space-4) var(--space-2);
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    text-align: center;
+    flex-shrink: 0;
 }
 
 /* Single-phase 2x2 meter grid */
@@ -370,13 +359,6 @@
     margin-left: 2px;
 }
 
-/* ── Neutral phase header (used in single-phase 2×2 grid) ── */
-
-.ec-ph-hdr--neutral {
-    color: var(--color-text-tertiary);
-    background: rgba(184, 197, 212, 0.06);
-}
-
 /* 4-column wide energy layout */
 .ec-wide-cols--4 {
     gap: var(--space-1);
@@ -386,10 +368,6 @@
     font-size: var(--type-body);
     font-weight: 700;
     letter-spacing: -1px;
-}
-
-.ec-wide-cols--4 .ec-wide-col-u {
-    font-size: var(--type-caption);
 }
 
 /* EM channel rows */
@@ -427,39 +405,29 @@
     margin-left: auto;
 }
 
-/* 3-phase meter */
+/* 3-phase meter. Bottom padding keeps the last reading off the name divider. */
 .ec-ph-grid {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 8px;
-    padding: 0 var(--space-4);
+    padding: var(--space-2) var(--space-4) var(--space-3);
     flex: 1;
     align-content: center;
 }
 
-.ec-ph-grid--2 {
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    padding: 0 var(--space-6);
-}
-
-.ec-ph-grid--2 .ec-ph-val {
-    font-size: var(--type-body);
-}
-
-.ec-ph-grid--2 .ec-ph-hdr {
-    font-size: var(--type-body);
-    padding: 6px 0;
-}
-
+/* Number and unit are separate columns so digits share a right edge and units
+   stack in a straight line. The value-to-unit gap comes from .ec-u. */
 .ec-ph-col {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    text-align: center;
+    display: grid;
+    grid-template-columns: max-content max-content;
+    justify-content: center;
+    align-items: baseline;
+    row-gap: 2px;
+    font-variant-numeric: tabular-nums;
 }
 
 .ec-ph-hdr {
+    grid-column: 1 / -1;
     font-size: var(--type-body);
     font-weight: 700;
     letter-spacing: 0.08em;
@@ -506,6 +474,7 @@
 }
 
 .ec-ph-val {
+    text-align: right;
     font-variant-numeric: tabular-nums;
     font-size: var(--type-subheading);
     font-weight: var(--font-bold);
@@ -517,19 +486,12 @@
     background-clip: text;
 }
 
-.ec-ph-val span {
-    font-size: var(--type-body);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-tertiary);
-    -webkit-text-fill-color: var(--color-text-tertiary);
-    margin-left: 1px;
+/* Layout only; the unit's typography is owned by .ec-u / .ec-u--sm. */
+.ec-ph-u {
+    text-align: left;
 }
 
-/* ── Sensor hero text (left side of 2×1 wide sensor cards) ──
-   State words (Dry, FLOOD, Closed…) are wider than numbers (23.4°).
-   Base = 36px fits "Closed" (6 chars) in 40% = 150px.
-   Numeric (temp) = 52px since digits are narrower.
-   ────────────────────────────────── */
+/* 2×1 hero. Base is the state-word size; `--num` lifts a numeric reading. */
 .ec-sensor-hero {
     font-size: var(--type-heading);
     font-weight: var(--font-black);
@@ -614,10 +576,8 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
 }
-/* Numeric heroes (temp/humidity/moisture) — digits can go a tier bigger */
-.ec[data-type="temp"] .ec-sensor-hero,
-.ec[data-type="humidity"] .ec-sensor-hero,
-.ec[data-type="moisture"] .ec-sensor-hero {
+/* Digits are narrow enough for the next step up; words are not. */
+.ec-sensor-hero--num {
     font-size: var(--type-display);
     letter-spacing: var(--tracking-tight);
 }
@@ -630,13 +590,6 @@
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-}
-.ec[data-type="temp"] .ec-sensor-hero span,
-.ec[data-type="humidity"] .ec-sensor-hero span,
-.ec[data-type="moisture"] .ec-sensor-hero span {
-    font-size: var(--type-heading);
-    font-weight: var(--font-semibold);
-    -webkit-text-fill-color: rgba(129, 140, 248, 0.5);
 }
 .ec-sensor-hero-sub {
     font-size: var(--type-caption);
@@ -722,13 +675,6 @@
     letter-spacing: -1.5px;
     white-space: nowrap;
 }
-.ec[data-type="flood"].ec-wide .ec-wide-col-u,
-.ec[data-type="smoke"].ec-wide .ec-wide-col-u,
-.ec[data-type="door"].ec-wide .ec-wide-col-u,
-.ec[data-type="motion"].ec-wide .ec-wide-col-u,
-.ec[data-type="temp"].ec-wide .ec-wide-col-u {
-    font-size: clamp(14px, 8cqi, 20px);
-}
 .ec[data-type="flood"].ec-wide .ec-wide-col-l,
 .ec[data-type="smoke"].ec-wide .ec-wide-col-l,
 .ec[data-type="door"].ec-wide .ec-wide-col-l,
@@ -737,12 +683,9 @@
     font-size: var(--type-caption);
     margin-top: var(--space-1);
 }
-/* Door values + units a touch larger than the shared sensor sizing. */
+/* Door values a touch larger than the shared sensor sizing. */
 .ec[data-type="door"].ec-wide .ec-wide-col-v {
     font-size: clamp(30px, 18cqi, 46px);
-}
-.ec[data-type="door"].ec-wide .ec-wide-col-u {
-    font-size: clamp(18px, 10cqi, 26px);
 }
 
 /* Column dividers — at exact flex boundary, centered by equal padding */
@@ -919,13 +862,6 @@
     background-clip: text;
 }
 
-.ec-wide-col-u {
-    -webkit-text-fill-color: var(--color-text-tertiary);
-    font-size: var(--type-caption);
-    font-weight: var(--font-semibold);
-    margin-left: 1px;
-}
-
 .ec-wide-col-l {
     font-size: var(--type-caption);
     font-weight: var(--font-semibold);
@@ -1056,15 +992,6 @@
     padding: 0 5px;
 }
 
-.ec-dist-u {
-    font-size: var(--type-caption);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-tertiary);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-wide);
-    margin-top: 4px;
-}
-
 .ec-dist-bar {
     width: 120px;
     height: 4px;
@@ -1120,16 +1047,6 @@
     background-clip: text;
     -webkit-text-fill-color: transparent;
 }
-.ec-moist-u {
-    position: absolute;
-    left: 100%;
-    bottom: 0.06em;
-    margin-left: 3px;
-    font-size: var(--type-body);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-secondary);
-    -webkit-text-fill-color: var(--color-text-secondary);
-}
 
 /* Battery visuals moved into the self-contained CardValue_Battery.vue. */
 
@@ -1140,6 +1057,7 @@
 
 /* ── Pressure Gauge Variant ── */
 
+/* The arc only shows position in range, so it yields height to the reading. */
 .ec-gauge-1x1 {
     display: flex;
     flex-direction: column;
@@ -1147,27 +1065,21 @@
     justify-content: center;
     flex: 1;
     position: relative;
+    gap: var(--space-1);
 }
 .ec-gauge-arc {
-    width: 100px;
-    height: 60px;
+    width: 92px;
+    height: 52px;
 }
 .ec-gauge-val {
-    font-size: var(--type-body);
+    font-size: var(--type-heading);
     font-weight: 800;
-    letter-spacing: -1px;
-    margin-top: -8px;
+    line-height: 1;
+    letter-spacing: var(--tracking-tight);
     background: var(--gradient-value-text);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-}
-.ec-gauge-unit {
-    font-size: var(--type-caption);
-    font-weight: 600;
-    color: var(--color-frost);
-    opacity: 0.5;
-    margin-top: -2px;
 }
 
 /* ── UV Index Variant ── */
@@ -1197,15 +1109,7 @@
     width: 100px;
     height: 4px;
     border-radius: 2px;
-    background: linear-gradient(
-        90deg,
-        #4ade80,
-        #a3e635,
-        #facc15,
-        #fb923c,
-        #ef4444,
-        #a855f7
-    );
+    /* Gradient comes from UV_COLORS via inline style — one home for the scale. */
     opacity: 0.25;
     overflow: hidden;
     position: relative;
@@ -1271,12 +1175,6 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
 }
-.ec-wind-val span {
-    font-size: var(--type-body);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-tertiary);
-    -webkit-text-fill-color: var(--color-text-tertiary);
-}
 .ec-wind-dir {
     color: var(--color-sensor-water);
     font-weight: 700;
@@ -1309,12 +1207,6 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
 }
-.ec-rain-val span {
-    font-size: var(--type-body);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-tertiary);
-    -webkit-text-fill-color: var(--color-text-tertiary);
-}
 
 /* Rotation visuals moved into the self-contained CardValue_Rotation.vue. */
 
@@ -1328,14 +1220,15 @@
     gap: 4px;
     flex: 1;
 }
+/* The circle is sized to hold the reading, not the reading shrunk to fit it. */
 .ec-chan-badge {
-    width: 52px;
-    height: 52px;
+    width: 76px;
+    height: 76px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: var(--type-body);
+    font-size: var(--type-heading);
     font-weight: 800;
     background: var(--color-primary-subtle);
     color: var(--color-primary);
@@ -1715,11 +1608,6 @@
     padding: 0 3px;
 }
 
-.ec-moist-u {
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
-    -webkit-text-fill-color: rgba(var(--accent-humidity), 0.4);
-}
 
 /* ── Gradient Text Utilities ── */
 
@@ -1776,9 +1664,10 @@
     -webkit-text-fill-color: var(--a-button);
     background: none;
 }
-/* Voltage: a single prominent reading, big but sized to fit the tile (a longer
-   value like "236.0" would overflow at display size). Centered by .ec-val-center;
-   this just drops the wrapper's bottom margin so it sits mid-tile. */
+/* Sensor reading size — one standard: by card size and number-vs-word, never by
+   which sensor it is. Units take `.ec-u`; precision lives in deviceReadings.ts. */
+
+/* 1x1 numeric reading. */
 .ec-hv--lg {
     font-size: var(--type-heading);
     letter-spacing: var(--tracking-tight);
@@ -2065,12 +1954,6 @@
     flex: 1;
     padding: 0 var(--gap-xs);
 }
-.vc-num__readout {
-    display: flex;
-    align-items: baseline;
-    justify-content: center;
-    gap: 4px;
-}
 .vc-num__val {
     font-size: var(--type-subheading);
     font-weight: var(--font-bold);
@@ -2078,11 +1961,6 @@
     color: var(--color-text-primary);
     line-height: 1;
     font-variant-numeric: tabular-nums;
-}
-.vc-num__unit {
-    font-size: var(--type-body);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-tertiary);
 }
 .vc-num__gauge {
     height: 6px;
@@ -2101,21 +1979,9 @@
     text-align: center;
     font-variant-numeric: tabular-nums;
 }
-/* Wide (2x1): keep the value readable but give the readout room — a 2x1 is
-   one cell tall, so the value cannot grow without overflowing. */
-.ec-wide .vc-num__readout {
-    gap: var(--space-1-5);
-}
-/* Hero (2x2): scale the value up and give the readout room — at the base size
-   the value looks small and cramped in the larger card. */
-.ec-hero .vc-num__readout {
-    gap: var(--space-2);
-}
+/* Hero (2x2): scale the value up; the base size looks cramped in a larger card. */
 .ec-hero .vc-num__val {
     font-size: var(--type-heading);
-}
-.ec-hero .vc-num__unit {
-    font-size: var(--type-subheading);
 }
 
 /* Virtual Text — single-line value, ellipsis on overflow */

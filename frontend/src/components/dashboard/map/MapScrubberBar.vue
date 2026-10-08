@@ -117,7 +117,6 @@ function onTrackClick(event: MouseEvent): void {
     border-radius: var(--radius-xl);
     background: var(--glass-3-bg);
     backdrop-filter: var(--glass-3-filter);
-    -webkit-backdrop-filter: var(--glass-3-filter);
     border: 1px solid var(--color-border-medium);
     box-shadow: var(--shadow-xl);
     padding: 10px var(--space-4);

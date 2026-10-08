@@ -9,8 +9,8 @@ Regenerate with `cd backend && npm run generate`.
 
 ## Totals
 
-- Namespaces: **128**
-- Methods: **1215**
+- Namespaces: **140**
+- Methods: **1380**
 - Rule: Custom UIs call the Host SDK first; raw RPC is for extending the SDK or backend integration.
 
 Per-method detail (schemas, permissions, safety hints, recommended
@@ -34,24 +34,26 @@ the MCP tool `get_api_method`.
 |---|---|---:|---|
 | `addon` | device | 10 | Manage add-on peripherals — sensors and Pro outputs: scan, add, remove, configure. |
 | `admin` | fleet-manager | 4 | Introspect registered RPC commands and invoke allowlisted PostgresProvider methods (super-admin). |
-| `alert` | fleet-manager | 30 | Manage alerting — rules, rule templates, instances, acknowledgements, and firing history. |
+| `alert` | fleet-manager | 31 | Manage alerting — rules, rule templates, instances, acknowledgements, and firing history. |
 | `alexa` | fleet-manager | 3 | Enable or disable the Alexa skill integration and manage its OAuth tokens. |
 | `analytics` | fleet-manager | 2 | Investigate energy metrics — per-device contributor breakdown over a time window. |
-| `asset` | fleet-manager | 5 | Manage the visual asset library — list, relabel, delete, and migrate reusable images. |
+| `asset` | fleet-manager | 7 | Manage and transfer reusable images in the visual asset library. |
 | `assignment` | fleet-manager | 7 | Manage persona assignments — attach, remove, and list scoped grants for users and groups. |
 | `audit` | fleet-manager | 3 | Query and export the audit log of user and device activity. |
 | `auth` | fleet-manager | 2 | Issue short-lived, single-purpose scoped bearer tokens bound to the caller org. |
 | `authz_audit` | fleet-manager | 2 | Query the authorization audit trail of persona, group, and permission changes. |
+| `automation` | fleet-manager | 17 | See and control the Node-RED automations running on this Fleet Manager. |
 | `backup` | fleet-manager | 10 | Manage device backups — create, list, rename, delete, download, and restore. |
-| `bill` | fleet-manager | 4 | Record and read actual utility-bill amounts for report reconciliation. |
+| `bill` | fleet-manager | 6 | Record and read actual utility-bill amounts for report reconciliation. |
 | `ble` | device | 10 | Control the device Bluetooth Low Energy radio, pairing, and cloud-relay bonds. |
 | `bluassist` | device | 13 | Drive the BLU Assistant GATT client — scan, connect, read, write, notify, and bond. |
 | `blugw` | device | 4 | Configure and monitor the Bluetooth gateway component. |
 | `bm` | device | 4 | Monitor and configure the Battery Monitor — SOC, SOH, voltage, and errors. |
 | `branding` | fleet-manager | 16 | Manage per-organization login branding policy, theme colors, logo, and icon. |
-| `bthome` | device | 34 | Pair, configure, and control BTHome gateways, sensors, and BLU controls. |
+| `bthome` | device | 35 | Pair, configure, and control BTHome gateways, sensors, and BLU controls. |
 | `button` | device | 5 | Configure and trigger the virtual button component and its push events. |
 | `camera` | device | 24 | Capture, record, and stream camera video plus manage zones and storage. |
+| `carbon` | fleet-manager | 7 | Versioned emission factors and separate carbon valuations. Carbon prices never modify utility bills. |
 | `cb` | device | 6 | Monitor and configure the circuit breaker state, trip cause, and events. |
 | `cct` | device | 9 | Control and dim a CCT light channel including brightness and color temperature. |
 | `certificate` | fleet-manager | 16 | Manage the X.509 certificate store and issue, sign, and push device certs. |
@@ -59,13 +61,13 @@ the MCP tool `get_api_method`.
 | `client` | fleet-manager | 2 | Narrow the calling socket session event feed to chosen event types and devices. |
 | `cloud` | device | 4 | Read status and toggle the device-side Shelly Cloud connection. |
 | `cover` | device | 10 | Control and monitor cover/roller-shutter position, slats, and calibration. |
-| `credential` | fleet-manager | 12 | Manage and rotate stored device admin passwords and track push status. |
+| `credential` | fleet-manager | 13 | Manage and rotate stored device admin passwords and track push status. |
 | `cury` | device | 10 | Control and monitor Cury vial-slot heating, modes, boost, and away mode. |
 | `dali` | device | 10 | Configure, scan, and control DALI lighting groups and known devices. |
 | `dashboard` | fleet-manager | 40 | Manage and serve device dashboards, their items, templates, and pins. |
-| `device` | fleet-manager | 22 | List, inspect, and manage fleet devices, their assets, images, and status history. |
+| `device` | fleet-manager | 26 | List, inspect, and manage fleet devices, their assets, images, and status history. |
 | `deviceevents` | fleet-manager | 2 | Query the device change journal — every device-reported state change, kept with the device timestamp verbatim. |
-| `deviceIngress` | fleet-manager | 24 | Manage device ingress identities, credentials, Waiting Room, Rejected connections, and provisioning. |
+| `deviceIngress` | fleet-manager | 29 | Manage device ingress identities, credentials, Waiting Room, Rejected connections, and provisioning. |
 | `devicepower` | device | 4 | Report battery and external-power state for a device. |
 | `discovery` | fleet-manager | 4 | Probe, scan, and admit LAN-reachable Shelly devices into the fleet. |
 | `domain_policy` | fleet-manager | 6 | Read and write per-org and instance-wide Zitadel domain policy. |
@@ -73,15 +75,17 @@ the MCP tool `get_api_method`.
 | `em1` | device | 7 | Configure and read a monophase energy meter on a device. |
 | `em1data` | device | 9 | Read and manage stored monophase energy-meter history on a device. |
 | `emdata` | device | 9 | Read and manage stored triphase energy-meter history on a device. |
-| `energy` | fleet-manager | 12 | Read fleet energy for dashboards, define logical meters, and fix the rare unknown point. |
+| `energy` | fleet-manager | 27 | Read fleet energy for dashboards, define logical meters, and fix the rare unknown point. |
 | `entity` | fleet-manager | 6 | List, read, and invoke actions on normalized fleet entities across devices. |
 | `eth` | device | 5 | Configure and read the wired Ethernet interface on a device. |
 | `fan` | device | 5 | Read, configure, and control a fan component on a device. |
+| `fileTransfer` | fleet-manager | 7 | Transfer bounded files through permission-checked Fleet artifact adapters. |
 | `firmware` | fleet-manager | 22 | Manage the firmware library and orchestrate device update jobs and auto-update. |
 | `fleet` | fleet-manager | 3 | Aggregate live metrics and capabilities for a fleet scope slice. |
 | `fleetMap` | fleet-manager | 4 | Serve per-location energy, signal, and alert pin snapshots for map overlays. |
 | `fleetSummary` | fleet-manager | 2 | Serve the org-wide live load and cumulative energy summary for the dashboard header. |
 | `flood` | device | 4 | Configure and read a flood/leak sensor component on a device. |
+| `gasConversion` | fleet-manager | 7 | Versioned gas volume-to-energy conversion configuration. |
 | `grafana` | fleet-manager | 3 | Serve embedded Grafana dashboard metadata and config snapshots. |
 | `group` | fleet-manager | 15 | Manage hierarchical groups and their subject memberships. |
 | `http` | device | 4 | Issue outbound HTTP/HTTPS requests from the device. |
@@ -89,45 +93,53 @@ the MCP tool `get_api_method`.
 | `identity` | fleet-manager | 11 | Administer signing keys, identity providers, SCIM, and SMTP. |
 | `illuminance` | device | 4 | Configure and read an illuminance sensor component on a device. |
 | `input` | device | 7 | Configure, read, and trigger an input channel on a device. |
-| `job` | fleet-manager | 3 | List and read backend-owned operation jobs for the tenant. |
+| `ir` | device | 6 | Relay IR controller RPCs (add/remove IR devices, config, status) to a Shelly IR Controller. |
+| `ircode` | device | 5 | Relay IR code RPCs (emit, config, status) to a Shelly IR Controller. |
+| `irdevice` | device | 6 | Relay per-IR-device RPCs (config, status, code learning) to a Shelly IR Controller. |
+| `irlibrary` | fleet-manager | 9 | Org-level IR code library: store learned/imported IR codes once, push them to any IR-capable device. |
+| `job` | fleet-manager | 6 | List and read backend-owned operation jobs for the tenant. |
 | `kind` | fleet-manager | 6 | List and manage device/group kinds — vendor catalog plus per-org custom kinds. |
 | `knx` | device | 7 | Configure KNX bus integration and per-component bindings. |
 | `kvs` | device | 6 | Read and write the device-side persistent key-value store. |
 | `ledstrip` | device | 13 | Control an addressable LED strip and its effect catalog. |
 | `light` | device | 12 | Control and configure a dimmable light channel on a device. |
 | `lnm` | device | 6 | Manage Local Network Messaging instances on a device. |
-| `location` | fleet-manager | 20 | Manage the physical location hierarchy, assignments, geocoding, and map overlays. |
+| `location` | fleet-manager | 26 | Manage the physical location hierarchy, assignments, geocoding, and map overlays. |
 | `login_text` | fleet-manager | 5 | Manage per-language login UI branding strings, proxied to Zitadel login text. |
 | `mail` | fleet-manager | 2 | Send email through the configured server SMTP transport. |
 | `matter` | device | 6 | Relay Matter config, status, setup code, and factory reset to a Shelly device. |
 | `mbrtuclient` | device | 11 | Relay Modbus RTU client config plus register/coil read-write calls to a Shelly device. |
+| `mcp_approval` | fleet-manager | 3 | List and revoke the remembered approvals a person gave AI agents over MCP. |
 | `mdns` | device | 4 | Relay mDNS responder status and enable/disable config to a Shelly device. |
-| `media` | device | 31 | Relay media playback, volume, radio, and library control to a Shelly device. |
+| `media` | device | 32 | Relay media playback, volume, radio, and library control to a Shelly device. |
 | `message_text` | fleet-manager | 5 | Manage per-type, per-language notification message text, proxied to Zitadel. |
 | `mobile` | fleet-manager | 3 | Provide composite bootstrap and delta sync endpoints for mobile app launch and resume. |
 | `modbus` | device | 4 | Relay Modbus TCP/RTU connector config and status to a Shelly device. |
 | `mqtt` | device | 4 | Relay device-side MQTT client config and broker status to a Shelly device. |
 | `notification_policy` | fleet-manager | 4 | Manage the org Zitadel notification policy, such as notify-on-password-change. |
-| `notification` | fleet-manager | 55 | Manage push tokens, inbox state, destination groups, channels, and delivery history. |
+| `notification` | fleet-manager | 56 | Manage push tokens, inbox state, destination groups, channels, and delivery history. |
 | `object` | device | 5 | Relay XT1 typed-value object config, status, and writes to a Shelly device. |
+| `operations` | fleet-manager | 31 | Evaluate configured operational policies from Fleet data and history. |
 | `organization` | fleet-manager | 5 | Read and update the caller organization profile, defaults, and scope model. |
 | `ota` | device | 8 | Relay staged firmware updates to a Shelly device via url-based or chunked upload. |
 | `permission` | fleet-manager | 6 | Read and write user authorization via Zitadel roles and identity policies. |
 | `persona` | fleet-manager | 6 | Manage authorization personas and their permission statements. |
 | `pill` | device | 4 | Relay Pill sensor config and status RPCs to a Shelly device. |
+| `pilluart` | device | 4 | Relay Pill UART config and status RPCs to a Shelly device. |
 | `plugin` | fleet-manager | 4 | Manage server-side plugins: list, upload, and remove fleet-wide plugin code. |
 | `pm1` | device | 5 | Relay single-phase power meter config, status, and counter resets to a Shelly device. |
 | `policy` | fleet-manager | 4 | Read and write runtime-editable per-group-type policy defaults. |
 | `presence` | device | 10 | Relay mmWave presence sensor config, zones, calibration, and live tracking to a Shelly device. |
 | `presencezone` | device | 4 | Relay per-zone presence sensor config and status RPCs to a Shelly device. |
 | `privacy` | fleet-manager | 4 | Read and write per-org legal-link privacy policy proxied to Zitadel. |
-| `report` | fleet-manager | 6 | Generate energy reports and manage their retention. |
+| `report` | fleet-manager | 7 | Generate energy reports and manage their retention. |
 | `reporttemplate` | fleet-manager | 7 | Saved, named report configurations an org can re-run. |
 | `restrictions` | fleet-manager | 3 | Read and write instance-wide Zitadel restrictions for languages and org registration. |
 | `rgb` | device | 9 | Relay RGB light control, config, and dimming RPCs to a Shelly device. |
 | `rgbcct` | device | 9 | Relay RGBCCT light control, config, and dimming RPCs to a Shelly device. |
 | `rgbw` | device | 9 | Relay RGBW light control, config, and dimming RPCs to a Shelly device. |
 | `schedule` | device | 6 | Manage cron-style schedule jobs stored on the target Shelly device. |
+| `scopedautomation` | fleet-manager | 7 | Create fixed-device scheduled automations that recheck their author authority on every run. |
 | `script` | device | 12 | Manage and run mJS scripts on the target Shelly device. |
 | `security` | device | 7 | Upload or delete TLS certificates and keys on the target Shelly device. |
 | `sensor` | fleet-manager | 3 | Cross-device read of numeric sensor history (Query) and discrete sensor events (Events). |
@@ -141,13 +153,13 @@ the MCP tool `get_api_method`.
 | `sys` | device | 11 | Read and update device-side system config, time, and diagnostics. |
 | `system` | fleet-manager | 25 | Fleet-manager runtime: bootstrap, subscriptions, health, and observability. |
 | `tag` | fleet-manager | 10 | Manage labels and their subject assignments within the organization. |
-| `tariff` | fleet-manager | 8 | Manage reusable electricity tariffs. |
+| `tariff` | fleet-manager | 14 | Manage reusable electricity tariffs. |
 | `temperature` | device | 4 | Read and configure the temperature-sensor component on the device. |
 | `thermostat` | device | 22 | Control thermostat targets and schedule profiles on the device. |
 | `trv` | device | 29 | Control BLU TRV valves and schedules via the BluTrv gateway component. |
 | `ui` | device | 9 | Relay the device UI configuration namespace (screen, plug UI, brightness). |
 | `user_group` | fleet-manager | 9 | Manage fleet-manager user groups for permission inheritance. |
-| `user` | fleet-manager | 34 | Manage fleet-manager users, authentication, PATs, and permissions. |
+| `user` | fleet-manager | 41 | Manage fleet-manager users, authentication, PATs, and permissions. |
 | `variables` | fleet-manager | 5 | Manage fleet-manager action substitution variables stored server-side. |
 | `virtual_meta` | fleet-manager | 5 | Manage fleet-manager measurement metadata for device virtual components. |
 | `virtual` | device | 25 | Relay the device virtual-components namespace (add, remove, get, set). |

@@ -12,13 +12,20 @@ import type {JsonRpcIncoming} from '../../rpc/types';
 import type {Sendable, user_t} from '../../types';
 import {enforceRateLimit} from '../web/rateLimit';
 import MessageHandler from '../web/ws/MessageHandler';
+import {McpError} from './mcpErrors.js';
 
 // Stateless dispatcher; builds a per-call CommandSender from the user.
 const messageHandler = new MessageHandler();
 
+export interface RpcErrorEnvelope {
+    code: number;
+    message: string;
+    data?: {fieldErrors?: unknown; details?: unknown};
+}
+
 interface Captured {
     result?: unknown;
-    error?: {code: number; message: string};
+    error?: RpcErrorEnvelope;
 }
 
 function collectingSendable(captured: Captured): Sendable {
@@ -32,6 +39,50 @@ function collectingSendable(captured: Captured): Sendable {
             captured.result = parsed?.result ?? parsed;
         }
     };
+}
+
+// RBAC denials arrived as a plain Error, so `permission_denied` and
+// `not_authenticated` were declared in the reason union and thrown nowhere: an
+// agent could not tell "you lack permission" from a transport fault, and would
+// retry a call that will never succeed. Mapped here, at the one place an RPC
+// failure crosses into MCP.
+const PERMISSION_DENIED_CODE = 1001;
+const UNAUTHORIZED_CODE = -32000;
+
+// Validation failures name their fields under `details`; form errors under
+// `fieldErrors`. Either way the agent should learn which field to fix.
+function fieldErrorsOf(error: RpcErrorEnvelope): unknown[] | undefined {
+    const list = error.data?.fieldErrors ?? error.data?.details;
+    return Array.isArray(list) && list.length > 0 ? list : undefined;
+}
+
+export function rpcErrorToMcpError(
+    error: RpcErrorEnvelope,
+    method: string
+): Error {
+    if (error.code === PERMISSION_DENIED_CODE) {
+        return new McpError('permission_denied', error.message, {
+            method,
+            retryable: false
+        });
+    }
+    if (error.code === UNAUTHORIZED_CODE) {
+        return new McpError('not_authenticated', error.message, {
+            method,
+            retryable: false
+        });
+    }
+    const fieldErrors = fieldErrorsOf(error);
+    if (fieldErrors) {
+        return new McpError('invalid_params', error.message, {
+            method,
+            retryable: false,
+            details: {fieldErrors}
+        });
+    }
+    const err = new Error(error.message) as Error & {code: number};
+    err.code = error.code;
+    return err;
 }
 
 export async function runRpcAsUser(
@@ -53,11 +104,7 @@ export async function runRpcAsUser(
         user
     );
     if (captured.error) {
-        const err = new Error(captured.error.message) as Error & {
-            code: number;
-        };
-        err.code = captured.error.code;
-        throw err;
+        throw rpcErrorToMcpError(captured.error, method);
     }
     return captured.result;
 }

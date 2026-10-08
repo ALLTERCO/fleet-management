@@ -16,7 +16,16 @@ function isValidLocale(value: string): boolean {
 export function assertValidProfilePatch(patch: {
     timezoneDefault?: string | null;
     localeDefault?: string | null;
+    metadata?: Record<string, unknown>;
 }): void {
+    if (
+        patch.metadata &&
+        Object.hasOwn(patch.metadata, 'operationalVerdictPolicies')
+    ) {
+        throw RpcError.InvalidParams(
+            'Operational policies must be changed through Operations methods'
+        );
+    }
     if (
         typeof patch.timezoneDefault === 'string' &&
         !isValidTimezone(patch.timezoneDefault)

@@ -1,11 +1,42 @@
-/** Time/size/byte formatters — single source of truth across the app. */
+/**
+ * Time/size/byte/number formatters — single source of truth across the app.
+ *
+ * Region: formatDate, formatTime, formatNumber and formatCurrency below all
+ * read the organization's region (a BCP-47 tag, e.g. "en-GB") from
+ * `activeRegion`. setActiveRegion is called once, from the organization
+ * store whenever the org profile loads or changes — no screen looks up the
+ * profile or reaches for Intl/toLocaleString itself. An unset or malformed
+ * tag falls back to the browser's own locale rather than throwing or
+ * showing a broken format.
+ *
+ * A machine value — an id, a filename, an ISO timestamp on the wire — is
+ * not "read" by a person and must never go through these; leave it exactly
+ * as it is.
+ */
 
-type TimestampInput = number | string | Date;
+import {
+    canonicalRegion,
+    type TimestampInput,
+    toMs
+} from '@/shell/template-host/core/format-input';
 
-function toMs(input: TimestampInput): number {
-    if (typeof input === 'number') return input;
-    if (input instanceof Date) return input.getTime();
-    return new Date(input).getTime();
+let activeRegion: string | undefined;
+
+/** Sets the region every formatter below reads. See the file header. */
+export function setActiveRegion(tag: string | null | undefined): void {
+    activeRegion = canonicalRegion(tag);
+}
+
+// Runs a formatter with the active region; on any throw (a region Intl
+// accepts as a tag but can't actually render for this value, or an option
+// the browser rejects) retries once with the browser's own locale so the
+// screen still shows something rather than breaking.
+function withRegionFallback<T>(run: (locale: string | undefined) => T): T {
+    try {
+        return run(activeRegion);
+    } catch {
+        return run(undefined);
+    }
 }
 
 /** "X{s,m,h,d} ago" relative time string. */
@@ -54,9 +85,10 @@ export function formatCountdown(
     return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
 }
 
-/** Local date+time via toLocaleString. */
+/** Region-aware date+time via toLocaleString. */
 export function formatTime(input: TimestampInput): string {
-    return new Date(toMs(input)).toLocaleString();
+    const d = new Date(toMs(input));
+    return withRegionFallback((locale) => d.toLocaleString(locale));
 }
 
 /**
@@ -80,7 +112,7 @@ export function formatDuration(seconds: number, maxUnits = 2): string {
         ['d', 86400],
         ['h', 3600],
         ['m', 60],
-        ['s', 1],
+        ['s', 1]
     ];
     let start = UNITS.length - 1;
     for (let i = 0; i < UNITS.length; i++) {
@@ -115,13 +147,87 @@ export function formatTimeOfDay(input: TimestampInput): string {
         .join(':');
 }
 
-/** Local date only ({month: short, day: numeric, year: numeric}). */
+/** Region-aware date only ({month: short, day: numeric, year: numeric}). */
 export function formatDate(input: TimestampInput): string {
-    return new Date(toMs(input)).toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
-    });
+    const d = new Date(toMs(input));
+    return withRegionFallback((locale) =>
+        d.toLocaleDateString(locale, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        })
+    );
+}
+
+/** Region-aware date with caller-chosen parts (chart axis labels, compact
+ *  "4 Mar" ranges, and the like) — the flexible sibling of formatDate. */
+export function formatDateParts(
+    input: TimestampInput,
+    options: Intl.DateTimeFormatOptions
+): string {
+    const d = new Date(toMs(input));
+    return withRegionFallback((locale) =>
+        d.toLocaleDateString(locale, options)
+    );
+}
+
+/** Region-aware time-of-day (a "last updated 3:45 PM" hint, not a log
+ *  timestamp — formatTimeOfDay stays fixed HH:MM:SS for those). */
+export function formatTimeOnly(
+    input: TimestampInput,
+    options?: Intl.DateTimeFormatOptions
+): string {
+    const d = new Date(toMs(input));
+    return withRegionFallback((locale) =>
+        d.toLocaleTimeString(locale, options)
+    );
+}
+
+/** Region-aware date+time with caller-chosen parts — the flexible sibling
+ *  of formatTime. */
+export function formatDateTimeParts(
+    input: TimestampInput,
+    options: Intl.DateTimeFormatOptions
+): string {
+    const d = new Date(toMs(input));
+    return withRegionFallback((locale) => d.toLocaleString(locale, options));
+}
+
+/** Region-aware number — the home every screen calls instead of reaching
+ *  for toLocaleString/Intl.NumberFormat itself. */
+export function formatNumber(
+    value: number,
+    options?: Intl.NumberFormatOptions
+): string {
+    return withRegionFallback((locale) =>
+        value.toLocaleString(locale, options)
+    );
+}
+
+/**
+ * Region-aware currency amount. `currency` is the ISO 4217 code (Fleet's
+ * own currency setting, unrelated to region) — the region only controls HOW
+ * the amount reads: symbol placement, decimal and thousands separators. A
+ * currency code Intl can't render (never expected from Fleet's own
+ * validated setting, but possible from a caller passing something else)
+ * still renders a plain "value code" pair instead of throwing.
+ */
+export function formatCurrency(
+    value: number,
+    currency: string,
+    options?: Intl.NumberFormatOptions
+): string {
+    try {
+        return withRegionFallback((locale) =>
+            value.toLocaleString(locale, {
+                style: 'currency',
+                currency,
+                ...options
+            })
+        );
+    } catch {
+        return `${formatNumber(value)} ${currency}`;
+    }
 }
 
 /** Duration in ms with the unit attached: sub-10ms keeps one decimal

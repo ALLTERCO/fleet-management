@@ -52,6 +52,9 @@
             Shows all device health — signal, battery, firmware. No
             configuration required.
         </AddWidgetCfgInfo>
+        <AddWidgetCfgInfo v-else-if="widget === 'clock_widget'">
+            Shows the current time and date. No configuration required.
+        </AddWidgetCfgInfo>
     </div>
 </template>
 

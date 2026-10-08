@@ -4,6 +4,8 @@
  *  there's exactly one place that decides "what counts as a usable string"
  *  or "how does an address render". */
 
+import {formatNumber} from './format';
+
 export interface ContactValue {
     readonly name: string;
     readonly role?: string;
@@ -36,11 +38,9 @@ export function readNumber(raw: unknown): number | null {
     return Number.isFinite(raw) ? raw : null;
 }
 
-/** Locale-formatted integer count, no fractional digits. */
+/** Region-formatted integer count, no fractional digits. */
 export function formatCount(n: number): string {
-    return new Intl.NumberFormat(undefined, {maximumFractionDigits: 0}).format(
-        n
-    );
+    return formatNumber(n, {maximumFractionDigits: 0});
 }
 
 /** "lat, lng" with 4 decimals, or null when either coord is missing. */

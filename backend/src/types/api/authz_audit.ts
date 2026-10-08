@@ -2,6 +2,7 @@
 
 import {DescribeBuilder, type DescribeOutput} from './_describe';
 import type {JsonSchema} from './_schema';
+import {listResponseSchema} from './_shared';
 
 const EMPTY_PARAMS: JsonSchema = {type: 'object', properties: {}};
 
@@ -116,6 +117,38 @@ export interface AuthzAuditEntry {
     created_at: string;
 }
 
+// The eight columns fn_authz_audit_query returns. AuthzAuditEntry above is
+// the type of this; `action` is not enum-constrained in the database.
+const AUTHZ_AUDIT_ENTRY_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+        'id',
+        'tenant_id',
+        'actor_id',
+        'action',
+        'target_type',
+        'target_id',
+        'payload',
+        'created_at'
+    ],
+    properties: {
+        id: {type: 'string', format: 'uuid'},
+        tenant_id: {type: ['string', 'null']},
+        actor_id: {type: 'string'},
+        action: {type: 'string'},
+        target_type: {type: 'string'},
+        target_id: {type: 'string'},
+        // Written as an arbitrary object per action; no fixed keys.
+        payload: {anyOf: [{type: 'object'}, {type: 'null'}]},
+        created_at: {type: 'string', format: 'date-time'}
+    }
+};
+
+const AUTHZ_AUDIT_LIST_RESPONSE_SCHEMA = listResponseSchema(
+    AUTHZ_AUDIT_ENTRY_SCHEMA
+);
+
 const ANY_RESPONSE: JsonSchema = {type: 'object', additionalProperties: true};
 const READ_PERM = {note: 'admin'};
 
@@ -136,7 +169,7 @@ export const AUTHZ_AUDIT_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('List', {
         safety: {operation: 'read'},
         params: AUTHZ_AUDIT_LIST_PARAMS_SCHEMA,
-        response: ANY_RESPONSE,
+        response: AUTHZ_AUDIT_LIST_RESPONSE_SCHEMA,
         permission: READ_PERM,
         description:
             'List authz audit entries scoped to current tenant. ' +

@@ -4,12 +4,11 @@ import * as path from 'node:path';
 import express from 'express';
 import log4js from 'log4js';
 import multer from 'multer';
-import sharp from 'sharp';
 import {tuning} from '../../../config';
+import RpcError from '../../../rpc/RpcError';
+import {httpStatusFor} from '../../../types/api/errors';
 import {
     ALLOWED_REPORT_IMAGE_EXT,
-    backgroundDisplayName,
-    backgroundThumbName,
     deleteBackground,
     listBackgrounds,
     listReportImages,
@@ -19,6 +18,12 @@ import {
     safeBackgroundName,
     safeOrgSegment
 } from '../../mediaAssetLibrary';
+import {
+    processBackgroundUpload,
+    processProfilePictureUpload,
+    processReportImageUpload,
+    writeMetadataStrippedOriginal
+} from '../../uploads/fileTransfer';
 import {consumeUploadTicket} from '../../uploadTickets';
 import {httpRouteLimit} from '../rateLimit';
 import {
@@ -27,11 +32,6 @@ import {
     userCanCrossOrganizations
 } from '../utils/authMiddleware';
 import {appendUploadAssetToken} from '../utils/uploadAssetTokens';
-import {
-    backgroundsPath,
-    profilePicturesPath,
-    reportImagesPath
-} from '../utils/uploadPaths';
 
 const logger = log4js.getLogger('web');
 const router = express.Router();
@@ -84,15 +84,7 @@ function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
 }
 
-// Re-encode through sharp to strip EXIF/GPS/ICC/XMP before disk. animated:true
-// keeps every GIF/WebP frame — libvips flattens to the first page otherwise.
-export async function writeMetadataStrippedOriginal(
-    tempPath: string,
-    destPath: string
-): Promise<void> {
-    const stripped = await sharp(tempPath, {animated: true}).toBuffer();
-    await fsAsync.writeFile(destPath, stripped);
-}
+export {writeMetadataStrippedOriginal};
 
 // Admin sees own org dir + root pool; global provider support sees all tenants.
 router.get(
@@ -126,8 +118,7 @@ router.post(
         if (!file) {
             return res.status(400).json({error: 'No file uploaded'});
         }
-        const safeName = safeBackgroundName(file.originalname);
-        if (!safeName) {
+        if (!safeBackgroundName(file.originalname)) {
             await deleteTempUploadAsync(file.path);
             return res.status(400).json({error: 'Unsupported image type'});
         }
@@ -149,45 +140,19 @@ router.post(
             return res.status(403).json({error: 'Invalid upload ticket'});
         }
 
-        const orgDir = path.join(backgroundsPath, orgSeg);
-        await fsAsync.mkdir(orgDir, {recursive: true});
-
-        const originalPath = path.join(orgDir, safeName);
-        const thumbPath = path.join(orgDir, backgroundThumbName(safeName));
-        const displayPath = path.join(orgDir, backgroundDisplayName(safeName));
-        let promotedOriginal = false;
-
         try {
-            await writeMetadataStrippedOriginal(file.path, originalPath);
-            promotedOriginal = true;
-            // Active background paints from displays[], not originals[].
-            await sharp(originalPath)
-                .resize({
-                    width: 1920,
-                    height: 1080,
-                    fit: 'inside',
-                    withoutEnlargement: true
-                })
-                .png()
-                .toFile(displayPath);
-            await sharp(originalPath)
-                .resize({width: 150, height: 150, fit: 'cover'})
-                .png()
-                .toFile(thumbPath);
+            const result = await processBackgroundUpload({
+                tempPath: file.path,
+                originalName: file.originalname,
+                organizationId: orgSeg
+            });
             return res.json({
                 success: true,
                 message: 'Image uploaded successfully',
-                filename: `${orgSeg}/${safeName}`,
-                thumbnail: `${orgSeg}/${backgroundThumbName(safeName)}`,
-                display: `${orgSeg}/${backgroundDisplayName(safeName)}`
+                ...result
             });
         } catch (err) {
             logger.error('Background upload failed: %s', err);
-            if (promotedOriginal) {
-                await deleteTempUploadAsync(originalPath);
-            }
-            await deleteTempUploadAsync(thumbPath);
-            await deleteTempUploadAsync(displayPath);
             return res.status(500).json({error: 'Failed to process image'});
         } finally {
             await deleteTempUploadAsync(file.path);
@@ -239,15 +204,15 @@ router.post(
             return res.status(403).json({error: 'Invalid upload ticket'});
         }
 
-        const baseFilename = `${path.basename(username)}.png`;
-        const originalPath = path.join(profilePicturesPath, baseFilename);
-
         try {
-            await sharp(file.path).png().toFile(originalPath);
+            const result = await processProfilePictureUpload({
+                tempPath: file.path,
+                username
+            });
             // Returned inline so the client doesn't follow up with GetUrl.
             const url = `/uploads/profilePics/${appendUploadAssetToken(
                 'profilePic',
-                baseFilename,
+                String(result.fileName),
                 tuning.upload.assetUrlTtlSec
             )}`;
             return res.json({success: true, url});
@@ -289,9 +254,9 @@ router.get(
         name: 'media-list-report-images',
         capacityPerMin: tuning.http.rateLimitMediaUploadPerMin
     }),
-    async (_req, res) => {
+    async (req, res) => {
         try {
-            res.json(await listReportImages());
+            res.json(await listReportImages(req.user));
         } catch (error) {
             logger.error('Report image list failed: %s', errorMessage(error));
             res.status(500).json({
@@ -323,7 +288,6 @@ router.post(
             res.status(400).json({error: 'Invalid reportName'});
             return;
         }
-
         const ext = path
             .extname(path.basename(file.originalname))
             .toLowerCase();
@@ -332,6 +296,7 @@ router.post(
             res.status(400).json({error: 'Unsupported image type'});
             return;
         }
+
         if (
             !(await consumeUploadTicket({
                 token: req.body?.ticket ?? req.query?.ticket,
@@ -344,28 +309,24 @@ router.post(
             return;
         }
 
-        const timestamp = Date.now();
-        const wrapped = `report_${reportName}_${timestamp}`;
-        const originalName = `${wrapped}${ext}`;
-        const thumbName = `${wrapped}_thumb${ext}`;
-        const destOriginal = path.join(reportImagesPath, originalName);
-        const destThumb = path.join(reportImagesPath, thumbName);
-
         try {
-            // Run sharp against TEMP path; only promote to public dir after
-            // sharp accepts the file as an image. Prevents non-image payloads
-            // from ever landing under /uploads/reportImages/.
-            await sharp(file.path)
-                .resize(150, 150, {fit: 'cover'})
-                .toFile(destThumb);
-            await writeMetadataStrippedOriginal(file.path, destOriginal);
-            res.json({
-                success: true,
-                original: originalName,
-                thumbnail: thumbName
+            const result = await processReportImageUpload({
+                tempPath: file.path,
+                originalName: file.originalname,
+                reportName,
+                organizationId: req.user?.organizationId ?? ''
             });
+            res.json({success: true, ...result});
         } catch (err) {
-            await deleteTempUploadAsync(destThumb);
+            // A refused input (no tenant, bad name) is the caller's problem,
+            // not a server fault: answer with the stable code, not a 500.
+            if (err instanceof RpcError) {
+                res.status(httpStatusFor(err.code)).json({
+                    error: err.message,
+                    code: err.code
+                });
+                return;
+            }
             logger.error('Report image upload failed: %s', err);
             res.status(500).json({error: 'Failed to process report image'});
         } finally {

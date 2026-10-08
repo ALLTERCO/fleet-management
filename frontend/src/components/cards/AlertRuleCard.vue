@@ -6,6 +6,7 @@
         tabindex="0"
         @click="$emit('open')"
         @keydown.enter="$emit('open')"
+        @keydown.space.prevent="$emit('open')"
     >
         <div class="arc-top">
             <AlertSeverityBadge :severity="rule.severity" />
@@ -84,7 +85,7 @@ const severityVariant = computed(() => SEVERITY_VARIANT[props.rule.severity]);
     display: flex;
     flex-direction: column;
     width: var(--grid-cell, 200px);
-    height: 234px;
+    height: var(--alert-card-height);
     padding: var(--space-3);
     border: 1px solid var(--color-border-default);
     border-radius: var(--radius-lg);
@@ -136,6 +137,9 @@ const severityVariant = computed(() => SEVERITY_VARIANT[props.rule.severity]);
     border-radius: var(--radius-lg);
     font-size: var(--icon-size-xl);
 }
+.arc-icon i {
+    transform: translateY(var(--icon-optical-offset));
+}
 .arc-icon--danger {
     color: rgb(var(--color-danger-rgb));
     background: rgba(var(--color-danger-rgb), 0.12);
@@ -170,7 +174,7 @@ const severityVariant = computed(() => SEVERITY_VARIANT[props.rule.severity]);
 .arc-name {
     margin: 0;
     font-size: var(--type-body);
-    font-weight: 700;
+    font-weight: var(--font-bold);
     line-height: 1.32;
     text-align: center;
     color: var(--color-text-primary);
@@ -189,7 +193,7 @@ const severityVariant = computed(() => SEVERITY_VARIANT[props.rule.severity]);
     padding-top: var(--space-2);
     border-top: 1px solid var(--color-border-default);
     font-size: var(--type-caption);
-    font-weight: 600;
+    font-weight: var(--font-semibold);
 }
 .arc-foot span {
     display: inline-flex;
@@ -198,7 +202,7 @@ const severityVariant = computed(() => SEVERITY_VARIANT[props.rule.severity]);
 }
 .arc-foot--firing {
     color: var(--color-danger-text);
-    font-weight: 700;
+    font-weight: var(--font-bold);
 }
 .arc-foot--quiet {
     color: var(--color-text-tertiary);
@@ -207,9 +211,9 @@ const severityVariant = computed(() => SEVERITY_VARIANT[props.rule.severity]);
     color: var(--color-text-disabled);
 }
 .arc-pulse {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
+    width: var(--alert-pulse-size);
+    height: var(--alert-pulse-size);
+    border-radius: var(--radius-full);
     background: rgb(var(--color-danger-rgb));
     box-shadow: 0 0 0 0 rgba(var(--color-danger-rgb), 0.55);
     animation: arc-pulse 1.6s ease-out infinite;

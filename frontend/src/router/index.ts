@@ -1,18 +1,14 @@
+import {IS_CLIENT_BUILD} from '@build-mode';
 import {routes} from '@router-routes';
 import {createRouter, createWebHistory} from 'vue-router';
-import {redirectForPageAccess, resolveDefaultPage} from '@/auth/pageAccess';
-import {
-    DEVICES_PATH,
-    LOGIN_PATH,
-    NODE_RED_ENABLED,
-    ORGANIZE_PATH
-} from '@/constants';
+import {redirectForAdminBundleAccess} from '@/auth/pageAccess';
+import {DEVICES_PATH, LOGIN_PATH, ORGANIZE_PATH} from '@/constants';
+import {resolveAccessRedirect} from '@/router/accessRedirect';
+import {resolveRouteAlias} from '@/router/routeAliases';
 import {useAuthStore} from '@/stores/auth';
 import {newBundleIsServed} from '@/tools/bundleVersion';
 import {trackInteraction} from '@/tools/observability';
 import {isUpdatePending, tryActivateUpdate} from '@/tools/swUpdate';
-
-const IS_CLIENT_BUILD = import.meta.env.MODE === 'client';
 
 const router = createRouter({
     history: createWebHistory(import.meta.env.BASE_URL),
@@ -32,34 +28,6 @@ function isOidcCallback(toPath: string, fromPath: string): boolean {
     );
 }
 
-// One release generation of aliases only: paths that existed in the
-// previous release redirect to their new home; older aliases are gone.
-function guardLegacyRouteAliases(toPath: string): string | null {
-    // Alerts and Monitoring moved under Settings — old links and bookmarks
-    // keep working.
-    if (toPath === '/alerts' || toPath.startsWith('/alerts/')) {
-        return `/settings${toPath}`;
-    }
-    if (toPath === '/monitoring' || toPath.startsWith('/monitoring/')) {
-        return `/settings${toPath}`;
-    }
-    // Device Auth moved under Settings > Security.
-    if (toPath === '/operations/device-auth') {
-        return '/settings/security/credentials';
-    }
-    if (toPath === '/operations/device-auth/certificates') {
-        return '/settings/security/certificates';
-    }
-    // The launcher hubs were removed — land on the nearest real page.
-    if (toPath === '/settings/monitoring/investigate') {
-        return '/settings/monitoring/logs';
-    }
-    if (toPath === '/settings/monitoring/resources') {
-        return '/settings/monitoring/runtime';
-    }
-    return null;
-}
-
 // Why: users with zero permissions should only see the no-permissions page
 function guardPermissions(
     toPath: string,
@@ -71,7 +39,7 @@ function guardPermissions(
     return null;
 }
 
-router.beforeEach((to, from) => {
+router.beforeEach(async (to, from) => {
     if (isOidcCallback(to.path, from.path)) {
         return true;
     }
@@ -81,11 +49,37 @@ router.beforeEach((to, from) => {
         if (tryActivateUpdate(to.fullPath)) return false;
     }
 
+    // The client bundle gives every non-auth pathname to TemplateHost. Its
+    // semantic routes intentionally overlap routes from the full admin SPA
+    // (`/alerts`, `/devices`, `/settings`, ...), so none of the admin route
+    // aliases or page-access redirects may run here. Authentication remains
+    // host-owned; once it is settled, the mounted template owns the pathname.
+    if (IS_CLIENT_BUILD) {
+        const authStore = useAuthStore();
+
+        if (authStore.status === 'booting') {
+            await authStore.waitForSessionReady();
+        }
+
+        if (!authStore.loggedIn) {
+            return to.path === LOGIN_PATH ? true : LOGIN_PATH;
+        }
+
+        if (!authStore.permissionsLoaded) {
+            return to.path === LOGIN_PATH ? '/' : true;
+        }
+
+        const permissionRedirect = guardPermissions(to.path, authStore);
+        if (permissionRedirect) return permissionRedirect;
+
+        return to.path === LOGIN_PATH ? '/' : true;
+    }
+
     // Legacy aliases need no auth state at all — rewrite first so cold
     // loads to old URLs never hit the 404 catch-all.
-    const legacyRedirect = guardLegacyRouteAliases(to.path);
-    if (legacyRedirect) {
-        return legacyRedirect;
+    const aliasRedirect = resolveRouteAlias(to);
+    if (aliasRedirect) {
+        return aliasRedirect;
     }
 
     const authStore = useAuthStore();
@@ -106,7 +100,7 @@ router.beforeEach((to, from) => {
     // `/` is a special case: there's no pages/index.vue route, so without an
     // explicit redirect here the auto-routes catch-all renders a 404 page in
     // the brief window between login and permissionsLoaded. Once permissions
-    // finish loading, resolveDefaultPage uses the shared page-access registry.
+    // finish loading, resolveAccessRedirect uses the shared page-access registry.
     if (!authStore.permissionsLoaded) {
         if (to.path === LOGIN_PATH) return '/';
         if (to.path === '/organize') return ORGANIZE_PATH;
@@ -114,33 +108,17 @@ router.beforeEach((to, from) => {
         return true;
     }
 
-    // Permission guards
-    const permRedirect = guardPermissions(to.path, authStore);
-    if (permRedirect) {
-        return permRedirect;
+    const adminBundleRedirect = redirectForAdminBundleAccess(
+        import.meta.env.BASE_URL,
+        authStore
+    );
+    if (adminBundleRedirect) {
+        window.location.replace(adminBundleRedirect);
+        return false;
     }
 
-    const pageRedirect = redirectForPageAccess(to.path, authStore);
-    if (pageRedirect) {
-        return pageRedirect;
-    }
-
-    if (to.path === '/organize') {
-        return ORGANIZE_PATH;
-    }
-
-    // Node-RED route gated on FM_NODE_RED_ENABLED → runtime config.
-    if (to.path.startsWith('/automations/node-red') && !NODE_RED_ENABLED) {
-        return '/automations/actions';
-    }
-
-    // Redirect /login → / and / → dash or devices
-    if (to.path === LOGIN_PATH) {
-        return '/';
-    }
-    if (!IS_CLIENT_BUILD && to.path === '/') {
-        return resolveDefaultPage(authStore);
-    }
+    const accessRedirect = resolveAccessRedirect(to.path, authStore);
+    if (accessRedirect) return accessRedirect;
 
     return true;
 });

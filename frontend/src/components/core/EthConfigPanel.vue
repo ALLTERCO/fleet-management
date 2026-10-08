@@ -143,13 +143,14 @@
 import {computed, ref, watch} from 'vue';
 import {useDeviceConfigPanel} from '@/composables/useDeviceConfigPanel';
 import {ipv4Valid} from '@/helpers/ipv4';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useToastStore} from '@/stores/toast';
 import {sendRPC} from '@/tools/websocket';
+import CardToggle from '../cards/CardToggle.vue';
 import Button from './Button.vue';
 import Collapse from './Collapse.vue';
 import ConfigPanelFooter from './ConfigPanelFooter.vue';
 import Dropdown from './Dropdown.vue';
-import CardToggle from '../cards/CardToggle.vue';
 
 interface EthConfig {
     enable?: boolean;
@@ -287,7 +288,7 @@ async function loadClients(): Promise<void> {
         >('FLEET_MANAGER', 'Eth.ListClients', {shellyID: props.shellyID});
         clients.value = Array.isArray(res) ? res : (res?.clients ?? []);
     } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = rpcErrorMessage(err);
         toast.error(`Failed to list Ethernet clients: ${msg}`);
         clients.value = [];
     } finally {

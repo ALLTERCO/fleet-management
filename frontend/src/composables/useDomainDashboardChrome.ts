@@ -4,6 +4,7 @@
 // permission/default state live here so each page only renders the modal.
 
 import {computed, ref, watchEffect} from 'vue';
+import {useRpcPermissions} from '@/helpers/rpcPermissions';
 import {useAuthStore} from '@/stores/auth';
 import {useDashboardChromeStore} from '@/stores/dashboardChrome';
 import {useDashboardsStore} from '@/stores/dashboards';
@@ -14,12 +15,17 @@ export interface DomainDashboardChromeOptions {
     currentName: () => string;
     // Reflect the persisted name back into the page's own title.
     onRenamed?: (name: string) => void;
+    // Auto-refresh cadence shown in the ⋮ menu. Getter so re-registration
+    // tracks it reactively; omit both when the page has no live timer.
+    refreshInterval?: () => number;
+    onSetInterval?: (ms: number) => void;
 }
 
 export function useDomainDashboardChrome(opts: DomainDashboardChromeOptions) {
     const authStore = useAuthStore();
     const dashboardsStore = useDashboardsStore();
     const chrome = useDashboardChromeStore();
+    const rpc = useRpcPermissions();
 
     const canEdit = computed(() => {
         const id = opts.dashboardId();
@@ -30,6 +36,11 @@ export function useDomainDashboardChrome(opts: DomainDashboardChromeOptions) {
     });
     const isDefault = computed(() =>
         Boolean(dashboardsStore.dashboards[opts.dashboardId()]?.isDefault)
+    );
+    const canShare = computed(
+        () =>
+            Number.isFinite(opts.dashboardId()) &&
+            rpc.canCall('assignment.create')
     );
 
     const renameVisible = ref(false);
@@ -65,13 +76,17 @@ export function useDomainDashboardChrome(opts: DomainDashboardChromeOptions) {
             onEdit: openRename,
             onSetDefault: () => void onSetDefault(),
             canEdit: canEdit.value,
+            canShare: canShare.value,
             isDefault: isDefault.value,
-            loading: opts.loading()
+            loading: opts.loading(),
+            refreshInterval: opts.refreshInterval?.(),
+            onSetInterval: opts.onSetInterval
         });
     });
 
     return {
         canEdit,
+        canShare,
         isDefault,
         renameVisible,
         renameSaving,

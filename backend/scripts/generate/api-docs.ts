@@ -192,8 +192,10 @@ function typeLabel(schema: JsonSchema): string {
     if (schema.const !== undefined) {
         return `const(${JSON.stringify(schema.const)})`;
     }
-    if (schema.anyOf?.length) {
-        return schema.anyOf.map(typeLabel).join(' | ');
+    for (const combinator of ['anyOf', 'oneOf'] as const) {
+        if (schema[combinator]?.length) {
+            return schema[combinator].map(typeLabel).join(' | ');
+        }
     }
     const t = schema.type;
     if (Array.isArray(t)) return t.join(' | ');
@@ -352,11 +354,15 @@ function renderObjectProps(schema: JsonSchema): string {
 // Best-effort example value for a schema — used to seed example payloads
 // when the prose file doesn't supply one. Depth-capped so a future
 // self-referential schema can't bomb the generator.
-function exampleFromSchema(schema: JsonSchema, depth = 0): unknown {
+export function exampleFromSchema(schema: JsonSchema, depth = 0): unknown {
     if (depth > MAX_SCHEMA_DEPTH) return null;
     if (schema.const !== undefined) return schema.const;
     if (schema.enum?.length) return schema.enum[0];
     if (schema.default !== undefined) return schema.default;
+    if (schema.examples?.length) return schema.examples[0];
+    if (schema.oneOf?.length) {
+        return exampleFromSchema(schema.oneOf[0], depth + 1);
+    }
     const type = Array.isArray(schema.type) ? schema.type[0] : schema.type;
     switch (type) {
         case 'string':
@@ -365,15 +371,23 @@ function exampleFromSchema(schema: JsonSchema, depth = 0): unknown {
                 ? '1970-01-01T00:00:00.000Z'
                 : 'string';
         case 'integer':
-            return schema.minimum ?? 0;
+            return numericExample(schema, true);
         case 'number':
-            return schema.minimum ?? 0;
+            return numericExample(schema, false);
         case 'boolean':
             return false;
         case 'array':
-            return schema.items
-                ? [exampleFromSchema(schema.items, depth + 1)]
-                : [];
+            return Array.from(
+                {
+                    length: schema.items
+                        ? Math.max(1, schema.minItems ?? 0)
+                        : (schema.minItems ?? 0)
+                },
+                () =>
+                    schema.items
+                        ? exampleFromSchema(schema.items, depth + 1)
+                        : null
+            );
         case 'null':
             return null;
         case 'object': {
@@ -397,6 +411,22 @@ function exampleFromSchema(schema: JsonSchema, depth = 0): unknown {
         default:
             return null;
     }
+}
+
+function numericExample(schema: JsonSchema, integer: boolean): number {
+    if (schema.minimum !== undefined) return schema.minimum;
+    const exclusiveMinimum = schema.exclusiveMinimum;
+    if (typeof exclusiveMinimum !== 'number') return 0;
+    if (integer) return Math.floor(exclusiveMinimum) + 1;
+    const maximum = schema.maximum;
+    if (
+        typeof maximum === 'number' &&
+        maximum > exclusiveMinimum &&
+        maximum < exclusiveMinimum + 1
+    ) {
+        return (exclusiveMinimum + maximum) / 2;
+    }
+    return exclusiveMinimum + 1;
 }
 
 function renderExample(label: string, schema: JsonSchema): string {

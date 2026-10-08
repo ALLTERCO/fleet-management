@@ -2,6 +2,8 @@
 // types. Pure — pass each item's type; the helper decides. Layers on top of
 // scope so the type filter behaves the same on every dashboard.
 
+import type {DeviceSource} from '@api/deviceSource';
+
 export type DeviceType = 'physical' | 'bluetooth' | 'virtual';
 
 // The full set — single source for both the filter UI and the "all selected
@@ -19,16 +21,21 @@ export const DEVICE_TYPE_LABELS: Record<DeviceType, string> = {
     virtual: 'Virtual'
 };
 
-// device.source values map onto the three user-facing types.
-const SOURCE_TO_TYPE: Record<string, DeviceType> = {
-    shelly: 'physical',
+// device.source values map onto the three user-facing types. Keyed by the
+// backend union, so a new source is a build error, not a silent "physical".
+const SOURCE_TO_TYPE: Record<DeviceSource, DeviceType> = {
+    ws: 'physical',
+    local: 'physical',
+    offline: 'physical',
     bluetooth: 'bluetooth',
     virtual: 'virtual'
 };
 
 // A device with no (or legacy) source is a physical Shelly.
 export function deviceTypeOf(source: string | null | undefined): DeviceType {
-    return source ? (SOURCE_TO_TYPE[source] ?? 'physical') : 'physical';
+    return source
+        ? (SOURCE_TO_TYPE[source as DeviceSource] ?? 'physical')
+        : 'physical';
 }
 
 // Empty or full selection means "no filter" — return the input untouched.

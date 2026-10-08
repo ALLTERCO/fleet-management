@@ -38,6 +38,8 @@ cmd_rollback() {
     export ZITADEL_HOSTNAME="${ZITADEL_HOSTNAME:-localhost}"
     export ZITADEL_EXTERNALPORT FLEET_MANAGER_PORT FM_VERSION
 
+    public_kdf_salt_preflight || return 1
+
     if [ "$image_only" != "1" ]; then
         backup_path="${backup_path:-$(_cmd_rollback_latest_backup)}"
         if [ -z "$backup_path" ] || [ ! -s "$backup_path" ]; then
@@ -58,10 +60,13 @@ cmd_rollback() {
     fi
 
     info "Recreating FM container with $rollback_image..."
+    public_kdf_salt_preflight || return 1
+    public_resolve_build_identity rollback
     if ! FM_VERSION=rollback compose_cmd up -d --no-deps --force-recreate fleet-manager; then
         error "Rollback recreate failed — container may be down"
         return 1
     fi
+    public_kdf_salt_confirm_container || return 1
 
     info "Health-gating..."
     if ! hc_wait_or_dump fleet-manager "${FM_STARTUP_TIMEOUT:-180}"; then
@@ -71,6 +76,53 @@ cmd_rollback() {
 
     _cmd_rollback_record_manifest
     info "Fleet Manager rolled back to $rollback_image"
+}
+
+# The image `rollback` starts. Set by upgrade and migrate before they replace
+# Fleet Manager.
+public_tag_rollback_image() {
+    local image_id="$1"
+    if ! docker tag "$image_id" "${DOCKER_HUB_IMAGE:-shellygroup/fleet-management}:rollback"; then
+        error "Could not tag the current Fleet Manager image for rollback"
+        return 1
+    fi
+}
+
+# The database backup `rollback` restores is the newest public-update entry
+# with a backup (_cmd_rollback_latest_backup).
+# Usage: public_record_rollback_point <from image> <to image> <backup path>
+public_record_rollback_point() {
+    local from_image="$1" to_image="$2" backup="$3" backup_manifest=""
+    if [ -n "$backup" ] && [ -f "$(bk_manifest_path "$backup")" ]; then
+        backup_manifest="$(bk_manifest_path "$backup")"
+    fi
+    UPDATE_FROM_IMAGE="$from_image" \
+    UPDATE_TO_IMAGE="$to_image" \
+    UPDATE_BACKUP_PATH="$backup" \
+    UPDATE_BACKUP_MANIFEST_PATH="$backup_manifest" \
+        manifest_record_public_update
+}
+
+# Number of manifest history entries; 0 without a manifest.
+public_rollback_history_length() {
+    if [ ! -f "$(manifest_path)" ]; then
+        printf '0'
+        return 0
+    fi
+    manifest_read | jq '.history | length'
+}
+
+# The first rollback backup recorded after the given history length, e.g. by
+# the migrate step of an upgrade. Empty when none was recorded.
+public_rollback_backup_since() {
+    local history_length="$1"
+    [ -f "$(manifest_path)" ] || return 0
+    manifest_read | jq -r --argjson n "$history_length" '
+        [.history[$n:][]
+         | select(.action == "public-update")
+         | select((.backup // "") != "")
+         | .backup][0] // empty
+    '
 }
 
 _cmd_rollback_latest_backup() {

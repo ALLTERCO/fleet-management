@@ -2,9 +2,15 @@ import * as log4js from 'log4js';
 import {tuning} from '../config';
 import {normalizeActor, SYSTEM_ACTOR} from '../types/api/auditActors';
 import {writeAuditRow, writeAuditRowBatch} from './audit/writeAuditRow';
-import {entryToBatchRow, scrubSensitiveValues} from './auditBatchRow';
+import {
+    AUTOMATION_SOURCE_PARAM,
+    entryToBatchRow,
+    scrubSensitiveValues
+} from './auditBatchRow';
 import {BoundedQueue} from './boundedQueue';
 import * as DeviceCollector from './DeviceCollector';
+import * as EventDistributor from './EventDistributor';
+import type {AutomationSource} from './nodeRed/automationSource';
 import * as Observability from './Observability';
 import * as PostgresProvider from './PostgresProvider';
 
@@ -23,6 +29,7 @@ export type AuditEventType =
     | 'auto_admit_via_discovery'
     | 'device_identity_mismatch'
     | 'policy_default_change'
+    | 'baseline_exclusion_change'
     | 'webhook_failure'
     | 'user_gdpr_erasure'
     | 'authz_grant_revoked'
@@ -43,6 +50,15 @@ export interface AuditLogEntry {
     username?: string;
     /** Stable Zitadel subject. Username remains a display snapshot. */
     actorUserId?: string;
+    /**
+     * The scoped credential the call arrived on, when it was an agent rather
+     * than a person. Answers "what did this key change?" after an incident.
+     * Not named credentialId: the param redactor scrubs any key containing
+     * "credential", so a field by that name would never survive to storage.
+     */
+    agentKeyId?: string;
+    /** Shared by every row from one tool call, so they read as one action. */
+    correlationId?: string;
     /** Primary device for single-device rows — kept for display/back-compat. */
     shellyId?: string;
     /** Every device touched by the row (1 for single, N for bulk). Used
@@ -74,6 +90,8 @@ export interface AuditLogRow {
     error_message: string | null;
     ip_address: string | null;
     organization_id: string | null;
+    agent_key_id: string | null;
+    correlation_id: string | null;
 }
 
 interface QueuedAuditEntry extends AuditLogEntry {
@@ -82,8 +100,12 @@ interface QueuedAuditEntry extends AuditLogEntry {
 }
 
 // Spill-on-drop hook injected after module load to avoid circular imports.
-let spillHook: ((entry: AuditLogEntry) => void) | undefined;
-export function setAuditSpillHook(hook: (entry: AuditLogEntry) => void): void {
+// A returned promise reports whether the entry reached the overflow stream.
+export type AuditSpillHook = (
+    entry: AuditLogEntry
+) => Promise<boolean> | undefined;
+let spillHook: AuditSpillHook | undefined;
+export function setAuditSpillHook(hook: AuditSpillHook | undefined): void {
     spillHook = hook;
 }
 
@@ -131,25 +153,52 @@ function recordUnarmedLogIfAny(): void {
     Observability.incrementCounter('audit_log_unarmed_calls');
 }
 
+interface ExhaustedAuditEntry {
+    entry: QueuedAuditEntry;
+    err: unknown;
+}
+
 function recordRowFailure(
     entry: QueuedAuditEntry,
     err: unknown,
-    failed: QueuedAuditEntry[]
+    failed: QueuedAuditEntry[],
+    exhausted: ExhaustedAuditEntry[]
 ): void {
     Observability.incrementCounter('audit_write_errors');
     const attempts = (entry._retryCount ?? 0) + 1;
     if (attempts >= tuning.audit.maxRetries) {
-        logger.error(
-            'Dropping audit entry after %d failed attempts (eventType=%s method=%s): %s',
-            tuning.audit.maxRetries,
-            entry.eventType,
-            entry.method ?? '',
-            err
-        );
-        Observability.incrementCounter('audit_write_dropped');
+        exhausted.push({entry, err});
         return;
     }
     failed.push({...entry, _retryCount: attempts});
+}
+
+function dropExhaustedEntry({entry, err}: ExhaustedAuditEntry): false {
+    logger.error(
+        'Dropping audit entry after %d failed attempts (eventType=%s method=%s): %s',
+        tuning.audit.maxRetries,
+        entry.eventType,
+        entry.method ?? '',
+        err
+    );
+    Observability.incrementCounter('audit_write_dropped');
+    return false;
+}
+
+// Spent retries go to the overflow stream for AuditDrainer; dropped only if that fails.
+async function spillExhaustedEntry(
+    exhausted: ExhaustedAuditEntry
+): Promise<boolean> {
+    if (!spillHook) return dropExhaustedEntry(exhausted);
+    const {_retryCount: _spent, ...entry} = exhausted.entry;
+    try {
+        const outcome = spillHook(entry);
+        // A fire-and-forget hook owns its own failure accounting.
+        if (!(outcome instanceof Promise) || (await outcome)) return true;
+    } catch (spillErr) {
+        logger.error('audit spill hook failed: %s', spillErr);
+    }
+    return dropExhaustedEntry(exhausted);
 }
 
 // Slow-path fallback when the batch insert fails. Each entry runs through
@@ -160,6 +209,7 @@ async function flushPerRow(
 ): Promise<void> {
     Observability.incrementCounter('audit_per_row_fallbacks');
     let succeeded = 0;
+    const exhausted: ExhaustedAuditEntry[] = [];
     for (const entry of entries) {
         const row = entryToBatchRow(
             entry,
@@ -170,15 +220,19 @@ async function flushPerRow(
             await writeAuditRow(row);
             succeeded++;
         } catch (err) {
-            recordRowFailure(entry, err, failed);
+            recordRowFailure(entry, err, failed, exhausted);
         }
     }
-    if (succeeded > 0 || failed.length > 0) {
+    const spilled = (
+        await Promise.all(exhausted.map(spillExhaustedEntry))
+    ).filter(Boolean).length;
+    if (succeeded > 0 || failed.length > 0 || exhausted.length > 0) {
         logger.warn(
-            'Audit per-row fallback: %d succeeded, %d requeued, %d dropped',
+            'Audit per-row fallback: %d succeeded, %d requeued, %d spilled, %d dropped',
             succeeded,
             failed.length,
-            entries.length - succeeded - failed.length
+            spilled,
+            exhausted.length - spilled
         );
     }
 }
@@ -278,6 +332,10 @@ export async function query(params: {
     eventTypes?: AuditEventType[];
     username?: string;
     shellyId?: string;
+    /** Everything one agent key did — the question after an incident. */
+    agentKeyId?: string;
+    /** Every row from one MCP tool call. */
+    correlationId?: string;
     limit?: number;
     offset?: number;
 }): Promise<AuditLogRow[]> {
@@ -291,6 +349,8 @@ export async function query(params: {
                 p_event_types: params.eventTypes || null,
                 p_username: params.username || null,
                 p_shelly_id: params.shellyId || null,
+                p_agent_key_id: params.agentKeyId || null,
+                p_correlation_id: params.correlationId || null,
                 p_limit: params.limit ?? 10000,
                 p_offset: params.offset ?? 0
             }
@@ -421,10 +481,26 @@ export interface RpcAuditInput {
     errorMessage?: string;
     organizationId?: string;
     ipAddress?: string;
+    agentKeyId?: string;
+    correlationId?: string;
+    /** Node-RED flow/node that made the call; stored inside params. */
+    automationSource?: AutomationSource;
+}
+
+// No column for it, so it rides in params under a key no RPC param uses.
+function withAutomationSource(
+    params: Record<string, any> | undefined,
+    source: AutomationSource | undefined
+): Record<string, any> | undefined {
+    if (!source) return params;
+    return {...(params ?? {}), [AUTOMATION_SOURCE_PARAM]: source};
 }
 
 export function buildRpcAuditEvent(input: RpcAuditInput): AuditLogEntry {
-    const safeParams = redactSensitiveParams(input.method, input.params);
+    const safeParams = withAutomationSource(
+        redactSensitiveParams(input.method, input.params),
+        input.automationSource
+    );
     const ids = extractShellyIds(input.params);
 
     return {
@@ -438,7 +514,9 @@ export function buildRpcAuditEvent(input: RpcAuditInput): AuditLogEntry {
         success: input.success ?? true,
         errorMessage: input.errorMessage,
         organizationId: input.organizationId,
-        ipAddress: input.ipAddress
+        ipAddress: input.ipAddress,
+        agentKeyId: input.agentKeyId,
+        correlationId: input.correlationId
     };
 }
 
@@ -460,6 +538,10 @@ export interface McpAuditArgs {
     // distinguishable from the user's browser session. Not secrets.
     credentialId?: string;
     clientId?: string;
+    /** Ties this row to the rpc rows the tool call caused. */
+    correlationId?: string;
+    /** W3C trace id the client sent, so an external trace can find this row. */
+    traceId?: string;
     // 'prepare' = preview only (nothing ran); 'execute' = the write ran. Lets
     // the trail tell a planned fm_write apart from one that changed data.
     phase?: 'prepare' | 'execute';
@@ -468,9 +550,12 @@ export interface McpAuditArgs {
 // Pure builder, split from enqueueing so the event shape is unit-testable.
 export function buildMcpAuditEvent(args: McpAuditArgs): AuditLogEntry {
     const params: Record<string, unknown> = {};
-    if (args.credentialId) params.credentialId = args.credentialId;
+    // The key id goes on its own column, never into params: the param redactor
+    // scrubs anything whose name contains "credential", so storing it here
+    // wrote '[REDACTED]' and the trail lost the one field it existed for.
     if (args.clientId) params.clientId = args.clientId;
     if (args.phase) params.phase = args.phase;
+    if (args.traceId) params.traceId = args.traceId;
     return {
         eventType: 'mcp_tool_call',
         username: normalizeActor(args.username),
@@ -478,6 +563,8 @@ export function buildMcpAuditEvent(args: McpAuditArgs): AuditLogEntry {
         params: Object.keys(params).length > 0 ? params : undefined,
         success: args.success,
         errorMessage: args.errorMessage,
+        agentKeyId: args.credentialId,
+        correlationId: args.correlationId,
         organizationId: args.organizationId ?? undefined
     };
 }
@@ -486,13 +573,26 @@ export function logMcpTool(args: McpAuditArgs) {
     return log(buildMcpAuditEvent(args));
 }
 
+/**
+ * One shape for every device lifecycle row. fn_audit_log_query filters on
+ * organization_id, so a row without it is invisible to every tenant read.
+ */
+export function buildDeviceAuditEvent(args: {
+    eventType: AuditEventType;
+    shellyId: string;
+    username?: string;
+}): AuditLogEntry {
+    return {
+        eventType: args.eventType,
+        username: normalizeActor(args.username),
+        shellyId: args.shellyId,
+        shellyIds: [args.shellyId],
+        organizationId: EventDistributor.getDeviceOrg(args.shellyId)
+    };
+}
+
 export function logDeviceOnline(shellyId: string) {
-    return log({
-        eventType: 'device_online',
-        username: SYSTEM_ACTOR,
-        shellyId,
-        shellyIds: [shellyId]
-    });
+    return log(buildDeviceAuditEvent({eventType: 'device_online', shellyId}));
 }
 
 /** Battery/sleep-mode devices go offline between reports by design. */
@@ -508,30 +608,19 @@ function isBatteryPoweredDevice(shellyId: string): boolean {
 
 export function logDeviceOffline(shellyId: string) {
     if (isBatteryPoweredDevice(shellyId)) return;
-    return log({
-        eventType: 'device_offline',
-        username: SYSTEM_ACTOR,
-        shellyId,
-        shellyIds: [shellyId]
-    });
+    return log(buildDeviceAuditEvent({eventType: 'device_offline', shellyId}));
 }
 
 export function logDeviceAdd(shellyId: string, username?: string) {
-    return log({
-        eventType: 'device_add',
-        username: normalizeActor(username),
-        shellyId,
-        shellyIds: [shellyId]
-    });
+    return log(
+        buildDeviceAuditEvent({eventType: 'device_add', shellyId, username})
+    );
 }
 
 export function logDeviceDelete(shellyId: string, username?: string) {
-    return log({
-        eventType: 'device_delete',
-        username: normalizeActor(username),
-        shellyId,
-        shellyIds: [shellyId]
-    });
+    return log(
+        buildDeviceAuditEvent({eventType: 'device_delete', shellyId, username})
+    );
 }
 
 export function logWaitingRoomEvict(

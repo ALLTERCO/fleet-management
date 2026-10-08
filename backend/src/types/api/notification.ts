@@ -13,6 +13,9 @@ import type {JsonSchema} from './_schema';
 import {
     EMAIL_ATTACHMENTS_SCHEMA,
     type EmailAttachment,
+    keysetListResponseSchema,
+    LIST_CURSOR_SCHEMA,
+    LIST_OFFSET_SCHEMA,
     NAME_SCHEMA,
     ORG_ID_SCHEMA
 } from './_shared';
@@ -238,22 +241,50 @@ export const NOTIFICATION_INBOX_LIST_PARAMS_SCHEMA: JsonSchema = {
         kind: NOTIFICATION_KIND_SCHEMA,
         query: QUERY_SCHEMA,
         limit: LIMIT_SCHEMA,
-        offset: OFFSET_SCHEMA
+        offset: LIST_OFFSET_SCHEMA,
+        cursor: LIST_CURSOR_SCHEMA
     }
 };
 
-export const NOTIFICATION_INBOX_LIST_RESPONSE_SCHEMA: JsonSchema = {
+export const NOTIFICATION_INBOX_LIST_RESPONSE_SCHEMA: JsonSchema =
+    keysetListResponseSchema(NOTIFICATION_INBOX_ITEM_SCHEMA);
+
+export const NOTIFICATION_INBOX_GET_MANY_MAX_IDS = 100;
+
+export const NOTIFICATION_INBOX_GET_MANY_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
     additionalProperties: false,
-    required: ['items', 'total', 'limit', 'offset', 'has_more'],
+    required: ['ids'],
     properties: {
-        items: {type: 'array', items: NOTIFICATION_INBOX_ITEM_SCHEMA},
-        total: {type: 'integer'},
-        limit: {type: 'integer'},
-        offset: {type: 'integer'},
-        has_more: {type: 'boolean'}
+        organizationId: ORG_ID_SCHEMA,
+        ids: {
+            type: 'array',
+            items: {type: 'integer', minimum: 1},
+            minItems: 1,
+            maxItems: NOTIFICATION_INBOX_GET_MANY_MAX_IDS,
+            uniqueItems: true
+        }
     }
 };
+
+export const NOTIFICATION_INBOX_GET_MANY_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['items', 'missingIds'],
+    properties: {
+        items: {type: 'array', items: NOTIFICATION_INBOX_ITEM_SCHEMA},
+        missingIds: {
+            type: 'array',
+            items: {type: 'integer'},
+            description: "Asked ids that are not the caller's own inbox items."
+        }
+    }
+};
+
+export interface NotificationInboxGetManyResult {
+    items: NotificationInboxItem[];
+    missingIds: number[];
+}
 
 export const NOTIFICATION_INBOX_GET_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
@@ -1813,7 +1844,8 @@ export const NOTIFICATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
         params: NOTIFICATION_INBOX_LIST_PARAMS_SCHEMA,
         response: NOTIFICATION_INBOX_LIST_RESPONSE_SCHEMA,
         permission: {component: 'notifications', operation: 'read'},
-        description: 'List inbox items for the authenticated caller.'
+        description:
+            'List inbox items for the authenticated caller, newest first. Page with `cursor`; `offset` stops at 10,000. Unread count: state unread with limit 1, read total.'
     })
     .registerMethod('Inbox.Get', {
         params: NOTIFICATION_INBOX_GET_PARAMS_SCHEMA,
@@ -1821,22 +1853,32 @@ export const NOTIFICATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
         permission: {component: 'notifications', operation: 'read'},
         description: 'Return one inbox item for the authenticated caller.'
     })
+    .registerMethod('Inbox.GetMany', {
+        params: NOTIFICATION_INBOX_GET_MANY_PARAMS_SCHEMA,
+        response: NOTIFICATION_INBOX_GET_MANY_RESPONSE_SCHEMA,
+        permission: {component: 'notifications', operation: 'read'},
+        description: `Return up to ${NOTIFICATION_INBOX_GET_MANY_MAX_IDS} of the caller's own inbox items by id in one call. Other ids come back in missingIds.`
+    })
     .registerMethod('Inbox.MarkRead', {
+        // A write to the caller's own read state; reading the inbox allows it.
+        safety: {operation: 'update', idempotent: true, destructive: false},
         params: NOTIFICATION_INBOX_MARK_READ_PARAMS_SCHEMA,
         response: NOTIFICATION_INBOX_ITEM_SCHEMA,
-        permission: {component: 'notifications', operation: 'update'},
+        permission: {component: 'notifications', operation: 'read'},
         description: 'Mark one inbox item as read.'
     })
     .registerMethod('Inbox.MarkUnread', {
+        safety: {operation: 'update', idempotent: true, destructive: false},
         params: NOTIFICATION_INBOX_MARK_UNREAD_PARAMS_SCHEMA,
         response: NOTIFICATION_INBOX_ITEM_SCHEMA,
-        permission: {component: 'notifications', operation: 'update'},
+        permission: {component: 'notifications', operation: 'read'},
         description: 'Mark one inbox item as unread.'
     })
     .registerMethod('Inbox.MarkAllRead', {
+        safety: {operation: 'update', idempotent: true, destructive: false},
         params: NOTIFICATION_INBOX_MARK_ALL_READ_PARAMS_SCHEMA,
         response: NOTIFICATION_INBOX_UPDATED_COUNT_SCHEMA,
-        permission: {component: 'notifications', operation: 'update'},
+        permission: {component: 'notifications', operation: 'read'},
         description: 'Mark every unread inbox item as read for the caller.'
     })
     .registerMethod('Destination.GetModel', {
@@ -2149,7 +2191,7 @@ export const NOTIFICATION_DESCRIBE: DescribeOutput = new DescribeBuilder(
     .registerMethod('OAuth.Start', {
         params: NOTIFICATION_OAUTH_START_PARAMS_SCHEMA,
         response: NOTIFICATION_OAUTH_START_RESPONSE_SCHEMA,
-        permission: {component: 'notifications', operation: 'update'},
+        permission: {component: 'integrations', operation: 'update'},
         description:
             'Begin in-app OAuth2 consent for an email_smtp endpoint. Returns an authUrl the UI opens in a popup; the provider redirects to /api/oauth/callback/email which stores the refresh token on the endpoint.'
     })

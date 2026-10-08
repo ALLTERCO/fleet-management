@@ -459,7 +459,6 @@ function activateHighlighted(): void {
     z-index: var(--z-modal);
     background: rgba(var(--color-surface-bg-rgb), 0.55);
     backdrop-filter: blur(var(--scrim-blur));
-    -webkit-backdrop-filter: blur(var(--scrim-blur));
     display: flex;
     align-items: flex-start;
     justify-content: center;
@@ -473,7 +472,6 @@ function activateHighlighted(): void {
     flex-direction: column;
     background: var(--glass-5-bg);
     backdrop-filter: blur(var(--glass-5-blur));
-    -webkit-backdrop-filter: blur(var(--glass-5-blur));
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-2xl);

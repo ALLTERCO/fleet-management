@@ -1,0 +1,604 @@
+<script type="text/javascript">
+(function () {
+    // Must match OPERATION_NODE_TYPES in lib/nodes/operation-node.js.
+    const operationTypes = [
+        ['fm-rpc', 'Fleet Manager / Core', 'FM RPC'],
+        ['fm-tag', 'Fleet Manager / Targeting', 'FM Tag'],
+        ['fm-group', 'Fleet Manager / Targeting', 'FM Group'],
+        ['fm-location', 'Fleet Manager / Targeting', 'FM Location'],
+        ['fm-device', 'Fleet Manager / Devices & Components', 'FM Device'],
+        ['fm-component-catalog', 'Fleet Manager / Devices & Components', 'FM Component Catalog'],
+        ['fm-component-state', 'Fleet Manager / Devices & Components', 'FM Component State'],
+        ['fm-component-action', 'Fleet Manager / Devices & Components', 'FM Component Action'],
+        ['fm-schedule', 'Fleet Manager / Scheduling & Automation', 'FM Schedule'],
+        ['fm-variable', 'Fleet Manager / Scheduling & Automation', 'FM Variable'],
+        ['fm-webhook', 'Fleet Manager / Scheduling & Automation', 'FM Webhook'],
+        ['fm-script', 'Fleet Manager / Scheduling & Automation', 'FM Script'],
+        ['fm-firmware', 'Fleet Manager / Lifecycle Operations', 'FM Firmware'],
+        ['fm-backup', 'Fleet Manager / Lifecycle Operations', 'FM Backup'],
+        ['fm-certificate', 'Fleet Manager / Lifecycle Operations', 'FM Certificate'],
+        ['fm-diagnostics', 'Fleet Manager / Lifecycle Operations', 'FM Diagnostics'],
+        ['fm-alert', 'Fleet Manager / Observability & Outputs', 'FM Alert'],
+        ['fm-report', 'Fleet Manager / Observability & Outputs', 'FM Report'],
+        ['fm-energy', 'Fleet Manager / Observability & Outputs', 'FM Energy'],
+        ['fm-notification', 'Fleet Manager / Observability & Outputs', 'FM Notification'],
+        ['fm-audit', 'Fleet Manager / Observability & Outputs', 'FM Audit']
+    ];
+
+    function appendTemplate(name, html) {
+        const script = document.createElement('script');
+        script.type = 'text/html';
+        script.setAttribute('data-template-name', name);
+        script.textContent = html;
+        document.body.appendChild(script);
+    }
+
+    function appendHelp(name, html) {
+        const script = document.createElement('script');
+        script.type = 'text/html';
+        script.setAttribute('data-help-name', name);
+        script.textContent = html;
+        document.body.appendChild(script);
+    }
+
+    const serverTemplate = `
+<div class="form-row"><label for="node-config-input-name"><i class="fa fa-tag"></i> Name</label><input type="text" id="node-config-input-name"></div>
+<div class="form-row"><label for="node-config-input-baseUrl"><i class="fa fa-cloud"></i> Base URL</label><input type="text" id="node-config-input-baseUrl" placeholder="http://fleet-manager:7011"></div>
+<div class="form-row"><label for="node-config-input-wsUrl"><i class="fa fa-random"></i> WS URL</label><input type="text" id="node-config-input-wsUrl" placeholder="ws://fleet-manager:7011/"></div>
+<div class="form-row"><label for="node-config-input-token"><i class="fa fa-lock"></i> Token</label><input type="password" id="node-config-input-token" placeholder="auto from FM_NODE_RED_SERVICE_TOKEN"></div>`;
+
+    appendTemplate('fm-server', serverTemplate);
+    appendHelp('fm-server', '<p>Shared Fleet Manager connection. In the managed sidecar the service token comes from deployment secrets.</p>');
+    RED.nodes.registerType('fm-server', {
+        category: 'config',
+        defaults: {
+            name: {value: ''},
+            baseUrl: {value: ''},
+            wsUrl: {value: ''}
+        },
+        credentials: {
+            token: {type: 'password'}
+        },
+        label: function () {
+            return this.name || 'Fleet Manager';
+        }
+    });
+
+    function adminApiPath(path) {
+        const clean = path.replace(/^\/+/, '');
+        const editorRoot = window.location.pathname
+            .replace(/\/$/, '')
+            .replace(/\/red\/.*$/, '/red');
+        return `${editorRoot}/${clean}`;
+    }
+
+    function schemaProperties(method) {
+        const schema = method && method.paramsSchema;
+        if (!schema || !schema.properties || typeof schema.properties !== 'object') {
+            return {};
+        }
+        return schema.properties;
+    }
+
+    function schemaType(schema) {
+        if (schema && Array.isArray(schema.enum)) return 'enum';
+        const type = schema && schema.type;
+        if (Array.isArray(type)) return type.find((entry) => entry !== 'null') || 'string';
+        if (type) return type;
+        if (schema && schema.properties) return 'object';
+        if (schema && schema.items) return 'array';
+        return 'string';
+    }
+
+    function configuredParams() {
+        try {
+            const value = JSON.parse($('#node-input-paramsJson').val() || '{}');
+            if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+        } catch {
+            // Keep the schema fields usable even if the raw JSON editor is mid-edit.
+        }
+        return {};
+    }
+
+    function renderSchemaFields(method) {
+        const row = $('#fm-schema-fields');
+        const body = $('#fm-schema-fields-body');
+        const properties = schemaProperties(method);
+        const names = Object.keys(properties);
+        const values = configuredParams();
+        body.empty();
+
+        if (names.length === 0) {
+            row.hide();
+            return;
+        }
+
+        const required = new Set(
+            Array.isArray(method.paramsSchema && method.paramsSchema.required)
+                ? method.paramsSchema.required
+                : []
+        );
+        for (const name of names) {
+            const schema = properties[name] || {};
+            const type = schemaType(schema);
+            const id = `node-input-param-${name.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+            const line = $('<div></div>').css({marginBottom: '8px'});
+            const labelText = `${name}${required.has(name) ? ' *' : ''}`;
+            $('<label></label>')
+                .attr('for', id)
+                .text(labelText)
+                .css({display: 'block', width: '100%', marginBottom: '2px'})
+                .appendTo(line);
+
+            let input;
+            if (type === 'boolean') {
+                input = $('<input type="checkbox">').css({width: 'auto'});
+                input.prop('checked', Boolean(values[name]));
+            } else if (type === 'integer' || type === 'number') {
+                input = $('<input type="number">');
+                if (values[name] !== undefined) input.val(values[name]);
+            } else if (type === 'enum') {
+                input = $('<select></select>');
+                input.append($('<option></option>').attr('value', '').text(''));
+                for (const option of schema.enum || []) {
+                    input.append(
+                        $('<option></option>')
+                            .attr('value', String(option))
+                            .text(String(option))
+                    );
+                }
+                if (values[name] !== undefined) input.val(String(values[name]));
+            } else if (type === 'object' || type === 'array') {
+                input = $('<textarea></textarea>').attr('rows', 3);
+                if (values[name] !== undefined) {
+                    input.val(JSON.stringify(values[name], null, 2));
+                }
+            } else {
+                input = $('<input type="text">');
+                if (values[name] !== undefined) input.val(values[name]);
+            }
+
+            input
+                .attr('id', id)
+                .attr('data-param-name', name)
+                .attr('data-param-type', type)
+                .attr('data-param-required', required.has(name) ? '1' : '0')
+                .addClass('fm-schema-param')
+                .appendTo(line);
+            input.css({width: type === 'boolean' ? 'auto' : '100%'});
+            if (schema.description) {
+                $('<div></div>')
+                    .text(schema.description)
+                    .css({color: '#777', fontSize: '12px', lineHeight: '16px'})
+                    .appendTo(line);
+            }
+            line.appendTo(body);
+        }
+        row.show();
+    }
+
+    function collectSchemaFields() {
+        if ($('#fm-schema-fields').is(':hidden')) return;
+        const params = configuredParams();
+        $('.fm-schema-param').each(function () {
+            const input = $(this);
+            const name = input.attr('data-param-name');
+            const type = input.attr('data-param-type');
+            if (!name) return;
+
+            if (type === 'boolean') {
+                if (
+                    input.is(':checked') ||
+                    input.attr('data-param-required') === '1'
+                ) {
+                    params[name] = input.is(':checked');
+                } else {
+                    delete params[name];
+                }
+                return;
+            }
+
+            const raw = input.val();
+            if (raw === undefined || raw === null || String(raw).trim() === '') {
+                delete params[name];
+                return;
+            }
+
+            if (type === 'integer') {
+                const parsed = Number.parseInt(String(raw), 10);
+                if (Number.isFinite(parsed)) params[name] = parsed;
+                return;
+            }
+            if (type === 'number') {
+                const parsed = Number.parseFloat(String(raw));
+                if (Number.isFinite(parsed)) params[name] = parsed;
+                return;
+            }
+            if (type === 'object' || type === 'array') {
+                try {
+                    params[name] = JSON.parse(String(raw));
+                } catch {
+                    params[name] = raw;
+                }
+                return;
+            }
+            params[name] = raw;
+        });
+        $('#node-input-paramsJson').val(JSON.stringify(params, null, 2));
+    }
+
+    function populateOperations(type, selected, onSelect) {
+        const select = $('#node-input-operation');
+        select.empty();
+        if (selected) {
+            select.append($('<option></option>').attr('value', selected).text(selected));
+        }
+        $.getJSON(adminApiPath(`fleet-manager-node-red/catalog/${type}`))
+            .done(function (methods) {
+                select.empty();
+                const byMethod = new Map();
+                for (const method of methods) {
+                    byMethod.set(method.fullMethod, method);
+                    const option = $('<option></option>')
+                        .attr('value', method.fullMethod)
+                        .text(method.fullMethod);
+                    if (method.fullMethod === selected) option.attr('selected', 'selected');
+                    select.append(option);
+                }
+                if (selected && !methods.some((method) => method.fullMethod === selected)) {
+                    select.prepend($('<option></option>').attr('value', selected).text(selected));
+                    select.val(selected);
+                }
+                select.off('change.fmSchema').on('change.fmSchema', function () {
+                    if (onSelect) onSelect(byMethod.get(select.val()));
+                });
+                if (onSelect) onSelect(byMethod.get(select.val()));
+            })
+            .fail(function () {
+                if (!selected) {
+                    select.append($('<option></option>').attr('value', '').text('Catalog unavailable'));
+                }
+                renderSchemaFields();
+            });
+    }
+
+    // --- Pickers: device / group / place lists from FM, via the runtime ---
+
+    function firstServerId() {
+        let found = '_';
+        RED.nodes.eachConfig(function (node) {
+            if (found === '_' && node.type === 'fm-server') found = node.id;
+        });
+        return found;
+    }
+
+    function formServerId() {
+        const value = $('#node-input-server').val();
+        return value && value !== '_ADD_' ? value : firstServerId();
+    }
+
+    function pickerOption(value, label) {
+        return $('<option></option>').attr('value', value).text(label);
+    }
+
+    function fillPicker(select, picker) {
+        select.empty().append(pickerOption('', 'loading...'));
+        const path = `fleet-manager-node-red/server/${encodeURIComponent(picker.serverId())}/${picker.kind}`;
+        $.getJSON(adminApiPath(path))
+            .done(function (items) {
+                select.removeAttr('title').empty().append(pickerOption('', `pick from ${picker.kind}...`));
+                for (const item of items) select.append(pickerOption(item.value, item.label));
+            })
+            .fail(function (xhr) {
+                const reason = xhr.responseJSON?.error || xhr.statusText || 'no answer';
+                select.empty().append(pickerOption('', `${picker.kind} list unavailable: ${reason}`));
+                select.attr('title', reason);
+            });
+    }
+
+    function addCsvValue(input, value) {
+        const values = String(input.val() || '')
+            .split(',')
+            .map((part) => part.trim())
+            .filter(Boolean);
+        if (!values.includes(value)) values.push(value);
+        input.val(values.join(', ')).trigger('change');
+    }
+
+    /** picker: {input, kind, multiple?, serverId?} */
+    function attachPicker(picker) {
+        const input = $(picker.input);
+        const options = Object.assign({serverId: formServerId}, picker);
+        const select = $('<select></select>')
+            .addClass('fm-picker')
+            .css({width: '70%', marginTop: '4px', marginLeft: '104px'});
+        input.closest('.form-row').append(select);
+        select.on('change', function () {
+            const value = select.val();
+            if (!value) return;
+            if (options.multiple) addCsvValue(input, value);
+            else input.val(value).trigger('change');
+            select.val('');
+        });
+        $('#node-input-server').on('change', function () {
+            fillPicker(select, options);
+        });
+        fillPicker(select, options);
+    }
+
+    // --- Device scope: all / devices / group / place ---
+
+    const scopeTemplate = `
+<div class="form-row"><label for="node-input-scopeType"><i class="fa fa-filter"></i> Devices</label><select id="node-input-scopeType"><option value="all">All devices</option><option value="devices">Chosen devices</option><option value="group">A group</option><option value="location">A place</option></select></div>
+<div class="form-row fm-scope fm-scope-devices"><label for="node-input-deviceIds"><i class="fa fa-microchip"></i> Device ids</label><input type="text" id="node-input-deviceIds" placeholder="comma-separated shellyIDs"></div>
+<div class="form-row fm-scope fm-scope-group"><label for="node-input-groupId"><i class="fa fa-object-group"></i> Group id</label><input type="text" id="node-input-groupId"></div>
+<div class="form-row fm-scope fm-scope-location"><label for="node-input-locationId"><i class="fa fa-map-marker"></i> Place id</label><input type="text" id="node-input-locationId"></div>
+<div class="form-row fm-scope fm-scope-group fm-scope-location"><label for="node-input-refreshMinutes"><i class="fa fa-refresh"></i> Refresh (min)</label><input type="number" id="node-input-refreshMinutes" min="1" style="width:80px"></div>`;
+
+    const scopeDefaults = {
+        scopeType: {value: 'all'},
+        deviceIds: {value: ''},
+        groupId: {value: ''},
+        locationId: {value: ''},
+        refreshMinutes: {value: 5}
+    };
+
+    function showScopeRows() {
+        const type = $('#node-input-scopeType').val() || 'all';
+        $('.fm-scope').hide();
+        $(`.fm-scope-${type}`).show();
+    }
+
+    function prepareScope() {
+        $('#node-input-scopeType').on('change', showScopeRows);
+        showScopeRows();
+        attachPicker({input: '#node-input-deviceIds', kind: 'devices', multiple: true});
+        attachPicker({input: '#node-input-groupId', kind: 'groups'});
+        attachPicker({input: '#node-input-locationId', kind: 'locations'});
+    }
+
+    const nameAndServerRows = `
+<div class="form-row"><label for="node-input-name"><i class="fa fa-tag"></i> Name</label><input type="text" id="node-input-name"></div>
+<div class="form-row"><label for="node-input-server"><i class="fa fa-cloud"></i> Server</label><input type="text" id="node-input-server"></div>`;
+
+    const scopeHelp = '<h3>Devices</h3><p>All devices, chosen devices, a group, or a place (with the places inside it). Groups and places are looked up in Fleet Manager and refreshed every few minutes, so new members are picked up without a redeploy.</p>';
+
+    // --- Operation nodes ---
+
+    const operationTemplate = `${nameAndServerRows}
+<div class="form-row"><label for="node-input-operation"><i class="fa fa-cog"></i> Method</label><select id="node-input-operation"></select></div>
+<div class="form-row"><label for="node-input-paramsSource"><i class="fa fa-sign-in"></i> Params</label><select id="node-input-paramsSource"><option value="auto">Auto</option><option value="msg.params">msg.params</option><option value="msg.payload">msg.payload</option><option value="config">Configured JSON</option><option value="merge">Configured + msg.params</option></select></div>
+<div class="form-row" id="fm-schema-fields" style="align-items:flex-start;display:none"><label><i class="fa fa-list"></i> Fields</label><div id="fm-schema-fields-body" style="width:70%"></div></div>
+<div class="form-row" style="align-items:flex-start"><label for="node-input-paramsJson"><i class="fa fa-code"></i> JSON</label><textarea id="node-input-paramsJson" rows="6" style="width:70%"></textarea></div>`;
+
+    const operationHelp = `<p>Calls one Fleet Manager method with the server's service token.</p>
+<h3>Method</h3><p>The method picked here. If none is picked: <code>msg.method</code>, else <code>msg.topic</code>. <code>msg.fm.method</code> is never used; it only records what an earlier node called.</p>
+<h3>Params</h3><p><b>Auto</b> uses <code>msg.params</code> if it is an object, else <code>msg.payload</code> if it is an object, else no params. The other choices are strict and fail on a non-object.</p>
+<p>After a successful call the node removes <code>msg.params</code>, <code>msg.method</code> and <code>msg.fm.target</code>, so the next node cannot reuse them by accident. On failure they stay, for a <code>catch</code> node to retry.</p>
+<h3>Output</h3><p><code>msg.payload</code> is the method result as Fleet Manager returned it; <code>msg.fm</code> holds the method and params.</p>
+<p>Risky methods (database, firmware writes, security, credentials, users) are not offered and are refused.</p>`;
+
+    for (const [type, category, label] of operationTypes) {
+        appendTemplate(type, operationTemplate);
+        appendHelp(type, `<p><b>${label}</b></p>${operationHelp}`);
+        RED.nodes.registerType(type, {
+            category,
+            color: '#74b9ff',
+            defaults: {
+                name: {value: ''},
+                server: {type: 'fm-server', required: true},
+                operation: {value: ''},
+                paramsSource: {value: 'auto'},
+                paramsJson: {value: '{}'}
+            },
+            inputs: 1,
+            outputs: 1,
+            icon: 'font-awesome/fa-cloud',
+            oneditprepare: function () {
+                populateOperations(type, this.operation, renderSchemaFields);
+            },
+            oneditsave: function () {
+                collectSchemaFields();
+            },
+            label: function () {
+                return this.name || this.operation || label;
+            }
+        });
+    }
+
+    // --- fm-target ---
+
+    appendTemplate('fm-target', `
+<div class="form-row"><label for="node-input-name"><i class="fa fa-tag"></i> Name</label><input type="text" id="node-input-name"></div>
+<div class="form-row"><label for="node-input-deviceIds"><i class="fa fa-microchip"></i> Devices</label><input type="text" id="node-input-deviceIds" placeholder="comma-separated ids"></div>
+<div class="form-row"><label for="node-input-groupIds"><i class="fa fa-object-group"></i> Groups</label><input type="text" id="node-input-groupIds" placeholder="comma-separated ids"></div>
+<div class="form-row"><label for="node-input-locationIds"><i class="fa fa-map-marker"></i> Places</label><input type="text" id="node-input-locationIds" placeholder="comma-separated ids"></div>
+<div class="form-row"><label for="node-input-tagKeys"><i class="fa fa-tags"></i> Tags</label><input type="text" id="node-input-tagKeys" placeholder="comma-separated keys"></div>
+<div class="form-row"><label for="node-input-fleet"><i class="fa fa-sitemap"></i> Fleet</label><input type="checkbox" id="node-input-fleet" style="width:auto"></div>`);
+    appendHelp('fm-target', '<p>Puts a target (devices, groups, places, tags or the whole fleet) on <code>msg.fm.target</code>. <code>msg.payload</code> is left alone.</p><p>The next operation node copies it into the method\'s <code>target</code> param only when that param is made of these same fields (today <code>certificate.PreflightPush</code>: devices, groups, tags). A field the method cannot take is an error. Other <code>target</code> params, such as <code>serves.*</code>, are left to you. The first operation node after it uses the target up.</p>');
+    RED.nodes.registerType('fm-target', {
+        category: 'Fleet Manager / Targeting',
+        color: '#55efc4',
+        defaults: {
+            name: {value: ''},
+            deviceIds: {value: ''},
+            groupIds: {value: ''},
+            locationIds: {value: ''},
+            tagKeys: {value: ''},
+            fleet: {value: false}
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: 'font-awesome/fa-crosshairs',
+        oneditprepare: function () {
+            attachPicker({input: '#node-input-deviceIds', kind: 'devices', multiple: true, serverId: firstServerId});
+            attachPicker({input: '#node-input-groupIds', kind: 'groups', multiple: true, serverId: firstServerId});
+            attachPicker({input: '#node-input-locationIds', kind: 'locations', multiple: true, serverId: firstServerId});
+        },
+        label: function () {
+            return this.name || 'FM Target';
+        }
+    });
+
+    // --- Event and trigger nodes ---
+
+    const statusHelp = '<h3>Status</h3><p>Yellow ring: connecting. Green dot: subscribed (confirmed by Fleet Manager). Red ring: failed or disconnected; it retries with growing delays.</p>';
+
+    function registerEventNode(type, spec) {
+        appendTemplate(type, `${nameAndServerRows}${spec.template}${scopeTemplate}`);
+        appendHelp(type, `${spec.help}${scopeHelp}${statusHelp}`);
+        RED.nodes.registerType(type, {
+            category: spec.category,
+            color: '#ffeaa7',
+            defaults: Object.assign(
+                {name: {value: ''}, server: {type: 'fm-server', required: true}},
+                spec.defaults,
+                scopeDefaults
+            ),
+            inputs: 0,
+            outputs: spec.outputs || 1,
+            outputLabels: spec.outputLabels,
+            icon: spec.icon,
+            oneditprepare: prepareScope,
+            label: function () {
+                return this.name || spec.label;
+            }
+        });
+    }
+
+    registerEventNode('fm-device-event', {
+        category: 'Fleet Manager / Devices & Components',
+        label: 'FM Device Event',
+        icon: 'font-awesome/fa-bolt',
+        template: `
+<div class="form-row"><label for="node-input-events"><i class="fa fa-bolt"></i> Events</label><input type="text" id="node-input-events" placeholder="Shelly.Connect,Shelly.Disconnect,Shelly.Status,Entity.Event"></div>
+<div class="form-row" style="align-items:flex-start"><label for="node-input-filterJson"><i class="fa fa-code"></i> Options</label><textarea id="node-input-filterJson" rows="4" style="width:70%"></textarea></div>`,
+        help: `<p>Starts a flow from Fleet Manager events, for example <code>Shelly.Connect</code>, <code>Shelly.Disconnect</code>, <code>Shelly.Status</code>, <code>Entity.Event</code> or <code>Alert.Created</code>.</p>
+<p><b>Options</b> is the JSON passed as <code>System.Subscribe</code> options. If it is not valid JSON the node does not connect.</p>
+<h3>Output</h3><p><code>msg.topic</code> is the event name, <code>msg.payload</code> its params, <code>msg.fm.shellyID</code> the device when known.</p>`,
+        defaults: {
+            events: {value: 'Shelly.Connect,Shelly.Disconnect,Shelly.Status,Entity.Event'},
+            filterJson: {value: '{}'}
+        }
+    });
+
+    registerEventNode('fm-trigger-threshold', {
+        category: 'Fleet Manager / Triggers',
+        label: 'FM Value Threshold',
+        icon: 'font-awesome/fa-tachometer',
+        outputs: 2,
+        outputLabels: ['crossed the limit', 'back to normal'],
+        template: `
+<div class="form-row"><label for="node-input-path"><i class="fa fa-crosshairs"></i> Value</label><input type="text" id="node-input-path" placeholder="switch:0.apower"></div>
+<div class="form-row"><label for="node-input-operator"><i class="fa fa-sort"></i> When</label><select id="node-input-operator" style="width:100px"><option value="above">above</option><option value="below">below</option></select> <input type="number" id="node-input-limit" style="width:120px" placeholder="limit"></div>
+<div class="form-row"><label for="node-input-forSeconds"><i class="fa fa-clock-o"></i> For (s)</label><input type="number" id="node-input-forSeconds" min="0" style="width:80px"></div>
+<div class="form-row"><label for="node-input-fireOnStart"><i class="fa fa-play"></i> On start</label><input type="checkbox" id="node-input-fireOnStart" style="width:auto"> fire if already past the limit</div>`,
+        help: `<p>Fires when a device status value goes above or below a limit, for example power <code>switch:0.apower</code> above 2000 W.</p>
+<p><b>For (s)</b>: the value must stay past the limit this long before the node fires. 0 fires at once.</p>
+<h3>Outputs</h3><ol><li>Crossed the limit.</li><li>Back to normal (only after output 1 fired).</li></ol>
+<p><code>msg.payload</code>: <code>{shellyID, path, value, limit, operator, state}</code>.</p>`,
+        defaults: {
+            path: {value: '', required: true},
+            operator: {value: 'above'},
+            limit: {value: '', required: true},
+            forSeconds: {value: 0},
+            fireOnStart: {value: false}
+        }
+    });
+
+    registerEventNode('fm-trigger-status', {
+        category: 'Fleet Manager / Triggers',
+        label: 'FM Online / Offline',
+        icon: 'font-awesome/fa-plug',
+        template: `
+<div class="form-row"><label for="node-input-watch"><i class="fa fa-eye"></i> Fire on</label><select id="node-input-watch"><option value="both">online and offline</option><option value="offline">offline only</option><option value="online">online only</option></select></div>
+<div class="form-row"><label for="node-input-forSeconds"><i class="fa fa-clock-o"></i> For (s)</label><input type="number" id="node-input-forSeconds" min="0" style="width:80px"></div>
+<div class="form-row"><label for="node-input-outputCurrent"><i class="fa fa-play"></i> On start</label><input type="checkbox" id="node-input-outputCurrent" style="width:auto"> send the current state of each device</div>`,
+        help: `<p>Fires when a device goes online or offline.</p>
+<p><b>For (s)</b>: the new state must last this long, so short drops are ignored.</p>
+<p><b>On start</b>: after deploy and after each reconnect, sends the current state of every device in scope (with <code>payload.initial = true</code>). A state already sent is not sent again.</p>
+<h3>Output</h3><p><code>msg.topic</code> is <code>online</code> or <code>offline</code>; <code>msg.payload</code>: <code>{shellyID, online, initial}</code>.</p>`,
+        defaults: {
+            watch: {value: 'both'},
+            forSeconds: {value: 0},
+            outputCurrent: {value: false}
+        }
+    });
+
+    registerEventNode('fm-trigger-button', {
+        category: 'Fleet Manager / Triggers',
+        label: 'FM Button',
+        icon: 'font-awesome/fa-hand-pointer-o',
+        template: `
+<div class="form-row"><label for="node-input-component"><i class="fa fa-dot-circle-o"></i> Input</label><input type="text" id="node-input-component" placeholder="input:0 (empty = any)"></div>
+<div class="form-row"><label for="node-input-eventTypes"><i class="fa fa-hand-pointer-o"></i> Presses</label><input type="text" id="node-input-eventTypes" placeholder="single_push,double_push,long_push (empty = any)"></div>`,
+        help: `<p>Fires on button and input events (Fleet Manager <code>Entity.Event</code>): <code>single_push</code>, <code>double_push</code>, <code>triple_push</code>, <code>long_push</code> and BLU button events.</p>
+<h3>Output</h3><p><code>msg.topic</code> is the press type; <code>msg.payload</code>: <code>{shellyID, entityId, component, event}</code>.</p>`,
+        defaults: {
+            component: {value: ''},
+            eventTypes: {value: 'single_push,double_push,long_push'}
+        }
+    });
+
+    // --- fm-webhook-in ---
+
+    function randomToken(bytes) {
+        const data = new Uint8Array(bytes);
+        crypto.getRandomValues(data);
+        return btoa(String.fromCharCode.apply(null, Array.from(data)))
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=+$/, '');
+    }
+
+    function showHookUrl() {
+        $('#fm-hook-url').text(`/automation-hooks/${$('#node-input-hookId').val()}`);
+    }
+
+    appendTemplate('fm-webhook-in', `
+<div class="form-row"><label for="node-input-name"><i class="fa fa-tag"></i> Name</label><input type="text" id="node-input-name"></div>
+<div class="form-row"><label for="node-input-hookId"><i class="fa fa-link"></i> Hook id</label><input type="text" id="node-input-hookId"></div>
+<div class="form-row"><label for="node-input-secret"><i class="fa fa-lock"></i> Secret</label><input type="password" id="node-input-secret" style="width:50%"> <button type="button" class="red-ui-button" id="fm-hook-secret-new">New</button></div>
+<div class="form-row" id="fm-hook-secret-shown-row" style="display:none"><label>Copy now</label><code id="fm-hook-secret-shown"></code></div>
+<div class="form-row"><label for="node-input-allowQueryToken"><i class="fa fa-key"></i> URL token</label><input type="checkbox" id="node-input-allowQueryToken" style="width:auto"> Also accept <code>?token=</code> (for callers that cannot send headers; the secret may end up in logs)</div>
+<div class="form-row"><label for="node-input-respond"><i class="fa fa-reply"></i> Reply</label><select id="node-input-respond"><option value="auto">202 Accepted at once</option><option value="flow">from an http response node</option></select></div>
+<div class="form-row"><label for="node-input-server"><i class="fa fa-cloud"></i> Server</label><input type="text" id="node-input-server"></div>
+<div class="form-tips">Public URL on Fleet Manager: <code id="fm-hook-url"></code></div>`);
+    appendHelp('fm-webhook-in', `<p>Starts a flow from an outside HTTP call (POST, PUT or GET).</p>
+<p>Callers use the Fleet Manager URL <code>/automation-hooks/&lt;hook id&gt;</code>. Fleet Manager forwards the call to this node. The caller must send the secret in the <code>x-fm-hook-secret</code> header. <code>?token=</code> works only when <b>URL token</b> is ticked, because URLs end up in logs. Wrong or missing secret: 401. No secret set: 503.</p>
+<h3>Reply</h3><p><b>202 Accepted at once</b>, or let an <i>http response</i> node in the flow reply (504 after 30 s if none does).</p>
+<h3>Output</h3><p><code>msg.payload</code> is the body (JSON and form bodies are parsed), plus <code>msg.headers</code>, <code>msg.query</code>, <code>msg.fm.hookId</code> and <code>msg.fm.httpMethod</code>. It sets no <code>msg.method</code> or <code>msg.topic</code>, so a following Fleet Manager node never mistakes them for a method. The secret is removed from headers and query.</p>
+<p><b>Server</b> is optional; it is only used to report runs to Fleet Manager.</p>`);
+    RED.nodes.registerType('fm-webhook-in', {
+        category: 'Fleet Manager / Triggers',
+        color: '#ffeaa7',
+        defaults: {
+            name: {value: ''},
+            hookId: {value: '', required: true, validate: RED.validators.regex(/^[A-Za-z0-9_-]{8,128}$/)},
+            respond: {value: 'auto'},
+            allowQueryToken: {value: false},
+            server: {type: 'fm-server', required: false}
+        },
+        credentials: {
+            secret: {type: 'password'}
+        },
+        inputs: 0,
+        outputs: 1,
+        icon: 'font-awesome/fa-sign-in',
+        oneditprepare: function () {
+            if (!$('#node-input-hookId').val()) $('#node-input-hookId').val(randomToken(18));
+            $('#node-input-hookId').on('change keyup', showHookUrl);
+            showHookUrl();
+            $('#fm-hook-secret-new').on('click', function () {
+                const secret = randomToken(24);
+                $('#node-input-secret').val(secret);
+                $('#fm-hook-secret-shown').text(secret);
+                $('#fm-hook-secret-shown-row').show();
+            });
+        },
+        label: function () {
+            return this.name || 'FM Webhook In';
+        }
+    });
+})();
+</script>

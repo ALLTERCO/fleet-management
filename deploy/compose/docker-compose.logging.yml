@@ -1,38 +1,77 @@
-# Optional centralized log viewer with Dozzle
-#
-# Adds Dozzle — a lightweight real-time Docker log viewer with a web UI.
-# No database, no extra storage, no config. Just browse and search all
-# container logs from the browser.
+# Optional authenticated, host-local log viewer with Dozzle.
 #
 # Enable: add --logging to deploy-public.sh up, or add
 #   -f docker-compose.logging.yml to your compose command.
 #
-# Access: http://<host>:9999
+# Access from the host at http://127.0.0.1:9999, or use an SSH tunnel.
+# DOZZLE_USERS_FILE must point to a Dozzle users.yml generated per the
+# upstream simple-auth documentation.
 
 services:
-  dozzle:
-    image: amir20/dozzle:${DOZZLE_VERSION:-v10.4.1}
+  dozzle-socket-proxy:
+    image: tecnativa/docker-socket-proxy:${DOCKER_SOCKET_PROXY_VERSION}
     labels:
       fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
       fleet.client: "${FM_CLIENT_ID:-shared}"
       fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
       fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
-      fleet.version: "${DOZZLE_VERSION:-v10.4.1}"
+      fleet.version: "${DOCKER_SOCKET_PROXY_VERSION:-unknown}"
+      fleet.commit: "${FM_BUILD_COMMIT:-unknown}"
+      fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
+      fleet.service: "dozzle-socket-proxy"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /run
+      - /tmp
+    environment:
+      CONTAINERS: "1"
+      EVENTS: "1"
+      INFO: "1"
+      POST: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      dozzle-socket:
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "3"
+
+  dozzle:
+    image: amir20/dozzle:${DOZZLE_VERSION:-v10.10.0}
+    labels:
+      fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
+      fleet.client: "${FM_CLIENT_ID:-shared}"
+      fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
+      fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
+      fleet.version: "${DOZZLE_VERSION:-v10.10.0}"
       fleet.commit: "${FM_BUILD_COMMIT:-unknown}"
       fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
       fleet.service: "dozzle"
     restart: unless-stopped
+    depends_on:
+      - dozzle-socket-proxy
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - dozzle-data:/data
+      - "${DOZZLE_USERS_FILE:?Set DOZZLE_USERS_FILE to an absolute Dozzle users.yml path}:/data/users.yml:ro"
     ports:
-      - "${DOZZLE_PORT:-9999}:8080"
+      - "127.0.0.1:${DOZZLE_PORT:-9999}:8080"
     environment:
+      DOZZLE_AUTH_PROVIDER: "simple"
       DOZZLE_FILTER: "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME}"
       DOZZLE_NO_ANALYTICS: "true"
+      DOZZLE_REMOTE_HOST: "tcp://dozzle-socket-proxy:2375"
     networks:
       fleet-net:
+      dozzle-socket:
     logging:
       driver: "json-file"
       options:
@@ -41,3 +80,8 @@ services:
 
 networks:
   fleet-net:
+  dozzle-socket:
+    internal: true
+
+volumes:
+  dozzle-data:

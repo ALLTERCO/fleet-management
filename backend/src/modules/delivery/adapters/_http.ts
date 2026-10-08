@@ -1,7 +1,7 @@
 /** Shared HTTP helpers for webhook-style adapters. */
 import {lookup as dnsLookup} from 'node:dns/promises';
 import * as net from 'node:net';
-import {Agent, type Dispatcher} from 'undici';
+import {Agent, type Dispatcher, fetch as undiciFetch} from 'undici';
 import {envBool, envInt} from '../../../config/envReader';
 import * as breaker from './httpBreaker';
 
@@ -9,6 +9,7 @@ type ResolvedAddress = {address: string; family: number};
 type DnsLookupAll = (host: string) => Promise<ResolvedAddress[]>;
 type FetchLike = typeof fetch;
 type FetchInitWithDispatcher = RequestInit & {dispatcher?: Dispatcher};
+type DispatcherFactory = (address: string, family: number) => Dispatcher;
 type LookupCallback = (
     err: Error | null,
     address: string | ResolvedAddress[],
@@ -23,9 +24,15 @@ interface PublicHostResolution {
 const defaultLookupAll: DnsLookupAll = async (host) =>
     (await dnsLookup(host, {all: true})) as ResolvedAddress[];
 let lookupAll: DnsLookupAll = defaultLookupAll;
+const defaultFetch = undiciFetch as unknown as FetchLike;
+let outboundFetch: FetchLike = defaultFetch;
 
 export function __setDnsLookupForTests(impl: DnsLookupAll | null): void {
     lookupAll = impl ?? defaultLookupAll;
+}
+
+export function __setFetchForTests(impl: FetchLike | null): void {
+    outboundFetch = impl ?? defaultFetch;
 }
 
 function pinnedLookup(address: string, family: number) {
@@ -156,7 +163,8 @@ export function isPrivateIPv6(ip: string): boolean {
 }
 
 export async function resolvePublicHost(
-    url: string
+    url: string,
+    dispatcherFactory: DispatcherFactory = pinnedDispatcher
 ): Promise<PublicHostResolution> {
     if (envBool('FM_DELIVERY_ALLOW_PRIVATE_HOSTS', false)) {
         return {async close() {}};
@@ -208,7 +216,7 @@ export async function resolvePublicHost(
     }
     const selected = resolved[0];
     if (!selected) throw new Error(`DNS lookup failed for ${host}: no records`);
-    const dispatcher = pinnedDispatcher(selected.address, selected.family);
+    const dispatcher = dispatcherFactory(selected.address, selected.family);
     return {
         dispatcher,
         async close() {
@@ -226,9 +234,10 @@ export async function withPublicFetch<T>(
     url: string,
     init: RequestInit,
     useResponse: (res: Response) => Promise<T>,
-    fetchImpl: FetchLike = fetch
+    fetchImpl: FetchLike = outboundFetch,
+    dispatcherFactory: DispatcherFactory = pinnedDispatcher
 ): Promise<T> {
-    const resolution = await resolvePublicHost(url);
+    const resolution = await resolvePublicHost(url, dispatcherFactory);
     try {
         const res = await fetchImpl(url, {
             ...init,

@@ -59,6 +59,16 @@ export function deviceDisplayName(device?: AbstractDevice): string | undefined {
     return device?.info?.name as string | undefined;
 }
 
+export function eventDeviceDisplayName(event: {
+    shellyID: string;
+    deviceName?: string;
+    device?: AbstractDevice;
+}): string {
+    return (
+        event.deviceName || deviceDisplayName(event.device) || event.shellyID
+    );
+}
+
 /**
  * Scan a device.status object for channels matching a prefix ("smoke:",
  * "flood:", etc.) and return a list of {idx, component}. Sensors ship

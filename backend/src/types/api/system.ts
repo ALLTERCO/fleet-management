@@ -259,9 +259,115 @@ export const SYSTEM_HEALTH_FULL_RESPONSE_SCHEMA: JsonSchema = {
     }
 };
 
-export const SYSTEM_GENERIC_OBJECT_RESPONSE_SCHEMA: JsonSchema = {
+const TIMING_SCHEMA: JsonSchema = {
     type: 'object',
-    additionalProperties: true
+    additionalProperties: false,
+    required: ['count', 'avgMs', 'maxMs', 'minMs'],
+    properties: {
+        count: {type: 'integer'},
+        avgMs: {type: 'number'},
+        maxMs: {type: 'number'},
+        minMs: {type: 'number'}
+    }
+};
+
+const NUMBER_MAP_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: {type: 'number'}
+};
+
+// Only the last seven keys are unconditional. Everything above them appears
+// at observability level 1, and the counter/timing maps only at level 2.
+export const SYSTEM_DEBUG_REPORT_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: true,
+    required: [
+        'rpcErrors',
+        'initFailures',
+        'wsMessageBreakdown',
+        'initDurations',
+        'slowBuilds',
+        'slowDeviceCommands',
+        'timestamp'
+    ],
+    properties: {
+        rpcErrors: {type: 'array', items: {type: 'object'}},
+        initFailures: {type: 'array', items: {type: 'object'}},
+        wsMessageBreakdown: NUMBER_MAP_SCHEMA,
+        initDurations: {type: 'array', items: {type: 'object'}},
+        slowBuilds: {type: 'array', items: {type: 'object'}},
+        slowDeviceCommands: {type: 'array', items: {type: 'object'}},
+        timestamp: {type: 'integer'},
+        level: {type: 'integer'},
+        uptimeS: {type: 'number'},
+        eventLoopLagMs: {type: 'number'},
+        eventLoopHistogram: {type: 'object', additionalProperties: true},
+        memory: {type: 'object', additionalProperties: true},
+        cpu: {type: 'object', additionalProperties: true},
+        os: {type: 'object', additionalProperties: true},
+        gc: {type: 'object', additionalProperties: true},
+        activeHandles: {type: 'integer'},
+        wsClients: {type: 'integer'},
+        wsClientHealth: {type: 'object', additionalProperties: true},
+        modules: {type: 'object', additionalProperties: true},
+        dbWritesDisabled: {type: 'boolean'},
+        redisDisabled: {type: 'boolean'},
+        counters: NUMBER_MAP_SCHEMA,
+        gauges: NUMBER_MAP_SCHEMA,
+        labeledCounters: NUMBER_MAP_SCHEMA,
+        labeledGauges: NUMBER_MAP_SCHEMA,
+        rpcTimings: {type: 'object', additionalProperties: TIMING_SCHEMA},
+        dbTimings: {type: 'object', additionalProperties: TIMING_SCHEMA},
+        strugglingClients: {type: 'array', items: {type: 'object'}}
+    }
+};
+
+const OVERFLOW_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['size', 'oldestAgeMs'],
+    properties: {
+        size: {type: 'integer', minimum: 0},
+        oldestAgeMs: {type: 'number'}
+    }
+};
+
+// The redis keys are skipped entirely when Redis is disabled, and the two
+// overflow readings are dropped if their stream fails to load.
+export const SYSTEM_STREAMS_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['redisDisabled', 'ingestCapture', 'ingestDrainAtBoot'],
+    properties: {
+        redisDisabled: {type: 'boolean'},
+        ingestCapture: {type: 'boolean'},
+        ingestDrainAtBoot: {type: 'boolean'},
+        redis: {type: 'string', enum: ['up', 'unknown', 'down']},
+        redisError: {type: 'string'},
+        auditOverflow: OVERFLOW_SCHEMA,
+        statusOverflow: OVERFLOW_SCHEMA
+    }
+};
+
+export const SYSTEM_HISTORY_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['history'],
+    properties: {
+        history: {
+            type: 'array',
+            items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['ts', 'metrics'],
+                properties: {
+                    ts: {type: 'integer'},
+                    // The same snapshot GetDebugReport spreads in.
+                    metrics: {type: 'object', additionalProperties: true}
+                }
+            }
+        }
+    }
 };
 
 export const SYSTEM_GET_TOPOLOGY_DIFF_PARAMS_SCHEMA: JsonSchema = {
@@ -915,9 +1021,15 @@ export const SYSTEM_DESCRIBE: DescribeOutput = new DescribeBuilder('system', {
         params: SYSTEM_SUBSCRIBE_PARAMS_SCHEMA,
         response: {
             type: 'object',
-            required: ['ids'],
+            required: ['ids', 'connectionId'],
             properties: {
-                ids: {type: 'array', items: {type: 'integer'}}
+                ids: {type: 'array', items: {type: 'integer'}},
+                connectionId: {type: 'string'},
+                // Only sent when the caller's stream offset is unusable.
+                resyncRequired: {
+                    type: 'string',
+                    enum: ['no_offset', 'stream_expired', 'stream_trimmed']
+                }
             }
         },
         permission: {note: 'authenticated'},
@@ -960,21 +1072,21 @@ export const SYSTEM_DESCRIBE: DescribeOutput = new DescribeBuilder('system', {
     .registerMethod('Health.GetDebugReport', {
         safety: {operation: 'read'},
         params: EMPTY_PARAMS,
-        response: SYSTEM_GENERIC_OBJECT_RESPONSE_SCHEMA,
+        response: SYSTEM_DEBUG_REPORT_RESPONSE_SCHEMA,
         permission: {note: 'authenticated'},
         description: 'Return the current in-memory debug report.'
     })
     .registerMethod('Health.GetStreams', {
         safety: {operation: 'read'},
         params: EMPTY_PARAMS,
-        response: SYSTEM_GENERIC_OBJECT_RESPONSE_SCHEMA,
+        response: SYSTEM_STREAMS_RESPONSE_SCHEMA,
         permission: {note: 'authenticated'},
         description: 'Return Redis stream and ingest overflow health.'
     })
     .registerMethod('Health.GetHistory', {
         safety: {operation: 'read'},
         params: EMPTY_PARAMS,
-        response: SYSTEM_GENERIC_OBJECT_RESPONSE_SCHEMA,
+        response: SYSTEM_HISTORY_RESPONSE_SCHEMA,
         permission: {note: 'authenticated'},
         description: 'Return recent in-memory runtime metric history.'
     })

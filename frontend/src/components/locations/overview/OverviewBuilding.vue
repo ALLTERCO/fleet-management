@@ -98,7 +98,7 @@ const fields = computed(
 const structureStats = computed<OverviewStat[]>(() => {
     const rows: OverviewStat[] = [];
     const type = readString(fields.value.buildingType);
-    if (type) rows.push({label: 'Type', value: type});
+    if (type) rows.push({label: 'Building type', value: type});
     const year = readInt(fields.value.yearBuilt);
     if (year != null) rows.push({label: 'Year built', value: String(year)});
     const floors = readInt(fields.value.floorCount);

@@ -2,15 +2,21 @@
 
 import RpcError from '../../rpc/RpcError';
 import * as postgres from '../PostgresProvider';
+import {
+    applyTransform,
+    type ProjectionTransform,
+    parseTransform
+} from './projectionTransform';
+import {
+    resolveRoleProjection,
+    type VirtualRoleProjection
+} from './roleProjection';
+import {organizationHasStoredProjections} from './virtualProjectionRouteCache';
+
+export type {ProjectionTransform};
+export {applyTransform, parseTransform};
 
 const FIELD_PATTERN = /^[a-zA-Z][\w:.-]*$/;
-
-export type ProjectionTransform =
-    | {kind: 'none'}
-    | {kind: 'scale'; factor: number}
-    | {kind: 'offset'; offset: number}
-    | {kind: 'invert'}
-    | {kind: 'enum_map'; mapping: Readonly<Record<string, string>>};
 
 export interface ProjectSourceStatusSampleInput {
     organizationId: string;
@@ -42,67 +48,15 @@ interface AffectedBindingRow {
     mode: 'linked' | 'materialized' | 'derived' | 'live_only';
     transform_json: Record<string, unknown> | null;
     value_type: 'boolean' | 'number' | 'string' | 'event' | 'json' | null;
+    unit?: string | null;
+    source_snapshot_json?: Record<string, unknown> | null;
+    role_metadata_json?: Record<string, unknown> | null;
 }
 
 const defaultDeps: ProjectionDeps = {
     queryRows: postgres.queryRows
 };
 const SOURCE_TARGET_KEY_SEPARATOR = '\0';
-
-// `{skip: true}` when validation fails — caller increments `skipped`.
-export function applyTransform(
-    value: unknown,
-    transform: ProjectionTransform
-): {value: unknown} | {skip: true} {
-    switch (transform.kind) {
-        case 'none':
-            return {value};
-        case 'scale':
-            return numericTransform(
-                value,
-                (n) => n * transform.factor,
-                transform.factor
-            );
-        case 'offset':
-            return numericTransform(
-                value,
-                (n) => n + transform.offset,
-                transform.offset
-            );
-        case 'invert':
-            if (typeof value !== 'boolean') return {skip: true};
-            return {value: !value};
-        case 'enum_map': {
-            if (typeof value !== 'string') return {skip: true};
-            const mapped = transform.mapping[value];
-            return mapped === undefined ? {skip: true} : {value: mapped};
-        }
-    }
-}
-
-// Unknown shapes collapse to `none` so we never execute untrusted ops.
-export function parseTransform(raw: unknown): ProjectionTransform {
-    if (!raw || typeof raw !== 'object') return {kind: 'none'};
-    const obj = raw as Record<string, unknown>;
-    switch (obj.kind) {
-        case 'scale':
-            return typeof obj.factor === 'number' && Number.isFinite(obj.factor)
-                ? {kind: 'scale', factor: obj.factor}
-                : {kind: 'none'};
-        case 'offset':
-            return typeof obj.offset === 'number' && Number.isFinite(obj.offset)
-                ? {kind: 'offset', offset: obj.offset}
-                : {kind: 'none'};
-        case 'invert':
-            return {kind: 'invert'};
-        case 'enum_map': {
-            const mapping = sanitizeEnumMapping(obj.mapping);
-            return mapping ? {kind: 'enum_map', mapping} : {kind: 'none'};
-        }
-        default:
-            return {kind: 'none'};
-    }
-}
 
 export async function projectSourceStatusSample(
     input: ProjectSourceStatusSampleInput,
@@ -115,10 +69,9 @@ export async function projectSourceStatusSample(
     let projected = 0;
     let skipped = 0;
     for (const binding of bindings) {
-        const transformed = applyTransform(
-            input.value,
-            parseTransform(binding.transform_json)
-        );
+        const projection = bindingProjection(input, binding);
+        if (input.field !== projection.valuePath) continue;
+        const transformed = applyTransform(input.value, projection.transform);
         if ('skip' in transformed) {
             skipped++;
             continue;
@@ -128,8 +81,16 @@ export async function projectSourceStatusSample(
             continue;
         }
         const result = await writeProjectedRow(
-            {...input, value: transformed.value},
+            {
+                ...input,
+                value: transformed.value,
+                prevValue: transformedPreviousValue(
+                    input.prevValue,
+                    projection.transform
+                )
+            },
             binding,
+            projection,
             deps
         );
         if (result === 'inserted') projected++;
@@ -141,6 +102,8 @@ export async function projectSourceStatusSample(
 // Batch entry as emitted by the status drainer.
 export interface ProjectionBatchEntry {
     sourceDeviceListId: number;
+    /** Source tenant when known; unknown entries always reach the lookup. */
+    organizationId?: string;
     field: string;
     value: unknown;
     prevValue?: unknown;
@@ -158,13 +121,18 @@ interface BatchBindingRow {
     source_device_list_id: number;
     source_component_key: string;
     source_external_id: string;
+    unit: string | null;
+    source_snapshot_json: Record<string, unknown> | null;
+    role_metadata_json: Record<string, unknown> | null;
 }
 
 export async function projectStatusBatch(
     entries: readonly ProjectionBatchEntry[],
     deps: ProjectionDeps = defaultDeps
 ): Promise<ProjectionResult> {
-    const targets = collectTargets(entries);
+    const targets = collectTargets(
+        await entriesWithStoredProjections(entries, deps)
+    );
     if (targets.size === 0) return {projected: 0, skipped: 0};
     const bindings = await loadBindingsForBatch(targets, deps);
     if (bindings.length === 0) return {projected: 0, skipped: 0};
@@ -180,6 +148,14 @@ export async function projectStatusBatch(
                 sourceTargetKey(entry.sourceDeviceListId, split.componentKey)
             ) ?? [];
         for (const binding of matches) {
+            const projection = bindingProjection(
+                {
+                    sourceComponentKey: split.componentKey,
+                    field: split.field
+                },
+                binding
+            );
+            if (split.field !== projection.valuePath) continue;
             const result = await applyAndWrite(
                 {
                     organizationId: binding.organization_id,
@@ -192,6 +168,7 @@ export async function projectStatusBatch(
                     ts: entry.ts
                 },
                 binding,
+                projection,
                 deps
             );
             projected += result.projected;
@@ -199,6 +176,54 @@ export async function projectStatusBatch(
         }
     }
     return {projected, skipped};
+}
+
+// Most organizations store no projected history; their entries skip the
+// binding lookup that would otherwise run for every persisted batch.
+async function entriesWithStoredProjections(
+    entries: readonly ProjectionBatchEntry[],
+    deps: ProjectionDeps
+): Promise<ProjectionBatchEntry[]> {
+    const organizations = [
+        ...new Set(
+            entries.flatMap((entry) =>
+                entry.organizationId ? [entry.organizationId] : []
+            )
+        )
+    ];
+    if (organizations.length === 0) return [...entries];
+    const stored = new Set<string>();
+    await Promise.all(
+        organizations.map(async (organizationId) => {
+            const present = await organizationHasStoredProjections(
+                organizationId,
+                (id) => loadHasStoredProjections(id, deps)
+            );
+            if (present) stored.add(organizationId);
+        })
+    );
+    return entries.filter(
+        (entry) => !entry.organizationId || stored.has(entry.organizationId)
+    );
+}
+
+// Counts bindings not yet effective too: the cached answer must hold until a
+// future-dated binding starts.
+async function loadHasStoredProjections(
+    organizationId: string,
+    deps: ProjectionDeps
+): Promise<boolean> {
+    const rows = await deps.queryRows<{stored_projections: boolean}>(
+        `SELECT EXISTS (
+            SELECT 1
+              FROM device.virtual_device_binding b
+             WHERE b.organization_id = $1
+               AND b.effective_to IS NULL
+               AND b.mode IN ('materialized', 'derived')
+        ) AS stored_projections`,
+        [organizationId]
+    );
+    return rows[0]?.stored_projections === true;
 }
 
 function collectTargets(
@@ -239,6 +264,9 @@ async function loadBindingsForBatch(
             b.mode,
             b.transform_json,
             b.value_type,
+            b.unit,
+            b.source_snapshot_json,
+            b.role_metadata_json,
             b.organization_id,
             b.source_device_list_id,
             b.source_component_key,
@@ -280,20 +308,26 @@ function sourceTargetKey(deviceListId: number, componentKey: string): string {
 async function applyAndWrite(
     input: ProjectSourceStatusSampleInput,
     binding: BatchBindingRow,
+    projection: VirtualRoleProjection,
     deps: ProjectionDeps
 ): Promise<ProjectionResult> {
     assertFieldSafe(input.field);
-    const transformed = applyTransform(
-        input.value,
-        parseTransform(binding.transform_json)
-    );
+    const transformed = applyTransform(input.value, projection.transform);
     if ('skip' in transformed) return {projected: 0, skipped: 1};
     if (!isValueValid(transformed.value, binding.value_type)) {
         return {projected: 0, skipped: 1};
     }
     const result = await writeProjectedRow(
-        {...input, value: transformed.value},
+        {
+            ...input,
+            value: transformed.value,
+            prevValue: transformedPreviousValue(
+                input.prevValue,
+                projection.transform
+            )
+        },
         binding,
+        projection,
         deps
     );
     return result === 'inserted'
@@ -304,25 +338,11 @@ async function applyAndWrite(
 function splitFieldKey(
     field: string
 ): {componentKey: string; field: string} | null {
-    const dot = field.lastIndexOf('.');
+    const dot = field.indexOf('.');
     if (dot <= 0 || dot === field.length - 1) return null;
     const componentKey = field.slice(0, dot);
     if (!/^[a-z][a-z0-9_]*:\d+$/.test(componentKey)) return null;
     return {componentKey, field: field.slice(dot + 1)};
-}
-
-function numericTransform(
-    value: unknown,
-    op: (n: number) => number,
-    operand: number
-): {value: unknown} | {skip: true} {
-    if (typeof value !== 'number' || !Number.isFinite(value)) {
-        return {skip: true};
-    }
-    if (!Number.isFinite(operand)) return {skip: true};
-    const result = op(value);
-    if (!Number.isFinite(result)) return {skip: true};
-    return {value: result};
 }
 
 function isValueValid(
@@ -344,6 +364,15 @@ function isValueValid(
     }
 }
 
+function transformedPreviousValue(
+    value: unknown,
+    transform: ProjectionTransform
+): unknown {
+    if (value === null || value === undefined) return null;
+    const transformed = applyTransform(value, transform);
+    return 'skip' in transformed ? null : transformed.value;
+}
+
 async function loadAffectedBindings(
     input: ProjectSourceStatusSampleInput,
     deps: ProjectionDeps
@@ -355,7 +384,10 @@ async function loadAffectedBindings(
             b.role_key,
             b.mode,
             b.transform_json,
-            b.value_type
+            b.value_type,
+            b.unit,
+            b.source_snapshot_json,
+            b.role_metadata_json
            FROM device.virtual_device_binding b
           WHERE b.organization_id = $1
             AND b.source_device_list_id = $2
@@ -375,18 +407,32 @@ async function loadAffectedBindings(
 async function writeProjectedRow(
     input: ProjectSourceStatusSampleInput,
     binding: AffectedBindingRow,
+    projection: VirtualRoleProjection,
     deps: ProjectionDeps
 ): Promise<'inserted' | 'duplicate'> {
-    // Status insert is the gate so we never write a provenance sample that
-    // points at a status row some earlier batch already owns.
     const inserted = await deps.queryRows<{ok: boolean}>(
-        `WITH inserted_status AS (
-            INSERT INTO device.status (id, ts, field, field_group, value, prev_value)
-            SELECT $1, $2::timestamptz, $3, $4, $5, $6
-             WHERE NOT EXISTS (
-                SELECT 1 FROM device.status
-                 WHERE id = $1 AND ts = $2::timestamptz AND field = $3
-             )
+        `WITH inserted_projection AS (
+            INSERT INTO device.virtual_device_projected_sample (
+                ts,
+                organization_id,
+                virtual_device_list_id,
+                binding_id,
+                role_key,
+                series,
+                field,
+                value,
+                prev_value,
+                source_device_list_id,
+                source_external_id,
+                source_component_key,
+                source_ts
+            )
+            VALUES (
+                $2::timestamptz, $5, $1, $6, $7, $11, $12,
+                $3::jsonb, $4::jsonb, $8, $9, $10, $2::timestamptz
+            )
+            ON CONFLICT ON CONSTRAINT virtual_device_projected_sample_idempotency
+                DO NOTHING
             RETURNING TRUE AS ok
         ),
         inserted_sample AS (
@@ -401,9 +447,14 @@ async function writeProjectedRow(
                 source_component_key,
                 source_ts
             )
-            SELECT $2::timestamptz, $7, $1, $8, $9, $10, $11, $12, $2::timestamptz
-              FROM inserted_status
-            ON CONFLICT ON CONSTRAINT idx_virtual_device_sample_source_idempotency
+            SELECT $2::timestamptz, $5, $1, $6, $7, $8, $9, $10, $2::timestamptz
+              FROM inserted_projection
+            ON CONFLICT (
+                virtual_device_list_id,
+                role_key,
+                binding_id,
+                source_ts
+            )
                 DO NOTHING
             RETURNING TRUE AS ok
         )
@@ -414,29 +465,19 @@ async function writeProjectedRow(
         [
             binding.virtual_device_list_id,
             input.ts,
-            `${binding.role_key}.${input.field}`,
-            binding.role_key,
-            jsonValue(input.value),
-            jsonValue(input.prevValue ?? null),
+            jsonParameter(input.value),
+            jsonParameter(input.prevValue ?? null),
             input.organizationId,
             binding.binding_id,
             binding.role_key,
             input.sourceDeviceListId,
             input.sourceExternalId,
-            input.sourceComponentKey
+            input.sourceComponentKey,
+            projection.series,
+            projection.field
         ]
     );
     return inserted[0]?.ok ? 'inserted' : 'duplicate';
-}
-
-function sanitizeEnumMapping(raw: unknown): Record<string, string> | null {
-    if (!raw || typeof raw !== 'object') return null;
-    const out: Record<string, string> = {};
-    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-        if (typeof value !== 'string') return null;
-        out[key] = value;
-    }
-    return out;
 }
 
 function assertFieldSafe(field: string): void {
@@ -447,8 +488,21 @@ function assertFieldSafe(field: string): void {
     }
 }
 
-function jsonValue(value: unknown): unknown {
-    if (value === null || value === undefined) return null;
-    if (typeof value === 'object') return value;
-    return value;
+function jsonParameter(value: unknown): string {
+    return JSON.stringify(value ?? null);
+}
+
+function bindingProjection(
+    input: Pick<ProjectSourceStatusSampleInput, 'sourceComponentKey' | 'field'>,
+    binding: AffectedBindingRow
+): VirtualRoleProjection {
+    return resolveRoleProjection({
+        roleKey: binding.role_key,
+        sourceComponentKey: input.sourceComponentKey,
+        unit: binding.unit,
+        valueType: binding.value_type,
+        sourceSnapshot: binding.source_snapshot_json,
+        roleMetadata: binding.role_metadata_json,
+        transformJson: binding.transform_json
+    });
 }

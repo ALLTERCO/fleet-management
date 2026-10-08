@@ -1,112 +1,107 @@
 <template>
-    <Teleport to="body">
-        <Transition name="detail-overlay" @after-leave="$emit('after-leave')">
-            <div v-if="visible" ref="backdropRef" class="do-backdrop" :class="{ open: visible }" tabindex="-1" @click.self="close" @keydown="handleKeydown">
-                <div class="do-panel" :data-type="normalizedType" role="dialog" aria-modal="true" :aria-labelledby="titleId">
-                    <!-- Accent topbar -->
-                    <div class="do-accent" />
-
-                    <!-- Header -->
-                    <div class="do-header">
-                        <div class="do-header-left">
-                            <div class="do-icon">
-                                <i :class="icon" />
-                            </div>
-                            <div class="do-header-info">
-                                <span :id="titleId" class="do-name">{{ entity.name }}</span>
-                                <div class="do-device-row">
-                                    <span class="do-device">{{ entity.source }}</span>
-                                    <span v-if="isSleeping" class="do-status do-status--sleep">
-                                        <i class="fas fa-moon" /> Sleeping
-                                        <span v-if="lastSeenText" class="do-last-seen" :class="{'do-last-seen--stale': isStale}">· {{ lastSeenText }}</span>
-                                    </span>
-                                    <span v-else-if="isOffline" class="do-status do-status--off">
-                                        <i class="fas fa-circle-xmark" /> Offline
-                                        <span v-if="lastSeenText" class="do-last-seen">· {{ lastSeenText }}</span>
-                                    </span>
-                                    <span v-else class="do-status do-status--on">
-                                        <i class="fas fa-circle" /> Online
-                                    </span>
-                                </div>
-                            </div>
+    <DetailOverlayShell
+        :visible="visible"
+        :data-type="normalizedType"
+        @close="$emit('close')"
+        @after-leave="$emit('after-leave')"
+    >
+        <template #default="{close, titleId}">
+            <!-- Hero band: device identity (constant across entity types) -->
+            <div class="do-hero">
+                <div class="do-hero-top">
+                    <div class="do-photo">
+                        <img
+                            v-if="deviceImage && !imageBroken"
+                            :src="deviceImage"
+                            :alt="entity.name"
+                            class="do-photo-img"
+                            @error="imageBroken = true"
+                        />
+                        <i v-else :class="icon" />
+                    </div>
+                    <div class="do-hero-id">
+                        <span :id="titleId" class="do-name">{{ entity.name }}</span>
+                        <span v-if="mac" class="do-mac">{{ mac }}</span>
+                        <div class="do-tags">
+                            <span class="do-tag" :class="statusClass">
+                                <i :class="statusIcon" aria-hidden="true" /> {{ statusText }}
+                                <template v-if="lastSeenText && !isOnline"> · {{ lastSeenText }}</template>
+                            </span>
+                            <span v-if="gen" class="do-tag">Gen {{ gen }}</span>
+                            <span v-if="model" class="do-tag do-tag--mono">{{ model }}</span>
                         </div>
-                        <button type="button" class="do-close" @click="close" aria-label="Close">
-                            <i class="fas fa-xmark" />
-                        </button>
                     </div>
-
-                    <!-- Size picker (write-only). Hidden when the entity allows
-                         only one size — nothing to pick. -->
-                    <SizePicker
-                        v-if="canResize && allowedSizes.length > 1"
-                        :size="activeSize"
-                        :allowed-sizes="allowedSizes"
-                        @change="$emit('update:size', $event)"
-                    />
-
-                    <!-- Tab bar -->
-                    <div class="do-tabs">
-                        <button
-                            v-for="tab in tabs"
-                            :key="tab.id"
-                            type="button"
-                            class="do-tab"
-                            :class="{'do-tab--active': activeTab === tab.id}"
-                            @click="activeTab = tab.id"
-                        >
-                            <i :class="tab.icon" />
-                            {{ tab.label }}
-                        </button>
-                    </div>
-
-                    <!-- Tab content -->
-                    <div class="do-content">
-                        <Transition name="tab-fade">
-                            <!-- Info tab: entity template -->
-                            <div v-if="activeTab === 'info'" key="info" class="do-tab-panel">
-                                <DetailContent
-                                    :entity="entity"
-                                    :device="device"
-                                    :status="entityStatus"
-                                    :settings="entitySettings"
-                                    :can-execute="canExecute"
-                                />
-                            </div>
-
-                            <!-- Charts tab: placeholder -->
-                            <div v-else-if="activeTab === 'charts'" key="charts" class="do-tab-panel do-tab-panel--center">
-                                <i class="fas fa-chart-line do-placeholder-icon" />
-                                <span class="do-placeholder-text">Charts coming soon</span>
-                            </div>
-
-                            <!-- Debug tab: raw JSON -->
-                            <div v-else-if="activeTab === 'debug'" key="debug" class="do-tab-panel">
-                                <div class="do-debug-section">
-                                    <span class="do-debug-label">Entity</span>
-                                    <pre class="do-debug-json">{{ JSON.stringify(entity, null, 2) }}</pre>
-                                </div>
-                                <div class="do-debug-section">
-                                    <span class="do-debug-label">Status</span>
-                                    <pre class="do-debug-json">{{ JSON.stringify(entityStatus, null, 2) }}</pre>
-                                </div>
-                                <div class="do-debug-section">
-                                    <span class="do-debug-label">Settings</span>
-                                    <pre class="do-debug-json">{{ JSON.stringify(entitySettings, null, 2) }}</pre>
-                                </div>
-                            </div>
-                        </Transition>
-                    </div>
+                    <button type="button" class="do-close" @click="close" aria-label="Close">
+                        <i class="fas fa-xmark" aria-hidden="true" />
+                    </button>
                 </div>
             </div>
-        </Transition>
-    </Teleport>
+
+            <!-- Tab switch + size picker -->
+            <div class="do-controls">
+                <ViewToggle v-model="activeTab" :options="tabs" />
+                <SizePicker
+                    v-if="canResize && allowedSizes.length > 1"
+                    :size="activeSize"
+                    :allowed-sizes="allowedSizes"
+                    @change="$emit('update:size', $event)"
+                />
+            </div>
+
+            <!-- Tab content (no crossfade — instant switch) -->
+            <div class="do-content">
+                <!-- Info tab: entity template, in a consistent frame -->
+                <div v-if="activeTab === 'info'" class="do-tab-panel">
+                    <div class="do-info-frame">
+                        <DetailContent
+                            :entity="entity"
+                            :device="device"
+                            :status="entityStatus"
+                            :settings="entitySettings"
+                            :can-execute="canExecute"
+                        />
+                    </div>
+                </div>
+
+                <!-- Charts tab: one chart per measured quantity, one shared range -->
+                <div v-else-if="activeTab === 'charts' && chartMetrics.length" class="do-tab-panel do-charts">
+                    <ChartRangeTabs v-model="chartRange" class="do-charts-range" />
+                    <LazyMount
+                        v-for="m in chartMetrics"
+                        :key="m"
+                        :min-height="230"
+                    >
+                        <DetailMetricChart
+                            :shelly-id="entity.source"
+                            :metric="m"
+                            :channel="entity.properties.id"
+                            :source="entitySensorSource"
+                            :range="chartRange"
+                        />
+                    </LazyMount>
+                </div>
+
+                <!-- Debug tab: entity, status and settings as one
+                     searchable, colour-coded JSON view -->
+                <div v-else-if="activeTab === 'debug'" class="do-tab-panel">
+                    <JSONViewer :data="debugData" expand />
+                </div>
+            </div>
+        </template>
+    </DetailOverlayShell>
 </template>
 
 <script setup lang="ts">
-import {computed, nextTick, onUnmounted, ref, toRef, watch} from 'vue';
-import {useFocusTrap} from '@/composables/useFocusTrap';
+import type {SensorSource} from '@api/sensor';
+import {computed, ref, watch} from 'vue';
+import JSONViewer from '@/components/core/JSONViewer.vue';
+import LazyMount from '@/components/core/LazyMount.vue';
+import ViewToggle from '@/components/core/ViewToggle.vue';
+import type {ChartRange} from '@/composables/useChartData';
+import {entityChartMetrics} from '@/composables/useChartData';
 import {getEntityIcon} from '@/config/entity-registry';
 import {normalizeCardType} from '@/helpers/card-accents';
+import {formatMac, getLogo} from '@/helpers/device';
 import {
     allowedSizesForEntity,
     clampSizeForEntity
@@ -116,7 +111,10 @@ import {useDevicesStore} from '@/stores/devices';
 import {useToastStore} from '@/stores/toast';
 import * as ws from '@/tools/websocket';
 import type {entity_t} from '@/types';
+import ChartRangeTabs from './ChartRangeTabs.vue';
 import DetailContent from './DetailContent.vue';
+import DetailMetricChart from './DetailMetricChart.vue';
+import DetailOverlayShell from './DetailOverlayShell.vue';
 import SizePicker from './SizePicker.vue';
 
 /** Map entity type to the key used in device.status / device.settings */
@@ -134,7 +132,7 @@ const props = defineProps<{
     visible: boolean;
 }>();
 
-const emit = defineEmits<{
+defineEmits<{
     close: [];
     'update:size': [size: '1x1' | '2x1' | '2x2'];
     'after-leave': [];
@@ -143,11 +141,6 @@ const emit = defineEmits<{
 const deviceStore = useDevicesStore();
 const authStore = useAuthStore();
 const toastStore = useToastStore();
-const backdropRef = ref<HTMLElement | null>(null);
-const titleId = `do-title-${Math.random().toString(36).slice(2, 9)}`;
-const {handleKeydown} = useFocusTrap(backdropRef, toRef(props, 'visible'), () =>
-    close()
-);
 
 const device = computed(() => deviceStore.devices[props.entity.source]);
 const canExecute = computed(() =>
@@ -155,6 +148,14 @@ const canExecute = computed(() =>
 );
 
 const normalizedType = computed(() => normalizeCardType(props.entity.type));
+const deviceImage = computed(() => getLogo(device.value));
+const imageBroken = ref(false);
+const mac = computed(() => {
+    const m = device.value?.info?.mac;
+    return m ? formatMac(m) : '';
+});
+const gen = computed(() => device.value?.info?.gen);
+const model = computed(() => device.value?.info?.model);
 const icon = computed(() =>
     getEntityIcon(props.entity.type, props.entity.properties)
 );
@@ -167,6 +168,24 @@ const activeSize = computed(() => clampSizeForEntity(props.size, props.entity));
 
 const isSleeping = computed(() => !!device.value?.sleeping);
 const isOffline = computed(() => !device.value?.online && !isSleeping.value);
+const isOnline = computed(() => !isOffline.value && !isSleeping.value);
+const statusText = computed(() =>
+    isSleeping.value ? 'Sleeping' : isOffline.value ? 'Offline' : 'Online'
+);
+const statusClass = computed(() =>
+    isSleeping.value
+        ? 'do-tag--sleep'
+        : isOffline.value
+          ? 'do-tag--off'
+          : 'do-tag--on'
+);
+const statusIcon = computed(() =>
+    isSleeping.value
+        ? 'fas fa-moon'
+        : isOffline.value
+          ? 'fas fa-circle-xmark'
+          : 'fas fa-circle'
+);
 const lastSeenText = computed(() => {
     const s = device.value?.status;
     const ts = s?.ts ?? s?.sys?.unixtime ?? 0;
@@ -211,66 +230,54 @@ const entitySettings = computed(() => {
     return d.settings[statusKey(e)];
 });
 
-const tabs = [
-    {id: 'info', label: 'Info', icon: 'fas fa-circle-info'},
-    {id: 'charts', label: 'Charts', icon: 'fas fa-chart-line'},
-    {id: 'debug', label: 'Debug', icon: 'fas fa-bug'}
-];
+// Sensor history is read per reading source, and ambient reads leave out a
+// device's own chip temperature — so a chip-temperature entity has to ask for
+// its own source, or its chart comes back empty.
+const entitySensorSource = computed<SensorSource | undefined>(
+    () =>
+        (props.entity.properties as {sensorSource?: SensorSource})
+            .sensorSource ?? undefined
+);
+
+// Charts only when the entity has history to plot; a switch has none.
+const chartMetrics = computed(() =>
+    entityChartMetrics(props.entity.type, entityStatus.value)
+);
+const chartRange = ref<ChartRange>('24h');
+const tabs = computed(() => [
+    {value: 'info', label: 'Info'},
+    ...(chartMetrics.value.length ? [{value: 'charts', label: 'Charts'}] : []),
+    {value: 'debug', label: 'Debug'}
+]);
 
 const activeTab = ref('info');
 
-// Body lock is owned by useFocusTrap → helpers/modalStack.
-// Here we only freeze the page-level scroll container so the panel sits over
-// a fixed snapshot of the page rather than a live-scrolling list.
-let scrollOwnerPrevOverflow: string | null = null;
+// Debug view: the whole device — entity, info, and every component's live
+// status and settings — in one searchable JSON tree.
+const debugData = computed(() => ({
+    entity: props.entity,
+    info: device.value?.info,
+    status: device.value?.status,
+    settings: device.value?.settings
+}));
 
-function lockScrollOwner() {
-    const owner = document.querySelector(
-        '[data-scroll-owner="page"]'
-    ) as HTMLElement | null;
-    if (!owner) return;
-    scrollOwnerPrevOverflow = owner.style.overflow;
-    owner.style.overflow = 'hidden';
-}
-
-function unlockScrollOwner() {
-    const owner = document.querySelector(
-        '[data-scroll-owner="page"]'
-    ) as HTMLElement | null;
-    if (!owner || scrollOwnerPrevOverflow === null) return;
-    owner.style.overflow = scrollOwnerPrevOverflow;
-    scrollOwnerPrevOverflow = null;
-}
-
-// Reset tab when opening, focus backdrop for keyboard events, lock scroll
+// Backdrop/focus/scroll-lock plumbing lives in DetailOverlayShell.
+// Here: reset the tab and refresh the device record when opening.
 watch(
     () => props.visible,
     (v) => {
-        if (v) {
-            activeTab.value = 'info';
-            lockScrollOwner();
-            nextTick(() => backdropRef.value?.focus());
-            // Fetch full device data (settings may be missing from list view)
-            ws.sendRPC('FLEET_MANAGER', 'device.Get', {
-                shellyID: props.entity.source
+        if (!v) return;
+        activeTab.value = 'info';
+        // Fetch full device data (settings may be missing from list view)
+        ws.sendRPC('FLEET_MANAGER', 'device.Get', {
+            shellyID: props.entity.source
+        })
+            .then((fullDevice: any) => {
+                if (fullDevice) deviceStore.handleNewDevice(fullDevice);
             })
-                .then((fullDevice: any) => {
-                    if (fullDevice) deviceStore.handleNewDevice(fullDevice);
-                })
-                .catch(() => {
-                    toastStore.error('Failed to load device details');
-                });
-        } else {
-            unlockScrollOwner();
-        }
+            .catch(() => {
+                toastStore.error('Failed to load device details');
+            });
     }
 );
-
-function close() {
-    emit('close');
-}
-
-onUnmounted(() => {
-    unlockScrollOwner();
-});
 </script>

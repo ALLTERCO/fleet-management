@@ -155,6 +155,37 @@ manifest_record_client_update() {
     manifest_add_history "$revision" "client-update" "$id" "$extra"
 }
 
+manifest_record_client_observability_enable() {
+    local id="$1"
+    : "${UPDATE_TO_IMAGE:?UPDATE_TO_IMAGE required}"
+    [ -f "$(manifest_path)" ] || return 0
+
+    if [ "$(manifest_get_field ".clients[\"${id}\"].id")" != "$id" ]; then
+        CLIENT_ID="$id" FM_IMAGE_TAG="$UPDATE_TO_IMAGE" manifest_record_client_add
+    fi
+
+    local revision ts current updated extra
+    revision="$(manifest_revision_next)"
+    ts="$(_manifest_iso8601)"
+    manifest_snapshot "$revision"
+    current="$(manifest_read)" || return 1
+    updated="$(printf '%s' "$current" | jq \
+        --arg id "$id" \
+        --arg ts "$ts" \
+        --arg revision "$revision" \
+        '.clients[$id].last_updated_at = $ts |
+         .clients[$id].last_revision = $revision')"
+    updated="$(_manifest_apply_contract_version "$updated")" || return 1
+    manifest_write "$updated"
+
+    extra="$(jq -n \
+        --arg image "$UPDATE_TO_IMAGE" \
+        --arg backup "${UPDATE_BACKUP_PATH:-}" \
+        --arg backup_manifest "${UPDATE_BACKUP_MANIFEST_PATH:-}" \
+        '{image: $image, backup: $backup, backup_manifest: $backup_manifest}')"
+    manifest_add_history "$revision" "client-observability-enable" "$id" "$extra"
+}
+
 # Record a rollback to fm-<id>:rollback. Sibling of manifest_record_client_update.
 # Pre-condition: caller has already swung the tenant container to the rollback image.
 manifest_record_client_rollback() {
@@ -340,7 +371,7 @@ _manifest_set_shared_services() {
         --arg fm_digest      "${FM_IMAGE_DIGEST:-}" \
         --arg zitadel_image  "ghcr.io/zitadel/zitadel:${ZITADEL_VERSION:-}" \
         --arg zitadel_login_image "ghcr.io/zitadel/zitadel-login:${ZITADEL_VERSION:-}" \
-        --arg redis_image    "redis:${REDIS_VERSION:-7.4.2-alpine}" \
+        --arg redis_image    "redis:${REDIS_VERSION:-7.4.11-alpine}" \
         --arg traefik_image  "traefik:${TRAEFIK_VERSION:-}" \
         --arg pg_image       "timescale/timescaledb:${TIMESCALEDB_VERSION:-}" \
         --arg zpg_image      "postgres:${ZITADEL_POSTGRES_VERSION:-}" \
@@ -349,7 +380,7 @@ _manifest_set_shared_services() {
         --argjson zitadel_db_labels "$(_manifest_labels_json "zitadel-db" "postgres:${ZITADEL_POSTGRES_VERSION:-}")" \
         --argjson zitadel_api_labels "$(_manifest_labels_json "zitadel-api" "ghcr.io/zitadel/zitadel:${ZITADEL_VERSION:-}")" \
         --argjson zitadel_login_labels "$(_manifest_labels_json "zitadel-login" "ghcr.io/zitadel/zitadel-login:${ZITADEL_VERSION:-}")" \
-        --argjson redis_labels "$(_manifest_labels_json "redis" "redis:${REDIS_VERSION:-7.4.2-alpine}")" \
+        --argjson redis_labels "$(_manifest_labels_json "redis" "redis:${REDIS_VERSION:-7.4.11-alpine}")" \
         --argjson traefik_labels "$(_manifest_labels_json "traefik" "traefik:${TRAEFIK_VERSION:-}")" \
         --argjson fleet_manager_labels "$(_manifest_labels_json "fleet-manager" "fleet-manager:${FM_VERSION:-latest}")" \
         '{

@@ -3,6 +3,7 @@
 
 import {DescribeBuilder, type DescribeOutput} from './_describe';
 import type {JsonSchema} from './_schema';
+import {DELETED_RESPONSE_SCHEMA} from './_shared';
 
 export type KindAppliesTo = 'device' | 'group' | 'both';
 
@@ -47,6 +48,15 @@ const KIND_ENTRY_RESPONSE: JsonSchema = {
         appliesTo: APPLIES_TO_SCHEMA,
         source: {type: 'string', enum: ['vendor', 'custom']}
     }
+};
+
+// kindResolver projects six of the nine columns it selects; description,
+// metadata_schema and sort_order never reach the wire.
+const KIND_LIST_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['kinds'],
+    additionalProperties: false,
+    properties: {kinds: {type: 'array', items: KIND_ENTRY_RESPONSE}}
 };
 
 export interface KindListParams {
@@ -121,7 +131,7 @@ const b = new DescribeBuilder('kind', {
 
 b.registerMethod('List', {
     params: KIND_LIST_PARAMS_SCHEMA,
-    response: {type: 'object', description: 'kinds: array of kind entries'},
+    response: KIND_LIST_RESPONSE,
     permission: PERM_READ,
     description:
         'List kinds (vendor + this org custom), optionally filtered by appliesTo.'
@@ -146,7 +156,7 @@ b.registerMethod('Update', {
 });
 b.registerMethod('Delete', {
     params: KIND_DELETE_PARAMS_SCHEMA,
-    response: {type: 'object', description: '{deleted: true} on success'},
+    response: DELETED_RESPONSE_SCHEMA,
     permission: PERM_WRITE,
     description:
         'Delete a custom kind; blocked while devices/groups still reference it.'

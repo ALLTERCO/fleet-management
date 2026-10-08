@@ -23,7 +23,6 @@ import {
     findEnrollmentTokenOrg,
     findTokenCredential,
     markSetupSessionConnected,
-    recordConnection,
     recordRejection
 } from '../../../../modules/deviceIngress/deviceIngressRepository';
 import {
@@ -40,7 +39,7 @@ import {
     type TrustedConnectionContext,
     type WaitingRoomCandidate
 } from '../../../../modules/deviceIngress/handshake';
-import {enqueueIngressAudit} from '../../../../modules/deviceIngress/ingressAuditBuffer';
+import {enqueueIngressConnection} from '../../../../modules/deviceIngress/ingressAuditBuffer';
 import {ingressStage} from '../../../../modules/deviceIngress/ingressTrace';
 import {
     recordConnectionMetric,
@@ -50,11 +49,16 @@ import {
 } from '../../../../modules/deviceIngress/metrics';
 import {rejectionSeverityFor} from '../../../../modules/deviceIngress/rejectionReasons';
 import {riskForIngress} from '../../../../modules/deviceIngress/riskPolicy';
+import {settleRotationOnAcceptSafely} from '../../../../modules/deviceIngress/rotationHandshakeHook';
 import {
     buildIngressSafeDetail,
     statusFromSafeDetail
 } from '../../../../modules/deviceIngress/waitingRoomSafeDetail';
-import {getDeviceOrg} from '../../../../modules/EventDistributor';
+import {
+    getDeviceOrg,
+    publishDeviceOrgBinding
+} from '../../../../modules/EventDistributor';
+import * as Observability from '../../../../modules/Observability';
 import type {WaitingAuthMethod} from '../../../../modules/redis/ports';
 import {ReconnectLimiter} from '../../../../modules/WaitingRoom/ReconnectLimiter';
 import type {
@@ -63,7 +67,12 @@ import type {
     DeviceIngressTransport
 } from '../../../../types/api/deviceIngress';
 import {hashRemoteAddress} from './shellyIngressRecorder';
-import {clientAddress, forwardedCertHeaderTrusted} from './shellyProxyTrust';
+import {
+    certificateHeadersTrusted,
+    clientAddress,
+    observedTransport,
+    proxyPeerTrusted
+} from './shellyProxyTrust';
 
 export interface ShellyIngressGateConfig {
     enabled: boolean;
@@ -71,7 +80,7 @@ export interface ShellyIngressGateConfig {
     waitingRoomEnabled: boolean;
     allowPlainWs: boolean;
     defaultOrganizationId: string;
-    shellyTransport: DeviceIngressTransport;
+    mtlsEnabled: boolean;
     maxPayloadBytes: number;
     maxConnectionsPerIdentity: number;
     maxConnectionsPerOrg: number;
@@ -127,12 +136,12 @@ export interface ShellyIngressGateDeps {
         shellyID: string;
     }) => Promise<boolean>;
     approvedDeviceOrg: (reportedExternalId: string) => string | undefined;
+    publishDeviceOrgBinding: typeof publishDeviceOrgBinding;
     // Write-behind: buffer the "seen" stamp, never touch the DB on connect.
     recordDeviceSeen: (row: DeviceSeenRow) => void;
     markSetupSessionConnected: typeof markSetupSessionConnected;
     countOpenWaitingRoom: (input: {organizationId: string}) => Promise<number>;
-    recordConnection: typeof recordConnection;
-    enqueueIngressAudit: typeof enqueueIngressAudit;
+    enqueueIngressConnection: typeof enqueueIngressConnection;
     recordRejection: typeof recordRejection;
     registerConnection: typeof registerConnection;
     unregisterConnection: typeof unregisterConnection;
@@ -161,11 +170,11 @@ const defaultDeps: ShellyIngressGateDeps = {
     consumeEnrollmentTokenForWaitingRoom,
     findEnrollmentTokenOrg,
     approvedDeviceOrg: getDeviceOrg,
+    publishDeviceOrgBinding,
     isPendingInWaitingRoom: isPendingInWaitingStore,
     recordDeviceSeen: (row) => deviceSeenQueue.enqueue(row),
     markSetupSessionConnected,
-    recordConnection,
-    enqueueIngressAudit,
+    enqueueIngressConnection,
     recordRejection,
     countOpenWaitingRoom,
     registerConnection,
@@ -185,6 +194,7 @@ export async function evaluateShellyIngressGate(
 ): Promise<ShellyIngressGateDecision> {
     const config = deps.config();
     const startMs = performance.now();
+    noteUntrustedForwardedHeaders(input.request, config);
     // Keyed on the server-resolved peer IP, not the device-claimed src, so a
     // device rotating shellyIDs to evade the per-shellyID cap is still caught.
     // Runs before the legacy short-circuit: a record_only flood is bounded too.
@@ -214,6 +224,66 @@ export async function evaluateShellyIngressGate(
     } finally {
         recordHandshakeDuration(performance.now() - startMs);
     }
+}
+
+// One admission check for sockets Fleet recognizes without a credential: a
+// waiting-room approval or a grandfathered known device. An approved row is
+// not proof of identity, so such a socket gets no identity budget and shares
+// nothing with the device it claims to be: its identity key is unique to the
+// socket, and only the address and organization caps apply. record_only
+// counts and never refuses; the enforce modes refuse on a full cap.
+export interface RecognizedAdmissionInput {
+    request: IncomingMessage;
+    reportedExternalId: string;
+    organizationId: string;
+    closeConnection: (reason: string) => void;
+}
+
+export type RecognizedAdmission =
+    | {reason: DeviceIngressRejectionReason; connectionId: null}
+    | {reason: null; connectionId: string};
+
+export function admitRecognizedConnection(
+    input: RecognizedAdmissionInput,
+    deps: ShellyIngressGateDeps = defaultDeps
+): RecognizedAdmission {
+    const config = deps.config();
+    const remoteHash = remoteAddressHash(input.request, config);
+    const orgFull =
+        deps.countOrganizationConnections(input.organizationId) +
+            reserved(reservedByOrganization, input.organizationId) >=
+        config.maxConnectionsPerOrg;
+    const addressFull =
+        deps.countRemoteAddressConnections(remoteHash) +
+            reserved(reservedByRemoteAddress, remoteHash) >=
+        config.maxConnectionsPerIp;
+    if (orgFull || addressFull) {
+        if (!enforcementBehavior(config).useLegacyPath) {
+            return {reason: 'connection_cap_reached', connectionId: null};
+        }
+        Observability.incrementCounter('device_ingress_cap_would_refuse_total');
+    }
+    const connectionId = `recognized:${randomUUID()}`;
+    const transport = transportOf(input, config);
+    deps.registerConnection({
+        connectionId,
+        organizationId: input.organizationId,
+        // Unique per socket: a claimed id never fills a real device's identity cap.
+        identityId: `unverified:${connectionId}`,
+        credentialId: null,
+        reportedExternalId: input.reportedExternalId,
+        metricLabels: {
+            securityModel: 'direct_token',
+            transport,
+            riskLevel: riskForIngress({
+                securityModel: 'direct_token',
+                transport
+            })
+        },
+        remoteAddressHash: remoteHash,
+        close: input.closeConnection
+    });
+    return {reason: null, connectionId};
 }
 
 export function unregisterShellyIngressConnection(
@@ -259,7 +329,7 @@ async function evaluateHandshakeForRequest(
             // Per-source fallback id: devices that report no id must not
             // share one 'unknown' key for caps and cooldown markers.
             fallbackExternalId: `unknown:${remoteAddressHash(input.request, config) ?? 'noip'}`,
-            observedTransport: config.shellyTransport,
+            observedTransport: transportOf(input, config),
             token: tokenFromRequest(input.request),
             certificateFingerprint: certificateFingerprintFromRequest(
                 input.request,
@@ -312,7 +382,7 @@ async function handleHandshakeResult(
             action: 'waiting_room',
             organizationId:
                 result.entry.organizationId || config.defaultOrganizationId,
-            observedTransport: config.shellyTransport,
+            observedTransport: transportOf(input, config),
             // The handshake declares what the device presented; a credential-less
             // device is 'none' so the default-org fan-out surfaces it.
             authMethod: result.entry.authMethod,
@@ -333,13 +403,19 @@ function recordObservedSeen(
     deps: Pick<ShellyIngressGateDeps, 'recordDeviceSeen'>
 ): void {
     if (!config.enabled || !input.reportedExternalId) return;
-    const transport = config.shellyTransport;
+    const transport = transportOf(input, config);
     deps.recordDeviceSeen({
         reportedExternalId: input.reportedExternalId,
-        transport,
-        securityModel: 'direct_token',
-        riskLevel: riskForIngress({securityModel: 'direct_token', transport}),
-        credentialId: null
+        seenAtMs: Date.now(),
+        posture: {
+            transport,
+            securityModel: 'direct_token',
+            riskLevel: riskForIngress({
+                securityModel: 'direct_token',
+                transport
+            }),
+            credentialId: null
+        }
     });
 }
 
@@ -424,17 +500,20 @@ async function settleTrustedSideEffects(
     await deps.approveOpenWaitingRoomForTrustedDevice({
         organizationId: context.organizationId,
         reportedExternalId: input.reportedExternalId,
-        observedTransport: config.shellyTransport,
+        observedTransport: transportOf(input, config),
         identityId: context.identityId
     });
     // Buffer the "seen" stamp — the device's trusted posture + credential; the
     // flusher writes it to device.list in one bulk round-trip. No DB on connect.
     deps.recordDeviceSeen({
         reportedExternalId: input.reportedExternalId,
-        transport: context.transport,
-        securityModel: context.securityModel,
-        riskLevel: context.riskLevel,
-        credentialId: context.credentialId
+        seenAtMs: Date.now(),
+        posture: {
+            transport: context.transport,
+            securityModel: context.securityModel,
+            riskLevel: context.riskLevel,
+            credentialId: context.credentialId
+        }
     });
     // Durable presence queued; the flusher writes it in bulk (no DB on connect).
     ingressStage(input.reportedExternalId, 'seen-queued');
@@ -456,13 +535,14 @@ async function recordTrustedConnection(
     config: ShellyIngressGateConfig,
     deps: ShellyIngressGateDeps
 ): Promise<string> {
-    const connection = await deps.recordConnection({
+    const connectionId = await deps.enqueueIngressConnection({
         organizationId: context.organizationId,
         identityId: context.identityId,
         credentialId: context.credentialId,
         reportedExternalId: input.reportedExternalId,
-        observedTransport: config.shellyTransport,
+        observedTransport: transportOf(input, config),
         result: 'accepted',
+        reasonCode: null,
         remoteAddressHash: remoteAddressHash(input.request, config),
         userAgent: userAgent(input.request),
         safeDetail: safeDetail(input, config)
@@ -485,12 +565,18 @@ async function recordTrustedConnection(
             // No credential => admitted by prior approval (enforce_new).
             grandfathered: context.credentialId === null,
             reportedExternalId: input.reportedExternalId,
-            transport: config.shellyTransport,
-            connectionId: connection.id
+            transport: transportOf(input, config),
+            connectionId
         }
     });
+    // Not awaited: settling a rotation must never delay or block the device.
+    settleRotationOnAcceptSafely({
+        organizationId: context.organizationId,
+        identityId: context.identityId,
+        credentialId: context.credentialId
+    });
     deps.registerConnection({
-        connectionId: connection.id,
+        connectionId,
         organizationId: context.organizationId,
         identityId: context.identityId,
         credentialId: context.credentialId,
@@ -503,19 +589,32 @@ async function recordTrustedConnection(
         remoteAddressHash: remoteAddressHash(input.request, config),
         close: input.closeConnection
     });
-    return connection.id;
+    return connectionId;
 }
 
 async function bindTrustedFleetDevice(
     input: ShellyIngressGateInput,
     context: TrustedConnectionContext,
-    deps: Pick<ShellyIngressGateDeps, 'ensureApprovedFleetDevice'>
+    deps: Pick<
+        ShellyIngressGateDeps,
+        | 'ensureApprovedFleetDevice'
+        | 'approvedDeviceOrg'
+        | 'publishDeviceOrgBinding'
+    >
 ): Promise<boolean> {
     const bound = await deps.ensureApprovedFleetDevice({
         organizationId: context.organizationId,
-        reportedExternalId: input.reportedExternalId
+        reportedExternalId: input.reportedExternalId,
+        overrideDenied: false
     });
-    return bound !== null;
+    // Null: another org owns the row, or an operator denied the device.
+    if (bound === null) return false;
+    // First admission to this org, as a waiting-room approval does it; a
+    // known device's reconnect leaves the org's access cache alone.
+    if (deps.approvedDeviceOrg(bound.externalId) !== bound.organizationId) {
+        deps.publishDeviceOrgBinding(bound.externalId, bound.organizationId);
+    }
+    return true;
 }
 
 interface ConnectionReservation {
@@ -718,15 +817,12 @@ async function recordWaitingRoom(
     // device_ingress_waiting_room table — only the connection/audit trail is
     // kept here, and off the hot path: the row is buffered in Redis and flushed
     // to Postgres in batches, so connect no longer blocks on an INSERT or COUNT.
-    await deps.enqueueIngressAudit({
-        kind: 'connection',
-        id: randomUUID(),
-        createdAt: new Date().toISOString(),
+    await deps.enqueueIngressConnection({
         organizationId,
         identityId: null,
         credentialId: null,
         reportedExternalId: input.reportedExternalId,
-        observedTransport: config.shellyTransport,
+        observedTransport: transportOf(input, config),
         result: 'waiting_room',
         reasonCode: null,
         remoteAddressHash: remoteAddressHash(input.request, config),
@@ -737,7 +833,7 @@ async function recordWaitingRoom(
         result: 'waiting_room',
         labels: {
             securityModel: entry.securityModel,
-            transport: config.shellyTransport,
+            transport: transportOf(input, config),
             riskLevel: entry.riskLevel
         }
     });
@@ -748,7 +844,7 @@ async function recordWaitingRoom(
         subjectId: input.reportedExternalId,
         details: {
             reportedExternalId: input.reportedExternalId,
-            transport: config.shellyTransport
+            transport: transportOf(input, config)
         }
     });
 }
@@ -770,12 +866,12 @@ async function recordRejected(
     const organizationId =
         context?.organizationId ?? config.defaultOrganizationId;
     if (!organizationId) return;
-    const connection = await deps.recordConnection({
+    const connectionId = await deps.enqueueIngressConnection({
         organizationId,
         identityId: context?.identityId ?? null,
         credentialId: context?.credentialId ?? null,
         reportedExternalId: input.reportedExternalId,
-        observedTransport: config.shellyTransport,
+        observedTransport: transportOf(input, config),
         result: 'rejected',
         reasonCode,
         remoteAddressHash: remoteAddressHash(input.request, config),
@@ -786,8 +882,8 @@ async function recordRejected(
         result: 'rejected',
         labels: {
             securityModel: context?.securityModel ?? 'direct_token',
-            transport: config.shellyTransport,
-            riskLevel: context?.riskLevel ?? fallbackRiskLevel(config)
+            transport: transportOf(input, config),
+            riskLevel: context?.riskLevel ?? fallbackRiskLevel(input, config)
         }
     });
     await deps.recordRejection({
@@ -797,17 +893,18 @@ async function recordRejected(
         reasonCode,
         severity: rejectionSeverityFor(reasonCode),
         reportedExternalId: input.reportedExternalId,
-        observedTransport: config.shellyTransport,
+        observedTransport: transportOf(input, config),
         safeDetail: safeDetail(input, config)
     });
     recordRejectionMetric({
         reason: reasonCode,
         severity: rejectionSeverityFor(reasonCode),
-        transport: config.shellyTransport
+        transport: transportOf(input, config)
     });
     await markRejectedInStore(
         organizationId,
         input.reportedExternalId,
+        remoteAddressHash(input.request, config) ?? 'noip',
         !COOLDOWN_EXEMPT_REASONS.has(reasonCode)
     );
     await logDeviceIngressAudit({
@@ -818,30 +915,32 @@ async function recordRejected(
         details: {
             credentialId: context?.credentialId,
             reportedExternalId: input.reportedExternalId,
-            transport: config.shellyTransport,
+            transport: transportOf(input, config),
             reasonCode,
-            connectionId: connection.id
+            connectionId
         },
         success: false
     });
 }
 
 function fallbackRiskLevel(
+    input: ShellyIngressGateInput,
     config: ShellyIngressGateConfig
 ): DeviceIngressRiskLevel {
-    return config.shellyTransport === 'ws' ? 'legacy' : 'compatible';
+    return transportOf(input, config) === 'ws' ? 'legacy' : 'compatible';
 }
 
 async function markRejectedInStore(
     organizationId: string,
     shellyID: string,
+    sourceKey: string,
     withCooldown: boolean
 ): Promise<void> {
     // Lazy import keeps pure tests off the Redis barrel.
     const {dropPending, markRejected} = await import(
         '../../../../modules/WaitingRoom/redisWaitingStore.js'
     );
-    if (withCooldown) await markRejected(organizationId, shellyID);
+    if (withCooldown) await markRejected(organizationId, shellyID, sourceKey);
     await dropPending(organizationId, shellyID);
 }
 
@@ -898,8 +997,15 @@ function certificateFingerprintFromHeader(
     config: ShellyIngressGateConfig
 ): string | null {
     if (!config.trustedCertFingerprintHeader) return null;
-    // A forwarded cert is authoritative only from the trusted proxy.
-    if (!forwardedCertHeaderTrusted(request, config.trustedProxyCidrs)) {
+    // A forwarded cert is believed only from the trusted proxy and only
+    // when this install runs device mTLS at all.
+    if (
+        !certificateHeadersTrusted(
+            request,
+            config.trustedProxyCidrs,
+            config.mtlsEnabled
+        )
+    ) {
         return null;
     }
     const value =
@@ -939,8 +1045,13 @@ function certificatePemFromHeader(
     config: ShellyIngressGateConfig
 ): string | null {
     if (!config.trustedCertPemHeader) return null;
-    // A forwarded cert is authoritative only from the trusted proxy.
-    if (!forwardedCertHeaderTrusted(request, config.trustedProxyCidrs)) {
+    if (
+        !certificateHeadersTrusted(
+            request,
+            config.trustedProxyCidrs,
+            config.mtlsEnabled
+        )
+    ) {
         return null;
     }
     const value = firstHeaderValue(
@@ -1011,6 +1122,30 @@ function remoteAddressHash(
     return hashRemoteAddress(clientAddress(request, config.trustedProxyCidrs));
 }
 
+// Forwarded headers from a peer outside the trusted list are ignored. Count
+// them: either a spoof, or a proxy the operator forgot to trust, in which
+// case every device behind it shares one address budget.
+function noteUntrustedForwardedHeaders(
+    request: IncomingMessage,
+    config: ShellyIngressGateConfig
+): void {
+    const forwarded =
+        request.headers['x-forwarded-for'] ??
+        request.headers['x-forwarded-proto'];
+    if (forwarded === undefined) return;
+    if (proxyPeerTrusted(request, config.trustedProxyCidrs)) return;
+    Observability.incrementCounter('device_ingress_proxy_untrusted_total');
+}
+
+// The transport the server saw for this socket: TLS here, or a trusted proxy
+// saying https or wss. Never a configured label.
+function transportOf(
+    input: Pick<ShellyIngressGateInput, 'request'>,
+    config: ShellyIngressGateConfig
+): DeviceIngressTransport {
+    return observedTransport(input.request, config.trustedProxyCidrs);
+}
+
 function userAgent(request: IncomingMessage): string | null {
     const header = request.headers['user-agent'];
     if (Array.isArray(header)) return header[0] ?? null;
@@ -1039,7 +1174,7 @@ function readShellyIngressGateConfig(): ShellyIngressGateConfig {
         waitingRoomEnabled: tuning.deviceIngress.waitingRoomEnabled,
         allowPlainWs: tuning.deviceIngress.allowPlainWs,
         defaultOrganizationId: tuning.deviceIngress.defaultOrganizationId,
-        shellyTransport: tuning.deviceIngress.shellyWsTransport,
+        mtlsEnabled: tuning.deviceIngress.mtlsEnabled,
         maxPayloadBytes: tuning.deviceIngress.maxPayloadBytes,
         maxConnectionsPerIdentity:
             tuning.deviceIngress.maxConnectionsPerIdentity,

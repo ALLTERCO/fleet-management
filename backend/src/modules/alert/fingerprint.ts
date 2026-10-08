@@ -5,7 +5,14 @@
 
 export interface FingerprintInput {
     ruleId: number;
-    subjectType: 'device' | 'entity' | 'group' | 'location' | 'tag';
+    subjectType:
+        | 'device'
+        | 'entity'
+        | 'group'
+        | 'location'
+        | 'tag'
+        | 'external'
+        | 'system';
     subjectId: string;
     /** Discriminator string already formatted by a builder below, or omitted
      *  for subject-level kinds. */

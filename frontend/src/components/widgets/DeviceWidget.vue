@@ -10,6 +10,8 @@
         :class="sizeClass"
         v-if="showNormalWidget"
         :editMode="editMode"
+        :clickable="clickable"
+        @select="emit('open-detail')"
     >
         <template #upper-corner>
             {{ getAppName(device?.info) }}
@@ -43,7 +45,7 @@
         </template>
     </Widget>
 
-    <Widget :loading="device?.loading" :selected :online="false" accent-color="#F04E5E" :class="sizeClass" v-else>
+    <Widget :loading="device?.loading" :selected :online="false" accent-color="#F04E5E" :class="sizeClass" v-else :clickable="clickable" @select="emit('open-detail')">
         <template #upper-corner>
             Device
         </template>
@@ -74,16 +76,21 @@ type props_t = {
     editMode?: boolean;
     selected?: boolean;
     size?: CardSize;
+    /** False when the device has no detail target (record not loaded) —
+     *  suppresses the pointer cursor and the open-detail emit. */
+    clickable?: boolean;
 };
 
 const props = withDefaults(defineProps<props_t>(), {
     editMode: false,
     selected: false,
-    size: '1x1'
+    size: '1x1',
+    clickable: true
 });
 
 const emit = defineEmits<{
     delete: [];
+    'open-detail': [];
 }>();
 
 const {deviceId: device_id, editMode} = toRefs(props);

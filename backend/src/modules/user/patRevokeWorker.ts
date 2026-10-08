@@ -8,6 +8,7 @@ import {ConnectionContext} from '../web/ws/ConnectionContext';
 import {createLeaderPollWorker} from '../worker/leaderPollWorker';
 import {zitadelService} from '../zitadel';
 import {evictCachedUserByUserId} from './cache';
+import {deletePatMeta} from './patMeta';
 import {publishUserSessionSignal} from './sessionNotifications';
 
 const logger = log4js.getLogger('pat-revoke');
@@ -97,6 +98,7 @@ async function processRow(row: DueRow): Promise<void> {
             row.user_id,
             row.token_id
         );
+        await deletePatMeta(row.token_id);
         // Same auth-flush as User.RevokePAT — the delayed worker runs
         // independently of the HTTP path that scheduled it.
         evictCachedUserByUserId(row.user_id);

@@ -1,3 +1,12 @@
+import type {RpcCallError} from '@api/errors';
+
+/** The raw {code, data} pair off an RPC rejection, or null when absent. */
+export function rpcErrorInfo(err: unknown): RpcCallError | null {
+    if (!err || typeof err !== 'object') return null;
+    const e = err as Record<string, unknown>;
+    return typeof e.code === 'number' ? (e as RpcCallError) : null;
+}
+
 // Format an RPC error into a human-readable string. Handles both shapes:
 //   device-RPC: {message, data: {deviceMessage, deviceCode}}
 //   http-RPC:   {message, data: {message}}
@@ -14,6 +23,16 @@ export function rpcErrorMessage(
     const code = numberField(data, 'deviceCode');
     const parts = composeParts({msg, httpMsg, deviceMsg, code});
     return parts.length ? parts.join(' ') : fallback;
+}
+
+/**
+ * An error a person can act on. `lead` names the problem and the way out; the
+ * technical detail follows it. Raw exception text alone tells the user what
+ * broke inside the server and nothing about what to do next.
+ */
+export function actionableError(err: unknown, lead: string): string {
+    const detail = rpcErrorMessage(err, '');
+    return detail ? `${lead} (${detail})` : lead;
 }
 
 function primaryMessage(err: unknown): string {

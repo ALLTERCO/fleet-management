@@ -4,6 +4,12 @@
 import {execSync} from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import {readGeneratedJson} from './_inventories.js';
+import {
+    buildChecker,
+    checkResponse,
+    type ResponseCheck
+} from './_responseTypeCheck.js';
 import {GENERATED_DIR, REPO_ROOT} from './_shared.js';
 import {generate as genAiIndex} from './ai-index.js';
 import {generate as genApiOpenapi} from './api-openapi.js';
@@ -13,6 +19,9 @@ import {generate as genRpc} from './backend-rpc-inventory.js';
 import {generate as genWs} from './backend-ws-inventory.js';
 import {generate as genFrontend} from './frontend-backend-dependencies.js';
 import {generate as genHostContract} from './host-contract.js';
+import {generate as genHostMethodMetadata} from './host-method-metadata.js';
+import {generate as genLocationKindCatalog} from './location-kind-catalog.js';
+import {generate as genHostSdkChangelog} from './host-sdk-changelog.js';
 import {generate as genHostSdk} from './host-sdk-index.js';
 import {generate as genNodeRed} from './node-red-catalog.js';
 import {generate as genTopology} from './topology-metadata.js';
@@ -101,8 +110,15 @@ function contractComparable(file: string, value: unknown): unknown {
 
 // 32 MB cap — api.openapi.json alone is ~2.7 MB and growing.
 const GIT_SHOW_MAX_BUFFER = 32 * 1024 * 1024;
+const USE_WORKTREE_BASELINE =
+    process.env.FM_GENERATE_GATES_BASELINE === 'worktree';
 
-function readCommittedJson(relPath: string): unknown {
+function readBaselineJson(relPath: string): unknown {
+    if (USE_WORKTREE_BASELINE) {
+        return JSON.parse(
+            fs.readFileSync(path.join(REPO_ROOT, relPath), 'utf8')
+        );
+    }
     const raw = execSync(`git show HEAD:${relPath}`, {
         cwd: REPO_ROOT,
         maxBuffer: GIT_SHOW_MAX_BUFFER
@@ -124,6 +140,7 @@ async function buildLiveContractJsons(): Promise<Record<string, unknown>> {
         'api.openapi.json': openapi.document,
         'ai-index.json': genAiIndex(),
         'host-sdk-index.json': genHostSdk(),
+        'host-sdk-changelog.json': genHostSdkChangelog(),
         'node-red-catalog.json': await genNodeRed({rpc, auth}),
         'topology-metadata.json': genTopology()
     };
@@ -142,6 +159,7 @@ async function gateBaselineDrift(): Promise<GateResult> {
         'api.openapi.json',
         'ai-index.json',
         'host-sdk-index.json',
+        'host-sdk-changelog.json',
         'node-red-catalog.json',
         'topology-metadata.json'
     ];
@@ -160,7 +178,7 @@ async function gateBaselineDrift(): Promise<GateResult> {
     for (const file of generatedJsons) {
         const rel = path.posix.join('docs', 'generated', file);
         try {
-            const committed = contractComparable(file, readCommittedJson(rel));
+            const committed = contractComparable(file, readBaselineJson(rel));
             const live = contractComparable(file, liveJsons[file]);
             if (JSON.stringify(committed) !== JSON.stringify(live)) {
                 drift.push(file);
@@ -191,9 +209,23 @@ async function gateBaselineDrift(): Promise<GateResult> {
 
 // Regenerate the contract and fail if it differs from what is committed.
 async function gateHostContract(): Promise<GateResult> {
-    const rel = 'frontend/src/shell/template-host/generated/contract.ts';
+    const generatedFiles = [
+        'docs/generated/host-contract.ts',
+        'frontend/src/shell/template-host/generated/contract.ts',
+        'frontend/src/shell/template-host/generated/method-metadata.ts',
+        'packages/fleet-manager-host-contract/generated/contract.js',
+        'packages/fleet-manager-host-contract/generated/contract.d.ts',
+        'packages/fleet-manager-host-contract/generated/build-metadata.js',
+        'packages/fleet-manager-host-contract/generated/build-metadata.d.ts',
+        'packages/fleet-manager-host-contract/generated/method-metadata.js',
+        'packages/fleet-manager-host-contract/generated/method-metadata.d.ts',
+        'packages/fleet-manager-host-contract/generated/location-kind-catalog.js',
+        'packages/fleet-manager-host-contract/generated/location-kind-catalog.d.ts'
+    ];
     try {
         await genHostContract();
+        await genHostMethodMetadata();
+        await genLocationKindCatalog();
     } catch (err) {
         return {
             gate: 'host-contract',
@@ -201,17 +233,25 @@ async function gateHostContract(): Promise<GateResult> {
             message: `Failed to generate host contract: ${String(err)}`
         };
     }
-    // porcelain catches both modified and untracked (an uncommitted contract).
-    const status = execSync(`git status --porcelain -- ${rel}`, {
-        cwd: REPO_ROOT
-    })
+    if (USE_WORKTREE_BASELINE) {
+        return {
+            gate: 'host-contract',
+            passed: true,
+            message: 'Host SDK contract matches the generated working tree.'
+        };
+    }
+    // CI requires the generated contract to be committed.
+    const status = execSync(
+        `git status --porcelain -- ${generatedFiles.join(' ')}`,
+        {cwd: REPO_ROOT}
+    )
         .toString()
         .trim();
     if (status) {
         return {
             gate: 'host-contract',
             passed: false,
-            message: `Host SDK contract is stale or uncommitted (${rel}). Regenerate with \`cd backend && npm run generate\` and commit.`
+            message: `Host SDK contract or package outputs are stale or uncommitted:\n${status}\nRegenerate with \`cd backend && npm run generate\` and commit.`
         };
     }
     return {
@@ -226,7 +266,7 @@ async function gateHostContract(): Promise<GateResult> {
 function gateSystemGrowth(): GateResult {
     let inv: ReturnType<typeof genRpc>;
     try {
-        inv = readCommittedJson(
+        inv = readBaselineJson(
             'docs/generated/backend-rpc-inventory.json'
         ) as ReturnType<typeof genRpc>;
     } catch {
@@ -262,7 +302,7 @@ function gateSystemGrowth(): GateResult {
 function gateComponentRegistration(): GateResult {
     let inv: ReturnType<typeof genRpc>;
     try {
-        inv = readCommittedJson(
+        inv = readBaselineJson(
             'docs/generated/backend-rpc-inventory.json'
         ) as ReturnType<typeof genRpc>;
     } catch {
@@ -291,25 +331,68 @@ function gateComponentRegistration(): GateResult {
     };
 }
 
-// --- Gate 4: Response-schema snapshot (Pass 1.5 placeholder) -------------
+// --- Gate 4: does a declared response match what the handler returns? -----
+
+/**
+ * The schema is the contract and the handler is supposed to satisfy it, but
+ * nothing checked. So `certificate.Import` declared `device_group_ids` it
+ * never sends, and `user_group.Update` promised `member_count` it never
+ * returns — both only found by reading the SQL by hand.
+ *
+ * Ratcheted, not absolute: device methods relay firmware responses as `any`,
+ * so "cannot tell" is a real answer and only a RISE in mismatches fails.
+ */
+const RESPONSE_MISMATCH_CEILING = 0;
 
 function gateResponseSchemaSnapshot(): GateResult {
-    // Activates when `backend/src/types/api/` ships in Phase 0b. Until then,
-    // this gate is a no-op documented as "not yet active".
     const apiTypesDir = path.join(REPO_ROOT, 'backend/src/types/api');
     if (!fs.existsSync(apiTypesDir)) {
         return {
             gate: 'response-schema-snapshot',
             passed: true,
-            message:
-                'Not yet active (awaits backend/src/types/api/ from Phase 0b).'
+            message: 'Not active (backend/src/types/api/ missing).'
         };
     }
-    // Phase 0b hook: diff every committed describe-snapshot against the live one.
+    const catalog = readGeneratedJson<{
+        methods: {id: string; namespaceKind: string; responseSchema: unknown}[];
+    }>('api-catalog.json');
+    const {checker, handlers} = buildChecker();
+
+    const mismatches: ResponseCheck[] = [];
+    let compared = 0;
+    for (const method of catalog.methods) {
+        if (method.id.endsWith('.describe')) continue;
+        const result = checkResponse(
+            method.id,
+            method.responseSchema,
+            handlers,
+            checker
+        );
+        if (result.verdict === 'match') compared++;
+        if (result.verdict === 'mismatch') {
+            compared++;
+            mismatches.push(result);
+        }
+    }
+
+    if (mismatches.length > RESPONSE_MISMATCH_CEILING) {
+        const detail = mismatches
+            .slice(0, 10)
+            .map(
+                (m) =>
+                    `${m.id} (${m.sourceFile}:${m.sourceLine}) declared-only: [${m.declaredOnly.join(', ')}] returned-only: [${m.returnedOnly.join(', ')}]`
+            )
+            .join('; ');
+        return {
+            gate: 'response-schema-snapshot',
+            passed: false,
+            message: `${mismatches.length} declared responses disagree with their handler (ceiling ${RESPONSE_MISMATCH_CEILING}), ${compared} checked: ${detail}`
+        };
+    }
     return {
         gate: 'response-schema-snapshot',
         passed: true,
-        message: 'TODO: wire describe-snapshot diffing once Phase 0b lands.'
+        message: `${compared} responses checked against their handler's return type, ${mismatches.length} disagree.`
     };
 }
 

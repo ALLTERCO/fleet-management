@@ -19,7 +19,7 @@
                     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
                 </div>
                 <div v-if="isWebRtcActive || isRecording" class="ec-camera-badge">LIVE</div>
-                <div class="ec-cam-quality ec-cam-quality--fs-only" @click.stop>
+                <div v-if="activeStreamDisplay" class="ec-cam-quality ec-cam-quality--fs-only" @click.stop>
                     <button class="ec-cam-res ec-cam-res--click" @click="qualityOpen = !qualityOpen">
                         {{ activeStreamDisplay }} <i class="fas fa-chevron-down" style="font-size:var(--icon-size-2xs);opacity:.5" />
                     </button>
@@ -62,7 +62,7 @@
                         <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
                     </div>
                 </div>
-                <div class="ec-cam-quality" @click.stop>
+                <div v-if="activeStreamDisplay" class="ec-cam-quality" @click.stop>
                     <button class="ec-cam-res ec-cam-res--click" @click="qualityOpen = !qualityOpen">
                         {{ activeStreamDisplay }} <i class="fas fa-chevron-down" style="font-size:var(--icon-size-2xs);opacity:.5" />
                     </button>
@@ -77,7 +77,7 @@
                 <div class="ec-cam-overlay">
                     <div class="ec-cam-ostat"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> {{ isArmed ? 'Armed' : 'Off' }}</div>
                     <div v-if="hasMotion" class="ec-cam-ostat" style="color:var(--color-status-off)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M5.8 21a7 7 0 0112.4 0"/></svg> Motion</div>
-                    <div class="ec-cam-ostat"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.7"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg> {{ nightModeDisplay }}</div>
+                    <div v-if="nightModeDisplay" class="ec-cam-ostat"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.7"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg> {{ nightModeDisplay }}</div>
                     <div class="ec-cam-ostat"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.7"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6" y2="16"/></svg> {{ sdStatusDisplay }}</div>
                 </div>
             </div>
@@ -111,7 +111,7 @@
                 <div v-if="isWebRtcActive || isRecording" class="ec-camera-badge">{{ webrtc.connecting.value ? 'CONNECTING' : 'LIVE' }}</div>
                 <button class="ec-cam-fullscreen" title="Fullscreen" @click.stop="toggleFullscreen"><i class="fas fa-expand" /></button>
                 <!-- Quality picker -->
-                <div class="ec-cam-quality" @click.stop>
+                <div v-if="activeStreamDisplay" class="ec-cam-quality" @click.stop>
                     <button class="ec-cam-res ec-cam-res--click" @click="qualityOpen = !qualityOpen">
                         {{ activeStreamDisplay }} <i class="fas fa-chevron-down" style="font-size:var(--icon-size-2xs);opacity:.5" />
                     </button>
@@ -133,7 +133,7 @@
             <div class="ec-cam-hero-stats">
                 <span class="ec-cam-ostat"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" :stroke="isArmed ? 'var(--color-status-on)' : 'currentColor'" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> {{ isArmed ? 'Armed' : 'Off' }}</span>
                 <span v-if="hasMotion" class="ec-cam-ostat" style="color:var(--color-status-off)"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="7" r="4"/><path d="M5.8 21a7 7 0 0112.4 0"/></svg> Motion</span>
-                <span class="ec-cam-ostat"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.7"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg> {{ nightModeDisplay }}</span>
+                <span v-if="nightModeDisplay" class="ec-cam-ostat"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.7"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg> {{ nightModeDisplay }}</span>
                 <span class="ec-cam-ostat"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.7"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6" y2="16"/></svg> {{ sdStatusDisplay }}</span>
                 <span v-if="isRecording" class="ec-cam-ostat" style="color:var(--color-status-off)"><svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg> REC</span>
             </div>
@@ -279,15 +279,16 @@ const camSettings = computed(
         ] ?? null
 );
 
-const activeStreamDisplay = computed(() => {
+// null when the camera reports no stream config — the picker stays hidden.
+const activeStreamDisplay = computed<string | null>(() => {
     const sid = selectedStreamId.value;
     const s =
         camSettings.value?.streams?.[sid] ?? camSettings.value?.streams?.[0];
-    if (!s) return '—';
+    if (!s) return null;
     const parts = [s.resolution, s.bitrate ? `${s.bitrate}Kbps` : null].filter(
         Boolean
     );
-    return parts.join(' \u00b7 ');
+    return parts.length > 0 ? parts.join(' \u00b7 ') : null;
 });
 
 const isArmed = computed(() => camSettings.value?.arm ?? false);
@@ -305,10 +306,10 @@ const sdStatusDisplay = computed(() => {
     return storage.active ? 'SD OK' : 'SD Idle';
 });
 
-const nightModeDisplay = computed(() => {
+const nightModeDisplay = computed<string | null>(() => {
     // Device shape is {auto, ir_leds}; there is no `mode` field.
     const nv = camSettings.value?.night_vision;
-    if (!nv) return '—';
+    if (!nv) return null;
     if (nv.auto) return 'IR Auto';
     return nv.ir_leds ? 'IR On' : 'IR Off';
 });

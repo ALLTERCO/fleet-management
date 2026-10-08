@@ -11,13 +11,11 @@
   </div>
   <DashVoltaineTools
     :range-label="view.meta.rangeLabel"
-    :refresh-interval="refreshInterval"
+    :range-key="rangeKey"
     show-filter
-    show-interval
     @pick-range="emit('pick-range', $event)"
     @open-filter="emit('open-filter')"
     @refresh="emit('refresh')"
-    @set-interval="emit('set-interval', $event)"
     @open-settings="emit('open-settings')"
     @open-report="repOpen = true"
   />
@@ -45,12 +43,14 @@
       <div class="lab">Cost</div>
       <div class="kpi hide-cold">{{ view.meta.currency }}<span :data-count="view.overview.costValue" data-dec="2">0</span></div>
       <div v-if="view.overview.costDeltaPct !== null" class="kdelta hide-cold" :class="view.overview.costDeltaPct > 0 ? 'dn-bad' : 'dn-good'">{{ view.overview.costDeltaPct > 0 ? '▲' : '▼' }} {{ Math.abs(view.overview.costDeltaPct) }}% vs prior</div>
-      <div class="nudge"><b style="font-size:26px;color:var(--faint);font-weight:600">—</b><span class="cta">Set a tariff →</span></div>
+      <div class="nudge"><b style="font-size:26px;color:var(--faint);font-weight:600">—</b><button type="button" class="cta" @click="emit('open-settings')">Set a tariff →</button></div>
     </div>
     <div class="card ctr" style="--i:2">
       <div class="lab">Projected · end of period</div>
-      <div class="kpi hide-cold">{{ view.meta.currency }}<span :data-count="view.overview.projectedValue" data-dec="0">0</span></div>
-      <div class="nudge"><b style="font-size:26px;color:var(--faint);font-weight:600">—</b><span class="cta">Set a tariff →</span></div>
+      <div v-if="view.overview.projectedValue !== null" class="kpi hide-cold">{{ view.meta.currency }}<span :data-count="view.overview.projectedValue" data-dec="0">0</span></div>
+      <div v-if="view.overview.projectedRangeKwh" class="sub">{{ view.overview.projectedRangeKwh }} kWh</div>
+      <DashNotEnoughData v-else-if="view.overview.projectedValue === null && view.config.tariff" :waiting-for="projectionWait" />
+      <div class="nudge"><b style="font-size:26px;color:var(--faint);font-weight:600">—</b><button type="button" class="cta" @click="emit('open-settings')">Set a tariff →</button></div>
     </div>
     <div class="card ctr" style="--i:3">
       <div class="lab">Daily average</div>
@@ -73,19 +73,48 @@
     <div class="grid" style="grid-template-columns:1fr;gap:12px">
       <div class="card" style="--i:5">
         <div class="head" style="margin-bottom:6px"><h3>Bill</h3></div>
-        <div class="nudge card-nudge"><span>No tariff configured</span><span class="cta">Set a tariff to build the bill →</span></div>
+        <div class="nudge card-nudge"><span>{{ view.config.tariffMessage ?? 'No tariff configured' }}</span><button type="button" class="cta" @click="emit('open-settings')">Review tariff assignments →</button></div>
         <div class="rows hide-cold">
-          <div class="row"><span>Energy</span><b>{{ cur(view.overview.bill.energy) }}</b></div>
-          <div class="row"><span>Demand charge · {{ view.overview.bill.demandKw }} kW</span><b>{{ cur(view.overview.bill.demand) }}</b></div>
-          <div class="row"><span>Standing charge</span><b>{{ cur(view.overview.bill.standing) }}</b></div>
-          <div class="row"><span>VAT · {{ view.overview.bill.vatPct }}%</span><b>{{ cur(view.overview.bill.vat) }}</b></div>
-          <div class="row total"><span>Bill total</span><b>{{ cur(view.overview.bill.total) }}</b></div>
+          <div class="row"><span>Energy</span><b>{{ curOrUnavailable(view.overview.bill.energy) }}</b></div>
+          <!-- The backend nets the energy leg only, so the label says so; standing and demand sit below. -->
+          <div class="row"><span>Export credit</span><b>{{ curOrUnavailable(view.overview.bill.exportCredit) }}</b></div>
+          <div class="row"><span>Net energy cost</span><b>{{ curOrUnavailable(view.overview.bill.netCost) }}</b></div>
+          <template v-if="view.overview.bill.complete">
+            <div class="row"><span>Demand charge · {{ view.overview.bill.demandKw }} kW</span><b>{{ cur(view.overview.bill.demand) }}</b></div>
+            <div class="row"><span>Standing charge</span><b>{{ cur(view.overview.bill.standing) }}</b></div>
+            <div v-for="tax in view.overview.bill.taxes" :key="tax.code" class="row"><span>{{ tax.label }}</span><b>{{ cur(tax.amount) }}</b></div>
+            <div class="row total"><span>Our estimate</span><b>{{ cur(view.overview.bill.total) }}</b></div>
+          </template>
         </div>
-        <div class="sub hide-cold" style="margin-top:9px">vs utility {{ cur(view.overview.bill.vsUtility) }} <span class="delta d-ok">{{ view.overview.bill.deltaPct }}% ✓</span></div>
+        <div v-if="view.overview.bill.message" class="sub hide-cold" style="margin-top:9px">{{ view.overview.bill.message }}</div>
+        <label v-if="recordedBillChoices.length > 1" class="bill-identity-picker hide-cold">
+          <span>Recorded bill identity</span>
+          <select :value="selectedRecordedBillId ?? ''" @change="onRecordedBillChange">
+            <option value="" disabled>Select account or meter</option>
+            <option v-for="choice in recordedBillChoices" :key="choice.id" :value="choice.id" :disabled="choice.disabled">{{ choice.label }}</option>
+          </select>
+        </label>
+        <div
+          v-if="view.overview.bill.reconciliation.status === 'ready'"
+          class="rows hide-cold bill-reconciliation"
+        >
+          <div class="row"><span>Recorded utility bill</span><b>{{ cur(view.overview.bill.reconciliation.recorded) }}</b></div>
+          <div class="row">
+            <span>Difference</span>
+            <b :class="view.overview.bill.reconciliation.direction === 'match' ? 'dn-good' : 'dn-bad'">
+              {{ signedCur(view.overview.bill.reconciliation.varianceAbs) }} ·
+              {{ view.overview.bill.reconciliation.variancePct === null ? 'percentage unavailable' : `${signed(view.overview.bill.reconciliation.variancePct)}%` }}
+            </b>
+          </div>
+          <div class="sub">Coverage warning: {{ view.overview.bill.reconciliation.coverageWarning }}</div>
+        </div>
+        <div v-else class="sub hide-cold bill-reconciliation-note">
+          Recorded bill comparison: {{ view.overview.bill.reconciliation.message }}
+        </div>
       </div>
       <div class="card" style="--i:6">
         <div class="head" style="margin-bottom:6px"><h3>Cost · time-of-use</h3></div>
-        <div class="nudge card-nudge"><span>No tariff configured</span><span class="cta">Add a tariff to split day / night →</span></div>
+        <div class="nudge card-nudge"><span>No tariff configured</span><button type="button" class="cta" @click="emit('open-settings')">Add a tariff to split day / night →</button></div>
         <div class="rows hide-cold">
           <div class="row"><span>TOU energy</span><b>{{ cur(view.overview.tou.energy) }}</b></div>
           <div class="row"><span>Shiftable</span><b style="color:var(--green)">{{ view.overview.tou.shiftKwh }} kWh → {{ cur(view.overview.tou.shiftSave) }}</b></div>
@@ -95,7 +124,7 @@
           <i :style="{width: view.overview.tou.nightPct + '%', background: '#3A4150'}"></i>
         </div>
         <div class="sub hide-cold" style="justify-content:space-between;margin-top:2px">
-          <span>Day <b>{{ cur(view.overview.tou.dayCost, 0) }}</b></span><span>Night <b>{{ cur(view.overview.tou.nightCost, 0) }}</b></span>
+          <span>Day <b>{{ cur(view.overview.tou.dayCost) }}</b></span><span>Night <b>{{ cur(view.overview.tou.nightCost) }}</b></span>
         </div>
       </div>
     </div>
@@ -111,8 +140,9 @@
       <div class="kpi"><span :style="{color: view.overview.voltagePass ? 'var(--green)' : 'var(--orange)'}">{{ view.overview.voltagePass ? 'PASS' : 'CHECK' }}</span><small>· {{ view.overview.voltageAvgV }} V avg</small></div>
     </div>
     <div class="card ctr" style="--i:9">
-      <div class="lab">Data quality</div>
-      <div class="kpi"><span :data-count="view.overview.dataQualityPct" data-dec="1">0</span><small>%</small></div>
+      <div class="lab">Devices online</div>
+      <div class="kpi"><span :data-count="view.overview.devicesOnlinePct" data-dec="1">0</span><small>%</small></div>
+      <div class="sub">{{ view.meta.onlineCount }} of {{ view.meta.deviceCount }} online now</div>
     </div>
   </div>
 </section>
@@ -215,15 +245,6 @@
         </div>
         <div class="sub">{{ view.energy.weekdayPerDay }} vs {{ view.energy.weekendPerDay }} kWh / day</div>
       </div>
-      <div class="card" style="--i:3">
-        <div class="lab">Environment</div>
-        <div class="sub" style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <span>Temp<br><b style="font-size:var(--type-body)">{{ view.energy.env.temp }}</b></span>
-          <span>Humidity<br><b style="font-size:var(--type-body)">{{ view.energy.env.humidity }}</b></span>
-          <span>Luminance<br><b style="font-size:var(--type-body)">{{ view.energy.env.luminance }}</b></span>
-          <span>Flow<br><b style="font-size:var(--type-body)">{{ view.energy.env.flow }}</b></span>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -249,14 +270,14 @@
     <div class="grid" style="grid-template-columns:1fr;gap:12px">
       <div class="card tree" style="--i:1">
         <div class="head" style="margin-bottom:4px"><h3>By location</h3></div>
-        <div class="nudge card-nudge"><span>{{ view.meta.deviceCount }} devices are ungrouped</span><span class="cta">Create groups / locations →</span></div>
+        <div class="nudge card-nudge"><span>{{ view.meta.deviceCount }} devices are ungrouped</span><button type="button" class="cta" @click="emit('open-settings')">Create groups / locations →</button></div>
         <div class="rows hide-cold">
           <div class="row" v-for="(row, ri) in view.devices.byLocation" :key="ri" :class="{in1: row.indent}"><span :class="{muted: row.muted}">{{ row.label }}</span><b :class="{muted: row.muted}">{{ row.value }}</b></div>
         </div>
       </div>
       <div class="card tree" style="--i:2">
         <div class="head" style="margin-bottom:4px"><h3>By kind</h3></div>
-        <div class="nudge card-nudge"><span>No appliance kinds set</span><span class="cta">Classify devices →</span></div>
+        <div class="nudge card-nudge"><span>No appliance kinds set</span><button type="button" class="cta" @click="emit('open-settings')">Classify devices →</button></div>
         <div class="rows hide-cold">
           <div class="row" v-for="(row, ri) in view.devices.byKind" :key="ri"><span>{{ row.label }}</span><b>{{ row.value }}</b></div>
         </div>
@@ -349,10 +370,6 @@
     <div class="card ctr" style="--i:1">
       <div class="lab">CO₂ · market-based</div>
       <div class="kpi"><span :data-count="view.carbon.marketBasedKg" data-dec="0">0</span><small>kg</small></div>
-    </div>
-    <div v-if="hasPv" class="card ctr" style="--i:2">
-      <div class="lab">Avoided by solar</div>
-      <div class="kpi">−<span :data-count="view.carbon.avoidedKg" data-dec="0">0</span><small>kg</small></div>
     </div>
     <div class="card ctr" style="--i:3">
       <div class="lab">Equivalent</div>
@@ -447,9 +464,14 @@
 // Purely presentational: every value + chart series comes from the `d` prop
 // (the EnergyDashboardData contract). When `d` is omitted the dev fixture renders,
 // so the exact visual stays verifiable in the standalone preview.
-import {computed, onMounted, onUnmounted, reactive, ref} from 'vue';
+import {computed, onMounted, onUnmounted, reactive, ref, watch} from 'vue';
+import DashNotEnoughData from '@/components/dashboard/DashNotEnoughData.vue';
 import DashVoltaineTools from '@/components/dashboard/DashVoltaineTools.vue';
 import {resolveEnergyDashboardView} from './energyDashboard.view';
+import {
+    ENERGY_REPORT_METRIC_OPTIONS,
+    initialEnergyReportMetrics
+} from './energyReportPicker';
 
 const props = defineProps({
     // EnergyDashboardData (see energyDashboard.types.ts). null => dev fixture.
@@ -457,10 +479,18 @@ const props = defineProps({
     // Tab to open on mount — lets the parent preserve the active tab across a
     // renderKey remount (refresh / lazy-loaded data) instead of resetting to Overview.
     initialTab: {type: String, default: 'overview'},
-    // Live auto-refresh cadence in ms (0 = off). Drives the header interval picker.
-    refreshInterval: {type: Number, default: 0},
+    // Preset key of the current range — the toolbar chip shows the preset's
+    // words instead of dates when set ('' / 'custom' = dates).
+    rangeKey: {type: String, default: ''},
+    recordedBillChoices: {type: Array, default: () => []},
+    selectedRecordedBillId: {type: Number, default: null},
 });
-const emit = defineEmits(['pick-range', 'generate-report', 'open-filter', 'open-settings', 'refresh', 'tab-change', 'set-interval']);
+const emit = defineEmits(['pick-range', 'generate-report', 'open-filter', 'open-settings', 'refresh', 'tab-change', 'select-recorded-bill']);
+
+function onRecordedBillChange(event) {
+    const value = Number(event.target?.value);
+    if (Number.isInteger(value) && value > 0) emit('select-recorded-bill', value);
+}
 
 const rootEl = ref(null);
 let cleanups = [];
@@ -472,7 +502,7 @@ const repKind = ref('energy');
 const repGran = ref('day');
 const repFormat = ref('html');
 const repPerDevice = ref(true);
-const repMetrics = reactive({consumption: true, returned: false, voltage: false, current: false, power: false});
+const repMetrics = reactive(initialEnergyReportMetrics());
 const repSections = reactive({demand: true, solar: true, battery: true, ev: true, tenant: true});
 const REPORT_TYPES = [
     {key: 'energy', name: 'Energy summary', desc: 'Consumption, cost and generation for the period — a formatted report to read or share.'},
@@ -485,17 +515,20 @@ const GRANULARITIES = [
     {key: 'day', label: 'Daily'},
     {key: 'month', label: 'Monthly'},
 ];
-const FORMATS = [
+const REPORT_FORMATS = [
     {key: 'html', label: 'HTML report'},
     {key: 'csv', label: 'CSV data'},
+    {key: 'xlsx', label: 'Excel workbook'},
+    {key: 'pdf', label: 'PDF report'},
 ];
-const REP_METRICS = [
-    {key: 'consumption', label: 'Consumption'},
-    {key: 'returned', label: 'Returned'},
-    {key: 'voltage', label: 'Voltage'},
-    {key: 'current', label: 'Current'},
-    {key: 'power', label: 'Power'},
-];
+const FORMATS = computed(() =>
+    repKind.value === 'energy'
+        ? REPORT_FORMATS
+        : REPORT_FORMATS.filter(
+              (format) => format.key !== 'xlsx' && format.key !== 'pdf'
+          )
+);
+const REP_METRICS = ENERGY_REPORT_METRIC_OPTIONS;
 const REP_SECTIONS = [
     {key: 'demand', label: 'Demand'},
     {key: 'solar', label: 'Solar'},
@@ -503,11 +536,20 @@ const REP_SECTIONS = [
     {key: 'ev', label: 'EV'},
     {key: 'tenant', label: 'Tenant'},
 ];
+watch(repKind, (kind) => {
+    // High-volume interval/dump exports stay on the streaming CSV path.
+    if (
+        kind !== 'energy' &&
+        (repFormat.value === 'xlsx' || repFormat.value === 'pdf')
+    ) {
+        repFormat.value = 'csv';
+    }
+});
 function onGenerate() {
     emit('generate-report', {
         kind: repKind.value,
         granularity: repGran.value,
-        format: repFormat.value,
+        format: repKind.value === 'energy' ? repFormat.value : 'csv',
         perDevice: repPerDevice.value,
         metrics: REP_METRICS.filter((m) => repMetrics[m.key]).map((m) => m.key),
         sections: REP_SECTIONS.filter((s) => repSections[s.key]).map((s) => s.key),
@@ -516,6 +558,14 @@ function onGenerate() {
 }
 
 const view = computed(() => resolveEnergyDashboardView(props.d));
+// Say what the projection is waiting for. How many days are enough is the
+// backend's call, so the card only reports how many it has.
+const projectionWait = computed(() => {
+    const pending = view.value.overview.projectedPending;
+    if (!pending) return '';
+    const days = pending.observedDays;
+    return `Waiting for readings — ${days} day${days === 1 ? '' : 's'} so far`;
+});
 const hasPv = computed(() => {
     const s = view.value.solar;
     return s.generatedToday > 0 || s.pv.generation > 0 || s.pv.exported > 0 || s.flow.solar > 0;
@@ -548,9 +598,29 @@ const setupItems = computed(() => {
 });
 
 // Format a number in the dashboard currency; '—' when absent/invalid (no tariff).
-function cur(n, dec = 2) {
+function cur(n, dec = view.value.meta.currencyFractionDigits ?? 2) {
     if (!Number.isFinite(Number(n))) return '—';
     return view.value.meta.currency + Number(n).toLocaleString('en-US', {minimumFractionDigits: dec, maximumFractionDigits: dec});
+}
+
+// Null means the backend priced nothing here; a zero would read as a real number.
+function curOrUnavailable(n) {
+    return n === null ? 'unavailable' : cur(n);
+}
+
+function signed(n) {
+    const value = Number(n);
+    if (!Number.isFinite(value)) return '—';
+    return `${value > 0 ? '+' : ''}${value.toLocaleString('en-US', {
+        maximumFractionDigits: 1
+    })}`;
+}
+
+function signedCur(n) {
+    const value = Number(n);
+    if (!Number.isFinite(value)) return '—';
+    if (value === 0) return cur(0);
+    return `${value > 0 ? '+' : '−'}${cur(Math.abs(value))}`;
 }
 
 function pct(value, total) {
@@ -601,6 +671,34 @@ runCounts($('#overview'));
 const NS='http://www.w3.org/2000/svg';
 const el=(n,a)=>{const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);return e;};
 const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+// Full-bleed charts stretch to fill their card (preserveAspectRatio="none"), which
+// scales glyphs by the same non-uniform factor and leaves the labels distorted and
+// oversized. Counter-scale each label about its own anchor so the geometry still
+// fills the card while text renders at its true CSS size.
+const fitted=new Set();
+function fitChartText(svg){
+  const box=svg.viewBox.baseVal, r=svg.getBoundingClientRect();
+  if(!box||!box.width||!box.height||!r.width||!r.height) return;
+  const sx=r.width/box.width, sy=r.height/box.height;
+  for(const t of svg.querySelectorAll('text')){
+    const x=Number(t.getAttribute('x'))||0, y=Number(t.getAttribute('y'))||0;
+    t.setAttribute('transform',`translate(${x},${y}) scale(${1/sx},${1/sy}) translate(${-x},${-y})`);
+  }
+  fitted.add(svg);
+}
+// One observer for every fitted chart; rAF-coalesced so a drag-resize does one pass.
+let fitFrame=0;
+const fitObserver=new ResizeObserver(()=>{
+  if(fitFrame) return;
+  fitFrame=requestAnimationFrame(()=>{fitFrame=0;fitted.forEach(fitChartText);});
+});
+cleanups.push(()=>{fitObserver.disconnect();if(fitFrame)cancelAnimationFrame(fitFrame);fitted.clear();});
+// Fit now, then keep it fitted as the card resizes.
+function fitAndWatch(svg){
+  if(!svg) return;
+  fitChartText(svg);
+  fitObserver.observe(svg);
+}
 function smooth(pts){
   if(!pts.length) return '';                 // empty series → no path (no data yet)
   let d=`M${pts[0][0]},${pts[0][1]}`;
@@ -780,6 +878,10 @@ defer(()=>{
   xhair(svg,()=>pts.map((v,i)=>[X(i),Y(v)]),i=>'<small>'+Math.round(i/(n-1)*720)+' h</small>'+pts[i].toFixed(2)+' kW');
 })();
 
+/* Keep labels undistorted on every chart that stretches to fill its card. The flow
+   chart is excluded — its box matches its viewBox, so it scales uniformly already. */
+['#mainChart','#liveChart','#rhythm','#hourly','#ldc'].forEach(sel=>fitAndWatch($(sel)));
+
 /* ---- energy flow (rebuilt) ----
    Balance: solar 3.28 kW out → home 2.41 + battery 0.63 + EV 0.24. Grid idle 0.00.
    Each path is drawn FROM source TO target; the dash animation moves dots start→end,
@@ -902,4 +1004,3 @@ defer(()=>{
 
 onUnmounted(() => { cleanups.forEach((f) => f()); cleanups = []; });
 </script>
-

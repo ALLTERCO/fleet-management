@@ -12,7 +12,10 @@ import type {
 } from '../../types/api/virtualdevice';
 import {
     applyExtractedSourceHealth,
+    bluetoothAssignedName,
     bluetoothDeviceToListJSON,
+    bluetoothPresenceFromHealth,
+    bluetoothTransportHealth,
     extractedSourceHostExternalId,
     virtualDeviceToListJSON
 } from './deviceListEntry';
@@ -91,6 +94,20 @@ export function bluetoothEntryToListJSON(
     );
 }
 
+// Same gateway snapshot as the list row, so a filter cannot disagree with it.
+export function bluetoothEntryPresence(
+    collector: DeviceCollectorLike,
+    device: BluetoothDeviceDto
+): 'online' | 'offline' {
+    const gateway = bluetoothPrimaryGatewaySnapshot(collector, device);
+    return bluetoothPresenceFromHealth(
+        bluetoothTransportHealth(
+            enrichBluetoothDeviceWithGatewayStatus(device, gateway),
+            gateway?.presence ?? null
+        )
+    );
+}
+
 export function enrichBluetoothDeviceWithGatewayStatus(
     device: BluetoothDeviceDto,
     gateway?: SourceSnapshot | null
@@ -129,7 +146,7 @@ export function bluetoothPrimaryGatewaySnapshot(
 }
 
 export function projectBluetoothComponentStatus(input: {
-    device: BluetoothDeviceDto;
+    device: Pick<BluetoothDeviceDto, 'components'>;
     gateway: SourceSnapshot | null;
 }): Record<string, unknown> {
     const source = input.gateway?.status;
@@ -148,6 +165,13 @@ export function projectBluetoothComponentStatus(input: {
                 value
             );
         }
+    }
+    const assignedName = bluetoothAssignedName(input.device.components);
+    if (assignedName) {
+        out.bluetoothdevice = {
+            ...(asRecord(out.bluetoothdevice) ?? {}),
+            name: assignedName
+        };
     }
     return out;
 }

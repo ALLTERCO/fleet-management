@@ -107,7 +107,9 @@ export const pushFcmAdapter: DeliveryAdapter = {
                     env: envName === 'sandbox' ? 'sandbox' : 'prod'
                 },
                 payload,
-                actionSigningKey
+                actionSigningKey,
+                useStandardPresentation:
+                    context.templateBody?.isSystemDefault !== false
             },
             providerSend
         );

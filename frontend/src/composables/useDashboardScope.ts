@@ -4,6 +4,7 @@
 // singleton pattern.
 
 import {computed, type MaybeRefOrGetter, type Ref, ref, toValue} from 'vue';
+import type {DashboardScope as ApiDashboardScope} from '@api/fleet';
 
 export type ScopeKind = 'fleet' | 'group' | 'tag' | 'location';
 
@@ -14,6 +15,36 @@ export interface DashboardScope {
 
 const STORAGE_PREFIX = 'fm-dashboard-scope';
 const FLEET_SCOPE: DashboardScope = {kind: 'fleet'};
+
+/** Convert the UI selector into the platform's canonical single-axis scope. */
+export function toApiDashboardScope(scope: DashboardScope): ApiDashboardScope {
+    if (scope.kind === 'group' && scope.id !== undefined) {
+        return {groupId: scope.id};
+    }
+    if (scope.kind === 'tag' && scope.id !== undefined) {
+        return {tagId: scope.id};
+    }
+    if (scope.kind === 'location' && scope.id !== undefined) {
+        return {locationId: scope.id};
+    }
+    return {};
+}
+
+/** Convert a persisted/API dashboard scope without dropping location or tag. */
+export function fromApiDashboardScope(
+    scope: ApiDashboardScope | null | undefined
+): DashboardScope {
+    if (scope?.groupId !== undefined) {
+        return {kind: 'group', id: scope.groupId};
+    }
+    if (scope?.tagId !== undefined) {
+        return {kind: 'tag', id: scope.tagId};
+    }
+    if (scope?.locationId !== undefined) {
+        return {kind: 'location', id: scope.locationId};
+    }
+    return FLEET_SCOPE;
+}
 
 export interface UseDashboardScopeApi {
     readonly current: Ref<DashboardScope>;

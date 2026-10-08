@@ -3,8 +3,18 @@
 // by the watchdog instead of jamming the fleet silently.
 
 // The init's current phase, so a reclaim names where it died: 'build' = the
-// device probe/build, 'post-register' = the after-commit tasks.
-export type InitStage = 'build' | 'post-register' | 'reclaimed';
+// device probe/build, 'post-register' = the after-commit tasks, 'abandoned' =
+// the reclaim never unwound and the slot was freed without it.
+import type {
+    CounterName,
+    GaugeName,
+    LabeledCounterName
+} from '../../../observability/counters';
+
+export type InitStage = 'build' | 'post-register' | 'reclaimed' | 'abandoned';
+
+// A wait on a dependency with no timeout can hold a reclaimed slot forever.
+const ABANDON_GRACE_HOLD_MULTIPLE = 1;
 
 export const INIT_QUEUE_STALE_REASON = 'init_queue_stale';
 export const INIT_SLOT_RECLAIMED_REASON = 'init_slot_reclaimed';
@@ -19,9 +29,12 @@ export interface SlotHandle {
 }
 
 export interface MetricsSink {
-    incrementCounter(name: string, delta?: number): void;
-    incrementLabeledCounter(name: string, labels: Record<string, string>): void;
-    setGauge(name: string, value: number): void;
+    incrementCounter(name: CounterName, delta?: number): void;
+    incrementLabeledCounter(
+        name: LabeledCounterName,
+        labels: Record<string, string>
+    ): void;
+    setGauge(name: GaugeName, value: number): void;
 }
 
 export interface RegistryConfig {
@@ -42,6 +55,9 @@ export interface RegistryDeps {
 interface ActiveSlot {
     shellyID: string;
     activatedAtMs: number;
+    // When the abort was raised, so the grace window is measured from the
+    // reclaim and a late first sweep still gives the work time to unwind.
+    reclaimedAtMs?: number;
     stage: InitStage;
     abort: AbortController;
 }
@@ -95,10 +111,11 @@ export class InitSlotRegistry {
     }
 
     // Watchdog tick. Call on a timer. Reads top-down: drain give-ups, reclaim
-    // the stuck, publish the snapshot.
+    // the stuck, free the ones that never unwound, publish the snapshot.
     sweep(): void {
         this.#pruneStaleQueue();
         this.#reclaimStuckSlots();
+        this.#abandonExpiredSlots();
         this.#publishGauges();
     }
 
@@ -111,9 +128,14 @@ export class InitSlotRegistry {
         }
     }
 
-    // Free a stuck slot, name the stage it died in, and abort its init.
-    #reclaimSlot(handle: SlotHandle, slot: ActiveSlot): void {
-        const heldMs = this.#deps.now() - slot.activatedAtMs;
+    // Abort a stuck init but retain its slot until the guarded continuation
+    // actually unwinds and calls release(). Promoting immediately would make
+    // the registry report maxConcurrent while the orphaned JS work kept
+    // running, violating the real concurrency cap.
+    #reclaimSlot(_handle: SlotHandle, slot: ActiveSlot): void {
+        if (slot.stage === 'reclaimed') return;
+        const now = this.#deps.now();
+        const heldMs = now - slot.activatedAtMs;
         this.#deps.log(
             `init-slot STUCK shellyID=${slot.shellyID} heldMs=${heldMs} stage=${slot.stage} — reclaiming`
         );
@@ -123,7 +145,32 @@ export class InitSlotRegistry {
         );
         this.#reclaimedTotal++;
         slot.stage = 'reclaimed';
+        slot.reclaimedAtMs = now;
         slot.abort.abort(new Error(INIT_SLOT_RECLAIMED_REASON));
+    }
+
+    // The abort was ignored: the guarded work never called release(). Hold the
+    // slot no longer, or one uncancellable wait caps the fleet for good.
+    #abandonExpiredSlots(): void {
+        const now = this.#deps.now();
+        const graceMs = this.#cfg.maxHoldMs * ABANDON_GRACE_HOLD_MULTIPLE;
+        for (const [handle, slot] of [...this.#active]) {
+            if (slot.stage !== 'reclaimed') continue;
+            const reclaimedAtMs = slot.reclaimedAtMs ?? slot.activatedAtMs;
+            if (now - reclaimedAtMs < graceMs) continue;
+            this.#abandonSlot(handle, slot, now - slot.activatedAtMs);
+        }
+    }
+
+    #abandonSlot(handle: SlotHandle, slot: ActiveSlot, heldMs: number): void {
+        this.#deps.log(
+            `init-slot ABANDONED shellyID=${slot.shellyID} heldMs=${heldMs} — freeing the slot, the work never unwound`
+        );
+        this.#deps.metrics.incrementLabeledCounter(
+            'device_init_slot_reclaimed_total',
+            {stage: 'abandoned'}
+        );
+        slot.stage = 'abandoned';
         this.#removeAndPromote(handle);
     }
 
@@ -156,6 +203,8 @@ export class InitSlotRegistry {
             shellyID,
             signal: slot.abort.signal,
             setStage: (stage: InitStage) => {
+                if (slot.stage === 'reclaimed') return;
+                if (slot.stage === 'abandoned') return;
                 slot.stage = stage;
             }
         };

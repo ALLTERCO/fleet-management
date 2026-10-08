@@ -2,6 +2,7 @@
 
 import * as log4js from 'log4js';
 import {tuning} from '../../config';
+import {requireComponentPermission} from '../../modules/authz/evaluator';
 import * as DashboardActivityStore from '../../modules/DashboardActivityStore';
 import * as DashboardRegistry from '../../modules/DashboardRegistry';
 import {createDashboardScoped} from '../../modules/DashboardRegistry';
@@ -77,6 +78,22 @@ import {stripIgnoredTariffFields} from '../dashboard/tariffStripping';
 import {validateTariffSettings} from '../dashboard/tariffValidation';
 import {pvRefsOverlap, pvRefsSelfOverlap} from '../report/pvEnergy';
 import Component from './Component';
+
+// One read rule for Get and List: a location grant reaches a dashboard
+// through the place it is scoped to, so the check carries that place.
+async function canReadDashboard(
+    sender: CommandSender,
+    dashboard: Dashboard
+): Promise<boolean> {
+    const places = await sender.accessibleLocationIds();
+    const byPlace = places !== null && places.length > 0;
+    return sender.evaluateComponentPermission({
+        component: 'dashboards',
+        operation: 'read',
+        itemId: dashboard.id,
+        locationId: byPlace ? dashboard.scope.locationId : undefined
+    });
+}
 
 // Pulls numeric ids for one ref kind out of a batch, dedup + skip nulls.
 function collectRefIds<
@@ -281,13 +298,22 @@ export default class DashboardComponent extends Component {
                 p_user_id: sender.getUserId() ?? null
             }
         );
-        const items = (res?.rows ?? []).map(rowToDashboard);
+        const rows = (res?.rows ?? []).map(rowToDashboard);
+        const decisions = await Promise.all(
+            rows.map((dashboard: Dashboard) =>
+                canReadDashboard(sender, dashboard)
+            )
+        );
+        const items = rows.filter(
+            (_: Dashboard, index: number) => decisions[index]
+        );
         return {items, total: items.length};
     }
 
+    // The item check runs in the body: only the fetched row knows its place.
     @Component.NoAudit
     @Component.Expose('Get')
-    @Component.CrudPermission('dashboards', 'read', (p) => p?.id)
+    @Component.CrudPermission('dashboards', 'read')
     async get(params: unknown, sender: CommandSender): Promise<Dashboard> {
         const p = validateOrThrow<{id: number}>(
             params,
@@ -304,7 +330,11 @@ export default class DashboardComponent extends Component {
         );
         const row = (res?.rows ?? []).find((r: any) => r.id === p.id);
         if (!row) throw RpcError.NotFound('dashboard', String(p.id));
-        return rowToDashboard(row);
+        const dashboard = rowToDashboard(row);
+        if (!(await canReadDashboard(sender, dashboard))) {
+            throw RpcError.Domain('PermissionDenied');
+        }
+        return dashboard;
     }
 
     @Component.NoAudit
@@ -514,6 +544,7 @@ export default class DashboardComponent extends Component {
         try {
             const row = await createDashboardScoped({
                 organizationId: orgId,
+                ownerUserId: sender.getUserId() ?? null,
                 name: p.name.trim(),
                 dashboardType: p.dashboardType,
                 locationId: scope.locationId,
@@ -521,13 +552,6 @@ export default class DashboardComponent extends Component {
                 tagId: scope.tagId
             });
             EventDistributor.emitDashboardCreated(row.id, row.name, orgId);
-            await this.#recordActivity({
-                dashboardId: row.id,
-                organizationId: orgId,
-                actorUserId: sender.getUserId() ?? null,
-                eventKind: 'created',
-                detail: {name: row.name}
-            });
             // Freshly-created dashboards have no items.
             return rowToDashboard({...row, items: []});
         } catch (err: unknown) {
@@ -602,7 +626,7 @@ export default class DashboardComponent extends Component {
     // item scan. Here a single org-scoped DB call removes every owned id and
     // returns which ones it deleted; cross-org ids are ignored, not errored.
     @Component.Expose('DeleteBulk')
-    @Component.CrudPermission('dashboards', 'delete')
+    @Component.NoPermissions
     async deleteBulk(
         params: unknown,
         sender: CommandSender
@@ -612,6 +636,9 @@ export default class DashboardComponent extends Component {
             DASHBOARD_DELETE_BULK_PARAMS_SCHEMA
         );
         const orgId = requireOrganizationId(sender);
+        for (const id of new Set(p.ids)) {
+            requireComponentPermission(sender, 'dashboards', 'delete', id);
+        }
         const res = await PostgresProvider.callMethod(
             'ui.fn_dashboard_remove_bulk',
             {p_ids: p.ids, p_organization_id: orgId}
@@ -753,7 +780,7 @@ export default class DashboardComponent extends Component {
         const userId = sender.getUserId();
         if (!userId) throw RpcError.Unauthorized();
         const orgId = requireOrganizationId(sender);
-        const canonicalIds = await this.#resolveCanonicalOrder(orgId, ids);
+        const canonicalIds = await this.#resolveCanonicalOrder(sender, ids);
         await PostgresProvider.callMethod('ui.fn_dashboard_reorder', {
             p_user_id: userId,
             p_ids: canonicalIds
@@ -763,15 +790,25 @@ export default class DashboardComponent extends Component {
     }
 
     async #resolveCanonicalOrder(
-        orgId: string,
+        sender: CommandSender,
         callerIds: number[]
     ): Promise<number[]> {
+        const orgId = requireOrganizationId(sender);
         await this.#ensureBootstrapped(orgId);
         const res = await PostgresProvider.callMethod(
             'ui.fn_dashboard_fetch_v2',
             {p_organization_id: orgId, p_user_id: null}
         );
-        const visibleIds = (res?.rows ?? []).map((r: {id: number}) => r.id);
+        const visibleIds = (res?.rows ?? [])
+            .map((r: {id: number}) => r.id)
+            .filter(
+                (id: number) =>
+                    sender.evaluateComponentPermission({
+                        component: 'dashboards',
+                        operation: 'read',
+                        itemId: id
+                    }) === true
+            );
         return resolveCanonicalOrder(visibleIds, callerIds);
     }
 
@@ -1230,7 +1267,14 @@ export default class DashboardComponent extends Component {
             {p_organization_id: orgId}
         );
         const id = res?.rows?.[0]?.id;
-        return {id: typeof id === 'number' ? id : null};
+        const readable =
+            typeof id === 'number' &&
+            sender.evaluateComponentPermission({
+                component: 'dashboards',
+                operation: 'read',
+                itemId: id
+            }) === true;
+        return {id: readable ? id : null};
     }
 
     @Component.Expose('SetDefault')
@@ -1279,11 +1323,24 @@ export default class DashboardComponent extends Component {
             'ui.fn_dashboard_list_pinned',
             {p_user_id: userId}
         );
-        const items = (res?.rows ?? []).map((r: any) => ({
-            dashboardId: r.dashboard_id,
-            sortOrder: r.sort_order,
-            pinnedAt: toIso(r.pinned_at) ?? ''
-        }));
+        const items = (res?.rows ?? [])
+            .map((r: any) => ({
+                dashboardId: r.dashboard_id,
+                sortOrder: r.sort_order,
+                pinnedAt: toIso(r.pinned_at) ?? ''
+            }))
+            .filter(
+                (item: {
+                    dashboardId: number;
+                    sortOrder: number;
+                    pinnedAt: string;
+                }) =>
+                    sender.evaluateComponentPermission({
+                        component: 'dashboards',
+                        operation: 'read',
+                        itemId: item.dashboardId
+                    }) === true
+            );
         return {items};
     }
 
@@ -1382,27 +1439,23 @@ export default class DashboardComponent extends Component {
         const name = (p.name ?? imported.name).trim();
         const scope = p.scope ?? imported.scope;
         try {
-            const row = await createDashboardScoped({
-                organizationId: orgId,
-                name,
-                dashboardType: imported.dashboardType,
-                locationId: scope.locationId,
-                groupId: scope.groupId,
-                tagId: scope.tagId
-            });
             if (imported.items.length > 0) {
                 await this.#assertDashboardItemRefsBatchBelongToOrg(
                     orgId,
                     imported.items
                 );
-                await PostgresProvider.callMethod(
-                    'ui.fn_dashboard_item_set_all',
-                    {
-                        p_dashboard: row.id,
-                        p_items: JSON.stringify(imported.items)
-                    }
-                );
             }
+            const row = await createDashboardScoped({
+                organizationId: orgId,
+                ownerUserId: sender.getUserId() ?? null,
+                name,
+                dashboardType: imported.dashboardType,
+                locationId: scope.locationId,
+                groupId: scope.groupId,
+                tagId: scope.tagId,
+                items: imported.items,
+                activityDetail: {source: 'import', format: p.format ?? 'fm'}
+            });
             EventDistributor.emitDashboardCreated(row.id, name, orgId);
             return await this.#fetchDashboard(row.id, sender);
         } catch (err) {
@@ -1412,13 +1465,14 @@ export default class DashboardComponent extends Component {
     }
 
     @Component.Expose('Clone')
-    @Component.CrudPermission('dashboards', 'create', (p) => p?.id)
+    @Component.CrudPermission('dashboards', 'create')
     async clone(params: unknown, sender: CommandSender) {
         const p = validateOrThrow<{
             id: number;
             name: string;
             scope?: {groupId?: number; locationId?: number; tagId?: number};
         }>(params, DASHBOARD_CLONE_PARAMS_SCHEMA);
+        requireComponentPermission(sender, 'dashboards', 'read', p.id);
         await this.#assertOwnedBySenderOrg(p.id, sender);
         const orgId = requireOrganizationId(sender);
         const scope = p.scope ?? {};
@@ -1431,7 +1485,8 @@ export default class DashboardComponent extends Component {
                     p_name: p.name.trim(),
                     p_group_id: scope.groupId ?? null,
                     p_location_id: scope.locationId ?? null,
-                    p_tag_id: scope.tagId ?? null
+                    p_tag_id: scope.tagId ?? null,
+                    p_owner_user_id: sender.getUserId() ?? null
                 }
             );
             const newId = res?.rows?.[0]?.fn_dashboard_clone;
@@ -1439,13 +1494,6 @@ export default class DashboardComponent extends Component {
                 throw RpcError.Domain('DashboardNotFound');
             }
             EventDistributor.emitDashboardCreated(newId, p.name, orgId);
-            await this.#recordActivity({
-                dashboardId: newId,
-                organizationId: orgId,
-                actorUserId: sender.getUserId() ?? null,
-                eventKind: 'cloned',
-                detail: {sourceId: p.id, name: p.name.trim()}
-            });
             return await this.#fetchDashboard(newId, sender);
         } catch (err) {
             if (err instanceof RpcError) throw err;

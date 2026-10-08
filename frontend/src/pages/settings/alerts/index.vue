@@ -3,7 +3,7 @@
         fill
         :tabs="tabs"
         v-model:search="query"
-        title="Alerts"
+        title="Inbox"
         :stats="headerStats"
         :searchable="true"
         search-placeholder="Search alerts…"
@@ -38,7 +38,7 @@
         <template #modals>
             <FilterModal
                 :visible="filterModalVisible"
-                title="Filter Alerts"
+                title="Filter alerts"
                 match-label="alerts"
                 :match-count="filteredInstances.length"
                 :sections="filterSections"
@@ -69,8 +69,8 @@
         </template>
 
         <template #empty-sub>
-            When a rule triggers on an organization subject, its instance
-            appears here. Use the <b>Rules</b> tab to define new rules.
+            When a rule fires, its alert shows here. Rules live under
+            <b>Alerts</b> in the menu on the left.
         </template>
 
         <div
@@ -110,7 +110,13 @@
             </div>
         </div>
 
-        <div class="aa-list">
+        <div
+            class="aa-list"
+            @keydown.j.prevent="moveRowFocus($event, 1)"
+            @keydown.k.prevent="moveRowFocus($event, -1)"
+            @keydown.down.prevent="moveRowFocus($event, 1)"
+            @keydown.up.prevent="moveRowFocus($event, -1)"
+        >
             <AlertInstanceCard
                 v-for="i in filteredInstances"
                 :key="i.id"
@@ -119,8 +125,25 @@
                 :selected="selectedIds.has(i.id)"
                 @open="openInstance(i.id)"
                 @toggle-select="toggleSelect(i.id)"
+                @acknowledge="store.ackInstance(i.id)"
             />
         </div>
+        <div
+            v-if="alertState === 'resolved' && history.hasMore"
+            class="aa-more"
+        >
+            <Button
+                type="blue-hollow"
+                size="sm"
+                :loading="history.loading"
+                @click="loadHistoryPage"
+            >
+                Load more
+            </Button>
+        </div>
+        <p v-if="filteredInstances.length > 1" class="aa-keys">
+            J and K move, Enter opens
+        </p>
 
     </PageTemplate>
 </template>
@@ -151,7 +174,7 @@ import {
     severitySection,
     tagSection
 } from '@/helpers/filter-sections';
-import {useAlertsStore} from '@/stores/alerts';
+import {type InstanceFilters, useAlertsStore} from '@/stores/alerts';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
 import {useEntityStore} from '@/stores/entities';
@@ -298,7 +321,7 @@ const filterSections = computed(() => {
             silenced,
             instances.length - silenced
         ),
-        enumSection('subjectType', 'Subject type', 'fa-bullseye', bySubjectType),
+        enumSection('subjectType', 'Applies to', 'fa-bullseye', bySubjectType),
         deviceClassSection(byClass),
         deviceSection(deviceItems),
         componentSection(componentItems),
@@ -350,11 +373,59 @@ function applyGenericFilters(next: Record<string, string[]>) {
     filterModalVisible.value = false;
 }
 
-// All filters are client-side. The store keeps the full set for each state;
-// selecting a state just ensures that slice is loaded.
+// Open alerts are all loaded, so their filters run here. History is paged, so
+// its Silence filter also goes to the server and "Load more" brings matches.
 function ensureStateLoaded(s: ViewState) {
-    store.fetchInstances({state: s});
+    if (s === 'resolved') {
+        if (!history.value.started) void loadHistoryPage();
+        return;
+    }
+    void store.fetchInstances();
 }
+
+// History is read 100 rows per page by cursor, only once the Resolved view is
+// shown. Events and reconnects never reload it.
+const history = ref<{
+    started: boolean;
+    loading: boolean;
+    cursor: string | null;
+    hasMore: boolean;
+}>({started: false, loading: false, cursor: null, hasMore: false});
+// A cursor is valid only for the filters that made it; a page from an older
+// filter set is dropped.
+let historyRun = 0;
+
+function historyFilters(): InstanceFilters {
+    const mode = silencedFilter.value[0];
+    if (mode !== 'true' && mode !== 'false') return {};
+    return {silenced: mode === 'true'};
+}
+
+async function loadHistoryPage(): Promise<void> {
+    if (history.value.loading) return;
+    const run = historyRun;
+    history.value.started = true;
+    history.value.loading = true;
+    const page = await store.fetchHistoryPage({
+        cursor: history.value.cursor,
+        filters: historyFilters()
+    });
+    if (run !== historyRun) return;
+    history.value = {
+        started: true,
+        loading: false,
+        cursor: page.nextCursor,
+        hasMore: page.hasMore
+    };
+}
+
+function restartHistory(): void {
+    historyRun += 1;
+    history.value = {started: false, loading: false, cursor: null, hasMore: false};
+    if (alertState.value === 'resolved') void loadHistoryPage();
+}
+
+watch(() => silencedFilter.value[0] ?? '', restartHistory);
 
 function setAlertState(s: ViewState) {
     alertState.value = s;
@@ -369,19 +440,44 @@ const emptyTitle = computed(() => {
         : 'No resolved alerts yet';
 });
 
+
+// Arrow keys and J/K walk the rows.
+function moveRowFocus(event: KeyboardEvent, step: 1 | -1): void {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('input, textarea, [contenteditable="true"]')) return;
+    const list = event.currentTarget as HTMLElement;
+    const rows = [...list.querySelectorAll<HTMLElement>('.aic')];
+    if (rows.length === 0) return;
+    const index = rows.findIndex((row) => row === target || row.contains(target));
+    const next = rows[(index + step + rows.length) % rows.length];
+    next?.focus();
+}
+
 const headerStats = computed<StatItem[]>(() => {
     const all = Object.values(store.instances);
     const active = all.filter((i) => i.state === 'active').length;
-    const resolved = all.filter((i) => i.state === 'resolved').length;
+    const resolved =
+        store.historyTotal ?? all.filter((i) => i.state === 'resolved').length;
     return [
         {value: active, label: 'active', status: 'warn'},
         {value: resolved, label: 'resolved', status: 'on'}
     ];
 });
 
+// The open list loads at once; the resolved history waits for its view.
+async function fetchBothStates(): Promise<void> {
+    await store.fetchInstances();
+    if (alertState.value === 'resolved') await loadHistoryPage();
+}
+watch(
+    () => authStore.permissionsLoaded,
+    (ready) => {
+        if (ready) void fetchBothStates();
+    }
+);
+
 onMounted(() => {
-    store.fetchInstances({state: 'active'});
-    store.fetchInstances({state: 'resolved'});
+    if (authStore.permissionsLoaded) void fetchBothStates();
     if (Object.keys(locationsStore.locations).length === 0) locationsStore.fetchLocations();
     if (Object.keys(tagsStore.tags).length === 0) tagsStore.fetchTags();
     syncModalFromQuery();
@@ -465,6 +561,9 @@ const sortedInstances = computed(() => {
                     new Date(a.resolvedAt ?? a.lastTriggeredAt).getTime()
                 );
             }
+            const aSeen = a.acknowledgedAt || a.silencedUntil ? 1 : 0;
+            const bSeen = b.acknowledgedAt || b.silencedUntil ? 1 : 0;
+            if (aSeen !== bSeen) return aSeen - bSeen;
             return (
                 new Date(b.lastTriggeredAt).getTime() -
                 new Date(a.lastTriggeredAt).getTime()
@@ -614,10 +713,18 @@ async function onBulkSilence(payload: {until: string; reason: string | null}) {
     flex-wrap: wrap;
 }
 .aa-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, var(--grid-cell, 200px));
-    grid-auto-rows: auto;
-    justify-content: start;
-    gap: var(--card-grid-gap, 12px);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+.aa-more {
+    display: flex;
+    justify-content: center;
+    margin-top: var(--space-3);
+}
+.aa-keys {
+    margin: var(--space-3) 0 0;
+    color: var(--color-text-tertiary);
+    font-size: var(--type-caption);
 }
 </style>

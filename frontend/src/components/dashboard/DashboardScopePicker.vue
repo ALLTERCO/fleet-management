@@ -43,6 +43,19 @@
                     <i class="fas fa-tag" /> {{ t.name }}
                 </button>
             </div>
+            <div v-if="locations.length > 0" class="dsp__section">
+                <div class="dsp__section-label">Locations</div>
+                <button
+                    v-for="location in locations"
+                    :key="`location-${location.id}`"
+                    class="dsp__item"
+                    role="menuitem"
+                    :class="{'dsp__item--active': isPicked('location', location.id)}"
+                    @click="pick({kind: 'location', id: location.id})"
+                >
+                    <i class="fas fa-location-dot" /> {{ location.name }}
+                </button>
+            </div>
         </div>
     </div>
 </template>
@@ -60,6 +73,7 @@ const props = defineProps<{
     scope: DashboardScope;
     groups: NamedRecord[];
     tags: NamedRecord[];
+    locations?: NamedRecord[];
 }>();
 
 const emit = defineEmits<(e: 'change', scope: DashboardScope) => void>();
@@ -69,6 +83,7 @@ const triggerRef = ref<HTMLElement | null>(null);
 const menuRef = ref<HTMLElement | null>(null);
 
 const isScoped = computed(() => props.scope.kind !== 'fleet');
+const locations = computed(() => props.locations ?? []);
 
 // Per-kind label builder. Lookup miss falls back to the kind + id so the
 // trigger never goes blank if the parent passes a scope that names a
@@ -81,7 +96,9 @@ const LABEL_BUILDERS: Record<
     group: (s) =>
         props.groups.find((g) => g.id === s.id)?.name ?? `Group ${s.id}`,
     tag: (s) => props.tags.find((t) => t.id === s.id)?.name ?? `Tag ${s.id}`,
-    location: (s) => `Location ${s.id ?? ''}`
+    location: (s) =>
+        locations.value.find((location) => location.id === s.id)?.name ??
+        `Location ${s.id ?? ''}`
 };
 
 const label = computed(() => LABEL_BUILDERS[props.scope.kind](props.scope));
@@ -163,7 +180,6 @@ onBeforeUnmount(() => {
     overflow-y: auto;
     background: var(--glass-4-bg);
     backdrop-filter: blur(var(--glass-4-blur));
-    -webkit-backdrop-filter: blur(var(--glass-4-blur));
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-xl);

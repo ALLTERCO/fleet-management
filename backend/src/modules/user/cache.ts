@@ -130,6 +130,27 @@ export function evictCachedUserByCredentialId(credentialId: string): number {
     return removed;
 }
 
+// Identity-provider account state per userId. Its TTL is the revocation bound
+// when no Zitadel event reaches Fleet; an event evicts the entry at once.
+const accountStates = new BoundedMap<string, boolean>({
+    maxSize: tuning.zitadel.accountStateCacheMax,
+    ttlMs: tuning.zitadel.accountStateTtlMs
+});
+
+export function getCachedAccountState(userId: string): boolean | undefined {
+    return accountStates.get(userId);
+}
+
+// Same eviction fence as cacheUser: a state read before an eviction is stale.
+export function cacheAccountState(
+    userId: string,
+    state: {active: boolean; evictionGeneration: number}
+): boolean {
+    if (state.evictionGeneration !== evictionGeneration) return false;
+    accountStates.set(userId, state.active);
+    return true;
+}
+
 // Evict every cached user_t for this userId — used when a role grant /
 // revoke lands so the next request re-introspects instead of serving the
 // pre-revoke shape from cache. Matches on user_t.userId (Zitadel sub) so
@@ -138,6 +159,7 @@ export function evictCachedUserByCredentialId(credentialId: string): number {
 // is acceptable at sub-millisecond latency for current caps.
 export function evictCachedUserByUserId(userId: string): number {
     evictionGeneration++;
+    accountStates.delete(userId);
     let removed = 0;
     for (const [hash, entry] of introspectedUsers) {
         if (entry.user.userId === userId) {

@@ -1,6 +1,7 @@
 import log4js from 'log4js';
 import {tuning} from '../../config';
 import * as Observability from '../Observability';
+import {isRedisWriteBackpressureError} from '../redis/commandBackpressure';
 import type {RedisStream} from '../redis/RedisStream';
 import {rateLimiter} from '../redis/services';
 import {blockingStream, commandStream} from '../redis/streamClients';
@@ -15,7 +16,7 @@ let lastSaturationCheckMs = 0;
 
 function getStream(): RedisStream {
     if (!stream) {
-        stream = commandStream(tuning.deviceEvents.streamKey);
+        stream = commandStream('device-event', tuning.deviceEvents.streamKey);
     }
     return stream;
 }
@@ -56,19 +57,23 @@ async function observeSaturation(s: RedisStream): Promise<void> {
     if (depth < tuning.deviceEvents.streamMaxlen) return;
     Observability.incrementCounter('device_event_stream_saturated');
     logger.warn(
-        'device-event stream saturated depth=%d cap=%d — raise FM_DEVICE_EVENTS_STREAM_MAXLEN or restore drainer throughput',
+        'device-event stream saturated depth=%d cap=%d — new event batches are rejected without trimming accepted events; restore drainer throughput',
         depth,
         tuning.deviceEvents.streamMaxlen
     );
 }
 
-async function appendWithTimeout(
+async function appendEntries(
     s: RedisStream,
     fields: Record<string, string>
 ): Promise<string | null> {
-    const timeoutMs = tuning.ingest.xaddTimeoutMs;
-    const append = s.append(fields, {
-        maxlen: tuning.deviceEvents.streamMaxlen,
+    // Do not wrap an uncancellable Redis write in a local timeout. Once EVAL
+    // is sent, a timeout cannot tell whether Redis committed it; reporting a
+    // failure would make a retry either lose or duplicate durable events.
+    // RedisStream's pending-command guard bounds memory while the command
+    // remains the single authoritative result.
+    return s.appendIfBelowCap(fields, {
+        cap: tuning.deviceEvents.streamMaxlen,
         ttlMs: tuning.deviceEvents.streamTtlMs,
         rateCheck: tuning.redis.rateLimitEnabled
             ? () =>
@@ -80,31 +85,6 @@ async function appendWithTimeout(
             : undefined,
         rateLabel: 'device_event'
     });
-    if (timeoutMs <= 0) return append;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-        return await Promise.race([
-            append,
-            new Promise<never>((_, reject) => {
-                timer = setTimeout(
-                    () =>
-                        reject(
-                            new Error(
-                                `device-event stream XADD timed out after ${timeoutMs}ms`
-                            )
-                        ),
-                    timeoutMs
-                );
-            })
-        ]);
-    } catch (err) {
-        append.catch((lateErr) =>
-            logger.warn('late device-event stream append failed: %s', lateErr)
-        );
-        throw err;
-    } finally {
-        if (timer) clearTimeout(timer);
-    }
 }
 
 export async function appendDeviceEventEntries(
@@ -112,10 +92,21 @@ export async function appendDeviceEventEntries(
 ): Promise<void> {
     if (entries.length === 0) return;
     const s = getStream();
-    const id = await appendWithTimeout(s, eventFields(entries));
+    const id = await appendEntries(s, eventFields(entries));
     if (id === null) {
         Observability.incrementCounter('device_event_stream_degraded');
-        return;
+        const atCapacity =
+            (await s.length()) >= tuning.deviceEvents.streamMaxlen;
+        if (atCapacity) {
+            Observability.incrementCounter(
+                'device_event_stream_capacity_rejected_total'
+            );
+        }
+        throw new Error(
+            atCapacity
+                ? `device-event stream at capacity (${tuning.deviceEvents.streamMaxlen})`
+                : 'device-event stream append was rate-limited'
+        );
     }
     Observability.incrementCounter('device_event_stream_appends');
     await observeSaturation(s);
@@ -128,6 +119,7 @@ export async function appendDeviceEventEntriesBestEffort(
         await appendDeviceEventEntries(entries);
     } catch (err) {
         Observability.incrementCounter('device_event_stream_append_errors');
+        if (isRedisWriteBackpressureError(err)) return;
         logger.error('device-event stream append failed: %s', err);
     }
 }

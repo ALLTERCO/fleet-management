@@ -35,7 +35,6 @@ const emit = defineEmits<{'select-all': []; clear: []; done: []}>();
     gap: var(--space-2);
     padding: var(--space-2) var(--space-3);
     background: var(--glass-4-bg);
-    -webkit-backdrop-filter: var(--glass-4-filter);
     backdrop-filter: var(--glass-4-filter);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-full);

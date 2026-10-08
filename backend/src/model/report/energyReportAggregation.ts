@@ -171,6 +171,10 @@ function applyTimeSeriesEconomics(
     request: EconomicsRequest
 ): TimeSeriesAggregation {
     const totals = emptyTimeSeriesTotals();
+    const energySums = {
+        consumption: emptyCompensatedSum(),
+        returned: emptyCompensatedSum()
+    };
     const voltageValues: number[] = [];
     const deviceAgg = new Map<number, DeviceAggregate>();
     for (const [key, row] of request.state.tsMap.entries()) {
@@ -181,17 +185,30 @@ function applyTimeSeriesEconomics(
             rate: request.rate,
             tariffMode: request.tariffMode,
             totals,
+            energySums,
             voltageValues,
             deviceAgg
         });
     }
+    totals.totalCons = compensatedValue(energySums.consumption);
+    totals.totalRet = compensatedValue(energySums.returned);
+    const tsRows = sortedReportRows(request.state.tsMap);
+    for (const row of tsRows) roundDisplayedEnergy(row);
     return {
         ...totals,
         avgVoltage: averageVoltage(voltageValues),
         deviceAgg,
-        tsRows: sortedReportRows(request.state.tsMap),
+        tsRows,
         estimatedKWh: 0
     };
+}
+
+function roundDisplayedEnergy(row: ReportRow): void {
+    for (const field of ['consumption_kwh', 'returned_kwh', 'net_kwh']) {
+        if (typeof row[field] === 'number') {
+            row[field] = +row[field].toFixed(3);
+        }
+    }
 }
 
 interface TimeSeriesTotals {
@@ -203,6 +220,29 @@ interface TimeSeriesTotals {
     nightCons: number;
     dayCost: number;
     nightCost: number;
+}
+
+interface CompensatedSum {
+    sum: number;
+    correction: number;
+}
+
+function emptyCompensatedSum(): CompensatedSum {
+    return {sum: 0, correction: 0};
+}
+
+function addCompensated(accumulator: CompensatedSum, value: number): void {
+    const next = accumulator.sum + value;
+    if (Math.abs(accumulator.sum) >= Math.abs(value)) {
+        accumulator.correction += accumulator.sum - next + value;
+    } else {
+        accumulator.correction += value - next + accumulator.sum;
+    }
+    accumulator.sum = next;
+}
+
+function compensatedValue(accumulator: CompensatedSum): number {
+    return accumulator.sum + accumulator.correction;
 }
 
 function emptyTimeSeriesTotals(): TimeSeriesTotals {
@@ -224,6 +264,10 @@ interface RowEconomicsRequest {
     rate: RateContext;
     tariffMode: string;
     totals: TimeSeriesTotals;
+    energySums: {
+        consumption: CompensatedSum;
+        returned: CompensatedSum;
+    };
     voltageValues: number[];
     deviceAgg: Map<number, DeviceAggregate>;
 }
@@ -281,8 +325,8 @@ function updateEnergyTotals(input: {
     returnedKWh: number;
     rate: number;
 }): void {
-    input.request.totals.totalCons += input.consumptionKWh;
-    input.request.totals.totalRet += input.returnedKWh;
+    addCompensated(input.request.energySums.consumption, input.consumptionKWh);
+    addCompensated(input.request.energySums.returned, input.returnedKWh);
     input.request.totals.totalCost += input.consumptionKWh * input.rate;
     if (
         typeof input.request.row.power_avg_w === 'number' &&
@@ -365,7 +409,7 @@ const PHASE_LABELS: Record<string, string> = {
 
 const PHASE_TAGS: Record<string, TagApplier> = {
     total_act_energy: (row, value) => {
-        row.consumption_kwh = whToKWh(value);
+        row.consumption_kwh = +whToKWh(value).toFixed(3);
     },
     power: (row, value) => {
         row.power_w = +value.toFixed(1);

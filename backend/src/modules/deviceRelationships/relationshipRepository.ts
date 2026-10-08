@@ -64,9 +64,10 @@ export async function loadRelationshipFacts(
         await loadIncludedNotificationRoutingFacts(context);
     const membershipFacts = await loadIncludedMembershipGraphFacts(context);
     const automationFacts = await loadNodeRedRelationshipFacts({
+        organizationId: context.organizationId,
         centerExternalId: context.centerExternalId,
         includes: context.includes,
-        canReadAutomations: context.permissions.actionsRead
+        canReadAutomations: context.permissions.automationsManage
     });
     return {
         centerExternalId: context.centerExternalId,

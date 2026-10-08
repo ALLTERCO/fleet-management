@@ -6,7 +6,7 @@
                 type="url"
                 autocomplete="off"
                 class="cfs__input"
-                placeholder="https://hooks.slack.com/services/…"
+                :placeholder="urlPlaceholder"
             />
         </FormField>
 
@@ -36,7 +36,15 @@ export interface SlackFieldsetForm {
 const props = defineProps<{
     showErrors: boolean;
     errors: ErrorMap;
+    /** Masked stored secrets from Channel.Get, keyed by config path. */
+    maskedFields?: Record<string, string>;
 }>();
+
+// A stored secret is never sent back; say so instead of showing an empty
+// field that looks like it was lost.
+const urlPlaceholder = computed(() =>
+    props.maskedFields?.url ? 'Unchanged' : 'https://hooks.slack.com/services/…'
+);
 
 const form = defineModel<SlackFieldsetForm>({required: true});
 

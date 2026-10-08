@@ -2,6 +2,7 @@
 import log4js from 'log4js';
 import {tuning} from '../../config';
 import * as Observability from '../Observability';
+import {ensureGroupReady} from '../redis/ensureGroupReady';
 import {getInstanceId} from '../redis/instanceId';
 import {recoverMissingGroup, type StreamEntry} from '../redis/RedisStream';
 import {bestEffort} from '../util/fireAndForget';
@@ -132,7 +133,12 @@ export async function processBatch(
 
 async function drainLane(lane: number, writer: IngestWriter): Promise<void> {
     const stream = getLane(lane);
-    await stream.ensureGroup(GROUP, '0');
+    await ensureGroupReady({
+        source: 'ingest-lane',
+        retryMs: tuning.ingest.drainerRetryMs,
+        isStopped: () => stopFlags.get(lane) === true,
+        ensure: () => stream.ensureGroup(GROUP, '0')
+    });
     let lastReclaimMs = 0;
     while (!stopFlags.get(lane)) {
         // PEL reclaim per lane.

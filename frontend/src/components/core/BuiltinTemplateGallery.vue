@@ -22,12 +22,30 @@
                         type="button"
                         class="btg__card"
                         :class="`btg__card--${template.severity}`"
+                        :disabled="!template.available"
                         @click="emit('pick', template)"
                     >
-                        <AlertSeverityBadge :severity="template.severity" />
+                        <span class="btg__card-top">
+                            <!-- Every kind already carries an icon; the gallery
+                                 was the one picker not using it, so templates
+                                 read as a wall of text. -->
+                            <i
+                                class="btg__card-icon"
+                                :class="iconFor(template.kind)"
+                                :style="{color: dotColor(section.category)}"
+                                aria-hidden="true"
+                            />
+                            <AlertSeverityBadge :severity="template.severity" />
+                        </span>
                         <h5 class="btg__card-title">{{ template.label }}</h5>
                         <p v-if="template.description" class="btg__card-desc">
                             {{ template.description }}
+                        </p>
+                        <p
+                            v-if="!template.available"
+                            class="btg__card-reason"
+                        >
+                            {{ template.unavailableReason }}
                         </p>
                     </button>
                 </div>
@@ -42,6 +60,7 @@
 
 <script setup lang="ts">
 import type {AlertRuleTemplate} from '@api/alert';
+import {describeRuleKind} from '@/helpers/ruleKinds';
 import {computed, onMounted, ref} from 'vue';
 import AlertSeverityBadge from '@/components/core/AlertSeverityBadge.vue';
 import {groupTemplatesByCategory} from '@/helpers/alertTemplateGrouping';
@@ -83,7 +102,8 @@ function matches(template: AlertRuleTemplate, term: string): boolean {
     return (
         template.label.toLowerCase().includes(term) ||
         (template.description?.toLowerCase().includes(term) ?? false) ||
-        template.kind.toLowerCase().includes(term) ||
+        (template.kind?.toLowerCase().includes(term) ?? false) ||
+        (template.unavailableReason?.toLowerCase().includes(term) ?? false) ||
         template.category.toLowerCase().includes(term)
     );
 }
@@ -103,9 +123,27 @@ const CATEGORY_COLOR: Record<string, string> = {
 function dotColor(category: string): string {
     return CATEGORY_COLOR[category] ?? 'var(--color-primary)';
 }
+
+function iconFor(kind: AlertRuleTemplate['kind']): string {
+    return kind === null
+        ? 'fa-solid fa-circle-info'
+        : describeRuleKind(kind).icon;
+}
 </script>
 
 <style scoped>
+.btg__card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    width: 100%;
+}
+
+.btg__card-icon {
+    font-size: var(--type-body);
+}
+
 .btg {
     display: flex;
     flex-direction: column;
@@ -198,6 +236,13 @@ function dotColor(category: string): string {
     margin: 0;
     font-size: var(--type-caption);
     color: var(--color-text-secondary);
+    line-height: var(--leading-normal);
+}
+
+.btg__card-reason {
+    margin: 0;
+    color: var(--color-warning-text);
+    font-size: var(--type-body);
     line-height: var(--leading-normal);
 }
 

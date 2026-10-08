@@ -7,6 +7,21 @@ export type OperationJobKind =
     | 'backup'
     | 'firmware';
 export type OperationJobStatus = 'queued' | 'running' | 'done' | 'failed';
+export type OperationJobControlState =
+    | 'active'
+    | 'cancel_requested'
+    | 'stopped'
+    | 'completed';
+
+export interface OperationJobControlSnapshot {
+    state: OperationJobControlState;
+    queuedCount: number;
+    claimedCount: number;
+    dispatchedCount: number;
+    stoppedCount: number;
+    unresolvedCount: number;
+    cancelRequestedAt: string | null;
+}
 
 export interface OperationJobSnapshot {
     id: string;
@@ -20,6 +35,7 @@ export interface OperationJobSnapshot {
     endedAt: string | null;
     createdBy: string | null;
     metadata: Record<string, unknown>;
+    control?: OperationJobControlSnapshot;
 }
 
 export interface OperationJobListActiveParams {
@@ -30,6 +46,20 @@ export interface OperationJobListActiveParams {
 export interface OperationJobGetParams {
     jobId: string;
     kind?: OperationJobKind;
+}
+
+export type OperationJobControlParams = OperationJobGetParams;
+
+export interface OperationJobActionCapability {
+    supported: boolean;
+    reason?: string;
+}
+
+export interface OperationJobCapabilitiesResponse {
+    kind: OperationJobKind;
+    inspect: OperationJobActionCapability;
+    cancel: OperationJobActionCapability;
+    resume: OperationJobActionCapability;
 }
 
 export interface OperationJobListResponse {
@@ -75,7 +105,32 @@ const JOB_SNAPSHOT_SCHEMA: JsonSchema = {
         startedAt: {type: ['string', 'null']},
         endedAt: {type: ['string', 'null']},
         createdBy: {type: ['string', 'null']},
-        metadata: {type: 'object', additionalProperties: true}
+        metadata: {type: 'object', additionalProperties: true},
+        control: {
+            type: 'object',
+            required: [
+                'state',
+                'queuedCount',
+                'claimedCount',
+                'dispatchedCount',
+                'stoppedCount',
+                'unresolvedCount',
+                'cancelRequestedAt'
+            ],
+            additionalProperties: false,
+            properties: {
+                state: {
+                    type: 'string',
+                    enum: ['active', 'cancel_requested', 'stopped', 'completed']
+                },
+                queuedCount: {type: 'integer', minimum: 0},
+                claimedCount: {type: 'integer', minimum: 0},
+                dispatchedCount: {type: 'integer', minimum: 0},
+                stoppedCount: {type: 'integer', minimum: 0},
+                unresolvedCount: {type: 'integer', minimum: 0},
+                cancelRequestedAt: {type: ['string', 'null']}
+            }
+        }
     }
 };
 
@@ -100,6 +155,30 @@ export const JOB_GET_PARAMS_SCHEMA: JsonSchema = {
     properties: {
         jobId: {type: 'string', minLength: 1},
         kind: JOB_KIND_SCHEMA
+    }
+};
+
+export const JOB_CONTROL_PARAMS_SCHEMA = JOB_GET_PARAMS_SCHEMA;
+
+const JOB_ACTION_CAPABILITY_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['supported'],
+    additionalProperties: false,
+    properties: {
+        supported: {type: 'boolean'},
+        reason: {type: 'string'}
+    }
+};
+
+export const JOB_CAPABILITIES_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['kind', 'inspect', 'cancel', 'resume'],
+    additionalProperties: false,
+    properties: {
+        kind: JOB_KIND_SCHEMA,
+        inspect: JOB_ACTION_CAPABILITY_SCHEMA,
+        cancel: JOB_ACTION_CAPABILITY_SCHEMA,
+        resume: JOB_ACTION_CAPABILITY_SCHEMA
     }
 };
 
@@ -135,5 +214,28 @@ export const JOB_DESCRIBE: DescribeOutput = new DescribeBuilder('job', {
         permission: {note: 'admin'},
         description:
             'Read one backend-owned operation job by id in the current tenant.'
+    })
+    .registerMethod('Capabilities', {
+        safety: {operation: 'read'},
+        params: JOB_CONTROL_PARAMS_SCHEMA,
+        response: JOB_CAPABILITIES_RESPONSE_SCHEMA,
+        permission: {note: 'admin'},
+        description:
+            'Read the safe control actions currently available for one job.'
+    })
+    .registerMethod('Cancel', {
+        safety: {operation: 'update', idempotent: true},
+        params: JOB_CONTROL_PARAMS_SCHEMA,
+        response: JOB_SNAPSHOT_SCHEMA,
+        permission: {note: 'admin'},
+        description: 'Stop remaining undispatched job work.'
+    })
+    .registerMethod('Resume', {
+        safety: {operation: 'update', idempotent: true},
+        params: JOB_CONTROL_PARAMS_SCHEMA,
+        response: JOB_SNAPSHOT_SCHEMA,
+        permission: {note: 'admin'},
+        description:
+            'Resume only stopped work known not to have been dispatched.'
     })
     .build();

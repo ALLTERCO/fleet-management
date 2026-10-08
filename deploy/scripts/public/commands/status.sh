@@ -19,15 +19,8 @@ cmd_status() {
     compose_cmd ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
 
     echo ""
-    local svc_status
-    local services=(fleet-manager fleet-db)
-    if [ "$FM_DEV_MODE" != "true" ]; then
-        services+=(zitadel-api)
-    fi
-    if [ "$WITH_SSL" = "true" ]; then
-        services+=(traefik)
-    fi
-    for svc in "${services[@]}"; do
+    local svc_status svc
+    while IFS= read -r svc; do
         svc_status="$(container_health_status "$(container_name "$svc")" 2>/dev/null || echo "unknown")"
         if [ "$svc_status" = "healthy" ]; then
             printf "  ${GREEN}✔${RESET}  %-18s %s\n" "$svc" "${GREEN}${svc_status}${RESET}"
@@ -36,11 +29,27 @@ cmd_status() {
         else
             printf "  ${RED}✘${RESET}  %-18s %s\n" "$svc" "${RED}${svc_status}${RESET}"
         fi
-    done
+    done < <(_status_services)
 
     _status_show_deployed
     _status_show_zitadel_actions
     echo ""
+}
+
+# Containers whose health status prints, one per line.
+_status_services() {
+    # Dev runs Fleet Manager from source, so only the database is a checked container.
+    if [ "$FM_DEV_MODE" = "true" ]; then
+        printf '%s\n' fleet-db
+    else
+        printf '%s\n' fleet-manager fleet-db zitadel-api
+    fi
+    if [ "$WITH_SSL" = "true" ]; then
+        printf '%s\n' traefik
+    fi
+    if [ "${WITH_NODERED:-false}" = "true" ]; then
+        printf '%s\n' nodered
+    fi
 }
 
 # Show what is actually deployed here — read straight from the deploy manifest.

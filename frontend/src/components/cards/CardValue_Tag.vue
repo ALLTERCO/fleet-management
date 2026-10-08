@@ -3,10 +3,10 @@
     <div
         v-if="size"
         class="tgc tgc--tile"
-        :class="[`tgc--${size}`, {'tgc-selected': selected}]"
-        tabindex="0"
-        @click="$emit('open-preview')"
-        @keydown.enter="$emit('open-preview')"
+        :class="[`tgc--${size}`, {'tgc-selected': selected, 'tgc-static': !clickable && !editMode}]"
+        :tabindex="clickable ? 0 : -1"
+        @click="clickable && $emit('open-preview')"
+        @keydown.enter="clickable && $emit('open-preview')"
     >
         <div class="tgc-bar" :class="healthBarClass" />
         <div class="tgc-tile-body">
@@ -85,6 +85,10 @@ const props = withDefaults(
         selected?: boolean;
         editMode?: boolean;
         resizable?: boolean;
+        /** False when the tile has no preview target — drops the pointer
+         *  cursor and the open-preview emit (dashboard sets this via the
+         *  detail resolver; the picker keeps the default). */
+        clickable?: boolean;
     }>(),
     {
         tag: undefined,
@@ -92,7 +96,8 @@ const props = withDefaults(
         size: undefined,
         selected: false,
         editMode: false,
-        resizable: true
+        resizable: true,
+        clickable: true
     }
 );
 
@@ -171,7 +176,6 @@ const cardAccent = computed(() => {
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-full);
     background: var(--glass-1-bg);
-    -webkit-backdrop-filter: var(--glass-1-filter);
     backdrop-filter: var(--glass-1-filter);
     cursor: pointer;
     transition:
@@ -192,6 +196,11 @@ const cardAccent = computed(() => {
 .tgc:focus-visible {
     outline: var(--focus-ring-width) solid var(--color-primary);
     outline-offset: var(--focus-ring-offset);
+}
+/* No preview target behind the tile — keep it visible, not click-inviting. */
+.tgc.tgc-static,
+.tgc.tgc-static:hover {
+    cursor: default;
 }
 .tgc-selected {
     box-shadow: var(--shadow-brand-ring);
@@ -259,9 +268,11 @@ const cardAccent = computed(() => {
 /* ── Dashboard tile mode ── */
 .tgc--tile {
     position: relative;
+    flex-direction: column;
     padding: 0;
     gap: 0;
     height: 100%;
+    border-radius: var(--radius-card);
     overflow: hidden;
 }
 .tgc-bar {

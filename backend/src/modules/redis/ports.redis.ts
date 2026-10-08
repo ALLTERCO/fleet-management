@@ -4,8 +4,20 @@ import {tuning} from '../../config';
 import {mergeStatusObjects} from '../../model/statusMerge';
 import type {TripPath} from '../eventReplay';
 import * as Observability from '../Observability';
+import {
+    isRedisWriteBackpressureError,
+    runWithRedisWriteCapacity
+} from './commandBackpressure';
 import {getInstanceId} from './instanceId';
+import {
+    createMcpConfirmationClaimsStore,
+    createMcpElicitationsStore,
+    createMcpStandingApprovalsStore
+} from './mcpConsent';
+import {createMcpEventStreamsStore} from './mcpEventStreams';
 import type {
+    BluetoothRouteCachePort,
+    BluetoothTelemetryArbiterPort,
     BulkAcceptJobRecord,
     BulkAcceptJobStorePort,
     DeviceIngestPort,
@@ -21,6 +33,12 @@ import type {
     LeadershipFactory,
     LeadershipOptions,
     LeadershipPort,
+    McpConfirmationClaimsPort,
+    McpElicitationsPort,
+    McpEventStreamsPort,
+    McpStandingApprovalsPort,
+    NodeRedEditorSessionPort,
+    NodeRedEditorSessionRecord,
     OrgSignal,
     OrgSignalsPort,
     RateLimitBucketSpec,
@@ -43,6 +61,116 @@ import {getSharedPubSub} from './RedisPubSub';
 import {waitingEntryTtlMs, wakeupPeriodFromStatus} from './waitingTtl';
 
 const logger = log4js.getLogger('redis-adapters');
+
+export const redisMcpEventStreams: McpEventStreamsPort = {
+    createSession: (principal, id) =>
+        createMcpEventStreamsStore(getSharedRedis().cmd).createSession(
+            principal,
+            id
+        ),
+    getSession: (id, principal, touch) =>
+        createMcpEventStreamsStore(getSharedRedis().cmd).getSession(
+            id,
+            principal,
+            touch
+        ),
+    deleteSession: (id, principal) =>
+        createMcpEventStreamsStore(getSharedRedis().cmd).deleteSession(
+            id,
+            principal
+        ),
+    subscribe: (id, principal, subscription) =>
+        createMcpEventStreamsStore(getSharedRedis().cmd).subscribe(
+            id,
+            principal,
+            subscription
+        ),
+    unsubscribe: (id, principal, uri) =>
+        createMcpEventStreamsStore(getSharedRedis().cmd).unsubscribe(
+            id,
+            principal,
+            uri
+        ),
+    listSubscriptions: (id, principal) =>
+        createMcpEventStreamsStore(getSharedRedis().cmd).listSubscriptions(
+            id,
+            principal
+        ),
+    updateCursor: (id, principal, uri, cursor, owner) =>
+        createMcpEventStreamsStore(getSharedRedis().cmd).updateCursor(
+            id,
+            principal,
+            uri,
+            cursor,
+            owner
+        ),
+    appendFrame: (id, principal, payload, owner) =>
+        createMcpEventStreamsStore(getSharedRedis().cmd).appendFrame(
+            id,
+            principal,
+            payload,
+            owner
+        ),
+    replay: (id, principal, afterId) =>
+        createMcpEventStreamsStore(getSharedRedis().cmd).replay(
+            id,
+            principal,
+            afterId
+        ),
+    acquireReader: (id, principal, owner) =>
+        createMcpEventStreamsStore(getSharedRedis().cmd).acquireReader(
+            id,
+            principal,
+            owner
+        ),
+    renewReader: (id, owner) =>
+        createMcpEventStreamsStore(getSharedRedis().cmd).renewReader(id, owner),
+    ownsReader: (id, owner) =>
+        createMcpEventStreamsStore(getSharedRedis().cmd).ownsReader(id, owner),
+    releaseReader: (id, owner) =>
+        createMcpEventStreamsStore(getSharedRedis().cmd).releaseReader(
+            id,
+            owner
+        ),
+    available: () => true
+};
+
+export const redisMcpStandingApprovals: McpStandingApprovalsPort = {
+    grant: (record, maxTotal) =>
+        createMcpStandingApprovalsStore(getSharedRedis().cmd).grant(
+            record,
+            maxTotal
+        ),
+    get: (id) => createMcpStandingApprovalsStore(getSharedRedis().cmd).get(id),
+    list: (scope) =>
+        createMcpStandingApprovalsStore(getSharedRedis().cmd).list(scope),
+    revoke: (id, scope) =>
+        createMcpStandingApprovalsStore(getSharedRedis().cmd).revoke(id, scope)
+};
+
+export const redisMcpConfirmationClaims: McpConfirmationClaimsPort = {
+    claim: (claim) =>
+        createMcpConfirmationClaimsStore(getSharedRedis().cmd).claim(claim)
+};
+
+const sharedMcpElicitations = (): McpElicitationsPort =>
+    createMcpElicitationsStore({
+        redis: getSharedRedis().cmd,
+        pubsub: getSharedPubSub()
+    });
+
+export const redisMcpElicitations: McpElicitationsPort = {
+    createSession: (session, limits) =>
+        sharedMcpElicitations().createSession(session, limits),
+    getSession: (id, ttlMs) => sharedMcpElicitations().getSession(id, ttlMs),
+    deleteSession: (id, binding) =>
+        sharedMcpElicitations().deleteSession(id, binding),
+    registerWait: (wait) => sharedMcpElicitations().registerWait(wait),
+    takeWait: (wait) => sharedMcpElicitations().takeWait(wait),
+    deliver: (delivery) => sharedMcpElicitations().deliver(delivery),
+    onDelivery: (instanceId, handler) =>
+        sharedMcpElicitations().onDelivery(instanceId, handler)
+};
 
 const orgChannel = (orgId: string) =>
     `${tuning.redis.pubsubChannelPrefix}:org:${orgId}`;
@@ -188,6 +316,231 @@ export const redisDeviceTrustCache: DeviceTrustCachePort = {
     }
 };
 
+const bluetoothRouteGenerationKey = (organizationId: string) =>
+    `${tuning.redis.keyPrefix}:blu-route-generation:${organizationId}`;
+const bluetoothGatewayRouteGenerationKey = (
+    organizationId: string,
+    gatewayExternalId: string
+) =>
+    `${tuning.redis.keyPrefix}:blu-route-generation:${organizationId}:${gatewayExternalId}`;
+const bluetoothRouteKey = (organizationId: string, gatewayExternalId: string) =>
+    `${tuning.redis.keyPrefix}:blu-route:${organizationId}:${gatewayExternalId}`;
+
+const BLU_ROUTE_SET_IF_CURRENT_LUA = `
+local current = (redis.call('GET', KEYS[1]) or '0') .. ':' ..
+                (redis.call('GET', KEYS[2]) or '0')
+if current ~= ARGV[1] then return 0 end
+redis.call('SET', KEYS[3], ARGV[2], 'EX', ARGV[3])
+return 1
+`.trim();
+
+export const redisBluetoothRouteCache: BluetoothRouteCachePort = {
+    async read(organizationId, gatewayExternalId) {
+        const routes = await redisBluetoothRouteCache.readMany(organizationId, [
+            gatewayExternalId
+        ]);
+        return (
+            routes.get(gatewayExternalId) ?? {
+                generation: '0:0',
+                payload: null
+            }
+        );
+    },
+    async readMany(organizationId, gatewayExternalIds) {
+        const gateways = [...new Set(gatewayExternalIds)];
+        if (gateways.length === 0) return new Map();
+        const {cmd} = getSharedRedis();
+        const keys = [bluetoothRouteGenerationKey(organizationId)];
+        for (const gatewayExternalId of gateways) {
+            keys.push(
+                bluetoothGatewayRouteGenerationKey(
+                    organizationId,
+                    gatewayExternalId
+                ),
+                bluetoothRouteKey(organizationId, gatewayExternalId)
+            );
+        }
+        const values = await cmd.mget(...keys);
+        const orgGeneration = values[0] ?? '0';
+        return new Map(
+            gateways.map((gatewayExternalId, index) => {
+                const gatewayGeneration = values[index * 2 + 1] ?? '0';
+                const stored = values[index * 2 + 2];
+                const generation = `${orgGeneration}:${gatewayGeneration}`;
+                if (!stored) {
+                    return [
+                        gatewayExternalId,
+                        {generation, payload: null}
+                    ] as const;
+                }
+                const newline = stored.indexOf('\n');
+                return [
+                    gatewayExternalId,
+                    {
+                        generation,
+                        payload:
+                            newline > 0 &&
+                            stored.slice(0, newline) === generation
+                                ? stored.slice(newline + 1)
+                                : null
+                    }
+                ] as const;
+            })
+        );
+    },
+    async setIfCurrent(
+        organizationId,
+        gatewayExternalId,
+        generation,
+        payload,
+        ttlSec
+    ) {
+        const {cmd} = getSharedRedis();
+        const result = await runWithRedisWriteCapacity(
+            cmd,
+            tuning.redis.writeMaxPendingCommands,
+            'blu-route-cache',
+            () =>
+                cmd.eval(
+                    BLU_ROUTE_SET_IF_CURRENT_LUA,
+                    3,
+                    bluetoothRouteGenerationKey(organizationId),
+                    bluetoothGatewayRouteGenerationKey(
+                        organizationId,
+                        gatewayExternalId
+                    ),
+                    bluetoothRouteKey(organizationId, gatewayExternalId),
+                    String(generation),
+                    `${generation}\n${payload}`,
+                    String(ttlSec)
+                )
+        );
+        return Number(result) === 1;
+    },
+    async setManyIfCurrent(organizationId, entries, ttlSec) {
+        if (entries.length === 0) return [];
+        const {cmd} = getSharedRedis();
+        const results = await runWithRedisWriteCapacity(
+            cmd,
+            tuning.redis.writeMaxPendingCommands,
+            'blu-route-cache',
+            async () => {
+                const pipeline = cmd.pipeline();
+                for (const entry of entries) {
+                    pipeline.eval(
+                        BLU_ROUTE_SET_IF_CURRENT_LUA,
+                        3,
+                        bluetoothRouteGenerationKey(organizationId),
+                        bluetoothGatewayRouteGenerationKey(
+                            organizationId,
+                            entry.gatewayExternalId
+                        ),
+                        bluetoothRouteKey(
+                            organizationId,
+                            entry.gatewayExternalId
+                        ),
+                        entry.generation,
+                        `${entry.generation}\n${entry.payload}`,
+                        String(ttlSec)
+                    );
+                }
+                return pipeline.exec();
+            }
+        );
+        if (!results || results.length !== entries.length) {
+            throw new Error('incomplete BLU route-cache pipeline response');
+        }
+        return results.map(([error, value]) => {
+            if (error) throw error;
+            return Number(value) === 1;
+        });
+    },
+    async invalidateGateway(organizationId, gatewayExternalId) {
+        const {cmd} = getSharedRedis();
+        return await cmd.incr(
+            bluetoothGatewayRouteGenerationKey(
+                organizationId,
+                gatewayExternalId
+            )
+        );
+    },
+    async invalidateOrg(organizationId) {
+        const {cmd} = getSharedRedis();
+        return await cmd.incr(bluetoothRouteGenerationKey(organizationId));
+    }
+};
+
+const bluetoothTelemetryOwnerKey = (
+    organizationId: string,
+    bluetoothDeviceListId: number
+) =>
+    `${tuning.redis.keyPrefix}:blu-telemetry-owner:${organizationId}:${bluetoothDeviceListId}`;
+
+const bluetoothTelemetryGraceKey = (
+    organizationId: string,
+    bluetoothDeviceListId: number
+) =>
+    `${tuning.redis.keyPrefix}:blu-telemetry-grace:${organizationId}:${bluetoothDeviceListId}`;
+
+const BLU_TELEMETRY_CLAIM_LUA = `
+local current = redis.call('GET', KEYS[1])
+if ARGV[2] == '1' then
+    redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[3])
+    redis.call('SET', KEYS[2], '1', 'PX', ARGV[3] * 2)
+    return 1
+end
+if current then
+  if current ~= ARGV[1] then
+    return 0
+  end
+    redis.call('PEXPIRE', KEYS[1], ARGV[3])
+    return 1
+end
+local grace_ttl = redis.call('PTTL', KEYS[2])
+if grace_ttl < 0 then
+    redis.call('SET', KEYS[2], '1', 'PX', ARGV[3] * 2)
+    return 0
+end
+if grace_ttl > tonumber(ARGV[3]) then
+    return 0
+end
+local claimed = redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[3], 'NX')
+return claimed and 1 or 0
+`.trim();
+
+export const redisBluetoothTelemetryArbiter: BluetoothTelemetryArbiterPort = {
+    async acceptMany(claims, ttlMs) {
+        if (claims.length === 0) return [];
+        const {coordination} = getSharedRedis();
+        const pipeline = coordination.pipeline();
+        for (const claim of claims) {
+            pipeline.eval(
+                BLU_TELEMETRY_CLAIM_LUA,
+                2,
+                bluetoothTelemetryOwnerKey(
+                    claim.organizationId,
+                    claim.bluetoothDeviceListId
+                ),
+                bluetoothTelemetryGraceKey(
+                    claim.organizationId,
+                    claim.bluetoothDeviceListId
+                ),
+                claim.gatewayExternalId,
+                claim.primary ? '1' : '0',
+                String(ttlMs)
+            );
+        }
+        const results = await pipeline.exec();
+        if (!results || results.length !== claims.length) {
+            throw new Error('BLU telemetry arbiter returned incomplete result');
+        }
+        return results.map(([error, value]) => {
+            if (error) throw error;
+            return Number(value) === 1;
+        });
+    }
+};
+
 const APPEND_ERROR_LOG_RATE = 100;
 let appendErrorCounter = 0;
 
@@ -238,12 +591,22 @@ export const redisIngressAudit: IngressAuditPort = {
         const {cmd} = getSharedRedis();
         try {
             const key = ingressAuditKey();
-            await cmd.rpush(key, record);
-            await cmd.ltrim(key, -maxlen, -1);
-            await cmd.pexpire(key, ttlMs);
+            await runWithRedisWriteCapacity(
+                cmd,
+                tuning.redis.writeMaxPendingCommands,
+                'ingress-audit',
+                async () => {
+                    await cmd.rpush(key, record);
+                    await cmd.ltrim(key, -maxlen, -1);
+                    await cmd.pexpire(key, ttlMs);
+                }
+            );
         } catch (err) {
             Observability.incrementCounter('ingress_audit_push_errors');
-            logger.warn('ingress-audit push failed: %s', err);
+            if (!isRedisWriteBackpressureError(err)) {
+                logger.warn('ingress-audit push failed: %s', err);
+            }
+            throw err;
         }
     },
     async drain(max: number): Promise<string[]> {
@@ -327,6 +690,10 @@ export function makeRedisEventReplayCache(): EventReplayCachePort<TripPath> {
     };
 }
 
+// allow-oom: a lease is a few bytes, and the leader is what drains the
+// streams that free memory; without it no node drains while Redis is full.
+const ACQUIRE_LUA = `#!lua flags=allow-oom
+return redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[2], 'NX')`;
 const RELEASE_LUA = `if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end`;
 const RENEW_LUA = `if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('pexpire', KEYS[1], ARGV[2]) else return 0 end`;
 
@@ -371,12 +738,12 @@ class RedisLeader implements LeadershipPort {
     async #tryAcquire(): Promise<void> {
         const {cmd} = getSharedRedis();
         try {
-            const res = await cmd.set(
+            const res = await cmd.eval(
+                ACQUIRE_LUA,
+                1,
                 this.#key,
                 this.#token,
-                'PX',
-                tuning.redis.leaderLeaseMs,
-                'NX'
+                String(tuning.redis.leaderLeaseMs)
             );
             if (res === 'OK') {
                 this.#isLeader = true;
@@ -456,9 +823,54 @@ export function makeRedisKvStore(): KvStorePort {
             } else {
                 await cmd.set(key, value);
             }
+        },
+        async setIfAbsent(key, value, ttlSec) {
+            const cmd = getSharedRedis().cmd;
+            const written =
+                ttlSec !== undefined
+                    ? await cmd.set(key, value, 'EX', ttlSec, 'NX')
+                    : await cmd.set(key, value, 'NX');
+            return written === 'OK';
+        },
+        async compareAndSet(key, expected, value, ttlSec) {
+            const swapped = await getSharedRedis().cmd.eval(
+                KV_COMPARE_AND_SET_LUA,
+                1,
+                key,
+                expected,
+                value,
+                ttlSec === undefined ? '0' : String(ttlSec)
+            );
+            return swapped === 1;
+        },
+        async compareAndDelete(key, expected) {
+            const deleted = await getSharedRedis().cmd.eval(
+                KV_COMPARE_AND_DELETE_LUA,
+                1,
+                key,
+                expected
+            );
+            return deleted === 1;
+        },
+        async delete(key) {
+            await getSharedRedis().cmd.del(key);
         }
     };
 }
+
+// One round trip: two nodes cannot both take the key from its last owner.
+const KV_COMPARE_AND_SET_LUA = `
+if redis.call('get', KEYS[1]) ~= ARGV[1] then return 0 end
+if tonumber(ARGV[3]) > 0 then
+  redis.call('set', KEYS[1], ARGV[2], 'EX', tonumber(ARGV[3]))
+else
+  redis.call('set', KEYS[1], ARGV[2], 'KEEPTTL')
+end
+return 1`;
+
+const KV_COMPARE_AND_DELETE_LUA = `
+if redis.call('get', KEYS[1]) ~= ARGV[1] then return 0 end
+return redis.call('del', KEYS[1])`;
 
 // All-or-nothing: check every bucket, then decrement all. Denial writes
 // nothing (returns 1-based denied index), so there is no refund race.
@@ -610,7 +1022,16 @@ const ownershipKey = (shellyID: string) =>
     `${tuning.redis.keyPrefix}:device:${shellyID}:owner`;
 const identityFenceKey = (shellyID: string) =>
     `${tuning.redis.keyPrefix}:device:${shellyID}:identity-fence`;
-const CLAIM_DEVICE_LUA = `if redis.call('exists', KEYS[2]) == 1 then return 0 end; local current = redis.call('get', KEYS[1]); if not current then redis.call('psetex', KEYS[1], ARGV[2], ARGV[1]); return 1 elseif current == ARGV[1] then redis.call('pexpire', KEYS[1], ARGV[2]); return 1 else return 0 end`;
+const CLAIM_DEVICE_LUA = `if redis.call('exists', KEYS[2]) == 1 then return 0 end; local current = redis.call('get', KEYS[1]); if not current or current == ARGV[4] or string.sub(current, 1, string.len(ARGV[1])) == ARGV[1] then redis.call('psetex', KEYS[1], ARGV[3], ARGV[2]); return 1 else return 0 end`;
+
+function ownershipToken(lease: import('./ports').DeviceOwnershipLease): string {
+    return `${lease.ownerId}:${lease.leaseId}`;
+}
+
+function ownershipOwner(token: string): string {
+    const separator = token.indexOf(':');
+    return separator === -1 ? token : token.slice(0, separator);
+}
 
 export const redisDeviceIdentityFence: import('./ports').DeviceIdentityFencePort =
     {
@@ -667,62 +1088,80 @@ export const redisDeviceIdentityFence: import('./ports').DeviceIdentityFencePort
     };
 
 export const redisDeviceOwnership: import('./ports').DeviceOwnershipPort = {
-    async claim(shellyID: string, ttlMs: number): Promise<boolean> {
-        const {cmd} = getSharedRedis();
+    async claim(lease, ttlMs): Promise<boolean> {
+        const {coordination} = getSharedRedis();
         try {
-            const token = getInstanceId();
-            const claimed = await cmd.eval(
+            const claimed = await coordination.eval(
                 CLAIM_DEVICE_LUA,
                 2,
-                ownershipKey(shellyID),
-                identityFenceKey(shellyID),
-                token,
-                String(ttlMs)
+                ownershipKey(lease.shellyID),
+                identityFenceKey(lease.shellyID),
+                `${lease.ownerId}:`,
+                ownershipToken(lease),
+                String(ttlMs),
+                lease.ownerId
             );
             return Number(claimed) === 1;
         } catch (err) {
             Observability.incrementCounter('device_ownership_errors_total');
-            logger.warn('claim failed shellyID=%s: %s', shellyID, err);
+            logger.warn('claim failed shellyID=%s: %s', lease.shellyID, err);
             return false;
         }
     },
-    async heartbeat(shellyID: string, ttlMs: number): Promise<boolean> {
-        const {cmd} = getSharedRedis();
-        try {
-            // Refresh the TTL only while the token still matches.
-            const renewed = await cmd.eval(
-                RENEW_LUA,
-                1,
-                ownershipKey(shellyID),
-                getInstanceId(),
-                String(ttlMs)
+    async heartbeatMany(leases, ttlMs): Promise<readonly boolean[]> {
+        const {coordination} = getSharedRedis();
+        const outcomes = await Promise.all(
+            leases.map(async (lease) => {
+                try {
+                    // Concurrent calls on one dedicated ioredis connection
+                    // remove one network wait per device while each key keeps
+                    // its own atomic token check.
+                    const renewed = await coordination.eval(
+                        RENEW_LUA,
+                        1,
+                        ownershipKey(lease.shellyID),
+                        ownershipToken(lease),
+                        String(ttlMs)
+                    );
+                    return {renewed: Number(renewed) === 1};
+                } catch (error) {
+                    return {renewed: false, error};
+                }
+            })
+        );
+        const errors = outcomes.filter((outcome) => 'error' in outcome);
+        if (errors.length > 0) {
+            Observability.incrementCounter(
+                'device_ownership_errors_total',
+                errors.length
             );
-            return Number(renewed) === 1;
-        } catch (err) {
-            Observability.incrementCounter('device_ownership_errors_total');
-            logger.warn('heartbeat failed shellyID=%s: %s', shellyID, err);
-            return false;
+            logger.warn(
+                'ownership heartbeat batch had %d Redis error(s): %s',
+                errors.length,
+                errors[0].error
+            );
         }
+        return outcomes.map((outcome) => outcome.renewed);
     },
-    async release(shellyID: string): Promise<void> {
-        const {cmd} = getSharedRedis();
+    async release(lease): Promise<void> {
+        const {coordination} = getSharedRedis();
         try {
-            await cmd.eval(
+            await coordination.eval(
                 RELEASE_LUA,
                 1,
-                ownershipKey(shellyID),
-                getInstanceId()
+                ownershipKey(lease.shellyID),
+                ownershipToken(lease)
             );
         } catch (err) {
             Observability.incrementCounter('device_ownership_errors_total');
-            logger.warn('release failed shellyID=%s: %s', shellyID, err);
+            logger.warn('release failed shellyID=%s: %s', lease.shellyID, err);
         }
     },
     async owner(shellyID: string): Promise<string | null> {
-        const {cmd} = getSharedRedis();
+        const {coordination} = getSharedRedis();
         try {
-            const res = await cmd.get(ownershipKey(shellyID));
-            return res ?? null;
+            const res = await coordination.get(ownershipKey(shellyID));
+            return res === null ? null : ownershipOwner(res);
         } catch (err) {
             Observability.incrementCounter('device_ownership_errors_total');
             logger.warn('owner lookup failed shellyID=%s: %s', shellyID, err);
@@ -748,6 +1187,10 @@ export const redisExportOwnership: import('./ports').ExportOwnershipPort = {
             logger.warn('export-owner get failed file=%s: %s', filename, err);
             return null;
         }
+    },
+    async delete(filename: string): Promise<void> {
+        const {cmd} = getSharedRedis();
+        await cmd.del(exportOwnershipKey(filename));
     }
 };
 
@@ -881,6 +1324,98 @@ export const redisDeviceGuiSessions: import('./ports').DeviceGuiSessionPort = {
                 if (/^[a-f0-9]{24}$/.test(sessionId)) handler(sessionId);
             }
         );
+    }
+};
+
+const editorSessionKeyPrefix = () =>
+    `${tuning.redis.keyPrefix}:node-red-editor-session:`;
+const editorSessionIndexKey = (userId: string) =>
+    `${tuning.redis.keyPrefix}:node-red-editor-user:${userId}`;
+// The index is scored by creation time; a session never outlives the max age,
+// so older members are dead and pruned on the way.
+const EDITOR_SESSION_PUT_LUA = `
+redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
+redis.call('ZADD', KEYS[2], ARGV[4], ARGV[3])
+redis.call('ZREMRANGEBYSCORE', KEYS[2], '-inf', '(' .. ARGV[7])
+redis.call('PEXPIRE', KEYS[2], ARGV[8])
+local excess = redis.call('ZCARD', KEYS[2]) - tonumber(ARGV[5])
+if excess > 0 then
+  local old = redis.call('ZRANGE', KEYS[2], 0, excess - 1)
+  for _, member in ipairs(old) do redis.call('DEL', ARGV[6] .. member) end
+  redis.call('ZREMRANGEBYRANK', KEYS[2], 0, excess - 1)
+end
+return 1
+`.trim();
+const EDITOR_SESSION_DELETE_USER_LUA = `
+local members = redis.call('ZRANGE', KEYS[1], 0, -1)
+for _, member in ipairs(members) do redis.call('DEL', ARGV[1] .. member) end
+redis.call('DEL', KEYS[1])
+return #members
+`.trim();
+
+function parseEditorSession(
+    raw: string | null
+): NodeRedEditorSessionRecord | null {
+    if (raw === null) return null;
+    const record = JSON.parse(raw) as Partial<NodeRedEditorSessionRecord>;
+    if (
+        typeof record.userId !== 'string' ||
+        typeof record.organizationId !== 'string' ||
+        typeof record.maxExpiresAt !== 'number' ||
+        typeof record.principal !== 'object'
+    ) {
+        logger.warn('discarding a malformed Node-RED editor session record');
+        return null;
+    }
+    return record as NodeRedEditorSessionRecord;
+}
+
+export const redisNodeRedEditorSessions: NodeRedEditorSessionPort = {
+    async put({key, record, ttlMs, perUserMax}) {
+        const {cmd} = getSharedRedis();
+        const maxAgeMs = Math.max(
+            record.maxExpiresAt - record.createdAt,
+            ttlMs
+        );
+        await cmd.eval(
+            EDITOR_SESSION_PUT_LUA,
+            2,
+            `${editorSessionKeyPrefix()}${key}`,
+            editorSessionIndexKey(record.userId),
+            JSON.stringify(record),
+            ttlMs,
+            key,
+            record.createdAt,
+            perUserMax,
+            editorSessionKeyPrefix(),
+            Date.now() - maxAgeMs,
+            maxAgeMs
+        );
+    },
+    async get(key) {
+        const {cmd} = getSharedRedis();
+        return parseEditorSession(
+            await cmd.get(`${editorSessionKeyPrefix()}${key}`)
+        );
+    },
+    async delete(key) {
+        const {cmd} = getSharedRedis();
+        const sessionKey = `${editorSessionKeyPrefix()}${key}`;
+        const record = parseEditorSession(await cmd.get(sessionKey));
+        const pipeline = cmd.multi();
+        pipeline.del(sessionKey);
+        if (record) pipeline.zrem(editorSessionIndexKey(record.userId), key);
+        await pipeline.exec();
+    },
+    async deleteForUser(userId) {
+        const {cmd} = getSharedRedis();
+        const deleted = await cmd.eval(
+            EDITOR_SESSION_DELETE_USER_LUA,
+            1,
+            editorSessionIndexKey(userId),
+            editorSessionKeyPrefix()
+        );
+        return Number(deleted);
     }
 };
 

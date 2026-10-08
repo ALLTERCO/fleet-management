@@ -101,7 +101,6 @@ const fullscreenLabel = computed(() =>
     padding: 0 var(--space-4);
     background: var(--glass-2-bg);
     backdrop-filter: var(--glass-2-filter);
-    -webkit-backdrop-filter: var(--glass-2-filter);
     border-bottom: 1px solid var(--glass-border);
     height: 56px;
     flex-shrink: 0;

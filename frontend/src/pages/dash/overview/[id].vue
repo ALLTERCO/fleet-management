@@ -12,6 +12,7 @@
                     :scope="scopeApi.current.value"
                     :groups="groupsList"
                     :tags="tagsList"
+                    :locations="locationsList"
                     @change="scopeApi.setScope"
                 />
                 <DashFleetPulse
@@ -125,7 +126,15 @@
                 <div class="od-stack">
                     <div class="od-panel">
                         <h3 class="od-panel-title">Power comparison</h3>
-                        <DashPeriodComparison :current="currentPower" :previous="previousPower" unit="W" :loading="loading" />
+                        <DashPeriodComparison
+                            :current="currentPower"
+                            :previous="previousPower"
+                            unit="W"
+                            current-label="Now"
+                            previous-label="Previous day"
+                            waiting-for="A day of readings is needed before there is a baseline"
+                            :loading="loading"
+                        />
                     </div>
                     <div class="od-panel">
                         <h3 class="od-panel-title">Uptime</h3>
@@ -168,20 +177,23 @@ import DashPowerBar from '@/components/dashboard/DashPowerBar.vue';
 import DashRenameModal from '@/components/dashboard/DashRenameModal.vue';
 import DashStatusDonut from '@/components/dashboard/DashStatusDonut.vue';
 import DashTimeChart from '@/components/dashboard/DashTimeChart.vue';
-import {useDashboardScope} from '@/composables/useDashboardScope';
+import {previousPeriodMean} from '@/components/dashboard/periodBaseline';
+import {
+    toApiDashboardScope,
+    useDashboardScope
+} from '@/composables/useDashboardScope';
 import {useDomainDashboardChrome} from '@/composables/useDomainDashboardChrome';
 import {useRollingBuffer} from '@/composables/useRollingBuffer';
 import {chartColors} from '@/helpers/chartUtils';
 import {fetchDashboardRecordSummary} from '@/helpers/dashboardRecord';
-import {filterByScope} from '@/helpers/dashboardScopeFilter';
 import {classifyDeviceType} from '@/helpers/dashboardUtils';
 import {formatDuration} from '@/helpers/format';
-import {buildLiveMetricsFromDevices} from '@/helpers/liveMetrics';
 import {logSettledRejections} from '@/helpers/promiseUtils';
 import {useAuthStore} from '@/stores/auth';
 import {useDashboardChromeStore} from '@/stores/dashboardChrome';
 import {useDevicesStore} from '@/stores/devices';
 import {useGroupsStore} from '@/stores/groups';
+import {useLocationsStore} from '@/stores/locations';
 import {useTagsStore} from '@/stores/tags';
 import * as ws from '@/tools/websocket';
 import type {
@@ -199,6 +211,7 @@ const isKiosk = document.body.classList.contains('kiosk');
 const route = useRoute();
 const groupsStore = useGroupsStore();
 const tagsStore = useTagsStore();
+const locationsStore = useLocationsStore();
 const authStore = useAuthStore();
 
 const scopeApi = useDashboardScope({
@@ -207,11 +220,21 @@ const scopeApi = useDashboardScope({
 
 const groupsList = computed(() => Object.values(groupsStore.groups));
 const tagsList = computed(() => Object.values(tagsStore.tags));
+const locationsList = computed(() =>
+    Object.values(locationsStore.locations)
+);
 const deviceStore = useDevicesStore();
 
 const dashboardId = computed(() => Number((route.params as {id: string}).id));
 const dashboardName = ref('Overview');
-const groupId = ref<number | null>(null);
+const groupId = computed(() =>
+    scopeApi.current.value.kind === 'group'
+        ? (scopeApi.current.value.id ?? null)
+        : null
+);
+const dashboardApiScope = computed(() =>
+    toApiDashboardScope(scopeApi.current.value)
+);
 const loading = ref(false);
 const liveMetrics = ref<any>(null);
 const error = ref<string | null>(null);
@@ -234,26 +257,9 @@ const allLiveDevices = computed(
         liveMetrics.value?.devices ?? []
 );
 
-// devices() respects the scope picker — every downstream computed reads from
-// this so the chart, bubble graph, and device table react together.
-const devices = computed(() =>
-    filterByScope(
-        allLiveDevices.value,
-        (d) => membershipOf(d.shellyID),
-        scopeApi.current.value
-    )
-);
-
-function membershipOf(shellyID: string) {
-    const dev = deviceStore.devices[shellyID];
-    if (!dev) return null;
-    return {
-        groupIds: dev.groupIds ?? [],
-        tagIds: dev.tagIds ?? [],
-        locationId: dev.locationId ?? null,
-        shellyID
-    };
-}
+// Fleet resolves the selected group/tag/location, descendants and custom
+// device suppression. The page never applies a second client-side scope.
+const devices = computed(() => allLiveDevices.value);
 
 const onlineCount = computed(
     () => devices.value.filter((device) => device.online).length
@@ -269,13 +275,7 @@ const onlineHistory = computed((): TimePoint[] =>
         return {bucket, value: entry.value};
     })
 );
-const totalDeviceCount = computed(() => {
-    if (groupId.value) {
-        const group = groupsStore.groups[groupId.value];
-        return group?.devices?.length ?? onlineCount.value;
-    }
-    return allShellyIds.value.length;
-});
+const totalDeviceCount = computed(() => devices.value.length);
 const offlineCount = computed(() => totalDeviceCount.value - onlineCount.value);
 
 const groupCount = computed(() => Object.keys(groupsStore.groups).length);
@@ -480,14 +480,16 @@ const deviceRows = computed((): DashDeviceRow[] => {
     });
 });
 
-// ── Power period comparison (live current vs historical avg) ──
+// ── Power period comparison (live power vs the previous day's mean) ──
+
+// The baseline is the day before this one. The mean of all seven stored days is
+// not "the previous period", and with nothing stored there is no baseline at all.
+const COMPARISON_PERIOD_MS = 24 * 60 * 60 * 1000;
 
 const currentPower = computed(() => metrics.value.power?.total ?? 0);
-const previousPower = computed(() => {
-    if (!histPowerData.value.length) return currentPower.value;
-    const sum = histPowerData.value.reduce((s, p) => s + p.value, 0);
-    return sum / histPowerData.value.length;
-});
+const previousPower = computed(() =>
+    previousPeriodMean(histPowerData.value, COMPARISON_PERIOD_MS, Date.now())
+);
 
 // ── Gauges ──
 
@@ -509,21 +511,22 @@ async function fetchDashboardRecord() {
     const dashboard = await fetchDashboardRecordSummary(dashboardId.value);
     if (dashboard) {
         dashboardName.value = dashboard.name ?? 'Overview';
-        groupId.value = dashboard.groupId;
+        scopeApi.setScope(dashboard.scope);
     }
 }
 
+function dashboardScopeParam(): {scope?: typeof dashboardApiScope.value} {
+    return Object.keys(dashboardApiScope.value).length > 0
+        ? {scope: dashboardApiScope.value}
+        : {};
+}
+
 async function fetchLiveData() {
-    if (groupId.value) {
-        const metricsRes = await ws.sendRPC(
-            'FLEET_MANAGER',
-            'fleet.GetMetrics',
-            {scope: {groupId: groupId.value}}
-        );
-        liveMetrics.value = metricsRes;
-    } else if (allShellyIds.value.length > 0) {
-        liveMetrics.value = buildLiveMetricsFromDevices(deviceStore.devices);
-    }
+    liveMetrics.value = await ws.sendRPC(
+        'FLEET_MANAGER',
+        'fleet.GetMetrics',
+        dashboardScopeParam()
+    );
 }
 
 // ── Historical data from DB ──
@@ -557,16 +560,10 @@ async function fetchHistorical() {
             electricalSource: 'ac_mains',
             bucket: granToBucket[g]
         };
-        return groupId.value
-            ? ws.sendRPC<{items: any[]}>('FLEET_MANAGER', 'energy.query', {
-                  ...params,
-                  scope: {groupId: groupId.value}
-              })
-            : ws.sendRPC<{items: any[]}>(
-                  'FLEET_MANAGER',
-                  'energy.query',
-                  params
-              );
+        return ws.sendRPC<{items: any[]}>('FLEET_MANAGER', 'energy.query', {
+            ...params,
+            ...dashboardScopeParam()
+        });
     };
 
     const [powerRes, voltageRes] = await Promise.all([
@@ -595,16 +592,11 @@ async function fetchHistorical() {
             to,
             tags: ['temperature']
         };
-        const tempRes = groupId.value
-            ? await ws.sendRPC<any>('FLEET_MANAGER', 'energy.query', {
-                  ...tempParams,
-                  scope: {groupId: groupId.value}
-              })
-            : await ws.sendRPC<any>(
-                  'FLEET_MANAGER',
-                  'energy.query',
-                  tempParams
-              );
+        const tempRes = await ws.sendRPC<any>(
+            'FLEET_MANAGER',
+            'energy.query',
+            {...tempParams, ...dashboardScopeParam()}
+        );
         const tempPoints = (tempRes?.items ?? []).map((r: any) => ({
             bucket: r.bucket,
             value: Number(r.value ?? 0)
@@ -665,11 +657,19 @@ function startRefresh() {
 watch(
     allShellyIds,
     (ids) => {
-        if (ids.length > 0 && !groupId.value && !liveMetrics.value) {
+        if (ids.length > 0 && !liveMetrics.value) {
             load();
         }
     },
     {immediate: false}
+);
+
+watch(
+    () => scopeApi.current.value,
+    async () => {
+        if (loading.value) return;
+        await Promise.allSettled([fetchLiveData(), fetchHistorical()]);
+    }
 );
 
 // ── Lifecycle ──

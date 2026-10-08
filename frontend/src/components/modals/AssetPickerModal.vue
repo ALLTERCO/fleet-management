@@ -63,7 +63,7 @@
             >
                 <div class="apm__library-head">
                     <div
-                        class="search-pill apm__library-search"
+                        class="search-pill search-pill--buttons apm__library-search"
                         :class="{
                             'search-pill__input--filtered':
                                 activeContext !== 'all'
@@ -362,6 +362,7 @@ import Input from '@/components/core/Input.vue';
 import MdiIconPicker from '@/components/core/MdiIconPicker.vue';
 import Spinner from '@/components/core/Spinner.vue';
 import {BUNDLED_DEVICE_IMAGES} from '@/helpers/deviceImageManifest';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import Modal from './Modal.vue';
 
 type TabId = 'picture' | 'icon';
@@ -533,7 +534,7 @@ async function loadLibrary(): Promise<void> {
         assets.value = result.items;
     } catch (err) {
         if (myToken !== loadToken) return;
-        loadError.value = err instanceof Error ? err.message : String(err);
+        loadError.value = rpcErrorMessage(err);
     } finally {
         if (myToken === loadToken) loading.value = false;
     }
@@ -578,7 +579,7 @@ async function onUpload(): Promise<void> {
                       : err.detail;
         } else {
             uploadError.value =
-                err instanceof Error ? err.message : String(err);
+                rpcErrorMessage(err);
         }
     } finally {
         uploading.value = false;
@@ -611,7 +612,7 @@ async function onRename(asset: VisualAsset): Promise<void> {
             a.id === asset.id ? updated : a
         );
     } catch (err) {
-        loadError.value = err instanceof Error ? err.message : String(err);
+        loadError.value = rpcErrorMessage(err);
     }
 }
 
@@ -713,7 +714,6 @@ onBeforeUnmount(clearUploadPreview);
     gap: var(--gap-sm);
     padding: var(--space-1);
     background: var(--glass-2-bg);
-    -webkit-backdrop-filter: var(--glass-2-filter);
     backdrop-filter: var(--glass-2-filter);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-full);
@@ -827,7 +827,6 @@ onBeforeUnmount(clearUploadPreview);
     display: grid;
     gap: var(--space-0-5);
     background: var(--glass-4-bg);
-    -webkit-backdrop-filter: var(--glass-4-filter);
     backdrop-filter: var(--glass-4-filter);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);

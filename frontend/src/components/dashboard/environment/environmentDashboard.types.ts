@@ -150,12 +150,15 @@ export interface EnvMeta {
     to: string;
     granularity: string;
     generatedAt: number;
-    /** Percent of scoped sensors that reported at least one live reading. */
-    dataQualityPct: number;
+    /**
+     * Percent of scoped sensors that reported at least one live reading —
+     * reporting uptime, not data quality. Bucket coverage is quality.overallPct.
+     */
+    sensorsReportingPct: number;
 }
 
 export interface EnvironmentDashboardInput {
-    meta: Omit<EnvMeta, 'dataQualityPct'>;
+    meta: Omit<EnvMeta, 'sensorsReportingPct'>;
     live: EnvLiveMetrics;
     history: EnvHistoryRow[];
     events: EnvEventRow[];

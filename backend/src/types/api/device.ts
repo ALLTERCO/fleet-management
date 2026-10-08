@@ -8,6 +8,7 @@ import {DescribeBuilder, type DescribeOutput} from './_describe';
 import type {JsonSchema} from './_schema';
 import {SHELLY_ID_SCHEMA} from './_shared';
 import {DEVICE_KIND_SET_PARAMS_SCHEMA} from './deviceKind';
+import {DEVICE_SOURCE_VALUES} from './deviceSource';
 
 const RESP_OPAQUE: JsonSchema = {
     type: 'object',
@@ -23,9 +24,183 @@ const RESP_LIST_ENVELOPE: JsonSchema = {
         total: {type: 'integer'},
         limit: {type: 'integer'},
         offset: {type: 'integer'},
-        has_more: {type: 'boolean'}
+        has_more: {type: 'boolean'},
+        next_cursor: {
+            type: ['string', 'null'],
+            description:
+                'Pass as `cursor` for the next page. null on the last page.'
+        }
     },
     description: 'Fleet Manager list envelope'
+};
+
+/** Largest page device.list serves; a bigger limit is served as this. */
+export const DEVICE_LIST_MAX_LIMIT = 1000;
+/** Most devices one device.list `shellyIDs` read may name. */
+export const DEVICE_LIST_MAX_IDS = 100;
+
+// info/status/settings/meta are the device's own payload, so they stay open —
+// they differ by model and by whether the row is live, virtual or BLU.
+const RESP_DEVICE_BLOB: JsonSchema = {
+    type: 'object',
+    additionalProperties: true
+};
+
+const RESP_DEVICE_CAPABILITIES: JsonSchema = {
+    type: 'object',
+    // Open on purpose: a new firmware capability must not invalidate the shape.
+    additionalProperties: true,
+    properties: {
+        backup: {type: 'boolean'},
+        restore: {type: 'boolean'},
+        firmwareUpdate: {type: 'boolean'},
+        firmwareCheck: {type: 'boolean'},
+        otaCommit: {type: 'boolean'},
+        matter: {type: 'boolean'},
+        tlsUserCA: {type: 'boolean'},
+        tlsClientCert: {type: 'boolean'},
+        xmod: {type: 'boolean'},
+        ir: {type: 'boolean'},
+        service: {type: 'boolean'},
+        serviceResetCounters: {type: 'boolean'},
+        virtualComponents: {type: 'boolean'},
+        addons: {type: 'array', items: {type: 'string'}},
+        ui: {type: 'object', additionalProperties: true}
+    }
+};
+
+// Full device JSON: toJSON() plus the memberships and the two stamped columns.
+const RESP_DEVICE_FULL: JsonSchema = {
+    type: 'object',
+    required: [
+        'shellyID',
+        'id',
+        'source',
+        'info',
+        'status',
+        'settings',
+        'presence',
+        'entities',
+        'capabilities',
+        'meta',
+        'groupIds',
+        'locationId',
+        'tagIds',
+        'kind',
+        'costCenter'
+    ],
+    additionalProperties: false,
+    properties: {
+        shellyID: SHELLY_ID_SCHEMA,
+        id: {type: 'integer'},
+        source: {
+            anyOf: [
+                {type: 'string', enum: [...DEVICE_SOURCE_VALUES]},
+                {type: 'null'}
+            ]
+        },
+        info: RESP_DEVICE_BLOB,
+        status: RESP_DEVICE_BLOB,
+        settings: RESP_DEVICE_BLOB,
+        presence: {type: 'string', enum: ['online', 'offline', 'pending']},
+        entities: {type: 'array', items: {type: 'string'}},
+        capabilities: RESP_DEVICE_CAPABILITIES,
+        methods: {type: 'array', items: {type: 'string'}},
+        meta: RESP_DEVICE_BLOB,
+        profile: {type: 'object', additionalProperties: true},
+        lastSeenSleepingMs: {type: 'integer'},
+        // The handler always stamps these, even when the device has none.
+        groupIds: {type: 'array', items: {type: 'integer'}},
+        locationId: {type: ['integer', 'null']},
+        tagIds: {type: 'array', items: {type: 'integer'}},
+        kind: {type: ['string', 'null']},
+        costCenter: {type: ['string', 'null']}
+    },
+    description: 'Full device JSON (info + status + settings)'
+};
+
+// A device the caller cannot reach is reported refused, never dropped, so
+// results always has one entry per requested device.
+const RESP_CALL_MANY: JsonSchema = {
+    type: 'object',
+    required: ['method', 'requested', 'succeeded', 'failed', 'results'],
+    additionalProperties: false,
+    properties: {
+        method: {type: 'string'},
+        requested: {type: 'integer', minimum: 0},
+        succeeded: {type: 'integer', minimum: 0},
+        failed: {type: 'integer', minimum: 0},
+        results: {
+            type: 'array',
+            items: {
+                anyOf: [
+                    {
+                        type: 'object',
+                        required: ['shellyID', 'ok', 'result'],
+                        additionalProperties: false,
+                        properties: {
+                            shellyID: SHELLY_ID_SCHEMA,
+                            ok: {const: true},
+                            result: {
+                                description:
+                                    'Device-defined; may be absent for a void reply.'
+                            }
+                        }
+                    },
+                    {
+                        type: 'object',
+                        required: ['shellyID', 'ok', 'error'],
+                        additionalProperties: false,
+                        properties: {
+                            shellyID: SHELLY_ID_SCHEMA,
+                            ok: {const: false},
+                            error: {type: 'string'}
+                        }
+                    }
+                ]
+            }
+        }
+    }
+};
+
+const RESP_EM_CHANNEL: JsonSchema = {
+    type: 'object',
+    required: ['channel', 'act_power', 'voltage', 'current'],
+    additionalProperties: false,
+    properties: {
+        channel: {type: 'integer', minimum: 0},
+        act_power: {type: ['number', 'null']},
+        voltage: {type: ['number', 'null']},
+        current: {type: ['number', 'null']}
+    }
+};
+
+// An unknown or offline device reports empty arrays rather than an error.
+const RESP_DEVICE_CHANNELS: JsonSchema = {
+    type: 'object',
+    required: ['emChannels', 'em1Channels'],
+    additionalProperties: false,
+    properties: {
+        emChannels: {type: 'array', items: RESP_EM_CHANNEL},
+        em1Channels: {type: 'array', items: RESP_EM_CHANNEL}
+    }
+};
+
+// profile -> config name -> either the config blob (mode=json) or the
+// serialized setconfig requests (mode=rpc). Keys are user-defined at all
+// levels, and permission filtering decides which profiles a caller sees.
+const RESP_SETUP_PROFILES: JsonSchema = {
+    type: 'object',
+    description: 'Config profiles keyed by profile name',
+    additionalProperties: {
+        type: 'object',
+        additionalProperties: {
+            anyOf: [
+                {type: 'object', additionalProperties: true},
+                {type: 'array', items: {type: 'string'}}
+            ]
+        }
+    }
 };
 
 const RAW_RPC_METHOD: JsonSchema = {
@@ -46,20 +221,88 @@ export interface DeviceListParams {
     filters?: Record<string, unknown>;
     limit?: number;
     offset?: number;
+    cursor?: string;
+    shellyIDs?: string[];
     include?: string[];
 }
+// Enumerated rather than open. An open filter object accepted any key and the
+// list quietly matched nothing, so `filters: {locationId: 7}` returned an empty
+// fleet instead of an error. Naming them here is what lets the API, the docs
+// and the host SDK agree on the answer.
+export const DEVICE_LIST_FILTERS_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    description:
+        'All supplied filters must match. locationId is the one location a device sits in; groupId and tagId ask whether it is a member.',
+    properties: {
+        shellyID: SHELLY_ID_SCHEMA,
+        id: {type: 'integer'},
+        source: {type: 'string', enum: [...DEVICE_SOURCE_VALUES]},
+        presence: {type: 'string', enum: ['online', 'offline', 'pending']},
+        locationId: {type: 'integer'},
+        groupId: {type: 'integer'},
+        tagId: {type: 'integer'},
+        model: {
+            type: 'string',
+            description: 'Hardware model, e.g. SNSW-001X16EU'
+        },
+        kind: {
+            type: 'string',
+            description:
+                'Assigned device kind. Only physical devices carry one.'
+        },
+        battery: {
+            type: 'boolean',
+            description:
+                'Battery-powered devices, the ones that sleep between wakeups. Virtual and BLU records are skipped, not reported false.'
+        },
+        component: {
+            type: 'string',
+            description:
+                'Devices having this component type, e.g. switch, em, light.'
+        }
+    }
+};
+
 export const DEVICE_LIST_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
     additionalProperties: true,
     properties: {
-        filters: {type: 'object', additionalProperties: true},
+        filters: DEVICE_LIST_FILTERS_SCHEMA,
         limit: {
             type: 'integer',
             minimum: 0,
-            description: '0 = unlimited, default 500'
+            description: `Default 500. A limit above ${DEVICE_LIST_MAX_LIMIT} is served as ${DEVICE_LIST_MAX_LIMIT}. 0 returns every row on an offset page and ${DEVICE_LIST_MAX_LIMIT} on a cursor page.`
         },
-        offset: {type: 'integer', minimum: 0},
-        include: {type: 'array', items: {type: 'string'}}
+        offset: {
+            type: 'integer',
+            minimum: 0,
+            description: 'Not with `cursor`.'
+        },
+        cursor: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 200,
+            description:
+                '`next_cursor` of the previous page. Rows are ordered by device row id, so a device added while paging comes last and no row repeats or is skipped. Not with `offset`.'
+        },
+        shellyIDs: {
+            type: 'array',
+            items: SHELLY_ID_SCHEMA,
+            minItems: 1,
+            maxItems: DEVICE_LIST_MAX_IDS,
+            description:
+                'Read only these devices, after `filters`. Each is checked for device read access like Device.Get; an unknown or unreadable id is left out.'
+        },
+        include: {
+            type: 'array',
+            items: {type: 'string'},
+            description:
+                'Extra detail for each row, which is short by default. ' +
+                "'status' returns the full status and 'settings' the full settings. " +
+                "'sys' returns the full sys section instead of three fields. " +
+                "Any other value names a status section and returns it in full, for example 'eth' adds ip6."
+        }
     }
 };
 
@@ -136,6 +379,40 @@ export const DEVICE_CALL_PARAMS_SCHEMA: JsonSchema = {
     additionalProperties: false,
     properties: {
         shellyID: SHELLY_ID_SCHEMA,
+        method: RAW_RPC_METHOD,
+        params: RAW_RPC_PARAMS
+    }
+};
+
+/**
+ * The same call, on many devices, as ONE action.
+ *
+ * Without this an agent asked to "turn the kitchen lights off" issued one
+ * device.Call per lamp, and a human approving that saw one prompt per lamp.
+ * People click through twelve prompts, which trains them not to read the
+ * thirteenth — the exact failure approval exists to prevent.
+ *
+ * Permission is still checked per device, so this widens nothing: it is one
+ * decision over a set the human can see, not one decision that skips checks.
+ */
+export interface DeviceCallManyParams {
+    shellyIDs: string[];
+    method: string;
+    params?: Record<string, unknown>;
+}
+
+export const DEVICE_CALL_MANY_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['shellyIDs', 'method'],
+    additionalProperties: false,
+    properties: {
+        shellyIDs: {
+            type: 'array',
+            items: SHELLY_ID_SCHEMA,
+            minItems: 1,
+            description:
+                'Every device to run the method on. Each is permission-checked separately.'
+        },
         method: RAW_RPC_METHOD,
         params: RAW_RPC_PARAMS
     }
@@ -572,7 +849,8 @@ b.registerMethod('List', {
     params: DEVICE_LIST_PARAMS_SCHEMA,
     response: RESP_LIST_ENVELOPE,
     permission: PERM_NONE,
-    description: 'Paginated slim device list (capability-filtered per user).',
+    description:
+        'Paginated slim device list (capability-filtered per user), ordered by device row id. Page with `cursor`; `shellyIDs` reads up to 100 named devices in one call.',
     safety: {operation: 'read'}
 });
 
@@ -598,10 +876,7 @@ b.registerMethod('GetInfo', {
 
 b.registerMethod('GetSetup', {
     params: DEVICE_GET_SETUP_PARAMS_SCHEMA,
-    response: {
-        type: 'object',
-        description: 'Config profiles keyed by profile name'
-    },
+    response: RESP_SETUP_PROFILES,
     permission: {
         component: 'configurations',
         operation: 'read',
@@ -619,12 +894,18 @@ b.registerMethod('Call', {
         'Raw device RPC escape hatch for advanced/admin integrations. Prefer semantic Fleet Manager APIs for product flows.'
 });
 
+b.registerMethod('CallMany', {
+    safety: {effectDependsOnInput: true},
+    params: DEVICE_CALL_MANY_PARAMS_SCHEMA,
+    response: RESP_CALL_MANY,
+    permission: PERM_EXECUTE,
+    description:
+        'Run one device RPC across several devices as a SINGLE action, so an operator approves one prompt naming every device rather than one prompt each. Permission is still checked per device; this batches the decision, never the checks.'
+});
+
 b.registerMethod('Get', {
     params: DEVICE_SHELLY_ONLY_PARAMS_SCHEMA,
-    response: {
-        type: 'object',
-        description: 'Full device JSON (info + status + settings)'
-    },
+    response: RESP_DEVICE_FULL,
     permission: {
         component: 'devices',
         operation: 'read',
@@ -731,6 +1012,48 @@ const DEVICE_REPLACEMENT_POINT_SCHEMA: JsonSchema = {
     }
 };
 
+const DEVICE_REPLACEMENT_BINDING_REQUIREMENT_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+        'bindingId',
+        'virtualDeviceListId',
+        'roleKey',
+        'componentKey',
+        'componentType',
+        'valueType',
+        'unit',
+        'series',
+        'valuePath',
+        'field',
+        'sensorSource',
+        'commodity',
+        'electricalSource',
+        'transform',
+        'objectId'
+    ],
+    properties: {
+        bindingId: {type: 'string'},
+        virtualDeviceListId: {type: 'integer'},
+        roleKey: {type: 'string'},
+        componentKey: {type: 'string'},
+        componentType: {type: 'string'},
+        valueType: {type: ['string', 'null']},
+        unit: {type: ['string', 'null']},
+        series: {
+            type: 'string',
+            enum: ['status', 'sensor_numeric', 'sensor_event', 'energy']
+        },
+        valuePath: {type: 'string'},
+        field: {type: 'string'},
+        sensorSource: {type: ['string', 'null']},
+        commodity: {type: ['string', 'null']},
+        electricalSource: {type: ['string', 'null']},
+        transform: {type: 'object', additionalProperties: true},
+        objectId: {type: ['integer', 'null']}
+    }
+};
+
 const DEVICE_CHECK_REPLACEMENT_RESPONSE: JsonSchema = {
     type: 'object',
     additionalProperties: false,
@@ -744,6 +1067,9 @@ const DEVICE_CHECK_REPLACEMENT_RESPONSE: JsonSchema = {
         'available',
         'missing',
         'remapCandidates',
+        'bindingRequirements',
+        'missingBindings',
+        'bindingRemapCandidates',
         'warnings'
     ],
     properties: {
@@ -778,6 +1104,51 @@ const DEVICE_CHECK_REPLACEMENT_RESPONSE: JsonSchema = {
                     candidates: {
                         type: 'array',
                         items: DEVICE_REPLACEMENT_POINT_SCHEMA
+                    }
+                }
+            }
+        },
+        bindingRequirements: {
+            type: 'array',
+            items: DEVICE_REPLACEMENT_BINDING_REQUIREMENT_SCHEMA
+        },
+        missingBindings: {
+            type: 'array',
+            items: DEVICE_REPLACEMENT_BINDING_REQUIREMENT_SCHEMA
+        },
+        bindingRemapCandidates: {
+            type: 'array',
+            items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['required', 'candidates'],
+                properties: {
+                    required: DEVICE_REPLACEMENT_BINDING_REQUIREMENT_SCHEMA,
+                    candidates: {
+                        type: 'array',
+                        items: {
+                            type: 'object',
+                            additionalProperties: false,
+                            required: [
+                                'componentKey',
+                                'componentType',
+                                'valueType',
+                                'unit',
+                                'objectId',
+                                'sourceSnapshot'
+                            ],
+                            properties: {
+                                componentKey: {type: 'string'},
+                                componentType: {type: 'string'},
+                                valueType: {type: ['string', 'null']},
+                                unit: {type: ['string', 'null']},
+                                objectId: {type: ['integer', 'null']},
+                                sourceSnapshot: {
+                                    type: 'object',
+                                    additionalProperties: true
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -824,6 +1195,174 @@ b.registerMethod('GetKind', {
     permission: PERM_READ,
     description:
         'Get the catalog kind classification for a device (null = unclassified).'
+});
+
+export interface DeviceSetJournalDebugParams {
+    shellyID: string;
+    minutes: number;
+}
+
+export const DEVICE_SET_JOURNAL_DEBUG_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['shellyID', 'minutes'],
+    additionalProperties: false,
+    properties: {
+        shellyID: SHELLY_ID_SCHEMA,
+        minutes: {
+            type: 'integer',
+            minimum: 0,
+            maximum: 240,
+            description:
+                'How long every frame of the device is journaled. 0 turns it off.'
+        }
+    }
+};
+
+const DEVICE_SET_JOURNAL_DEBUG_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['shellyID', 'until'],
+    additionalProperties: false,
+    properties: {
+        shellyID: {type: 'string'},
+        until: {
+            type: ['string', 'null'],
+            format: 'date-time',
+            description: 'When debug ends by itself; null when it is off.'
+        }
+    }
+};
+
+b.registerMethod('SetJournalDebug', {
+    params: DEVICE_SET_JOURNAL_DEBUG_PARAMS_SCHEMA,
+    response: DEVICE_SET_JOURNAL_DEBUG_RESPONSE,
+    permission: {component: 'devices', operation: 'update' as const},
+    description:
+        'Journal every frame of one device for a set time (the event journal keeps only real events by default). At most 20 devices per tenant.'
+});
+
+export interface DeviceSetEmLiveDebugParams {
+    shellyID: string;
+    enabled: boolean;
+}
+
+export const DEVICE_SET_EM_LIVE_DEBUG_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['shellyID', 'enabled'],
+    additionalProperties: false,
+    properties: {
+        shellyID: SHELLY_ID_SCHEMA,
+        enabled: {
+            type: 'boolean',
+            description:
+                'true starts (or extends) the capture; false stops it and deletes what it captured.'
+        }
+    }
+};
+
+export interface DeviceSetEmLiveDebugResult {
+    shellyID: string;
+    until: string | null;
+}
+
+const DEVICE_SET_EM_LIVE_DEBUG_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['shellyID', 'until'],
+    additionalProperties: false,
+    properties: {
+        shellyID: {type: 'string'},
+        until: {
+            type: ['string', 'null'],
+            format: 'date-time',
+            description:
+                'When the capture stops and its values are deleted; null when it is off.'
+        }
+    }
+};
+
+b.registerMethod('SetEmLiveDebug', {
+    params: DEVICE_SET_EM_LIVE_DEBUG_PARAMS_SCHEMA,
+    response: DEVICE_SET_EM_LIVE_DEBUG_RESPONSE,
+    permission: {component: 'devices', operation: 'update' as const},
+    description:
+        'Capture the live em/em1 status values of one meter for FM_EM_LIVE_DEBUG_HOURS (default 4, at most 24), for debugging. The values go to a separate table that billing, reports and the energy rollup never read, and are deleted when the capture ends. Off by default. At most 20 devices per tenant.'
+});
+
+export const EM_LIVE_DEBUG_PAGE_MAX = 5000;
+
+export interface DeviceGetEmLiveDebugParams {
+    shellyID: string;
+    after?: number;
+    limit?: number;
+}
+
+export const DEVICE_GET_EM_LIVE_DEBUG_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['shellyID'],
+    additionalProperties: false,
+    properties: {
+        shellyID: SHELLY_ID_SCHEMA,
+        after: {
+            type: 'integer',
+            minimum: 0,
+            description:
+                'Return frames after this id (the last id of the previous page).'
+        },
+        limit: {
+            type: 'integer',
+            minimum: 1,
+            maximum: EM_LIVE_DEBUG_PAGE_MAX,
+            description: 'Frames per page. Default 1000.'
+        }
+    }
+};
+
+export interface DeviceEmLiveDebugFrame {
+    id: number;
+    ts: string;
+    component: string;
+    field: string;
+    value: number;
+}
+
+export interface DeviceGetEmLiveDebugResult {
+    shellyID: string;
+    until: string | null;
+    frames: DeviceEmLiveDebugFrame[];
+    hasMore: boolean;
+}
+
+const DEVICE_GET_EM_LIVE_DEBUG_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['shellyID', 'until', 'frames', 'hasMore'],
+    additionalProperties: false,
+    properties: {
+        shellyID: {type: 'string'},
+        until: {type: ['string', 'null'], format: 'date-time'},
+        frames: {
+            type: 'array',
+            items: {
+                type: 'object',
+                required: ['id', 'ts', 'component', 'field', 'value'],
+                additionalProperties: false,
+                properties: {
+                    id: {type: 'integer'},
+                    ts: {type: 'string', format: 'date-time'},
+                    component: {type: 'string'},
+                    field: {type: 'string'},
+                    value: {type: 'number'}
+                }
+            }
+        },
+        hasMore: {type: 'boolean'}
+    }
+};
+
+b.registerMethod('GetEmLiveDebug', {
+    params: DEVICE_GET_EM_LIVE_DEBUG_PARAMS_SCHEMA,
+    response: DEVICE_GET_EM_LIVE_DEBUG_RESPONSE,
+    permission: PERM_READ,
+    description:
+        'Read the live em/em1 values captured by Device.SetEmLiveDebug, oldest first, one page at a time. Empty once the capture ended.'
 });
 
 b.registerMethod('SetKind', {
@@ -909,10 +1448,7 @@ b.registerMethod('GetImage', {
 
 b.registerMethod('GetDeviceChannels', {
     params: DEVICE_SHELLY_ONLY_PARAMS_SCHEMA,
-    response: {
-        type: 'object',
-        description: 'Per-device EM channel layout'
-    },
+    response: RESP_DEVICE_CHANNELS,
     permission: PERM_READ,
     description: 'Device EM channel inventory.'
 });

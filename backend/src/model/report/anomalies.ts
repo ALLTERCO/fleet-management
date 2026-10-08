@@ -201,12 +201,13 @@ export function detectAlwaysOnSpike(
     return wowDeltaAnomaly(alwaysOnKWh, priorAlwaysOnKWh);
 }
 
-// Prior=0 with current>0 = phantom load appeared. % is undefined, label kWh.
+// Prior=0 with current>0 has no meaningful percentage delta, so label kWh.
 function zeroBaselineAnomaly(alwaysOnKWh: number): EnergyAnomaly {
     return {
         type: 'always_on_spike',
         device: 'Fleet',
-        description: 'Standby load appeared (none in prior period)',
+        description:
+            'Estimated continuous baseline appeared (none in prior period)',
         value: `${alwaysOnKWh.toFixed(2)} kWh`,
         threshold: 'baseline 0'
     };
@@ -223,7 +224,7 @@ function wowDeltaAnomaly(
         {
             type: 'always_on_spike',
             device: 'Fleet',
-            description: `Standby load up ${pct}% vs prior period`,
+            description: `Estimated continuous baseline up ${pct}% vs prior period`,
             value: `${alwaysOnKWh.toFixed(2)} kWh`,
             threshold: `${Math.round(ALWAYS_ON_SPIKE_THRESHOLD * 100)}%`
         }

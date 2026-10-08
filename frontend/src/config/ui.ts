@@ -1,4 +1,4 @@
-// UI tunables. Values come from env (see docs/env-reference.md).
+// UI tunables. Values come from env (see docs/public/reference/env-reference.md).
 // FALLBACK below is dev/test only, when runtime config is absent.
 
 export interface AlertTimerThresholds {

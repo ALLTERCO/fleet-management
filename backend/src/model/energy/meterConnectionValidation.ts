@@ -9,10 +9,12 @@
 
 import RpcError from '../../rpc/RpcError';
 import {
+    type EnergyMeterConnection,
     type EnergySaveMeterConnectionParams,
     METER_CONNECTION_DIRECTIONS,
     METER_CONNECTION_NODES
 } from '../../types/api/energy';
+import {deriveBalancePosition} from './energyAxes';
 
 const NODE_SET: ReadonlySet<string> = new Set(METER_CONNECTION_NODES);
 const DIRECTION_SET: ReadonlySet<string> = new Set(METER_CONNECTION_DIRECTIONS);
@@ -38,6 +40,29 @@ export function assertConnectionReferences(
     if (!checks.isOrgMeter(params.meterId)) {
         throw RpcError.InvalidParams(
             `meterId ${params.meterId} is not a meter in your organization`
+        );
+    }
+}
+
+export function assertConnectionBalanceConsistent(
+    params: EnergySaveMeterConnectionParams,
+    existing: readonly EnergyMeterConnection[]
+): void {
+    const candidate: EnergyMeterConnection = {
+        id: params.id ?? -1,
+        meterId: params.meterId,
+        fromNode: params.fromNode,
+        toNode: params.toNode,
+        positiveDirection: params.positiveDirection ?? 'from_to'
+    };
+    const meterEdges = existing.filter(
+        (edge) => edge.meterId === params.meterId && edge.id !== params.id
+    );
+    try {
+        deriveBalancePosition([...meterEdges, candidate]);
+    } catch {
+        throw RpcError.InvalidParams(
+            'one logical meter cannot span both input and output sides of a transformation'
         );
     }
 }

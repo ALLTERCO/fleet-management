@@ -160,8 +160,8 @@ const RESOURCE_INPUTS: ResourceInput[] = [
         audience: 'operators',
         kind: 'stable-doc',
         format: 'markdown',
-        role: 'Fleet Manager deploy.sh install, update, environment, and flag guide.',
-        aiUse: 'Use for Fleet Manager install/deploy commands and deploy.sh parameters.',
+        role: 'Fleet Manager deploy-public.sh install, update, environment, and flag guide.',
+        aiUse: 'Use for Fleet Manager install/deploy commands and deploy-public.sh parameters.',
         readFirst: true
     },
     {
@@ -176,11 +176,11 @@ const RESOURCE_INPUTS: ResourceInput[] = [
     },
     {
         id: 'deploy-reference',
-        rel: 'docs/architecture/deploy-reference.md',
+        rel: 'docs/public/reference/deploy-public-reference.md',
         audience: 'operators',
         kind: 'stable-doc',
         format: 'markdown',
-        role: 'Detailed deploy.sh architecture, topology, routing, SSL, and mode reference.',
+        role: 'deploy-public.sh commands, flags, TLS, update and rollback reference.',
         aiUse: 'Use after the deployment guide when deploy behavior needs deeper explanation.'
     },
     {
@@ -266,12 +266,12 @@ const RESOURCE_INPUTS: ResourceInput[] = [
     },
     {
         id: 'docs-readme',
-        rel: 'docs/README.md',
+        rel: 'docs/public/README.md',
         audience: 'ai-agents',
         kind: 'stable-doc',
         format: 'markdown',
-        role: 'Docs folder convention and audience rules.',
-        aiUse: 'Use before creating or moving documentation.',
+        role: 'Map of the public documentation.',
+        aiUse: 'Use to find the right public guide or reference.',
         readFirst: true
     }
 ];
@@ -321,6 +321,60 @@ function resource(input: ResourceInput): AiIndexResource {
         aiUse: input.aiUse,
         readFirst: input.readFirst === true
     };
+}
+
+// The searchable task docs, each with a uri so it can also be READ. They used
+// to be searchable only: an agent got a 420-character snippet of the one file
+// that explains prepare/confirm and had no way to open the rest of it.
+// Declared once here and folded into mcpResources below, so the two lists
+// cannot drift apart.
+function mcpSearchResourceDefs(): (AiIndexMcpSearchResource & {
+    uri: string;
+})[] {
+    return [
+        {
+            id: 'ai-and-mcp-reference',
+            uri: 'fm://docs/ai-and-mcp',
+            source: 'docs/reference/ai-and-mcp.md',
+            role: 'MCP and Host SDK entrypoint.'
+        },
+        {
+            id: 'ai-mcp-operations',
+            uri: 'fm://docs/ai-mcp-operations',
+            source: 'docs/reference/ai-mcp-operations.md',
+            role: 'Governed MCP operation workflow.'
+        },
+        {
+            id: 'separate-ui-host-sdk-guide',
+            uri: 'fm://docs/separate-ui-host-sdk',
+            source: 'docs/reference/separate-ui-host-sdk.md',
+            role: 'Separate UI and template Host SDK guide.'
+        },
+        {
+            id: 'deployment-guide',
+            uri: 'fm://docs/deployment',
+            source: 'deploy/public/deployment.md',
+            role: 'Public installation and deployment guide.'
+        },
+        {
+            id: 'deploy-reference',
+            uri: 'fm://docs/deploy-reference',
+            source: 'docs/public/reference/deploy-public-reference.md',
+            role: 'Deployment architecture reference.'
+        },
+        {
+            id: 'docs-readme',
+            uri: 'fm://docs/readme',
+            source: 'docs/public/README.md',
+            role: 'Public documentation map.'
+        },
+        {
+            id: 'doc-drift-report',
+            uri: 'fm://docs/doc-drift-report',
+            source: 'docs/generated/doc-drift-report.md',
+            role: 'Generated documentation drift report.'
+        }
+    ];
 }
 
 function mcpResources(): AiIndexMcpResource[] {
@@ -384,48 +438,24 @@ function mcpResources(): AiIndexMcpResource[] {
             source: 'docs/generated/api.openapi.json',
             role: 'Future controlled API execution through OpenAPI/Scalar MCP.',
             safeMode: 'read-write-deferred'
-        }
+        },
+        // The task docs. Same list the search corpus uses, so a doc an agent
+        // can find is always a doc it can open.
+        ...mcpSearchResourceDefs().map(({uri, source, role}) => ({
+            uri,
+            source,
+            role,
+            safeMode: 'read-only' as const
+        }))
     ];
 }
 
 function mcpSearchResources(): AiIndexMcpSearchResource[] {
-    return [
-        {
-            id: 'ai-and-mcp-reference',
-            source: 'docs/reference/ai-and-mcp.md',
-            role: 'MCP and Host SDK entrypoint.'
-        },
-        {
-            id: 'ai-mcp-operations',
-            source: 'docs/reference/ai-mcp-operations.md',
-            role: 'Governed MCP operation workflow.'
-        },
-        {
-            id: 'separate-ui-host-sdk-guide',
-            source: 'docs/reference/separate-ui-host-sdk.md',
-            role: 'Separate UI and template Host SDK guide.'
-        },
-        {
-            id: 'deployment-guide',
-            source: 'deploy/public/deployment.md',
-            role: 'Public installation and deployment guide.'
-        },
-        {
-            id: 'deploy-reference',
-            source: 'docs/architecture/deploy-reference.md',
-            role: 'Deployment architecture reference.'
-        },
-        {
-            id: 'docs-readme',
-            source: 'docs/README.md',
-            role: 'Documentation map and conventions.'
-        },
-        {
-            id: 'doc-drift-report',
-            source: 'docs/generated/doc-drift-report.md',
-            role: 'Generated documentation drift report.'
-        }
-    ];
+    return mcpSearchResourceDefs().map(({id, source, role}) => ({
+        id,
+        source,
+        role
+    }));
 }
 
 function workflows(): AiIndex['workflows'] {
@@ -448,7 +478,7 @@ function workflows(): AiIndex['workflows'] {
                 'deploy-reference',
                 'ai-and-mcp-reference'
             ],
-            reason: 'The deploy docs define deploy.sh commands, flags, environments, modes, and routing behavior.'
+            reason: 'The deploy docs define deploy-public.sh commands, flags, environments, modes, and routing behavior.'
         },
         {
             task: 'Change backend RPC contract',

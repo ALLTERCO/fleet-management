@@ -16,8 +16,10 @@ export interface OrganizationProfile {
     id: string;
     name: string | null;
     displayName: string | null;
-    timezoneDefault: string | null;
-    localeDefault: string | null;
+    /** Resolved by Fleet to UTC when the stored organization value is unset. */
+    timezoneDefault: string;
+    /** Resolved by Fleet to en-US when the stored organization value is unset. */
+    localeDefault: string;
     currencyDefault: string | null;
     unitSystemDefault: 'metric' | 'imperial' | null;
     /** 1-3 letters/digits shown as the sidebar mark; null = product default. */
@@ -28,8 +30,10 @@ export interface OrganizationProfile {
 }
 
 export interface OrganizationDefaults {
-    timezoneDefault: string | null;
-    localeDefault: string | null;
+    /** Resolved by Fleet to UTC when the stored organization value is unset. */
+    timezoneDefault: string;
+    /** Resolved by Fleet to en-US when the stored organization value is unset. */
+    localeDefault: string;
 }
 
 export interface LocationKindDescriptor {
@@ -118,8 +122,8 @@ export const PROFILE_SCHEMA: JsonSchema = {
         id: {type: 'string'},
         name: {type: ['string', 'null']},
         displayName: {type: ['string', 'null']},
-        timezoneDefault: {type: ['string', 'null']},
-        localeDefault: {type: ['string', 'null']},
+        timezoneDefault: {type: 'string', minLength: 1},
+        localeDefault: {type: 'string', minLength: 1},
         currencyDefault: CURRENCY_SCHEMA,
         unitSystemDefault: UNIT_SYSTEM_SCHEMA,
         brandInitials: BRAND_INITIALS_SCHEMA,
@@ -145,8 +149,8 @@ const DEFAULTS_SCHEMA: JsonSchema = {
     type: 'object',
     required: ['timezoneDefault', 'localeDefault'],
     properties: {
-        timezoneDefault: {type: ['string', 'null']},
-        localeDefault: {type: ['string', 'null']}
+        timezoneDefault: {type: 'string', minLength: 1},
+        localeDefault: {type: 'string', minLength: 1}
     }
 };
 

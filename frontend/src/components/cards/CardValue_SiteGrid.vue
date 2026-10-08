@@ -43,9 +43,11 @@
 import {computed} from 'vue';
 import {useRouter} from 'vue-router';
 import {useLocationDeviceScope} from '@/composables/useLocationDeviceScope';
+import {useSiteLocations} from '@/composables/useSiteLocations';
+import {formatPower, metricText} from '@/helpers/powerMetrics';
 import {useDevicesStore} from '@/stores/devices';
+import {extractDevicePower} from '@/stores/energyDashboard';
 import {useEntityStore} from '@/stores/entities';
-import {useLocationsStore} from '@/stores/locations';
 import CardShell from './CardShell.vue';
 
 export interface SiteGridWidgetConfig {
@@ -75,19 +77,13 @@ defineEmits<{
     drop: [e: DragEvent];
 }>();
 
-const locationsStore = useLocationsStore();
 const devicesStore = useDevicesStore();
 const entityStore = useEntityStore();
 const router = useRouter();
 
-const siteLocations = computed(() => {
-    const allSites = Object.values(locationsStore.locations)
-        .filter((loc) => loc.kind === 'site')
-        .sort((a, b) => a.name.localeCompare(b.name));
-    if (!props.config.locationIds?.length) return allSites;
-    const allow = new Set(props.config.locationIds);
-    return allSites.filter((loc) => allow.has(loc.id));
-});
+const siteLocations = useSiteLocations(
+    computed(() => props.config.locationIds)
+);
 
 const {deviceIdsByRoot} = useLocationDeviceScope(
     computed(() => siteLocations.value.map((loc) => loc.id))
@@ -103,21 +99,7 @@ function onTileClick(locationId: number) {
 }
 
 function devicePower(shellyId: string): number {
-    const d = devicesStore.devices[shellyId] as any;
-    if (!d?.status) return 0;
-    let pw = 0;
-    for (const key of Object.keys(d.status)) {
-        if (
-            key.startsWith('switch:') ||
-            key.startsWith('pm1:') ||
-            key.startsWith('em:') ||
-            key.startsWith('em1:')
-        ) {
-            const ch = d.status[key];
-            pw += +(ch?.apower ?? ch?.act_power ?? 0);
-        }
-    }
-    return pw;
+    return extractDevicePower(devicesStore.devices[shellyId]?.status);
 }
 
 // Build alert count per shellyId once — O(entities) instead of O(devices × entities)
@@ -173,8 +155,7 @@ function dotClass(site: (typeof sites.value)[number]) {
 function metricLabel(site: (typeof sites.value)[number]): string {
     const m = props.config.metric;
     if (m === 'power') {
-        const w = site.powerW;
-        return w >= 1000 ? `${(w / 1000).toFixed(1)} kW` : `${Math.round(w)} W`;
+        return metricText(formatPower(site.powerW));
     }
     if (m === 'alerts')
         return `${site.alerts} alert${site.alerts !== 1 ? 's' : ''}`;
@@ -203,9 +184,9 @@ function metricLabel(site: (typeof sites.value)[number]): string {
 .sg-grid {
     flex: 1;
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-    gap: var(--space-1-5);
-    padding: var(--space-1);
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: var(--space-2);
+    padding: var(--space-2);
     overflow: auto;
     min-height: 0;
 }
@@ -214,40 +195,43 @@ function metricLabel(site: (typeof sites.value)[number]): string {
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
-    padding: var(--space-1-5) var(--space-2);
-    border-radius: var(--radius-sm-plus);
-    background: var(--state-hover-bg);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-1);
     border: 1px solid var(--color-border-default);
     min-width: 0;
 }
 
+/* Health tints the tile from the status ramp, not the outcome ramp. */
 .sg-tile--critical {
-    border-color: rgba(var(--color-danger-rgb), 0.35);
-    background: rgba(var(--color-danger-rgb), 0.07);
+    border-color: rgba(var(--color-status-off-rgb), 0.4);
+    background: rgba(var(--color-status-off-rgb), 0.08);
 }
 
 .sg-tile--warn {
-    border-color: rgba(var(--color-warning-rgb), 0.35);
-    background: rgba(var(--color-warning-rgb), 0.06);
+    border-color: rgba(var(--color-status-warn-rgb), 0.4);
+    background: rgba(var(--color-status-warn-rgb), 0.07);
 }
 
 .sg-tile--clickable {
     cursor: pointer;
+    transition: border-color var(--duration-normal);
 }
 
 .sg-tile--clickable:hover {
-    filter: brightness(1.15);
+    border-color: var(--color-border-strong);
 }
 
 .sg-tile-header {
     display: flex;
     align-items: center;
-    gap: var(--space-1);
+    gap: var(--space-1-5);
+    min-width: 0;
 }
 
 .sg-dot {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
 }
@@ -257,19 +241,23 @@ function metricLabel(site: (typeof sites.value)[number]): string {
 .sg-dot--red    { background: var(--color-status-red); }
 .sg-dot--grey   { background: var(--color-text-disabled); }
 
+/* Site name is the label; the metric below is the value that carries weight. */
 .sg-name {
-    font-size: var(--type-body);
-    font-weight: 600;
-    color: var(--color-text-primary);
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .sg-metric {
-    font-size: var(--type-body);
-    font-weight: 700;
+    font-size: var(--type-subheading);
+    font-weight: var(--font-bold);
     color: var(--color-text-primary);
+    letter-spacing: var(--tracking-tight);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
 }
 
 .sg-footer {
@@ -277,16 +265,17 @@ function metricLabel(site: (typeof sites.value)[number]): string {
     align-items: center;
     justify-content: space-between;
     gap: var(--space-1);
-    font-size: var(--type-body);
+    font-size: var(--type-caption);
     color: var(--color-text-tertiary);
+    font-variant-numeric: tabular-nums;
 }
 
 .sg-alert-badge {
-    background: rgba(var(--color-danger-rgb), 0.8);
+    background: rgba(var(--color-status-off-rgb), 0.85);
     color: var(--color-text-primary);
     border-radius: var(--radius-xs);
-    padding: 0 3px;
-    font-size: var(--type-body);
-    font-weight: 700;
+    padding: 0 var(--space-1);
+    font-size: var(--type-caption);
+    font-weight: var(--font-bold);
 }
 </style>

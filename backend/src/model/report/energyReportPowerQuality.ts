@@ -133,7 +133,12 @@ export function appendPowerQualitySection(req: {
                 `${r.reactiveEnergyKVARh} kVARh (estimated from power factor)`
             )
         );
-        req.rows.push(pqRow('Apparent energy', `${r.apparentEnergyKVAh} kVAh`));
+        req.rows.push(
+            pqRow(
+                'Apparent energy',
+                `${r.apparentEnergyKVAh} kVAh (estimated from power factor)`
+            )
+        );
     }
     if (r.sampleBuckets > 0) {
         req.rows.push(

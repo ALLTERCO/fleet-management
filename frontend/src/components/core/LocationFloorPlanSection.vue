@@ -7,11 +7,11 @@
         <FloorPlanTopBar
             :title="location.name"
             :subtitle="topbarSubtitle"
-            :can-edit="canEdit && !!plan"
+            :can-edit="canEdit && hasCanvas"
             :edit-mode="editMode"
             :is-dirty="isDirty"
             :saving="saving"
-            :can-fullscreen="!!plan"
+            :can-fullscreen="hasCanvas"
             :is-fullscreen="isFullscreen"
             @enter-edit="enterEdit"
             @cancel-edit="cancelEdit"
@@ -20,7 +20,7 @@
         >
             <template #extra>
                 <div
-                    v-if="plan && !editMode"
+                    v-if="hasCanvas"
                     class="lfp-view-pill"
                     role="group"
                     aria-label="View mode"
@@ -49,32 +49,37 @@
                 @drop.prevent="onPaletteDrop"
             >
                 <FloorPlanCanvas
-                    v-if="plan && (viewMode === '2d' || editMode)"
+                    v-if="hasCanvas && viewMode === '2d'"
                     class="lfp__canvas"
                     :plan="plan"
                     :zones="localZones"
+                    :walls="localWalls"
                     :placements="effectivePlacements"
                     :devices="paletteDevices"
                     :edit-mode="editMode"
-                    :drawing-zone="drawingZone"
+                    :drawing="draft"
                     :layer-visibility="layerVisibility"
                     @device-move="onDeviceMove"
                     @device-click="onCanvasDeviceClick"
-                    @zone-vertex="onZoneVertex"
+                    @draft-vertex="onDraftVertex"
                 />
                 <FloorPlanCanvas3D
-                    v-else-if="plan"
+                    v-else-if="hasCanvas"
+                    ref="canvas3dRef"
                     class="lfp__canvas"
                     :plan="plan"
                     :zones="localZones"
+                    :walls="localWalls"
                     :placements="effectivePlacements"
                     :devices="paletteDevices"
                     :layer-visibility="layerVisibility"
-                    :edit-mode="false"
+                    :edit-mode="editMode"
+                    :drawing="draft"
                     @device-click="onCanvasDeviceClick"
                     @device-move="onDeviceMove"
+                    @draft-vertex="onDraftVertex"
                 />
-                <div v-else-if="!plan" class="lfp__empty">
+                <div v-else class="lfp__empty">
                     <div class="lfp__empty-icon">
                         <i class="fas fa-map" aria-hidden="true" />
                     </div>
@@ -93,7 +98,7 @@
                     </Button>
                 </div>
 
-                <div v-if="plan && navSections.length > 0" class="lfp__nav">
+                <div v-if="hasCanvas && navSections.length > 0" class="lfp__nav">
                     <FloorNavDropdown
                         :sections="navSections"
                         :active-id="activeNavId"
@@ -104,14 +109,21 @@
                     />
                 </div>
 
-                <div v-if="plan && layerChips.length > 0" class="lfp__chips">
+                <div v-if="hasCanvas && layerChips.length > 0" class="lfp__chips">
                     <FloorPlanLayerChips
                         :chips="layerChips"
                         @toggle="toggleLayer"
                     />
                 </div>
 
-                <p v-if="plan && devices.length === 0" class="lfp__no-devices">
+                <p v-if="draft" class="lfp__draw-hint" role="status">
+                    <i class="fas fa-crosshairs" aria-hidden="true" />
+                    {{ drawHint }}
+                </p>
+                <p
+                    v-else-if="hasCanvas && devices.length === 0"
+                    class="lfp__no-devices"
+                >
                     <i class="fas fa-plug" aria-hidden="true" />
                     No devices assigned to this location yet.
                 </p>
@@ -177,8 +189,26 @@
                     </template>
                 </template>
 
+                <template #import>
+                    <FloorPlanImportPanel
+                        :can-import="canImport"
+                        :state="planReadState"
+                        :error="planReadError"
+                        :candidates="importCandidates"
+                        :devices="importTargets"
+                        :existing="localPlacements"
+                        :geometry="planGeometry"
+                        :geometry-reading="planGeometryState === 'reading'"
+                        :confirmed-zone-keys="importedZoneKeys"
+                        :zone-error="zoneImportError"
+                        :busy="saving"
+                        @confirm="onImportConfirm"
+                        @confirm-zones="onZoneImportConfirm"
+                    />
+                </template>
+
                 <template #zones>
-                    <template v-if="!drawingZone">
+                    <template v-if="draft?.tool !== 'zone'">
                         <Button
                             type="green"
                             size="sm"
@@ -208,12 +238,13 @@
                         </ul>
                         <p v-else class="lfp-drw__hint">
                             Use Draw new zone to outline a room or area.
+                            Works the same in 2D and 3D.
                         </p>
                     </template>
                     <template v-else>
                         <p class="lfp-drw__hint">
-                            Click on the plan to add vertices
-                            ({{ drawingZone.points.length }} placed, need ≥3).
+                            Click on the plan to add corners
+                            ({{ draft.points.length }} placed, need ≥3).
                         </p>
                         <Input
                             v-model="draftZoneName"
@@ -241,16 +272,74 @@
                             <Button
                                 type="blue-hollow"
                                 size="sm"
-                                :disabled="!drawingZone.points.length"
-                                @click="undoZoneVertex"
+                                :disabled="!canUndoDraw"
+                                @click="undoDraw"
                             >
                                 Undo
                             </Button>
                             <Button
                                 type="blue-hollow"
                                 size="sm"
-                                @click="cancelZoneDraft"
+                                @click="cancelDraft"
                             >Cancel</Button>
+                        </div>
+                    </template>
+                </template>
+
+                <template #walls>
+                    <template v-if="draft?.tool !== 'wall'">
+                        <Button
+                            type="green"
+                            size="sm"
+                            :disabled="saving"
+                            @click="beginWallDraft"
+                        >
+                            Draw walls
+                        </Button>
+                        <p class="lfp-drw__hint">
+                            {{ wallCountLabel }} Trace along a wall to place
+                            corners — over an uploaded drawing, or on a blank
+                            floor when there is no drawing to upload.
+                        </p>
+                        <div v-if="localWalls.length > 0" class="lfp-drw__btn-row">
+                            <Button
+                                type="blue-hollow"
+                                size="sm"
+                                :disabled="saving"
+                                @click="removeAllWalls"
+                            >
+                                Remove all walls
+                            </Button>
+                        </div>
+                    </template>
+                    <template v-else>
+                        <p class="lfp-drw__hint">
+                            Click along the wall to place corners
+                            ({{ draft.points.length }} placed, need ≥2).
+                            Finish keeps it and starts the next wall.
+                        </p>
+                        <div class="lfp-drw__btn-row">
+                            <Button
+                                type="blue-hollow"
+                                size="sm"
+                                :disabled="!canFinishWall"
+                                @click="finishWallRun"
+                            >
+                                Finish wall
+                            </Button>
+                            <Button
+                                type="blue-hollow"
+                                size="sm"
+                                :disabled="!canUndoDraw"
+                                @click="undoDraw"
+                            >
+                                Undo
+                            </Button>
+                            <Button
+                                type="blue-hollow"
+                                size="sm"
+                                @click="cancelDraft"
+                            >Done</Button>
                         </div>
                     </template>
                 </template>
@@ -318,23 +407,52 @@ import FloorNavDropdown, {
 import FloorPlanEditDrawer, {
     type EditDrawerSection
 } from '@/components/locations/floorplan/FloorPlanEditDrawer.vue';
+import FloorPlanImportPanel from '@/components/locations/floorplan/FloorPlanImportPanel.vue';
 import FloorPlanLayerChips, {
     type LayerChip
 } from '@/components/locations/floorplan/FloorPlanLayerChips.vue';
 import FloorPlanTopBar from '@/components/locations/floorplan/FloorPlanTopBar.vue';
+import {useSvgPlanImport} from '@/composables/useSvgPlanImport';
 import {
     computeAutoPlacements,
     mergePlacements
 } from '@/helpers/auto-placement';
 import {FIXTURES_BY_CATEGORY} from '@/helpers/fixture-registry';
 import {floorPlanPlacementId} from '@/helpers/floor-plan-device-identity';
+import {hasGeometryChanged} from '@/helpers/floor-plan-dirty';
+import {
+    addVertex,
+    beginDraft,
+    canUndo,
+    type DrawDraft,
+    type DrawTool,
+    draftToWallSegments,
+    draftToZone,
+    hasEnoughVertices,
+    newShapeId,
+    undoVertex
+} from '@/helpers/floor-plan-draw';
+import {buildPlacement} from '@/helpers/floor-plan-placement';
+import {appendWalls, undoLastWall} from '@/helpers/floor-plan-walls';
+import {
+    applyZoneConfirmations,
+    DuplicateZoneNameError,
+    type ZoneConfirmation
+} from '@/helpers/floor-plan-zone-import';
+import {rpcErrorMessage} from '@/helpers/rpcError';
+import {
+    applyImportSelections,
+    buildImportCandidates,
+    type ImportTargetDevice
+} from '@/helpers/svg-device-import';
 import {useLocationsStore} from '@/stores/locations';
 import type {
-    DevicePlacement,
     DevicePlacementMap,
     FixtureCategory,
     FixtureKind,
     FloorPlanKindFields,
+    PlanPoint,
+    WallSegment,
     ZoneShape
 } from '@/types/floor-plan';
 
@@ -343,11 +461,20 @@ const FloorPlanCanvas3D = defineAsyncComponent(
     () => import('@/components/core/FloorPlanCanvas3D.vue')
 );
 
-const props = defineProps<{
-    location: ApiLocation;
-    devices: FloorPlanDevice[];
-    canEdit: boolean;
-}>();
+const props = withDefaults(
+    defineProps<{
+        location: ApiLocation;
+        devices: FloorPlanDevice[];
+        canEdit: boolean;
+        /** Mirrors the backend location.Update gate. Without it the whole
+         *  import surface is absent — the user still sees the plan. */
+        canImport?: boolean;
+        /** Same gate, for the drawing tools. Denied means the zone and wall
+         *  tools are absent, never a control that fails on save. */
+        canDraw?: boolean;
+    }>(),
+    {canImport: false, canDraw: false}
+);
 
 const emit = defineEmits<{
     deviceClick: [id: string];
@@ -386,8 +513,16 @@ const plan = computed(() => {
     return p;
 });
 
+// The canvas is available whenever there is a plan to show OR a user
+// allowed to draw one. D-032: hand-drawing is a normal way to set up a
+// floor, so "no drawing uploaded" must not mean "no floor to work on".
+const hasCanvas = computed(() => !!plan.value || props.canDraw);
+
 const storedZones = computed<ZoneShape[]>(
     () => kindFieldsBlob.value.zones ?? []
+);
+const storedWalls = computed<WallSegment[]>(
+    () => kindFieldsBlob.value.walls ?? []
 );
 const storedPlacements = computed<DevicePlacementMap>(
     () => kindFieldsBlob.value.devicePlacements ?? {}
@@ -395,6 +530,11 @@ const storedPlacements = computed<DevicePlacementMap>(
 
 const localPlacements = ref<DevicePlacementMap>({...storedPlacements.value});
 const localZones = ref<ZoneShape[]>(storedZones.value.map((z) => ({...z})));
+const localWalls = ref<WallSegment[]>(cloneWalls(storedWalls.value));
+
+function cloneWalls(walls: readonly WallSegment[]): WallSegment[] {
+    return walls.map((w) => ({from: {...w.from}, to: {...w.to}}));
+}
 
 const autoPlacements = computed(() =>
     computeAutoPlacements(props.devices.map(floorPlanPlacementId))
@@ -406,9 +546,17 @@ const effectivePlacements = computed<DevicePlacementMap>(() =>
 watch(storedPlacements, (next) => {
     if (!editMode.value) localPlacements.value = {...next};
 });
+// Guarded on editMode like placements are: geometry now persists on Save,
+// so an update arriving from another session mid-edit must not overwrite
+// work the user has not committed yet. cancelEdit and saveEdit both
+// re-read from the store, so nothing stays stale after the edit ends.
 watch(storedZones, (next) => {
-    if (drawingZone.value) return;
+    if (editMode.value || draft.value) return;
     localZones.value = next.map((z) => ({...z}));
+});
+watch(storedWalls, (next) => {
+    if (editMode.value || draft.value) return;
+    localWalls.value = cloneWalls(next);
 });
 
 const isDirty = computed(() => {
@@ -425,78 +573,130 @@ const isDirty = computed(() => {
         if ((x.fixture ?? '') !== (y.fixture ?? '')) return true;
     }
     if (zonesDirty.value) return true;
-    if ((drawingZone.value?.points.length ?? 0) > 0) return true;
+    if (wallsDirty.value) return true;
+    if ((draft.value?.points.length ?? 0) > 0) return true;
     return false;
 });
 
-const zonesDirty = computed(() => {
-    const a = localZones.value;
-    const b = storedZones.value;
-    if (a.length !== b.length) return true;
-    return JSON.stringify(a) !== JSON.stringify(b);
-});
+// Order-insensitive on purpose — see floor-plan-dirty.ts. kindFields is
+// JSONB, so a saved floor comes back with its keys rearranged and a naive
+// comparison would leave it looking permanently unsaved.
+const zonesDirty = computed(() =>
+    hasGeometryChanged(localZones.value, storedZones.value)
+);
 
-// ── Zone drawing state ─────────────────────────────────────────────────
-interface ZoneDraftLocal {
-    points: Array<{x: number; y: number}>;
-    color: string;
-}
-const drawingZone = ref<ZoneDraftLocal | null>(null);
+const wallsDirty = computed(() =>
+    hasGeometryChanged(localWalls.value, storedWalls.value)
+);
+
+// ── Drawing ────────────────────────────────────────────────────────────
+// One draft, one vertex handler, one undo — shared by the zone and wall
+// tools and by both canvases. The 2D and 3D canvases each resolve a click
+// to a normalized point their own way and then emit the same event, so
+// there is a single draw pipeline behind them (D-032).
+
+const draft = ref<DrawDraft | null>(null);
 const draftZoneName = ref('');
 const draftZoneColor = ref('#5b8def');
 
 const canFinishZone = computed(
     () =>
-        !!drawingZone.value &&
-        drawingZone.value.points.length >= 3 &&
+        draft.value?.tool === 'zone' &&
+        hasEnoughVertices(draft.value) &&
         draftZoneName.value.trim().length > 0
 );
 
-function beginZoneDraft() {
-    drawingZone.value = {points: [], color: draftZoneColor.value};
+const canFinishWall = computed(
+    () => draft.value?.tool === 'wall' && hasEnoughVertices(draft.value)
+);
+
+// Undo steps back through the draft first, then through walls already
+// committed this session — so the button always removes the last thing the
+// user did rather than going dead the moment a run is finished.
+const canUndoDraw = computed(
+    () =>
+        canUndo(draft.value) ||
+        (draft.value?.tool === 'wall' && localWalls.value.length > 0)
+);
+
+const DRAW_HINTS: Record<DrawTool, string> = {
+    zone: 'Click to add a zone corner. Finish in the Zones panel.',
+    wall: 'Click to trace a wall. Finish in the Walls panel.'
+};
+
+const drawHint = computed(() =>
+    draft.value ? DRAW_HINTS[draft.value.tool] : ''
+);
+
+const wallCountLabel = computed(() => {
+    const n = localWalls.value.length;
+    if (n === 0) return 'No walls drawn yet.';
+    return `${n} wall segment${n === 1 ? '' : 's'} drawn.`;
+});
+
+// No view-mode switch: drawing works wherever the user already is. The 3D
+// canvas raycasts the click onto the floor plane and emits the same
+// normalized point the 2D canvas does.
+function beginZoneDraft(): void {
+    draft.value = beginDraft('zone');
     draftZoneName.value = '';
 }
 
-function onZoneVertex(x: number, y: number) {
-    drawingZone.value?.points.push({x: clamp01(x), y: clamp01(y)});
+function beginWallDraft(): void {
+    draft.value = beginDraft('wall');
 }
 
-function undoZoneVertex() {
-    drawingZone.value?.points.pop();
+function onDraftVertex(point: PlanPoint): void {
+    const current = draft.value;
+    if (!current) return;
+    draft.value = addVertex(current, point);
 }
 
-function cancelZoneDraft() {
-    drawingZone.value = null;
+function undoDraw(): void {
+    const current = draft.value;
+    if (!current) return;
+    if (canUndo(current)) {
+        draft.value = undoVertex(current);
+        return;
+    }
+    if (current.tool === 'wall') localWalls.value = undoLastWall(localWalls.value);
+}
+
+function cancelDraft(): void {
+    draft.value = null;
     draftZoneName.value = '';
-    localZones.value = storedZones.value.map((z) => ({...z}));
 }
 
-async function finishZone() {
-    const d = drawingZone.value;
-    if (!d || d.points.length < 3) return;
-    const name = draftZoneName.value.trim();
-    if (!name) return;
-    const zone: ZoneShape = {
-        id: `zone-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        name,
-        color: draftZoneColor.value,
-        points: d.points.map((p) => ({x: clamp01(p.x), y: clamp01(p.y)}))
-    };
+function finishZone(): void {
+    const current = draft.value;
+    if (!current) return;
+    const zone = draftToZone(current, {
+        id: newShapeId('zone'),
+        name: draftZoneName.value,
+        color: draftZoneColor.value
+    });
+    if (!zone) return;
     localZones.value = [...localZones.value, zone];
-    drawingZone.value = null;
-    draftZoneName.value = '';
-    await persistZones();
+    cancelDraft();
 }
 
-function removeZone(id: string) {
+// Keeps the run and immediately opens the next one: a floor is many walls,
+// and re-arming the tool by hand after each is the wrong default.
+function finishWallRun(): void {
+    const current = draft.value;
+    if (!current) return;
+    const segments = draftToWallSegments(current);
+    if (segments.length === 0) return;
+    localWalls.value = appendWalls(localWalls.value, segments);
+    draft.value = beginDraft('wall');
+}
+
+function removeZone(id: string): void {
     localZones.value = localZones.value.filter((z) => z.id !== id);
-    void persistZones();
 }
 
-async function persistZones(): Promise<void> {
-    const previousZones = storedZones.value.map((z) => ({...z}));
-    const landed = await pushKindFieldsToBackend({zones: localZones.value});
-    if (!landed) localZones.value = previousZones;
+function removeAllWalls(): void {
+    localWalls.value = [];
 }
 
 function buildMergedKindFields(
@@ -569,8 +769,114 @@ function removePlacement(id: string): void {
     localPlacements.value = next;
 }
 
+// ── Import what the SVG plan already draws ─────────────────────────────
+// Device markers and room geometry come out of one read of one file.
+// Reading is gated on canImport, so a user who could not save the result
+// never puts the plan on the wire for it either.
+
+const planUrl = computed(() => plan.value?.url ?? null);
+const canImportRef = computed(() => props.canImport);
+const {
+    markers,
+    state: planReadState,
+    error: planReadError,
+    geometry: planGeometry,
+    geometryState: planGeometryState,
+    readGeometry
+} = useSvgPlanImport(planUrl, canImportRef);
+
+// Resolving geometry costs about a second of main thread on a real CAD
+// export, so it waits until the user opens the panel that shows it.
+watch([openEditSection, planReadState], ([section, readState]) => {
+    if (section === 'import' && readState === 'ready') readGeometry();
+});
+
+const importTargets = computed<ImportTargetDevice[]>(() =>
+    props.devices.map((d) => ({
+        placementId: floorPlanPlacementId(d),
+        label: d.label,
+        componentTypes: d.componentTypes
+    }))
+);
+
+const importCandidates = computed(() =>
+    buildImportCandidates({
+        markers: markers.value,
+        devices: importTargets.value,
+        existing: localPlacements.value
+    })
+);
+
+const markerCount = computed(() => importCandidates.value.length);
+
+// Confirmed mappings land in the local draft, not on the server: the user
+// still reviews the pins and presses Save, so there is exactly one path
+// that persists placements.
+function onImportConfirm(selections: Record<string, string>): void {
+    const outcome = applyImportSelections({
+        existing: localPlacements.value,
+        candidates: importCandidates.value,
+        selections
+    });
+    localPlacements.value = outcome.placements;
+    openEditSection.value = 'placements';
+}
+
+// ── Import rooms detected in the drawing ───────────────────────────────
+// Candidate regions are evidence. They become zones here and only here,
+// once a user has named them and pressed the button — then they follow the
+// hand-drawn zones down the same Save.
+
+const importedZoneKeys = ref<string[]>([]);
+const zoneImportError = ref<string | null>(null);
+
+function onZoneImportConfirm(confirmations: ZoneConfirmation[]): void {
+    try {
+        const outcome = applyZoneConfirmations({
+            existing: localZones.value,
+            candidates: planGeometry.value?.zoneCandidates ?? [],
+            confirmations
+        });
+        localZones.value = [...outcome.zones];
+        importedZoneKeys.value = [
+            ...importedZoneKeys.value,
+            ...confirmations.map((c) => c.key)
+        ];
+        zoneImportError.value = null;
+        // Land the user on the zones they just made, the way a confirmed
+        // marker lands them on the pin it placed.
+        if (props.canDraw) openEditSection.value = 'zones';
+    } catch (cause: unknown) {
+        // A refusal must look like a refusal: nothing was added, and the
+        // reason stays on screen until the user resolves it.
+        zoneImportError.value = describeZoneImportFailure(cause);
+    }
+}
+
+function describeZoneImportFailure(cause: unknown): string {
+    if (cause instanceof DuplicateZoneNameError) {
+        return `${cause.message}. Rename it and confirm again.`;
+    }
+    return rpcErrorMessage(cause);
+}
+
+function forgetZoneImport(): void {
+    importedZoneKeys.value = [];
+    zoneImportError.value = null;
+}
+
+// A replaced drawing proposes a different set of regions, so what was
+// already taken from the old one no longer means anything.
+watch(planGeometry, forgetZoneImport);
+
 const canvasHostRef = ref<HTMLElement | null>(null);
 const rootRef = ref<HTMLElement | null>(null);
+const canvas3dRef = ref<{
+    normalizedPointAt(
+        clientX: number,
+        clientY: number
+    ): {x: number; y: number} | null;
+} | null>(null);
 const PALETTE_DRAG_MIME = 'application/x-fm-device-id';
 
 function onPaletteDragStart(e: DragEvent, id: string) {
@@ -592,13 +898,27 @@ function onPaletteDrop(e: DragEvent) {
         '';
     if (!id) return;
     if (localPlacements.value[id]) return;
+    const point = dropPointFor(e);
+    if (!point) return;
+    onDeviceMove(id, point);
+}
+
+// 2D maps the drop straight onto the plan image, so screen-rect fractions
+// are the normalized coords. Under the 3D perspective camera they are not
+// — the scene has to project the cursor onto the floor plane instead.
+function dropPointFor(e: DragEvent): {x: number; y: number} | null {
+    if (viewMode.value === '3d') {
+        return canvas3dRef.value?.normalizedPointAt(e.clientX, e.clientY)
+            ?? null;
+    }
     const rect = (
         e.currentTarget as HTMLElement | null
     )?.getBoundingClientRect();
-    if (!rect || rect.width === 0 || rect.height === 0) return;
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    onDeviceMove(id, {x, y});
+    if (!rect || rect.width === 0 || rect.height === 0) return null;
+    return {
+        x: (e.clientX - rect.left) / rect.width,
+        y: (e.clientY - rect.top) / rect.height
+    };
 }
 
 function placeAtCenter(id: string) {
@@ -611,13 +931,10 @@ function onDeviceMove(id: string, position: {x: number; y: number}): void {
 }
 
 function placeDevice(input: {id: string; x: number; y: number}): void {
-    const existing = localPlacements.value[input.id];
-    const next: DevicePlacement = {
-        x: clamp01(input.x),
-        y: clamp01(input.y),
-        rot: existing?.rot ?? 0,
-        fixture: existing?.fixture
-    };
+    const next = buildPlacement({
+        existing: localPlacements.value[input.id],
+        point: {x: input.x, y: input.y}
+    });
     localPlacements.value = {...localPlacements.value, [input.id]: next};
 }
 
@@ -632,16 +949,23 @@ function paletteDotStyle(color: number): string {
 // ── Top-bar action handlers ────────────────────────────────────────────
 
 function enterEdit(): void {
-    if (viewMode.value === '3d') viewMode.value = '2d';
     editMode.value = true;
-    openEditSection.value = 'placements';
+    // Open on the drawing when it has something to say — markers waiting to
+    // be mapped, or a file we could not read.
+    const drawingNeedsAttention =
+        props.canImport &&
+        (planReadState.value === 'error' || markerCount.value > 0);
+    openEditSection.value = drawingNeedsAttention ? 'import' : 'placements';
 }
 
 function cancelEdit(): void {
     localPlacements.value = {...storedPlacements.value};
     localZones.value = storedZones.value.map((z) => ({...z}));
-    drawingZone.value = null;
-    draftZoneName.value = '';
+    localWalls.value = cloneWalls(storedWalls.value);
+    // The imported zones went with the reverted list, so the regions they
+    // came from are on offer again.
+    forgetZoneImport();
+    cancelDraft();
     editMode.value = false;
 }
 
@@ -656,6 +980,9 @@ function requestExitEdit(): void {
     if (window.confirm(UNSAVED_PROMPT)) cancelEdit();
 }
 
+// One persistence path for every kind of geometry. A refused save leaves
+// edit mode open with the work intact — the store has already surfaced the
+// error as a toast, so nothing here may make it look saved.
 async function saveEdit(): Promise<void> {
     if (!isDirty.value) {
         editMode.value = false;
@@ -663,9 +990,12 @@ async function saveEdit(): Promise<void> {
     }
     const landed = await pushKindFieldsToBackend({
         devicePlacements: localPlacements.value,
-        zones: localZones.value
+        zones: localZones.value,
+        walls: localWalls.value
     });
-    if (landed) editMode.value = false;
+    if (!landed) return;
+    cancelDraft();
+    editMode.value = false;
 }
 
 async function toggleFullscreen(): Promise<void> {
@@ -686,8 +1016,12 @@ function onFullscreenChange(): void {
 
 // ── Layer chips overlay ────────────────────────────────────────────────
 
+// 2D carries the walls toggle too now that walls are drawn and rendered
+// there. Without it, hiding walls in 3D and switching to 2D left zones and
+// walls invisible with no chip to bring them back.
 const TOGGLES_2D: ReadonlyArray<{key: LayerKey; label: string; icon: string}> = [
     {key: 'floor', label: 'Plan', icon: 'fa-image'},
+    {key: 'walls', label: 'Walls', icon: 'fa-grip-lines-vertical'},
     {key: 'devices', label: 'Devices', icon: 'fa-plug'}
 ];
 const TOGGLES_3D: ReadonlyArray<{key: LayerKey; label: string; icon: string}> = [
@@ -697,9 +1031,7 @@ const TOGGLES_3D: ReadonlyArray<{key: LayerKey; label: string; icon: string}> = 
 ];
 
 const layerChips = computed<LayerChip[]>(() => {
-    const source = viewMode.value === '3d' && !editMode.value
-        ? TOGGLES_3D
-        : TOGGLES_2D;
+    const source = viewMode.value === '3d' ? TOGGLES_3D : TOGGLES_2D;
     return source.map((t) => ({
         key: t.key,
         label: t.label,
@@ -722,12 +1054,36 @@ const drawerSections = computed<EditDrawerSection[]>(() => [
         icon: 'fa-thumbtack',
         badge: placedDevices.value.length
     },
-    {
-        key: 'zones',
-        label: 'Zones',
-        icon: 'fa-draw-polygon',
-        badge: localZones.value.length
-    },
+    // Absent entirely without location.Update — not merely disabled.
+    ...(props.canImport
+        ? [
+              {
+                  key: 'import',
+                  label: 'From drawing',
+                  icon: 'fa-file-import',
+                  badge:
+                      planReadState.value === 'ready' ? markerCount.value : null
+              }
+          ]
+        : []),
+    // Same rule for the drawing tools: no scoped location.Update means no
+    // tool at all, never a control that fails once the user has done work.
+    ...(props.canDraw
+        ? [
+              {
+                  key: 'zones',
+                  label: 'Zones',
+                  icon: 'fa-draw-polygon',
+                  badge: localZones.value.length
+              },
+              {
+                  key: 'walls',
+                  label: 'Walls',
+                  icon: 'fa-grip-lines-vertical',
+                  badge: localWalls.value.length
+              }
+          ]
+        : []),
     {
         key: 'fixtures',
         label: 'Fixtures',
@@ -741,7 +1097,13 @@ const topbarSubtitle = computed(() => {
     if (!plan.value) return tier;
     const placed = placedDevices.value.length;
     const total = props.devices.length;
-    return `${tier} · ${placed}/${total} placed`;
+    const parts = [tier, `${placed}/${total} placed`];
+    // Surfaces the import outside edit mode — otherwise the markers are only
+    // discoverable by opening the drawer.
+    if (props.canImport && markerCount.value > 0) {
+        parts.push(`${markerCount.value} in drawing`);
+    }
+    return parts.join(' · ');
 });
 
 // ── On-this-floor navigator (Verkada/Meraki pattern) ──────────────────
@@ -823,14 +1185,8 @@ function onNavSelect(item: FloorNavItem): void {
     }
 }
 
-function clamp01(v: number): number {
-    if (v < 0) return 0;
-    if (v > 1) return 1;
-    return v;
-}
-
 const UNSAVED_PROMPT =
-    'You have unsaved device placement changes. Leave anyway and discard them?';
+    'You have unsaved floor plan changes. Leave anyway and discard them?';
 
 function beforeUnloadHandler(e: BeforeUnloadEvent) {
     if (!isDirty.value) return;
@@ -873,8 +1229,9 @@ watch(
         saving.value = false;
         localPlacements.value = {...storedPlacements.value};
         localZones.value = storedZones.value.map((z) => ({...z}));
-        drawingZone.value = null;
-        draftZoneName.value = '';
+        localWalls.value = cloneWalls(storedWalls.value);
+        forgetZoneImport();
+        cancelDraft();
     }
 );
 </script>
@@ -947,7 +1304,6 @@ watch(
     padding: var(--space-1-5) var(--space-3);
     background: var(--glass-3-bg);
     backdrop-filter: var(--glass-3-filter);
-    -webkit-backdrop-filter: var(--glass-3-filter);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-full);
     color: var(--color-text-secondary);
@@ -959,6 +1315,34 @@ watch(
 
 .lfp__no-devices i {
     color: var(--color-text-tertiary);
+    font-size: var(--type-caption);
+}
+
+/* Same pill as the no-devices hint, but it is telling the user what their
+   next click does — so it reads primary, not incidental. */
+.lfp__draw-hint {
+    position: absolute;
+    bottom: var(--space-3);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2;
+    pointer-events: none;
+    margin: 0;
+    padding: var(--space-1-5) var(--space-3);
+    background: var(--glass-3-bg);
+    backdrop-filter: var(--glass-3-filter);
+    border: 1px solid var(--color-primary);
+    border-radius: var(--radius-full);
+    color: var(--color-text-primary);
+    font-size: var(--type-caption);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    white-space: nowrap;
+}
+
+.lfp__draw-hint i {
+    color: var(--color-primary);
     font-size: var(--type-caption);
 }
 

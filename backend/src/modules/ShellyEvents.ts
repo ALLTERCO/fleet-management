@@ -4,7 +4,7 @@ import {resolveBluDeviceInfo, resolveModelString} from '../config/BTHomeData';
 import type AbstractDevice from '../model/AbstractDevice';
 import * as AuditLogger from '../modules/AuditLogger';
 import {boundedLogDedupeSet} from '../modules/boundedLogDedupeSet';
-import {BoundedMap} from '../modules/boundedMap';
+import * as DeviceEventLogger from '../modules/DeviceEventLogger';
 import * as EventDistributor from '../modules/EventDistributor';
 import * as Observability from '../modules/Observability';
 import {publishDevice} from '../modules/redis/DeviceSignals';
@@ -22,11 +22,12 @@ import type {
     ShellyMessageIncoming,
     WaitingRoomEvent
 } from '../types';
+import type {BluetoothStatusRoute} from './virtualDevice/bluetoothRepository';
 import {
-    getBluetoothDevice,
-    getBluetoothDeviceExternalIdBySource,
-    listBluetoothSourceKeysByGateway
-} from './virtualDevice/bluetoothRepository';
+    __resetBluetoothStatusRouteCacheForTests,
+    type BluetoothStatusRouteLoader,
+    getBluetoothStatusRoutesForGateway
+} from './virtualDevice/bluetoothStatusRouteCache';
 import {projectBluetoothComponentStatus} from './virtualDevice/deviceListIntegration';
 import type {SourceSnapshot} from './virtualDevice/readModel';
 
@@ -65,6 +66,10 @@ Observability.registerModule('shellyEvents', {
 
 export function emitShellyConnected(device: AbstractDevice) {
     Observability.incrementCounter('shelly_connect_emitted');
+    // Owner-scoped consumers drop this event; the owner must be bound first.
+    if (!EventDistributor.getDeviceOrg(device.shellyID)) {
+        Observability.incrementCounter('shelly_connect_without_owner');
+    }
     logger.info(
         'emitShellyConnected shellyID:[%s] model:[%s]',
         device.shellyID,
@@ -81,8 +86,7 @@ export function emitShellyConnected(device: AbstractDevice) {
     };
     EventDistributor.processAndNotifyAll(event, {device});
     AuditLogger.logDeviceOnline(device.shellyID);
-    fireAndForget(
-        'publishDevice.connected',
+    fireAndForget('publishDevice.connected', () =>
         publishDevice({kind: 'connected', shellyID: device.shellyID})
     );
 }
@@ -96,14 +100,12 @@ export function emitShellyDisconnected(device: AbstractDevice) {
     };
     EventDistributor.processAndNotifyAll(event, {device});
     AuditLogger.logDeviceOffline(shellyID);
-    fireAndForget(
-        'publishDevice.disconnected',
+    fireAndForget('publishDevice.disconnected', () =>
         publishDevice({kind: 'disconnected', shellyID})
     );
-    fireAndForget(
-        'releaseDeviceRuntimeOwnership',
+    fireAndForget('releaseDeviceRuntimeOwnership', () =>
         import('./deviceIdentityRuntime.js').then((runtime) =>
-            runtime.releaseDeviceRuntimeOwnership(shellyID)
+            runtime.releaseDeviceRuntimeOwnershipForDevice(device)
         )
     );
 }
@@ -116,8 +118,7 @@ export function emitShellyDeleted(device: AbstractDevice, username?: string) {
     };
     EventDistributor.processAndNotifyAll(event, {device});
     AuditLogger.logDeviceDelete(shellyID, username);
-    fireAndForget(
-        'publishDevice.deleted',
+    fireAndForget('publishDevice.deleted', () =>
         publishDevice({kind: 'deleted', shellyID})
     );
 }
@@ -134,7 +135,8 @@ export function emitShellyDeviceInfo(device: AbstractDevice) {
 export function emitShellyStatus(
     device: AbstractDevice,
     reason: string | string[],
-    changes?: PathChange[]
+    changes?: PathChange[],
+    journal?: {tsEpochSec?: number}
 ) {
     const {shellyID, status} = device;
     const event: ShellyEvent.Status = {
@@ -146,9 +148,8 @@ export function emitShellyStatus(
         reason,
         changes
     });
-    fireAndForget(
-        'emitPromotedBluetoothStatus',
-        emitPromotedBluetoothStatus(device, reason, changes)
+    fireAndForget('emitPromotedBluetoothStatus', () =>
+        emitPromotedBluetoothStatus(device, reason, changes, journal)
     );
 }
 
@@ -189,40 +190,32 @@ function bluetoothEventChanges(
     return filtered.length > 0 ? filtered : undefined;
 }
 
-// Per-gateway set of promoted BLU source keys, busted by the BLU inventory
-// version so the status hot path stays off the DB. A gateway with no promoted
-// BLU child (an unpromoted BLU has no blu_device row) resolves to an empty set.
-const promotedKeysCache = new BoundedMap<
-    string,
-    {version: number; keys: ReadonlySet<string>}
->({maxSize: 5000, ttlMs: 5 * 60_000});
-
-export async function promotedSourceKeysForGateway(
+export async function promotedStatusRoutesForGateway(
     organizationId: string,
     gatewayExternalId: string,
-    version: number = EventDistributor.getBluetoothInventoryVersion(),
-    load: (
-        org: string,
-        gateways: readonly string[]
-    ) => Promise<Map<string, Set<string>>> = listBluetoothSourceKeysByGateway
-): Promise<ReadonlySet<string>> {
-    const cacheKey = `${organizationId}|${gatewayExternalId}`;
-    const cached = promotedKeysCache.get(cacheKey);
-    if (cached && cached.version === version) return cached.keys;
-    const byGateway = await load(organizationId, [gatewayExternalId]);
-    const keys = byGateway.get(gatewayExternalId) ?? new Set<string>();
-    promotedKeysCache.set(cacheKey, {version, keys});
-    return keys;
+    version: number = EventDistributor.getBluetoothGatewayInventoryVersion(
+        organizationId,
+        gatewayExternalId
+    ),
+    load?: BluetoothStatusRouteLoader
+): Promise<ReadonlyMap<string, BluetoothStatusRoute>> {
+    return getBluetoothStatusRoutesForGateway(
+        organizationId,
+        gatewayExternalId,
+        version,
+        load ? {load} : undefined
+    );
 }
 
-export function __resetPromotedKeysCacheForTests(): void {
-    promotedKeysCache.clear();
+export function __resetPromotedRoutesCacheForTests(): void {
+    __resetBluetoothStatusRouteCacheForTests();
 }
 
 async function emitPromotedBluetoothStatus(
     gatewayDevice: AbstractDevice,
     reason: string | string[],
-    changes?: readonly PathChange[]
+    changes?: readonly PathChange[],
+    journal?: {tsEpochSec?: number}
 ): Promise<void> {
     const reasons = bluetoothEventReasons(reason, changes);
     if (reasons.length === 0) return;
@@ -230,37 +223,41 @@ async function emitPromotedBluetoothStatus(
         gatewayDevice.shellyID
     );
     if (!organizationId) return;
-    // Gate on the cached promoted-key set: a gateway with no promoted BLU
-    // child does zero per-report DB work.
-    const promotedKeys = await promotedSourceKeysForGateway(
+    const promotedRoutes = await promotedStatusRoutesForGateway(
         organizationId,
         gatewayDevice.shellyID
     );
-    if (promotedKeys.size === 0) return;
+    if (promotedRoutes.size === 0) return;
     const gateway: SourceSnapshot = {
         presence: gatewayDevice.presence,
         status: gatewayDevice.status as Record<string, unknown>
     };
-    const externalIds = new Set<string>();
+    const devices = new Map<string, BluetoothStatusRoute>();
     for (const componentKey of reasons) {
-        const externalId = await getBluetoothDeviceExternalIdBySource(
-            organizationId,
-            gatewayDevice.shellyID,
-            componentKey
-        );
-        if (externalId) externalIds.add(externalId);
+        const route = promotedRoutes.get(componentKey);
+        if (route) devices.set(route.externalId, route);
     }
-    for (const externalId of externalIds) {
-        const device = await getBluetoothDevice(organizationId, externalId);
-        if (!device) continue;
+    for (const device of devices.values()) {
         const status = projectBluetoothComponentStatus({device, gateway});
         if (Object.keys(status).length === 0) continue;
+        const projectedChanges = bluetoothEventChanges(status, changes);
         const event = promotedBluetoothStatusEvent(device.externalId, status);
         await EventDistributor.processAndNotifyAll(event, {
             shellyID: device.externalId,
             reason: reasons,
-            changes: bluetoothEventChanges(status, changes)
+            changes: projectedChanges,
+            bluetoothRoute: device
         });
+        if (journal && projectedChanges) {
+            DeviceEventLogger.captureProjectedChanges({
+                sourceDevice: gatewayDevice,
+                deviceId: device.deviceListId,
+                shellyId: device.externalId,
+                organizationId: device.organizationId,
+                tsEpochSec: journal.tsEpochSec,
+                changes: projectedChanges
+            });
+        }
     }
 }
 
@@ -334,6 +331,18 @@ export function emitEntityAdded(entity: entity_t) {
     });
 }
 
+export function emitEntityUpdated(entity: entity_t) {
+    // Payload mirrors Entity.Added so clients replace the stored entity in
+    // place without a follow-up fetch.
+    const event: json_rpc_event = {
+        method: 'Entity.Updated',
+        params: {entityId: entity.id, entity}
+    };
+    EventDistributor.processAndNotifyAll(event, {
+        shellyID: entity.source ?? undefined
+    });
+}
+
 export function emitEntityRemoved(entity: entity_t) {
     const event: EntityEvent.Removed = {
         method: 'Entity.Removed',
@@ -398,7 +407,8 @@ export function emitBTHomeDiscoveryResult(
             isRemote,
             modelId,
             localName: localName !== 'unknown' ? localName : undefined,
-            rssi
+            rssi,
+            heardAtMs: Date.now()
         }
     };
     EventDistributor.processAndNotifyAll(event, {shellyID});

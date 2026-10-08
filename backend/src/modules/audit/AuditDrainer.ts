@@ -5,6 +5,7 @@ import {tuning} from '../../config';
 import type {AuditLogEntry} from '../AuditLogger';
 import {entryToBatchRow} from '../auditBatchRow';
 import * as Observability from '../Observability';
+import {ensureGroupReady} from '../redis/ensureGroupReady';
 import {getInstanceId} from '../redis/instanceId';
 import {Leadership} from '../redis/Leadership';
 import {
@@ -105,7 +106,11 @@ async function writePerRow(parsed: ParsedEntry[]): Promise<PerRowResult> {
 async function ackOrLog(stream: RedisStream, ids: string[]): Promise<void> {
     if (ids.length === 0) return;
     try {
-        await stream.ack(GROUP, ids);
+        await stream.ackAndDelete(GROUP, ids);
+        Observability.incrementCounter(
+            'audit_overflow_entries_deleted_total',
+            ids.length
+        );
     } catch (err) {
         Observability.incrementCounter('audit_overflow_ack_errors');
         logger.error(
@@ -198,7 +203,12 @@ export function startAuditDrainer(): void {
     done = (async () => {
         // Await initial acquire so the first read iteration sees the lease state.
         await leadership?.start();
-        await stream.ensureGroup(GROUP, '0');
+        await ensureGroupReady({
+            source: 'audit-overflow',
+            retryMs: tuning.audit.drainerRetryMs,
+            isStopped: () => stopped,
+            ensure: () => stream.ensureGroup(GROUP, '0')
+        });
         while (!stopped) {
             // Only the leader drains — other instances stand by.
             if (!leadership?.isLeader()) {

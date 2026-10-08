@@ -34,6 +34,8 @@ export interface SensorEventsParams {
     kind?: string;
     /** Page size — defaults to 5000, max 20000 */
     limit?: number;
+    /** Row offset into the newest-first result. Default 0. */
+    offset?: number;
 }
 
 export const SENSOR_EVENTS_PARAMS_SCHEMA: JsonSchema = {
@@ -59,7 +61,14 @@ export const SENSOR_EVENTS_PARAMS_SCHEMA: JsonSchema = {
         limit: {
             type: 'integer',
             minimum: 1,
-            maximum: SENSOR_EVENTS_LIMITS.maxRowLimit
+            maximum: SENSOR_EVENTS_LIMITS.maxRowLimit,
+            description:
+                'Page size — defaults to 5000 (events always page, unlike Energy.Query where an omitted limit means the full set)'
+        },
+        offset: {
+            type: 'integer',
+            minimum: 0,
+            description: 'Row offset into the newest-first result'
         }
     }
 };
@@ -79,15 +88,22 @@ export interface SensorEventRow {
     channel: number | null;
     /** Binary sensors: 0/1. Buttons: push code (1 single, 2 double, 3 triple, 4 long). */
     state: number;
+    /** Present for a custom-device projection; distinguishes same-kind roles. */
+    roleKey?: string;
 }
 
 export interface SensorEventsResponse {
     items: SensorEventRow[];
+    /** Lower bound on total rows; has_more is authoritative. */
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
 }
 
 export const SENSOR_EVENTS_RESPONSE_SCHEMA: JsonSchema = {
     type: 'object',
-    required: ['items'],
+    required: ['items', 'total', 'limit', 'offset', 'has_more'],
     properties: {
         items: {
             type: 'array',
@@ -109,9 +125,22 @@ export const SENSOR_EVENTS_RESPONSE_SCHEMA: JsonSchema = {
                     source: {type: 'string'},
                     kind: {type: 'string'},
                     channel: {type: ['number', 'null'] as JsonSchemaType[]},
-                    state: {type: 'number'}
+                    state: {type: 'number'},
+                    roleKey: {type: 'string'}
                 }
             }
+        },
+        total: {
+            type: 'number',
+            description:
+                'Lower bound on total rows (offset + returned + 1 when more exist) — has_more is authoritative.'
+        },
+        limit: {type: 'number'},
+        offset: {type: 'number'},
+        has_more: {
+            type: 'boolean',
+            description:
+                'Authoritative signal that more rows exist beyond this page.'
         }
     }
 };
@@ -123,16 +152,52 @@ export const SENSOR_EVENTS_RESPONSE_SCHEMA: JsonSchema = {
  * modules/sensorCapture.ts (the capture/classifier that produces these) — kept
  * here, like ENERGY_DOMAINS, so the generated API surface validates the filter
  * before it reaches the DB. internal = a device's own chip reading; blu = a
- * paired BTHome/BLU sensor; weather = an Ecowitt-class station.
+ * paired BTHome/BLU sensor; weather = an Ecowitt-class station; virtual = a
+ * Shelly X / XT1 virtual component whose role the device declares.
  */
 export const SENSOR_SOURCES = [
     'internal',
     'builtin',
     'addon',
     'blu',
-    'weather'
+    'weather',
+    'virtual'
 ] as const;
 export type SensorSource = (typeof SENSOR_SOURCES)[number];
+
+/**
+ * A device's own chip / relay temperature. It reports how hot the electronics
+ * are, never how warm the room or the goods are, so it is device health and
+ * nothing else. Kept as a named constant because "is this reading ambient?" is
+ * asked by the sensor read, the energy read and the environment report, and all
+ * three must answer identically.
+ */
+export const DEVICE_HEALTH_SENSOR_SOURCE: SensorSource = 'internal';
+
+/**
+ * Reading source of a custom-device role whose binding declares none. Capture
+ * stamps `builtin` on every physical sensor that is not an add-on, BLU or
+ * weather station, so an undeclared projection of one is `builtin` too.
+ * Assuming device health instead would claim a fact the binding never stated,
+ * and it hid genuine ambient roles from every ambient read.
+ */
+export const UNDECLARED_ROLE_SENSOR_SOURCE: SensorSource = 'builtin';
+
+/**
+ * Does a stored row belong in the answer for this `source` filter? A named
+ * filter selects exactly that source, device health included; an omitted filter
+ * means ambient. Ambient is the default because a chip temperature drawn on a
+ * room-temperature chart is a wrong reading, while its absence is only a
+ * missing one — and the caller that wants it can always name it.
+ */
+export function sensorSourceAccepted(
+    rowSource: string | null | undefined,
+    requestedSource: string | null | undefined
+): boolean {
+    return requestedSource
+        ? rowSource === requestedSource
+        : rowSource !== DEVICE_HEALTH_SENSOR_SOURCE;
+}
 
 export const SENSOR_QUERY_LIMITS = {
     // Same device cap as Sensor.Events — one sensor-read fan-out ceiling.
@@ -153,8 +218,10 @@ export interface SensorQueryParams {
      */
     kinds: string[];
     /**
-     * Reading-source filter (internal/builtin/addon/blu/weather). Omit to
-     * return every source — rows stay grouped per source either way.
+     * Reading-source filter (internal/builtin/addon/blu/weather). Omit for
+     * every ambient source; chip temperatures (`internal`) are device health
+     * and only come back when asked for by name. Rows stay grouped per source
+     * either way.
      */
     source?: SensorSource;
     /** Scope: group / location / tag / fleet (mutually exclusive with devices) */
@@ -190,6 +257,8 @@ export interface SensorQueryRow {
     min: number | null;
     /** Bucket maximum */
     max: number | null;
+    /** Present for a custom-device projection; distinguishes same-kind roles. */
+    roleKey?: string;
 }
 
 export interface SensorQueryMeta {
@@ -226,7 +295,8 @@ export const SENSOR_QUERY_PARAMS_SCHEMA: JsonSchema = {
         source: {
             type: 'string',
             enum: [...SENSOR_SOURCES],
-            description: 'Reading-source filter — omit for every source'
+            description:
+                'Reading-source filter — omit for every ambient source; pass "internal" for a device\'s own chip temperature'
         },
         scope: DASHBOARD_SCOPE_SCHEMA,
         devices: {
@@ -288,7 +358,8 @@ export const SENSOR_QUERY_RESPONSE_SCHEMA: JsonSchema = {
                     },
                     value: {type: 'number'},
                     min: {type: ['number', 'null'] as JsonSchemaType[]},
-                    max: {type: ['number', 'null'] as JsonSchemaType[]}
+                    max: {type: ['number', 'null'] as JsonSchemaType[]},
+                    roleKey: {type: 'string'}
                 }
             }
         },
@@ -333,7 +404,9 @@ export const SENSOR_DESCRIBE: DescribeOutput = new DescribeBuilder('sensor', {
             'Numeric sensor history from device_sensor.numeric_15min (the forever 15-minute rollup), ' +
             're-bucketed per channel to sample-weighted avg + true min/max, with reading counts. The numeric twin of Sensor.Events. ' +
             'Group / location / tag / devices / fleet scope selected by params (scope XOR devices). ' +
-            'kinds fan out one DB call each; source narrows to one reading source (omit for all). ' +
+            'kinds fan out one DB call each; source narrows to one reading source — omit it for every ambient ' +
+            "source, which leaves out a device's own chip temperature (internal) because that is device health, " +
+            'not the environment. ' +
             'Omit limit for the full set (up to the server row ceiling); set limit to paginate. ' +
             'total is a lower bound — has_more is authoritative.'
     })
@@ -347,6 +420,8 @@ export const SENSOR_DESCRIBE: DescribeOutput = new DescribeBuilder('sensor', {
         description:
             'Discrete event history from device_sensor.events (append-only: binary sensors record ' +
             'on state change, buttons record every push). devices is a required shellyID allowlist — ' +
-            'no group/location/tag/fleet scope yet. kind narrows to one event kind; omit for all kinds.'
+            'no group/location/tag/fleet scope yet. kind narrows to one event kind; omit for all kinds. ' +
+            'Paged newest-first by limit (default 5000, max 20000) + offset; unlike Energy.Query an omitted ' +
+            'limit still pages at the default. total is a lower bound — has_more is authoritative.'
     })
     .build();

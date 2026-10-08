@@ -25,6 +25,8 @@ interface ProgressParams {
 
 const PHASE_LABELS: Record<string, string> = {
     started: 'Starting…',
+    checking_data: 'Checking data…',
+    reading_energy: 'Reading energy…',
     data_fetched: 'Data fetched…',
     computing: 'Aggregating data…',
     writing: 'Writing report…',

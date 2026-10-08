@@ -1,249 +1,351 @@
 <template>
-    <div class="esp-mov" @click.self="emit('close')">
-        <div class="esp-modal" role="dialog" aria-modal="true">
-            <div class="esp-hd">
-                <div><h3>Dashboard settings</h3><p class="esp-sub">Energy</p></div>
-                <button type="button" class="esp-x" aria-label="Close" @click="emit('close')">✕</button>
-            </div>
+    <Modal :visible="true" wide tall @close="emit('close')">
+        <template #title>
+            <ModalHeader title="Dashboard settings" description="Energy" />
+        </template>
 
-            <Teleport to="body">
-                <EnergyTariffEditor
-                    v-if="tariffEditorOpen"
-                    :editing-id="tariffEditorId"
-                    :default-currency="form.currency"
-                    :default-timezone="form.tariffTimezone || 'UTC'"
-                    @close="tariffEditorOpen = false"
-                    @saved="onTariffSaved"
-                />
-            </Teleport>
+        <template #default>
+            <!-- Nested modal — helpers/modalStack gives it its own depth above this one. -->
+            <EnergyTariffEditor
+                v-if="tariffEditorOpen"
+                :editing-id="tariffEditorId"
+                :default-currency="form.currency"
+                :default-timezone="form.tariffTimezone || 'UTC'"
+                @close="tariffEditorOpen = false"
+                @saved="onTariffSaved"
+            />
 
             <div class="esp-body">
-                <nav class="esp-rail">
-                    <button v-for="t in TABS" :key="t.key" type="button" class="esp-tab" :class="{on: tab === t.key}" @click="tab = t.key">{{ t.label }}</button>
-                </nav>
+                <ModalTabRail
+                    v-model="tab"
+                    :tabs="railTabs"
+                    aria-label="Dashboard settings sections"
+                />
 
                 <div class="esp-panel">
                     <!-- Scope -->
-                    <section v-show="tab === 'scope'">
-                        <div class="esp-field">
-                            <label>Dashboard name</label>
-                            <input v-model="name" class="esp-input" type="text" maxlength="120" placeholder="Energy" />
-                        </div>
-                        <div class="esp-field">
-                            <label>What this dashboard covers</label>
-                            <div class="esp-seg">
-                                <button type="button" :class="{on: form.scopeType === 'fleet'}" @click="form.scopeType = 'fleet'">Whole fleet</button>
-                                <button type="button" :class="{on: form.scopeType === 'group'}" @click="form.scopeType = 'group'">A group</button>
-                            </div>
-                        </div>
-                        <div v-if="form.scopeType === 'group'" class="esp-field">
-                            <label>Group</label>
-                            <select v-model.number="form.groupId" class="esp-input">
-                                <option :value="null">— choose a group —</option>
-                                <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
-                            </select>
-                        </div>
+                    <section v-show="tab === 'scope'" class="esp-stack">
+                        <FormField label="Dashboard name">
+                            <Input v-model="name" placeholder="Energy" :maxlength="120" />
+                        </FormField>
+                        <FormField label="What this dashboard covers">
+                            <ViewToggle v-model="form.scopeType" :options="SCOPE_OPTIONS" />
+                        </FormField>
+                        <FormField
+                            v-if="form.scopeType === 'group'"
+                            label="Group"
+                            :error="scopeInvalid ? 'Pick a group — without one the dashboard would silently fall back to the whole fleet.' : ''"
+                        >
+                            <Dropdown
+                                :groups="groupOptions"
+                                :default="form.groupId ?? undefined"
+                                placeholder="Choose a group"
+                                aria-label="Group"
+                                @selected="onGroupPicked"
+                            />
+                        </FormField>
                     </section>
 
                     <!-- Tariff -->
-                    <section v-show="tab === 'tariff'">
-                        <div v-if="tariffList.length" class="esp-field">
-                            <label>Saved tariff</label>
-                            <select v-model.number="form.tariffId" class="esp-input">
-                                <option :value="null">Custom — set rates below</option>
-                                <option v-for="t in tariffList" :key="t.id" :value="t.id">{{ t.name }} · {{ t.kind }} · {{ t.currency }}</option>
-                            </select>
-                            <p class="esp-hint">Use a tariff shared across your organisation, or leave Custom to set rates just for this dashboard.</p>
+                    <section v-show="tab === 'tariff'" class="esp-stack">
+                        <div v-if="form.tariffId != null" class="esp-legacy-tariff">
+                            <div>
+                                <strong>Legacy dashboard tariff</strong>
+                                <p>{{ tariffName(form.tariffId) }}</p>
+                            </div>
+                            <span>Read only</span>
                         </div>
+                        <p v-if="form.tariffId != null" class="esp-hint">
+                            This stored dashboard billing value remains untouched, but it is not part of the canonical tariff hierarchy.
+                        </p>
 
-                        <div class="esp-field esp-tariff-actions">
-                            <button type="button" class="esp-mini" @click="openTariffEditor(null)">+ New tariff</button>
-                            <button v-if="form.tariffId != null" type="button" class="esp-mini" @click="openTariffEditor(form.tariffId)">Edit selected</button>
-                            <p class="esp-hint">Seasonal, time-of-use and live tariffs are created here and shared across the organisation.</p>
+                        <div class="esp-tariff-actions">
+                            <Button type="blue-hollow" size="sm" @click="openTariffEditor(null)">
+                                New tariff
+                            </Button>
+                            <Button
+                                v-if="assignmentTariffId != null"
+                                type="blue-hollow"
+                                size="sm"
+                                @click="openTariffEditor(assignmentTariffId)"
+                            >
+                                Edit selected
+                            </Button>
                         </div>
+                        <p class="esp-hint">
+                            Seasonal, time-of-use and live tariffs are created here and shared across the organisation.
+                        </p>
 
-                        <template v-if="form.tariffId == null">
-                            <div class="esp-field">
-                                <label>Tariff mode</label>
-                                <div class="esp-seg">
-                                    <button type="button" :class="{on: form.tariffMode === 'single'}" @click="form.tariffMode = 'single'">Single</button>
-                                    <button type="button" :class="{on: form.tariffMode === 'day_night'}" @click="form.tariffMode = 'day_night'">Day / night</button>
-                                    <button type="button" :class="{on: form.tariffMode === 'tou'}" @click="form.tariffMode = 'tou'">Time-of-use</button>
-                                </div>
-                            </div>
-                            <div v-if="form.tariffMode === 'single'" class="esp-field">
-                                <label>Rate ({{ form.currency }} / kWh)</label>
-                                <input v-model.number="form.tariff" class="esp-input" type="number" step="0.01" min="0" />
-                            </div>
-                            <template v-else-if="form.tariffMode === 'day_night'">
-                                <div class="esp-row">
-                                    <div class="esp-field"><label>Day rate ({{ form.currency }} / kWh)</label><input v-model.number="form.dayRate" class="esp-input" type="number" step="0.01" min="0" /></div>
-                                    <div class="esp-field"><label>Night rate ({{ form.currency }} / kWh)</label><input v-model.number="form.nightRate" class="esp-input" type="number" step="0.01" min="0" /></div>
-                                </div>
-                                <div class="esp-row">
-                                    <div class="esp-field"><label>Day starts</label><input v-model="form.dayStart" class="esp-input" type="time" /></div>
-                                    <div class="esp-field"><label>Day ends</label><input v-model="form.dayEnd" class="esp-input" type="time" /></div>
-                                </div>
-                            </template>
-                            <template v-else>
-                                <div class="esp-field">
-                                    <label>Time-of-use windows (up to 8)</label>
-                                    <EnergyTouWindows v-model="form.tariffWindows" />
-                                </div>
-                                <label class="esp-check"><input type="checkbox" v-model="form.weekendEnabled" /> Different rates on weekends &amp; holidays</label>
-                                <div v-if="form.weekendEnabled" class="esp-field">
-                                    <label>Weekend / holiday windows</label>
-                                    <EnergyTouWindows v-model="form.weekendWindows" />
-                                </div>
-                                <div v-if="form.weekendEnabled" class="esp-field">
-                                    <label>Holiday dates</label>
-                                    <textarea v-model="form.holidaysText" class="esp-input" rows="2" placeholder="2026-01-01, 2026-12-25"></textarea>
-                                    <p class="esp-hint">YYYY-MM-DD dates separated by commas or spaces — these follow the weekend rates.</p>
-                                </div>
-                            </template>
-                        </template>
+                        <FormSection
+                            v-if="tariffList.length"
+                            title="Where this tariff applies"
+                            icon="fas fa-sitemap"
+                        >
+                            <p class="esp-hint">
+                                Set the default at one exact level. More specific assignments stay in place and continue to win.
+                            </p>
 
-                        <div class="esp-row">
-                            <div class="esp-field">
-                                <label>Currency</label>
-                                <select v-model="form.currency" class="esp-input">
-                                    <option value="EUR">EUR (€)</option>
-                                    <option value="USD">USD ($)</option>
-                                    <option value="GBP">GBP (£)</option>
-                                    <option value="BGN">BGN (лв)</option>
-                                </select>
-                            </div>
-                            <div class="esp-field">
-                                <label>Time zone</label>
-                                <input v-model="form.tariffTimezone" class="esp-input" type="text" placeholder="Europe/Sofia" />
-                            </div>
-                        </div>
+                            <FormField
+                                label="Tariff to assign"
+                                :error="assignmentTariffId == null ? 'Choose the tariff to assign.' : ''"
+                            >
+                                <Dropdown
+                                    :key="`assignment-tariff-${assignmentTariffId ?? 'none'}`"
+                                    :groups="tariffOptions"
+                                    :default="assignmentTariffId ?? undefined"
+                                    placeholder="Choose a tariff"
+                                    aria-label="Tariff to assign"
+                                    @selected="onAssignmentTariffPicked"
+                                />
+                            </FormField>
 
-                        <template v-if="form.tariffId == null">
-                            <div class="esp-subhead">Extra charges</div>
-                            <div class="esp-row">
-                                <div class="esp-field"><label>Standing charge ({{ form.currency }})</label><input v-model.number="form.standingCharge" class="esp-input" type="number" step="0.01" min="0" /></div>
-                                <div class="esp-field"><label>Charged per</label><select v-model="form.standingPeriod" class="esp-input"><option value="day">Day</option><option value="month">Month</option></select></div>
+                            <FormField label="Assignment level">
+                                <ViewToggle
+                                    v-model="assignmentScope"
+                                    :options="TARIFF_SCOPE_OPTIONS"
+                                />
+                            </FormField>
+
+                            <FormField
+                                v-if="assignmentScope === 'location'"
+                                label="Location"
+                                :error="assignmentLocationId == null ? 'Choose the location this tariff applies to.' : ''"
+                            >
+                                <Dropdown
+                                    :key="`location-${assignmentLocationId ?? 'none'}`"
+                                    :groups="assignmentLocationOptions"
+                                    :default="assignmentLocationId ?? undefined"
+                                    searchable
+                                    placeholder="Choose a location"
+                                    aria-label="Tariff location"
+                                    @selected="onAssignmentLocationPicked"
+                                />
+                            </FormField>
+
+                            <FormField
+                                v-if="assignmentScope === 'device' || assignmentScope === 'channel'"
+                                label="Meter"
+                                :error="assignmentDeviceId === '' ? 'Choose the meter this tariff applies to.' : ''"
+                            >
+                                <Dropdown
+                                    :key="`device-${assignmentDeviceId || 'none'}`"
+                                    :groups="assignmentDeviceOptions"
+                                    :default="assignmentDeviceId || undefined"
+                                    searchable
+                                    placeholder="Choose a meter"
+                                    aria-label="Tariff meter"
+                                    @selected="onAssignmentDevicePicked"
+                                />
+                            </FormField>
+
+                            <FormField
+                                v-if="assignmentScope === 'channel'"
+                                label="Channel"
+                                :error="assignmentChannel == null ? 'Choose the channel this tariff applies to.' : ''"
+                            >
+                                <Dropdown
+                                    :key="`channel-${assignmentDeviceId}-${assignmentChannel ?? 'none'}`"
+                                    :groups="assignmentChannelOptions"
+                                    :default="assignmentChannel ?? undefined"
+                                    placeholder="Choose a channel"
+                                    aria-label="Tariff channel"
+                                    @selected="onAssignmentChannelPicked"
+                                />
+                            </FormField>
+
+                            <div class="esp-impact" aria-live="polite">
+                                <div class="esp-impact__icon" aria-hidden="true">
+                                    <i :class="assignmentImpact.icon" />
+                                </div>
+                                <div class="esp-impact__copy">
+                                    <strong>{{ assignmentImpact.title }}</strong>
+                                    <p>{{ assignmentImpact.detail }}</p>
+                                    <p v-if="exactAssignment" class="esp-impact__current">
+                                        This exact level currently uses
+                                        <strong>{{ tariffName(exactAssignment.tariffId) }}</strong>.
+                                    </p>
+                                </div>
                             </div>
-                            <div class="esp-row">
-                                <div class="esp-field"><label>Demand rate ({{ form.currency }} / kW·mo)</label><input v-model.number="form.demandRate" class="esp-input" type="number" step="0.01" min="0" /></div>
-                                <div class="esp-field"><label>VAT (%)</label><input v-model.number="form.vatPct" class="esp-input" type="number" step="0.1" min="0" /></div>
+
+                            <p v-if="assignmentError" class="esp-assignment-status esp-assignment-status--error" role="alert">
+                                {{ assignmentError }}
+                            </p>
+                            <p v-else-if="assignmentSuccess" class="esp-assignment-status esp-assignment-status--success" role="status">
+                                {{ assignmentSuccess }}
+                            </p>
+
+                            <div v-if="assignmentReviewOpen" class="esp-assignment-review">
+                                <p>
+                                    Confirm: assign <strong>{{ selectedTariffName }}</strong> to
+                                    <strong>{{ assignmentImpact.target }}</strong>.
+                                    Applying it can change calculated energy and demand costs for every metering point inheriting this scope.
+                                    Narrower overrides remain; unassigned or mixed points remain unavailable.
+                                </p>
+                                <div class="esp-assignment-review__actions">
+                                    <Button
+                                        type="blue-hollow"
+                                        size="sm"
+                                        :disabled="assignmentBusy"
+                                        @click="assignmentReviewOpen = false"
+                                    >
+                                        Back
+                                    </Button>
+                                    <Button
+                                        type="blue"
+                                        size="sm"
+                                        :loading="assignmentBusy"
+                                        :disabled="assignmentBusy"
+                                        @click="applyTariffAssignment"
+                                    >
+                                        Confirm assignment
+                                    </Button>
+                                </div>
                             </div>
-                            <div class="esp-row">
-                                <div class="esp-field"><label>Billing day (1–28)</label><input v-model.number="form.billingDay" class="esp-input" type="number" min="1" max="28" /></div>
-                                <div class="esp-field"></div>
-                            </div>
-                            <p class="esp-hint">Demand, standing charge and VAT feed the bill breakdown on the Overview.</p>
-                        </template>
+                            <Button
+                                v-else
+                                type="blue-hollow"
+                                size="sm"
+                                :disabled="!assignmentValid || assignmentBusy"
+                                @click="reviewTariffAssignment"
+                            >
+                                Review assignment
+                            </Button>
+                        </FormSection>
+
+                        <p v-if="form.tariffId == null" class="esp-legacy-tariff-note">
+                            No legacy dashboard tariff is configured. Create or select an organisation tariff above, then assign it at the exact scope where it applies.
+                        </p>
                     </section>
 
                     <!-- Meters (real device pickers) -->
-                    <section v-show="tab === 'meters'">
-                        <div class="esp-field">
-                            <label>Main meters — grid entry points ({{ form.mainMeterIds.length }} selected)</label>
+                    <section v-show="tab === 'meters'" class="esp-stack">
+                        <FormField
+                            :label="`Main meters — grid entry points (${form.mainMeterIds.length} selected)`"
+                            hint="The meters that measure your total grid import / export."
+                        >
                             <EnergyDevicePicker v-model="form.mainMeterIds" :devices="deviceList" />
-                            <p class="esp-hint">The meters that measure your total grid import / export.</p>
-                        </div>
-                        <div class="esp-field">
-                            <label>Peak-power devices ({{ form.peakDeviceIds.length }} selected)</label>
+                        </FormField>
+                        <FormField
+                            :label="`Peak-power devices (${form.peakDeviceIds.length} selected)`"
+                            hint="Counted toward the peak-demand figure. Leave empty to use every device in scope."
+                        >
                             <EnergyDevicePicker v-model="form.peakDeviceIds" :devices="deviceList" />
-                            <p class="esp-hint">Counted toward the peak-demand figure. Leave empty to use every device in scope.</p>
-                        </div>
+                        </FormField>
                     </section>
 
-                    <!-- Display -->
-                    <section v-show="tab === 'display'">
-                        <div class="esp-field">
-                            <label>Default date range</label>
-                            <select v-model="form.defaultRange" class="esp-input">
-                                <option value="last_7_days">Last 7 days</option>
-                                <option value="last_30_days">Last 30 days</option>
-                                <option value="mtd">This month</option>
-                                <option value="last_month">Last month</option>
-                            </select>
-                        </div>
-                        <div class="esp-field">
-                            <label>Auto-refresh</label>
-                            <select v-model.number="form.refreshInterval" class="esp-input">
-                                <option :value="60000">Every 60 s</option>
-                                <option :value="300000">Every 5 min</option>
-                                <option :value="0">Off</option>
-                            </select>
-                        </div>
-                        <div class="esp-subhead">Power quality</div>
-                        <div class="esp-row">
-                            <div class="esp-field"><label>Nominal voltage (V)</label><input v-model.number="form.nominalVoltage" class="esp-input" type="number" step="1" min="1" /></div>
-                            <div class="esp-field"><label>Nominal frequency (Hz)</label><input v-model.number="form.nominalHz" class="esp-input" type="number" step="1" min="1" /></div>
-                        </div>
-                        <p class="esp-hint">Sets the EN 50160 ±10 % voltage band used for the power-quality checks and report.</p>
+                    <!-- Display — auto-refresh cadence intentionally lives in the shell ⋮ menu, not here -->
+                    <section v-show="tab === 'display'" class="esp-stack">
+                        <FormField label="Default date range">
+                            <Dropdown
+                                :groups="RANGE_GROUPS"
+                                :default="form.defaultRange"
+                                aria-label="Default date range"
+                                @selected="onRangePicked"
+                            />
+                        </FormField>
+                        <FormSection title="Power quality">
+                            <div class="esp-row">
+                                <FormField label="Nominal voltage (V)">
+                                    <input v-model.number="form.nominalVoltage" :class="INPUT_CLASS" type="number" step="1" min="1" />
+                                </FormField>
+                                <FormField label="Nominal frequency (Hz)">
+                                    <input v-model.number="form.nominalHz" :class="INPUT_CLASS" type="number" step="1" min="1" />
+                                </FormField>
+                            </div>
+                            <p class="esp-hint">
+                                Sets the EN 50160 ±10 % voltage band used for the power-quality checks and report.
+                            </p>
+                        </FormSection>
                     </section>
 
                     <!-- PV -->
-                    <section v-show="tab === 'pv'">
-                        <div class="esp-field">
-                            <label>PV / solar</label>
-                            <div class="esp-seg">
-                                <button type="button" :class="{on: form.pvMode === 'parallel'}" @click="form.pvMode = 'parallel'">Parallel</button>
-                                <button type="button" :class="{on: form.pvMode === 'backup'}" @click="form.pvMode = 'backup'">Backup</button>
-                                <button type="button" :class="{on: form.pvMode === 'balcony'}" @click="form.pvMode = 'balcony'">Balcony</button>
-                                <button type="button" :class="{on: form.pvMode === ''}" @click="form.pvMode = ''">None</button>
-                            </div>
-                        </div>
+                    <section v-show="tab === 'pv'" class="esp-stack">
+                        <FormField label="PV / solar">
+                            <ViewToggle v-model="form.pvMode" :options="PV_OPTIONS" />
+                        </FormField>
                         <template v-if="form.pvMode !== ''">
-                            <div class="esp-field">
-                                <label>Feed-in rate ({{ form.currency }} / kWh)</label>
-                                <input v-model.number="form.feedInRate" class="esp-input" type="number" step="0.01" min="0" />
-                            </div>
-                            <div class="esp-field">
-                                <label>Generation meters — PV inverters ({{ form.pvGenIds.length }} selected)</label>
+                            <p v-if="form.feedInRate" class="esp-legacy-tariff-note">
+                                Legacy dashboard feed-in rate: {{ form.feedInRate }} per kWh. Read only; canonical export pricing belongs in the tariff library.
+                            </p>
+                            <FormField
+                                :label="`Generation meters — PV inverters (${form.pvGenIds.length} selected)`"
+                                hint="Meters that measure what your panels produce."
+                            >
                                 <EnergyDevicePicker v-model="form.pvGenIds" :devices="deviceList" />
-                                <p class="esp-hint">Meters that measure what your panels produce.</p>
-                            </div>
-                            <div class="esp-field">
-                                <label>Grid meters for PV ({{ form.pvGridIds.length }} selected)</label>
+                            </FormField>
+                            <FormField
+                                :label="`Grid meters for PV (${form.pvGridIds.length} selected)`"
+                                hint="Meters at the grid connection, so exported solar is measured correctly."
+                            >
                                 <EnergyDevicePicker v-model="form.pvGridIds" :devices="deviceList" />
-                                <p class="esp-hint">Meters at the grid connection, so exported solar is measured correctly.</p>
-                            </div>
+                            </FormField>
                         </template>
                     </section>
 
                     <!-- Carbon -->
-                    <section v-show="tab === 'carbon'">
-                        <div class="esp-field">
-                            <label>Grid emission factor — location-based (g CO₂ / kWh)</label>
-                            <input v-model.number="form.emissionFactor" class="esp-input" type="number" step="1" min="0" />
-                            <p class="esp-hint">The average grid mix where these devices run.</p>
-                        </div>
-                        <div class="esp-field">
-                            <label>Market-based factor — green tariff / RECs (g CO₂ / kWh)</label>
-                            <input v-model.number="form.emissionFactorMbm" class="esp-input" type="number" step="1" min="0" placeholder="Leave blank if none" />
-                            <p class="esp-hint">Set this only if you buy certified green energy.</p>
-                        </div>
-                        <div class="esp-field">
-                            <label>CO₂ budget for the period (kg)</label>
-                            <input v-model.number="form.co2Budget" class="esp-input" type="number" step="1" min="0" />
-                        </div>
+                    <section v-show="tab === 'carbon'" class="esp-stack">
+                        <FormField
+                            label="Grid emission factor — location-based (g CO₂ / kWh)"
+                            hint="The average grid mix where these devices run."
+                        >
+                            <input v-model.number="form.emissionFactor" :class="INPUT_CLASS" type="number" step="1" min="0" />
+                        </FormField>
+                        <FormField
+                            label="Market-based factor — green tariff / RECs (g CO₂ / kWh)"
+                            hint="Set this only if you buy certified green energy."
+                        >
+                            <input
+                                v-model.number="form.emissionFactorMbm"
+                                :class="INPUT_CLASS"
+                                type="number"
+                                step="1"
+                                min="0"
+                                placeholder="Leave blank if none"
+                            />
+                        </FormField>
+                        <FormField label="CO₂ budget for the period (kg)">
+                            <input v-model.number="form.co2Budget" :class="INPUT_CLASS" type="number" step="1" min="0" />
+                        </FormField>
                     </section>
                 </div>
             </div>
+        </template>
 
-            <div class="esp-ft">
-                <span class="esp-sub">Applied on save</span>
-                <div class="esp-actions">
-                    <button type="button" class="esp-ghost" @click="emit('close')">Cancel</button>
-                    <button type="button" class="esp-primary" @click="save">Save</button>
-                </div>
-            </div>
-        </div>
-    </div>
+        <template #footer>
+            <ModalFooter>
+                <template v-if="scopeInvalid" #meta>
+                    <span class="esp-footer-warn">
+                        <i class="fas fa-circle-exclamation" aria-hidden="true" />
+                        Scope needs a group before saving
+                    </span>
+                </template>
+                <template #secondary>
+                    <Button type="blue-hollow" :disabled="saving" @click="emit('close')">Cancel</Button>
+                </template>
+                <template #primary>
+                    <Button type="blue" :loading="saving" :disabled="!canSave" @click="save">Save</Button>
+                </template>
+            </ModalFooter>
+        </template>
+    </Modal>
 </template>
 
 <script setup lang="ts">
-import {computed, reactive, ref} from 'vue';
+import {computed, onMounted, reactive, ref, watch} from 'vue';
+import Button from '@/components/core/Button.vue';
+import Dropdown from '@/components/core/Dropdown.vue';
+import FormField from '@/components/core/FormField.vue';
+import FormSection from '@/components/core/FormSection.vue';
+import Input from '@/components/core/Input.vue';
+import ModalFooter from '@/components/core/ModalFooter.vue';
+import ModalHeader from '@/components/core/ModalHeader.vue';
+import ModalTabRail, {type TabRailItem} from '@/components/core/ModalTabRail.vue';
+import ViewToggle, {type ViewToggleOption} from '@/components/core/ViewToggle.vue';
+import Modal from '@/components/modals/Modal.vue';
+import * as ws from '@/tools/websocket';
 import type {DashboardSettings} from '@/types/dashboard';
 import EnergyDevicePicker from './EnergyDevicePicker.vue';
 import EnergyTariffEditor from './EnergyTariffEditor.vue';
-import EnergyTouWindows from './EnergyTouWindows.vue';
 import {type EnergySettingsForm, toSettingsPayload} from './energySettings.payload';
 
 const props = defineProps<{
@@ -252,8 +354,17 @@ const props = defineProps<{
     groupId: number | null;
     groups: {id: number; name: string}[];
     devices?: {id: number; shellyId: string; name: string}[];
+    assignmentDevices?: {
+        shellyId: string;
+        name: string;
+        locationId: number | null;
+        channels: number[];
+    }[];
+    locations?: {id: number; name: string}[];
     tariffs?: {id: number; name: string; kind: string; currency: string}[];
     dashboardId: number;
+    /** Parent-owned RPC chain in flight — disables Save and shows the spinner. */
+    saving?: boolean;
 }>();
 const emit = defineEmits<{
     close: [];
@@ -261,18 +372,306 @@ const emit = defineEmits<{
     'reload-tariffs': [];
 }>();
 
-const TABS = [
-    {key: 'scope', label: 'Scope'},
-    {key: 'tariff', label: 'Tariff & rates'},
-    {key: 'meters', label: 'Meters'},
-    {key: 'display', label: 'Display'},
-    {key: 'pv', label: 'Solar / PV'},
-    {key: 'carbon', label: 'Carbon'}
+// The shared Input atom renders exactly these classes; native number/time
+// inputs reuse them so every field in the modal looks identical.
+const INPUT_CLASS = 'core-input border text-base rounded-lg block w-full p-2';
+
+type TariffAssignmentScope =
+    | 'organization'
+    | 'location'
+    | 'device'
+    | 'channel';
+interface TariffAssignment {
+    tariffId: number;
+    scopeLevel: TariffAssignmentScope | 'dashboard';
+    dashboardId: number | null;
+    locationId: number | null;
+    deviceExternalId: string | null;
+    channel: number | null;
+}
+
+const SCOPE_OPTIONS: ViewToggleOption<'fleet' | 'group'>[] = [
+    {value: 'fleet', label: 'Whole fleet'},
+    {value: 'group', label: 'A group'}
 ];
+const TARIFF_SCOPE_OPTIONS: ViewToggleOption<TariffAssignmentScope>[] = [
+    {value: 'organization', label: 'Organisation'},
+    {value: 'location', label: 'Location'},
+    {value: 'device', label: 'Meter'},
+    {value: 'channel', label: 'Channel'}
+];
+const PV_OPTIONS: ViewToggleOption<string>[] = [
+    {value: 'parallel', label: 'Parallel'},
+    {value: 'backup', label: 'Backup'},
+    {value: 'balcony', label: 'Balcony'},
+    {value: '', label: 'None'}
+];
+const RANGE_GROUPS = [
+    {
+        label: 'Presets',
+        items: [
+            {value: 'last_7_days', label: 'Last 7 days'},
+            {value: 'last_30_days', label: 'Last 30 days'},
+            {value: 'mtd', label: 'This month'},
+            {value: 'last_month', label: 'Last month'}
+        ]
+    }
+];
+
+
 const tab = ref('scope');
 const name = ref(props.name);
 const deviceList = computed(() => props.devices ?? []);
 const tariffList = computed(() => props.tariffs ?? []);
+
+// Canonical tariff assignments are Fleet-owned. This form reads and writes
+// them through Tariff.* only; dashboard settings and browser storage are not
+// used as a second hierarchy.
+const assignmentTariffId = ref<number | null>(null);
+const assignments = ref<TariffAssignment[]>([]);
+const assignmentScope = ref<TariffAssignmentScope>('organization');
+const assignmentLocationId = ref<number | null>(null);
+const assignmentDeviceId = ref('');
+const assignmentChannel = ref<number | null>(null);
+const assignmentBusy = ref(false);
+const assignmentReviewOpen = ref(false);
+const assignmentError = ref('');
+const assignmentSuccess = ref('');
+
+const assignmentDeviceList = computed(() => props.assignmentDevices ?? []);
+const assignmentLocationOptions = computed(() => [
+    {
+        label: 'Locations',
+        items: (props.locations ?? []).map((location) => ({
+            value: location.id,
+            label: location.name
+        }))
+    }
+]);
+const assignmentDeviceOptions = computed(() => [
+    {
+        label: 'Meters',
+        items: assignmentDeviceList.value.map((device) => ({
+            value: device.shellyId,
+            label: device.name
+        }))
+    }
+]);
+const selectedAssignmentDevice = computed(() =>
+    assignmentDeviceList.value.find(
+        (device) => device.shellyId === assignmentDeviceId.value
+    )
+);
+const assignmentChannelOptions = computed(() => [
+    {
+        label: 'Meter channels',
+        items: (selectedAssignmentDevice.value?.channels ?? []).map(
+            (channel) => ({value: channel, label: `Channel ${channel}`})
+        )
+    }
+]);
+
+function onAssignmentLocationPicked(id: number) {
+    assignmentLocationId.value = id;
+}
+function onAssignmentTariffPicked(id: number) {
+    assignmentTariffId.value = id;
+}
+function onAssignmentDevicePicked(id: string) {
+    assignmentDeviceId.value = id;
+    const channels = assignmentDeviceList.value.find(
+        (device) => device.shellyId === id
+    )?.channels;
+    assignmentChannel.value = channels?.length === 1 ? channels[0] : null;
+}
+function onAssignmentChannelPicked(channel: number) {
+    assignmentChannel.value = channel;
+}
+
+const assignmentValid = computed(() => {
+    if (assignmentTariffId.value == null) return false;
+    if (assignmentScope.value === 'location') {
+        return assignmentLocationId.value != null;
+    }
+    if (assignmentScope.value === 'device') {
+        return assignmentDeviceId.value !== '';
+    }
+    if (assignmentScope.value === 'channel') {
+        return assignmentDeviceId.value !== '' && assignmentChannel.value != null;
+    }
+    return true;
+});
+
+function tariffName(id: number): string {
+    return tariffList.value.find((tariff) => tariff.id === id)?.name ?? `Tariff ${id}`;
+}
+const selectedTariffName = computed(() =>
+    assignmentTariffId.value == null
+        ? 'the selected tariff'
+        : tariffName(assignmentTariffId.value)
+);
+
+const assignmentTarget = computed(() => {
+    if (assignmentScope.value === 'location') {
+        const location = (props.locations ?? []).find(
+            (item) => item.id === assignmentLocationId.value
+        );
+        return {
+            icon: 'fas fa-location-dot',
+            target: location?.name ?? 'the selected location'
+        };
+    }
+    if (assignmentScope.value === 'device') {
+        const target = selectedAssignmentDevice.value?.name ?? 'the selected meter';
+        return {
+            icon: 'fas fa-gauge-high',
+            target
+        };
+    }
+    if (assignmentScope.value === 'channel') {
+        const meter = selectedAssignmentDevice.value?.name ?? 'the selected meter';
+        const target = assignmentChannel.value == null
+            ? `${meter}, selected channel`
+            : `${meter}, channel ${assignmentChannel.value}`;
+        return {
+            icon: 'fas fa-wave-square',
+            target
+        };
+    }
+    return {
+        icon: 'fas fa-building',
+        target: 'the organisation default'
+    };
+});
+
+function assignmentRequest(): Record<string, unknown> | null {
+    if (!assignmentValid.value || assignmentTariffId.value == null) return null;
+    const input: Record<string, unknown> = {
+        tariffId: assignmentTariffId.value,
+        scopeLevel: assignmentScope.value
+    };
+    if (assignmentScope.value === 'location') {
+        input.locationId = assignmentLocationId.value;
+    } else if (assignmentScope.value === 'device') {
+        input.deviceExternalId = assignmentDeviceId.value;
+    } else if (assignmentScope.value === 'channel') {
+        input.deviceExternalId = assignmentDeviceId.value;
+        input.channel = assignmentChannel.value;
+    }
+    return input;
+}
+
+async function loadTariffAssignments() {
+    try {
+        const result = (await ws.sendRPC(
+            'FLEET_MANAGER',
+            'tariff.listassignments',
+            {}
+        )) as {items?: TariffAssignment[]};
+        assignments.value = result.items ?? [];
+    } catch (error) {
+        assignmentError.value =
+            (error as {message?: string})?.message ??
+            'Could not load current tariff assignments. You can still review the selected scope.';
+    }
+}
+
+const exactAssignment = computed(() =>
+    assignments.value.find((assignment) => {
+        if (assignment.scopeLevel !== assignmentScope.value) return false;
+        if (assignmentScope.value === 'organization') return true;
+        if (assignmentScope.value === 'location') {
+            return assignment.locationId === assignmentLocationId.value;
+        }
+        if (assignmentScope.value === 'device') {
+            return assignment.deviceExternalId === assignmentDeviceId.value;
+        }
+        return (
+            assignment.deviceExternalId === assignmentDeviceId.value &&
+            assignment.channel === assignmentChannel.value
+        );
+    })
+);
+
+const assignmentImpact = computed(() => {
+    if (assignmentScope.value === 'organization') {
+        return {
+            ...assignmentTarget.value,
+            title: 'Organisation default',
+            detail:
+                'Fleet metering points without a narrower assignment inherit this tariff. Applying it can change their calculated energy and demand costs; unassigned or mixed points remain unavailable.'
+        };
+    }
+    if (assignmentScope.value === 'location') {
+        return {
+            ...assignmentTarget.value,
+            title: `Location default: ${assignmentTarget.value.target}`,
+            detail:
+                'Meter points in this location and its descendants may inherit this tariff, changing calculated energy and demand costs. Meter and channel overrides remain unchanged.'
+        };
+    }
+    if (assignmentScope.value === 'device') {
+        return {
+            ...assignmentTarget.value,
+            title: `Meter default: ${assignmentTarget.value.target}`,
+            detail:
+                'This meter’s points may inherit the tariff, changing calculated energy and demand costs. Channel overrides remain unchanged.'
+        };
+    }
+    return {
+        ...assignmentTarget.value,
+        title: `Exact channel: ${assignmentTarget.value.target}`,
+        detail:
+            'Only this exact channel is replaced, which can change its calculated energy and demand costs. No broader assignment is changed.'
+    };
+});
+
+function reviewTariffAssignment() {
+    if (!assignmentValid.value) return;
+    assignmentError.value = '';
+    assignmentSuccess.value = '';
+    assignmentReviewOpen.value = true;
+}
+
+async function applyTariffAssignment() {
+    if (assignmentBusy.value) return;
+    const input = assignmentRequest();
+    if (!input) return;
+
+    assignmentBusy.value = true;
+    assignmentError.value = '';
+    try {
+        await ws.sendRPC('FLEET_MANAGER', 'tariff.assign', input);
+        assignmentReviewOpen.value = false;
+        assignmentSuccess.value =
+            `${selectedTariffName.value} now applies to ${assignmentTarget.value.target}. ` +
+            'Narrower overrides were preserved.';
+        await loadTariffAssignments();
+    } catch (error) {
+        assignmentError.value =
+            (error as {message?: string})?.message ??
+            'Could not save the tariff assignment. Try again.';
+    } finally {
+        assignmentBusy.value = false;
+    }
+}
+
+watch(
+    [
+        assignmentTariffId,
+        assignmentScope,
+        assignmentLocationId,
+        assignmentDeviceId,
+        assignmentChannel,
+        assignmentDeviceList
+    ],
+    () => {
+        assignmentReviewOpen.value = false;
+        assignmentError.value = '';
+        assignmentSuccess.value = '';
+    }
+);
+onMounted(() => void loadTariffAssignments());
 
 // Inline tariff editor (create / edit a reusable org tariff).
 const tariffEditorOpen = ref(false);
@@ -283,7 +682,7 @@ function openTariffEditor(id: number | null) {
 }
 function onTariffSaved(id: number) {
     tariffEditorOpen.value = false;
-    form.tariffId = id;
+    assignmentTariffId.value = id;
     emit('reload-tariffs');
 }
 
@@ -306,7 +705,6 @@ const form = reactive<EnergySettingsForm>({
     weekendWindows: [...(s.tariffWeekendOverride ?? [])],
     holidaysText: (s.tariffHolidays ?? []).join(', '),
     defaultRange: s.defaultRange ?? 'last_7_days',
-    refreshInterval: s.refreshInterval ?? 60000,
     emissionFactor: s.emissionFactorGPerKWh ?? 414,
     emissionFactorMbm: s.emissionFactorMbmGPerKWh ?? null,
     co2Budget: s.co2BudgetKg ?? null,
@@ -325,7 +723,54 @@ const form = reactive<EnergySettingsForm>({
     pvGenIds: (s.pvGenerationRefs ?? []).map((r) => r.device)
 });
 
+// A group scope without a group would save groupId:null and silently flip the
+// dashboard to fleet scope — flagged on the rail and blocking Save instead.
+const scopeInvalid = computed(() => form.scopeType === 'group' && form.groupId == null);
+
+const railTabs = computed<TabRailItem[]>(() => [
+    {key: 'scope', label: 'Scope', icon: 'fa-crosshairs', invalid: scopeInvalid.value},
+    {key: 'tariff', label: 'Tariff & rates', icon: 'fa-coins'},
+    {key: 'meters', label: 'Meters', icon: 'fa-gauge-high'},
+    {key: 'display', label: 'Display', icon: 'fa-sliders'},
+    {key: 'pv', label: 'Solar / PV', icon: 'fa-solar-panel'},
+    {key: 'carbon', label: 'Carbon', icon: 'fa-leaf'}
+]);
+
+// Dirty = the form (or the name) differs from what this dialog was seeded with.
+// Serialize-compare is enough: the object shape never changes after setup, so
+// key order is stable on both sides.
+const baseline = JSON.stringify({name: name.value, form});
+const dirty = computed(() => JSON.stringify({name: name.value, form}) !== baseline);
+
+const canSave = computed(() => dirty.value && !scopeInvalid.value && !props.saving);
+
+const groupOptions = computed(() => [
+    {label: 'Groups', items: props.groups.map((g) => ({value: g.id, label: g.name}))}
+]);
+function onGroupPicked(id: number) {
+    form.groupId = id;
+}
+
+const tariffOptions = computed(() => [
+    {
+        label: 'Saved tariffs',
+        items: tariffList.value.map((t) => ({
+            value: t.id,
+            label: `${t.name} · ${t.kind} · ${t.currency}`
+        }))
+    }
+]);
+
+function onRangePicked(range: string) {
+    form.defaultRange = range;
+}
+
 function save() {
+    if (scopeInvalid.value) {
+        // Surface the inline error rather than saving a broken scope.
+        tab.value = 'scope';
+        return;
+    }
     const trimmed = name.value.trim();
     const payload = toSettingsPayload(form, cs) as Partial<
         DashboardSettings & {groupId: number | null; name: string}
@@ -338,259 +783,139 @@ function save() {
 </script>
 
 <style scoped>
-.esp-mov {
-    position: fixed;
-    inset: 0;
-    z-index: 100;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    background: rgba(6, 8, 12, 0.72);
-    backdrop-filter: blur(3px);
-}
-.esp-modal {
-    width: 940px;
-    max-width: 100%;
-    max-height: 92vh;
-    display: flex;
-    flex-direction: column;
-    background: #13161c;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 20px;
-    overflow: hidden;
-    color: #f5f6f8;
-    font: 400 13px 'Inter', system-ui, sans-serif;
-    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
-}
-.esp-hd {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 18px 22px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.055);
-}
-.esp-hd h3 {
-    font-size: var(--type-body);
-    font-weight: 650;
-    letter-spacing: -0.02em;
-}
-.esp-sub {
-    font-size: var(--type-caption);
-    color: #5d646f;
-}
-.esp-x {
-    width: 30px;
-    height: 30px;
-    border-radius: 9px;
-    background: transparent;
-    border: none;
-    color: #9aa1ac;
-    cursor: pointer;
-    font-size: var(--type-body);
-}
-.esp-x:hover {
-    background: #181c23;
-    color: #f5f6f8;
-}
 .esp-body {
     display: grid;
-    grid-template-columns: 186px 1fr;
-    min-height: 0;
-    flex: 1;
+    grid-template-columns: var(--form-tab-rail-width) minmax(0, 1fr);
+    gap: var(--gap-md);
+    align-items: start;
 }
-.esp-rail {
-    border-right: 1px solid rgba(255, 255, 255, 0.055);
-    padding: 12px;
+
+.esp-panel {
+    min-width: 0;
+}
+
+.esp-stack {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    background: #111419;
-    overflow: auto;
+    gap: var(--gap-md);
 }
-.esp-tab {
-    appearance: none;
-    border: none;
-    background: transparent;
-    color: #9aa1ac;
-    cursor: pointer;
-    font: 500 13px 'Inter', system-ui, sans-serif;
-    text-align: left;
-    padding: 9px 12px;
-    border-radius: 9px;
-}
-.esp-tab:hover {
-    color: #f5f6f8;
-    background: #181c23;
-}
-.esp-tab.on {
-    color: #f5f6f8;
-    background: #181c23;
-    font-weight: 600;
-}
-.esp-panel {
-    padding: 20px 22px;
-    overflow: auto;
-}
-.esp-field {
-    margin-bottom: 16px;
-}
-.esp-field > label {
-    display: block;
-    font-size: var(--type-caption);
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: #5d646f;
-    margin-bottom: 8px;
-}
-.esp-input {
-    width: 100%;
-    background: #0e1116;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 10px;
-    padding: 9px 11px;
-    color: #f5f6f8;
-    font: 500 13px 'Inter', system-ui, sans-serif;
-}
+
 .esp-row {
-    display: flex;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--gap-sm);
+    align-items: start;
 }
-.esp-row .esp-field {
-    flex: 1;
-}
-.esp-seg {
-    display: inline-flex;
-    flex-wrap: wrap;
-    gap: 2px;
-    background: #14171d;
-    border: 1px solid rgba(255, 255, 255, 0.055);
-    border-radius: 11px;
-    padding: 3px;
-}
-.esp-seg button {
-    appearance: none;
-    border: none;
-    background: transparent;
-    color: #9aa1ac;
-    cursor: pointer;
-    font: 500 12px 'Inter', system-ui, sans-serif;
-    padding: 7px 13px;
-    border-radius: 8px;
-    white-space: nowrap;
-}
-.esp-seg button:hover {
-    color: #f5f6f8;
-}
-.esp-seg button.on {
-    background: #252a33;
-    color: #f5f6f8;
-    font-weight: 600;
-}
-textarea.esp-input {
-    resize: vertical;
-    min-height: 44px;
-    font-family: 'Inter', system-ui, sans-serif;
-}
+
 .esp-hint {
-    font-size: var(--type-caption);
-    color: #5d646f;
-    line-height: 1.45;
-    margin: 6px 2px 0;
+    margin: 0;
+    font-size: var(--type-body);
+    color: var(--color-text-tertiary);
+    line-height: var(--leading-normal);
 }
+
 .esp-tariff-actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: var(--gap-sm);
 }
-.esp-tariff-actions .esp-hint {
-    flex-basis: 100%;
-    margin-top: 2px;
+
+.esp-impact {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--gap-sm);
+    align-items: start;
+    padding: var(--gap-sm);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-2);
 }
-.esp-mini {
-    background: #181c23;
-    color: #c9ced6;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 9px;
-    padding: 7px 13px;
-    font: 500 12px 'Inter', system-ui, sans-serif;
-    cursor: pointer;
+
+.esp-impact__icon {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-3);
+    color: var(--color-primary-text);
 }
-.esp-mini:hover {
-    color: #f5f6f8;
-    border-color: rgba(255, 255, 255, 0.25);
+
+.esp-impact__copy {
+    min-width: 0;
 }
-.esp-subhead {
-    font-size: var(--type-caption);
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: #c9ced6;
-    margin: 4px 0 12px;
-    padding-top: 14px;
-    border-top: 1px solid rgba(255, 255, 255, 0.055);
+
+.esp-impact__copy strong {
+    color: var(--color-text-primary);
 }
-.esp-check {
+
+.esp-impact__copy p {
+    margin: var(--space-1) 0 0;
+    color: var(--color-text-secondary);
+    line-height: var(--leading-normal);
+    overflow-wrap: anywhere;
+}
+
+.esp-impact__copy .esp-impact__current {
+    color: var(--color-warning-text);
+}
+
+.esp-assignment-review {
+    display: grid;
+    gap: var(--gap-sm);
+    padding: var(--gap-sm);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-3);
+}
+
+.esp-assignment-review p,
+.esp-assignment-status {
+    margin: 0;
+    line-height: var(--leading-normal);
+}
+
+.esp-assignment-review p {
+    color: var(--color-text-secondary);
+}
+
+.esp-assignment-review p strong {
+    color: var(--color-text-primary);
+}
+
+.esp-assignment-review__actions {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--gap-sm);
+}
+
+.esp-assignment-status--error {
+    color: var(--color-danger-text);
+}
+
+.esp-assignment-status--success {
+    color: var(--color-success-text);
+}
+
+.esp-footer-warn {
+    display: inline-flex;
     align-items: center;
-    gap: 9px;
-    font-size: var(--type-caption);
-    font-weight: 500;
-    color: #c9ced6;
-    cursor: pointer;
-    margin-bottom: 16px;
+    gap: var(--space-2);
+    color: var(--color-warning-text);
+    font-size: var(--type-body);
 }
-.esp-check input {
-    width: 15px;
-    height: 15px;
-}
-.esp-ft {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 14px 22px;
-    border-top: 1px solid rgba(255, 255, 255, 0.055);
-}
-.esp-actions {
-    display: flex;
-    gap: 10px;
-}
-.esp-primary {
-    background: #0a84ff;
-    color: #fff;
-    border: none;
-    border-radius: 11px;
-    padding: 9px 18px;
-    font: 600 13px 'Inter', system-ui, sans-serif;
-    cursor: pointer;
-}
-.esp-primary:hover {
-    filter: brightness(1.08);
-}
-.esp-ghost {
-    background: transparent;
-    color: #9aa1ac;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 11px;
-    padding: 9px 16px;
-    font: 500 13px 'Inter', system-ui, sans-serif;
-    cursor: pointer;
-}
-.esp-ghost:hover {
-    color: #f5f6f8;
-}
-@media (max-width: 560px) {
+
+@media (max-width: 900px) {
     .esp-body {
         grid-template-columns: 1fr;
     }
-    .esp-rail {
-        flex-direction: row;
-        overflow-x: auto;
-        border-right: none;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+@media (max-width: 640px) {
+    .esp-row {
+        grid-template-columns: 1fr;
     }
 }
 </style>

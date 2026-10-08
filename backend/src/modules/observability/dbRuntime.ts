@@ -15,6 +15,7 @@ export interface DbRuntimeSnapshot {
     postgresVersion: string;
     postgresMajor: number;
     timescaleVersion: string;
+    rawRetentionSeconds: number;
     expectedTimescaleImage: string;
     expectedTimescaleVersion: string;
     error: string;
@@ -32,6 +33,7 @@ const UNKNOWN: DbRuntimeSnapshot = {
     postgresVersion: '',
     postgresMajor: -1,
     timescaleVersion: '',
+    rawRetentionSeconds: -1,
     expectedTimescaleImage: '',
     expectedTimescaleVersion: '',
     error: ''
@@ -104,6 +106,7 @@ export function readExpectedTimescaleImage(
 export function buildDbRuntimeSnapshot(input: {
     postgresVersion: string;
     timescaleVersion: string;
+    rawRetentionSeconds?: number;
     expectedTimescaleImage: string;
     nowMs?: number;
     error?: string;
@@ -130,6 +133,7 @@ export function buildDbRuntimeSnapshot(input: {
         postgresVersion: input.postgresVersion,
         postgresMajor: postgresMajorFromVersion(input.postgresVersion),
         timescaleVersion: input.timescaleVersion,
+        rawRetentionSeconds: input.rawRetentionSeconds ?? -1,
         expectedTimescaleImage: input.expectedTimescaleImage,
         expectedTimescaleVersion,
         error: input.error ?? ''

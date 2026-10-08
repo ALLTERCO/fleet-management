@@ -5,7 +5,7 @@
         :class="[sizeClass, stateClasses, extraClass]"
         :data-type="normalizedType"
         :style="cardStyle"
-        :tabindex="0"
+        :tabindex="clickable || editMode ? 0 : -1"
         @click="onCardClick"
         @keydown="onKeydown"
     >
@@ -126,6 +126,9 @@ const props = withDefaults(
         /** Sizes this card may take — the size popover shows only these. When
          *  omitted, all three are offered. Source: allowedSizesForEntity. */
         allowedSizes?: ('1x1' | '2x1' | '2x2')[];
+        /** False when no detail view exists behind this card — drops the
+         *  pointer cursor and the open-detail emit; edit mode is unaffected. */
+        clickable?: boolean;
     }>(),
     {
         size: '1x1',
@@ -140,7 +143,8 @@ const props = withDefaults(
         configurable: false,
         extraClass: '',
         valClass: '',
-        cardStyle: () => ({})
+        cardStyle: () => ({}),
+        clickable: true
     }
 );
 
@@ -291,15 +295,18 @@ function startResize(e: PointerEvent) {
         grid.appendChild(ghost);
     }
 
+    // Read cell metrics from the card, not the document root — the responsive
+    // overrides live on .bento-grid, so the ghost matches real track sizes on
+    // small viewports.
+    const styleSource = card ?? document.documentElement;
     const cellSize = Number.parseInt(
-        getComputedStyle(document.documentElement).getPropertyValue(
-            '--grid-cell'
-        ) || '200', 10
+        getComputedStyle(styleSource).getPropertyValue('--grid-cell') || '200',
+        10
     );
     const gapSize = Number.parseInt(
-        getComputedStyle(document.documentElement).getPropertyValue(
-            '--card-grid-gap'
-        ) || '14', 10
+        getComputedStyle(styleSource).getPropertyValue('--card-grid-gap') ||
+            '14',
+        10
     );
 
     function sizeToPixels(sz: string): {w: number; h: number} {
@@ -362,6 +369,7 @@ function onKeydown(e: KeyboardEvent) {
         return;
     }
     if (e.key === 'Enter') {
+        if (!props.clickable) return;
         if (getObsLevel() >= 2) trackInteraction('card', 'click', props.type);
         emit('open-detail');
     }
@@ -372,6 +380,7 @@ function onCardClick(e: MouseEvent) {
         if (e.ctrlKey || e.metaKey || e.shiftKey) emit('select', e);
         return;
     }
+    if (!props.clickable) return;
     if (getObsLevel() >= 2) trackInteraction('card', 'click', props.type);
     emit('open-detail');
 }
@@ -389,7 +398,15 @@ const stateClasses = computed(() => ({
     'is-sleeping': props.isSleeping,
     'is-loading': props.isLoading,
     'is-warning': props.isWarning,
-    'ec-selected': props.selected
+    'ec-selected': props.selected,
+    'ec-static': !props.clickable && !props.editMode
 }));
 </script>
+
+<style scoped>
+/* No detail behind this card — visible, but not click-inviting. */
+.ec.ec-static {
+    cursor: default;
+}
+</style>
 

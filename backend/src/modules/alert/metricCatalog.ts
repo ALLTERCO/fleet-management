@@ -96,11 +96,48 @@ const OBJ_NAME_TO_CLASS: Readonly<Record<string, AlertDeviceClass>> =
         smoke: 'smoke'
     });
 
+// Identity and link plumbing. These leaves are boolean/string so they used to
+// land in the condition picker beside real signals (bthomedevice:200.paired,
+// bthomesensor:*.key, ble.addr), burying what a user can actually alert on.
+// A rule watches what a device senses or does — not what it is called or how
+// it is attached.
+const NON_CONDITION_FIELDS: ReadonlySet<string> = new Set([
+    'addr',
+    'app',
+    'fw_id',
+    'fw_ver',
+    'gen',
+    'id',
+    'ip',
+    'key',
+    'mac',
+    'model',
+    'name',
+    'packet_id',
+    'paired',
+    'rpc',
+    'sta_ip',
+    'ssid',
+    'uuid',
+    'ver',
+    'xip6'
+]);
+
+/** Answer: can a rule meaningfully watch this leaf? */
+function isConditionField(field: string): boolean {
+    return !NON_CONDITION_FIELDS.has(field);
+}
+
 function titleCase(s: string): string {
     return s
         .replace(/[_:.]+/g, ' ')
         .replace(/\b\w/g, (ch) => ch.toUpperCase())
         .trim();
+}
+
+/** The unit a status field is measured in, when the catalog knows it. */
+export function fieldUnit(field: string): string | undefined {
+    return FIELD_META[field]?.unit;
 }
 
 function metricMeta(component: string, field: string): FieldMeta {
@@ -162,6 +199,7 @@ export function scanStatusMetrics(
         for (const [field, leaf] of Object.entries(
             value as Record<string, unknown>
         )) {
+            if (!isConditionField(field)) continue;
             if (typeof leaf === 'number') {
                 out.push(metricPath(component, field));
                 continue;
@@ -191,6 +229,7 @@ export function scanStatusStates(
         for (const [field, leaf] of Object.entries(
             value as Record<string, unknown>
         )) {
+            if (!isConditionField(field)) continue;
             if (typeof leaf === 'boolean' || typeof leaf === 'string') {
                 out.push(statePath(component, field, leaf));
             }

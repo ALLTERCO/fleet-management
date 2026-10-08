@@ -78,7 +78,7 @@ export function bluetoothDeviceToListJSON(
         locationId: null,
         tagIds: [],
         status: bluetoothDeviceStatus(device, details, health, projectedStatus),
-        presence: health.status === 'online' ? 'online' : 'offline',
+        presence: bluetoothPresenceFromHealth(health),
         settings: bluetoothDeviceSettings(device, details),
         entities: bluetoothDeviceEntityIds(device, health),
         capabilities: {},
@@ -109,25 +109,6 @@ export function bluetoothDeviceToFullJSON(
     );
 }
 
-export function virtualDeviceMatchesFilter(
-    device: VirtualDeviceDto,
-    key: string,
-    value: string | number | boolean
-): boolean {
-    switch (key) {
-        case 'shellyID':
-            return device.externalId === value;
-        case 'id':
-            return device.deviceListId === value;
-        case 'source':
-            return value === 'virtual';
-        case 'presence':
-            return (device.enabled ? 'online' : 'offline') === value;
-        default:
-            return false;
-    }
-}
-
 export function extractedSourceHostExternalId(
     device: VirtualDeviceDto
 ): string | null {
@@ -156,23 +137,6 @@ export function applyExtractedSourceHealth(
             }
         }
     };
-}
-
-export function bluetoothDeviceMatchesFilter(
-    device: BluetoothDeviceDto,
-    key: string,
-    value: string | number | boolean
-): boolean {
-    switch (key) {
-        case 'shellyID':
-            return device.externalId === value;
-        case 'id':
-            return device.deviceListId === value;
-        case 'source':
-            return value === 'bluetooth';
-        default:
-            return false;
-    }
 }
 
 function virtualDeviceStatus(
@@ -255,7 +219,7 @@ function bluetoothDeviceStatus(
     };
 }
 
-interface BluetoothTransportHealth {
+export interface BluetoothTransportHealth {
     status: 'online' | 'degraded' | 'offline';
     primaryTransportId: string | null;
     primaryMode: string | null;
@@ -264,7 +228,7 @@ interface BluetoothTransportHealth {
     reasons: string[];
 }
 
-function bluetoothTransportHealth(
+export function bluetoothTransportHealth(
     device: BluetoothDeviceDto,
     gatewayPresence?: string | null
 ): BluetoothTransportHealth {
@@ -311,6 +275,13 @@ function bluetoothTransportHealth(
         lastRssi: transport.lastRssi,
         reasons
     };
+}
+
+// One health-to-presence mapping, so row and filter cannot answer differently.
+export function bluetoothPresenceFromHealth(
+    health: BluetoothTransportHealth
+): 'online' | 'offline' {
+    return health.status === 'online' ? 'online' : 'offline';
 }
 
 function bluetoothDeviceEntityIds(
@@ -460,10 +431,23 @@ function bluetoothDeviceSettings(
     };
 }
 
-function bluetoothDeviceDisplayName(device: BluetoothDeviceDto): string {
-    const identityName = device.components
+export function bluetoothAssignedName(
+    components: BluetoothDeviceDto['components']
+): string | undefined {
+    return components
         .find((component) => component.role === 'identity')
         ?.name?.trim();
+}
+
+// The one name a BLU device is shown under: the device list, the device page
+// and the alert that names it all read this.
+export function bluetoothDeviceDisplayName(
+    device: Pick<
+        BluetoothDeviceDto,
+        'components' | 'productName' | 'bleAddress' | 'externalId'
+    >
+): string {
+    const identityName = bluetoothAssignedName(device.components);
     return (
         identityName ||
         device.productName ||

@@ -29,6 +29,7 @@ plugins/**/*.js.*
 plugins/**/*.zip
 frontend/.env.development
 frontend/.env.production
+frontend/public/runtime-config.js
 backend/uploads/*
 *.timestamp-*
 
@@ -36,3 +37,17 @@ backend/uploads/*
 deploy/state/*
 !deploy/state/.gitignore
 !deploy/state/.gitkeep
+
+# Encrypted deploy/state archives written by `backup-state` (default ./backups)
+/backups/
+
+# Runtime data when run from source: device backups hold WiFi and cloud credentials
+/backend/data/
+/backend/cfg/components/*.tmp
+/backend/cfg/registry/*.tmp
+# Local connection config written for source runs
+.fleet-managerrc*
+
+# Build output
+*.tsbuildinfo
+docs/generated/api.html

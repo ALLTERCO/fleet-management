@@ -9,8 +9,6 @@
 
 import ts from 'typescript';
 import {
-    BACKEND_SRC,
-    FRONTEND_SRC,
     getBackendProgram,
     getBackendSourceFiles,
     lineOf,
@@ -18,7 +16,7 @@ import {
     readFile,
     readStringArg,
     relPath,
-    walkFiles,
+    walkAuthoritativeFrontendFiles,
     writeOutputs
 } from './_shared.js';
 
@@ -43,8 +41,7 @@ export interface EventInventory {
 
 /** Scan a function body for `method: 'Foo.Bar'` and `params: {...keys...}` literals */
 function extractEventLiteral(
-    fn: ts.FunctionLikeDeclaration,
-    source: ts.SourceFile
+    fn: ts.FunctionLikeDeclaration
 ): {eventName: string; paramsKeys: string[]} | undefined {
     let eventName: string | undefined;
     let paramsKeys: string[] = [];
@@ -94,7 +91,7 @@ function extractEventLiteral(
 
 function buildFrontendListenerIndex(): Map<string, number> {
     const counts = new Map<string, number>();
-    const files = walkFiles(FRONTEND_SRC, ['.ts', '.vue', '.js']);
+    const files = walkAuthoritativeFrontendFiles(['.ts', '.vue', '.js']);
     // Match 'Namespace.EventName' strings in event subscription contexts
     const re = /['"]([A-Z][a-zA-Z0-9_]*\.[A-Z][a-zA-Z0-9_]*)['"]/g;
     for (const file of files) {
@@ -157,7 +154,7 @@ export function generate(): EventInventory {
             if (seenFns.has(key)) continue;
             seenFns.add(key);
 
-            const extracted = extractEventLiteral(fn, source);
+            const extracted = extractEventLiteral(fn);
             if (!extracted) continue;
 
             events.push({

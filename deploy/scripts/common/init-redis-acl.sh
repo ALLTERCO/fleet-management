@@ -40,7 +40,7 @@ fi
 {
     printf 'user default off\n'
     printf 'user fm-admin on >%s ~* &* +@all\n' "$REDIS_ADMIN_PASSWORD"
-    printf 'user fm-default on >%s ~* &* +@all -@dangerous\n' "$REDIS_FM_PASSWORD"
+    printf 'user fm-default on >%s ~* &* +@all -@dangerous +info\n' "$REDIS_FM_PASSWORD"
     printf 'user zitadel on >%s ~* &* +@all -@dangerous +flushdb\n' "$REDIS_ZITADEL_PASSWORD"
     [ -n "$preserved_users" ] && printf '%s\n' "$preserved_users"
 } > "$aclfile_path"

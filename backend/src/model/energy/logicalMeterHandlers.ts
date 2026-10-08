@@ -20,6 +20,7 @@ import {
     type DeviceAccessSender,
     senderCanAccessDevice
 } from './deviceAccessFilter';
+import {legacyEnergySource} from './energyAxes';
 import {
     assertMeterReferences,
     assertMeterShape,
@@ -48,6 +49,8 @@ export interface LogicalMeterHandlerDeps {
     repo: LogicalMeterRepoSeam;
     // True when the kind is a built-in or owned by this org (loadKind seam).
     kindExists: (org: string, kindId: string) => Promise<boolean>;
+    // True for a built-in or organization-owned source registry id.
+    energySourceExists: (org: string, sourceId: string) => Promise<boolean>;
     // True when the group/location id belongs to the caller's org.
     groupExists: (org: string, groupId: number) => Promise<boolean>;
     locationExists: (org: string, locationId: number) => Promise<boolean>;
@@ -87,6 +90,7 @@ export async function handleSaveLogicalMeter(
             senderCanAccessDevice(deviceId, deps.sender),
         isOrgMeter: (meterId) => orgMeterIds.has(meterId),
         isOrgKind: (kindId) => deps.kindExists(org, kindId),
+        isOrgEnergySource: (sourceId) => deps.energySourceExists(org, sourceId),
         isOrgGroup: (groupId) => deps.groupExists(org, groupId),
         isOrgLocation: (locationId) => deps.locationExists(org, locationId),
         pointOwner: (point) => pointOwners.get(pointKey(point)) ?? null
@@ -95,7 +99,19 @@ export async function handleSaveLogicalMeter(
         return orgMeters.find((m) => m.id === id)?.parentMeterId ?? null;
     });
 
-    const id = await deps.repo.save(toDbParams(params, org));
+    const existing = orgMeters.find((meter) => meter.id === params.id);
+    if (
+        existing &&
+        (existing.role !== params.role ||
+            (existing.kindId ?? null) !== (params.kindId ?? null))
+    ) {
+        throw RpcError.InvalidParams(
+            'Existing logical-meter role and end use must be changed through ' +
+                'Energy.PreviewLogicalMeterMeaningChange and ' +
+                'Energy.ApplyLogicalMeterMeaningChange'
+        );
+    }
+    const id = await deps.repo.save(toDbParams(params, org, existing));
     const meter = await findSavedMeter(deps.repo, org, id);
     return {meter};
 }
@@ -117,7 +133,8 @@ function requireOrg(sender: LogicalMeterSender): string {
 
 function toDbParams(
     params: EnergySaveLogicalMeterParams,
-    org: string
+    org: string,
+    existing: EnergyLogicalMeter | undefined
 ): SaveLogicalMeterDbParams {
     return {
         id: params.id ?? null,
@@ -126,6 +143,7 @@ function toDbParams(
         utilityType: params.utilityType,
         role: params.role,
         kindId: params.kindId ?? null,
+        energySource: resolvedEnergySource(params, existing),
         phaseMode: params.phaseMode ?? 'unknown',
         aggregationMode: params.aggregationMode,
         parentMeterId: params.parentMeterId ?? null,
@@ -135,6 +153,19 @@ function toDbParams(
         virtualFormula: params.virtualFormula ?? null,
         points: params.points ?? []
     };
+}
+
+function resolvedEnergySource(
+    params: EnergySaveLogicalMeterParams,
+    existing: EnergyLogicalMeter | undefined
+): string | null {
+    if (params.energySource !== undefined) return params.energySource;
+    if (existing?.energySource !== undefined) return existing.energySource;
+    for (const point of params.points ?? []) {
+        const source = legacyEnergySource(point.electricalDomain);
+        if (source !== null) return source;
+    }
+    return null;
 }
 
 async function findSavedMeter(

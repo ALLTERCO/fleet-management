@@ -30,6 +30,7 @@ DO \$plpgsql\$
 DECLARE
     v_device_count INTEGER := ${device_count};
     v_days         INTEGER := ${days};
+    v_from         TIMESTAMPTZ := date_trunc('hour', now() - (v_days || ' days')::interval);
     v_org_id       VARCHAR(120);
     v_bld_ids      INTEGER[];
     v_upserted     INTEGER;
@@ -90,6 +91,21 @@ BEGIN
 
     -- Rebuild only telemetry owned by this seed set.
     SET LOCAL timescaledb.max_tuples_decompressed_per_dml_transaction = 0;
+    -- Take the queue rows before the summaries, the order the rollup worker uses.
+    PERFORM device_em.fn_mark_energy_15min_dirty(
+        array_agg(saved.device ORDER BY saved.bucket, saved.device, saved.tag),
+        array_agg(saved.tag ORDER BY saved.bucket, saved.device, saved.tag),
+        array_agg(saved.domain ORDER BY saved.bucket, saved.device, saved.tag),
+        array_agg(saved.phase ORDER BY saved.bucket, saved.device, saved.tag),
+        array_agg(saved.channel ORDER BY saved.bucket, saved.device, saved.tag),
+        array_agg(extract(epoch FROM saved.bucket)::BIGINT ORDER BY saved.bucket, saved.device, saved.tag)
+    )
+    FROM device_em.energy_15min saved
+    JOIN device.list d ON d.id = saved.device
+    WHERE d.organization_id = v_org_id
+      AND d.jdoc->>'source' = 'demo-seed-energy'
+      AND saved.bucket >= v_from
+    HAVING count(*) > 0;
     DELETE FROM device_em.stats
     WHERE device IN (
         SELECT d.id
@@ -194,7 +210,7 @@ BEGIN
     FROM device.list d
     JOIN _desired_energy_devices wanted ON wanted.external_id = d.external_id
     CROSS JOIN generate_series(
-        date_trunc('hour', now() - (v_days || ' days')::interval),
+        v_from,
         date_trunc('hour', now()),
         interval '1 hour'
     ) gs(ts)

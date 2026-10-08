@@ -1,5 +1,9 @@
-import type {MatchResult} from './alert/types';
+import type {MatchResult, NormalizedEvent} from './alert/types';
 import * as postgres from './PostgresProvider';
+import {
+    projectRoleScalar,
+    resolveRoleProjection
+} from './virtualDevice/roleProjection';
 
 export interface VirtualSourceRef {
     deviceExternalId: string;
@@ -75,6 +79,16 @@ interface VirtualSubjectRow {
     source_dynamic_category: string | null;
 }
 
+interface VirtualRoleStateRow extends VirtualSubjectRow {
+    source_jdoc: Record<string, unknown> | null;
+    source_updated: string | Date | null;
+    unit: string | null;
+    value_type: string | null;
+    transform_json: Record<string, unknown> | null;
+    source_snapshot_json: Record<string, unknown> | null;
+    role_metadata_json: Record<string, unknown> | null;
+}
+
 const defaultDeps: VirtualAlertDeps = {
     queryRows: postgres.queryRows
 };
@@ -98,15 +112,45 @@ export async function resolveVirtualRoleState(
     input: VirtualAlertSubjectInput,
     deps: VirtualAlertDeps = defaultDeps
 ): Promise<VirtualRoleState | null> {
-    const subject = await resolveVirtualAlertSubject(input, deps);
+    const rows = await deps.queryRows<VirtualRoleStateRow>(roleStateSql(), [
+        input.organizationId,
+        input.deviceExternalId,
+        input.roleKey ?? null,
+        input.at ?? null
+    ]);
+    const row = rows[0];
+    if (!row) return null;
+    const subject = rowToSubjectResolution(row, input.roleKey ?? null);
     if (!subject?.roleKey) return null;
+    if (!subject.activeBinding) {
+        return {
+            roleKey: subject.roleKey,
+            value: null,
+            unit: null,
+            health: 'unbound',
+            source: null,
+            sourceTs: null
+        };
+    }
+    const projection = resolveRoleProjection({
+        roleKey: subject.roleKey,
+        sourceComponentKey: subject.activeBinding.componentKey,
+        unit: row.unit,
+        valueType: row.value_type,
+        transformJson: row.transform_json,
+        sourceSnapshot: row.source_snapshot_json,
+        roleMetadata: row.role_metadata_json
+    });
+    const status = unknownRecord(row.source_jdoc?.status);
+    const component = status?.[subject.activeBinding.componentKey];
+    const value = projectRoleScalar(component, projection);
     return {
         roleKey: subject.roleKey,
-        value: null,
-        unit: null,
-        health: subject.activeBinding ? 'ok' : 'unbound',
+        value: alertValue(value),
+        unit: row.unit,
+        health: value === null || value === undefined ? 'degraded' : 'ok',
         source: subject.activeBinding,
-        sourceTs: null
+        sourceTs: dateIso(row.source_updated)
     };
 }
 
@@ -184,13 +228,14 @@ export async function enrichVirtualAlertMatch(
     match: MatchResult,
     deps: VirtualAlertDeps = defaultDeps
 ): Promise<MatchResult> {
-    if (match.subject.type !== 'device') return match;
     const roleKey = roleKeyFromContext(match.context);
     if (!roleKey) return match;
+    const deviceExternalId = virtualDeviceExternalId(match);
+    if (!deviceExternalId) return match;
     const subject = await resolveVirtualAlertSubject(
         {
             organizationId,
-            deviceExternalId: match.subject.id,
+            deviceExternalId,
             roleKey
         },
         deps
@@ -208,6 +253,73 @@ export async function enrichVirtualAlertMatch(
             }
         }
     };
+}
+
+/**
+ * Attach the logical role that owns a projected component/entity match.
+ * Evaluators stay device-agnostic; the projected entity descriptor remains
+ * the single source of role identity for live, initial, and preview paths.
+ */
+export function attachVirtualRoleContext(
+    match: MatchResult,
+    event: NormalizedEvent
+): MatchResult {
+    if (
+        event.kind !== 'device_status_changed' ||
+        !event.shellyID.startsWith('vdev_') ||
+        !event.device
+    ) {
+        return match;
+    }
+    if (roleKeyFromContext(match.context)) return match;
+    const entities = event.device.entities ?? [];
+    const component = match.context?.component;
+    const targetedEntityId =
+        match.subject.type === 'entity'
+            ? match.subject.id
+            : typeof component === 'string' &&
+                (component.startsWith('component:') ||
+                    component.startsWith('entity:'))
+              ? component.slice(component.indexOf(':') + 1)
+              : null;
+    let entity = targetedEntityId
+        ? entities.find((candidate) => candidate.id === targetedEntityId)
+        : undefined;
+    if (!entity && typeof component === 'string') {
+        const separator = component.lastIndexOf(':');
+        const type = component.slice(0, separator);
+        const id = Number.parseInt(component.slice(separator + 1), 10);
+        if (separator > 0 && Number.isFinite(id)) {
+            entity = entities.find(
+                (candidate) =>
+                    candidate.type === type &&
+                    unknownRecord(candidate.properties)?.id === id
+            );
+        }
+    }
+    const roleKey = unknownRecord(entity?.properties)?.roleKey;
+    if (typeof roleKey !== 'string' || roleKey.length === 0) return match;
+    return {
+        ...match,
+        context: {
+            ...(match.context ?? {}),
+            shellyID: event.shellyID,
+            roleKey
+        }
+    };
+}
+
+function virtualDeviceExternalId(match: MatchResult): string | null {
+    if (
+        match.subject.type === 'device' &&
+        match.subject.id.startsWith('vdev_')
+    ) {
+        return match.subject.id;
+    }
+    const shellyID = match.context?.shellyID;
+    return typeof shellyID === 'string' && shellyID.startsWith('vdev_')
+        ? shellyID
+        : null;
 }
 
 function rowToSubjectResolution(
@@ -258,6 +370,33 @@ function recordValue(value: unknown): Record<string, string> | null {
     );
 }
 
+function unknownRecord(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === 'object' && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : null;
+}
+
+function alertValue(
+    value: unknown
+): boolean | number | string | Record<string, unknown> | null {
+    if (
+        value === null ||
+        typeof value === 'boolean' ||
+        typeof value === 'number' ||
+        typeof value === 'string'
+    ) {
+        return value;
+    }
+    return unknownRecord(value);
+}
+
+function dateIso(value: string | Date | null): string | null {
+    if (value instanceof Date) return value.toISOString();
+    if (typeof value !== 'string') return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 function addLabel(
     labels: Record<string, string>,
     key: string,
@@ -304,4 +443,18 @@ function subjectSql(): string {
            AND dl.external_id = $2
            AND vd.deleted_at IS NULL
          LIMIT 1`;
+}
+
+function roleStateSql(): string {
+    return subjectSql().replace(
+        'b.source_dynamic_category',
+        `b.source_dynamic_category,
+            src.jdoc AS source_jdoc,
+            src.updated AS source_updated,
+            b.unit,
+            b.value_type,
+            b.transform_json,
+            b.source_snapshot_json,
+            b.role_metadata_json`
+    );
 }

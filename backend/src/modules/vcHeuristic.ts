@@ -8,6 +8,7 @@
 // energy-storage-reference.md section 5.4 — auto-classifies 28 of 31
 // real virtual components with zero operator input.
 
+import {ENERGY_VOLUME_TAGS} from '../types/api/energy';
 import type {EnergyDomain, EnergyTag} from './energyClassifier';
 
 export interface VcHeuristicInput {
@@ -34,6 +35,12 @@ const UNIT_TO_TAG: Readonly<
     kVA: {tag: 'apparent_power', isDelta: false, scale: 1000},
     var: {tag: 'reactive_power', isDelta: false, scale: 1},
     kvar: {tag: 'reactive_power', isDelta: false, scale: 1000},
+    // Vendor casing varies; lowercase-only lookup dropped real registers.
+    VAR: {tag: 'reactive_power', isDelta: false, scale: 1},
+    VAr: {tag: 'reactive_power', isDelta: false, scale: 1},
+    kVAR: {tag: 'reactive_power', isDelta: false, scale: 1000},
+    kVAr: {tag: 'reactive_power', isDelta: false, scale: 1000},
+    kVArh: {tag: 'reactive_power', isDelta: true, scale: 1000},
     V: {tag: 'voltage', isDelta: false, scale: 1},
     A: {tag: 'current', isDelta: false, scale: 1},
     mA: {tag: 'current', isDelta: false, scale: 0.001},
@@ -42,8 +49,17 @@ const UNIT_TO_TAG: Readonly<
     kWh: {tag: 'total_act_energy', isDelta: true, scale: 1000},
     L: {tag: 'volume_l', isDelta: true, scale: 1},
     l: {tag: 'volume_l', isDelta: true, scale: 1},
+    // Real firmware does not use the published spellings. The captured Neo
+    // water valve reports its volume unit as `lit`, and US-market units arrive
+    // as `gal`. Missing a spelling here is silent: the counter is simply never
+    // classified, so the meter reads zero forever with no error anywhere.
+    lit: {tag: 'volume_l', isDelta: true, scale: 1},
+    liter: {tag: 'volume_l', isDelta: true, scale: 1},
+    litre: {tag: 'volume_l', isDelta: true, scale: 1},
     mL: {tag: 'volume_l', isDelta: true, scale: 0.001},
     ml: {tag: 'volume_l', isDelta: true, scale: 0.001},
+    gal: {tag: 'volume_l', isDelta: true, scale: 3.785412},
+    gallon: {tag: 'volume_l', isDelta: true, scale: 3.785412},
     m3: {tag: 'volume_m3', isDelta: true, scale: 1},
     'm³': {tag: 'volume_m3', isDelta: true, scale: 1},
     'm3/h': {tag: 'volume_flow_m3h', isDelta: false, scale: 1},
@@ -103,19 +119,34 @@ function classifyBatteryMetric(
 // Bank" (rare but real on hybrid inverters). No-match → unspecified
 // so the operator must confirm via PR 5's UI.
 const NAME_KEYWORDS: ReadonlyArray<{re: RegExp; domain: EnergyDomain}> = [
-    {re: /pv|solar|panel|mppt|photovoltaic/i, domain: 'dc_pv'},
-    {re: /batter|\bsoc\b|bms|bank|cell/i, domain: 'dc_battery'},
-    {re: /grid|\bac\b|mains|\bl[123]\b/i, domain: 'ac_mains'},
+    // Before the electrical rows: `meter` below would claim "Gas Meter".
+    // Thermal stays below, because `heat` would claim "Heatsink Temperature".
+    {
+        re: /\bgas\b|methane|\bch4\b|propane|butane|\blpg\b|\blng\b/i,
+        domain: 'gas'
+    },
+    // `string`/`pv1..5` name a DC input; `production`/`generat`/`yield` name
+    // DC yield counters.
+    {
+        re: /pv|solar|panel|mppt|photovoltaic|\bstring\b|\bpv[1-5]\b|production|generat|\byield\b/i,
+        domain: 'dc_pv'
+    },
+    // NOT `charge`/`discharge`: they appear grid-side too (Growatt "AC Charge
+    // Power"), and would steal rows from ac_mains.
+    {
+        re: /batter|\bsoc\b|\bsoh\b|bms|bank|cell|storage|\bess\b/i,
+        domain: 'dc_battery'
+    },
+    // `[rst][st]` = line-to-line voltages. `eps` = backup output, `pcc` =
+    // point of common coupling. house/home/consum/load cover load registers.
+    {
+        re: /grid|\bac\b|mains|\bl[123]\b|\b[rst][st]\b|phase|\beps\b|(?<![a-z])load(?![a-z])|meter|inverter\s*output|consum|\bhouse\b|\bhome\b|\bpcc\b|\bimport\b|\bexport\b|utility|feed[\s-]?in/i,
+        domain: 'ac_mains'
+    },
     {re: /dc\s*bus|busbar/i, domain: 'dc_bus'},
     {
         re: /heat|thermal|district|hydronic|underfloor|boiler/i,
         domain: 'thermal'
-    },
-    // Gas vs water can't be read from a volume unit; the name is the only
-    // signal. domain='gas' → fn_commodity_for maps it to commodity=gas.
-    {
-        re: /\bgas\b|methane|\bch4\b|propane|butane|\blpg\b|\blng\b/i,
-        domain: 'gas'
     }
 ];
 
@@ -150,10 +181,32 @@ export function classifyVcConfig(
     }
     return {
         tag: mapping.tag,
-        domain: inferDomain(input.name),
+        domain: domainForTag(mapping.tag, input.name),
         isDelta: mapping.isDelta,
         scale: mapping.scale
     };
+}
+
+// Electrical domains that a volume reading can never legitimately carry.
+const ELECTRICAL_DOMAINS = new Set<EnergyDomain>([
+    'ac_mains',
+    'dc_pv',
+    'dc_battery',
+    'dc_bus'
+]);
+
+/**
+ * A volume is never electricity, whatever its label says. The name keywords are
+ * tuned for electrical components, so an innocent meter called "Water
+ * consumption" matches `consum` and lands on ac_mains — and because the database
+ * derives commodity from (domain, tag), that one word would book water onto the
+ * electricity tariff. A volume tag with an electrical name falls back to
+ * `unspecified`, which lets the tag decide the commodity, as it already does.
+ */
+function domainForTag(tag: EnergyTag, name: string | undefined): EnergyDomain {
+    const domain = inferDomain(name);
+    const isVolume = ENERGY_VOLUME_TAGS.has(tag);
+    return isVolume && ELECTRICAL_DOMAINS.has(domain) ? 'unspecified' : domain;
 }
 
 function isStorageVolume(name: string | undefined): boolean {

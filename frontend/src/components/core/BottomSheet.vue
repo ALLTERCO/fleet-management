@@ -111,7 +111,6 @@ function snapTo(vh: number): SheetSnap {
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
     background: var(--glass-3-bg);
     backdrop-filter: var(--glass-3-filter);
-    -webkit-backdrop-filter: var(--glass-3-filter);
     border-top: 1px solid var(--color-border-medium);
     box-shadow: var(--glass-shadow);
     overflow: hidden;

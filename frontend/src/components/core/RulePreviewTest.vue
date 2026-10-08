@@ -14,7 +14,7 @@
         <template v-else-if="result">
             <p v-if="!result.supportedKind" class="rpt__line rpt__line--muted">
                 <i class="fas fa-circle-info" aria-hidden="true" />
-                {{ result.note ?? 'Preview not available for this rule kind.' }}
+                {{ result.note ?? 'Preview not available for this rule type.' }}
             </p>
             <template v-else>
                 <p class="rpt__line">

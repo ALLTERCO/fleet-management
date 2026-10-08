@@ -1,46 +1,168 @@
 import {getLogger} from 'log4js';
-import {tuning} from '../config';
 import type AbstractDevice from '../model/AbstractDevice';
 import type CommandSender from '../model/CommandSender';
 import type {event_data_t, json_rpc_event} from '../types';
+import {
+    enqueueDeviceObservation,
+    enqueueResourceObservation,
+    isEventJournalStarted
+} from './ai/eventJournal';
+import {shouldJournalDeviceEvent} from './ai/eventJournalDebug';
 import {scheduleOrganizationRuleEvaluation} from './alert/evaluationPort';
 import {canCrossOrganizationBoundary} from './authz/crossOrg';
-import {invalidateAuthzTenant} from './authz/invalidation';
+import {invalidateAuthzTenantCache} from './authz/invalidation';
 import {BoundedMap} from './boundedMap';
 import {recordEvent as recordDeviceEvent} from './device/AnomalyMetric';
 import {
-    invalidateGroupCache as bumpLegacyGroupVersion,
-    getGroupVersion,
-    getGroupVersionOrgCount
-} from './groupVersion';
+    type DeviceGroup,
+    deviceGroupCacheSize,
+    forgetDeviceGroups,
+    forgetOrganizationDeviceGroups,
+    hasOrganizationDeviceGroups,
+    noteDeviceGroupsChanged,
+    noteDeviceGroupVersionChange,
+    readDeviceGroups
+} from './deviceGroupLookup';
 import * as Observability from './Observability';
+import {
+    bumpDeviceGroupMetadataVersion,
+    bumpOrganizationAccessVersion,
+    getDeviceGroupMetadataVersionOrgCount,
+    getOrganizationAccessVersionOrgCount
+} from './organizationCacheVersions';
 import * as postgres from './PostgresProvider';
 import {
     hasPluginMetadataHandlers,
     notifyPluginEvent,
     sendPluginMetadata
 } from './plugins/pluginEventPort';
-import {onAnyOrg, publishOrg} from './redis/OrgSignals';
+import {type OrgSignal, onAnyOrg, publishOrg} from './redis/OrgSignals';
 import {RollingMaxWindow} from './rollingMaxWindow';
 import {fireAndForget} from './util/fireAndForget';
 import {formatError} from './util/formatError';
+import {
+    invalidateBluetoothStatusRoutes,
+    invalidateBluetoothStatusRoutesForGateway,
+    invalidateLocalBluetoothStatusRoutes,
+    invalidateLocalBluetoothStatusRoutesForGateway
+} from './virtualDevice/bluetoothStatusRouteCache';
+import {invalidateVirtualProjectionRoutes} from './virtualDevice/virtualProjectionRouteCache';
 
-// Bump legacy group version + fire authz cache invalidation + broadcast to peers.
-export function invalidateGroupCache(orgId: string): void {
-    bumpLegacyGroupVersion(orgId);
-    fireAndForget('invalidateAuthzTenant.local', invalidateAuthzTenant(orgId));
-    fireAndForget(
-        'alert.scopeChanged.local',
+/** Which devices an access change touched. No ids means the whole org. */
+export interface OrganizationAccessChange {
+    orgId: string;
+    externalIds?: readonly string[];
+}
+
+// Device inventory, ownership, location, tag, and authorization mutations
+// invalidate access decisions without discarding unchanged device-group
+// metadata.
+function applyOrganizationAccessInvalidation(
+    change: OrganizationAccessChange,
+    invalidateAuthzCache: boolean
+): void {
+    invalidateVirtualProjectionRoutes(change.orgId);
+    applyOrganizationInventoryChange(change);
+    if (invalidateAuthzCache) {
+        fireAndForget('invalidateAuthzTenantCache.local', () =>
+            invalidateAuthzTenantCache(change.orgId)
+        );
+    }
+}
+
+// Devices were added, changed or removed with no grant or virtual binding
+// change: only membership-keyed caches and alert scope need to move.
+function applyOrganizationInventoryChange(
+    change: OrganizationAccessChange
+): void {
+    // Version bump is synchronous so permission checks fail closed even while
+    // the async Redis/L1 invalidation is in flight or the authz runtime is
+    // unavailable.
+    bumpOrganizationAccessVersion(change.orgId);
+    Observability.incrementCounter('organization_access_invalidations_total');
+    fireAndForget('alert.scopeChanged.local', () =>
         Promise.resolve(
             scheduleOrganizationRuleEvaluation({
-                organizationId: orgId,
-                reason: 'scope_changed'
+                organizationId: change.orgId,
+                reason: 'scope_changed',
+                ...(change.externalIds ? {externalIds: change.externalIds} : {})
             })
         )
     );
-    fireAndForget(
-        'publishOrg.groups-bumped',
-        publishOrg({kind: 'groups-bumped', orgId})
+}
+
+// For BLU promotion and removal: the projection index and authz grants stay,
+// on this process and on peers.
+export function invalidateOrganizationInventory(
+    change: OrganizationAccessChange
+): void {
+    applyOrganizationInventoryChange(change);
+    publishAccessChanged(change, 'inventory');
+}
+
+export function invalidateOrganizationAccess(orgId: string): void {
+    applyOrganizationAccessInvalidation({orgId}, true);
+    publishAccessChanged({orgId});
+}
+
+function publishAccessChanged(
+    change: OrganizationAccessChange,
+    accessScope?: 'inventory'
+): void {
+    fireAndForget('publishOrg.access-changed', () =>
+        publishOrg({
+            kind: 'access-changed',
+            orgId: change.orgId,
+            ...(change.externalIds
+                ? {externalIds: [...change.externalIds]}
+                : {}),
+            ...(accessScope ? {accessScope} : {})
+        })
+    );
+}
+
+// The one place an owner enters process memory. Call it after the owner is
+// stored and before the devices can announce themselves (Shelly.Connect).
+export function bindDevicesToOrganization(
+    externalIds: readonly string[],
+    organizationId: string
+): void {
+    if (externalIds.length === 0) return;
+    for (const externalId of externalIds) {
+        setDeviceOrg(externalId, organizationId);
+    }
+    // A bind only adds devices the org owns and changes no grant, so users'
+    // permission shapes stay cached; the access version reloads membership.
+    const change = {orgId: organizationId, externalIds};
+    applyOrganizationAccessInvalidation(change, false);
+    publishAccessChanged(change);
+}
+
+export function publishDeviceOrgBinding(
+    shellyId: string,
+    organizationId: string
+): void {
+    bindDevicesToOrganization([shellyId], organizationId);
+}
+
+// Group definitions and memberships affect both access decisions and the
+// group names attached to device events. This is the only local path that
+// advances the device-group metadata version.
+// Pass the devices whose membership changed when known; none means the org.
+export function invalidateGroupMembership(
+    orgId: string,
+    externalIds?: readonly string[]
+): void {
+    bumpDeviceGroupMetadataVersion(orgId);
+    noteDeviceGroupVersionChange(orgId, externalIds);
+    Observability.incrementCounter('device_group_metadata_invalidations_total');
+    applyOrganizationAccessInvalidation({orgId, externalIds}, true);
+    fireAndForget('publishOrg.groups-bumped', () =>
+        publishOrg({
+            kind: 'groups-bumped',
+            orgId,
+            ...(externalIds ? {externalIds: [...externalIds]} : {})
+        })
     );
 }
 
@@ -49,34 +171,80 @@ export function invalidateGroupCache(orgId: string): void {
 export async function subscribeToOrgSignals(): Promise<void> {
     await onAnyOrg((signal) => {
         if (signal.kind === 'groups-bumped') {
-            // bumpLegacyGroupVersion is a counter increment that drives
-            // device-membership cache invalidation — only meaningful when
-            // this instance has local devices for the org.
-            if (hasLocalOrgPresence(signal.orgId)) {
-                bumpLegacyGroupVersion(signal.orgId);
+            const change = peerAccessChange(signal);
+            // Group metadata is local-device state. Authorization/access
+            // invalidation is propagated independently by the authz cache.
+            if (
+                hasLocalOrgPresence(signal.orgId) ||
+                hasOrganizationDeviceGroups(signal.orgId)
+            ) {
+                bumpDeviceGroupMetadataVersion(signal.orgId);
+                noteDeviceGroupVersionChange(signal.orgId, change.externalIds);
+                Observability.incrementCounter(
+                    'device_group_metadata_invalidations_total'
+                );
             }
-            // invalidateAuthzTenant clears the per-tenant authz shape
-            // cache — every logged-in CommandSender for that org reads
-            // from it, regardless of whether their devices live here.
-            // Always fire so peer access decisions don't go stale.
-            fireAndForget(
-                'invalidateAuthzTenant.peer',
-                invalidateAuthzTenant(signal.orgId)
-            );
-            fireAndForget(
-                'alert.scopeChanged.peer',
-                Promise.resolve(
-                    scheduleOrganizationRuleEvaluation({
-                        organizationId: signal.orgId,
-                        reason: 'scope_changed'
-                    })
-                )
-            );
+            // Access decisions are a separate cache domain but a group
+            // mutation changes both domains.
+            applyOrganizationAccessInvalidation(change, false);
+        }
+        if (signal.kind === 'access-changed') {
+            // Grant changes reach peers on the authz cache channel; this
+            // signal carries membership changes. Apply the access fence and
+            // alert reevaluation locally without publishing another signal.
+            const change = peerAccessChange(signal);
+            if (signal.accessScope === 'inventory') {
+                applyOrganizationInventoryChange(change);
+            } else {
+                applyOrganizationAccessInvalidation(change, false);
+            }
+        }
+        if (signal.kind === 'blu-inventory-changed') {
+            applyPeerBluetoothInventoryChange(signal);
         }
     });
 }
 
-export {getGroupVersion};
+// Older peers send no ids, which keeps the full org re-check.
+function peerAccessChange(signal: OrgSignal): OrganizationAccessChange {
+    const ids = signal.externalIds;
+    return Array.isArray(ids) && ids.every((id) => typeof id === 'string')
+        ? {orgId: signal.orgId, externalIds: ids}
+        : {orgId: signal.orgId};
+}
+
+function applyPeerBluetoothInventoryChange(signal: OrgSignal): void {
+    const gateway = signal.gatewayExternalId;
+    const missedEarlier =
+        gateway !== undefined &&
+        missedBluetoothGatewayGeneration(
+            signal.orgId,
+            gateway,
+            signal.gatewayGeneration
+        );
+    for (const externalId of peerChangedExternalIds(signal, missedEarlier)) {
+        recordBluetoothInventoryChange(signal.orgId, externalId);
+    }
+    if (gateway === undefined) {
+        invalidateLocalBluetoothStatusRoutes(signal.orgId);
+        return;
+    }
+    bumpBluetoothGatewayInventoryVersion(signal.orgId, gateway);
+    invalidateLocalBluetoothStatusRoutesForGateway(signal.orgId, gateway);
+}
+
+// Undefined stands for rows nobody named, which makes the BLU list reload.
+function peerChangedExternalIds(
+    signal: OrgSignal,
+    missedEarlier: boolean
+): Array<string | undefined> {
+    const named = Array.isArray(signal.externalIds)
+        ? signal.externalIds.filter((id) => typeof id === 'string')
+        : signal.externalId
+          ? [signal.externalId]
+          : [];
+    return named.length === 0 || missedEarlier ? [...named, undefined] : named;
+}
 
 type split_rule_t = [string, string]; // [core, component]
 type options_t = {
@@ -241,10 +409,15 @@ function incLocalOrg(orgId: string): void {
     localOrgRefCount.set(orgId, (localOrgRefCount.get(orgId) ?? 0) + 1);
 }
 
+// Peer group changes are skipped with no device here, so the map would go stale.
 function decLocalOrg(orgId: string): void {
     const n = (localOrgRefCount.get(orgId) ?? 0) - 1;
-    if (n <= 0) localOrgRefCount.delete(orgId);
-    else localOrgRefCount.set(orgId, n);
+    if (n > 0) {
+        localOrgRefCount.set(orgId, n);
+        return;
+    }
+    localOrgRefCount.delete(orgId);
+    forgetOrganizationDeviceGroups(orgId);
 }
 
 export function hasLocalOrgPresence(orgId: string): boolean {
@@ -273,7 +446,7 @@ export function setDeviceOrg(shellyId: string, organizationId: string): void {
 }
 
 export function clearDeviceOrg(shellyId: string): void {
-    deviceGroupsCache.delete(shellyId); // else a re-admit could read old groups
+    forgetDeviceGroups(shellyId);
     const prev = deviceOrgByShellyId.get(shellyId);
     if (!prev) return;
     deviceOrgByShellyId.delete(shellyId);
@@ -283,17 +456,6 @@ export function clearDeviceOrg(shellyId: string): void {
 export function getDeviceOrg(shellyId: string): string | undefined {
     return deviceOrgByShellyId.get(shellyId);
 }
-
-// shellyID → groups. orgId+version both gate validity so a device moved to
-// another org can't read the old org's groups. Size: FM_DEVICE_GROUPS_CACHE_MAX.
-interface DeviceGroupsCacheEntry {
-    orgId: string;
-    orgVersion: number;
-    groups: Array<{id: number; name: string}>;
-}
-const deviceGroupsCache = new BoundedMap<string, DeviceGroupsCacheEntry>({
-    maxSize: tuning.device.groupsCacheMax
-});
 
 function splitRule(rule: string): split_rule_t {
     const idx = rule.indexOf(':');
@@ -423,6 +585,34 @@ export async function processAndNotifyAll(
 ) {
     const device = eventData?.device;
 
+    const journalDeviceId = device?.shellyID ?? eventData.shellyID;
+    const journalOrganizationId =
+        eventData.organizationId ??
+        (journalDeviceId
+            ? deviceOrgByShellyId.get(journalDeviceId)
+            : undefined);
+    if (
+        journalDeviceId &&
+        journalOrganizationId &&
+        isEventJournalStarted() &&
+        shouldJournalDeviceEvent(
+            journalOrganizationId,
+            journalDeviceId,
+            event.method
+        )
+    ) {
+        enqueueDeviceObservation({
+            organizationId: journalOrganizationId,
+            deviceId: journalDeviceId,
+            eventType: event.method,
+            userId: eventData.userId,
+            payload: {
+                event: event.method,
+                source: 'event-distributor'
+            }
+        });
+    }
+
     // just send non-device events
     if (!device) {
         return await notifyAll(event, eventData);
@@ -465,41 +655,16 @@ async function generateMetadata(device: AbstractDevice) {
     if (!orgId) {
         return {...device.meta, groups: []};
     }
-
-    const currentVersion = getGroupVersion(orgId);
-    const cached = deviceGroupsCache.get(shellyID);
-    if (
-        cached &&
-        cached.orgId === orgId &&
-        cached.orgVersion === currentVersion
-    ) {
-        return {...device.meta, groups: cached.groups};
-    }
-
-    let groups: Array<{id: number; name: string}> = [];
-    let ok = false;
+    let groups: DeviceGroup[] = [];
     try {
-        const result = await postgres.callMethod(
-            'organization.fn_group_find_by_member',
-            {
-                p_organization_id: orgId,
-                p_subject_type: 'device',
-                p_subject_id: shellyID
-            }
-        );
-        groups = (result?.rows ?? []) as Array<{id: number; name: string}>;
-        ok = true;
+        groups = await readDeviceGroups({
+            organizationId: orgId,
+            externalId: shellyID,
+            deviceId: device.id
+        });
     } catch (err) {
         logger.warn('group lookup failed for %s: %s', shellyID, err);
         Observability.incrementCounter('device_groups_lookup_error');
-    }
-    // Never cache a failed lookup — would mask group membership until orgVersion bumps.
-    if (ok) {
-        deviceGroupsCache.set(shellyID, {
-            orgId,
-            orgVersion: currentVersion,
-            groups
-        });
     }
     return {...device.meta, groups};
 }
@@ -508,6 +673,9 @@ async function generateMetadata(device: AbstractDevice) {
 // senders in the same tenant. provider support and trusted senders cross orgs.
 
 export function emitGroupCreated(id: number, name: string, orgId: string) {
+    captureResourceLifecycle(orgId, 'group', String(id), 'Group.Created', {
+        change: 'created'
+    });
     notifyAll(
         {method: 'Group.Created', params: {id, name}},
         {organizationId: orgId}
@@ -515,6 +683,9 @@ export function emitGroupCreated(id: number, name: string, orgId: string) {
 }
 
 export function emitGroupUpdated(id: number, name: string, orgId: string) {
+    captureResourceLifecycle(orgId, 'group', String(id), 'Group.Updated', {
+        change: 'updated'
+    });
     notifyAll(
         {method: 'Group.Updated', params: {id, name}},
         {organizationId: orgId}
@@ -522,6 +693,9 @@ export function emitGroupUpdated(id: number, name: string, orgId: string) {
 }
 
 export function emitGroupDeleted(id: number, orgId: string) {
+    captureResourceLifecycle(orgId, 'group', String(id), 'Group.Deleted', {
+        change: 'deleted'
+    });
     notifyAll({method: 'Group.Deleted', params: {id}}, {organizationId: orgId});
 }
 
@@ -531,6 +705,10 @@ export function emitGroupMembersAdded(
     orgId: string
 ) {
     if (members.length === 0) return;
+    captureResourceLifecycle(orgId, 'group', String(id), 'Group.MembersAdded', {
+        change: 'members-added',
+        memberCount: members.length
+    });
     notifyAll(
         {method: 'Group.MembersAdded', params: {id, members}},
         {organizationId: orgId}
@@ -543,6 +721,13 @@ export function emitGroupMembersRemoved(
     orgId: string
 ) {
     if (members.length === 0) return;
+    captureResourceLifecycle(
+        orgId,
+        'group',
+        String(id),
+        'Group.MembersRemoved',
+        {change: 'members-removed', memberCount: members.length}
+    );
     notifyAll(
         {method: 'Group.MembersRemoved', params: {id, members}},
         {organizationId: orgId}
@@ -579,6 +764,7 @@ export function emitReportAnomaly(
 // clients the same fields without waiting for the next poll.
 export function emitReportProgress(
     orgId: string | null,
+    userId: string,
     payload: {
         kind: string;
         phase: string;
@@ -591,11 +777,11 @@ export function emitReportProgress(
         percent?: number;
     }
 ) {
-    // Provider-support cross-org calls drop the scope filter (empty filter
-    // matches every subscriber). Tenant calls scope to organizationId.
+    // Provider-support cross-org calls have no organization filter, but every
+    // report event remains bound to the initiating user's connected sessions.
     notifyAll(
         {method: 'Report.Progress', params: {...payload}},
-        orgId ? {organizationId: orgId} : {}
+        {...(orgId ? {organizationId: orgId} : {}), userId}
     );
 }
 
@@ -604,6 +790,7 @@ export function emitReportProgress(
 // shape Report.GetReport returns.
 export function emitReportReady(
     orgId: string | null,
+    userId: string,
     payload: {
         jobId: string;
         status: 'ready' | 'failed' | 'cancelled';
@@ -612,6 +799,8 @@ export function emitReportReady(
         artifacts?: {
             dataCsvGz?: string;
             summaryHtml?: string;
+            workbookXlsx?: string;
+            documentPdf?: string;
         } | null;
         bytes?: number | null;
         error?: string | null;
@@ -619,7 +808,7 @@ export function emitReportReady(
 ) {
     notifyAll(
         {method: 'Report.Ready', params: {...payload}},
-        orgId ? {organizationId: orgId} : {}
+        {...(orgId ? {organizationId: orgId} : {}), userId}
     );
 }
 
@@ -782,6 +971,11 @@ export interface DeviceInventoryEventInput {
     externalId: string;
     source: DeviceInventorySource;
     orgId: string;
+    gatewayExternalId?: string;
+    /** BLU only: other gateways whose cached status routes the change made
+     *  wrong (the gateway that lost the primary, or linked gateways when the
+     *  routed details changed). */
+    staleRouteGatewayExternalIds?: readonly string[];
 }
 
 export interface DeviceRelationshipChangedInput {
@@ -793,17 +987,144 @@ export interface DeviceRelationshipChangedInput {
 // Bumps on any BLU inventory change so device.list can bust its BLU cache at
 // once, instead of after a blind TTL.
 let bluetoothInventoryVersion = 0;
-export function getBluetoothInventoryVersion(): number {
-    return bluetoothInventoryVersion;
+const BLU_INVENTORY_CHANGE_HISTORY_LIMIT = 10_000;
+const bluetoothInventoryVersionsByOrg = new BoundedMap<string, number>({
+    maxSize: 50_000
+});
+const bluetoothInventoryChangesByOrg = new BoundedMap<
+    string,
+    Array<{version: number; externalId: string | null}>
+>({maxSize: 50_000});
+const bluetoothGatewayInventoryVersions = new BoundedMap<string, number>({
+    maxSize: 50_000
+});
+
+function recordBluetoothInventoryChange(
+    orgId: string,
+    externalId?: string
+): void {
+    bluetoothInventoryVersion++;
+    const version = (bluetoothInventoryVersionsByOrg.get(orgId) ?? 0) + 1;
+    bluetoothInventoryVersionsByOrg.set(orgId, version);
+    const history = bluetoothInventoryChangesByOrg.get(orgId) ?? [];
+    history.push({version, externalId: externalId ?? null});
+    if (history.length > BLU_INVENTORY_CHANGE_HISTORY_LIMIT) {
+        history.splice(0, history.length - BLU_INVENTORY_CHANGE_HISTORY_LIMIT);
+    }
+    bluetoothInventoryChangesByOrg.set(orgId, history);
+}
+
+// Last shared route generation this process applied or produced per gateway.
+const appliedBluetoothGatewayGenerations = new BoundedMap<string, number>({
+    maxSize: 50_000
+});
+
+// Pub/sub may drop a signal; a jump in the shared generation shows one was
+// missed. An older generation is still applied: Redis may have restarted.
+function missedBluetoothGatewayGeneration(
+    orgId: string,
+    gatewayExternalId: string,
+    generation: number | undefined
+): boolean {
+    if (!Number.isSafeInteger(generation)) return false;
+    const key = bluetoothGatewayVersionKey(orgId, gatewayExternalId);
+    const last = appliedBluetoothGatewayGenerations.get(key);
+    noteBluetoothGatewayGeneration(key, generation as number);
+    const missed = last !== undefined && (generation as number) > last + 1;
+    if (missed) {
+        Observability.incrementCounter('blu_inventory_signal_gaps_total');
+    }
+    return missed;
+}
+
+function noteBluetoothGatewayGeneration(key: string, generation: number): void {
+    const last = appliedBluetoothGatewayGenerations.get(key);
+    if (last === undefined || generation > last) {
+        appliedBluetoothGatewayGenerations.set(key, generation);
+    }
+}
+
+function bluetoothGatewayVersionKey(
+    orgId: string,
+    gatewayExternalId: string
+): string {
+    return `${orgId}|${gatewayExternalId}`;
+}
+
+function bumpBluetoothGatewayInventoryVersion(
+    orgId: string,
+    gatewayExternalId: string
+): void {
+    const key = bluetoothGatewayVersionKey(orgId, gatewayExternalId);
+    bluetoothGatewayInventoryVersions.set(
+        key,
+        (bluetoothGatewayInventoryVersions.get(key) ?? 0) + 1
+    );
+}
+
+export function getBluetoothInventoryVersion(orgId?: string): number {
+    return orgId
+        ? (bluetoothInventoryVersionsByOrg.get(orgId) ?? 0)
+        : bluetoothInventoryVersion;
+}
+
+export interface BluetoothInventoryChanges {
+    version: number;
+    /** null means the bounded history cannot prove the exact changed rows. */
+    externalIds: string[] | null;
+}
+
+export function getBluetoothInventoryChanges(
+    orgId: string,
+    afterVersion: number
+): BluetoothInventoryChanges {
+    const version = getBluetoothInventoryVersion(orgId);
+    if (afterVersion === version) return {version, externalIds: []};
+    const changes = (bluetoothInventoryChangesByOrg.get(orgId) ?? []).filter(
+        (change) => change.version > afterVersion
+    );
+    if (
+        afterVersion > version ||
+        changes.length === 0 ||
+        changes[0].version !== afterVersion + 1 ||
+        changes.some((change) => change.externalId === null)
+    ) {
+        return {version, externalIds: null};
+    }
+    return {
+        version,
+        externalIds: [
+            ...new Set(changes.map((change) => change.externalId as string))
+        ]
+    };
+}
+
+export function getBluetoothGatewayInventoryVersion(
+    orgId: string,
+    gatewayExternalId: string
+): number {
+    return (
+        bluetoothGatewayInventoryVersions.get(
+            bluetoothGatewayVersionKey(orgId, gatewayExternalId)
+        ) ?? 0
+    );
 }
 
 export function emitDeviceCreated(input: DeviceInventoryEventInput): void {
     setDeviceOrg(input.externalId, input.orgId);
+    noteVirtualGroupChange(input);
     emitDeviceInventoryEvent('Device.Created', input);
 }
 
 export function emitDeviceUpdated(input: DeviceInventoryEventInput): void {
+    noteVirtualGroupChange(input);
     emitDeviceInventoryEvent('Device.Updated', input);
+}
+
+// Virtual create or update can set groups without a group version change.
+function noteVirtualGroupChange(input: DeviceInventoryEventInput): void {
+    if (input.source !== 'virtual') return;
+    noteDeviceGroupsChanged(input.orgId, [input.externalId]);
 }
 
 export function emitDeviceDeleted(input: DeviceInventoryEventInput): void {
@@ -815,12 +1136,150 @@ function emitDeviceInventoryEvent(
     method: DeviceInventoryMethod,
     input: DeviceInventoryEventInput
 ): void {
-    if (input.source === 'bluetooth') bluetoothInventoryVersion++;
+    captureResourceLifecycle(input.orgId, 'device', input.externalId, method, {
+        change: method.slice('Device.'.length).toLowerCase(),
+        inventorySource: input.source
+    });
+    if (input.source === 'bluetooth') queueBluetoothInventoryChange(input);
     notifyAll(deviceInventoryEvent(method, input), deviceInventoryScope(input));
     emitDeviceRelationshipChanged({
         externalId: input.externalId,
         orgId: input.orgId,
         reason: method
+    });
+}
+
+interface BluetoothRouteChange {
+    orgId: string;
+    gatewayExternalId?: string;
+    externalIds: Set<string>;
+}
+
+interface BluetoothInventoryChange extends BluetoothRouteChange {
+    /** Other gateway -> the changed devices that made its routes wrong. */
+    staleRoutes: Map<string, Set<string>>;
+}
+
+let openBluetoothInventoryBatch: Map<string, BluetoothInventoryChange> | null =
+    null;
+
+// Runs `emit` and then invalidates and signals each touched gateway once, so
+// a pass costs peers one gateway reload instead of one per child.
+export function batchBluetoothInventoryChanges(emit: () => void): void {
+    if (openBluetoothInventoryBatch) {
+        emit();
+        return;
+    }
+    const batch = new Map<string, BluetoothInventoryChange>();
+    openBluetoothInventoryBatch = batch;
+    try {
+        emit();
+    } finally {
+        openBluetoothInventoryBatch = null;
+        for (const change of batch.values()) {
+            publishBluetoothInventoryChange(change);
+        }
+    }
+}
+
+function queueBluetoothInventoryChange(input: DeviceInventoryEventInput): void {
+    recordBluetoothInventoryChange(input.orgId, input.externalId);
+    const key = bluetoothGatewayVersionKey(
+        input.orgId,
+        input.gatewayExternalId ?? ''
+    );
+    const change = openBluetoothInventoryBatch?.get(key) ?? {
+        orgId: input.orgId,
+        gatewayExternalId: input.gatewayExternalId,
+        externalIds: new Set<string>(),
+        staleRoutes: new Map<string, Set<string>>()
+    };
+    change.externalIds.add(input.externalId);
+    for (const gateway of input.staleRouteGatewayExternalIds ?? []) {
+        const devices = change.staleRoutes.get(gateway) ?? new Set<string>();
+        devices.add(input.externalId);
+        change.staleRoutes.set(gateway, devices);
+    }
+    if (openBluetoothInventoryBatch) {
+        openBluetoothInventoryBatch.set(key, change);
+    } else {
+        publishBluetoothInventoryChange(change);
+    }
+}
+
+// Each other gateway whose routes went wrong gets the same per-gateway
+// refresh as the pass gateway, so peers of any version apply it.
+function publishBluetoothInventoryChange(
+    change: BluetoothInventoryChange
+): void {
+    publishBluetoothGatewayRouteChange(change);
+    for (const [gatewayExternalId, externalIds] of change.staleRoutes) {
+        if (gatewayExternalId === change.gatewayExternalId) continue;
+        publishBluetoothGatewayRouteChange({
+            orgId: change.orgId,
+            gatewayExternalId,
+            externalIds
+        });
+    }
+}
+
+function publishBluetoothGatewayRouteChange(
+    change: BluetoothRouteChange
+): void {
+    const {orgId, gatewayExternalId} = change;
+    const externalIds = [...change.externalIds];
+    // Older peers read only `externalId`; without it they refresh everything.
+    const ids = {
+        externalIds,
+        ...(externalIds.length === 1 ? {externalId: externalIds[0]} : {})
+    };
+    if (gatewayExternalId === undefined) {
+        fireAndForget('bluetoothRouteCache.invalidate', () =>
+            invalidateBluetoothStatusRoutes(orgId).then(() =>
+                publishOrg({kind: 'blu-inventory-changed', orgId, ...ids})
+            )
+        );
+        return;
+    }
+    bumpBluetoothGatewayInventoryVersion(orgId, gatewayExternalId);
+    fireAndForget('bluetoothRouteCache.invalidate', () =>
+        invalidateBluetoothStatusRoutesForGateway(
+            orgId,
+            gatewayExternalId
+        ).then((gatewayGeneration) => {
+            noteBluetoothGatewayGeneration(
+                bluetoothGatewayVersionKey(orgId, gatewayExternalId),
+                gatewayGeneration
+            );
+            return publishOrg({
+                kind: 'blu-inventory-changed',
+                orgId,
+                gatewayExternalId,
+                gatewayGeneration,
+                ...ids
+            });
+        })
+    );
+}
+
+function captureResourceLifecycle(
+    organizationId: string,
+    resourceKind: 'device' | 'group',
+    resourceId: string,
+    eventType: string,
+    metadata: Record<string, unknown>
+): void {
+    if (!isEventJournalStarted()) return;
+    enqueueResourceObservation({
+        organizationId,
+        resourceKind,
+        resourceId,
+        eventType,
+        payload: {
+            event: eventType,
+            source: 'event-distributor',
+            ...metadata
+        }
     });
 }
 
@@ -1229,6 +1688,7 @@ async function dispatchToListeners(
     }
 
     const eventOrgId = eventData.organizationId;
+    const eventUserId = eventData.userId;
     // Per-device events scope by the source device — passed either as the full
     // `device` (status/lifecycle) or as `shellyID` (entity/BTHome events that
     // don't carry the object). Without one of these the event is unscoped.
@@ -1237,6 +1697,10 @@ async function dispatchToListeners(
         const bundle = callback_ids.get(callback_id);
         if (!bundle) continue;
         const [sender, options, cb] = bundle;
+
+        if (eventUserId !== undefined && sender.getUserId() !== eventUserId) {
+            continue;
+        }
 
         if (
             scopeShellyID !== undefined &&
@@ -1372,9 +1836,10 @@ Observability.registerModule('events', {
     stats: () => ({
         listeners: callback_ids.size,
         eventTypes: event_map.size,
-        groupVersionOrgs: getGroupVersionOrgCount(),
+        organizationAccessVersionOrgs: getOrganizationAccessVersionOrgCount(),
+        deviceGroupMetadataVersionOrgs: getDeviceGroupMetadataVersionOrgCount(),
         deviceOrgMapSize: deviceOrgByShellyId.size,
-        deviceGroupsCacheSize: deviceGroupsCache.size,
+        deviceGroupsCacheSize: deviceGroupCacheSize(),
         broadcastMaxMs: broadcastMs.peak(),
         broadcastLastMs,
         lastSerializeMs,

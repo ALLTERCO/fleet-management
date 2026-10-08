@@ -220,15 +220,13 @@
                             </svg>
                             <div class="cy-hero-slot-vals">
                                 <div class="cy-hero-preset-label">{{ presetLabel(s.slot?.intensity ?? 0) }}</div>
-                                <div class="cy-hero-pct">{{ s.slot?.intensity ?? 0 }}<span>%</span></div>
+                                <div class="cy-hero-pct">{{ s.slot?.intensity ?? 0 }}<span class="ec-u ec-u--sm">%</span></div>
                             </div>
                         </div>
                         <!-- Slider snaps to the 4 zones (step 25); labels mark them.
                              Hidden on a fault: cannot set intensity on a bad vial. -->
                         <div v-if="!s.fault" class="cy-hero-slider">
-                            <div class="ec-clr-track" style="height:32px">
-                                <input type="range" class="sld-r cy-sld" min="25" max="100" step="25" :value="s.slot?.intensity ?? 50" :disabled="!canExecute" :style="{background: `linear-gradient(90deg,rgba(var(--ar),.1),rgba(var(--ar),.6))`}" @change="(e) => setIntensity(s.key, e)" @click.stop />
-                            </div>
+                            <CardSlider variant="cury" min="25" max="100" step="25" :value="s.slot?.intensity ?? 50" :disabled="!canExecute" aria-label="Intensity" @change="(e: Event) => setIntensity(s.key, e)" />
                             <div class="cy-zone-labels">
                                 <span v-for="p in PRESETS" :key="p.value" class="cy-zone-label" :class="{'cy-zone-label--active': (s.slot?.intensity ?? 0) === p.value}">{{ p.label }}</span>
                             </div>
@@ -259,6 +257,7 @@ import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
 import {sendRPC} from '@/tools/websocket';
 import type {entity_t} from '@/types';
+import CardSlider from '../core/CardSlider.vue';
 import CardBadges from './CardBadges.vue';
 import CardShell from './CardShell.vue';
 
@@ -1281,19 +1280,12 @@ function stopBoostSlot(side: 'left' | 'right') {
     color: var(--color-text-primary);
     line-height: 1;
 }
-.cy-hero-pct span {
-    font-size: var(--type-body);
-    font-weight: 600;
-    color: var(--color-frost);
-    opacity: 0.5;
-}
 .cy-hero-slider {
     display: flex;
     flex-direction: column;
     gap: 0;
 }
 .cy-hero-slider .ec-clr-track {
-    height: 32px;
     flex: none;
 }
 /* Static zone markers under the slider, at the 4 snap positions. */

@@ -65,11 +65,15 @@
 
                 <FormField label="Password (optional)">
                     <input
-                        v-model="form.authPass"
+                        v-model="authPass"
                         type="password"
                         autocomplete="new-password"
+                        :placeholder="passwordPlaceholder"
                         class="cfs__input"
                     />
+                    <p v-if="storedPassword" class="cfs__hint">
+                        Stored: {{ storedPassword }} — leave blank to keep it
+                    </p>
                 </FormField>
             </div>
         </template>
@@ -85,13 +89,31 @@ import type {EmailChannelConfigForm} from '@/helpers/notificationEmailConfig';
 const props = defineProps<{
     showErrors: boolean;
     errors: ErrorMap;
+    /** Masked secrets from the API, keyed by config path. */
+    maskedFields?: Record<string, string>;
 }>();
+
+// Shows which password is stored without revealing it, so an operator can tell
+// a current credential from a stale one without sending a test.
+const storedPassword = computed(() => props.maskedFields?.['auth.pass'] ?? '');
+const passwordPlaceholder = computed(() =>
+    storedPassword.value ? 'Unchanged' : 'Gmail: use an App Password'
+);
 
 const form = defineModel<EmailChannelConfigForm>({required: true});
 
 const visibleErrors = computed<ErrorMap>(() =>
     props.showErrors ? props.errors : {}
 );
+
+// Google shows app passwords as four groups of four; the spaces are display
+// only and SMTP rejects them. Strip so a straight paste works.
+const authPass = computed<string>({
+    get: () => form.value.authPass ?? '',
+    set: (value) => {
+        form.value.authPass = value.replace(/\s+/g, '');
+    }
+});
 </script>
 
 <style src="./channelFieldset.css"></style>

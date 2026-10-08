@@ -11,9 +11,9 @@ before the call runs. A signed-in caller who lacks the permission gets
 
 Each operation carries an `x-fm-permission` field in this reference (and in the
 OpenAPI spec), with up to three keys:
-- `component` — the resource area, e.g. `devices`.
-- `operation` — one of `create`, `read`, `update`, `delete`, `execute`.
-- `note` — a label for special cases, e.g. `authenticated` or `public`.
+- `component`: the resource area, e.g. `devices`.
+- `operation`: one of `create`, `read`, `update`, `delete`, `execute`.
+- `note`: a label for special cases, e.g. `authenticated` or `public`.
 
 For example, reading a device advertises `{ component: "devices", operation:
 "read" }`. Operations marked `{ note: "public" }` need no permission. Every
@@ -23,7 +23,7 @@ permissions.
 ### How access is granted
 
 Permissions follow an IAM-style model:
-- A **persona** is a reusable bundle of allow/deny statements — actions,
+- A **persona** is a reusable bundle of allow/deny statements: actions,
   resource types, and optional conditions. Think of it as a policy.
 - An **assignment** attaches a persona to a user or user group, optionally
   narrowed by a **scope**.
@@ -39,11 +39,14 @@ deployment can define its own tenant personas on top of these.
 
 An assignment can be limited to a subset of the fleet: all, or specific
 `device_ids`, `location_ids`, `device_group_ids`, `device_tags`,
-`dashboard_ids`, or `plugin_keys`. An explicit `Deny` always wins over an
-`Allow`.
+`dashboard_ids`, `plugin_keys`, `waiting_room_ids`, `configuration_keys`,
+`report_ids`, `organization_ids`, `alert_ids`, `notification_ids`,
+`integration_keys`, or `automation_ids`. An explicit `Deny` always wins over an
+`Allow`. An org-wide (`all`) grant of the `admin` or `manager` persona needs a
+reason. When the subject is a service user, it also needs an expiry.
 
 ### Scoped tokens
 
 A scoped token carries a permission boundary that can only *narrow* what its
-owner may do — it can never grant more. See [Authentication](#authentication)
+owner may do: it can never grant more. See [Authentication](#authentication)
 for creating and using tokens.

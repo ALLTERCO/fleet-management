@@ -43,17 +43,22 @@ export async function resolveInboxRecipientUsers(input: {
     });
 }
 
+// Takes the rule's users, read before any transaction opens. That read is
+// cached and shares one in-flight promise; awaited inside a transaction it
+// holds a connection while the read waits for another, and a full pool of
+// such transactions waits on itself.
 export async function resolveInboxRecipientUsersByMode(input: {
     organizationId: string;
-    ruleId: number;
+    userIds: readonly string[];
     severity: string;
+    txId?: number;
 }): Promise<ResolvedPreferenceUsers> {
-    const users = await resolveRuleRecipientUsers(input);
     return resolveUsersByNotificationPreference({
         organizationId: input.organizationId,
-        userIds: users,
+        userIds: [...input.userIds],
         channelType: 'in_app',
-        severity: input.severity
+        severity: input.severity,
+        txId: input.txId
     });
 }
 

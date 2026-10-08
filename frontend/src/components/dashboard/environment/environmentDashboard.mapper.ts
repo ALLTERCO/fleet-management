@@ -609,7 +609,9 @@ export function buildEnvironmentDashboardData(
             ...input.live.luminance
         ].map((r) => r.deviceId)
     ).size;
-    const dataQualityPct = input.sensors.length
+    // Share of scoped sensors that reported just now. This is reporting uptime,
+    // not data quality — real bucket coverage is quality.overallPct.
+    const sensorsReportingPct = input.sensors.length
         ? (reported / input.sensors.length) * 100
         : 0;
 
@@ -671,7 +673,10 @@ export function buildEnvironmentDashboardData(
     };
 
     return {
-        meta: {...input.meta, dataQualityPct: round(dataQualityPct, 0) ?? 0},
+        meta: {
+            ...input.meta,
+            sensorsReportingPct: round(sensorsReportingPct, 0) ?? 0
+        },
         config: {tabs: visibleTabs(input), settings: s},
         overview,
         comfort: comfortSection,
@@ -684,7 +689,7 @@ export function buildEnvironmentDashboardData(
             input.history,
             input.sensors,
             input.meta,
-            dataQualityPct
+            sensorsReportingPct
         ),
         sensors: buildSensorRows(input)
     };

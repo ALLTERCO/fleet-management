@@ -1,9 +1,11 @@
-import type {
-    EnergyLogicalMeterPoint,
-    EnergyMeasurementPoint,
-    EnergyMeterRole,
-    EnergyPhaseMode,
-    EnergyUtilityType
+import {
+    ENERGY_UTILITY_TYPES,
+    type EnergyLogicalMeterPoint,
+    type EnergyMeasurementPoint,
+    type EnergyMeterRole,
+    type EnergyPhaseMode,
+    type EnergyUtilityType,
+    meterTagsForUtility
 } from '@api/energy';
 
 export interface EnergyAssignmentRoleOption {
@@ -52,8 +54,9 @@ const TAG_LABELS: Record<string, string> = {
     power: 'Power',
     voltage: 'Voltage',
     current: 'Current',
-    volume_l: 'Volume',
-    volume_m3: 'Volume',
+    volume_l: 'Consumed volume · import',
+    volume_m3: 'Consumed volume · import',
+    volume_returned_m3: 'Returned gas volume · network injection',
     volume_storage_l: 'Stored volume',
     volume_flow_m3h: 'Flow',
     thermal_energy_kwh: 'Thermal energy'
@@ -73,6 +76,42 @@ export function energyTagLabel(tag: string): string {
     return TAG_LABELS[tag] ?? tag;
 }
 
+export function energyPointFlowDirection(
+    point: Pick<EnergyMeasurementPoint, 'tag' | 'electricalDomain'>
+): 'import' | 'export' | null {
+    if (point.tag === 'total_act_ret_energy') return 'export';
+    if (point.tag === 'total_act_energy') return 'import';
+    if (point.electricalDomain !== 'gas') return null;
+    if (point.tag === 'volume_returned_m3') return 'export';
+    if (point.tag === 'volume_m3' || point.tag === 'volume_l') return 'import';
+    return null;
+}
+
+export function energyPointSupportsUtility(
+    point: EnergyMeasurementPoint,
+    utilityType: EnergyUtilityType
+): boolean {
+    if (!meterTagsForUtility(utilityType).includes(point.tag)) return false;
+    if (
+        point.tag !== 'volume_m3' &&
+        point.tag !== 'volume_returned_m3' &&
+        point.tag !== 'volume_l'
+    )
+        return true;
+    return utilityType === 'gas'
+        ? point.electricalDomain === 'gas'
+        : utilityType === 'water' && point.electricalDomain !== 'gas';
+}
+
+export function suggestedUtilityForPoints(
+    points: readonly EnergyMeasurementPoint[]
+): EnergyUtilityType | null {
+    const candidates = ENERGY_UTILITY_TYPES.filter((utilityType) =>
+        points.some((point) => energyPointSupportsUtility(point, utilityType))
+    );
+    return candidates.length === 1 ? candidates[0] : null;
+}
+
 export function deriveEnergyPhaseMode(
     points: readonly EnergyMeasurementPoint[]
 ): EnergyPhaseMode {
@@ -90,13 +129,18 @@ export function deriveEnergyPhaseMode(
 export function toLogicalMeterPoint(
     point: EnergyMeasurementPoint
 ): EnergyLogicalMeterPoint {
+    const gasDirection =
+        point.electricalDomain === 'gas'
+            ? energyPointFlowDirection(point)
+            : null;
     return {
         deviceId: point.deviceId,
         componentKey: point.componentKey,
         channel: point.channel,
         phase: point.phase,
         tag: point.tag,
-        electricalDomain: point.electricalDomain
+        electricalDomain: point.electricalDomain,
+        ...(gasDirection ? {directionHint: gasDirection} : {})
     };
 }
 

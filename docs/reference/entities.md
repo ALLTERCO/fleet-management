@@ -1,14 +1,15 @@
+<!-- audience: public -->
 # Entities
 
-Entities are FM's typed view of a device's controllable parts —
+Entities are FM's typed view of a device's controllable parts:
 switches, covers, lights, sensors, meters, virtuals, etc. Each entity
 has a stable `id`, a `type`, a `source` (the owning device's
 shellyID), and `properties` (channel index plus type-specific
 metadata).
 
-For the API surface — `Entity.InvokeAction`, `Entity.Get`,
-`Entity.List`, `Entity.GetCapabilities`, `Entity.GetActionSchema` —
-see the [`entity` namespace in the API reference](generated/api.md#entity-namespace).
+For the API surface: `Entity.InvokeAction`, `Entity.Get`,
+`Entity.List`, `Entity.GetCapabilities`, `Entity.GetActionSchema`.
+See the [`entity` namespace in the API reference](../generated/api.md#entity-namespace).
 
 ## Examples
 
@@ -122,4 +123,4 @@ For firmware-side config edits, call the canonical namespace directly:
 Locations carry a `geo` JSONB with provenance: `source` is `manual`,
 `autocomplete`, or `imported`. `autocomplete` picks include `geonameid`,
 `matchedName`, and `verifiedAt`; `manual` rejects those upstream refs.
-See [docs/geocoding.md](geocoding.md).
+See [docs/geocoding.md](../internal/architecture/geocoding.md).

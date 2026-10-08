@@ -9,12 +9,12 @@ Regenerate with `cd backend && npm run generate`.
 
 ## Totals
 
-- Components registered at boot: **130**
-- Explicit `@Component.Expose` methods: **1213**
-- Inherited base-class methods: **199**
-- DEV_MODE extras: **390**
-- Production callable total: **1412**
-- DEV_MODE callable total: **1802**
+- Components registered at boot: **142**
+- Explicit `@Component.Expose` methods: **1371**
+- Inherited base-class methods: **217**
+- DEV_MODE extras: **426**
+- Production callable total: **1588**
+- DEV_MODE callable total: **2014**
 
 > Runtime plugin-generated methods not included — see
 > `docs/generated/runtime-plugin-inventory.md` (hand-produced per release).
@@ -25,40 +25,42 @@ Regenerate with `cd backend && npm run generate`.
 |---|---|---|---|---|---|
 | `addon` | AddonComponent | [backend/src/model/component/AddonComponent.ts:23](../../backend/src/model/component/AddonComponent.ts#L23) | no | no | backend/src/app.ts |
 | `admin` | AdminComponent | [backend/src/model/component/AdminComponent.ts:58](../../backend/src/model/component/AdminComponent.ts#L58) | no | no | backend/src/app.ts |
-| `alert` | AlertComponent | [backend/src/model/component/AlertComponent.ts:575](../../backend/src/model/component/AlertComponent.ts#L575) | no | no | backend/src/app.ts |
+| `alert` | AlertComponent | [backend/src/model/component/AlertComponent.ts:1029](../../backend/src/model/component/AlertComponent.ts#L1029) | no | no | backend/src/app.ts |
 | `alexa` | AlexaComponent | [backend/src/model/component/AlexaComponent.ts:24](../../backend/src/model/component/AlexaComponent.ts#L24) | no | no | backend/src/app.ts |
 | `analytics` | AnalyticsComponent | [backend/src/model/component/AnalyticsComponent.ts:19](../../backend/src/model/component/AnalyticsComponent.ts#L19) | no | no | backend/src/app.ts |
-| `asset` | AssetComponent | [backend/src/model/component/AssetComponent.ts:40](../../backend/src/model/component/AssetComponent.ts#L40) | yes | no | backend/src/app.ts |
+| `asset` | AssetComponent | [backend/src/model/component/AssetComponent.ts:49](../../backend/src/model/component/AssetComponent.ts#L49) | yes | no | backend/src/app.ts |
 | `assignment` | AssignmentComponent | [backend/src/model/component/AssignmentComponent.ts:90](../../backend/src/model/component/AssignmentComponent.ts#L90) | yes | no | backend/src/app.ts |
-| `audit` | AuditComponent | [backend/src/model/component/AuditComponent.ts:263](../../backend/src/model/component/AuditComponent.ts#L263) | yes | no | backend/src/app.ts |
-| `auth` | AuthComponent | [backend/src/model/component/AuthComponent.ts:54](../../backend/src/model/component/AuthComponent.ts#L54) | yes | no | backend/src/app.ts |
+| `audit` | AuditComponent | [backend/src/model/component/AuditComponent.ts:264](../../backend/src/model/component/AuditComponent.ts#L264) | yes | no | backend/src/app.ts |
+| `auth` | AuthComponent | [backend/src/model/component/AuthComponent.ts:73](../../backend/src/model/component/AuthComponent.ts#L73) | yes | no | backend/src/app.ts |
 | `authz_audit` | AuthzAuditComponent | [backend/src/model/component/AuthzAuditComponent.ts:35](../../backend/src/model/component/AuthzAuditComponent.ts#L35) | yes | no | backend/src/app.ts |
-| `backup` | BackupComponent | [backend/src/model/component/BackupComponent.ts:446](../../backend/src/model/component/BackupComponent.ts#L446) | no | no | backend/src/app.ts |
-| `bill` | BillActualComponent | [backend/src/model/component/BillActualComponent.ts:30](../../backend/src/model/component/BillActualComponent.ts#L30) | no | no | backend/src/app.ts |
+| `automation` | AutomationComponent | [backend/src/model/component/AutomationComponent.ts:257](../../backend/src/model/component/AutomationComponent.ts#L257) | no | no | backend/src/app.ts |
+| `backup` | BackupComponent | [backend/src/model/component/BackupComponent.ts:447](../../backend/src/model/component/BackupComponent.ts#L447) | no | no | backend/src/app.ts |
+| `bill` | BillActualComponent | [backend/src/model/component/BillActualComponent.ts:42](../../backend/src/model/component/BillActualComponent.ts#L42) | no | no | backend/src/app.ts |
 | `ble` | BleComponent | [backend/src/model/component/BleComponent.ts:29](../../backend/src/model/component/BleComponent.ts#L29) | no | no | backend/src/app.ts |
 | `bluassist` | BluAssistComponent | [backend/src/model/component/BluAssistComponent.ts:81](../../backend/src/model/component/BluAssistComponent.ts#L81) | no | no | backend/src/app.ts |
 | `blugw` | BluGwComponent | [backend/src/model/component/BluGwComponent.ts:16](../../backend/src/model/component/BluGwComponent.ts#L16) | no | no | backend/src/app.ts |
 | `bm` | BmComponent | [backend/src/model/component/BmComponent.ts:14](../../backend/src/model/component/BmComponent.ts#L14) | no | no | backend/src/app.ts |
 | `branding` | BrandingComponent | [backend/src/model/component/BrandingComponent.ts:35](../../backend/src/model/component/BrandingComponent.ts#L35) | no | no | backend/src/app.ts |
-| `bthome` | BTHomeComponent | [backend/src/model/component/BTHomeComponent.ts:115](../../backend/src/model/component/BTHomeComponent.ts#L115) | no | no | backend/src/app.ts |
+| `bthome` | BTHomeComponent | [backend/src/model/component/BTHomeComponent.ts:128](../../backend/src/model/component/BTHomeComponent.ts#L128) | no | no | backend/src/app.ts |
 | `bthomedevice` | BTHomeDeviceComponent | [backend/src/model/component/BTHomeDeviceComponent.ts:8](../../backend/src/model/component/BTHomeDeviceComponent.ts#L8) | no | no | backend/src/app.ts |
 | `bthomesensor` | BTHomeSensorComponent | [backend/src/model/component/BTHomeSensorComponent.ts:7](../../backend/src/model/component/BTHomeSensorComponent.ts#L7) | no | no | backend/src/app.ts |
 | `button` | ButtonComponent | [backend/src/model/component/ButtonComponent.ts:19](../../backend/src/model/component/ButtonComponent.ts#L19) | no | no | backend/src/app.ts |
 | `camera` | CameraComponent | [backend/src/model/component/CameraComponent.ts:56](../../backend/src/model/component/CameraComponent.ts#L56) | no | no | backend/src/app.ts |
+| `carbon` | CarbonComponent | [backend/src/model/component/CarbonComponent.ts:28](../../backend/src/model/component/CarbonComponent.ts#L28) | no | no | backend/src/app.ts |
 | `cb` | CbComponent | [backend/src/model/component/CbComponent.ts:18](../../backend/src/model/component/CbComponent.ts#L18) | no | no | backend/src/app.ts |
 | `cct` | CctComponent | [backend/src/model/component/CctComponent.ts:28](../../backend/src/model/component/CctComponent.ts#L28) | no | no | backend/src/app.ts |
-| `certificate` | CertificateComponent | [backend/src/model/component/CertificateComponent.ts:152](../../backend/src/model/component/CertificateComponent.ts#L152) | yes | no | backend/src/app.ts |
-| `channel` | ChannelComponent | [backend/src/model/component/ChannelComponent.ts:211](../../backend/src/model/component/ChannelComponent.ts#L211) | no | no | backend/src/app.ts |
+| `certificate` | CertificateComponent | [backend/src/model/component/CertificateComponent.ts:156](../../backend/src/model/component/CertificateComponent.ts#L156) | yes | no | backend/src/app.ts |
+| `channel` | ChannelComponent | [backend/src/model/component/ChannelComponent.ts:255](../../backend/src/model/component/ChannelComponent.ts#L255) | no | no | backend/src/app.ts |
 | `client` | ClientComponent | [backend/src/model/component/ClientComponent.ts:22](../../backend/src/model/component/ClientComponent.ts#L22) | no | no | backend/src/app.ts |
 | `cloud` | CloudComponent | [backend/src/model/component/CloudComponent.ts:17](../../backend/src/model/component/CloudComponent.ts#L17) | no | no | backend/src/app.ts |
 | `cover` | CoverComponent | [backend/src/model/component/CoverComponent.ts:24](../../backend/src/model/component/CoverComponent.ts#L24) | no | no | backend/src/app.ts |
-| `credential` | CredentialComponent | [backend/src/model/component/CredentialComponent.ts:109](../../backend/src/model/component/CredentialComponent.ts#L109) | yes | no | backend/src/app.ts |
+| `credential` | CredentialComponent | [backend/src/model/component/CredentialComponent.ts:122](../../backend/src/model/component/CredentialComponent.ts#L122) | yes | no | backend/src/app.ts |
 | `cury` | CuryComponent | [backend/src/model/component/CuryComponent.ts:27](../../backend/src/model/component/CuryComponent.ts#L27) | no | no | backend/src/app.ts |
 | `dali` | DaliComponent | [backend/src/model/component/DaliComponent.ts:27](../../backend/src/model/component/DaliComponent.ts#L27) | no | no | backend/src/app.ts |
-| `dashboard` | DashboardComponent | [backend/src/model/component/DashboardComponent.ts:136](../../backend/src/model/component/DashboardComponent.ts#L136) | no | no | backend/src/app.ts |
-| `device` | DeviceComponent | [backend/src/model/component/DeviceComponent.ts:766](../../backend/src/model/component/DeviceComponent.ts#L766) | yes | no | backend/src/app.ts |
+| `dashboard` | DashboardComponent | [backend/src/model/component/DashboardComponent.ts:153](../../backend/src/model/component/DashboardComponent.ts#L153) | no | no | backend/src/app.ts |
+| `device` | DeviceComponent | [backend/src/model/component/DeviceComponent.ts:991](../../backend/src/model/component/DeviceComponent.ts#L991) | yes | no | backend/src/app.ts |
 | `deviceevents` | DeviceEventComponent | [backend/src/model/component/DeviceEventComponent.ts:34](../../backend/src/model/component/DeviceEventComponent.ts#L34) | yes | no | backend/src/app.ts |
-| `deviceIngress` | DeviceIngressComponent | [backend/src/model/component/DeviceIngressComponent.ts:141](../../backend/src/model/component/DeviceIngressComponent.ts#L141) | no | no | backend/src/app.ts |
+| `deviceIngress` | DeviceIngressComponent | [backend/src/model/component/DeviceIngressComponent.ts:168](../../backend/src/model/component/DeviceIngressComponent.ts#L168) | no | no | backend/src/app.ts |
 | `devicepower` | DevicePowerComponent | [backend/src/model/component/DevicePowerComponent.ts:17](../../backend/src/model/component/DevicePowerComponent.ts#L17) | no | no | backend/src/app.ts |
 | `discovery` | DiscoveryComponent | [backend/src/model/component/DiscoveryComponent.ts:87](../../backend/src/model/component/DiscoveryComponent.ts#L87) | yes | no | backend/src/app.ts |
 | `domain_policy` | DomainPolicyComponent | [backend/src/model/component/DomainPolicyComponent.ts:24](../../backend/src/model/component/DomainPolicyComponent.ts#L24) | no | no | backend/src/app.ts |
@@ -66,61 +68,71 @@ Regenerate with `cd backend && npm run generate`.
 | `em1` | Em1Component | [backend/src/model/component/Em1Component.ts:23](../../backend/src/model/component/Em1Component.ts#L23) | no | no | backend/src/app.ts |
 | `em1data` | Em1DataComponent | [backend/src/model/component/Em1DataComponent.ts:26](../../backend/src/model/component/Em1DataComponent.ts#L26) | no | no | backend/src/app.ts |
 | `emdata` | EmDataComponent | [backend/src/model/component/EmDataComponent.ts:26](../../backend/src/model/component/EmDataComponent.ts#L26) | no | no | backend/src/app.ts |
-| `energy` | EnergyComponent | [backend/src/model/component/EnergyComponent.ts:135](../../backend/src/model/component/EnergyComponent.ts#L135) | no | no | backend/src/app.ts |
-| `entity` | EntityComponent | [backend/src/model/component/EntityComponent.ts:450](../../backend/src/model/component/EntityComponent.ts#L450) | yes | yes | backend/src/app.ts |
+| `energy` | EnergyComponent | [backend/src/model/component/EnergyComponent.ts:260](../../backend/src/model/component/EnergyComponent.ts#L260) | no | no | backend/src/app.ts |
+| `entity` | EntityComponent | [backend/src/model/component/EntityComponent.ts:586](../../backend/src/model/component/EntityComponent.ts#L586) | yes | yes | backend/src/app.ts |
 | `eth` | EthComponent | [backend/src/model/component/EthComponent.ts:19](../../backend/src/model/component/EthComponent.ts#L19) | no | no | backend/src/app.ts |
 | `fan` | FanComponent | [backend/src/model/component/FanComponent.ts:16](../../backend/src/model/component/FanComponent.ts#L16) | no | no | backend/src/app.ts |
-| `firmware` | FirmwareComponent | [backend/src/model/component/FirmwareComponent.ts:353](../../backend/src/model/component/FirmwareComponent.ts#L353) | no | no | backend/src/app.ts |
-| `fleet` | FleetComponent | [backend/src/model/component/FleetComponent.ts:29](../../backend/src/model/component/FleetComponent.ts#L29) | yes | no | backend/src/app.ts |
-| `fleetMap` | FleetMapComponent | [backend/src/model/component/FleetMapComponent.ts:48](../../backend/src/model/component/FleetMapComponent.ts#L48) | yes | no | backend/src/app.ts |
+| `fileTransfer` | FileTransferComponent | [backend/src/model/component/FileTransferComponent.ts:182](../../backend/src/model/component/FileTransferComponent.ts#L182) | yes | no | backend/src/app.ts |
+| `firmware` | FirmwareComponent | [backend/src/model/component/FirmwareComponent.ts:358](../../backend/src/model/component/FirmwareComponent.ts#L358) | no | no | backend/src/app.ts |
+| `fleet` | FleetComponent | [backend/src/model/component/FleetComponent.ts:44](../../backend/src/model/component/FleetComponent.ts#L44) | yes | no | backend/src/app.ts |
+| `fleetMap` | FleetMapComponent | [backend/src/model/component/FleetMapComponent.ts:49](../../backend/src/model/component/FleetMapComponent.ts#L49) | yes | no | backend/src/app.ts |
 | `fleetSummary` | FleetSummaryComponent | [backend/src/model/component/FleetSummaryComponent.ts:36](../../backend/src/model/component/FleetSummaryComponent.ts#L36) | yes | no | backend/src/app.ts |
 | `flood` | FloodComponent | [backend/src/model/component/FloodComponent.ts:17](../../backend/src/model/component/FloodComponent.ts#L17) | no | no | backend/src/app.ts |
+| `gasConversion` | GasConversionComponent | [backend/src/model/component/GasConversionComponent.ts:32](../../backend/src/model/component/GasConversionComponent.ts#L32) | no | no | backend/src/app.ts |
 | `grafana` | GrafanaComponent | [backend/src/model/component/GrafanaComponent.ts:15](../../backend/src/model/component/GrafanaComponent.ts#L15) | no | no | backend/src/app.ts |
-| `group` | GroupComponent | [backend/src/model/component/GroupComponent.ts:370](../../backend/src/model/component/GroupComponent.ts#L370) | no | no | backend/src/app.ts |
+| `group` | GroupComponent | [backend/src/model/component/GroupComponent.ts:407](../../backend/src/model/component/GroupComponent.ts#L407) | no | no | backend/src/app.ts |
 | `http` | HttpComponent | [backend/src/model/component/HttpComponent.ts:25](../../backend/src/model/component/HttpComponent.ts#L25) | no | no | backend/src/app.ts |
 | `humidity` | HumidityComponent | [backend/src/model/component/HumidityComponent.ts:17](../../backend/src/model/component/HumidityComponent.ts#L17) | no | no | backend/src/app.ts |
 | `identity` | IdentityComponent | [backend/src/modules/identity/IdentityComponent.ts:74](../../backend/src/modules/identity/IdentityComponent.ts#L74) | no | no | backend/src/app.ts |
 | `illuminance` | IlluminanceComponent | [backend/src/model/component/IlluminanceComponent.ts:15](../../backend/src/model/component/IlluminanceComponent.ts#L15) | no | no | backend/src/app.ts |
 | `input` | InputComponent | [backend/src/model/component/InputComponent.ts:21](../../backend/src/model/component/InputComponent.ts#L21) | no | no | backend/src/app.ts |
-| `job` | JobComponent | [backend/src/model/component/JobComponent.ts:22](../../backend/src/model/component/JobComponent.ts#L22) | no | no | backend/src/app.ts |
-| `kind` | KindComponent | [backend/src/model/component/KindComponent.ts:60](../../backend/src/model/component/KindComponent.ts#L60) | no | no | backend/src/app.ts |
+| `ir` | IrComponent | [backend/src/model/component/IrComponent.ts:23](../../backend/src/model/component/IrComponent.ts#L23) | no | no | backend/src/app.ts |
+| `ircode` | IrCodeComponent | [backend/src/model/component/IrCodeComponent.ts:21](../../backend/src/model/component/IrCodeComponent.ts#L21) | no | no | backend/src/app.ts |
+| `irdevice` | IrDeviceComponent | [backend/src/model/component/IrDeviceComponent.ts:23](../../backend/src/model/component/IrDeviceComponent.ts#L23) | no | no | backend/src/app.ts |
+| `irlibrary` | IrLibraryComponent | [backend/src/model/component/IrLibraryComponent.ts:261](../../backend/src/model/component/IrLibraryComponent.ts#L261) | no | no | backend/src/app.ts |
+| `job` | JobComponent | [backend/src/model/component/JobComponent.ts:37](../../backend/src/model/component/JobComponent.ts#L37) | no | no | backend/src/app.ts |
+| `kind` | KindComponent | [backend/src/model/component/KindComponent.ts:64](../../backend/src/model/component/KindComponent.ts#L64) | no | no | backend/src/app.ts |
 | `knx` | KnxComponent | [backend/src/model/component/KnxComponent.ts:24](../../backend/src/model/component/KnxComponent.ts#L24) | no | no | backend/src/app.ts |
 | `kvs` | KvsComponent | [backend/src/model/component/KvsComponent.ts:21](../../backend/src/model/component/KvsComponent.ts#L21) | no | no | backend/src/app.ts |
 | `ledstrip` | LedStripComponent | [backend/src/model/component/LedStripComponent.ts:35](../../backend/src/model/component/LedStripComponent.ts#L35) | no | no | backend/src/app.ts |
 | `light` | LightComponent | [backend/src/model/component/LightComponent.ts:35](../../backend/src/model/component/LightComponent.ts#L35) | no | no | backend/src/app.ts |
 | `lnm` | LnmComponent | [backend/src/model/component/LnmComponent.ts:19](../../backend/src/model/component/LnmComponent.ts#L19) | no | no | backend/src/app.ts |
-| `location` | LocationComponent | [backend/src/model/component/LocationComponent.ts:220](../../backend/src/model/component/LocationComponent.ts#L220) | no | no | backend/src/app.ts |
+| `location` | LocationComponent | [backend/src/model/component/LocationComponent.ts:263](../../backend/src/model/component/LocationComponent.ts#L263) | no | no | backend/src/app.ts |
 | `login_text` | LoginTextComponent | [backend/src/model/component/LoginTextComponent.ts:23](../../backend/src/model/component/LoginTextComponent.ts#L23) | no | no | backend/src/app.ts |
 | `mail` | MailComponent | [backend/src/model/component/MailComponent.ts:19](../../backend/src/model/component/MailComponent.ts#L19) | yes | no | backend/src/app.ts |
 | `matter` | MatterComponent | [backend/src/model/component/MatterComponent.ts:19](../../backend/src/model/component/MatterComponent.ts#L19) | no | no | backend/src/app.ts |
 | `mbrtuclient` | MbRtuClientComponent | [backend/src/model/component/MbRtuClientComponent.ts:27](../../backend/src/model/component/MbRtuClientComponent.ts#L27) | no | no | backend/src/app.ts |
+| `mcp_approval` | McpApprovalComponent | [backend/src/model/component/McpApprovalComponent.ts:88](../../backend/src/model/component/McpApprovalComponent.ts#L88) | yes | no | backend/src/app.ts |
 | `mdns` | MdnsComponent | [backend/src/model/component/MdnsComponent.ts:10](../../backend/src/model/component/MdnsComponent.ts#L10) | yes | no | backend/src/app.ts |
-| `media` | MediaComponent | [backend/src/model/component/MediaComponent.ts:99](../../backend/src/model/component/MediaComponent.ts#L99) | no | no | backend/src/app.ts |
+| `media` | MediaComponent | [backend/src/model/component/MediaComponent.ts:104](../../backend/src/model/component/MediaComponent.ts#L104) | no | no | backend/src/app.ts |
 | `message_text` | MessageTextComponent | [backend/src/model/component/MessageTextComponent.ts:23](../../backend/src/model/component/MessageTextComponent.ts#L23) | no | no | backend/src/app.ts |
 | `mobile` | MobileComponent | [backend/src/modules/mobile/MobileComponent.ts:40](../../backend/src/modules/mobile/MobileComponent.ts#L40) | yes | no | backend/src/app.ts |
 | `modbus` | ModbusComponent | [backend/src/model/component/ModbusComponent.ts:17](../../backend/src/model/component/ModbusComponent.ts#L17) | no | no | backend/src/app.ts |
 | `mqtt` | MqttComponent | [backend/src/model/component/MqttComponent.ts:17](../../backend/src/model/component/MqttComponent.ts#L17) | no | no | backend/src/app.ts |
-| `notification` | NotificationComponent | [backend/src/model/component/NotificationComponent.ts:41](../../backend/src/model/component/NotificationComponent.ts#L41) | no | no | backend/src/app.ts |
+| `notification` | NotificationComponent | [backend/src/model/component/NotificationComponent.ts:98](../../backend/src/model/component/NotificationComponent.ts#L98) | no | no | backend/src/app.ts |
 | `notification_policy` | NotificationPolicyComponent | [backend/src/model/component/NotificationPolicyComponent.ts:19](../../backend/src/model/component/NotificationPolicyComponent.ts#L19) | no | no | backend/src/app.ts |
 | `object` | ObjectComponent | [backend/src/model/component/ObjectComponent.ts:15](../../backend/src/model/component/ObjectComponent.ts#L15) | no | no | backend/src/app.ts |
-| `organization` | OrganizationComponent | [backend/src/model/component/OrganizationComponent.ts:31](../../backend/src/model/component/OrganizationComponent.ts#L31) | no | no | backend/src/app.ts |
+| `operations` | OperationsComponent | [backend/src/model/component/OperationsComponent.ts:236](../../backend/src/model/component/OperationsComponent.ts#L236) | no | no | backend/src/app.ts |
+| `organization` | OrganizationComponent | [backend/src/model/component/OrganizationComponent.ts:33](../../backend/src/model/component/OrganizationComponent.ts#L33) | no | no | backend/src/app.ts |
 | `ota` | OtaComponent | [backend/src/model/component/OtaComponent.ts:19](../../backend/src/model/component/OtaComponent.ts#L19) | no | no | backend/src/app.ts |
-| `permission` | PermissionComponent | [backend/src/model/component/PermissionComponent.ts:47](../../backend/src/model/component/PermissionComponent.ts#L47) | no | no | backend/src/app.ts |
-| `persona` | PersonaComponent | [backend/src/model/component/PersonaComponent.ts:38](../../backend/src/model/component/PersonaComponent.ts#L38) | yes | no | backend/src/app.ts |
+| `permission` | PermissionComponent | [backend/src/model/component/PermissionComponent.ts:48](../../backend/src/model/component/PermissionComponent.ts#L48) | no | no | backend/src/app.ts |
+| `persona` | PersonaComponent | [backend/src/model/component/PersonaComponent.ts:45](../../backend/src/model/component/PersonaComponent.ts#L45) | yes | no | backend/src/app.ts |
 | `pill` | PillComponent | [backend/src/model/component/PillComponent.ts:15](../../backend/src/model/component/PillComponent.ts#L15) | no | no | backend/src/app.ts |
+| `pilluart` | PillUartComponent | [backend/src/model/component/PillUartComponent.ts:19](../../backend/src/model/component/PillUartComponent.ts#L19) | no | no | backend/src/app.ts |
 | `plugin` | PluginManagerComponent | [backend/src/model/component/PluginManagerComponent.ts:51](../../backend/src/model/component/PluginManagerComponent.ts#L51) | no | no | backend/src/app.ts |
 | `pm1` | Pm1Component | [backend/src/model/component/Pm1Component.ts:19](../../backend/src/model/component/Pm1Component.ts#L19) | no | no | backend/src/app.ts |
 | `policy` | PolicyComponent | [backend/src/model/component/PolicyComponent.ts:208](../../backend/src/model/component/PolicyComponent.ts#L208) | no | no | backend/src/app.ts |
 | `presence` | PresenceComponent | [backend/src/model/component/PresenceComponent.ts:28](../../backend/src/model/component/PresenceComponent.ts#L28) | no | no | backend/src/app.ts |
 | `presencezone` | PresenceZoneComponent | [backend/src/model/component/PresenceZoneComponent.ts:17](../../backend/src/model/component/PresenceZoneComponent.ts#L17) | no | no | backend/src/app.ts |
 | `privacy` | PrivacyComponent | [backend/src/model/component/PrivacyComponent.ts:21](../../backend/src/model/component/PrivacyComponent.ts#L21) | no | no | backend/src/app.ts |
-| `report` | ReportComponent | [backend/src/model/component/ReportComponent.ts:60](../../backend/src/model/component/ReportComponent.ts#L60) | no | no | backend/src/app.ts |
-| `reporttemplate` | ReportTemplateComponent | [backend/src/model/component/ReportTemplateComponent.ts:84](../../backend/src/model/component/ReportTemplateComponent.ts#L84) | no | no | backend/src/app.ts |
+| `report` | ReportComponent | [backend/src/model/component/ReportComponent.ts:67](../../backend/src/model/component/ReportComponent.ts#L67) | no | no | backend/src/app.ts |
+| `reporttemplate` | ReportTemplateComponent | [backend/src/model/component/ReportTemplateComponent.ts:88](../../backend/src/model/component/ReportTemplateComponent.ts#L88) | no | no | backend/src/app.ts |
 | `restrictions` | RestrictionsComponent | [backend/src/model/component/RestrictionsComponent.ts:14](../../backend/src/model/component/RestrictionsComponent.ts#L14) | no | no | backend/src/app.ts |
 | `rgb` | RgbComponent | [backend/src/model/component/RgbComponent.ts:23](../../backend/src/model/component/RgbComponent.ts#L23) | no | no | backend/src/app.ts |
 | `rgbcct` | RgbCctComponent | [backend/src/model/component/RgbCctComponent.ts:23](../../backend/src/model/component/RgbCctComponent.ts#L23) | no | no | backend/src/app.ts |
 | `rgbw` | RgbwComponent | [backend/src/model/component/RgbwComponent.ts:23](../../backend/src/model/component/RgbwComponent.ts#L23) | no | no | backend/src/app.ts |
 | `schedule` | ScheduleComponent | [backend/src/model/component/ScheduleComponent.ts:30](../../backend/src/model/component/ScheduleComponent.ts#L30) | no | no | backend/src/app.ts |
+| `scopedautomation` | ScopedAutomationComponent | [backend/src/model/component/ScopedAutomationComponent.ts:33](../../backend/src/model/component/ScopedAutomationComponent.ts#L33) | no | no | backend/src/app.ts |
 | `script` | ScriptComponent | [backend/src/model/component/ScriptComponent.ts:25](../../backend/src/model/component/ScriptComponent.ts#L25) | no | no | backend/src/app.ts |
 | `security` | SecurityComponent | [backend/src/model/component/SecurityComponent.ts:16](../../backend/src/model/component/SecurityComponent.ts#L16) | no | no | backend/src/app.ts |
 | `sensor` | SensorComponent | [backend/src/model/component/SensorComponent.ts:31](../../backend/src/model/component/SensorComponent.ts#L31) | no | no | backend/src/app.ts |
@@ -133,18 +145,18 @@ Regenerate with `cd backend && npm run generate`.
 | `switch` | SwitchComponent | [backend/src/model/component/SwitchComponent.ts:21](../../backend/src/model/component/SwitchComponent.ts#L21) | no | no | backend/src/app.ts |
 | `sys` | SysComponent | [backend/src/model/component/SysComponent.ts:24](../../backend/src/model/component/SysComponent.ts#L24) | no | no | backend/src/app.ts |
 | `system` | SystemComponent | [backend/src/model/component/SystemComponent.ts:97](../../backend/src/model/component/SystemComponent.ts#L97) | yes | yes | backend/src/app.ts |
-| `tag` | TagComponent | [backend/src/model/component/TagComponent.ts:224](../../backend/src/model/component/TagComponent.ts#L224) | no | no | backend/src/app.ts |
-| `tariff` | TariffComponent | [backend/src/model/component/TariffComponent.ts:23](../../backend/src/model/component/TariffComponent.ts#L23) | no | no | backend/src/app.ts |
+| `tag` | TagComponent | [backend/src/model/component/TagComponent.ts:248](../../backend/src/model/component/TagComponent.ts#L248) | no | no | backend/src/app.ts |
+| `tariff` | TariffComponent | [backend/src/model/component/TariffComponent.ts:32](../../backend/src/model/component/TariffComponent.ts#L32) | no | no | backend/src/app.ts |
 | `temperature` | TemperatureComponent | [backend/src/model/component/TemperatureComponent.ts:17](../../backend/src/model/component/TemperatureComponent.ts#L17) | no | no | backend/src/app.ts |
 | `thermostat` | ThermostatComponent | [backend/src/model/component/ThermostatComponent.ts:35](../../backend/src/model/component/ThermostatComponent.ts#L35) | no | no | backend/src/app.ts |
 | `trv` | TrvComponent | [backend/src/model/component/TrvComponent.ts:80](../../backend/src/model/component/TrvComponent.ts#L80) | no | no | backend/src/app.ts |
 | `ui` | UiComponent | [backend/src/model/component/UiComponent.ts:21](../../backend/src/model/component/UiComponent.ts#L21) | no | no | backend/src/app.ts |
-| `user` | UserComponent | [backend/src/modules/user/UserComponent.ts:168](../../backend/src/modules/user/UserComponent.ts#L168) | yes | yes | (not registered at boot) |
-| `user_group` | UserGroupComponent | [backend/src/model/component/UserGroupComponent.ts:64](../../backend/src/model/component/UserGroupComponent.ts#L64) | yes | no | backend/src/app.ts |
+| `user` | UserComponent | [backend/src/modules/user/UserComponent.ts:178](../../backend/src/modules/user/UserComponent.ts#L178) | yes | yes | (not registered at boot) |
+| `user_group` | UserGroupComponent | [backend/src/model/component/UserGroupComponent.ts:66](../../backend/src/model/component/UserGroupComponent.ts#L66) | yes | no | backend/src/app.ts |
 | `variables` | VariablesComponent | [backend/src/model/component/VariablesComponent.ts:37](../../backend/src/model/component/VariablesComponent.ts#L37) | no | no | backend/src/app.ts |
-| `virtual` | VirtualComponent | [backend/src/model/component/VirtualComponent.ts:31](../../backend/src/model/component/VirtualComponent.ts#L31) | no | no | backend/src/app.ts |
+| `virtual` | VirtualComponent | [backend/src/model/component/VirtualComponent.ts:45](../../backend/src/model/component/VirtualComponent.ts#L45) | no | no | backend/src/app.ts |
 | `virtual_meta` | VirtualMetaComponent | [backend/src/model/component/VirtualMetaComponent.ts:22](../../backend/src/model/component/VirtualMetaComponent.ts#L22) | no | no | backend/src/app.ts |
-| `virtualdevice` | VirtualDeviceComponent | [backend/src/model/component/VirtualDeviceComponent.ts:161](../../backend/src/model/component/VirtualDeviceComponent.ts#L161) | no | no | backend/src/app.ts |
+| `virtualdevice` | VirtualDeviceComponent | [backend/src/model/component/VirtualDeviceComponent.ts:174](../../backend/src/model/component/VirtualDeviceComponent.ts#L174) | no | no | backend/src/app.ts |
 | `voltmeter` | VoltmeterComponent | [backend/src/model/component/VoltmeterComponent.ts:19](../../backend/src/model/component/VoltmeterComponent.ts#L19) | no | no | backend/src/app.ts |
 | `waitingroom` | WaitingRoomComponent | [backend/src/model/component/WaitingRoomComponent.ts:101](../../backend/src/model/component/WaitingRoomComponent.ts#L101) | yes | no | backend/src/app.ts |
 | `web` | WebComponent | [backend/src/model/component/WebComponent.ts:16](../../backend/src/model/component/WebComponent.ts#L16) | yes | no | backend/src/app.ts |
@@ -188,44 +200,45 @@ Regenerate with `cd backend && npm run generate`.
 | `PostgresCall` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 0 | [backend/src/model/component/AdminComponent.ts:91](../../backend/src/model/component/AdminComponent.ts#L91) |
 | `ReconcileDevices` | explicit | production | CheckPermissions | canUseTenantAdmin |  | 0 | [backend/src/model/component/AdminComponent.ts:123](../../backend/src/model/component/AdminComponent.ts#L123) |
 
-### `alert` — 30 explicit + 1 inherited (34 total incl. DEV_MODE)
+### `alert` — 31 explicit + 1 inherited (35 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
 |---|---|---|---|---|---|---|---|
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/AlertComponent.ts:588](../../backend/src/model/component/AlertComponent.ts#L588) |
-| `Instance.Ack` | explicit | production | CrudPermission | 'alerts', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:1850](../../backend/src/model/component/AlertComponent.ts#L1850) |
-| `Instance.Annotate` | explicit | production | CrudPermission | 'alerts', 'update', (p) => p?.alertInstanceId |  | 0 | [backend/src/model/component/AlertComponent.ts:2064](../../backend/src/model/component/AlertComponent.ts#L2064) |
-| `Instance.DeleteAnnotation` | explicit | production | CrudPermission | 'alerts', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:2164](../../backend/src/model/component/AlertComponent.ts#L2164) |
-| `Instance.EditAnnotation` | explicit | production | CrudPermission | 'alerts', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:2121](../../backend/src/model/component/AlertComponent.ts#L2121) |
-| `Instance.Get` | explicit | production | CrudPermission | 'alerts', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:1790](../../backend/src/model/component/AlertComponent.ts#L1790) |
-| `Instance.List` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:1719](../../backend/src/model/component/AlertComponent.ts#L1719) |
-| `Instance.ListAnnotations` | explicit | production | CrudPermission | 'alerts', 'read', (p) => p?.alertInstanceId |  | 0 | [backend/src/model/component/AlertComponent.ts:2098](../../backend/src/model/component/AlertComponent.ts#L2098) |
-| `Instance.ListTransitions` | explicit | production | CrudPermission | 'alerts', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:1809](../../backend/src/model/component/AlertComponent.ts#L1809) |
-| `Instance.ResolveManual` | explicit | production | CrudPermission | 'alerts', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:2012](../../backend/src/model/component/AlertComponent.ts#L2012) |
-| `Instance.Silence` | explicit | production | CrudPermission | 'alerts', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:1930](../../backend/src/model/component/AlertComponent.ts#L1930) |
-| `Instance.Unack` | explicit | production | CrudPermission | 'alerts', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:1896](../../backend/src/model/component/AlertComponent.ts#L1896) |
-| `Instance.Unsilence` | explicit | production | CrudPermission | 'alerts', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:1975](../../backend/src/model/component/AlertComponent.ts#L1975) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/AlertComponent.ts:1042](../../backend/src/model/component/AlertComponent.ts#L1042) |
+| `Instance.Ack` | explicit | production | CrudPermission | 'alerts', 'update', NOT_A_RULE_ID |  | 0 | [backend/src/model/component/AlertComponent.ts:2549](../../backend/src/model/component/AlertComponent.ts#L2549) |
+| `Instance.Annotate` | explicit | production | CrudPermission | 'alerts', 'update', NOT_A_RULE_ID |  | 0 | [backend/src/model/component/AlertComponent.ts:2778](../../backend/src/model/component/AlertComponent.ts#L2778) |
+| `Instance.DeleteAnnotation` | explicit | production | CrudPermission | 'alerts', 'update', NOT_A_RULE_ID |  | 0 | [backend/src/model/component/AlertComponent.ts:2895](../../backend/src/model/component/AlertComponent.ts#L2895) |
+| `Instance.EditAnnotation` | explicit | production | CrudPermission | 'alerts', 'update', NOT_A_RULE_ID |  | 0 | [backend/src/model/component/AlertComponent.ts:2847](../../backend/src/model/component/AlertComponent.ts#L2847) |
+| `Instance.Get` | explicit | production | CrudPermission | 'alerts', 'read', NOT_A_RULE_ID |  | 0 | [backend/src/model/component/AlertComponent.ts:2479](../../backend/src/model/component/AlertComponent.ts#L2479) |
+| `Instance.GetMany` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:2448](../../backend/src/model/component/AlertComponent.ts#L2448) |
+| `Instance.List` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:2408](../../backend/src/model/component/AlertComponent.ts#L2408) |
+| `Instance.ListAnnotations` | explicit | production | CrudPermission | 'alerts', 'read', NOT_A_RULE_ID |  | 0 | [backend/src/model/component/AlertComponent.ts:2818](../../backend/src/model/component/AlertComponent.ts#L2818) |
+| `Instance.ListTransitions` | explicit | production | CrudPermission | 'alerts', 'read', NOT_A_RULE_ID |  | 0 | [backend/src/model/component/AlertComponent.ts:2503](../../backend/src/model/component/AlertComponent.ts#L2503) |
+| `Instance.ResolveManual` | explicit | production | CrudPermission | 'alerts', 'update', NOT_A_RULE_ID |  | 0 | [backend/src/model/component/AlertComponent.ts:2719](../../backend/src/model/component/AlertComponent.ts#L2719) |
+| `Instance.Silence` | explicit | production | CrudPermission | 'alerts', 'update', NOT_A_RULE_ID |  | 0 | [backend/src/model/component/AlertComponent.ts:2633](../../backend/src/model/component/AlertComponent.ts#L2633) |
+| `Instance.Unack` | explicit | production | CrudPermission | 'alerts', 'update', NOT_A_RULE_ID |  | 0 | [backend/src/model/component/AlertComponent.ts:2597](../../backend/src/model/component/AlertComponent.ts#L2597) |
+| `Instance.Unsilence` | explicit | production | CrudPermission | 'alerts', 'update', NOT_A_RULE_ID |  | 0 | [backend/src/model/component/AlertComponent.ts:2680](../../backend/src/model/component/AlertComponent.ts#L2680) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Rule.CheckDuplicate` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:1418](../../backend/src/model/component/AlertComponent.ts#L1418) |
-| `Rule.Create` | explicit | production | CrudPermission | 'alerts', 'create' |  | 0 | [backend/src/model/component/AlertComponent.ts:1013](../../backend/src/model/component/AlertComponent.ts#L1013) |
-| `Rule.CreateFromTemplate` | explicit | production | CrudPermission | 'alerts', 'create' |  | 0 | [backend/src/model/component/AlertComponent.ts:1617](../../backend/src/model/component/AlertComponent.ts#L1617) |
-| `Rule.Delete` | explicit | production | CrudPermission | 'alerts', 'delete', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:1375](../../backend/src/model/component/AlertComponent.ts#L1375) |
-| `Rule.Get` | explicit | production | CrudPermission | 'alerts', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:994](../../backend/src/model/component/AlertComponent.ts#L994) |
-| `Rule.List` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:946](../../backend/src/model/component/AlertComponent.ts#L946) |
-| `Rule.ListComponentPaths` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:886](../../backend/src/model/component/AlertComponent.ts#L886) |
-| `Rule.ListEligibleDevices` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:904](../../backend/src/model/component/AlertComponent.ts#L904) |
-| `Rule.ListFirings` | explicit | production | CrudPermission | 'alerts', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:1478](../../backend/src/model/component/AlertComponent.ts#L1478) |
-| `Rule.ListKinds` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:761](../../backend/src/model/component/AlertComponent.ts#L761) |
-| `Rule.ListMetricPaths` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:867](../../backend/src/model/component/AlertComponent.ts#L867) |
-| `Rule.ListTemplates` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:1456](../../backend/src/model/component/AlertComponent.ts#L1456) |
-| `Rule.Preview` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:1531](../../backend/src/model/component/AlertComponent.ts#L1531) |
-| `Rule.Template.Create` | explicit | production | CrudPermission | 'alerts', 'create' |  | 0 | [backend/src/model/component/AlertComponent.ts:2192](../../backend/src/model/component/AlertComponent.ts#L2192) |
-| `Rule.Template.Delete` | explicit | production | CrudPermission | 'alerts', 'delete', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:2324](../../backend/src/model/component/AlertComponent.ts#L2324) |
-| `Rule.Template.Update` | explicit | production | CrudPermission | 'alerts', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:2251](../../backend/src/model/component/AlertComponent.ts#L2251) |
-| `Rule.Update` | explicit | production | CrudPermission | 'alerts', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:1159](../../backend/src/model/component/AlertComponent.ts#L1159) |
+| `Rule.CheckDuplicate` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:2094](../../backend/src/model/component/AlertComponent.ts#L2094) |
+| `Rule.Create` | explicit | production | CrudPermission | 'alerts', 'create' |  | 0 | [backend/src/model/component/AlertComponent.ts:1650](../../backend/src/model/component/AlertComponent.ts#L1650) |
+| `Rule.CreateFromTemplate` | explicit | production | CrudPermission | 'alerts', 'create' |  | 0 | [backend/src/model/component/AlertComponent.ts:2296](../../backend/src/model/component/AlertComponent.ts#L2296) |
+| `Rule.Delete` | explicit | production | CrudPermission | 'alerts', 'delete', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:2025](../../backend/src/model/component/AlertComponent.ts#L2025) |
+| `Rule.Get` | explicit | production | CrudPermission | 'alerts', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:1631](../../backend/src/model/component/AlertComponent.ts#L1631) |
+| `Rule.List` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:1580](../../backend/src/model/component/AlertComponent.ts#L1580) |
+| `Rule.ListComponentPaths` | explicit | production | CrudPermission | 'alerts', 'read', NOT_A_RULE_ID |  | 0 | [backend/src/model/component/AlertComponent.ts:1448](../../backend/src/model/component/AlertComponent.ts#L1448) |
+| `Rule.ListEligibleDevices` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:1476](../../backend/src/model/component/AlertComponent.ts#L1476) |
+| `Rule.ListFirings` | explicit | production | CrudPermission | 'alerts', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:2154](../../backend/src/model/component/AlertComponent.ts#L2154) |
+| `Rule.ListKinds` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:1265](../../backend/src/model/component/AlertComponent.ts#L1265) |
+| `Rule.ListMetricPaths` | explicit | production | CrudPermission | 'alerts', 'read', NOT_A_RULE_ID |  | 0 | [backend/src/model/component/AlertComponent.ts:1424](../../backend/src/model/component/AlertComponent.ts#L1424) |
+| `Rule.ListTemplates` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:2132](../../backend/src/model/component/AlertComponent.ts#L2132) |
+| `Rule.Preview` | explicit | production | CrudPermission | 'alerts', 'read' |  | 0 | [backend/src/model/component/AlertComponent.ts:2207](../../backend/src/model/component/AlertComponent.ts#L2207) |
+| `Rule.Template.Create` | explicit | production | CrudPermission | 'alerts', 'create' |  | 0 | [backend/src/model/component/AlertComponent.ts:2928](../../backend/src/model/component/AlertComponent.ts#L2928) |
+| `Rule.Template.Delete` | explicit | production | CrudPermission | 'alerts', 'delete', NOT_A_RULE_ID |  | 0 | [backend/src/model/component/AlertComponent.ts:3084](../../backend/src/model/component/AlertComponent.ts#L3084) |
+| `Rule.Template.Update` | explicit | production | CrudPermission | 'alerts', 'update', NOT_A_RULE_ID |  | 0 | [backend/src/model/component/AlertComponent.ts:2997](../../backend/src/model/component/AlertComponent.ts#L2997) |
+| `Rule.Update` | explicit | production | CrudPermission | 'alerts', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/AlertComponent.ts:1802](../../backend/src/model/component/AlertComponent.ts#L1802) |
 
 ### `alexa` — 3 explicit + 1 inherited (7 total incl. DEV_MODE)
 
@@ -250,22 +263,24 @@ Regenerate with `cd backend && npm run generate`.
 | `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/AnalyticsComponent.ts:34](../../backend/src/model/component/AnalyticsComponent.ts#L34) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 
-### `asset` — 5 explicit + 4 inherited (12 total incl. DEV_MODE)
+### `asset` — 7 explicit + 4 inherited (14 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
 |---|---|---|---|---|---|---|---|
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Delete` | explicit | production | CrudPermission | 'devices', 'delete' |  | 1 | [backend/src/model/component/AssetComponent.ts:92](../../backend/src/model/component/AssetComponent.ts#L92) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/AssetComponent.ts:49](../../backend/src/model/component/AssetComponent.ts#L49) |
+| `Delete` | explicit | production | CrudPermission | 'devices', 'delete', () => undefined |  | 1 | [backend/src/model/component/AssetComponent.ts:143](../../backend/src/model/component/AssetComponent.ts#L143) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/AssetComponent.ts:58](../../backend/src/model/component/AssetComponent.ts#L58) |
 | `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `getstatus` | inherited-getstatus | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `List` | explicit | production | CrudPermission | 'devices', 'read' |  | 1 | [backend/src/model/component/AssetComponent.ts:56](../../backend/src/model/component/AssetComponent.ts#L56) |
+| `List` | explicit | production | CrudPermission | 'devices', 'read' |  | 1 | [backend/src/model/component/AssetComponent.ts:107](../../backend/src/model/component/AssetComponent.ts#L107) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `MigrateImages` | explicit | production | CheckPermissions | canUseTenantAdmin |  | 0 | [backend/src/model/component/AssetComponent.ts:116](../../backend/src/model/component/AssetComponent.ts#L116) |
+| `MigrateImages` | explicit | production | CheckPermissions | canUseTenantAdmin |  | 0 | [backend/src/model/component/AssetComponent.ts:167](../../backend/src/model/component/AssetComponent.ts#L167) |
+| `ReadChunk` | explicit | production | CrudPermission | 'devices', 'read', () => undefined |  | 0 | [backend/src/model/component/AssetComponent.ts:88](../../backend/src/model/component/AssetComponent.ts#L88) |
 | `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `SetLabel` | explicit | production | CrudPermission | 'devices', 'update' |  | 1 | [backend/src/model/component/AssetComponent.ts:76](../../backend/src/model/component/AssetComponent.ts#L76) |
+| `SetLabel` | explicit | production | CrudPermission | 'devices', 'update', () => undefined |  | 1 | [backend/src/model/component/AssetComponent.ts:127](../../backend/src/model/component/AssetComponent.ts#L127) |
+| `Upload` | explicit | production | CrudPermission | 'devices', 'update' |  | 0 | [backend/src/model/component/AssetComponent.ts:65](../../backend/src/model/component/AssetComponent.ts#L65) |
 
 ### `assignment` — 7 explicit + 4 inherited (14 total incl. DEV_MODE)
 
@@ -293,12 +308,12 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/AuditComponent.ts:268](../../backend/src/model/component/AuditComponent.ts#L268) |
-| `Export` | explicit | production | CheckPermissions | canViewAuditLog |  | 0 | [backend/src/model/component/AuditComponent.ts:315](../../backend/src/model/component/AuditComponent.ts#L315) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/AuditComponent.ts:269](../../backend/src/model/component/AuditComponent.ts#L269) |
+| `Export` | explicit | production | CheckPermissions | canViewAuditLog |  | 0 | [backend/src/model/component/AuditComponent.ts:313](../../backend/src/model/component/AuditComponent.ts#L313) |
 | `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `getstatus` | inherited-getstatus | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Query` | explicit | production | CheckPermissions | canViewAuditLog |  | 0 | [backend/src/model/component/AuditComponent.ts:275](../../backend/src/model/component/AuditComponent.ts#L275) |
+| `Query` | explicit | production | CheckPermissions | canViewAuditLog |  | 0 | [backend/src/model/component/AuditComponent.ts:276](../../backend/src/model/component/AuditComponent.ts#L276) |
 | `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 
 ### `auth` — 2 explicit + 4 inherited (9 total incl. DEV_MODE)
@@ -308,11 +323,11 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/AuthComponent.ts:63](../../backend/src/model/component/AuthComponent.ts#L63) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/AuthComponent.ts:82](../../backend/src/model/component/AuthComponent.ts#L82) |
 | `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `getstatus` | inherited-getstatus | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `MintScopedToken` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/AuthComponent.ts:72](../../backend/src/model/component/AuthComponent.ts#L72) |
+| `MintScopedToken` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/AuthComponent.ts:92](../../backend/src/model/component/AuthComponent.ts#L92) |
 | `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 
 ### `authz_audit` — 2 explicit + 4 inherited (9 total incl. DEV_MODE)
@@ -329,6 +344,32 @@ Regenerate with `cd backend && npm run generate`.
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 
+### `automation` — 17 explicit + 1 inherited (21 total incl. DEV_MODE)
+
+| Method | Kind | Env | Permission | Args | Params | Callers | Source |
+|---|---|---|---|---|---|---|---|
+| `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `Create` | explicit | production | CheckPermissions | canManageThisNodeRed |  | 0 | [backend/src/model/component/AutomationComponent.ts:559](../../backend/src/model/component/AutomationComponent.ts#L559) |
+| `Delete` | explicit | production | CheckPermissions | canManageThisNodeRed |  | 0 | [backend/src/model/component/AutomationComponent.ts:678](../../backend/src/model/component/AutomationComponent.ts#L678) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/AutomationComponent.ts:279](../../backend/src/model/component/AutomationComponent.ts#L279) |
+| `Get` | explicit | production | CheckPermissions | canManageThisNodeRed |  | 0 | [backend/src/model/component/AutomationComponent.ts:378](../../backend/src/model/component/AutomationComponent.ts#L378) |
+| `GetActivity` | explicit | production | CheckPermissions | canManageThisNodeRed |  | 1 | [backend/src/model/component/AutomationComponent.ts:328](../../backend/src/model/component/AutomationComponent.ts#L328) |
+| `GetStatus` | explicit | production | CheckPermissions | canManageThisNodeRed |  | 1 | [backend/src/model/component/AutomationComponent.ts:339](../../backend/src/model/component/AutomationComponent.ts#L339) |
+| `Graph.Create` | explicit | production | CheckPermissions | canManageThisNodeRed |  | 0 | [backend/src/model/component/AutomationComponent.ts:481](../../backend/src/model/component/AutomationComponent.ts#L481) |
+| `Graph.Delete` | explicit | production | CheckPermissions | canManageThisNodeRed |  | 0 | [backend/src/model/component/AutomationComponent.ts:537](../../backend/src/model/component/AutomationComponent.ts#L537) |
+| `Graph.Get` | explicit | production | CheckPermissions | canManageThisNodeRed |  | 0 | [backend/src/model/component/AutomationComponent.ts:404](../../backend/src/model/component/AutomationComponent.ts#L404) |
+| `Graph.ReadPage` | explicit | production | CheckPermissions | canManageThisNodeRed |  | 0 | [backend/src/model/component/AutomationComponent.ts:418](../../backend/src/model/component/AutomationComponent.ts#L418) |
+| `Graph.Update` | explicit | production | CheckPermissions | canManageThisNodeRed |  | 0 | [backend/src/model/component/AutomationComponent.ts:506](../../backend/src/model/component/AutomationComponent.ts#L506) |
+| `Graph.Validate` | explicit | production | CheckPermissions | canManageThisNodeRed |  | 0 | [backend/src/model/component/AutomationComponent.ts:450](../../backend/src/model/component/AutomationComponent.ts#L450) |
+| `List` | explicit | production | CheckPermissions | canManageThisNodeRed |  | 1 | [backend/src/model/component/AutomationComponent.ts:286](../../backend/src/model/component/AutomationComponent.ts#L286) |
+| `ListEngines` | explicit | production | CheckPermissions | canManageThisNodeRed |  | 0 | [backend/src/model/component/AutomationComponent.ts:350](../../backend/src/model/component/AutomationComponent.ts#L350) |
+| `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `ReportActivity` | explicit | production | CheckPermissions | isThisNodeRedService |  | 0 | [backend/src/model/component/AutomationComponent.ts:316](../../backend/src/model/component/AutomationComponent.ts#L316) |
+| `SetEnabled` | explicit | production | CheckPermissions | canManageThisNodeRed |  | 1 | [backend/src/model/component/AutomationComponent.ts:654](../../backend/src/model/component/AutomationComponent.ts#L654) |
+| `Update` | explicit | production | CheckPermissions | canManageThisNodeRed |  | 0 | [backend/src/model/component/AutomationComponent.ts:600](../../backend/src/model/component/AutomationComponent.ts#L600) |
+
 ### `backup` — 10 explicit + 1 inherited (14 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
@@ -336,30 +377,32 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Delete` | explicit | production | CheckPermissions | canDeleteDeviceBackups |  | 1 | [backend/src/model/component/BackupComponent.ts:1439](../../backend/src/model/component/BackupComponent.ts#L1439) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/BackupComponent.ts:643](../../backend/src/model/component/BackupComponent.ts#L643) |
-| `DownloadFromDevice` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BackupComponent.ts:766](../../backend/src/model/component/BackupComponent.ts#L766) |
-| `Get` | explicit | production | CheckPermissions | canReadDeviceBackups |  | 0 | [backend/src/model/component/BackupComponent.ts:743](../../backend/src/model/component/BackupComponent.ts#L743) |
-| `GetFile` | explicit | production | CheckPermissions | canReadDeviceBackups |  | 0 | [backend/src/model/component/BackupComponent.ts:1886](../../backend/src/model/component/BackupComponent.ts#L1886) |
-| `List` | explicit | production | CheckPermissions | canReadDeviceBackups |  | 0 | [backend/src/model/component/BackupComponent.ts:653](../../backend/src/model/component/BackupComponent.ts#L653) |
+| `Delete` | explicit | production | CheckPermissions | canDeleteDeviceBackups |  | 1 | [backend/src/model/component/BackupComponent.ts:1444](../../backend/src/model/component/BackupComponent.ts#L1444) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/BackupComponent.ts:644](../../backend/src/model/component/BackupComponent.ts#L644) |
+| `DownloadFromDevice` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BackupComponent.ts:767](../../backend/src/model/component/BackupComponent.ts#L767) |
+| `Get` | explicit | production | CheckPermissions | canReadDeviceBackups |  | 0 | [backend/src/model/component/BackupComponent.ts:744](../../backend/src/model/component/BackupComponent.ts#L744) |
+| `GetFile` | explicit | production | CheckPermissions | canReadDeviceBackups |  | 0 | [backend/src/model/component/BackupComponent.ts:1891](../../backend/src/model/component/BackupComponent.ts#L1891) |
+| `List` | explicit | production | CheckPermissions | canReadDeviceBackups |  | 0 | [backend/src/model/component/BackupComponent.ts:654](../../backend/src/model/component/BackupComponent.ts#L654) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Rename` | explicit | production | CheckPermissions | canUpdateDeviceBackups |  | 0 | [backend/src/model/component/BackupComponent.ts:1364](../../backend/src/model/component/BackupComponent.ts#L1364) |
-| `RestoreToDevice` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BackupComponent.ts:1496](../../backend/src/model/component/BackupComponent.ts#L1496) |
-| `StartDownloadJob` | explicit | production | CheckPermissions | async (sender, params) => await canUpdateBackupTargets(sender, params) |  | 0 | [backend/src/model/component/BackupComponent.ts:799](../../backend/src/model/component/BackupComponent.ts#L799) |
-| `StartRestoreJob` | explicit | production | CheckPermissions | async (sender, params) => await canUpdateBackupRestoreTarget(sender, params) |  | 0 | [backend/src/model/component/BackupComponent.ts:839](../../backend/src/model/component/BackupComponent.ts#L839) |
+| `Rename` | explicit | production | CheckPermissions | canUpdateDeviceBackups |  | 0 | [backend/src/model/component/BackupComponent.ts:1369](../../backend/src/model/component/BackupComponent.ts#L1369) |
+| `RestoreToDevice` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BackupComponent.ts:1501](../../backend/src/model/component/BackupComponent.ts#L1501) |
+| `StartDownloadJob` | explicit | production | CheckPermissions | async (sender, params) => await canUpdateBackupTargets(sender, params) |  | 0 | [backend/src/model/component/BackupComponent.ts:800](../../backend/src/model/component/BackupComponent.ts#L800) |
+| `StartRestoreJob` | explicit | production | CheckPermissions | async (sender, params) => await canUpdateBackupRestoreTarget(sender, params) |  | 0 | [backend/src/model/component/BackupComponent.ts:842](../../backend/src/model/component/BackupComponent.ts#L842) |
 
-### `bill` — 4 explicit + 1 inherited (8 total incl. DEV_MODE)
+### `bill` — 6 explicit + 1 inherited (10 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
 |---|---|---|---|---|---|---|---|
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Delete` | explicit | production | CrudPermission | 'reports', 'update' |  | 0 | [backend/src/model/component/BillActualComponent.ts:83](../../backend/src/model/component/BillActualComponent.ts#L83) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/BillActualComponent.ts:43](../../backend/src/model/component/BillActualComponent.ts#L43) |
-| `List` | explicit | production | CrudPermission | 'reports', 'read' |  | 0 | [backend/src/model/component/BillActualComponent.ts:73](../../backend/src/model/component/BillActualComponent.ts#L73) |
+| `Delete` | explicit | production | CrudPermission | 'reports', 'update', NOT_A_REPORT_ID |  | 1 | [backend/src/model/component/BillActualComponent.ts:102](../../backend/src/model/component/BillActualComponent.ts#L102) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/BillActualComponent.ts:55](../../backend/src/model/component/BillActualComponent.ts#L55) |
+| `Import` | explicit | production | CrudPermission | 'reports', 'update' |  | 1 | [backend/src/model/component/BillActualComponent.ts:85](../../backend/src/model/component/BillActualComponent.ts#L85) |
+| `List` | explicit | production | CrudPermission | 'reports', 'read' |  | 3 | [backend/src/model/component/BillActualComponent.ts:73](../../backend/src/model/component/BillActualComponent.ts#L73) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Set` | explicit | production | CrudPermission | 'reports', 'update' |  | 0 | [backend/src/model/component/BillActualComponent.ts:50](../../backend/src/model/component/BillActualComponent.ts#L50) |
+| `Quote` | explicit | production | NoPermissions |  |  | 1 | [backend/src/model/component/BillActualComponent.ts:116](../../backend/src/model/component/BillActualComponent.ts#L116) |
+| `Set` | explicit | production | CrudPermission | 'reports', 'update' |  | 1 | [backend/src/model/component/BillActualComponent.ts:62](../../backend/src/model/component/BillActualComponent.ts#L62) |
 
 ### `ble` — 10 explicit + 1 inherited (14 total incl. DEV_MODE)
 
@@ -453,48 +496,49 @@ Regenerate with `cd backend && npm run generate`.
 | `SetMailTemplate` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/model/component/BrandingComponent.ts:213](../../backend/src/model/component/BrandingComponent.ts#L213) |
 | `SetPolicy` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/model/component/BrandingComponent.ts:89](../../backend/src/model/component/BrandingComponent.ts#L89) |
 
-### `bthome` — 34 explicit + 1 inherited (38 total incl. DEV_MODE)
+### `bthome` — 35 explicit + 1 inherited (39 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
 |---|---|---|---|---|---|---|---|
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Control.Create` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:673](../../backend/src/model/component/BTHomeComponent.ts#L673) |
-| `Control.Delete` | explicit | production | CrudPermission | 'devices', 'delete', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:471](../../backend/src/model/component/BTHomeComponent.ts#L471) |
-| `Control.Enumerate` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:706](../../backend/src/model/component/BTHomeComponent.ts#L706) |
-| `Control.GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:631](../../backend/src/model/component/BTHomeComponent.ts#L631) |
-| `Control.GetLearningState` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:460](../../backend/src/model/component/BTHomeComponent.ts#L460) |
-| `Control.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:644](../../backend/src/model/component/BTHomeComponent.ts#L644) |
-| `Control.List` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:446](../../backend/src/model/component/BTHomeComponent.ts#L446) |
-| `Control.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:657](../../backend/src/model/component/BTHomeComponent.ts#L657) |
-| `Control.StartLearning` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:419](../../backend/src/model/component/BTHomeComponent.ts#L419) |
-| `Control.StopLearning` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:434](../../backend/src/model/component/BTHomeComponent.ts#L434) |
-| `Control.Update` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:689](../../backend/src/model/component/BTHomeComponent.ts#L689) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/BTHomeComponent.ts:146](../../backend/src/model/component/BTHomeComponent.ts#L146) |
-| `Device.AddManual` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:190](../../backend/src/model/component/BTHomeComponent.ts#L190) |
-| `Device.GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:543](../../backend/src/model/component/BTHomeComponent.ts#L543) |
-| `Device.GetKnownObjects` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:241](../../backend/src/model/component/BTHomeComponent.ts#L241) |
-| `Device.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:556](../../backend/src/model/component/BTHomeComponent.ts#L556) |
-| `Device.Remove` | explicit | production | CrudPermission | 'devices', 'delete', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:215](../../backend/src/model/component/BTHomeComponent.ts#L215) |
-| `Device.Rename` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:227](../../backend/src/model/component/BTHomeComponent.ts#L227) |
-| `Device.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:569](../../backend/src/model/component/BTHomeComponent.ts#L569) |
-| `Device.SetKey` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:310](../../backend/src/model/component/BTHomeComponent.ts#L310) |
-| `GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:489](../../backend/src/model/component/BTHomeComponent.ts#L489) |
-| `GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:502](../../backend/src/model/component/BTHomeComponent.ts#L502) |
-| `ListGateways` | explicit | production | CrudPermission | 'devices', 'read' |  | 1 | [backend/src/model/component/BTHomeComponent.ts:153](../../backend/src/model/component/BTHomeComponent.ts#L153) |
+| `Control.Create` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:697](../../backend/src/model/component/BTHomeComponent.ts#L697) |
+| `Control.Delete` | explicit | production | CrudPermission | 'devices', 'delete', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:495](../../backend/src/model/component/BTHomeComponent.ts#L495) |
+| `Control.Enumerate` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:730](../../backend/src/model/component/BTHomeComponent.ts#L730) |
+| `Control.GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:655](../../backend/src/model/component/BTHomeComponent.ts#L655) |
+| `Control.GetLearningState` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:484](../../backend/src/model/component/BTHomeComponent.ts#L484) |
+| `Control.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:668](../../backend/src/model/component/BTHomeComponent.ts#L668) |
+| `Control.List` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:470](../../backend/src/model/component/BTHomeComponent.ts#L470) |
+| `Control.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:681](../../backend/src/model/component/BTHomeComponent.ts#L681) |
+| `Control.StartLearning` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:443](../../backend/src/model/component/BTHomeComponent.ts#L443) |
+| `Control.StopLearning` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:458](../../backend/src/model/component/BTHomeComponent.ts#L458) |
+| `Control.Update` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:713](../../backend/src/model/component/BTHomeComponent.ts#L713) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/BTHomeComponent.ts:159](../../backend/src/model/component/BTHomeComponent.ts#L159) |
+| `Device.AddManual` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:214](../../backend/src/model/component/BTHomeComponent.ts#L214) |
+| `Device.GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:567](../../backend/src/model/component/BTHomeComponent.ts#L567) |
+| `Device.GetKnownObjects` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:265](../../backend/src/model/component/BTHomeComponent.ts#L265) |
+| `Device.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:580](../../backend/src/model/component/BTHomeComponent.ts#L580) |
+| `Device.Remove` | explicit | production | CrudPermission | 'devices', 'delete', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:239](../../backend/src/model/component/BTHomeComponent.ts#L239) |
+| `Device.Rename` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:251](../../backend/src/model/component/BTHomeComponent.ts#L251) |
+| `Device.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:593](../../backend/src/model/component/BTHomeComponent.ts#L593) |
+| `Device.SetKey` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:334](../../backend/src/model/component/BTHomeComponent.ts#L334) |
+| `GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:513](../../backend/src/model/component/BTHomeComponent.ts#L513) |
+| `GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:526](../../backend/src/model/component/BTHomeComponent.ts#L526) |
+| `ListDiscovered` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 1 | [backend/src/model/component/BTHomeComponent.ts:203](../../backend/src/model/component/BTHomeComponent.ts#L203) |
+| `ListGateways` | explicit | production | CrudPermission | 'devices', 'read' |  | 1 | [backend/src/model/component/BTHomeComponent.ts:166](../../backend/src/model/component/BTHomeComponent.ts#L166) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Object.ListInfos` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:337](../../backend/src/model/component/BTHomeComponent.ts#L337) |
-| `ResetEncryptionCounter` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:528](../../backend/src/model/component/BTHomeComponent.ts#L528) |
-| `Sensor.Add` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:369](../../backend/src/model/component/BTHomeComponent.ts#L369) |
-| `Sensor.Delete` | explicit | production | CrudPermission | 'devices', 'delete', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:405](../../backend/src/model/component/BTHomeComponent.ts#L405) |
-| `Sensor.GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:587](../../backend/src/model/component/BTHomeComponent.ts#L587) |
-| `Sensor.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:600](../../backend/src/model/component/BTHomeComponent.ts#L600) |
-| `Sensor.Pair` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:350](../../backend/src/model/component/BTHomeComponent.ts#L350) |
-| `Sensor.Rename` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:391](../../backend/src/model/component/BTHomeComponent.ts#L391) |
-| `Sensor.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:613](../../backend/src/model/component/BTHomeComponent.ts#L613) |
-| `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:515](../../backend/src/model/component/BTHomeComponent.ts#L515) |
-| `StartDiscovery` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 1 | [backend/src/model/component/BTHomeComponent.ts:175](../../backend/src/model/component/BTHomeComponent.ts#L175) |
+| `Object.ListInfos` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:361](../../backend/src/model/component/BTHomeComponent.ts#L361) |
+| `ResetEncryptionCounter` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:552](../../backend/src/model/component/BTHomeComponent.ts#L552) |
+| `Sensor.Add` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:393](../../backend/src/model/component/BTHomeComponent.ts#L393) |
+| `Sensor.Delete` | explicit | production | CrudPermission | 'devices', 'delete', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:429](../../backend/src/model/component/BTHomeComponent.ts#L429) |
+| `Sensor.GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:611](../../backend/src/model/component/BTHomeComponent.ts#L611) |
+| `Sensor.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:624](../../backend/src/model/component/BTHomeComponent.ts#L624) |
+| `Sensor.Pair` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:374](../../backend/src/model/component/BTHomeComponent.ts#L374) |
+| `Sensor.Rename` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:415](../../backend/src/model/component/BTHomeComponent.ts#L415) |
+| `Sensor.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:637](../../backend/src/model/component/BTHomeComponent.ts#L637) |
+| `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/BTHomeComponent.ts:539](../../backend/src/model/component/BTHomeComponent.ts#L539) |
+| `StartDiscovery` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 1 | [backend/src/model/component/BTHomeComponent.ts:188](../../backend/src/model/component/BTHomeComponent.ts#L188) |
 
 ### `bthomedevice` — 0 explicit + 1 inherited (4 total incl. DEV_MODE)
 
@@ -561,6 +605,22 @@ Regenerate with `cd backend && npm run generate`.
 | `Zone.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/CameraComponent.ts:132](../../backend/src/model/component/CameraComponent.ts#L132) |
 | `Zone.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/CameraComponent.ts:235](../../backend/src/model/component/CameraComponent.ts#L235) |
 
+### `carbon` — 7 explicit + 1 inherited (11 total incl. DEV_MODE)
+
+| Method | Kind | Env | Permission | Args | Params | Callers | Source |
+|---|---|---|---|---|---|---|---|
+| `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `AddEmissionFactor` | explicit | production | CrudPermission | 'reports', 'create', NOT_A_REPORT_ID |  | 1 | [backend/src/model/component/CarbonComponent.ts:65](../../backend/src/model/component/CarbonComponent.ts#L65) |
+| `AddPrice` | explicit | production | CrudPermission | 'reports', 'create', NOT_A_REPORT_ID |  | 1 | [backend/src/model/component/CarbonComponent.ts:93](../../backend/src/model/component/CarbonComponent.ts#L93) |
+| `Calculate` | explicit | production | CrudPermission | 'reports', 'read' |  | 0 | [backend/src/model/component/CarbonComponent.ts:107](../../backend/src/model/component/CarbonComponent.ts#L107) |
+| `CalculateBreakdown` | explicit | production | CrudPermission | 'reports', 'read' |  | 0 | [backend/src/model/component/CarbonComponent.ts:121](../../backend/src/model/component/CarbonComponent.ts#L121) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/CarbonComponent.ts:44](../../backend/src/model/component/CarbonComponent.ts#L44) |
+| `ListEmissionFactors` | explicit | production | CrudPermission | 'reports', 'read' |  | 1 | [backend/src/model/component/CarbonComponent.ts:51](../../backend/src/model/component/CarbonComponent.ts#L51) |
+| `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `ListPrices` | explicit | production | CrudPermission | 'reports', 'read' |  | 1 | [backend/src/model/component/CarbonComponent.ts:79](../../backend/src/model/component/CarbonComponent.ts#L79) |
+
 ### `cb` — 6 explicit + 1 inherited (10 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
@@ -601,26 +661,26 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Delete` | explicit | production | CheckPermissions | canManageAuthz |  | 1 | [backend/src/model/component/CertificateComponent.ts:337](../../backend/src/model/component/CertificateComponent.ts#L337) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/CertificateComponent.ts:157](../../backend/src/model/component/CertificateComponent.ts#L157) |
-| `Export` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:446](../../backend/src/model/component/CertificateComponent.ts#L446) |
-| `Get` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:214](../../backend/src/model/component/CertificateComponent.ts#L214) |
+| `Delete` | explicit | production | CheckPermissions | canManageAuthz |  | 1 | [backend/src/model/component/CertificateComponent.ts:341](../../backend/src/model/component/CertificateComponent.ts#L341) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/CertificateComponent.ts:161](../../backend/src/model/component/CertificateComponent.ts#L161) |
+| `Export` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:450](../../backend/src/model/component/CertificateComponent.ts#L450) |
+| `Get` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:221](../../backend/src/model/component/CertificateComponent.ts#L221) |
 | `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `GetIssueDefaults` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:490](../../backend/src/model/component/CertificateComponent.ts#L490) |
+| `GetIssueDefaults` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:494](../../backend/src/model/component/CertificateComponent.ts#L494) |
 | `getstatus` | inherited-getstatus | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Import` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:232](../../backend/src/model/component/CertificateComponent.ts#L232) |
-| `IssueDeviceCert` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:504](../../backend/src/model/component/CertificateComponent.ts#L504) |
-| `List` | explicit | production | CheckPermissions | canViewAuthz |  | 1 | [backend/src/model/component/CertificateComponent.ts:182](../../backend/src/model/component/CertificateComponent.ts#L182) |
+| `Import` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:238](../../backend/src/model/component/CertificateComponent.ts#L238) |
+| `IssueDeviceCert` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:508](../../backend/src/model/component/CertificateComponent.ts#L508) |
+| `List` | explicit | production | CheckPermissions | canViewAuthz |  | 1 | [backend/src/model/component/CertificateComponent.ts:186](../../backend/src/model/component/CertificateComponent.ts#L186) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `ListPushes` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:830](../../backend/src/model/component/CertificateComponent.ts#L830) |
-| `PreflightPush` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:708](../../backend/src/model/component/CertificateComponent.ts#L708) |
-| `PushStatus` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:796](../../backend/src/model/component/CertificateComponent.ts#L796) |
-| `PushToDevices` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:730](../../backend/src/model/component/CertificateComponent.ts#L730) |
+| `ListPushes` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:835](../../backend/src/model/component/CertificateComponent.ts#L835) |
+| `PreflightPush` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:712](../../backend/src/model/component/CertificateComponent.ts#L712) |
+| `PushStatus` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:801](../../backend/src/model/component/CertificateComponent.ts#L801) |
+| `PushToDevices` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:734](../../backend/src/model/component/CertificateComponent.ts#L734) |
 | `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `SetGroups` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:404](../../backend/src/model/component/CertificateComponent.ts#L404) |
-| `SetTags` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:370](../../backend/src/model/component/CertificateComponent.ts#L370) |
-| `SignCsr` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:611](../../backend/src/model/component/CertificateComponent.ts#L611) |
-| `Update` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:310](../../backend/src/model/component/CertificateComponent.ts#L310) |
+| `SetGroups` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:408](../../backend/src/model/component/CertificateComponent.ts#L408) |
+| `SetTags` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:374](../../backend/src/model/component/CertificateComponent.ts#L374) |
+| `SignCsr` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:615](../../backend/src/model/component/CertificateComponent.ts#L615) |
+| `Update` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CertificateComponent.ts:314](../../backend/src/model/component/CertificateComponent.ts#L314) |
 
 ### `channel` — 9 explicit + 1 inherited (13 total incl. DEV_MODE)
 
@@ -629,16 +689,16 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Create` | explicit | production | CrudPermission | 'notifications', 'create' |  | 0 | [backend/src/model/component/ChannelComponent.ts:413](../../backend/src/model/component/ChannelComponent.ts#L413) |
-| `Delete` | explicit | production | CrudPermission | 'notifications', 'delete', (p) => p?.id |  | 1 | [backend/src/model/component/ChannelComponent.ts:605](../../backend/src/model/component/ChannelComponent.ts#L605) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/ChannelComponent.ts:224](../../backend/src/model/component/ChannelComponent.ts#L224) |
-| `Get` | explicit | production | CrudPermission | 'notifications', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/ChannelComponent.ts:393](../../backend/src/model/component/ChannelComponent.ts#L393) |
-| `List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/ChannelComponent.ts:349](../../backend/src/model/component/ChannelComponent.ts#L349) |
+| `Create` | explicit | production | CrudPermission | 'notifications', 'create' |  | 0 | [backend/src/model/component/ChannelComponent.ts:475](../../backend/src/model/component/ChannelComponent.ts#L475) |
+| `Delete` | explicit | production | CrudPermission | 'integrations', 'delete', (p) => p?.id |  | 1 | [backend/src/model/component/ChannelComponent.ts:667](../../backend/src/model/component/ChannelComponent.ts#L667) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/ChannelComponent.ts:268](../../backend/src/model/component/ChannelComponent.ts#L268) |
+| `Get` | explicit | production | CrudPermission | 'integrations', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/ChannelComponent.ts:443](../../backend/src/model/component/ChannelComponent.ts#L443) |
+| `List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/ChannelComponent.ts:393](../../backend/src/model/component/ChannelComponent.ts#L393) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `ListProviders` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/ChannelComponent.ts:338](../../backend/src/model/component/ChannelComponent.ts#L338) |
-| `ResetHealth` | explicit | production | CrudPermission | 'notifications', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/ChannelComponent.ts:745](../../backend/src/model/component/ChannelComponent.ts#L745) |
-| `Test` | explicit | production | CrudPermission | 'notifications', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/ChannelComponent.ts:650](../../backend/src/model/component/ChannelComponent.ts#L650) |
-| `Update` | explicit | production | CrudPermission | 'notifications', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/ChannelComponent.ts:488](../../backend/src/model/component/ChannelComponent.ts#L488) |
+| `ListProviders` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/ChannelComponent.ts:382](../../backend/src/model/component/ChannelComponent.ts#L382) |
+| `ResetHealth` | explicit | production | CrudPermission | 'integrations', 'update', (p) => p?.id |  | 1 | [backend/src/model/component/ChannelComponent.ts:834](../../backend/src/model/component/ChannelComponent.ts#L834) |
+| `Test` | explicit | production | CrudPermission | 'notifications', 'update', NOT_A_DESTINATION_GROUP_ID |  | 0 | [backend/src/model/component/ChannelComponent.ts:715](../../backend/src/model/component/ChannelComponent.ts#L715) |
+| `Update` | explicit | production | CrudPermission | 'integrations', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/ChannelComponent.ts:550](../../backend/src/model/component/ChannelComponent.ts#L550) |
 
 ### `client` — 2 explicit + 1 inherited (6 total incl. DEV_MODE)
 
@@ -676,35 +736,36 @@ Regenerate with `cd backend && npm run generate`.
 | `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/CoverComponent.ts:29](../../backend/src/model/component/CoverComponent.ts#L29) |
 | `GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/CoverComponent.ts:139](../../backend/src/model/component/CoverComponent.ts#L139) |
 | `GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/CoverComponent.ts:152](../../backend/src/model/component/CoverComponent.ts#L152) |
-| `GoToPosition` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/CoverComponent.ts:79](../../backend/src/model/component/CoverComponent.ts#L79) |
+| `GoToPosition` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 1 | [backend/src/model/component/CoverComponent.ts:79](../../backend/src/model/component/CoverComponent.ts#L79) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `Open` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/CoverComponent.ts:36](../../backend/src/model/component/CoverComponent.ts#L36) |
 | `ResetCounters` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/CoverComponent.ts:124](../../backend/src/model/component/CoverComponent.ts#L124) |
 | `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 1 | [backend/src/model/component/CoverComponent.ts:111](../../backend/src/model/component/CoverComponent.ts#L111) |
 | `Stop` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/CoverComponent.ts:66](../../backend/src/model/component/CoverComponent.ts#L66) |
 
-### `credential` — 12 explicit + 4 inherited (19 total incl. DEV_MODE)
+### `credential` — 13 explicit + 4 inherited (20 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
 |---|---|---|---|---|---|---|---|
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Clear` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:455](../../backend/src/model/component/CredentialComponent.ts#L455) |
-| `ConfirmOld` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:547](../../backend/src/model/component/CredentialComponent.ts#L547) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/CredentialComponent.ts:114](../../backend/src/model/component/CredentialComponent.ts#L114) |
-| `Get` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:147](../../backend/src/model/component/CredentialComponent.ts#L147) |
+| `Clear` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:495](../../backend/src/model/component/CredentialComponent.ts#L495) |
+| `ConfirmOld` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:588](../../backend/src/model/component/CredentialComponent.ts#L588) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/CredentialComponent.ts:127](../../backend/src/model/component/CredentialComponent.ts#L127) |
+| `Get` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:164](../../backend/src/model/component/CredentialComponent.ts#L164) |
 | `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `GetMany` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:181](../../backend/src/model/component/CredentialComponent.ts#L181) |
 | `getstatus` | inherited-getstatus | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `List` | explicit | production | CheckPermissions | canViewAuthz |  | 1 | [backend/src/model/component/CredentialComponent.ts:121](../../backend/src/model/component/CredentialComponent.ts#L121) |
-| `ListFailed` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:588](../../backend/src/model/component/CredentialComponent.ts#L588) |
+| `List` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:134](../../backend/src/model/component/CredentialComponent.ts#L134) |
+| `ListFailed` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:629](../../backend/src/model/component/CredentialComponent.ts#L629) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `ListPushes` | explicit | production | CheckPermissions | canViewAuthz |  | 1 | [backend/src/model/component/CredentialComponent.ts:634](../../backend/src/model/component/CredentialComponent.ts#L634) |
-| `PushStatus` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:611](../../backend/src/model/component/CredentialComponent.ts#L611) |
-| `Retry` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:513](../../backend/src/model/component/CredentialComponent.ts#L513) |
-| `Reveal` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:164](../../backend/src/model/component/CredentialComponent.ts#L164) |
-| `Rotate` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:361](../../backend/src/model/component/CredentialComponent.ts#L361) |
-| `Set` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:300](../../backend/src/model/component/CredentialComponent.ts#L300) |
+| `ListPushes` | explicit | production | CheckPermissions | canViewAuthz |  | 1 | [backend/src/model/component/CredentialComponent.ts:675](../../backend/src/model/component/CredentialComponent.ts#L675) |
+| `PushStatus` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:652](../../backend/src/model/component/CredentialComponent.ts#L652) |
+| `Retry` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:554](../../backend/src/model/component/CredentialComponent.ts#L554) |
+| `Reveal` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:202](../../backend/src/model/component/CredentialComponent.ts#L202) |
+| `Rotate` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:400](../../backend/src/model/component/CredentialComponent.ts#L400) |
+| `Set` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/CredentialComponent.ts:338](../../backend/src/model/component/CredentialComponent.ts#L338) |
 | `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 
 ### `cury` — 10 explicit + 1 inherited (14 total incl. DEV_MODE)
@@ -752,81 +813,85 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Activity.List` | explicit | production | CrudPermission | 'dashboards', 'read', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:1459](../../backend/src/model/component/DashboardComponent.ts#L1459) |
-| `AddItem` | explicit | production | CrudPermission | 'dashboards', 'update', (params) => params?.dashboard |  | 0 | [backend/src/model/component/DashboardComponent.ts:648](../../backend/src/model/component/DashboardComponent.ts#L648) |
-| `ClearDefault` | explicit | production | CrudPermission | 'dashboards', 'update' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1254](../../backend/src/model/component/DashboardComponent.ts#L1254) |
-| `Clone` | explicit | production | CrudPermission | 'dashboards', 'create', (p) => p?.id |  | 0 | [backend/src/model/component/DashboardComponent.ts:1414](../../backend/src/model/component/DashboardComponent.ts#L1414) |
-| `Create` | explicit | production | CrudPermission | 'dashboards', 'create' |  | 0 | [backend/src/model/component/DashboardComponent.ts:498](../../backend/src/model/component/DashboardComponent.ts#L498) |
-| `Delete` | explicit | production | CrudPermission | 'dashboards', 'delete', (p) => p?.id |  | 1 | [backend/src/model/component/DashboardComponent.ts:581](../../backend/src/model/component/DashboardComponent.ts#L581) |
-| `DeleteBulk` | explicit | production | CrudPermission | 'dashboards', 'delete' |  | 0 | [backend/src/model/component/DashboardComponent.ts:604](../../backend/src/model/component/DashboardComponent.ts#L604) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/DashboardComponent.ts:149](../../backend/src/model/component/DashboardComponent.ts#L149) |
-| `Export` | explicit | production | CrudPermission | 'dashboards', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/DashboardComponent.ts:1352](../../backend/src/model/component/DashboardComponent.ts#L1352) |
-| `Get` | explicit | production | CrudPermission | 'dashboards', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/DashboardComponent.ts:288](../../backend/src/model/component/DashboardComponent.ts#L288) |
-| `GetDefault` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1219](../../backend/src/model/component/DashboardComponent.ts#L1219) |
-| `GetSettings` | explicit | production | CrudPermission | 'dashboards', 'read', (params) => params?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:310](../../backend/src/model/component/DashboardComponent.ts#L310) |
-| `GetUIConfig` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/DashboardComponent.ts:778](../../backend/src/model/component/DashboardComponent.ts#L778) |
-| `Import` | explicit | production | CrudPermission | 'dashboards', 'create' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1367](../../backend/src/model/component/DashboardComponent.ts#L1367) |
-| `Item.Add` | explicit | production | CrudPermission | 'dashboards', 'update', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:812](../../backend/src/model/component/DashboardComponent.ts#L812) |
-| `Item.AddBulk` | explicit | production | CrudPermission | 'dashboards', 'update', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:855](../../backend/src/model/component/DashboardComponent.ts#L855) |
-| `Item.List` | explicit | production | CrudPermission | 'dashboards', 'read', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:790](../../backend/src/model/component/DashboardComponent.ts#L790) |
-| `Item.Remove` | explicit | production | CrudPermission | 'dashboards', 'update', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:923](../../backend/src/model/component/DashboardComponent.ts#L923) |
-| `Item.Reorder` | explicit | production | CrudPermission | 'dashboards', 'update', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:942](../../backend/src/model/component/DashboardComponent.ts#L942) |
-| `Item.SetAll` | explicit | production | CrudPermission | 'dashboards', 'update', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:959](../../backend/src/model/component/DashboardComponent.ts#L959) |
-| `Item.Update` | explicit | production | CrudPermission | 'dashboards', 'update', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:888](../../backend/src/model/component/DashboardComponent.ts#L888) |
-| `List` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/DashboardComponent.ts:264](../../backend/src/model/component/DashboardComponent.ts#L264) |
+| `Activity.List` | explicit | production | CrudPermission | 'dashboards', 'read', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:1507](../../backend/src/model/component/DashboardComponent.ts#L1507) |
+| `AddItem` | explicit | production | CrudPermission | 'dashboards', 'update', (params) => params?.dashboard |  | 0 | [backend/src/model/component/DashboardComponent.ts:675](../../backend/src/model/component/DashboardComponent.ts#L675) |
+| `ClearDefault` | explicit | production | CrudPermission | 'dashboards', 'update' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1298](../../backend/src/model/component/DashboardComponent.ts#L1298) |
+| `Clone` | explicit | production | CrudPermission | 'dashboards', 'create' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1467](../../backend/src/model/component/DashboardComponent.ts#L1467) |
+| `Create` | explicit | production | CrudPermission | 'dashboards', 'create' |  | 0 | [backend/src/model/component/DashboardComponent.ts:528](../../backend/src/model/component/DashboardComponent.ts#L528) |
+| `Delete` | explicit | production | CrudPermission | 'dashboards', 'delete', (p) => p?.id |  | 1 | [backend/src/model/component/DashboardComponent.ts:605](../../backend/src/model/component/DashboardComponent.ts#L605) |
+| `DeleteBulk` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/DashboardComponent.ts:628](../../backend/src/model/component/DashboardComponent.ts#L628) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/DashboardComponent.ts:166](../../backend/src/model/component/DashboardComponent.ts#L166) |
+| `Export` | explicit | production | CrudPermission | 'dashboards', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/DashboardComponent.ts:1409](../../backend/src/model/component/DashboardComponent.ts#L1409) |
+| `Get` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/DashboardComponent.ts:314](../../backend/src/model/component/DashboardComponent.ts#L314) |
+| `GetDefault` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1256](../../backend/src/model/component/DashboardComponent.ts#L1256) |
+| `GetSettings` | explicit | production | CrudPermission | 'dashboards', 'read', (params) => params?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:340](../../backend/src/model/component/DashboardComponent.ts#L340) |
+| `GetUIConfig` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/DashboardComponent.ts:815](../../backend/src/model/component/DashboardComponent.ts#L815) |
+| `Import` | explicit | production | CrudPermission | 'dashboards', 'create' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1424](../../backend/src/model/component/DashboardComponent.ts#L1424) |
+| `Item.Add` | explicit | production | CrudPermission | 'dashboards', 'update', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:849](../../backend/src/model/component/DashboardComponent.ts#L849) |
+| `Item.AddBulk` | explicit | production | CrudPermission | 'dashboards', 'update', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:892](../../backend/src/model/component/DashboardComponent.ts#L892) |
+| `Item.List` | explicit | production | CrudPermission | 'dashboards', 'read', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:827](../../backend/src/model/component/DashboardComponent.ts#L827) |
+| `Item.Remove` | explicit | production | CrudPermission | 'dashboards', 'update', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:960](../../backend/src/model/component/DashboardComponent.ts#L960) |
+| `Item.Reorder` | explicit | production | CrudPermission | 'dashboards', 'update', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:979](../../backend/src/model/component/DashboardComponent.ts#L979) |
+| `Item.SetAll` | explicit | production | CrudPermission | 'dashboards', 'update', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:996](../../backend/src/model/component/DashboardComponent.ts#L996) |
+| `Item.Update` | explicit | production | CrudPermission | 'dashboards', 'update', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:925](../../backend/src/model/component/DashboardComponent.ts#L925) |
+| `List` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/DashboardComponent.ts:281](../../backend/src/model/component/DashboardComponent.ts#L281) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `ListPinned` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1268](../../backend/src/model/component/DashboardComponent.ts#L1268) |
-| `Pin` | explicit | production | CrudPermission | 'dashboards', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/DashboardComponent.ts:1291](../../backend/src/model/component/DashboardComponent.ts#L1291) |
-| `RemoveItem` | explicit | production | CrudPermission | 'dashboards', 'update', (params) => params?.dashboard |  | 0 | [backend/src/model/component/DashboardComponent.ts:707](../../backend/src/model/component/DashboardComponent.ts#L707) |
-| `Reorder` | explicit | production | CrudPermission | 'dashboards', 'update' |  | 0 | [backend/src/model/component/DashboardComponent.ts:746](../../backend/src/model/component/DashboardComponent.ts#L746) |
-| `ReorderItems` | explicit | production | CrudPermission | 'dashboards', 'update', (params) => params?.dashboard |  | 0 | [backend/src/model/component/DashboardComponent.ts:725](../../backend/src/model/component/DashboardComponent.ts#L725) |
-| `ReorderPins` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1334](../../backend/src/model/component/DashboardComponent.ts#L1334) |
-| `SetDefault` | explicit | production | CrudPermission | 'dashboards', 'update', (p) => p?.id |  | 1 | [backend/src/model/component/DashboardComponent.ts:1236](../../backend/src/model/component/DashboardComponent.ts#L1236) |
-| `SetSettings` | explicit | production | CrudPermission | 'dashboards', 'update', (params) => params?.dashboardId |  | 3 | [backend/src/model/component/DashboardComponent.ts:338](../../backend/src/model/component/DashboardComponent.ts#L338) |
-| `Template.Create` | explicit | production | CrudPermission | 'dashboards', 'create' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1058](../../backend/src/model/component/DashboardComponent.ts#L1058) |
-| `Template.Delete` | explicit | production | CrudPermission | 'dashboards', 'delete' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1119](../../backend/src/model/component/DashboardComponent.ts#L1119) |
-| `Template.Get` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1025](../../backend/src/model/component/DashboardComponent.ts#L1025) |
-| `Template.List` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1004](../../backend/src/model/component/DashboardComponent.ts#L1004) |
-| `Template.Preview` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1038](../../backend/src/model/component/DashboardComponent.ts#L1038) |
-| `Template.SaveFromDashboard` | explicit | production | CrudPermission | 'dashboards', 'create', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:1140](../../backend/src/model/component/DashboardComponent.ts#L1140) |
-| `Template.Update` | explicit | production | CrudPermission | 'dashboards', 'update' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1090](../../backend/src/model/component/DashboardComponent.ts#L1090) |
-| `Unpin` | explicit | production | CrudPermission | 'dashboards', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/DashboardComponent.ts:1318](../../backend/src/model/component/DashboardComponent.ts#L1318) |
-| `Update` | explicit | production | CrudPermission | 'dashboards', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/DashboardComponent.ts:538](../../backend/src/model/component/DashboardComponent.ts#L538) |
-| `UpdateItemSize` | explicit | production | CrudPermission | 'dashboards', 'update', (params) => params?.dashboard |  | 1 | [backend/src/model/component/DashboardComponent.ts:684](../../backend/src/model/component/DashboardComponent.ts#L684) |
+| `ListPinned` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1312](../../backend/src/model/component/DashboardComponent.ts#L1312) |
+| `Pin` | explicit | production | CrudPermission | 'dashboards', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/DashboardComponent.ts:1348](../../backend/src/model/component/DashboardComponent.ts#L1348) |
+| `RemoveItem` | explicit | production | CrudPermission | 'dashboards', 'update', (params) => params?.dashboard |  | 0 | [backend/src/model/component/DashboardComponent.ts:734](../../backend/src/model/component/DashboardComponent.ts#L734) |
+| `Reorder` | explicit | production | CrudPermission | 'dashboards', 'update' |  | 0 | [backend/src/model/component/DashboardComponent.ts:773](../../backend/src/model/component/DashboardComponent.ts#L773) |
+| `ReorderItems` | explicit | production | CrudPermission | 'dashboards', 'update', (params) => params?.dashboard |  | 0 | [backend/src/model/component/DashboardComponent.ts:752](../../backend/src/model/component/DashboardComponent.ts#L752) |
+| `ReorderPins` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1391](../../backend/src/model/component/DashboardComponent.ts#L1391) |
+| `SetDefault` | explicit | production | CrudPermission | 'dashboards', 'update', (p) => p?.id |  | 1 | [backend/src/model/component/DashboardComponent.ts:1280](../../backend/src/model/component/DashboardComponent.ts#L1280) |
+| `SetSettings` | explicit | production | CrudPermission | 'dashboards', 'update', (params) => params?.dashboardId |  | 4 | [backend/src/model/component/DashboardComponent.ts:368](../../backend/src/model/component/DashboardComponent.ts#L368) |
+| `Template.Create` | explicit | production | CrudPermission | 'dashboards', 'create' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1095](../../backend/src/model/component/DashboardComponent.ts#L1095) |
+| `Template.Delete` | explicit | production | CrudPermission | 'dashboards', 'delete' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1156](../../backend/src/model/component/DashboardComponent.ts#L1156) |
+| `Template.Get` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1062](../../backend/src/model/component/DashboardComponent.ts#L1062) |
+| `Template.List` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1041](../../backend/src/model/component/DashboardComponent.ts#L1041) |
+| `Template.Preview` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1075](../../backend/src/model/component/DashboardComponent.ts#L1075) |
+| `Template.SaveFromDashboard` | explicit | production | CrudPermission | 'dashboards', 'create', (p) => p?.dashboardId |  | 0 | [backend/src/model/component/DashboardComponent.ts:1177](../../backend/src/model/component/DashboardComponent.ts#L1177) |
+| `Template.Update` | explicit | production | CrudPermission | 'dashboards', 'update' |  | 0 | [backend/src/model/component/DashboardComponent.ts:1127](../../backend/src/model/component/DashboardComponent.ts#L1127) |
+| `Unpin` | explicit | production | CrudPermission | 'dashboards', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/DashboardComponent.ts:1375](../../backend/src/model/component/DashboardComponent.ts#L1375) |
+| `Update` | explicit | production | CrudPermission | 'dashboards', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/DashboardComponent.ts:562](../../backend/src/model/component/DashboardComponent.ts#L562) |
+| `UpdateItemSize` | explicit | production | CrudPermission | 'dashboards', 'update', (params) => params?.dashboard |  | 1 | [backend/src/model/component/DashboardComponent.ts:711](../../backend/src/model/component/DashboardComponent.ts#L711) |
 
-### `device` — 22 explicit + 4 inherited (29 total incl. DEV_MODE)
+### `device` — 26 explicit + 4 inherited (33 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
 |---|---|---|---|---|---|---|---|
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Call` | explicit | production | CrudPermission | 'devices', 'execute', (params) => params?.shellyID |  | 2 | [backend/src/model/component/DeviceComponent.ts:1073](../../backend/src/model/component/DeviceComponent.ts#L1073) |
-| `CheckReplacement` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/DeviceComponent.ts:1234](../../backend/src/model/component/DeviceComponent.ts#L1234) |
-| `Delete` | explicit | production | CrudPermission | 'devices', 'delete' |  | 0 | [backend/src/model/component/DeviceComponent.ts:1145](../../backend/src/model/component/DeviceComponent.ts#L1145) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/DeviceComponent.ts:857](../../backend/src/model/component/DeviceComponent.ts#L857) |
-| `Get` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 4 | [backend/src/model/component/DeviceComponent.ts:1106](../../backend/src/model/component/DeviceComponent.ts#L1106) |
+| `Call` | explicit | production | CrudPermission | 'devices', 'execute', (params) => params?.shellyID |  | 2 | [backend/src/model/component/DeviceComponent.ts:1283](../../backend/src/model/component/DeviceComponent.ts#L1283) |
+| `CallMany` | explicit | production | CrudPermission | 'devices', 'execute', () => undefined |  | 0 | [backend/src/model/component/DeviceComponent.ts:1329](../../backend/src/model/component/DeviceComponent.ts#L1329) |
+| `CheckReplacement` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/DeviceComponent.ts:1565](../../backend/src/model/component/DeviceComponent.ts#L1565) |
+| `Delete` | explicit | production | CrudPermission | 'devices', 'delete' |  | 0 | [backend/src/model/component/DeviceComponent.ts:1455](../../backend/src/model/component/DeviceComponent.ts#L1455) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/DeviceComponent.ts:1082](../../backend/src/model/component/DeviceComponent.ts#L1082) |
+| `Get` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 4 | [backend/src/model/component/DeviceComponent.ts:1412](../../backend/src/model/component/DeviceComponent.ts#L1412) |
 | `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `GetDeviceChannels` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1359](../../backend/src/model/component/DeviceComponent.ts#L1359) |
-| `GetImage` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1342](../../backend/src/model/component/DeviceComponent.ts#L1342) |
-| `GetInfo` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1011](../../backend/src/model/component/DeviceComponent.ts#L1011) |
-| `GetKind` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1275](../../backend/src/model/component/DeviceComponent.ts#L1275) |
-| `GetSetup` | explicit | production | CrudPermission | 'configurations', 'read', () => undefined |  | 0 | [backend/src/model/component/DeviceComponent.ts:1035](../../backend/src/model/component/DeviceComponent.ts#L1035) |
+| `GetDeviceChannels` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1786](../../backend/src/model/component/DeviceComponent.ts#L1786) |
+| `GetEmLiveDebug` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1717](../../backend/src/model/component/DeviceComponent.ts#L1717) |
+| `GetImage` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1769](../../backend/src/model/component/DeviceComponent.ts#L1769) |
+| `GetInfo` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1221](../../backend/src/model/component/DeviceComponent.ts#L1221) |
+| `GetKind` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1632](../../backend/src/model/component/DeviceComponent.ts#L1632) |
+| `GetSetup` | explicit | production | CrudPermission | 'configurations', 'read', () => undefined |  | 0 | [backend/src/model/component/DeviceComponent.ts:1245](../../backend/src/model/component/DeviceComponent.ts#L1245) |
 | `getstatus` | inherited-getstatus | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `GetStatusHistory` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1454](../../backend/src/model/component/DeviceComponent.ts#L1454) |
-| `GetStatusTimeline` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1417](../../backend/src/model/component/DeviceComponent.ts#L1417) |
-| `List` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/DeviceComponent.ts:955](../../backend/src/model/component/DeviceComponent.ts#L955) |
+| `GetStatusHistory` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1881](../../backend/src/model/component/DeviceComponent.ts#L1881) |
+| `GetStatusTimeline` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1844](../../backend/src/model/component/DeviceComponent.ts#L1844) |
+| `List` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/DeviceComponent.ts:1180](../../backend/src/model/component/DeviceComponent.ts#L1180) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `ListRetired` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/DeviceComponent.ts:1220](../../backend/src/model/component/DeviceComponent.ts#L1220) |
-| `Relationships.Get` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:919](../../backend/src/model/component/DeviceComponent.ts#L919) |
-| `Relationships.Query` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/DeviceComponent.ts:937](../../backend/src/model/component/DeviceComponent.ts#L937) |
-| `ReplaceHardware` | explicit | production | CrudPermission | 'devices', 'update' |  | 0 | [backend/src/model/component/DeviceComponent.ts:1252](../../backend/src/model/component/DeviceComponent.ts#L1252) |
-| `Restore` | explicit | production | CrudPermission | 'devices', 'delete' |  | 0 | [backend/src/model/component/DeviceComponent.ts:1203](../../backend/src/model/component/DeviceComponent.ts#L1203) |
-| `Retire` | explicit | production | CrudPermission | 'devices', 'delete' |  | 0 | [backend/src/model/component/DeviceComponent.ts:1181](../../backend/src/model/component/DeviceComponent.ts#L1181) |
+| `ListRetired` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/DeviceComponent.ts:1551](../../backend/src/model/component/DeviceComponent.ts#L1551) |
+| `Relationships.Get` | explicit | production | CrudPermission | 'devices', 'read', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1144](../../backend/src/model/component/DeviceComponent.ts#L1144) |
+| `Relationships.Query` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/DeviceComponent.ts:1162](../../backend/src/model/component/DeviceComponent.ts#L1162) |
+| `ReplaceHardware` | explicit | production | CrudPermission | 'devices', 'update' |  | 0 | [backend/src/model/component/DeviceComponent.ts:1596](../../backend/src/model/component/DeviceComponent.ts#L1596) |
+| `Restore` | explicit | production | CrudPermission | 'devices', 'delete' |  | 0 | [backend/src/model/component/DeviceComponent.ts:1534](../../backend/src/model/component/DeviceComponent.ts#L1534) |
+| `Retire` | explicit | production | CrudPermission | 'devices', 'delete' |  | 0 | [backend/src/model/component/DeviceComponent.ts:1512](../../backend/src/model/component/DeviceComponent.ts#L1512) |
 | `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `SetImage` | explicit | production | CrudPermission | 'devices', 'update', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1313](../../backend/src/model/component/DeviceComponent.ts#L1313) |
-| `SetKind` | explicit | production | CrudPermission | 'devices', 'update', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1290](../../backend/src/model/component/DeviceComponent.ts#L1290) |
-| `Topology` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/DeviceComponent.ts:864](../../backend/src/model/component/DeviceComponent.ts#L864) |
+| `SetEmLiveDebug` | explicit | production | CrudPermission | 'devices', 'update', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1692](../../backend/src/model/component/DeviceComponent.ts#L1692) |
+| `SetImage` | explicit | production | CrudPermission | 'devices', 'update', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1740](../../backend/src/model/component/DeviceComponent.ts#L1740) |
+| `SetJournalDebug` | explicit | production | CrudPermission | 'devices', 'update', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1670](../../backend/src/model/component/DeviceComponent.ts#L1670) |
+| `SetKind` | explicit | production | CrudPermission | 'devices', 'update', (params) => params?.shellyID |  | 0 | [backend/src/model/component/DeviceComponent.ts:1647](../../backend/src/model/component/DeviceComponent.ts#L1647) |
+| `Topology` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/DeviceComponent.ts:1089](../../backend/src/model/component/DeviceComponent.ts#L1089) |
 
 ### `deviceevents` — 2 explicit + 4 inherited (9 total incl. DEV_MODE)
 
@@ -842,38 +907,43 @@ Regenerate with `cd backend && npm run generate`.
 | `Query` | explicit | production | CheckPermissions | canViewAuditLog |  | 0 | [backend/src/model/component/DeviceEventComponent.ts:50](../../backend/src/model/component/DeviceEventComponent.ts#L50) |
 | `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 
-### `deviceIngress` — 24 explicit + 1 inherited (28 total incl. DEV_MODE)
+### `deviceIngress` — 29 explicit + 1 inherited (33 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
 |---|---|---|---|---|---|---|---|
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `AuthMethods` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:182](../../backend/src/model/component/DeviceIngressComponent.ts#L182) |
-| `Connection.Disconnect` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:530](../../backend/src/model/component/DeviceIngressComponent.ts#L530) |
-| `Connection.Get` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:512](../../backend/src/model/component/DeviceIngressComponent.ts#L512) |
-| `Connection.List` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:492](../../backend/src/model/component/DeviceIngressComponent.ts#L492) |
-| `Credential.CancelRotation` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:450](../../backend/src/model/component/DeviceIngressComponent.ts#L450) |
-| `Credential.CreateToken` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:301](../../backend/src/model/component/DeviceIngressComponent.ts#L301) |
-| `Credential.FinalizeRotation` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:428](../../backend/src/model/component/DeviceIngressComponent.ts#L428) |
-| `Credential.Revoke` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:471](../../backend/src/model/component/DeviceIngressComponent.ts#L471) |
-| `Credential.Rotate` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:391](../../backend/src/model/component/DeviceIngressComponent.ts#L391) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:162](../../backend/src/model/component/DeviceIngressComponent.ts#L162) |
-| `EnrollmentToken.Create` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:328](../../backend/src/model/component/DeviceIngressComponent.ts#L328) |
-| `EnrollmentToken.List` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:358](../../backend/src/model/component/DeviceIngressComponent.ts#L358) |
-| `EnrollmentToken.Revoke` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:371](../../backend/src/model/component/DeviceIngressComponent.ts#L371) |
-| `Identity.Create` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:193](../../backend/src/model/component/DeviceIngressComponent.ts#L193) |
-| `Identity.Disable` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:255](../../backend/src/model/component/DeviceIngressComponent.ts#L255) |
-| `Identity.Get` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:216](../../backend/src/model/component/DeviceIngressComponent.ts#L216) |
-| `Identity.List` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:277](../../backend/src/model/component/DeviceIngressComponent.ts#L277) |
-| `Identity.Update` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:232](../../backend/src/model/component/DeviceIngressComponent.ts#L232) |
+| `AuthMethods` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 1 | [backend/src/model/component/DeviceIngressComponent.ts:210](../../backend/src/model/component/DeviceIngressComponent.ts#L210) |
+| `Connection.Disconnect` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:620](../../backend/src/model/component/DeviceIngressComponent.ts#L620) |
+| `Connection.Get` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:602](../../backend/src/model/component/DeviceIngressComponent.ts#L602) |
+| `Connection.List` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:582](../../backend/src/model/component/DeviceIngressComponent.ts#L582) |
+| `Credential.CancelRotation` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:521](../../backend/src/model/component/DeviceIngressComponent.ts#L521) |
+| `Credential.CreateToken` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:372](../../backend/src/model/component/DeviceIngressComponent.ts#L372) |
+| `Credential.FinalizeRotation` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:499](../../backend/src/model/component/DeviceIngressComponent.ts#L499) |
+| `Credential.ListExpiring` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:563](../../backend/src/model/component/DeviceIngressComponent.ts#L563) |
+| `Credential.Revoke` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:542](../../backend/src/model/component/DeviceIngressComponent.ts#L542) |
+| `Credential.Rotate` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:462](../../backend/src/model/component/DeviceIngressComponent.ts#L462) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:190](../../backend/src/model/component/DeviceIngressComponent.ts#L190) |
+| `EnrollmentToken.Create` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:399](../../backend/src/model/component/DeviceIngressComponent.ts#L399) |
+| `EnrollmentToken.List` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:429](../../backend/src/model/component/DeviceIngressComponent.ts#L429) |
+| `EnrollmentToken.Revoke` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:442](../../backend/src/model/component/DeviceIngressComponent.ts#L442) |
+| `Identity.Create` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:227](../../backend/src/model/component/DeviceIngressComponent.ts#L227) |
+| `Identity.Disable` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:326](../../backend/src/model/component/DeviceIngressComponent.ts#L326) |
+| `Identity.Enable` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:289](../../backend/src/model/component/DeviceIngressComponent.ts#L289) |
+| `Identity.Get` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:250](../../backend/src/model/component/DeviceIngressComponent.ts#L250) |
+| `Identity.List` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:348](../../backend/src/model/component/DeviceIngressComponent.ts#L348) |
+| `Identity.Update` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:266](../../backend/src/model/component/DeviceIngressComponent.ts#L266) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Profile.List` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:169](../../backend/src/model/component/DeviceIngressComponent.ts#L169) |
-| `Rejection.List` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:558](../../backend/src/model/component/DeviceIngressComponent.ts#L558) |
-| `Rejection.Resolve` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:578](../../backend/src/model/component/DeviceIngressComponent.ts#L578) |
-| `Setup.Bundle` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:632](../../backend/src/model/component/DeviceIngressComponent.ts#L632) |
-| `Setup.Plan` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:599](../../backend/src/model/component/DeviceIngressComponent.ts#L599) |
-| `Setup.ReportApply` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:665](../../backend/src/model/component/DeviceIngressComponent.ts#L665) |
+| `Profile.List` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:197](../../backend/src/model/component/DeviceIngressComponent.ts#L197) |
+| `Rejection.List` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:648](../../backend/src/model/component/DeviceIngressComponent.ts#L648) |
+| `Rejection.Resolve` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:668](../../backend/src/model/component/DeviceIngressComponent.ts#L668) |
+| `Rotation.Cancel` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:849](../../backend/src/model/component/DeviceIngressComponent.ts#L849) |
+| `Rotation.List` | explicit | production | CrudPermission | 'devices', 'read', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:829](../../backend/src/model/component/DeviceIngressComponent.ts#L829) |
+| `Rotation.Start` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:786](../../backend/src/model/component/DeviceIngressComponent.ts#L786) |
+| `Setup.Bundle` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:722](../../backend/src/model/component/DeviceIngressComponent.ts#L722) |
+| `Setup.Plan` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:689](../../backend/src/model/component/DeviceIngressComponent.ts#L689) |
+| `Setup.ReportApply` | explicit | production | CrudPermission | 'devices', 'update', DEVICE_INGRESS_COLLECTION |  | 0 | [backend/src/model/component/DeviceIngressComponent.ts:755](../../backend/src/model/component/DeviceIngressComponent.ts#L755) |
 
 ### `devicepower` — 4 explicit + 1 inherited (8 total incl. DEV_MODE)
 
@@ -987,26 +1057,41 @@ Regenerate with `cd backend && npm run generate`.
 | `ResetCounters` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/EmDataComponent.ts:132](../../backend/src/model/component/EmDataComponent.ts#L132) |
 | `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/EmDataComponent.ts:55](../../backend/src/model/component/EmDataComponent.ts#L55) |
 
-### `energy` — 12 explicit + 1 inherited (16 total incl. DEV_MODE)
+### `energy` — 27 explicit + 1 inherited (31 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
 |---|---|---|---|---|---|---|---|
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Current` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/EnergyComponent.ts:192](../../backend/src/model/component/EnergyComponent.ts#L192) |
-| `DeleteLogicalMeter` | explicit | production | CrudPermission | 'devices', 'update' |  | 0 | [backend/src/model/component/EnergyComponent.ts:297](../../backend/src/model/component/EnergyComponent.ts#L297) |
-| `DeleteMeterConnection` | explicit | production | CrudPermission | 'devices', 'update' |  | 0 | [backend/src/model/component/EnergyComponent.ts:342](../../backend/src/model/component/EnergyComponent.ts#L342) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/EnergyComponent.ts:163](../../backend/src/model/component/EnergyComponent.ts#L163) |
-| `GetResetAudit` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/EnergyComponent.ts:246](../../backend/src/model/component/EnergyComponent.ts#L246) |
-| `ListLogicalMeters` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/EnergyComponent.ts:259](../../backend/src/model/component/EnergyComponent.ts#L259) |
-| `ListMeasurementPoints` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/EnergyComponent.ts:212](../../backend/src/model/component/EnergyComponent.ts#L212) |
-| `ListMeterConnections` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/EnergyComponent.ts:316](../../backend/src/model/component/EnergyComponent.ts#L316) |
+| `ApplyCommodityRepair` | explicit | production | CrudPermission | 'devices', 'update' |  | 1 | [backend/src/model/component/EnergyComponent.ts:466](../../backend/src/model/component/EnergyComponent.ts#L466) |
+| `ApplyLogicalMeterMeaningChange` | explicit | production | CrudPermission | 'devices', 'update' |  | 1 | [backend/src/model/component/EnergyComponent.ts:703](../../backend/src/model/component/EnergyComponent.ts#L703) |
+| `Baseline` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/EnergyComponent.ts:493](../../backend/src/model/component/EnergyComponent.ts#L493) |
+| `Current` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/EnergyComponent.ts:324](../../backend/src/model/component/EnergyComponent.ts#L324) |
+| `DeleteBaselineExclusion` | explicit | production | CrudPermission | 'devices', 'update', NOT_A_DEVICE_ID |  | 0 | [backend/src/model/component/EnergyComponent.ts:568](../../backend/src/model/component/EnergyComponent.ts#L568) |
+| `DeleteLogicalMeter` | explicit | production | CrudPermission | 'devices', 'update', NOT_A_DEVICE_ID |  | 0 | [backend/src/model/component/EnergyComponent.ts:632](../../backend/src/model/component/EnergyComponent.ts#L632) |
+| `DeleteMeterConnection` | explicit | production | CrudPermission | 'devices', 'update', NOT_A_DEVICE_ID |  | 0 | [backend/src/model/component/EnergyComponent.ts:753](../../backend/src/model/component/EnergyComponent.ts#L753) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/EnergyComponent.ts:295](../../backend/src/model/component/EnergyComponent.ts#L295) |
+| `GetResetAudit` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/EnergyComponent.ts:480](../../backend/src/model/component/EnergyComponent.ts#L480) |
+| `ListBaselineExclusions` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/EnergyComponent.ts:529](../../backend/src/model/component/EnergyComponent.ts#L529) |
+| `ListLogicalMeterMeaningHistory` | explicit | production | CrudPermission | 'devices', 'read' |  | 1 | [backend/src/model/component/EnergyComponent.ts:670](../../backend/src/model/component/EnergyComponent.ts#L670) |
+| `ListLogicalMeterMeaningReviewQueue` | explicit | production | CrudPermission | 'devices', 'read' |  | 1 | [backend/src/model/component/EnergyComponent.ts:653](../../backend/src/model/component/EnergyComponent.ts#L653) |
+| `ListLogicalMeters` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/EnergyComponent.ts:585](../../backend/src/model/component/EnergyComponent.ts#L585) |
+| `ListMeasurementPoints` | explicit | production | NoPermissions |  |  | 1 | [backend/src/model/component/EnergyComponent.ts:414](../../backend/src/model/component/EnergyComponent.ts#L414) |
+| `ListMeterConnections` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/EnergyComponent.ts:720](../../backend/src/model/component/EnergyComponent.ts#L720) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Query` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/EnergyComponent.ts:170](../../backend/src/model/component/EnergyComponent.ts#L170) |
-| `SaveLogicalMeter` | explicit | production | CrudPermission | 'devices', 'update' |  | 0 | [backend/src/model/component/EnergyComponent.ts:278](../../backend/src/model/component/EnergyComponent.ts#L278) |
-| `SaveMeterConnection` | explicit | production | CrudPermission | 'devices', 'update' |  | 0 | [backend/src/model/component/EnergyComponent.ts:329](../../backend/src/model/component/EnergyComponent.ts#L329) |
-| `SetPointOverride` | explicit | production | CrudPermission | 'devices', 'update' |  | 0 | [backend/src/model/component/EnergyComponent.ts:229](../../backend/src/model/component/EnergyComponent.ts#L229) |
+| `OvernightBaseline` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/EnergyComponent.ts:511](../../backend/src/model/component/EnergyComponent.ts#L511) |
+| `PreviewCommodityRepair` | explicit | production | CrudPermission | 'devices', 'update' |  | 1 | [backend/src/model/component/EnergyComponent.ts:448](../../backend/src/model/component/EnergyComponent.ts#L448) |
+| `PreviewLogicalMeterMeaningChange` | explicit | production | CrudPermission | 'devices', 'update' |  | 1 | [backend/src/model/component/EnergyComponent.ts:686](../../backend/src/model/component/EnergyComponent.ts#L686) |
+| `Projection` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/EnergyComponent.ts:344](../../backend/src/model/component/EnergyComponent.ts#L344) |
+| `Query` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/EnergyComponent.ts:302](../../backend/src/model/component/EnergyComponent.ts#L302) |
+| `RejectedSyncBlocks` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/EnergyComponent.ts:374](../../backend/src/model/component/EnergyComponent.ts#L374) |
+| `RequeueRejectedSyncBlock` | explicit | production | CrudPermission | 'devices', 'update', NOT_A_DEVICE_ID |  | 0 | [backend/src/model/component/EnergyComponent.ts:393](../../backend/src/model/component/EnergyComponent.ts#L393) |
+| `SaveBaselineExclusion` | explicit | production | CrudPermission | 'devices', 'update', NOT_A_DEVICE_ID |  | 0 | [backend/src/model/component/EnergyComponent.ts:545](../../backend/src/model/component/EnergyComponent.ts#L545) |
+| `SaveLogicalMeter` | explicit | production | CrudPermission | 'devices', 'update', NOT_A_DEVICE_ID |  | 0 | [backend/src/model/component/EnergyComponent.ts:605](../../backend/src/model/component/EnergyComponent.ts#L605) |
+| `SaveMeterConnection` | explicit | production | CrudPermission | 'devices', 'update', NOT_A_DEVICE_ID |  | 0 | [backend/src/model/component/EnergyComponent.ts:733](../../backend/src/model/component/EnergyComponent.ts#L733) |
+| `SetPointOverride` | explicit | production | CrudPermission | 'devices', 'update' |  | 0 | [backend/src/model/component/EnergyComponent.ts:431](../../backend/src/model/component/EnergyComponent.ts#L431) |
+| `SyncStatus` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/EnergyComponent.ts:358](../../backend/src/model/component/EnergyComponent.ts#L358) |
 
 ### `entity` — 6 explicit + 3 inherited (12 total incl. DEV_MODE)
 
@@ -1015,14 +1100,14 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/EntityComponent.ts:568](../../backend/src/model/component/EntityComponent.ts#L568) |
-| `Get` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 1 | [backend/src/model/component/EntityComponent.ts:679](../../backend/src/model/component/EntityComponent.ts#L679) |
-| `GetActionSchema` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 0 | [backend/src/model/component/EntityComponent.ts:630](../../backend/src/model/component/EntityComponent.ts#L630) |
-| `GetCapabilities` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 0 | [backend/src/model/component/EntityComponent.ts:582](../../backend/src/model/component/EntityComponent.ts#L582) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/EntityComponent.ts:704](../../backend/src/model/component/EntityComponent.ts#L704) |
+| `Get` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 1 | [backend/src/model/component/EntityComponent.ts:815](../../backend/src/model/component/EntityComponent.ts#L815) |
+| `GetActionSchema` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 0 | [backend/src/model/component/EntityComponent.ts:766](../../backend/src/model/component/EntityComponent.ts#L766) |
+| `GetCapabilities` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 0 | [backend/src/model/component/EntityComponent.ts:718](../../backend/src/model/component/EntityComponent.ts#L718) |
 | `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `getstatus` | inherited-getstatus | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `InvokeAction` | explicit | production | CheckPermissions | canInvokeEntityAction |  | 2 | [backend/src/model/component/EntityComponent.ts:726](../../backend/src/model/component/EntityComponent.ts#L726) |
-| `List` | explicit | production | NoPermissions |  |  | 1 | [backend/src/model/component/EntityComponent.ts:812](../../backend/src/model/component/EntityComponent.ts#L812) |
+| `InvokeAction` | explicit | production | CheckPermissions | canInvokeEntityAction |  | 2 | [backend/src/model/component/EntityComponent.ts:862](../../backend/src/model/component/EntityComponent.ts#L862) |
+| `List` | explicit | production | NoPermissions |  |  | 2 | [backend/src/model/component/EntityComponent.ts:948](../../backend/src/model/component/EntityComponent.ts#L948) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 
 ### `eth` — 5 explicit + 1 inherited (9 total incl. DEV_MODE)
@@ -1053,6 +1138,25 @@ Regenerate with `cd backend && npm run generate`.
 | `Set` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/FanComponent.ts:61](../../backend/src/model/component/FanComponent.ts#L61) |
 | `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/FanComponent.ts:50](../../backend/src/model/component/FanComponent.ts#L50) |
 
+### `fileTransfer` — 7 explicit + 4 inherited (14 total incl. DEV_MODE)
+
+| Method | Kind | Env | Permission | Args | Params | Callers | Source |
+|---|---|---|---|---|---|---|---|
+| `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `Begin` | explicit | production | CheckPermissions | canBeginTransfer |  | 0 | [backend/src/model/component/FileTransferComponent.ts:198](../../backend/src/model/component/FileTransferComponent.ts#L198) |
+| `Cancel` | explicit | production | CheckPermissions | canUseAuthenticatedWrite |  | 0 | [backend/src/model/component/FileTransferComponent.ts:247](../../backend/src/model/component/FileTransferComponent.ts#L247) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/FileTransferComponent.ts:191](../../backend/src/model/component/FileTransferComponent.ts#L191) |
+| `Finalize` | explicit | production | CheckPermissions | canFinalizeTransfer |  | 0 | [backend/src/model/component/FileTransferComponent.ts:235](../../backend/src/model/component/FileTransferComponent.ts#L235) |
+| `Get` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 0 | [backend/src/model/component/FileTransferComponent.ts:222](../../backend/src/model/component/FileTransferComponent.ts#L222) |
+| `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `getstatus` | inherited-getstatus | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `ReadChunk` | explicit | production | CheckPermissions | canReadTransfer |  | 0 | [backend/src/model/component/FileTransferComponent.ts:259](../../backend/src/model/component/FileTransferComponent.ts#L259) |
+| `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `WriteChunk` | explicit | production | CheckPermissions | canUseAuthenticatedWrite |  | 0 | [backend/src/model/component/FileTransferComponent.ts:210](../../backend/src/model/component/FileTransferComponent.ts#L210) |
+
 ### `firmware` — 22 explicit + 1 inherited (26 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
@@ -1060,29 +1164,29 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `CheckForUpdateBulk` | explicit | production | CheckPermissions | canExecuteFirmwareDevices |  | 0 | [backend/src/model/component/FirmwareComponent.ts:810](../../backend/src/model/component/FirmwareComponent.ts#L810) |
-| `CreateLibraryDownloadUrl` | explicit | production | CheckPermissions | canUpdateFirmwareDevices |  | 0 | [backend/src/model/component/FirmwareComponent.ts:1852](../../backend/src/model/component/FirmwareComponent.ts#L1852) |
-| `CreateUploadTicket` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 0 | [backend/src/model/component/FirmwareComponent.ts:1836](../../backend/src/model/component/FirmwareComponent.ts#L1836) |
-| `DeleteLibraryEntry` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 1 | [backend/src/model/component/FirmwareComponent.ts:1931](../../backend/src/model/component/FirmwareComponent.ts#L1931) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/FirmwareComponent.ts:601](../../backend/src/model/component/FirmwareComponent.ts#L601) |
-| `GetAutoUpdateChannel` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 0 | [backend/src/model/component/FirmwareComponent.ts:1341](../../backend/src/model/component/FirmwareComponent.ts#L1341) |
-| `GetAutoUpdateDevices` | explicit | production | CheckPermissions | canReadFirmwareDevices |  | 0 | [backend/src/model/component/FirmwareComponent.ts:869](../../backend/src/model/component/FirmwareComponent.ts#L869) |
-| `GetAutoUpdateMode` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/FirmwareComponent.ts:983](../../backend/src/model/component/FirmwareComponent.ts#L983) |
-| `GetAutoUpdateModes` | explicit | production | CheckPermissions | canReadFirmwareDevices |  | 0 | [backend/src/model/component/FirmwareComponent.ts:890](../../backend/src/model/component/FirmwareComponent.ts#L890) |
-| `GetAutoUpdateStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/FirmwareComponent.ts:973](../../backend/src/model/component/FirmwareComponent.ts#L973) |
-| `GetLastAutoUpdateRun` | explicit | production | CheckPermissions | canReadFirmwareDevices |  | 0 | [backend/src/model/component/FirmwareComponent.ts:1370](../../backend/src/model/component/FirmwareComponent.ts#L1370) |
-| `ListLibrary` | explicit | production | CheckPermissions | canUpdateFirmwareDevices |  | 0 | [backend/src/model/component/FirmwareComponent.ts:1819](../../backend/src/model/component/FirmwareComponent.ts#L1819) |
+| `CheckForUpdateBulk` | explicit | production | CheckPermissions | canExecuteFirmwareDevices |  | 0 | [backend/src/model/component/FirmwareComponent.ts:822](../../backend/src/model/component/FirmwareComponent.ts#L822) |
+| `CreateLibraryDownloadUrl` | explicit | production | CheckPermissions | canUpdateFirmwareDevices |  | 0 | [backend/src/model/component/FirmwareComponent.ts:1878](../../backend/src/model/component/FirmwareComponent.ts#L1878) |
+| `CreateUploadTicket` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 0 | [backend/src/model/component/FirmwareComponent.ts:1862](../../backend/src/model/component/FirmwareComponent.ts#L1862) |
+| `DeleteLibraryEntry` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 1 | [backend/src/model/component/FirmwareComponent.ts:1957](../../backend/src/model/component/FirmwareComponent.ts#L1957) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/FirmwareComponent.ts:610](../../backend/src/model/component/FirmwareComponent.ts#L610) |
+| `GetAutoUpdateChannel` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 0 | [backend/src/model/component/FirmwareComponent.ts:1363](../../backend/src/model/component/FirmwareComponent.ts#L1363) |
+| `GetAutoUpdateDevices` | explicit | production | CheckPermissions | canReadFirmwareDevices |  | 0 | [backend/src/model/component/FirmwareComponent.ts:881](../../backend/src/model/component/FirmwareComponent.ts#L881) |
+| `GetAutoUpdateMode` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/FirmwareComponent.ts:995](../../backend/src/model/component/FirmwareComponent.ts#L995) |
+| `GetAutoUpdateModes` | explicit | production | CheckPermissions | canReadFirmwareDevices |  | 0 | [backend/src/model/component/FirmwareComponent.ts:902](../../backend/src/model/component/FirmwareComponent.ts#L902) |
+| `GetAutoUpdateStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/FirmwareComponent.ts:985](../../backend/src/model/component/FirmwareComponent.ts#L985) |
+| `GetLastAutoUpdateRun` | explicit | production | CheckPermissions | canReadFirmwareDevices |  | 0 | [backend/src/model/component/FirmwareComponent.ts:1392](../../backend/src/model/component/FirmwareComponent.ts#L1392) |
+| `ListLibrary` | explicit | production | CheckPermissions | canUpdateFirmwareDevices |  | 0 | [backend/src/model/component/FirmwareComponent.ts:1845](../../backend/src/model/component/FirmwareComponent.ts#L1845) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `RegisterManualUpdate` | explicit | production | CheckPermissions | async (sender, params) => { const shellyIDs = Array.isArray(params?.shellyIDs) ? params.shellyIDs : []; return ( shellyIDs.length > 0 && ( a |  | 0 | [backend/src/model/component/FirmwareComponent.ts:608](../../backend/src/model/component/FirmwareComponent.ts#L608) |
-| `SetAutoUpdate` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/FirmwareComponent.ts:909](../../backend/src/model/component/FirmwareComponent.ts#L909) |
-| `SetAutoUpdateBulk` | explicit | production | CheckPermissions | canUpdateFirmwareDevices |  | 0 | [backend/src/model/component/FirmwareComponent.ts:933](../../backend/src/model/component/FirmwareComponent.ts#L933) |
-| `SetAutoUpdateChannel` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 0 | [backend/src/model/component/FirmwareComponent.ts:1351](../../backend/src/model/component/FirmwareComponent.ts#L1351) |
-| `SetAutoUpdateMode` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 1 | [backend/src/model/component/FirmwareComponent.ts:1285](../../backend/src/model/component/FirmwareComponent.ts#L1285) |
-| `SetAutoUpdateModeBulk` | explicit | production | CheckPermissions | canUpdateFirmwareDevices |  | 1 | [backend/src/model/component/FirmwareComponent.ts:1302](../../backend/src/model/component/FirmwareComponent.ts#L1302) |
-| `StartUpdateJob` | explicit | production | CheckPermissions | async (sender, params) => { const shellyIDs = Array.isArray(params?.shellyIDs) ? params.shellyIDs : []; return ( shellyIDs.length > 0 && ( a |  | 0 | [backend/src/model/component/FirmwareComponent.ts:736](../../backend/src/model/component/FirmwareComponent.ts#L736) |
-| `TriggerAutoUpdate` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 0 | [backend/src/model/component/FirmwareComponent.ts:1699](../../backend/src/model/component/FirmwareComponent.ts#L1699) |
-| `UnregisterManualUpdate` | explicit | production | CheckPermissions | async (sender, params) => { const shellyIDs = Array.isArray(params?.shellyIDs) ? params.shellyIDs : []; return ( shellyIDs.length > 0 && ( a |  | 0 | [backend/src/model/component/FirmwareComponent.ts:682](../../backend/src/model/component/FirmwareComponent.ts#L682) |
-| `UpdateLibraryEntry` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 1 | [backend/src/model/component/FirmwareComponent.ts:1876](../../backend/src/model/component/FirmwareComponent.ts#L1876) |
+| `RegisterManualUpdate` | explicit | production | CheckPermissions | async (sender, params) => { const shellyIDs = Array.isArray(params?.shellyIDs) ? params.shellyIDs : []; return ( shellyIDs.length > 0 && ( a |  | 0 | [backend/src/model/component/FirmwareComponent.ts:617](../../backend/src/model/component/FirmwareComponent.ts#L617) |
+| `SetAutoUpdate` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/FirmwareComponent.ts:921](../../backend/src/model/component/FirmwareComponent.ts#L921) |
+| `SetAutoUpdateBulk` | explicit | production | CheckPermissions | canUpdateFirmwareDevices |  | 0 | [backend/src/model/component/FirmwareComponent.ts:945](../../backend/src/model/component/FirmwareComponent.ts#L945) |
+| `SetAutoUpdateChannel` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 0 | [backend/src/model/component/FirmwareComponent.ts:1373](../../backend/src/model/component/FirmwareComponent.ts#L1373) |
+| `SetAutoUpdateMode` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 1 | [backend/src/model/component/FirmwareComponent.ts:1307](../../backend/src/model/component/FirmwareComponent.ts#L1307) |
+| `SetAutoUpdateModeBulk` | explicit | production | CheckPermissions | canUpdateFirmwareDevices |  | 1 | [backend/src/model/component/FirmwareComponent.ts:1324](../../backend/src/model/component/FirmwareComponent.ts#L1324) |
+| `StartUpdateJob` | explicit | production | CheckPermissions | async (sender, params) => { const shellyIDs = Array.isArray(params?.shellyIDs) ? params.shellyIDs : []; return ( shellyIDs.length > 0 && ( a |  | 0 | [backend/src/model/component/FirmwareComponent.ts:745](../../backend/src/model/component/FirmwareComponent.ts#L745) |
+| `TriggerAutoUpdate` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 0 | [backend/src/model/component/FirmwareComponent.ts:1725](../../backend/src/model/component/FirmwareComponent.ts#L1725) |
+| `UnregisterManualUpdate` | explicit | production | CheckPermissions | async (sender, params) => { const shellyIDs = Array.isArray(params?.shellyIDs) ? params.shellyIDs : []; return ( shellyIDs.length > 0 && ( a |  | 0 | [backend/src/model/component/FirmwareComponent.ts:691](../../backend/src/model/component/FirmwareComponent.ts#L691) |
+| `UpdateLibraryEntry` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 1 | [backend/src/model/component/FirmwareComponent.ts:1902](../../backend/src/model/component/FirmwareComponent.ts#L1902) |
 
 ### `fleet` — 2 explicit + 4 inherited (9 total incl. DEV_MODE)
 
@@ -1091,9 +1195,9 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `GetCapabilities` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/FleetComponent.ts:63](../../backend/src/model/component/FleetComponent.ts#L63) |
+| `GetCapabilities` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/FleetComponent.ts:78](../../backend/src/model/component/FleetComponent.ts#L78) |
 | `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `GetMetrics` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 2 | [backend/src/model/component/FleetComponent.ts:42](../../backend/src/model/component/FleetComponent.ts#L42) |
+| `GetMetrics` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 2 | [backend/src/model/component/FleetComponent.ts:57](../../backend/src/model/component/FleetComponent.ts#L57) |
 | `getstatus` | inherited-getstatus | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
@@ -1105,10 +1209,10 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `GetAlertSnapshot` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/FleetMapComponent.ts:139](../../backend/src/model/component/FleetMapComponent.ts#L139) |
+| `GetAlertSnapshot` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/FleetMapComponent.ts:146](../../backend/src/model/component/FleetMapComponent.ts#L146) |
 | `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `GetEnergySnapshot` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/FleetMapComponent.ts:71](../../backend/src/model/component/FleetMapComponent.ts#L71) |
-| `GetSignalSnapshot` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/FleetMapComponent.ts:105](../../backend/src/model/component/FleetMapComponent.ts#L105) |
+| `GetEnergySnapshot` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/FleetMapComponent.ts:72](../../backend/src/model/component/FleetMapComponent.ts#L72) |
+| `GetSignalSnapshot` | explicit | production | CrudPermission | 'dashboards', 'read' |  | 0 | [backend/src/model/component/FleetMapComponent.ts:109](../../backend/src/model/component/FleetMapComponent.ts#L109) |
 | `getstatus` | inherited-getstatus | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
@@ -1139,6 +1243,22 @@ Regenerate with `cd backend && npm run generate`.
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/FloodComponent.ts:32](../../backend/src/model/component/FloodComponent.ts#L32) |
 
+### `gasConversion` — 7 explicit + 1 inherited (11 total incl. DEV_MODE)
+
+| Method | Kind | Env | Permission | Args | Params | Callers | Source |
+|---|---|---|---|---|---|---|---|
+| `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `AddCalorificValue` | explicit | production | CrudPermission | 'reports', 'update' |  | 1 | [backend/src/model/component/GasConversionComponent.ts:124](../../backend/src/model/component/GasConversionComponent.ts#L124) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/GasConversionComponent.ts:50](../../backend/src/model/component/GasConversionComponent.ts#L50) |
+| `ListCalorificValues` | explicit | production | CrudPermission | 'reports', 'read' |  | 0 | [backend/src/model/component/GasConversionComponent.ts:173](../../backend/src/model/component/GasConversionComponent.ts#L173) |
+| `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `ListProfiles` | explicit | production | CrudPermission | 'reports', 'read' |  | 0 | [backend/src/model/component/GasConversionComponent.ts:154](../../backend/src/model/component/GasConversionComponent.ts#L154) |
+| `ListZones` | explicit | production | CrudPermission | 'reports', 'read' |  | 0 | [backend/src/model/component/GasConversionComponent.ts:141](../../backend/src/model/component/GasConversionComponent.ts#L141) |
+| `UpsertProfile` | explicit | production | CrudPermission | 'reports', 'update' |  | 1 | [backend/src/model/component/GasConversionComponent.ts:69](../../backend/src/model/component/GasConversionComponent.ts#L69) |
+| `UpsertZone` | explicit | production | CrudPermission | 'reports', 'update' |  | 1 | [backend/src/model/component/GasConversionComponent.ts:56](../../backend/src/model/component/GasConversionComponent.ts#L56) |
+
 ### `grafana` — 3 explicit + 1 inherited (7 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
@@ -1158,22 +1278,22 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `AddMembers` | explicit | production | CrudPermission | 'groups', 'update', (p) => p?.id |  | 4 | [backend/src/model/component/GroupComponent.ts:807](../../backend/src/model/component/GroupComponent.ts#L807) |
-| `Children` | explicit | production | CrudPermission | 'groups', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/GroupComponent.ts:612](../../backend/src/model/component/GroupComponent.ts#L612) |
-| `Create` | explicit | production | CrudPermission | 'groups', 'create' |  | 0 | [backend/src/model/component/GroupComponent.ts:390](../../backend/src/model/component/GroupComponent.ts#L390) |
-| `Delete` | explicit | production | CrudPermission | 'groups', 'delete', (p) => p?.id |  | 1 | [backend/src/model/component/GroupComponent.ts:506](../../backend/src/model/component/GroupComponent.ts#L506) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/GroupComponent.ts:383](../../backend/src/model/component/GroupComponent.ts#L383) |
-| `Get` | explicit | production | CrudPermission | 'groups', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/GroupComponent.ts:535](../../backend/src/model/component/GroupComponent.ts#L535) |
-| `Kind.Get` | explicit | production | CrudPermission | 'groups', 'read' |  | 0 | [backend/src/model/component/GroupComponent.ts:903](../../backend/src/model/component/GroupComponent.ts#L903) |
-| `Kind.List` | explicit | production | CrudPermission | 'groups', 'read' |  | 0 | [backend/src/model/component/GroupComponent.ts:887](../../backend/src/model/component/GroupComponent.ts#L887) |
-| `List` | explicit | production | CrudPermission | 'groups', 'read' |  | 0 | [backend/src/model/component/GroupComponent.ts:562](../../backend/src/model/component/GroupComponent.ts#L562) |
-| `ListActivity` | explicit | production | CrudPermission | 'groups', 'read', (p) => p?.id |  | 1 | [backend/src/model/component/GroupComponent.ts:720](../../backend/src/model/component/GroupComponent.ts#L720) |
-| `ListDeviceMemberships` | explicit | production | CrudPermission | 'groups', 'read' |  | 0 | [backend/src/model/component/GroupComponent.ts:781](../../backend/src/model/component/GroupComponent.ts#L781) |
-| `ListMembers` | explicit | production | CrudPermission | 'groups', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/GroupComponent.ts:682](../../backend/src/model/component/GroupComponent.ts#L682) |
+| `AddMembers` | explicit | production | CrudPermission | 'groups', 'update', (p) => p?.id |  | 4 | [backend/src/model/component/GroupComponent.ts:846](../../backend/src/model/component/GroupComponent.ts#L846) |
+| `Children` | explicit | production | CrudPermission | 'groups', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/GroupComponent.ts:649](../../backend/src/model/component/GroupComponent.ts#L649) |
+| `Create` | explicit | production | CrudPermission | 'groups', 'create' |  | 0 | [backend/src/model/component/GroupComponent.ts:427](../../backend/src/model/component/GroupComponent.ts#L427) |
+| `Delete` | explicit | production | CrudPermission | 'groups', 'delete', (p) => p?.id |  | 1 | [backend/src/model/component/GroupComponent.ts:543](../../backend/src/model/component/GroupComponent.ts#L543) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/GroupComponent.ts:420](../../backend/src/model/component/GroupComponent.ts#L420) |
+| `Get` | explicit | production | CrudPermission | 'groups', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/GroupComponent.ts:572](../../backend/src/model/component/GroupComponent.ts#L572) |
+| `Kind.Get` | explicit | production | CrudPermission | 'groups', 'read', NOT_A_GROUP_ID |  | 0 | [backend/src/model/component/GroupComponent.ts:943](../../backend/src/model/component/GroupComponent.ts#L943) |
+| `Kind.List` | explicit | production | CrudPermission | 'groups', 'read' |  | 0 | [backend/src/model/component/GroupComponent.ts:927](../../backend/src/model/component/GroupComponent.ts#L927) |
+| `List` | explicit | production | CrudPermission | 'groups', 'read' |  | 0 | [backend/src/model/component/GroupComponent.ts:599](../../backend/src/model/component/GroupComponent.ts#L599) |
+| `ListActivity` | explicit | production | CrudPermission | 'groups', 'read', (p) => p?.id |  | 1 | [backend/src/model/component/GroupComponent.ts:759](../../backend/src/model/component/GroupComponent.ts#L759) |
+| `ListDeviceMemberships` | explicit | production | CrudPermission | 'groups', 'read' |  | 0 | [backend/src/model/component/GroupComponent.ts:820](../../backend/src/model/component/GroupComponent.ts#L820) |
+| `ListMembers` | explicit | production | CrudPermission | 'groups', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/GroupComponent.ts:719](../../backend/src/model/component/GroupComponent.ts#L719) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Path` | explicit | production | CrudPermission | 'groups', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/GroupComponent.ts:655](../../backend/src/model/component/GroupComponent.ts#L655) |
-| `RemoveMembers` | explicit | production | CrudPermission | 'groups', 'update', (p) => p?.id |  | 2 | [backend/src/model/component/GroupComponent.ts:847](../../backend/src/model/component/GroupComponent.ts#L847) |
-| `Update` | explicit | production | CrudPermission | 'groups', 'update', (p) => p?.id |  | 1 | [backend/src/model/component/GroupComponent.ts:431](../../backend/src/model/component/GroupComponent.ts#L431) |
+| `Path` | explicit | production | CrudPermission | 'groups', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/GroupComponent.ts:692](../../backend/src/model/component/GroupComponent.ts#L692) |
+| `RemoveMembers` | explicit | production | CrudPermission | 'groups', 'update', (p) => p?.id |  | 2 | [backend/src/model/component/GroupComponent.ts:887](../../backend/src/model/component/GroupComponent.ts#L887) |
+| `Update` | explicit | production | CrudPermission | 'groups', 'update', (p) => p?.id |  | 1 | [backend/src/model/component/GroupComponent.ts:468](../../backend/src/model/component/GroupComponent.ts#L468) |
 
 ### `http` — 4 explicit + 1 inherited (8 total incl. DEV_MODE)
 
@@ -1250,17 +1370,82 @@ Regenerate with `cd backend && npm run generate`.
 | `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 1 | [backend/src/model/component/InputComponent.ts:62](../../backend/src/model/component/InputComponent.ts#L62) |
 | `Trigger` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/InputComponent.ts:47](../../backend/src/model/component/InputComponent.ts#L47) |
 
-### `job` — 3 explicit + 1 inherited (7 total incl. DEV_MODE)
+### `ir` — 6 explicit + 1 inherited (10 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
 |---|---|---|---|---|---|---|---|
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/JobComponent.ts:31](../../backend/src/model/component/JobComponent.ts#L31) |
-| `Get` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/JobComponent.ts:55](../../backend/src/model/component/JobComponent.ts#L55) |
-| `ListActive` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/JobComponent.ts:38](../../backend/src/model/component/JobComponent.ts#L38) |
+| `AddDevice` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/IrComponent.ts:74](../../backend/src/model/component/IrComponent.ts#L74) |
+| `DeleteDevice` | explicit | production | CrudPermission | 'devices', 'delete', (p) => p?.shellyID |  | 0 | [backend/src/model/component/IrComponent.ts:87](../../backend/src/model/component/IrComponent.ts#L87) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/IrComponent.ts:28](../../backend/src/model/component/IrComponent.ts#L28) |
+| `GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/IrComponent.ts:35](../../backend/src/model/component/IrComponent.ts#L35) |
+| `GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/IrComponent.ts:48](../../backend/src/model/component/IrComponent.ts#L48) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/IrComponent.ts:61](../../backend/src/model/component/IrComponent.ts#L61) |
+
+### `ircode` — 5 explicit + 1 inherited (9 total incl. DEV_MODE)
+
+| Method | Kind | Env | Permission | Args | Params | Callers | Source |
+|---|---|---|---|---|---|---|---|
+| `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/IrCodeComponent.ts:29](../../backend/src/model/component/IrCodeComponent.ts#L29) |
+| `Emit` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/IrCodeComponent.ts:75](../../backend/src/model/component/IrCodeComponent.ts#L75) |
+| `GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 1 | [backend/src/model/component/IrCodeComponent.ts:36](../../backend/src/model/component/IrCodeComponent.ts#L36) |
+| `GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 1 | [backend/src/model/component/IrCodeComponent.ts:49](../../backend/src/model/component/IrCodeComponent.ts#L49) |
+| `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/IrCodeComponent.ts:62](../../backend/src/model/component/IrCodeComponent.ts#L62) |
+
+### `irdevice` — 6 explicit + 1 inherited (10 total incl. DEV_MODE)
+
+| Method | Kind | Env | Permission | Args | Params | Callers | Source |
+|---|---|---|---|---|---|---|---|
+| `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `DeleteCode` | explicit | production | CrudPermission | 'devices', 'delete', (p) => p?.shellyID |  | 0 | [backend/src/model/component/IrDeviceComponent.ts:93](../../backend/src/model/component/IrDeviceComponent.ts#L93) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/IrDeviceComponent.ts:31](../../backend/src/model/component/IrDeviceComponent.ts#L31) |
+| `GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/IrDeviceComponent.ts:38](../../backend/src/model/component/IrDeviceComponent.ts#L38) |
+| `GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/IrDeviceComponent.ts:51](../../backend/src/model/component/IrDeviceComponent.ts#L51) |
+| `LearnCode` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/IrDeviceComponent.ts:77](../../backend/src/model/component/IrDeviceComponent.ts#L77) |
+| `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/IrDeviceComponent.ts:64](../../backend/src/model/component/IrDeviceComponent.ts#L64) |
+
+### `irlibrary` — 9 explicit + 1 inherited (13 total incl. DEV_MODE)
+
+| Method | Kind | Env | Permission | Args | Params | Callers | Source |
+|---|---|---|---|---|---|---|---|
+| `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `CatalogList` | explicit | production | CrudPermission | 'configurations', 'read' |  | 0 | [backend/src/model/component/IrLibraryComponent.ts:507](../../backend/src/model/component/IrLibraryComponent.ts#L507) |
+| `Delete` | explicit | production | CrudPermission | 'configurations', 'delete', NOT_A_CONFIGURATION_KEY |  | 1 | [backend/src/model/component/IrLibraryComponent.ts:408](../../backend/src/model/component/IrLibraryComponent.ts#L408) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/IrLibraryComponent.ts:274](../../backend/src/model/component/IrLibraryComponent.ts#L274) |
+| `ImportCatalog` | explicit | production | CrudPermission | 'configurations', 'create' |  | 0 | [backend/src/model/component/IrLibraryComponent.ts:527](../../backend/src/model/component/IrLibraryComponent.ts#L527) |
+| `ImportFile` | explicit | production | CrudPermission | 'configurations', 'create' |  | 0 | [backend/src/model/component/IrLibraryComponent.ts:441](../../backend/src/model/component/IrLibraryComponent.ts#L441) |
+| `List` | explicit | production | CrudPermission | 'configurations', 'read' |  | 0 | [backend/src/model/component/IrLibraryComponent.ts:281](../../backend/src/model/component/IrLibraryComponent.ts#L281) |
+| `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `PushToDevice` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/IrLibraryComponent.ts:586](../../backend/src/model/component/IrLibraryComponent.ts#L586) |
+| `Save` | explicit | production | CrudPermission | 'configurations', 'create' |  | 0 | [backend/src/model/component/IrLibraryComponent.ts:317](../../backend/src/model/component/IrLibraryComponent.ts#L317) |
+| `Update` | explicit | production | CrudPermission | 'configurations', 'update', NOT_A_CONFIGURATION_KEY |  | 0 | [backend/src/model/component/IrLibraryComponent.ts:355](../../backend/src/model/component/IrLibraryComponent.ts#L355) |
+
+### `job` — 6 explicit + 1 inherited (10 total incl. DEV_MODE)
+
+| Method | Kind | Env | Permission | Args | Params | Callers | Source |
+|---|---|---|---|---|---|---|---|
+| `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `Cancel` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/JobComponent.ts:201](../../backend/src/model/component/JobComponent.ts#L201) |
+| `Capabilities` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/JobComponent.ts:189](../../backend/src/model/component/JobComponent.ts#L189) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/JobComponent.ts:46](../../backend/src/model/component/JobComponent.ts#L46) |
+| `Get` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/JobComponent.ts:70](../../backend/src/model/component/JobComponent.ts#L70) |
+| `ListActive` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/JobComponent.ts:53](../../backend/src/model/component/JobComponent.ts#L53) |
+| `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `Resume` | explicit | production | CheckPermissions | canViewAuthz |  | 0 | [backend/src/model/component/JobComponent.ts:225](../../backend/src/model/component/JobComponent.ts#L225) |
 
 ### `kind` — 6 explicit + 1 inherited (10 total incl. DEV_MODE)
 
@@ -1269,13 +1454,13 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Create` | explicit | production | CrudPermission | 'devices', 'update' |  | 0 | [backend/src/model/component/KindComponent.ts:104](../../backend/src/model/component/KindComponent.ts#L104) |
-| `Delete` | explicit | production | CrudPermission | 'devices', 'update' |  | 0 | [backend/src/model/component/KindComponent.ts:144](../../backend/src/model/component/KindComponent.ts#L144) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/KindComponent.ts:73](../../backend/src/model/component/KindComponent.ts#L73) |
-| `Get` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/KindComponent.ts:92](../../backend/src/model/component/KindComponent.ts#L92) |
-| `List` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/KindComponent.ts:80](../../backend/src/model/component/KindComponent.ts#L80) |
+| `Create` | explicit | production | CrudPermission | 'devices', 'update' |  | 0 | [backend/src/model/component/KindComponent.ts:109](../../backend/src/model/component/KindComponent.ts#L109) |
+| `Delete` | explicit | production | CrudPermission | 'devices', 'update', NOT_A_DEVICE_ID |  | 0 | [backend/src/model/component/KindComponent.ts:150](../../backend/src/model/component/KindComponent.ts#L150) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/KindComponent.ts:77](../../backend/src/model/component/KindComponent.ts#L77) |
+| `Get` | explicit | production | CrudPermission | 'devices', 'read', NOT_A_DEVICE_ID |  | 0 | [backend/src/model/component/KindComponent.ts:96](../../backend/src/model/component/KindComponent.ts#L96) |
+| `List` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/KindComponent.ts:84](../../backend/src/model/component/KindComponent.ts#L84) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Update` | explicit | production | CrudPermission | 'devices', 'update' |  | 0 | [backend/src/model/component/KindComponent.ts:126](../../backend/src/model/component/KindComponent.ts#L126) |
+| `Update` | explicit | production | CrudPermission | 'devices', 'update', NOT_A_DEVICE_ID |  | 0 | [backend/src/model/component/KindComponent.ts:131](../../backend/src/model/component/KindComponent.ts#L131) |
 
 ### `knx` — 7 explicit + 1 inherited (11 total incl. DEV_MODE)
 
@@ -1346,7 +1531,7 @@ Regenerate with `cd backend && npm run generate`.
 | `GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/LightComponent.ts:112](../../backend/src/model/component/LightComponent.ts#L112) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `ResetCounters` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/LightComponent.ts:164](../../backend/src/model/component/LightComponent.ts#L164) |
-| `Set` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/LightComponent.ts:47](../../backend/src/model/component/LightComponent.ts#L47) |
+| `Set` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 1 | [backend/src/model/component/LightComponent.ts:47](../../backend/src/model/component/LightComponent.ts#L47) |
 | `SetAll` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/LightComponent.ts:177](../../backend/src/model/component/LightComponent.ts#L177) |
 | `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/LightComponent.ts:73](../../backend/src/model/component/LightComponent.ts#L73) |
 | `Toggle` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/LightComponent.ts:60](../../backend/src/model/component/LightComponent.ts#L60) |
@@ -1366,34 +1551,40 @@ Regenerate with `cd backend && npm run generate`.
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/LnmComponent.ts:53](../../backend/src/model/component/LnmComponent.ts#L53) |
 
-### `location` — 20 explicit + 1 inherited (24 total incl. DEV_MODE)
+### `location` — 26 explicit + 1 inherited (30 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
 |---|---|---|---|---|---|---|---|
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `BackfillGeo` | explicit | production | CrudPermission | 'locations', 'update' |  | 0 | [backend/src/model/component/LocationComponent.ts:664](../../backend/src/model/component/LocationComponent.ts#L664) |
-| `Children` | explicit | production | CrudPermission | 'locations', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/LocationComponent.ts:555](../../backend/src/model/component/LocationComponent.ts#L555) |
-| `Create` | explicit | production | CrudPermission | 'locations', 'create' |  | 0 | [backend/src/model/component/LocationComponent.ts:258](../../backend/src/model/component/LocationComponent.ts#L258) |
-| `Delete` | explicit | production | CrudPermission | 'locations', 'delete', (p) => p?.id |  | 1 | [backend/src/model/component/LocationComponent.ts:379](../../backend/src/model/component/LocationComponent.ts#L379) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/LocationComponent.ts:233](../../backend/src/model/component/LocationComponent.ts#L233) |
-| `EventReplay` | explicit | production | CrudPermission | 'locations', 'read' |  | 0 | [backend/src/model/component/LocationComponent.ts:736](../../backend/src/model/component/LocationComponent.ts#L736) |
-| `FloorPlan.CreateUploadTicket` | explicit | production | CrudPermission | 'locations', 'update', (p) => p?.locationId |  | 0 | [backend/src/model/component/LocationComponent.ts:240](../../backend/src/model/component/LocationComponent.ts#L240) |
-| `Get` | explicit | production | CrudPermission | 'locations', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/LocationComponent.ts:408](../../backend/src/model/component/LocationComponent.ts#L408) |
-| `List` | explicit | production | CrudPermission | 'locations', 'read' |  | 0 | [backend/src/model/component/LocationComponent.ts:478](../../backend/src/model/component/LocationComponent.ts#L478) |
-| `ListAssignments` | explicit | production | CrudPermission | 'locations', 'read' |  | 0 | [backend/src/model/component/LocationComponent.ts:905](../../backend/src/model/component/LocationComponent.ts#L905) |
-| `ListCountries` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/LocationComponent.ts:635](../../backend/src/model/component/LocationComponent.ts#L635) |
-| `ListKinds` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/LocationComponent.ts:608](../../backend/src/model/component/LocationComponent.ts#L608) |
+| `BackfillGeo` | explicit | production | CrudPermission | 'locations', 'update' |  | 0 | [backend/src/model/component/LocationComponent.ts:890](../../backend/src/model/component/LocationComponent.ts#L890) |
+| `BackfillGeography` | explicit | production | CrudPermission | 'locations', 'create' |  | 0 | [backend/src/model/component/LocationComponent.ts:907](../../backend/src/model/component/LocationComponent.ts#L907) |
+| `Children` | explicit | production | CrudPermission | 'locations', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/LocationComponent.ts:724](../../backend/src/model/component/LocationComponent.ts#L724) |
+| `ConfigureDeviceAssignment` | explicit | production | CrudPermission | 'locations', 'update', (p) => p?.locationId |  | 0 | [backend/src/model/component/LocationComponent.ts:1114](../../backend/src/model/component/LocationComponent.ts#L1114) |
+| `Create` | explicit | production | CrudPermission | 'locations', 'create' |  | 0 | [backend/src/model/component/LocationComponent.ts:301](../../backend/src/model/component/LocationComponent.ts#L301) |
+| `Delete` | explicit | production | CrudPermission | 'locations', 'delete', (p) => p?.id |  | 1 | [backend/src/model/component/LocationComponent.ts:438](../../backend/src/model/component/LocationComponent.ts#L438) |
+| `DeleteSubtree` | explicit | production | CrudPermission | 'locations', 'delete', (p) => p?.id |  | 0 | [backend/src/model/component/LocationComponent.ts:467](../../backend/src/model/component/LocationComponent.ts#L467) |
+| `Descendants` | explicit | production | CrudPermission | 'locations', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/LocationComponent.ts:752](../../backend/src/model/component/LocationComponent.ts#L752) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/LocationComponent.ts:276](../../backend/src/model/component/LocationComponent.ts#L276) |
+| `EventReplay` | explicit | production | CrudPermission | 'locations', 'read' |  | 0 | [backend/src/model/component/LocationComponent.ts:983](../../backend/src/model/component/LocationComponent.ts#L983) |
+| `FloorPlan.CreateUploadTicket` | explicit | production | CrudPermission | 'locations', 'update', (p) => p?.locationId |  | 0 | [backend/src/model/component/LocationComponent.ts:283](../../backend/src/model/component/LocationComponent.ts#L283) |
+| `Get` | explicit | production | CrudPermission | 'locations', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/LocationComponent.ts:559](../../backend/src/model/component/LocationComponent.ts#L559) |
+| `List` | explicit | production | CrudPermission | 'locations', 'read' |  | 0 | [backend/src/model/component/LocationComponent.ts:629](../../backend/src/model/component/LocationComponent.ts#L629) |
+| `ListAssignments` | explicit | production | CrudPermission | 'locations', 'read' |  | 0 | [backend/src/model/component/LocationComponent.ts:1223](../../backend/src/model/component/LocationComponent.ts#L1223) |
+| `ListCountries` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/LocationComponent.ts:861](../../backend/src/model/component/LocationComponent.ts#L861) |
+| `ListDeviceAssignmentProfiles` | explicit | production | CrudPermission | 'locations', 'read' |  | 0 | [backend/src/model/component/LocationComponent.ts:1272](../../backend/src/model/component/LocationComponent.ts#L1272) |
+| `ListKinds` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/LocationComponent.ts:823](../../backend/src/model/component/LocationComponent.ts#L823) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `ListRegions` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/LocationComponent.ts:647](../../backend/src/model/component/LocationComponent.ts#L647) |
-| `Path` | explicit | production | CrudPermission | 'locations', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/LocationComponent.ts:579](../../backend/src/model/component/LocationComponent.ts#L579) |
-| `RemoveAssignment` | explicit | production | CrudPermission | 'locations', 'update' |  | 1 | [backend/src/model/component/LocationComponent.ts:867](../../backend/src/model/component/LocationComponent.ts#L867) |
-| `SearchPlaces` | explicit | production | CrudPermission | 'locations', 'read' |  | 0 | [backend/src/model/component/LocationComponent.ts:619](../../backend/src/model/component/LocationComponent.ts#L619) |
-| `SetAssignment` | explicit | production | CrudPermission | 'locations', 'update', (p) => p?.locationId |  | 1 | [backend/src/model/component/LocationComponent.ts:767](../../backend/src/model/component/LocationComponent.ts#L767) |
-| `SetAssignments` | explicit | production | CrudPermission | 'locations', 'update', (p) => p?.locationId |  | 1 | [backend/src/model/component/LocationComponent.ts:815](../../backend/src/model/component/LocationComponent.ts#L815) |
-| `SignalHeatmap` | explicit | production | CrudPermission | 'locations', 'read' |  | 0 | [backend/src/model/component/LocationComponent.ts:681](../../backend/src/model/component/LocationComponent.ts#L681) |
-| `Update` | explicit | production | CrudPermission | 'locations', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/LocationComponent.ts:310](../../backend/src/model/component/LocationComponent.ts#L310) |
+| `ListRegions` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/LocationComponent.ts:873](../../backend/src/model/component/LocationComponent.ts#L873) |
+| `Path` | explicit | production | CrudPermission | 'locations', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/LocationComponent.ts:788](../../backend/src/model/component/LocationComponent.ts#L788) |
+| `RemoveAssignment` | explicit | production | CrudPermission | 'locations', 'update' |  | 1 | [backend/src/model/component/LocationComponent.ts:1177](../../backend/src/model/component/LocationComponent.ts#L1177) |
+| `ReverseGeocode` | explicit | production | CrudPermission | 'locations', 'read' |  | 0 | [backend/src/model/component/LocationComponent.ts:850](../../backend/src/model/component/LocationComponent.ts#L850) |
+| `SearchPlaces` | explicit | production | CrudPermission | 'locations', 'read' |  | 0 | [backend/src/model/component/LocationComponent.ts:834](../../backend/src/model/component/LocationComponent.ts#L834) |
+| `SetAssignment` | explicit | production | CrudPermission | 'locations', 'update', (p) => p?.locationId |  | 1 | [backend/src/model/component/LocationComponent.ts:1014](../../backend/src/model/component/LocationComponent.ts#L1014) |
+| `SetAssignments` | explicit | production | CrudPermission | 'locations', 'update', (p) => p?.locationId |  | 1 | [backend/src/model/component/LocationComponent.ts:1062](../../backend/src/model/component/LocationComponent.ts#L1062) |
+| `SignalHeatmap` | explicit | production | CrudPermission | 'locations', 'read' |  | 0 | [backend/src/model/component/LocationComponent.ts:928](../../backend/src/model/component/LocationComponent.ts#L928) |
+| `Update` | explicit | production | CrudPermission | 'locations', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/LocationComponent.ts:358](../../backend/src/model/component/LocationComponent.ts#L358) |
 
 ### `login_text` — 5 explicit + 1 inherited (9 total incl. DEV_MODE)
 
@@ -1458,6 +1649,21 @@ Regenerate with `cd backend && npm run generate`.
 | `WriteHoldingRegisters` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 1 | [backend/src/model/component/MbRtuClientComponent.ts:156](../../backend/src/model/component/MbRtuClientComponent.ts#L156) |
 | `WriteSingleRegister` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 1 | [backend/src/model/component/MbRtuClientComponent.ts:174](../../backend/src/model/component/MbRtuClientComponent.ts#L174) |
 
+### `mcp_approval` — 3 explicit + 4 inherited (10 total incl. DEV_MODE)
+
+| Method | Kind | Env | Permission | Args | Params | Callers | Source |
+|---|---|---|---|---|---|---|---|
+| `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/McpApprovalComponent.ts:93](../../backend/src/model/component/McpApprovalComponent.ts#L93) |
+| `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `getstatus` | inherited-getstatus | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `List` | explicit | production | CheckPermissions | canList |  | 0 | [backend/src/model/component/McpApprovalComponent.ts:100](../../backend/src/model/component/McpApprovalComponent.ts#L100) |
+| `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `Revoke` | explicit | production | CheckPermissions | canReachOwnApprovals |  | 0 | [backend/src/model/component/McpApprovalComponent.ts:119](../../backend/src/model/component/McpApprovalComponent.ts#L119) |
+| `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+
 ### `mdns` — 1 explicit + 4 inherited (8 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
@@ -1471,45 +1677,46 @@ Regenerate with `cd backend && npm run generate`.
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 
-### `media` — 31 explicit + 1 inherited (35 total incl. DEV_MODE)
+### `media` — 32 explicit + 1 inherited (36 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
 |---|---|---|---|---|---|---|---|
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Background.CreateUploadTicket` | explicit | production | CheckPermissions | canManageSharedMediaAssets |  | 0 | [backend/src/model/component/MediaComponent.ts:123](../../backend/src/model/component/MediaComponent.ts#L123) |
-| `Background.Delete` | explicit | production | CheckPermissions | canManageSharedMediaAssets |  | 0 | [backend/src/model/component/MediaComponent.ts:139](../../backend/src/model/component/MediaComponent.ts#L139) |
-| `Background.List` | explicit | production | CheckPermissions | canViewSharedMediaAssets |  | 0 | [backend/src/model/component/MediaComponent.ts:111](../../backend/src/model/component/MediaComponent.ts#L111) |
-| `DecreaseVolume` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:239](../../backend/src/model/component/MediaComponent.ts#L239) |
-| `Delete` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 1 | [backend/src/model/component/MediaComponent.ts:477](../../backend/src/model/component/MediaComponent.ts#L477) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/MediaComponent.ts:104](../../backend/src/model/component/MediaComponent.ts#L104) |
-| `GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:187](../../backend/src/model/component/MediaComponent.ts#L187) |
-| `GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:200](../../backend/src/model/component/MediaComponent.ts#L200) |
-| `IncreaseVolume` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:226](../../backend/src/model/component/MediaComponent.ts#L226) |
-| `List` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:505](../../backend/src/model/component/MediaComponent.ts#L505) |
-| `ListAudioAlbums` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:330](../../backend/src/model/component/MediaComponent.ts#L330) |
-| `ListAudioArtists` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:343](../../backend/src/model/component/MediaComponent.ts#L343) |
+| `Background.CreateUploadTicket` | explicit | production | CheckPermissions | canManageSharedMediaAssets |  | 0 | [backend/src/model/component/MediaComponent.ts:128](../../backend/src/model/component/MediaComponent.ts#L128) |
+| `Background.Delete` | explicit | production | CheckPermissions | canManageSharedMediaAssets |  | 0 | [backend/src/model/component/MediaComponent.ts:144](../../backend/src/model/component/MediaComponent.ts#L144) |
+| `Background.List` | explicit | production | CheckPermissions | canViewSharedMediaAssets |  | 0 | [backend/src/model/component/MediaComponent.ts:116](../../backend/src/model/component/MediaComponent.ts#L116) |
+| `DecreaseVolume` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:265](../../backend/src/model/component/MediaComponent.ts#L265) |
+| `Delete` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 1 | [backend/src/model/component/MediaComponent.ts:503](../../backend/src/model/component/MediaComponent.ts#L503) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/MediaComponent.ts:109](../../backend/src/model/component/MediaComponent.ts#L109) |
+| `GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:213](../../backend/src/model/component/MediaComponent.ts#L213) |
+| `GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:226](../../backend/src/model/component/MediaComponent.ts#L226) |
+| `IncreaseVolume` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:252](../../backend/src/model/component/MediaComponent.ts#L252) |
+| `List` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:531](../../backend/src/model/component/MediaComponent.ts#L531) |
+| `ListAudioAlbums` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:356](../../backend/src/model/component/MediaComponent.ts#L356) |
+| `ListAudioArtists` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:369](../../backend/src/model/component/MediaComponent.ts#L369) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Player.Next` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:304](../../backend/src/model/component/MediaComponent.ts#L304) |
-| `Player.Pause` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:265](../../backend/src/model/component/MediaComponent.ts#L265) |
-| `Player.Play` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:252](../../backend/src/model/component/MediaComponent.ts#L252) |
-| `Player.PlayAlert` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:412](../../backend/src/model/component/MediaComponent.ts#L412) |
-| `Player.PlayAudioClip` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:464](../../backend/src/model/component/MediaComponent.ts#L464) |
-| `Player.PlayOrPause` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:278](../../backend/src/model/component/MediaComponent.ts#L278) |
-| `Player.PlayRingtone` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:451](../../backend/src/model/component/MediaComponent.ts#L451) |
-| `Player.Previous` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:317](../../backend/src/model/component/MediaComponent.ts#L317) |
-| `Player.Stop` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:291](../../backend/src/model/component/MediaComponent.ts#L291) |
-| `PutMedia` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:395](../../backend/src/model/component/MediaComponent.ts#L395) |
-| `Radio.ListFavourites` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:438](../../backend/src/model/component/MediaComponent.ts#L438) |
-| `Radio.PlayFavourite` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:425](../../backend/src/model/component/MediaComponent.ts#L425) |
-| `Radio.PlayNextFavourite` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:369](../../backend/src/model/component/MediaComponent.ts#L369) |
-| `Radio.PlayPreviousFavourite` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:382](../../backend/src/model/component/MediaComponent.ts#L382) |
-| `Radio.Stop` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:356](../../backend/src/model/component/MediaComponent.ts#L356) |
-| `Reload` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 1 | [backend/src/model/component/MediaComponent.ts:490](../../backend/src/model/component/MediaComponent.ts#L490) |
-| `ReportImage.CreateUploadTicket` | explicit | production | CheckPermissions | canManageSharedMediaAssets |  | 0 | [backend/src/model/component/MediaComponent.ts:168](../../backend/src/model/component/MediaComponent.ts#L168) |
-| `ReportImage.List` | explicit | production | CheckPermissions | canViewSharedMediaAssets |  | 0 | [backend/src/model/component/MediaComponent.ts:156](../../backend/src/model/component/MediaComponent.ts#L156) |
-| `SetVolume` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:213](../../backend/src/model/component/MediaComponent.ts#L213) |
+| `Player.Next` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:330](../../backend/src/model/component/MediaComponent.ts#L330) |
+| `Player.Pause` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:291](../../backend/src/model/component/MediaComponent.ts#L291) |
+| `Player.Play` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:278](../../backend/src/model/component/MediaComponent.ts#L278) |
+| `Player.PlayAlert` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:438](../../backend/src/model/component/MediaComponent.ts#L438) |
+| `Player.PlayAudioClip` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:490](../../backend/src/model/component/MediaComponent.ts#L490) |
+| `Player.PlayOrPause` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:304](../../backend/src/model/component/MediaComponent.ts#L304) |
+| `Player.PlayRingtone` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:477](../../backend/src/model/component/MediaComponent.ts#L477) |
+| `Player.Previous` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:343](../../backend/src/model/component/MediaComponent.ts#L343) |
+| `Player.Stop` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:317](../../backend/src/model/component/MediaComponent.ts#L317) |
+| `PutMedia` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:421](../../backend/src/model/component/MediaComponent.ts#L421) |
+| `Radio.ListFavourites` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:464](../../backend/src/model/component/MediaComponent.ts#L464) |
+| `Radio.PlayFavourite` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:451](../../backend/src/model/component/MediaComponent.ts#L451) |
+| `Radio.PlayNextFavourite` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:395](../../backend/src/model/component/MediaComponent.ts#L395) |
+| `Radio.PlayPreviousFavourite` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:408](../../backend/src/model/component/MediaComponent.ts#L408) |
+| `Radio.Stop` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:382](../../backend/src/model/component/MediaComponent.ts#L382) |
+| `Reload` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 1 | [backend/src/model/component/MediaComponent.ts:516](../../backend/src/model/component/MediaComponent.ts#L516) |
+| `ReportImage.Assign` | explicit | production | CheckPermissions | canCrossOrganizationSupport |  | 0 | [backend/src/model/component/MediaComponent.ts:173](../../backend/src/model/component/MediaComponent.ts#L173) |
+| `ReportImage.CreateUploadTicket` | explicit | production | CheckPermissions | canManageSharedMediaAssets |  | 0 | [backend/src/model/component/MediaComponent.ts:194](../../backend/src/model/component/MediaComponent.ts#L194) |
+| `ReportImage.List` | explicit | production | CheckPermissions | canViewSharedMediaAssets |  | 0 | [backend/src/model/component/MediaComponent.ts:161](../../backend/src/model/component/MediaComponent.ts#L161) |
+| `SetVolume` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/MediaComponent.ts:239](../../backend/src/model/component/MediaComponent.ts#L239) |
 
 ### `message_text` — 5 explicit + 1 inherited (9 total incl. DEV_MODE)
 
@@ -1566,69 +1773,70 @@ Regenerate with `cd backend && npm run generate`.
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 1 | [backend/src/model/component/MqttComponent.ts:29](../../backend/src/model/component/MqttComponent.ts#L29) |
 
-### `notification` — 55 explicit + 1 inherited (59 total incl. DEV_MODE)
+### `notification` — 56 explicit + 1 inherited (60 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
 |---|---|---|---|---|---|---|---|
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Bundle.ApplyImport` | explicit | production | CrudPermission | 'notifications', 'update' |  | 0 | [backend/src/model/component/NotificationComponent.ts:219](../../backend/src/model/component/NotificationComponent.ts#L219) |
-| `Bundle.Export` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:225](../../backend/src/model/component/NotificationComponent.ts#L225) |
-| `Bundle.ExportAlertmanager` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:249](../../backend/src/model/component/NotificationComponent.ts#L249) |
-| `Bundle.ExportGrafana` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:243](../../backend/src/model/component/NotificationComponent.ts#L243) |
-| `Bundle.ImportAlertmanager` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:237](../../backend/src/model/component/NotificationComponent.ts#L237) |
-| `Bundle.ImportGrafana` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:231](../../backend/src/model/component/NotificationComponent.ts#L231) |
-| `Bundle.PlanImport` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:213](../../backend/src/model/component/NotificationComponent.ts#L213) |
-| `Bundle.Validate` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:207](../../backend/src/model/component/NotificationComponent.ts#L207) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/NotificationComponent.ts:53](../../backend/src/model/component/NotificationComponent.ts#L53) |
-| `Destination.AddMembers` | explicit | production | CrudPermission | 'notifications', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:165](../../backend/src/model/component/NotificationComponent.ts#L165) |
-| `Destination.Create` | explicit | production | CrudPermission | 'notifications', 'create' |  | 0 | [backend/src/model/component/NotificationComponent.ts:134](../../backend/src/model/component/NotificationComponent.ts#L134) |
-| `Destination.Delete` | explicit | production | CrudPermission | 'notifications', 'delete', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:152](../../backend/src/model/component/NotificationComponent.ts#L152) |
-| `Destination.Get` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:124](../../backend/src/model/component/NotificationComponent.ts#L124) |
-| `Destination.GetModel` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:110](../../backend/src/model/component/NotificationComponent.ts#L110) |
-| `Destination.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:117](../../backend/src/model/component/NotificationComponent.ts#L117) |
-| `Destination.ListMembers` | explicit | production | CrudPermission | 'notifications', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:158](../../backend/src/model/component/NotificationComponent.ts#L158) |
-| `Destination.RemoveMembers` | explicit | production | CrudPermission | 'notifications', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:171](../../backend/src/model/component/NotificationComponent.ts#L171) |
-| `Destination.Update` | explicit | production | CrudPermission | 'notifications', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:143](../../backend/src/model/component/NotificationComponent.ts#L143) |
-| `EmailAsset.CreateUploadTicket` | explicit | production | CheckPermissions | async (sender) => { const [canCreate, canUpdate] = await Promise.all([ canPerformComponentOperationAsync( sender, 'notifications', 'create'  |  | 0 | [backend/src/model/component/NotificationComponent.ts:397](../../backend/src/model/component/NotificationComponent.ts#L397) |
-| `EmailAsset.Delete` | explicit | production | CrudPermission | 'notifications', 'delete', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:421](../../backend/src/model/component/NotificationComponent.ts#L421) |
-| `EmailAsset.Get` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:414](../../backend/src/model/component/NotificationComponent.ts#L414) |
-| `EmailAsset.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:390](../../backend/src/model/component/NotificationComponent.ts#L390) |
-| `EmailTemplate.Create` | explicit | production | CrudPermission | 'notifications', 'create' |  | 0 | [backend/src/model/component/NotificationComponent.ts:338](../../backend/src/model/component/NotificationComponent.ts#L338) |
-| `EmailTemplate.Delete` | explicit | production | CrudPermission | 'notifications', 'delete', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:350](../../backend/src/model/component/NotificationComponent.ts#L350) |
-| `EmailTemplate.Get` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:332](../../backend/src/model/component/NotificationComponent.ts#L332) |
-| `EmailTemplate.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:326](../../backend/src/model/component/NotificationComponent.ts#L326) |
-| `EmailTemplate.Update` | explicit | production | CrudPermission | 'notifications', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:344](../../backend/src/model/component/NotificationComponent.ts#L344) |
-| `History.Get` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:186](../../backend/src/model/component/NotificationComponent.ts#L186) |
-| `History.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:179](../../backend/src/model/component/NotificationComponent.ts#L179) |
-| `History.Requeue` | explicit | production | CrudPermission | 'notifications', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:315](../../backend/src/model/component/NotificationComponent.ts#L315) |
-| `Inbox.Get` | explicit | production | CrudPermission | 'notifications', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:83](../../backend/src/model/component/NotificationComponent.ts#L83) |
-| `Inbox.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:76](../../backend/src/model/component/NotificationComponent.ts#L76) |
-| `Inbox.MarkAllRead` | explicit | production | CrudPermission | 'notifications', 'update' |  | 0 | [backend/src/model/component/NotificationComponent.ts:102](../../backend/src/model/component/NotificationComponent.ts#L102) |
-| `Inbox.MarkRead` | explicit | production | CrudPermission | 'notifications', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:90](../../backend/src/model/component/NotificationComponent.ts#L90) |
-| `Inbox.MarkUnread` | explicit | production | CrudPermission | 'notifications', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:96](../../backend/src/model/component/NotificationComponent.ts#L96) |
+| `Bundle.ApplyImport` | explicit | production | CrudPermission | 'notifications', 'update' |  | 0 | [backend/src/model/component/NotificationComponent.ts:307](../../backend/src/model/component/NotificationComponent.ts#L307) |
+| `Bundle.Export` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:313](../../backend/src/model/component/NotificationComponent.ts#L313) |
+| `Bundle.ExportAlertmanager` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:337](../../backend/src/model/component/NotificationComponent.ts#L337) |
+| `Bundle.ExportGrafana` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:331](../../backend/src/model/component/NotificationComponent.ts#L331) |
+| `Bundle.ImportAlertmanager` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:325](../../backend/src/model/component/NotificationComponent.ts#L325) |
+| `Bundle.ImportGrafana` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:319](../../backend/src/model/component/NotificationComponent.ts#L319) |
+| `Bundle.PlanImport` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:301](../../backend/src/model/component/NotificationComponent.ts#L301) |
+| `Bundle.Validate` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:295](../../backend/src/model/component/NotificationComponent.ts#L295) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/NotificationComponent.ts:110](../../backend/src/model/component/NotificationComponent.ts#L110) |
+| `Destination.AddMembers` | explicit | production | CrudPermission | 'notifications', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:245](../../backend/src/model/component/NotificationComponent.ts#L245) |
+| `Destination.Create` | explicit | production | CrudPermission | 'notifications', 'create' |  | 0 | [backend/src/model/component/NotificationComponent.ts:214](../../backend/src/model/component/NotificationComponent.ts#L214) |
+| `Destination.Delete` | explicit | production | CrudPermission | 'notifications', 'delete', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:232](../../backend/src/model/component/NotificationComponent.ts#L232) |
+| `Destination.Get` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:204](../../backend/src/model/component/NotificationComponent.ts#L204) |
+| `Destination.GetModel` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:190](../../backend/src/model/component/NotificationComponent.ts#L190) |
+| `Destination.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:197](../../backend/src/model/component/NotificationComponent.ts#L197) |
+| `Destination.ListMembers` | explicit | production | CrudPermission | 'notifications', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:238](../../backend/src/model/component/NotificationComponent.ts#L238) |
+| `Destination.RemoveMembers` | explicit | production | CrudPermission | 'notifications', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:251](../../backend/src/model/component/NotificationComponent.ts#L251) |
+| `Destination.Update` | explicit | production | CrudPermission | 'notifications', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:223](../../backend/src/model/component/NotificationComponent.ts#L223) |
+| `EmailAsset.CreateUploadTicket` | explicit | production | CheckPermissions | async (sender) => { const [canCreate, canUpdate] = await Promise.all([ canPerformComponentOperationAsync( sender, 'notifications', 'create'  |  | 0 | [backend/src/model/component/NotificationComponent.ts:520](../../backend/src/model/component/NotificationComponent.ts#L520) |
+| `EmailAsset.Delete` | explicit | production | CrudPermission | 'notifications', 'delete', NOT_A_DESTINATION_GROUP_ID |  | 0 | [backend/src/model/component/NotificationComponent.ts:549](../../backend/src/model/component/NotificationComponent.ts#L549) |
+| `EmailAsset.Get` | explicit | production | CrudPermission | 'notifications', 'read', NOT_A_DESTINATION_GROUP_ID |  | 0 | [backend/src/model/component/NotificationComponent.ts:537](../../backend/src/model/component/NotificationComponent.ts#L537) |
+| `EmailAsset.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:513](../../backend/src/model/component/NotificationComponent.ts#L513) |
+| `EmailTemplate.Create` | explicit | production | CrudPermission | 'notifications', 'create' |  | 0 | [backend/src/model/component/NotificationComponent.ts:436](../../backend/src/model/component/NotificationComponent.ts#L436) |
+| `EmailTemplate.Delete` | explicit | production | CrudPermission | 'notifications', 'delete', NOT_A_DESTINATION_GROUP_ID |  | 0 | [backend/src/model/component/NotificationComponent.ts:453](../../backend/src/model/component/NotificationComponent.ts#L453) |
+| `EmailTemplate.Get` | explicit | production | CrudPermission | 'notifications', 'read', NOT_A_DESTINATION_GROUP_ID |  | 0 | [backend/src/model/component/NotificationComponent.ts:425](../../backend/src/model/component/NotificationComponent.ts#L425) |
+| `EmailTemplate.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:419](../../backend/src/model/component/NotificationComponent.ts#L419) |
+| `EmailTemplate.Update` | explicit | production | CrudPermission | 'notifications', 'update', NOT_A_DESTINATION_GROUP_ID |  | 0 | [backend/src/model/component/NotificationComponent.ts:442](../../backend/src/model/component/NotificationComponent.ts#L442) |
+| `History.Get` | explicit | production | CrudPermission | 'notifications', 'read', NOT_A_DESTINATION_GROUP_ID |  | 0 | [backend/src/model/component/NotificationComponent.ts:267](../../backend/src/model/component/NotificationComponent.ts#L267) |
+| `History.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:259](../../backend/src/model/component/NotificationComponent.ts#L259) |
+| `History.Requeue` | explicit | production | CrudPermission | 'notifications', 'update', NOT_A_DESTINATION_GROUP_ID |  | 0 | [backend/src/model/component/NotificationComponent.ts:403](../../backend/src/model/component/NotificationComponent.ts#L403) |
+| `Inbox.Get` | explicit | production | CrudPermission | 'notifications', 'read', NOT_A_DESTINATION_GROUP_ID |  | 0 | [backend/src/model/component/NotificationComponent.ts:140](../../backend/src/model/component/NotificationComponent.ts#L140) |
+| `Inbox.GetMany` | explicit | production | CrudPermission | 'notifications', 'read', NOT_A_DESTINATION_GROUP_ID |  | 0 | [backend/src/model/component/NotificationComponent.ts:151](../../backend/src/model/component/NotificationComponent.ts#L151) |
+| `Inbox.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:133](../../backend/src/model/component/NotificationComponent.ts#L133) |
+| `Inbox.MarkAllRead` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:182](../../backend/src/model/component/NotificationComponent.ts#L182) |
+| `Inbox.MarkRead` | explicit | production | CrudPermission | 'notifications', 'read', NOT_A_DESTINATION_GROUP_ID |  | 0 | [backend/src/model/component/NotificationComponent.ts:162](../../backend/src/model/component/NotificationComponent.ts#L162) |
+| `Inbox.MarkUnread` | explicit | production | CrudPermission | 'notifications', 'read', NOT_A_DESTINATION_GROUP_ID |  | 0 | [backend/src/model/component/NotificationComponent.ts:172](../../backend/src/model/component/NotificationComponent.ts#L172) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `ListTokens` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 0 | [backend/src/model/component/NotificationComponent.ts:69](../../backend/src/model/component/NotificationComponent.ts#L69) |
-| `OAuth.Start` | explicit | production | CrudPermission | 'notifications', 'update', (p) => p?.endpointId |  | 0 | [backend/src/model/component/NotificationComponent.ts:427](../../backend/src/model/component/NotificationComponent.ts#L427) |
-| `OnCall.Delete` | explicit | production | CrudPermission | 'notifications', 'delete' |  | 0 | [backend/src/model/component/NotificationComponent.ts:279](../../backend/src/model/component/NotificationComponent.ts#L279) |
-| `OnCall.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:267](../../backend/src/model/component/NotificationComponent.ts#L267) |
-| `OnCall.Resolve` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:285](../../backend/src/model/component/NotificationComponent.ts#L285) |
-| `OnCall.Set` | explicit | production | CrudPermission | 'notifications', 'update' |  | 0 | [backend/src/model/component/NotificationComponent.ts:273](../../backend/src/model/component/NotificationComponent.ts#L273) |
-| `Preference.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:255](../../backend/src/model/component/NotificationComponent.ts#L255) |
-| `Preference.Set` | explicit | production | CrudPermission | 'notifications', 'update' |  | 0 | [backend/src/model/component/NotificationComponent.ts:261](../../backend/src/model/component/NotificationComponent.ts#L261) |
-| `RenderEmailPreview` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:200](../../backend/src/model/component/NotificationComponent.ts#L200) |
-| `RenderTemplate` | explicit | production | CrudPermission | 'notifications', 'read' |  | 1 | [backend/src/model/component/NotificationComponent.ts:193](../../backend/src/model/component/NotificationComponent.ts#L193) |
-| `Routing.Delete` | explicit | production | CrudPermission | 'notifications', 'delete' |  | 0 | [backend/src/model/component/NotificationComponent.ts:303](../../backend/src/model/component/NotificationComponent.ts#L303) |
-| `Routing.Evaluate` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:309](../../backend/src/model/component/NotificationComponent.ts#L309) |
-| `Routing.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:291](../../backend/src/model/component/NotificationComponent.ts#L291) |
-| `Routing.Set` | explicit | production | CrudPermission | 'notifications', 'update' |  | 0 | [backend/src/model/component/NotificationComponent.ts:297](../../backend/src/model/component/NotificationComponent.ts#L297) |
-| `Subscribe` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 0 | [backend/src/model/component/NotificationComponent.ts:60](../../backend/src/model/component/NotificationComponent.ts#L60) |
-| `Template.Create` | explicit | production | CrudPermission | 'notifications', 'create' |  | 0 | [backend/src/model/component/NotificationComponent.ts:372](../../backend/src/model/component/NotificationComponent.ts#L372) |
-| `Template.Delete` | explicit | production | CrudPermission | 'notifications', 'delete', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:384](../../backend/src/model/component/NotificationComponent.ts#L384) |
-| `Template.Get` | explicit | production | CrudPermission | 'notifications', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:365](../../backend/src/model/component/NotificationComponent.ts#L365) |
-| `Template.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:358](../../backend/src/model/component/NotificationComponent.ts#L358) |
-| `Template.Update` | explicit | production | CrudPermission | 'notifications', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/NotificationComponent.ts:378](../../backend/src/model/component/NotificationComponent.ts#L378) |
+| `ListTokens` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 0 | [backend/src/model/component/NotificationComponent.ts:126](../../backend/src/model/component/NotificationComponent.ts#L126) |
+| `OAuth.Start` | explicit | production | CrudPermission | 'integrations', 'update', (p) => p?.channelId |  | 0 | [backend/src/model/component/NotificationComponent.ts:561](../../backend/src/model/component/NotificationComponent.ts#L561) |
+| `OnCall.Delete` | explicit | production | CrudPermission | 'notifications', 'delete' |  | 0 | [backend/src/model/component/NotificationComponent.ts:367](../../backend/src/model/component/NotificationComponent.ts#L367) |
+| `OnCall.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:355](../../backend/src/model/component/NotificationComponent.ts#L355) |
+| `OnCall.Resolve` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:373](../../backend/src/model/component/NotificationComponent.ts#L373) |
+| `OnCall.Set` | explicit | production | CrudPermission | 'notifications', 'update' |  | 0 | [backend/src/model/component/NotificationComponent.ts:361](../../backend/src/model/component/NotificationComponent.ts#L361) |
+| `Preference.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:343](../../backend/src/model/component/NotificationComponent.ts#L343) |
+| `Preference.Set` | explicit | production | CrudPermission | 'notifications', 'update' |  | 0 | [backend/src/model/component/NotificationComponent.ts:349](../../backend/src/model/component/NotificationComponent.ts#L349) |
+| `RenderEmailPreview` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:287](../../backend/src/model/component/NotificationComponent.ts#L287) |
+| `RenderTemplate` | explicit | production | CrudPermission | 'notifications', 'read' |  | 1 | [backend/src/model/component/NotificationComponent.ts:279](../../backend/src/model/component/NotificationComponent.ts#L279) |
+| `Routing.Delete` | explicit | production | CrudPermission | 'notifications', 'delete' |  | 0 | [backend/src/model/component/NotificationComponent.ts:391](../../backend/src/model/component/NotificationComponent.ts#L391) |
+| `Routing.Evaluate` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:397](../../backend/src/model/component/NotificationComponent.ts#L397) |
+| `Routing.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:379](../../backend/src/model/component/NotificationComponent.ts#L379) |
+| `Routing.Set` | explicit | production | CrudPermission | 'notifications', 'update' |  | 0 | [backend/src/model/component/NotificationComponent.ts:385](../../backend/src/model/component/NotificationComponent.ts#L385) |
+| `Subscribe` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 0 | [backend/src/model/component/NotificationComponent.ts:117](../../backend/src/model/component/NotificationComponent.ts#L117) |
+| `Template.Create` | explicit | production | CrudPermission | 'notifications', 'create' |  | 0 | [backend/src/model/component/NotificationComponent.ts:485](../../backend/src/model/component/NotificationComponent.ts#L485) |
+| `Template.Delete` | explicit | production | CrudPermission | 'notifications', 'delete', NOT_A_DESTINATION_GROUP_ID |  | 0 | [backend/src/model/component/NotificationComponent.ts:502](../../backend/src/model/component/NotificationComponent.ts#L502) |
+| `Template.Get` | explicit | production | CrudPermission | 'notifications', 'read', NOT_A_DESTINATION_GROUP_ID |  | 0 | [backend/src/model/component/NotificationComponent.ts:473](../../backend/src/model/component/NotificationComponent.ts#L473) |
+| `Template.List` | explicit | production | CrudPermission | 'notifications', 'read' |  | 0 | [backend/src/model/component/NotificationComponent.ts:466](../../backend/src/model/component/NotificationComponent.ts#L466) |
+| `Template.Update` | explicit | production | CrudPermission | 'notifications', 'update', NOT_A_DESTINATION_GROUP_ID |  | 0 | [backend/src/model/component/NotificationComponent.ts:491](../../backend/src/model/component/NotificationComponent.ts#L491) |
 
 ### `notification_policy` — 4 explicit + 1 inherited (8 total incl. DEV_MODE)
 
@@ -1657,6 +1865,46 @@ Regenerate with `cd backend && npm run generate`.
 | `Set` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/ObjectComponent.ts:66](../../backend/src/model/component/ObjectComponent.ts#L66) |
 | `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/ObjectComponent.ts:53](../../backend/src/model/component/ObjectComponent.ts#L53) |
 
+### `operations` — 31 explicit + 1 inherited (35 total incl. DEV_MODE)
+
+| Method | Kind | Env | Permission | Args | Params | Callers | Source |
+|---|---|---|---|---|---|---|---|
+| `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `DeleteItaliaPoolRegisterEntry` | explicit | production | CrudPermission | 'locations', 'update', (params) => params?.siteId |  | 0 | [backend/src/model/component/OperationsComponent.ts:978](../../backend/src/model/component/OperationsComponent.ts#L978) |
+| `DeletePolicy` | explicit | production | CrudPermission | 'organizations', 'update' |  | 1 | [backend/src/model/component/OperationsComponent.ts:1106](../../backend/src/model/component/OperationsComponent.ts#L1106) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/OperationsComponent.ts:249](../../backend/src/model/component/OperationsComponent.ts#L249) |
+| `GetColdChainRecordVerdict` | explicit | production | CrudPermission | 'organizations', 'read' |  | 0 | [backend/src/model/component/OperationsComponent.ts:356](../../backend/src/model/component/OperationsComponent.ts#L356) |
+| `GetIrrigationVerdict` | explicit | production | CrudPermission | 'organizations', 'read' |  | 0 | [backend/src/model/component/OperationsComponent.ts:414](../../backend/src/model/component/OperationsComponent.ts#L414) |
+| `GetItaliaBreakerTripVerdict` | explicit | production | CrudPermission | 'organizations', 'read' |  | 0 | [backend/src/model/component/OperationsComponent.ts:734](../../backend/src/model/component/OperationsComponent.ts#L734) |
+| `GetItaliaHotWaterVerdict` | explicit | production | CrudPermission | 'organizations', 'read' |  | 0 | [backend/src/model/component/OperationsComponent.ts:497](../../backend/src/model/component/OperationsComponent.ts#L497) |
+| `GetItaliaNightFlowVerdicts` | explicit | production | CrudPermission | 'organizations', 'read' |  | 0 | [backend/src/model/component/OperationsComponent.ts:646](../../backend/src/model/component/OperationsComponent.ts#L646) |
+| `GetItaliaPitchVerdict` | explicit | production | CrudPermission | 'organizations', 'read' |  | 0 | [backend/src/model/component/OperationsComponent.ts:676](../../backend/src/model/component/OperationsComponent.ts#L676) |
+| `GetItaliaPoolRegister` | explicit | production | CrudPermission | 'organizations', 'read' |  | 0 | [backend/src/model/component/OperationsComponent.ts:541](../../backend/src/model/component/OperationsComponent.ts#L541) |
+| `GetItaliaReopeningFlushVerdict` | explicit | production | CrudPermission | 'organizations', 'read' |  | 0 | [backend/src/model/component/OperationsComponent.ts:604](../../backend/src/model/component/OperationsComponent.ts#L604) |
+| `GetItaliaSitePowerVerdict` | explicit | production | CrudPermission | 'organizations', 'read' |  | 0 | [backend/src/model/component/OperationsComponent.ts:705](../../backend/src/model/component/OperationsComponent.ts#L705) |
+| `GetParkingOperationalVerdict` | explicit | production | CrudPermission | 'organizations', 'read' |  | 0 | [backend/src/model/component/OperationsComponent.ts:378](../../backend/src/model/component/OperationsComponent.ts#L378) |
+| `GetPolicies` | explicit | production | CrudPermission | 'organizations', 'read' |  | 0 | [backend/src/model/component/OperationsComponent.ts:256](../../backend/src/model/component/OperationsComponent.ts#L256) |
+| `GetPolicyRegistry` | explicit | production | CrudPermission | 'organizations', 'read' |  | 0 | [backend/src/model/component/OperationsComponent.ts:271](../../backend/src/model/component/OperationsComponent.ts#L271) |
+| `GetPolicySelectorCatalog` | explicit | production | CrudPermission | 'organizations', 'read' |  | 0 | [backend/src/model/component/OperationsComponent.ts:286](../../backend/src/model/component/OperationsComponent.ts#L286) |
+| `GetPvHealthVerdict` | explicit | production | CrudPermission | 'organizations', 'read' |  | 0 | [backend/src/model/component/OperationsComponent.ts:463](../../backend/src/model/component/OperationsComponent.ts#L463) |
+| `GetRefrigerationPeerHealth` | explicit | production | CrudPermission | 'organizations', 'read' |  | 0 | [backend/src/model/component/OperationsComponent.ts:301](../../backend/src/model/component/OperationsComponent.ts#L301) |
+| `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `SetColdChainRecordPolicy` | explicit | production | CrudPermission | 'organizations', 'update' |  | 0 | [backend/src/model/component/OperationsComponent.ts:784](../../backend/src/model/component/OperationsComponent.ts#L784) |
+| `SetIrrigationPolicy` | explicit | production | CrudPermission | 'organizations', 'update' |  | 0 | [backend/src/model/component/OperationsComponent.ts:841](../../backend/src/model/component/OperationsComponent.ts#L841) |
+| `SetItaliaBreakerTripPolicy` | explicit | production | CrudPermission | 'organizations', 'update' |  | 0 | [backend/src/model/component/OperationsComponent.ts:1082](../../backend/src/model/component/OperationsComponent.ts#L1082) |
+| `SetItaliaHotWaterPolicy` | explicit | production | CrudPermission | 'organizations', 'update' |  | 0 | [backend/src/model/component/OperationsComponent.ts:883](../../backend/src/model/component/OperationsComponent.ts#L883) |
+| `SetItaliaNightFlowPolicy` | explicit | production | CrudPermission | 'organizations', 'update' |  | 0 | [backend/src/model/component/OperationsComponent.ts:1006](../../backend/src/model/component/OperationsComponent.ts#L1006) |
+| `SetItaliaPitchPolicy` | explicit | production | CrudPermission | 'organizations', 'update' |  | 0 | [backend/src/model/component/OperationsComponent.ts:1034](../../backend/src/model/component/OperationsComponent.ts#L1034) |
+| `SetItaliaPoolChemistryPolicy` | explicit | production | CrudPermission | 'organizations', 'update' |  | 0 | [backend/src/model/component/OperationsComponent.ts:907](../../backend/src/model/component/OperationsComponent.ts#L907) |
+| `SetItaliaPoolRegisterEntry` | explicit | production | CrudPermission | 'locations', 'update', (params) => params?.entry?.siteId |  | 0 | [backend/src/model/component/OperationsComponent.ts:932](../../backend/src/model/component/OperationsComponent.ts#L932) |
+| `SetItaliaSitePowerPolicy` | explicit | production | CrudPermission | 'organizations', 'update' |  | 0 | [backend/src/model/component/OperationsComponent.ts:1058](../../backend/src/model/component/OperationsComponent.ts#L1058) |
+| `SetParkingOperationalPolicy` | explicit | production | CrudPermission | 'organizations', 'update' |  | 0 | [backend/src/model/component/OperationsComponent.ts:813](../../backend/src/model/component/OperationsComponent.ts#L813) |
+| `SetPolicy` | explicit | production | CrudPermission | 'organizations', 'update' |  | 1 | [backend/src/model/component/OperationsComponent.ts:802](../../backend/src/model/component/OperationsComponent.ts#L802) |
+| `SetPvHealthPolicy` | explicit | production | CrudPermission | 'organizations', 'update' |  | 0 | [backend/src/model/component/OperationsComponent.ts:858](../../backend/src/model/component/OperationsComponent.ts#L858) |
+| `SetRefrigerationPeerPolicy` | explicit | production | CrudPermission | 'organizations', 'update' |  | 0 | [backend/src/model/component/OperationsComponent.ts:766](../../backend/src/model/component/OperationsComponent.ts#L766) |
+
 ### `organization` — 5 explicit + 1 inherited (9 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
@@ -1664,12 +1912,12 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/OrganizationComponent.ts:44](../../backend/src/model/component/OrganizationComponent.ts#L44) |
-| `GetDefaults` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/OrganizationComponent.ts:147](../../backend/src/model/component/OrganizationComponent.ts#L147) |
-| `GetProfile` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/OrganizationComponent.ts:51](../../backend/src/model/component/OrganizationComponent.ts#L51) |
-| `GetScopeModel` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/OrganizationComponent.ts:166](../../backend/src/model/component/OrganizationComponent.ts#L166) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/OrganizationComponent.ts:46](../../backend/src/model/component/OrganizationComponent.ts#L46) |
+| `GetDefaults` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/OrganizationComponent.ts:149](../../backend/src/model/component/OrganizationComponent.ts#L149) |
+| `GetProfile` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/OrganizationComponent.ts:53](../../backend/src/model/component/OrganizationComponent.ts#L53) |
+| `GetScopeModel` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/OrganizationComponent.ts:170](../../backend/src/model/component/OrganizationComponent.ts#L170) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `SetProfile` | explicit | production | CrudPermission | 'organizations', 'update' |  | 1 | [backend/src/model/component/OrganizationComponent.ts:66](../../backend/src/model/component/OrganizationComponent.ts#L66) |
+| `SetProfile` | explicit | production | CrudPermission | 'organizations', 'update' |  | 1 | [backend/src/model/component/OrganizationComponent.ts:68](../../backend/src/model/component/OrganizationComponent.ts#L68) |
 
 ### `ota` — 8 explicit + 1 inherited (12 total incl. DEV_MODE)
 
@@ -1695,13 +1943,13 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/PermissionComponent.ts:60](../../backend/src/model/component/PermissionComponent.ts#L60) |
-| `GetIdentityPolicies` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 0 | [backend/src/model/component/PermissionComponent.ts:181](../../backend/src/model/component/PermissionComponent.ts#L181) |
-| `GetRoles` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/model/component/PermissionComponent.ts:67](../../backend/src/model/component/PermissionComponent.ts#L67) |
-| `GrantRoles` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/model/component/PermissionComponent.ts:127](../../backend/src/model/component/PermissionComponent.ts#L127) |
-| `ListAdministrators` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 0 | [backend/src/model/component/PermissionComponent.ts:160](../../backend/src/model/component/PermissionComponent.ts#L160) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/PermissionComponent.ts:61](../../backend/src/model/component/PermissionComponent.ts#L61) |
+| `GetIdentityPolicies` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 0 | [backend/src/model/component/PermissionComponent.ts:183](../../backend/src/model/component/PermissionComponent.ts#L183) |
+| `GetRoles` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/model/component/PermissionComponent.ts:68](../../backend/src/model/component/PermissionComponent.ts#L68) |
+| `GrantRoles` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/model/component/PermissionComponent.ts:129](../../backend/src/model/component/PermissionComponent.ts#L129) |
+| `ListAdministrators` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 0 | [backend/src/model/component/PermissionComponent.ts:162](../../backend/src/model/component/PermissionComponent.ts#L162) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `RevokeRoles` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/model/component/PermissionComponent.ts:87](../../backend/src/model/component/PermissionComponent.ts#L87) |
+| `RevokeRoles` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/model/component/PermissionComponent.ts:88](../../backend/src/model/component/PermissionComponent.ts#L88) |
 
 ### `persona` — 6 explicit + 4 inherited (13 total incl. DEV_MODE)
 
@@ -1710,16 +1958,16 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Create` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/PersonaComponent.ts:83](../../backend/src/model/component/PersonaComponent.ts#L83) |
-| `Delete` | explicit | production | CheckPermissions | canManageAuthz |  | 1 | [backend/src/model/component/PersonaComponent.ts:159](../../backend/src/model/component/PersonaComponent.ts#L159) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/PersonaComponent.ts:43](../../backend/src/model/component/PersonaComponent.ts#L43) |
-| `Get` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/model/component/PersonaComponent.ts:66](../../backend/src/model/component/PersonaComponent.ts#L66) |
+| `Create` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/PersonaComponent.ts:90](../../backend/src/model/component/PersonaComponent.ts#L90) |
+| `Delete` | explicit | production | CheckPermissions | canManageAuthz |  | 1 | [backend/src/model/component/PersonaComponent.ts:168](../../backend/src/model/component/PersonaComponent.ts#L168) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/PersonaComponent.ts:50](../../backend/src/model/component/PersonaComponent.ts#L50) |
+| `Get` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/model/component/PersonaComponent.ts:73](../../backend/src/model/component/PersonaComponent.ts#L73) |
 | `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `getstatus` | inherited-getstatus | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `List` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/model/component/PersonaComponent.ts:50](../../backend/src/model/component/PersonaComponent.ts#L50) |
+| `List` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/model/component/PersonaComponent.ts:57](../../backend/src/model/component/PersonaComponent.ts#L57) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Update` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/PersonaComponent.ts:111](../../backend/src/model/component/PersonaComponent.ts#L111) |
+| `Update` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/PersonaComponent.ts:119](../../backend/src/model/component/PersonaComponent.ts#L119) |
 
 ### `pill` — 4 explicit + 1 inherited (8 total incl. DEV_MODE)
 
@@ -1733,6 +1981,19 @@ Regenerate with `cd backend && npm run generate`.
 | `GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/PillComponent.ts:53](../../backend/src/model/component/PillComponent.ts#L53) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/PillComponent.ts:27](../../backend/src/model/component/PillComponent.ts#L27) |
+
+### `pilluart` — 4 explicit + 1 inherited (8 total incl. DEV_MODE)
+
+| Method | Kind | Env | Permission | Args | Params | Callers | Source |
+|---|---|---|---|---|---|---|---|
+| `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/PillUartComponent.ts:27](../../backend/src/model/component/PillUartComponent.ts#L27) |
+| `GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/PillUartComponent.ts:47](../../backend/src/model/component/PillUartComponent.ts#L47) |
+| `GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/PillUartComponent.ts:60](../../backend/src/model/component/PillUartComponent.ts#L60) |
+| `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/PillUartComponent.ts:34](../../backend/src/model/component/PillUartComponent.ts#L34) |
 
 ### `plugin` — 4 explicit + 1 inherited (8 total incl. DEV_MODE)
 
@@ -1819,20 +2080,21 @@ Regenerate with `cd backend && npm run generate`.
 | `Reset` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/model/component/PrivacyComponent.ts:61](../../backend/src/model/component/PrivacyComponent.ts#L61) |
 | `SetPolicy` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/model/component/PrivacyComponent.ts:48](../../backend/src/model/component/PrivacyComponent.ts#L48) |
 
-### `report` — 6 explicit + 1 inherited (10 total incl. DEV_MODE)
+### `report` — 7 explicit + 1 inherited (11 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
 |---|---|---|---|---|---|---|---|
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Cancel` | explicit | production | CrudPermission | 'reports', 'update' |  | 1 | [backend/src/model/component/ReportComponent.ts:117](../../backend/src/model/component/ReportComponent.ts#L117) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/ReportComponent.ts:69](../../backend/src/model/component/ReportComponent.ts#L69) |
-| `Generate` | explicit | production | CrudPermission | 'reports', 'update' |  | 0 | [backend/src/model/component/ReportComponent.ts:79](../../backend/src/model/component/ReportComponent.ts#L79) |
-| `GetReport` | explicit | production | CrudPermission | 'reports', 'update' |  | 0 | [backend/src/model/component/ReportComponent.ts:92](../../backend/src/model/component/ReportComponent.ts#L92) |
+| `Cancel` | explicit | production | CrudPermission | 'reports', 'update' |  | 1 | [backend/src/model/component/ReportComponent.ts:126](../../backend/src/model/component/ReportComponent.ts#L126) |
+| `Delete` | explicit | production | CrudPermission | 'reports', 'update' |  | 0 | [backend/src/model/component/ReportComponent.ts:153](../../backend/src/model/component/ReportComponent.ts#L153) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/ReportComponent.ts:76](../../backend/src/model/component/ReportComponent.ts#L76) |
+| `Generate` | explicit | production | CrudPermission | 'reports', 'update' |  | 0 | [backend/src/model/component/ReportComponent.ts:86](../../backend/src/model/component/ReportComponent.ts#L86) |
+| `GetReport` | explicit | production | CrudPermission | 'reports', 'update' |  | 0 | [backend/src/model/component/ReportComponent.ts:99](../../backend/src/model/component/ReportComponent.ts#L99) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `PurgeReports` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 0 | [backend/src/model/component/ReportComponent.ts:193](../../backend/src/model/component/ReportComponent.ts#L193) |
-| `SuggestTimeShift` | explicit | production | CrudPermission | 'reports', 'read' |  | 0 | [backend/src/model/component/ReportComponent.ts:139](../../backend/src/model/component/ReportComponent.ts#L139) |
+| `PurgeReports` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 0 | [backend/src/model/component/ReportComponent.ts:241](../../backend/src/model/component/ReportComponent.ts#L241) |
+| `SuggestTimeShift` | explicit | production | CrudPermission | 'reports', 'read' |  | 0 | [backend/src/model/component/ReportComponent.ts:187](../../backend/src/model/component/ReportComponent.ts#L187) |
 
 ### `reporttemplate` — 7 explicit + 1 inherited (11 total incl. DEV_MODE)
 
@@ -1841,14 +2103,14 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Create` | explicit | production | CrudPermission | 'reports', 'update' |  | 1 | [backend/src/model/component/ReportTemplateComponent.ts:123](../../backend/src/model/component/ReportTemplateComponent.ts#L123) |
-| `Delete` | explicit | production | CrudPermission | 'reports', 'update' |  | 1 | [backend/src/model/component/ReportTemplateComponent.ts:197](../../backend/src/model/component/ReportTemplateComponent.ts#L197) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/ReportTemplateComponent.ts:116](../../backend/src/model/component/ReportTemplateComponent.ts#L116) |
-| `Get` | explicit | production | CrudPermission | 'reports', 'read' |  | 0 | [backend/src/model/component/ReportTemplateComponent.ts:185](../../backend/src/model/component/ReportTemplateComponent.ts#L185) |
-| `List` | explicit | production | CrudPermission | 'reports', 'read' |  | 1 | [backend/src/model/component/ReportTemplateComponent.ts:175](../../backend/src/model/component/ReportTemplateComponent.ts#L175) |
+| `Create` | explicit | production | CrudPermission | 'reports', 'update' |  | 1 | [backend/src/model/component/ReportTemplateComponent.ts:127](../../backend/src/model/component/ReportTemplateComponent.ts#L127) |
+| `Delete` | explicit | production | CrudPermission | 'reports', 'update', NOT_A_REPORT_ID |  | 1 | [backend/src/model/component/ReportTemplateComponent.ts:203](../../backend/src/model/component/ReportTemplateComponent.ts#L203) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/ReportTemplateComponent.ts:120](../../backend/src/model/component/ReportTemplateComponent.ts#L120) |
+| `Get` | explicit | production | CrudPermission | 'reports', 'read', NOT_A_REPORT_ID |  | 0 | [backend/src/model/component/ReportTemplateComponent.ts:190](../../backend/src/model/component/ReportTemplateComponent.ts#L190) |
+| `List` | explicit | production | CrudPermission | 'reports', 'read' |  | 1 | [backend/src/model/component/ReportTemplateComponent.ts:180](../../backend/src/model/component/ReportTemplateComponent.ts#L180) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Run` | explicit | production | CrudPermission | 'reports', 'update' |  | 0 | [backend/src/model/component/ReportTemplateComponent.ts:210](../../backend/src/model/component/ReportTemplateComponent.ts#L210) |
-| `Update` | explicit | production | CrudPermission | 'reports', 'update' |  | 1 | [backend/src/model/component/ReportTemplateComponent.ts:144](../../backend/src/model/component/ReportTemplateComponent.ts#L144) |
+| `Run` | explicit | production | CrudPermission | 'reports', 'update', NOT_A_REPORT_ID |  | 0 | [backend/src/model/component/ReportTemplateComponent.ts:217](../../backend/src/model/component/ReportTemplateComponent.ts#L217) |
+| `Update` | explicit | production | CrudPermission | 'reports', 'update', NOT_A_REPORT_ID |  | 1 | [backend/src/model/component/ReportTemplateComponent.ts:148](../../backend/src/model/component/ReportTemplateComponent.ts#L148) |
 
 ### `restrictions` — 3 explicit + 1 inherited (7 total incl. DEV_MODE)
 
@@ -1930,6 +2192,22 @@ Regenerate with `cd backend && npm run generate`.
 | `List` | explicit | production | CrudPermission | 'devices', 'read', (p: ScheduleListParams) => p?.shellyID |  | 0 | [backend/src/model/component/ScheduleComponent.ts:63](../../backend/src/model/component/ScheduleComponent.ts#L63) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `Update` | explicit | production | CrudPermission | 'devices', 'update', (p: ScheduleUpdateParams) => p?.shellyID |  | 3 | [backend/src/model/component/ScheduleComponent.ts:120](../../backend/src/model/component/ScheduleComponent.ts#L120) |
+
+### `scopedautomation` — 7 explicit + 1 inherited (11 total incl. DEV_MODE)
+
+| Method | Kind | Env | Permission | Args | Params | Callers | Source |
+|---|---|---|---|---|---|---|---|
+| `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `Create` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/ScopedAutomationComponent.ts:48](../../backend/src/model/component/ScopedAutomationComponent.ts#L48) |
+| `Delete` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/ScopedAutomationComponent.ts:129](../../backend/src/model/component/ScopedAutomationComponent.ts#L129) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/ScopedAutomationComponent.ts:41](../../backend/src/model/component/ScopedAutomationComponent.ts#L41) |
+| `Get` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/ScopedAutomationComponent.ts:92](../../backend/src/model/component/ScopedAutomationComponent.ts#L92) |
+| `List` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/ScopedAutomationComponent.ts:69](../../backend/src/model/component/ScopedAutomationComponent.ts#L69) |
+| `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
+| `Run` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/ScopedAutomationComponent.ts:144](../../backend/src/model/component/ScopedAutomationComponent.ts#L144) |
+| `Update` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/ScopedAutomationComponent.ts:108](../../backend/src/model/component/ScopedAutomationComponent.ts#L108) |
 
 ### `script` — 12 explicit + 1 inherited (16 total incl. DEV_MODE)
 
@@ -2071,14 +2349,14 @@ Regenerate with `cd backend && npm run generate`.
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/StorageComponent.ts:135](../../backend/src/model/component/StorageComponent.ts#L135) |
-| `GetAll` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/StorageComponent.ts:365](../../backend/src/model/component/StorageComponent.ts#L365) |
+| `GetAll` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/StorageComponent.ts:360](../../backend/src/model/component/StorageComponent.ts#L360) |
 | `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `GetItem` | explicit | production | NoPermissions |  |  | 1 | [backend/src/model/component/StorageComponent.ts:234](../../backend/src/model/component/StorageComponent.ts#L234) |
 | `getstatus` | inherited-getstatus | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Keys` | explicit | production | NoPermissions |  |  | 1 | [backend/src/model/component/StorageComponent.ts:347](../../backend/src/model/component/StorageComponent.ts#L347) |
-| `List` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/StorageComponent.ts:456](../../backend/src/model/component/StorageComponent.ts#L456) |
+| `Keys` | explicit | production | NoPermissions |  |  | 1 | [backend/src/model/component/StorageComponent.ts:342](../../backend/src/model/component/StorageComponent.ts#L342) |
+| `List` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/StorageComponent.ts:451](../../backend/src/model/component/StorageComponent.ts#L451) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `RemoveItem` | explicit | production | CheckPermissions | canUseAuthenticatedWrite |  | 1 | [backend/src/model/component/StorageComponent.ts:474](../../backend/src/model/component/StorageComponent.ts#L474) |
+| `RemoveItem` | explicit | production | CheckPermissions | canUseAuthenticatedWrite |  | 1 | [backend/src/model/component/StorageComponent.ts:469](../../backend/src/model/component/StorageComponent.ts#L469) |
 | `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `SetItem` | explicit | production | CheckPermissions | canUseAuthenticatedWrite |  | 1 | [backend/src/model/component/StorageComponent.ts:142](../../backend/src/model/component/StorageComponent.ts#L142) |
 
@@ -2094,7 +2372,7 @@ Regenerate with `cd backend && npm run generate`.
 | `GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/SwitchComponent.ts:102](../../backend/src/model/component/SwitchComponent.ts#L102) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `ResetCounters` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/SwitchComponent.ts:74](../../backend/src/model/component/SwitchComponent.ts#L74) |
-| `Set` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 1 | [backend/src/model/component/SwitchComponent.ts:33](../../backend/src/model/component/SwitchComponent.ts#L33) |
+| `Set` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 2 | [backend/src/model/component/SwitchComponent.ts:33](../../backend/src/model/component/SwitchComponent.ts#L33) |
 | `SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 1 | [backend/src/model/component/SwitchComponent.ts:61](../../backend/src/model/component/SwitchComponent.ts#L61) |
 | `Toggle` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/SwitchComponent.ts:48](../../backend/src/model/component/SwitchComponent.ts#L48) |
 
@@ -2126,33 +2404,33 @@ Regenerate with `cd backend && npm run generate`.
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `Bootstrap` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/SystemComponent.ts:111](../../backend/src/model/component/SystemComponent.ts#L111) |
-| `DbWrites.Get` | explicit | production | CheckPermissions | isAuthenticated |  | 0 | [backend/src/model/component/SystemComponent.ts:595](../../backend/src/model/component/SystemComponent.ts#L595) |
-| `DbWrites.Set` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 0 | [backend/src/model/component/SystemComponent.ts:606](../../backend/src/model/component/SystemComponent.ts#L606) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/SystemComponent.ts:345](../../backend/src/model/component/SystemComponent.ts#L345) |
+| `DbWrites.Get` | explicit | production | CheckPermissions | isAuthenticated |  | 0 | [backend/src/model/component/SystemComponent.ts:594](../../backend/src/model/component/SystemComponent.ts#L594) |
+| `DbWrites.Set` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 0 | [backend/src/model/component/SystemComponent.ts:605](../../backend/src/model/component/SystemComponent.ts#L605) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/SystemComponent.ts:344](../../backend/src/model/component/SystemComponent.ts#L344) |
 | `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 1 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `GetConnectionInspector` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:414](../../backend/src/model/component/SystemComponent.ts#L414) |
-| `GetModuleHistory` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:454](../../backend/src/model/component/SystemComponent.ts#L454) |
-| `GetSlowBuilds` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:492](../../backend/src/model/component/SystemComponent.ts#L492) |
-| `GetSlowClients` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:538](../../backend/src/model/component/SystemComponent.ts#L538) |
-| `GetSlowDeviceCommands` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:515](../../backend/src/model/component/SystemComponent.ts#L515) |
-| `GetSlowRpcs` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:467](../../backend/src/model/component/SystemComponent.ts#L467) |
+| `GetConnectionInspector` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:413](../../backend/src/model/component/SystemComponent.ts#L413) |
+| `GetModuleHistory` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:453](../../backend/src/model/component/SystemComponent.ts#L453) |
+| `GetSlowBuilds` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:491](../../backend/src/model/component/SystemComponent.ts#L491) |
+| `GetSlowClients` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:537](../../backend/src/model/component/SystemComponent.ts#L537) |
+| `GetSlowDeviceCommands` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:514](../../backend/src/model/component/SystemComponent.ts#L514) |
+| `GetSlowRpcs` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:466](../../backend/src/model/component/SystemComponent.ts#L466) |
 | `getstatus` | inherited-getstatus | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `GetTopology` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:383](../../backend/src/model/component/SystemComponent.ts#L383) |
-| `GetTopologyDiff` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:443](../../backend/src/model/component/SystemComponent.ts#L443) |
+| `GetTopology` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:382](../../backend/src/model/component/SystemComponent.ts#L382) |
+| `GetTopologyDiff` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:442](../../backend/src/model/component/SystemComponent.ts#L442) |
 | `GetVariables` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/SystemComponent.ts:122](../../backend/src/model/component/SystemComponent.ts#L122) |
-| `Health.GetDebugReport` | explicit | production | CheckPermissions | isAuthenticated |  | 0 | [backend/src/model/component/SystemComponent.ts:560](../../backend/src/model/component/SystemComponent.ts#L560) |
-| `Health.GetFull` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:372](../../backend/src/model/component/SystemComponent.ts#L372) |
-| `Health.GetHistory` | explicit | production | CheckPermissions | isAuthenticated |  | 0 | [backend/src/model/component/SystemComponent.ts:584](../../backend/src/model/component/SystemComponent.ts#L584) |
-| `Health.GetStreams` | explicit | production | CheckPermissions | isAuthenticated |  | 0 | [backend/src/model/component/SystemComponent.ts:571](../../backend/src/model/component/SystemComponent.ts#L571) |
-| `ListConnections` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:394](../../backend/src/model/component/SystemComponent.ts#L394) |
+| `Health.GetDebugReport` | explicit | production | CheckPermissions | isAuthenticated |  | 0 | [backend/src/model/component/SystemComponent.ts:559](../../backend/src/model/component/SystemComponent.ts#L559) |
+| `Health.GetFull` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:371](../../backend/src/model/component/SystemComponent.ts#L371) |
+| `Health.GetHistory` | explicit | production | CheckPermissions | isAuthenticated |  | 0 | [backend/src/model/component/SystemComponent.ts:583](../../backend/src/model/component/SystemComponent.ts#L583) |
+| `Health.GetStreams` | explicit | production | CheckPermissions | isAuthenticated |  | 0 | [backend/src/model/component/SystemComponent.ts:570](../../backend/src/model/component/SystemComponent.ts#L570) |
+| `ListConnections` | explicit | production | CheckPermissions | hasTenantAdminAuthority |  | 0 | [backend/src/model/component/SystemComponent.ts:393](../../backend/src/model/component/SystemComponent.ts#L393) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Log.ListLevels` | explicit | production | CheckPermissions | isAuthenticated |  | 0 | [backend/src/model/component/SystemComponent.ts:644](../../backend/src/model/component/SystemComponent.ts#L644) |
-| `Log.SetLevel` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 0 | [backend/src/model/component/SystemComponent.ts:655](../../backend/src/model/component/SystemComponent.ts#L655) |
-| `Observability.Reset` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 0 | [backend/src/model/component/SystemComponent.ts:634](../../backend/src/model/component/SystemComponent.ts#L634) |
-| `Observability.Set` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 0 | [backend/src/model/component/SystemComponent.ts:620](../../backend/src/model/component/SystemComponent.ts#L620) |
+| `Log.ListLevels` | explicit | production | CheckPermissions | isAuthenticated |  | 0 | [backend/src/model/component/SystemComponent.ts:643](../../backend/src/model/component/SystemComponent.ts#L643) |
+| `Log.SetLevel` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 0 | [backend/src/model/component/SystemComponent.ts:654](../../backend/src/model/component/SystemComponent.ts#L654) |
+| `Observability.Reset` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 0 | [backend/src/model/component/SystemComponent.ts:633](../../backend/src/model/component/SystemComponent.ts#L633) |
+| `Observability.Set` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 0 | [backend/src/model/component/SystemComponent.ts:619](../../backend/src/model/component/SystemComponent.ts#L619) |
 | `SubmitTelemetry` | explicit | production | NoPermissions |  |  | 1 | [backend/src/model/component/SystemComponent.ts:148](../../backend/src/model/component/SystemComponent.ts#L148) |
-| `Subscribe` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 1 | [backend/src/model/component/SystemComponent.ts:209](../../backend/src/model/component/SystemComponent.ts#L209) |
-| `Unsubscribe` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 0 | [backend/src/model/component/SystemComponent.ts:326](../../backend/src/model/component/SystemComponent.ts#L326) |
+| `Subscribe` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 1 | [backend/src/model/component/SystemComponent.ts:208](../../backend/src/model/component/SystemComponent.ts#L208) |
+| `Unsubscribe` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 0 | [backend/src/model/component/SystemComponent.ts:325](../../backend/src/model/component/SystemComponent.ts#L325) |
 
 ### `tag` — 10 explicit + 1 inherited (14 total incl. DEV_MODE)
 
@@ -2161,34 +2439,40 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Assign` | explicit | production | CrudPermission | 'tags', 'update', (p) => p?.id |  | 3 | [backend/src/model/component/TagComponent.ts:438](../../backend/src/model/component/TagComponent.ts#L438) |
-| `Create` | explicit | production | CrudPermission | 'tags', 'create' |  | 0 | [backend/src/model/component/TagComponent.ts:244](../../backend/src/model/component/TagComponent.ts#L244) |
-| `Delete` | explicit | production | CrudPermission | 'tags', 'delete', (p) => p?.id |  | 1 | [backend/src/model/component/TagComponent.ts:342](../../backend/src/model/component/TagComponent.ts#L342) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/TagComponent.ts:237](../../backend/src/model/component/TagComponent.ts#L237) |
-| `Get` | explicit | production | CrudPermission | 'tags', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/TagComponent.ts:371](../../backend/src/model/component/TagComponent.ts#L371) |
-| `List` | explicit | production | CrudPermission | 'tags', 'read' |  | 0 | [backend/src/model/component/TagComponent.ts:396](../../backend/src/model/component/TagComponent.ts#L396) |
-| `ListAssignments` | explicit | production | CrudPermission | 'tags', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/TagComponent.ts:514](../../backend/src/model/component/TagComponent.ts#L514) |
-| `ListForSubject` | explicit | production | CrudPermission | 'tags', 'read' |  | 0 | [backend/src/model/component/TagComponent.ts:552](../../backend/src/model/component/TagComponent.ts#L552) |
+| `Assign` | explicit | production | CrudPermission | 'tags', 'update', (p) => p?.id |  | 3 | [backend/src/model/component/TagComponent.ts:462](../../backend/src/model/component/TagComponent.ts#L462) |
+| `Create` | explicit | production | CrudPermission | 'tags', 'create' |  | 0 | [backend/src/model/component/TagComponent.ts:268](../../backend/src/model/component/TagComponent.ts#L268) |
+| `Delete` | explicit | production | CrudPermission | 'tags', 'delete', (p) => p?.id |  | 1 | [backend/src/model/component/TagComponent.ts:366](../../backend/src/model/component/TagComponent.ts#L366) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/TagComponent.ts:261](../../backend/src/model/component/TagComponent.ts#L261) |
+| `Get` | explicit | production | CrudPermission | 'tags', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/TagComponent.ts:395](../../backend/src/model/component/TagComponent.ts#L395) |
+| `List` | explicit | production | CrudPermission | 'tags', 'read' |  | 0 | [backend/src/model/component/TagComponent.ts:420](../../backend/src/model/component/TagComponent.ts#L420) |
+| `ListAssignments` | explicit | production | CrudPermission | 'tags', 'read', (p) => p?.id |  | 0 | [backend/src/model/component/TagComponent.ts:540](../../backend/src/model/component/TagComponent.ts#L540) |
+| `ListForSubject` | explicit | production | CrudPermission | 'tags', 'read' |  | 0 | [backend/src/model/component/TagComponent.ts:578](../../backend/src/model/component/TagComponent.ts#L578) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Unassign` | explicit | production | CrudPermission | 'tags', 'update', (p) => p?.id |  | 1 | [backend/src/model/component/TagComponent.ts:478](../../backend/src/model/component/TagComponent.ts#L478) |
-| `Update` | explicit | production | CrudPermission | 'tags', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/TagComponent.ts:287](../../backend/src/model/component/TagComponent.ts#L287) |
+| `Unassign` | explicit | production | CrudPermission | 'tags', 'update', (p) => p?.id |  | 1 | [backend/src/model/component/TagComponent.ts:504](../../backend/src/model/component/TagComponent.ts#L504) |
+| `Update` | explicit | production | CrudPermission | 'tags', 'update', (p) => p?.id |  | 0 | [backend/src/model/component/TagComponent.ts:311](../../backend/src/model/component/TagComponent.ts#L311) |
 
-### `tariff` — 8 explicit + 1 inherited (12 total incl. DEV_MODE)
+### `tariff` — 14 explicit + 1 inherited (18 total incl. DEV_MODE)
 
 | Method | Kind | Env | Permission | Args | Params | Callers | Source |
 |---|---|---|---|---|---|---|---|
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Add` | explicit | production | CrudPermission | 'reports', 'create' |  | 0 | [backend/src/model/component/TariffComponent.ts:75](../../backend/src/model/component/TariffComponent.ts#L75) |
-| `Assign` | explicit | production | CrudPermission | 'reports', 'update' |  | 0 | [backend/src/model/component/TariffComponent.ts:105](../../backend/src/model/component/TariffComponent.ts#L105) |
-| `Delete` | explicit | production | CrudPermission | 'reports', 'delete' |  | 0 | [backend/src/model/component/TariffComponent.ts:95](../../backend/src/model/component/TariffComponent.ts#L95) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/TariffComponent.ts:48](../../backend/src/model/component/TariffComponent.ts#L48) |
-| `Get` | explicit | production | CrudPermission | 'reports', 'read' |  | 0 | [backend/src/model/component/TariffComponent.ts:65](../../backend/src/model/component/TariffComponent.ts#L65) |
-| `List` | explicit | production | CrudPermission | 'reports', 'read' |  | 1 | [backend/src/model/component/TariffComponent.ts:55](../../backend/src/model/component/TariffComponent.ts#L55) |
+| `Add` | explicit | production | CrudPermission | 'reports', 'create', NOT_A_REPORT_ID |  | 0 | [backend/src/model/component/TariffComponent.ts:135](../../backend/src/model/component/TariffComponent.ts#L135) |
+| `Assign` | explicit | production | CrudPermission | 'reports', 'update' |  | 3 | [backend/src/model/component/TariffComponent.ts:174](../../backend/src/model/component/TariffComponent.ts#L174) |
+| `BillingPeriodAt` | explicit | production | CrudPermission | 'reports', 'read' |  | 0 | [backend/src/model/component/TariffComponent.ts:95](../../backend/src/model/component/TariffComponent.ts#L95) |
+| `BillingPeriods` | explicit | production | CrudPermission | 'reports', 'read' |  | 1 | [backend/src/model/component/TariffComponent.ts:85](../../backend/src/model/component/TariffComponent.ts#L85) |
+| `Delete` | explicit | production | CrudPermission | 'reports', 'delete', NOT_A_REPORT_ID |  | 1 | [backend/src/model/component/TariffComponent.ts:163](../../backend/src/model/component/TariffComponent.ts#L163) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/TariffComponent.ts:57](../../backend/src/model/component/TariffComponent.ts#L57) |
+| `Get` | explicit | production | CrudPermission | 'reports', 'read', NOT_A_REPORT_ID |  | 1 | [backend/src/model/component/TariffComponent.ts:74](../../backend/src/model/component/TariffComponent.ts#L74) |
+| `List` | explicit | production | CrudPermission | 'reports', 'read' |  | 3 | [backend/src/model/component/TariffComponent.ts:64](../../backend/src/model/component/TariffComponent.ts#L64) |
+| `ListAssignments` | explicit | production | CrudPermission | 'reports', 'read' |  | 2 | [backend/src/model/component/TariffComponent.ts:105](../../backend/src/model/component/TariffComponent.ts#L105) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `SetLiveSource` | explicit | production | CrudPermission | 'reports', 'update' |  | 1 | [backend/src/model/component/TariffComponent.ts:115](../../backend/src/model/component/TariffComponent.ts#L115) |
-| `Update` | explicit | production | CrudPermission | 'reports', 'update' |  | 0 | [backend/src/model/component/TariffComponent.ts:85](../../backend/src/model/component/TariffComponent.ts#L85) |
+| `ResolveAssignments` | explicit | production | CrudPermission | 'reports', 'read' |  | 1 | [backend/src/model/component/TariffComponent.ts:115](../../backend/src/model/component/TariffComponent.ts#L115) |
+| `ResolvePricing` | explicit | production | CrudPermission | 'reports', 'read' |  | 0 | [backend/src/model/component/TariffComponent.ts:125](../../backend/src/model/component/TariffComponent.ts#L125) |
+| `SetLiveSource` | explicit | production | CrudPermission | 'reports', 'update' |  | 1 | [backend/src/model/component/TariffComponent.ts:184](../../backend/src/model/component/TariffComponent.ts#L184) |
+| `Update` | explicit | production | CrudPermission | 'reports', 'update', NOT_A_REPORT_ID |  | 0 | [backend/src/model/component/TariffComponent.ts:152](../../backend/src/model/component/TariffComponent.ts#L152) |
+| `WriteComponents` | explicit | production | CrudPermission | 'reports', 'update' |  | 0 | [backend/src/model/component/TariffComponent.ts:195](../../backend/src/model/component/TariffComponent.ts#L195) |
 
 ### `temperature` — 4 explicit + 1 inherited (8 total incl. DEV_MODE)
 
@@ -2297,50 +2581,50 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `AttachCustomPersona` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:466](../../backend/src/modules/user/UserComponent.ts#L466) |
-| `Authenticate` | explicit | production | NoPermissions |  |  | 0 | [backend/src/modules/user/UserComponent.ts:209](../../backend/src/modules/user/UserComponent.ts#L209) |
-| `AuthenticateAlexa` | explicit | production | NoPermissions |  |  | 0 | [backend/src/modules/user/UserComponent.ts:194](../../backend/src/modules/user/UserComponent.ts#L194) |
-| `BulkRotatePATs` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/modules/user/UserComponent.ts:729](../../backend/src/modules/user/UserComponent.ts#L729) |
-| `CreatePAT` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/modules/user/UserComponent.ts:635](../../backend/src/modules/user/UserComponent.ts#L635) |
-| `CreateScopedPAT` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/modules/user/UserComponent.ts:659](../../backend/src/modules/user/UserComponent.ts#L659) |
-| `CreateServiceUser` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/modules/user/UserComponent.ts:599](../../backend/src/modules/user/UserComponent.ts#L599) |
-| `CreateZitadelUser` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/modules/user/UserComponent.ts:527](../../backend/src/modules/user/UserComponent.ts#L527) |
-| `DeactivateUser` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:565](../../backend/src/modules/user/UserComponent.ts#L565) |
-| `DeleteServiceUser` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:627](../../backend/src/modules/user/UserComponent.ts#L627) |
-| `DeleteSession` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 1 | [backend/src/modules/user/UserComponent.ts:754](../../backend/src/modules/user/UserComponent.ts#L754) |
-| `DeleteZitadelUser` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:585](../../backend/src/modules/user/UserComponent.ts#L585) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/modules/user/UserComponent.ts:175](../../backend/src/modules/user/UserComponent.ts#L175) |
-| `GetAuthMethods` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/modules/user/UserComponent.ts:760](../../backend/src/modules/user/UserComponent.ts#L760) |
+| `AttachCustomPersona` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:485](../../backend/src/modules/user/UserComponent.ts#L485) |
+| `Authenticate` | explicit | production | NoPermissions |  |  | 0 | [backend/src/modules/user/UserComponent.ts:219](../../backend/src/modules/user/UserComponent.ts#L219) |
+| `AuthenticateAlexa` | explicit | production | NoPermissions |  |  | 0 | [backend/src/modules/user/UserComponent.ts:204](../../backend/src/modules/user/UserComponent.ts#L204) |
+| `BulkRotatePATs` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/modules/user/UserComponent.ts:698](../../backend/src/modules/user/UserComponent.ts#L698) |
+| `CreatePAT` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/modules/user/UserComponent.ts:604](../../backend/src/modules/user/UserComponent.ts#L604) |
+| `CreateScopedPAT` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/modules/user/UserComponent.ts:628](../../backend/src/modules/user/UserComponent.ts#L628) |
+| `CreateServiceUser` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/modules/user/UserComponent.ts:568](../../backend/src/modules/user/UserComponent.ts#L568) |
+| `CreateZitadelUser` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/modules/user/UserComponent.ts:494](../../backend/src/modules/user/UserComponent.ts#L494) |
+| `DeactivateUser` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:534](../../backend/src/modules/user/UserComponent.ts#L534) |
+| `DeleteServiceUser` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:596](../../backend/src/modules/user/UserComponent.ts#L596) |
+| `DeleteSession` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 1 | [backend/src/modules/user/UserComponent.ts:723](../../backend/src/modules/user/UserComponent.ts#L723) |
+| `DeleteZitadelUser` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:554](../../backend/src/modules/user/UserComponent.ts#L554) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/modules/user/UserComponent.ts:185](../../backend/src/modules/user/UserComponent.ts#L185) |
+| `GetAuthMethods` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/modules/user/UserComponent.ts:729](../../backend/src/modules/user/UserComponent.ts#L729) |
 | `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 1 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `GetEffectivePermissionsV2` | explicit | production | CheckPermissions | canReadEffectivePermissions |  | 0 | [backend/src/modules/user/UserComponent.ts:324](../../backend/src/modules/user/UserComponent.ts#L324) |
-| `GetInstanceInfo` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 0 | [backend/src/modules/user/UserComponent.ts:739](../../backend/src/modules/user/UserComponent.ts#L739) |
-| `GetMe` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 0 | [backend/src/modules/user/UserComponent.ts:246](../../backend/src/modules/user/UserComponent.ts#L246) |
+| `GetEffectivePermissionsV2` | explicit | production | CheckPermissions | canReadEffectivePermissions |  | 0 | [backend/src/modules/user/UserComponent.ts:335](../../backend/src/modules/user/UserComponent.ts#L335) |
+| `GetInstanceInfo` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 0 | [backend/src/modules/user/UserComponent.ts:708](../../backend/src/modules/user/UserComponent.ts#L708) |
+| `GetMe` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 0 | [backend/src/modules/user/UserComponent.ts:256](../../backend/src/modules/user/UserComponent.ts#L256) |
 | `getstatus` | inherited-getstatus | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `ListPATs` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/modules/user/UserComponent.ts:644](../../backend/src/modules/user/UserComponent.ts#L644) |
-| `ListScopedPATs` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/modules/user/UserComponent.ts:674](../../backend/src/modules/user/UserComponent.ts#L674) |
-| `ListServiceUsers` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/modules/user/UserComponent.ts:593](../../backend/src/modules/user/UserComponent.ts#L593) |
-| `ListSessions` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/modules/user/UserComponent.ts:746](../../backend/src/modules/user/UserComponent.ts#L746) |
-| `ListZitadelUsers` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/modules/user/UserComponent.ts:318](../../backend/src/modules/user/UserComponent.ts#L318) |
-| `PreviewScopedPAT` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/modules/user/UserComponent.ts:681](../../backend/src/modules/user/UserComponent.ts#L681) |
-| `ProfilePicture.CreateUploadTicket` | explicit | production | CheckPermissions | canCreateProfilePictureUploadTicket |  | 0 | [backend/src/modules/user/UserComponent.ts:262](../../backend/src/modules/user/UserComponent.ts#L262) |
-| `ProfilePicture.GetUrl` | explicit | production | CheckPermissions | canReadProfilePictureUrl |  | 0 | [backend/src/modules/user/UserComponent.ts:279](../../backend/src/modules/user/UserComponent.ts#L279) |
-| `ProfilePicture.Remove` | explicit | production | CheckPermissions | canRemoveProfilePicture |  | 0 | [backend/src/modules/user/UserComponent.ts:295](../../backend/src/modules/user/UserComponent.ts#L295) |
-| `ReactivateUser` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:574](../../backend/src/modules/user/UserComponent.ts#L574) |
-| `Refresh` | explicit | production | NoPermissions |  |  | 0 | [backend/src/modules/user/UserComponent.ts:234](../../backend/src/modules/user/UserComponent.ts#L234) |
-| `RefreshAlexa` | explicit | production | NoPermissions |  |  | 0 | [backend/src/modules/user/UserComponent.ts:203](../../backend/src/modules/user/UserComponent.ts#L203) |
-| `RevokeAllUserPATs` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/modules/user/UserComponent.ts:700](../../backend/src/modules/user/UserComponent.ts#L700) |
-| `RevokePAT` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:650](../../backend/src/modules/user/UserComponent.ts#L650) |
-| `RevokeScopedPAT` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:694](../../backend/src/modules/user/UserComponent.ts#L694) |
-| `RotatePAT` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/modules/user/UserComponent.ts:715](../../backend/src/modules/user/UserComponent.ts#L715) |
-| `RotateScopedPAT` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/modules/user/UserComponent.ts:706](../../backend/src/modules/user/UserComponent.ts#L706) |
-| `RotateToken` | explicit | production | NoPermissions |  |  | 1 | [backend/src/modules/user/UserComponent.ts:224](../../backend/src/modules/user/UserComponent.ts#L224) |
-| `SendPasswordReset` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:559](../../backend/src/modules/user/UserComponent.ts#L559) |
-| `SetAllowDebug` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 1 | [backend/src/modules/user/UserComponent.ts:183](../../backend/src/modules/user/UserComponent.ts#L183) |
-| `SetServiceUserOrg` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 0 | [backend/src/modules/user/UserComponent.ts:615](../../backend/src/modules/user/UserComponent.ts#L615) |
-| `SimulateV2` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/modules/user/UserComponent.ts:400](../../backend/src/modules/user/UserComponent.ts#L400) |
-| `UpdateZitadelUser` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:544](../../backend/src/modules/user/UserComponent.ts#L544) |
-| `ZitadelAvailable` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 0 | [backend/src/modules/user/UserComponent.ts:312](../../backend/src/modules/user/UserComponent.ts#L312) |
+| `ListPATs` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/modules/user/UserComponent.ts:613](../../backend/src/modules/user/UserComponent.ts#L613) |
+| `ListScopedPATs` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/modules/user/UserComponent.ts:643](../../backend/src/modules/user/UserComponent.ts#L643) |
+| `ListServiceUsers` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/modules/user/UserComponent.ts:562](../../backend/src/modules/user/UserComponent.ts#L562) |
+| `ListSessions` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/modules/user/UserComponent.ts:715](../../backend/src/modules/user/UserComponent.ts#L715) |
+| `ListZitadelUsers` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/modules/user/UserComponent.ts:329](../../backend/src/modules/user/UserComponent.ts#L329) |
+| `PreviewScopedPAT` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/modules/user/UserComponent.ts:650](../../backend/src/modules/user/UserComponent.ts#L650) |
+| `ProfilePicture.CreateUploadTicket` | explicit | production | CheckPermissions | canCreateProfilePictureUploadTicket |  | 0 | [backend/src/modules/user/UserComponent.ts:273](../../backend/src/modules/user/UserComponent.ts#L273) |
+| `ProfilePicture.GetUrl` | explicit | production | CheckPermissions | canReadProfilePictureUrl |  | 0 | [backend/src/modules/user/UserComponent.ts:290](../../backend/src/modules/user/UserComponent.ts#L290) |
+| `ProfilePicture.Remove` | explicit | production | CheckPermissions | canRemoveProfilePicture |  | 0 | [backend/src/modules/user/UserComponent.ts:306](../../backend/src/modules/user/UserComponent.ts#L306) |
+| `ReactivateUser` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:543](../../backend/src/modules/user/UserComponent.ts#L543) |
+| `Refresh` | explicit | production | NoPermissions |  |  | 0 | [backend/src/modules/user/UserComponent.ts:244](../../backend/src/modules/user/UserComponent.ts#L244) |
+| `RefreshAlexa` | explicit | production | NoPermissions |  |  | 0 | [backend/src/modules/user/UserComponent.ts:213](../../backend/src/modules/user/UserComponent.ts#L213) |
+| `RevokeAllUserPATs` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/modules/user/UserComponent.ts:669](../../backend/src/modules/user/UserComponent.ts#L669) |
+| `RevokePAT` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:619](../../backend/src/modules/user/UserComponent.ts#L619) |
+| `RevokeScopedPAT` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:663](../../backend/src/modules/user/UserComponent.ts#L663) |
+| `RotatePAT` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/modules/user/UserComponent.ts:684](../../backend/src/modules/user/UserComponent.ts#L684) |
+| `RotateScopedPAT` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 0 | [backend/src/modules/user/UserComponent.ts:675](../../backend/src/modules/user/UserComponent.ts#L675) |
+| `RotateToken` | explicit | production | NoPermissions |  |  | 1 | [backend/src/modules/user/UserComponent.ts:234](../../backend/src/modules/user/UserComponent.ts#L234) |
+| `SendPasswordReset` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:528](../../backend/src/modules/user/UserComponent.ts#L528) |
+| `SetAllowDebug` | explicit | production | CheckPermissions | canUsePlatformAdmin |  | 1 | [backend/src/modules/user/UserComponent.ts:193](../../backend/src/modules/user/UserComponent.ts#L193) |
+| `SetServiceUserOrg` | explicit | production | CheckPermissions | canCrossOrganizationBoundary |  | 0 | [backend/src/modules/user/UserComponent.ts:584](../../backend/src/modules/user/UserComponent.ts#L584) |
+| `SimulateV2` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/modules/user/UserComponent.ts:411](../../backend/src/modules/user/UserComponent.ts#L411) |
+| `UpdateZitadelUser` | explicit | production | CheckPermissions | canManageOrganizationSettings |  | 1 | [backend/src/modules/user/UserComponent.ts:513](../../backend/src/modules/user/UserComponent.ts#L513) |
+| `ZitadelAvailable` | explicit | production | CheckPermissions | canUseAuthenticatedRead |  | 0 | [backend/src/modules/user/UserComponent.ts:323](../../backend/src/modules/user/UserComponent.ts#L323) |
 
 ### `user_group` — 9 explicit + 4 inherited (16 total incl. DEV_MODE)
 
@@ -2349,19 +2633,19 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `AddMembers` | explicit | production | CheckPermissions | canManageAuthz |  | 4 | [backend/src/model/component/UserGroupComponent.ts:278](../../backend/src/model/component/UserGroupComponent.ts#L278) |
-| `Create` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/UserGroupComponent.ts:108](../../backend/src/model/component/UserGroupComponent.ts#L108) |
-| `Delete` | explicit | production | CheckPermissions | canManageAuthz |  | 1 | [backend/src/model/component/UserGroupComponent.ts:223](../../backend/src/model/component/UserGroupComponent.ts#L223) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/UserGroupComponent.ts:69](../../backend/src/model/component/UserGroupComponent.ts#L69) |
-| `Get` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/model/component/UserGroupComponent.ts:91](../../backend/src/model/component/UserGroupComponent.ts#L91) |
+| `AddMembers` | explicit | production | CheckPermissions | canManageAuthz |  | 4 | [backend/src/model/component/UserGroupComponent.ts:292](../../backend/src/model/component/UserGroupComponent.ts#L292) |
+| `Create` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/UserGroupComponent.ts:111](../../backend/src/model/component/UserGroupComponent.ts#L111) |
+| `Delete` | explicit | production | CheckPermissions | canManageAuthz |  | 1 | [backend/src/model/component/UserGroupComponent.ts:236](../../backend/src/model/component/UserGroupComponent.ts#L236) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/UserGroupComponent.ts:71](../../backend/src/model/component/UserGroupComponent.ts#L71) |
+| `Get` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/model/component/UserGroupComponent.ts:94](../../backend/src/model/component/UserGroupComponent.ts#L94) |
 | `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `getstatus` | inherited-getstatus | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `List` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/model/component/UserGroupComponent.ts:76](../../backend/src/model/component/UserGroupComponent.ts#L76) |
-| `ListMembers` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/model/component/UserGroupComponent.ts:256](../../backend/src/model/component/UserGroupComponent.ts#L256) |
+| `List` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/model/component/UserGroupComponent.ts:78](../../backend/src/model/component/UserGroupComponent.ts#L78) |
+| `ListMembers` | explicit | production | CheckPermissions | canReadPolicies |  | 0 | [backend/src/model/component/UserGroupComponent.ts:270](../../backend/src/model/component/UserGroupComponent.ts#L270) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `RemoveMembers` | explicit | production | CheckPermissions | canManageAuthz |  | 1 | [backend/src/model/component/UserGroupComponent.ts:332](../../backend/src/model/component/UserGroupComponent.ts#L332) |
+| `RemoveMembers` | explicit | production | CheckPermissions | canManageAuthz |  | 1 | [backend/src/model/component/UserGroupComponent.ts:347](../../backend/src/model/component/UserGroupComponent.ts#L347) |
 | `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Update` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/UserGroupComponent.ts:137](../../backend/src/model/component/UserGroupComponent.ts#L137) |
+| `Update` | explicit | production | CheckPermissions | canManageAuthz |  | 0 | [backend/src/model/component/UserGroupComponent.ts:144](../../backend/src/model/component/UserGroupComponent.ts#L144) |
 
 ### `variables` — 5 explicit + 1 inherited (9 total incl. DEV_MODE)
 
@@ -2384,32 +2668,32 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Add` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 1 | [backend/src/model/component/VirtualComponent.ts:59](../../backend/src/model/component/VirtualComponent.ts#L59) |
-| `Boolean.GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:120](../../backend/src/model/component/VirtualComponent.ts#L120) |
-| `Boolean.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:133](../../backend/src/model/component/VirtualComponent.ts#L133) |
-| `Boolean.Set` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:107](../../backend/src/model/component/VirtualComponent.ts#L107) |
-| `Boolean.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:146](../../backend/src/model/component/VirtualComponent.ts#L146) |
-| `ComponentSet` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:46](../../backend/src/model/component/VirtualComponent.ts#L46) |
-| `Delete` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 1 | [backend/src/model/component/VirtualComponent.ts:74](../../backend/src/model/component/VirtualComponent.ts#L74) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/VirtualComponent.ts:39](../../backend/src/model/component/VirtualComponent.ts#L39) |
-| `Enum.GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:276](../../backend/src/model/component/VirtualComponent.ts#L276) |
-| `Enum.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:289](../../backend/src/model/component/VirtualComponent.ts#L289) |
-| `Enum.Set` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:263](../../backend/src/model/component/VirtualComponent.ts#L263) |
-| `Enum.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:302](../../backend/src/model/component/VirtualComponent.ts#L302) |
-| `Group.GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:328](../../backend/src/model/component/VirtualComponent.ts#L328) |
-| `Group.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:341](../../backend/src/model/component/VirtualComponent.ts#L341) |
-| `Group.Set` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:315](../../backend/src/model/component/VirtualComponent.ts#L315) |
-| `Group.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:354](../../backend/src/model/component/VirtualComponent.ts#L354) |
+| `Add` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 1 | [backend/src/model/component/VirtualComponent.ts:76](../../backend/src/model/component/VirtualComponent.ts#L76) |
+| `Boolean.GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:139](../../backend/src/model/component/VirtualComponent.ts#L139) |
+| `Boolean.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:152](../../backend/src/model/component/VirtualComponent.ts#L152) |
+| `Boolean.Set` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:126](../../backend/src/model/component/VirtualComponent.ts#L126) |
+| `Boolean.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:165](../../backend/src/model/component/VirtualComponent.ts#L165) |
+| `ComponentSet` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:60](../../backend/src/model/component/VirtualComponent.ts#L60) |
+| `Delete` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 1 | [backend/src/model/component/VirtualComponent.ts:93](../../backend/src/model/component/VirtualComponent.ts#L93) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/VirtualComponent.ts:53](../../backend/src/model/component/VirtualComponent.ts#L53) |
+| `Enum.GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:304](../../backend/src/model/component/VirtualComponent.ts#L304) |
+| `Enum.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:317](../../backend/src/model/component/VirtualComponent.ts#L317) |
+| `Enum.Set` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:291](../../backend/src/model/component/VirtualComponent.ts#L291) |
+| `Enum.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:330](../../backend/src/model/component/VirtualComponent.ts#L330) |
+| `Group.GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:359](../../backend/src/model/component/VirtualComponent.ts#L359) |
+| `Group.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:372](../../backend/src/model/component/VirtualComponent.ts#L372) |
+| `Group.Set` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:346](../../backend/src/model/component/VirtualComponent.ts#L346) |
+| `Group.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:385](../../backend/src/model/component/VirtualComponent.ts#L385) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Number.GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:172](../../backend/src/model/component/VirtualComponent.ts#L172) |
-| `Number.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:185](../../backend/src/model/component/VirtualComponent.ts#L185) |
-| `Number.Set` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:159](../../backend/src/model/component/VirtualComponent.ts#L159) |
-| `Number.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:198](../../backend/src/model/component/VirtualComponent.ts#L198) |
-| `Text.GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:224](../../backend/src/model/component/VirtualComponent.ts#L224) |
-| `Text.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:237](../../backend/src/model/component/VirtualComponent.ts#L237) |
-| `Text.Set` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:211](../../backend/src/model/component/VirtualComponent.ts#L211) |
-| `Text.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:250](../../backend/src/model/component/VirtualComponent.ts#L250) |
-| `Trigger` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:87](../../backend/src/model/component/VirtualComponent.ts#L87) |
+| `Number.GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:194](../../backend/src/model/component/VirtualComponent.ts#L194) |
+| `Number.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:207](../../backend/src/model/component/VirtualComponent.ts#L207) |
+| `Number.Set` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:181](../../backend/src/model/component/VirtualComponent.ts#L181) |
+| `Number.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:220](../../backend/src/model/component/VirtualComponent.ts#L220) |
+| `Text.GetConfig` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:249](../../backend/src/model/component/VirtualComponent.ts#L249) |
+| `Text.GetStatus` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:262](../../backend/src/model/component/VirtualComponent.ts#L262) |
+| `Text.Set` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:236](../../backend/src/model/component/VirtualComponent.ts#L236) |
+| `Text.SetConfig` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:275](../../backend/src/model/component/VirtualComponent.ts#L275) |
+| `Trigger` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.shellyID |  | 0 | [backend/src/model/component/VirtualComponent.ts:106](../../backend/src/model/component/VirtualComponent.ts#L106) |
 
 ### `virtual_meta` — 5 explicit + 1 inherited (9 total incl. DEV_MODE)
 
@@ -2432,50 +2716,50 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Binding.Create` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:512](../../backend/src/model/component/VirtualDeviceComponent.ts#L512) |
-| `Binding.List` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:433](../../backend/src/model/component/VirtualDeviceComponent.ts#L433) |
-| `Binding.ListSources` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:447](../../backend/src/model/component/VirtualDeviceComponent.ts#L447) |
-| `Binding.Replace` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:538](../../backend/src/model/component/VirtualDeviceComponent.ts#L538) |
-| `Binding.ReplacementReport` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:658](../../backend/src/model/component/VirtualDeviceComponent.ts#L658) |
-| `Binding.Retire` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:564](../../backend/src/model/component/VirtualDeviceComponent.ts#L564) |
-| `Binding.ValidateDraft` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:484](../../backend/src/model/component/VirtualDeviceComponent.ts#L484) |
-| `Bluetooth.Candidate.List` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:732](../../backend/src/model/component/VirtualDeviceComponent.ts#L732) |
-| `Bluetooth.Delete` | explicit | production | CrudPermission | 'devices', 'delete', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:802](../../backend/src/model/component/VirtualDeviceComponent.ts#L802) |
-| `Bluetooth.Get` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:786](../../backend/src/model/component/VirtualDeviceComponent.ts#L786) |
-| `Bluetooth.Image.CreateUploadTicket` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:947](../../backend/src/model/component/VirtualDeviceComponent.ts#L947) |
-| `Bluetooth.Key.Clear` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:903](../../backend/src/model/component/VirtualDeviceComponent.ts#L903) |
-| `Bluetooth.Key.SetRef` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:885](../../backend/src/model/component/VirtualDeviceComponent.ts#L885) |
-| `Bluetooth.List` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:772](../../backend/src/model/component/VirtualDeviceComponent.ts#L772) |
-| `Bluetooth.PromoteFromGateway` | explicit | production | CrudPermission | 'devices', 'create' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:746](../../backend/src/model/component/VirtualDeviceComponent.ts#L746) |
-| `Bluetooth.Transport.List` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:857](../../backend/src/model/component/VirtualDeviceComponent.ts#L857) |
-| `Bluetooth.Transport.SetPrimary` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:871](../../backend/src/model/component/VirtualDeviceComponent.ts#L871) |
-| `Bluetooth.Update` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:927](../../backend/src/model/component/VirtualDeviceComponent.ts#L927) |
-| `Command.Invoke` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:590](../../backend/src/model/component/VirtualDeviceComponent.ts#L590) |
-| `Create` | explicit | production | CrudPermission | 'devices', 'create' |  | 1 | [backend/src/model/component/VirtualDeviceComponent.ts:193](../../backend/src/model/component/VirtualDeviceComponent.ts#L193) |
-| `Delete` | explicit | production | CrudPermission | 'devices', 'delete', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:264](../../backend/src/model/component/VirtualDeviceComponent.ts#L264) |
-| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:186](../../backend/src/model/component/VirtualDeviceComponent.ts#L186) |
-| `Draft.Preview` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:498](../../backend/src/model/component/VirtualDeviceComponent.ts#L498) |
-| `Extraction.Create` | explicit | production | CrudPermission | 'devices', 'create' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:297](../../backend/src/model/component/VirtualDeviceComponent.ts#L297) |
-| `Extraction.Preview` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.hostExternalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:283](../../backend/src/model/component/VirtualDeviceComponent.ts#L283) |
-| `Extraction.ReplacementPreview` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:327](../../backend/src/model/component/VirtualDeviceComponent.ts#L327) |
-| `Get` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:221](../../backend/src/model/component/VirtualDeviceComponent.ts#L221) |
-| `History.Backfill` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:644](../../backend/src/model/component/VirtualDeviceComponent.ts#L644) |
-| `History.ReadProvenance` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:630](../../backend/src/model/component/VirtualDeviceComponent.ts#L630) |
-| `History.ReadRole` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:616](../../backend/src/model/component/VirtualDeviceComponent.ts#L616) |
-| `Image.CreateUploadTicket` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:831](../../backend/src/model/component/VirtualDeviceComponent.ts#L831) |
-| `List` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:234](../../backend/src/model/component/VirtualDeviceComponent.ts#L234) |
+| `Binding.Create` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:552](../../backend/src/model/component/VirtualDeviceComponent.ts#L552) |
+| `Binding.List` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:459](../../backend/src/model/component/VirtualDeviceComponent.ts#L459) |
+| `Binding.ListSources` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:479](../../backend/src/model/component/VirtualDeviceComponent.ts#L479) |
+| `Binding.Replace` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:579](../../backend/src/model/component/VirtualDeviceComponent.ts#L579) |
+| `Binding.ReplacementReport` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:738](../../backend/src/model/component/VirtualDeviceComponent.ts#L738) |
+| `Binding.Retire` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:609](../../backend/src/model/component/VirtualDeviceComponent.ts#L609) |
+| `Binding.ValidateDraft` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:516](../../backend/src/model/component/VirtualDeviceComponent.ts#L516) |
+| `Bluetooth.Candidate.List` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:834](../../backend/src/model/component/VirtualDeviceComponent.ts#L834) |
+| `Bluetooth.Delete` | explicit | production | CrudPermission | 'devices', 'delete', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:905](../../backend/src/model/component/VirtualDeviceComponent.ts#L905) |
+| `Bluetooth.Get` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:889](../../backend/src/model/component/VirtualDeviceComponent.ts#L889) |
+| `Bluetooth.Image.CreateUploadTicket` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:1078](../../backend/src/model/component/VirtualDeviceComponent.ts#L1078) |
+| `Bluetooth.Key.Clear` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:1034](../../backend/src/model/component/VirtualDeviceComponent.ts#L1034) |
+| `Bluetooth.Key.SetRef` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:1013](../../backend/src/model/component/VirtualDeviceComponent.ts#L1013) |
+| `Bluetooth.List` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:875](../../backend/src/model/component/VirtualDeviceComponent.ts#L875) |
+| `Bluetooth.PromoteFromGateway` | explicit | production | CrudPermission | 'devices', 'create' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:848](../../backend/src/model/component/VirtualDeviceComponent.ts#L848) |
+| `Bluetooth.Transport.List` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:958](../../backend/src/model/component/VirtualDeviceComponent.ts#L958) |
+| `Bluetooth.Transport.SetPrimary` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:976](../../backend/src/model/component/VirtualDeviceComponent.ts#L976) |
+| `Bluetooth.Update` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:1058](../../backend/src/model/component/VirtualDeviceComponent.ts#L1058) |
+| `Command.Invoke` | explicit | production | CrudPermission | 'devices', 'execute', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:638](../../backend/src/model/component/VirtualDeviceComponent.ts#L638) |
+| `Create` | explicit | production | CrudPermission | 'devices', 'create' |  | 1 | [backend/src/model/component/VirtualDeviceComponent.ts:206](../../backend/src/model/component/VirtualDeviceComponent.ts#L206) |
+| `Delete` | explicit | production | CrudPermission | 'devices', 'delete', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:286](../../backend/src/model/component/VirtualDeviceComponent.ts#L286) |
+| `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:199](../../backend/src/model/component/VirtualDeviceComponent.ts#L199) |
+| `Draft.Preview` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:534](../../backend/src/model/component/VirtualDeviceComponent.ts#L534) |
+| `Extraction.Create` | explicit | production | CrudPermission | 'devices', 'create' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:319](../../backend/src/model/component/VirtualDeviceComponent.ts#L319) |
+| `Extraction.Preview` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.hostExternalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:305](../../backend/src/model/component/VirtualDeviceComponent.ts#L305) |
+| `Extraction.ReplacementPreview` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:350](../../backend/src/model/component/VirtualDeviceComponent.ts#L350) |
+| `Get` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:240](../../backend/src/model/component/VirtualDeviceComponent.ts#L240) |
+| `History.Backfill` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:714](../../backend/src/model/component/VirtualDeviceComponent.ts#L714) |
+| `History.ReadProvenance` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:690](../../backend/src/model/component/VirtualDeviceComponent.ts#L690) |
+| `History.ReadRole` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:666](../../backend/src/model/component/VirtualDeviceComponent.ts#L666) |
+| `Image.CreateUploadTicket` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:932](../../backend/src/model/component/VirtualDeviceComponent.ts#L932) |
+| `List` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:256](../../backend/src/model/component/VirtualDeviceComponent.ts#L256) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `Manifest.Apply` | explicit | production | CheckPermissions | canAttemptManifestApply |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:711](../../backend/src/model/component/VirtualDeviceComponent.ts#L711) |
-| `Manifest.Export` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:682](../../backend/src/model/component/VirtualDeviceComponent.ts#L682) |
-| `Manifest.Plan` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:696](../../backend/src/model/component/VirtualDeviceComponent.ts#L696) |
-| `Manifest.Validate` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:672](../../backend/src/model/component/VirtualDeviceComponent.ts#L672) |
-| `Profile.Create` | explicit | production | CrudPermission | 'devices', 'create' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:356](../../backend/src/model/component/VirtualDeviceComponent.ts#L356) |
-| `Profile.List` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:342](../../backend/src/model/component/VirtualDeviceComponent.ts#L342) |
-| `Profile.MatchSources` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:399](../../backend/src/model/component/VirtualDeviceComponent.ts#L399) |
-| `Profile.SuggestFromDevice` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.deviceExternalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:419](../../backend/src/model/component/VirtualDeviceComponent.ts#L419) |
-| `Profile.Update` | explicit | production | CrudPermission | 'devices', 'update' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:373](../../backend/src/model/component/VirtualDeviceComponent.ts#L373) |
-| `Profile.Validate` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:389](../../backend/src/model/component/VirtualDeviceComponent.ts#L389) |
-| `Update` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:245](../../backend/src/model/component/VirtualDeviceComponent.ts#L245) |
+| `Manifest.Apply` | explicit | production | CheckPermissions | canAttemptManifestApply |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:813](../../backend/src/model/component/VirtualDeviceComponent.ts#L813) |
+| `Manifest.Export` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:768](../../backend/src/model/component/VirtualDeviceComponent.ts#L768) |
+| `Manifest.Plan` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:798](../../backend/src/model/component/VirtualDeviceComponent.ts#L798) |
+| `Manifest.Validate` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:758](../../backend/src/model/component/VirtualDeviceComponent.ts#L758) |
+| `Profile.Create` | explicit | production | CrudPermission | 'devices', 'create' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:382](../../backend/src/model/component/VirtualDeviceComponent.ts#L382) |
+| `Profile.List` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:368](../../backend/src/model/component/VirtualDeviceComponent.ts#L368) |
+| `Profile.MatchSources` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:425](../../backend/src/model/component/VirtualDeviceComponent.ts#L425) |
+| `Profile.SuggestFromDevice` | explicit | production | CrudPermission | 'devices', 'read', (p) => p?.deviceExternalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:445](../../backend/src/model/component/VirtualDeviceComponent.ts#L445) |
+| `Profile.Update` | explicit | production | CrudPermission | 'devices', 'update' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:399](../../backend/src/model/component/VirtualDeviceComponent.ts#L399) |
+| `Profile.Validate` | explicit | production | CrudPermission | 'devices', 'read' |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:415](../../backend/src/model/component/VirtualDeviceComponent.ts#L415) |
+| `Update` | explicit | production | CrudPermission | 'devices', 'update', (p) => p?.externalId |  | 0 | [backend/src/model/component/VirtualDeviceComponent.ts:267](../../backend/src/model/component/VirtualDeviceComponent.ts#L267) |
 
 ### `voltmeter` — 5 explicit + 1 inherited (9 total incl. DEV_MODE)
 
@@ -2498,13 +2782,13 @@ Regenerate with `cd backend && npm run generate`.
 | `readconfig` | dev-readconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `resetconfig` | dev-resetconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `writeconfig` | dev-writeconfig | dev-mode | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
-| `AcceptAllStart` | explicit | production | CheckPermissions | canAcceptPending |  | 0 | [backend/src/model/component/WaitingRoomComponent.ts:335](../../backend/src/model/component/WaitingRoomComponent.ts#L335) |
-| `AcceptBulkCancel` | explicit | production | CheckPermissions | canAcceptPending |  | 0 | [backend/src/model/component/WaitingRoomComponent.ts:377](../../backend/src/model/component/WaitingRoomComponent.ts#L377) |
-| `AcceptBulkStart` | explicit | production | CheckPermissions | canAcceptPending |  | 0 | [backend/src/model/component/WaitingRoomComponent.ts:318](../../backend/src/model/component/WaitingRoomComponent.ts#L318) |
-| `AcceptBulkStatus` | explicit | production | CheckPermissions | canReadWaitingRoom |  | 0 | [backend/src/model/component/WaitingRoomComponent.ts:355](../../backend/src/model/component/WaitingRoomComponent.ts#L355) |
-| `AcceptPendingByExternalId` | explicit | production | CheckPermissions | canAcceptPending |  | 1 | [backend/src/model/component/WaitingRoomComponent.ts:295](../../backend/src/model/component/WaitingRoomComponent.ts#L295) |
+| `AcceptAllStart` | explicit | production | CheckPermissions | canAcceptPending |  | 0 | [backend/src/model/component/WaitingRoomComponent.ts:332](../../backend/src/model/component/WaitingRoomComponent.ts#L332) |
+| `AcceptBulkCancel` | explicit | production | CheckPermissions | canAcceptPending |  | 0 | [backend/src/model/component/WaitingRoomComponent.ts:374](../../backend/src/model/component/WaitingRoomComponent.ts#L374) |
+| `AcceptBulkStart` | explicit | production | CheckPermissions | canAcceptPending |  | 0 | [backend/src/model/component/WaitingRoomComponent.ts:315](../../backend/src/model/component/WaitingRoomComponent.ts#L315) |
+| `AcceptBulkStatus` | explicit | production | CheckPermissions | canReadWaitingRoom |  | 0 | [backend/src/model/component/WaitingRoomComponent.ts:352](../../backend/src/model/component/WaitingRoomComponent.ts#L352) |
+| `AcceptPendingByExternalId` | explicit | production | CheckPermissions | canAcceptPending |  | 1 | [backend/src/model/component/WaitingRoomComponent.ts:292](../../backend/src/model/component/WaitingRoomComponent.ts#L292) |
 | `AcceptPendingById` | explicit | production | CheckPermissions | canAcceptPending |  | 1 | [backend/src/model/component/WaitingRoomComponent.ts:239](../../backend/src/model/component/WaitingRoomComponent.ts#L239) |
-| `Approve` | explicit | production | CheckPermissions | canAcceptPending |  | 1 | [backend/src/model/component/WaitingRoomComponent.ts:387](../../backend/src/model/component/WaitingRoomComponent.ts#L387) |
+| `Approve` | explicit | production | CheckPermissions | canAcceptPending |  | 1 | [backend/src/model/component/WaitingRoomComponent.ts:384](../../backend/src/model/component/WaitingRoomComponent.ts#L384) |
 | `Describe` | explicit | production | NoPermissions |  |  | 0 | [backend/src/model/component/WaitingRoomComponent.ts:106](../../backend/src/model/component/WaitingRoomComponent.ts#L106) |
 | `Get` | explicit | production | CheckPermissions | canReadWaitingRoom |  | 0 | [backend/src/model/component/WaitingRoomComponent.ts:176](../../backend/src/model/component/WaitingRoomComponent.ts#L176) |
 | `getconfig` | inherited-getconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
@@ -2516,9 +2800,9 @@ Regenerate with `cd backend && npm run generate`.
 | `ListDenied` | explicit | production | CheckPermissions | canReadWaitingRoom |  | 0 | [backend/src/model/component/WaitingRoomComponent.ts:218](../../backend/src/model/component/WaitingRoomComponent.ts#L218) |
 | `ListMethods` | inherited-list-methods | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 | `Probe` | explicit | production | CheckPermissions | canReadWaitingRoom |  | 0 | [backend/src/model/component/WaitingRoomComponent.ts:192](../../backend/src/model/component/WaitingRoomComponent.ts#L192) |
-| `Quarantine` | explicit | production | CheckPermissions | canQuarantinePending |  | 0 | [backend/src/model/component/WaitingRoomComponent.ts:495](../../backend/src/model/component/WaitingRoomComponent.ts#L495) |
-| `Reject` | explicit | production | CheckPermissions | canRejectPending |  | 0 | [backend/src/model/component/WaitingRoomComponent.ts:478](../../backend/src/model/component/WaitingRoomComponent.ts#L478) |
-| `RejectPending` | explicit | production | CheckPermissions | canRejectPending |  | 2 | [backend/src/model/component/WaitingRoomComponent.ts:405](../../backend/src/model/component/WaitingRoomComponent.ts#L405) |
+| `Quarantine` | explicit | production | CheckPermissions | canQuarantinePending |  | 0 | [backend/src/model/component/WaitingRoomComponent.ts:492](../../backend/src/model/component/WaitingRoomComponent.ts#L492) |
+| `Reject` | explicit | production | CheckPermissions | canRejectPending |  | 0 | [backend/src/model/component/WaitingRoomComponent.ts:475](../../backend/src/model/component/WaitingRoomComponent.ts#L475) |
+| `RejectPending` | explicit | production | CheckPermissions | canRejectPending |  | 2 | [backend/src/model/component/WaitingRoomComponent.ts:402](../../backend/src/model/component/WaitingRoomComponent.ts#L402) |
 | `setconfig` | inherited-setconfig | production | inherited-fallback |  |  | 0 | [backend/src/model/component/Component.ts:104](../../backend/src/model/component/Component.ts#L104) |
 
 ### `web` — 1 explicit + 4 inherited (8 total incl. DEV_MODE)

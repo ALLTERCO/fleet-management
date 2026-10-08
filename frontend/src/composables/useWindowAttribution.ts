@@ -6,7 +6,6 @@
 // so a scope-picker change refetches automatically.
 
 import type {AttributeMetric, AttributeWindowResult} from '@api/analytics';
-import type {DashboardScope as ApiScope} from '@api/fleet';
 import {
     type MaybeRefOrGetter,
     onScopeDispose,
@@ -15,7 +14,11 @@ import {
     toValue,
     watch
 } from 'vue';
-import type {DashboardScope as FrontendScope} from '@/composables/useDashboardScope';
+import {
+    type DashboardScope as FrontendScope,
+    toApiDashboardScope
+} from '@/composables/useDashboardScope';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import * as ws from '@/tools/websocket';
 
 export interface AttributionRange {
@@ -76,7 +79,7 @@ export function useWindowAttribution(opts: {
 
     function handleError(err: unknown, callId: number): void {
         if (!isStillCurrent(callId)) return;
-        error.value = err instanceof Error ? err.message : String(err);
+        error.value = rpcErrorMessage(err);
         result.value = null;
     }
 
@@ -164,12 +167,4 @@ function parseIsoMs(s: string): number | null {
 
 // Convert the frontend scope shape (kind+id) to the backend's single-axis
 // object. Empty object means fleet — matches backend DashboardScope.
-export function toApiScope(scope: FrontendScope): ApiScope {
-    if (scope.kind === 'group' && typeof scope.id === 'number')
-        return {groupId: scope.id};
-    if (scope.kind === 'tag' && typeof scope.id === 'number')
-        return {tagId: scope.id};
-    if (scope.kind === 'location' && typeof scope.id === 'number')
-        return {locationId: scope.id};
-    return {};
-}
+export const toApiScope = toApiDashboardScope;

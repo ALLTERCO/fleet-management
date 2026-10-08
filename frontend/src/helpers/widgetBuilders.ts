@@ -8,6 +8,7 @@ export interface ChartCfg {
     shellyId: string;
     metric: string;
     chartType: string;
+    range?: string;
 }
 export interface GaugeCfg {
     entityId: string;
@@ -94,7 +95,8 @@ const WIDGET_BUILDERS: Partial<Record<UiWidgetId, WidgetBuilder>> = {
                 id: 'chart_widget',
                 shellyId: chartCfg.shellyId,
                 metric: chartCfg.metric,
-                chartType: chartCfg.chartType
+                chartType: chartCfg.chartType,
+                range: chartCfg.range
             },
             'Device ID too long — cannot save widget'
         );
@@ -246,4 +248,110 @@ export function buildWidgetPayload(
     const builder = WIDGET_BUILDERS[widgetId];
     if (builder) return builder(cfgs);
     return {ok: true, data: {id: widgetId}};
+}
+
+// Answer — a fresh bundle with every widget's form at its defaults. One home,
+// so the add modal and the config modal start their forms identically.
+export function createWidgetCfgBundle(): WidgetConfigBundle {
+    return {
+        chartCfg: {shellyId: '', metric: 'power', chartType: 'bar'},
+        gaugeCfg: {
+            entityId: '',
+            field: '',
+            label: '',
+            unit: '',
+            min: 0,
+            max: 3500
+        },
+        statsCfg: {shellyId: '', metric: 'temperature', name: ''},
+        topCfg: {entityIdsRaw: '', limit: 10},
+        timelineCfg: {shellyId: '', field: '', name: ''},
+        heatmapCfg: {shellyId: '', metric: 'temperature'},
+        siteGridCfg: {metric: 'power'},
+        maintCfg: {maxItems: 20},
+        crossBarCfg: {metric: 'live_power', limit: 10}
+    };
+}
+
+// Answer — seed the form bundle FROM a stored widget config, the reverse of the
+// builders above. Editing and adding share this one round-trip, so a field the
+// builder writes is the same field the form reads back. Mutates the bundle in
+// place (the forms bind to reactive bags) and returns it.
+export function seedCfgBundleFromConfig(
+    bundle: WidgetConfigBundle,
+    config: Record<string, unknown>
+): WidgetConfigBundle {
+    const s = (v: unknown, d = '') => (typeof v === 'string' ? v : d);
+    const n = (v: unknown, d: number) => (typeof v === 'number' ? v : d);
+    switch (config.id) {
+        case 'chart_widget':
+            Object.assign(bundle.chartCfg, {
+                shellyId: s(config.shellyId),
+                metric: s(config.metric, 'power'),
+                chartType: s(config.chartType, 'bar'),
+                range: s(config.range) || undefined
+            });
+            break;
+        case 'gauge_widget':
+            Object.assign(bundle.gaugeCfg, {
+                entityId: s(config.entityId),
+                field: s(config.field),
+                label: s(config.label),
+                unit: s(config.unit),
+                min: n(config.min, 0),
+                max: n(config.max, 3500)
+            });
+            break;
+        case 'stats_summary_widget': {
+            const first = Array.isArray(config.entries)
+                ? config.entries[0]
+                : null;
+            Object.assign(bundle.statsCfg, {
+                shellyId: s(first?.shellyId),
+                metric: s(first?.metric, 'temperature'),
+                name: s(first?.name)
+            });
+            break;
+        }
+        case 'top_consumers_widget':
+            Object.assign(bundle.topCfg, {
+                entityIdsRaw: Array.isArray(config.entityIds)
+                    ? config.entityIds.join(', ')
+                    : '',
+                limit: n(config.limit, 10)
+            });
+            break;
+        case 'state_timeline_widget': {
+            const first = Array.isArray(config.entities)
+                ? config.entities[0]
+                : null;
+            Object.assign(bundle.timelineCfg, {
+                shellyId: s(first?.shellyId),
+                field: s(first?.field),
+                name: s(first?.name)
+            });
+            break;
+        }
+        case 'activity_heatmap_widget':
+            Object.assign(bundle.heatmapCfg, {
+                shellyId: s(config.shellyId),
+                metric: s(config.metric, 'temperature')
+            });
+            break;
+        case 'site_grid_widget':
+            Object.assign(bundle.siteGridCfg, {
+                metric: s(config.metric, 'power')
+            });
+            break;
+        case 'maintenance_list_widget':
+            Object.assign(bundle.maintCfg, {maxItems: n(config.maxItems, 20)});
+            break;
+        case 'cross_site_bar_widget':
+            Object.assign(bundle.crossBarCfg, {
+                metric: s(config.metric, 'live_power'),
+                limit: n(config.limit, 10)
+            });
+            break;
+    }
+    return bundle;
 }

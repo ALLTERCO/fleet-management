@@ -103,7 +103,7 @@ interface AddOwnedInput {
 function addServiceOwnedComponent(input: AddOwnedInput): void {
     const attrs = readAttrs(input.config);
     const owner = parseOwnerKey(attrs?.owner);
-    if (!owner || owner.type !== 'service') return;
+    if (owner?.type !== 'service') return;
     if (typeof attrs?.role !== 'string') {
         warnMissingRole(input);
         return;

@@ -60,10 +60,10 @@ The request body must be a JSON-RPC 2.0 object with the following structure:
 
 Additional HTTP RPC helpers are also live:
 
-- `POST /rpc/:method` — authenticated; request JSON body becomes `params`
-- `POST /rpc` — primary endpoint; in `DEV_MODE`, `User.Authenticate` and `User.Refresh` are allowed before login
+- `POST /rpc/:method`: authenticated; request JSON body becomes `params`
+- `POST /rpc`: primary endpoint; in `DEV_MODE`, `User.Authenticate` and `User.Refresh` are allowed before login
 
-`GET /rpc/:method` is intentionally NOT supported — query-string params under cookie auth would let any logged-in browser execute mutations via an `<img src>` exploit. The path responds `405 Method Not Allowed` with `Allow: POST`.
+`GET /rpc/:method` is intentionally NOT supported. Query-string params under cookie auth would let any logged-in browser execute mutations via an `<img src>` exploit. The path responds `405 Method Not Allowed` with `Allow: POST`.
 
 For HTTP transport, successful responses return the unwrapped `result` value directly. Error responses return the backend JSON-RPC error object or envelope produced by the handler.
 
@@ -126,11 +126,11 @@ Subscriptions are tied to a single WebSocket session. When the socket closes
 (network drop, server restart, idle timeout), the server forgets the
 subscription IDs that were tied to it. Clients must:
 
-1. Reconnect the WebSocket (with backoff — start at 1s, double up to ~30s).
+1. Reconnect the WebSocket (with backoff: start at 1s, double up to ~30s).
 2. Re-issue any `System.Subscribe` calls. The new IDs are unrelated to the
    old ones.
 3. Resume normal operation. Events that fired during the disconnect are not
-   replayed — query current state via `Device.List`, `Entity.List`, etc. as
+   replayed. Query current state via `Device.List`, `Entity.List`, etc. as
    needed.
 
 ```js
@@ -157,7 +157,7 @@ function connect() {
 connect();
 ```
 
-A close code of `4401` means the token was rejected — reconnecting with the
+A close code of `4401` means the token was rejected. Reconnecting with the
 same token will keep failing. Refresh credentials before retrying.
 
 ## API Surface
@@ -166,11 +166,11 @@ Three entry points for device-side operations. Pick the one that matches what yo
 
 | Use this | When |
 | --- | --- |
-| **`Entity.InvokeAction`** | You're performing a typed action on an existing entity — `toggle`, `open`, `setBrightness`, `mute`, `capture`, `setArmed`, `playPause`, etc. Takes `{id, action, params}` where `id` is the **entity id**; the backend resolves the device + channel + firmware method. Per-action param schema validation. Permission is `devices:execute` scoped to the resolved shellyID. Audit rows carry `Entity.InvokeAction` with the `action` name in the params. **This is the primary path for UI-driven operations.** |
-| **Canonical namespace methods** | You're performing a vendor-specific per-device operation that isn't an entity action — config reads/writes on a firmware component, creation/management ops, admin flows. Examples: `BTHome.Sensor.Add`, `BTHome.Device.AddManual`, `Cury.SetConfig`, `Matter.GetSetupCode`, `Pill.GetConfig`, `Camera.AddZone`, `Thermostat.Create`, `Trv.SetConfig`, `Virtual.Add`, `Ui.SetConfig`, etc. Each takes `{shellyID, ...}`. Per-method typed schema, per-method permission (`devices:read` / `update` / `execute` / `delete` depending on op), method-named audit row. |
-| **`Device.Call`** | You're sending a **raw firmware RPC** — admin debugging, Actions Tab, or testing new firmware methods before backend-typed wrappers exist. Takes `{shellyID, method, params}` and forwards verbatim to the device. Generic `devices/execute` permission, envelope validation only, no per-method schema. **Not intended for product flows.** |
+| **`Entity.InvokeAction`** | You're performing a typed action on an existing entity: `toggle`, `open`, `setBrightness`, `mute`, `capture`, `setArmed`, `playPause`, etc. Takes `{id, action, params}` where `id` is the **entity id**; the backend resolves the device + channel + firmware method. Per-action param schema validation. Permission is `devices:execute` scoped to the resolved shellyID. Audit rows carry `Entity.InvokeAction` with the `action` name in the params. **This is the primary path for UI-driven operations.** |
+| **Canonical namespace methods** | You're performing a vendor-specific per-device operation that isn't an entity action: config reads/writes on a firmware component, creation/management ops, admin flows. Examples: `BTHome.Sensor.Add`, `BTHome.Device.AddManual`, `Cury.SetConfig`, `Matter.GetSetupCode`, `Pill.GetConfig`, `Camera.AddZone`, `Thermostat.Create`, `Trv.SetConfig`, `Virtual.Add`, `Ui.SetConfig`, etc. Each takes `{shellyID, ...}`. Per-method typed schema, per-method permission (`devices:read` / `update` / `execute` / `delete` depending on op), method-named audit row. |
+| **`Device.Call`** | You're sending a **raw firmware RPC**: admin debugging, Actions Tab, or testing new firmware methods before backend-typed wrappers exist. Takes `{shellyID, method, params}` and forwards verbatim to the device. Generic `devices/execute` permission, envelope validation only, no per-method schema. **Not intended for product flows.** |
 
-**`Device.*`** itself is the fleet-entity primitive surface — `Device.Describe`, `Device.List`, `Device.Get`, `Device.GetInfo`, `Device.GetSetup`, `Device.GetDeviceChannels`, `Device.GetStatusHistory`, `Device.GetStatusTimeline`, `Device.Delete`, and `Device.Call` (escape hatch for raw firmware RPC). Device-level actions like reboot, factory reset, firmware update, and profile management live in the `Shelly.*` namespace (see §36). Per-component operations do **not** live on `Device.*` — they live in their canonical namespace.
+**`Device.*`** itself is the fleet-entity primitive surface: `Device.Describe`, `Device.List`, `Device.Get`, `Device.GetInfo`, `Device.GetSetup`, `Device.GetDeviceChannels`, `Device.GetStatusHistory`, `Device.GetStatusTimeline`, `Device.Delete`, and `Device.Call` (escape hatch for raw firmware RPC). Device-level actions like reboot, factory reset, firmware update, and profile management live in the `Shelly.*` namespace (see §36). Per-component operations do **not** live on `Device.*` - they live in their canonical namespace.
 
 ### Fleet and server namespaces
 
@@ -185,7 +185,7 @@ Operations that aren't per-device stay in their own namespaces:
 `domain_policy.*`, `login_text.*`, `message_text.*`, `Certificate.*`,
 `Credential.*`, `Admin.*`, `Audit.*`, `authz_audit.*`, `fleet.*`,
 `System.*`, `Plugin.*`, `Mail.*`, `Mobile.*`,
-`Entity.*` (beyond `InvokeAction` — `List`, `Get`, `GetCapabilities`,
+`Entity.*` (beyond `InvokeAction`: `List`, `Get`, `GetCapabilities`,
 `GetActionSchema`).
 
 ### Inherited methods
@@ -201,14 +201,14 @@ manifest:
 | `<ns>.GetStatus` | Reads the namespace's runtime status. |
 | `<ns>.SetConfig` | Writes the namespace's persistent config (write permission). |
 
-These are NOT rendered in the per-namespace reference below — only
+These are NOT rendered in the per-namespace reference below. Only
 methods registered via `DescribeBuilder.registerMethod` appear. See
-[docs/generated/backend-rpc-inventory.md](backend-rpc-inventory.md) for
+[docs/generated/backend-rpc-inventory.md](../generated/backend-rpc-inventory.md) for
 the full dispatcher view including inherited methods.
 
 ## Standard List Response
 
-List/collection methods return a consistent collection object. Over WebSocket JSON-RPC this is the method `result`; over HTTP `/rpc` the transport unwraps that `result` and returns the object directly:
+List/collection methods return a consistent collection object. Over WebSocket JSON-RPC this is the method `result`; over HTTP `/rpc`, the transport unwraps that `result` and returns the object directly:
 
 ```json
 {
@@ -220,11 +220,11 @@ List/collection methods return a consistent collection object. Over WebSocket JS
 }
 ```
 
-- `items` — the collection array (per [Google JSON Style Guide](https://google.github.io/styleguide/jsoncstyleguide.xml) reserved name)
-- `total` — total items matching the query (per [Shelly Gen2 RPC convention](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly/))
-- `offset` — index of the first item in this page (per Shelly convention)
-- `limit` — page size applied (0 = unlimited). Echoed so callers know the default when they didn't specify one.
-- `has_more` — `true` if `offset + items.length < total`. Convenience boolean to avoid off-by-one pagination bugs.
+- `items`: the collection array (per [Google JSON Style Guide](https://google.github.io/styleguide/jsoncstyleguide.xml) reserved name)
+- `total`: total items matching the query (per [Shelly Gen2 RPC convention](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Shelly/))
+- `offset`: index of the first item in this page (per Shelly convention)
+- `limit`: page size applied (0 = unlimited). Echoed so callers know the default when they didn't specify one.
+- `has_more`: `true` if `offset + items.length < total`. Convenience boolean to avoid off-by-one pagination bugs.
 
 To paginate, increment `offset` by `limit` until `has_more` is `false`:
 
@@ -240,7 +240,7 @@ Set `limit: 0` to disable pagination and return all items in one response.
 
 Every error response uses the JSON-RPC 2.0 envelope. The HTTP `/rpc`
 transport sets the HTTP status per the tables below; on WebSocket the
-JSON-RPC envelope is the only error signal — the connection stays open.
+JSON-RPC envelope is the only error signal. The connection stays open.
 
 ### Canonical shape
 
@@ -269,7 +269,7 @@ stable across versions; clients can switch on whichever is most useful.
 
 | Key | Type | When set |
 | --- | --- | --- |
-| `type` | enum | Always. High-level category — see table below. |
+| `type` | enum | Always. High-level category, see table below. |
 | `operation` | string | Always. The `namespace.method` that failed. |
 | `field` | string | Single-field shortcut. Prefer `fieldErrors[]`. |
 | `fieldErrors` | `[{field, code, error}]` | All schema-validation failures. `code` is the stable machine code (`required`, `enum`, `min_length`, …); `error` is the human message. |
@@ -289,7 +289,7 @@ stable across versions; clients can switch on whichever is most useful.
 | `not_found` | Method or resource doesn't exist | 404 |
 | `conflict` | State conflict (unique key collision, etc.) | 409 |
 | `rate_limit` | Per-user / per-method bucket exhausted | 429 |
-| `device` | Device-side failure (offline, transient timeout) — `data.deviceCode`/`deviceMessage` carry detail | 500 / 409 |
+| `device` | Device-side failure (offline, transient timeout): `data.deviceCode`/`deviceMessage` carry detail | 500 / 409 |
 | `unavailable` | Dependent service down (mail, telemetry channel) | 500 |
 | `server` | Server-side bug or unhandled exception | 500 |
 
@@ -430,16 +430,16 @@ async function call(method, params) {
     if (body.error) {
         const e = body.error;
         const {type, fieldErrors, requestId} = e.data ?? {};
-        // Branch on `type` first — coarse category, no code lookups
+        // Branch on `type` first: coarse category, no code lookups
         if (type === 'validation' && fieldErrors?.length) {
             for (const fe of fieldErrors) markBadInput(fe.field, fe.code, fe.error);
             return;
         }
         if (type === 'auth')        return goToLogin();
         if (type === 'permission')  return showToast('Not allowed');
-        if (type === 'rate_limit')  return showToast('Too fast — slow down');
+        if (type === 'rate_limit')  return showToast('Too fast, slow down');
         if (type === 'device')      return showToast(`Device: ${e.data.deviceMessage}`);
-        // Server / unavailable / unhandled — show requestId for support
+        // Server / unavailable / unhandled: show requestId for support
         showToast(`${e.message} [${requestId}]`);
     }
     return body.result;
@@ -450,20 +450,20 @@ async function call(method, params) {
 
 Two layers of limiting:
 
-1. **HTTP route limiter** — a small number of convenience HTTP endpoints
+1. **HTTP route limiter**: a small number of convenience HTTP endpoints
    (uploads, OAuth callbacks, audit-log downloads) carry
    per-(user-or-IP) token-bucket caps. On exhaustion the server returns
    HTTP `429` with body
    `{"error": "Too Many Requests", "route": "<bucket-name>"}`. No
    `Retry-After` header today; back off and retry with jitter.
-2. **Per-RPC limiter** — selected expensive methods (e.g. raw firmware
+2. **Per-RPC limiter**: selected expensive methods (e.g. raw firmware
    passthroughs, broad list calls) have per-user, per-method buckets. On
    exhaustion the server returns the JSON-RPC envelope with
    `error.code = 1008` (`RateLimitExceeded`), `error.data.type = "rate_limit"`,
    and HTTP `429`.
 
-Bucket capacities are tunable through env vars (`FM_HTTP_RATE_LIMIT_*`,
-`FM_RPC_RATE_LIMIT_*`) — see [docs/tuning.md](tuning.md). Defaults are
+Bucket capacities are tunable through env vars (`FM_RATE_LIMIT_*`): see
+the [rate limits guide](../api/guides/08-rate-limits.md). Defaults are
 generous enough that normal interactive use never hits them; bulk imports
 and event-replay tools should batch with backoff.
 
@@ -486,7 +486,7 @@ while (true) {
 ### Retry on transient device errors
 
 A few errors are worth retrying; most are not. Decide with the error **code**
-(the top-level `error.code`), not by any `kind` field — the wire error carries a
+(the top-level `error.code`), not by any `kind` field. The wire error carries a
 `code` and a `data.type` category, but no `kind`.
 
 - **Retry** after a short delay: `DeviceOffline` (**1200**) and
@@ -544,7 +544,7 @@ curl -X POST "https://<HOST>/rpc" \
 > on every error response, plus `data.fieldErrors[]` (with stable
 > `code` per failure) for validation, and `data.deviceCode` /
 > `data.deviceMessage` for device-relayed errors. Each method's
-> `#### Errors` block — when present — lists only the **method-specific**
+> `#### Errors` block, when present, lists only the **method-specific**
 > codes that go beyond auth / permission / validation / not-found.
 > Methods without an explicit `#### Errors` block return only those
 > generic categories.

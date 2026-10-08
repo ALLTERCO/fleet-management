@@ -7,29 +7,12 @@
 // re-bucketed): one row per (bucket, device, kind, source) carrying the bucket
 // avg plus true min/max.
 
+import type {EnvironmentReportReadingKind} from '../../types/api/report';
 import type {SensorQueryRow} from '../../types/api/sensor';
 
 export type EnvironmentReading = SensorQueryRow;
 
-// The sensor kinds this report reads from the 15-minute rollup. One DB fan-out
-// per kind (mirrors Sensor.Query). Vocabulary matches device_sensor.numeric_15min.
-export const ENVIRONMENT_REPORT_KINDS = [
-    'temperature',
-    'humidity',
-    'illuminance',
-    'co2',
-    'tvoc',
-    'pm25',
-    'pm10',
-    'pressure',
-    'dewpoint',
-    'uv',
-    'wind_speed',
-    'precipitation',
-    'moisture',
-    'battery'
-] as const;
-export type EnvironmentKind = (typeof ENVIRONMENT_REPORT_KINDS)[number];
+export type EnvironmentKind = EnvironmentReportReadingKind;
 
 // Section grouping — which kinds belong to each report section. Air Quality and
 // Weather render only when at least one of their kinds has data, the same way
@@ -42,6 +25,13 @@ export const WEATHER_KINDS = [
     'wind_speed',
     'precipitation',
     'moisture'
+] as const;
+// Water is its own section, not part of Weather: these come from a plumbed
+// meter or valve, and a site can have water readings and no weather station.
+export const WATER_KINDS = [
+    'flow',
+    'water_temperature',
+    'water_pressure'
 ] as const;
 
 // Display unit per kind — the sensor's native unit as stored in the rollup.
@@ -59,6 +49,9 @@ export const ENVIRONMENT_UNITS: Readonly<Record<string, string>> = {
     wind_speed: 'm/s',
     precipitation: 'mm',
     moisture: '%',
+    flow: 'm³/h',
+    water_temperature: '°C',
+    water_pressure: 'hPa',
     battery: '%'
 };
 

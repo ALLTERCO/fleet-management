@@ -1,0 +1,9 @@
+FROM nodered/node-red:latest
+
+COPY . /tmp/fm-node-red
+
+RUN cd /tmp/fm-node-red \
+    && npm pack --pack-destination /tmp \
+    && cd /data \
+    && npm install --omit=dev /tmp/shelly-fleet-manager-node-red-*.tgz \
+    && rm -rf /tmp/fm-node-red /tmp/shelly-fleet-manager-node-red-*.tgz

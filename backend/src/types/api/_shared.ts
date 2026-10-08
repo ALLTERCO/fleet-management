@@ -143,3 +143,84 @@ export const TLS_UPLOAD_RESPONSE_SCHEMA: JsonSchema = {
     properties: {length: {type: 'integer'}},
     description: 'Shelly TLS upload response: uploaded byte length'
 };
+
+// A write with nothing else to report answers `{success:true}`. One home, so
+// namespaces stop restating it.
+export const SUCCESS_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['success'],
+    additionalProperties: false,
+    properties: {success: {type: 'boolean'}}
+};
+
+// The buildListResponse envelope (rpc/listResponse.ts). Items differ per
+// call; the pagination fields never do.
+export function listResponseSchema(items: JsonSchema): JsonSchema {
+    return {
+        type: 'object',
+        required: ['items', 'total', 'limit', 'offset', 'has_more'],
+        additionalProperties: false,
+        properties: {
+            items: {type: 'array', items},
+            total: {type: 'integer'},
+            limit: {type: 'integer'},
+            offset: {type: 'integer'},
+            has_more: {type: 'boolean'}
+        }
+    };
+}
+
+// Past this depth an offset page re-reads every row before it; use a cursor.
+export const LIST_MAX_OFFSET = 10_000;
+
+export const LIST_OFFSET_SCHEMA: JsonSchema = {
+    type: 'integer',
+    minimum: 0,
+    maximum: LIST_MAX_OFFSET,
+    default: 0,
+    description: 'Deeper pages use `cursor`.'
+};
+
+export const LIST_CURSOR_SCHEMA: JsonSchema = {
+    type: 'string',
+    minLength: 1,
+    maxLength: 2048,
+    description:
+        '`next_cursor` of the previous page. Skips the total. Not with `offset`.'
+};
+
+/** Offset pages carry total and offset; cursor pages leave both out. */
+export function keysetListResponseSchema(items: JsonSchema): JsonSchema {
+    return {
+        type: 'object',
+        required: ['items', 'limit', 'has_more', 'next_cursor'],
+        additionalProperties: false,
+        properties: {
+            items: {type: 'array', items},
+            total: {
+                type: 'integer',
+                description: 'All matches. Present on offset pages only.'
+            },
+            limit: {type: 'integer'},
+            offset: {
+                type: 'integer',
+                description: 'Present on offset pages only.'
+            },
+            has_more: {type: 'boolean'},
+            next_cursor: {
+                type: ['string', 'null'],
+                description:
+                    'Pass as `cursor` for the next page. null on the last page.'
+            }
+        }
+    };
+}
+
+// A delete that throws NotFound when nothing matched, so the flag is always
+// true. Not for deletes that answer with a row count.
+export const DELETED_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['deleted'],
+    additionalProperties: false,
+    properties: {deleted: {type: 'boolean'}}
+};

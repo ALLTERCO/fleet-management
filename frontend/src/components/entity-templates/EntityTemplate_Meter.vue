@@ -7,22 +7,22 @@
         </header>
 
         <!-- Banners: errors / flags / data errors / calibration -->
-        <div v-if="status?.errors?.length" class="et__banner et__banner--danger" role="alert">
+        <div v-if="meterErrors.length" class="et__banner et__banner--danger" role="alert">
             <i class="fas fa-triangle-exclamation" />
             <span class="et__banner-list">
-                <span v-for="err in status.errors" :key="err">{{ err }}</span>
+                <span v-for="err in meterErrors" :key="err">{{ meterConditionLabel(err) }}</span>
             </span>
         </div>
-        <div v-if="status?.flags?.length" class="et__banner et__banner--warning">
+        <div v-if="meterFlags.length" class="et__banner et__banner--warning">
             <i class="fas fa-info-circle" />
             <span class="et__banner-list">
-                <span v-for="flag in status.flags" :key="flag">{{ flag }}</span>
+                <span v-for="flag in meterFlags" :key="flag">{{ meterConditionLabel(flag) }}</span>
             </span>
         </div>
-        <div v-if="dataStatus?.errors?.length" class="et__banner et__banner--danger" role="alert">
+        <div v-if="dataErrors.length" class="et__banner et__banner--danger" role="alert">
             <i class="fas fa-triangle-exclamation" />
             <span class="et__banner-list">
-                <span v-for="err in dataStatus.errors" :key="err">Data: {{ err }}</span>
+                <span v-for="err in dataErrors" :key="err">Data: {{ meterConditionLabel(err) }}</span>
             </span>
         </div>
         <div v-if="status?.calibration" class="et__banner et__banner--info">
@@ -247,7 +247,12 @@
 <script setup lang="ts">
 import {computed, onMounted, ref} from 'vue';
 import {useAccordion} from '@/composables/useAccordion';
-import {buildPowerMetrics, formatKwh} from '@/helpers/powerMetrics';
+import {
+    buildPowerMetrics,
+    conditionCodes,
+    formatKwh,
+    meterConditionLabel
+} from '@/helpers/powerMetrics';
 import {useDevicesStore} from '@/stores/devices';
 import {sendRPC} from '@/tools/websocket';
 
@@ -283,6 +288,11 @@ const dataStatus = computed(() => {
     }
     return null;
 });
+
+// Errors are faults, flags are conditions — the two keep separate banners.
+const meterErrors = computed(() => conditionCodes(props.status?.errors));
+const meterFlags = computed(() => conditionCodes(props.status?.flags));
+const dataErrors = computed(() => conditionCodes(dataStatus.value?.errors));
 
 const metrics = computed(() => buildPowerMetrics(props.status));
 

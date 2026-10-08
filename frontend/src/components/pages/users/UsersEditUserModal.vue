@@ -17,6 +17,10 @@
             </div>
         </template>
 
+        <!-- Two columns: the rail is a sticky sidebar, not a block that
+             stacks on top of the panel. Same shape as every other tab-rail
+             modal in the app. -->
+        <div class="edit-user-layout">
         <ModalTabRail
             :tabs="visibleTabs"
             :model-value="tabModel"
@@ -24,6 +28,7 @@
             @update:model-value="tabModel = $event as EditUserTab"
         />
 
+        <div class="edit-user-panel">
         <div
             v-if="tabModel === 'profile' && !isServiceUser"
             class="edit-user-profile"
@@ -87,6 +92,15 @@
             <UserSessionsPanel :user-id="targetId" />
         </div>
 
+        <!-- Never leave the panel blank: a service user whose selected tab is
+             human-only would otherwise render nothing at all. -->
+        <p v-else class="edit-user-empty">
+            This section does not apply to a service user. Pick another
+            section on the left.
+        </p>
+        </div>
+        </div>
+
         <template #footer>
             <div class="edit-user-footer">
                 <div v-if="!isServiceUser" class="edit-user-footer__actions">
@@ -112,6 +126,9 @@
                     <div v-if="saving" class="edit-user-footer__saving">
                         <Spinner size="sm" /> Saving...
                     </div>
+                    <Button type="blue-hollow" @click="$emit('close')">
+                        Close
+                    </Button>
                     <Button
                         v-if="tabModel === 'profile'"
                         type="blue"
@@ -197,3 +214,114 @@ defineEmits<{
     'toggle-active': [];
 }>();
 </script>
+
+<style scoped>
+/* Scoped here, not in the parent page: a parent's scoped styles never reach a
+   child component's inner elements, so these rules only apply where the markup
+   actually lives. */
+.edit-user-header {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-xs);
+}
+.edit-user-status {
+    flex-shrink: 0;
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    padding: 2px var(--gap-xs);
+    border-radius: var(--radius-full);
+}
+.edit-user-status--active {
+    color: var(--color-success-text);
+    background-color: color-mix(in srgb, var(--color-success) 15%, transparent);
+}
+.edit-user-status--inactive {
+    color: var(--color-danger-text);
+    background-color: color-mix(in srgb, var(--color-danger) 15%, transparent);
+}
+
+/* Two columns: the rail is a sidebar, not a block that stacks on the panel. */
+.edit-user-layout {
+    display: grid;
+    grid-template-columns: var(--form-tab-rail-width) minmax(0, 1fr);
+    gap: var(--gap-md);
+    align-items: start;
+}
+.edit-user-panel {
+    min-width: 0;
+}
+.edit-user-empty {
+    margin: 0;
+    padding: var(--gap-md) 0;
+    color: var(--color-text-tertiary);
+    font-size: var(--type-body);
+}
+
+.edit-user-profile {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap-sm);
+}
+.edit-user-profile__row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--gap-sm);
+}
+.edit-user-profile__readonly {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: var(--gap-2xs) var(--gap-xs);
+    padding: var(--gap-xs) var(--gap-sm);
+    border-radius: var(--radius-md);
+    background-color: var(--color-surface-2);
+    border: 1px solid var(--color-border-default);
+}
+.edit-user-profile__readonly-value {
+    font-family: var(--font-mono);
+    font-size: var(--type-body);
+    color: var(--color-text-secondary);
+}
+.edit-user-profile__readonly-hint {
+    font-size: var(--type-caption);
+    color: var(--color-text-quaternary);
+}
+
+.edit-user-footer {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--gap-xs);
+    width: 100%;
+}
+.edit-user-footer__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--gap-xs);
+}
+/* margin-left, not space-between: the left action group is absent for service
+   users, and space-between would strand Save on the left. */
+.edit-user-footer__right {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-xs);
+    margin-left: auto;
+}
+.edit-user-footer__saving {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-xs);
+    color: var(--color-text-tertiary);
+    font-size: var(--type-caption);
+}
+
+@media (max-width: 640px) {
+    .edit-user-layout {
+        grid-template-columns: 1fr;
+        gap: var(--gap-sm);
+    }
+    .edit-user-profile__row {
+        grid-template-columns: 1fr;
+    }
+}
+</style>

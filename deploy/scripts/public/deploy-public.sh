@@ -48,11 +48,14 @@ source "$SCRIPT_DIR/lib/install.sh"
 source "$SCRIPT_DIR/lib/preflight.sh"
 source "$SCRIPT_DIR/lib/state.sh"
 source "$SCRIPT_DIR/lib/compose.sh"
+source "$SCRIPT_DIR/lib/nodered.sh"
 source "$SCRIPT_DIR/lib/zitadel.sh"
 source "$SCRIPT_DIR/../common/healthwait.sh"
+source "$SCRIPT_DIR/../common/state-dirs.sh"
 source "$SCRIPT_DIR/../common/zitadel-state.sh"
 source "$SCRIPT_DIR/../common/zitadel-bringup.sh"
 source "$SCRIPT_DIR/../common/backup.sh"
+source "$SCRIPT_DIR/../common/backup-nodered.sh"
 source "$SCRIPT_DIR/../common/smoke.sh"
 source "$SCRIPT_DIR/../common/update.sh"
 source "$SCRIPT_DIR/../common/compat.sh"
@@ -61,6 +64,7 @@ source "$SCRIPT_DIR/../common/upgrade-audit.sh"
 source "$SCRIPT_DIR/../common/manifest.sh"
 source "$SCRIPT_DIR/../common/manifest-record.sh"
 source "$SCRIPT_DIR/../common/zitadel-smtp.sh"
+source "$SCRIPT_DIR/../common/dev-server.sh"
 
 source "$SCRIPT_DIR/commands/up.sh"
 source "$SCRIPT_DIR/commands/down.sh"
@@ -74,6 +78,7 @@ source "$SCRIPT_DIR/commands/doctor.sh"
 source "$SCRIPT_DIR/commands/rotate-secrets.sh"
 source "$SCRIPT_DIR/commands/backup-state.sh"
 source "$SCRIPT_DIR/commands/backup-db.sh"
+source "$SCRIPT_DIR/commands/backup-nodered.sh"
 source "$SCRIPT_DIR/commands/upgrade-audit.sh"
 source "$SCRIPT_DIR/commands/seed.sh"
 source "$SCRIPT_DIR/commands/help.sh"
@@ -100,6 +105,8 @@ main() {
         backup-state)   cmd_backup_state "$@" ;;
         backup-db)      cmd_backup_db "$@" ;;
         backup)         cmd_backup_db "$@" ;;
+        backup-nodered)  cmd_backup_nodered "$@" ;;
+        restore-nodered) cmd_restore_nodered "$@" ;;
         upgrade-audit)  cmd_upgrade_audit "$@" ;;
         seed)           cmd_seed "$@" ;;
         help|-h|--help) cmd_help ;;

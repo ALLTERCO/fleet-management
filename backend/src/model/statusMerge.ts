@@ -100,6 +100,23 @@ export function pathsOf(changes: readonly PathChange[]): string[] {
     return changes.map((c) => c.path);
 }
 
+/**
+ * Leaf changes that turn one whole status tree into another, leaving both
+ * untouched. Paths match the merge ("switch:0.aenergy.total") because the
+ * same merge produces them, on a copy of `previous`.
+ */
+export function diffStatus(
+    previous: Record<string, unknown>,
+    next: Record<string, unknown>
+): PathChange[] {
+    const base = structuredClone(previous);
+    const out: PathChange[] = [];
+    for (const key of Object.keys(next)) {
+        mergeStatusAndDiff(base[key], next[key], key, out);
+    }
+    return out;
+}
+
 function arraysShallowEqual(a: unknown[], b: unknown[]): boolean {
     if (a.length !== b.length) return false;
     for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;

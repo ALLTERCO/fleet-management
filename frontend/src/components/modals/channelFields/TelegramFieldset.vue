@@ -2,11 +2,11 @@
     <div class="cfs">
         <FormField label="Bot token" :error="visibleErrors.botToken">
             <input
-                v-model="form.botToken"
+                v-model.trim="form.botToken"
                 type="password"
                 autocomplete="new-password"
                 class="cfs__input"
-                placeholder="123456789:ABCdef…"
+                :placeholder="botTokenPlaceholder"
             />
         </FormField>
 
@@ -45,7 +45,15 @@ export interface TelegramFieldsetForm {
 const props = defineProps<{
     showErrors: boolean;
     errors: ErrorMap;
+    /** Masked stored secrets from Channel.Get, keyed by config path. */
+    maskedFields?: Record<string, string>;
 }>();
+
+// A stored secret is never sent back; say so instead of showing an empty
+// field that looks like it was lost.
+const botTokenPlaceholder = computed(() =>
+    props.maskedFields?.botToken ? 'Unchanged' : '123456789:ABCdef…'
+);
 
 const form = defineModel<TelegramFieldsetForm>({required: true});
 

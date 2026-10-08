@@ -1,0 +1,38 @@
+# Dev mode — expose backing services to host for local backend.
+#
+# Included automatically when --env dev. FM runs on the host in dev mode
+# (no fleet-manager container), so PG + Redis ports are mapped to localhost.
+
+services:
+  fleet-db:
+    ports:
+      - "${POSTGRES_PORT:-5434}:5432"
+
+  redis:
+    image: redis:${REDIS_VERSION:-7.4.11-alpine}
+    container_name: fm-redis-dev
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --maxmemory
+      - ${REDIS_MAX_MEMORY:-256mb}
+      - --maxmemory-policy
+      - ${REDIS_MAXMEMORY_POLICY:-noeviction}
+      - --appendonly
+      - ${REDIS_APPENDONLY:-no}
+      - --appendfsync
+      - ${REDIS_APPENDFSYNC:-everysec}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - fleet-net

@@ -22,73 +22,117 @@ const PERM_READ = {component: 'devices', operation: 'read' as const};
 const PERM_UPDATE = {component: 'devices', operation: 'update' as const};
 const PERM_EXECUTE = {component: 'devices', operation: 'execute' as const};
 
-// Per-virtual-component schemas — all share {shellyID, id} for reads,
-// {shellyID, id, config} for SetConfig, and {shellyID, id, value} for Set.
+// XT1 service-owned virtual components also accept {owner, role} addressing
+// in place of the numeric id (docs XT1.mdx). Every device-relay schema below
+// therefore requires at least one addressing form: id, or owner + role.
+const OWNER_SCHEMA: JsonSchema = {
+    type: 'string',
+    minLength: 1,
+    description:
+        'Owning service, e.g. "service:0". Used with role instead of id.'
+};
+const ROLE_SCHEMA: JsonSchema = {
+    type: 'string',
+    minLength: 1,
+    description:
+        'Component role within the owning service. Used with owner instead of id.'
+};
+const REQUIRE_ID_OR_OWNER_ROLE: JsonSchema[] = [
+    {required: ['id']},
+    {required: ['owner', 'role']}
+];
+
+// Per-virtual-component schemas — all share {shellyID, addressing} for reads,
+// plus {config} for SetConfig and {value} for Set.
 const P_VIRTUAL_ID: JsonSchema = {
     type: 'object',
-    required: ['shellyID', 'id'],
+    required: ['shellyID'],
     additionalProperties: false,
-    properties: {shellyID: SHELLY_ID, id: COMPONENT_ID}
-};
-const P_VIRTUAL_ID_CONFIG: JsonSchema = {
-    type: 'object',
-    required: ['shellyID', 'id', 'config'],
-    additionalProperties: false,
+    anyOf: REQUIRE_ID_OR_OWNER_ROLE,
     properties: {
         shellyID: SHELLY_ID,
         id: COMPONENT_ID,
+        owner: OWNER_SCHEMA,
+        role: ROLE_SCHEMA
+    }
+};
+const P_VIRTUAL_ID_CONFIG: JsonSchema = {
+    type: 'object',
+    required: ['shellyID', 'config'],
+    additionalProperties: false,
+    anyOf: REQUIRE_ID_OR_OWNER_ROLE,
+    properties: {
+        shellyID: SHELLY_ID,
+        id: COMPONENT_ID,
+        owner: OWNER_SCHEMA,
+        role: ROLE_SCHEMA,
         config: {type: 'object'}
     }
 };
 const P_VIRTUAL_BOOLEAN_SET: JsonSchema = {
     type: 'object',
-    required: ['shellyID', 'id', 'value'],
+    required: ['shellyID', 'value'],
     additionalProperties: false,
+    anyOf: REQUIRE_ID_OR_OWNER_ROLE,
     properties: {
         shellyID: SHELLY_ID,
         id: COMPONENT_ID,
+        owner: OWNER_SCHEMA,
+        role: ROLE_SCHEMA,
         value: {type: 'boolean'}
     }
 };
 const P_VIRTUAL_NUMBER_SET: JsonSchema = {
     type: 'object',
-    required: ['shellyID', 'id', 'value'],
+    required: ['shellyID', 'value'],
     additionalProperties: false,
+    anyOf: REQUIRE_ID_OR_OWNER_ROLE,
     properties: {
         shellyID: SHELLY_ID,
         id: COMPONENT_ID,
+        owner: OWNER_SCHEMA,
+        role: ROLE_SCHEMA,
         value: {type: 'number'}
     }
 };
 const P_VIRTUAL_TEXT_SET: JsonSchema = {
     type: 'object',
-    required: ['shellyID', 'id', 'value'],
+    required: ['shellyID', 'value'],
     additionalProperties: false,
+    anyOf: REQUIRE_ID_OR_OWNER_ROLE,
     properties: {
         shellyID: SHELLY_ID,
         id: COMPONENT_ID,
+        owner: OWNER_SCHEMA,
+        role: ROLE_SCHEMA,
         value: {type: 'string'}
     }
 };
 // Enum.Set value can be a valid option string OR null per spec.
 const P_VIRTUAL_ENUM_SET: JsonSchema = {
     type: 'object',
-    required: ['shellyID', 'id', 'value'],
+    required: ['shellyID', 'value'],
     additionalProperties: false,
+    anyOf: REQUIRE_ID_OR_OWNER_ROLE,
     properties: {
         shellyID: SHELLY_ID,
         id: COMPONENT_ID,
+        owner: OWNER_SCHEMA,
+        role: ROLE_SCHEMA,
         value: {type: ['string', 'null']}
     }
 };
 // Group.Set value is array of component-key strings per spec.
 const P_VIRTUAL_GROUP_SET: JsonSchema = {
     type: 'object',
-    required: ['shellyID', 'id', 'value'],
+    required: ['shellyID', 'value'],
     additionalProperties: false,
+    anyOf: REQUIRE_ID_OR_OWNER_ROLE,
     properties: {
         shellyID: SHELLY_ID,
         id: COMPONENT_ID,
+        owner: OWNER_SCHEMA,
+        role: ROLE_SCHEMA,
         value: {type: 'array', items: {type: 'string'}}
     }
 };
@@ -98,17 +142,22 @@ export type VirtualRoleComponentName = (typeof VIRTUAL_ROLE_COMPONENTS)[number];
 export interface VirtualComponentSetParams {
     shellyID: string;
     component: VirtualRoleComponentName;
-    id: number;
+    id?: number;
+    owner?: string;
+    role?: string;
     value: unknown;
 }
 export const VIRTUAL_COMPONENT_SET_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
-    required: ['shellyID', 'component', 'id', 'value'],
+    required: ['shellyID', 'component', 'value'],
     additionalProperties: false,
+    anyOf: REQUIRE_ID_OR_OWNER_ROLE,
     properties: {
         shellyID: SHELLY_ID,
         component: {type: 'string', enum: [...VIRTUAL_ROLE_COMPONENTS]},
         id: COMPONENT_ID,
+        owner: OWNER_SCHEMA,
+        role: ROLE_SCHEMA,
         value: {
             description: 'boolean | number | string — type per component'
         }
@@ -119,6 +168,7 @@ export interface VirtualAddParams {
     shellyID: string;
     type: (typeof VIRTUAL_ADD_TYPES)[number];
     config?: Record<string, unknown>;
+    id?: number;
 }
 export const VIRTUAL_ADD_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
@@ -127,7 +177,14 @@ export const VIRTUAL_ADD_PARAMS_SCHEMA: JsonSchema = {
     properties: {
         shellyID: SHELLY_ID,
         type: {type: 'string', enum: [...VIRTUAL_ADD_TYPES]},
-        config: {type: 'object'}
+        config: {type: 'object'},
+        id: {
+            type: 'integer',
+            minimum: 200,
+            maximum: 299,
+            description:
+                'Desired component id (firmware 1.4+). First free id when omitted.'
+        }
     }
 };
 
@@ -147,13 +204,16 @@ export const VIRTUAL_DELETE_PARAMS_SCHEMA: JsonSchema = {
 
 export interface VirtualTriggerParams {
     shellyID: string;
-    id: number;
+    id?: number;
+    owner?: string;
+    role?: string;
     event?: 'single_push' | 'double_push' | 'triple_push' | 'long_push';
 }
 export const VIRTUAL_TRIGGER_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
-    required: ['shellyID', 'id'],
+    required: ['shellyID'],
     additionalProperties: false,
+    anyOf: REQUIRE_ID_OR_OWNER_ROLE,
     properties: {
         shellyID: SHELLY_ID,
         id: {
@@ -161,6 +221,8 @@ export const VIRTUAL_TRIGGER_PARAMS_SCHEMA: JsonSchema = {
             minimum: 0,
             description: 'Component index on the device (0-based)'
         },
+        owner: OWNER_SCHEMA,
+        role: ROLE_SCHEMA,
         event: {
             type: 'string',
             enum: ['single_push', 'double_push', 'triple_push', 'long_push'],
@@ -216,51 +278,65 @@ b.registerMethod('Trigger', {
 // reserved for fleet-level grouping of devices, not the device-side virtual
 // Group component which holds component-key arrays).
 
-// Per-method exports
+// Per-method exports. Addressing is id OR owner+role (XT1) — schema-enforced.
 export interface VirtualBooleanSetParams {
     shellyID: string;
-    id: number;
+    id?: number;
+    owner?: string;
+    role?: string;
     value: boolean;
 }
 export const VIRTUAL_BOOLEAN_SET_PARAMS_SCHEMA = P_VIRTUAL_BOOLEAN_SET;
 
 export interface VirtualNumberSetParams {
     shellyID: string;
-    id: number;
+    id?: number;
+    owner?: string;
+    role?: string;
     value: number;
 }
 export const VIRTUAL_NUMBER_SET_PARAMS_SCHEMA = P_VIRTUAL_NUMBER_SET;
 
 export interface VirtualTextSetParams {
     shellyID: string;
-    id: number;
+    id?: number;
+    owner?: string;
+    role?: string;
     value: string;
 }
 export const VIRTUAL_TEXT_SET_PARAMS_SCHEMA = P_VIRTUAL_TEXT_SET;
 
 export interface VirtualEnumSetParams {
     shellyID: string;
-    id: number;
+    id?: number;
+    owner?: string;
+    role?: string;
     value: string | null;
 }
 export const VIRTUAL_ENUM_SET_PARAMS_SCHEMA = P_VIRTUAL_ENUM_SET;
 
 export interface VirtualGroupSetParams {
     shellyID: string;
-    id: number;
+    id?: number;
+    owner?: string;
+    role?: string;
     value: string[];
 }
 export const VIRTUAL_GROUP_SET_PARAMS_SCHEMA = P_VIRTUAL_GROUP_SET;
 
 export interface VirtualSubcomponentIdParams {
     shellyID: string;
-    id: number;
+    id?: number;
+    owner?: string;
+    role?: string;
 }
 export const VIRTUAL_SUBCOMPONENT_ID_PARAMS_SCHEMA = P_VIRTUAL_ID;
 
 export interface VirtualSubcomponentSetConfigParams {
     shellyID: string;
-    id: number;
+    id?: number;
+    owner?: string;
+    role?: string;
     config: Record<string, unknown>;
 }
 export const VIRTUAL_SUBCOMPONENT_SET_CONFIG_PARAMS_SCHEMA =

@@ -91,7 +91,7 @@
                         <Input v-model="tempValue" :type="'number'" :placeholder="'Value'" :disabled="!canExecute" />
                         <Button type="blue" submit size="xs" :disabled="!canExecute">Save</Button>
                     </form>
-                    <form v-if="entity.type === 'text' && (entity as virtual_text_entity).properties.view === 'field'"
+                    <form v-if="entity.type === 'text' && isTextFieldView((entity as virtual_text_entity).properties.view)"
                         class="flex flex-col items-center gap-1"
                         @submit.prevent="() => invokeAction(entity.id, 'setValue', { value: tempValue })">
                         <Input v-model="tempValue" :type="'text'" :placeholder="'Value'"
@@ -232,23 +232,9 @@
                     entity.type === 'enum' &&
                     (entity as virtual_enum_entity).properties.view === 'dropdown' &&
                     device.online
-                " :default="((entity as virtual_enum_entity).properties.options ?? {})[entity_status.value] || entity_status.value
-                        " :options="Object.values((entity as virtual_enum_entity).properties.options ?? {})"
-                    :disabled="!canExecute" @click.stop
-                    @selected="
-                        (selectedValue: string) => {
-                            if (!canExecute) return;
-                            const selectedKey = Object.entries(
-                                (entity as virtual_enum_entity)?.properties?.options || {}
-                            ).find(([_, value]) => value === selectedValue)?.[0];
-
-                            if (!selectedKey) {
-                                return;
-                            }
-
-                            invokeAction(entity.id, 'setValue', { value: selectedKey });
-                        }
-                    " />
+                " :key="enumDropdownKey" :default="enumSelectedLabel" placeholder="Select"
+                    :options="enumOptionModel.labels" :disabled="!canExecute" @click.stop
+                    @selected="onEnumOptionSelected" />
 
                 <div v-else-if="entity.type === 'em1' || entity.type === 'pm1'" class="box">
                     <p>{{ formatWatts(entity_status.act_power ?? entity_status.apower) }}</p>
@@ -434,16 +420,17 @@ import {getEntityDef} from '@/config/entity-registry';
 import {getPredefinedImageForEntity} from '@/helpers/device';
 import {isInstantEntityAction} from '@/helpers/instantEntityActions';
 import {formatWatts} from '@/helpers/numbers';
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
 import {useEntityStore} from '@/stores/entities';
 import {useToastStore} from '@/stores/toast';
 import {debug} from '@/tools/debug';
-import {
-    type bthomesensor_entity,
-    type entity_t,
-    type input_entity,
-    type shelly_device_t,
+import type {
+    bthomesensor_entity,
+    entity_t,
+    input_entity,
+    shelly_device_t,
     virtual_boolean_entity,
     virtual_enum_entity,
     virtual_number_entity,
@@ -507,6 +494,12 @@ function currentEntityProps(): EntityPropertyRecord {
 function entityStringProp(key: string): string | undefined {
     const value = currentEntityProps()[key];
     return typeof value === 'string' ? value : undefined;
+}
+
+// Shelly X manifests name the editable text view 'text_input'; FM renders
+// it as the plain 'field' editor.
+function isTextFieldView(view: string | null | undefined): boolean {
+    return view === 'field' || view === 'text_input';
 }
 
 function componentResources(): ComponentResourceMap | null {
@@ -576,6 +569,53 @@ const entity_status = computed(() => {
     }
     return deviceStore.statusOf(entity.value.source, statusKey);
 });
+
+// Enum dropdown label model. Duplicate user titles would make a reverse
+// label-to-key lookup return the first match and silently send the wrong
+// raw value, so colliding titles get the raw value appended to stay unique
+// and both lookup maps are built from those exact labels.
+const enumOptionModel = computed(() => {
+    const labels: string[] = [];
+    const labelToKey = new Map<string, string>();
+    const keyToLabel = new Map<string, string>();
+    if (entity.value.type !== 'enum') {
+        return {labels, labelToKey, keyToLabel};
+    }
+    const options =
+        (entity.value as virtual_enum_entity).properties.options ?? {};
+    const titleCounts = new Map<string, number>();
+    for (const title of Object.values(options)) {
+        titleCounts.set(title, (titleCounts.get(title) ?? 0) + 1);
+    }
+    for (const [key, title] of Object.entries(options)) {
+        const label =
+            (titleCounts.get(title) ?? 0) > 1 ? `${title} (${key})` : title;
+        labels.push(label);
+        labelToKey.set(label, key);
+        keyToLabel.set(key, label);
+    }
+    return {labels, labelToKey, keyToLabel};
+});
+
+// A fresh virtual enum has no status value until its first write. Passing
+// undefined together with the placeholder keeps the Dropdown honest instead
+// of it auto-selecting the first option.
+const enumSelectedLabel = computed<string | undefined>(() => {
+    const raw = entity_status.value?.value;
+    if (raw == null) return undefined;
+    return enumOptionModel.value.keyToLabel.get(String(raw)) || String(raw);
+});
+
+// Bumped when a write fails so the Dropdown remounts on the store value;
+// confirmed updates arrive via NotifyStatus through enumSelectedLabel.
+const enumDropdownKey = ref(0);
+
+function onEnumOptionSelected(selectedLabel: string) {
+    if (!canExecute.value) return;
+    const selectedKey = enumOptionModel.value.labelToKey.get(selectedLabel);
+    if (!selectedKey) return;
+    void invokeAction(entity.value.id, 'setValue', {value: selectedKey});
+}
 
 // Service entity: read virtual component value by resource role
 function vcVal(resource: string): unknown {
@@ -711,9 +751,7 @@ const tags = computed(() => {
     const ent = entity.value;
     const profile = ent.properties.deviceProfile;
     const source = (ent.properties as Record<string, any>)?.sensorSource;
-    const embedded =
-        ent.type === 'temperature' ? ent.properties.embeddedIn : undefined;
-    if (embedded) {
+    if (source === 'internal') {
         tags.push({text: 'Internal', icon: 'fas fa-microchip'});
     } else if (profile === 'dali') {
         tags.push({text: 'DALI', icon: 'fas fa-network-wired'});
@@ -730,7 +768,9 @@ const tags = computed(() => {
             case 'act_power':
                 tags.push({text: `${v} W`, icon: 'fas fa-bolt'});
                 break;
+            // PM1 spells it `aprtpower`, EM1/Switch/Cover `aprt_power`
             case 'aprt_power':
+            case 'aprtpower':
                 tags.push({text: `${v} VA`, icon: 'fas fa-bolt'});
                 break;
             case 'voltage':
@@ -818,6 +858,9 @@ async function invokeAction(
         await entityStore.invokeAction(entityId, action, params);
     } catch (err) {
         toastStore.error(commandErrorMessage(action, err));
+        // A failed write leaves no status change to render; remount the enum
+        // Dropdown so its display falls back to the store value.
+        enumDropdownKey.value += 1;
         debug('[EntityWidget] command failed', err);
     } finally {
         if (waitingForResponseTimeout) {
@@ -831,7 +874,7 @@ async function invokeAction(
 }
 
 function commandErrorMessage(action: string, err: unknown): string {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = rpcErrorMessage(err);
     if (message.toLowerCase().includes('timeout')) {
         return `${action} timed out — device may still apply it`;
     }

@@ -130,7 +130,7 @@ const props = defineProps<{userId: string | null}>();
 const authStore = useAuthStore();
 const rpc = useRpcPermissions();
 const canRevoke = computed(() => rpc.canCall('User.DeleteSession'));
-const currentUserSub = computed(() => authStore.zitadelUser?.sub ?? null);
+const currentUserSub = computed(() => authStore.identity?.userId ?? null);
 
 const items = ref<SessionRow[]>([]);
 const loading = ref(false);
@@ -212,7 +212,7 @@ function revoke(sessionId: string): void {
             await sendRPC('FLEET_MANAGER', 'User.DeleteSession', {sessionId});
             items.value = items.value.filter((s) => s.id !== sessionId);
         } catch (err) {
-            error.value = err instanceof Error ? err.message : String(err);
+            error.value = rpcErrorMessage(err);
         } finally {
             revokingId.value = null;
         }

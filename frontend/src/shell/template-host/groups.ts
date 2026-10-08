@@ -1,13 +1,9 @@
-import type {
-    Group,
-    GroupActivityEntry,
-    GroupBreadcrumbEntry,
-    GroupMemberRef
-} from '@api/group';
 import {type ComputedRef, computed, ref} from 'vue';
 import {useGroupsStore} from '@/stores/groups';
-import {hostListAll, hostRpc} from './rpc';
-import type {HostAsyncState, HostLoadState} from './types';
+import {hostRpcAccess} from './api';
+import {createGroupDomain} from './core/domains/groups';
+import type {HostAsyncState, HostLoadState, HostResource} from './types';
+import {useHostResource} from './vue/composables/useHostResource';
 
 type HostGroup = {
     id: number | string;
@@ -21,12 +17,9 @@ type HostGroup = {
     onlineCount?: number;
 };
 
-export function useGroups(): HostAsyncState<HostGroup[]> {
+export function useGroups(): HostResource<HostGroup[]> {
     const store = useGroupsStore();
-    const state = ref<'idle' | 'loading' | 'ready' | 'error'>('idle');
-    const loading = computed(() => state.value === 'loading');
-    const error = ref<string | null>(null);
-    const data = computed<HostGroup[]>(() =>
+    const read = (): HostGroup[] =>
         Object.values(store.groups).map((group) => ({
             id: group.id,
             name: group.name,
@@ -44,22 +37,11 @@ export function useGroups(): HostAsyncState<HostGroup[]> {
                 ? group.devices.length
                 : 0,
             onlineCount: 0
-        }))
-    );
+        }));
 
-    async function refresh(): Promise<void> {
-        state.value = 'loading';
-        error.value = null;
-        try {
-            await store.fetchGroups();
-            state.value = 'ready';
-        } catch (err) {
-            error.value = err instanceof Error ? err.message : String(err);
-            state.value = 'error';
-        }
-    }
-
-    return {state, loading, data, error, refresh};
+    return useHostResource(async () => {
+        await store.fetchGroups({failureMode: 'throw'});
+    }, read);
 }
 
 export function useGroup(id: number): ComputedRef<HostGroup | null> {
@@ -86,177 +68,102 @@ export function useGroup(id: number): ComputedRef<HostGroup | null> {
 }
 
 /**
- * Contract-compliant group actions: {create, update, addDevice, removeDevice}
- * each as HostAction<{pending, error, run}>. Templates use these to mutate
- * group state via the standard FM RPCs (group.create / group.update /
- * group.addmembers / group.removemembers).
+ * Group actions as {pending, error, run}.
+ *
+ * The four blocks here each hand-wrote their own RPC call and their own
+ * pending/error/try/catch, so the same four calls existed twice — once here
+ * and once in the core group domain — and the boilerplate existed four times.
+ * The calls now come from the domain; the state shape is written once below.
  */
-export function useGroupActions() {
-    const store = useGroupsStore();
-    const createPending = ref(false);
-    const createError = ref<string | null>(null);
-    const updatePending = ref(false);
-    const updateError = ref<string | null>(null);
-    const addPending = ref(false);
-    const addError = ref<string | null>(null);
-    const removePending = ref(false);
-    const removeError = ref<string | null>(null);
-
+function hostAction<TArgs extends unknown[], TResult>(
+    run: (...args: TArgs) => Promise<TResult>
+) {
+    const pending = ref(false);
+    const error = ref<string | null>(null);
     return {
-        create: {
-            pending: createPending,
-            error: createError,
-            async run(input: {
-                name: string;
-                metadata?: Record<string, unknown>;
-            }) {
-                createPending.value = true;
-                createError.value = null;
-                try {
-                    // GROUP_CREATE_PARAMS schema does not accept parentGroupId
-                    // (additionalProperties: false). Top-level groups are
-                    // implicit — leave parentGroupId out entirely.
-                    const created = await hostRpc<{id: number; name: string}>(
-                        'group.create',
-                        {
-                            name: input.name,
-                            metadata: input.metadata ?? {}
-                        }
-                    );
-                    await store.fetchGroups();
-                    return {
-                        id: String(created.id),
-                        name: created.name,
-                        metadata: input.metadata ?? {},
-                        deviceCount: 0,
-                        onlineCount: 0
-                    } as unknown as HostGroup;
-                } catch (e) {
-                    createError.value =
-                        e instanceof Error ? e.message : String(e);
-                    throw e;
-                } finally {
-                    createPending.value = false;
-                }
-            }
-        },
-        update: {
-            pending: updatePending,
-            error: updateError,
-            async run(id: string, patch: Partial<HostGroup>) {
-                updatePending.value = true;
-                updateError.value = null;
-                try {
-                    await hostRpc('group.update', {
-                        id: Number(id),
-                        patch: {
-                            ...(patch.name !== undefined
-                                ? {name: patch.name}
-                                : {}),
-                            ...(patch.metadata !== undefined
-                                ? {metadata: patch.metadata}
-                                : {})
-                        }
-                    });
-                    await store.fetchGroups();
-                } catch (e) {
-                    updateError.value =
-                        e instanceof Error ? e.message : String(e);
-                    throw e;
-                } finally {
-                    updatePending.value = false;
-                }
-            }
-        },
-        addDevice: {
-            pending: addPending,
-            error: addError,
-            async run(groupId: string, deviceIds: string[]) {
-                addPending.value = true;
-                addError.value = null;
-                try {
-                    await hostRpc('group.addmembers', {
-                        id: Number(groupId),
-                        members: deviceIds.map((d) => ({
-                            subjectType: 'device',
-                            subjectId: d
-                        }))
-                    });
-                    await store.fetchGroups();
-                } catch (e) {
-                    addError.value = e instanceof Error ? e.message : String(e);
-                    throw e;
-                } finally {
-                    addPending.value = false;
-                }
-            }
-        },
-        removeDevice: {
-            pending: removePending,
-            error: removeError,
-            async run(groupId: string, deviceIds: string[]) {
-                removePending.value = true;
-                removeError.value = null;
-                try {
-                    await hostRpc('group.removemembers', {
-                        id: Number(groupId),
-                        members: deviceIds.map((d) => ({
-                            subjectType: 'device',
-                            subjectId: d
-                        }))
-                    });
-                    await store.fetchGroups();
-                } catch (e) {
-                    removeError.value =
-                        e instanceof Error ? e.message : String(e);
-                    throw e;
-                } finally {
-                    removePending.value = false;
-                }
+        pending,
+        error,
+        async run(...args: TArgs): Promise<TResult> {
+            pending.value = true;
+            error.value = null;
+            try {
+                return await run(...args);
+            } catch (e) {
+                error.value = e instanceof Error ? e.message : String(e);
+                throw e;
+            } finally {
+                pending.value = false;
             }
         }
     };
 }
 
-export const groups = {
-    list(
-        params: {
-            parentGroupId?: number | null;
-            query?: string;
-            groupType?: string;
-            includeSummary?: boolean;
-        } = {}
-    ): Promise<Group[]> {
-        return hostListAll<Group>('group.list', params);
-    },
-    get(id: number, includeSummary = true): Promise<Group> {
-        return hostRpc<Group>('group.get', {id, includeSummary});
-    },
-    children(id: number): Promise<Group[]> {
-        return hostListAll<Group>('group.children', {id});
-    },
-    async path(id: number): Promise<GroupBreadcrumbEntry[]> {
-        const res = await hostRpc<{items: GroupBreadcrumbEntry[]}>(
-            'group.path',
-            {id}
-        );
-        return res.items ?? [];
-    },
-    members(id: number, subjectType?: GroupMemberRef['subjectType']) {
-        return hostListAll<GroupMemberRef>('group.listmembers', {
-            id,
-            ...(subjectType ? {subjectType} : {})
-        });
-    },
-    addMembers(id: number, members: GroupMemberRef[]): Promise<Group> {
-        return hostRpc<Group>('group.addmembers', {id, members});
-    },
-    removeMembers(id: number, members: GroupMemberRef[]): Promise<Group> {
-        return hostRpc<Group>('group.removemembers', {id, members});
-    },
-    activity(id: number): Promise<GroupActivityEntry[]> {
-        return hostListAll<GroupActivityEntry>('group.listactivity', {id});
-    }
-};
+const deviceMembers = (deviceIds: string[]) =>
+    deviceIds.map((subjectId) => ({subjectType: 'device' as const, subjectId}));
+
+export function useGroupActions() {
+    const store = useGroupsStore();
+    // Every action refreshes the store, so a caller sees its own write.
+    const andRefresh = async <T>(work: Promise<T>): Promise<T> => {
+        const result = await work;
+        await store.fetchGroups();
+        return result;
+    };
+
+    return {
+        create: hostAction(
+            async (input: {
+                name: string;
+                metadata?: Record<string, unknown>;
+            }) => {
+                // group.create rejects parentGroupId (additionalProperties:
+                // false). Top-level groups are implicit — leave it out.
+                const created = await andRefresh(
+                    groups.create({
+                        name: input.name,
+                        metadata: input.metadata ?? {}
+                    })
+                );
+                return {
+                    id: String(created.id),
+                    name: created.name,
+                    metadata: input.metadata ?? {},
+                    deviceCount: 0,
+                    onlineCount: 0
+                } as unknown as HostGroup;
+            }
+        ),
+        update: hostAction(async (id: string, patch: Partial<HostGroup>) => {
+            await andRefresh(
+                groups.update({
+                    id: Number(id),
+                    patch: {
+                        ...(patch.name !== undefined ? {name: patch.name} : {}),
+                        ...(patch.metadata !== undefined
+                            ? {metadata: patch.metadata}
+                            : {})
+                    }
+                })
+            );
+        }),
+        addDevice: hostAction(async (groupId: string, deviceIds: string[]) => {
+            await andRefresh(
+                groups.addMembers(Number(groupId), deviceMembers(deviceIds))
+            );
+        }),
+        removeDevice: hostAction(
+            async (groupId: string, deviceIds: string[]) => {
+                await andRefresh(
+                    groups.removeMembers(
+                        Number(groupId),
+                        deviceMembers(deviceIds)
+                    )
+                );
+            }
+        )
+    };
+}
+
+export const groups = createGroupDomain(hostRpcAccess);
 
 export type {HostAsyncState, HostGroup, HostLoadState};

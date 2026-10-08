@@ -6,11 +6,15 @@ import {tuning} from '../../config/tuning';
 import {acquire as acquireLock} from '../certificate/slotLock';
 import * as DeviceCollector from '../DeviceCollector';
 import * as EventDistributor from '../EventDistributor';
+import {jobAuthorityAllowsDispatch} from '../jobs/control';
 import {
     type CredentialPushRow,
     finishJob,
+    type JobAuthority,
     markCredentialUnit,
-    markJobRunning
+    markJobRunning,
+    prepareUnitDispatch,
+    stopUnitBeforeDispatch
 } from '../jobs/repository';
 import {LOGICAL_DEVICE_LOCK_NAMESPACE} from '../jobs/repositoryFactory';
 import * as store from '../PostgresProvider';
@@ -35,6 +39,8 @@ interface QueuedRow {
     ha1_new_hex: string | null;
     password_encrypted: string | null;
     requested_by: string | null;
+    authority: JobAuthority;
+    execution_id: string;
 }
 
 function pollIntervalMs(): number {
@@ -53,8 +59,11 @@ function pushTimeoutMs(): number {
 async function reclaimStaleInFlight(): Promise<void> {
     const stale = (await store.queryRows(
         `UPDATE organization.credential_pushes
-            SET status='failed',
-                last_error='fm_restart_during_push'
+            SET status=CASE WHEN dispatch_state='dispatched' THEN 'unknown' ELSE 'queued' END,
+                outcome_state = CASE WHEN dispatch_state='dispatched' THEN 'unknown' ELSE 'stopped' END,
+                last_error = CASE WHEN dispatch_state='dispatched'
+                    THEN 'fm_restart_after_credential_dispatch'
+                    ELSE 'fm_restart_before_credential_dispatch' END
           WHERE status='in_progress'
             AND (picked_up_at IS NULL OR picked_up_at < now() - ($1 || ' ms')::interval)
       RETURNING id`,
@@ -70,12 +79,33 @@ async function reclaimStaleInFlight(): Promise<void> {
 
 async function selectQueued(limit: number): Promise<QueuedRow[]> {
     return (await store.queryRows(
-        `WITH candidates AS MATERIALIZED (
-             SELECT push.id, push.logical_device_id
-               FROM organization.credential_pushes push
+        `WITH job_service AS MATERIALIZED (
+             SELECT job_id, MAX(picked_up_at) AS last_picked
+               FROM organization.credential_pushes
+              GROUP BY job_id
+         ), ranked AS MATERIALIZED (
+             SELECT push.id,
+                    push.job_id,
+                    push.logical_device_id,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY push.job_id ORDER BY push.id
+                    ) AS job_rank,
+                    service.last_picked AS job_last_picked
+              FROM organization.credential_pushes push
+               JOIN organization.credential_jobs job ON job.id = push.job_id
+               JOIN job_service service ON service.job_id = push.job_id
               WHERE push.status='queued'
+                AND job.control_state='active'
+                AND push.outcome_state='active'
+                AND push.dispatch_state='queued'
                 AND push.logical_device_id IS NOT NULL
-              ORDER BY push.id ASC
+         ), candidates AS MATERIALIZED (
+             SELECT id, logical_device_id
+               FROM ranked
+              ORDER BY job_rank,
+                       job_last_picked ASC NULLS FIRST,
+                       job_id,
+                       id
               LIMIT $1
          ), bound AS MATERIALIZED (
              SELECT candidates.id,
@@ -104,12 +134,19 @@ async function selectQueued(limit: number): Promise<QueuedRow[]> {
                FROM locked
                JOIN organization.credential_pushes push
                  ON push.id = locked.id
+               JOIN organization.credential_jobs job
+                 ON job.id = push.job_id
               WHERE push.status='queued'
-              FOR UPDATE OF push SKIP LOCKED
+                AND push.outcome_state='active'
+                AND push.dispatch_state='queued'
+                AND job.control_state='active'
+              FOR UPDATE OF push, job SKIP LOCKED
          ), claimed AS (
              UPDATE organization.credential_pushes push
                 SET status='in_progress',
-                    picked_up_at=now()
+                    picked_up_at=now(),
+                    execution_id=gen_random_uuid(),
+                    dispatch_state='claimed'
                FROM claimable
               WHERE push.id = claimable.id
           RETURNING push.id,
@@ -119,6 +156,7 @@ async function selectQueued(limit: number): Promise<QueuedRow[]> {
                     push.ha1_new_hex,
                     push.password_encrypted,
                     push.requested_by,
+                    push.execution_id,
                     claimable.logical_device_id,
                     claimable.external_id
          )
@@ -130,8 +168,11 @@ async function selectQueued(limit: number): Promise<QueuedRow[]> {
                 claimed.ha1_old_hex,
                 claimed.ha1_new_hex,
                 claimed.password_encrypted,
-                claimed.requested_by
+                claimed.requested_by,
+                claimed.execution_id::text,
+                job.authority
            FROM claimed
+           JOIN organization.credential_jobs job ON job.id = claimed.job_id
           ORDER BY claimed.id`,
         [limit]
     )) as unknown as QueuedRow[];
@@ -219,6 +260,30 @@ async function processRow(row: QueuedRow): Promise<void> {
         await assertDeviceStillBelongsToTenant(row);
         const device = DeviceCollector.getDevice(row.device_id);
         if (!device) throw new Error('device offline');
+        if (
+            !(await jobAuthorityAllowsDispatch(
+                row.authority,
+                row.tenant_id,
+                row.device_id
+            ))
+        ) {
+            await stopUnitBeforeDispatch({
+                kind: 'credential',
+                id: row.id,
+                executionId: row.execution_id,
+                reason: 'job_authority_no_longer_allows_dispatch'
+            });
+            return;
+        }
+        if (
+            !(await prepareUnitDispatch({
+                kind: 'credential',
+                id: row.id,
+                executionId: row.execution_id
+            }))
+        ) {
+            return;
+        }
         // null ha1_new_hex = clear-auth push: ha1 null disables auth. The device
         // still requires user='admin' and realm=<device-id> even to disable —
         // verified on hardware: all-null returns "Missing required argument 'user'".
@@ -235,26 +300,26 @@ async function processRow(row: QueuedRow): Promise<void> {
             false,
             AbortSignal.timeout(pushTimeoutMs())
         );
+        const updated = await markCredentialUnit({
+            id: row.id,
+            status: 'ok',
+            lastError: null,
+            executionId: row.execution_id
+        });
+        if (!updated) return;
         await finalizeDeviceCredentialOk(row);
-        emitPushRow(
-            await markCredentialUnit({
-                id: row.id,
-                status: 'ok',
-                lastError: null
-            }),
-            row.tenant_id
-        );
+        emitPushRow(updated, row.tenant_id);
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        const updated = await markCredentialUnit({
+            id: row.id,
+            status: 'failed',
+            lastError: msg,
+            executionId: row.execution_id
+        });
+        if (!updated) return;
         await finalizeDeviceCredentialFailedSafely(row, msg);
-        emitPushRow(
-            await markCredentialUnit({
-                id: row.id,
-                status: 'failed',
-                lastError: msg
-            }),
-            row.tenant_id
-        );
+        emitPushRow(updated, row.tenant_id);
     } finally {
         if (release) release();
         await maybeFinalizeJob(row.job_id, row.tenant_id).catch((err) =>
@@ -293,8 +358,10 @@ async function maybeFinalizeJob(
 ): Promise<void> {
     const counts = (await store.queryRows(
         `SELECT
-             COUNT(*) FILTER (WHERE status IN ('queued','in_progress')) AS pending,
-             COUNT(*) FILTER (WHERE status='failed') AS failed
+             COUNT(*) FILTER (WHERE outcome_state='active' AND status IN ('queued','in_progress')) AS pending,
+             COUNT(*) FILTER (
+                 WHERE status='failed' OR outcome_state IN ('stopped','unknown')
+             ) AS failed
            FROM organization.credential_pushes
           WHERE job_id=$1 AND tenant_id=$2`,
         [jobId, tenantId]

@@ -41,9 +41,15 @@ export const ADMIN_POSTGRES_CALL_PARAMS_SCHEMA: JsonSchema = {
     }
 };
 
+// The envelope is fixed; what is inside is not. `rows` is whichever
+// allowlisted DB function the caller named, and it is not always an array.
 export const ADMIN_POSTGRES_CALL_RESPONSE_SCHEMA: JsonSchema = {
     type: 'object',
-    additionalProperties: true
+    required: ['rows'],
+    additionalProperties: false,
+    properties: {
+        rows: {description: 'Result of the named function — shape varies.'}
+    }
 };
 
 export type AdminReconcileDevicesParams = Record<string, never>;

@@ -9,22 +9,21 @@ Regenerate with `cd backend && npm run generate`.
 
 ## Totals
 
-- Upgrade paths: **4**
+- Upgrade paths: **3**
 - Handlers: **3**
 
 ## Upgrade paths
 
 | Path | Auth required | Handler | Source |
 |---|---|---|---|
-| `/` | no | unknown | [backend/src/modules/web/ws/WebsocketController.ts:105](../../backend/src/modules/web/ws/WebsocketController.ts#L105) |
-| `/` | no | unknown | [backend/src/modules/web/ws/WebsocketController.ts:115](../../backend/src/modules/web/ws/WebsocketController.ts#L115) |
-| `/node-red` | no | unknown | [backend/src/modules/web/ws/WebsocketController.ts:74](../../backend/src/modules/web/ws/WebsocketController.ts#L74) |
-| `/shelly` | no | unknown | [backend/src/modules/web/ws/WebsocketController.ts:98](../../backend/src/modules/web/ws/WebsocketController.ts#L98) |
+| `/` | no | unknown | [backend/src/modules/web/ws/WebsocketController.ts:127](../../backend/src/modules/web/ws/WebsocketController.ts#L127) |
+| `/node-red` | no | unknown | [backend/src/modules/web/ws/WebsocketController.ts:78](../../backend/src/modules/web/ws/WebsocketController.ts#L78) |
+| `/shelly` | no | unknown | [backend/src/modules/web/ws/WebsocketController.ts:102](../../backend/src/modules/web/ws/WebsocketController.ts#L102) |
 
 ## Handlers
 
 | Class | maxPayload (bytes) | maxAuthQueue | Source |
 |---|---|---|---|
-| AbstractWebsocketHandler | 5242880 |  | [backend/src/modules/web/ws/handlers/AbstractWebsocketHandler.ts:123](../../backend/src/modules/web/ws/handlers/AbstractWebsocketHandler.ts#L123) |
-| ClientWebsocketHandler |  |  | [backend/src/modules/web/ws/handlers/ClientWebsocketHandler.ts:19](../../backend/src/modules/web/ws/handlers/ClientWebsocketHandler.ts#L19) |
-| ShellyWebsocketHandler |  |  | [backend/src/modules/web/ws/handlers/ShellyWebsocketHandler.ts:324](../../backend/src/modules/web/ws/handlers/ShellyWebsocketHandler.ts#L324) |
+| AbstractWebsocketHandler | 5242880 |  | [backend/src/modules/web/ws/handlers/AbstractWebsocketHandler.ts:122](../../backend/src/modules/web/ws/handlers/AbstractWebsocketHandler.ts#L122) |
+| ClientWebsocketHandler |  |  | [backend/src/modules/web/ws/handlers/ClientWebsocketHandler.ts:21](../../backend/src/modules/web/ws/handlers/ClientWebsocketHandler.ts#L21) |
+| ShellyWebsocketHandler |  |  | [backend/src/modules/web/ws/handlers/ShellyWebsocketHandler.ts:363](../../backend/src/modules/web/ws/handlers/ShellyWebsocketHandler.ts#L363) |

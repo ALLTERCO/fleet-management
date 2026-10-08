@@ -15,13 +15,13 @@
 
 services:
   traefik:
-    image: traefik:${TRAEFIK_VERSION:-v3.7.5}
+    image: traefik:${TRAEFIK_VERSION:-v3.7.13}
     labels:
       fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
       fleet.client: "${FM_CLIENT_ID:-shared}"
       fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
       fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
-      fleet.version: "${TRAEFIK_VERSION:-v3.7.5}"
+      fleet.version: "${TRAEFIK_VERSION:-v3.7.13}"
       fleet.commit: "${FM_BUILD_COMMIT:-unknown}"
       fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
       fleet.service: "traefik"
@@ -32,6 +32,9 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
+    # Without DAC override, Traefik reads the 0640 TLS key through the host user's group.
+    group_add:
+      - "${FM_HOST_GID}"
     read_only: true
     command:
       # File provider: loads routing config from dynamic directory
@@ -57,6 +60,32 @@ services:
       - "--ping=true"
       - "--ping.entryPoint=ping"
       - "--log.level=WARN"
+      # Prometheus metrics on an internal entrypoint; no ports entry, so only the Docker networks reach it
+      - "--entrypoints.metrics.address=:8083"
+      - "--metrics.prometheus=${FM_PROXY_METRICS:-true}"
+      - "--metrics.prometheus.entryPoint=metrics"
+      - "--metrics.prometheus.addEntryPointsLabels=true"
+      - "--metrics.prometheus.addRoutersLabels=true"
+      - "--metrics.prometheus.addServicesLabels=true"
+      # JSON access log with timing and status only; headers and query strings can carry tokens, so they are dropped
+      - "--accesslog=${FM_PROXY_ACCESS_LOG:-false}"
+      - "--accesslog.format=json"
+      - "--accesslog.fields.defaultmode=drop"
+      - "--accesslog.fields.headers.defaultmode=drop"
+      - "--accesslog.fields.queryparameters.defaultmode=drop"
+      - "--accesslog.fields.names.StartUTC=keep"
+      - "--accesslog.fields.names.Duration=keep"
+      - "--accesslog.fields.names.OriginDuration=keep"
+      - "--accesslog.fields.names.OriginStatus=keep"
+      - "--accesslog.fields.names.DownstreamStatus=keep"
+      - "--accesslog.fields.names.RouterName=keep"
+      - "--accesslog.fields.names.ServiceName=keep"
+      - "--accesslog.fields.names.RequestMethod=keep"
+      - "--accesslog.fields.names.RequestPath=keep"
+      - "--accesslog.fields.names.RequestProtocol=keep"
+      - "--accesslog.fields.names.RequestCount=keep"
+      - "--accesslog.fields.names.RetryAttempts=keep"
+      - "--accesslog.fields.names.Overhead=keep"
     ports:
       - "80:80"
       - "443:443"
@@ -69,6 +98,7 @@ services:
       - /tmp:size=16M
     networks:
       - fleet-net
+      - fleet-edge
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8082/ping >/dev/null || exit 1"]
       interval: 15s

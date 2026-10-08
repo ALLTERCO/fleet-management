@@ -2,6 +2,7 @@
 
 import {getLogger} from 'log4js';
 import type CommandSender from '../../model/CommandSender';
+import {buildListResponse} from '../../rpc/listResponse';
 import RpcError from '../../rpc/RpcError';
 import {requireOrganizationId} from '../../rpc/scope';
 import type {AssignmentScope} from '../../types/api/assignment';
@@ -10,10 +11,11 @@ import {isResourceNotFound, type RpcCallError} from '../../types/api/errors';
 import {authzAuditActor, authzAuditWriter} from '../authz/audit';
 import {canCrossOrganizationBoundary} from '../authz/evaluator';
 import {serviceUserPrincipal} from '../authz/principals';
-import {identityRoleManager} from '../identity';
+import {invalidateAuthzTenant} from '../authz/runtime';
 import {ConnectionContext} from '../web/ws/ConnectionContext';
 import {zitadelService} from '../zitadel';
 import {evictCachedUserByCredentialId, evictCachedUserByUserId} from './cache';
+import {grantInitialRole, withIdentityRollback} from './roleGrants';
 import {
     assertServiceUserAccessAllowed,
     configureServiceUserAccess,
@@ -51,7 +53,7 @@ export async function listServiceUsers(sender: CommandSender) {
             return {...u, tokenCount};
         })
     );
-    return {items: enriched, total: enriched.length};
+    return buildListResponse(enriched, enriched.length, 0, 0);
 }
 
 async function countServiceUserTokens(userId: string): Promise<number> {
@@ -114,8 +116,10 @@ export async function createServiceUser(
         assignments,
         sender
     };
-    const access = await withServiceUserRollback(result.userId, () =>
-        finalizeServiceUser(finalizeInput)
+    const access = await withIdentityRollback(
+        result.userId,
+        'createServiceUser',
+        () => finalizeServiceUser(finalizeInput)
     );
     await recordServiceUserCreateAudit(finalizeInput);
 
@@ -152,37 +156,6 @@ async function createServiceUserIdentity(
             );
         }
         throw RpcError.OperationFailed('create service user', err);
-    }
-}
-
-// On failure, deletes the just-created identity (all-or-nothing) and rethrows
-// the original error; a failed rollback is logged, not swallowed.
-async function withServiceUserRollback<T>(
-    userId: string,
-    finalize: () => Promise<T>
-): Promise<T> {
-    try {
-        return await finalize();
-    } catch (err) {
-        await rollbackServiceUserIdentity(userId, err);
-        throw err;
-    }
-}
-
-async function rollbackServiceUserIdentity(
-    userId: string,
-    cause: unknown
-): Promise<void> {
-    try {
-        await zitadelService.deleteUser(userId);
-    } catch (cleanupErr) {
-        if (isResourceNotFound(cleanupErr as RpcCallError)) return;
-        logger.error(
-            'createServiceUser rollback failed for %s after %s; manual cleanup required: %s',
-            userId,
-            cause instanceof Error ? cause.message : String(cause),
-            cleanupErr
-        );
     }
 }
 
@@ -335,25 +308,6 @@ function normalizeOptionalTextField(
     return trimmed.length === 0 ? undefined : trimmed;
 }
 
-async function grantInitialRole(
-    userId: string,
-    role: string,
-    organizationId?: string
-): Promise<void> {
-    try {
-        await identityRoleManager.grantSystemRoles({
-            userId,
-            roleKeys: [role],
-            organizationId
-        });
-    } catch (err) {
-        throw RpcError.OperationFailed(
-            `grant role "${role}" to user ${userId}`,
-            err
-        );
-    }
-}
-
 function isAlreadyExistsError(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error);
     return (
@@ -395,6 +349,7 @@ export async function deleteServiceUser(
         userId: params.userId,
         reason: 'user-deleted'
     });
+    await invalidateAuthzTenant(orgId);
     await writeServiceUserAudit({
         tenantId: orgId,
         actorId: authzAuditActor(sender.getUser()),
@@ -446,6 +401,7 @@ export async function setServiceUserOrg(
         kind: 'auth-changed',
         userId: params.userId
     });
+    await invalidateAuthzTenant(params.organizationId);
     await writeServiceUserAudit({
         tenantId: params.organizationId,
         actorId: authzAuditActor(sender?.getUser()),

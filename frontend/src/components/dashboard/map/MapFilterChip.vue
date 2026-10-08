@@ -103,7 +103,6 @@ onBeforeUnmount(() =>
     border-radius: 18px;
     background: var(--glass-2-bg);
     backdrop-filter: var(--glass-2-filter);
-    -webkit-backdrop-filter: var(--glass-2-filter);
     border: 1px solid var(--glass-border);
     color: var(--color-text-secondary);
     font-size: var(--type-caption);
@@ -165,7 +164,6 @@ onBeforeUnmount(() =>
     list-style: none;
     background: var(--glass-4-bg);
     backdrop-filter: var(--glass-4-filter);
-    -webkit-backdrop-filter: var(--glass-4-filter);
     border: 1px solid var(--color-border-strong);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-xl);

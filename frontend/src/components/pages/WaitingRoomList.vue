@@ -77,7 +77,7 @@
                     :accepting="state.accepting.value"
                     :is-accepting="state.isAccepting(internalId)"
                     :show-reject="mode === 'pending'"
-                    @click="state.openDetail(internalId)"
+                    @click="state.cardClicked(internalId)"
                     @accept="state.acceptDevice(internalId)"
                     @reject="mode === 'pending' ? state.rejectDevice(internalId) : null"
                 />

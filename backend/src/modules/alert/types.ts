@@ -12,6 +12,8 @@ import type {
     ScopeSelector
 } from '../../types/api/alert';
 
+export const BLUETOOTH_KIND = 'bluetooth';
+
 /** One active rule loaded from fn_alert_rule_list_enabled. */
 export interface LoadedAlertRule {
     id: number;
@@ -30,6 +32,8 @@ export interface LoadedAlertRule {
     summaryTemplate: string | null;
     messageTemplate: string | null;
     autoResolve: boolean;
+    /** Fire once, notify, then disable the rule. */
+    triggerOnce: boolean;
     config: Record<string, unknown>;
     destinationGroupIds: number[];
     /** Channels the rule notifies directly. */
@@ -44,6 +48,12 @@ export interface LoadedAlertRule {
     runbookUrl: string | null;
     /** Reusable multi-channel message template id, or null for inline wording. */
     templateId: number | null;
+    /**
+     * When the rule may fire. Null = always, which is every rule that predates
+     * this field. Gates firing only: an out-of-window event still evaluates,
+     * and a recovery still clears an alert raised inside the window.
+     */
+    activeWindow: import('./activeWindow').AlertActiveWindow | null;
     /** Templated labels; resolved per fire to alert_instances.labels. */
     labelsTemplate: Record<string, unknown>;
 }
@@ -51,6 +61,8 @@ export interface LoadedAlertRule {
 interface EventBase {
     organizationId: string;
     shellyID: string;
+    /** Fleet-owned display name for sources without an AbstractDevice. */
+    deviceName?: string;
     /** Attached for evaluators that need richer context (scope match, status). */
     device?: AbstractDevice;
 }
@@ -61,6 +73,8 @@ export type NormalizedEvent =
     | ({
           kind: 'device_status_changed';
           status: Record<string, unknown>;
+          /** Gateway components a promoted BLU device owns; judged on that device. */
+          promotedAway?: ReadonlySet<string>;
       } & EventBase)
     | ({
           kind: 'device_event_received';
@@ -104,6 +118,21 @@ export type NormalizedEvent =
           summary: string;
           labels: Record<string, string>;
           annotations: Record<string, string>;
+      }
+    | {
+          kind: 'system_health';
+          organizationId: string;
+          /** 'firing' opens or updates; 'resolved' clears. */
+          status: 'firing' | 'resolved';
+          /** Stable check id, one open alert per check. */
+          check: string;
+          title: string;
+          message: string;
+          /** The counter or gauge the check read, with its value. */
+          metric: string;
+          value: number;
+          /** What the admin should do, in plain words. */
+          action: string;
       };
 
 /** An evaluator match — shape handed back to the engine for upsert. */
@@ -118,7 +147,14 @@ export interface MatchResult {
     context?: Record<string, unknown>;
     /** Subject attribution for the source ref on the instance. */
     subject: {
-        type: 'device' | 'entity' | 'group' | 'location' | 'tag';
+        type:
+            | 'device'
+            | 'entity'
+            | 'group'
+            | 'location'
+            | 'tag'
+            | 'external'
+            | 'system';
         id: string;
     };
 }
@@ -134,7 +170,24 @@ export interface MatchOptions {
     preview?: boolean;
 }
 
+/** The reading that cleared an alert; stored with its resolve. */
+export interface ClearedReading {
+    current: number;
+    threshold: number;
+    message: string;
+}
+
+export interface ClearMatch {
+    fingerprintV2: string;
+    cleared?: ClearedReading;
+}
+
 export interface Evaluator {
+    /** Stateful matchers require identity before updating history; omitted means read-only matching. */
+    stateful?: boolean;
+    /** Status component types this rule reads; null or absent means it must
+     *  see every status event (it reads more than its declared component). */
+    inputTypes?(rule: LoadedAlertRule): ReadonlySet<string> | null;
     /** Event kinds this evaluator cares about (trigger path). */
     triggerKinds: readonly NormalizedEvent['kind'][];
     /** Event kinds that clear an active alert for this rule (auto-resolve). */
@@ -146,18 +199,24 @@ export interface Evaluator {
         opts?: MatchOptions
     ): MatchResult | null;
     /** Multi-subject trigger — one match per matching subject (e.g. every relay
-     *  on a device). Engine prefers this over match when present. */
-    matchAll?(event: NormalizedEvent, rule: LoadedAlertRule): MatchResult[];
+     *  on a device). Engine prefers this over match when present. Takes the
+     *  same options as match: an evaluator that learns from history must not
+     *  write to it during a preview. */
+    matchAll?(
+        event: NormalizedEvent,
+        rule: LoadedAlertRule,
+        opts?: MatchOptions
+    ): MatchResult[];
     /** Auto-resolve match — returns the fingerprint to clear, or null. Must be
      *  the same fingerprintV2 the fire path produced for this subject. */
     matchClear?(
         event: NormalizedEvent,
         rule: LoadedAlertRule
-    ): {fingerprintV2: string} | null;
-    /** Fingerprints of all recovered subjects. Engine prefers this over
-     *  matchClear so a recovered sibling can't stand in for the fired one. */
+    ): ClearMatch | null;
+    /** All recovered subjects. Engine prefers this over matchClear so a
+     *  recovered sibling can't stand in for the fired one. */
     matchClearAll?(
         event: NormalizedEvent,
         rule: LoadedAlertRule
-    ): readonly string[];
+    ): readonly ClearMatch[];
 }

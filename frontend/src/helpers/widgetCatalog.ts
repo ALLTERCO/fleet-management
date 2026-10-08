@@ -1,4 +1,5 @@
 import {useDevicesStore} from '@/stores/devices';
+import type {UiWidgetId} from '@/types/dashboard-entry';
 
 // Data tables shared by the widget catalog UI. Pulled out of AddWidgetModal
 // so the modal stays an orchestrator and the rules have one home + tests.
@@ -82,14 +83,8 @@ export function defaultSizeForEntityType(type?: string): CardSize {
 }
 
 const ALL_SIZES: CardSize[] = ['1x1', '2x1', '2x2'];
-const WIFI_BATTERY_SIZES: CardSize[] = ['1x1', '2x1'];
+const UP_TO_WIDE: CardSize[] = ['1x1', '2x1'];
 const ONE_SIZE: CardSize[] = ['1x1'];
-
-const RELAY_SIZES: CardSize[] = ['1x1', '2x1'];
-
-// A wired input is on/off, a value, or a press — nothing fills a 2x2 (BLU remote
-// buttons are a different type/card entirely, so they're unaffected).
-const INPUT_SIZES: CardSize[] = ['1x1', '2x1'];
 
 interface SizedEntity {
     type?: string;
@@ -134,52 +129,102 @@ function inputIsButton(entity: SizedEntity): boolean {
 function bluRemoteButtonCount(entity: SizedEntity): number {
     const controls = entity.properties?.controls;
     if (!Array.isArray(controls)) return 0;
-    return controls.filter(
-        (c) => c.kind === 'button' || c.kind === 'dimmer'
-    ).length;
+    return controls.filter((c) => c.kind === 'button' || c.kind === 'dimmer')
+        .length;
 }
 
-// Single-value sensors — one number to show, so a bigger tile is just filler.
-// (Battery is handled separately: a BLU battery is single-value, a WiFi
-// devicepower battery also has volts + power source, so it isn't.)
-const SINGLE_VALUE_TYPES = new Set(['illuminance', 'voltmeter']);
-const SINGLE_VALUE_OBJNAMES = new Set(['rotation', 'illuminance', 'moisture']);
+// Cap a card size HERE and nowhere else. A type absent from this table gets all
+// three sizes. Only cap a type whose card has no layout for the bigger size.
+const SIZE_CAP: Readonly<Record<string, CardSize[]>> = {
+    illuminance: ONE_SIZE,
+    voltmeter: ONE_SIZE,
+    devicepower: UP_TO_WIDE
+};
 
-function isSingleValueSensor(entity: SizedEntity): boolean {
-    if (SINGLE_VALUE_TYPES.has(entity.type ?? '')) return true;
-    return (
-        entity.type === 'bthomesensor' &&
-        SINGLE_VALUE_OBJNAMES.has(entity.properties?.objName ?? '')
-    );
-}
+// Same table for BTHome objects, keyed by objName instead of entity type.
+const BTHOME_SIZE_CAP: Readonly<Record<string, CardSize[]>> = {
+    rotation: ONE_SIZE,
+    illuminance: ONE_SIZE,
+    moisture: ONE_SIZE,
+    battery: ONE_SIZE
+};
 
 // Answer — the widget sizes an entity may take. Single home for the per-entity
-// size rule. A WiFi sleeper battery (devicepower) reports percent + volts +
-// power source, so it earns 1x1 or 2x1. A BLU battery and other single-value
-// sensors (rotation, illuminance) are one number → 1x1 only. Everything else
-// gets all three.
+// size rule; the renderer clamps a persisted oversize down to this answer.
 export function allowedSizesForEntity(
     entity: SizedEntity | undefined
 ): CardSize[] {
     if (!entity) return [...ALL_SIZES];
-    if (entity.type === 'devicepower') return [...WIFI_BATTERY_SIZES];
-    if (
-        entity.type === 'bthomesensor' &&
-        entity.properties?.objName === 'battery'
-    )
-        return [...ONE_SIZE];
-    if (isSingleValueSensor(entity)) return [...ONE_SIZE];
+    if (entity.type === 'bthomesensor')
+        return [
+            ...(BTHOME_SIZE_CAP[entity.properties?.objName ?? ''] ?? ALL_SIZES)
+        ];
+    const capped = SIZE_CAP[entity.type ?? ''];
+    if (capped) return [...capped];
+    // The rest need live device state, so they cannot live in the table above.
     // Dry-contact relay — a switch with no power metering can't fill a 2x2.
     if (entity.type === 'switch' && !switchIsMetered(entity))
-        return [...RELAY_SIZES];
+        return [...UP_TO_WIDE];
     // Wired input — no 2x2. A button is a single event source, so it caps to 1x1
     // (a 2x1 shows nothing more); switch/analog/count keep 1x1 + 2x1.
     if (entity.type === 'input')
-        return inputIsButton(entity) ? [...ONE_SIZE] : [...INPUT_SIZES];
+        return inputIsButton(entity) ? [...ONE_SIZE] : [...UP_TO_WIDE];
     // Single-button BLU remote has nothing to fill a 2x2.
     if (entity.type === 'bthomedevice' && bluRemoteButtonCount(entity) === 1)
-        return [...RELAY_SIZES];
+        return [...UP_TO_WIDE];
     return [...ALL_SIZES];
+}
+
+const WIDE_OR_LARGE: CardSize[] = ['2x1', '2x2'];
+const LARGE_ONLY: CardSize[] = ['2x2'];
+
+// Sizes a widget may take, first entry is the size it opens at. Keyed by the
+// UiWidgetId union like every other per-widget map, so adding a widget id fails
+// to compile until its size is set here — the id union is the one source.
+const WIDGET_SIZE_RULES: Readonly<Record<UiWidgetId, CardSize[]>> = {
+    clock_widget: ALL_SIZES,
+    gauge_widget: ALL_SIZES,
+    // A plotted line, a ranked list or a metric row needs width to be read.
+    chart_widget: WIDE_OR_LARGE,
+    stats_summary_widget: WIDE_OR_LARGE,
+    top_consumers_widget: WIDE_OR_LARGE,
+    maintenance_list_widget: WIDE_OR_LARGE,
+    cross_site_bar_widget: WIDE_OR_LARGE,
+    fleet_kpi_strip_widget: WIDE_OR_LARGE,
+    state_timeline_widget: ['2x2', '2x1'],
+    site_grid_widget: ['2x2', '2x1'],
+    // A 7x24 grid, a flow diagram and a five-column table do not survive
+    // anything smaller.
+    activity_heatmap_widget: LARGE_ONLY,
+    energy_flow_sankey_widget: LARGE_ONLY,
+    data_table_widget: LARGE_ONLY,
+    // The error tile takes whatever size it was saved at.
+    broken_widget: ALL_SIZES
+};
+
+function isWidgetId(kind: string | undefined): kind is UiWidgetId {
+    return kind != null && kind in WIDGET_SIZE_RULES;
+}
+
+// Answer — the sizes a widget kind may take. A persisted kind we no longer know
+// falls back to all three rather than throwing.
+export function allowedSizesForWidget(kind: string | undefined): CardSize[] {
+    return [...(isWidgetId(kind) ? WIDGET_SIZE_RULES[kind] : ALL_SIZES)];
+}
+
+// Answer — the size a widget opens at: the first size it allows.
+export function defaultSizeForWidget(kind: string | undefined): CardSize {
+    return allowedSizesForWidget(kind)[0];
+}
+
+// Answer — an allowed size for rendering a widget, clamping a persisted
+// oversize down. Mirrors clampSizeForEntity for the widget axis.
+export function clampSizeForWidget(
+    size: CardSize,
+    kind: string | undefined
+): CardSize {
+    const sizes = allowedSizesForWidget(kind);
+    return sizes.includes(size) ? size : sizes[0];
 }
 
 // Answer — the next size when the user cycles a tile. Walks only the sizes the
@@ -203,6 +248,14 @@ export function clampSizeForEntity(
 ): CardSize {
     const sizes = allowedSizesForEntity(entity);
     return sizes.includes(size) ? size : sizes[sizes.length - 1];
+}
+
+// Answer — the size a newly added widget opens at, never above what the entity
+// allows. Keeps the type default from offering a size the card can't take.
+export function defaultSizeForEntity(
+    entity: SizedEntity | undefined
+): CardSize {
+    return clampSizeForEntity(defaultSizeForEntityType(entity?.type), entity);
 }
 
 // Answer — RGB triplet for an accent name, falling back to the brand blue.

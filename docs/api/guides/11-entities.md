@@ -3,7 +3,7 @@
 ![Anatomy of an entity: the shape (id, name, type, source, online, properties), then discover its actions with GetCapabilities, then run one with InvokeAction](diagrams/entities.svg)
 
 An **entity** is Fleet Manager's normalized, typed view of one controllable or
-observable part of a device — a switch, a cover, a light, a sensor, a meter. It
+observable part of a device: a switch, a cover, a light, a sensor, a meter. It
 lets you drive a mixed fleet through one shape instead of learning each device's
 component RPCs.
 
@@ -18,20 +18,20 @@ device's presence, so a Bluetooth sensor whose gateway dropped reports
 
 An entity advertises what it can do, so you never hardcode per-device calls:
 
-- `Entity.GetCapabilities` returns `{ type, actions }` — the verbs this entity
+- `Entity.GetCapabilities` returns `{ type, actions }`: the verbs this entity
   supports (`toggle`, `setBrightness`, `open`, `setTarget`, …). The runtime set
   is the declared set intersected with the device's actual methods, so an action
   a given device can't do is simply absent.
-- `Entity.GetActionSchema` returns the JSON Schema for one action's params — use
+- `Entity.GetActionSchema` returns the JSON Schema for one action's params: use
   it to build forms and validate input without knowing the shape ahead of time.
 - `Entity.InvokeAction` (`{ id, action, params }`) runs the action; the backend
   translates it to the correct device RPC (e.g. `toggle` → `Switch.Toggle`).
 
 ### Key methods
 
-- `Entity.List` — entities you can read (paginated; `limit` 0 = unlimited,
+- `Entity.List`: entities you can read (paginated; `limit` 0 = unlimited,
   default 500).
-- `Entity.Get` — one entity's normalized summary.
+- `Entity.Get`: one entity's normalized summary.
 - `Entity.GetCapabilities`, `Entity.GetActionSchema`, `Entity.InvokeAction`.
 
 ### Reading state vs changing config

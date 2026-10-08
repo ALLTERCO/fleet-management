@@ -27,6 +27,7 @@ import CardValue_Input from '@/components/cards/CardValue_Input.vue';
 import CardValue_Presence from '@/components/cards/CardValue_Presence.vue';
 import CardValue_RGBW from '@/components/cards/CardValue_RGBW.vue';
 import CardValue_Rotation from '@/components/cards/CardValue_Rotation.vue';
+import CardValue_Script from '@/components/cards/CardValue_Script.vue';
 import CardValue_Sensor from '@/components/cards/CardValue_Sensor.vue';
 import CardValue_Service from '@/components/cards/CardValue_Service.vue';
 import CardValue_Switch from '@/components/cards/CardValue_Switch.vue';
@@ -34,6 +35,7 @@ import CardValue_Temperature from '@/components/cards/CardValue_Temperature.vue'
 import CardValue_TempHumidity from '@/components/cards/CardValue_TempHumidity.vue';
 import CardValue_TRV from '@/components/cards/CardValue_TRV.vue';
 import CardValue_Virtual from '@/components/cards/CardValue_Virtual.vue';
+import CardValue_VirtualGroup from '@/components/cards/CardValue_VirtualGroup.vue';
 import CardValue_WallDisplay from '@/components/cards/CardValue_WallDisplay.vue';
 import {useDevicesStore} from '@/stores/devices';
 
@@ -123,6 +125,9 @@ export const ENTITY_CARD_MAP: Record<string, CardMapping> = {
     // Schedule
     schedule: {component: CardValue_Info},
 
+    // Script — running state plus a start/stop control (Script.Start/Stop)
+    script: {component: CardValue_Script},
+
     // XT1 service devices (HVAC, water valve, EV charger, etc.)
     // Generic card handles all types; HVAC gets dedicated card via resolveEntityCard override
     service: {component: CardValue_Service},
@@ -138,7 +143,8 @@ export const ENTITY_CARD_MAP: Record<string, CardMapping> = {
     number: {component: CardValue_Virtual},
     text: {component: CardValue_Virtual},
     enum: {component: CardValue_Virtual},
-    group: {component: CardValue_Info}
+    // Composite: renders each member component as its own control.
+    group: {component: CardValue_VirtualGroup}
 };
 
 /**

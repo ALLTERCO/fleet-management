@@ -1,9 +1,12 @@
 // Static checks on migration SQL: signature-change without DROP, and
 // cross-schema refs that sort before the referenced table/fn.
 
+import {createHash} from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import {MIGRATION_DIRS} from '../src/config/migrationLayout';
 import {ALERT_INSTANCE_STATE_SET} from '../src/modules/alert/states';
+import {HISTORICAL_REMOVAL_EXCEPTIONS} from './migration-removal-exceptions';
 
 const MIGRATION_ROOT = path.resolve(
     __dirname,
@@ -22,6 +25,10 @@ interface FunctionSignature {
 }
 
 export interface Finding {
+    code?:
+        | 'function-signature'
+        | 'function-removal'
+        | 'historical-removal-changed';
     severity: 'error' | 'warn';
     file: string;
     line: number;
@@ -42,6 +49,10 @@ interface DropMatch {
     args: string[] | null;
     line: number;
     offset: number;
+}
+
+interface RenameMatch extends DropMatch {
+    newName: string;
 }
 
 // --- SQL parsing ---------------------------------------------------------
@@ -76,7 +87,7 @@ function readBalancedArgs(
     return null;
 }
 
-function normalizeArgs(raw: string): string[] {
+function splitDeclarations(raw: string): string[] {
     if (!raw.trim()) return [];
     const parts: string[] = [];
     let depth = 0;
@@ -92,29 +103,89 @@ function normalizeArgs(raw: string): string[] {
         }
     }
     if (current.trim()) parts.push(current);
-    return parts.map((p) => {
-        const sansDefault = p.split(/\bDEFAULT\b/i)[0].trim();
-        const tokens = sansDefault.split(/\s+/);
-        const typeTokens =
-            tokens.length > 1 && /^[a-z_][a-z0-9_]*$/i.test(tokens[0])
-                ? tokens.slice(1)
-                : tokens;
-        // Strip (n) / (p,s) modifiers — PG DROP FUNCTION matches by base
-        // type, so `VARCHAR` == `VARCHAR(250)` and `DECIMAL` == `DECIMAL(10,4)`.
-        return typeTokens
-            .join(' ')
-            .replace(/\([^)]*\)/g, '')
-            .toUpperCase()
-            .replace(/\s+/g, ' ')
-            .trim();
-    });
+    return parts.map((part) => part.trim());
+}
+
+const TYPE_ALIASES: Record<string, string> = {
+    INT: 'INTEGER',
+    INT4: 'INTEGER',
+    INT2: 'SMALLINT',
+    INT8: 'BIGINT',
+    BOOL: 'BOOLEAN',
+    FLOAT4: 'REAL',
+    FLOAT8: 'DOUBLE PRECISION',
+    DECIMAL: 'NUMERIC',
+    'CHARACTER VARYING': 'VARCHAR',
+    CHAR: 'CHARACTER',
+    TIMESTAMPTZ: 'TIMESTAMP WITH TIME ZONE',
+    TIMETZ: 'TIME WITH TIME ZONE',
+    'TIMESTAMP WITHOUT TIME ZONE': 'TIMESTAMP',
+    'TIME WITHOUT TIME ZONE': 'TIME',
+    'BIT VARYING': 'VARBIT'
+};
+
+function normalizeType(raw: string): string {
+    const normalized = raw
+        .replace(/\([^)]*\)/g, '')
+        .trim()
+        .replace(/\s+/g, ' ')
+        .replace(/\s*\[\s*\d*\s*\]/g, '[]')
+        .toUpperCase();
+    const base = normalized.replace(/(?:\[\])+$/, '');
+    const suffix = normalized.length > base.length ? '[]' : '';
+    return `${TYPE_ALIASES[base] ?? base}${suffix}`;
+}
+
+function normalizeArgs(raw: string): string[] {
+    return splitDeclarations(raw)
+        .filter((part) => !/^OUT\b/i.test(part))
+        .map((part) => {
+            const declaration = part
+                .split(/\bDEFAULT\b|=/i)[0]
+                .trim()
+                .replace(/^(?:IN|INOUT|VARIADIC)\s+/i, '')
+                .replace(/\s*\[\s*\d*\s*\]/g, '[]')
+                .replace(/\s*\(/g, '(');
+            // Multiword built-in types in DROP have no parameter name to strip.
+            const unnamed =
+                /^(?:DOUBLE\s+PRECISION|TIMESTAMP\b|TIME\b|CHARACTER\b|CHAR\b|BIT\b|INTERVAL\b|VARCHAR\b|NUMERIC\b|DECIMAL\b)/i.test(
+                    declaration
+                );
+            const named = declaration.match(/^([a-z_][a-z0-9_]*)\s+(.+)$/i);
+            return normalizeType(named && !unnamed ? named[2] : declaration);
+        });
 }
 
 function normalizeReturns(bodyHead: string | undefined): string {
     if (!bodyHead) return '';
     const m = bodyHead.match(/\bRETURNS\b([\s\S]*)$/i);
     if (!m) return '';
-    return m[1].trim().replace(/\s+/g, ' ').toUpperCase();
+    const returns = m[1].trim();
+    const table = returns.match(/^TABLE\s*\(/i);
+    if (!table) return normalizeType(returns);
+    const columns = readBalancedArgs(returns, table[0].length);
+    if (!columns) return normalizeType(returns);
+    return `TABLE(${splitDeclarations(columns.args)
+        .map((column) => {
+            const named = column.match(/^([a-z_][a-z0-9_]*)\s+(.+)$/i);
+            return named
+                ? `${named[1].toUpperCase()} ${normalizeType(named[2])}`
+                : column;
+        })
+        .join(',')})`;
+}
+
+function normalizeOutputArgs(raw: string): string {
+    return splitDeclarations(raw)
+        .filter((part) => /^(?:OUT|INOUT)\s+/i.test(part))
+        .map((part) => {
+            const declaration = part.replace(/^(?:OUT|INOUT)\s+/i, '');
+            const named = declaration.match(/^([a-z_][a-z0-9_]*)\s+(.+)$/i);
+            return named
+                ? `${named[1].toUpperCase()} ${normalizeType(named[2])}`
+                : normalizeType(declaration);
+        })
+        .join(',');
 }
 
 const FN_HEADER_RE =
@@ -137,7 +208,7 @@ function findCreates(block: string): CreateMatch[] {
         out.push({
             qname: m[1].toLowerCase(),
             args: normalizeArgs(args.args),
-            returns: normalizeReturns(bodyHead),
+            returns: `${normalizeReturns(bodyHead)}|${normalizeOutputArgs(args.args)}`,
             line: block.slice(0, m.index).split('\n').length,
             offset: m.index
         });
@@ -173,34 +244,63 @@ function findDrops(block: string): DropMatch[] {
     return out;
 }
 
-// --- Linter --------------------------------------------------------------
-
-function loadFiles(): Array<{relPath: string; content: string}> {
-    const out: Array<{relPath: string; content: string}> = [];
-    const schemaDirs = fs
-        .readdirSync(MIGRATION_ROOT, {withFileTypes: true})
-        .filter((e) => e.isDirectory())
-        .map((e) => e.name)
-        .sort();
-    for (const schemaDir of schemaDirs) {
-        const dirPath = path.join(MIGRATION_ROOT, schemaDir);
-        const files = fs
-            .readdirSync(dirPath)
-            .filter((f) => f.endsWith('.sql'))
-            .sort();
-        for (const f of files) {
-            out.push({
-                relPath: `${schemaDir}/${f}`,
-                content: fs.readFileSync(path.join(dirPath, f), 'utf8')
-            });
-        }
+function findRenames(block: string): RenameMatch[] {
+    const out: RenameMatch[] = [];
+    const header =
+        /ALTER\s+FUNCTION\s+([a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*)\s*\(/gi;
+    for (const match of block.matchAll(header)) {
+        const args = readBalancedArgs(block, match.index + match[0].length);
+        if (!args) continue;
+        const rename = block
+            .slice(args.endIndex)
+            .match(/^\s*RENAME\s+TO\s+([a-z_][a-z0-9_]*)/i);
+        if (!rename) continue;
+        out.push({
+            qname: match[1].toLowerCase(),
+            args: normalizeArgs(args.args),
+            newName: rename[1].toLowerCase(),
+            line: block.slice(0, match.index).split('\n').length,
+            offset: match.index
+        });
     }
     return out;
+}
+
+function maskSqlBodiesAndComments(block: string): string {
+    return block.replace(
+        /--[^\n]*|\/\*[\s\S]*?\*\/|'(?:''|[^'])*'|(\$(?:[a-z_][a-z0-9_]*)?\$)[\s\S]*?\1/gi,
+        (match) => match.replace(/[^\n]/g, ' ')
+    );
+}
+
+// --- Linter --------------------------------------------------------------
+
+export function loadFiles(): Array<{relPath: string; content: string}> {
+    const files = MIGRATION_DIRS.flatMap((directory) => {
+        const dirPath = path.resolve(__dirname, '..', directory);
+        return fs
+            .readdirSync(dirPath)
+            .filter((file) => file.endsWith('.sql'))
+            .map((file) => ({
+                relPath: path.relative(
+                    MIGRATION_ROOT,
+                    path.join(dirPath, file)
+                ),
+                content: fs.readFileSync(path.join(dirPath, file), 'utf8')
+            }));
+    });
+    return files.sort((left, right) =>
+        COLLATOR.compare(basename(left.relPath), basename(right.relPath))
+    );
 }
 
 function argsEqual(a: string[], b: string[]): boolean {
     if (a.length !== b.length) return false;
     return a.every((x, i) => x === b[i]);
+}
+
+function signatureKey(signature: {qname: string; args: string[]}): string {
+    return `${signature.qname}(${signature.args.join(',')})`;
 }
 
 function validateBlock(
@@ -211,49 +311,46 @@ function validateBlock(
     findings: Finding[]
 ) {
     if (!block.trim()) return;
-    const creates = findCreates(block);
-    const drops = findDrops(block);
+    const sql = maskSqlBodiesAndComments(block);
+    const statements = [
+        ...findCreates(sql),
+        ...findDrops(sql),
+        ...findRenames(sql)
+    ].sort((left, right) => left.offset - right.offset);
 
-    for (const c of creates) {
-        const prev = priorState.get(c.qname);
-        if (prev) {
-            const argsChanged = !argsEqual(prev.args, c.args);
-            const returnsChanged = prev.returns !== c.returns;
-            if (argsChanged || returnsChanged) {
-                const precedingDrop = drops.find(
-                    (d) =>
-                        d.qname === c.qname &&
-                        d.offset < c.offset &&
-                        (d.args === null || argsEqual(d.args, prev.args))
-                );
-                if (!precedingDrop) {
-                    const changed =
-                        argsChanged && returnsChanged
-                            ? 'args + return'
-                            : argsChanged
-                              ? 'args'
-                              : 'return';
-                    findings.push({
-                        severity: 'error',
-                        file: relPath,
-                        line: c.line,
-                        message: `${blockName}: CREATE OR REPLACE of ${c.qname} changed ${changed} since ${prev.file} without preceding DROP.`,
-                        fix: `Add \`DROP FUNCTION IF EXISTS ${c.qname}(${prev.args.join(', ')});\` before the CREATE.`
-                    });
-                }
+    for (const statement of statements) {
+        if ('returns' in statement) {
+            const key = signatureKey(statement);
+            const prev = priorState.get(key);
+            if (prev && prev.returns !== statement.returns) {
+                findings.push({
+                    code: 'function-signature',
+                    severity: 'error',
+                    file: relPath,
+                    line: statement.line,
+                    message: `${blockName}: CREATE OR REPLACE of ${statement.qname} changed return since ${prev.file} without preceding DROP.`,
+                    fix: `Add \`DROP FUNCTION IF EXISTS ${statement.qname}(${prev.args.join(', ')});\` before the CREATE.`
+                });
+            }
+            priorState.set(key, {...statement, file: relPath});
+            continue;
+        }
+        for (const [key, prior] of [...priorState]) {
+            if (prior.qname !== statement.qname) continue;
+            if (
+                statement.args !== null &&
+                !argsEqual(statement.args, prior.args)
+            )
+                continue;
+            priorState.delete(key);
+            if ('newName' in statement) {
+                const renamed = {
+                    ...prior,
+                    qname: `${prior.qname.split('.')[0]}.${statement.newName}`
+                };
+                priorState.set(signatureKey(renamed), renamed);
             }
         }
-        priorState.set(c.qname, {
-            qname: c.qname,
-            args: c.args,
-            returns: c.returns,
-            file: relPath,
-            line: c.line
-        });
-    }
-
-    for (const d of drops) {
-        priorState.delete(d.qname);
     }
 }
 
@@ -425,6 +522,7 @@ export function checkFunctionRemovals(
     findings: Finding[]
 ): void {
     for (const f of files) {
+        const accepted = historicalRemovals(f, findings);
         const {up} = splitUpDown(f.content);
         if (!up.trim()) continue;
         const lines = up.split('\n');
@@ -440,6 +538,7 @@ export function checkFunctionRemovals(
                 : 0;
         for (const drop of findDrops(up)) {
             if (created.has(drop.qname)) continue;
+            if (accepted.has(drop.qname)) continue;
             const idx = drop.line - 1;
             const line = lines[idx] ?? '';
             const prev = idx > 0 ? lines[idx - 1] : '';
@@ -450,6 +549,7 @@ export function checkFunctionRemovals(
                 continue;
             }
             findings.push({
+                code: 'function-removal',
                 severity: 'error',
                 file: f.relPath,
                 line: upLineBase + drop.line,
@@ -458,6 +558,28 @@ export function checkFunctionRemovals(
             });
         }
     }
+}
+
+function historicalRemovals(
+    file: {relPath: string; content: string},
+    findings: Finding[]
+): ReadonlySet<string> {
+    const exception = HISTORICAL_REMOVAL_EXCEPTIONS.find(
+        (entry) => entry.path === file.relPath
+    );
+    if (!exception) return new Set();
+    const hash = createHash('sha256').update(file.content).digest('hex');
+    if (hash === exception.sha256) return new Set(exception.functions);
+    findings.push({
+        code: 'historical-removal-changed',
+        severity: 'error',
+        file: file.relPath,
+        line: 1,
+        message:
+            'Reviewed historical migration content changed; its removal exception is invalid.',
+        fix: 'Restore the shipped migration and put changes in a new migration.'
+    });
+    return new Set();
 }
 
 // --- Idempotency check ------------------------------------------------
@@ -610,9 +732,8 @@ export function checkCreateIndexConcurrently(
     }
 }
 
-function lint(): Finding[] {
+export function lint(files = loadFiles()): Finding[] {
     const findings: Finding[] = [];
-    const files = loadFiles();
     const upState: Map<string, FunctionSignature> = new Map();
 
     for (const {relPath, content} of files) {
@@ -825,7 +946,13 @@ function checkUuidIntDrift(
 function main() {
     const findings = lint();
     if (findings.length === 0) {
-        console.log('Migration lint: clean.');
+        const accepted = HISTORICAL_REMOVAL_EXCEPTIONS.reduce(
+            (count, entry) => count + entry.functions.length,
+            0
+        );
+        console.log(
+            `Migration lint: clean. ${accepted} reviewed historical removal exceptions.`
+        );
         process.exit(0);
     }
     const errors = findings.filter((f) => f.severity === 'error');

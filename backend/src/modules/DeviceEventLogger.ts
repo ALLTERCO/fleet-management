@@ -9,6 +9,7 @@ import * as log4js from 'log4js';
 import {tuning} from '../config/tuning';
 import type AbstractDevice from '../model/AbstractDevice';
 import type {PathChange} from '../types';
+import type {DeviceEventSource} from '../types/api/deviceevents';
 import {BoundedQueue} from './boundedQueue';
 import {
     appendDeviceEventEntries,
@@ -139,6 +140,7 @@ export interface CaptureInput {
     /** Device-reported time (Unix epoch seconds). Preserved verbatim. */
     tsEpochSec?: number;
     changes: readonly PathChange[];
+    source: DeviceEventSource;
 }
 
 // Persist every entry (never coalesced — one row each) and broadcast the same
@@ -180,6 +182,30 @@ export function captureChanges(input: CaptureInput): void {
             deviceId: input.device.id,
             shellyId,
             organizationId: getDeviceOrg(shellyId),
+            tsEpochSec: input.tsEpochSec,
+            changes: input.changes,
+            source: input.source
+        })
+    );
+}
+
+export interface ProjectedChangeInput {
+    sourceDevice: AbstractDevice;
+    deviceId: number;
+    shellyId: string;
+    organizationId: string;
+    tsEpochSec?: number;
+    changes: readonly PathChange[];
+}
+
+// Records projected rows under the promoted device.
+export function captureProjectedChanges(input: ProjectedChangeInput): void {
+    record(
+        input.sourceDevice,
+        changesToEntries({
+            deviceId: input.deviceId,
+            shellyId: input.shellyId,
+            organizationId: input.organizationId,
             tsEpochSec: input.tsEpochSec,
             changes: input.changes
         })
@@ -229,13 +255,19 @@ function emitDeviceChange(
     device: AbstractDevice,
     entries: DeviceEventEntry[]
 ): void {
+    const shellyId = entries[0]?.shellyId ?? device.shellyID;
     const changes: LiveChange[] = entries.map(toLiveChange);
     void notifyAll(
         {
             method: 'DeviceEvent.Change',
-            params: {shellyId: device.shellyID, changes}
+            params: {shellyId, changes}
         },
-        {device}
+        shellyId === device.shellyID
+            ? {device}
+            : {
+                  shellyID: shellyId,
+                  organizationId: entries[0]?.organizationId
+              }
     );
 }
 

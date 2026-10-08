@@ -15,12 +15,16 @@ container_exists() {
     docker ps -a --filter "name=^${container}$" --format '{{.Names}}' 2>/dev/null | grep -qx "$container"
 }
 
+# Removes optional containers the current configuration turned off.
+# Default: every optional service; pass names to limit the sweep.
 cleanup_orphan_optional_containers() {
     local orphans=()
     local service
     local container
+    local services=("$@")
+    [ ${#services[@]} -gt 0 ] || services=(traefik mdns nodered)
 
-    for service in traefik mdns; do
+    for service in "${services[@]}"; do
         container="$(container_name "$service")"
         if ! container_exists "$container"; then
             continue
@@ -32,6 +36,9 @@ cleanup_orphan_optional_containers() {
                 ;;
             mdns)
                 [ "$WITH_MDNS" = "true" ] && continue
+                ;;
+            nodered)
+                [ "${WITH_NODERED:-false}" = "true" ] && continue
                 ;;
         esac
 

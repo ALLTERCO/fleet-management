@@ -19,7 +19,9 @@ export async function writeAuditRow(row: AuditBatchRow): Promise<void> {
         p_device_id: row.device_id,
         p_device_ids: row.device_ids,
         p_ts: row.ts,
-        p_organization_id: row.organization_id
+        p_organization_id: row.organization_id,
+        p_agent_key_id: row.agent_key_id,
+        p_correlation_id: row.correlation_id
     });
 }
 

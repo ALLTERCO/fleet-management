@@ -3,6 +3,8 @@
 // every kind that uses the same field shows the same label / widget /
 // group. Add new fields here, then list them in kindSchemas.ts.
 
+import {LOCATION_CUSTOM_FIELDS_MAX} from './kindSchemas';
+
 /** Form groupings — drives section headers / accordion layout. */
 export type FieldGroup =
     | 'identity'
@@ -25,7 +27,8 @@ export type FieldWidget =
     | 'geo' // nested {lat, lng}
     | 'contact' // nested {name, role, email, phone, afterHours}
     | 'operatingHours' // weekday grid
-    | 'environmentalSetpoint'; // nested {tempMin/Max, humidityMin/Max}
+    | 'environmentalSetpoint' // nested {tempMin/Max, humidityMin/Max}
+    | 'keyValue'; // open bag of named settings, one row per entry
 
 export interface FieldDescriptor {
     key: string;
@@ -262,6 +265,17 @@ export const FIELD_META: Readonly<Record<string, FieldDescriptor>> =
                 'Target temperature + humidity range (server rooms, labs, cold storage).',
             group: 'environmental',
             widget: 'environmentalSetpoint'
+        },
+
+        // ---- custom -------------------------------------------------------
+        customFields: {
+            key: 'customFields',
+            label: 'Custom settings',
+            description:
+                'Named settings this location is held to — a contracted limit, a statutory band, anything Fleet does not model itself.',
+            group: 'custom',
+            widget: 'keyValue',
+            max: LOCATION_CUSTOM_FIELDS_MAX
         }
     });
 

@@ -1,4 +1,5 @@
 import {timingSafeEqual} from 'node:crypto';
+import type {CounterName} from '../observability/counters';
 
 // Length guard first: timingSafeEqual throws on unequal lengths.
 export function tokensMatch(presented: string, expected: string): boolean {
@@ -59,7 +60,9 @@ interface TokenAuthenticatorDeps<TUser> {
         promise: Promise<TUser | undefined>
     ): void;
     authenticateExternalToken(token: string): Promise<TUser | undefined>;
-    incrementCounter(name: string): void;
+    // Whether the person behind a recognised credential may still use it.
+    hasAccountStanding(user: TUser): Promise<boolean>;
+    incrementCounter(name: CounterName): void;
     warn(message: string): void;
     debug(message: string): void;
 }
@@ -72,10 +75,10 @@ export class TokenAuthenticator<TUser> {
         if (this.deps.isRejected(token)) return this.rejectCachedToken();
 
         const scopedToken = await this.authenticateScopedToken(token);
-        if (scopedToken.handled) return scopedToken.user;
+        if (scopedToken.handled) return this.withStanding(scopedToken.user);
 
         const cached = this.getCachedUser(token);
-        if (cached) return cached;
+        if (cached) return this.withStanding(cached);
 
         const serviceUser = await this.authenticateServiceTokens(token);
         if (serviceUser) return serviceUser;
@@ -83,7 +86,15 @@ export class TokenAuthenticator<TUser> {
         const devModeUser = await this.authenticateDevModeToken(token);
         if (devModeUser || this.deps.isRejected(token)) return devModeUser;
 
-        return this.authenticateExternalToken(token);
+        return this.withStanding(await this.authenticateExternalToken(token));
+    }
+
+    // Not cached as a rejection: the account may be reactivated.
+    private async withStanding(
+        user: TUser | undefined
+    ): Promise<TUser | undefined> {
+        if (user === undefined) return undefined;
+        return (await this.deps.hasAccountStanding(user)) ? user : undefined;
     }
 
     private rejectMissingToken(): undefined {
@@ -99,7 +110,10 @@ export class TokenAuthenticator<TUser> {
 
     private getCachedUser(token: string): TUser | undefined {
         const cached = this.deps.getCachedUser(token);
-        if (cached) this.deps.incrementCounter('auth_cache_hits');
+        if (cached) {
+            this.deps.incrementCounter('auth_cache_hits');
+            this.deps.incrementCounter('auth_user_cache_hits');
+        }
         return cached;
     }
 
@@ -114,7 +128,7 @@ export class TokenAuthenticator<TUser> {
 
         this.deps.markRejected(token);
         this.deps.incrementCounter('auth_failures');
-        this.deps.incrementCounter('fm_scoped_pat_rejected');
+        this.deps.incrementCounter('scoped_pat_rejected');
         return {handled: true};
     }
 
@@ -189,6 +203,25 @@ export function buildAuthenticatedIdentity({
         mfaPresent: hasMfaAuthenticationMethod({claims, userinfo}),
         expiresAt: getNumericClaim(claims.exp)
     };
+}
+
+export interface EmailClaims {
+    email?: string;
+    emailVerified?: boolean;
+}
+
+// The verified flag is read from the same source as the address it describes.
+export function readEmailClaims({
+    claims,
+    userinfo
+}: BuildAuthenticatedIdentityParams): EmailClaims {
+    const source = getStringClaim(claims.email) ? claims : userinfo;
+    const email = getStringClaim(source?.email);
+    if (!email) return {};
+    const verified = source?.email_verified;
+    return typeof verified === 'boolean'
+        ? {email, emailVerified: verified}
+        : {email};
 }
 
 function getRequiredSubject(claims: Record<string, unknown>): string {

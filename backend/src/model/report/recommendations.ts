@@ -17,10 +17,6 @@ export interface RecommendationInput {
     readonly currencySymbol: string;
     readonly offlineCount: number;
     readonly totalDevices: number;
-    /** Fleet-wide avg power factor (0..1). null when unknown. */
-    readonly avgPowerFactor: number | null;
-    /** Penalty cost in `currencySymbol` units estimated when PF < target. */
-    readonly powerFactorPenaltyCost: number | null;
 }
 
 export interface Recommendation {
@@ -65,8 +61,8 @@ export const alwaysOnSpike: Detector = (i) => {
     return {
         id: 'always-on-spike',
         severity: 'medium',
-        title: `Standby load up ${Math.round(delta * 100)}% week-over-week`,
-        detail: `Identify devices left running. Current floor: ${i.alwaysOnKWh.toFixed(2)} kWh.`,
+        title: `Estimated continuous baseline up ${Math.round(delta * 100)}% week-over-week`,
+        detail: `Review persistent loads behind this estimate. Current estimated baseline: ${i.alwaysOnKWh.toFixed(2)} kWh.`,
         priority: delta
     };
 };
@@ -114,29 +110,12 @@ export const deviceOffline: Detector = (i) => {
     };
 };
 
-const PF_TARGET = 0.9;
-
-export const powerFactorPenalty: Detector = (i) => {
-    if (i.avgPowerFactor === null || i.avgPowerFactor >= PF_TARGET) return null;
-    if (i.powerFactorPenaltyCost === null || i.powerFactorPenaltyCost <= 0)
-        return null;
-    const pfRounded = Math.round(i.avgPowerFactor * 100) / 100;
-    return {
-        id: 'power-factor-penalty',
-        severity: 'medium',
-        title: `Low power factor (${pfRounded}) costs ${i.currencySymbol}${i.powerFactorPenaltyCost.toFixed(2)}`,
-        detail: `Install correction capacitors to restore PF above ${PF_TARGET}.`,
-        priority: PF_TARGET - i.avgPowerFactor
-    };
-};
-
 export const DEFAULT_DETECTORS: readonly Detector[] = [
     voltageOutlier,
     topConsumerSpike,
     alwaysOnSpike,
     deviceOffline,
-    touOpportunity,
-    powerFactorPenalty
+    touOpportunity
 ];
 
 const DEFAULT_TOP_N = 5;

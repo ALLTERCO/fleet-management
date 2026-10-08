@@ -62,6 +62,8 @@ interface CachedClientDeviceUsage {
 }
 
 let cachedDeviceUsage: CachedClientDeviceUsage | null = null;
+let lastQueryAvailable = false;
+let samplingTimer: ReturnType<typeof setInterval> | undefined;
 
 // Coalesce concurrent refreshes so the admin route and Prometheus scrape can't
 // both fire the heavy COUNT(DISTINCT) on a shared cache miss.
@@ -228,6 +230,7 @@ async function refreshClientDeviceUsage(
 ): Promise<CachedClientDeviceUsage> {
     const rows = await readClientDeviceUsageRows(deps);
     cachedDeviceUsage = {rows, refreshedAtMs: nowMs};
+    lastQueryAvailable = true;
     return cachedDeviceUsage;
 }
 
@@ -253,6 +256,7 @@ export async function readClientDeviceUsageSnapshot(
             source: 'live'
         };
     } catch {
+        lastQueryAvailable = false;
         if (cachedDeviceUsage) {
             return cacheHitSnapshot(cachedDeviceUsage, nowMs, false);
         }
@@ -263,6 +267,37 @@ export async function readClientDeviceUsageSnapshot(
             source: 'unavailable'
         };
     }
+}
+
+// Prometheus scrapes must never become database work. The background sampler
+// owns refreshes; this read only serializes the latest completed snapshot.
+export function readCachedClientDeviceUsageSnapshot(
+    nowMs = Date.now()
+): ClientDeviceUsageSnapshot {
+    if (!cachedDeviceUsage) {
+        return {
+            rows: [],
+            queryAvailable: false,
+            staleAgeSeconds: -1,
+            source: 'unavailable'
+        };
+    }
+    return cacheHitSnapshot(cachedDeviceUsage, nowMs, lastQueryAvailable);
+}
+
+export function startClientDeviceUsageSampling(): void {
+    if (samplingTimer) return;
+    void readClientDeviceUsageSnapshot();
+    samplingTimer = setInterval(() => {
+        void readClientDeviceUsageSnapshot();
+    }, DEVICE_USAGE_CACHE_TTL_MS);
+    samplingTimer.unref?.();
+}
+
+export function stopClientDeviceUsageSampling(): void {
+    if (!samplingTimer) return;
+    clearInterval(samplingTimer);
+    samplingTimer = undefined;
 }
 
 export function toClientDeviceUsageApiResponse(
@@ -289,5 +324,7 @@ export function toClientDeviceUsageApiResponse(
 }
 
 export function __resetClientDeviceUsageCacheForTests(): void {
+    stopClientDeviceUsageSampling();
     cachedDeviceUsage = null;
+    lastQueryAvailable = false;
 }

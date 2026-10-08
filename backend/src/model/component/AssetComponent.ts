@@ -8,6 +8,10 @@ import {
 } from '../../modules/asset/assetRepository';
 import {deleteAssetFromDisk} from '../../modules/asset/assetStorage';
 import {
+    readAssetChunk,
+    uploadAssetBase64
+} from '../../modules/asset/assetTransfer';
+import {
     type ImageMigrationResult,
     runImageMigration
 } from '../../modules/asset/imageMigration';
@@ -21,13 +25,18 @@ import {
     ASSET_DESCRIBE,
     ASSET_LIST_PARAMS_SCHEMA,
     ASSET_MIGRATE_IMAGES_PARAMS_SCHEMA,
+    ASSET_READ_CHUNK_PARAMS_SCHEMA,
     ASSET_SET_LABEL_PARAMS_SCHEMA,
+    ASSET_UPLOAD_PARAMS_SCHEMA,
     type AssetDeleteParams,
     type AssetDeleteResult,
     type AssetListParams,
     type AssetListResult,
     type AssetMigrateImagesParams,
+    type AssetReadChunkParams,
+    type AssetReadChunkResult,
     type AssetSetLabelParams,
+    type AssetUploadParams,
     type VisualAssetDto
 } from '../../types/api/asset';
 import type CommandSender from '../CommandSender';
@@ -53,6 +62,48 @@ export default class AssetComponent extends Component<Config> {
         return ASSET_DESCRIBE;
     }
 
+    @Component.Expose('Upload')
+    @Component.CrudPermission('devices', 'update')
+    async upload(
+        params: unknown,
+        sender: CommandSender
+    ): Promise<VisualAssetDto> {
+        const p = validateOrThrow<AssetUploadParams>(
+            params,
+            ASSET_UPLOAD_PARAMS_SCHEMA
+        );
+        const organizationId = requireOrganizationId(sender, p);
+        const uploadedBy =
+            sender.getUser()?.username ?? sender.getUserId() ?? 'unknown';
+        return uploadAssetBase64({
+            organizationId,
+            uploadedBy,
+            contentType: p.contentType,
+            data: p.data,
+            label: p.label,
+            context: p.context
+        });
+    }
+
+    @Component.Expose('ReadChunk')
+    @Component.CrudPermission('devices', 'read', () => undefined)
+    async readChunk(
+        params: unknown,
+        sender: CommandSender
+    ): Promise<AssetReadChunkResult> {
+        const p = validateOrThrow<AssetReadChunkParams>(
+            params,
+            ASSET_READ_CHUNK_PARAMS_SCHEMA
+        );
+        const organizationId = requireOrganizationId(sender, p);
+        return readAssetChunk({
+            organizationId,
+            assetId: p.id,
+            offset: p.offset,
+            maxBytes: p.maxBytes
+        });
+    }
+
     @Component.Expose('List')
     @Component.CrudPermission('devices', 'read')
     async list(
@@ -74,7 +125,7 @@ export default class AssetComponent extends Component<Config> {
     }
 
     @Component.Expose('SetLabel')
-    @Component.CrudPermission('devices', 'update')
+    @Component.CrudPermission('devices', 'update', () => undefined)
     async setLabel(
         params: unknown,
         sender: CommandSender
@@ -90,7 +141,7 @@ export default class AssetComponent extends Component<Config> {
     }
 
     @Component.Expose('Delete')
-    @Component.CrudPermission('devices', 'delete')
+    @Component.CrudPermission('devices', 'delete', () => undefined)
     async delete(
         params: unknown,
         sender: CommandSender

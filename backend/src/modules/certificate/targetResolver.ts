@@ -20,10 +20,10 @@ export async function resolvePushTargetDevices(
     }
     if (target.groupIds?.length) {
         const rows = (await store.queryRows(
-            `SELECT DISTINCT gm.subject_id AS id
+            `SELECT DISTINCT d.external_id AS id
                FROM organization.group_members gm
                JOIN device.list d
-                 ON d.external_id = gm.subject_id
+                 ON d.id = gm.device_id
                 AND d.organization_id = gm.organization_id
               WHERE gm.organization_id = $1
                 AND gm.subject_type = 'device'
@@ -34,11 +34,11 @@ export async function resolvePushTargetDevices(
     }
     if (target.tagKeys?.length) {
         const rows = (await store.queryRows(
-            `SELECT DISTINCT ta.subject_id AS id
+            `SELECT DISTINCT d.external_id AS id
                FROM organization.tag_assignments ta
                JOIN organization.tags t ON t.id = ta.tag_id
                JOIN device.list d
-                 ON d.external_id = ta.subject_id
+                 ON d.id = ta.device_id
                 AND d.organization_id = t.organization_id
               WHERE ta.subject_type = 'device'
                 AND t.organization_id = $1

@@ -3,7 +3,10 @@
 // FM_ALERT_STORM_SUMMARY_THRESHOLD. Single SSOT via tuning.
 
 import {tuning} from '../../config/tuning';
+import {summaryLine} from './groupSummary';
 import type {DeliveryAggregate, DeliveryPayload} from './types';
+
+export {summaryLine};
 
 export type RenderMode = 'single' | 'list' | 'summary';
 
@@ -29,14 +32,4 @@ export function analyzePayload(payload: DeliveryPayload): GroupedInfo {
         alerts,
         aggregate: payload.aggregate ?? null
     };
-}
-
-/** Compact one-line summary used by the summary-mode renderers. */
-export function summaryLine(aggregate: DeliveryAggregate | null): string {
-    if (!aggregate) return '';
-    const parts: string[] = [`${aggregate.total} alerts`];
-    if (aggregate.critical > 0) parts.push(`${aggregate.critical} critical`);
-    if (aggregate.warning > 0) parts.push(`${aggregate.warning} warning`);
-    if (aggregate.info > 0) parts.push(`${aggregate.info} info`);
-    return parts.join(', ');
 }

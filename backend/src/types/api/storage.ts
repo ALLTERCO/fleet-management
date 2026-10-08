@@ -33,6 +33,21 @@ export const STORAGE_GETALL_PARAMS: JsonSchema = {
 
 const ACK: JsonSchema = {type: 'object', additionalProperties: true};
 
+// Both writes echo the key they touched — nothing else.
+const STORAGE_UPDATED_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['updated'],
+    additionalProperties: false,
+    properties: {updated: KEY_SCHEMA}
+};
+
+const STORAGE_REMOVED_RESPONSE: JsonSchema = {
+    type: 'object',
+    required: ['removed'],
+    additionalProperties: false,
+    properties: {removed: KEY_SCHEMA}
+};
+
 export const STORAGE_DESCRIBE: DescribeOutput = new DescribeBuilder('storage', {
     kind: 'fleet-manager',
     description:
@@ -41,21 +56,21 @@ export const STORAGE_DESCRIBE: DescribeOutput = new DescribeBuilder('storage', {
     .registerMethod('SetItem', {
         safety: {operation: 'update'},
         params: STORAGE_SET_ITEM_PARAMS,
-        response: ACK,
+        response: STORAGE_UPDATED_RESPONSE,
         permission: {note: 'registry-specific write permission'},
         description: 'Upsert a value under a registry key.'
     })
     .registerMethod('GetItem', {
         safety: {operation: 'read'},
         params: STORAGE_GET_ITEM_PARAMS,
-        response: ACK,
+        response: {},
         permission: {note: 'registry-specific read permission'},
         description: 'Read a value by key.'
     })
     .registerMethod('RemoveItem', {
         safety: {operation: 'delete'},
         params: STORAGE_REMOVE_ITEM_PARAMS,
-        response: ACK,
+        response: STORAGE_REMOVED_RESPONSE,
         permission: {note: 'registry-specific delete permission'},
         description: 'Delete a value by key.'
     })

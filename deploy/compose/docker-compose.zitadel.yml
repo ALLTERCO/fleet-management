@@ -47,14 +47,19 @@ services:
   redis:
     # Cache V2 backend — shared by zitadel-api (instance/org/milestone caches)
     # and fleet-manager (sessions, rate limits). DB 0 = FM, DB 10 = Zitadel.
-    image: redis:${REDIS_VERSION:-7.4.2-alpine}
+    image: redis:${REDIS_VERSION:-7.4.11-alpine}
     container_name: fm-redis
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     labels:
       fleet.managed_by: "${FM_MANAGED_BY:-fleet-manager}"
       fleet.client: "${FM_CLIENT_ID:-shared}"
       fleet.environment: "${FM_ENVIRONMENT_ID:-unknown}"
       fleet.mode: "${FM_TOPOLOGY_MODE:-single-tenant}"
-      fleet.version: "${REDIS_VERSION:-7.4.2-alpine}"
+      fleet.version: "${REDIS_VERSION:-7.4.11-alpine}"
       fleet.commit: "${FM_BUILD_COMMIT:-unknown}"
       fleet.compose_project: "${FM_COMPOSE_PROJECT_NAME:-unknown}"
       fleet.service: "redis"
@@ -64,7 +69,7 @@ services:
       - --maxmemory
       - ${REDIS_MAX_MEMORY:-256mb}
       - --maxmemory-policy
-      - allkeys-lru
+      - ${REDIS_MAXMEMORY_POLICY:-noeviction}
       - --appendonly
       - ${REDIS_APPENDONLY:-no}
       - --appendfsync
@@ -118,6 +123,11 @@ services:
       - ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD=${ZITADEL_POSTGRES_PASSWORD}
       - ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE=disable
       - ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE=disable
+      # Connection pool. One shared-SaaS Zitadel serves many orgs, so open more
+      # connections (default 10) with a warm idle pool to avoid churn. Keep
+      # replicas x MaxOpenConns under the DB's max_connections (default 100).
+      - ZITADEL_DATABASE_POSTGRES_MAXOPENCONNS=${ZITADEL_DB_MAX_OPEN_CONNS:-30}
+      - ZITADEL_DATABASE_POSTGRES_MAXIDLECONNS=${ZITADEL_DB_MAX_IDLE_CONNS:-10}
       - ZITADEL_FIRSTINSTANCE_ORG_NAME=${ZITADEL_DEFAULT_ORG_NAME:-zitadel}
       - ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME=root
       - ZITADEL_FIRSTINSTANCE_ORG_HUMAN_EMAIL=root@${ZITADEL_HOSTNAME}
@@ -156,11 +166,18 @@ services:
       - ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_PASSWORDLESSTYPE=${ZITADEL_PASSWORDLESS_TYPE:-1}
       - ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_HIDEPASSWORDRESET=false
       - ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_IGNOREUNKNOWNUSERNAMES=false
-      - ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_USERLOGINMUSTBEDOMAIN=false
+      # Per-org usernames: a name taken in one tenant stays free in the others.
+      # Applies only when a fresh instance is created; a live one needs the admin API.
+      - ZITADEL_DEFAULTINSTANCE_LOGINPOLICY_USERLOGINMUSTBEDOMAIN=${ZITADEL_USER_LOGIN_MUST_BE_DOMAIN:-true}
       # Lockout caps — Zitadel default of 0 = unlimited.
       - ZITADEL_DEFAULTINSTANCE_LOCKOUTPOLICY_MAXPASSWORDATTEMPTS=${ZITADEL_LOCKOUT_MAX_PASSWORD:-10}
       - ZITADEL_DEFAULTINSTANCE_LOCKOUTPOLICY_MAXOTPATTEMPTS=${ZITADEL_LOCKOUT_MAX_OTP:-5}
       - ZITADEL_DEFAULTINSTANCE_LOCKOUTPOLICY_SHOWLOCKOUTFAILURE=${ZITADEL_LOCKOUT_SHOW_FAILURES:-true}
+      # Login-password hash cost. Lower is a faster login but weaker if the hash
+      # store is ever stolen. Zitadel default is 14; the floor is 10. Existing
+      # hashes verify at their stored cost and re-hash to this on next login.
+      - ZITADEL_SYSTEMDEFAULTS_PASSWORDHASHER_HASHER_ALGORITHM=${ZITADEL_PASSWORD_HASH_ALGORITHM:-bcrypt}
+      - ZITADEL_SYSTEMDEFAULTS_PASSWORDHASHER_HASHER_COST=${ZITADEL_PASSWORD_HASH_COST:-12}
       # Cache V2 on Redis. ZITADEL may FLUSHDB cache DBs, so keep them away
       # from FM's DB 0 with an explicit offset.
       - ZITADEL_CACHES_CONNECTORS_REDIS_ENABLED=true
@@ -225,7 +242,9 @@ services:
       - ZITADEL_API_URL=http://zitadel-api:8080
       - NEXT_PUBLIC_BASE_PATH=/ui/v2/login
       - ZITADEL_SERVICE_USER_TOKEN_FILE=/zitadel/bootstrap/login-client.pat
-      - CUSTOM_REQUEST_HEADERS=Host:${ZITADEL_HOSTNAME},X-Forwarded-Proto:${ZITADEL_PUBLIC_SCHEME:-https}
+      # Without it the login signs its cookie with the PAT, so a PAT rotation signs everyone out.
+      - ZITADEL_SESSION_COOKIE_SECRET=${ZITADEL_SESSION_COOKIE_SECRET}
+      - CUSTOM_REQUEST_HEADERS=Host:${ZITADEL_HOSTNAME},X-Forwarded-Proto:${ZITADEL_PUBLIC_SCHEME:-https},X-Zitadel-Instance-Host:${ZITADEL_HOSTNAME}
     volumes:
       - zitadel-bootstrap:/zitadel/bootstrap:ro
     networks:

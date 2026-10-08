@@ -16,6 +16,16 @@ export const DEVICE_EVENT_KIND_LABELS: Record<DeviceEventKind, string> = {
     config: 'Config change'
 };
 
+// `reconnect` marks a difference found in the snapshot a device sends when it
+// connects again, against the last state held for it, so not a live change.
+export const DEVICE_EVENT_SOURCES = [
+    'device',
+    'command',
+    'unknown',
+    'reconnect'
+] as const;
+export type DeviceEventSource = (typeof DEVICE_EVENT_SOURCES)[number];
+
 export const DEVICE_EVENT_QUERY_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
     properties: {
@@ -58,7 +68,9 @@ const DEVICE_EVENT_ROW_SCHEMA: JsonSchema = {
         kind: {type: 'string', enum: [...DEVICE_EVENT_KINDS]},
         source: {
             type: ['string', 'null'],
-            enum: ['device', 'command', 'unknown', null]
+            enum: [...DEVICE_EVENT_SOURCES, null],
+            description:
+                'How the change was seen: reported live by the device, sent by a command, or found when the device reconnected'
         }
     },
     additionalProperties: true

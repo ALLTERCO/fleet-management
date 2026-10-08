@@ -2,13 +2,20 @@ import {defineStore} from 'pinia';
 import type {Raw} from 'vue';
 import {computed, markRaw, reactive} from 'vue';
 import type {Actor} from 'xstate';
-import {assign, createActor, setup} from 'xstate';
+import {assign, createActor, setup, type Snapshot} from 'xstate';
 import {BG_OPS_SNAPSHOT_KEY} from '@/constants';
 import {useToastStore} from '@/stores/toast';
+import {debugWarn} from '@/tools/debug';
 import * as ws from '@/tools/websocket';
 
-export type JobType = 'firmware' | 'backup' | 'certificate';
-export type JobStatus = 'running' | 'done' | 'failed' | 'cancelled';
+const JOB_TYPES = ['firmware', 'backup', 'certificate'] as const;
+const JOB_STATUSES = ['running', 'done', 'failed', 'cancelled'] as const;
+
+export type JobType = (typeof JOB_TYPES)[number];
+export type JobStatus = (typeof JOB_STATUSES)[number];
+
+const KNOWN_JOB_TYPES: ReadonlySet<string> = new Set(JOB_TYPES);
+const KNOWN_JOB_STATUSES: ReadonlySet<string> = new Set(JOB_STATUSES);
 
 type JobMachineContext = {
     doneCount: number;
@@ -78,6 +85,79 @@ export interface JobRecord {
     doneCount: number;
     failCount: number;
     _actor: Raw<JobActor>;
+}
+
+// Exactly what `_doSave` writes. Nothing coming back out of localStorage may
+// be trusted to match it: an older build, a hand-edit or a partial write all
+// parse as JSON and only fail later, at render time.
+interface PersistedJob {
+    id: string;
+    type: JobType;
+    label: string;
+    deviceIds: string[];
+    startedAt: number;
+    endedAt?: number;
+    status: JobStatus;
+    actorSnapshot: Snapshot<unknown>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+}
+
+// xstate rethrows an unusable restore on a later tick, past every try/catch,
+// so the snapshot must be checked before it ever reaches createActor.
+function isRestorableActorSnapshot(
+    value: unknown
+): value is Snapshot<unknown> {
+    if (!isRecord(value)) return false;
+    const context = value.context;
+    return (
+        isRecord(value.children) &&
+        isRecord(context) &&
+        typeof context.doneCount === 'number' &&
+        typeof context.failCount === 'number'
+    );
+}
+
+function isPersistedJob(value: unknown): value is PersistedJob {
+    if (!isRecord(value)) return false;
+    return (
+        typeof value.id === 'string' &&
+        typeof value.label === 'string' &&
+        typeof value.startedAt === 'number' &&
+        (value.endedAt === undefined || typeof value.endedAt === 'number') &&
+        KNOWN_JOB_TYPES.has(value.type as string) &&
+        KNOWN_JOB_STATUSES.has(value.status as string) &&
+        Array.isArray(value.deviceIds) &&
+        value.deviceIds.every((id) => typeof id === 'string') &&
+        isRestorableActorSnapshot(value.actorSnapshot)
+    );
+}
+
+// Unavailable storage and a half-written value both mean the same thing here:
+// there is nothing to restore.
+function readSnapshot(): unknown {
+    try {
+        const raw = localStorage.getItem(BG_OPS_SNAPSHOT_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+}
+
+function readPersistedJobs(): PersistedJob[] {
+    const parsed = readSnapshot();
+    if (!Array.isArray(parsed)) return [];
+    const usable = parsed.filter(isPersistedJob);
+    if (usable.length < parsed.length) {
+        debugWarn(
+            '[backgroundOps] discarded',
+            parsed.length - usable.length,
+            'unreadable job snapshot entries'
+        );
+    }
+    return usable;
 }
 
 type RegistrationLifecycle = {
@@ -323,53 +403,38 @@ export const useBackgroundOpsStore = defineStore('backgroundOps', () => {
         // Pinia setup runs once per app instance, but HMR / test mode
         // can re-create the store with non-empty `jobs` already populated.
         if (jobs.size > 0) return;
-        try {
-            const raw = localStorage.getItem(BG_OPS_SNAPSHOT_KEY);
-            if (!raw) return;
-            const data = JSON.parse(raw) as Array<{
-                id: string;
-                type: JobType;
-                label: string;
-                deviceIds: string[];
-                startedAt: number;
-                endedAt?: number;
-                status: JobStatus;
-                actorSnapshot: any;
-            }>;
-            for (const d of data) {
-                // Running jobs cannot be resumed after a page reload —
-                // their WS subscriptions are gone. Mark them cancelled.
-                const status: JobStatus =
-                    d.status === 'running' ? 'cancelled' : d.status;
-                const actor = createActor(jobMachine, {
-                    input: {},
-                    snapshot: d.actorSnapshot
-                });
-                actor.start();
-                // Align actor state with the cancelled status
-                if (status === 'cancelled' && d.status === 'running') {
-                    actor.send({type: 'ABORT'});
-                }
-                const actorSnap = actor.getSnapshot();
-                const record: JobRecord = {
-                    id: d.id,
-                    type: d.type,
-                    label: d.label,
-                    deviceIds: d.deviceIds,
-                    startedAt: d.startedAt,
-                    endedAt: d.endedAt ?? Date.now(),
-                    status,
-                    doneCount: actorSnap.context.doneCount,
-                    failCount: actorSnap.context.failCount,
-                    _actor: markRaw(actor)
-                };
-                actor.subscribe(_makeSubscribeCallback(d.id, record, actor));
-                jobs.set(d.id, record);
-            }
-        } catch {
-            // Corrupt snapshot — start clean
-            localStorage.removeItem(BG_OPS_SNAPSHOT_KEY);
+        for (const entry of readPersistedJobs()) restoreJob(entry);
+    }
+
+    function restoreJob(entry: PersistedJob) {
+        // Running jobs cannot be resumed after a page reload —
+        // their WS subscriptions are gone. Mark them cancelled.
+        const status: JobStatus =
+            entry.status === 'running' ? 'cancelled' : entry.status;
+        const actor = createActor(jobMachine, {
+            input: {},
+            snapshot: entry.actorSnapshot
+        });
+        actor.start();
+        // Align actor state with the cancelled status
+        if (status === 'cancelled' && entry.status === 'running') {
+            actor.send({type: 'ABORT'});
         }
+        const actorSnap = actor.getSnapshot();
+        const record: JobRecord = {
+            id: entry.id,
+            type: entry.type,
+            label: entry.label,
+            deviceIds: entry.deviceIds,
+            startedAt: entry.startedAt,
+            endedAt: entry.endedAt ?? Date.now(),
+            status,
+            doneCount: actorSnap.context.doneCount,
+            failCount: actorSnap.context.failCount,
+            _actor: markRaw(actor)
+        };
+        actor.subscribe(_makeSubscribeCallback(entry.id, record, actor));
+        jobs.set(entry.id, record);
     }
 
     restoreFromSnapshot();

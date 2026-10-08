@@ -51,8 +51,7 @@ export async function updateDashboardItemSize(
     const valid = ['1x1', '2x1', '2x2'];
     if (!valid.includes(size)) throw new Error(`Invalid size: ${size}`);
     invalidateDbCache('ui.dashboards');
-    // expose-sql-methods requires every input arg by name; SQL DEFAULT NULL
-    // on the function isn't recognised as optional on the JS side. Pass the
+    // The stored-procedure bridge only omits DEFAULT NULL arguments. Pass the
     // full 8-arg signature with null/false for fields we're not touching.
     await callMethod('ui.fn_dashboard_item_update_v3', {
         p_dashboard: dashboard,
@@ -108,6 +107,7 @@ export async function dashboardBelongsToOrg(
 interface DashboardRow {
     id: number;
     organization_id: string | null;
+    owner_user_id: string | null;
     name: string;
     dashboard_type: string;
     location_id: number | null;
@@ -121,11 +121,14 @@ interface DashboardRow {
 // via the dashboard_scope_single_axis CHECK on the table.
 export async function createDashboardScoped(params: {
     organizationId: string;
+    ownerUserId: string | null;
     name: string;
     dashboardType: string;
     locationId?: number;
     groupId?: number;
     tagId?: number;
+    items?: readonly unknown[];
+    activityDetail?: Record<string, unknown>;
 }): Promise<DashboardRow> {
     const {rows} = await callMethod('ui.fn_dashboard_add_scoped', {
         p_organization_id: params.organizationId,
@@ -133,7 +136,10 @@ export async function createDashboardScoped(params: {
         p_dashboard_type: params.dashboardType,
         p_location_id: params.locationId ?? null,
         p_group_id: params.groupId ?? null,
-        p_tag_id: params.tagId ?? null
+        p_tag_id: params.tagId ?? null,
+        p_owner_user_id: params.ownerUserId,
+        p_items: JSON.stringify(params.items ?? []),
+        p_activity_detail: params.activityDetail ?? {}
     });
     invalidateDbCache('ui.dashboards');
     return rows[0] as DashboardRow;

@@ -68,7 +68,7 @@ export async function refreshAlexa(
         throw RpcError.InvalidParams('refresh_token required');
     }
     const data = AlexaTokenSigner.verify(refresh_token);
-    if (!data || data.aud !== 'alexa') throw RpcError.Unauthorized();
+    if (data?.aud !== 'alexa') throw RpcError.Unauthorized();
     const access_token = AlexaTokenSigner.refresh(refresh_token);
     if (!access_token) throw RpcError.Unauthorized();
     return {access_token};

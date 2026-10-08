@@ -17,9 +17,12 @@ import {
     canPerformComponentOperationAsync,
     canUseAuthenticatedRead,
     canUsePlatformAdmin,
-    isComponentPermissionAllowed
+    isComponentPermissionAllowed,
+    requireComponentPermissionAsync,
+    requireTenantWideComponentPermission
 } from '../../modules/authz/evaluator';
 import type {DescribeOutput} from '../../rpc/describe';
+import {requireOrganizationId} from '../../rpc/scope';
 import {
     type DeliveryJob,
     type DestinationGroup,
@@ -27,6 +30,7 @@ import {
     NOTIFICATION_DESCRIBE
 } from '../../types/api/notification';
 import type CommandSender from '../CommandSender';
+import {requireAlertReadable} from './AlertComponent';
 import Component from './Component';
 import * as AssetHandlers from './notification/notificationAssetHandlers';
 import * as BundleHandlers from './notification/notificationBundleHandlers';
@@ -37,6 +41,59 @@ import * as HistoryHandlers from './notification/notificationHistoryHandlers';
 import * as InboxHandlers from './notification/notificationInboxHandlers';
 import * as MessageTemplateHandlers from './notification/notificationMessageTemplateHandlers';
 import * as RoutingHandlers from './notification/notificationRoutingHandlers';
+
+// The `notification` authz resource is a destination group. Inbox item,
+// delivery job, template and asset ids are not group ids, so these methods
+// check the grant alone.
+// Inbox read state is the caller's own data: reading the inbox allows it.
+const NOT_A_DESTINATION_GROUP_ID = (): undefined => undefined;
+
+// Delivery jobs, templates and email assets belong to the whole tenant; no
+// scope selector names them, so a grant narrowed to some groups never reaches one.
+function requireTenantWideNotificationGrant(
+    sender: CommandSender,
+    operation: 'read' | 'update' | 'delete'
+): Promise<void> {
+    return requireTenantWideComponentPermission(
+        sender,
+        'notifications',
+        operation
+    );
+}
+
+interface PreviewSources {
+    organizationId?: string;
+    sampleAlertId?: unknown;
+    channelId?: unknown;
+    emailTemplateId?: unknown;
+}
+
+// A preview may load a real alert, a channel's templates or a library
+// template; each is checked as the resource it is before the preview reads it.
+async function requirePreviewSourcesReadable(
+    sender: CommandSender,
+    params: unknown
+): Promise<void> {
+    const p = (params ?? {}) as PreviewSources;
+    if (typeof p.sampleAlertId === 'number') {
+        await requireAlertReadable(
+            sender,
+            requireOrganizationId(sender, p),
+            p.sampleAlertId
+        );
+    }
+    if (typeof p.channelId === 'number') {
+        await requireComponentPermissionAsync(
+            sender,
+            'integrations',
+            'read',
+            p.channelId
+        );
+    }
+    if (typeof p.emailTemplateId === 'number') {
+        await requireTenantWideNotificationGrant(sender, 'read');
+    }
+}
 
 export default class NotificationComponent extends Component {
     constructor() {
@@ -82,25 +139,48 @@ export default class NotificationComponent extends Component {
 
     @Component.NoAudit
     @Component.Expose('Inbox.Get')
-    @Component.CrudPermission('notifications', 'read', (p) => p?.id)
+    @Component.CrudPermission(
+        'notifications',
+        'read',
+        NOT_A_DESTINATION_GROUP_ID
+    )
     async getInbox(params: unknown, sender: CommandSender) {
         return InboxHandlers.getInbox(params, sender);
     }
 
+    @Component.NoAudit
+    @Component.Expose('Inbox.GetMany')
+    @Component.CrudPermission(
+        'notifications',
+        'read',
+        NOT_A_DESTINATION_GROUP_ID
+    )
+    async getInboxMany(params: unknown, sender: CommandSender) {
+        return InboxHandlers.getInboxMany(params, sender);
+    }
+
     @Component.Expose('Inbox.MarkRead')
-    @Component.CrudPermission('notifications', 'update', (p) => p?.id)
+    @Component.CrudPermission(
+        'notifications',
+        'read',
+        NOT_A_DESTINATION_GROUP_ID
+    )
     async markInboxRead(params: unknown, sender: CommandSender) {
         return InboxHandlers.markInboxRead(params, sender);
     }
 
     @Component.Expose('Inbox.MarkUnread')
-    @Component.CrudPermission('notifications', 'update', (p) => p?.id)
+    @Component.CrudPermission(
+        'notifications',
+        'read',
+        NOT_A_DESTINATION_GROUP_ID
+    )
     async markInboxUnread(params: unknown, sender: CommandSender) {
         return InboxHandlers.markInboxUnread(params, sender);
     }
 
     @Component.Expose('Inbox.MarkAllRead')
-    @Component.CrudPermission('notifications', 'update')
+    @Component.CrudPermission('notifications', 'read')
     async markAllInboxRead(params: unknown, sender: CommandSender) {
         return InboxHandlers.markAllInboxRead(params, sender);
     }
@@ -180,13 +260,19 @@ export default class NotificationComponent extends Component {
     @Component.Expose('History.List')
     @Component.CrudPermission('notifications', 'read')
     async historyList(params: unknown, sender: CommandSender) {
+        await requireTenantWideNotificationGrant(sender, 'read');
         return HistoryHandlers.historyList(params, sender);
     }
 
     @Component.NoAudit
     @Component.Expose('History.Get')
-    @Component.CrudPermission('notifications', 'read')
+    @Component.CrudPermission(
+        'notifications',
+        'read',
+        NOT_A_DESTINATION_GROUP_ID
+    )
     async historyGet(params: unknown, sender: CommandSender) {
+        await requireTenantWideNotificationGrant(sender, 'read');
         return HistoryHandlers.historyGet(params, sender);
     }
 
@@ -194,6 +280,7 @@ export default class NotificationComponent extends Component {
     @Component.Expose('RenderTemplate')
     @Component.CrudPermission('notifications', 'read')
     async renderTemplateRpc(params: unknown, sender: CommandSender) {
+        await requirePreviewSourcesReadable(sender, params);
         return ChannelHandlers.renderTemplateRpc(params, sender);
     }
 
@@ -201,6 +288,7 @@ export default class NotificationComponent extends Component {
     @Component.Expose('RenderEmailPreview')
     @Component.CrudPermission('notifications', 'read')
     async renderEmailPreview(params: unknown, sender: CommandSender) {
+        await requirePreviewSourcesReadable(sender, params);
         return ChannelHandlers.renderEmailPreview(params, sender);
     }
 
@@ -313,11 +401,16 @@ export default class NotificationComponent extends Component {
     }
 
     @Component.Expose('History.Requeue')
-    @Component.CrudPermission('notifications', 'update', (p) => p?.id)
+    @Component.CrudPermission(
+        'notifications',
+        'update',
+        NOT_A_DESTINATION_GROUP_ID
+    )
     async historyRequeue(
         params: unknown,
         sender: CommandSender
     ): Promise<DeliveryJob> {
+        await requireTenantWideNotificationGrant(sender, 'update');
         return HistoryHandlers.historyRequeue(params, sender);
     }
 
@@ -330,8 +423,13 @@ export default class NotificationComponent extends Component {
     }
 
     @Component.Expose('EmailTemplate.Get')
-    @Component.CrudPermission('notifications', 'read')
+    @Component.CrudPermission(
+        'notifications',
+        'read',
+        NOT_A_DESTINATION_GROUP_ID
+    )
     async emailTemplateGet(params: unknown, sender: CommandSender) {
+        await requireTenantWideNotificationGrant(sender, 'read');
         return EmailTemplateHandlers.emailTemplateGet(params, sender);
     }
 
@@ -342,14 +440,24 @@ export default class NotificationComponent extends Component {
     }
 
     @Component.Expose('EmailTemplate.Update')
-    @Component.CrudPermission('notifications', 'update', (p) => p?.id)
+    @Component.CrudPermission(
+        'notifications',
+        'update',
+        NOT_A_DESTINATION_GROUP_ID
+    )
     async emailTemplateUpdate(params: unknown, sender: CommandSender) {
+        await requireTenantWideNotificationGrant(sender, 'update');
         return EmailTemplateHandlers.emailTemplateUpdate(params, sender);
     }
 
     @Component.Expose('EmailTemplate.Delete')
-    @Component.CrudPermission('notifications', 'delete', (p) => p?.id)
+    @Component.CrudPermission(
+        'notifications',
+        'delete',
+        NOT_A_DESTINATION_GROUP_ID
+    )
     async emailTemplateDelete(params: unknown, sender: CommandSender) {
+        await requireTenantWideNotificationGrant(sender, 'delete');
         return EmailTemplateHandlers.emailTemplateDelete(params, sender);
     }
 
@@ -364,8 +472,13 @@ export default class NotificationComponent extends Component {
 
     @Component.NoAudit
     @Component.Expose('Template.Get')
-    @Component.CrudPermission('notifications', 'read', (p) => p?.id)
+    @Component.CrudPermission(
+        'notifications',
+        'read',
+        NOT_A_DESTINATION_GROUP_ID
+    )
     async messageTemplateGet(params: unknown, sender: CommandSender) {
+        await requireTenantWideNotificationGrant(sender, 'read');
         return MessageTemplateHandlers.messageTemplateGet(params, sender);
     }
 
@@ -376,14 +489,24 @@ export default class NotificationComponent extends Component {
     }
 
     @Component.Expose('Template.Update')
-    @Component.CrudPermission('notifications', 'update', (p) => p?.id)
+    @Component.CrudPermission(
+        'notifications',
+        'update',
+        NOT_A_DESTINATION_GROUP_ID
+    )
     async messageTemplateUpdate(params: unknown, sender: CommandSender) {
+        await requireTenantWideNotificationGrant(sender, 'update');
         return MessageTemplateHandlers.messageTemplateUpdate(params, sender);
     }
 
     @Component.Expose('Template.Delete')
-    @Component.CrudPermission('notifications', 'delete', (p) => p?.id)
+    @Component.CrudPermission(
+        'notifications',
+        'delete',
+        NOT_A_DESTINATION_GROUP_ID
+    )
     async messageTemplateDelete(params: unknown, sender: CommandSender) {
+        await requireTenantWideNotificationGrant(sender, 'delete');
         return MessageTemplateHandlers.messageTemplateDelete(params, sender);
     }
 
@@ -413,19 +536,30 @@ export default class NotificationComponent extends Component {
 
     @Component.NoAudit
     @Component.Expose('EmailAsset.Get')
-    @Component.CrudPermission('notifications', 'read')
+    @Component.CrudPermission(
+        'notifications',
+        'read',
+        NOT_A_DESTINATION_GROUP_ID
+    )
     async emailAssetGet(params: unknown, sender: CommandSender) {
+        await requireTenantWideNotificationGrant(sender, 'read');
         return AssetHandlers.emailAssetGet(params, sender);
     }
 
     @Component.Expose('EmailAsset.Delete')
-    @Component.CrudPermission('notifications', 'delete', (p) => p?.id)
+    @Component.CrudPermission(
+        'notifications',
+        'delete',
+        NOT_A_DESTINATION_GROUP_ID
+    )
     async emailAssetDelete(params: unknown, sender: CommandSender) {
+        await requireTenantWideNotificationGrant(sender, 'delete');
         return AssetHandlers.emailAssetDelete(params, sender);
     }
 
+    // Consent writes the channel's OAuth secret, so the channel is the resource.
     @Component.Expose('OAuth.Start')
-    @Component.CrudPermission('notifications', 'update', (p) => p?.endpointId)
+    @Component.CrudPermission('integrations', 'update', (p) => p?.channelId)
     async oauthStart(params: unknown, sender: CommandSender) {
         return AssetHandlers.oauthStart(params, sender);
     }

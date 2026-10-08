@@ -30,8 +30,13 @@ import IntegrationTemplateEditor, {
 import ViewToggle, {
     type ViewToggleOption
 } from '@/components/core/ViewToggle.vue';
+import {
+    TEMPLATE_CHANNEL_OPTIONS,
+    type TemplateChannel
+} from '@/helpers/templateChannels';
 
-export type TemplateChannel = 'email' | 'slack' | 'teams' | 'fallback';
+// Re-exported so existing importers keep working; the type lives in the helper.
+export type {TemplateChannel};
 
 export interface MultiChannelTemplate {
     email: {subject: string; html: string};
@@ -44,20 +49,18 @@ const model = defineModel<MultiChannelTemplate>({required: true});
 
 const props = defineProps<{
     channels?: TemplateChannel[];
+    // Passed through to the preview so it renders with real alert context.
+    ruleKind?: string;
+    ruleName?: string;
 }>();
 
 const channel = defineModel<TemplateChannel>('channel', {default: 'email'});
 
-const ALL_CHANNEL_OPTIONS: ViewToggleOption<TemplateChannel>[] = [
-    {value: 'email', label: 'Email'},
-    {value: 'slack', label: 'Slack'},
-    {value: 'teams', label: 'Teams'},
-    {value: 'fallback', label: 'Text'}
-];
-
 const channelOptions = computed<ViewToggleOption<TemplateChannel>[]>(() => {
-    const allowed = new Set(props.channels ?? ALL_CHANNEL_OPTIONS.map((o) => o.value));
-    return ALL_CHANNEL_OPTIONS.filter((o) => allowed.has(o.value));
+    const allowed = new Set(
+        props.channels ?? TEMPLATE_CHANNEL_OPTIONS.map((o) => o.value)
+    );
+    return TEMPLATE_CHANNEL_OPTIONS.filter((o) => allowed.has(o.value));
 });
 
 watch(
@@ -103,6 +106,7 @@ const activeBodies = computed<Record<string, unknown>>({
 </script>
 
 <style scoped>
+
 .mcte {
     display: flex;
     flex-direction: column;

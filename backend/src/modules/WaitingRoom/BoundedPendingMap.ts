@@ -93,6 +93,16 @@ export class BoundedPendingMap {
         return entry;
     }
 
+    // Presence only: unlike get, it neither touches nor expires the entry.
+    has(shellyID: string): boolean {
+        return this.entries.has(shellyID);
+    }
+
+    // Read-only walk: neither touches nor expires an entry.
+    values(): IterableIterator<PendingEntry> {
+        return this.entries.values();
+    }
+
     delete(shellyID: string): boolean {
         const existed = this.entries.delete(shellyID);
         if (existed) this.unlink(shellyID);

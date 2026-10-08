@@ -5,13 +5,18 @@ import * as log4js from 'log4js';
 import type {ZitadelIntrospectionOptions} from 'passport-zitadel';
 import rc from 'rc';
 import websocketAppender from './../websocketAppender';
-import {envBool, envOptionalStr, envStr, takeEnvRejections} from './envReader';
+import {envBool, envStr, takeEnvRejections} from './envReader';
 import {getJwtToken} from './jwtSecret';
 import {LINKED_SCHEMAS, MIGRATION_DIRS} from './migrationLayout';
 import {CFG_FOLDER, PLUGINS_FOLDER, STATIC_FOLDER} from './paths';
 import {redactSecretsForLog} from './redact';
+import {
+    observabilityEnabledFromEnv,
+    storageConnectionFromEnv
+} from './runtimeEnv';
 import {runtimeMetadata} from './runtimeMetadata';
 import {
+    describeAtRestSecretsMisconfiguration,
     describeSecretsMisconfiguration,
     describeSecretsWarnings
 } from './secrets';
@@ -86,7 +91,10 @@ export interface config_rc_t {
             database: string;
             connectionTimeoutMillis?: number;
             idleTimeoutMillis?: number;
+            min?: number;
+            maxLifetimeSeconds?: number;
             allowExitOnIdle?: boolean;
+            statement_timeout?: number;
         };
         schema: string;
         cwd: string[];
@@ -103,7 +111,7 @@ export interface config_rc_t {
 }
 
 export const configRc: config_rc_t = rc<config_rc_t>('fleet-manager', {
-    observability: false,
+    observability: observabilityEnabledFromEnv(),
     'wipe-components': false,
     'dev-mode': false,
     logger: {
@@ -120,15 +128,12 @@ export const configRc: config_rc_t = rc<config_rc_t>('fleet-manager', {
     },
     internalStorage: {
         connection: {
-            host: envStr('DB_HOST', 'localhost'),
-            user: envStr('DB_USER', 'fleet'),
+            ...storageConnectionFromEnv(),
             max: tuning.db.poolMax,
-            // undefined lets pg use peer/trust auth when DB requires no password;
-            // empty-string fallback masked misconfiguration.
-            password: envOptionalStr('DB_PASSWORD'),
-            database: envStr('DB_NAME', 'fleet'),
             connectionTimeoutMillis: tuning.db.connectionTimeoutMs,
             idleTimeoutMillis: tuning.db.idleTimeoutMs,
+            min: tuning.db.poolMin,
+            maxLifetimeSeconds: tuning.db.maxLifetimeSeconds,
             allowExitOnIdle: true
         },
         schema: 'migration',
@@ -207,8 +212,29 @@ export function logDevModeBannerIfActive(): void {
     logger.warn('PLUGINS_FOLDER=%s', PLUGINS_FOLDER);
 }
 
+// Dev tolerates the default JWT secret and no OIDC, but not missing at-rest
+// keys: `deploy.sh up --env dev` generates and persists them, a bare backend
+// start does not, and the failure would otherwise surface only when a
+// channel secret is saved.
+function failIfAtRestSecretsMissingInDev(): void {
+    const fatal = describeAtRestSecretsMisconfiguration();
+    if (fatal.length === 0) return;
+    logger.error('='.repeat(60));
+    for (const msg of fatal) logger.error(msg);
+    logger.error(
+        'Start dev through ./deploy/deploy.sh up --env dev (keys are generated once into deploy/state/.env), or set both variables in the backend environment.'
+    );
+    logger.error('='.repeat(60));
+    throw new Error(
+        'Dev boot without at-rest encryption keys — refusing to start'
+    );
+}
+
 export function warnIfInsecureProduction(): void {
-    if (DEV_MODE) return;
+    if (DEV_MODE) {
+        failIfAtRestSecretsMissingInDev();
+        return;
+    }
     // Secret checks live in config/secrets.ts — single source for the rules.
     const jwtFromConfig = configRc?.components?.web?.jwt_token;
     const fatal = describeSecretsMisconfiguration(jwtFromConfig);
@@ -227,9 +253,9 @@ export function warnIfInsecureProduction(): void {
     for (const warning of describeSecretsWarnings(jwtFromConfig)) {
         logger.warn(warning);
     }
-    if (!envOptionalStr('DB_PASSWORD')) {
+    if (!configRc.internalStorage?.connection.password) {
         logger.warn(
-            'WARNING: DB_PASSWORD is not set — database has no password protection.'
+            'WARNING: Database password is not set — database has no password protection.'
         );
     }
 }

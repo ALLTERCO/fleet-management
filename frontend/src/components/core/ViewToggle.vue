@@ -19,7 +19,7 @@
                 v-if="opt.icon"
                 :class="opt.icon"
             />
-            {{ opt.label }}
+            <span class="route-tabs__label">{{ opt.label }}</span>
         </button>
     </nav>
 </template>

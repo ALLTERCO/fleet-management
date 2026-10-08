@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Tags, device groups, and the Office Operator persona + admin assignment.
+# Demo personas must not narrow the administrator's effective permissions.
 
 set -euo pipefail
 
 _seed_meta() {
     _seed_meta_tags
     _seed_meta_groups
-    _seed_meta_persona_and_assignment
+    _seed_create_office_operator_persona >/dev/null
 }
 
 _seed_meta_tags() {
@@ -59,41 +59,25 @@ _seed_meta_groups() {
     done
 }
 
-_seed_meta_persona_and_assignment() {
-    info "Creating Office Operator persona + admin assignment..."
-    local persona_id admin_user_id
-    persona_id=$(_seed_create_office_operator_persona)
-    [ -z "$persona_id" ] && return 0
-    [ -z "${SEED_BUILDING_IDS[0]:-}" ] && return 0
-    admin_user_id=$(_seed_first_admin_user_id)
-    _seed_assign_admin_to_sofia "$persona_id" "$admin_user_id"
-}
-
 _seed_create_office_operator_persona() {
-    local resp
-    resp=$(_seed_rpc 'Persona.Create' \
-        '{"key":"office-operator","name":"Office Operator","description":"Read-only access to devices, groups, locations, tags.","statements":[{"effect":"Allow","actions":["device:read","group:read","location:read","tag:read"],"resource_types":["device","group","location","tag"]}]}')
-    echo "$resp" | jq -r '.id // empty'
-}
-
-_seed_first_admin_user_id() {
-    _seed_rpc 'User.ListZitadelUsers' '{}' \
-        | jq -r '.items[0].userId // empty'
-}
-
-_seed_assign_admin_to_sofia() {
-    local persona_id="$1" admin_user_id="$2"
-    if [ "$admin_user_id" = "dev-admin" ]; then
-        info "  Skipping persona assignment — synthetic dev-admin (no Zitadel)"
+    local persona_id resp
+    persona_id=$(_seed_persona_id_by_key 'office-operator')
+    if [ -n "$persona_id" ]; then
+        printf '%s\n' "$persona_id"
         return 0
     fi
-    [ -z "$admin_user_id" ] && return 0
-    local sofia="${SEED_BUILDING_IDS[0]}" resp
-    resp=$(_seed_rpc 'Assignment.Create' \
-        "{\"subjectType\":\"user\",\"subjectId\":\"$admin_user_id\",\"personaId\":\"$persona_id\",\"scope\":{\"location_ids\":[$sofia]}}")
-    if echo "$resp" | jq -e '.id // empty' >/dev/null 2>&1; then
-        info "  Office Operator scoped to Sofia HQ for admin"
-    else
-        info "  Persona assignment skipped: $(echo "$resp" | jq -r '.error.message // "unknown"')"
+    resp=$(_seed_rpc 'Persona.Create' \
+        '{"key":"office-operator","name":"Office Operator","description":"Read-only access to devices, groups, locations, tags.","statements":[{"effect":"Allow","actions":["device:read","group:read","location:read","tag:read"],"resource_types":["device","group","location","tag"]}]}')
+    persona_id=$(echo "$resp" | jq -r '.id // empty')
+    if [ -z "$persona_id" ]; then
+        persona_id=$(_seed_persona_id_by_key 'office-operator')
     fi
+    printf '%s\n' "$persona_id"
+}
+
+_seed_persona_id_by_key() {
+    local key="$1"
+    _seed_rpc 'Persona.List' '{"includeSystem":false}' 2>/dev/null \
+        | jq -r --arg k "$key" '.items[]? | select(.key == $k) | .id' \
+        | head -1
 }

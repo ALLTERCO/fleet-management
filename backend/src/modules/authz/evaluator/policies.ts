@@ -13,13 +13,13 @@ export {canCrossOrganizationBoundary};
 
 // Mirrors config.DEV_MODE but evaluates at call time so tests that mutate
 // FM_DEV_MODE work regardless of module-load order. Same predicate as the
-// module-level const so the .fleet-managerrc + env-var parity stays whole.
+// module-level const so legacy rc config and env-driven dev mode stay aligned.
 function isDevMode(): boolean {
     return !!configRc['dev-mode'] || envBool('FM_DEV_MODE', false);
 }
 
 export function hasTenantAdminAuthority(sender: CommandSender): boolean {
-    return sender.isAdmin();
+    return sender.hasFullTenantAuthority();
 }
 
 // @Component.CheckPermissions form of hasTenantAdminAuthority — makes
@@ -32,7 +32,7 @@ export function canUsePlatformAdmin(sender: CommandSender): boolean {
     // DEV_MODE has no Zitadel, so PlatformAdminResolver can't populate the
     // flag — tenant admin stands in for platform admin in the single-tenant
     // local dev loop (debug observability, log levels, DB-write toggles).
-    if (isDevMode() && sender.isAdmin()) return true;
+    if (isDevMode() && sender.hasFullTenantAuthority()) return true;
     return sender.isPlatformAdmin();
 }
 

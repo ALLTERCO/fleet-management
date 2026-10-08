@@ -22,6 +22,7 @@ import {
 } from '../../modules/backup/jobWorker';
 import * as DeviceCollector from '../../modules/DeviceCollector';
 import * as EventDistributor from '../../modules/EventDistributor';
+import {snapshotJobAuthority} from '../../modules/jobs/control';
 import {
     type BackupDeviceOwnership,
     type BackupQueuedUnit,
@@ -810,7 +811,8 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
         );
         const shellyIDs = uniqueShellyIds(params.shellyIDs);
         const tenantId = requireOrganizationId(sender);
-        const createdBy = sender.getUser()?.username ?? 'admin';
+        const authority = snapshotJobAuthority(sender, tenantId, 'update');
+        const createdBy = sender.getUser()?.username ?? authority.userId;
         const target = {
             deviceIds: shellyIDs,
             ...(params.name ? {name: normalizeBackupName(params.name)} : {}),
@@ -824,7 +826,8 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
             mode: 'create',
             createdBy,
             idempotencyKey: params.idempotencyKey,
-            requestHash: hashBackupJobRequest('create', target)
+            requestHash: hashBackupJobRequest('create', target),
+            authority
         });
         if (job.created) {
             await enqueueBackupTargets({
@@ -864,7 +867,8 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
         }
 
         const tenantId = requireOrganizationId(sender);
-        const createdBy = sender.getUser()?.username ?? 'admin';
+        const authority = snapshotJobAuthority(sender, tenantId, 'update');
+        const createdBy = sender.getUser()?.username ?? authority.userId;
         const restoreSelection = filterEnabledBackupContents(params.restore);
         const target = {
             backupId,
@@ -877,7 +881,8 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
             mode: 'restore',
             createdBy,
             idempotencyKey: params.idempotencyKey,
-            requestHash: hashBackupJobRequest('restore', target)
+            requestHash: hashBackupJobRequest('restore', target),
+            authority
         });
         if (job.created) {
             await enqueueBackupTargets({
@@ -1921,6 +1926,30 @@ export default class BackupComponent extends Component<BackupComponentConfig> {
             data: fileData.toString('base64'),
             name: `${backup.name}.zip`,
             size: fileData.length
+        };
+    }
+
+    async resolveFileForTransfer(
+        id: string,
+        sender: CommandSender
+    ): Promise<{filePath: string; fileName: string; sizeBytes: number}> {
+        validateBackupId(id);
+        const storedBackup = await this.getStoredBackupRecord(id);
+        if (!storedBackup) throw RpcError.NotFound('backup', id);
+        this.#assertBackupDeviceAccessible(
+            sender,
+            storedBackup.normalized,
+            storedBackup.currentBinding,
+            'read',
+            id
+        );
+        const filePath = this.getBackupFilePath(id);
+        const stat = await fsPromises.stat(filePath);
+        assertBackupDownloadWithinCap(stat.size);
+        return {
+            filePath,
+            fileName: `${storedBackup.normalized.name}.zip`,
+            sizeBytes: stat.size
         };
     }
 

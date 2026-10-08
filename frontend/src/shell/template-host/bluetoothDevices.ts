@@ -1,5 +1,35 @@
+// The older names for the BLU surface, pointing at the one implementation.
+//
+// This file used to be a second, hand-written copy of the core domain: six
+// methods with two bodies each, one used by Fleet Manager and one by
+// templates. Whoever fixed a bug in one left the other broken. The behaviour
+// now lives only in core/domains/bluetooth-devices; the names that differ are
+// mapped here, so no call site had to move.
+
+import {hostRpcAccess} from './api';
+import {createBluetoothDeviceDomain} from './core/domains/bluetooth-devices';
+
+const domain = createBluetoothDeviceDomain(hostRpcAccess);
+
+export const bluetoothDevices = {
+    listGateways: domain.listGateways,
+    renameGatewayChild: domain.renameGatewayChild,
+    removeGatewayChild: domain.removeGatewayChild,
+    listCandidates: domain.listCandidates,
+    promoteFromGateway: domain.promoteFromGateway,
+    list: domain.list,
+    get: domain.get,
+    update: domain.update,
+    delete: domain.delete,
+    // Flat here, nested in core: the core name mirrors the RPC.
+    createImageUploadTicket: domain.image.createUploadTicket,
+    listTransports: domain.transport.list,
+    setPrimaryTransport: domain.transport.setPrimary
+};
+
+// Types stay here: they are the published names, derived from the
+// contract, and unrelated to which file owns the behaviour.
 import type {HostParams, HostResult} from './generated/contract';
-import {callMethod} from './typed';
 
 export type BTHomeGateway = HostResult<'bthome.listgateways'>['items'][number];
 export type BluetoothCandidate =
@@ -23,59 +53,3 @@ export type BluetoothTransportListResult =
     HostResult<'virtualdevice.bluetooth.transport.list'>;
 export type BluetoothTransportSetPrimaryResult =
     HostResult<'virtualdevice.bluetooth.transport.setprimary'>;
-
-export const bluetoothDevices = {
-    listGateways(): Promise<HostResult<'bthome.listgateways'>> {
-        return callMethod('bthome.listgateways', {});
-    },
-    renameGatewayChild(
-        input: HostParams<'bthome.device.rename'>
-    ): Promise<HostResult<'bthome.device.rename'>> {
-        return callMethod('bthome.device.rename', input);
-    },
-    listCandidates(
-        input: HostParams<'virtualdevice.bluetooth.candidate.list'> = {}
-    ): Promise<HostResult<'virtualdevice.bluetooth.candidate.list'>> {
-        return callMethod('virtualdevice.bluetooth.candidate.list', input);
-    },
-    promoteFromGateway(
-        input: HostParams<'virtualdevice.bluetooth.promotefromgateway'>
-    ): Promise<HostResult<'virtualdevice.bluetooth.promotefromgateway'>> {
-        return callMethod('virtualdevice.bluetooth.promotefromgateway', input);
-    },
-    delete(
-        input: HostParams<'virtualdevice.bluetooth.delete'>
-    ): Promise<HostResult<'virtualdevice.bluetooth.delete'>> {
-        return callMethod('virtualdevice.bluetooth.delete', input);
-    },
-    createImageUploadTicket(
-        input: HostParams<'virtualdevice.bluetooth.image.createuploadticket'>
-    ): Promise<HostResult<'virtualdevice.bluetooth.image.createuploadticket'>> {
-        return callMethod(
-            'virtualdevice.bluetooth.image.createuploadticket',
-            input
-        );
-    },
-    list(input: BluetoothListParams = {}): Promise<BluetoothListResult> {
-        return callMethod('virtualdevice.bluetooth.list', input);
-    },
-    get(input: BluetoothGetParams): Promise<BluetoothGetResult> {
-        return callMethod('virtualdevice.bluetooth.get', input);
-    },
-    update(input: BluetoothUpdateParams): Promise<BluetoothUpdateResult> {
-        return callMethod('virtualdevice.bluetooth.update', input);
-    },
-    listTransports(
-        input: BluetoothTransportListParams
-    ): Promise<BluetoothTransportListResult> {
-        return callMethod('virtualdevice.bluetooth.transport.list', input);
-    },
-    setPrimaryTransport(
-        input: BluetoothTransportSetPrimaryParams
-    ): Promise<BluetoothTransportSetPrimaryResult> {
-        return callMethod(
-            'virtualdevice.bluetooth.transport.setprimary',
-            input
-        );
-    }
-};

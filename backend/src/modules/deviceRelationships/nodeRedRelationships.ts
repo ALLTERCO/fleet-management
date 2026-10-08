@@ -1,7 +1,13 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import {tuning} from '../../config/tuning';
 import type {DeviceRelationshipInclude} from '../../types/api/device';
+import {nodeRedAvailable} from '../nodeRed/available';
+import {readCachedFlows} from '../nodeRed/flowCache';
+import {isActingFleetManagerNode, isFlowTab} from '../nodeRed/flowCatalog';
+import {
+    idsFromCsv,
+    nodeTargetScope,
+    type ScopeResolver
+} from '../nodeRed/flowDeviceIds';
+import {scopeResolverFor} from '../nodeRed/flowScopeMembers';
 import {nodeRedFlowMeta, nodeRedNodeMeta} from './relationshipRedaction';
 import type {
     RelationshipAutomationFlowFact,
@@ -9,8 +15,10 @@ import type {
 } from './types';
 
 interface NodeRedRelationshipInput {
+    organizationId: string | undefined;
     centerExternalId: string;
     includes: ReadonlySet<DeviceRelationshipInclude>;
+    /** Same test as automation.List: may manage automations on this Node-RED. */
     canReadAutomations: boolean;
 }
 
@@ -21,21 +29,25 @@ interface NodeRedFlowGraph {
 
 type FlowRecord = Record<string, unknown>;
 
-const NODE_RED_OPERATION_PREFIX = 'fm-';
-const NODE_RED_SERVER_NODE = 'fm-server';
-const NODE_RED_TARGET_NODE = 'fm-target';
-const NODE_RED_DEVICE_EVENT_NODE = 'fm-device-event';
-
 export async function loadNodeRedRelationshipFacts(
     input: NodeRedRelationshipInput
 ): Promise<NodeRedFlowGraph> {
-    if (!input.includes.has('automations') || !input.canReadAutomations) {
+    if (
+        !input.includes.has('automations') ||
+        !input.canReadAutomations ||
+        !nodeRedAvailable()
+    ) {
         return emptyNodeRedGraph();
     }
     const records = await readNodeRedFlowRecords();
+    const resolve = await scopeResolverFor({
+        organizationId: input.organizationId,
+        scopes: records.filter(isAutomationNodeRecord).map(nodeTargetScope)
+    });
     return nodeRedGraphForDevice({
         records,
-        centerExternalId: input.centerExternalId
+        centerExternalId: input.centerExternalId,
+        resolve
     });
 }
 
@@ -43,28 +55,19 @@ function emptyNodeRedGraph(): NodeRedFlowGraph {
     return {flows: [], nodes: []};
 }
 
+// Node-RED keeps flows in its own volume; its admin API is the only reader
+// that sees what is actually deployed. The cache logs a failed read.
 async function readNodeRedFlowRecords(): Promise<FlowRecord[]> {
-    try {
-        const raw = await fs.readFile(nodeRedFlowPath(), 'utf8');
-        const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed.flatMap(flowRecord) : [];
-    } catch {
-        return [];
-    }
+    return (await readCachedFlows()).records;
 }
 
-function nodeRedFlowPath(): string {
-    return path.join(tuning.nodeRed.userDir, tuning.nodeRed.flowFile);
-}
-
-function flowRecord(value: unknown): FlowRecord[] {
-    return isRecord(value) ? [value] : [];
-}
-
-function nodeRedGraphForDevice(input: {
+interface DeviceGraphInput {
     records: readonly FlowRecord[];
     centerExternalId: string;
-}): NodeRedFlowGraph {
+    resolve: ScopeResolver;
+}
+
+function nodeRedGraphForDevice(input: DeviceGraphInput): NodeRedFlowGraph {
     const nodes = nodeFactsForDevice(input);
     const flowIds = new Set(nodes.map((node) => node.flowId));
     return {
@@ -85,23 +88,45 @@ function flowFacts(
     }));
 }
 
-function nodeFactsForDevice(input: {
-    records: readonly FlowRecord[];
-    centerExternalId: string;
-}): RelationshipAutomationNodeFact[] {
+function nodeFactsForDevice(
+    input: DeviceGraphInput
+): RelationshipAutomationNodeFact[] {
     const tabLabels = flowLabelIndex(input.records);
     return input.records
         .filter(isAutomationNodeRecord)
-        .map((record) => nodeFact(record, tabLabels))
+        .map((record) =>
+            nodeFact({
+                record,
+                tabLabels,
+                targets: nodeTargetsSeenFromCenter({input, record})
+            })
+        )
         .filter((fact) =>
             fact.targetExternalIds.includes(input.centerExternalId)
         );
 }
 
-function nodeFact(
-    record: FlowRecord,
-    tabLabels: ReadonlyMap<string, string>
-): RelationshipAutomationNodeFact {
+// Named devices stay as edges. Group, place, tag and fleet members add only
+// the center: a fleet-wide node must not pull every device into the graph.
+function nodeTargetsSeenFromCenter(args: {
+    input: DeviceGraphInput;
+    record: FlowRecord;
+}): string[] {
+    const scope = nodeTargetScope(args.record);
+    const center = args.input.centerExternalId;
+    const reachesCenter = args.input.resolve(scope).includes(center);
+    const named = scope.deviceIds;
+    return reachesCenter && !named.includes(center)
+        ? [...named, center]
+        : named;
+}
+
+function nodeFact(args: {
+    record: FlowRecord;
+    tabLabels: ReadonlyMap<string, string>;
+    targets: string[];
+}): RelationshipAutomationNodeFact {
+    const {record, tabLabels} = args;
     const nodeKind = stringValue(record.type) ?? 'node';
     const flowId = stringValue(record.z) ?? 'unknown-flow';
     return {
@@ -110,7 +135,7 @@ function nodeFact(
         label: stringValue(record.name) ?? readableNodeKind(nodeKind),
         nodeKind,
         operation: nodeOperation(record),
-        targetExternalIds: nodeTargetExternalIds(record),
+        targetExternalIds: args.targets,
         eventNames: nodeEventNames(record),
         meta: nodeRedNodeMeta({flowLabel: tabLabels.get(flowId) ?? flowId})
     };
@@ -127,103 +152,19 @@ function flowLabelIndex(records: readonly FlowRecord[]): Map<string, string> {
 }
 
 function isTabRecord(record: FlowRecord): boolean {
-    return record.type === 'tab';
+    return isFlowTab(record);
 }
 
 function isAutomationNodeRecord(record: FlowRecord): boolean {
-    const type = stringValue(record.type);
-    if (
-        !type ||
-        type === NODE_RED_SERVER_NODE ||
-        type === NODE_RED_TARGET_NODE
-    ) {
-        return false;
-    }
-    return (
-        type === NODE_RED_DEVICE_EVENT_NODE ||
-        type.startsWith(NODE_RED_OPERATION_PREFIX)
-    );
+    return isActingFleetManagerNode(stringValue(record.type));
 }
 
 function nodeOperation(record: FlowRecord): string | undefined {
     return stringValue(record.operation);
 }
 
-function nodeTargetExternalIds(record: FlowRecord): string[] {
-    return uniqueStrings([
-        ...idsFromCsv(record.deviceIds),
-        ...idsFromJsonObject(record.paramsJson),
-        ...idsFromJsonObject(record.filterJson)
-    ]);
-}
-
 function nodeEventNames(record: FlowRecord): string[] {
     return idsFromCsv(record.events);
-}
-
-function idsFromCsv(value: unknown): string[] {
-    if (typeof value !== 'string') return [];
-    return value
-        .split(',')
-        .map((part) => part.trim())
-        .filter(Boolean);
-}
-
-function idsFromJsonObject(value: unknown): string[] {
-    if (typeof value !== 'string' || !value.trim()) return [];
-    try {
-        return deviceIdsFromValue(JSON.parse(value));
-    } catch {
-        return [];
-    }
-}
-
-function deviceIdsFromValue(value: unknown): string[] {
-    const ids: string[] = [];
-    collectDeviceIds({value, ids, depth: 0});
-    return uniqueStrings(ids);
-}
-
-function collectDeviceIds(input: {
-    value: unknown;
-    ids: string[];
-    depth: number;
-}): void {
-    if (input.depth > 4) return;
-    if (Array.isArray(input.value)) {
-        for (const item of input.value) {
-            collectDeviceIds({
-                value: item,
-                ids: input.ids,
-                depth: input.depth + 1
-            });
-        }
-        return;
-    }
-    if (!isRecord(input.value)) return;
-    collectRecordDeviceIds(input.value, input.ids);
-    for (const value of Object.values(input.value)) {
-        collectDeviceIds({value, ids: input.ids, depth: input.depth + 1});
-    }
-}
-
-function collectRecordDeviceIds(record: FlowRecord, ids: string[]): void {
-    for (const key of deviceIdKeys()) {
-        const value = record[key];
-        if (typeof value === 'string' && value.trim()) ids.push(value.trim());
-        if (Array.isArray(value)) ids.push(...value.filter(isNonEmptyString));
-    }
-}
-
-function deviceIdKeys(): readonly string[] {
-    return [
-        'shellyID',
-        'shellyIDs',
-        'deviceId',
-        'deviceIds',
-        'externalId',
-        'externalIds'
-    ];
 }
 
 function readableNodeKind(kind: string): string {
@@ -239,18 +180,4 @@ function stringValue(...values: unknown[]): string | undefined {
 
 function booleanValue(value: unknown): boolean | undefined {
     return typeof value === 'boolean' ? value : undefined;
-}
-
-function uniqueStrings(values: readonly string[]): string[] {
-    return [...new Set(values.filter(isNonEmptyString))].sort((a, b) =>
-        a.localeCompare(b)
-    );
-}
-
-function isNonEmptyString(value: unknown): value is string {
-    return typeof value === 'string' && value.trim().length > 0;
-}
-
-function isRecord(value: unknown): value is FlowRecord {
-    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

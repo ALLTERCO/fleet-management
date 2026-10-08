@@ -1,3 +1,5 @@
+import {formatNumber} from './format';
+
 /** Resolve a CSS custom property from :root to its computed value (trimmed).
  *  Returns empty string if not defined. SSR-safe (guards document access). */
 function cssVar(name: string): string {
@@ -128,7 +130,7 @@ export function formatMetric(
     decimals = 1
 ): string {
     if (value == null) return '\u2014';
-    return value.toLocaleString('en-US', {
+    return formatNumber(value, {
         minimumFractionDigits: 0,
         maximumFractionDigits: decimals
     });

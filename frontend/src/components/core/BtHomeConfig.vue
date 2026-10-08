@@ -7,11 +7,16 @@
             <div class="bth__section-header">Paired devices ({{ pairedDevices.length }})</div>
             <div class="bth__list">
                 <div v-for="dev in pairedDevices" :key="dev.id" class="bth__device">
-                    <div class="bth__device-row" @click="toggleExpand(dev.id)">
-                        <i class="fab fa-bluetooth-b bth__bt-icon" />
+                    <button
+                        type="button"
+                        class="bth__device-row"
+                        :aria-expanded="expandedDevice === dev.id"
+                        @click="toggleExpand(dev.id)"
+                    >
+                        <i class="fab fa-bluetooth-b bth__bt-icon" aria-hidden="true" />
                         <div class="bth__device-info">
-                            <span class="bth__device-name">{{ dev.name || dev.productName || dev.addr }}</span>
-                            <span v-if="dev.name || dev.productName" class="bth__device-addr">{{ dev.addr }}{{ dev.modelId ? ` · ${dev.modelId}` : '' }}</span>
+                            <span class="bth__device-name">{{ bluDisplayName(dev) }}</span>
+                            <span v-if="bluDetailLine(dev)" class="bth__device-addr">{{ bluDetailLine(dev) }}</span>
                         </div>
                         <span v-if="dev.battery != null" class="bth__device-badge" :title="`Battery: ${dev.battery}%`">
                             <i class="fas fa-battery-half" /> {{ dev.battery }}%
@@ -27,8 +32,8 @@
                             <i class="fas fa-key" /> Encryption error
                         </span>
                         <span class="bth__device-sensors">{{ dev.sensorCount }} sensors</span>
-                        <i class="fas bth__chevron" :class="expandedDevice === dev.id ? 'fa-chevron-up' : 'fa-chevron-down'" />
-                    </div>
+                        <i class="fas bth__chevron" :class="expandedDevice === dev.id ? 'fa-chevron-up' : 'fa-chevron-down'" aria-hidden="true" />
+                    </button>
 
                     <!-- Expanded: known objects + sensors -->
                     <div v-if="expandedDevice === dev.id" class="bth__objects">
@@ -63,16 +68,61 @@
                                 <i class="fas fa-lock-open" />
                                 {{ deviceErrors[dev.id].join(' · ').replace(/_/g, ' ') }}
                             </span>
-                            <Button type="blue" size="sm" @click="setDeviceKey(dev)">
-                                Set Key
+                            <Button v-if="keyingId !== dev.id" type="blue" size="sm" @click="startSetKey(dev)">
+                                Set key
                             </Button>
                         </div>
+
+                        <form
+                            v-if="keyingId === dev.id"
+                            class="bth__inline-form"
+                            @submit.prevent="saveDeviceKey(dev)"
+                        >
+                            <Input
+                                v-model="keyDraft"
+                                class="bth__inline-field"
+                                type="password"
+                                label="Encryption key"
+                                placeholder="32 hexadecimal characters"
+                                autocomplete="off"
+                                :error="keyError"
+                                :disabled="keySaving"
+                            />
+                            <Button type="blue" size="md" submit :loading="keySaving">
+                                Save
+                            </Button>
+                            <Button type="blue-hollow" size="md" @click="cancelSetKey">
+                                Cancel
+                            </Button>
+                        </form>
+
+                        <form
+                            v-if="renamingId === dev.id"
+                            class="bth__inline-form"
+                            @submit.prevent="saveRename(dev)"
+                        >
+                            <Input
+                                v-model="renameDraft"
+                                class="bth__inline-field"
+                                label="Device name"
+                                :placeholder="dev.addr"
+                                autocomplete="off"
+                                :error="renameError"
+                                :disabled="renameSaving"
+                            />
+                            <Button type="blue" size="md" submit :loading="renameSaving">
+                                Save
+                            </Button>
+                            <Button type="blue-hollow" size="md" @click="cancelRename">
+                                Cancel
+                            </Button>
+                        </form>
 
                         <div class="bth__device-actions">
                             <Button v-if="unassignedObjects.length > 0" type="green" size="sm" :loading="addingSensor" @click="addAllSensors(dev)">
                                 Add all ({{ unassignedObjects.length }})
                             </Button>
-                            <Button type="blue-hollow" size="sm" @click="renameDevice(dev)">
+                            <Button v-if="renamingId !== dev.id" type="blue-hollow" size="sm" @click="startRename(dev)">
                                 Rename
                             </Button>
                             <Button type="red" size="sm" @click="deleteDevice(dev.id)">
@@ -89,131 +139,96 @@
             <span>Pair nearby Bluetooth sensors and remotes to this device.</span>
         </div>
 
-        <!-- Add device -->
-        <div class="bth__section">
-            <div class="bth__section-header">Add device</div>
-            <div class="bth__add-row">
-                <input
-                    v-model="newDeviceAddr"
-                    class="bth__input"
-                    placeholder="MAC address (e.g. AA:BB:CC:DD:EE:FF)"
-                    @keyup.enter="addDevice"
-                />
-                <Button type="blue" size="sm" :loading="addingDevice" @click="addDevice">
-                    Pair
-                </Button>
-                <Button type="blue-hollow" size="sm" :loading="scanning" :disabled="scanning" @click="startScan">
-                    <template v-if="scanning">Scanning...</template>
-                    <template v-else>Scan for devices</template>
-                </Button>
-            </div>
+        <BluDiscoverPanel :shelly-i-d="shellyID" @paired="loadPairedDevices" />
 
-            <!-- Discovered devices from scan -->
-            <div v-if="discoveredDevices.length > 0" class="bth__discovered">
-                <div class="bth__section-header">Discovered ({{ discoveredDevices.length }})</div>
-                <div class="bth__list">
-                    <div v-for="dev in discoveredDevices" :key="dev.mac" class="bth__device">
-                        <div class="bth__device-row">
-                            <i class="fab fa-bluetooth-b bth__bt-icon bth__bt-icon--discovered" />
-                            <div class="bth__device-info">
-                                <span class="bth__device-name">{{ getDiscoveredDeviceTitle(dev) }}</span>
-                                <span class="bth__device-addr">{{ getDiscoveredDeviceDetails(dev) }}</span>
-                            </div>
-                            <span v-if="dev.isRemote" class="bth__device-badge" title="Supports BLE Controls learning">
-                                <i class="fas fa-graduation-cap" /> Controls
-                            </span>
-                            <span v-if="dev.rssi != null" class="bth__device-badge" :title="`RSSI: ${dev.rssi} dBm`">
-                                <i class="fas fa-signal" /> {{ dev.rssi }}
-                            </span>
-                            <Button type="blue" size="sm" :loading="pairingMac === dev.mac" :disabled="!!pairingMac" @click="pairDiscovered(dev.mac)">
-                                Pair
-                            </Button>
+        <ConfirmationModal ref="confirmModal" />
+
+        <!-- BLE Controls: learned remote bindings + learn new -->
+        <div v-if="deviceInputs.length > 0 && (hasRemoteDevices || controlBindings.length > 0)" class="bth__section">
+            <div class="bth__section-header">BLE controls</div>
+
+            <!-- Existing bindings from device -->
+            <div v-if="loadingControls" class="bth__loading"><Spinner size="sm" /></div>
+            <div v-else-if="controlBindings.length > 0" class="bth__list">
+                <div
+                    v-for="binding in controlBindings"
+                    :key="binding.id"
+                    class="bth__device"
+                >
+                    <div class="bth__control-row">
+                        <div class="bth__device-info">
+                            <span class="bth__device-name">{{ binding.key }}</span>
+                            <template v-if="binding.inputs?.length">
+                                <span
+                                    v-for="(inp, i) in binding.inputs"
+                                    :key="i"
+                                    class="bth__device-addr"
+                                >{{ getBTHomeDeviceName(inp.bthomedevice) }} · {{ formatControlEvent(inp) }}</span>
+                            </template>
+                            <span v-else class="bth__device-addr">No inputs configured</span>
                         </div>
+                        <button
+                            class="bth__obj-remove"
+                            title="Remove all mappings for this binding"
+                            @click="deleteControl(binding.id)"
+                        >
+                            <i class="fas fa-trash" />
+                        </button>
                     </div>
                 </div>
+            </div>
+            <div v-else class="bth__empty">No BLE control bindings yet.</div>
+
+            <!-- Learn new binding -->
+            <div class="bth__add-row">
+                <template v-if="!learning">
+                    <select v-model="learningInputId" class="bth__input bth__input--select">
+                        <option v-for="inp in deviceInputs" :key="inp.id" :value="inp.id">
+                            Input {{ inp.id }}{{ inp.name ? ` — ${inp.name}` : '' }}
+                        </option>
+                    </select>
+                    <Button type="blue-hollow" size="sm" :loading="learningStarting" :disabled="learningStarting" @click="startLearning">
+                        Learn
+                    </Button>
+                </template>
+                <template v-else>
+                    <div class="bth__scan-status">
+                        <Spinner size="sm" /> {{ learningStageLabel }}
+                    </div>
+                    <Button type="blue-hollow" size="sm" @click="stopLearning">
+                        Stop
+                    </Button>
+                </template>
             </div>
         </div>
-
-            <!-- BLE Controls: learned remote bindings + learn new -->
-            <div v-if="deviceInputs.length > 0 && (hasRemoteDevices || controlBindings.length > 0)" class="bth__section">
-                <div class="bth__section-header">BLE controls</div>
-
-                <!-- Existing bindings from device -->
-                <div v-if="loadingControls" class="bth__loading"><Spinner size="sm" /></div>
-                <div v-else-if="controlBindings.length > 0" class="bth__list">
-                    <div
-                        v-for="binding in controlBindings"
-                        :key="binding.id"
-                        class="bth__device"
-                    >
-                        <div class="bth__control-row">
-                            <div class="bth__device-info">
-                                <span class="bth__device-name">{{ binding.key }}</span>
-                                <template v-if="binding.inputs?.length">
-                                    <span
-                                        v-for="(inp, i) in binding.inputs"
-                                        :key="i"
-                                        class="bth__device-addr"
-                                    >{{ getBTHomeDeviceName(inp.bthomedevice) }} · {{ formatControlEvent(inp) }}</span>
-                                </template>
-                                <span v-else class="bth__device-addr">No inputs configured</span>
-                            </div>
-                            <button
-                                class="bth__obj-remove"
-                                title="Remove all mappings for this binding"
-                                @click="deleteControl(binding.id)"
-                            >
-                                <i class="fas fa-trash" />
-                            </button>
-                        </div>
-                    </div>
-                </div>
-                <div v-else class="bth__empty">No BLE control bindings yet.</div>
-
-                <!-- Learn new binding -->
-                <div class="bth__add-row">
-                    <template v-if="!learning">
-                        <select v-model="learningInputId" class="bth__input bth__input--select">
-                            <option v-for="inp in deviceInputs" :key="inp.id" :value="inp.id">
-                                Input {{ inp.id }}{{ inp.name ? ` — ${inp.name}` : '' }}
-                            </option>
-                        </select>
-                        <Button type="blue-hollow" size="sm" :loading="learningStarting" :disabled="learningStarting" @click="startLearning">
-                            Learn
-                        </Button>
-                    </template>
-                    <template v-else>
-                        <div class="bth__scan-status">
-                            <Spinner size="sm" /> {{ learningStageLabel }}
-                        </div>
-                        <Button type="blue-hollow" size="sm" @click="stopLearning">
-                            Stop
-                        </Button>
-                    </template>
-                </div>
-            </div>
 
     </div>
 </template>
 
 <script setup lang="ts">
 import {computed, onMounted, onUnmounted, ref, watch} from 'vue';
+import {bluDetailLine, bluDisplayName} from '@/helpers/bluNaming';
+import {
+    type PairedBluDevice,
+    readPairedBluDevices
+} from '@/helpers/bluPairedDevices';
 import {rpcErrorMessage} from '@/helpers/rpcError';
 import {bluetoothDevices} from '@/shell/template-host';
+import {useDeviceSettingsSettled} from '@/composables/useDeviceSettingsSettled';
 import {useDevicesStore} from '@/stores/devices';
 import {useEntityStore} from '@/stores/entities';
 import {useToastStore} from '@/stores/toast';
 import * as ws from '@/tools/websocket';
 import {
     type BTHomeControlLearningEvent,
-    type BTHomeDiscoveryEvent,
     type BTHomeLearningState,
     onBTHomeControlLearning,
-    onBTHomeControlsUpdated,
-    onBTHomeDiscovery,
-    onBTHomeDone
+    onBTHomeControlsUpdated
 } from '@/tools/websocket';
+import ConfirmationModal from '../modals/ConfirmationModal.vue';
+import BluDiscoverPanel from './BluDiscoverPanel.vue';
 import Button from './Button.vue';
+import Input from './Input.vue';
 import Spinner from './Spinner.vue';
 
 const props = defineProps<{
@@ -221,28 +236,29 @@ const props = defineProps<{
 }>();
 
 const deviceStore = useDevicesStore();
+const {whenSettled} = useDeviceSettingsSettled();
 const entityStore = useEntityStore();
 const toast = useToastStore();
 
 const loading = ref(true);
-const scanning = ref(false);
-const addingDevice = ref(false);
-const pairingMac = ref<string | null>(null);
 const addingSensor = ref(false);
+const confirmModal = ref<InstanceType<typeof ConfirmationModal> | null>(null);
+
+// Rename and key are edited in place. A browser prompt cannot be styled, cannot
+// show a field error, and showed the AES key in clear text.
+const HEX_KEY_PATTERN = /^[0-9a-fA-F]{32}$/;
+const renamingId = ref<number | null>(null);
+const renameDraft = ref('');
+const renameError = ref('');
+const renameSaving = ref(false);
+const keyingId = ref<number | null>(null);
+const keyDraft = ref('');
+const keyError = ref('');
+const keySaving = ref(false);
 const loadingObjects = ref(false);
-const newDeviceAddr = ref('');
 const expandedDevice = ref<number | null>(null);
 
-type PairedDevice = {
-    id: number;
-    addr: string;
-    name: string | null;
-    productName: string | null;
-    modelId: string | null;
-    sensorCount: number;
-    battery: number | null;
-    rssi: number | null;
-};
+type PairedDevice = PairedBluDevice;
 
 type KnownObj = {
     obj_id: number;
@@ -252,21 +268,18 @@ type KnownObj = {
 
 const pairedDevices = ref<PairedDevice[]>([]);
 const knownObjects = ref<KnownObj[]>([]);
-const discoveredDevices = ref<BTHomeDiscoveryEvent[]>([]);
-
-// Show BTHomeControl learning if any discovered or paired BLE device is a remote
-// (has button/dimmer controls). Read from entity store — the backend sets
+// Show BTHomeControl learning when a paired BLE device is a remote (has
+// button/dimmer controls). Read from the entity store — the backend sets
 // controls[] on every bthomedevice entity from BTHomeDevice.GetKnownObjects.
-const hasRemoteDevices = computed(() => {
-    if (discoveredDevices.value.some((d) => d.isRemote)) return true;
-    return Object.values(entityStore.entities).some(
+const hasRemoteDevices = computed(() =>
+    Object.values(entityStore.entities).some(
         (e) =>
             e.type === 'bthomedevice' &&
             e.source === props.shellyID &&
             Array.isArray((e.properties as any).controls) &&
             (e.properties as any).controls.length > 0
-    );
-});
+    )
+);
 
 // Per-device encryption errors from the entity store (live from device status).
 const deviceErrors = computed(() => {
@@ -288,77 +301,19 @@ const unassignedObjects = computed(() =>
     )
 );
 
-async function loadPairedDevices() {
+function loadPairedDevices() {
     loading.value = true;
     try {
-        const dev = deviceStore.devices[props.shellyID];
-        if (!dev) return;
-
-        const devices: PairedDevice[] = [];
-        const settings = dev.settings ?? {};
-        const status = dev.status ?? {};
-
-        // Pre-compute sensor count per address in one pass
-        const sensorsByAddr: Record<string, number> = {};
-        for (const key of Object.keys(settings)) {
-            if (!key.startsWith('bthomesensor:')) continue;
-            const addr = settings[key]?.addr;
-            if (addr) sensorsByAddr[addr] = (sensorsByAddr[addr] ?? 0) + 1;
-        }
-
-        for (const key of Object.keys(settings)) {
-            if (!key.startsWith('bthomedevice:')) continue;
-            const cfg = settings[key];
-            const id = cfg?.id ?? Number.parseInt(key.split(':')[1], 10);
-            const devStatus = status[key] ?? {};
-            devices.push({
-                id,
-                addr: cfg?.addr ?? '?',
-                name: cfg?.name ?? null,
-                productName: cfg?.meta?.productName ?? null,
-                modelId: cfg?.meta?.modelId ?? null,
-                sensorCount: sensorsByAddr[cfg?.addr] ?? 0,
-                battery:
-                    typeof devStatus?.battery === 'number'
-                        ? devStatus.battery
-                        : null,
-                rssi:
-                    typeof devStatus?.rssi === 'number' ? devStatus.rssi : null
-            });
-        }
-        pairedDevices.value = devices;
+        const gateway = deviceStore.devices[props.shellyID];
+        pairedDevices.value = readPairedBluDevices(
+            gateway?.settings,
+            gateway?.status
+        );
     } finally {
         loading.value = false;
     }
 }
 
-/** Wait for the device store settings to update after an RPC that changes config.
- *  The event chain (device → FM → WS → store) typically takes <1s on LAN. */
-let settingsWaitTimer: ReturnType<typeof setTimeout> | undefined;
-function waitForSettingsUpdate(timeoutMs = 3000): Promise<void> {
-    return new Promise((resolve) => {
-        const stopWatch = watch(
-            () => deviceStore.devices[props.shellyID]?.settings,
-            () => {
-                stopWatch();
-                cleanup();
-                resolve();
-            },
-            {deep: true}
-        );
-        function cleanup() {
-            if (settingsWaitTimer) {
-                clearTimeout(settingsWaitTimer);
-                settingsWaitTimer = undefined;
-            }
-        }
-        settingsWaitTimer = setTimeout(() => {
-            stopWatch();
-            settingsWaitTimer = undefined;
-            resolve();
-        }, timeoutMs);
-    });
-}
 
 // Object name cache — queried from device via BTHome.GetObjectInfos, not hardcoded
 const objNameCache = new Map<number, string>();
@@ -393,49 +348,6 @@ function getObjDisplayLabel(objId: number, idx: number): string {
     const baseName = getObjName(objId);
     const siblings = knownObjects.value.filter((o) => o.obj_id === objId);
     return siblings.length > 1 ? `${baseName} ${idx + 1}` : baseName;
-}
-
-function getDiscoveredDeviceTitle(dev: BTHomeDiscoveryEvent): string {
-    return (
-        dev.productName?.trim() ||
-        dev.name?.trim() ||
-        dev.localName?.trim() ||
-        dev.modelString?.trim() ||
-        dev.type ||
-        dev.mac
-    );
-}
-
-function uniqueDiscoveryDetails(values: Array<string | undefined>): string[] {
-    const seen = new Set<string>();
-    const details: string[] = [];
-
-    for (const value of values) {
-        if (typeof value !== 'string') continue;
-        const trimmed = value.trim();
-        if (!trimmed) continue;
-        const normalized = trimmed.toLowerCase();
-        if (seen.has(normalized)) continue;
-        seen.add(normalized);
-        details.push(trimmed);
-    }
-
-    return details;
-}
-
-function getDiscoveredDeviceDetails(dev: BTHomeDiscoveryEvent): string {
-    const title = getDiscoveredDeviceTitle(dev);
-    const details = uniqueDiscoveryDetails([
-        dev.localName?.trim() && dev.localName.trim() !== title
-            ? dev.localName.trim()
-            : undefined,
-        dev.modelString?.trim() && dev.modelString.trim() !== title
-            ? dev.modelString.trim()
-            : undefined,
-        dev.mac
-    ]);
-
-    return details.join(' / ');
 }
 
 function resolveConfiguredComponent(
@@ -518,38 +430,17 @@ async function toggleExpand(id: number) {
     await refreshExpandedObjects(id);
 }
 
-async function addDevice() {
-    const addr = newDeviceAddr.value.trim().toUpperCase();
-    if (!addr) return;
-    if (!/^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(addr)) {
-        toast.error('Invalid MAC address format (e.g. AA:BB:CC:DD:EE:FF)');
-        return;
-    }
-    addingDevice.value = true;
-    try {
-        await ws.sendRPC('FLEET_MANAGER', 'BTHome.Device.AddManual', {
-            shellyID: props.shellyID,
-            mac: addr
-        });
-        toast.success(`Device ${addr} paired`);
-        newDeviceAddr.value = '';
-        await waitForSettingsUpdate();
-        await loadPairedDevices();
-    } catch (err: any) {
-        toast.error(rpcErrorMessage(err, 'Failed to pair device'));
-    } finally {
-        addingDevice.value = false;
-    }
+function deleteDevice(id: number) {
+    const dev = pairedDevices.value.find((d) => d.id === id);
+    const label = dev ? bluDisplayName(dev) : `#${id}`;
+    confirmModal.value?.storeAction(() => removeDevice(id), {
+        title: 'Remove this device?',
+        message: `${label} and all of its sensors leave this gateway.`,
+        confirmLabel: 'Remove'
+    });
 }
 
-async function deleteDevice(id: number) {
-    const dev = pairedDevices.value.find((d) => d.id === id);
-    if (
-        !confirm(
-            `Remove ${dev?.name || dev?.productName || dev?.addr || `#${id}`} and all its sensors?`
-        )
-    )
-        return;
+async function removeDevice(id: number) {
     try {
         await ws.sendRPC('FLEET_MANAGER', 'BTHome.Device.Remove', {
             shellyID: props.shellyID,
@@ -566,20 +457,35 @@ async function deleteDevice(id: number) {
     }
 }
 
-async function renameDevice(dev: PairedDevice) {
-    const newName = prompt('Device name:', dev.name ?? dev.addr);
-    if (newName === null) return;
+function startRename(dev: PairedDevice) {
+    renamingId.value = dev.id;
+    renameDraft.value = dev.name ?? '';
+    renameError.value = '';
+}
+
+function cancelRename() {
+    renamingId.value = null;
+    renameDraft.value = '';
+    renameError.value = '';
+}
+
+async function saveRename(dev: PairedDevice) {
+    renameSaving.value = true;
+    renameError.value = '';
     try {
         await bluetoothDevices.renameGatewayChild({
             shellyID: props.shellyID,
             id: dev.id,
-            name: newName.trim() || null
+            name: renameDraft.value.trim() || null
         });
         toast.success('Device renamed');
-        await waitForSettingsUpdate();
-        await loadPairedDevices();
+        cancelRename();
+        await whenSettled(props.shellyID);
+        loadPairedDevices();
     } catch (err: any) {
-        toast.error(rpcErrorMessage(err, 'Failed to rename device'));
+        renameError.value = rpcErrorMessage(err, 'Could not rename it');
+    } finally {
+        renameSaving.value = false;
     }
 }
 
@@ -665,7 +571,14 @@ async function deleteSensor(obj: KnownObj) {
         return;
     }
     const sensorId = Number.parseInt(match[1], 10);
-    if (!confirm(`Remove sensor ${getObjName(obj.obj_id)}?`)) return;
+    confirmModal.value?.storeAction(() => removeSensor(sensorId), {
+        title: 'Remove this sensor?',
+        message: `${getObjName(obj.obj_id)} stops reporting to the fleet.`,
+        confirmLabel: 'Remove'
+    });
+}
+
+async function removeSensor(sensorId: number) {
     try {
         await ws.sendRPC('FLEET_MANAGER', 'BTHome.Sensor.Delete', {
             shellyID: props.shellyID,
@@ -819,8 +732,15 @@ function handleControlsUpdated(ev: {shellyID: string}) {
     void loadControls();
 }
 
-async function deleteControl(id: number) {
-    if (!confirm('Remove this BLE control binding?')) return;
+function deleteControl(id: number) {
+    confirmModal.value?.storeAction(() => removeControl(id), {
+        title: 'Remove this binding?',
+        message: 'The button stops driving this output.',
+        confirmLabel: 'Remove'
+    });
+}
+
+async function removeControl(id: number) {
     try {
         await ws.sendRPC('FLEET_MANAGER', 'BTHome.Control.Delete', {
             shellyID: props.shellyID,
@@ -833,23 +753,38 @@ async function deleteControl(id: number) {
     }
 }
 
-async function setDeviceKey(dev: PairedDevice) {
-    const input = prompt('Enter AES-128 encryption key (32 hex characters), or leave blank to clear:', '');
-    if (input === null) return;
-    const key = input.trim();
-    if (key && !/^[0-9a-fA-F]{32}$/.test(key)) {
-        toast.error('Key must be exactly 32 hexadecimal characters');
+function startSetKey(dev: PairedDevice) {
+    keyingId.value = dev.id;
+    keyDraft.value = '';
+    keyError.value = '';
+}
+
+function cancelSetKey() {
+    keyingId.value = null;
+    keyDraft.value = '';
+    keyError.value = '';
+}
+
+async function saveDeviceKey(dev: PairedDevice) {
+    const key = keyDraft.value.trim();
+    if (key && !HEX_KEY_PATTERN.test(key)) {
+        keyError.value = 'The key is 32 hexadecimal characters';
         return;
     }
+    keySaving.value = true;
+    keyError.value = '';
     try {
         await ws.sendRPC('FLEET_MANAGER', 'BTHome.Device.SetKey', {
             shellyID: props.shellyID,
             id: dev.id,
             key: key || null
         });
-        toast.success('Encryption key updated');
+        toast.success(key ? 'Encryption key set' : 'Encryption key cleared');
+        cancelSetKey();
     } catch (err: any) {
-        toast.error(rpcErrorMessage(err, 'Failed to set key'));
+        keyError.value = rpcErrorMessage(err, 'Could not set the key');
+    } finally {
+        keySaving.value = false;
     }
 }
 
@@ -874,132 +809,11 @@ function formatControlEvent(inp: BTHomeControlInput): string {
     return inp.event.replace(/_/g, ' ');
 }
 
-let scanTimer: ReturnType<typeof setTimeout> | undefined;
-let cleanupDiscovery: (() => void) | null = null;
-let cleanupDone: (() => void) | null = null;
-
-function startDiscoveryListeners() {
-    const pairedMacs = new Set(
-        pairedDevices.value.map((d) => d.addr.toUpperCase())
-    );
-
-    cleanupDiscovery = onBTHomeDiscovery((ev) => {
-        if (ev.shellyID !== props.shellyID) return;
-        const mac = ev.mac?.toUpperCase();
-        if (!mac) return;
-        if (pairedMacs.has(mac)) return;
-        const existingIndex = discoveredDevices.value.findIndex(
-            (d) => d.mac.toUpperCase() === mac
-        );
-        if (existingIndex !== -1) {
-            discoveredDevices.value[existingIndex] = {
-                ...discoveredDevices.value[existingIndex],
-                ...ev
-            };
-            return;
-        }
-        discoveredDevices.value.push(ev);
-    });
-    cleanupDone = onBTHomeDone((ev) => {
-        if (ev.shellyID !== props.shellyID) return;
-        scanning.value = false;
-        if (scanTimer) {
-            clearTimeout(scanTimer);
-            scanTimer = undefined;
-        }
-        stopDiscoveryListeners();
-        toast.success(
-            `Scan complete — found ${ev.discoveredDevicesCount} device(s)`
-        );
-    });
-}
-
-function stopDiscoveryListeners() {
-    cleanupDiscovery?.();
-    cleanupDone?.();
-    cleanupDiscovery = null;
-    cleanupDone = null;
-}
-
-async function startScan() {
-    scanning.value = true;
-    discoveredDevices.value = [];
-    if (scanTimer) clearTimeout(scanTimer);
-    startDiscoveryListeners();
-    try {
-        await ws.sendRPC('FLEET_MANAGER', 'BTHome.StartDiscovery', {
-            shellyID: props.shellyID,
-            duration: 10
-        });
-        toast.info('Scanning for BLE devices (10s)...');
-        scanTimer = setTimeout(() => {
-            scanning.value = false;
-            stopDiscoveryListeners();
-            scanTimer = undefined;
-            if (discoveredDevices.value.length === 0) {
-                toast.info('Scan complete — no devices found');
-            }
-        }, 12000);
-    } catch (err: any) {
-        toast.error(rpcErrorMessage(err, 'Scan failed'));
-        scanning.value = false;
-        stopDiscoveryListeners();
-        if (scanTimer) {
-            clearTimeout(scanTimer);
-            scanTimer = undefined;
-        }
-    }
-}
-
-async function pairDiscovered(mac: string) {
-    pairingMac.value = mac;
-    const discovered = discoveredDevices.value.find((d) => d.mac === mac);
-    try {
-        const result = await ws.sendRPC(
-            'FLEET_MANAGER',
-            'BTHome.Device.AddManual',
-            {
-                shellyID: props.shellyID,
-                mac,
-                productName:
-                    discovered?.productName ?? discovered?.name ?? undefined,
-                modelId: discovered?.modelString ?? undefined
-            }
-        );
-        discoveredDevices.value = discoveredDevices.value.filter(
-            (d) => d.mac !== mac
-        );
-        if (result?.alreadyPaired) {
-            toast.info(`${discovered?.name || mac} was already paired`);
-            if (!deviceStore.devices[props.shellyID]?.settings) {
-                await waitForSettingsUpdate(1500);
-            }
-            await loadPairedDevices();
-        } else {
-            toast.success(`Device ${discovered?.name || mac} paired`);
-            // Wait for the event chain: device → FM backend → WS → device store
-            await waitForSettingsUpdate();
-            await loadPairedDevices();
-        }
-    } catch (err: any) {
-        toast.error(rpcErrorMessage(err, 'Failed to pair device'));
-    } finally {
-        pairingMac.value = null;
-    }
-}
-
 function resetState() {
     expandedDevice.value = null;
     knownObjects.value = [];
-    discoveredDevices.value = [];
-    scanning.value = false;
     objNameCache.clear(); // clear stale names when switching devices
     expandRequestId++; // cancel in-flight refreshExpandedObjects
-    if (scanTimer) {
-        clearTimeout(scanTimer);
-        scanTimer = undefined;
-    }
-    stopDiscoveryListeners();
     if (learning.value) {
         ws.sendRPC('FLEET_MANAGER', 'BTHome.Control.StopLearning', {
             shellyID: props.shellyID
@@ -1007,10 +821,13 @@ function resetState() {
     }
     learningState.value = null;
     controlBindings.value = [];
-    if (settingsWaitTimer) {
-        clearTimeout(settingsWaitTimer);
-        settingsWaitTimer = undefined;
-    }
+}
+
+function loadGateway() {
+    loadPairedDevices();
+    loadDeviceInputs();
+    loadControls();
+    syncLearningStateFromBackend();
 }
 
 async function syncLearningStateFromBackend() {
@@ -1045,20 +862,24 @@ onUnmounted(() => {
 
 onMounted(() => {
     subscribeLearningEvents();
-    loadPairedDevices();
-    loadDeviceInputs();
-    loadControls();
-    syncLearningStateFromBackend();
+    loadGateway();
 });
 watch(
     () => props.shellyID,
     () => {
         resetState();
-        loadPairedDevices();
-        loadDeviceInputs();
-        loadControls();
-        syncLearningStateFromBackend();
+        loadGateway();
     }
+);
+
+// The gateway's settings arrive over the websocket and are patched in place,
+// so the object reference never changes and cannot be watched. devicesVersion
+// is the store's own signal, bumped whenever a bthomedevice/bthomesensor key
+// appears or goes. Without this a panel opened before the settings land shows
+// an empty paired list forever, and treats every paired BLU as a new find.
+watch(
+    () => deviceStore.devicesVersion,
+    () => loadPairedDevices()
 );
 
 // Auto-refresh expanded device's objects when the gateway receives a BLE broadcast.
@@ -1109,14 +930,14 @@ watch(
 .bth__list {
     display: flex;
     flex-direction: column;
-    border: 1px solid var(--color-border-default);
+    border: var(--space-px) solid var(--color-border-default);
     border-radius: var(--radius-lg);
     background: var(--color-surface-1);
     overflow: hidden;
 }
 
 .bth__device {
-    border-bottom: 0.5px solid var(--color-border-default);
+    border-bottom: var(--space-px) solid var(--color-border-default);
 }
 
 .bth__device:last-child {
@@ -1127,13 +948,23 @@ watch(
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    width: 100%;
+    min-height: var(--touch-target-min);
     padding: var(--space-2) var(--space-3);
+    background: none;
+    border: 0;
+    text-align: left;
     cursor: pointer;
-    transition: background var(--duration-fast);
+    transition: background var(--duration-fast) var(--ease-out);
+}
+
+.bth__device-row:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: calc(-1 * var(--focus-ring-width));
 }
 
 .bth__device-row:hover {
-    background: rgba(249, 250, 250, 0.04);
+    background: var(--state-hover-bg);
 }
 
 .bth__bt-icon {
@@ -1156,31 +987,27 @@ watch(
 }
 
 .bth__device-addr {
-    font-size: var(--type-body);
-    color: var(--color-frost);
-    opacity: 0.6;
-    font-family: var(--font-mono, monospace);
+    font-size: var(--type-caption);
+    color: var(--color-text-tertiary);
+    font-family: var(--font-mono);
 }
 
 .bth__device-badge {
-    font-size: var(--type-body);
-    color: var(--color-frost);
-    opacity: 0.6;
+    font-size: var(--type-caption);
+    color: var(--color-text-secondary);
     flex-shrink: 0;
     white-space: nowrap;
 }
 
 .bth__device-sensors {
-    font-size: var(--type-body);
-    color: var(--color-frost);
-    opacity: 0.6;
+    font-size: var(--type-caption);
+    color: var(--color-text-tertiary);
     flex-shrink: 0;
 }
 
 .bth__chevron {
     font-size: var(--type-body);
     color: var(--color-text-disabled);
-    opacity: 0.4;
     flex-shrink: 0;
 }
 
@@ -1217,24 +1044,52 @@ watch(
 }
 
 .bth__obj-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--touch-target-min);
+    min-height: var(--touch-target-min);
     background: none;
     border: none;
     color: var(--color-status-red);
     cursor: pointer;
-    padding: var(--space-0-5) var(--space-1);
     border-radius: var(--radius-sm);
     font-size: var(--type-body);
     opacity: 0.6;
-    transition: opacity var(--duration-fast);
+    transition:
+        opacity var(--duration-fast) var(--ease-out),
+        transform var(--duration-fast) var(--ease-out);
 }
 
 .bth__obj-remove:hover {
+    opacity: 1;
+}
+
+.bth__obj-remove:active {
+    transform: scale(0.97);
+}
+
+.bth__obj-remove:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-width);
     opacity: 1;
 }
 .bth__obj-device-event {
     font-size: var(--type-body);
     color: var(--color-text-quaternary);
     font-style: italic;
+}
+
+.bth__inline-form {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-2) 0;
+}
+
+.bth__inline-field {
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 .bth__device-actions {
@@ -1254,31 +1109,38 @@ watch(
 .bth__input {
     flex: 1;
     min-width: 0;
+    min-height: var(--touch-target-min);
     padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-md);
-    border: 1px solid var(--color-border-default);
+    border: var(--space-px) solid var(--color-border-default);
     background: var(--color-surface-1);
     color: var(--color-text-primary);
     font-size: var(--type-body);
-    font-family: var(--font-mono, monospace);
-    outline: none;
-    transition: border-color var(--duration-fast);
+    transition: border-color var(--duration-fast) var(--ease-out);
 }
 
 .bth__input--select {
     flex: 0 1 auto;
-    min-width: 140px;
-    font-family: inherit;
+    min-width: var(--space-20);
 }
 
-.bth__input:focus {
+.bth__input:focus-visible {
     border-color: var(--color-primary);
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-width);
 }
 
-.bth__input::placeholder {
-    color: var(--color-frost);
-    opacity: 0.4;
-    font-family: inherit;
+.bth__scan-hint {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0;
+    font-size: var(--type-caption);
+    color: var(--color-text-tertiary);
+}
+
+.bth__scan-hint i {
+    color: var(--color-primary);
 }
 
 .bth__scan-status {
@@ -1338,9 +1200,8 @@ watch(
 }
 
 .bth__empty {
-    font-size: var(--type-body);
-    color: var(--color-frost);
-    opacity: 0.5;
+    font-size: var(--type-caption);
+    color: var(--color-text-tertiary);
     padding: var(--space-1) 0;
 }
 </style>

@@ -100,9 +100,54 @@ const P_FETCH: JsonSchema = {
     properties: {shellyID: SHELLY_ID}
 };
 
+// The whole device.virtual_metadata row — the DB function RETURNS the table
+// type, and the handler passes the raw snake_case row through unmapped.
 const RESP_ROW: JsonSchema = {
     type: 'object',
-    additionalProperties: true
+    required: [
+        'organization_id',
+        'host_shelly_id',
+        'component_key',
+        'glyph',
+        'color',
+        'gradient',
+        'promoted_at',
+        'image_path',
+        'created',
+        'updated',
+        'measurement',
+        'host_device_id'
+    ],
+    additionalProperties: false,
+    properties: {
+        organization_id: {type: 'string'},
+        host_shelly_id: SHELLY_ID,
+        component_key: COMPONENT_KEY,
+        glyph: {type: ['string', 'null']},
+        color: {type: ['string', 'null']},
+        gradient: {anyOf: [GRADIENT, {type: 'null'}]},
+        promoted_at: {type: ['string', 'null'], format: 'date-time'},
+        image_path: {type: ['string', 'null'], format: 'uuid'},
+        created: {type: 'string', format: 'date-time'},
+        updated: {type: 'string', format: 'date-time'},
+        measurement: {anyOf: [MEASUREMENT_META_SCHEMA, {type: 'null'}]},
+        host_device_id: {type: 'integer'}
+    }
+};
+
+// Clearing a component that has no row still returns one row, every column
+// NULL — so on this call even the NOT NULL columns can come back null.
+const RESP_CLEARED_ROW: JsonSchema = {
+    ...RESP_ROW,
+    properties: {
+        ...(RESP_ROW.properties ?? {}),
+        organization_id: {type: ['string', 'null']},
+        host_shelly_id: {type: ['string', 'null']},
+        component_key: {type: ['string', 'null']},
+        created: {type: ['string', 'null'], format: 'date-time'},
+        updated: {type: ['string', 'null'], format: 'date-time'},
+        host_device_id: {type: ['integer', 'null']}
+    }
 };
 
 const RESP_FETCH: JsonSchema = {
@@ -171,7 +216,7 @@ b.registerMethod('Set', {
 });
 b.registerMethod('Clear', {
     params: VIRTUAL_META_CLEAR_PARAMS_SCHEMA,
-    response: RESP_ROW,
+    response: RESP_CLEARED_ROW,
     permission: PERM_UPDATE,
     description: 'virtual_meta.Clear — clear specific decoration fields.'
 });

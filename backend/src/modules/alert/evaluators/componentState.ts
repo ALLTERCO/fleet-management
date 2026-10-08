@@ -10,13 +10,15 @@
  *   component: 'switch:0' | 'cover:0' | 'component:<id>' …
  *   field:     'output' | 'state' | 'value' …
  *   equals:    true | false | 'open' | 'closed' …  (the state that fires)
+ *   objName?:  BTHome object name a 'bthomesensor:*' watch must match
  *   severity?: optional per-match severity override
  */
 import type AbstractDevice from '../../../model/AbstractDevice';
 import type {AlertSeverity} from '../../../types/api/alert';
 import {fieldFingerprintV2} from '../fingerprint';
-import type {Evaluator, MatchResult} from '../types';
-import {deviceDisplayName, readField} from './shared';
+import {alertTargetComponents, componentRuleInputTypes} from '../signals';
+import type {ClearMatch, Evaluator, MatchResult} from '../types';
+import {eventDeviceDisplayName, readField} from './shared';
 
 const KIND = 'component_state';
 const COMPONENT_TARGET_PREFIX = 'component:';
@@ -28,6 +30,7 @@ interface StateConfig {
     component: string;
     field: string;
     equals: StateValue;
+    objName?: string;
     severity?: AlertSeverity;
 }
 
@@ -42,7 +45,7 @@ function isSeverity(v: unknown): v is AlertSeverity {
 }
 
 function readConfig(cfg: Record<string, unknown>): StateConfig | null {
-    const {component, field, equals, severity} = cfg;
+    const {component, field, equals, objName, severity} = cfg;
     if (typeof component !== 'string' || !component) return null;
     if (typeof field !== 'string' || !field) return null;
     if (!isStateValue(equals)) return null;
@@ -50,6 +53,7 @@ function readConfig(cfg: Record<string, unknown>): StateConfig | null {
         component,
         field,
         equals,
+        objName: typeof objName === 'string' && objName ? objName : undefined,
         severity: isSeverity(severity) ? severity : undefined
     };
 }
@@ -69,6 +73,7 @@ function readReading(
     event: {
         status: Record<string, unknown>;
         device?: AbstractDevice;
+        deviceName?: string;
         shellyID: string;
     },
     cfg: StateConfig
@@ -136,17 +141,6 @@ function phraseState(
     };
 }
 
-// Concrete components to evaluate: the literal one, or every native instance of
-// the type for a "switch:*"-style watch-all.
-function targetComponents(
-    cfg: StateConfig,
-    status: Record<string, unknown>
-): string[] {
-    if (!isWildcard(cfg.component)) return [cfg.component];
-    const type = cfg.component.slice(0, -WILDCARD.length);
-    return Object.keys(status).filter((k) => k.split(':')[0] === type);
-}
-
 function matchComponent(
     event: {
         status: Record<string, unknown>;
@@ -162,7 +156,7 @@ function matchComponent(
     const display =
         r.subject.type === 'entity'
             ? `${component} ${r.subject.id}`
-            : deviceDisplayName(event.device) || event.shellyID;
+            : eventDeviceDisplayName(event);
     const phrase = phraseState(cfg.field, r.value);
     return {
         fingerprintV2: fieldFingerprintV2({
@@ -200,6 +194,8 @@ function clearComponent(
     const r = readReading(event, {...cfg, component});
     if (r.kind === 'unknown') return null;
     if (r.kind === 'value' && r.value === cfg.equals) return null;
+    // A watch-all subject is a component that carries the field; one without it was never watched.
+    if (r.kind === 'absent' && isWildcard(cfg.component)) return null;
     return fieldFingerprintV2({
         ruleId: rule.id,
         subjectType: r.subject.type,
@@ -221,6 +217,14 @@ export const componentStateEvaluator: Evaluator = {
     triggerKinds: ['device_status_changed'],
     clearKinds: ['device_status_changed'],
 
+    // A literal target resolves when its component is gone, so it sees every status.
+    inputTypes(rule) {
+        const component = rule.config.component;
+        if (typeof component !== 'string' || !isWildcard(component))
+            return null;
+        return componentRuleInputTypes(component);
+    },
+
     // Single-component path for direct callers (preview/tests); the engine fires
     // via matchAll. Wildcard is owned by matchAll.
     match(event, rule): MatchResult | null {
@@ -234,7 +238,12 @@ export const componentStateEvaluator: Evaluator = {
         if (event.kind !== 'device_status_changed') return [];
         const cfg = configFor(rule);
         if (!cfg) return [];
-        return targetComponents(cfg, event.status)
+        return alertTargetComponents(
+            cfg,
+            event.status,
+            event.device,
+            event.promotedAway
+        )
             .map((c) => matchComponent(event, rule, cfg, c))
             .filter((m): m is MatchResult => m !== null);
     },
@@ -247,12 +256,18 @@ export const componentStateEvaluator: Evaluator = {
         return fp ? {fingerprintV2: fp} : null;
     },
 
-    matchClearAll(event, rule): readonly string[] {
+    matchClearAll(event, rule): readonly ClearMatch[] {
         if (event.kind !== 'device_status_changed') return [];
         const cfg = configFor(rule);
         if (!cfg) return [];
-        return targetComponents(cfg, event.status)
+        return alertTargetComponents(
+            cfg,
+            event.status,
+            event.device,
+            event.promotedAway
+        )
             .map((c) => clearComponent(event, rule, cfg, c))
-            .filter((fp): fp is string => fp !== null);
+            .filter((fp): fp is string => fp !== null)
+            .map((fingerprintV2) => ({fingerprintV2}));
     }
 };

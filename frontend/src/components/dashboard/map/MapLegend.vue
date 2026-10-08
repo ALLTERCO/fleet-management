@@ -43,7 +43,6 @@ withDefaults(
     border-radius: var(--radius-full);
     background: var(--glass-2-bg);
     backdrop-filter: var(--glass-2-filter);
-    -webkit-backdrop-filter: var(--glass-2-filter);
     border: 1px solid var(--glass-border);
     color: var(--color-text-secondary);
     font-size: var(--type-caption);

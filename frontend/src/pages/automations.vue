@@ -11,10 +11,13 @@
 
 <script setup lang="ts">
 import {computed, provide} from 'vue';
+import {canAccessPage} from '@/auth/pageAccess';
 import {NODE_RED_ENABLED} from '@/constants';
+import {useAuthStore} from '@/stores/auth';
 import {useSystemStore} from '@/stores/system';
 import type {RouteTab} from '@/types/page-template';
 
+const authStore = useAuthStore();
 const systemStore = useSystemStore();
 // Grafana gates on runtime config (not a build flag) like the nav did.
 const grafanaEnabled = computed(() => {
@@ -22,7 +25,7 @@ const grafanaEnabled = computed(() => {
     return Boolean(cfg && Object.keys(cfg).length > 0);
 });
 
-const automationsTabs = computed<RouteTab[]>(() => [
+const allTabs = computed<RouteTab[]>(() => [
     {label: 'Actions', path: '/automations/actions', icon: 'fas fa-bolt'},
     {
         label: 'Variables',
@@ -48,6 +51,10 @@ const automationsTabs = computed<RouteTab[]>(() => [
           ]
         : [])
 ]);
+
+const automationsTabs = computed<RouteTab[]>(() =>
+    allTabs.value.filter((tab) => canAccessPage(tab.path, authStore))
+);
 
 provide('automationsTabs', automationsTabs);
 </script>

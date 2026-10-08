@@ -1,53 +1,19 @@
 import type ws from 'ws';
 import type AbstractDevice from './model/AbstractDevice';
-import type {DeviceProfile} from './model/deviceProfile';
+import type {DerivedDeviceProfile} from './model/deviceProfile';
+import type {BluetoothStatusRoute} from './modules/virtualDevice/bluetoothRepository';
 import type {FleetRole} from './modules/zitadel';
-
-/** Device-specific UI surfaces, derived from what the device announces
- *  (components/methods). Exception: `wallDisplay` — no advertised RPC marks
- *  the relay/thermostat mode switch, so it keys off app/model like the
- *  backend's entity composer already does. */
-export interface DeviceUiCapabilities {
-    /** Device advertises Pill.SetConfig — pin-mode configuration UI */
-    pillPinMode: boolean;
-    /** Device reports a cury:N component in status */
-    cury: boolean;
-    /** LED settings via a device-reported `*_ui` component (plugs_ui, …) */
-    ledSettings: boolean;
-    /** Wall Display (app WallDisplayV2 / model SAWD) — relay↔thermostat mode */
-    wallDisplay: boolean;
-}
-
-export interface DeviceCapabilities {
-    backup?: boolean;
-    /** Device advertises the RPCs the FM restore flow sends
-     *  (Sys.RestoreBackup + Shelly.GetDeviceInfo) */
-    restore?: boolean;
-    firmwareUpdate?: boolean;
-    firmwareCheck?: boolean;
-    otaCommit?: boolean;
-    matter?: boolean;
-    tlsUserCA?: boolean;
-    tlsClientCert?: boolean;
-    /** Device has XMOD — Powered by Shelly (XMOD1 or XT1) */
-    xmod?: boolean;
-    /** Device has Service component — XT1 with service module (HVAC, irrigation, etc.) */
-    service?: boolean;
-    /** Device supports Service.ResetCounters (water consumption, energy, etc.) */
-    serviceResetCounters?: boolean;
-    /** Device supports user-created virtual components (Virtual.Add/Delete) */
-    virtualComponents?: boolean;
-    /** Addon services the device advertises via ListMethods, as
-     *  sys.device.addon_type values; [] = no slot or none advertised */
-    addons?: string[];
-    /** Device-specific UI feature flags */
-    ui?: DeviceUiCapabilities;
-}
+import type {
+    DeviceCapabilities,
+    DeviceUiCapabilities
+} from './types/api/deviceCapabilities';
+import type {DeviceSource} from './types/api/deviceSource';
+import type {SensorSource} from './types/api/sensor';
 
 export interface ShellyDeviceExternal {
     shellyID: string;
     id: number;
-    source: string | null;
+    source: DeviceSource | null;
     info: any;
     status: any;
     presence: 'online' | 'offline' | 'pending';
@@ -67,8 +33,10 @@ export interface ShellyDeviceExternal {
     locationId?: number | null;
     /** Tags assigned to this device. From `organization.tag_assignments`. */
     tagIds?: number[];
+    /** Catalog classification; the same value Device.GetKind returns. */
+    kind?: string | null;
     // Optional so callers not needing the profile stay unaffected.
-    profile?: DeviceProfile;
+    derivedProfile?: DerivedDeviceProfile;
     /** ms-epoch of the last `sys.sleep` event; independent of `presence`. */
     lastSeenSleepingMs?: number;
 }
@@ -150,6 +118,9 @@ export interface user_t {
     userId?: string;
     /** OIDC `name` claim — actor display name; falls back to username. */
     displayName?: string;
+    /** OIDC `email` / `email_verified`; absent when the login carried none. */
+    email?: string;
+    emailVerified?: boolean;
     /** True iff the JWT amr claim shows the token was minted via an MFA factor
      *  (otp, u2f/passkey, push). Used by authz statement conditions. */
     mfaPresent?: boolean;
@@ -159,6 +130,10 @@ export interface user_t {
     credentialBoundary?: import('./modules/authz/types').Scope;
     // Surfaces this token is scoped to (e.g. 'mcp'). Empty = unrestricted.
     credentialAudience?: string[];
+    // Zitadel MCP app an OAuth access token was issued to. Absent otherwise.
+    credentialClientId?: string;
+    // Introspected expiry of that OAuth token; the token itself is opaque.
+    credentialExpiresAtMs?: number;
     // Pre-computed V2 shape. Set by short-lived single-use scoped tokens whose
     // grant is one fixed action — skips the resolver DB lookup.
     effectiveShape?: import('./modules/authz/types').EffectiveShape;
@@ -216,6 +191,10 @@ export type event_data_t = {
      *  via deviceOrgByShellyId), system-wide notices, and trusted
      *  internal callbacks. */
     organizationId?: string;
+    /** When present, deliver only to sessions owned by this user. */
+    userId?: string;
+    /** Set on a promoted BLU device's status: the device it is, for alert rules. */
+    bluetoothRoute?: BluetoothStatusRoute;
 };
 export type shelly_presence_t = 'online' | 'offline' | 'pending';
 
@@ -405,6 +384,8 @@ export namespace BTHome {
             localName?: string;
             /** Discovery RSSI when the gateway provides it */
             rssi?: number;
+            /** Server time (ms) it was heard; drives "Heard 3m ago" in the scan list */
+            heardAtMs?: number;
         };
     }
 
@@ -490,7 +471,14 @@ export interface switch_entity extends entity {
 export interface temperature_entity extends entity {
     type: 'temperature';
     properties: entity['properties'] & {
+        /** Component this reading is nested in, e.g. 'switch:0'. */
         embeddedIn?: string;
+        /**
+         * Which sensor produced the reading, using the stored capture
+         * vocabulary. 'internal' means the device's own chip — device health,
+         * not ambient — and readers must not chart it as the environment.
+         */
+        sensorSource?: SensorSource;
     };
 }
 
@@ -759,6 +747,14 @@ export interface blutrv_entity extends entity {
     };
 }
 
+// IR controller appliance slot (irdevice:N, dynamic ids 200+; e.g. Gen4 app
+// IRG4). Pre-market firmware documents only {id, name} on IRDevice.GetConfig
+// and no status shape, so properties stay base-only — extend when real
+// hardware pins more fields.
+export interface irdevice_entity extends entity {
+    type: 'irdevice';
+}
+
 export type BareEntity<T extends string> = entity & {type: T};
 
 export type bm_entity = BareEntity<'bm'>;
@@ -821,6 +817,7 @@ export type entity_t =
     | bthomedevice_entity
     | bthomecontrol_entity
     | blutrv_entity
+    | irdevice_entity
     | bm_entity
     | cb_entity
     | fan_entity
@@ -844,10 +841,19 @@ export interface Context {
     metadata: Record<PropertyKey, any>;
 }
 
+/**
+ * Why a presented token gave no user: a token from another organization, or a
+ * check that could not finish (identity provider or lookup failure). A plain
+ * rejection leaves it unset.
+ */
+export type AuthFailure = 'org_mismatch' | 'unavailable';
+
 declare module 'express-serve-static-core' {
     interface Request {
         token?: string;
         user?: user_t;
+        /** Set when the reason a principal is unauthorized must reach the UI. */
+        authFailure?: AuthFailure;
     }
 }
 
@@ -885,3 +891,6 @@ export namespace WaitingRoomEvent {
         };
     }
 }
+
+// Re-exported so the many existing importers keep one name to import.
+export type {DeviceCapabilities, DeviceUiCapabilities};

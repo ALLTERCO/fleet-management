@@ -123,10 +123,10 @@ const {now, release} = useNowTicker();
 onBeforeUnmount(release);
 
 const rows = computed<TriageRow[]>(() => {
-    const list: TriageRow[] = [
-        {label: 'IP', value: info.value.ip || '—'},
-        {label: 'MAC', value: info.value.mac || '—'}
-    ];
+    // A device that has not answered yet shows fewer rows, not dashed ones.
+    const list: TriageRow[] = [];
+    if (info.value.ip) list.push({label: 'IP', value: info.value.ip});
+    if (info.value.mac) list.push({label: 'MAC', value: info.value.mac});
     if (info.value.ssid) list.push({label: 'SSID', value: info.value.ssid});
     if (info.value.rssi != null) {
         list.push({
@@ -135,7 +135,8 @@ const rows = computed<TriageRow[]>(() => {
             tone: rssiTier(info.value.rssi)
         });
     }
-    list.push({label: 'Firmware', value: info.value.firmware || '—'});
+    if (info.value.firmware)
+        list.push({label: 'Firmware', value: info.value.firmware});
     const t = props.device.touchedAt;
     list.push({
         label: 'Seen',

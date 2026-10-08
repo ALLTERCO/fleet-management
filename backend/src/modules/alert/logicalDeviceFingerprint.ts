@@ -18,6 +18,12 @@ interface EntityReferenceRow {
     entity_suffix: string | null;
 }
 
+interface SubjectPresenceRow {
+    source_subject_type: string;
+    source_subject_id: string;
+    source_device_id: number | null;
+}
+
 export interface LogicalDeviceHint {
     deviceId: number;
     externalId: string;
@@ -233,6 +239,31 @@ export async function canonicalizeAlertMatch(
             durableSubjectId
         )
     };
+}
+
+/**
+ * True when the alert's subject device is gone. The foreign key keeps
+ * source_device_id on a live device row, so NULL on a device or physical
+ * entity subject means that device was deleted. A ':virtual' entity subject
+ * carries no device by design and is never missing.
+ */
+export async function alertSubjectMissing(
+    organizationId: string,
+    alertId: number
+): Promise<boolean> {
+    const rows = await postgres.queryRows<SubjectPresenceRow>(
+        `SELECT a.source_subject_type, a.source_subject_id, a.source_device_id
+           FROM notifications.alert_instances a
+          WHERE a.organization_id = $1 AND a.id = $2`,
+        [organizationId, alertId]
+    );
+    const row = rows[0];
+    if (!row || row.source_device_id != null) return false;
+    if (row.source_subject_type === 'device') return true;
+    return (
+        row.source_subject_type === 'entity' &&
+        !row.source_subject_id.endsWith(':virtual')
+    );
 }
 
 export async function hydratePublicAlertSubjects<

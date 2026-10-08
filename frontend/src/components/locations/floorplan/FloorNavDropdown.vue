@@ -164,7 +164,6 @@ onBeforeUnmount(() => {
     padding: 0 var(--space-3);
     background: var(--glass-3-bg);
     backdrop-filter: var(--glass-3-filter);
-    -webkit-backdrop-filter: var(--glass-3-filter);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-md);
     color: var(--color-text-primary);
@@ -219,7 +218,6 @@ onBeforeUnmount(() => {
     padding: var(--space-2);
     background: var(--glass-4-bg);
     backdrop-filter: var(--glass-4-filter);
-    -webkit-backdrop-filter: var(--glass-4-filter);
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
     box-shadow:

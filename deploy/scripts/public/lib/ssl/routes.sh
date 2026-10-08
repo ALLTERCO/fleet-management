@@ -43,6 +43,57 @@ _bot_block_sink_service_yaml() {
 YAML
 }
 
+# Where this host itself reaches Fleet Manager. Self-signed and custom routes
+# match any Host and the self-signed certificate always names localhost, so
+# the probe survives a changed LAN address. Let's Encrypt routes match only
+# their domain, so there is no local name: returns 1.
+public_local_fleet_url() {
+    if [ "${WITH_SSL:-false}" != "true" ]; then
+        printf 'http://localhost:%s' "${FLEET_MANAGER_PORT:-7011}"
+        return 0
+    fi
+    case "${SSL_MODE:-}" in
+        selfsigned|custom) printf 'https://localhost' ;;
+        *) return 1 ;;
+    esac
+}
+
+# Traefik turns healthy before it serves the Fleet route, and `up` restarts
+# Fleet once more at its end, so neither health check proves the route works.
+# Bounded by TRAEFIK_STARTUP_TIMEOUT; Let's Encrypt routes are not probed.
+wait_for_fleet_route() {
+    local timeout="${TRAEFIK_STARTUP_TIMEOUT:-60}" elapsed=0 url
+    if ! url="$(public_local_fleet_url)"; then
+        info "Fleet Manager route answers only at https://${SSL_DOMAIN}; not probed from this host"
+        return 0
+    fi
+    spinner_start "Waiting for Fleet Manager at $url..."
+    while [ "$elapsed" -lt "$timeout" ]; do
+        # The route itself, never the container fallback smoke.sh can use.
+        if SMOKE_CONTAINER_SERVICE="" sm_http_health "$url"; then
+            spinner_stop ok "Fleet Manager answers at $url"
+            return 0
+        fi
+        sleep 3
+        elapsed=$((elapsed + 3))
+    done
+    spinner_stop fail "Fleet Manager did not answer at $url within ${timeout}s"
+    return 1
+}
+
+# Writes the routes for the saved TLS mode: custom certificates use the
+# self-signed layout. Certificates themselves are `up`'s job.
+write_traefik_routes_for_ssl_mode() {
+    case "$SSL_MODE" in
+        selfsigned|custom) write_traefik_routes_selfsigned ;;
+        letsencrypt) write_traefik_routes_letsencrypt "$SSL_DOMAIN" ;;
+        *)
+            error "Unknown SSL mode for Traefik routes: ${SSL_MODE:-<none>}"
+            return 1
+            ;;
+    esac
+}
+
 write_traefik_routes_selfsigned() {
     local dyn_dir="$STATE_DIR/tls/dynamic"
     mkdir -p "$dyn_dir"
@@ -102,8 +153,16 @@ ${bot_block_router}
       tls: {}
       priority: 110
       middlewares: [login-rate-limit, strip-feature-policy]
+    # MCP OAuth discovery (RFC 9728) is Fleet's, not Zitadel's /.well-known/.
+    fleet-oauth-resource:
+      rule: "PathPrefix(\`/.well-known/oauth-protected-resource\`)"
+      entryPoints: [websecure]
+      service: fleet
+      tls: {}
+      priority: 105
+      middlewares: [strip-identity, strip-feature-policy]
     zitadel-api:
-      rule: "PathPrefix(\`/.well-known/\`) || PathPrefix(\`/oidc/\`) || PathPrefix(\`/ui/\`) || PathPrefix(\`/debug/\`) || PathPrefix(\`/v2beta/\`) || PathPrefix(\`/v2/\`) || PathPrefix(\`/management/\`) || PathPrefix(\`/admin/\`) || PathPrefix(\`/auth/v1/\`) || PathPrefix(\`/assets/v1/\`) || PathPrefix(\`/zitadel.\`)"
+      rule: "PathPrefix(\`/.well-known/\`) || PathPrefix(\`/oidc/\`) || PathPrefix(\`/ui/\`) || PathPrefix(\`/debug/\`) || PathPrefix(\`/v2beta/\`) || PathPrefix(\`/v2/\`) || PathPrefix(\`/management/\`) || PathPrefix(\`/admin/v1/\`) || PathPrefix(\`/auth/v1/\`) || PathPrefix(\`/assets/v1/\`) || PathPrefix(\`/zitadel.\`)"
       entryPoints: [websecure]
       service: zitadel-api
       tls: {}
@@ -120,7 +179,7 @@ ${bot_block_router}
     fleet:
       loadBalancer:
         servers:
-          - url: "http://fleet-manager:7011"
+          - url: "$(edge_fleet_upstream)"
     zitadel-login:
       loadBalancer:
         servers:
@@ -231,8 +290,17 @@ ${bot_block_router}
         certResolver: letsencrypt
       priority: 110
       middlewares: [login-rate-limit, strip-feature-policy]
+    # MCP OAuth discovery (RFC 9728) is Fleet's, not Zitadel's /.well-known/.
+    fleet-oauth-resource:
+      rule: "Host(\`${domain}\`) && PathPrefix(\`/.well-known/oauth-protected-resource\`)"
+      entryPoints: [websecure]
+      service: fleet
+      tls:
+        certResolver: letsencrypt
+      priority: 105
+      middlewares: [strip-identity, strip-feature-policy]
     zitadel-api:
-      rule: "Host(\`${domain}\`) && (PathPrefix(\`/.well-known/\`) || PathPrefix(\`/oidc/\`) || PathPrefix(\`/ui/\`) || PathPrefix(\`/debug/\`) || PathPrefix(\`/v2beta/\`) || PathPrefix(\`/v2/\`) || PathPrefix(\`/management/\`) || PathPrefix(\`/admin/\`) || PathPrefix(\`/auth/v1/\`) || PathPrefix(\`/assets/v1/\`) || PathPrefix(\`/zitadel.\`))"
+      rule: "Host(\`${domain}\`) && (PathPrefix(\`/.well-known/\`) || PathPrefix(\`/oidc/\`) || PathPrefix(\`/ui/\`) || PathPrefix(\`/debug/\`) || PathPrefix(\`/v2beta/\`) || PathPrefix(\`/v2/\`) || PathPrefix(\`/management/\`) || PathPrefix(\`/admin/v1/\`) || PathPrefix(\`/auth/v1/\`) || PathPrefix(\`/assets/v1/\`) || PathPrefix(\`/zitadel.\`))"
       entryPoints: [websecure]
       service: zitadel-api
       tls:
@@ -251,7 +319,7 @@ ${bot_block_router}
     fleet:
       loadBalancer:
         servers:
-          - url: "http://fleet-manager:7011"
+          - url: "$(edge_fleet_upstream)"
     zitadel-login:
       loadBalancer:
         servers:

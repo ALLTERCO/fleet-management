@@ -1091,7 +1091,6 @@ watch(
 .cfg-card {
     background: var(--glass-1-bg);
     backdrop-filter: blur(var(--glass-1-blur));
-    -webkit-backdrop-filter: blur(var(--glass-1-blur));
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-lg);
     padding: var(--gap-sm);

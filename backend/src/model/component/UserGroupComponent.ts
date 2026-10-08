@@ -1,5 +1,6 @@
 import {authzAuditWriter} from '../../modules/authz/audit';
 import {loadAuthzConfig} from '../../modules/authz/config';
+import {invalidateAuthzTenant} from '../../modules/authz/runtime';
 import * as EventDistributor from '../../modules/EventDistributor';
 import {identityDirectory} from '../../modules/identity';
 import * as store from '../../modules/PostgresProvider';
@@ -26,6 +27,7 @@ import {
     type UserGroupListParams,
     type UserGroupRemoveMembersParams,
     type UserGroupResponse,
+    type UserGroupRow,
     type UserGroupUpdateParams
 } from '../../types/api/user_group';
 import type CommandSender from '../CommandSender';
@@ -36,12 +38,12 @@ interface Config {
     enable: boolean;
 }
 
-async function callGroupRows(
+async function callGroupRows<T>(
     fn: string,
     params: Record<string, unknown>
-): Promise<UserGroupResponse[]> {
+): Promise<T[]> {
     const result = await store.callMethod(fn, params);
-    return (result?.rows ?? []) as UserGroupResponse[];
+    return (result?.rows ?? []) as T[];
 }
 
 async function assertGroupExists(
@@ -82,9 +84,10 @@ export default class UserGroupComponent extends Component<Config> {
             USER_GROUP_LIST_PARAMS_SCHEMA
         );
         const orgId = requireOrganizationId(sender);
-        const rows = await callGroupRows('organization.fn_user_group_list', {
-            p_tenant_id: orgId
-        });
+        const rows = await callGroupRows<UserGroupResponse>(
+            'organization.fn_user_group_list',
+            {p_tenant_id: orgId}
+        );
         return buildListResponse(rows, rows.length, rows.length, 0);
     }
 
@@ -97,10 +100,10 @@ export default class UserGroupComponent extends Component<Config> {
             USER_GROUP_GET_PARAMS_SCHEMA
         );
         const orgId = requireOrganizationId(sender);
-        const rows = await callGroupRows('organization.fn_user_group_get', {
-            p_id: p.id,
-            p_tenant_id: orgId
-        });
+        const rows = await callGroupRows<UserGroupResponse>(
+            'organization.fn_user_group_get',
+            {p_id: p.id, p_tenant_id: orgId}
+        );
         if (rows.length === 0) throw RpcError.NotFound('user_group');
         return rows[0];
     }
@@ -116,12 +119,16 @@ export default class UserGroupComponent extends Component<Config> {
         if (p.parentGroupId) {
             await this.assertParentInTenant(p.parentGroupId, orgId);
         }
-        const rows = await callGroupRows('organization.fn_user_group_create', {
-            p_tenant_id: orgId,
-            p_name: p.name,
-            p_description: p.description ?? null,
-            p_parent_group_id: p.parentGroupId ?? null
-        });
+        const rows = await callGroupRows<UserGroupRow>(
+            'organization.fn_user_group_create',
+            {
+                p_tenant_id: orgId,
+                p_name: p.name,
+                p_description: p.description ?? null,
+                p_parent_group_id: p.parentGroupId ?? null
+            }
+        );
+        await invalidateAuthzTenant(orgId);
         await authzAuditWriter.writeUserGroupEvent({
             tenantId: orgId,
             actorId: sender.getUser()?.username ?? 'unknown',
@@ -154,16 +161,22 @@ export default class UserGroupComponent extends Component<Config> {
         }
         const clearDescription =
             Object.hasOwn(p, 'description') && p.description === null;
-        const rows = await callGroupRows('organization.fn_user_group_update', {
-            p_id: p.id,
-            p_tenant_id: orgId,
-            p_name: p.name ?? null,
-            p_description: clearDescription ? null : (p.description ?? null),
-            p_parent_group_id: p.parentGroupId ?? null,
-            p_reparent: reparenting,
-            p_clear_description: clearDescription
-        });
+        const rows = await callGroupRows<UserGroupRow>(
+            'organization.fn_user_group_update',
+            {
+                p_id: p.id,
+                p_tenant_id: orgId,
+                p_name: p.name ?? null,
+                p_description: clearDescription
+                    ? null
+                    : (p.description ?? null),
+                p_parent_group_id: p.parentGroupId ?? null,
+                p_reparent: reparenting,
+                p_clear_description: clearDescription
+            }
+        );
         if (rows.length === 0) throw RpcError.NotFound('user_group');
+        await invalidateAuthzTenant(orgId);
         await authzAuditWriter.writeUserGroupEvent({
             tenantId: orgId,
             actorId: sender.getUser()?.username ?? 'unknown',
@@ -243,6 +256,7 @@ export default class UserGroupComponent extends Component<Config> {
         if (summary.deleted_count === 0) {
             throw RpcError.NotFound('user_group');
         }
+        await invalidateAuthzTenant(orgId);
         await authzAuditWriter.writeUserGroupEvent({
             tenantId: orgId,
             actorId: sender.getUser()?.username ?? 'unknown',
@@ -317,6 +331,7 @@ export default class UserGroupComponent extends Component<Config> {
         const addedSet = new Set(added);
         const alreadyMember = requested.filter((u) => !addedSet.has(u));
         if (added.length > 0) {
+            await invalidateAuthzTenant(orgId);
             await authzAuditWriter.writeUserGroupEvent({
                 tenantId: orgId,
                 actorId,
@@ -349,6 +364,7 @@ export default class UserGroupComponent extends Component<Config> {
         const removedSet = new Set(removed);
         const notMember = requested.filter((u) => !removedSet.has(u));
         if (removed.length > 0) {
+            await invalidateAuthzTenant(orgId);
             await authzAuditWriter.writeUserGroupEvent({
                 tenantId: orgId,
                 actorId,

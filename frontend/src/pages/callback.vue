@@ -36,6 +36,32 @@ const error = ref<string | null>(null);
 const status = ref<string | null>(null);
 const debugInfo = ref<string | null>(null);
 
+// One Zitadel serves every tenant, so the browser can come back holding a
+// token minted for another organisation. Only the backend's stable code says
+// so; the frontend never reads the organisation out of the token itself.
+async function isOrgMismatch(response: Response): Promise<boolean> {
+    if (response.status !== 403) return false;
+    try {
+        const body = (await response.json()) as {code?: string};
+        return body.code === 'AUTH_ORG_MISMATCH';
+    } catch (err) {
+        debugWarn('session response body unreadable', err);
+        return false;
+    }
+}
+
+// The HttpOnly session cookie can only be dropped by the server.
+async function clearServerSession(): Promise<void> {
+    try {
+        await fetch('/api/auth/session', {
+            method: 'DELETE',
+            credentials: 'same-origin'
+        });
+    } catch (err) {
+        debugWarn('session cookie clear failed', err);
+    }
+}
+
 // Layout is pinned in the <route> block below, so this page is not
 // remounted when auth state flips during the redirect.
 onMounted(() => {
@@ -162,15 +188,31 @@ onMounted(() => {
                 );
             }
             // Set the HttpOnly session cookie for plain navigations.
+            let orgMismatch = false;
             if (data?.access_token) {
                 try {
-                    await fetch('/api/auth/session', {
+                    const response = await fetch('/api/auth/session', {
                         method: 'POST',
                         headers: {Authorization: `Bearer ${data.access_token}`}
                     });
+                    orgMismatch = await isOrgMismatch(response);
                 } catch (err) {
                     debugWarn('session cookie exchange failed', err);
                 }
+            }
+
+            // Keeping this token would 403 on every call and bounce back here.
+            if (orgMismatch) {
+                dbg.push('session refused: organisation mismatch');
+                flushDbg();
+                debugWarn('OIDC: token belongs to another organisation');
+                await zitadelAuth.oidcAuth.mgr.removeUser();
+                await clearServerSession();
+                router.replace({
+                    path: LOGIN_PATH,
+                    query: {reason: 'org_mismatch'}
+                });
+                return;
             }
 
             // /api/* is server-served — real navigation, not Vue router.

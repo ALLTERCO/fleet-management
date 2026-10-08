@@ -18,7 +18,12 @@
             <Skeleton v-if="loading" variant="card" class="hm-skeleton" />
             <p v-else-if="error" class="hm-empty">Failed to load</p>
             <p v-else-if="!grid.length" class="hm-empty">No data</p>
-            <div v-else class="hm-canvas-wrap" :style="{height: canvasHeight + 'px'}">
+            <div
+                v-else
+                class="hm-canvas-wrap"
+                :class="{'min-h-0 flex-1': canvasHeight === null}"
+                :style="canvasHeight === null ? undefined : {height: canvasHeight + 'px'}"
+            >
                 <canvas ref="hmCanvas" style="width:100%;height:100%" />
             </div>
             <div class="hm-footer">
@@ -146,7 +151,11 @@ const grid = computed(() => {
     return result;
 });
 
-const canvasHeight = computed(() => (props.size === '2x2' ? 120 : 60));
+// The heatmap is 2x2-only, so it fills the card rather than claiming 120px of
+// a ~414px tile. A ResizeObserver already redraws on container change.
+const canvasHeight = computed<number | null>(() =>
+    props.size === '2x2' ? null : 60
+);
 
 const hmCanvas = ref<HTMLCanvasElement | null>(null);
 let resizeObserver: ResizeObserver | null = null;
@@ -267,6 +276,7 @@ onUnmounted(() => {
 .hm-canvas-wrap {
     flex-shrink: 0;
 }
+
 
 .hm-footer {
     display: flex;

@@ -2,6 +2,7 @@ import {getLogger} from 'log4js';
 import {tuning} from '../../config/tuning';
 import * as Observability from '../Observability';
 import {deviceTrustCache, deviceTrustSignals} from '../redis/services';
+import {noteAccessChange} from '../WaitingRoom/accessChangeWatch';
 import type {
     DeviceIngressLookupCredential,
     DeviceIngressTokenLookupCredential,
@@ -142,6 +143,9 @@ async function evictIdentityLocal(identityId: string): Promise<void> {
 }
 
 async function evictAccessControlLocal(externalId: string): Promise<void> {
+    // Local and peer changes both pass here, so a registration read in flight
+    // sees it.
+    noteAccessChange(externalId);
     await deviceTrustCache.del(ACCESS_PREFIX + externalId);
     Observability.incrementCounter('device_trust_cache_evictions_total');
 }
@@ -177,6 +181,16 @@ export async function invalidateAccessControl(
     });
 }
 
+// What this process does with a socket it holds when a peer changed that
+// device's access. Set once by the Waiting Room, which owns those sockets.
+let peerAccessChangeHandler: ((externalId: string) => void) | null = null;
+
+export function setPeerAccessChangeHandler(
+    handler: ((externalId: string) => void) | null
+): void {
+    peerAccessChangeHandler = handler;
+}
+
 export async function subscribeDeviceTrustInvalidations(): Promise<void> {
     // Fired without await — log, don't let it escape.
     const logEvictError = (err: unknown): void =>
@@ -186,6 +200,7 @@ export async function subscribeDeviceTrustInvalidations(): Promise<void> {
             void evictAccessControlLocal(signal.externalId).catch(
                 logEvictError
             );
+            peerAccessChangeHandler?.(signal.externalId);
             return;
         }
         if (signal.credentialId) {

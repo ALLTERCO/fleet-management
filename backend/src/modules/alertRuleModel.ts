@@ -139,6 +139,15 @@ export function validateSupportedScopeSelector(
         }
     }
 
+    if (
+        kind === 'cost_budget_threshold' &&
+        normalized.deviceIds?.length !== 1
+    ) {
+        throw RpcError.InvalidParams(
+            'cost_budget_threshold requires exactly one deviceId; its v1 budget is per electricity meter'
+        );
+    }
+
     return normalized;
 }
 
@@ -219,7 +228,43 @@ export function normalizeAlertRuleConfig(
         config ?? {},
         ALERT_RULE_KIND_CONFIG_SCHEMAS[kind]
     );
-    return cloneRecord(validated);
+    const normalized = cloneRecord(validated);
+    if (
+        kind === 'record_incomplete' ||
+        kind === 'approaching_new_peak' ||
+        kind === 'cost_budget_threshold'
+    ) {
+        const timeZone = normalized.timeZone;
+        try {
+            new Intl.DateTimeFormat('en-US', {timeZone: String(timeZone)});
+        } catch {
+            throw RpcError.InvalidParams(
+                'timeZone must be a valid IANA timezone'
+            );
+        }
+    }
+    if (kind === 'cost_budget_threshold') {
+        const thresholds = normalized.thresholdPercentages;
+        if (Array.isArray(thresholds)) {
+            normalized.thresholdPercentages = [...thresholds].sort(
+                (left, right) => Number(left) - Number(right)
+            );
+        }
+    }
+    if (kind === 'approaching_new_peak') {
+        const warningRatio = normalized.warningRatio;
+        const clearRatio = normalized.clearRatio;
+        if (
+            typeof warningRatio === 'number' &&
+            typeof clearRatio === 'number' &&
+            clearRatio > warningRatio
+        ) {
+            throw RpcError.InvalidParams(
+                'clearRatio must not exceed warningRatio'
+            );
+        }
+    }
+    return normalized;
 }
 
 export function normalizeOptionalText(value: unknown): string | null {

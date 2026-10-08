@@ -27,39 +27,45 @@
                 <i class="fa-regular fa-bell-slash" aria-hidden="true" />
                 No active alerts.
             </div>
-            <button
-                v-for="alert in recentAlerts"
-                :key="alert.id"
-                type="button"
-                class="ab-item"
-                :data-severity="alert.severity"
-                @click="openInstance(alert.id, close)"
+            <div
+                v-if="recentAlerts.length"
+                class="ab-list"
+                role="list"
+                @keydown.down.prevent="moveFocus($event, 1)"
+                @keydown.up.prevent="moveFocus($event, -1)"
             >
-                <AlertSeverityBadge :severity="alert.severity" />
-                <span class="ab-item__copy">
-                    <strong>{{ alert.title }}</strong>
-                    <span>{{ formatRelative(alert.lastTriggeredAt) }}</span>
-                </span>
-                <span class="ab-item__actions">
-                    <Button
-                        type="blue-hollow"
-                        size="xs"
-                        title="Open alert"
-                        aria-label="Open alert"
-                        @click.stop="openInstance(alert.id, close)"
+                <div
+                    v-for="alert in recentAlerts"
+                    :key="alert.id"
+                    class="ab-item"
+                    role="listitem"
+                >
+                    <button
+                        type="button"
+                        class="ab-item__open"
+                        :data-severity="alert.severity"
+                        @click="openInstance(alert.id, close)"
                     >
-                        <i class="fas fa-arrow-up-right-from-square" aria-hidden="true" />
-                    </Button>
-                    <Button
-                        type="green"
-                        size="xs"
-                        :loading="resolving === alert.id"
-                        @click.stop="resolveAlert(alert.id)"
+                        <span class="ab-item__dot" aria-hidden="true" />
+                        <span class="ab-item__copy">
+                            <strong>{{ alert.title }}</strong>
+                            <span>{{ formatRelative(alert.lastTriggeredAt) }}</span>
+                        </span>
+                    </button>
+                    <button
+                        v-if="!alert.acknowledgedAt"
+                        type="button"
+                        class="ab-item__action"
+                        :class="{'ab-item__action--busy': acknowledging === alert.id}"
+                        :disabled="acknowledging === alert.id"
+                        title="Acknowledge"
+                        aria-label="Acknowledge"
+                        @click.stop="acknowledge(alert.id)"
                     >
-                        Resolve
-                    </Button>
-                </span>
-            </button>
+                        <i class="fa-solid fa-check" aria-hidden="true" />
+                    </button>
+                </div>
+            </div>
             <div class="ab-foot">
                 <span v-if="alertOpenCount > recentAlerts.length" class="ab-foot__more">
                     +{{ alertOpenCount - recentAlerts.length }} more
@@ -83,7 +89,6 @@ import {ALERTS_PATH} from '@/constants';
 import {formatRelative} from '@/helpers/format';
 import {useAlertsStore} from '@/stores/alerts';
 import {useAuthStore} from '@/stores/auth';
-import AlertSeverityBadge from './AlertSeverityBadge.vue';
 import Button from './Button.vue';
 import MenuPopover from './MenuPopover.vue';
 
@@ -95,7 +100,7 @@ const alertsStore = useAlertsStore();
 const {alertOpenCount} = storeToRefs(authStore);
 
 const loading = ref(false);
-const resolving = ref<number | null>(null);
+const acknowledging = ref<number | null>(null);
 const detailVisible = ref(false);
 const detailId = ref<number | null>(null);
 
@@ -137,13 +142,23 @@ function openInstance(id: number, close: () => void): void {
     detailVisible.value = true;
 }
 
-async function resolveAlert(id: number): Promise<void> {
-    resolving.value = id;
+// Glance list: acknowledge in place, everything heavier lives in the detail.
+async function acknowledge(id: number): Promise<void> {
+    acknowledging.value = id;
     try {
-        await alertsStore.resolveInstance(id);
+        await alertsStore.ackInstance(id);
     } finally {
-        resolving.value = null;
+        acknowledging.value = null;
     }
+}
+
+// Arrow keys walk the rows; Enter on a row opens it (native button).
+function moveFocus(event: KeyboardEvent, step: 1 | -1): void {
+    const list = event.currentTarget as HTMLElement;
+    const rows = [...list.querySelectorAll<HTMLElement>('.ab-item__open')];
+    const index = rows.findIndex((row) => row.contains(document.activeElement));
+    const next = rows[(index + step + rows.length) % rows.length];
+    next?.focus();
 }
 
 function viewAll(close: () => void): void {
@@ -164,14 +179,13 @@ function viewAll(close: () => void): void {
 .ab-btn {
     position: relative;
     display: grid;
-    width: var(--space-10);
-    height: var(--space-10);
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
     place-items: center;
     border: 2px solid var(--glass-border);
     border-radius: var(--radius-full);
     background: var(--glass-1-bg);
     backdrop-filter: var(--glass-1-filter);
-    -webkit-backdrop-filter: var(--glass-1-filter);
     box-shadow: var(--glass-shadow);
     color: var(--color-text-secondary);
     /* One step up — a 20px glyph reads smaller than the full-bleed avatar. */
@@ -183,10 +197,28 @@ function viewAll(close: () => void): void {
         transform var(--motion-hover);
 }
 
+.ab-btn i {
+    transform: translateY(var(--icon-optical-offset));
+}
+
 .ab-btn:hover {
     border-color: var(--color-primary);
     color: var(--color-text-primary);
     transform: translateY(var(--hover-lift));
+}
+
+.ab-btn:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: var(--focus-ring-offset);
+}
+
+.ab-btn:active {
+    transform: scale(0.96);
+}
+
+.ab-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
 }
 
 .ab-badge {
@@ -199,11 +231,11 @@ function viewAll(close: () => void): void {
     padding: 0 var(--space-1);
     place-items: center;
     border-radius: var(--radius-full);
-    background: var(--color-status-off);
+    background: var(--color-alert-critical-border);
     /* Ring separates the badge from whatever it overlaps. */
-    box-shadow: 0 0 0 2px var(--color-surface-0);
+    box-shadow: 0 0 0 var(--focus-ring-width) var(--color-surface-0);
     color: var(--color-text-on-primary);
-    font-size: 0.7rem;
+    font-size: var(--type-caption);
     font-weight: var(--font-bold);
     line-height: 1;
 }
@@ -234,42 +266,54 @@ function viewAll(close: () => void): void {
     font-size: var(--type-body);
 }
 
-/* Severity stripe on the left edge keeps the row scannable at a glance. */
+/* One row: a severity dot, the title, the age, and one quiet action. */
 .ab-item {
-    position: relative;
     display: flex;
-    width: 100%;
+    align-items: stretch;
     min-width: 26rem;
+    border-bottom: 1px solid var(--divider-hairline);
+}
+
+.ab-item__open {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    min-height: var(--touch-target-min);
     align-items: center;
     gap: var(--gap-sm);
-    padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--divider-hairline);
+    padding: var(--space-2) var(--space-4);
     text-align: left;
     cursor: pointer;
     transition: background-color var(--motion-hover);
 }
 
-.ab-item::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: var(--space-2);
-    bottom: var(--space-2);
-    width: 3px;
-    border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
-    background: var(--color-border-medium);
-}
-
-.ab-item[data-severity='critical']::before {
-    background: var(--color-status-off);
-}
-
-.ab-item[data-severity='warning']::before {
-    background: var(--color-status-warn);
-}
-
-.ab-item:hover {
+.ab-item__open:hover {
     background: var(--state-hover-bg);
+}
+
+.ab-item__open:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: calc(-1 * var(--focus-ring-width));
+}
+
+.ab-item__open:active {
+    background: var(--state-hover-bg-strong);
+}
+
+.ab-item__dot {
+    flex: none;
+    width: var(--space-2);
+    height: var(--space-2);
+    border-radius: var(--radius-full);
+    background: var(--color-alert-info-border);
+}
+
+.ab-item__open[data-severity='critical'] .ab-item__dot {
+    background: var(--color-alert-critical-border);
+}
+
+.ab-item__open[data-severity='warning'] .ab-item__dot {
+    background: var(--color-alert-warning-border);
 }
 
 .ab-item__copy {
@@ -294,10 +338,40 @@ function viewAll(close: () => void): void {
     font-size: var(--type-caption);
 }
 
-.ab-item__actions {
-    display: flex;
+.ab-item__action {
+    display: grid;
     flex: none;
-    gap: var(--space-2);
+    width: var(--touch-target-min);
+    place-items: center;
+    margin-right: var(--space-2);
+    border-radius: var(--radius-md);
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    transition: background-color var(--motion-hover), color var(--motion-hover);
+}
+
+.ab-item__action i {
+    transform: translateY(var(--icon-optical-offset));
+}
+
+.ab-item__action:hover {
+    background: var(--state-hover-bg);
+    color: var(--color-text-primary);
+}
+
+.ab-item__action:focus-visible {
+    outline: var(--focus-ring-width) solid var(--focus-ring-color);
+    outline-offset: calc(-1 * var(--focus-ring-width));
+}
+
+.ab-item__action:active {
+    background: var(--state-hover-bg-strong);
+}
+
+.ab-item__action:disabled,
+.ab-item__action--busy {
+    opacity: 0.5;
+    cursor: default;
 }
 
 .ab-foot {
@@ -316,9 +390,24 @@ function viewAll(close: () => void): void {
 
 <style>
 /* Teleported panel: base glass + corners come from FloatingPanel; the
-   bell menu only asks for room. */
+   bell menu asks for room and grows out of the bell it came from. */
 .floating-panel.ab-pop {
     min-width: 26rem;
     border-radius: var(--radius-xl);
+    transform-origin: top right;
+}
+
+.floating-panel.ab-pop.floating-panel-fade-enter-active {
+    transition: opacity var(--motion-state), transform var(--motion-morph);
+}
+
+.floating-panel.ab-pop.floating-panel-fade-enter-from {
+    transform: scale(0.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .floating-panel.ab-pop.floating-panel-fade-enter-from {
+        transform: none;
+    }
 }
 </style>

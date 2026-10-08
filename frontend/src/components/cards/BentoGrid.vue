@@ -1,13 +1,18 @@
 <template>
-    <div ref="gridRef" :class="['bento-grid', 'grid', { editing: editing }]" @keydown="handleGridKeydown" @focusin="handleCardFocus">
+    <div ref="gridRef" :class="['bento-grid', 'grid-stack', { editing: editing }]" @keydown="handleGridKeydown" @focusin="handleCardFocus">
         <slot />
-        <div ref="sentinel" class="bento-sentinel" v-if="hasMore" />
     </div>
+    <div ref="sentinel" class="bento-sentinel" v-if="hasMore" />
     <div id="card-popover-target" />
 </template>
 
 <script setup lang="ts">
-import {onMounted, onUnmounted, ref, watch} from 'vue';
+import {nextTick, onMounted, onUnmounted, ref, watch} from 'vue';
+import {
+    createDashboardGrid,
+    type DashboardGridHandle,
+    type GridMove
+} from '@/composables/useDashboardGrid';
 
 const props = defineProps<{
     hasMore: boolean;
@@ -17,23 +22,48 @@ const props = defineProps<{
 const emit = defineEmits<{
     'load-more': [];
     'card-activate': [index: number];
+    'layout-change': [moves: GridMove[]];
 }>();
 
 const gridRef = ref<HTMLElement | null>(null);
 
-// Expose the grid element so the parent can attach useSortable / observers.
+// Expose the grid element so the parent can attach observers.
 defineExpose({gridEl: gridRef});
+
+// ── GridStack ──
+let grid: DashboardGridHandle | null = null;
+
+function startGrid() {
+    if (grid || !gridRef.value) return;
+    grid = createDashboardGrid({
+        container: gridRef.value,
+        movable: Boolean(props.editing),
+        onMoved: (moves) => emit('layout-change', moves)
+    });
+}
+
+// Dragging is offered only in edit mode, so a stray drag cannot silently
+// rearrange a dashboard someone is only reading.
+watch(
+    () => props.editing,
+    (editing) => grid?.setMovable(Boolean(editing))
+);
+
+function handleWindowResize() {
+    grid?.refresh();
+}
 const sentinel = ref<HTMLElement | null>(null);
 let observer: IntersectionObserver | null = null;
 
 // ── Keyboard navigation ──
 const focusedIndex = ref(-1);
 
+// Cards now sit one level deeper, inside the GridStack item wrapper.
 function getCards(): HTMLElement[] {
     if (!gridRef.value) return [];
     return Array.from(
         gridRef.value.querySelectorAll<HTMLElement>(
-            ':scope > [tabindex], :scope > .ec, :scope > .dc, :scope > .gc, :scope > .ac, :scope > .wc'
+            '.grid-stack-item-content > [tabindex], .grid-stack-item-content > .ec, .grid-stack-item-content > .dc, .grid-stack-item-content > .gc, .grid-stack-item-content > .ac, .grid-stack-item-content > .wc'
         )
     );
 }
@@ -125,8 +155,12 @@ function setupObserver() {
     observer.observe(sentinel.value);
 }
 
-onMounted(() => {
+onMounted(async () => {
     setupObserver();
+    // Items are rendered by Vue first; GridStack only adopts what is there.
+    await nextTick();
+    startGrid();
+    window.addEventListener('resize', handleWindowResize);
 });
 
 // Re-attach observer when sentinel reappears (hasMore toggled back to true)
@@ -136,55 +170,26 @@ watch(sentinel, (el) => {
 
 onUnmounted(() => {
     observer?.disconnect();
+    window.removeEventListener('resize', handleWindowResize);
+    grid?.destroy();
+    grid = null;
 });
 </script>
 
 <style scoped>
 .bento-sentinel {
     height: 1px;
-    grid-column: 1 / -1;
 }
 
-/* Content-visibility optimization for off-screen cards */
-.bento-grid > :deep(*:not(.bento-sentinel)) {
-    content-visibility: auto;
-    contain-intrinsic-size: auto var(--grid-cell);
-}
+/* Content-visibility is dropped with the CSS grid: GridStack positions items
+   absolutely and needs their real height to place neighbours, so skipping
+   off-screen layout would collapse the grid. */
 
-/* Hero cards (2×2) need correct intrinsic size hint — 2 rows + gap */
-.bento-grid > :deep(.ec-hero) {
-    contain-intrinsic-size: auto calc(var(--grid-cell) * 2 + var(--card-grid-gap));
-}
-
-/* Wide cards (2×1) — same height as 1×1 but double width */
-.bento-grid > :deep(.ec-wide) {
-    contain-intrinsic-size: auto var(--grid-cell);
-}
-
-/* ── Card grid — fluid cells with 4 breakpoints (4pt rhythm) ── */
+/* Cell/gap sizing lives in styles/cards/card-base.css (responsive
+   --grid-cell / --card-grid-gap overrides) — a global home so the bare
+   .bento-grid loading skeleton adapts too, which scoped styles cannot reach.
+   The grid engine reads the same two properties at runtime. */
 .bento-grid {
-    --cell: clamp(160px, 18vw, 220px);
-    --gap: clamp(8px, 1.5vw, 16px);
     padding: var(--space-2);
-}
-
-/* Phones (≤480px): 2 compact columns */
-@media (max-width: 480px) {
-    .bento-grid { --cell: 152px; --gap: var(--space-2); }
-}
-
-/* Small tablets (481–768px) */
-@media (min-width: 481px) and (max-width: 768px) {
-    .bento-grid { --cell: 172px; --gap: var(--space-3); }
-}
-
-/* Tablets / small desktops (769–1200px) */
-@media (min-width: 769px) and (max-width: 1200px) {
-    .bento-grid { --cell: var(--bento-cell); --gap: var(--bento-gap); }
-}
-
-/* Wide desktops (1201px+) */
-@media (min-width: 1201px) {
-    .bento-grid { --cell: 210px; --gap: var(--space-4); }
 }
 </style>

@@ -19,8 +19,16 @@ export function bluIdentityKeysOf(config: Record<string, unknown>): string[] {
     return Object.keys(config).filter(isBluIdentityKey);
 }
 
-// Signature of the gateway's BLU data. Changes on bind/unbind and when a child's
-// model/components get enriched — the trigger to refresh a promoted device.
+// Signature of the gateway's BLU data. Changes on bind/unbind, when a child's
+// model/components get enriched, and when a child is renamed — the trigger to
+// refresh a promoted device.
+//
+// `name` belongs here because a promoted device's display name is a snapshot
+// taken from this config at promote time. Leaving it out meant a rename
+// changed the gateway and nothing else: the fingerprint matched, reconcile was
+// skipped, and the stored snapshot stayed stale forever. The name then updated
+// on the devices grid (which reads the gateway) while the device page, search,
+// groups and alert scopes (which read the snapshot) all kept the old one.
 export function bluChildFingerprint(config: Record<string, unknown>): string {
     return Object.keys(config)
         .filter((key) => key.startsWith('bthome') || key.startsWith('blutrv'))
@@ -28,10 +36,11 @@ export function bluChildFingerprint(config: Record<string, unknown>): string {
         .map((key) => {
             const cfg = (config[key] ?? {}) as {
                 addr?: unknown;
+                name?: unknown;
                 meta?: {modelId?: unknown; productName?: unknown};
             };
             const meta = cfg.meta ?? {};
-            return `${key}=${cfg.addr ?? ''}/${meta.modelId ?? ''}/${meta.productName ?? ''}`;
+            return `${key}=${cfg.addr ?? ''}/${cfg.name ?? ''}/${meta.modelId ?? ''}/${meta.productName ?? ''}`;
         })
         .join('|');
 }
@@ -121,6 +130,23 @@ export interface BluChildRuntime {
     isOrgKnown: (shellyID: string) => boolean;
 }
 
+export interface BluChildReconcileState {
+    fingerprint: string;
+    keys: string[];
+}
+
+export type BluChildReconcileRunner = (
+    gatewayExternalId: string,
+    config: Record<string, unknown>,
+    state: BluChildReconcileState
+) => Promise<BluChildReconcileState>;
+
+export interface BluChildReconcileSchedule {
+    scheduled: boolean;
+    coalesced: boolean;
+    completion: Promise<void>;
+}
+
 let activeRuntime: BluChildRuntime | undefined;
 
 export function registerBluChildRuntime(runtime: BluChildRuntime): void {
@@ -133,8 +159,8 @@ export function registerBluChildRuntime(runtime: BluChildRuntime): void {
 export async function reconcileBluChildrenForDevice(
     gatewayExternalId: string,
     config: Record<string, unknown>,
-    prev: {fingerprint: string; keys: readonly string[]}
-): Promise<{fingerprint: string; keys: string[]}> {
+    prev: BluChildReconcileState
+): Promise<BluChildReconcileState> {
     if (!activeRuntime) {
         return {fingerprint: prev.fingerprint, keys: [...prev.keys]};
     }
@@ -145,4 +171,84 @@ export async function reconcileBluChildrenForDevice(
         activeRuntime.actions,
         activeRuntime.isOrgKnown(gatewayExternalId)
     );
+}
+
+// One authoritative reconcile state per gateway. Persists can finish while a
+// reconcile is still running; retain only the latest config and process it
+// after the current run so repeated snapshots do not fan out into duplicate
+// database work and a newer bind/unbind is never lost.
+export class BluChildReconcileCoordinator {
+    readonly #gatewayExternalId: string;
+    readonly #reconcile: BluChildReconcileRunner;
+    #state: BluChildReconcileState = {fingerprint: '', keys: []};
+    #pendingConfig: Record<string, unknown> | undefined;
+    #pendingFingerprint: string | undefined;
+    #activeFingerprint: string | undefined;
+    #inflight: Promise<void> | undefined;
+
+    constructor(input: {
+        gatewayExternalId: string;
+        reconcile?: BluChildReconcileRunner;
+    }) {
+        this.#gatewayExternalId = input.gatewayExternalId;
+        this.#reconcile = input.reconcile ?? reconcileBluChildrenForDevice;
+    }
+
+    hasUnpromotedChild(config: Record<string, unknown>): boolean {
+        return hasUnpromotedBluChild(config, this.#state.keys);
+    }
+
+    schedule(config: Record<string, unknown>): BluChildReconcileSchedule {
+        const fingerprint = bluChildFingerprint(config);
+        if (
+            (!this.#inflight && fingerprint === this.#state.fingerprint) ||
+            fingerprint === this.#activeFingerprint ||
+            fingerprint === this.#pendingFingerprint
+        ) {
+            return {
+                scheduled: false,
+                coalesced: this.#inflight !== undefined,
+                completion: this.#inflight ?? Promise.resolve()
+            };
+        }
+        this.#pendingConfig = config;
+        this.#pendingFingerprint = fingerprint;
+        if (this.#inflight) {
+            return {
+                scheduled: true,
+                coalesced: true,
+                completion: this.#inflight
+            };
+        }
+        this.#inflight = this.#drain().finally(() => {
+            this.#inflight = undefined;
+        });
+        return {
+            scheduled: true,
+            coalesced: false,
+            completion: this.#inflight
+        };
+    }
+
+    state(): BluChildReconcileState {
+        return {
+            fingerprint: this.#state.fingerprint,
+            keys: [...this.#state.keys]
+        };
+    }
+
+    async #drain(): Promise<void> {
+        while (this.#pendingConfig) {
+            const config = this.#pendingConfig;
+            this.#pendingConfig = undefined;
+            this.#activeFingerprint = this.#pendingFingerprint;
+            this.#pendingFingerprint = undefined;
+            this.#state = await this.#reconcile(
+                this.#gatewayExternalId,
+                config,
+                this.#state
+            );
+            this.#activeFingerprint = undefined;
+        }
+    }
 }

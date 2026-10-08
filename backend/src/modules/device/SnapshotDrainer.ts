@@ -1,6 +1,7 @@
 import log4js from 'log4js';
 import {tuning} from '../../config';
 import type {ShellyDeviceExternal} from '../../types';
+import * as Observability from '../Observability';
 import {getInstanceId} from '../redis/instanceId';
 import type {StreamEntry} from '../redis/RedisStream';
 import {
@@ -82,7 +83,20 @@ function makeDrainer(writer: DeviceSnapshotBatchWriter): StreamDrainer {
         getStream: getDeviceSnapshotDrainerStream,
         coalesce: coalesceDeviceSnapshots,
         sourceIdsOf: (batch) => batch.sourceIds,
-        writeBatch: (batch) => writer(batch.rows),
+        deleteAcked: true,
+        deletedCounter: 'device_snapshot_stream_entries_deleted_total',
+        writeBatch: async (batch) => {
+            await writer(batch.rows);
+            Observability.incrementCounter('device_snapshot_db_batches_total');
+            Observability.incrementCounter(
+                'device_snapshot_rows_written_total',
+                batch.rows.length
+            );
+            Observability.incrementCounter(
+                'device_snapshot_entries_coalesced_total',
+                batch.sourceIds.length - batch.rows.length
+            );
+        },
         counters: {
             poison: 'device_snapshot_stream_poison',
             poisonDropped: 'device_snapshot_stream_poison_dropped',
@@ -94,6 +108,7 @@ function makeDrainer(writer: DeviceSnapshotBatchWriter): StreamDrainer {
         },
         drainTuning: {
             batchSize: tuning.deviceSnapshot.drainerBatchSize,
+            batchWindowMs: tuning.deviceSnapshot.drainerBatchWindowMs,
             blockMs: tuning.deviceSnapshot.drainerBlockMs,
             retryMs: tuning.deviceSnapshot.drainerRetryMs,
             poisonDeliveries: tuning.deviceSnapshot.drainerPoisonDeliveries

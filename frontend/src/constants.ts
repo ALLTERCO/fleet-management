@@ -552,6 +552,24 @@ export const TOPOLOGY_TILE = boolCfg('topologyTile', {
     defaultValue: true
 });
 
+export type McpOAuthClients = NonNullable<
+    NonNullable<Window['__FM_RUNTIME_CONFIG__']>['mcpOAuthClients']
+>;
+export type McpOAuthLevel = keyof McpOAuthClients;
+
+// Runtime only, from FM_MCP_OAUTH_CLIENT_IDS; dev mode has none, so no sign-in.
+export const MCP_OAUTH_CLIENTS: McpOAuthClients = mcpOAuthClientsCfg();
+
+function mcpOAuthClientsCfg(): McpOAuthClients {
+    const rt = window.__FM_RUNTIME_CONFIG__?.mcpOAuthClients;
+    const clients: McpOAuthClients = {};
+    for (const level of ['read', 'write'] as const) {
+        const id: unknown = rt?.[level];
+        if (typeof id === 'string' && id.length > 0) clients[level] = id;
+    }
+    return clients;
+}
+
 // OIDC config: injected by entrypoint.sh via runtime-config.js when
 // FM_DEV_MODE=false. Absent in dev mode. Consumers read this directly via
 // __FM_RUNTIME_CONFIG__.oidc — no constant alias, no build-time fallback.

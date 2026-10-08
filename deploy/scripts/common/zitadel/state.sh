@@ -1,4 +1,14 @@
 # shellcheck shell=bash
+# Replaces one KEY=value line in the state file atomically, keeping mode 0600.
+save_state_value() {
+    local key="$1" value="$2" tmp
+    tmp="$(mktemp "${STATE_FILE}.XXXXXX")"
+    grep -v "^${key}=" "$STATE_FILE" >"$tmp" || true
+    printf '%s=%s\n' "$key" "$value" >>"$tmp"
+    chmod 0600 "$tmp"
+    mv "$tmp" "$STATE_FILE"
+}
+
 write_bootstrap_state() {
     local temp_state
 
@@ -24,6 +34,7 @@ ZITADEL_BACKEND_AUTH_METHOD=${FM_OIDC_AUTH_METHOD}
 ZITADEL_BACKEND_KEY_FILE=${OIDC_INTROSPECTION_KEY_FILE}
 ZITADEL_CLIENT_FRONTEND_APP_ID=${FRONTEND_APP_ID}
 ZITADEL_CLIENT_FRONTEND_CLIENT_ID=${FRONTEND_CLIENT_ID}
+FM_MCP_OAUTH_CLIENT_IDS=${FM_MCP_OAUTH_CLIENT_IDS:-}
 ZITADEL_ISSUER_URL=${ZITADEL_PUBLIC_URL}
 ZITADEL_AUTH_ENDPOINT=${ZITADEL_PUBLIC_URL}/oauth/v2/authorize
 ZITADEL_TOKEN_ENDPOINT=${ZITADEL_PUBLIC_URL}/oauth/v2/token
@@ -35,6 +46,7 @@ ZITADEL_SERVICE_AUTH_METHOD=${FM_ZITADEL_SERVICE_AUTH}
 ZITADEL_SERVICE_KEY_FILE=${ZITADEL_SERVICE_KEY_FILE}
 ZITADEL_LOGIN_CLIENT_TOKEN=${LOGIN_CLIENT_PAT:-}
 ZITADEL_LOGIN_CLIENT_USER_ID=${LOGIN_CLIENT_USER_ID:-}
+FM_ADMIN_USER_ID=${TEST_USER_ID:-}
 FM_PLATFORM_ADMIN_USER_ID=${PLATFORM_ADMIN_USER_ID:-}
 FM_PLATFORM_ADMIN_USER=${FM_PLATFORM_ADMIN_USER}
 FM_PLATFORM_ADMIN_EMAIL=${FM_PLATFORM_ADMIN_EMAIL}
@@ -70,6 +82,7 @@ print_bootstrap_summary() {
     echo "  Platform org:     $PLATFORM_ORGANIZATION_ID"
     echo "  Backend client:   $BACKEND_CLIENT_ID"
     echo "  Frontend client:  $FRONTEND_CLIENT_ID"
+    echo "  MCP clients:      ${FM_MCP_OAUTH_CLIENT_IDS:-none}"
     echo "  Service user:     ${SERVICE_USER_ID:-none}"
     echo "  Service PAT:      ${SERVICE_PAT:+configured}"
     echo "  Login client:     ${LOGIN_CLIENT_USER_ID:-none}"

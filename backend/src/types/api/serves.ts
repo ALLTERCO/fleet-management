@@ -131,6 +131,15 @@ const LINK_SCHEMA: JsonSchema = {
     }
 };
 
+// Unset can match many links and never throws on zero, so `deleted` is the row
+// count — not the shared boolean the single-row deletes use.
+const UNSET_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    required: ['deleted'],
+    additionalProperties: false,
+    properties: {deleted: {type: 'integer', minimum: 0}}
+};
+
 export const SERVES_SET_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
     required: ['source', 'targets'],
@@ -196,7 +205,7 @@ b.registerMethod('Set', {
 });
 b.registerMethod('Unset', {
     params: SERVES_UNSET_PARAMS_SCHEMA,
-    response: {type: 'object', description: '{deleted: number} on success'},
+    response: UNSET_RESPONSE_SCHEMA,
     permission: PERM_WRITE,
     description:
         'Remove one link, all links for one target, or all links for a source.'

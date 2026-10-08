@@ -69,7 +69,7 @@ const identityStats = computed<OverviewStat[]>(() => {
     const room = readString(fields.value.roomNumber);
     if (room) rows.push({label: 'Room', value: room});
     const roomType = readString(fields.value.roomType);
-    if (roomType) rows.push({label: 'Type', value: roomType});
+    if (roomType) rows.push({label: 'Room type', value: roomType});
     const capacity = readInt(fields.value.capacity);
     if (capacity != null) {
         rows.push({label: 'Capacity', value: `${capacity} people`});

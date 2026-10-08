@@ -23,7 +23,7 @@
                 </span>
             </div>
             <!-- Read-only value (edit happens via the detail flow) -->
-            <div class="vc-value">{{ value || '—' }}</div>
+            <div v-if="value" class="vc-value">{{ value }}</div>
             <div v-if="usageCount !== undefined" class="vc-usage">
                 <i class="fas fa-play" /> {{ usageCount }} action{{ usageCount === 1 ? '' : 's' }}
             </div>

@@ -4,7 +4,8 @@
 // observability. Grep a device's shellyID to see its full timeline.
 import log4js from 'log4js';
 import {BoundedMap} from '../boundedMap';
-import {incrementCounter} from '../Observability';
+import {incrementLabeledCounter} from '../Observability';
+import {recordDeviceIngressElapsed} from '../observability/deviceIngressTimings';
 
 const logger = log4js.getLogger('ingress-trace');
 
@@ -24,11 +25,6 @@ export function traceLine(
 ): string {
     const age = msSinceConnect >= 0 ? `+${msSinceConnect}ms` : '+unknown';
     return `${shellyID} ${stage} ${age}${detail ? ` ${detail}` : ''}`;
-}
-
-/** Stage → a Prometheus-safe counter name. Pure, so it's testable. */
-export function stageMetric(stage: string): string {
-    return `ingress_stage_${stage.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}`;
 }
 
 export function ingressConnect(shellyID: string): void {
@@ -57,7 +53,7 @@ export function ingressRegistered(shellyID: string, detail?: string): void {
 // per-reason counter so drops are countable by cause, then frees the clock.
 export function ingressDropped(shellyID: string, reason: string): void {
     emit(shellyID, 'dropped', reason);
-    incrementCounter(stageMetric(`dropped_${reason}`));
+    incrementLabeledCounter('ingress_dropped_total', {reason});
     connectAt.delete(shellyID);
 }
 
@@ -81,5 +77,6 @@ function emit(shellyID: string, stage: string, detail?: string): void {
     const startedAt = connectAt.get(shellyID);
     const ms = startedAt === undefined ? -1 : Date.now() - startedAt;
     logger.info(traceLine(shellyID, stage, ms, detail));
-    incrementCounter(stageMetric(stage));
+    incrementLabeledCounter('ingress_stage_total', {stage});
+    recordDeviceIngressElapsed(stage, ms);
 }

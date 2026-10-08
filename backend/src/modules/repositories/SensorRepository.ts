@@ -35,6 +35,14 @@ export interface SensorNumericRow {
     max_value: number | string | null;
 }
 
+export interface SensorSourceCatalogRow {
+    source_type: 'numeric' | 'event';
+    device_id: number;
+    source: string;
+    kind: string;
+    channel: number;
+}
+
 export interface SensorRepositoryDeps {
     callDb: SensorDbCaller;
 }
@@ -54,19 +62,30 @@ export class SensorRepository {
         from: Date;
         to: Date;
         limit?: number;
+        offset?: number;
     }): Promise<SensorEventsRow[]> {
         if (opts.internalIds.length === 0) {
             return [];
         }
-        const res = await this.#deps.callDb('device_sensor.fn_events_query', {
-            p_organization_id: opts.organizationId,
-            p_device_ids: [...opts.internalIds],
-            p_kind: opts.kind,
-            p_from: opts.from.toISOString(),
-            p_to: opts.to.toISOString(),
-            p_limit: opts.limit ?? null
-        });
-        return (res?.rows as SensorEventsRow[]) ?? [];
+        const paged = opts.offset !== undefined;
+        const res = await this.#deps.callDb(
+            paged
+                ? 'device_sensor.fn_events_query_paged'
+                : 'device_sensor.fn_events_query',
+            {
+                p_organization_id: opts.organizationId,
+                p_device_ids: [...opts.internalIds],
+                p_kind: opts.kind,
+                p_from: opts.from.toISOString(),
+                p_to: opts.to.toISOString(),
+                p_limit: opts.limit ?? null,
+                ...(paged ? {p_offset: opts.offset} : {})
+            }
+        );
+        return ((res?.rows as SensorEventsDbRow[]) ?? []).map((row) => ({
+            ...row,
+            ts: row.ts instanceof Date ? row.ts.toISOString() : row.ts
+        }));
     }
 
     /**
@@ -83,12 +102,16 @@ export class SensorRepository {
         to: Date;
         bucket: string;
         limit?: number;
+        offset?: number;
     }): Promise<SensorNumericRow[]> {
         if (opts.internalIds.length === 0) {
             return [];
         }
+        const paged = opts.offset !== undefined;
         const res = await this.#deps.callDb(
-            'device_sensor.fn_numeric_history',
+            paged
+                ? 'device_sensor.fn_numeric_history_paged'
+                : 'device_sensor.fn_numeric_history',
             {
                 p_organization_id: opts.organizationId,
                 p_device_ids: [...opts.internalIds],
@@ -97,11 +120,32 @@ export class SensorRepository {
                 p_from: opts.from.toISOString(),
                 p_to: opts.to.toISOString(),
                 p_bucket: opts.bucket,
-                p_limit: opts.limit ?? null
+                p_limit: opts.limit ?? null,
+                ...(paged ? {p_offset: opts.offset} : {})
             }
         );
         return (res?.rows as SensorNumericRow[]) ?? [];
     }
+
+    /** Persisted sensor identities suitable for Operations policy selection. */
+    async listOperationSourceCatalog(opts: {
+        organizationId: string;
+        internalIds: readonly number[];
+    }): Promise<SensorSourceCatalogRow[]> {
+        if (opts.internalIds.length === 0) return [];
+        const res = await this.#deps.callDb(
+            'device_sensor.fn_operation_source_catalog',
+            {
+                p_organization_id: opts.organizationId,
+                p_device_ids: [...opts.internalIds]
+            }
+        );
+        return (res?.rows as SensorSourceCatalogRow[]) ?? [];
+    }
+}
+
+interface SensorEventsDbRow extends Omit<SensorEventsRow, 'ts'> {
+    ts: string | Date;
 }
 
 /**

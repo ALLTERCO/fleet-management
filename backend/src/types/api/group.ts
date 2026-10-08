@@ -3,6 +3,9 @@
 import {DescribeBuilder, type DescribeOutput} from './_describe';
 import type {JsonSchema} from './_schema';
 import {
+    keysetListResponseSchema,
+    LIST_CURSOR_SCHEMA,
+    LIST_OFFSET_SCHEMA,
     MAX_BATCH_SIZE,
     METADATA_SCHEMA,
     NAME_SCHEMA,
@@ -211,17 +214,8 @@ const GROUP_LIST_ENVELOPE: JsonSchema = {
     }
 };
 
-const MEMBER_LIST_ENVELOPE: JsonSchema = {
-    type: 'object',
-    required: ['items', 'total', 'limit', 'offset', 'has_more'],
-    properties: {
-        items: {type: 'array', items: MEMBER_REF_SCHEMA},
-        total: {type: 'integer'},
-        limit: {type: 'integer'},
-        offset: {type: 'integer'},
-        has_more: {type: 'boolean'}
-    }
-};
+const MEMBER_LIST_ENVELOPE: JsonSchema =
+    keysetListResponseSchema(MEMBER_REF_SCHEMA);
 
 const BREADCRUMB_ENTRY_SCHEMA: JsonSchema = {
     type: 'object',
@@ -370,7 +364,8 @@ export const GROUP_LIST_MEMBERS_PARAMS: JsonSchema = {
         id: {type: 'integer'},
         subjectType: SUBJECT_TYPE_SCHEMA,
         limit: {type: 'integer', minimum: 1, maximum: 1000},
-        offset: {type: 'integer', minimum: 0}
+        offset: LIST_OFFSET_SCHEMA,
+        cursor: LIST_CURSOR_SCHEMA
     }
 };
 
@@ -640,7 +635,7 @@ export const GROUP_DESCRIBE: DescribeOutput = new DescribeBuilder('group', {
         response: MEMBER_LIST_ENVELOPE,
         permission: {component: 'groups', operation: 'read'},
         description:
-            'List members of a group with optional subject-type filter.'
+            'List members of a group with optional subject-type filter. Page with `cursor`; `offset` stops at 10,000.'
     })
     .registerMethod('ListDeviceMemberships', {
         params: GROUP_LIST_DEVICE_MEMBERSHIPS_PARAMS,

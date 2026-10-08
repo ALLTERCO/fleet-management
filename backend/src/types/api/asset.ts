@@ -40,6 +40,106 @@ const VISUAL_ASSET_DTO_SCHEMA: JsonSchema = {
     }
 };
 
+const ASSET_CONTENT_TYPES = [
+    'image/png',
+    'image/jpeg',
+    'image/jpg',
+    'image/webp',
+    'image/svg+xml'
+] as const;
+const ASSET_UPLOAD_MAX_BASE64_CHARS = 1_398_104;
+const ASSET_READ_MAX_CHUNK_BYTES = 128 * 1024;
+
+export interface AssetUploadParams {
+    organizationId?: string;
+    contentType: (typeof ASSET_CONTENT_TYPES)[number];
+    data: string;
+    label?: string | null;
+    context?: string;
+}
+
+export const ASSET_UPLOAD_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['contentType', 'data'],
+    properties: {
+        organizationId: {type: 'string', minLength: 1, maxLength: 120},
+        contentType: {type: 'string', enum: [...ASSET_CONTENT_TYPES]},
+        data: {
+            type: 'string',
+            minLength: 4,
+            maxLength: ASSET_UPLOAD_MAX_BASE64_CHARS,
+            description:
+                'Canonical padded standard base64. Decoded input is capped at 1 MiB and may be lower when FM_VIRTUAL_IMAGE_MAX_BYTES is lower.'
+        },
+        label: {type: ['string', 'null'], maxLength: 255},
+        context: {type: 'string', minLength: 1, maxLength: 32}
+    }
+};
+
+export interface AssetReadChunkParams {
+    organizationId?: string;
+    id: string;
+    offset?: number;
+    maxBytes?: number;
+}
+
+export const ASSET_READ_CHUNK_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['id'],
+    properties: {
+        organizationId: {type: 'string', minLength: 1, maxLength: 120},
+        id: {type: 'string', format: 'uuid'},
+        offset: {type: 'integer', minimum: 0},
+        maxBytes: {
+            type: 'integer',
+            minimum: 1,
+            maximum: ASSET_READ_MAX_CHUNK_BYTES,
+            default: 65_536
+        }
+    }
+};
+
+export interface AssetReadChunkResult {
+    id: string;
+    contentType: string;
+    sha256: string;
+    totalSizeBytes: number;
+    offset: number;
+    nextOffset: number;
+    eof: boolean;
+    data: string;
+}
+
+export const ASSET_READ_CHUNK_RESPONSE: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+        'id',
+        'contentType',
+        'sha256',
+        'totalSizeBytes',
+        'offset',
+        'nextOffset',
+        'eof',
+        'data'
+    ],
+    properties: {
+        id: {type: 'string', format: 'uuid'},
+        contentType: {type: 'string'},
+        sha256: {type: 'string', minLength: 64, maxLength: 64},
+        totalSizeBytes: {type: 'integer', minimum: 1},
+        offset: {type: 'integer', minimum: 0},
+        nextOffset: {type: 'integer', minimum: 0},
+        eof: {type: 'boolean'},
+        data: {
+            type: 'string',
+            description: 'Canonical standard base64 for this chunk.'
+        }
+    }
+};
+
 export interface AssetListParams {
     organizationId?: string;
     limit?: number;
@@ -179,8 +279,24 @@ export const ASSET_MIGRATE_IMAGES_RESPONSE: JsonSchema = {
 export const ASSET_DESCRIBE: DescribeOutput = new DescribeBuilder('asset', {
     kind: 'fleet-manager',
     description:
-        'Manage the visual asset library — list, relabel, delete, and migrate reusable images.'
+        'Manage and transfer reusable images in the visual asset library.'
 })
+    .registerMethod('Upload', {
+        safety: {operation: 'create'},
+        params: ASSET_UPLOAD_PARAMS_SCHEMA,
+        response: VISUAL_ASSET_DTO_SCHEMA,
+        permission: {component: 'devices', operation: 'update'},
+        description:
+            'Upload one bounded base64 image. The stored asset is sanitized and deduplicated by content hash.'
+    })
+    .registerMethod('ReadChunk', {
+        safety: {operation: 'read'},
+        params: ASSET_READ_CHUNK_PARAMS_SCHEMA,
+        response: ASSET_READ_CHUNK_RESPONSE,
+        permission: {component: 'devices', operation: 'read'},
+        description:
+            'Read a bounded base64 chunk of one organization-owned visual asset. Continue with nextOffset until eof is true.'
+    })
     .registerMethod('List', {
         params: ASSET_LIST_PARAMS_SCHEMA,
         response: ASSET_LIST_RESPONSE,

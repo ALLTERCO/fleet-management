@@ -1,4 +1,6 @@
 import {toIso} from '../../rpc/pgRows';
+import type {ChannelProvider} from '../../types/api/channel';
+import {validateChannelConfig} from '../notification/ChannelRegistry';
 import {readObject} from '../notification/rowReaders';
 import * as PostgresProvider from '../PostgresProvider';
 
@@ -50,12 +52,22 @@ export async function listBundleChannels(input: {
     return rows.map(rowToChannel);
 }
 
+/**
+ * Writes a bundle-supplied channel config.
+ *
+ * Validates against the row's own provider schema first. The RPC surface
+ * validates on every create and update, so an unvalidated write here would be
+ * the one door through which a config the schema forbids reaches the table —
+ * and once stored, it fails every later `channel.update` and `channel.test`.
+ */
 export async function setBundleChannel(input: {
     organizationId: string;
     channelId: number;
     name: string;
+    provider: ChannelProvider;
     config: Record<string, unknown>;
 }): Promise<StoredBundleChannel> {
+    validateChannelConfig(input.provider, input.config);
     const result = await PostgresProvider.callMethod(
         'notifications.fn_channel_update',
         {

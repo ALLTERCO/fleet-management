@@ -11,13 +11,17 @@ import {
     ALERT_RULE_KINDS,
     ALERT_SCOPE_TYPES,
     ALERT_SEVERITIES,
+    ALERT_SOURCE_TYPES,
     ALERT_STATES,
     ALERT_TRANSITION_ACTIONS,
     type AlertDeviceClass,
+    type AlertInstance,
     type AlertRuleKind,
     type AlertRuleKindDescriptor,
     type AlertSeverity,
     type AlertSourceRef,
+    type AlertSourceType,
+    type AlertState,
     type AlertTransitionAction,
     type ScopeSelector,
     type SourceRef
@@ -41,6 +45,10 @@ const LIMIT_SCHEMA: JsonSchema = {
     maximum: 1000,
     default: 200
 };
+
+// Past this depth an offset page re-reads every row before it; use a cursor.
+export const ALERT_INSTANCE_LIST_MAX_OFFSET = 10_000;
+export const ALERT_INSTANCE_GET_MANY_MAX_IDS = 100;
 
 const OFFSET_SCHEMA: JsonSchema = {
     type: 'integer',
@@ -81,6 +89,13 @@ export const ALERT_KIND_SCHEMA: JsonSchema = {
     enum: [...ALERT_RULE_KINDS]
 };
 
+const ALERT_RULE_TEMPLATE_UNAVAILABLE_REASON_SCHEMA: JsonSchema = {
+    type: 'string',
+    minLength: 1,
+    maxLength: 500,
+    pattern: '\\S'
+};
+
 export const ALERT_SEVERITY_SCHEMA: JsonSchema = {
     type: 'string',
     enum: [...ALERT_SEVERITIES]
@@ -90,6 +105,13 @@ export const ALERT_STATE_SCHEMA: JsonSchema = {
     type: 'string',
     enum: [...ALERT_STATES]
 };
+
+/**
+ * Said when someone tries to close an alert that closes itself. Plain words,
+ * because a rule id and a method name mean nothing to the person reading it.
+ */
+export const MANUAL_RESOLVE_REFUSAL =
+    'Closes itself when the sensor is back to normal.';
 
 export const ALERT_TRANSITION_ACTION_SCHEMA: JsonSchema = {
     type: 'string',
@@ -101,6 +123,32 @@ const ALERT_CONFIG_SCHEMA: JsonSchema = {
     additionalProperties: true,
     maxProperties: 100,
     maxBytes: 64 * 1024
+};
+
+export interface AlertActiveWindow {
+    /** 'HH:MM' local. */
+    startTime: string;
+    /** 'HH:MM' local, exclusive. Equal to startTime means all day. */
+    endTime: string;
+    /** bit0=Mon … bit6=Sun. */
+    daysMask: number;
+    /** IANA zone. null is read as UTC. */
+    timezone: string | null;
+}
+
+const ALERT_ACTIVE_WINDOW_SCHEMA: JsonSchema = {
+    type: ['object', 'null'],
+    additionalProperties: false,
+    required: ['startTime', 'endTime', 'daysMask'],
+    description:
+        'When the rule may fire. null = always. Same shape as a tariff window: ' +
+        'exclusive end, and start === end means all day.',
+    properties: {
+        startTime: {type: 'string', pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'},
+        endTime: {type: 'string', pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'},
+        daysMask: {type: 'integer', minimum: 0, maximum: 127},
+        timezone: {type: ['string', 'null'], maxLength: 64}
+    }
 };
 
 const DESTINATION_GROUP_IDS_SCHEMA: JsonSchema = {
@@ -153,8 +201,17 @@ export const ALERT_SOURCE_REF_SCHEMA: JsonSchema = {
     required: ['organizationId', 'subjectType', 'subjectId'],
     properties: {
         organizationId: ORG_ID_SCHEMA,
-        subjectType: {type: 'string', enum: [...ALERT_SCOPE_TYPES]},
-        subjectId: {type: 'string', minLength: 1, maxLength: 255}
+        subjectType: {type: 'string', enum: [...ALERT_SOURCE_TYPES]},
+        subjectId: {type: 'string', minLength: 1, maxLength: 255},
+        locationId: {
+            type: ['integer', 'null'],
+            minimum: 1,
+            description:
+                'Where the alert happened, resolved when it was created. ' +
+                'null when the subject spans many locations or none, ' +
+                'or is an outside system or Fleet itself. ' +
+                'Present on alert instances only.'
+        }
     }
 };
 
@@ -239,6 +296,20 @@ const HEARTBEAT_CONFIG_SCHEMA: JsonSchema = {
     }
 };
 
+const CREDENTIAL_EXPIRING_CONFIG_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+        daysBefore: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 365,
+            default: 30,
+            description: 'Fire when the device key ends within this many days.'
+        }
+    }
+};
+
 const RATE_OF_CHANGE_CONFIG_SCHEMA: JsonSchema = {
     type: 'object',
     additionalProperties: false,
@@ -288,6 +359,57 @@ const ENERGY_CONSUMPTION_THRESHOLD_CONFIG_SCHEMA: JsonSchema = {
     }
 };
 
+const COST_BUDGET_THRESHOLD_CONFIG_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: [
+        'budgetAmount',
+        'currency',
+        'period',
+        'billingDay',
+        'thresholdPercentages',
+        'timeZone'
+    ],
+    properties: {
+        budgetAmount: {
+            type: 'number',
+            exclusiveMinimum: 0,
+            description:
+                'Budget for recorded import-energy charges. Standing, demand and tax charges are excluded in v1.'
+        },
+        currency: {
+            type: 'string',
+            pattern: '^[A-Z]{3}$',
+            description:
+                'Three-letter tariff currency. Evaluation fails closed if the assigned tariff uses another currency.'
+        },
+        period: {
+            type: 'string',
+            enum: ['billing_period']
+        },
+        billingDay: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 28
+        },
+        thresholdPercentages: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 20,
+            uniqueItems: true,
+            items: {
+                type: 'number',
+                exclusiveMinimum: 0,
+                maximum: 1000,
+                multipleOf: 0.01
+            },
+            description:
+                'Each actual-spend threshold fires at most once per billing period.'
+        },
+        timeZone: {type: 'string', minLength: 1, maxLength: 120}
+    }
+};
+
 const STUCK_SENSOR_CONFIG_SCHEMA: JsonSchema = {
     type: 'object',
     additionalProperties: false,
@@ -304,6 +426,12 @@ const COMPONENT_THRESHOLD_CONFIG_SCHEMA: JsonSchema = {
     additionalProperties: false,
     required: ['component', 'field', 'operator', 'threshold'],
     properties: {
+        objName: {
+            type: 'string',
+            maxLength: 40,
+            description:
+                'BTHome object name (e.g. "carbon_monoxide", "pressure") that a "bthomesensor:*" wildcard must match. A gateway exposes every BLU reading as bthomesensor:N; only the object name says what it is.'
+        },
         component: {
             type: 'string',
             maxLength: 120,
@@ -359,6 +487,12 @@ const COMPONENT_STATE_CONFIG_SCHEMA: JsonSchema = {
     additionalProperties: false,
     required: ['component', 'field', 'equals'],
     properties: {
+        objName: {
+            type: 'string',
+            maxLength: 40,
+            description:
+                'BTHome object name (e.g. "carbon_monoxide", "pressure") that a "bthomesensor:*" wildcard must match. A gateway exposes every BLU reading as bthomesensor:N; only the object name says what it is.'
+        },
         component: {
             type: 'string',
             maxLength: 120,
@@ -513,6 +647,35 @@ const DEVICE_EVENT_CONFIG_SCHEMA: JsonSchema = {
     }
 };
 
+const RECORD_INCOMPLETE_CONFIG_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['roleKey', 'deadlineHour', 'timeZone'],
+    properties: {
+        roleKey: {type: 'string', minLength: 1, maxLength: 120},
+        deadlineHour: {type: 'integer', minimum: 0, maximum: 23},
+        timeZone: {type: 'string', minLength: 1, maxLength: 120}
+    }
+};
+
+const APPROACHING_NEW_PEAK_CONFIG_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['intervalMinutes', 'warningRatio', 'timeZone'],
+    properties: {
+        intervalMinutes: {type: 'integer', enum: [15, 30]},
+        warningRatio: {type: 'number', exclusiveMinimum: 0, maximum: 2},
+        clearRatio: {type: 'number', minimum: 0, maximum: 2},
+        ratchetBaselineKw: {
+            type: 'number',
+            exclusiveMinimum: 0,
+            description:
+                'Optional contracted or tariff ratchet floor in kW. The measured month-to-date peak still wins when higher.'
+        },
+        timeZone: {type: 'string', minLength: 1, maxLength: 120}
+    }
+};
+
 export const ALERT_RULE_KIND_CONFIG_SCHEMAS: Record<AlertRuleKind, JsonSchema> =
     {
         device_offline: DEVICE_OFFLINE_CONFIG_SCHEMA,
@@ -527,15 +690,20 @@ export const ALERT_RULE_KIND_CONFIG_SCHEMAS: Record<AlertRuleKind, JsonSchema> =
         backup_operation_failed: EMPTY_CONFIG_SCHEMA,
         automation_run_failed: EMPTY_CONFIG_SCHEMA,
         grafana_alert: EMPTY_CONFIG_SCHEMA,
+        system_health: EMPTY_CONFIG_SCHEMA,
         heartbeat: HEARTBEAT_CONFIG_SCHEMA,
         energy_consumption_threshold:
             ENERGY_CONSUMPTION_THRESHOLD_CONFIG_SCHEMA,
+        cost_budget_threshold: COST_BUDGET_THRESHOLD_CONFIG_SCHEMA,
+        record_incomplete: RECORD_INCOMPLETE_CONFIG_SCHEMA,
+        approaching_new_peak: APPROACHING_NEW_PEAK_CONFIG_SCHEMA,
         rate_of_change: RATE_OF_CHANGE_CONFIG_SCHEMA,
         stuck_sensor: STUCK_SENSOR_CONFIG_SCHEMA,
         composite: COMPOSITE_CONFIG_SCHEMA,
         anomaly_band: ANOMALY_BAND_CONFIG_SCHEMA,
         change_event: CHANGE_EVENT_CONFIG_SCHEMA,
-        device_event: DEVICE_EVENT_CONFIG_SCHEMA
+        device_event: DEVICE_EVENT_CONFIG_SCHEMA,
+        credential_expiring: CREDENTIAL_EXPIRING_CONFIG_SCHEMA
     };
 
 const ALERT_RULE_KIND_DESCRIPTOR_SCHEMA: JsonSchema = {
@@ -937,6 +1105,22 @@ export const ALERT_RULE_KIND_DESCRIPTORS: AlertRuleKindDescriptor[] = [
         configSchema: ALERT_RULE_KIND_CONFIG_SCHEMAS.grafana_alert
     },
     {
+        key: 'system_health',
+        defaultSeverity: 'warning',
+        label: 'System health',
+        evaluationMode: 'event',
+        initialEvaluation: false,
+        dataSource: 'runtime_event',
+        supportsForSec: false,
+        clearBehavior: 'recovery_event',
+        eventReplayPolicy: 'future_only',
+        phaseAvailable: 1,
+        supportsManualResolve: true,
+        supportsAutoResolve: true,
+        supportedScopeTypes: ['device', 'group', 'location', 'tag'],
+        configSchema: ALERT_RULE_KIND_CONFIG_SCHEMAS.system_health
+    },
+    {
         key: 'heartbeat',
         defaultSeverity: 'warning',
         label: 'Heartbeat (deadman)',
@@ -951,6 +1135,22 @@ export const ALERT_RULE_KIND_DESCRIPTORS: AlertRuleKindDescriptor[] = [
         supportsAutoResolve: true,
         supportedScopeTypes: ['device', 'group', 'location', 'tag'],
         configSchema: ALERT_RULE_KIND_CONFIG_SCHEMAS.heartbeat
+    },
+    {
+        key: 'credential_expiring',
+        defaultSeverity: 'warning',
+        label: 'Device key ends soon',
+        evaluationMode: 'absence',
+        initialEvaluation: true,
+        dataSource: 'latest_status',
+        supportsForSec: false,
+        clearBehavior: 'absence_recovery',
+        eventReplayPolicy: 'not_applicable',
+        phaseAvailable: 1,
+        supportsManualResolve: false,
+        supportsAutoResolve: true,
+        supportedScopeTypes: ['device', 'group', 'location', 'tag'],
+        configSchema: ALERT_RULE_KIND_CONFIG_SCHEMAS.credential_expiring
     },
     {
         key: 'energy_consumption_threshold',
@@ -968,6 +1168,54 @@ export const ALERT_RULE_KIND_DESCRIPTORS: AlertRuleKindDescriptor[] = [
         supportedScopeTypes: ['device', 'group', 'location', 'tag'],
         configSchema:
             ALERT_RULE_KIND_CONFIG_SCHEMAS.energy_consumption_threshold
+    },
+    {
+        key: 'cost_budget_threshold',
+        defaultSeverity: 'warning',
+        label: 'Energy-cost budget threshold',
+        evaluationMode: 'window',
+        initialEvaluation: true,
+        dataSource: 'history_store',
+        supportsForSec: false,
+        clearBehavior: 'manual',
+        eventReplayPolicy: 'not_applicable',
+        phaseAvailable: 1,
+        supportsManualResolve: true,
+        supportsAutoResolve: false,
+        supportedScopeTypes: ['device'],
+        configSchema: ALERT_RULE_KIND_CONFIG_SCHEMAS.cost_budget_threshold
+    },
+    {
+        key: 'record_incomplete',
+        defaultSeverity: 'info',
+        label: 'Daily record incomplete',
+        evaluationMode: 'absence',
+        initialEvaluation: true,
+        dataSource: 'history_store',
+        supportsForSec: false,
+        clearBehavior: 'absence_recovery',
+        eventReplayPolicy: 'not_applicable',
+        phaseAvailable: 1,
+        supportsManualResolve: false,
+        supportsAutoResolve: true,
+        supportedScopeTypes: ['device', 'group', 'location', 'tag'],
+        configSchema: ALERT_RULE_KIND_CONFIG_SCHEMAS.record_incomplete
+    },
+    {
+        key: 'approaching_new_peak',
+        defaultSeverity: 'warning',
+        label: 'Approaching a new demand peak',
+        evaluationMode: 'window',
+        initialEvaluation: true,
+        dataSource: 'history_store',
+        supportsForSec: false,
+        clearBehavior: 'window_recovery',
+        eventReplayPolicy: 'not_applicable',
+        phaseAvailable: 1,
+        supportsManualResolve: false,
+        supportsAutoResolve: true,
+        supportedScopeTypes: ['device', 'group', 'location', 'tag'],
+        configSchema: ALERT_RULE_KIND_CONFIG_SCHEMAS.approaching_new_peak
     },
     {
         key: 'rate_of_change',
@@ -1121,10 +1369,12 @@ export const ALERT_RULE_SCHEMA: JsonSchema = {
         'destinationChannelIds',
         'deliveryMode',
         'digestWindowMinutes',
+        'activeWindow',
         'ownerUserId',
         'summaryTemplate',
         'messageTemplate',
         'autoResolve',
+        'triggerOnce',
         'config',
         'groupBy',
         'runbookUrl',
@@ -1147,10 +1397,16 @@ export const ALERT_RULE_SCHEMA: JsonSchema = {
         destinationChannelIds: DESTINATION_CHANNEL_IDS_SCHEMA,
         deliveryMode: {type: 'string', enum: ['instant', 'digest']},
         digestWindowMinutes: {type: ['integer', 'null'], minimum: 1},
+        activeWindow: ALERT_ACTIVE_WINDOW_SCHEMA,
         ownerUserId: OPTIONAL_USER_ID_SCHEMA,
         summaryTemplate: OPTIONAL_TEXT_SCHEMA,
         messageTemplate: OPTIONAL_TEXT_SCHEMA,
         autoResolve: {type: 'boolean'},
+        triggerOnce: {
+            type: 'boolean',
+            description:
+                'Fire once, notify, then disable the rule. The operator re-enables it. Cooldown and dedupe are windows and always reopen; this does not.'
+        },
         config: {
             type: 'object',
             additionalProperties: true
@@ -1184,8 +1440,10 @@ export const ALERT_INSTANCE_SCHEMA: JsonSchema = {
         'acknowledgedBy',
         'ackComment',
         'resolvedAt',
+        'resolvedBy',
         'silencedUntil',
         'silenceReason',
+        'silencedBy',
         'counts',
         'context'
     ],
@@ -1206,8 +1464,10 @@ export const ALERT_INSTANCE_SCHEMA: JsonSchema = {
         acknowledgedBy: OPTIONAL_ACTOR_REF_SCHEMA,
         ackComment: {type: ['string', 'null'], maxLength: 500},
         resolvedAt: {type: ['string', 'null']},
+        resolvedBy: OPTIONAL_ACTOR_REF_SCHEMA,
         silencedUntil: {type: ['string', 'null']},
         silenceReason: OPTIONAL_TEXT_SCHEMA,
+        silencedBy: OPTIONAL_ACTOR_REF_SCHEMA,
         counts: {
             type: 'object',
             additionalProperties: false,
@@ -1255,13 +1515,39 @@ const ALERT_RULE_LIST_RESPONSE_SCHEMA: JsonSchema = {
 const ALERT_INSTANCE_LIST_RESPONSE_SCHEMA: JsonSchema = {
     type: 'object',
     additionalProperties: false,
-    required: ['items', 'total', 'limit', 'offset', 'has_more'],
+    required: ['items', 'limit', 'has_more', 'next_cursor'],
     properties: {
         items: {type: 'array', items: ALERT_INSTANCE_SCHEMA},
-        total: {type: 'integer'},
+        total: {
+            type: 'integer',
+            description: 'All matches. Present on offset pages only.'
+        },
         limit: {type: 'integer'},
-        offset: {type: 'integer'},
-        has_more: {type: 'boolean'}
+        offset: {
+            type: 'integer',
+            description: 'Present on offset pages only.'
+        },
+        has_more: {type: 'boolean'},
+        next_cursor: {
+            type: ['string', 'null'],
+            description:
+                'Pass as `cursor` for the next page. null on the last page.'
+        }
+    }
+};
+
+const ALERT_INSTANCE_GET_MANY_RESPONSE_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['items', 'missingIds'],
+    properties: {
+        items: {type: 'array', items: ALERT_INSTANCE_SCHEMA},
+        missingIds: {
+            type: 'array',
+            items: {type: 'integer'},
+            description:
+                'Asked ids that do not exist or that the caller may not read.'
+        }
     }
 };
 
@@ -1338,10 +1624,16 @@ export const ALERT_RULE_CREATE_PARAMS_SCHEMA: JsonSchema = {
             minimum: 1,
             default: null
         },
+        activeWindow: {...ALERT_ACTIVE_WINDOW_SCHEMA, default: null},
         ownerUserId: OPTIONAL_USER_ID_SCHEMA,
         summaryTemplate: OPTIONAL_TEXT_SCHEMA,
         messageTemplate: OPTIONAL_TEXT_SCHEMA,
         autoResolve: {type: 'boolean'},
+        triggerOnce: {
+            type: 'boolean',
+            description:
+                'Fire once, notify, then disable the rule. The operator re-enables it. Cooldown and dedupe are windows and always reopen; this does not.'
+        },
         config: ALERT_CONFIG_SCHEMA,
         groupBy: GROUP_BY_SCHEMA,
         runbookUrl: {type: ['string', 'null'], maxLength: 2000},
@@ -1370,10 +1662,16 @@ export const ALERT_RULE_UPDATE_PARAMS_SCHEMA: JsonSchema = {
                 destinationChannelIds: DESTINATION_CHANNEL_IDS_SCHEMA,
                 deliveryMode: {type: 'string', enum: ['instant', 'digest']},
                 digestWindowMinutes: {type: ['integer', 'null'], minimum: 1},
+                activeWindow: ALERT_ACTIVE_WINDOW_SCHEMA,
                 ownerUserId: OPTIONAL_USER_ID_SCHEMA,
                 summaryTemplate: OPTIONAL_TEXT_SCHEMA,
                 messageTemplate: OPTIONAL_TEXT_SCHEMA,
                 autoResolve: {type: 'boolean'},
+                triggerOnce: {
+                    type: 'boolean',
+                    description:
+                        'Fire once, notify, then disable the rule. The operator re-enables it. Cooldown and dedupe are windows and always reopen; this does not.'
+                },
                 config: ALERT_CONFIG_SCHEMA,
                 groupBy: GROUP_BY_SCHEMA,
                 runbookUrl: {type: ['string', 'null'], maxLength: 2000},
@@ -1445,7 +1743,8 @@ export interface AlertRuleTemplate {
     category: string;
     label: string;
     description: string | null;
-    kind: AlertRuleKind;
+    /** Null only for unavailable catalog entries with no executable rule. */
+    kind: AlertRuleKind | null;
     severity: AlertSeverity;
     scope: ScopeSelector;
     config: Record<string, unknown>;
@@ -1454,6 +1753,10 @@ export interface AlertRuleTemplate {
     summaryTemplate: string | null;
     messageTemplate: string | null;
     autoResolve: boolean;
+    /** When the rule may fire. null = always. */
+    activeWindow: AlertActiveWindow | null;
+    available: boolean;
+    unavailableReason: string | null;
     /** User id of the org-authoring user; null for global templates. */
     authorUserId: string | null;
 }
@@ -1477,6 +1780,9 @@ export const ALERT_RULE_TEMPLATE_SCHEMA: JsonSchema = {
         'summaryTemplate',
         'messageTemplate',
         'autoResolve',
+        'activeWindow',
+        'available',
+        'unavailableReason',
         'authorUserId'
     ],
     properties: {
@@ -1486,7 +1792,7 @@ export const ALERT_RULE_TEMPLATE_SCHEMA: JsonSchema = {
         category: {type: 'string', minLength: 1, maxLength: 32},
         label: {type: 'string', minLength: 1, maxLength: 120},
         description: OPTIONAL_TEXT_SCHEMA,
-        kind: ALERT_KIND_SCHEMA,
+        kind: {oneOf: [ALERT_KIND_SCHEMA, {type: 'null'}]},
         severity: ALERT_SEVERITY_SCHEMA,
         scope: ALERT_SCOPE_SELECTOR_SCHEMA,
         config: {type: 'object', additionalProperties: true},
@@ -1495,6 +1801,14 @@ export const ALERT_RULE_TEMPLATE_SCHEMA: JsonSchema = {
         summaryTemplate: OPTIONAL_TEXT_SCHEMA,
         messageTemplate: OPTIONAL_TEXT_SCHEMA,
         autoResolve: {type: 'boolean'},
+        activeWindow: ALERT_ACTIVE_WINDOW_SCHEMA,
+        available: {type: 'boolean'},
+        unavailableReason: {
+            oneOf: [
+                ALERT_RULE_TEMPLATE_UNAVAILABLE_REASON_SCHEMA,
+                {type: 'null'}
+            ]
+        },
         authorUserId: {type: ['string', 'null']}
     }
 };
@@ -1517,7 +1831,16 @@ export const ALERT_RULE_TEMPLATE_CREATE_PARAMS_SCHEMA: JsonSchema = {
         cooldownSec: {...NON_NEGATIVE_INT4_SCHEMA, default: 0},
         summaryTemplate: OPTIONAL_TEXT_SCHEMA,
         messageTemplate: OPTIONAL_TEXT_SCHEMA,
-        autoResolve: {type: 'boolean'}
+        autoResolve: {type: 'boolean'},
+        activeWindow: {...ALERT_ACTIVE_WINDOW_SCHEMA, default: null},
+        available: {type: 'boolean', default: true},
+        unavailableReason: {
+            oneOf: [
+                ALERT_RULE_TEMPLATE_UNAVAILABLE_REASON_SCHEMA,
+                {type: 'null'}
+            ],
+            default: null
+        }
     }
 };
 
@@ -1537,7 +1860,15 @@ export const ALERT_RULE_TEMPLATE_UPDATE_PARAMS_SCHEMA: JsonSchema = {
         cooldownSec: NON_NEGATIVE_INT4_SCHEMA,
         summaryTemplate: OPTIONAL_TEXT_SCHEMA,
         messageTemplate: OPTIONAL_TEXT_SCHEMA,
-        autoResolve: {type: 'boolean'}
+        autoResolve: {type: 'boolean'},
+        activeWindow: ALERT_ACTIVE_WINDOW_SCHEMA,
+        available: {type: 'boolean'},
+        unavailableReason: {
+            oneOf: [
+                ALERT_RULE_TEMPLATE_UNAVAILABLE_REASON_SCHEMA,
+                {type: 'null'}
+            ]
+        }
     }
 };
 
@@ -1732,19 +2063,103 @@ export const ALERT_INSTANCE_LIST_PARAMS_SCHEMA: JsonSchema = {
     additionalProperties: false,
     properties: {
         organizationId: ORG_ID_SCHEMA,
-        state: ALERT_STATE_SCHEMA,
+        state: {
+            ...ALERT_STATE_SCHEMA,
+            description: 'One state. Not with `states`.'
+        },
+        states: {
+            type: 'array',
+            items: ALERT_STATE_SCHEMA,
+            minItems: 1,
+            maxItems: ALERT_STATES.length,
+            uniqueItems: true,
+            description:
+                'Alerts in any of these states. Distinct values. Not with `state`.'
+        },
+        acknowledged: {
+            type: 'boolean',
+            description:
+                'true: someone acknowledged it (acknowledgedAt set, or state acknowledged or cleared_ack). false: all others.'
+        },
+        silenced: {
+            type: 'boolean',
+            description:
+                'true: silencedUntil is later than now. false: all others, an ended silence included.'
+        },
         severity: ALERT_SEVERITY_SCHEMA,
         ruleId: {type: 'integer'},
-        sourceType: {type: 'string', enum: [...ALERT_SCOPE_TYPES]},
+        sourceType: {type: 'string', enum: [...ALERT_SOURCE_TYPES]},
         sourceId: SUBJECT_ID_SCHEMA,
         locationIds: INT_ARRAY_SCHEMA,
         groupIds: INT_ARRAY_SCHEMA,
         tagIds: INT_ARRAY_SCHEMA,
         query: QUERY_SCHEMA,
+        open: {
+            type: 'boolean',
+            description:
+                'true: alerts not yet resolved (resolvedAt null). false: resolved history. Omit for both.'
+        },
         limit: LIMIT_SCHEMA,
-        offset: OFFSET_SCHEMA
+        offset: {
+            ...OFFSET_SCHEMA,
+            maximum: ALERT_INSTANCE_LIST_MAX_OFFSET,
+            description: 'Deeper pages use `cursor`.'
+        },
+        cursor: {
+            type: 'string',
+            minLength: 1,
+            maxLength: 200,
+            description:
+                '`next_cursor` of the previous page, sent with the same filters. Skips the total. Not with `offset`.'
+        }
     }
 };
+
+/** Alert list filters. Every given filter must match (AND). */
+export interface AlertInstanceListFilters {
+    state?: AlertState;
+    states?: AlertState[];
+    acknowledged?: boolean;
+    silenced?: boolean;
+    open?: boolean;
+    severity?: AlertSeverity;
+    ruleId?: number;
+    sourceType?: AlertSourceType;
+    sourceId?: string;
+    locationIds?: number[];
+    groupIds?: number[];
+    tagIds?: number[];
+    query?: string;
+}
+
+export const ALERT_INSTANCE_GET_MANY_PARAMS_SCHEMA: JsonSchema = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['ids'],
+    properties: {
+        organizationId: ORG_ID_SCHEMA,
+        ids: {
+            type: 'array',
+            items: {type: 'integer', minimum: 1},
+            minItems: 1,
+            maxItems: ALERT_INSTANCE_GET_MANY_MAX_IDS
+        }
+    }
+};
+
+export interface AlertInstanceListPage {
+    items: AlertInstance[];
+    total?: number;
+    limit: number;
+    offset?: number;
+    has_more: boolean;
+    next_cursor: string | null;
+}
+
+export interface AlertInstanceGetManyResult {
+    items: AlertInstance[];
+    missingIds: number[];
+}
 
 export const ALERT_INSTANCE_GET_PARAMS_SCHEMA: JsonSchema = {
     type: 'object',
@@ -2026,13 +2441,21 @@ export const ALERT_DESCRIBE: DescribeOutput = new DescribeBuilder('alert', {
         params: ALERT_INSTANCE_LIST_PARAMS_SCHEMA,
         response: ALERT_INSTANCE_LIST_RESPONSE_SCHEMA,
         permission: {component: 'alerts', operation: 'read'},
-        description: 'List alert instances in the caller organization.'
+        description:
+            'List alert instances in the caller organization, newest change first. Page with `cursor`; `offset` stops at 10,000.'
     })
     .registerMethod('Instance.Get', {
         params: ALERT_INSTANCE_GET_PARAMS_SCHEMA,
         response: ALERT_INSTANCE_SCHEMA,
         permission: {component: 'alerts', operation: 'read'},
         description: 'Return one alert instance.'
+    })
+    .registerMethod('Instance.GetMany', {
+        params: ALERT_INSTANCE_GET_MANY_PARAMS_SCHEMA,
+        response: ALERT_INSTANCE_GET_MANY_RESPONSE_SCHEMA,
+        permission: {component: 'alerts', operation: 'read'},
+        description:
+            'Return up to 100 alert instances by id, each checked like Instance.Get. Ids not returned are listed in missingIds.'
     })
     .registerMethod('Instance.ListTransitions', {
         params: ALERT_INSTANCE_LIST_TRANSITIONS_PARAMS_SCHEMA,

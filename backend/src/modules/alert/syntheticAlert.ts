@@ -77,6 +77,17 @@ export type BuildEventInput =
           errorMessage?: string;
       }
     | {
+          kind: 'system_health';
+          organizationId?: string;
+          status: 'firing' | 'resolved';
+          check: string;
+          title?: string;
+          message?: string;
+          metric?: string;
+          value?: number;
+          action?: string;
+      }
+    | {
           kind: 'grafana_alert';
           organizationId?: string;
           status: 'firing' | 'resolved';
@@ -132,6 +143,8 @@ export function buildRule(input: BuildRuleInput): LoadedAlertRule {
         id: 1,
         organizationId: DEFAULT_ORG_ID,
         name: `synthetic ${input.kind}`,
+        // Synthetic rules are never persisted, so nothing to disable.
+        triggerOnce: false,
         templateId: null,
         kind: input.kind,
         conditionFamily: familyMapping.family,
@@ -150,6 +163,7 @@ export function buildRule(input: BuildRuleInput): LoadedAlertRule {
         groupBy: null,
         deliveryMode: 'instant',
         digestWindowMinutes: null,
+        activeWindow: null,
         runbookUrl: null,
         labelsTemplate: {}
     };
@@ -206,6 +220,18 @@ export function buildEvent(input: BuildEventInput): NormalizedEvent {
                 automationId: input.automationId,
                 automationName: input.automationName,
                 errorMessage: input.errorMessage ?? 'synthetic failure'
+            };
+        case 'system_health':
+            return {
+                kind: 'system_health',
+                organizationId,
+                status: input.status,
+                check: input.check,
+                title: input.title ?? 'System health check failed',
+                message: input.message ?? 'synthetic system health event',
+                metric: input.metric ?? 'synthetic_metric',
+                value: input.value ?? 1,
+                action: input.action ?? 'synthetic action'
             };
         case 'grafana_alert':
             return {
@@ -294,10 +320,16 @@ const RULE_KIND_TO_TRIGGER_EVENT: Record<
     backup_operation_failed: 'backup_operation_failed',
     automation_run_failed: 'automation_run_failed',
     grafana_alert: 'grafana_alert',
+    system_health: 'system_health',
     // heartbeat fires via engine periodic sweep, not a direct event;
     // we map to the clear-signal event so synthetic builders work.
     heartbeat: 'device_status_changed',
+    // credential_expiring is sweep-driven too; same clear-signal event.
+    credential_expiring: 'device_status_changed',
     energy_consumption_threshold: 'device_status_changed',
+    cost_budget_threshold: 'device_status_changed',
+    record_incomplete: 'device_status_changed',
+    approaching_new_peak: 'device_status_changed',
     rate_of_change: 'device_status_changed',
     stuck_sensor: 'device_status_changed',
     // Phase 7 sweep-driven kinds map to the same clear-signal event.
@@ -383,6 +415,12 @@ function defaultEventInput(
                 kind: 'automation_run_failed',
                 automationId: 1,
                 automationName: 'synthetic automation'
+            };
+        case 'system_health':
+            return {
+                kind: 'system_health',
+                status: 'firing',
+                check: 'synthetic-check'
             };
         case 'grafana_alert':
             return {

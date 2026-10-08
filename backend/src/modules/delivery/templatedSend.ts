@@ -41,11 +41,17 @@ export function prepareTemplatedSend(
         provider,
         buildDeliveryContext(message)
     );
+    templateBody.isSystemDefault = template.isSystemDefault === true;
     // No channel-specific body -> fallbackText becomes the message every
     // plain-text channel sends. Rich channels read templateBody instead.
+    const nativeSystemDefault =
+        template.isSystemDefault === true &&
+        (provider === 'telegram_bot' || provider === 'push_fcm');
     const next =
         templateBody.usedFallback && typeof templateBody.rendered === 'string'
-            ? {...message, message: templateBody.rendered}
+            ? nativeSystemDefault
+                ? message
+                : {...message, message: templateBody.rendered}
             : message;
     return {message: next, templateBody};
 }

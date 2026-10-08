@@ -2,6 +2,7 @@
 // each item, report the oldest age and any item held past a threshold. Pure —
 // the caller owns the map and decides what to log/alert.
 
+import type {GaugeName} from '../observability/counters';
 import {IntervalSampler} from './intervalSampler';
 
 export interface InFlightStuckReport {
@@ -26,10 +27,14 @@ export function inFlightStuckReport(
 
 export interface StuckMonitorDeps {
     now: () => number;
-    setGauge: (name: string, value: number) => void;
+    setGauge: (name: GaugeName, value: number) => void;
     warn: (message: string) => void;
     // Read lazily so tuning that isn't ready at construction is still honored.
     thresholdMs: () => number;
+    gauges: {
+        oldestHeldMs: GaugeName;
+        stuck: GaugeName;
+    };
 }
 
 // Monitor-only leak signal for a bounded in-flight pool. `begin`/`end` track
@@ -67,8 +72,8 @@ export class StuckMonitor {
 
     report(): void {
         const {oldestHeldMs, stuck} = this.#snapshot();
-        this.#deps.setGauge(`${this.#name}_oldest_held_ms`, oldestHeldMs);
-        this.#deps.setGauge(`${this.#name}_stuck`, stuck.length);
+        this.#deps.setGauge(this.#deps.gauges.oldestHeldMs, oldestHeldMs);
+        this.#deps.setGauge(this.#deps.gauges.stuck, stuck.length);
         if (stuck.length === 0) return;
         if (this.#warnSampler.sample() === null) return;
         this.#deps.warn(

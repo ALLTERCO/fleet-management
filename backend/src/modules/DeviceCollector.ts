@@ -76,7 +76,7 @@ export function getCollectorVersion(): number {
     return collectorVersion;
 }
 
-export function register(shelly: AbstractDevice) {
+export function register(shelly: AbstractDevice): boolean {
     const old = devices.get(shelly.shellyID);
     let reconnected = false;
     if (old !== undefined) {
@@ -100,7 +100,7 @@ export function register(shelly: AbstractDevice) {
             );
             // Skip delete event - this is a duplicate connection being cleaned up, not a device deletion
             shelly.destroy({skipDeleteEvent: true});
-            return;
+            return false;
         }
     }
 
@@ -116,6 +116,7 @@ export function register(shelly: AbstractDevice) {
     collectorVersion++;
     Observability.incrementCounter('devices_connected');
     if (reconnected) Observability.incrementCounter('devices_reconnected');
+    return true;
 }
 
 export function getAllShellyIDs() {

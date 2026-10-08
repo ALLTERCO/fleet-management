@@ -10,7 +10,6 @@ import type {
 } from '../../../types/api/authz_audit';
 import {incrementCounter} from '../../Observability';
 import * as store from '../../PostgresProvider';
-import {invalidateAuthzTenant} from '../runtime';
 
 const logger = log4js.getLogger('authz-audit');
 
@@ -259,14 +258,6 @@ export class AuthzAuditWriter {
             await insertAuthzAuditEntry(entry);
         } catch (err) {
             logAuditWriteFailure(entry, err);
-        } finally {
-            if (entry.tenantId) {
-                try {
-                    await invalidateAuthzTenant(entry.tenantId);
-                } catch (err) {
-                    logAuditWriteFailure(entry, err);
-                }
-            }
         }
     }
 

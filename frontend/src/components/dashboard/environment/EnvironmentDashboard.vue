@@ -16,13 +16,11 @@
             </div>
             <DashVoltaineTools
                 :range-label="rangeLabel"
-                :refresh-interval="refreshInterval"
+                :range-key="rangeKey"
                 show-filter
-                show-interval
                 @pick-range="emit('pick-range', $event)"
                 @open-filter="emit('open-filter')"
                 @refresh="emit('refresh')"
-                @set-interval="emit('set-interval', $event)"
                 @open-settings="settingsOpen = true"
                 @open-report="reportOpen = true"
             />
@@ -78,9 +76,9 @@
                         <div class="sub">{{ d.overview.comfortLabel }}</div>
                     </div>
                     <div class="card ctr" style="--i: 6">
-                        <div class="lab">Data quality</div>
-                        <div class="kpi"><span>{{ d.meta.dataQualityPct }}</span><small>%</small></div>
-                        <div class="sub">sensors reporting</div>
+                        <div class="lab">Sensors reporting</div>
+                        <div class="kpi"><span>{{ d.meta.sensorsReportingPct }}</span><small>%</small></div>
+                        <div class="sub">reporting right now</div>
                     </div>
                 </div>
             </div>
@@ -422,14 +420,14 @@ import type {
 const props = defineProps<{
     d: EnvironmentDashboardData;
     loading?: boolean;
-    refreshInterval?: number;
+    // Preset key of the current range — chip shows the preset label when set.
+    rangeKey?: string;
 }>();
 
 const emit = defineEmits<{
     refresh: [];
     'open-filter': [];
     'pick-range': [range: {key: string; from?: string; to?: string}];
-    'set-interval': [ms: number];
     'generate-report': [
         params: {
             format: string;
@@ -479,7 +477,9 @@ const REPORT_GRANS = [
 ] as const;
 const REPORT_FORMATS = [
     {key: 'html', label: 'HTML report'},
-    {key: 'csv', label: 'CSV data'}
+    {key: 'csv', label: 'CSV data'},
+    {key: 'xlsx', label: 'Excel workbook'},
+    {key: 'pdf', label: 'PDF report'}
 ] as const;
 // 'all' = every ambient source (chip temps excluded server-side).
 const REPORT_SOURCES = [

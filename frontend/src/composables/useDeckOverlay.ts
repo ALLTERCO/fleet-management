@@ -1,6 +1,6 @@
 import type {Layer} from '@deck.gl/core';
-import {MapboxOverlay} from '@deck.gl/mapbox';
-import type {IControl, Map as MapLibreMap} from 'maplibre-gl';
+import {MapLibreOverlay} from '@deck.gl/maplibre';
+import type {Map as MapLibreMap} from 'maplibre-gl';
 import type {Ref} from 'vue';
 import {onBeforeUnmount, shallowRef, watch} from 'vue';
 
@@ -21,23 +21,23 @@ export function pinCursor({isDragging, isHovering}: PinCursorState): string {
     return 'grab';
 }
 
-// Mounts a deck.gl MapboxOverlay as a MapLibre custom layer (shared WebGL context).
+// Mounts the official deck.gl MapLibreOverlay (shared WebGL context when interleaved).
 export function useDeckOverlay(
     map: Ref<MapLibreMap | null>,
     layers: Ref<Layer[]>,
     options: UseDeckOverlayOptions = {}
 ) {
-    const overlay = shallowRef<MapboxOverlay | null>(null);
+    const overlay = shallowRef<MapLibreOverlay | null>(null);
 
     const ensure = () => {
         const m = map.value;
         if (!m || overlay.value) return;
-        const ov = new MapboxOverlay({
+        const ov = new MapLibreOverlay({
             interleaved: options.interleaved ?? false,
             layers: layers.value,
             getCursor: pinCursor
         });
-        m.addControl(ov as unknown as IControl);
+        m.addControl(ov);
         overlay.value = ov;
     };
 

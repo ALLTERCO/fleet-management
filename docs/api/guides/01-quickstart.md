@@ -5,7 +5,7 @@ you a device list in a few lines.
 
 ### Over the WebSocket
 
-The access token is passed as the WebSocket subprotocol — the second argument to
+The access token is passed as the WebSocket subprotocol: the second argument to
 `WebSocket`. See [Authentication](#authentication) for how to get a token.
 
 ```js
@@ -45,7 +45,7 @@ curl -X POST https://<your-host>/rpc \
 ```
 
 The HTTP path needs no `src`/`dst`/`id` envelope and returns the bare `result`.
-It cannot subscribe to events — use the WebSocket for that.
+It cannot subscribe to events. Use the WebSocket for that.
 
 ### Next
 

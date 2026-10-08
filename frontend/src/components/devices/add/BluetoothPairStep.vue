@@ -1,77 +1,39 @@
 <template>
-    <div class="bps">
-        <div class="bps__intro">
-            <h4 class="bps__heading">Pair a sensor</h4>
-            <p class="bps__subheading">
-                Scan, pair, add sensors and rename — all from this gateway.
-                Sensors appear in the fleet immediately after they're added.
-            </p>
-        </div>
+    <WizardStep name="pair" :lede="lede">
+        <WizardState v-if="!gatewayId" tone="empty">
+            Pick a gateway in the previous step first.
+        </WizardState>
 
-        <div v-if="!gatewayId" class="bps__missing">
-            <i class="fas fa-circle-info" aria-hidden="true" />
-            <span>Pick a gateway in the previous step first.</span>
-        </div>
-
-        <div v-else class="bps__panel">
-            <BtHomeConfig :shelly-i-d="gatewayId" />
-        </div>
-    </div>
+        <BluDiscoverPanel
+            v-else
+            :shelly-i-d="gatewayId"
+            embedded
+            @paired="(mac, meta) => emit('paired', mac, meta)"
+        />
+    </WizardStep>
 </template>
 
 <script setup lang="ts">
-import BtHomeConfig from '@/components/core/BtHomeConfig.vue';
+import {computed} from 'vue';
+import BluDiscoverPanel from '@/components/core/BluDiscoverPanel.vue';
+import WizardState from '@/components/core/wizard/WizardState.vue';
+import WizardStep from '@/components/core/wizard/WizardStep.vue';
+import {useDevicesStore} from '@/stores/devices';
 
-defineProps<{gatewayId: string | null}>();
+const props = defineProps<{gatewayId: string | null}>();
+const emit = defineEmits<{
+    paired: [mac: string, meta?: {alreadyPaired: boolean}];
+}>();
+
+const deviceStore = useDevicesStore();
+
+// Pairing writes into the gateway's own firmware config, not into Fleet
+// Manager, and nothing outside that gateway can undo it. Say so before it
+// happens rather than after.
+const lede = computed(() => {
+    if (!props.gatewayId) return undefined;
+    const name =
+        deviceStore.devices[props.gatewayId]?.info?.name ?? props.gatewayId;
+    return `Sensors you pair here are stored on ${name} itself. You can unpair them on the next step.`;
+});
 </script>
-
-<style scoped>
-.bps {
-    display: grid;
-    gap: var(--gap-lg);
-}
-.bps__intro {
-    display: grid;
-    gap: 6px;
-}
-.bps__eyebrow {
-    font-size: var(--type-caption);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-caps);
-    color: var(--brand-light);
-    font-weight: var(--font-semibold);
-}
-.bps__heading {
-    margin: 0;
-    font-size: var(--type-subheading);
-    line-height: var(--leading-tight);
-    color: var(--color-text-primary);
-    font-weight: var(--font-semibold);
-}
-.bps__subheading {
-    margin: 0;
-    color: var(--color-text-secondary);
-    font-size: var(--type-body);
-    max-width: 56ch;
-}
-.bps__missing {
-    display: grid;
-    place-items: center;
-    gap: var(--gap-xs);
-    padding: var(--gap-xl);
-    color: var(--color-text-secondary);
-    background: var(--color-surface-2);
-    border: 1px dashed var(--color-border-subtle);
-    border-radius: var(--radius-md);
-}
-.bps__missing i {
-    color: var(--brand-light);
-    font-size: var(--type-subheading);
-}
-.bps__panel {
-    background: var(--color-surface-1);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: var(--radius-md);
-    padding: var(--gap-md);
-}
-</style>

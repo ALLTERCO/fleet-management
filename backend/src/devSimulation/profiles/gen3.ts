@@ -1,4 +1,5 @@
 import type {DeviceProfile} from '../types';
+import {bluChildProfileComponents} from './blu';
 import {
     bulbComponents,
     climateComponents,
@@ -155,7 +156,7 @@ const SPECS: readonly Gen3Spec[] = [
             app: 'DDimmerG3'
         },
         doc: 'ShellyDDimmerG3',
-        components: dimmerComponents({lights: 1, inputs: 2})
+        components: dimmerComponents({lights: 1, inputs: 2, metered: false})
     },
     {
         identity: {
@@ -167,7 +168,7 @@ const SPECS: readonly Gen3Spec[] = [
             app: 'Dimmer010G3'
         },
         doc: 'ShellyDimmer0110VPMG3',
-        components: dimmerComponents({lights: 1, inputs: 2})
+        components: dimmerComponents({lights: 1, inputs: 2, metered: true})
     },
     {
         identity: {
@@ -179,7 +180,7 @@ const SPECS: readonly Gen3Spec[] = [
             app: 'DimmerG3'
         },
         doc: 'ShellyDimmerG3',
-        components: dimmerComponents({lights: 1, inputs: 2})
+        components: dimmerComponents({lights: 1, inputs: 2, metered: false})
     },
     {
         identity: {
@@ -191,7 +192,7 @@ const SPECS: readonly Gen3Spec[] = [
             app: 'DuoBulbG3'
         },
         doc: 'ShellyDuoBulbG3',
-        components: bulbComponents('cct')
+        components: bulbComponents({kind: 'cct', metered: false})
     },
     {
         identity: {
@@ -311,7 +312,21 @@ const SPECS: readonly Gen3Spec[] = [
             app: 'PlugMG3'
         },
         doc: 'ShellyPlugMG3',
-        components: plugComponents()
+        // A Gen3 plug is its own BLE gateway, so the plug a cabinet stands on
+        // is also what hears that cabinet's door and its climate probe.
+        components: mergeComponents(
+            plugComponents(),
+            bluChildProfileComponents({
+                model: 'SBDW-002C',
+                index: 0,
+                displayName: 'Cabinet door'
+            }),
+            bluChildProfileComponents({
+                model: 'SBHT-003C',
+                index: 1,
+                displayName: 'Cabinet climate'
+            })
+        )
     },
     {
         identity: {
@@ -323,7 +338,22 @@ const SPECS: readonly Gen3Spec[] = [
             app: 'PlugPMG3'
         },
         doc: 'ShellyPlugPMG3',
-        components: mergeComponents(pmComponents(), uiComponents('plugpm_ui'))
+        // A Gen3 metering plug IS a BLE gateway — the product page lists
+        // BTHome components, not a BluGw — so it hears its own BLU child
+        // rather than needing a gateway box beside it. Declaring one BLU
+        // Door/Window here is what a retrofit install actually looks like:
+        // the plug the cabinet stands on is also the thing that hears the
+        // cabinet's door. `bluChildProfileComponents` (not
+        // `bluChildComponents`) because a profile's MAC is still a token at
+        // this point; see its comment for what resolving it early would do.
+        components: mergeComponents(
+            mergeComponents(pmComponents(), uiComponents('plugpm_ui')),
+            bluChildProfileComponents({
+                model: 'SBDW-002C',
+                index: 0,
+                displayName: 'Cabinet door'
+            })
+        )
     },
     {
         identity: {
@@ -347,7 +377,7 @@ const SPECS: readonly Gen3Spec[] = [
             app: 'RGBCCTBulbG3'
         },
         doc: 'ShellyRGBCCTBulbG3',
-        components: bulbComponents('rgbcct')
+        components: bulbComponents({kind: 'rgbcct', metered: true})
     },
     {
         identity: {
@@ -374,7 +404,15 @@ const SPECS: readonly Gen3Spec[] = [
         doc: 'ThePill',
         components: mergeComponents(inputComponents(2), {
             config: {
-                pill: {mode: 'sensor'},
+                // Firmware modes are onewire/dht22/analog_in/ssr/digital_io;
+                // 'sensor' is not one of them. Seed the onewire default with
+                // all pins unassigned.
+                pill: {
+                    mode: 'onewire',
+                    pin0_mode: 'none',
+                    pin1_mode: 'none',
+                    pin2_mode: 'none'
+                },
                 'voltmeter:0': {id: 0, name: 'Analog input'},
                 'temperature:0': {id: 0, name: 'Probe temperature'},
                 'humidity:0': {id: 0, name: 'Probe humidity'},

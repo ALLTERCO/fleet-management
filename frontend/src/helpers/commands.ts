@@ -1,3 +1,4 @@
+import {rpcErrorMessage} from '@/helpers/rpcError';
 import {
     fetchActionVariables,
     substituteVariablesSync
@@ -24,7 +25,7 @@ async function runActionForDst(dst: string, method: string, params: any) {
         return {
             [dst]: {
                 code: -32700,
-                message: error instanceof Error ? error.message : String(error)
+                message: rpcErrorMessage(error)
             }
         };
     }

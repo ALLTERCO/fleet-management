@@ -1,7 +1,11 @@
 // bill.* — record/read/delete actual utility bills for report reconciliation.
 
+import {requireTenantWideComponentPermission} from '../../modules/authz/evaluator';
 import {
+    assertUniqueBillImportIdentities,
+    billListRangeError,
     deleteBillActual,
+    importBillActuals,
     isRealCalendarDate,
     listBillActuals,
     setBillActual
@@ -12,12 +16,17 @@ import {validateOrThrow} from '../../rpc/validateOrThrow';
 import {
     BILL_DELETE_PARAMS_SCHEMA,
     BILL_DESCRIBE,
+    BILL_IMPORT_PARAMS_SCHEMA,
     BILL_LIST_PARAMS_SCHEMA,
+    BILL_QUOTE_PARAMS_SCHEMA,
     BILL_SET_PARAMS_SCHEMA,
     type BillDeleteParams,
+    type BillImportParams,
     type BillListParams,
+    type BillQuoteParams,
     type BillSetParams
 } from '../../types/api/bill';
+import {calculateBillingQuote} from '../billing/billingQuote';
 import type CommandSender from '../CommandSender';
 import Component from './Component';
 
@@ -26,6 +35,9 @@ function requireOrg(sender: CommandSender): string {
     if (!orgId) throw RpcError.Unauthorized();
     return orgId;
 }
+
+// A bill is not a report: no scope selector names it.
+const NOT_A_REPORT_ID = (): undefined => undefined;
 
 export default class BillActualComponent extends Component {
     constructor() {
@@ -54,19 +66,7 @@ export default class BillActualComponent extends Component {
             params,
             BILL_SET_PARAMS_SCHEMA
         );
-        if (
-            !isRealCalendarDate(p.periodStart) ||
-            !isRealCalendarDate(p.periodEnd)
-        ) {
-            throw RpcError.InvalidParams(
-                'periodStart and periodEnd must be real calendar dates'
-            );
-        }
-        if (p.periodEnd < p.periodStart) {
-            throw RpcError.InvalidParams(
-                'periodEnd must be on or after periodStart'
-            );
-        }
+        validatePeriod(p);
         return setBillActual(requireOrg(sender), p);
     }
 
@@ -77,12 +77,32 @@ export default class BillActualComponent extends Component {
             params ?? {},
             BILL_LIST_PARAMS_SCHEMA
         );
-        return {bills: await listBillActuals(requireOrg(sender), p)};
+        const rangeError = billListRangeError(p);
+        if (rangeError) throw RpcError.InvalidParams(rangeError);
+        return listBillActuals(requireOrg(sender), p);
+    }
+
+    @Component.Expose('Import')
+    @Component.CrudPermission('reports', 'update')
+    @Component.RateLimit('expensive')
+    async import(params: unknown, sender: CommandSender) {
+        const p = validateOrThrow<BillImportParams>(
+            params,
+            BILL_IMPORT_PARAMS_SCHEMA
+        );
+        for (const bill of p.bills) validatePeriod(bill);
+        try {
+            assertUniqueBillImportIdentities(p.bills);
+        } catch (error) {
+            throw RpcError.InvalidParams((error as Error).message);
+        }
+        return {bills: await importBillActuals(requireOrg(sender), p.bills)};
     }
 
     @Component.Expose('Delete')
-    @Component.CrudPermission('reports', 'update')
+    @Component.CrudPermission('reports', 'update', NOT_A_REPORT_ID)
     async delete(params: unknown, sender: CommandSender) {
+        await requireTenantWideComponentPermission(sender, 'reports', 'update');
         const p = validateOrThrow<BillDeleteParams>(
             params,
             BILL_DELETE_PARAMS_SCHEMA
@@ -91,5 +111,32 @@ export default class BillActualComponent extends Component {
             throw RpcError.NotFound('bill', String(p.id));
         }
         return {deleted: true};
+    }
+
+    @Component.Expose('Quote')
+    @Component.NoPermissions
+    @Component.RateLimit('billing')
+    async quote(params: unknown, sender: CommandSender) {
+        const p = validateOrThrow<BillQuoteParams>(
+            params,
+            BILL_QUOTE_PARAMS_SCHEMA
+        );
+        return calculateBillingQuote(p, sender);
+    }
+}
+
+function validatePeriod(params: BillSetParams): void {
+    if (
+        !isRealCalendarDate(params.periodStart) ||
+        !isRealCalendarDate(params.periodEnd)
+    ) {
+        throw RpcError.InvalidParams(
+            'periodStart and periodEnd must be real calendar dates'
+        );
+    }
+    if (params.periodEnd < params.periodStart) {
+        throw RpcError.InvalidParams(
+            'periodEnd must be on or after periodStart'
+        );
     }
 }

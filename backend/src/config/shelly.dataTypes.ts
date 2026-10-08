@@ -34,6 +34,22 @@ const floatsData = [
     'humidity:0.id',
     'humidity:0.rh'
 ]
+    // Add-on sensor channels. An add-on board allocates ids from 100 up, so
+    // listing only :100 stored the first sensor and silently dropped the rest.
+    .concat(x({prefix: 'temperature:10', repeat: 4, suffix: '.tC'}))
+    .concat(x({prefix: 'temperature:10', repeat: 4, suffix: '.tF'}))
+    .concat(x({prefix: 'temperature:10', repeat: 4, suffix: '.id'}))
+    .concat(x({prefix: 'humidity:10', repeat: 4, suffix: '.rh'}))
+    .concat(x({prefix: 'humidity:10', repeat: 4, suffix: '.id'}))
+    // Voltmeter — a first-class entry in the energy registry, but absent here,
+    // so every analog reading was dropped before it could be classified.
+    .concat(x({prefix: 'voltmeter:', repeat: 5, suffix: '.voltage'}))
+    .concat(x({prefix: 'voltmeter:', repeat: 5, suffix: '.xvoltage'}))
+    .concat(x({prefix: 'voltmeter:', repeat: 5, suffix: '.id'}))
+    // Battery state for every battery-powered device.
+    .concat(x({prefix: 'devicepower:', repeat: 5, suffix: '.battery.V'}))
+    .concat(x({prefix: 'devicepower:', repeat: 5, suffix: '.battery.percent'}))
+    .concat(x({prefix: 'devicepower:', repeat: 5, suffix: '.id'}))
     .concat(x({prefix: 'cover:0.aenergy.by_minute.'}))
     .concat(x({prefix: 'cover:1.aenergy.by_minute.'}))
     // Cover power metering fields (up to 2 instances)
@@ -283,9 +299,38 @@ const floatFieldGroups = new Map(
 const bluetoothStatusField =
     /^(bthomedevice|bthomesensor|bthomecontrol|blutrv):\d+\..+$/;
 
+// Shelly X / XT1 virtual components. The device maker defines these, so they
+// cannot be enumerated the way fixed components are; they are matched by shape.
+// Firmware allocates virtual ids in 200-299 (Virtual.Add enforces that range),
+// which keeps this pattern from colliding with a fixed component id.
+const VIRTUAL_COMPONENT_TYPES = 'number|boolean|enum|text|object|group|button';
+const virtualComponentKey = new RegExp(
+    `^(${VIRTUAL_COMPONENT_TYPES}):2\\d\\d$`
+);
+const virtualStatusField = new RegExp(
+    `^(${VIRTUAL_COMPONENT_TYPES}):2\\d\\d\\..+$`
+);
+
+/** Is this a virtual component key such as `number:201`? */
+export function isVirtualComponentKey(componentKey: string): boolean {
+    return virtualComponentKey.test(componentKey);
+}
+
+// Width of device.status.field (device/2000_status.sql). The patterns above end
+// in `.+`, so the device maker decides the length. An over-long value aborts the
+// whole multi-device batch rather than truncating.
+const MAX_STATUS_FIELD_LENGTH = 100;
+
+/** Is this a continuously-changing measurement already kept in device.status? */
+export function isMeteredFloatField(field: string): boolean {
+    return floatFieldGroups.has(field);
+}
+
 export function statusFieldGroup(field: string): string | undefined {
+    if (field.length > MAX_STATUS_FIELD_LENGTH) return undefined;
     return (
         floatFieldGroups.get(field) ??
-        (bluetoothStatusField.test(field) ? 'bluetooth' : undefined)
+        (bluetoothStatusField.test(field) ? 'bluetooth' : undefined) ??
+        (virtualStatusField.test(field) ? 'virtual' : undefined)
     );
 }

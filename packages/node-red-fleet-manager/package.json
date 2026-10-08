@@ -1,0 +1,26 @@
+{
+    "name": "@shelly/fleet-manager-node-red",
+    "version": "0.1.0",
+    "description": "Generated Fleet Manager nodes for Node-RED.",
+    "main": "nodes/fm-nodes.js",
+    "keywords": ["node-red", "fleet-manager", "shelly", "automation"],
+    "node-red": {
+        "version": ">=4.0.0",
+        "nodes": {
+            "fleet-manager": "nodes/fm-nodes.js"
+        }
+    },
+    "engines": {
+        "node": ">=20"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ALLTERCO/fleet-management.git",
+        "directory": "packages/node-red-fleet-manager"
+    },
+    "bugs": {
+        "url": "https://github.com/ALLTERCO/fleet-management/issues"
+    },
+    "files": ["nodes", "lib", "generated", "examples", "README.md"],
+    "license": "Apache-2.0"
+}

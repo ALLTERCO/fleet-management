@@ -1,36 +1,37 @@
 // Pure derived view of "what the device is and what it can do" — no IO.
 
-import type {DeviceCapabilities} from '../types';
+import type {DeviceCapabilities} from '../types/api/deviceCapabilities';
+import type {
+    DerivedDeviceProfile,
+    DeviceProfileFlags,
+    DeviceTribe
+} from '../types/api/deviceProfile';
 import type {DeviceInfo} from './deviceInfo';
 
-// Only meaningful when device.list.kind === 'physical'.
-// shelly_powered intentionally absent — no runtime signal to detect it
-// today; add union + classifier branch together when one exists.
-// xt1.service: null (not 'unknown') when app has no +<service> suffix.
-export type DeviceTribe =
-    | {kind: 'shelly_native'; app: string; gen: number}
-    | {kind: 'xmod'; jti: string}
-    | {kind: 'xt1'; jti: string; service: string | null};
+export type {
+    DerivedDeviceProfile,
+    DeviceProfileFlags,
+    DeviceTribe
+} from '../types/api/deviceProfile';
 
-// Presence of `addon` IS the boolean — null when no addon. Single SoT.
-export interface DeviceProfileFlags {
-    isBattery: boolean;
-    isBluGateway: boolean;
-    hasMediaUi: boolean;
-    hasBluTrv: boolean;
-    addon: {type: string} | null;
-    hostsServiceUnit: boolean;
-    hostsVirtualComponents: boolean;
-    supportsZigbee: boolean;
-    supportsMatter: boolean;
-}
-
+/** The internal shape: a Set, for its `has()` in deriveFlags. */
 export interface DeviceProfile {
     tribe: DeviceTribe;
     componentTypes: ReadonlySet<string>;
     rpcCapabilities: DeviceCapabilities;
     flags: DeviceProfileFlags;
     builtAtMs: number;
+}
+
+export function toWireProfile(
+    profile: DeviceProfile | undefined
+): DerivedDeviceProfile | undefined {
+    return (
+        profile && {
+            ...profile,
+            componentTypes: [...profile.componentTypes]
+        }
+    );
 }
 
 interface DeriveFlagsInput {

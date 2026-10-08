@@ -12,7 +12,23 @@ export interface Metric {
 }
 
 /** Placeholder when the reading is absent. */
-const NONE: Metric = {value: '—', unit: ''};
+const ABSENT = '—';
+const NONE: Metric = {value: ABSENT, unit: ''};
+
+/** True when the device actually reported the reading. Cards gate every stat
+ *  cell on this — an absent reading renders nothing, never a dash or bare unit.
+ *  Takes any stat shape with a `value` string, not just Metric. */
+export function hasMetric(m: {value: string}): boolean {
+    return m.value !== ABSENT && m.value !== '';
+}
+
+/** Drop every stat the device did not report, so a list of cells never carries
+ *  a placeholder into the template. */
+export function presentStats<T extends {value: string}>(
+    stats: readonly T[]
+): T[] {
+    return stats.filter(hasMetric);
+}
 
 /** Whole number in the base unit below 1000, one decimal in the kilo unit at
  *  or above it. Sign is preserved (power/energy can be negative on feed-in). */
@@ -30,6 +46,42 @@ export function formatPower(watts?: number | null): Metric {
 /** Apparent power: same scale rule as power, in VA / kVA. */
 export function formatApparentPower(va?: number | null): Metric {
     return va == null ? NONE : scaleThousand(va, 'VA', 'kVA');
+}
+
+/** Side-by-side readings share one unit so near-equal phases stay comparable.
+ *  Flipping at 1 kW would round a 962 W phase to "1.0 kW" and hide that. */
+const GROUP_KILO_THRESHOLD = 10_000;
+
+function scaleGroupThousand(
+    values: readonly (number | null | undefined)[],
+    base: string,
+    kilo: string
+): Metric[] {
+    const peak = Math.max(
+        0,
+        ...values.filter((v) => v != null).map((v) => Math.abs(v))
+    );
+    const useKilo = peak >= GROUP_KILO_THRESHOLD;
+    return values.map((v) => {
+        if (v == null) return NONE;
+        return useKilo
+            ? {value: (v / 1000).toFixed(1), unit: kilo}
+            : {value: String(Math.round(v)), unit: base};
+    });
+}
+
+/** Active power for a group compared side by side; one unit for the group. */
+export function formatPowerGroup(
+    watts: readonly (number | null | undefined)[]
+): Metric[] {
+    return scaleGroupThousand(watts, 'W', 'kW');
+}
+
+/** Apparent power for a group compared side by side. */
+export function formatApparentPowerGroup(
+    va: readonly (number | null | undefined)[]
+): Metric[] {
+    return scaleGroupThousand(va, 'VA', 'kVA');
 }
 
 /** Current: two decimals — loads are often well below 1 A, the decimals are
@@ -70,10 +122,20 @@ export function formatEnergy(wattHours?: number | null): Metric {
     return {value: String(Math.round(wattHours)), unit: 'Wh'};
 }
 
+/** A value already in kWh (not Wh): whole number at or above 100, one decimal
+ *  below. The one home for the kWh label that the dashboard energy widgets show. */
+export function formatKilowattHours(kwh: number): Metric {
+    return {value: kwh.toFixed(kwh >= 100 ? 0 : 1), unit: 'kWh'};
+}
+
 /** Join a metric into one display string ("120 W"); bare value when unitless
- *  (power factor) or absent. */
+ *  (power factor) or absent. The degree sign reads as part of the number, so
+ *  degree units bind tight ("45.2°C") — the form every other card uses. */
 export function metricText(m: Metric): string {
-    return m.unit ? `${m.value} ${m.unit}` : m.value;
+    if (!m.unit) return m.value;
+    return m.unit.startsWith('°')
+        ? `${m.value}${m.unit}`
+        : `${m.value} ${m.unit}`;
 }
 
 export interface PowerMetric {
@@ -92,10 +154,12 @@ export function buildPowerMetrics(
     const power = status.apower ?? status.act_power;
     if (power !== undefined)
         out.push({label: 'Power', value: metricText(formatPower(power))});
-    if (status.aprt_power !== undefined)
+    // PM1 spells it `aprtpower`; EM1/Switch/Cover use `aprt_power`.
+    const apparentPower = status.aprt_power ?? status.aprtpower;
+    if (apparentPower !== undefined)
         out.push({
             label: 'Apparent',
-            value: metricText(formatApparentPower(status.aprt_power))
+            value: metricText(formatApparentPower(apparentPower))
         });
     if (status.voltage !== undefined)
         out.push({
@@ -123,6 +187,55 @@ export function buildPowerMetrics(
             value: metricText(formatTemperature(status.temperature.tC))
         });
     return out;
+}
+
+/** `count_disabled` reports a switched-off Count LED, not a metering fault. */
+const NON_FAULT_FLAGS = new Set(['count_disabled']);
+
+const CONDITION_LABELS: Record<string, string> = {
+    power_meter_failure: 'Power meter failure',
+    ct_type_not_set: 'CT type not set',
+    database_error: 'Database error',
+    count_disabled: 'Count output disabled',
+    undervoltage: 'Undervoltage',
+    overvoltage: 'Overvoltage',
+    undercurrent: 'Undercurrent',
+    overcurrent: 'Overcurrent',
+    underpower: 'Underpower',
+    overpower: 'Overpower'
+};
+
+/** One wording for a meter condition code, so the card and the detail page
+ *  never name the same fault differently. Unknown codes fall through readable —
+ *  a condition a newer firmware invents is shown, never silently swallowed. */
+export function meterConditionLabel(code: string): string {
+    const known = CONDITION_LABELS[code];
+    if (known) return known;
+    const [kind, field] = code.split(':');
+    const words =
+        kind === 'out_of_range' && field
+            ? `${field} out of range`
+            : code.replace(/:/g, ' ');
+    return (words.charAt(0).toUpperCase() + words.slice(1)).replace(/_/g, ' ');
+}
+
+export function conditionCodes(raw: unknown): string[] {
+    return Array.isArray(raw) ? raw.filter((c) => typeof c === 'string') : [];
+}
+
+/** Every condition a meter is currently reporting, as one printable list. The
+ *  meter splits them across `errors` and `flags` and its data component keeps
+ *  its own `errors`; `ct_type_not_set` appears in more than one, so dedupe. */
+export function meterFaults(
+    status?: Record<string, any> | null,
+    dataStatus?: Record<string, any> | null
+): string[] {
+    const codes = new Set([
+        ...conditionCodes(status?.errors),
+        ...conditionCodes(dataStatus?.errors),
+        ...conditionCodes(status?.flags).filter((f) => !NON_FAULT_FLAGS.has(f))
+    ]);
+    return [...codes].map(meterConditionLabel);
 }
 
 /** Cumulative active energy as kWh string (3 decimal places) for the energy

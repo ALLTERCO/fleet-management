@@ -20,6 +20,8 @@ export const FRONTEND_SRC = path.join(REPO_ROOT, 'frontend/src');
 export const DOCS_DIR = path.join(REPO_ROOT, 'docs');
 export const GENERATED_DIR = path.join(DOCS_DIR, 'generated');
 
+const NON_AUTHORITATIVE_FRONTEND_ROOTS = new Set(['shared', 'template-active']);
+
 // --- TypeScript Program --------------------------------------------------
 
 let cachedProgram: ts.Program | undefined;
@@ -174,6 +176,28 @@ export function walkFiles(dir: string, extensions: string[]): string[] {
         }
     }
     return out.sort();
+}
+
+/**
+ * Walk only Fleet-owned frontend source. `frontend/src/shared` and
+ * `frontend/src/template-active` are ignored, locally materialized mirrors of
+ * the sibling Business Manager repository. Their presence depends on whether
+ * a developer has run the template sync, so including them makes committed
+ * API inventories differ from a clean CI checkout.
+ */
+export function walkAuthoritativeFrontendFiles(extensions: string[]): string[] {
+    return walkFiles(FRONTEND_SRC, extensions).filter(
+        isAuthoritativeFrontendSource
+    );
+}
+
+export function isAuthoritativeFrontendSource(file: string): boolean {
+    const relative = path.relative(FRONTEND_SRC, path.resolve(file));
+    if (relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+        return false;
+    }
+    const [root] = relative.split(path.sep);
+    return !NON_AUTHORITATIVE_FRONTEND_ROOTS.has(root);
 }
 
 export function readFile(file: string): string {

@@ -254,6 +254,6 @@ function authAccessContext(
             'organizations',
             'update'
         ),
-        userId: auth.zitadelUser?.sub
+        userId: auth.currentUserId ?? undefined
     };
 }

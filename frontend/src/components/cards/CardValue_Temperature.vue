@@ -19,7 +19,7 @@
     >
         <template #default>
             <div class="temp-body">
-                <div class="temp-readout">{{ tempText }}<span class="temp-unit">°C</span></div>
+                <div v-if="tempText" class="temp-readout">{{ tempText }}<span class="ec-u">°C</span></div>
             </div>
         </template>
         <template #badges>
@@ -47,7 +47,7 @@
     >
         <template #default>
             <div class="temp-hero">
-                <div class="temp-readout temp-readout--hero">{{ tempText }}<span class="temp-unit">°C</span></div>
+                <div v-if="tempText" class="temp-readout temp-readout--hero">{{ tempText }}<span class="ec-u">°C</span></div>
                 <div v-if="stats.length" class="temp-stats">
                     <div v-for="s in stats" :key="s.label" class="temp-stat">
                         <div class="temp-stat-v">{{ s.value }}</div>
@@ -122,8 +122,9 @@ const temp = computed<number | null>(() => {
 const icon = computed(() =>
     isInternalTemp.value ? 'fas fa-microchip' : 'fas fa-temperature-half'
 );
-const tempText = computed(() =>
-    temp.value !== null ? temp.value.toFixed(1) : '—'
+// null, not a dash — the readout and its unit both stay hidden.
+const tempText = computed<string | null>(() =>
+    temp.value !== null ? temp.value.toFixed(1) : null
 );
 
 // Only what the device actually reports — no empty cells.
@@ -166,13 +167,6 @@ const stats = computed(() => {
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
-}
-.temp-unit {
-    margin-left: 2px;
-    font-size: var(--type-subheading);
-    font-weight: var(--font-semibold);
-    color: var(--color-text-secondary);
-    -webkit-text-fill-color: var(--color-text-secondary);
 }
 .temp-stats {
     display: flex;

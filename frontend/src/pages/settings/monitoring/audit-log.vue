@@ -3,8 +3,6 @@
         fill
         title="Audit Log"
         :tabs="monitoringTabs"
-       
-       
         searchable
         search-placeholder="Username or shellyID…"
         v-model:search="filters.searchText"
@@ -17,7 +15,7 @@
             <Button
                 type="blue"
                 size="sm"
-                :loading="isSearching"
+                :loading="auditLog.searching"
                 :disabled="!isValid"
                 @click="runSearch(true)"
             >
@@ -26,8 +24,8 @@
             <Button
                 type="blue-hollow"
                 size="sm"
-                :loading="isGenerating"
-                :disabled="!isValid"
+                :loading="auditLog.exporting"
+                :disabled="!canExport"
                 @click="generateExport"
             >
                 Generate CSV Export
@@ -36,8 +34,23 @@
 
         <div class="audit-content">
             <section>
-                <div v-if="searchError" class="audit-alert audit-alert--danger">
-                    {{ searchError }}
+                <Alert
+                    v-if="shownCallId"
+                    type="info"
+                    icon="fas fa-robot"
+                    title="One AI tool call"
+                    data-testid="audit-call-view"
+                >
+                    Every row this call wrote, at any time.
+                    <template #action>
+                        <Button type="blue-hollow" size="sm" @click="leaveCallView">
+                            Back to the full log
+                        </Button>
+                    </template>
+                </Alert>
+
+                <div v-if="auditLog.searchError" class="audit-alert audit-alert--danger" role="alert">
+                    {{ auditLog.searchError }}
                 </div>
 
                 <div v-if="rows.length" class="audit-table-wrap">
@@ -60,6 +73,15 @@
                                 class="audit-user-system"
                             >{{ row.username }}</span>
                             <template v-else>{{ row.username ?? '—' }}</template>
+                            <span
+                                v-if="row.agent_key_id"
+                                class="audit-agent-badge"
+                                :title="`AI key ${row.agent_key_id}`"
+                                data-testid="audit-agent-badge"
+                            >
+                                <i class="fas fa-robot" aria-hidden="true" />
+                                AI key
+                            </span>
                         </template>
                         <template #cell-device="{row}">
                             <span :title="deviceLabel(row).allIds?.join('\n')">
@@ -83,7 +105,18 @@
                             <div v-if="row.error_message" class="audit-error-text">
                                 {{ row.error_message }}
                             </div>
-                            <span v-else-if="row.params" class="audit-detail-hint">
+                            <Button
+                                v-if="canOpenCallFromRow(row)"
+                                type="blue-hollow"
+                                size="xs"
+                                :aria-label="`Show everything this AI call did: ${row.method ?? 'tool call'}`"
+                                data-testid="audit-open-call"
+                                @click.stop="openCall(row)"
+                                @keydown.enter.stop
+                            >
+                                Show this call
+                            </Button>
+                            <span v-else-if="!row.error_message && row.params" class="audit-detail-hint">
                                 Click row for params
                             </span>
                         </template>
@@ -97,7 +130,7 @@
                             <Button
                                 type="blue-hollow"
                                 size="sm"
-                                :disabled="offset === 0 || isSearching"
+                                :disabled="offset === 0 || auditLog.searching"
                                 @click="prevPage"
                             >
                                 Previous
@@ -105,7 +138,7 @@
                             <Button
                                 type="blue-hollow"
                                 size="sm"
-                                :disabled="!hasMore || isSearching"
+                                :disabled="!hasMore || auditLog.searching"
                                 @click="nextPage"
                             >
                                 Next
@@ -113,11 +146,11 @@
                         </div>
                     </div>
                 </div>
-                <EmptyBlock v-else-if="hasSearched && !isSearching">
+                <EmptyBlock v-else-if="hasSearched && !auditLog.searching">
                     <p class="dp-empty-title">No rows match the filters</p>
                     <p class="dp-empty-sub">Try widening the date range or clearing some filters.</p>
                 </EmptyBlock>
-                <EmptyBlock v-else-if="!hasSearched && !isSearching">
+                <EmptyBlock v-else-if="!hasSearched && !auditLog.searching">
                     <template #icon>
                         <i class="fas fa-clipboard-list" />
                     </template>
@@ -127,13 +160,13 @@
             </section>
 
             <!-- Export status — appears inline when an export is ready or failed. -->
-            <section v-if="downloadInfo || errorMessage" class="audit-export-status">
+            <section v-if="downloadInfo || exportMessage" class="audit-export-status">
                 <div v-if="downloadInfo" class="audit-alert audit-alert--success">
                     <p>Export ready! ({{ downloadInfo.rows }} records)</p>
                     <Button
                         type="blue-hollow"
                         size="sm"
-                        :loading="isDownloading"
+                        :loading="auditLog.downloading"
                         @click="downloadExport"
                     >
                         Download {{ downloadInfo.filename }}
@@ -142,8 +175,8 @@
                         File auto-deletes after 1 hour.
                     </p>
                 </div>
-                <div v-if="errorMessage" class="audit-alert audit-alert--danger">
-                    {{ errorMessage }}
+                <div v-if="exportMessage" class="audit-alert audit-alert--danger" role="alert">
+                    {{ exportMessage }}
                 </div>
             </section>
         </div>
@@ -161,6 +194,20 @@
             >
                 <template #extra>
                     <DateRangeFilter v-model="dateRangeModel" label="Date range" />
+                    <Input
+                        v-model="filters.agentKeyId"
+                        label="AI key id"
+                        placeholder="Only rows from this key"
+                        :maxlength="AGENT_KEY_ID_MAX_LENGTH"
+                        clear
+                    />
+                    <Input
+                        v-model="filters.correlationId"
+                        label="AI call id"
+                        placeholder="Every row from one AI tool call"
+                        :maxlength="CORRELATION_ID_MAX_LENGTH"
+                        clear
+                    />
                 </template>
             </FilterModal>
 
@@ -168,7 +215,27 @@
                 <template #title>Audit Entry</template>
                 <JSONViewer v-if="detailRow" :data="detailRow as unknown as object" />
                 <template #footer>
-                    <Button type="blue-hollow" size="sm" @click="detailRow = null">Close</Button>
+                    <div class="audit-detail-actions">
+                        <Button
+                            v-if="detailRow?.correlation_id"
+                            type="blue-hollow"
+                            size="sm"
+                            data-testid="audit-detail-open-call"
+                            @click="openCall(detailRow)"
+                        >
+                            Show this call
+                        </Button>
+                        <Button
+                            v-if="detailRow?.agent_key_id"
+                            type="blue-hollow"
+                            size="sm"
+                            data-testid="audit-detail-filter-key"
+                            @click="filterByKey(detailRow)"
+                        >
+                            Show all from this key
+                        </Button>
+                        <Button type="blue-hollow" size="sm" @click="detailRow = null">Close</Button>
+                    </div>
                 </template>
             </Modal>
         </template>
@@ -176,8 +243,16 @@
 </template>
 
 <script setup lang="ts">
+import {
+    AGENT_KEY_ID_MAX_LENGTH,
+    AUDIT_EVENT_LABELS,
+    AUDIT_EVENT_TYPES,
+    type AuditEventType,
+    CORRELATION_ID_MAX_LENGTH
+} from '@api/audit';
 import {SENTINEL_ACTORS} from '@api/auditActors';
-import {type ComputedRef, computed, inject, reactive, ref } from 'vue';
+import {type ComputedRef, computed, inject, reactive, ref} from 'vue';
+import Alert from '@/components/core/Alert.vue';
 import Button from '@/components/core/Button.vue';
 import DataList, {type DataColumn} from '@/components/core/DataList.vue';
 import DateRangeFilter from '@/components/core/DateRangeFilter.vue';
@@ -186,42 +261,28 @@ import FilterModal, {
     type FilterSection,
     type FilterState
 } from '@/components/core/FilterModal.vue';
+import Input from '@/components/core/Input.vue';
 import JSONViewer from '@/components/core/JSONViewer.vue';
 import PageTemplate from '@/components/core/PageTemplate.vue';
 import Modal from '@/components/modals/Modal.vue';
 import {AUDIT_PAGE_SIZE} from '@/constants';
-import apiClient from '@/helpers/axios';
 import {formatTime} from '@/helpers/format';
+import {
+    type AuditExportResponse,
+    type AuditQueryRow,
+    type AuditSearch,
+    useAuditLogStore
+} from '@/stores/auditLog';
 import {useDevicesStore} from '@/stores/devices';
 import {useUsersStore} from '@/stores/users';
-import {sendRPC} from '@/tools/websocket';
 import type {RouteTab} from '@/types/page-template';
 
 const monitoringTabs = inject<ComputedRef<RouteTab[]>>('monitoringTabs');
 
-interface DownloadInfo {
-    filename: string;
-    rows: number;
-    downloadUrl: string;
-    downloadTicketUrl?: string;
-}
+const auditLog = useAuditLogStore();
+auditLog.clearMessages();
 
-interface AuditRow {
-    id: number;
-    ts: string | number;
-    event_type: string;
-    username?: string;
-    device_id?: string;
-    shelly_id?: string;
-    /** All devices the row touches (1 for single-device, N for bulk ops). */
-    shelly_ids?: string[];
-    method?: string;
-    success: boolean;
-    error_message?: string;
-    params?: unknown;
-}
-
-const auditColumns: DataColumn<AuditRow>[] = [
+const auditColumns: DataColumn<AuditQueryRow>[] = [
     {key: 'ts', label: 'Time', role: 'meta', mono: true, sortable: true},
     {key: 'event_type', label: 'Event', role: 'primary', sortable: true},
     {key: 'username', label: 'User', role: 'secondary', sortable: true},
@@ -231,17 +292,15 @@ const auditColumns: DataColumn<AuditRow>[] = [
     {key: 'detail', label: 'Error / Params', role: 'meta'}
 ];
 
-const EVENT_TYPE_OPTIONS = [
-    {key: 'login', label: 'User Logins'},
-    {key: 'logout', label: 'User Logouts'},
-    {key: 'rpc', label: 'RPC Operations'},
-    {key: 'device_online', label: 'Device Online'},
-    {key: 'device_offline', label: 'Device Offline'},
-    {key: 'device_add', label: 'Device Added'},
-    {key: 'device_delete', label: 'Device Deleted'},
-    {key: 'config_change', label: 'Config Change'},
-    {key: 'permission_change', label: 'Permission Change'}
-] as const;
+// The backend's own list, so a new event type (AI tool calls) is never left out.
+const EVENT_TYPE_OPTIONS = AUDIT_EVENT_TYPES.map((key) => ({
+    key,
+    label: AUDIT_EVENT_LABELS[key]
+}));
+
+function isAuditEventType(value: string): value is AuditEventType {
+    return (AUDIT_EVENT_TYPES as readonly string[]).includes(value);
+}
 
 const SEVERITY_OPTIONS = [
     {key: 'successful', label: 'Successful'},
@@ -266,7 +325,9 @@ const filters = reactive({
     severity: [...DEFAULT_SEVERITY] as string[],
     users: [] as string[],
     devices: [] as string[],
-    methods: [] as string[]
+    methods: [] as string[],
+    agentKeyId: '',
+    correlationId: ''
 });
 const filterModalVisible = ref(false);
 
@@ -398,19 +459,21 @@ const activeFilterCount = computed(() => {
     if (filters.users.length > 0) n++;
     if (filters.devices.length > 0) n++;
     if (filters.methods.length > 0) n++;
+    if (filters.agentKeyId.trim()) n++;
+    if (filters.correlationId.trim()) n++;
     return n;
 });
 
-const isSearching = ref(false);
-const isGenerating = ref(false);
-const isDownloading = ref(false);
 const hasSearched = ref(false);
 const hasMore = ref(false);
 const offset = ref(0);
-const rows = ref<AuditRow[]>([]);
-const downloadInfo = ref<DownloadInfo | null>(null);
-const searchError = ref('');
+const rows = ref<AuditQueryRow[]>([]);
+const downloadInfo = ref<AuditExportResponse | null>(null);
 const errorMessage = ref('');
+// The call the table shows, set only once its rows arrived.
+const shownCallId = ref('');
+
+const exportMessage = computed(() => errorMessage.value || auditLog.exportError);
 
 // Sort state — defaults to newest first by timestamp
 const sortKey = ref<string | null>('ts');
@@ -439,7 +502,7 @@ const sortedRows = computed(() => {
     });
 });
 
-function sortValue(row: AuditRow, key: string): string | number | null {
+function sortValue(row: AuditQueryRow, key: string): string | number | null {
     switch (key) {
         case 'ts':
             return new Date(row.ts).getTime();
@@ -457,8 +520,8 @@ function sortValue(row: AuditRow, key: string): string | number | null {
 }
 
 // Row click → open detail modal
-const detailRow = ref<AuditRow | null>(null);
-function onRowClick(row: AuditRow) {
+const detailRow = ref<AuditQueryRow | null>(null);
+function onRowClick(row: AuditQueryRow) {
     detailRow.value = row;
 }
 
@@ -468,19 +531,29 @@ function parseDateTimeLocal(value: string): number | null {
     return Number.isNaN(timestamp) ? null : timestamp;
 }
 
-const activeEventTypes = computed(() => filters.eventTypes);
+const activeEventTypes = computed(() => filters.eventTypes.filter(isAuditEventType));
+const callFilter = computed(() => filters.correlationId.trim());
+const agentKeyFilter = computed(() => filters.agentKeyId.trim());
 
-const isValid = computed(() => {
+const hasValidRange = computed(() => {
     const fromTs = parseDateTimeLocal(filters.from);
     const toTs = parseDateTimeLocal(filters.to);
-    return (
-        fromTs !== null &&
-        toTs !== null &&
-        fromTs <= toTs &&
-        activeEventTypes.value.length > 0 &&
-        filters.severity.length > 0
-    );
+    return fromTs !== null && toTs !== null && fromTs <= toTs;
 });
+
+// One AI call needs no date range: its rows are found by its id alone.
+const isValid = computed(
+    () =>
+        !!callFilter.value ||
+        (hasValidRange.value &&
+            activeEventTypes.value.length > 0 &&
+            filters.severity.length > 0)
+);
+
+// The CSV export has no AI key or call filter, so it would export more than the table shows.
+const canExport = computed(
+    () => isValid.value && !callFilter.value && !agentKeyFilter.value
+);
 
 const devicesStore = useDevicesStore();
 
@@ -508,21 +581,32 @@ const deviceLabels = computed(() => {
                 allIds: ids
             });
         } else {
-            const id = ids[0] ?? row.device_id ?? row.shelly_id;
+            const id =
+                ids[0] ??
+                row.shelly_id ??
+                (row.device_id == null ? undefined : String(row.device_id));
             out.set(row.id, id ? {id, name: devicesStore.getDeviceName(id)} : {});
         }
     }
     return out;
 });
 
-function deviceLabel(row: AuditRow): DeviceCell {
+function deviceLabel(row: AuditQueryRow): DeviceCell {
     return deviceLabels.value.get(row.id) ?? {};
 }
 
-function matchesSearch(row: AuditRow): boolean {
+function canOpenCallFromRow(row: AuditQueryRow): boolean {
+    return (
+        row.event_type === 'mcp_tool_call' &&
+        !!row.correlation_id &&
+        row.correlation_id !== shownCallId.value
+    );
+}
+
+function matchesSearch(row: AuditQueryRow): boolean {
     const q = filters.searchText.trim().toLowerCase();
     if (!q) return true;
-    const scalars = [row.username, row.method, row.device_id, row.shelly_id];
+    const scalars = [row.username, row.method, row.shelly_id];
     if (scalars.some((f) => typeof f === 'string' && f.toLowerCase().includes(q))) {
         return true;
     }
@@ -532,30 +616,40 @@ function matchesSearch(row: AuditRow): boolean {
     return (row.shelly_ids ?? []).some((s) => s.toLowerCase().includes(q));
 }
 
-function matchesSeverity(row: AuditRow): boolean {
+function matchesSeverity(row: AuditQueryRow): boolean {
     const success = row.success ?? true;
     return success
         ? filters.severity.includes('successful')
         : filters.severity.includes('failed');
 }
 
-function matchesUser(row: AuditRow): boolean {
+function matchesUser(row: AuditQueryRow): boolean {
     if (filters.users.length === 0) return true;
     return !!row.username && filters.users.includes(row.username);
 }
 
-function matchesDevice(row: AuditRow): boolean {
+function matchesDevice(row: AuditQueryRow): boolean {
     if (filters.devices.length === 0) return true;
     const ids: string[] = [];
     if (row.shelly_id) ids.push(row.shelly_id);
-    if (row.device_id) ids.push(row.device_id);
+    if (row.device_id != null) ids.push(String(row.device_id));
     if (row.shelly_ids) ids.push(...row.shelly_ids);
     return ids.some((id) => filters.devices.includes(id));
 }
 
-function matchesMethod(row: AuditRow): boolean {
+function matchesMethod(row: AuditQueryRow): boolean {
     if (filters.methods.length === 0) return true;
     return !!row.method && filters.methods.includes(row.method);
+}
+
+function matchesPageFilters(row: AuditQueryRow): boolean {
+    return (
+        matchesSeverity(row) &&
+        matchesSearch(row) &&
+        matchesUser(row) &&
+        matchesDevice(row) &&
+        matchesMethod(row)
+    );
 }
 
 function formatTimestamp(value: string | number) {
@@ -564,109 +658,90 @@ function formatTimestamp(value: string | number) {
     return formatTime(d);
 }
 
-function _formatParams(value: unknown) {
-    if (typeof value === 'string') return value;
-    try {
-        return JSON.stringify(value, null, 2);
-    } catch {
-        return String(value);
-    }
-}
-
-interface AuthzAuditEntry {
-    id: string;
-    actor_id: string;
-    action: string;
-    target_type: string;
-    target_id: string;
-    payload: Record<string, unknown> | null;
-    created_at: string;
-}
-
-// Coerce authz_audit rows into AuditRow so the table stays source-agnostic.
-function authzToAuditRow(e: AuthzAuditEntry): AuditRow {
+// Everything one AI call wrote: any time, any event type, system log only.
+function callSearch(correlationId: string): AuditSearch {
     return {
-        id: Number.parseInt(e.id.replace(/[^0-9]/g, '').slice(0, 12), 10) || 0,
-        ts: e.created_at,
-        event_type: 'authz',
-        username: e.actor_id,
-        method: e.action,
-        success: true,
-        params: {target_type: e.target_type, target_id: e.target_id, ...(e.payload ?? {})}
+        query: {correlationId, limit: AUDIT_PAGE_SIZE, offset: offset.value},
+        includeSystem: true,
+        includeAuthz: false
+    };
+}
+
+function logSearch(): AuditSearch {
+    const agentKeyId = agentKeyFilter.value || undefined;
+    return {
+        query: {
+            from: new Date(filters.from).toISOString(),
+            to: new Date(filters.to).toISOString(),
+            eventTypes: activeEventTypes.value,
+            agentKeyId,
+            limit: AUDIT_PAGE_SIZE,
+            offset: offset.value
+        },
+        includeSystem: filters.sources.includes('system'),
+        // Authz rows carry no AI key, so a key filter leaves them out.
+        includeAuthz: filters.sources.includes('authz') && !agentKeyId
     };
 }
 
 async function runSearch(resetOffset: boolean) {
     if (!isValid.value) return;
     if (resetOffset) offset.value = 0;
-    isSearching.value = true;
-    searchError.value = '';
     hasSearched.value = true;
-    const from = new Date(filters.from).toISOString();
-    const to = new Date(filters.to).toISOString();
-    const wantSystem = filters.sources.includes('system');
-    const wantAuthz = filters.sources.includes('authz');
-    try {
-        const [sysRes, authzRes] = await Promise.all([
-            wantSystem
-                ? sendRPC<{items: AuditRow[]; has_more?: boolean}>(
-                      'FLEET_MANAGER',
-                      'Audit.Query',
-                      {
-                          from,
-                          to,
-                          eventTypes: activeEventTypes.value,
-                          limit: AUDIT_PAGE_SIZE,
-                          offset: offset.value
-                      }
-                  )
-                : Promise.resolve({items: [], has_more: false}),
-            wantAuthz
-                ? sendRPC<{items: AuthzAuditEntry[]; total?: number}>(
-                      'FLEET_MANAGER',
-                      'authz_audit.list',
-                      {from, to, limit: AUDIT_PAGE_SIZE, offset: offset.value}
-                  )
-                : Promise.resolve({items: [], total: 0})
-        ]);
-        const sysItems = sysRes?.items ?? [];
-        const authzItems = (authzRes?.items ?? []).map(authzToAuditRow);
-        const merged = [...sysItems, ...authzItems];
-        rows.value = merged.filter(
-            (r) =>
-                matchesSeverity(r) &&
-                matchesSearch(r) &&
-                matchesUser(r) &&
-                matchesDevice(r) &&
-                matchesMethod(r)
-        );
-        // has_more tracks only the system-audit page; authz pages independently.
-        hasMore.value = Boolean(sysRes?.has_more);
-    } catch (err: any) {
-        searchError.value = `Search failed: ${err?.message || String(err)}`;
-        rows.value = [];
-        hasMore.value = false;
-    } finally {
-        isSearching.value = false;
+    const callId = callFilter.value;
+    const result = await auditLog.search(
+        callId ? callSearch(callId) : logSearch()
+    );
+    if (!result) {
+        if (auditLog.searchError) {
+            rows.value = [];
+            hasMore.value = false;
+        }
+        return;
     }
+    rows.value = callId ? result.rows : result.rows.filter(matchesPageFilters);
+    hasMore.value = result.hasMore;
+    shownCallId.value = callId;
+}
+
+async function openCall(row: AuditQueryRow) {
+    if (!row.correlation_id) return;
+    detailRow.value = null;
+    filters.correlationId = row.correlation_id;
+    await runSearch(true);
+}
+
+async function filterByKey(row: AuditQueryRow) {
+    if (!row.agent_key_id) return;
+    detailRow.value = null;
+    filters.correlationId = '';
+    filters.agentKeyId = row.agent_key_id;
+    await runSearch(true);
+}
+
+async function leaveCallView() {
+    filters.correlationId = '';
+    shownCallId.value = '';
+    rows.value = [];
+    hasSearched.value = false;
+    await runSearch(true);
 }
 
 async function prevPage() {
     const prev = offset.value;
     offset.value = Math.max(0, offset.value - AUDIT_PAGE_SIZE);
     await runSearch(false);
-    if (searchError.value) offset.value = prev;
+    if (auditLog.searchError) offset.value = prev;
 }
 
 async function nextPage() {
     const prev = offset.value;
     offset.value += AUDIT_PAGE_SIZE;
     await runSearch(false);
-    if (searchError.value) offset.value = prev;
+    if (auditLog.searchError) offset.value = prev;
 }
 
 async function generateExport() {
-    isGenerating.value = true;
     downloadInfo.value = null;
     errorMessage.value = '';
 
@@ -674,56 +749,32 @@ async function generateExport() {
     const toTs = parseDateTimeLocal(filters.to);
     if (fromTs === null || toTs === null) {
         errorMessage.value = 'Enter a valid date range';
-        isGenerating.value = false;
         return;
     }
     if (fromTs > toTs) {
         errorMessage.value = '"From" must be earlier than or equal to "To"';
-        isGenerating.value = false;
         return;
     }
 
-    try {
-        const result = await sendRPC<DownloadInfo>(
-            'FLEET_MANAGER',
-            'Audit.Export',
-            {
-                from: new Date(filters.from).toISOString(),
-                to: new Date(filters.to).toISOString(),
-                eventTypes: activeEventTypes.value
-            }
-        );
-        downloadInfo.value = result;
-    } catch (error: any) {
-        errorMessage.value = `Failed to generate export: ${error?.message || String(error)}`;
-    } finally {
-        isGenerating.value = false;
-    }
+    downloadInfo.value = await auditLog.exportAudit({
+        from: new Date(filters.from).toISOString(),
+        to: new Date(filters.to).toISOString(),
+        eventTypes: activeEventTypes.value
+    });
 }
 
 async function downloadExport() {
     if (!downloadInfo.value) return;
-
-    isDownloading.value = true;
     errorMessage.value = '';
-
-    try {
-        const ticketResponse = await apiClient.post<{downloadUrl: string}>(
-            downloadInfo.value.downloadTicketUrl ||
-                `/api/audit-log/download-ticket/${encodeURIComponent(downloadInfo.value.filename)}`
-        );
-        const link = document.createElement('a');
-        link.href = ticketResponse.data.downloadUrl;
-        link.download = downloadInfo.value.filename;
-        link.rel = 'noopener';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    } catch (error: any) {
-        errorMessage.value = `Failed to download export: ${error?.message || String(error)}`;
-    } finally {
-        isDownloading.value = false;
-    }
+    const url = await auditLog.mintDownloadUrl(downloadInfo.value);
+    if (!url) return;
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = downloadInfo.value.filename;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
 
 // Default to last 7 days.
@@ -839,5 +890,24 @@ void usersStore.fetchUsers();
     color: var(--color-text-tertiary);
     font-size: var(--type-caption);
     font-style: italic;
+}
+.audit-agent-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin-left: var(--space-2);
+    padding: var(--space-0-5) var(--space-2);
+    border: var(--space-px) solid var(--color-border-default);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-secondary);
+    font-size: var(--type-caption);
+    font-weight: var(--font-semibold);
+    white-space: nowrap;
+}
+.audit-detail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--gap-xs);
 }
 </style>

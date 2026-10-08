@@ -1,8 +1,11 @@
 <template>
     <p class="rra">
-        When <strong class="rra__part">{{ trigger }}</strong>
-        on <strong class="rra__part">{{ scope }}</strong>,
-        notify <strong class="rra__part">{{ channel }}</strong>.
+        Fires when <strong class="rra__part">{{ trigger }}</strong
+        ><template v-if="scopeLabel">
+            on <strong class="rra__part">{{ scopeLabel }}</strong></template
+        ><template v-if="channelLabel">
+            , notifying <strong class="rra__part">{{ channelLabel }}</strong></template
+        >.
     </p>
 </template>
 
@@ -14,13 +17,14 @@ import {describeRuleConfig} from '@/helpers/ruleSentence';
 const props = defineProps<{
     kind: AlertRuleKind;
     config: Record<string, unknown>;
+    /** Omit until the user has actually chosen. The sentence then states only
+     *  what has been decided, instead of asserting "every device" and "nobody
+     *  yet" on a step where neither has been asked. */
     scopeLabel?: string;
     channelLabel?: string;
 }>();
 
 const trigger = computed(() => describeRuleConfig(props.kind, props.config));
-const scope = computed(() => props.scopeLabel || 'these devices');
-const channel = computed(() => props.channelLabel || 'your channels');
 </script>
 
 <style scoped>

@@ -8,9 +8,11 @@
 // Env-var names are unchanged from the previous flat shape; the JS
 // surface moved from `tuning.<flatKey>` to `tuning.<namespace>.<field>`.
 
+import {availableParallelism} from 'node:os';
 import type {ObsLevel} from '../modules/observability/types';
 import {AC_MIN_VOLTAGE_DEFAULT} from '../types/api/componentPower';
-import {peekDeploymentMode} from './deploymentMode';
+import {readContainerResourcesCached} from './containerResources';
+import {isSharedSaasDeploymentMode, peekDeploymentMode} from './deploymentMode';
 import {
     envBool,
     envCsv,
@@ -20,9 +22,58 @@ import {
     envIntRange,
     envStr
 } from './envReader';
+import {httpPortFromEnv} from './runtimeEnv';
+
+// availableParallelism() reports host cores, not the container cpu cap.
+export function effectiveCpuCount(): number {
+    const {cpuLimitCores} = readContainerResourcesCached();
+    return cpuLimitCores && cpuLimitCores > 0
+        ? Math.max(1, Math.floor(cpuLimitCores))
+        : availableParallelism();
+}
+
+export function defaultEnergyRollupWorkers(
+    availableCpus = effectiveCpuCount()
+): number {
+    return availableCpus >= 4 ? 2 : 1;
+}
+
+// Outbox pool: concurrency plus room for graphile cron and reclaim connections.
+const OUTBOX_POOL_HEADROOM = 2;
+
+// Two shared-pool connections (one for background, one kept for users), plus
+// the outbox's headroom and a worker.
+const MIN_DB_CONNECTIONS = 5;
+
+// Reproduces the pool sizes that shipped before this became one budget.
+const DEFAULT_DB_CONNECTIONS = 37;
+
+// Delivery is a minority of the work and its pool stops growing once it has
+// enough workers to keep the queue moving.
+const OUTBOX_SHARE = 0.2;
+const OUTBOX_POOL_MAX_SHARE = 10;
+
+// Background work may use every shared-pool connection but these, so a user
+// request never queues behind it. A pool of one has nothing to spare.
+function readDbForegroundReserve(sharedPoolMax: number): number {
+    const spare = sharedPoolMax - 1;
+    const chosen = envInt('FM_DB_FOREGROUND_RESERVE', Math.min(1, spare), 0);
+    if (chosen > spare) {
+        throw new RangeError(
+            `FM_DB_FOREGROUND_RESERVE=${chosen} leaves background work no ` +
+                `connection in a shared pool of ${sharedPoolMax}. Set it to ` +
+                `${spare} or lower, or raise FM_DB_CONNECTIONS.`
+        );
+    }
+    return chosen;
+}
 
 export interface TuningConfig {
     alert: {
+        /** System health checks: how often the product looks at its own counters, ms. 0 disables. */
+        systemHealthSweepMs: number;
+        /** Rejected meter blocks waiting before the system health alert fires. */
+        systemHealthRejectedBlocksMin: number;
         /** AlertEngine per-org rules cache max orgs (default: 1000) */
         rulesCacheMax: number;
         /** AlertEngine rules cache TTL in ms (default: 3600000 = 1h) */
@@ -37,6 +88,7 @@ export interface TuningConfig {
         subjectCacheTtlMs: number;
         /** Alert grouping — wait for siblings after first alert before first notify (default: 60s). */
         groupWaitSec: number;
+        immediateSeverities: readonly string[];
         /** Alert grouping — min delay between subsequent batches for same group (default: 300s). */
         groupIntervalSec: number;
         /** Alert grouping — renotify unresolved group every (default: 14400s = 4h). */
@@ -55,20 +107,61 @@ export interface TuningConfig {
         sweepIntervalSec: number;
         /** Master switch for the RuleSweep loop (default true). */
         sweepEnabled: boolean;
+        /** Least age of remembered alert state before it is read again (default 300000). */
+        stateRecheckMinMs: number;
+        /** Random spread added to that age so re-reads do not bunch up (default 600000). */
+        stateRecheckSpreadMs: number;
         /** Grace added to a heartbeat window before a miss (default 15s). */
         sweepEvalDelaySec: number;
+        /** Devices scheduled together by the periodic alert sweep. */
+        sweepBatchSize: number;
+        /** Maximum concurrent device evaluations in the periodic alert sweep. */
+        sweepConcurrency: number;
+        /** Stop scheduling new alert evaluations after this tick budget. */
+        sweepMaxDurationMs: number;
+        /** Most alert fires committed in one transaction (default 200). */
+        fireBatchMaxRows: number;
+        /** Longest an alert fire waits for others to share its transaction, ms (default 200). */
+        fireBatchTickMs: number;
     };
     mcp: {
         /** CSV allowlist of X-MCP-Client names; empty means allow all. */
         readonly allowedClients: string;
-        /** Per-user MCP read budget per minute (default 60). */
+        /** Per-user MCP read budget per minute, previews included (default 600). */
         readonly readsPerMin: number;
-        /** Per-user MCP write budget per minute (default 10). */
+        /** Per-user MCP budget per minute for calls that change data (default 60). */
         readonly writesPerMin: number;
         /** fm_read array row cap (default 200). */
         readonly readMaxRows: number;
         /** fm_read envelope byte cap (default 262144). */
         readonly readMaxBytes: number;
+        /** Seconds to wait for a human to answer an elicitation (default 120). */
+        readonly elicitTimeoutSec: number;
+        /**
+         * Seconds a single tool call may run before the server gives up
+         * (default 90). Without a deadline an unresponsive device pends past
+         * the client's own cutoff and the socket dies with no JSON-RPC error
+         * at all, which reads to the operator as "MCP is broken".
+         */
+        readonly toolTimeoutSec: number;
+        /** Minutes an idle elicitation session survives (default 60). */
+        readonly sessionTtlMin: number;
+        /** Cap on concurrent elicitation sessions (default 500). */
+        readonly maxSessions: number;
+        /** Minutes a remembered approval stays valid (default 60). */
+        readonly standingApprovalTtlMin: number;
+        /** Cap on remembered approvals held at once (default 1000). */
+        readonly maxStandingApprovals: number;
+        /** Retry-After seconds when sign-in could not be checked (default 5). */
+        readonly authRetryAfterSec: number;
+        /** Every MCP credential acts at the read level when true (default false). */
+        readonly readOnly: boolean;
+        /** MCP device reads in flight per tenant, all instances (default 16). */
+        readonly deviceReadsInFlight: number;
+        /** MCP device writes in flight per tenant, all instances (default 4). */
+        readonly deviceWritesInFlight: number;
+        /** Seconds before a device command slot never given back expires (default 300). */
+        readonly deviceCommandSlotTtlSec: number;
     };
     audit: {
         /** Audit log batch flush interval in ms (default: 2000) */
@@ -93,7 +186,7 @@ export interface TuningConfig {
         persistedErrorMessageMaxChars: number;
         /** Redis Stream key for audit overflow (BoundedQueue spill target). */
         overflowStreamKey: string;
-        /** Audit overflow stream MAXLEN ~. */
+        /** Hard capacity for accepted audit overflow entries; never trims. */
         overflowMaxlen: number;
         /** Min ms between XLEN saturation probes after a spill — surfaces
          *  approximate-MAXLEN trim loss without an XLEN per append. */
@@ -115,6 +208,23 @@ export interface TuningConfig {
          *  (default daily). Honors each group's auditRetentionDays. */
         sweepIntervalMs: number;
     };
+    baseline: {
+        enabled: boolean;
+        intervalMs: number;
+        windowDays: number;
+        minWeeks: number;
+        graduateWeeks: number;
+        weekendDows: readonly number[];
+        runFromHour: number;
+        runToHour: number;
+        deviceBatchSize: number;
+        maxTickDurationMs: number;
+        minRecomputeIntervalMs: number;
+        residualDays: number;
+        cusumK: number;
+        cusumH: number;
+        minResidualDays: number;
+    };
     deviceEvents: {
         /** Persist device events through Redis Stream instead of direct queue. */
         redisFirst: boolean;
@@ -122,7 +232,7 @@ export interface TuningConfig {
         redisShadow: boolean;
         /** Redis stream key for durable device-event history. */
         streamKey: string;
-        /** Device-event stream MAXLEN ~. */
+        /** Hard capacity for accepted device-event entries; never trims. */
         streamMaxlen: number;
         /** Device-event stream TTL in ms. */
         streamTtlMs: number;
@@ -130,6 +240,10 @@ export interface TuningConfig {
         streamSaturationCheckMs: number;
         /** XREADGROUP COUNT for the device-event drainer. */
         drainerBatchSize: number;
+        /** Maximum time to collect more Redis entries before one DB write. */
+        drainerBatchWindowMs: number;
+        /** Maximum event rows in one PostgreSQL call. */
+        drainerMaxRowsPerCall: number;
         /** XREADGROUP BLOCK ms for the device-event drainer. */
         drainerBlockMs: number;
         /** Device-event drainer retry backoff. */
@@ -145,6 +259,37 @@ export interface TuningConfig {
         queueHardMax: number;
         /** Batch-insert write retries before drop (default: 3). */
         maxRetries: number;
+    };
+    virtualCapture: {
+        /**
+         * Keep classified Shelly X / XT1 virtual-component readings in the
+         * forever sensor rollup. Off leaves them in `device.status` only, which
+         * expires after 24 hours and costs no storage cardinality. The rollup
+         * has no retention policy and `kind` is a compression segment, so an
+         * admitted reading cannot be taken back out: this switch is the way to
+         * stop a bad classification without a redeploy.
+         */
+        rollup: boolean;
+    };
+    sensorCapture: {
+        /** Persist sensor history through Redis Stream instead of direct PostgreSQL calls. */
+        redisFirst: boolean;
+        /** Redis stream key for durable numeric and discrete sensor history. */
+        streamKey: string;
+        /** Hard capacity for accepted sensor batches; accepted history is never trimmed. */
+        streamMaxlen: number;
+        /** Sensor stream TTL in ms. */
+        streamTtlMs: number;
+        /** Min ms between sensor stream saturation probes. */
+        streamSaturationCheckMs: number;
+        /** XREADGROUP COUNT for the sensor-history drainer. */
+        drainerBatchSize: number;
+        /** XREADGROUP BLOCK ms for the sensor-history drainer. */
+        drainerBlockMs: number;
+        /** Sensor-history drainer retry backoff. */
+        drainerRetryMs: number;
+        /** Delivery count past which malformed sensor entries are dropped. */
+        drainerPoisonDeliveries: number;
     };
     backup: {
         /** Max chars accepted for a backup name (default 200). */
@@ -173,6 +318,13 @@ export interface TuningConfig {
         /** Per-device BLE discovery cache cap — keyed by untrusted device-reported
          *  BLE addr; LRU evicted so spoofed broadcasts can't grow it (default: 256). */
         discoveryCacheMax: number;
+        /** BLE discovery scan window in seconds (default: 30, the firmware
+         *  default). A gateway only reports what it hears while scanning, and
+         *  idle BLU devices beacon minutes to hours apart (BTHomeData), so a
+         *  short window reads as "no devices found". */
+        discoveryDurationSec: number;
+        /** A BLU heard longer ago than this is forgotten by the scan list (default: 900). */
+        discoveryTtlSec: number;
     };
     controlPlaneContract: {
         /** Enables the admin-only sanitized deploy manifest API. */
@@ -203,14 +355,30 @@ export interface TuningConfig {
         grafanaSchemaVersionWrite: number;
         /** Device state persist debounce in ms (default: 5000) */
         persistDebounceMs: number;
+        persistRoutineDebounceMs: number;
     };
     db: {
-        /** PostgreSQL pool max connections (default 60). */
+        /** Max connections of the one pool for stored procedures and SQL (default 30). */
         poolMax: number;
+        /** graphile-worker pool max connections (outbox concurrency + headroom). */
+        outboxPoolMax: number;
+        /** Shared-pool connections that only user requests may take (default 1). */
+        foregroundReserve: number;
         /** PostgreSQL connect timeout ms (default 7000). */
         connectionTimeoutMs: number;
-        /** PostgreSQL idle-connection timeout ms (default 15000). */
+        /** PostgreSQL idle-connection timeout ms (default 60000). */
         idleTimeoutMs: number;
+        /** Idle shared-pool connections never closed for idleness (default 2). */
+        poolMin: number;
+        /** Seconds before a pooled connection is replaced (default 1800). */
+        maxLifetimeSeconds: number;
+        /** Most shared-pool connections one kind of work may hold at once. */
+        workloadCaps: {
+            alert: number;
+            energy: number;
+            'em-sync': number;
+            rollup: number;
+        };
         /** entity.list early-exit page cap (default: 500) */
         entityListPageMax: number;
         /** True under `node --test`. Drives test-only error messages. */
@@ -257,6 +425,10 @@ export interface TuningConfig {
         metricsPollMs: number;
         /** Stale window before a 'processing' delivery_job is reclaimed (default: 300000ms / 5 min). */
         outboxReclaimStaleMs: number;
+        /** Age after which a never-claimed alert delivery_job gets its group re-flushed (default: 10 min). */
+        outboxUnflushedStaleMs: number;
+        /** Oldest never-claimed alert delivery_job the re-flush sweep still sends (default: 24 h). */
+        outboxUnflushedMaxAgeMs: number;
         /** Consecutive delivery failures before an endpoint is auto-disabled (default: 10) */
         endpointAutoOffThreshold: number;
         /** OutboxWorker secret cache size (default 1000). */
@@ -287,6 +459,8 @@ export interface TuningConfig {
         initSlotMaxHoldMs: number;
         /** Init-slot watchdog sweep interval in ms (default 10000). */
         initSlotWatchdogIntervalMs: number;
+        /** Re-load interval for saved devices missing from memory in ms, 0 disables (default 300000). */
+        loadReconcileMs: number;
         /** A build slower than this is counted slow and logged (default 3000). */
         buildSlowLogMs: number;
         /** Min gap between slow-build log lines, so a storm can't flood (default 2000). */
@@ -337,6 +511,13 @@ export interface TuningConfig {
         callMaxParamsBytes: number;
         /** Max method-name length in Device.Call (default: 160) */
         callMaxMethodLength: number;
+        /**
+         * Most devices one CallMany may touch. A bulk action is one human
+         * approval, so the cap is what bounds the blast radius of a single
+         * "yes" — keep it small enough that an operator can still read the
+         * list they are approving.
+         */
+        callManyMaxDevices: number;
         /** Per-sender device-access cache size, LRU evicted (default: 5000) */
         accessCacheMax: number;
         /** EWMA smoothing factor for per-device event rate (0..1). */
@@ -368,16 +549,18 @@ export interface TuningConfig {
         allowConnectorChildAutoApproval: boolean;
         /** Default org for record-only unknown /shelly Waiting Room rows. */
         defaultOrganizationId: string;
-        /** Observed Shelly transport behind the deployment proxy. */
-        shellyWsTransport: 'ws' | 'wss';
         /** Public Shelly WS base URL used in generated setup bundles. */
         publicWsBaseUrl: string;
         /** Trusted proxy header carrying a verified client cert fingerprint. */
         trustedCertFingerprintHeader: string;
         /** Trusted proxy header carrying a verified client cert PEM. */
         trustedCertPemHeader: string;
-        /** CIDRs whose forwarded cert/XFF headers are trusted. Empty = none. */
+        /** CIDRs whose forwarded address and scheme headers are trusted. Empty = none. */
         trustedProxyCidrs: string[];
+        /** Device mTLS on: forwarded certificate headers may be read from a trusted proxy. */
+        mtlsEnabled: boolean;
+        /** A proxy fronts /shelly: refuse to start without a trusted proxy list. */
+        proxyRequired: boolean;
         /** Token byte length before base64url encoding. */
         tokenBytes: number;
         /** Default token validity in days. */
@@ -432,6 +615,8 @@ export interface TuningConfig {
         rejectionRetentionDays: number;
         /** Connection history retention in days. */
         connectionHistoryRetentionDays: number;
+        /** Days to keep a setup record after it expires. */
+        setupSessionRetentionDays: number;
         /** Max sanitized Waiting Room sample bytes. */
         waitingRoomSampleMaxBytes: number;
         /** Max sanitized rejection detail bytes. */
@@ -448,6 +633,24 @@ export interface TuningConfig {
         cleanupIntervalMs: number;
         /** Trusted-device read cache TTL in seconds (min 5). */
         trustCacheTtlSec: number;
+        /** Days ahead to list credentials that are about to end. */
+        credentialExpiryWarnDays: number;
+        /** Run the token rotation worker on the leader node. */
+        rotationEnabled: boolean;
+        /** Rotation worker poll interval in ms. */
+        rotationPollMs: number;
+        /** Devices told to restart at the same time. */
+        rotationInFlight: number;
+        /** Minutes a sent job may stay silent before it is marked waiting. */
+        rotationWaitCapMinutes: number;
+        /** Max identities in one Rotation.Start call. */
+        rotationBatchMax: number;
+        /** Timeout for the Ws.SetConfig call over the live socket, ms. */
+        rotationSendTimeoutMs: number;
+    };
+    devSimulation: {
+        /** Stable tenant identity used to spread simulator connections and telemetry. */
+        instanceSeed: string;
     };
     electricityMaps: {
         /** ElectricityMaps API key. Empty disables real-time intensity — static LBM curve used instead. */
@@ -466,6 +669,8 @@ export interface TuningConfig {
         idMapCacheMax: number;
         /** Energy.Query DB row limit (default: 2 000 000) */
         queryRowLimit: number;
+        /** Energy.Query fan-out parallelism cap (default: 4) */
+        queryConcurrency: number;
         /** Fraction of day-side consumption assumed shiftable to night (0-1, default 0.2) */
         touShiftableFraction: number;
         /** Grid emission factor in g CO₂e per kWh (location-based marginal, default 414) */
@@ -476,8 +681,20 @@ export interface TuningConfig {
         timeShiftMaxKWh: number;
         /** Redis stream key buffering em-sync writes ahead of the PG drainer. */
         emSyncStreamKey: string;
-        /** EM sync stream MAXLEN ~. */
+        /** Most entries the EM push buffer holds; a backstop behind the byte budget. */
         emSyncStreamMaxlen: number;
+        /** Byte budget of the EM push buffer: entry and key list bytes. */
+        emSyncStreamMaxBytes: number;
+        /** Pause history pulls at this percentage of the push buffer byte budget. */
+        emSyncCatchupHighWaterPct: number;
+        /** Pause history pulls while the oldest push buffer entry is older (ms). */
+        emSyncPullPauseAgeMs: number;
+        /** Meter history pages fetched or being stored per em-sync DB connection. */
+        emSyncPullPagesPerConnection: number;
+        /** Longest a live push waits to share one Redis call with others (ms). */
+        emSyncPushBatchMs: number;
+        /** Most push records in one Redis call; a full batch is sent at once. */
+        emSyncPushBatchMaxEntries: number;
         /** EM sync stream TTL in ms. */
         emSyncStreamTtlMs: number;
         /** Min ms between EM sync stream saturation probes. */
@@ -488,14 +705,62 @@ export interface TuningConfig {
         emSyncDrainerBlockMs: number;
         /** EM sync drainer retry backoff. */
         emSyncDrainerRetryMs: number;
-        /** Max raw rows per EM sync DB write. */
+        /** Max raw rows per EM sync DB write (drainer batch or pulled page piece). */
         emSyncDrainerMaxRows: number;
         /** Delivery count past which poison EM sync rows are dropped. */
         emSyncDrainerPoisonDeliveries: number;
         /** EM sync stream health probe interval in ms. */
         emSyncHealthIntervalMs: number;
+        /** Live em_stats and lifetime flush cadence in ms. */
+        emStatsFlushIntervalMs: number;
+        /** Live em_stats rows held in memory while PostgreSQL is failing. */
+        emStatsRetryMaxRows: number;
+        /** Longest wait between live em_stats flush retries in ms. */
+        emStatsRetryBackoffMaxMs: number;
+        /** Live em_stats rows older than this are dropped, in seconds. */
+        emStatsMaxAgeS: number;
+        /** Redis stream that holds live em_stats rows over the memory budget. */
+        emStatsOverflowStreamKey: string;
+        /** Entries the em_stats overflow stream keeps before refusing spills. */
+        emStatsOverflowMaxlen: number;
+        /** Max live em_stats rows per database write; whole devices per write. */
+        emStatsWriteMaxRows: number;
+        /** Dirty 15-minute buckets recomputed per transaction. */
+        rollupBatchSize: number;
+        /** Concurrent rollup consumers. Auto: 2 with >=4 CPUs, otherwise 1. */
+        rollupWorkers: number;
+        /** Idle delay for the rollup worker. */
+        rollupPollMs: number;
+        /** Maximum adaptive delay while the rollup queue remains empty. */
+        rollupIdlePollMaxMs: number;
+        /** Rollup backlog health probe interval. */
+        rollupHealthIntervalMs: number;
+        /** Maximum report wait for affected rollups. */
+        rollupReportWaitMs: number;
+        /** Report retry delay while affected rollups are pending. */
+        rollupReportPollMs: number;
+        /** Days held rollup work keeps its raw rows before it is abandoned with evidence. */
+        heldCorrectionDays: number;
+        /** Wait after an open EM record bucket ends before it closes on the timer
+         *  when the meter's records have not passed its end (ms). */
+        rollupCloseGraceMs: number;
+        /** Wait before a late EM record makes a closed bucket due again, so a
+         *  burst of late minutes gives one recompute (ms). */
+        rollupLateDebounceMs: number;
+        /** Hours a live EM debug capture runs before it stops and deletes its frames (1-24). */
+        liveDebugHours: number;
         /** Device ids scoped into multi-block em-data catch-up. Empty = all devices. */
         catchupDeviceIds: readonly number[];
+        /** Percent of the EM sync slot budget reserved for catch-up, so a
+         *  fleet-wide backlog can never take the slots live-edge devices
+         *  need (default 25). */
+        emSyncCatchupSharePct: number;
+        /** First retry delay after a failed EM sync pass, seconds (default 2). */
+        emSyncFailBackoffBaseS: number;
+        /** Ceiling on the failed-pass retry back-off, seconds. At the default
+         *  a permanently failing device costs exactly what a healthy one
+         *  costs (default 540 = the gentle cadence). */
+        emSyncFailBackoffMaxS: number;
     };
     firmware: {
         /** Expired temporary firmware sweep interval ms (default 900000). */
@@ -557,12 +822,16 @@ export interface TuningConfig {
         rateLimitGeneralRpm: number;
         /** RPC rate limit for admin/write methods (default: 30) */
         rateLimitExpensiveRpm: number;
+        /** RPC rate limit for billing quotes (default: 120). */
+        rateLimitBillingRpm: number;
         /** RPC methods charged against the expensive bucket. CSV env. */
         rateLimitExpensiveMethods: readonly string[];
         /** Per-org overlay for general methods, rpm (default 2400). */
         rateLimitOrgGeneralRpm: number;
         /** Per-org overlay for expensive methods, rpm (default 300). */
         rateLimitOrgExpensiveRpm: number;
+        /** Per-org overlay for billing quotes, rpm (default 1200). */
+        rateLimitOrgBillingRpm: number;
         /** FM container HTTP listen port (default 7011). */
         fmPort: number;
         /** /api/switch per-caller cap/min (default: 60) */
@@ -577,8 +846,6 @@ export interface TuningConfig {
         rateLimitDeviceProxyPerMin: number;
         /** /api/docs per-caller cap/min (default: 30) */
         rateLimitApiDocsPerMin: number;
-        /** /api/zitadel/actions/(user|grant)-removed per-caller cap/min, shared bucket (default: 100) */
-        rateLimitZitadelWebhookPerMin: number;
         /** /metrics per-caller cap/min (default: 120 — 2/sec, well above typical Prometheus 15s interval) */
         rateLimitMetricsPerMin: number;
         /** Unauthenticated Bearer scoped-token attempts on /rpc, per-IP cap/min (default: 60) */
@@ -599,6 +866,8 @@ export interface TuningConfig {
         compressionLevel: number;
         /** HTTP/HTTPS socket idle timeout in ms (default: 120000) */
         httpSocketTimeoutMs: number;
+        /** Idle keep-alive close in ms; above the proxy's idle timeout (default: 95000) */
+        keepAliveTimeoutMs: number;
         /** OS-level TCP keepalive initial delay in ms (0 disables). */
         tcpKeepaliveDelayMs: number;
     };
@@ -651,6 +920,10 @@ export interface TuningConfig {
         sessionAllowedOrigins: readonly string[];
         /** SameSite mode for the Node-RED editor auth cookie. */
         sessionCookieSameSite: 'strict' | 'lax' | 'none';
+        /** Editor session idle timeout, slid on each use, in ms (default: 900000). */
+        sessionTtlMs: number;
+        /** Editor session hard lifetime in ms (default: 43200000). */
+        sessionMaxAgeMs: number;
         /** Node-RED user directory (default: ./cfg/node-red) */
         userDir: string;
         /** Node-RED admin UI port (default: 1880) */
@@ -659,12 +932,28 @@ export interface TuningConfig {
         host: string;
         /** Node-RED flow file name (default: flows_fleetmanager.json) */
         flowFile: string;
+        /** The one organization this Node-RED belongs to (empty = unlocked). */
+        orgId: string;
+        /** TCP keepalive for proxied editor WebSockets in ms (default: 30000). */
+        wsKeepAliveMs: number;
+        /** How long an admin-API flow read is reused in ms (default: 10000). */
+        flowCacheMs: number;
+        /** Health probe timeout in ms (default: 3000). */
+        statusTimeoutMs: number;
+        /** How long a health probe answer is reused in ms (default: 15000). */
+        statusCacheMs: number;
+        /** Max webhook body in bytes (default: 262144). */
+        hookBodyLimitBytes: number;
+        /** Webhook calls per client IP per minute (default: 60). */
+        hookRateLimitPerMin: number;
     };
     observability: {
         /** Observability metric Map key cap, LRU (default: 5000) */
         metricKeyLimit: number;
         /** Boot level 0-3 when observability is on (FM_OBSERVABILITY_LEVEL). */
         bootLevel: ObsLevel;
+        /** Per-phase DB call timing and the 1 ms loop-delay window (FM_DB_TIMING_DETAIL). */
+        dbTimingDetail: boolean;
         /** Max distinct label-sets per labeled metric before excess folds into
          *  an `overflow="other"` bucket, bounding device-influenced labels so
          *  they can't evict core series (default: 200). */
@@ -751,8 +1040,8 @@ export interface TuningConfig {
         workerStackSizeMb: number;
     };
     redis: {
-        /** Per-org group-version cache cap. LRU; eviction is safe. */
-        groupVersionCacheMax: number;
+        /** Per-domain organization-version cache cap. LRU; eviction is safe. */
+        organizationVersionCacheMax: number;
         /** Max orgs in CommandSender shared group cache, LRU evicted (default: 500) */
         groupCacheMaxOrgs: number;
         /** Per-step deadline on Registry.warmCache() entry. */
@@ -767,6 +1056,8 @@ export interface TuningConfig {
         connectTimeoutMs: number;
         /** Per-command timeout for the shared Redis client in ms (0 = disabled). */
         commandTimeoutMs: number;
+        /** Max pending best-effort writes on one Redis client. 0 disables. */
+        writeMaxPendingCommands: number;
         /** Redis cmd-client max retries per request. */
         cmdRetriesMax: number;
         /** Redis sub-client backoff ceiling in ms. */
@@ -785,7 +1076,7 @@ export interface TuningConfig {
         leaderRenewMs: number;
     };
     report: {
-        /** Report pre-flight row cap (default: 2 000 000) */
+        /** Streaming report pre-flight row cap. 0 disables it. */
         maxRows: number;
         /** Report pre-flight device cap. */
         maxDevices: number;
@@ -797,12 +1088,22 @@ export interface TuningConfig {
          * is a separate, bounded statement that fits statement_timeout.
          */
         chunkTargetRows: number;
+        /** PostgreSQL work_mem used only by a streamed report transaction. */
+        queryWorkMemMb: number;
         /** Max generated energy-report date range in days. */
         maxRangeDays: number;
         /** Write generated report CSV artifacts as .csv.gz. */
         gzipCsvArtifacts: boolean;
         /** Max rows retained for generated report HTML summaries. */
         htmlSummaryMaxRows: number;
+        /** Max rows rendered into a formatted PDF; CSV remains complete. */
+        pdfSummaryMaxRows: number;
+        /** Hard byte ceiling for one generated PDF artifact. */
+        pdfMaxBytes: number;
+        /** Operational render-time budget for one formatted PDF. */
+        pdfRenderBudgetMs: number;
+        /** Simultaneous PDF render workers. Each is a core drawing flat out. */
+        pdfRenderConcurrency: number;
         /** Report artifact owner/job TTL in days. */
         artifactTtlDays: number;
         /** Report artifact cleanup sweep interval in ms. */
@@ -821,6 +1122,12 @@ export interface TuningConfig {
         maxConcurrentInits: number;
         /** Max concurrent energy meter data syncs (default: 40) */
         maxConcurrentEmSyncs: number;
+        /** Max concurrent EM sync CHANNELS. Additive ceiling beside
+         *  maxConcurrentEmSyncs, which counts devices — a device syncs every
+         *  channel in parallel, so the real peak is devices x channels
+         *  (default 120 = 40 x the triphase worst case, so it binds nothing
+         *  at the defaults and exists to make the ceiling honest). */
+        maxConcurrentEmSyncChannels: number;
         /** An in-flight EM sync held longer than this is flagged stuck (default 90000). */
         emSyncStuckMs: number;
         /** Hard deadline on a single EM sync, aborted past this so its
@@ -856,6 +1163,8 @@ export interface TuningConfig {
         streamTtlMs: number;
         /** XREADGROUP COUNT for the device snapshot drainer. */
         drainerBatchSize: number;
+        /** Maximum time to collect a device-snapshot micro-batch after the first entry. */
+        drainerBatchWindowMs: number;
         /** XREADGROUP BLOCK ms for the device snapshot drainer. */
         drainerBlockMs: number;
         /** Device snapshot drainer retry backoff. */
@@ -890,6 +1199,8 @@ export interface TuningConfig {
         overflowTtlMs: number;
         /** XREADGROUP COUNT for the status drainer. */
         drainerBatchSize: number;
+        /** Maximum time to collect more Redis entries before one DB write. */
+        drainerBatchWindowMs: number;
         /** Max rows per coalesced PG batch when draining status overflow. */
         drainerMaxRowsPerCall: number;
         /** XREADGROUP BLOCK ms for the status drainer. */
@@ -904,9 +1215,9 @@ export interface TuningConfig {
         getAllMaxBytes: number;
     };
     energyClassifier: {
-        /** Toggle between legacy regex path ('v1') and new classifier module ('v2'). Default 'v1' until parity verified. */
+        /** Toggle between legacy regex path ('v1') and new classifier module ('v2'). Default 'v2': v1 drops BTHome and virtual-component readings. */
         version: 'v1' | 'v2';
-        /** When v1 active: also run v2 in shadow and record parity counters. */
+        /** Only read when version is 'v1': runs v2 in shadow and records parity counters. Inert on the 'v2' default. */
         parallelWrite: boolean;
         /** AC-mains detection threshold (V): with no frequency, a reading at/above this stays AC, below it is DC. Default 90 (covers US 120 V / EU 230 V). */
         acMinVoltage: number;
@@ -926,6 +1237,18 @@ export interface TuningConfig {
         profileMatchMaxPerSlot: number;
         /** Max orgs retained in the in-process BLU-snapshot cache; oldest is evicted at the cap (default: 256). */
         bluCacheMaxOrgs: number;
+        /** Process-wide BLU gateway reconcile concurrency. 0 = unlimited. */
+        bluReconcileConcurrency: number;
+        /** BLU gateway reconciles allowed to wait behind the active set. */
+        bluReconcileQueueMax: number;
+        /** Primary silence before one secondary gateway may own telemetry. */
+        bluTelemetryFailoverMs: number;
+        /** Max BLU telemetry owners retained by the in-process Redis-disabled fallback. */
+        bluTelemetryOwnerMaxEntries: number;
+        /** Max gateway route maps retained in the process-local BLU cache. */
+        bluRouteCacheMaxGateways: number;
+        /** Days a BLU sample's gateway provenance row is kept (default: 30). */
+        bluProvenanceRetentionDays: number;
         /** Profile.SuggestFromDevice cap on ranked candidates returned (default: 10). */
         profileSuggestMaxResults: number;
     };
@@ -936,6 +1259,8 @@ export interface TuningConfig {
         ttlMs: number;
         /** Waiting Room TTL sweep interval in ms (default: 60000 = 1 min) */
         sweepMs: number;
+        /** Re-read of devices whose access left ALLOWED, so a lost deny signal still closes the socket, in ms (default: 60000 = 1 min) */
+        accessRecheckMs: number;
         /** Waiting Room update event debounce in ms (default: 300) */
         notifyDebounceMs: number;
         /** Waiting Room pre-approval enrichment RPC timeout in ms (default: 5000) */
@@ -972,6 +1297,10 @@ export interface TuningConfig {
         probeConcurrency: number;
         /** Heavier gather (paginated components) fan-out cap (default: 50). */
         gatherConcurrency: number;
+        /** Hard deadline for one waiting-room gather, every probe RPC included (default: 60000). Under device.initSlotMaxHoldMs so a joined gather settles before the slot watchdog fires. */
+        gatherMaxMs: number;
+        /** How long an accept waits on an in-flight gather before abandoning it and probing fresh (default: 60000, the gather's own deadline, so a slow but healthy gather is never cut short by the accept). */
+        gatherTakeMs: number;
     };
     ws: {
         /** Max queued WS messages from a client during token validation (default: 25) */
@@ -986,6 +1315,12 @@ export interface TuningConfig {
         streamMaxlen: number;
         /** Per-session WS stream TTL in ms (refreshed on append). */
         streamTtlMs: number;
+        /** How long a closed socket's events keep being captured for resume, ms (default: 60000). */
+        resumeGraceMs: number;
+        /** Max events captured while a socket is away; more forces resync (default: 5000). */
+        resumeMaxEvents: number;
+        /** Wait for a pong from a still-bound socket before taking over its session, ms (default: 2000). */
+        resumeProbeMs: number;
         /** XREADGROUP BLOCK ms for the WS sender loop. */
         streamBlockMs: number;
         /** XREADGROUP COUNT for the WS sender loop. */
@@ -1008,16 +1343,22 @@ export interface TuningConfig {
         heartbeatMissedPongsMax: number;
         /** Clients pinged per heartbeat tick batch (default: 100) */
         heartbeatChunkSize: number;
-        /** Enable WS per-message-deflate (RFC 7692). */
+        /** Enable per-message-deflate (RFC 7692) on the device /shelly socket. */
         compressionEnabled: boolean;
-        /** zlib compression level (1=fastest, 9=best). */
+        /** zlib compression level (1=fastest, 9=best), both sockets. */
         compressionLevel: number;
-        /** zlib memory level (1-9). Lower = less RAM per stream. */
+        /** zlib memory level (1-9), both sockets. Lower = less RAM per stream. */
         compressionMemLevel: number;
-        /** Skip compression for payloads smaller than this (bytes). */
+        /** Device socket: skip compression for payloads smaller than this (bytes). */
         compressionThreshold: number;
-        /** Cap on concurrent zlib threadpool ops. */
+        /** Process-wide cap on concurrent zlib threadpool ops (ws shares one limiter). */
         compressionConcurrencyLimit: number;
+        /** Enable per-message-deflate on the browser/API client socket (default: true). */
+        clientCompressionEnabled: boolean;
+        /** Client socket: skip compression for payloads smaller than this (bytes, default: 4096). */
+        clientCompressionThreshold: number;
+        /** Client socket: server deflate window bits (9-15, default: 14); bounds RAM per socket. */
+        clientCompressionWindowBits: number;
         /** Max accepted WS upgrades per second per cohort (0 disables). */
         admissionMaxPerSec: number;
         /** How often the pending-filter sweep runs (ms). */
@@ -1040,6 +1381,10 @@ export interface TuningConfig {
         introspectionTimeoutMs: number;
         /** Scoped-PAT user cache TTL in ms — tunable independent of Zitadel introspection. Default 30000. */
         scopedPatCacheTtlMs: number;
+        /** Identity-provider account state cache TTL in ms — the longest a deactivated or locked user's credentials keep working when no webhook arrives (default 30000, range 1000..300000). */
+        accountStateTtlMs: number;
+        /** Account state cache max entries, one per user (default 10000). */
+        accountStateCacheMax: number;
         /** User.BulkRotatePATs concurrency cap (default 5). */
         patBulkRotateConcurrency: number;
         /** User/token cache sweep interval ms (default 60000). */
@@ -1074,7 +1419,9 @@ const DEFAULT_RATE_LIMIT_EXPENSIVE_METHODS = [
     'User.CreateScopedPAT',
     'User.RotateToken',
     'Location.SearchPlaces',
+    'Location.ReverseGeocode',
     'Location.BackfillGeo',
+    'Location.BackfillGeography',
     // Fans out to up to 500 device round-trips per call — keep it off the
     // general pool so it can't be used to amplify load.
     'Firmware.CheckForUpdateBulk'
@@ -1116,15 +1463,13 @@ export function readDeviceIngressEnforcementMode(): DeviceIngressEnforcementMode
     );
 }
 
-function readDeviceIngressShellyWsTransport(): 'ws' | 'wss' {
-    const raw = envStr('FM_DEVICE_INGRESS_SHELLY_WS_TRANSPORT', 'ws')
-        .trim()
-        .toLowerCase();
-    return raw === 'wss' ? 'wss' : 'ws';
+// The transport is observed per socket now; the old global label is ignored.
+export function deviceIngressTransportSettingIgnored(): boolean {
+    // Plain process.env: this is not a knob, only a leftover to warn about.
+    return (process.env.FM_DEVICE_INGRESS_SHELLY_WS_TRANSPORT ?? '').length > 0;
 }
 
 export function readDeviceIngressTrustedProxyCidrs(): string[] {
-    if (!envBool('FM_DEVICE_MTLS', false)) return [];
     return [...envCsv('FM_DEVICE_INGRESS_TRUSTED_PROXY_CIDRS', [])];
 }
 
@@ -1151,18 +1496,101 @@ export function readRedisDisabledFlag(): boolean {
     );
 }
 
-function readTuning(): TuningConfig {
+// Exported so a test can read the shape under a different environment; the
+// module-level `tuning` below is frozen at first load.
+export function readTuning(): TuningConfig {
+    // Read once so concurrency and the pool sized from it never disagree.
+    // FM_DB_CONNECTIONS is the entire budget for this instance, because the
+    // number of connections is the only thing PostgreSQL counts. It used to
+    // take two knobs to say that: FM_DB_POOL_MAX sized one pool but bought two,
+    // and FM_OUTBOX_CONCURRENCY was a connection count wearing another name,
+    // since an outbox worker holds its connection for the whole task. A tenant
+    // asking for 3 spent 10, and on a shared host that surprise multiplies by
+    // tenant count.
+    //
+    // It is a ceiling, not a throughput dial. Past roughly (cores * 2), more
+    // connections make PostgreSQL slower rather than faster: each one is a
+    // backend process competing for locks and buffers. A tenant that needs more
+    // work done wants a pooler in front, not a bigger number here.
+    //
+    // The outbox is sized by what it needs: headroom for graphile's cron and
+    // reclaim plus its workers. Stored procedures and plain SQL share one pool
+    // with the rest, so background work can use any free connection but the
+    // foreground reserve. The outbox keeps the odd connection the old two
+    // equal halves left over, so delivery concurrency is unchanged: 37 gives
+    // 30 + 7, and 10 gives 6 + 4.
+    const connectionBudget = envInt(
+        'FM_DB_CONNECTIONS',
+        DEFAULT_DB_CONNECTIONS,
+        MIN_DB_CONNECTIONS
+    );
+    const outboxTarget = Math.min(
+        OUTBOX_POOL_MAX_SHARE,
+        Math.max(
+            OUTBOX_POOL_HEADROOM + 1,
+            Math.round(connectionBudget * OUTBOX_SHARE)
+        )
+    );
+    const outboxPoolMax =
+        outboxTarget + ((connectionBudget - outboxTarget) % 2);
+    const sharedPoolMax = connectionBudget - outboxPoolMax;
+    const outboxConcurrency = outboxPoolMax - OUTBOX_POOL_HEADROOM;
+    // These knobs are for turning fan-out DOWN. A value above the pool is not a
+    // larger setting, it is the same throughput plus a queue, so refuse it out
+    // loud instead of quietly capping and leaving the operator's number a lie.
+    const sharedPoolBound = (name: string, preferred: number): number => {
+        const chosen = envInt(name, Math.min(preferred, sharedPoolMax), 1);
+        if (chosen > sharedPoolMax) {
+            throw new Error(
+                `${name}=${chosen} exceeds the shared pool of ${sharedPoolMax} ` +
+                    `derived from FM_DB_CONNECTIONS=${connectionBudget}. Each of ` +
+                    'these workers holds a pool connection for its whole task, ' +
+                    'so the surplus can only wait on the pool. Set ' +
+                    `${name} to ${sharedPoolMax} or lower, or raise the budget.`
+            );
+        }
+        return chosen;
+    };
     return {
         alert: {
-            dispatchConcurrency: envInt('FM_ALERT_DISPATCH_CONCURRENCY', 8, 1),
+            dispatchConcurrency: sharedPoolBound(
+                'FM_ALERT_DISPATCH_CONCURRENCY',
+                8
+            ),
             groupFlushTimeoutMs: envInt(
                 'FM_GROUP_FLUSH_TIMEOUT_MS',
                 30_000,
                 1000
             ),
             sweepIntervalSec: envInt('FM_ALERT_SWEEP_INTERVAL_SEC', 30, 5),
+            systemHealthSweepMs: envInt('FM_SYSTEM_HEALTH_SWEEP_MS', 60_000, 0),
+            systemHealthRejectedBlocksMin: envInt(
+                'FM_SYSTEM_HEALTH_REJECTED_BLOCKS_MIN',
+                1,
+                1
+            ),
             sweepEnabled: envBool('FM_ALERT_SWEEP_ENABLED', true),
+            // Bounds how long a missed peer signal can leave alert state wrong.
+            stateRecheckMinMs: envInt(
+                'FM_ALERT_STATE_RECHECK_MIN_MS',
+                300_000,
+                10_000
+            ),
+            stateRecheckSpreadMs: envInt(
+                'FM_ALERT_STATE_RECHECK_SPREAD_MS',
+                600_000,
+                0
+            ),
             sweepEvalDelaySec: envInt('FM_ALERT_SWEEP_EVAL_DELAY_SEC', 15, 0),
+            sweepBatchSize: envInt('FM_ALERT_SWEEP_BATCH_SIZE', 200, 1),
+            sweepConcurrency: sharedPoolBound('FM_ALERT_SWEEP_CONCURRENCY', 12),
+            sweepMaxDurationMs: envInt(
+                'FM_ALERT_SWEEP_MAX_DURATION_MS',
+                25_000,
+                1_000
+            ),
+            fireBatchMaxRows: envInt('FM_ALERT_FIRE_BATCH_MAX_ROWS', 200, 1),
+            fireBatchTickMs: envInt('FM_ALERT_FIRE_BATCH_TICK_MS', 200, 0),
             rulesCacheMax: envInt('FM_ALERT_RULES_CACHE_MAX', 1_000, 10),
             rulesCacheTtlMs: envInt(
                 'FM_ALERT_RULES_CACHE_TTL_MS',
@@ -1186,6 +1614,11 @@ function readTuning(): TuningConfig {
                 1_000
             ),
             groupWaitSec: envInt('FM_ALERT_GROUP_WAIT_SEC', 60, 1),
+            // Severities whose first notification skips the group wait.
+            // Repeats keep groupIntervalSec so a flapping alert cannot spam.
+            immediateSeverities: envCsv('FM_ALERT_IMMEDIATE_SEVERITIES', [
+                'critical'
+            ]),
             groupIntervalSec: envInt('FM_ALERT_GROUP_INTERVAL_SEC', 300, 60),
             repeatIntervalSec: envInt(
                 'FM_ALERT_REPEAT_INTERVAL_SEC',
@@ -1210,17 +1643,80 @@ function readTuning(): TuningConfig {
             get allowedClients() {
                 return envStr('FM_MCP_ALLOWED_CLIENTS', '');
             },
+            // Sized against the per-user RPC budget every MCP call also
+            // spends (rateLimitGeneralRpm 600 / rateLimitExpensiveRpm 30):
+            // a lower MCP ceiling would throttle an agent harder than a plain
+            // script doing identical work, and a higher one would never bind.
             get readsPerMin() {
-                return envInt('FM_MCP_READS_PER_MIN', 60);
+                return envInt('FM_MCP_READS_PER_MIN', 600);
             },
             get writesPerMin() {
-                return envInt('FM_MCP_WRITES_PER_MIN', 10);
+                return envInt('FM_MCP_WRITES_PER_MIN', 60);
             },
             get readMaxRows() {
                 return envInt('FM_MCP_READ_MAX_ROWS', 200);
             },
             get readMaxBytes() {
                 return envInt('FM_MCP_READ_MAX_BYTES', 256 * 1024);
+            },
+            // How long the server waits for a human to answer an elicitation
+            // before treating it as cancelled (never as approved).
+            get toolTimeoutSec() {
+                return envInt('FM_MCP_TOOL_TIMEOUT_SEC', 90, 5);
+            },
+            get elicitTimeoutSec() {
+                return envInt('FM_MCP_ELICIT_TIMEOUT_SEC', 120, 5);
+            },
+            // Sessions exist only to correlate elicitation answers, so they are
+            // short-lived and capped.
+            get sessionTtlMin() {
+                return envInt('FM_MCP_SESSION_TTL_MIN', 60, 1);
+            },
+            get maxSessions() {
+                return envInt('FM_MCP_MAX_SESSIONS', 500, 1);
+            },
+            // A remembered "yes" for one method on one subject. Short by
+            // design: standing approvals skip the prompt, never the policy.
+            get standingApprovalTtlMin() {
+                return envInt('FM_MCP_STANDING_APPROVAL_TTL_MIN', 60, 1);
+            },
+            get maxStandingApprovals() {
+                return envInt('FM_MCP_MAX_STANDING_APPROVALS', 1000, 1);
+            },
+            // An identity provider outage answers 503 with this hint, so MCP
+            // clients retry instead of starting a new sign-in.
+            get authRetryAfterSec() {
+                return envInt('FM_MCP_AUTH_RETRY_AFTER_SEC', 5, 1);
+            },
+            // Incident switch: writes hidden and refused for every key at once.
+            get readOnly() {
+                return envBool('FM_MCP_READ_ONLY', false);
+            },
+            // Bounds hardware load from agents; per-device pending RPCs cap below it.
+            get deviceReadsInFlight() {
+                return envIntRange(
+                    'FM_MCP_DEVICE_READS_IN_FLIGHT',
+                    16,
+                    1,
+                    1000
+                );
+            },
+            get deviceWritesInFlight() {
+                return envIntRange(
+                    'FM_MCP_DEVICE_WRITES_IN_FLIGHT',
+                    4,
+                    1,
+                    1000
+                );
+            },
+            // Above the device RPC timeout, so only a lost release waits it out.
+            get deviceCommandSlotTtlSec() {
+                return envIntRange(
+                    'FM_MCP_DEVICE_COMMAND_SLOT_TTL_SEC',
+                    300,
+                    30,
+                    3600
+                );
             }
         },
         audit: {
@@ -1277,6 +1773,36 @@ function readTuning(): TuningConfig {
                 60_000
             )
         },
+        baseline: {
+            enabled: envBool('FM_BASELINE_ENABLED', true),
+            intervalMs: envInt('FM_BASELINE_INTERVAL_MS', 3_600_000, 60_000),
+            windowDays: envIntRange('FM_BASELINE_WINDOW_DAYS', 56, 14, 180),
+            minWeeks: envIntRange('FM_BASELINE_MIN_WEEKS', 3, 2, 26),
+            graduateWeeks: envIntRange('FM_BASELINE_GRADUATE_WEEKS', 8, 1, 53),
+            weekendDows: envIntCsv('FM_BASELINE_WEEKEND_DOWS', [0, 6], 0),
+            runFromHour: envIntRange('FM_BASELINE_RUN_FROM_HOUR', 1, 0, 23),
+            runToHour: envIntRange('FM_BASELINE_RUN_TO_HOUR', 5, 1, 24),
+            deviceBatchSize: envInt('FM_BASELINE_DEVICE_BATCH', 200, 10),
+            maxTickDurationMs: envInt(
+                'FM_BASELINE_MAX_TICK_MS',
+                600_000,
+                60_000
+            ),
+            minRecomputeIntervalMs: envInt(
+                'FM_BASELINE_MIN_RECOMPUTE_MS',
+                20 * 3_600_000,
+                3_600_000
+            ),
+            residualDays: envIntRange('FM_BASELINE_RESIDUAL_DAYS', 2, 1, 14),
+            cusumK: envFloat('FM_BASELINE_CUSUM_K', 0.5, 0.1, 3),
+            cusumH: envFloat('FM_BASELINE_CUSUM_H', 5, 2, 20),
+            minResidualDays: envIntRange(
+                'FM_BASELINE_MIN_RESIDUAL_DAYS',
+                7,
+                3,
+                60
+            )
+        },
         deviceEvents: {
             redisFirst: envBool('FM_DEVICE_EVENTS_REDIS_FIRST', false),
             redisShadow: envBool('FM_DEVICE_EVENTS_REDIS_SHADOW', false),
@@ -1300,6 +1826,16 @@ function readTuning(): TuningConfig {
                 'FM_DEVICE_EVENTS_DRAINER_BATCH_SIZE',
                 100,
                 1
+            ),
+            drainerBatchWindowMs: envInt(
+                'FM_DEVICE_EVENTS_DRAINER_BATCH_WINDOW_MS',
+                250,
+                0
+            ),
+            drainerMaxRowsPerCall: envInt(
+                'FM_DEVICE_EVENTS_DRAINER_MAX_ROWS_PER_CALL',
+                5_000,
+                100
             ),
             drainerBlockMs: envInt(
                 'FM_DEVICE_EVENTS_DRAINER_BLOCK_MS',
@@ -1328,6 +1864,51 @@ function readTuning(): TuningConfig {
                 1_000
             ),
             maxRetries: envInt('FM_DEVICE_EVENTS_MAX_RETRIES', 3, 1)
+        },
+        virtualCapture: {
+            rollup: envBool('FM_VIRTUAL_CAPTURE_ROLLUP', true)
+        },
+        sensorCapture: {
+            redisFirst: envBool('FM_SENSOR_CAPTURE_REDIS_FIRST', false),
+            streamKey: envStr(
+                'FM_SENSOR_CAPTURE_STREAM_KEY',
+                'fm:sensor-capture'
+            ),
+            streamMaxlen: envInt(
+                'FM_SENSOR_CAPTURE_STREAM_MAXLEN',
+                500_000,
+                100
+            ),
+            streamTtlMs: envInt(
+                'FM_SENSOR_CAPTURE_STREAM_TTL_MS',
+                86_400_000,
+                60_000
+            ),
+            streamSaturationCheckMs: envInt(
+                'FM_SENSOR_CAPTURE_STREAM_SATURATION_CHECK_MS',
+                5_000,
+                0
+            ),
+            drainerBatchSize: envInt(
+                'FM_SENSOR_CAPTURE_DRAINER_BATCH_SIZE',
+                500,
+                1
+            ),
+            drainerBlockMs: envInt(
+                'FM_SENSOR_CAPTURE_DRAINER_BLOCK_MS',
+                1_000,
+                50
+            ),
+            drainerRetryMs: envInt(
+                'FM_SENSOR_CAPTURE_DRAINER_RETRY_MS',
+                5_000,
+                100
+            ),
+            drainerPoisonDeliveries: envInt(
+                'FM_SENSOR_CAPTURE_DRAINER_POISON_DELIVERIES',
+                10,
+                2
+            )
         },
         backup: {
             nameMaxLength: envInt('FM_BACKUP_NAME_MAX_LENGTH', 200, 1),
@@ -1370,7 +1951,13 @@ function readTuning(): TuningConfig {
                 500,
                 100
             ),
-            discoveryCacheMax: envInt('FM_BTHOME_DISCOVERY_CACHE_MAX', 256, 1)
+            discoveryCacheMax: envInt('FM_BTHOME_DISCOVERY_CACHE_MAX', 256, 1),
+            discoveryDurationSec: envInt(
+                'FM_BTHOME_DISCOVERY_DURATION_SEC',
+                30,
+                1
+            ),
+            discoveryTtlSec: envInt('FM_BTHOME_DISCOVERY_TTL_SEC', 900, 60)
         },
         controlPlaneContract: {
             exportSanitizedManifest: envBool(
@@ -1414,16 +2001,38 @@ function readTuning(): TuningConfig {
                 39,
                 1
             ),
-            persistDebounceMs: envInt('FM_PERSIST_DEBOUNCE_MS', 5_000, 500)
+            persistDebounceMs: envInt('FM_PERSIST_DEBOUNCE_MS', 5_000, 500),
+            // Snapshot saves for changes that only move measured numbers.
+            persistRoutineDebounceMs: envInt(
+                'FM_PERSIST_ROUTINE_DEBOUNCE_MS',
+                60_000,
+                500
+            )
         },
         db: {
-            poolMax: envInt('FM_DB_POOL_MAX', 60, 1),
+            poolMax: sharedPoolMax,
+            outboxPoolMax,
+            foregroundReserve: readDbForegroundReserve(sharedPoolMax),
             connectionTimeoutMs: envInt(
                 'FM_DB_CONNECT_TIMEOUT_MS',
                 7_000,
                 1_000
             ),
-            idleTimeoutMs: envInt('FM_DB_IDLE_TIMEOUT_MS', 15_000, 1_000),
+            // Reopening a connection every 10-15 s idle costs a backend fork
+            // and auth; HikariCP and PgBouncer keep idle connections 600 s.
+            idleTimeoutMs: envInt('FM_DB_IDLE_TIMEOUT_MS', 60_000, 1_000),
+            poolMin: Math.min(envInt('FM_DB_POOL_MIN', 2, 0), sharedPoolMax),
+            maxLifetimeSeconds: envInt('FM_DB_POOL_MAX_LIFETIME_S', 1_800, 0),
+            // Ceilings, not reservations: free connections still serve others.
+            workloadCaps: {
+                alert: sharedPoolBound('FM_DB_ALERT_MAX_CONNECTIONS', 2),
+                energy: sharedPoolBound(
+                    'FM_DB_ENERGY_WRITE_MAX_CONNECTIONS',
+                    1
+                ),
+                'em-sync': sharedPoolBound('FM_DB_EMSYNC_MAX_CONNECTIONS', 1),
+                rollup: sharedPoolBound('FM_DB_ROLLUP_MAX_CONNECTIONS', 1)
+            },
             entityListPageMax: envInt('FM_ENTITY_LIST_DB_PAGE_MAX', 500, 10),
             // Node sets NODE_TEST_CONTEXT under `node --test`; the value
             // varies ("child"|"parent"|...) so presence alone is the signal.
@@ -1440,7 +2049,7 @@ function readTuning(): TuningConfig {
                 300_000,
                 5_000
             ),
-            outboxConcurrency: envInt('FM_OUTBOX_CONCURRENCY', 5),
+            outboxConcurrency,
             outboxMaxAttempts: envInt('FM_OUTBOX_MAX_ATTEMPTS', 6),
             outboxReclaimIntervalMinutes: envInt(
                 'FM_OUTBOX_RECLAIM_INTERVAL_MIN',
@@ -1524,6 +2133,19 @@ function readTuning(): TuningConfig {
                 30 * 60_000,
                 30_000
             ),
+            // Upper bounds keep both inside the stored procedure's INTEGER ms.
+            outboxUnflushedStaleMs: envIntRange(
+                'FM_OUTBOX_UNFLUSHED_STALE_MS',
+                10 * 60_000,
+                60_000,
+                24 * 60 * 60_000
+            ),
+            outboxUnflushedMaxAgeMs: envIntRange(
+                'FM_OUTBOX_UNFLUSHED_MAX_AGE_MS',
+                24 * 60 * 60_000,
+                60_000,
+                7 * 24 * 60 * 60_000
+            ),
             endpointAutoOffThreshold: envInt(
                 'FM_ENDPOINT_AUTOOFF_THRESHOLD',
                 10,
@@ -1583,6 +2205,7 @@ function readTuning(): TuningConfig {
                 10_000,
                 1_000
             ),
+            loadReconcileMs: envInt('FM_DEVICE_LOAD_RECONCILE_MS', 300_000, 0),
             buildSlowLogMs: envInt('FM_DEVICE_BUILD_SLOW_LOG_MS', 3_000, 0),
             buildSlowLogIntervalMs: envInt(
                 'FM_DEVICE_BUILD_SLOW_LOG_INTERVAL_MS',
@@ -1669,6 +2292,11 @@ function readTuning(): TuningConfig {
                 200,
                 10
             ),
+            callManyMaxDevices: envInt(
+                'FM_DEVICE_CALL_MANY_MAX_DEVICES',
+                50,
+                1
+            ),
             callMaxParamsBytes: envInt(
                 'FM_DEVICE_CALL_MAX_PARAMS_BYTES',
                 64 * 1024,
@@ -1701,9 +2329,10 @@ function readTuning(): TuningConfig {
             // hidden by default (tenant isolation) unless set explicitly.
             defaultOrganizationId: envStr(
                 'FM_DEVICE_INGRESS_DEFAULT_ORGANIZATION_ID',
-                peekDeploymentMode() === 'shared_saas' ? '' : 'default'
+                isSharedSaasDeploymentMode(peekDeploymentMode())
+                    ? ''
+                    : 'default'
             ),
-            shellyWsTransport: readDeviceIngressShellyWsTransport(),
             publicWsBaseUrl: envStr('FM_DEVICE_INGRESS_PUBLIC_WS_BASE_URL', ''),
             trustedCertFingerprintHeader: envStr(
                 'FM_DEVICE_INGRESS_TRUSTED_CERT_FINGERPRINT_HEADER',
@@ -1714,6 +2343,8 @@ function readTuning(): TuningConfig {
                 'X-Forwarded-Tls-Client-Cert'
             ),
             trustedProxyCidrs: readDeviceIngressTrustedProxyCidrs(),
+            mtlsEnabled: envBool('FM_DEVICE_MTLS', false),
+            proxyRequired: envBool('FM_DEVICE_INGRESS_PROXY_REQUIRED', false),
             tokenBytes: envInt('FM_DEVICE_INGRESS_TOKEN_BYTES', 32, 16),
             tokenValidityDays: envInt(
                 'FM_DEVICE_INGRESS_TOKEN_VALIDITY_DAYS',
@@ -1740,10 +2371,9 @@ function readTuning(): TuningConfig {
                 14,
                 1
             ),
-            credentialStageConcurrency: envInt(
+            credentialStageConcurrency: sharedPoolBound(
                 'FM_DEVICE_INGRESS_CREDENTIAL_STAGE_CONCURRENCY',
-                8,
-                1
+                8
             ),
             credentialStageTimeoutMs: envInt(
                 'FM_DEVICE_INGRESS_CREDENTIAL_STAGE_TIMEOUT_MS',
@@ -1773,14 +2403,16 @@ function readTuning(): TuningConfig {
                 500,
                 1
             ),
+            // Per-address limits are sized for one site behind one address,
+            // not for one device; identity and organization caps bound the rest.
             maxConnectionsPerIp: envInt(
                 'FM_DEVICE_INGRESS_MAX_CONNECTIONS_PER_IP',
-                50,
+                500,
                 1
             ),
             handshakesPerIpPerMinute: envInt(
                 'FM_DEVICE_INGRESS_HANDSHAKES_PER_IP_PER_MINUTE',
-                60,
+                600,
                 1
             ),
             reconnectIpKeyMax: envInt(
@@ -1795,12 +2427,12 @@ function readTuning(): TuningConfig {
             ),
             reconnectIpMaxPerWindow: envInt(
                 'FM_DEVICE_INGRESS_RECONNECT_IP_MAX_PER_WINDOW',
-                100,
+                1_000,
                 1
             ),
             reconnectIpBlockMs: envInt(
                 'FM_DEVICE_INGRESS_RECONNECT_IP_BLOCK_MS',
-                300_000,
+                60_000,
                 1_000
             ),
             handshakesPerOrgPerMinute: envInt(
@@ -1831,6 +2463,11 @@ function readTuning(): TuningConfig {
             connectionHistoryRetentionDays: envInt(
                 'FM_DEVICE_INGRESS_CONNECTION_HISTORY_RETENTION_DAYS',
                 180,
+                1
+            ),
+            setupSessionRetentionDays: envInt(
+                'FM_DEVICE_INGRESS_SETUP_SESSION_RETENTION_DAYS',
+                7,
                 1
             ),
             waitingRoomSampleMaxBytes: envInt(
@@ -1867,7 +2504,44 @@ function readTuning(): TuningConfig {
                 900_000,
                 60_000
             ),
-            trustCacheTtlSec: envInt('FM_DEVICE_TRUST_CACHE_TTL_SEC', 30, 5)
+            trustCacheTtlSec: envInt('FM_DEVICE_TRUST_CACHE_TTL_SEC', 30, 5),
+            credentialExpiryWarnDays: envInt(
+                'FM_DEVICE_INGRESS_CREDENTIAL_EXPIRY_WARN_DAYS',
+                30,
+                1
+            ),
+            rotationEnabled: envBool(
+                'FM_DEVICE_INGRESS_ROTATION_ENABLED',
+                true
+            ),
+            rotationPollMs: envInt(
+                'FM_DEVICE_INGRESS_ROTATION_POLL_MS',
+                5_000,
+                1_000
+            ),
+            rotationInFlight: envInt(
+                'FM_DEVICE_INGRESS_ROTATION_IN_FLIGHT',
+                5,
+                1
+            ),
+            rotationWaitCapMinutes: envInt(
+                'FM_DEVICE_INGRESS_ROTATION_WAIT_CAP_MINUTES',
+                10,
+                1
+            ),
+            rotationBatchMax: envInt(
+                'FM_DEVICE_INGRESS_ROTATION_BATCH_MAX',
+                200,
+                1
+            ),
+            rotationSendTimeoutMs: envInt(
+                'FM_DEVICE_INGRESS_ROTATION_SEND_TIMEOUT_MS',
+                15_000,
+                1_000
+            )
+        },
+        devSimulation: {
+            instanceSeed: envStr('FM_CLIENT_ID', 'shared')
         },
         electricityMaps: {
             apiKey: envStr('FM_ELECTRICITY_MAPS_API_KEY', ''),
@@ -1890,6 +2564,7 @@ function readTuning(): TuningConfig {
                 2_000_000,
                 10_000
             ),
+            queryConcurrency: sharedPoolBound('FM_ENERGY_QUERY_CONCURRENCY', 4),
             touShiftableFraction: envFloat(
                 'FM_ENERGY_TOU_SHIFTABLE_FRACTION',
                 0.2,
@@ -1911,6 +2586,40 @@ function readTuning(): TuningConfig {
             ),
             emSyncStreamKey: envStr('FM_EMSYNC_STREAM_KEY', 'fm:emsync:buffer'),
             emSyncStreamMaxlen: envInt('FM_EMSYNC_STREAM_MAXLEN', 2_000_000),
+            emSyncStreamMaxBytes: envInt(
+                'FM_EMSYNC_STREAM_MAX_BYTES',
+                128 * 1024 * 1024,
+                1024
+            ),
+            emSyncCatchupHighWaterPct: envIntRange(
+                'FM_EMSYNC_CATCHUP_HIGH_WATER_PCT',
+                75,
+                10,
+                95
+            ),
+            emSyncPullPauseAgeMs: envInt(
+                'FM_EMSYNC_PULL_PAUSE_AGE_MS',
+                60_000,
+                1_000
+            ),
+            emSyncPullPagesPerConnection: envIntRange(
+                'FM_EMSYNC_PULL_PAGES_PER_CONNECTION',
+                2,
+                1,
+                16
+            ),
+            emSyncPushBatchMs: envIntRange(
+                'FM_EMSYNC_PUSH_BATCH_MS',
+                100,
+                0,
+                1000
+            ),
+            emSyncPushBatchMaxEntries: envIntRange(
+                'FM_EMSYNC_PUSH_BATCH_MAX_ENTRIES',
+                500,
+                1,
+                5000
+            ),
             emSyncStreamTtlMs: envInt(
                 'FM_EMSYNC_STREAM_TTL_MS',
                 7 * 24 * 60 * 60 * 1000
@@ -1927,11 +2636,91 @@ function readTuning(): TuningConfig {
                 'FM_EMSYNC_DRAINER_POISON_DELIVERIES',
                 5
             ),
+            emStatsFlushIntervalMs: envInt(
+                'FM_EM_STATS_FLUSH_INTERVAL_MS',
+                120_000,
+                1_000
+            ),
+            emStatsRetryMaxRows: envInt(
+                'FM_EM_STATS_RETRY_MAX_ROWS',
+                500_000,
+                1_000
+            ),
+            emStatsRetryBackoffMaxMs: envInt(
+                'FM_EM_STATS_RETRY_BACKOFF_MAX_MS',
+                900_000,
+                1_000
+            ),
+            emStatsMaxAgeS: envInt('FM_EM_STATS_MAX_AGE_S', 7_200, 60),
+            emStatsOverflowStreamKey: envStr(
+                'FM_EM_STATS_OVERFLOW_STREAM_KEY',
+                'fm:em-stats:overflow'
+            ),
+            emStatsOverflowMaxlen: envInt(
+                'FM_EM_STATS_OVERFLOW_MAXLEN',
+                200_000,
+                100
+            ),
+            emStatsWriteMaxRows: envInt(
+                'FM_EM_STATS_WRITE_MAX_ROWS',
+                2_000,
+                100
+            ),
             emSyncHealthIntervalMs: envInt(
                 'FM_EMSYNC_HEALTH_INTERVAL_MS',
                 30_000
             ),
-            catchupDeviceIds: envIntCsv('FM_EMDATA_CATCHUP_DEVICE_IDS', [], 1)
+            rollupBatchSize: envInt('FM_EM_ROLLUP_BATCH_SIZE', 500, 1),
+            rollupWorkers: envIntRange(
+                'FM_EM_ROLLUP_WORKERS',
+                defaultEnergyRollupWorkers(),
+                1,
+                2
+            ),
+            rollupPollMs: envInt('FM_EM_ROLLUP_POLL_MS', 250, 25),
+            rollupIdlePollMaxMs: envInt(
+                'FM_EM_ROLLUP_IDLE_POLL_MAX_MS',
+                2_000,
+                25
+            ),
+            rollupHealthIntervalMs: envInt(
+                'FM_EM_ROLLUP_HEALTH_INTERVAL_MS',
+                30_000,
+                1_000
+            ),
+            rollupReportWaitMs: envInt('FM_EM_ROLLUP_REPORT_WAIT_MS', 5_000, 0),
+            rollupReportPollMs: envInt('FM_EM_ROLLUP_REPORT_POLL_MS', 100, 10),
+            heldCorrectionDays: envInt('FM_EM_HELD_CORRECTION_DAYS', 7, 1),
+            rollupCloseGraceMs: envIntRange(
+                'FM_EM_ROLLUP_CLOSE_GRACE_MS',
+                180_000,
+                0,
+                3_600_000
+            ),
+            rollupLateDebounceMs: envIntRange(
+                'FM_EM_ROLLUP_LATE_DEBOUNCE_MS',
+                30_000,
+                0,
+                3_600_000
+            ),
+            liveDebugHours: envIntRange('FM_EM_LIVE_DEBUG_HOURS', 4, 1, 24),
+            catchupDeviceIds: envIntCsv('FM_EMDATA_CATCHUP_DEVICE_IDS', [], 1),
+            emSyncCatchupSharePct: envIntRange(
+                'FM_EMDATA_CATCHUP_SHARE_PCT',
+                25,
+                5,
+                90
+            ),
+            emSyncFailBackoffBaseS: envInt(
+                'FM_EMDATA_FAIL_BACKOFF_BASE_S',
+                2,
+                1
+            ),
+            emSyncFailBackoffMaxS: envInt(
+                'FM_EMDATA_FAIL_BACKOFF_MAX_S',
+                540,
+                1
+            )
         },
         firmware: {
             tempCleanupIntervalMs: envInt(
@@ -2032,6 +2821,7 @@ function readTuning(): TuningConfig {
         http: {
             rateLimitGeneralRpm: envInt('FM_RATE_LIMIT_GENERAL_RPM', 600, 10),
             rateLimitExpensiveRpm: envInt('FM_RATE_LIMIT_EXPENSIVE_RPM', 30, 5),
+            rateLimitBillingRpm: envInt('FM_RATE_LIMIT_BILLING_RPM', 120, 5),
             rateLimitOrgGeneralRpm: envInt(
                 'FM_RATE_LIMIT_ORG_GENERAL_RPM',
                 6_000,
@@ -2042,11 +2832,16 @@ function readTuning(): TuningConfig {
                 300,
                 5
             ),
+            rateLimitOrgBillingRpm: envInt(
+                'FM_RATE_LIMIT_ORG_BILLING_RPM',
+                1_200,
+                5
+            ),
             rateLimitExpensiveMethods: envCsv(
                 'FM_RATE_LIMIT_EXPENSIVE_METHODS',
                 DEFAULT_RATE_LIMIT_EXPENSIVE_METHODS
             ),
-            fmPort: envInt('FM_HTTP_PORT', 7_011, 1),
+            fmPort: httpPortFromEnv(),
             rateLimitApiSwitchPerMin: envInt(
                 'FM_HTTP_RATELIMIT_API_SWITCH_PER_MIN',
                 60,
@@ -2075,11 +2870,6 @@ function readTuning(): TuningConfig {
             rateLimitApiDocsPerMin: envInt(
                 'FM_HTTP_RATELIMIT_API_DOCS_PER_MIN',
                 30,
-                1
-            ),
-            rateLimitZitadelWebhookPerMin: envInt(
-                'FM_HTTP_RATELIMIT_ZITADEL_WEBHOOK_PER_MIN',
-                100,
                 1
             ),
             rateLimitMetricsPerMin: envInt(
@@ -2122,6 +2912,12 @@ function readTuning(): TuningConfig {
             httpSocketTimeoutMs: envInt(
                 'FM_HTTP_SOCKET_TIMEOUT_MS',
                 120_000,
+                1_000
+            ),
+            // Traefik reuses idle upstream connections for 90 s; Fleet must close later or Traefik answers 502.
+            keepAliveTimeoutMs: envInt(
+                'FM_HTTP_KEEP_ALIVE_TIMEOUT_MS',
+                95_000,
                 1_000
             ),
             tcpKeepaliveDelayMs: envInt('FM_TCP_KEEPALIVE_DELAY_MS', 62_000, 0)
@@ -2200,10 +2996,43 @@ function readTuning(): TuningConfig {
                 []
             ),
             sessionCookieSameSite: readNodeRedCookieSameSite(),
+            // Above the editor's 60 s keepalive, so one late tick never ends it.
+            sessionTtlMs: envInt(
+                'FM_NODE_RED_SESSION_TTL_MS',
+                180_000,
+                120_000
+            ),
+            sessionMaxAgeMs: envInt(
+                'FM_NODE_RED_SESSION_MAX_AGE_MS',
+                43_200_000,
+                60_000
+            ),
             userDir: envStr('FM_NODE_RED_USER_DIR', './cfg/node-red'),
             port: envInt('FM_NODE_RED_PORT', 1880, 1),
             host: envStr('FM_NODE_RED_HOST', '0.0.0.0'),
-            flowFile: envStr('FM_NODE_RED_FLOW_FILE', 'flows_fleetmanager.json')
+            flowFile: envStr(
+                'FM_NODE_RED_FLOW_FILE',
+                'flows_fleetmanager.json'
+            ),
+            orgId: envStr('FM_NODE_RED_ORG_ID', '').trim(),
+            wsKeepAliveMs: envInt('FM_NODE_RED_WS_KEEPALIVE_MS', 30_000, 1_000),
+            flowCacheMs: envInt('FM_NODE_RED_FLOW_CACHE_MS', 10_000, 0),
+            statusTimeoutMs: envInt(
+                'FM_NODE_RED_STATUS_TIMEOUT_MS',
+                3_000,
+                100
+            ),
+            statusCacheMs: envInt('FM_NODE_RED_STATUS_CACHE_MS', 15_000, 0),
+            hookBodyLimitBytes: envInt(
+                'FM_NODE_RED_HOOK_BODY_LIMIT_BYTES',
+                262_144,
+                1
+            ),
+            hookRateLimitPerMin: envInt(
+                'FM_NODE_RED_HOOK_RATE_LIMIT_PER_MIN',
+                60,
+                1
+            )
         },
         observability: {
             authToken: envStr('FM_OBS_AUTH_TOKEN', ''),
@@ -2241,6 +3070,8 @@ function readTuning(): TuningConfig {
                 0,
                 3
             ) as ObsLevel,
+            // Off by default: the 1 ms loop timer costs 1-2% of a core.
+            dbTimingDetail: envBool('FM_DB_TIMING_DETAIL', false),
             labeledSeriesPerNameMax: envInt(
                 'FM_OBS_LABELED_SERIES_PER_NAME_MAX',
                 200,
@@ -2341,7 +3172,7 @@ function readTuning(): TuningConfig {
                 5000,
                 100
             ),
-            groupVersionCacheMax: envInt(
+            organizationVersionCacheMax: envInt(
                 'FM_GROUP_VERSION_CACHE_MAX',
                 50_000,
                 100
@@ -2355,6 +3186,11 @@ function readTuning(): TuningConfig {
                 100
             ),
             commandTimeoutMs: envInt('FM_REDIS_COMMAND_TIMEOUT_MS', 0, 0),
+            writeMaxPendingCommands: envInt(
+                'FM_REDIS_WRITE_MAX_PENDING_COMMANDS',
+                512,
+                0
+            ),
             cmdRetriesMax: envInt('FM_REDIS_CMD_RETRIES_MAX', 3, 1),
             subBackoffMaxMs: envInt('FM_REDIS_SUB_BACKOFF_MAX_MS', 5_000, 100),
             rateLimitEnabled: envBool('FM_XADD_RATE_LIMIT_ENABLED', false),
@@ -2370,14 +3206,8 @@ function readTuning(): TuningConfig {
             groupCacheMaxOrgs: envInt('FM_GROUP_CACHE_MAX_ORGS', 500, 10)
         },
         report: {
-            // Reports stream to gzip at constant memory and now read the
-            // 15-min rollup, so the cap guards DB time / file size, not RAM.
-            // Pre-flight row ceiling (sanity guard only — pagination handles
-            // size). 0 = unlimited. Default 2B comfortably covers per-phase
-            // fleet dumps (e.g. 1000 devices x 1y x 15-min x 3-tag voltage
-            // ~= 105M) while still bounding pathological requests; maxDevices +
-            // maxRangeDays are the real outer limits.
-            maxRows: envInt('FM_REPORT_MAX_ROWS', 2_000_000_000, 0),
+            // All report readers are streamed or return bounded aggregates.
+            maxRows: envInt('FM_REPORT_MAX_ROWS', 0, 0),
             maxDevices: envInt('FM_REPORT_MAX_DEVICES', 10_000, 1),
             streamChunkRows: envInt('FM_REPORT_STREAM_CHUNK_ROWS', 1_000, 10),
             chunkTargetRows: envInt(
@@ -2385,12 +3215,34 @@ function readTuning(): TuningConfig {
                 250_000,
                 10_000
             ),
+            queryWorkMemMb: envIntRange(
+                'FM_REPORT_QUERY_WORK_MEM_MB',
+                128,
+                1,
+                2_048
+            ),
             maxRangeDays: envInt('FM_REPORT_MAX_RANGE_DAYS', 365, 1),
             gzipCsvArtifacts: envBool('FM_REPORT_GZIP_CSV_ARTIFACTS', true),
             htmlSummaryMaxRows: envInt(
                 'FM_REPORT_HTML_SUMMARY_MAX_ROWS',
                 500,
                 1
+            ),
+            pdfSummaryMaxRows: envInt('FM_REPORT_PDF_SUMMARY_MAX_ROWS', 500, 1),
+            pdfMaxBytes: envInt(
+                'FM_REPORT_PDF_MAX_BYTES',
+                32 * 1024 * 1024,
+                1024 * 1024
+            ),
+            pdfRenderConcurrency: envInt(
+                'FM_REPORT_PDF_RENDER_CONCURRENCY',
+                2,
+                1
+            ),
+            pdfRenderBudgetMs: envInt(
+                'FM_REPORT_PDF_RENDER_BUDGET_MS',
+                30_000,
+                1_000
             ),
             artifactTtlDays: envInt('FM_REPORT_OWNERSHIP_TTL_DAYS', 30, 1),
             cleanupIntervalMs: envInt(
@@ -2406,6 +3258,11 @@ function readTuning(): TuningConfig {
         rpc: {
             maxConcurrentInits: envInt('FM_MAX_CONCURRENT_INITS', 100),
             maxConcurrentEmSyncs: envInt('FM_MAX_CONCURRENT_EM_SYNCS', 40),
+            maxConcurrentEmSyncChannels: envInt(
+                'FM_MAX_CONCURRENT_EM_SYNC_CHANNELS',
+                120,
+                1
+            ),
             emSyncStuckMs: envInt('FM_EM_SYNC_STUCK_MS', 90_000, 1_000),
             emSyncReclaimMs: envInt('FM_EM_SYNC_RECLAIM_MS', 120_000, 1_000),
             rpcTimeoutMs: envInt('FM_RPC_TIMEOUT_MS', 60_000, 1_000),
@@ -2446,6 +3303,11 @@ function readTuning(): TuningConfig {
                 'FM_DEVICE_SNAPSHOT_DRAINER_BATCH_SIZE',
                 100,
                 1
+            ),
+            drainerBatchWindowMs: envInt(
+                'FM_DEVICE_SNAPSHOT_DRAINER_BATCH_WINDOW_MS',
+                250,
+                0
             ),
             drainerBlockMs: envInt(
                 'FM_DEVICE_SNAPSHOT_DRAINER_BLOCK_MS',
@@ -2501,6 +3363,11 @@ function readTuning(): TuningConfig {
                 60_000
             ),
             drainerBatchSize: envInt('FM_STATUS_DRAINER_BATCH_SIZE', 100, 1),
+            drainerBatchWindowMs: envInt(
+                'FM_STATUS_DRAINER_BATCH_WINDOW_MS',
+                250,
+                0
+            ),
             drainerMaxRowsPerCall: envInt(
                 'FM_STATUS_DRAINER_MAX_ROWS_PER_CALL',
                 5_000,
@@ -2525,7 +3392,7 @@ function readTuning(): TuningConfig {
         },
         energyClassifier: {
             version:
-                envStr('FM_ENERGY_CLASSIFIER', 'v1') === 'v2' ? 'v2' : 'v1',
+                envStr('FM_ENERGY_CLASSIFIER', 'v2') === 'v1' ? 'v1' : 'v2',
             parallelWrite: envBool(
                 'FM_ENERGY_CLASSIFIER_PARALLEL_WRITE',
                 false
@@ -2553,6 +3420,36 @@ function readTuning(): TuningConfig {
                 1
             ),
             bluCacheMaxOrgs: envInt('FM_VIRTUAL_BLU_CACHE_MAX_ORGS', 256, 1),
+            bluReconcileConcurrency: envInt(
+                'FM_BLU_RECONCILE_CONCURRENCY',
+                0,
+                0
+            ),
+            bluReconcileQueueMax: envInt(
+                'FM_BLU_RECONCILE_QUEUE_MAX',
+                20_000,
+                0
+            ),
+            bluTelemetryFailoverMs: envInt(
+                'FM_BLU_TELEMETRY_FAILOVER_MS',
+                60_000,
+                5_000
+            ),
+            bluTelemetryOwnerMaxEntries: envInt(
+                'FM_BLU_TELEMETRY_OWNER_MAX_ENTRIES',
+                100_000,
+                1
+            ),
+            bluRouteCacheMaxGateways: envInt(
+                'FM_BLU_ROUTE_CACHE_MAX_GATEWAYS',
+                50_000,
+                1
+            ),
+            bluProvenanceRetentionDays: envInt(
+                'FM_BLU_PROVENANCE_RETENTION_DAYS',
+                30,
+                1
+            ),
             profileSuggestMaxResults: envInt(
                 'FM_VIRTUAL_PROFILE_SUGGEST_MAX_RESULTS',
                 10,
@@ -2573,10 +3470,9 @@ function readTuning(): TuningConfig {
                 200,
                 1
             ),
-            acceptConcurrency: envInt(
+            acceptConcurrency: sharedPoolBound(
                 'FM_WAITING_ROOM_ACCEPT_CONCURRENCY',
-                6,
-                1
+                6
             ),
             bulkJobTtlSec: envInt(
                 'FM_WAITING_ROOM_BULK_JOB_TTL_SEC',
@@ -2590,9 +3486,16 @@ function readTuning(): TuningConfig {
             ),
             probeConcurrency: envInt('FM_WAITING_PROBE_CONCURRENCY', 50, 1),
             gatherConcurrency: envInt('FM_WAITING_GATHER_CONCURRENCY', 50, 1),
+            gatherMaxMs: envInt('FM_WAITING_GATHER_MAX_MS', 60_000, 1_000),
+            gatherTakeMs: envInt('FM_WAITING_GATHER_TAKE_MS', 60_000, 1_000),
             max: envInt('FM_WAITING_ROOM_MAX', 2_000, 1),
             ttlMs: envInt('FM_WAITING_ROOM_TTL_MS', 3_600_000, 1_000),
             sweepMs: envInt('FM_WAITING_ROOM_SWEEP_MS', 60_000, 1_000),
+            accessRecheckMs: envInt(
+                'FM_DEVICE_ACCESS_RECHECK_MS',
+                60_000,
+                1_000
+            ),
             notifyDebounceMs: envInt(
                 'FM_WAITING_ROOM_NOTIFY_DEBOUNCE_MS',
                 300,
@@ -2639,6 +3542,9 @@ function readTuning(): TuningConfig {
             streamPrefix: envStr('FM_WS_STREAM_PREFIX', 'fm:evt'),
             streamMaxlen: envInt('FM_WS_STREAM_MAXLEN', 10_000, 100),
             streamTtlMs: envInt('FM_WS_STREAM_TTL_MS', 3_600_000, 60_000),
+            resumeGraceMs: envInt('FM_WS_RESUME_GRACE_MS', 60_000, 0),
+            resumeMaxEvents: envInt('FM_WS_RESUME_MAX_EVENTS', 5_000, 1),
+            resumeProbeMs: envInt('FM_WS_RESUME_PROBE_MS', 2_000, 100),
             streamBlockMs: envInt('FM_WS_STREAM_BLOCK_MS', 1_000, 50),
             streamBatchSize: envInt('FM_WS_STREAM_BATCH_SIZE', 100, 1),
             maxBatchSize: envInt('FM_WS_MAX_BATCH_SIZE', 100, 1),
@@ -2683,6 +3589,21 @@ function readTuning(): TuningConfig {
                 'FM_WS_COMPRESSION_CONCURRENCY_LIMIT',
                 10,
                 1
+            ),
+            clientCompressionEnabled: envBool(
+                'FM_WS_CLIENT_COMPRESSION_ENABLED',
+                true
+            ),
+            clientCompressionThreshold: envInt(
+                'FM_WS_CLIENT_COMPRESSION_THRESHOLD',
+                4096,
+                0
+            ),
+            clientCompressionWindowBits: envIntRange(
+                'FM_WS_CLIENT_COMPRESSION_WINDOW_BITS',
+                14,
+                9,
+                15
             ),
             admissionMaxPerSec: envInt('FM_WS_ADMISSION_MAX_PER_SEC', 0, 0),
             pendingFilterSweepIntervalMs: envInt(
@@ -2736,6 +3657,17 @@ function readTuning(): TuningConfig {
                 'FM_SCOPED_PAT_CACHE_TTL_MS',
                 30_000,
                 250
+            ),
+            accountStateTtlMs: envIntRange(
+                'FM_ACCOUNT_STATE_TTL_MS',
+                30_000,
+                1_000,
+                300_000
+            ),
+            accountStateCacheMax: envInt(
+                'FM_ACCOUNT_STATE_CACHE_MAX',
+                10_000,
+                100
             ),
             patBulkRotateConcurrency: envInt(
                 'FM_PAT_BULK_ROTATE_CONCURRENCY',

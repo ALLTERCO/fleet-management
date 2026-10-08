@@ -9,35 +9,33 @@
                 placeholder="Search keys..."
                 aria-label="Search keys"
             />
-            <button
-                class="json-viewer__copy"
-                :title="copied ? 'Copied!' : 'Copy JSON'"
-                aria-label="Copy JSON"
-                @click="copyJson"
-            >
-                <i :class="copied ? 'fas fa-check' : 'fas fa-copy'" />
-            </button>
+            <CopyButton :text="jsonText" title="Copy JSON" />
         </div>
-        <div class="json-viewer__output" v-html="highlightedJson"></div>
+        <div
+            class="json-viewer__output"
+            :class="{'json-viewer__output--expand': expand}"
+            v-html="highlightedJson"
+        ></div>
     </div>
 </template>
 
 <script setup lang="ts">
 import {computed, ref, toRef} from 'vue';
+import CopyButton from './CopyButton.vue';
 
-const props = defineProps<{data: object}>();
-const data = toRef(props, 'data');
+// expand: render at full content height (no inner scroll) so the parent is the
+// single scroll container.
+const props = defineProps<{data: object; expand?: boolean}>();
+const source = toRef(props, 'data');
 
 const filter = ref('');
-const copied = ref(false);
-let copyTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const filteredData = computed(() => {
     if (!filter.value || filter.value.length === 0) {
-        return data.value;
+        return source.value;
     }
     const needle = filter.value.toLocaleLowerCase().trim();
-    const src = data.value as Record<string, unknown>;
+    const src = source.value as Record<string, unknown>;
     const result: Record<string, unknown> = {};
     for (const key in src) {
         if (key.toLocaleLowerCase().includes(needle)) result[key] = src[key];
@@ -45,11 +43,11 @@ const filteredData = computed(() => {
     return result;
 });
 
-const highlightedJson = computed(() => {
-    const json = JSON.stringify(filteredData.value, undefined, 2);
-    if (!json) return '';
-    return colorize(json);
-});
+const jsonText = computed(() => JSON.stringify(filteredData.value, undefined, 2));
+
+const highlightedJson = computed(() =>
+    jsonText.value ? colorize(jsonText.value) : ''
+);
 
 function colorize(json: string): string {
     // Escape HTML entities first
@@ -82,33 +80,6 @@ function colorize(json: string): string {
         );
 }
 
-async function copyJson() {
-    try {
-        const text = JSON.stringify(filteredData.value, undefined, 2);
-        await navigator.clipboard.writeText(text);
-        copied.value = true;
-        if (copyTimeout) clearTimeout(copyTimeout);
-        copyTimeout = setTimeout(() => {
-            copied.value = false;
-        }, 2000);
-    } catch {
-        // Fallback for insecure contexts
-        const text = JSON.stringify(filteredData.value, undefined, 2);
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        copied.value = true;
-        if (copyTimeout) clearTimeout(copyTimeout);
-        copyTimeout = setTimeout(() => {
-            copied.value = false;
-        }, 2000);
-    }
-}
 </script>
 
 <style scoped>
@@ -145,26 +116,6 @@ async function copyJson() {
     color: var(--color-text-disabled);
 }
 
-.json-viewer__copy {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--touch-target-min);
-    height: var(--touch-target-min);
-    border-radius: var(--radius-md);
-    border: 1px solid var(--color-border-default);
-    background-color: var(--color-surface-2);
-    color: var(--color-text-tertiary);
-    cursor: pointer;
-    transition: all 150ms ease;
-    flex-shrink: 0;
-}
-.json-viewer__copy:hover {
-    background-color: var(--color-surface-3);
-    border-color: var(--color-border-strong);
-    color: var(--color-text-secondary);
-}
-
 .json-viewer__output {
     flex: 1;
     min-height: 0;
@@ -179,6 +130,13 @@ async function copyJson() {
     border: 1px solid var(--color-border-default);
     color: var(--color-text-secondary);
     tab-size: 2;
+}
+
+.json-viewer__output--expand {
+    flex: initial;
+    min-height: 0;
+    max-height: none;
+    overflow: visible;
 }
 </style>
 

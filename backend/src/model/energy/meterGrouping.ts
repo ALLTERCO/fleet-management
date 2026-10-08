@@ -14,6 +14,7 @@ import type {
     EnergyLogicalMeter,
     EnergyQueryRow
 } from '../../types/api/energy';
+import {meterTagsForUtility} from '../../types/api/energy';
 
 // The additive metric + display unit per utility. Electric folds only
 // consumption (total_act_energy) — folding export would over-report a
@@ -24,12 +25,12 @@ export function meterMetric(utilityType: string): {
     unit: string;
 } {
     if (utilityType === 'gas' || utilityType === 'water') {
-        return {tags: ['volume_m3', 'volume_l'], unit: 'volume'};
+        return {tags: meterTagsForUtility(utilityType), unit: 'volume'};
     }
     if (utilityType === 'heat') {
-        return {tags: ['thermal_energy_kwh', 'total_act_energy'], unit: 'kWh'};
+        return {tags: meterTagsForUtility('heat'), unit: 'kWh'};
     }
-    return {tags: ['total_act_energy'], unit: 'kWh'};
+    return {tags: meterTagsForUtility('electric'), unit: 'kWh'};
 }
 
 // Display unit per measurement tag. Volume keeps its real unit (m3 vs l) so
@@ -37,6 +38,7 @@ export function meterMetric(utilityType: string): {
 // if identical (5 m3 + 3000 l must not become 3005).
 const TAG_DISPLAY_UNIT: Record<string, string> = {
     volume_m3: 'm3',
+    volume_returned_m3: 'm3',
     volume_l: 'l',
     thermal_energy_kwh: 'kWh',
     total_act_energy: 'kWh'

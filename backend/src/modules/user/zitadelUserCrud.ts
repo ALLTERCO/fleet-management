@@ -8,23 +8,39 @@ import {getLogger} from 'log4js';
 import type CommandSender from '../../model/CommandSender';
 import {buildListResponse} from '../../rpc/listResponse';
 import RpcError from '../../rpc/RpcError';
+import type {AssignmentScope} from '../../types/api/assignment';
 import {isResourceNotFound, type RpcCallError} from '../../types/api/errors';
+import {
+    assertAssignmentGrantAllowed,
+    createAssignmentGrant
+} from '../authz/admin';
 import {
     authzAuditActor,
     authzAuditWriter,
     type UserLifecycleAuditInput
 } from '../authz/audit';
 import {canCrossOrganizationBoundary} from '../authz/evaluator';
+import {assertScopeRefsBelongToOrg} from '../authz/resources';
+import {invalidateAuthzTenant} from '../authz/runtime';
+import {isExplicitScope, SCOPE_NOT_EXPLICIT_MESSAGE} from '../authz/scopeGuard';
 import * as EventDistributor from '../EventDistributor';
 import {ConnectionContext} from '../web/ws/ConnectionContext';
 import {zitadelService} from '../zitadel';
 import {evictCachedUserByCredentialId, evictCachedUserByUserId} from './cache';
+import {
+    grantInitialRole,
+    resolvePersonaRole,
+    withIdentityRollback
+} from './roleGrants';
 import {publishUserSessionSignal} from './sessionNotifications';
 import {assertTargetInTenant, assertTargetOwnedByTenant} from './tenantGate';
 import {revokeAllScopedPatsForUser} from './tokenStore';
 import {ensureZitadelManagement, requireString} from './validation';
 
 const logger = getLogger('user-crud');
+
+// The create RPC has no reason field, and a high-risk grant needs one.
+const CREATE_GRANT_METADATA = {reason: 'granted at user creation'} as const;
 
 interface UserLifecycleDeps {
     deactivateUser(userId: string): Promise<void>;
@@ -101,8 +117,59 @@ export async function listZitadelUsers(sender: CommandSender) {
     const users = await zitadelService.listUsers(
         isGlobalSuper ? undefined : orgId
     );
-    return buildListResponse(users, users.length, 0, 0);
+    const enriched = await withProjectRoles(
+        users,
+        isGlobalSuper ? undefined : orgId
+    );
+    return buildListResponse(enriched, enriched.length, 0, 0);
 }
+
+// A user with no project role can authenticate and is then refused at token
+// issue, so the list has to say so out loud — an empty roles array is what the
+// admin screen renders as "no access".
+async function withProjectRoles<T extends {userId: string}>(
+    users: T[],
+    organizationId?: string
+): Promise<Array<T & {roles: string[]}>> {
+    if (users.length === 0) return [];
+    if (!zitadelService.isManagementApiAvailable()) {
+        return users.map((user) => ({...user, roles: []}));
+    }
+    let byUser = new Map<string, string[]>();
+    try {
+        byUser = await zitadelService.listProjectRoleKeysByUser(
+            users.map((u) => u.userId),
+            organizationId
+        );
+    } catch (err) {
+        // A degraded role column beats an unusable user list.
+        logger.warn('failed to resolve project roles for user list: %s', err);
+    }
+    return users.map((user) => ({
+        ...user,
+        roles: byUser.get(user.userId) ?? []
+    }));
+}
+
+// Collaborators are injected for the same reason UserLifecycleDeps is: they
+// are module-level functions, and the create path's guarantees (nothing
+// provisioned on refusal, nothing orphaned on failure) are only testable if a
+// test can make each step fail.
+interface CreateZitadelUserDeps {
+    resolvePersonaRole: typeof resolvePersonaRole;
+    assertAssignmentGrantAllowed: typeof assertAssignmentGrantAllowed;
+    assertScopeRefsBelongToOrg: typeof assertScopeRefsBelongToOrg;
+    createAssignmentGrant: typeof createAssignmentGrant;
+    grantInitialRole: typeof grantInitialRole;
+}
+
+const defaultCreateZitadelUserDeps: CreateZitadelUserDeps = {
+    resolvePersonaRole,
+    assertAssignmentGrantAllowed,
+    assertScopeRefsBelongToOrg,
+    createAssignmentGrant,
+    grantInitialRole
+};
 
 export async function createZitadelUser(
     params: {
@@ -113,19 +180,67 @@ export async function createZitadelUser(
         displayName?: string;
         password?: string;
         passwordChangeRequired?: boolean;
+        personaId: string;
+        scope?: AssignmentScope;
     },
-    sender: CommandSender
+    sender: CommandSender,
+    deps: CreateZitadelUserDeps = defaultCreateZitadelUserDeps
 ) {
     ensureZitadelManagement();
     const orgId = sender.getOrganizationId();
     if (!orgId) throw RpcError.Unauthorized();
+    const {personaId, scope, ...humanParams} = params;
+    const {role, persona} = await deps.resolvePersonaRole(personaId, orgId);
+    const assignmentScope = scope ?? {all: true};
+    // Everything that can refuse the request runs before the user exists —
+    // a refusal after creation would leave an account the caller was told
+    // it never got.
+    if (!isExplicitScope(assignmentScope)) {
+        throw RpcError.InvalidParams(SCOPE_NOT_EXPLICIT_MESSAGE);
+    }
+    await deps.assertAssignmentGrantAllowed(
+        {
+            tenantId: orgId,
+            grantor: sender,
+            subjectType: 'user',
+            subjectIsServiceUser: false,
+            personaId,
+            scope: assignmentScope,
+            metadata: CREATE_GRANT_METADATA
+        },
+        persona
+    );
+    await deps.assertScopeRefsBelongToOrg({
+        orgId,
+        scope: assignmentScope
+    });
     // New users land in the sender's tenant org so resourceOwner matches
     // what the tenant gate expects — no cross-tenant bounce for the admin
     // granting roles after.
     const created = await zitadelService.createHumanUser({
-        ...params,
+        ...humanParams,
         tenantId: orgId
     });
+    // Anything that fails after the identity exists must undo it, or the
+    // caller is told the create failed while an unusable account survives.
+    await withIdentityRollback(
+        created.userId,
+        'createZitadelUser',
+        async () => {
+            await deps.grantInitialRole(created.userId, role, orgId);
+            // The assignment carries the permissions; the role above only signs in.
+            await deps.createAssignmentGrant({
+                tenantId: orgId,
+                actorId: authzAuditActor(sender.getUser()),
+                grantor: sender,
+                subjectType: 'user',
+                subjectId: created.userId,
+                personaId,
+                scope: assignmentScope,
+                metadata: CREATE_GRANT_METADATA
+            });
+        }
+    );
     EventDistributor.emitUserCreated(created.userId, orgId);
     return created;
 }
@@ -204,6 +319,7 @@ export async function deactivateZitadelUser(
         userId: params.userId,
         reason: 'user-deactivated'
     });
+    await invalidateAuthzTenant(orgId);
     await writeUserLifecycleAudit(
         {
             orgId,
@@ -235,6 +351,7 @@ export async function reactivateZitadelUser(
         kind: 'auth-changed',
         userId: params.userId
     });
+    await invalidateAuthzTenant(orgId);
     await writeUserLifecycleAudit(
         {
             orgId,
@@ -289,6 +406,7 @@ export async function deleteZitadelUser(
         userId: params.userId,
         reason: 'user-deleted'
     });
+    await invalidateAuthzTenant(orgId);
     await writeUserLifecycleAudit(
         {
             orgId,

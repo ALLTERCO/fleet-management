@@ -259,12 +259,9 @@ export default class WaitingRoomComponent extends Component<Config> {
         const success = ids.filter((id) => foundIds.has(id));
         const error = ids.filter((id) => !foundIds.has(id));
 
-        // admitBatchByIds stamped org in the same write; sync the in-memory
-        // routing map. Invalidate BEFORE the connect-emitting approve —
-        // otherwise the Shelly.Connect race drops on stale orgDeviceIds.
-        for (const ext of externalIds)
-            EventDistributor.setDeviceOrg(ext, orgId);
-        EventDistributor.invalidateGroupCache(orgId);
+        // admitBatchByIds stored the owner; bind it before the approve below
+        // lets the devices announce themselves.
+        EventDistributor.bindDevicesToOrganization(externalIds, orgId);
 
         WaitingRoomModule.approveDevicesBatch(records, username);
         await this.#dropStoreEntries(orgId, externalIds);
@@ -273,7 +270,7 @@ export default class WaitingRoomComponent extends Component<Config> {
         if (typeof groupId === 'number' && externalIds.length > 0) {
             try {
                 await groupAddDevicesBatch(orgId, groupId, externalIds);
-                EventDistributor.invalidateGroupCache(orgId);
+                EventDistributor.invalidateGroupMembership(orgId, externalIds);
             } catch (err) {
                 this.logger.warn(
                     'Failed to batch-add %d devices to group %d: %s',
@@ -627,8 +624,10 @@ function publishFleetDeviceBinding(
     organizationId: string,
     reportedExternalId: string
 ): void {
-    EventDistributor.setDeviceOrg(reportedExternalId, organizationId);
-    EventDistributor.invalidateGroupCache(organizationId);
+    EventDistributor.publishDeviceOrgBinding(
+        reportedExternalId,
+        organizationId
+    );
 }
 
 async function auditIngressWaitingRoom(

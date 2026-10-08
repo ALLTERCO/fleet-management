@@ -46,6 +46,7 @@ export default class MdnsComponent extends Component<MdnsComponentConfig> {
                 } else if (!value && MdnsModule.started()) {
                     MdnsModule.stop();
                 }
+                super.applyConfigKey(key, value, config);
                 break;
             default:
                 super.applyConfigKey(key, value, config);

@@ -1,7 +1,10 @@
 import {randomUUID} from 'node:crypto';
 import type AbstractDevice from '../model/AbstractDevice';
 import {flush as flushAuditLog} from './AuditLogger';
-import {disconnectForIdentityChange} from './DeviceCollector';
+import {
+    disconnectForIdentityChange,
+    disconnectForRuntimeOwnershipLoss
+} from './DeviceCollector';
 import {flush as flushDeviceEvents} from './DeviceEventLogger';
 import * as Observability from './Observability';
 import {getInstanceId} from './redis/instanceId';
@@ -47,7 +50,7 @@ const ownershipDeps: OwnershipDeps = {
     heartbeatMany: (leases, ttlMs) =>
         deviceOwnership.heartbeatMany(leases, ttlMs),
     release: (lease) => deviceOwnership.release(lease),
-    disconnect: disconnectForIdentityChange
+    disconnect: disconnectForRuntimeOwnershipLoss
 };
 
 function sameOwnershipLease(

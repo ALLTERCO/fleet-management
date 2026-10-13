@@ -155,6 +155,23 @@ export function deleteDevice(shellyID: string) {
 export function disconnectForIdentityChange(
     shellyIDs: readonly string[]
 ): void {
+    disconnectDevices(shellyIDs, true, 'identity change');
+}
+
+// A lost Redis ownership lease only invalidates the live connection.
+// Its persisted device→organization association still approves a credential-less
+// reconnect in enforce_new mode, so do not clear that association here.
+export function disconnectForRuntimeOwnershipLoss(
+    shellyIDs: readonly string[]
+): void {
+    disconnectDevices(shellyIDs, false, 'runtime ownership loss');
+}
+
+function disconnectDevices(
+    shellyIDs: readonly string[],
+    clearOrganization: boolean,
+    reason: string
+): void {
     let changed = false;
     for (const shellyID of new Set(shellyIDs)) {
         if (!shellyID) continue;
@@ -167,13 +184,10 @@ export function disconnectForIdentityChange(
         clearAnomalyBandCacheForDevice(shellyID);
         clearChangeEventCacheForDevice(shellyID);
         device.destroy({skipDeleteEvent: true});
-        EventDistributor.clearDeviceOrg(shellyID);
+        if (clearOrganization) EventDistributor.clearDeviceOrg(shellyID);
         bluAssistConnectionTracker.clearDevice(shellyID);
         Observability.incrementCounter('devices_disconnected');
-        logger.info(
-            'closed device connection for identity change: %s',
-            shellyID
-        );
+        logger.info('closed device connection for %s: %s', reason, shellyID);
     }
     if (!changed) return;
     invalidateEntityIndex();

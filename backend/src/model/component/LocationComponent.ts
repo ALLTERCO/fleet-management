@@ -29,6 +29,7 @@ import {
     type GeographyAddress
 } from '../../modules/location/geographyAncestors';
 import {buildKindsDescribeResponse} from '../../modules/location/kindDescriptors';
+import {locationSummaryCountsFromRow} from '../../modules/location/summaryCounts';
 import {validateKindFields} from '../../modules/location/validator';
 import {
     buildSignalHeatmap,
@@ -246,17 +247,8 @@ function rowToLocation(row: LocationRow): Location {
         createdAt: toIso(row.created_at) ?? '',
         updatedAt: toIso(row.updated_at)
     };
-    if (row.c_child_locations != null) {
-        loc.counts = {
-            childLocations: Number(row.c_child_locations),
-            devices: Number(row.c_devices ?? 0),
-            entities: Number(row.c_entities ?? 0),
-            tags: Number(row.c_tags ?? 0),
-            descendantDevices: Number(row.c_descendant_devices ?? 0),
-            descendantEntities: Number(row.c_descendant_entities ?? 0),
-            groupsReferencingLocation: Number(row.c_groups_referencing ?? 0)
-        };
-    }
+    const counts = locationSummaryCountsFromRow(row);
+    if (counts) loc.counts = counts;
     return loc;
 }
 

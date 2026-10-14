@@ -39,9 +39,9 @@
                 <button
                     type="button"
                     class="px-4 py-2 text-sm font-mono rounded overview-enable-btn transition-colors"
-                    @click="store.changeLevel(1)"
+                    @click="store.setBrowserObservabilityLevel(1)"
                 >
-                    Enable Light Monitoring
+                    Enable Light Browser Telemetry
                 </button>
             </div>
         </BasicBlock>

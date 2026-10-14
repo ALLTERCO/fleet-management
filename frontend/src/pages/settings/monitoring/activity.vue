@@ -5,9 +5,9 @@
                 v-if="store.obsLevel === 0"
                 title="Monitoring is off"
                 description="Enable light monitoring to inspect devices, commands, connections, events, and services."
-                action-label="Enable Light Monitoring"
+                action-label="Enable Light Browser Telemetry"
                 icon="fas fa-wave-square"
-                @action="store.changeLevel(1)"
+                @action="store.setBrowserObservabilityLevel(1)"
             />
 
             <template v-else>

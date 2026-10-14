@@ -1,6 +1,8 @@
 import {defineStore} from 'pinia';
 import {computed, ref, watch} from 'vue';
 import {toastRpcError} from '@/helpers/domainErrors';
+import {sendAuthorizedBackendObservabilityLevel} from '@/helpers/monitoringObservability';
+import {useRpcPermissions} from '@/helpers/rpcPermissions';
 import {
     DB_AVG_CRITICAL_MS,
     DB_AVG_WARN_MS,
@@ -351,6 +353,7 @@ function extractSnapshot(
 
 export const useMonitoringStore = defineStore('monitoring', () => {
     const toast = useToastStore();
+    const rpcPermissions = useRpcPermissions();
     const obsLevel = ref<ObsLevel>(getObsLevel());
     const latestMetrics = ref<any>(null);
     const history = ref<MetricSnapshot[]>([]);
@@ -583,20 +586,23 @@ export const useMonitoringStore = defineStore('monitoring', () => {
         }
     }
 
-    async function changeLevel(l: ObsLevel) {
-        const previous = obsLevel.value;
+    function setBrowserObservabilityLevel(l: ObsLevel) {
         obsLevel.value = l;
         setObsLevel(l);
         restartPollingForLevel(l);
+    }
 
+    async function setBackendObservabilityLevel(l: ObsLevel) {
         try {
-            await sendRPC('FLEET_MANAGER', 'System.Observability.Set', {
-                level: l
-            });
+            const changed = await sendAuthorizedBackendObservabilityLevel(
+                l,
+                () => rpcPermissions.canCall('System.Observability.Set'),
+                (level) => sendRPC('FLEET_MANAGER', 'System.Observability.Set', {level})
+            );
+            // The backend RPC changes the instance-wide collector, not this
+            // browser's telemetry setting. Read back the authoritative level.
+            if (changed) void fetchAndRecord().catch(() => {});
         } catch (err) {
-            obsLevel.value = previous;
-            setObsLevel(previous);
-            restartPollingForLevel(previous);
             toastRpcError(toast, err, 'Failed to set observability level');
         }
     }
@@ -714,7 +720,8 @@ export const useMonitoringStore = defineStore('monitoring', () => {
         loadHistory,
         startPolling,
         stopPolling,
-        changeLevel,
+        setBrowserObservabilityLevel,
+        setBackendObservabilityLevel,
         historyField,
         fetchLogLevels,
         setLogLevel,

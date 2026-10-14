@@ -5,9 +5,9 @@
             <MonitoringEmptyState
                 v-if="store.obsLevel < 2"
                 title="Set observability to Medium or higher to see database metrics."
-                action-label="Enable Medium Monitoring"
+                action-label="Enable Medium Browser Telemetry"
                 icon="fas fa-database"
-                @action="store.changeLevel(2)"
+                @action="store.setBrowserObservabilityLevel(2)"
             />
 
             <MonitoringEmptyState

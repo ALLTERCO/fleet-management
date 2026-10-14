@@ -5,9 +5,9 @@
             <MonitoringEmptyState
                 v-if="store.obsLevel === 0"
                 title="Enable monitoring to see device ingest metrics."
-                action-label="Enable Light Monitoring"
+                action-label="Enable Light Browser Telemetry"
                 icon="fas fa-satellite-dish"
-                @action="store.changeLevel(1)"
+                @action="store.setBrowserObservabilityLevel(1)"
             />
 
             <MonitoringEmptyState

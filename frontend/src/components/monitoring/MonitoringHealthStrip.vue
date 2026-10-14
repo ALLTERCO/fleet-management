@@ -5,6 +5,7 @@
         aria-label="System Health"
         :data-overall="overall"
         :data-obs-level="obsLevel"
+        :data-backend-obs-level="backendObservabilityLevel ?? 'unknown'"
     >
         <div class="hs__left">
             <HealthDot :status="overall" />
@@ -35,10 +36,17 @@
         <div class="hs__right">
             <span
                 class="hs__obs-pill"
+                :class="`hs__obs-pill--${backendLevelKey}`"
+                :data-backend-obs-level="backendObservabilityLevel ?? 'unknown'"
+            >
+                Backend {{ backendObservabilityLabel }}
+            </span>
+            <span
+                class="hs__obs-pill"
                 :class="`hs__obs-pill--${obsLevelKey}`"
                 :data-obs-level="obsLevel"
             >
-                {{ OBS_LEVEL_LABELS[obsLevel] }}
+                Browser {{ OBS_LEVEL_LABELS[obsLevel] }}
             </span>
         </div>
     </div>
@@ -48,6 +56,10 @@
 import {computed} from 'vue';
 import HealthDot from '@/components/monitoring/HealthDot.vue';
 import {formatDuration} from '@/helpers/format';
+import {
+    formatBackendObservabilityLevel,
+    parseBackendObservabilityLevel
+} from '@/helpers/monitoringObservability';
 import {countByStatus} from '@/helpers/topologyStatusCounts';
 import {type FlowStatus, useMonitoringStore} from '@/stores/monitoring';
 import {useTopologyStore} from '@/stores/topology';
@@ -78,15 +90,23 @@ const topology = useTopologyStore();
 
 const overall = computed<FlowStatus>(() => monitoring.overallStatus);
 const obsLevel = computed(() => monitoring.obsLevel);
-const obsLevelKey = computed(() => {
-    switch (monitoring.obsLevel) {
+const backendObservabilityLevel = computed(() =>
+    parseBackendObservabilityLevel(monitoring.latestMetrics?.level, OBS_LEVEL_LABELS.length)
+);
+const backendObservabilityLabel = computed(() =>
+    formatBackendObservabilityLevel(monitoring.latestMetrics?.level, OBS_LEVEL_LABELS)
+);
+function levelKey(level: number | null) {
+    switch (level) {
         case 0: return 'off';
         case 1: return 'light';
         case 2: return 'medium';
         case 3: return 'heavy';
-        default: return 'off';
+        default: return 'unknown';
     }
-});
+}
+const obsLevelKey = computed(() => levelKey(monitoring.obsLevel));
+const backendLevelKey = computed(() => levelKey(backendObservabilityLevel.value));
 
 const hasSnapshot = computed(() => topology.current !== null);
 

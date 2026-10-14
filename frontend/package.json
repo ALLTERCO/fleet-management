@@ -17,6 +17,7 @@
         "sync-images": "bash ../tools/sync-device-images.sh",
         "preview": "vite preview",
         "test": "vitest run",
+        "test:monitoring-observability": "node --test scripts/test-monitoring-observability.mjs",
         "test:watch": "vitest",
         "test:e2e": "playwright test",
         "postinstall": "patch-package"

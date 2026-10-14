@@ -17,16 +17,41 @@
                 <p class="cp-hint">
                     Controls what metrics are collected (backend) and displayed (frontend). Higher levels add more detail but increase overhead.
                 </p>
-                <div class="cp-level-grid">
+                <p class="cp-hint" aria-live="polite">
+                    <strong>Backend collection (actual): {{ backendObservabilityLabel }}</strong>.
+                    Browser telemetry (this browser): {{ OBS_LEVEL_LABELS[store.obsLevel] }}.
+                    <span v-if="!canSetObservability">Changing the backend level requires provider-support access; these server controls are read-only for this role.</span>
+                </p>
+                <p class="cp-hint">Backend collection level (all users, server-side):</p>
+                <div class="cp-level-grid" role="group" aria-label="Backend observability level">
+                    <button
+                        v-for="(desc, i) in obsLevelDescriptions"
+                        :key="i"
+                        class="cp-level-btn"
+                        :class="backendObservabilityLevel === i ? levelActiveClass(i) : 'cp-level-btn--inactive'"
+                        :aria-pressed="backendObservabilityLevel === i"
+                        :disabled="!canSetObservability"
+                        :title="!canSetObservability ? 'Requires provider-support permission' : undefined"
+                        @click="store.setBackendObservabilityLevel(i as ObsLevel)"
+                    >
+                        <div class="cp-level-name">{{ OBS_LEVEL_LABELS[i] }}</div>
+                        <div class="cp-level-desc">{{ desc }}</div>
+                        <div v-if="backendObservabilityLevel === i" class="cp-level-current">Current backend level</div>
+                    </button>
+                </div>
+                <p class="cp-hint">Browser telemetry (only this browser; no server permission required):</p>
+                <div class="cp-level-grid" role="group" aria-label="Browser telemetry level">
                     <button
                         v-for="(desc, i) in obsLevelDescriptions"
                         :key="i"
                         class="cp-level-btn"
                         :class="store.obsLevel === i ? levelActiveClass(i) : 'cp-level-btn--inactive'"
-                        @click="store.changeLevel(i as ObsLevel)"
+                        :aria-pressed="store.obsLevel === i"
+                        @click="store.setBrowserObservabilityLevel(i as ObsLevel)"
                     >
                         <div class="cp-level-name">{{ OBS_LEVEL_LABELS[i] }}</div>
                         <div class="cp-level-desc">{{ desc }}</div>
+                        <div v-if="store.obsLevel === i" class="cp-level-current">Current browser level</div>
                     </button>
                 </div>
             </div>
@@ -343,6 +368,10 @@ import BasicBlock from '@/components/core/BasicBlock.vue';
 import PageTemplate from '@/components/core/PageTemplate.vue';
 import MonitoringSectionHeader from '@/components/monitoring/MonitoringSectionHeader.vue';
 import {formatMs} from '@/helpers/format';
+import {
+    formatBackendObservabilityLevel,
+    parseBackendObservabilityLevel
+} from '@/helpers/monitoringObservability';
 import {useRpcPermissions} from '@/helpers/rpcPermissions';
 import {useLogStore} from '@/stores/console';
 import {useMonitoringStore} from '@/stores/monitoring';
@@ -367,6 +396,13 @@ const store = useMonitoringStore();
 const rpc = useRpcPermissions();
 const logStore = useLogStore();
 const canToggleDbWrites = computed(() => rpc.canCall('System.DbWrites.Set'));
+const canSetObservability = computed(() => rpc.canCall('System.Observability.Set'));
+const backendObservabilityLevel = computed(() =>
+    parseBackendObservabilityLevel(store.latestMetrics?.level, OBS_LEVEL_LABELS.length)
+);
+const backendObservabilityLabel = computed(() =>
+    formatBackendObservabilityLevel(store.latestMetrics?.level, OBS_LEVEL_LABELS)
+);
 
 const heatmapOn = ref(isHeatmapEnabled());
 function toggleHeatmap(v: boolean) {
@@ -695,6 +731,16 @@ store.fetchLogLevels();
     font-size: var(--type-caption);
     margin-top: var(--gap-xs);
     opacity: 0.75;
+}
+.cp-level-current {
+    font-size: var(--type-caption);
+    margin-top: var(--gap-xs);
+    font-weight: var(--font-semibold);
+}
+
+.cp-level-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.65;
 }
 
 .cp-level-btn--inactive {

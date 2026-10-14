@@ -5,9 +5,9 @@
             <MonitoringEmptyState
                 v-if="store.obsLevel < 1"
                 title="Enable monitoring to see service metrics."
-                action-label="Enable Light Monitoring"
+                action-label="Enable Light Browser Telemetry"
                 icon="fas fa-gears"
-                @action="store.changeLevel(1)"
+                @action="store.setBrowserObservabilityLevel(1)"
             />
 
             <MonitoringEmptyState

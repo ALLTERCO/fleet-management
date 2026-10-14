@@ -53,7 +53,7 @@
                     <MonitoringSectionHeader title="Containers" />
                     <MonitoringGrid :columns="5">
                         <StatCard label="Expected" :value="containerSummary.expected" />
-                        <StatCard label="Running" :value="containerSummary.running" />
+                        <StatCard label="Running" :value="containerRunningLabel" :warn="!containerSummary.statusVerified" />
                         <StatCard label="Missing" :value="containerSummary.missing" :warn="containerSummary.missing > 0" />
                         <StatCard label="Unexpected" :value="containerSummary.unexpected" :warn="containerSummary.unexpected > 0" />
                         <StatCard label="Unknown Owner" :value="containerSummary.unknownOwner" :warn="containerSummary.unknownOwner > 0" />
@@ -189,6 +189,10 @@ const manifestRevision = computed(() => runtimeView.value.manifestRevision);
 const rollbackLabel = computed(() => runtimeView.value.rollbackLabel);
 const containerRows = computed(() => runtimeView.value.containerRows);
 const containerSummary = computed(() => runtimeView.value.containerSummary);
+const containerRunningLabel = computed(() => {
+    const {running, statusVerified} = containerSummary.value;
+    return statusVerified && running !== null ? running : 'unverified';
+});
 const deviceUsageRows = computed(() => runtimeView.value.deviceUsageRows);
 
 const loadedAtLabel = computed(() =>

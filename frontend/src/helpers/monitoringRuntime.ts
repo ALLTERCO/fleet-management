@@ -24,7 +24,8 @@ export interface ContainerRow {
 
 export interface ContainerSummary {
     expected: number;
-    running: number;
+    running: number | null;
+    statusVerified: boolean;
     missing: number;
     unexpected: number;
     unknownOwner: number;
@@ -168,6 +169,10 @@ function runtimeStatusFrom(
     if (containerSummary.missing > 0) return 'warning';
     if (containerSummary.unexpected > 0) return 'warning';
     if (containerSummary.unknownOwner > 0) return 'warning';
+    if (!containerSummary.statusVerified || containerSummary.running === null) {
+        return 'unknown';
+    }
+    if (containerSummary.running !== containerSummary.expected) return 'warning';
     return 'healthy';
 }
 
@@ -356,17 +361,25 @@ function containerSummaryFrom(
     const unknownOwner =
         recordValue(manifest, 'unknown_owner_containers') ??
         recordValue(manifest, 'unknownOwnerContainers');
+    const explicitRunning =
+        numberValue(recordValue(summary, 'running')) ??
+        numberValue(recordValue(summary, 'running_count'));
+    const rowsHaveRuntimeStatus =
+        rows.length > 0 && rows.every((row) => row.status !== 'unknown');
+    const running =
+        explicitRunning ??
+        (rowsHaveRuntimeStatus
+            ? rows.filter((row) =>
+                  ['running', 'healthy', 'passed', 'ok'].includes(row.status)
+              ).length
+            : null);
     return {
         expected:
             numberValue(recordValue(summary, 'expected')) ??
             numberValue(recordValue(summary, 'expected_count')) ??
             rows.length,
-        running:
-            numberValue(recordValue(summary, 'running')) ??
-            numberValue(recordValue(summary, 'running_count')) ??
-            rows.filter((row) =>
-                ['running', 'healthy', 'passed'].includes(row.status)
-            ).length,
+        running,
+        statusVerified: running !== null,
         missing:
             numberValue(recordValue(summary, 'missing')) ??
             (Array.isArray(missing) ? missing.length : 0),

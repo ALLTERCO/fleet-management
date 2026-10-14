@@ -27,7 +27,7 @@
             <article class="runtime-summary__item">
                 <span>Containers</span>
                 <strong :class="containerStatusClass">
-                    {{ view.containerSummary.running }}/{{ view.containerSummary.expected }}
+                    {{ containerStatusLabel }}
                 </strong>
                 <small>{{ containerProblemLabel }}</small>
             </article>
@@ -95,14 +95,28 @@ const containerStatusClass = computed(() => {
     if (view.value.containerSummary.missing > 0) return 'runtime-danger';
     if (view.value.containerSummary.unexpected > 0) return 'runtime-warning';
     if (view.value.containerSummary.unknownOwner > 0) return 'runtime-warning';
+    if (!view.value.containerSummary.statusVerified) {
+        return runtimeStatusClass('unknown');
+    }
+    if (view.value.containerSummary.running !== view.value.containerSummary.expected) {
+        return runtimeStatusClass('warning');
+    }
     return runtimeStatusClass('ok');
 });
 
+const containerStatusLabel = computed(() => {
+    const {expected, running, statusVerified} = view.value.containerSummary;
+    return statusVerified && running !== null ? `${running}/${expected}` : 'unverified';
+});
+
 const containerProblemLabel = computed(() => {
-    const {missing, unexpected, unknownOwner} = view.value.containerSummary;
+    const {missing, unexpected, unknownOwner, expected, running, statusVerified} =
+        view.value.containerSummary;
     if (missing > 0 || unexpected > 0 || unknownOwner > 0) {
         return `${missing} missing, ${unexpected} unexpected, ${unknownOwner} unknown-owner`;
     }
+    if (!statusVerified) return 'live container status not reported by manifest';
+    if (running !== expected) return 'reported running count differs from expected inventory';
     return 'expected containers accounted for';
 });
 

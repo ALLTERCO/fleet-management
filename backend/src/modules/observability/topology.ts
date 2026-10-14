@@ -7,6 +7,7 @@ import {
     inferTopologyFlowsFromText,
     TOPOLOGY_FLOW_DEFINITIONS
 } from './topologyFlowDefinitions';
+import {normalizeModuleStatus} from './topologyStatus';
 import type {
     EdgeCounter,
     HttpStats,
@@ -230,7 +231,7 @@ function collectModuleStats(
     now: number
 ): NodeStat {
     const result = reg.stats();
-    const status = (result.status as ModuleStatus | undefined) ?? 'healthy';
+    const status = normalizeModuleStatus(result.status);
     recordModuleHistory(name, {ts: now, stats: result});
     return {stats: result, status};
 }

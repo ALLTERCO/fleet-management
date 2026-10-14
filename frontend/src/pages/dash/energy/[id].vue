@@ -119,6 +119,7 @@ import {
 import EnergySettingsPanel from '@/components/dashboard/energy/EnergySettingsPanel.vue';
 import EnergyVoltaine from '@/components/dashboard/energy/EnergyVoltaine.vue';
 import {buildEnergyDashboardData} from '@/components/dashboard/energy/energyDashboard.mapper';
+import {countOnlineDevices} from '@/components/dashboard/energy/energyDeviceOnline';
 import {countVoltageEvents, deltaLabel, hourlyProfile, roleKwh} from '@/components/dashboard/energy/energyLive.helpers';
 import {dashboardAdditionalCharges} from '@/components/dashboard/energy/tariffBill';
 import {effectiveTariffTaxes} from '@/components/dashboard/energy/tariffTaxes';
@@ -2055,7 +2056,7 @@ const voltaineData = computed(() =>
     buildEnergyDashboardData({
         rangeLabel: energyRangeLabel.value,
         deviceCount: allShellyIds.value.length,
-        onlineCount: deviceListRows.value.filter((r) => r.online).length,
+        onlineCount: countOnlineDevices(deviceStore.devices),
         currency: currencySymbol.value,
         currencyCode: store.periodPricing?.currency ?? null,
         tariffConfigured: energyTariffConfigured.value,

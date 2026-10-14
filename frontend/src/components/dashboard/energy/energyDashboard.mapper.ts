@@ -17,6 +17,7 @@ import type {
     PhaseLine,
     UtilityRow
 } from './energyDashboard.types';
+import {deviceOnlinePercent} from './energyDeviceOnline';
 import {
     compareRecordedBill,
     type RecordedBillLookup
@@ -420,10 +421,10 @@ export function buildEnergyDashboardData(
     const r1 = (n: number) => (Number.isFinite(n) ? Math.round(n * 10) / 10 : 0);
     // Share of devices online right now. This is uptime, not data quality —
     // real bucket coverage is a report-side measure (report/dataQuality.ts).
-    const devicesOnlinePct =
-        input.deviceCount > 0
-            ? r2((input.onlineCount / input.deviceCount) * 100)
-            : 0;
+    const devicesOnlinePct = deviceOnlinePercent(
+        input.deviceCount,
+        input.onlineCount
+    );
     const base = alwaysOn(input.powerSeriesKw, input.rangeDays);
     const pq = reactiveApparent(
         input.totalConsumptionKwh,

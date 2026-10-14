@@ -42,12 +42,12 @@
 <script setup lang="ts">
 import {computed} from 'vue';
 import {useRouter} from 'vue-router';
-import {useLocationDeviceScope} from '@/composables/useLocationDeviceScope';
 import {useSiteLocations} from '@/composables/useSiteLocations';
 import {formatPower, metricText} from '@/helpers/powerMetrics';
+import {rollupSiteGridDevices} from '@/helpers/siteGridRollup';
 import {useDevicesStore} from '@/stores/devices';
-import {extractDevicePower} from '@/stores/energyDashboard';
 import {useEntityStore} from '@/stores/entities';
+import {useLocationsStore} from '@/stores/locations';
 import CardShell from './CardShell.vue';
 
 export interface SiteGridWidgetConfig {
@@ -79,14 +79,16 @@ defineEmits<{
 
 const devicesStore = useDevicesStore();
 const entityStore = useEntityStore();
+const locationsStore = useLocationsStore();
 const router = useRouter();
+
+// Site tiles aggregate by Device.List.locationId. Ensure the hierarchy needed
+// to recognise Building/Room descendants is present; the store coordinator
+// deduplicates this with other location consumers on the page.
+void locationsStore.fetchLocations();
 
 const siteLocations = useSiteLocations(
     computed(() => props.config.locationIds)
-);
-
-const {deviceIdsByRoot} = useLocationDeviceScope(
-    computed(() => siteLocations.value.map((loc) => loc.id))
 );
 
 function onTileClick(locationId: number) {
@@ -96,10 +98,6 @@ function onTileClick(locationId: number) {
         params: {id: props.config.drilldownDashId},
         query: {locationId: String(locationId)}
     });
-}
-
-function devicePower(shellyId: string): number {
-    return extractDevicePower(devicesStore.devices[shellyId]?.status);
 }
 
 // Build alert count per shellyId once — O(entities) instead of O(devices × entities)
@@ -117,17 +115,16 @@ const alertsByShelly = computed<Map<string, number>>(() => {
 
 const sites = computed(() => {
     return siteLocations.value.map((loc) => {
-        const deviceIds = deviceIdsByRoot.value[loc.id] ?? [];
-        const totalCount =
-            loc.counts?.descendantDevices ?? loc.counts?.devices ?? deviceIds.length;
-        const onlineCount = deviceIds.filter(
-            (sid) => devicesStore.devices[sid]?.online
-        ).length;
+        const rollup = rollupSiteGridDevices(
+            devicesStore.devices,
+            locationsStore.locations,
+            loc.id
+        );
+        const {deviceIds, totalCount, onlineCount, powerW} = rollup;
         const alerts = deviceIds.reduce(
             (s, sid) => s + (alertsByShelly.value.get(sid) ?? 0),
             0
         );
-        const powerW = deviceIds.reduce((s, sid) => s + devicePower(sid), 0);
         return {
             id: loc.id,
             name: loc.name,

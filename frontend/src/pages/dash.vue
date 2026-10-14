@@ -1,7 +1,7 @@
 <template>
     <div class="relative flex min-h-0 flex-1 flex-col">
         <!-- One frosted panel: the pill bar is its header, route content its body. -->
-        <div class="dash-surface">
+        <div class="dash-surface" :class="{'dash-surface--map': isMapDashboard}">
             <DashPillBar
                 :dashboards="pillDashboards"
                 :active-id="activeDashId"
@@ -11,7 +11,7 @@
             />
 
             <!-- Scrolling body; the pill-bar header above stays put. -->
-            <div class="dash-body">
+            <div class="dash-body" :class="{'dash-body--map': isMapDashboard}">
                 <RouterView v-slot="{ Component }">
                     <component :is="Component" :key="$route.path" />
                 </RouterView>
@@ -76,6 +76,7 @@ import {DOMAIN_TYPES} from '@/types/dashboard';
 
 const route = useRoute();
 const router = useRouter();
+const isMapDashboard = computed(() => route.path.startsWith('/dash/map/'));
 const dashboardsStore = useDashboardsStore();
 const analyticsStore = useAnalyticsStore();
 const authStore = useAuthStore();
@@ -370,6 +371,11 @@ onMounted(async () => {
     border-radius: var(--radius-xl);
     overflow: hidden;
 }
+/* Map content is absolutely positioned inside a flex child. Give that route
+   an explicit viewport-height flex chain without stretching other dashboards. */
+.dash-surface--map {
+    flex: 1 1 0;
+}
 /* Present mode: fullscreen composites over black, so the glass panel needs an
    opaque backing and no rounded corners while it fills the display. */
 .dash-surface:fullscreen {
@@ -391,5 +397,9 @@ onMounted(async () => {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+}
+.dash-body--map {
+    display: flex;
+    flex-direction: column;
 }
 </style>

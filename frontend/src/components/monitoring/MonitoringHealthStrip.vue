@@ -11,6 +11,9 @@
             <div class="hs__overall-text">
                 <h2 class="hs__overall-label">{{ OVERALL_LABELS[overall] }}</h2>
                 <span v-if="uptimeText" class="hs__uptime">Uptime {{ uptimeText }}</span>
+                <span v-if="hasSnapshot && unknownModuleCount > 0" class="hs__coverage">
+                    {{ unknownModuleCount }} {{ unknownModuleCount === 1 ? 'module' : 'modules' }} unverified
+                </span>
             </div>
         </div>
 
@@ -60,7 +63,8 @@ interface BucketSpec {
 }
 
 const OVERALL_LABELS: Record<FlowStatus, string> = {
-    healthy: 'All systems nominal',
+    // Overall covers selected instrumented pipelines, not every topology node.
+    healthy: 'Monitored paths nominal',
     warning: 'Degraded',
     critical: 'Critical',
     unknown: 'No signal'
@@ -95,10 +99,11 @@ const uptimeText = computed(() => {
     return typeof s === 'number' ? formatDuration(s) : null;
 });
 
-const buckets = computed(() => {
-    const counts = countByStatus(topology.current?.nodes ?? []);
-    return BUCKET_ORDER.map((b) => ({...b, count: counts[b.status]}));
-});
+const statusCounts = computed(() => countByStatus(topology.current?.nodes ?? []));
+const buckets = computed(() =>
+    BUCKET_ORDER.map((b) => ({...b, count: statusCounts.value[b.status]}))
+);
+const unknownModuleCount = computed(() => statusCounts.value.unknown);
 </script>
 
 <style scoped>
@@ -139,6 +144,11 @@ const buckets = computed(() => {
     font-size: var(--type-caption);
     color: var(--color-text-tertiary);
     font-family: var(--font-mono);
+}
+
+.hs__coverage {
+    font-size: var(--type-caption);
+    color: var(--color-text-secondary);
 }
 
 .hs__buckets {

@@ -12,6 +12,21 @@ export function countByStatus(
         critical: 0,
         unknown: 0
     };
-    for (const node of nodes) counts[node.status]++;
+    for (const node of nodes) {
+        // Topology responses are a runtime boundary: a module can mistakenly
+        // emit a non-canonical status (for example dbRuntime's local `ok`).
+        // Never silently drop that node or create a NaN bucket. Count it as
+        // unverified until the backend normalizes its public status.
+        switch (node.status) {
+            case 'healthy':
+            case 'warning':
+            case 'critical':
+            case 'unknown':
+                counts[node.status]++;
+                break;
+            default:
+                counts.unknown++;
+        }
+    }
     return counts;
 }

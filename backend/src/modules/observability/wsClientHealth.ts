@@ -9,6 +9,11 @@ import {liveGauge} from './processMetrics';
 import {getLevel} from './samplers';
 import {pushRing} from './util/ringBuffer';
 import {type WindowQuery, windowedTopN} from './util/windowedTopN';
+import {
+    summarizeWsClientHealth,
+    type WsClientHealthSample,
+    type WsClientHealthStats
+} from './wsClientHealthSummary';
 
 const RING_SIZE = 100;
 
@@ -16,22 +21,12 @@ const RING_SIZE = 100;
 // connected-client count and spot the concurrent-load breaking point.
 liveGauge(
     'fm_ws_struggling_clients',
-    'Browser WS clients in the recent backpressure ring',
+    'Distinct browser WS clients with backpressure in the last 5 minutes',
     () => getWsClientHealthStats().strugglingClients
 );
 
-export interface StrugglingClient {
-    clientId: string;
-    bufferedBytes: number;
-    // 'paused' = events held back (durable Redis path); 'dropped' = events lost.
-    action: 'paused' | 'dropped';
-    ts: number;
-}
-
-export interface WsClientHealthStats {
-    strugglingClients: number;
-    worstBufferedBytes: number;
-}
+export interface StrugglingClient extends WsClientHealthSample {}
+export type {WsClientHealthStats} from './wsClientHealthSummary';
 
 const strugglers: StrugglingClient[] = [];
 
@@ -67,18 +62,10 @@ export function queryStrugglingClients(query: WindowQuery): StrugglingClient[] {
     return windowedTopN(strugglers, query, (s) => s.bufferedBytes);
 }
 
-// Compact summary for the in-app monitor: how many distinct clients are
-// struggling right now and the worst send-buffer seen.
+// Compact five-minute summary for the in-app monitor. The ring is historical;
+// old entries must not keep a client looking unhealthy after backpressure ends.
 export function getWsClientHealthStats(): WsClientHealthStats {
-    const ids = new Set<string>();
-    let worstBufferedBytes = 0;
-    for (const s of strugglers) {
-        ids.add(s.clientId);
-        if (s.bufferedBytes > worstBufferedBytes) {
-            worstBufferedBytes = s.bufferedBytes;
-        }
-    }
-    return {strugglingClients: ids.size, worstBufferedBytes};
+    return summarizeWsClientHealth(strugglers);
 }
 
 export function resetWsClientHealth(): void {

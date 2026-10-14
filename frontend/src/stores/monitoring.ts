@@ -126,6 +126,8 @@ export interface MetricSnapshot {
     serializeMaxMs: number;
     wsMaxBufferedKB: number;
     wsStrugglingClients: number;
+    wsPausedClients: number;
+    wsDroppedClients: number;
     wsWorstBufferedKB: number;
     // Tier 2+ (0 when unavailable)
     rpcSuccessRate: number;
@@ -337,6 +339,8 @@ function extractSnapshot(
         serializeMaxMs: events.serializeMaxMs ?? 0,
         wsMaxBufferedKB: metrics?.gauges?.ws_max_buffered_kb ?? 0,
         wsStrugglingClients: metrics?.wsClientHealth?.strugglingClients ?? 0,
+        wsPausedClients: metrics?.wsClientHealth?.pausedClients ?? 0,
+        wsDroppedClients: metrics?.wsClientHealth?.droppedClients ?? 0,
         wsWorstBufferedKB: Math.round(
             (metrics?.wsClientHealth?.worstBufferedBytes ?? 0) / 1024
         ),

@@ -12,14 +12,15 @@
                 :color="chartColors.primary"
             />
             <StatCard
-                label="Struggling Clients"
+                label="Backpressured (5m)"
                 :value="latest.wsStrugglingClients"
                 :spark-data="hist.wsStrugglingClients"
-                :color="chartColors.danger"
-                :warn="latest.wsStrugglingClients > 0"
+                :color="chartColors.warning"
+                :warn="latest.wsPausedClients > 0"
+                :critical="latest.wsDroppedClients > 0"
             />
             <StatCard
-                label="Worst Buffer"
+                label="Worst Buffer (5m)"
                 :value="latest.wsWorstBufferedKB"
                 suffix="KB"
                 :spark-data="hist.wsWorstBufferedKB"
@@ -59,6 +60,7 @@ import MonitoringGrid from '@/components/monitoring/MonitoringGrid.vue';
 import MonitoringSectionHeader from '@/components/monitoring/MonitoringSectionHeader.vue';
 import StatCard from '@/components/monitoring/StatCard.vue';
 import {chartColors} from '@/helpers/chartUtils';
+import {wsBackpressureStatus} from '@/helpers/wsBackpressureHealth';
 import {type FlowStatus, useMonitoringStore} from '@/stores/monitoring';
 
 const store = useMonitoringStore();
@@ -67,6 +69,8 @@ const store = useMonitoringStore();
 const EMPTY = {
     wsClients: 0,
     wsStrugglingClients: 0,
+    wsPausedClients: 0,
+    wsDroppedClients: 0,
     wsWorstBufferedKB: 0,
     broadcastMaxMs: 0,
     serializeMaxMs: 0,
@@ -83,11 +87,21 @@ const hist = computed(() => ({
     eventLoopLagMs: store.historyField('eventLoopLagMs')
 }));
 
-// Breaking point: any client dropping/lagging, or the server itself stalling.
+// Keep the recorded actions distinct: recent drops are critical, while recent
+// pauses indicate backpressure and warn without claiming an active slow client.
 const loadStatus = computed<FlowStatus>(() => {
     const s = latest.value;
-    if (s.wsStrugglingClients > 0 || s.eventLoopLagMs > 200) return 'critical';
-    if (s.broadcastMaxMs > 100 || s.eventLoopLagMs > 50) return 'warning';
+    const backpressure = wsBackpressureStatus({
+        pausedClients: s.wsPausedClients,
+        droppedClients: s.wsDroppedClients
+    });
+    if (backpressure === 'critical' || s.eventLoopLagMs > 200) return 'critical';
+    if (
+        backpressure === 'warning' ||
+        s.broadcastMaxMs > 100 ||
+        s.eventLoopLagMs > 50
+    )
+        return 'warning';
     return 'healthy';
 });
 </script>

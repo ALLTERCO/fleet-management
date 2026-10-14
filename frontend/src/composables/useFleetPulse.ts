@@ -18,7 +18,7 @@ export interface FleetPulse {
     loadKW: number;
 }
 
-const SITE_KINDS = new Set(['site', 'building']);
+const SITE_KINDS = new Set(['site']);
 const OPEN_ALERT_STATES = new Set(['active', 'acknowledged', 'cleared_unack']);
 
 interface SiteTotals {

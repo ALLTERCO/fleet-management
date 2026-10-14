@@ -19,7 +19,7 @@ export interface SitePanelRow {
     alertCount: number;
 }
 
-const SITE_KINDS = new Set(['site', 'building']);
+const SITE_KINDS = new Set(['site']);
 
 function isSiteLike(location: ApiLocation): boolean {
     return SITE_KINDS.has(location.kind);

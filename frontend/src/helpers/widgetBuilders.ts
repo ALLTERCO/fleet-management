@@ -46,6 +46,18 @@ export interface CrossBarCfg {
     metric: string;
     limit: number;
 }
+export const DATA_TABLE_SORT_KEYS = [
+    'name',
+    'online',
+    'signal',
+    'battery',
+    'firmware'
+] as const;
+export type DataTableSortKey = (typeof DATA_TABLE_SORT_KEYS)[number];
+export interface DataTableCfg {
+    sortBy: DataTableSortKey;
+    maxRows: number;
+}
 
 // One bundle so callers pass a single named owner instead of a 9-arg list.
 export interface WidgetConfigBundle {
@@ -58,6 +70,7 @@ export interface WidgetConfigBundle {
     siteGridCfg: SiteGridCfg;
     maintCfg: MaintCfg;
     crossBarCfg: CrossBarCfg;
+    dataTableCfg: DataTableCfg;
 }
 
 export type BuildResult =
@@ -227,15 +240,32 @@ const WIDGET_BUILDERS: Partial<Record<UiWidgetId, WidgetBuilder>> = {
             limit: crossBarCfg.limit
         }
     }),
-    data_table_widget: () => ({
-        ok: true,
-        data: {
-            id: 'data_table_widget',
-            source: 'device_health',
-            sortBy: 'name',
-            maxRows: 100
+    data_table_widget: ({dataTableCfg}) => {
+        if (!DATA_TABLE_SORT_KEYS.includes(dataTableCfg.sortBy)) {
+            return {
+                ok: false,
+                message: 'Choose a valid device-health sort order'
+            };
         }
-    })
+        if (
+            !Number.isInteger(dataTableCfg.maxRows) ||
+            dataTableCfg.maxRows < 1
+        ) {
+            return {
+                ok: false,
+                message: 'Max rows must be a positive whole number'
+            };
+        }
+        return {
+            ok: true,
+            data: {
+                id: 'data_table_widget',
+                source: 'device_health',
+                sortBy: dataTableCfg.sortBy,
+                maxRows: dataTableCfg.maxRows
+            }
+        };
+    }
 };
 
 // Answer — assemble a widget save payload, or describe why we can't.
@@ -269,8 +299,22 @@ export function createWidgetCfgBundle(): WidgetConfigBundle {
         heatmapCfg: {shellyId: '', metric: 'temperature'},
         siteGridCfg: {metric: 'power'},
         maintCfg: {maxItems: 20},
-        crossBarCfg: {metric: 'live_power', limit: 10}
+        crossBarCfg: {metric: 'live_power', limit: 10},
+        dataTableCfg: {sortBy: 'name', maxRows: 100}
     };
+}
+
+function dataTableSortKey(value: unknown): DataTableSortKey {
+    return typeof value === 'string' &&
+        DATA_TABLE_SORT_KEYS.includes(value as DataTableSortKey)
+        ? (value as DataTableSortKey)
+        : 'name';
+}
+
+function positiveInteger(value: unknown, fallback: number): number {
+    return typeof value === 'number' && Number.isInteger(value) && value > 0
+        ? value
+        : fallback;
 }
 
 // Answer — seed the form bundle FROM a stored widget config, the reverse of the
@@ -350,6 +394,12 @@ export function seedCfgBundleFromConfig(
             Object.assign(bundle.crossBarCfg, {
                 metric: s(config.metric, 'live_power'),
                 limit: n(config.limit, 10)
+            });
+            break;
+        case 'data_table_widget':
+            Object.assign(bundle.dataTableCfg, {
+                sortBy: dataTableSortKey(config.sortBy),
+                maxRows: positiveInteger(config.maxRows, 100)
             });
             break;
     }

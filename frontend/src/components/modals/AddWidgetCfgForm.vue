@@ -40,6 +40,10 @@
             v-else-if="widget === 'cross_site_bar_widget'"
             :cfg="crossBarCfg"
         />
+        <AddWidgetCfgDataTable
+            v-else-if="widget === 'data_table_widget'"
+            :cfg="dataTableCfg"
+        />
         <AddWidgetCfgInfo v-else-if="widget === 'energy_flow_sankey_widget'">
             An empty Energy Flow card will be added. Configure sources and
             loads by editing the widget config.
@@ -47,10 +51,6 @@
         <AddWidgetCfgInfo v-else-if="widget === 'fleet_kpi_strip_widget'">
             Shows fleet-wide totals (sites, devices, live power, active
             alerts) — no configuration required.
-        </AddWidgetCfgInfo>
-        <AddWidgetCfgInfo v-else-if="widget === 'data_table_widget'">
-            Shows all device health — signal, battery, firmware. No
-            configuration required.
         </AddWidgetCfgInfo>
         <AddWidgetCfgInfo v-else-if="widget === 'clock_widget'">
             Shows the current time and date. No configuration required.
@@ -62,6 +62,7 @@
 import type {
     ChartCfg,
     CrossBarCfg,
+    DataTableCfg,
     GaugeCfg,
     HeatmapCfg,
     MaintCfg,
@@ -75,6 +76,7 @@ import type {UiWidgetId} from '@/types/dashboard-entry';
 import AddWidgetCfgActivityHeatmap from './AddWidgetCfgActivityHeatmap.vue';
 import AddWidgetCfgChart from './AddWidgetCfgChart.vue';
 import AddWidgetCfgCrossSiteBar from './AddWidgetCfgCrossSiteBar.vue';
+import AddWidgetCfgDataTable from './AddWidgetCfgDataTable.vue';
 import AddWidgetCfgGauge from './AddWidgetCfgGauge.vue';
 import AddWidgetCfgInfo from './AddWidgetCfgInfo.vue';
 import AddWidgetCfgMaintenance from './AddWidgetCfgMaintenance.vue';
@@ -99,5 +101,6 @@ defineProps<{
     siteGridCfg: SiteGridCfg;
     maintCfg: MaintCfg;
     crossBarCfg: CrossBarCfg;
+    dataTableCfg: DataTableCfg;
 }>();
 </script>

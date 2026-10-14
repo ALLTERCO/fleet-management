@@ -17,6 +17,7 @@
         "sync-images": "bash ../tools/sync-device-images.sh",
         "preview": "vite preview",
         "test": "vitest run",
+        "test:data-table-widget": "node --test scripts/test-data-table-widget-config.mjs",
         "test:watch": "vitest",
         "test:e2e": "playwright test",
         "postinstall": "patch-package"

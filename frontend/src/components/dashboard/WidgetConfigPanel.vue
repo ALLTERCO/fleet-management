@@ -45,6 +45,7 @@
                         :site-grid-cfg="bundle.siteGridCfg"
                         :maint-cfg="bundle.maintCfg"
                         :cross-bar-cfg="bundle.crossBarCfg"
+                        :data-table-cfg="bundle.dataTableCfg"
                     />
                 </section>
 

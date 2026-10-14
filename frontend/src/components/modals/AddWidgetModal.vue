@@ -91,6 +91,7 @@
                                 :site-grid-cfg="siteGridCfg"
                                 :maint-cfg="maintCfg"
                                 :cross-bar-cfg="crossBarCfg"
+                                :data-table-cfg="dataTableCfg"
                             />
                             <div class="awm-editor__preview">
                                 <span class="awm-editor__preview-label">
@@ -210,6 +211,7 @@ const heatmapCfg = reactive(cfgBundle.heatmapCfg);
 const siteGridCfg = reactive(cfgBundle.siteGridCfg);
 const maintCfg = reactive(cfgBundle.maintCfg);
 const crossBarCfg = reactive(cfgBundle.crossBarCfg);
+const dataTableCfg = reactive(cfgBundle.dataTableCfg);
 const actions = ref<action_t[]>([]);
 const actionsLoading = ref(false);
 
@@ -231,7 +233,8 @@ const livePreviewEntry = computed<DashboardEntry>(() => {
         heatmapCfg,
         siteGridCfg,
         maintCfg,
-        crossBarCfg
+        crossBarCfg,
+        dataTableCfg
     });
     const data = built.ok ? built.data : (WIDGET_SAMPLE_CONFIG[id]?.() ?? {id});
     return {type: 'ui_widget', size: '1x1', data};
@@ -483,7 +486,8 @@ function onSave() {
                 heatmapCfg,
                 siteGridCfg,
                 maintCfg,
-                crossBarCfg
+                crossBarCfg,
+                dataTableCfg
             });
             if (!result.ok) {
                 toastStore.warning(result.message);
@@ -524,6 +528,7 @@ function resetState() {
     Object.assign(siteGridCfg, d.siteGridCfg);
     Object.assign(maintCfg, d.maintCfg);
     Object.assign(crossBarCfg, d.crossBarCfg);
+    Object.assign(dataTableCfg, d.dataTableCfg);
 }
 </script>
 

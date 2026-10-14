@@ -13,6 +13,7 @@ import {
     RPC_ERR_RATE_CRITICAL_PCT,
     RPC_ERR_RATE_WARN_PCT
 } from '@/helpers/monitoring-thresholds';
+import {computeRpcRequestAvgMs} from '@/helpers/monitoringRpcTimings';
 import {isDebugEnabled, setDebug} from '@/tools/debug';
 import {
     counterRatesBetween,
@@ -230,7 +231,7 @@ function extractSnapshot(
     const firmware = modules.firmwareScheduler ?? {};
     const registry = modules.registry ?? {};
     const gauges = metrics?.gauges ?? {};
-    const rpcAvgMs = computeAvgMs(metrics?.rpcTimings);
+    const rpcAvgMs = computeRpcRequestAvgMs(metrics?.rpcTimings);
     const dbAvgMs = computeAvgMs(metrics?.dbTimings);
 
     return {

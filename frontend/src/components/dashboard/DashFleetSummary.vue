@@ -7,12 +7,12 @@
                 <span class="dfs-value">{{ onlineDevices }} on &middot; {{ totalDevices - onlineDevices }} off</span>
             </div>
             <div v-if="groups > 0" class="dfs-row">
-                <span class="dfs-label">Locations</span>
-                <span class="dfs-value">{{ groups }} groups</span>
+                <span class="dfs-label">Groups</span>
+                <span class="dfs-value">{{ formatGroupCount(groups) }}</span>
             </div>
             <div v-for="(count, type) in devicesByType" :key="type" class="dfs-row">
                 <span class="dfs-label">{{ typeLabels[type] ?? type }}</span>
-                <span class="dfs-value">{{ count }} devices</span>
+                <span class="dfs-value">{{ formatDeviceCount(count) }}</span>
             </div>
             <div v-if="avgCostPerDay != null" class="dfs-row">
                 <span class="dfs-label">Avg cost/day</span>
@@ -23,6 +23,8 @@
 </template>
 
 <script setup lang="ts">
+import {formatDeviceCount, formatGroupCount} from '@/helpers/fleetSummaryCounts';
+
 const props = defineProps<{
     totalDevices: number;
     onlineDevices: number;

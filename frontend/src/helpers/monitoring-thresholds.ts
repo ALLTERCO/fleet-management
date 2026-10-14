@@ -81,7 +81,8 @@ export const EM_QUEUE_CRITICAL = readEnvNumber(
     100
 );
 
-// node EventEmitter listener count — likely leak above 1k.
+// EventDistributor callbacks beyond expected browser-client × event-type
+// fan-out. Raw listener count scales with healthy connected UI sessions.
 export const EVENT_LISTENERS_WARN = readEnvNumber(
     'VITE_MON_EVENT_LISTENERS_WARN',
     500

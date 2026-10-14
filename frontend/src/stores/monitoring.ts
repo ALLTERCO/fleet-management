@@ -13,6 +13,7 @@ import {
     RPC_ERR_RATE_CRITICAL_PCT,
     RPC_ERR_RATE_WARN_PCT
 } from '@/helpers/monitoring-thresholds';
+import {eventListenerExcess} from '@/helpers/eventListenerHealth';
 import {isDebugEnabled, setDebug} from '@/tools/debug';
 import {
     counterRatesBetween,
@@ -476,8 +477,9 @@ export const useMonitoringStore = defineStore('monitoring', () => {
     const eventsStatus = computed<FlowStatus>(() => {
         if (!latest.value || obsLevel.value === 0) return 'unknown';
         const snap = latest.value;
-        if (snap.eventsListeners > EVENT_LISTENERS_CRITICAL) return 'critical';
-        if (snap.eventsListeners > EVENT_LISTENERS_WARN) return 'warning';
+        const excess = eventListenerExcess(snap);
+        if (excess > EVENT_LISTENERS_CRITICAL) return 'critical';
+        if (excess > EVENT_LISTENERS_WARN) return 'warning';
         return 'healthy';
     });
 

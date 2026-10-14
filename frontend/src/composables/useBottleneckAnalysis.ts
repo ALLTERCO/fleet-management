@@ -1,4 +1,5 @@
 import {computed} from 'vue';
+import {eventListenerExcess} from '@/helpers/eventListenerHealth';
 import {
     ACTIVE_HANDLES_CRITICAL,
     ACTIVE_HANDLES_WARN,
@@ -320,21 +321,24 @@ function checkEmSyncCapacity({s, history}: CheckContext): Bottleneck | null {
 }
 
 function checkEventListeners({s, history}: CheckContext): Bottleneck | null {
-    if (s.eventsListeners <= EVENT_LISTENERS_WARN) return null;
-    const critical = s.eventsListeners > EVENT_LISTENERS_CRITICAL;
+    const excess = eventListenerExcess(s);
+    if (excess <= EVENT_LISTENERS_WARN) return null;
+    const critical = excess > EVENT_LISTENERS_CRITICAL;
+    const expectedFanout = Math.max(0, s.eventsListeners - excess);
     return {
         id: 'event-listeners',
-        name: 'Event Listener Count',
+        name: 'Event Subscription Excess',
         severity: critical ? 'critical' : 'warning',
         category: 'resource',
-        description: critical
-            ? `${s.eventsListeners} active event listeners. This is abnormally high and may indicate a listener leak.`
-            : `${s.eventsListeners} active event listeners. Above normal threshold.`,
+        description: `${excess} event subscriptions exceed expected browser fan-out (${s.eventsListeners} total).`,
         recommendation:
-            'Check for event listeners not being cleaned up on device disconnect. Review plugin subscription patterns.',
+            'Check for subscriptions not being cleaned up after client disconnects. Review plugin subscription patterns.',
         score: critical ? 65 : 30,
         affectedMetrics: [
-            {label: 'Listeners', value: s.eventsListeners},
+            {label: 'Total subscriptions', value: s.eventsListeners},
+            {label: 'Expected client fan-out', value: expectedFanout},
+            {label: 'Excess', value: excess},
+            {label: 'Browser Sessions', value: s.wsClients},
             {label: 'Event Types', value: s.eventsTypes}
         ],
         trendingUp: isTrendingUp(history('eventsListeners'))

@@ -27,7 +27,7 @@
                             <div class="ev-tile">
                                 <div class="ev-tile-label">Listeners</div>
                                 <div class="ev-tile-row">
-                                    <span class="ev-tile-value" :class="store.latest.eventsListeners > 500 ? 'ev-text-warning' : ''">
+                                    <span class="ev-tile-value" :class="listenerExcess > EVENT_LISTENERS_WARN ? 'ev-text-warning' : ''">
                                         {{ store.latest.eventsListeners }}
                                     </span>
                                     <SparkLine :data="cachedHistory.eventsListeners" :color="chartColors.chart5" :width="60" :height="20" />
@@ -146,13 +146,19 @@ import MonitoringSectionHeader from '@/components/monitoring/MonitoringSectionHe
 import MonitoringStatusSummaryRow from '@/components/monitoring/MonitoringStatusSummaryRow.vue';
 import SparkLine from '@/components/monitoring/SparkLine.vue';
 import {chartColors} from '@/helpers/chartUtils';
+import {eventListenerExcess} from '@/helpers/eventListenerHealth';
 import {formatMs} from '@/helpers/format';
+import {EVENT_LISTENERS_WARN} from '@/helpers/monitoring-thresholds';
 import {useMonitoringStore} from '@/stores/monitoring';
 import type {RouteTab} from '@/types/page-template';
 
 const monitoringTabs = inject<ComputedRef<RouteTab[]>>('monitoringTabs');
 
 const store = useMonitoringStore();
+
+const listenerExcess = computed(() =>
+    store.latest ? eventListenerExcess(store.latest) : 0
+);
 
 const cachedHistory = computed(() => ({
     eventsListeners: store.historyField('eventsListeners'),

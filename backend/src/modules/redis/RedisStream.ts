@@ -95,6 +95,14 @@ export interface ReadGroupOptions {
     blockMs: number;
 }
 
+// Pending replay is normally one page. A bounded cursor scan prevents deleted
+// PEL tombstones at the front of that page from permanently hiding valid
+// pending messages without turning replay into an unbounded Redis read loop.
+// Tombstones are deliberately not ACKed here. If more than this many full
+// pages precede valid entries, those later entries stay deferred until an
+// explicit PEL-cleanup policy handles the tombstones.
+const MAX_PENDING_READ_PAGES = 8;
+
 export interface StreamEntry {
     id: string;
     fields: Record<string, string>;
@@ -503,17 +511,37 @@ export class RedisStream {
         count = 100
     ): Promise<StreamEntry[]> {
         try {
-            const reply = await this.#client.xreadgroup(
-                'GROUP',
-                group,
-                consumer,
-                'COUNT',
-                String(count),
-                'STREAMS',
-                this.#key,
-                '0'
-            );
-            return decodeReadReply(reply);
+            if (count <= 0) return [];
+            const out: StreamEntry[] = [];
+            let cursor = '0';
+            for (
+                let pageIndex = 0;
+                pageIndex < MAX_PENDING_READ_PAGES && out.length < count;
+                pageIndex += 1
+            ) {
+                const pageSize = count - out.length;
+                const reply = await this.#client.xreadgroup(
+                    'GROUP',
+                    group,
+                    consumer,
+                    'COUNT',
+                    String(pageSize),
+                    'STREAMS',
+                    this.#key,
+                    cursor
+                );
+                const page = decodeReadReplyPage(reply);
+                if (
+                    page.rawEntryCount === 0 ||
+                    !page.lastId ||
+                    page.lastId === cursor
+                ) {
+                    break;
+                }
+                out.push(...page.entries.slice(0, pageSize));
+                cursor = page.lastId;
+            }
+            return out;
         } catch (err) {
             Observability.incrementCounter('redis_cmd_errors_total');
             logger.warn('xreadgroup pending failed key=%s: %s', this.#key, err);
@@ -940,13 +968,12 @@ export async function recoverMissingGroup(
 function decodeAutoclaimReply(reply: unknown): StreamEntry[] {
     // [next-cursor, [[id, [k, v, ...]], ...], [deleted-ids...]]
     if (!Array.isArray(reply) || reply.length < 2) return [];
-    const claimed = reply[1] as Array<[string, string[]] | null>;
+    const claimed = reply[1];
     if (!Array.isArray(claimed)) return [];
     const out: StreamEntry[] = [];
     for (const entry of claimed) {
-        if (!entry) continue;
-        const [id, flatFields] = entry;
-        out.push({id, fields: decodeFields(flatFields)});
+        const decoded = decodeStreamEntry(entry);
+        if (decoded) out.push(decoded);
     }
     return out;
 }
@@ -954,31 +981,81 @@ function decodeAutoclaimReply(reply: unknown): StreamEntry[] {
 function decodeRangeReply(reply: unknown): StreamEntry[] {
     if (!Array.isArray(reply)) return [];
     const out: StreamEntry[] = [];
-    for (const entry of reply as Array<[string, string[]] | null>) {
-        if (!entry) continue;
-        const [id, flat] = entry;
-        out.push({id, fields: decodeFields(flat)});
+    for (const entry of reply) {
+        const decoded = decodeStreamEntry(entry);
+        if (decoded) out.push(decoded);
     }
     return out;
 }
 
 function decodeReadReply(reply: unknown): StreamEntry[] {
-    if (!Array.isArray(reply) || reply.length === 0) return [];
-    const out: StreamEntry[] = [];
-    for (const streamReply of reply) {
-        const entries = (streamReply as [string, Array<[string, string[]]>])[1];
-        if (!Array.isArray(entries)) continue;
-        for (const [id, flatFields] of entries) {
-            out.push({id, fields: decodeFields(flatFields)});
-        }
-    }
-    return out;
+    return decodeReadReplyPage(reply).entries;
 }
 
-function decodeFields(flatFields: string[]): Record<string, string> {
+interface DecodedReadReplyPage {
+    entries: StreamEntry[];
+    lastId: string | null;
+    rawEntryCount: number;
+}
+
+function decodeReadReplyPage(reply: unknown): DecodedReadReplyPage {
+    if (!Array.isArray(reply) || reply.length === 0) {
+        return {entries: [], lastId: null, rawEntryCount: 0};
+    }
+    const out: StreamEntry[] = [];
+    let lastId: string | null = null;
+    let rawEntryCount = 0;
+    for (const streamReply of reply) {
+        if (!Array.isArray(streamReply) || streamReply.length < 2) continue;
+        const entries = streamReply[1];
+        if (!Array.isArray(entries)) continue;
+        for (const entry of entries) {
+            rawEntryCount += 1;
+            const entryId = decodeStreamEntryId(entry);
+            if (entryId) lastId = entryId;
+            const decoded = decodeStreamEntry(entry);
+            if (decoded) out.push(decoded);
+        }
+    }
+    return {entries: out, lastId, rawEntryCount};
+}
+
+/**
+ * Decode one Redis stream entry without manufacturing a message for an entry
+ * whose payload no longer exists. Redis can return `[id, null]` while replaying
+ * a consumer's PEL after the underlying stream entry was trimmed/deleted. A
+ * skipped entry is not returned to callers, so their normal ACK path cannot
+ * acknowledge it implicitly.
+ */
+function decodeStreamEntry(entry: unknown): StreamEntry | null {
+    if (!Array.isArray(entry) || entry.length !== 2) return null;
+    const id = decodeStreamEntryId(entry);
+    if (!id) return null;
+    const flatFields = entry[1];
+    const fields = decodeFields(flatFields);
+    return fields ? {id, fields} : null;
+}
+
+function decodeStreamEntryId(entry: unknown): string | null {
+    if (!Array.isArray(entry) || entry.length === 0) return null;
+    const id = entry[0];
+    return typeof id === 'string' && id.length > 0 ? id : null;
+}
+
+function decodeFields(flatFields: unknown): Record<string, string> | null {
+    if (
+        !Array.isArray(flatFields) ||
+        flatFields.length === 0 ||
+        flatFields.length % 2 !== 0
+    ) {
+        return null;
+    }
     const fields: Record<string, string> = {};
     for (let i = 0; i + 1 < flatFields.length; i += 2) {
-        fields[flatFields[i]] = flatFields[i + 1];
+        const key = flatFields[i];
+        const value = flatFields[i + 1];
+        if (typeof key !== 'string' || typeof value !== 'string') return null;
+        fields[key] = value;
     }
     return fields;
 }

@@ -813,6 +813,105 @@ function composeVirtualComponents(shelly: ShellyDevice): entity_t[] {
 // Build-in Components
 // ----------------------------------------------------------------------------------
 
+type ComponentEntityIndex = {
+    id: number;
+    source: 'status' | 'key';
+};
+
+/**
+ * Native component status normally repeats its numeric instance as `status.id`,
+ * but opaque namespaces are not required to do so. The normalized component
+ * key is still authoritative for the instance when it has the exact `type:N`
+ * shape. Keep an explicit finite numeric status id as the first choice so this
+ * fallback does not change established component identity.
+ */
+export function resolveComponentEntityIndex(
+    type: string,
+    key: string,
+    statusId: unknown
+): ComponentEntityIndex | null {
+    if (typeof statusId === 'number' && Number.isFinite(statusId)) {
+        return {id: statusId, source: 'status'};
+    }
+
+    const prefix = `${type}:`;
+    if (!key.startsWith(prefix)) return null;
+    const rawId = key.slice(prefix.length);
+    if (!/^\d+$/.test(rawId)) return null;
+
+    const id = Number(rawId);
+    if (!Number.isSafeInteger(id)) return null;
+    return {id, source: 'key'};
+}
+
+type ComposableComponent = ComponentEntityIndex & {key: string};
+
+function composableComponentKeys(
+    shelly: ShellyDevice,
+    type: string
+): ComposableComponent[] {
+    const byId = new Map<number, ComposableComponent>();
+
+    for (const key of Object.keys(shelly.status)) {
+        if (!key.startsWith(`${type}:`)) continue;
+        // A device may report a non-object component value; skip it so it
+        // never becomes an entity with an undefined-keyed id.
+        if (!isPlainObject(shelly.status[key])) {
+            logger.warn(
+                '%s: %s status is not a component object, skipping',
+                shelly.shellyID,
+                key
+            );
+            continue;
+        }
+
+        const resolved = resolveComponentEntityIndex(
+            type,
+            key,
+            shelly.status[key].id
+        );
+        if (!resolved) {
+            logger.warn(
+                '%s: %s has no numeric status id or valid key instance, skipping',
+                shelly.shellyID,
+                key
+            );
+            continue;
+        }
+
+        const candidate = {key, ...resolved};
+        const existing = byId.get(candidate.id);
+        if (!existing) {
+            byId.set(candidate.id, candidate);
+            continue;
+        }
+
+        // A firmware-supplied numeric id is more authoritative than a key
+        // fallback. This also keeps identity deterministic if malformed input
+        // reports two component keys that resolve to the same entity id.
+        if (existing.source === 'key' && candidate.source === 'status') {
+            logger.warn(
+                '%s: %s and %s resolve to component id %s; preferring explicit status id',
+                shelly.shellyID,
+                existing.key,
+                candidate.key,
+                candidate.id
+            );
+            byId.set(candidate.id, candidate);
+        } else {
+            logger.warn(
+                '%s: %s resolves to duplicate component id %s already claimed by %s, skipping',
+                shelly.shellyID,
+                candidate.key,
+                candidate.id,
+                existing.key
+            );
+        }
+    }
+
+    return [...byId.values()];
+}
+
 function composeComponents(
     shelly: ShellyDevice,
     type: string,
@@ -824,39 +923,17 @@ function composeComponents(
     ) => Record<string, any>,
     idSuffix?: string
 ): entity_t[] {
-    const keys = Object.keys(shelly.status).filter((key) => {
-        if (!key.startsWith(`${type}:`)) return false;
-        // A device may report a non-object component value; skip it so it
-        // never becomes an entity with an undefined-keyed id.
-        if (!isPlainObject(shelly.status[key])) {
-            logger.warn(
-                '%s: %s status is not a component object, skipping',
-                shelly.shellyID,
-                key
-            );
-            return false;
-        }
-        // Non-numeric id would key a malformed entity id.
-        if (typeof shelly.status[key].id !== 'number') {
-            logger.warn(
-                '%s: %s status has non-numeric id, skipping',
-                shelly.shellyID,
-                key
-            );
-            return false;
-        }
-        return true;
-    });
+    const components = composableComponentKeys(shelly, type);
 
     const suffix = idSuffix || type;
 
-    return keys.map((key) => {
+    return components.map(({key, id: componentId}) => {
         const entity_status = shelly.status[key];
         const entity_config = shelly.config[key];
         const device_name = shelly.info.name;
 
-        const hasMultiple = keys.length > 1;
-        const prefix = hasMultiple ? `${entity_status.id}) ` : '';
+        const hasMultiple = components.length > 1;
+        const prefix = hasMultiple ? `${componentId}) ` : '';
         const name =
             typeof entity_config?.name === 'string' && entity_config.name
                 ? entity_config.name
@@ -901,11 +978,11 @@ function composeComponents(
         // callers narrow on `type` keeps the union check at the use site.
         return {
             name,
-            id: `${shelly.id}_${entity_status.id}:${suffix}`,
+            id: `${shelly.id}_${componentId}:${suffix}`,
             type,
             source: shelly.shellyID,
             properties: {
-                id: entity_status.id,
+                id: componentId,
                 ...(restProps ?? {}),
                 ...(errors.length ? {errors} : {}),
                 ...(ownership.parent ? {parent: ownership.parent} : {}),

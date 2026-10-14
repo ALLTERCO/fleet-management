@@ -9,7 +9,7 @@
         "build:client": "vite build --mode client",
         "build:client:strict": "vue-tsc -p tsconfig.client.json && vite build --mode client",
         "lint": "vue-tsc --noEmit && npm run check:host-api && npm run check:template-boundaries",
-        "check:host-api": "node scripts/check-host-api-coverage.mjs",
+        "check:host-api": "node --import tsx scripts/check-host-api-coverage.mjs",
         "check:template-boundaries": "node scripts/check-template-boundaries.mjs",
         "validate:customization": "node scripts/validate-customization.mjs",
         "validate:operational-bindings": "node --import tsx scripts/validate-operational-bindings.mjs",

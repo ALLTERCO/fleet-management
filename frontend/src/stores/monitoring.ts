@@ -13,6 +13,7 @@ import {
     RPC_ERR_RATE_CRITICAL_PCT,
     RPC_ERR_RATE_WARN_PCT
 } from '@/helpers/monitoring-thresholds';
+import {assessEmSyncHealth} from '@/helpers/monitoringEmSyncHealth';
 import {isDebugEnabled, setDebug} from '@/tools/debug';
 import {
     counterRatesBetween,
@@ -440,29 +441,7 @@ export const useMonitoringStore = defineStore('monitoring', () => {
 
     const emSyncStatus = computed<FlowStatus>(() => {
         if (!latest.value || obsLevel.value === 0) return 'unknown';
-        const snap = latest.value;
-        if (
-            snap.emSyncStreamDepth > 200000 ||
-            snap.emSyncStreamOldestAgeMs > 30 * 60 * 1000 ||
-            snap.emSyncStreamPending > 10000 ||
-            snap.emSyncLastWriteMs > 5000 ||
-            snap.emSyncLastRpcFetchMs > 10000 ||
-            snap.emSyncWorstChannelLagSec > 6 * 3600
-        )
-            return 'critical';
-        if (snap.emActiveSyncs >= 40 && snap.emQueueSize > 200)
-            return 'critical';
-        if (
-            snap.emSyncStreamDepth > 50000 ||
-            snap.emSyncStreamOldestAgeMs > 5 * 60 * 1000 ||
-            snap.emSyncStreamPending > 1000 ||
-            snap.emSyncLastWriteMs > 1500 ||
-            snap.emSyncLastRpcFetchMs > 3000 ||
-            snap.emSyncWorstChannelLagSec > 3600
-        )
-            return 'warning';
-        if (snap.emActiveSyncs > 30) return 'warning';
-        return 'healthy';
+        return assessEmSyncHealth(latest.value);
     });
 
     const waitingRoomStatus = computed<FlowStatus>(() => {

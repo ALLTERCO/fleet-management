@@ -4,6 +4,7 @@
 
 <script setup lang="ts">
 import {computed, onBeforeUnmount, ref, watch} from 'vue';
+import {formatRoundedNumber} from '@/helpers/numberDisplay';
 
 interface Props {
     value: number;
@@ -21,7 +22,7 @@ const props = withDefaults(defineProps<Props>(), {
 const displayed = ref(safe(props.value));
 let rafId: number | null = null;
 
-const rendered = computed(() => displayed.value.toFixed(props.decimals));
+const rendered = computed(() => formatRoundedNumber(displayed.value, props.decimals));
 
 watch(
     () => props.value,

@@ -170,7 +170,6 @@ import MapMobileFocusSheet, {
     type MobileSiteKpis
 } from '@/components/dashboard/map/MapMobileFocusSheet.vue';
 import MapPinTooltip from '@/components/dashboard/map/MapPinTooltip.vue';
-import type {PulseStat} from '@/components/dashboard/map/MapPulseStrip.vue';
 import MapPulseStrip from '@/components/dashboard/map/MapPulseStrip.vue';
 import type {
     ScrubberTick
@@ -186,6 +185,7 @@ import MapTimeChips from '@/components/dashboard/map/MapTimeChips.vue';
 import ReconnectBanner from '@/components/dashboard/map/ReconnectBanner.vue';
 import LocationFocusCard from '@/components/locations/LocationFocusCard.vue';
 import {useFleetPulse} from '@/composables/useFleetPulse';
+import {mapPulseStats} from '@/helpers/mapPulseStats';
 import {
     type MapPinProjector,
     useLocationFocusCard
@@ -304,41 +304,7 @@ const locationsLoading = computed(() => store.loading);
 const {health: locationHealth} = useLocationStatus();
 const {byLocation: alertsByLocation} = usePinAlertCounts();
 const {pulse} = useFleetPulse();
-const fleetStats = computed<PulseStat[]>(() => [
-    {
-        id: 'sites',
-        label: 'sites',
-        value: pulse.value.sitesOnline,
-        total: pulse.value.sitesTotal,
-        leading: 'live-dot'
-    },
-    {
-        id: 'devices',
-        label: 'devices',
-        value: pulse.value.devicesOnline,
-        total: pulse.value.devicesTotal,
-        leading: 'icon',
-        icon: 'fa-circle',
-        iconColor: 'on'
-    },
-    {
-        id: 'load',
-        label: 'kW',
-        value: pulse.value.loadKW,
-        decimals: 1,
-        leading: 'icon',
-        icon: 'fa-bolt',
-        iconColor: 'primary'
-    },
-    {
-        id: 'alerts',
-        label: 'alerts',
-        value: pulse.value.alertCount,
-        leading: 'icon',
-        icon: 'fa-triangle-exclamation',
-        tone: pulse.value.alertCount > 0 ? 'alert' : 'default'
-    }
-]);
+const fleetStats = computed(() => mapPulseStats(pulse.value));
 const {rows: sitePanelRows, groups: sitePanelGroups} = useSitePanelRows();
 const {open: openAlerts, severity: topAlertSeverity} = useOpenAlerts();
 const mapState = computed(() =>

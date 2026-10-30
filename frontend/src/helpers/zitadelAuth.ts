@@ -177,9 +177,24 @@ export function initZitadelAuth(): Promise<ZitadelAuthInstance | undefined> {
         };
 
         mgr.events.addUserLoaded((u) => {
+            const previousAccessToken = userRef.value?.access_token;
             userRef.value = u;
             if (u.access_token) {
                 sessionStorage.setItem('access_token', u.access_token);
+                // Automatic silent renew raises UserLoaded after storing the new
+                // access token. Keep the already-authenticated websocket on the
+                // same token generation so the backend does not reject it when
+                // the previous token expires. The first interactive login is
+                // intentionally excluded: there is no live socket to rotate yet.
+                if (
+                    previousAccessToken &&
+                    previousAccessToken !== u.access_token &&
+                    !isRoutePath('/callback')
+                ) {
+                    void pushRotatedTokenToWs(u.access_token).catch((error) => {
+                        debug('OIDC websocket token rotate failed:', error);
+                    });
+                }
             }
         });
 
@@ -205,7 +220,6 @@ export function initZitadelAuth(): Promise<ZitadelAuthInstance | undefined> {
                 if (u?.access_token) {
                     userRef.value = u;
                     sessionStorage.setItem('access_token', u.access_token);
-                    await pushRotatedTokenToWs(u.access_token);
                     return;
                 }
             } catch (err) {

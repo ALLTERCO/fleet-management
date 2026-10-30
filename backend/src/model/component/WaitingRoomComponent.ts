@@ -128,12 +128,12 @@ export default class WaitingRoomComponent extends Component<Config> {
     @Component.NoAudit
     @Component.Expose('GetDenied')
     @Component.CheckPermissions(canReadWaitingRoom)
-    async getDenied(params: unknown) {
+    async getDenied(params: unknown, sender: CommandSender) {
         validateOrThrow<Record<string, never>>(
             params ?? {},
             WAITINGROOM_GET_DENIED_PARAMS_SCHEMA
         );
-        return await WaitingRoomModule.getDenied();
+        return await WaitingRoomModule.getDenied(requireOrganizationId(sender));
     }
 
     @Component.NoAudit

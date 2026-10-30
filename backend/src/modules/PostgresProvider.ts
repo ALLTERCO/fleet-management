@@ -518,8 +518,16 @@ export async function getPendingDevices() {
     return get(null, ACCESS_CONTROL.PENDING);
 }
 
-export async function getDeniedDevices() {
-    return get(null, ACCESS_CONTROL.DENIED);
+export async function getDeniedDevices(organizationId: string) {
+    // fn_fetch is a legacy global read. Intersect it with the current
+    // organization inventory before any denied row reaches an API caller;
+    // historical unowned rows deliberately fail closed.
+    const [denied, organizationDevices] = await Promise.all([
+        get(null, ACCESS_CONTROL.DENIED),
+        listOrgDevices(organizationId)
+    ]);
+    const allowed = new Set(organizationDevices);
+    return denied.filter((device) => allowed.has(device.external_id));
 }
 
 export async function accessControl(

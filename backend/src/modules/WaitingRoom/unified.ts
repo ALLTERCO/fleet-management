@@ -130,7 +130,7 @@ async function legacyEntries(
 ): Promise<UnifiedWaitingRoomEntry[]> {
     if (query.source === 'device_ingress') return [];
     if (query.state !== undefined && query.state !== 'rejected') return [];
-    const dict = await WaitingRoomModule.getDenied();
+    const dict = await WaitingRoomModule.getDenied(query.organizationId);
     return Object.values(dict).map(legacyWaitingRoomItem);
 }
 
@@ -196,7 +196,7 @@ async function getLegacyEntry(
 ): Promise<UnifiedWaitingRoomEntry | null> {
     const openMatch = await findOpenStoreEntry(organizationId, shellyId);
     if (openMatch) return storeWaitingRoomItem(openMatch);
-    const denied = await WaitingRoomModule.getDenied();
+    const denied = await WaitingRoomModule.getDenied(organizationId);
     return denied[shellyId] ? legacyWaitingRoomItem(denied[shellyId]) : null;
 }
 

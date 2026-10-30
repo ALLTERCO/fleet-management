@@ -1410,8 +1410,8 @@ export async function denyDevice(id: number, username?: string) {
     return !!device;
 }
 
-export async function getDenied() {
-    const response = await waitingRoomStore.getDeniedDevices();
+export async function getDenied(organizationId: string) {
+    const response = await waitingRoomStore.getDeniedDevices(organizationId);
     const devices: Record<string, any> = {};
     for (const dev of response) {
         // external_id is the device identity; dev.id is an internal serial.

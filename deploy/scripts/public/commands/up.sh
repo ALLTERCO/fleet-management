@@ -346,6 +346,7 @@ cmd_up() {
             else
                 ok "Zitadel already bootstrapped (hostname unchanged)"
                 nodered_sync_permissions "$hostname" || return 1
+                sync_fleet_spa_grants "$hostname" || return 1
                 sync_mcp_sign_in_apps "$hostname" || return 1
             fi
         fi

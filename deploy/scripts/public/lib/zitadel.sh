@@ -90,6 +90,17 @@ sync_mcp_sign_in_apps() {
     }
 }
 
+# Reconciles the refresh-token grant on the already-created Fleet SPA. This is
+# intentionally separate from bootstrap: upgrades must repair legacy app config
+# without recreating users, policies, secrets or application identities.
+sync_fleet_spa_grants() {
+    local hostname="$1"
+    zitadel_admin_script "$hostname" "Fleet SPA OIDC grants" zitadel/sync-spa-grants.sh || {
+        error "Could not reconcile the existing Fleet SPA refresh-token grant in Zitadel"
+        return 1
+    }
+}
+
 # Registers Action V2 webhook targets (GDPR cascade + grant-removed) — must
 # run AFTER FM is up because Zitadel resolves the endpoint via DNS at create.
 run_actions_bootstrap() {

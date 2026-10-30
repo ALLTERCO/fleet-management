@@ -91,7 +91,7 @@ cmd_upgrade() {
         || warn "Node-RED permissions not re-applied; run 'up' to apply FM_NODE_RED_PERMISSIONS"
 
     # Before the new container exists, so a failure leaves the running one alone.
-    _public_upgrade_mcp_sign_in || return 1
+    _public_upgrade_zitadel_apps || return 1
 
     # Safe path: orchestrator with injected apply/revert hooks.
     export DB_SERVICE=fleet-db
@@ -200,14 +200,15 @@ _public_upgrade_switch_routes() {
     wait_for_fleet_route
 }
 
-# Upgrade never reruns the bootstrap, so installs from before MCP browser
-# sign-in get its Zitadel apps here and the new container gets their ids.
-# Fails loud like the other Zitadel steps instead of leaving sign-in off.
-_public_upgrade_mcp_sign_in() {
+# Upgrade never reruns the bootstrap, so reconcile application config that was
+# added after an install was first bootstrapped. Fail before replacing Fleet if
+# the existing SPA cannot be repaired safely.
+_public_upgrade_zitadel_apps() {
     if [ "${FM_DEV_MODE:-false}" = "true" ] || [ ! -f "$STATE_DIR/zitadel.env" ]; then
         return 0
     fi
     local hostname="${ZITADEL_HOSTNAME:-${DEPLOY_HOSTNAME:-localhost}}"
+    sync_fleet_spa_grants "$hostname" || return 1
     sync_mcp_sign_in_apps "$hostname" || return 1
     generate_fm_config "$hostname"
 }

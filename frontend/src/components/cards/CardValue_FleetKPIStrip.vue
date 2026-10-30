@@ -52,7 +52,6 @@
 
 <script setup lang="ts">
 import {computed, onMounted, ref, watch} from 'vue';
-import {useLocationDeviceScope} from '@/composables/useLocationDeviceScope';
 import {formatPower, metricText} from '@/helpers/powerMetrics';
 import {allowedSizesForWidget} from '@/helpers/widgetCatalog';
 import {useAlertsStore} from '@/stores/alerts';
@@ -106,19 +105,12 @@ const siteLocationIds = computed(() =>
         .filter((loc) => loc.kind === 'site')
         .map((loc) => loc.id)
 );
-const {allDeviceIds} = useLocationDeviceScope(siteLocationIds);
 
 const siteCount = computed(
     () => siteLocationIds.value.length
 );
 
-const allDevices = computed(() =>
-    allDeviceIds.value.length > 0
-        ? allDeviceIds.value
-              .map((id) => devicesStore.devices[id])
-              .filter((device): device is NonNullable<typeof device> => !!device)
-        : Object.values(devicesStore.devices)
-);
+const allDevices = computed(() => Object.values(devicesStore.devices));
 
 const totalDevices = computed(() => allDevices.value.length);
 

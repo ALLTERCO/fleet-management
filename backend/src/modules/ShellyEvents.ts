@@ -489,33 +489,36 @@ export function emitConsoleLogBatch(
     EventDistributor.notifyAll(event, {});
 }
 
-export function emitWaitingRoomAccepted(id: number) {
+export function emitWaitingRoomAccepted(id: number, organizationId: string) {
     const event: WaitingRoomEvent.Accepted = {
         method: 'WaitingRoomEvent.Accepted',
         params: {id}
     };
-    EventDistributor.processAndNotifyAll(event);
+    EventDistributor.processAndNotifyAll(event, {organizationId});
 }
 
 /**
  * Batch variant — one event with all IDs instead of N individual events.
  * Used by accept-all to avoid saturating the event loop.
  */
-export function emitWaitingRoomAcceptedBatch(ids: number[]) {
+export function emitWaitingRoomAcceptedBatch(
+    ids: number[],
+    organizationId: string
+) {
     if (ids.length === 0) return;
     const event: json_rpc_event = {
         method: 'WaitingRoomEvent.Accepted',
         params: {ids}
     };
-    EventDistributor.processAndNotifyAll(event);
+    EventDistributor.processAndNotifyAll(event, {organizationId});
 }
 
-export function emitWaitingRoomDenied(id: number) {
+export function emitWaitingRoomDenied(id: number, organizationId: string) {
     const event: WaitingRoomEvent.Denied = {
         method: 'WaitingRoomEvent.Denied',
         params: {id}
     };
-    EventDistributor.processAndNotifyAll(event);
+    EventDistributor.processAndNotifyAll(event, {organizationId});
 }
 
 export type NotifyEventEnvelope = {

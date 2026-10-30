@@ -265,7 +265,7 @@ export default class WaitingRoomComponent extends Component<Config> {
 
         WaitingRoomModule.approveDevicesBatch(records, username);
         await this.#dropStoreEntries(orgId, externalIds);
-        emitWaitingRoomAcceptedBatch(success);
+        emitWaitingRoomAcceptedBatch(success, orgId);
 
         if (typeof groupId === 'number' && externalIds.length > 0) {
             try {
@@ -445,7 +445,9 @@ export default class WaitingRoomComponent extends Component<Config> {
                         .filter((id) => !foundIds.has(id))
                         .map((id) => String(id))
                 );
-                for (const record of records) emitWaitingRoomDenied(record.id);
+                for (const record of records) {
+                    emitWaitingRoomDenied(record.id, orgId);
+                }
                 await Promise.all(
                     externalIds.map((externalId) =>
                         markRejected(orgId, externalId)
@@ -466,7 +468,9 @@ export default class WaitingRoomComponent extends Component<Config> {
             );
             success.push(...result.success);
             error.push(...result.error);
-            for (const id of result.deniedIds) emitWaitingRoomDenied(id);
+            for (const id of result.deniedIds) {
+                emitWaitingRoomDenied(id, orgId);
+            }
         }
 
         return {success, error};
@@ -497,12 +501,15 @@ export default class WaitingRoomComponent extends Component<Config> {
             WAITINGROOM_QUARANTINE_PARAMS_SCHEMA
         );
         const externalIds = shellyIDs.map(String);
+        const orgId = requireOrganizationId(sender);
         const result = await WaitingRoomModule.quarantineDevicesByExternalIds(
             externalIds,
             sender.getUser()?.username,
-            requireOrganizationId(sender)
+            orgId
         );
-        for (const id of result.deniedIds) emitWaitingRoomDenied(id);
+        for (const id of result.deniedIds) {
+            emitWaitingRoomDenied(id, orgId);
+        }
         return {success: result.success, error: result.error};
     }
 

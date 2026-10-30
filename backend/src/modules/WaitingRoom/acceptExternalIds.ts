@@ -40,7 +40,10 @@ export async function acceptExternalIds(
         undefined,
         onChunk
     );
-    emitAcceptedSafe(result.records.map((r) => r.id));
+    emitAcceptedSafe(
+        result.records.map((r) => r.id),
+        organizationId
+    );
     if (typeof groupId === 'number' && result.success.length > 0) {
         await addToGroup(organizationId, groupId, result.success);
     }
@@ -75,9 +78,9 @@ function reportGroupAddFailure(
     );
 }
 
-function emitAcceptedSafe(ids: number[]): void {
+function emitAcceptedSafe(ids: number[], organizationId: string): void {
     try {
-        emitWaitingRoomAcceptedBatch(ids);
+        emitWaitingRoomAcceptedBatch(ids, organizationId);
     } catch (err) {
         logger.warn('emitWaitingRoomAcceptedBatch failed: %s', err);
     }

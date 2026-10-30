@@ -9,7 +9,7 @@
         "build": "tsc",
         "watch": "tsc -w",
         "test": "node --import tsx --import ./test/_runtimeMetadataEnv.ts --test \"test/**/*.test.ts\"",
-        "test:integration": "node --import tsx --import ./test/_runtimeMetadataEnv.ts --test --test-global-setup=./test/integration/_setup.ts --test-concurrency=1 \"test/integration/**/*.integration.ts\"",
+        "test:integration": "node --import tsx --import ./test/_runtimeMetadataEnv.ts --test --test-concurrency=1 \"test/integration/**/*.integration.ts\"",
         "test:snapshot-e2e": "node --import tsx --import ./test/_runtimeMetadataEnv.ts --test --test-global-setup=./test/integration/_setup.ts --test-concurrency=1 test/integration/deviceSnapshotPipeline.integration.ts",
         "test:em-sync-60day": "FM_RUN_EM_60DAY_SCALE=1 FM_EM_60DAY_FLEETS=${FM_EM_60DAY_FLEETS:-1000,2000} FM_EM_60DAY_NEW_DEVICE_PERCENT=${FM_EM_60DAY_NEW_DEVICE_PERCENT:-50} FM_REDIS_TEST_MAX_MEMORY=1gb FM_EMSYNC_STREAM_MAXLEN=8000 FM_EMSYNC_CATCHUP_HIGH_WATER_PCT=75 FM_REDIS_RATE_LIMIT_ENABLED=false node --import tsx --import ./test/_runtimeMetadataEnv.ts --test --test-global-setup=./test/integration/_setup.ts --test-concurrency=1 test/integration/emSyncMixedFleet60Day.integration.ts",
         "lint": "biome check  ./src/ && npm run lint:migrations",

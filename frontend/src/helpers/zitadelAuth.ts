@@ -166,13 +166,40 @@ export function initZitadelAuth(): Promise<ZitadelAuthInstance | undefined> {
                 await mgr.signoutRedirect();
             },
             startup: async () => {
-                const u = await mgr.getUser();
+                let u = await mgr.getUser();
+                // A cached user can expire while the tab is closed. If the
+                // refresh grant is present, renew before the router decides
+                // this is a logged-out session. Interactive callbacks own
+                // their code exchange and must not run a competing refresh.
+                if (
+                    u?.expired &&
+                    u.refresh_token &&
+                    !isRoutePath('/callback')
+                ) {
+                    try {
+                        const renewed = await mgr.signinSilent();
+                        if (renewed?.access_token && !renewed.expired) {
+                            u = renewed;
+                        }
+                    } catch {
+                        // A concurrent automatic renew may already have won;
+                        // accept it if the manager now has a valid user.
+                        const latest = await mgr.getUser().catch(() => null);
+                        if (latest?.access_token && !latest.expired) {
+                            u = latest;
+                        }
+                        // Network or identity failures leave the cached user
+                        // intact for a later retry, without forcing logout.
+                    }
+                }
                 userRef.value = u;
                 // A restored localStorage user does not emit addUserLoaded.
                 if (u?.access_token && !u.expired) {
                     sessionStorage.setItem('access_token', u.access_token);
+                } else {
+                    sessionStorage.removeItem('access_token');
                 }
-                return !!u && !u.expired;
+                return !!u && !u.expired && !!u.access_token;
             }
         };
 

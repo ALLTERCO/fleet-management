@@ -286,15 +286,6 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       Record<never, never>,
       | '/settings/'
-      | '/settings/BrandingAssetsSection'
-      | '/settings/BrandingDomainSection'
-      | '/settings/BrandingLoginTextSection'
-      | '/settings/BrandingMailTemplateSection'
-      | '/settings/BrandingMessageTextSection'
-      | '/settings/BrandingNotificationSection'
-      | '/settings/BrandingPolicySection'
-      | '/settings/BrandingPrivacySection'
-      | '/settings/BrandingRestrictionsSection'
       | '/settings/alerts'
       | '/settings/alerts/'
       | '/settings/alerts/channels/'
@@ -433,69 +424,6 @@ declare module 'vue-router/auto-routes' {
     '/settings/branding': RouteRecordInfo<
       '/settings/branding',
       '/settings/branding',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/settings/BrandingAssetsSection': RouteRecordInfo<
-      '/settings/BrandingAssetsSection',
-      '/settings/BrandingAssetsSection',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/settings/BrandingDomainSection': RouteRecordInfo<
-      '/settings/BrandingDomainSection',
-      '/settings/BrandingDomainSection',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/settings/BrandingLoginTextSection': RouteRecordInfo<
-      '/settings/BrandingLoginTextSection',
-      '/settings/BrandingLoginTextSection',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/settings/BrandingMailTemplateSection': RouteRecordInfo<
-      '/settings/BrandingMailTemplateSection',
-      '/settings/BrandingMailTemplateSection',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/settings/BrandingMessageTextSection': RouteRecordInfo<
-      '/settings/BrandingMessageTextSection',
-      '/settings/BrandingMessageTextSection',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/settings/BrandingNotificationSection': RouteRecordInfo<
-      '/settings/BrandingNotificationSection',
-      '/settings/BrandingNotificationSection',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/settings/BrandingPolicySection': RouteRecordInfo<
-      '/settings/BrandingPolicySection',
-      '/settings/BrandingPolicySection',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/settings/BrandingPrivacySection': RouteRecordInfo<
-      '/settings/BrandingPrivacySection',
-      '/settings/BrandingPrivacySection',
-      Record<never, never>,
-      Record<never, never>,
-      | never
-    >,
-    '/settings/BrandingRestrictionsSection': RouteRecordInfo<
-      '/settings/BrandingRestrictionsSection',
-      '/settings/BrandingRestrictionsSection',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -1127,15 +1055,6 @@ declare module 'vue-router/auto-routes' {
       routes:
         | '/settings'
         | '/settings/'
-        | '/settings/BrandingAssetsSection'
-        | '/settings/BrandingDomainSection'
-        | '/settings/BrandingLoginTextSection'
-        | '/settings/BrandingMailTemplateSection'
-        | '/settings/BrandingMessageTextSection'
-        | '/settings/BrandingNotificationSection'
-        | '/settings/BrandingPolicySection'
-        | '/settings/BrandingPrivacySection'
-        | '/settings/BrandingRestrictionsSection'
         | '/settings/alerts'
         | '/settings/alerts/'
         | '/settings/alerts/channels/'
@@ -1290,78 +1209,6 @@ declare module 'vue-router/auto-routes' {
     'src/pages/settings/branding.vue': {
       routes:
         | '/settings/branding'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/settings/BrandingAssetsSection.vue': {
-      routes:
-        | '/settings/BrandingAssetsSection'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/settings/BrandingDomainSection.vue': {
-      routes:
-        | '/settings/BrandingDomainSection'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/settings/BrandingLoginTextSection.vue': {
-      routes:
-        | '/settings/BrandingLoginTextSection'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/settings/BrandingMailTemplateSection.vue': {
-      routes:
-        | '/settings/BrandingMailTemplateSection'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/settings/BrandingMessageTextSection.vue': {
-      routes:
-        | '/settings/BrandingMessageTextSection'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/settings/BrandingNotificationSection.vue': {
-      routes:
-        | '/settings/BrandingNotificationSection'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/settings/BrandingPolicySection.vue': {
-      routes:
-        | '/settings/BrandingPolicySection'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/settings/BrandingPrivacySection.vue': {
-      routes:
-        | '/settings/BrandingPrivacySection'
-      views:
-        | never
-      pathParamNames:
-        | never
-    }
-    'src/pages/settings/BrandingRestrictionsSection.vue': {
-      routes:
-        | '/settings/BrandingRestrictionsSection'
       views:
         | never
       pathParamNames:

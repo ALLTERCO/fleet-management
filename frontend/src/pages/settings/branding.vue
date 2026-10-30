@@ -139,15 +139,15 @@ import {
 import {useAuthStore} from '@/stores/auth';
 import {sendRPC} from '@/tools/websocket';
 import type {RouteTab} from '@/types/page-template';
-import BrandingAssetsSection from './BrandingAssetsSection.vue';
-import BrandingDomainSection from './BrandingDomainSection.vue';
-import BrandingLoginTextSection from './BrandingLoginTextSection.vue';
-import BrandingMailTemplateSection from './BrandingMailTemplateSection.vue';
-import BrandingMessageTextSection from './BrandingMessageTextSection.vue';
-import BrandingNotificationSection from './BrandingNotificationSection.vue';
-import BrandingPolicySection from './BrandingPolicySection.vue';
-import BrandingPrivacySection from './BrandingPrivacySection.vue';
-import BrandingRestrictionsSection from './BrandingRestrictionsSection.vue';
+import BrandingAssetsSection from '@/components/settings/branding/BrandingAssetsSection.vue';
+import BrandingDomainSection from '@/components/settings/branding/BrandingDomainSection.vue';
+import BrandingLoginTextSection from '@/components/settings/branding/BrandingLoginTextSection.vue';
+import BrandingMailTemplateSection from '@/components/settings/branding/BrandingMailTemplateSection.vue';
+import BrandingMessageTextSection from '@/components/settings/branding/BrandingMessageTextSection.vue';
+import BrandingNotificationSection from '@/components/settings/branding/BrandingNotificationSection.vue';
+import BrandingPolicySection from '@/components/settings/branding/BrandingPolicySection.vue';
+import BrandingPrivacySection from '@/components/settings/branding/BrandingPrivacySection.vue';
+import BrandingRestrictionsSection from '@/components/settings/branding/BrandingRestrictionsSection.vue';
 
 interface BrandingPolicy {
     primaryColor?: string;

@@ -167,6 +167,11 @@ const PAGE_RULES: readonly PageRule[] = [
         fallback: SETTINGS_PATH
     }),
     sectionPage({
+        path: '/settings/alerts/destinations',
+        gate: adminOnly(),
+        fallback: SETTINGS_PATH
+    }),
+    sectionPage({
         path: '/operations',
         gate: adminOnly(),
         fallback: firstAccessibleSection

@@ -54,6 +54,7 @@ import DetailPageLayout from '@/components/core/DetailPageLayout.vue';
 import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
 import EditAlertRuleModal from '@/components/modals/EditAlertRuleModal.vue';
 import {usePermissions} from '@/composables/usePermissions';
+import {alertInstanceRoute, parsePositiveRouteId} from '@/helpers/detailRoute';
 import {useAlertsStore} from '@/stores/alerts';
 
 const store = useAlertsStore();
@@ -70,9 +71,7 @@ const ruleId = computed(() => {
         string,
         string | string[] | undefined
     >;
-    const raw = Array.isArray(params.id) ? params.id[0] : params.id;
-    const n = Number.parseInt(String(raw ?? ''), 10);
-    return Number.isFinite(n) ? n : null;
+    return parsePositiveRouteId(params.id);
 });
 
 const rule = computed<AlertRule | null>(() =>
@@ -80,7 +79,10 @@ const rule = computed<AlertRule | null>(() =>
 );
 
 async function refresh() {
-    if (ruleId.value == null) return;
+    if (ruleId.value == null) {
+        loading.value = false;
+        return;
+    }
     loading.value = true;
     try {
         await Promise.all([store.fetchRule(ruleId.value), store.fetchKinds()]);
@@ -97,7 +99,7 @@ function onEdited() {
 }
 
 function openFiring(alertId: number): void {
-    void router.push(`/settings/alerts/${alertId}`);
+    void router.push(alertInstanceRoute(alertId));
 }
 
 function askDelete() {

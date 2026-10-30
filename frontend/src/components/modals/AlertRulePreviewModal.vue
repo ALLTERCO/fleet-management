@@ -54,6 +54,7 @@ import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
 import EditAlertRuleModal from '@/components/modals/EditAlertRuleModal.vue';
 import Modal from '@/components/modals/Modal.vue';
 import {usePermissions} from '@/composables/usePermissions';
+import {alertInstanceRoute} from '@/helpers/detailRoute';
 import {useAlertsStore} from '@/stores/alerts';
 
 const props = defineProps<{
@@ -75,7 +76,7 @@ const deleteConfirmRef = ref<InstanceType<typeof ConfirmationModal>>();
 
 function openFiring(alertId: number): void {
     emit('close');
-    void router.push(`/alerts?instance=${alertId}`);
+    void router.push(alertInstanceRoute(alertId));
 }
 
 function askDelete(): void {

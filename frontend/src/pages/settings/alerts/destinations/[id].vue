@@ -198,6 +198,7 @@ import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
 import EditDestinationModal from '@/components/modals/EditDestinationModal.vue';
 import Modal from '@/components/modals/Modal.vue';
 import {usePermissions} from '@/composables/usePermissions';
+import {parsePositiveRouteId} from '@/helpers/detailRoute';
 import {useDestinationsStore} from '@/stores/destinations';
 import {useChannelsStore} from '@/stores/channels';
 
@@ -218,9 +219,7 @@ const destId = computed(() => {
         string,
         string | string[] | undefined
     >;
-    const raw = Array.isArray(params.id) ? params.id[0] : params.id;
-    const n = Number.parseInt(String(raw ?? ''), 10);
-    return Number.isFinite(n) ? n : null;
+    return parsePositiveRouteId(params.id);
 });
 
 const destination = computed<DestinationGroup | null>(() =>
@@ -295,7 +294,11 @@ const availableChannels = computed(() =>
 );
 
 async function refresh() {
-    if (destId.value == null) return;
+    if (destId.value == null) {
+        loading.value = false;
+        membersLoading.value = false;
+        return;
+    }
     loading.value = true;
     try {
         await Promise.all([

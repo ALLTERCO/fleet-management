@@ -165,6 +165,7 @@ import  ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
 import EditTagModal from '@/components/modals/EditTagModal.vue';
 import Modal from '@/components/modals/Modal.vue';
 import {usePermissions} from '@/composables/usePermissions';
+import {parsePositiveRouteId} from '@/helpers/detailRoute';
 import {useTagSubjectName} from '@/composables/useTagSubjectName';
 import {useTagsStore} from '@/stores/tags';
 
@@ -190,9 +191,7 @@ const tagId = computed(() => {
         string,
         string | string[] | undefined
     >;
-    const raw = Array.isArray(params.id) ? params.id[0] : params.id;
-    const n = Number.parseInt(String(raw ?? ''), 10);
-    return Number.isFinite(n) ? n : null;
+    return parsePositiveRouteId(params.id);
 });
 
 const tag = computed<ApiTag | null>(() =>
@@ -229,7 +228,11 @@ function subjectTypeLabel(type: TagSubjectType): string {
 }
 
 async function refresh() {
-    if (tagId.value == null) return;
+    if (tagId.value == null) {
+        loading.value = false;
+        assignmentsLoading.value = false;
+        return;
+    }
     loading.value = true;
     try {
         // Subject stores (devices/entities/groups/locations/tags) are loaded

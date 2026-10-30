@@ -167,6 +167,7 @@ import SectionHeading from '@/components/core/SectionHeading.vue';
 import ConfirmationModal from '@/components/modals/ConfirmationModal.vue';
 import EditChannelModal from '@/components/modals/EditChannelModal.vue';
 import {usePermissions} from '@/composables/usePermissions';
+import {parsePositiveRouteId} from '@/helpers/detailRoute';
 import {useChannelsStore} from '@/stores/channels';
 
 const store = useChannelsStore();
@@ -187,9 +188,7 @@ const channelId = computed(() => {
         string,
         string | string[] | undefined
     >;
-    const raw = Array.isArray(params.id) ? params.id[0] : params.id;
-    const n = Number.parseInt(String(raw ?? ''), 10);
-    return Number.isFinite(n) ? n : null;
+    return parsePositiveRouteId(params.id);
 });
 
 const channel = computed<ChannelListItem | null>(() =>
@@ -247,7 +246,10 @@ function formatTs(ts: string): string {
 }
 
 async function refresh() {
-    if (channelId.value == null) return;
+    if (channelId.value == null) {
+        loading.value = false;
+        return;
+    }
     loading.value = true;
     try {
         // The list row says which level this caller sees; only a full row

@@ -592,41 +592,8 @@ function computeNextPinPixel(
     return map.project([geo.lng, geo.lat]);
 }
 
-/** The devices store value is typed `shelly_device_t` internally; the
- *  rollup only reads `RollupDevice`'s six fields under identical names.
- *  The cast widens from the concrete store type to the rollup's structural
- *  contract — not a reinterpret.
- *
- *  Dev-mode invariant check: walk one sample value the first time we're
- *  called and crash loudly if a required field is missing. Surfaces store
- *  schema drift immediately instead of silently degrading to 0/null. */
-let storeContractChecked = false;
-const REQUIRED_FIELDS: (keyof RollupDevice)[] = [
-    'id',
-    'presence',
-    'status',
-    'info',
-    '_statusTs'
-];
-
 function devicesStoreForRollup(
     devicesStore: ReturnType<typeof useDevicesStore>
 ): Readonly<Record<string, RollupDevice>> {
-    const widened = devicesStore.devices as unknown as Readonly<
-        Record<string, RollupDevice>
-    >;
-    if (import.meta.env.DEV && !storeContractChecked) {
-        const sample = Object.values(widened)[0];
-        if (sample) {
-            for (const f of REQUIRED_FIELDS) {
-                if (!(f in sample)) {
-                    throw new Error(
-                        `[focus-card] devices store missing required field '${f}' — RollupDevice contract violated`
-                    );
-                }
-            }
-            storeContractChecked = true;
-        }
-    }
-    return widened;
+    return devicesStore.devices;
 }

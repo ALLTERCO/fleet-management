@@ -1,5 +1,5 @@
 import type {ApiLocation} from '@/stores/locations';
-import type {ShellyDeviceExternal} from '@/types';
+import type {presence, shelly_device_t} from '@/types';
 import type {LocationKpiSnapshot} from '@/types/focusCard';
 
 /** Empty subtree → real zeros for counts; null for fields without a data
@@ -22,13 +22,17 @@ const EMPTY_SNAPSHOT: LocationKpiSnapshot = Object.freeze({
 const SEMVER_FLOOR = '0.0.0';
 const HEALTHY_RSSI_DBM = -75;
 
-/** Fields the rollup actually reads. The internal device shape from the
- *  store (`shelly_device_t`) carries all of them with the same names, so
- *  callers can pass either without a cast. */
+/** Fields the focus-card rollup reads from the canonical frontend device
+ *  store. Raw presence/status timestamps are optional compatibility metadata:
+ *  the store intentionally normalizes availability to `online`, and the
+ *  status payload itself provides the last-seen fallback. */
 export type RollupDevice = Pick<
-    ShellyDeviceExternal,
-    'id' | 'presence' | 'status' | 'info' | 'locationId' | '_statusTs'
->;
+    shelly_device_t,
+    'id' | 'online' | 'status' | 'info' | 'locationId'
+> & {
+    readonly presence?: presence;
+    readonly _statusTs?: number;
+};
 
 export interface RollupInput {
     readonly location: ApiLocation;
@@ -50,7 +54,7 @@ function collectDevicesInSubtree(
 }
 
 function isOnline(device: RollupDevice): boolean {
-    return device.presence === 'online';
+    return device.online;
 }
 
 function hasWarning(device: RollupDevice): boolean {
@@ -95,7 +99,7 @@ function sumPowerKW(devices: RollupDevice[]): number {
 
 function deviceLastSeenTsMs(device: RollupDevice): number {
     const status = deviceStatus(device);
-    const direct = (device as {_statusTs?: unknown})._statusTs;
+    const direct = device._statusTs;
     // _statusTs is already in ms
     if (typeof direct === 'number' && Number.isFinite(direct)) return direct;
     const sys = status?.sys;

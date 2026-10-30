@@ -36,34 +36,84 @@ export async function loadIncludedBluetoothTransportFacts(
     if (!input.includes.has('bluetooth') || !input.organizationId) return [];
     const scopedInput = requireOrganization(input);
     const devices = await loadBluetoothDevices(scopedInput);
-    const relatedDevices = devices.filter((device) =>
-        bluetoothDeviceRelatesToCenter({input: scopedInput, device})
+    const relatedDevices = await visibleRelatedBluetoothDevices(
+        scopedInput,
+        devices.filter((device) =>
+            bluetoothDeviceRelatesToCenter({input: scopedInput, device})
+        )
     );
     const rows = await queryBluetoothTransportRelationshipRows({
         organizationId: scopedInput.organizationId,
         externalIds: relatedDevices.map((device) => device.externalId)
     });
     const visibleRows = await visibleBluetoothTransportRows(scopedInput, rows);
+    const visibleGatewayIds = await visibleBluetoothFallbackGateways(
+        scopedInput,
+        relatedDevices
+    );
     const rowsByExternalId = bluetoothTransportRowsByExternalId(visibleRows);
     return relatedDevices.flatMap((device) =>
         bluetoothTransportFacts({
             device,
-            rows: rowsByExternalId.get(device.externalId) ?? []
+            rows: rowsByExternalId.get(device.externalId) ?? [],
+            input: scopedInput,
+            visibleGatewayIds
         })
     );
 }
 
-async function visibleBluetoothTransportRows(
+export async function visibleBluetoothTransportRows(
     input: OrganizationRelationshipLoadInput,
     rows: readonly BluetoothTransportRelationshipRow[]
 ): Promise<BluetoothTransportRelationshipRow[]> {
     const visibleIds = await filterAccessibleExternalIds(
         input,
-        rows.flatMap(bluetoothTransportDeviceRefs)
+        rows.flatMap((row) => [
+            row.bluetooth_external_id,
+            ...bluetoothTransportDeviceRefs(row)
+        ])
     );
-    return rows.map((row) =>
-        sanitizeBluetoothTransportRow({row, input, visibleIds})
+    return rows
+        .filter((row) =>
+            relationshipEndpointIsVisible(row.bluetooth_external_id, {
+                input,
+                visibleIds
+            })
+        )
+        .map((row) => sanitizeBluetoothTransportRow({row, input, visibleIds}));
+}
+
+export async function visibleRelatedBluetoothDevices(
+    input: OrganizationRelationshipLoadInput,
+    devices: readonly BluetoothDeviceDto[]
+): Promise<BluetoothDeviceDto[]> {
+    const visibleIds = await filterAccessibleExternalIds(
+        input,
+        devices.map((device) => device.externalId)
     );
+    return devices.filter((device) =>
+        relationshipEndpointIsVisible(device.externalId, {input, visibleIds})
+    );
+}
+
+async function visibleBluetoothFallbackGateways(
+    input: OrganizationRelationshipLoadInput,
+    devices: readonly BluetoothDeviceDto[]
+): Promise<ReadonlySet<string>> {
+    return await filterAccessibleExternalIds(
+        input,
+        devices
+            .map((device) => device.primaryTransport?.shellyDeviceExternalId)
+            .filter((id): id is string => typeof id === 'string')
+    );
+}
+
+export function visibleFallbackGatewayId(
+    gatewayId: string | null | undefined,
+    input: RelationshipLoadInput,
+    visibleGatewayIds: ReadonlySet<string>
+): string | null {
+    return visibleDeviceRef(gatewayId ?? null, input, visibleGatewayIds);
 }
 
 function bluetoothTransportDeviceRefs(
@@ -110,25 +160,34 @@ function bluetoothTransportRowsByExternalId(
 function bluetoothTransportFacts(input: {
     device: BluetoothDeviceDto;
     rows: readonly BluetoothTransportRelationshipRow[];
+    input: RelationshipLoadInput;
+    visibleGatewayIds: ReadonlySet<string>;
 }): RelationshipBluetoothTransportFact[] {
     if (input.rows.length === 0) {
-        return fallbackBluetoothTransportFacts(input.device);
+        return fallbackBluetoothTransportFacts(input);
     }
     return input.rows.map((row) =>
         bluetoothTransportRowFact({device: input.device, row})
     );
 }
 
-function fallbackBluetoothTransportFacts(
-    device: BluetoothDeviceDto
-): RelationshipBluetoothTransportFact[] {
+function fallbackBluetoothTransportFacts(input: {
+    device: BluetoothDeviceDto;
+    input: RelationshipLoadInput;
+    visibleGatewayIds: ReadonlySet<string>;
+}): RelationshipBluetoothTransportFact[] {
+    const {device} = input;
     const transport = device.primaryTransport;
     if (!transport) return [];
     return [
         {
             bluetoothExternalId: device.externalId,
             transportId: transport.id,
-            gatewayExternalId: transport.shellyDeviceExternalId ?? null,
+            gatewayExternalId: visibleFallbackGatewayId(
+                transport.shellyDeviceExternalId,
+                input.input,
+                input.visibleGatewayIds
+            ),
             gatewayComponentKey: primaryGatewayComponentKey(device),
             label: transport.mode,
             status: bluetoothTransportStatus({
@@ -254,7 +313,10 @@ export async function loadBluetoothRelationshipSummaries(
     input: OrganizationRelationshipLoadInput
 ): Promise<RelationshipSummaryDto[]> {
     if (!input.includes.has('bluetooth')) return [];
-    const devices = await loadRelatedBluetoothDevices(input);
+    const devices = await visibleRelatedBluetoothDevices(
+        input,
+        await loadRelatedBluetoothDevices(input)
+    );
     const [provenanceRows, transportRows] = await Promise.all([
         queryLatestBluetoothProvenanceRows({
             organizationId: input.organizationId,
@@ -273,6 +335,10 @@ export async function loadBluetoothRelationshipSummaries(
         input,
         provenanceRows
     );
+    const visibleGatewayIds = await visibleBluetoothFallbackGateways(
+        input,
+        devices
+    );
     const provenanceByDevice = bluetoothProvenanceRowsByExternalId(
         visibleProvenanceRows
     );
@@ -282,7 +348,9 @@ export async function loadBluetoothRelationshipSummaries(
         bluetoothRelationshipSummaries({
             device,
             latestProvenance: provenanceByDevice.get(device.externalId),
-            transports: transportsByDevice.get(device.externalId) ?? []
+            transports: transportsByDevice.get(device.externalId) ?? [],
+            input,
+            visibleGatewayIds
         })
     );
 }
@@ -369,6 +437,8 @@ function bluetoothRelationshipSummaries(input: {
     device: BluetoothDeviceDto;
     latestProvenance: BluetoothProvenanceRow | undefined;
     transports: readonly BluetoothTransportRelationshipRow[];
+    input: RelationshipLoadInput;
+    visibleGatewayIds: ReadonlySet<string>;
 }): RelationshipSummaryDto[] {
     return [
         ...bluetoothGatewayHealthSummaries(input),
@@ -379,6 +449,8 @@ function bluetoothRelationshipSummaries(input: {
 function bluetoothGatewayHealthSummaries(input: {
     device: BluetoothDeviceDto;
     transports: readonly BluetoothTransportRelationshipRow[];
+    input: RelationshipLoadInput;
+    visibleGatewayIds: ReadonlySet<string>;
 }): RelationshipSummaryDto[] {
     const gatewayExternalId = primaryBluetoothGatewayExternalId(input);
     if (!gatewayExternalId) return [];
@@ -397,17 +469,22 @@ function bluetoothGatewayHealthSummaries(input: {
     ];
 }
 
-function primaryBluetoothGatewayExternalId(input: {
+export function primaryBluetoothGatewayExternalId(input: {
     device: BluetoothDeviceDto;
     transports: readonly BluetoothTransportRelationshipRow[];
+    input: RelationshipLoadInput;
+    visibleGatewayIds: ReadonlySet<string>;
 }): string | null {
     const primaryRow = input.transports.find(
         (transport) => transport.is_primary
     );
-    return (
-        primaryRow?.shelly_device_external_id ??
-        input.device.primaryTransport?.shellyDeviceExternalId ??
-        null
+    // A null from an access-filtered row must not restore the private ID
+    // through the BLU record's unsanitized primary transport.
+    if (primaryRow) return primaryRow.shelly_device_external_id;
+    return visibleFallbackGatewayId(
+        input.device.primaryTransport?.shellyDeviceExternalId,
+        input.input,
+        input.visibleGatewayIds
     );
 }
 
@@ -415,6 +492,8 @@ function bluetoothLastSeenSummary(input: {
     device: BluetoothDeviceDto;
     latestProvenance: BluetoothProvenanceRow | undefined;
     transports: readonly BluetoothTransportRelationshipRow[];
+    input: RelationshipLoadInput;
+    visibleGatewayIds: ReadonlySet<string>;
 }): RelationshipSummaryDto {
     if (input.latestProvenance) {
         return bluetoothProvenanceSummary(input.device, input.latestProvenance);
@@ -445,9 +524,11 @@ function bluetoothProvenanceSummary(
     };
 }
 
-function primaryBluetoothTransport(input: {
+export function primaryBluetoothTransport(input: {
     device: BluetoothDeviceDto;
     transports: readonly BluetoothTransportRelationshipRow[];
+    input: RelationshipLoadInput;
+    visibleGatewayIds: ReadonlySet<string>;
 }): {
     gatewayExternalId: string | null;
     lastSeenAt: Date | string | null;
@@ -460,7 +541,11 @@ function primaryBluetoothTransport(input: {
     const primaryTransport = input.device.primaryTransport;
     if (!primaryTransport) return null;
     return {
-        gatewayExternalId: primaryTransport.shellyDeviceExternalId ?? null,
+        gatewayExternalId: visibleFallbackGatewayId(
+            primaryTransport.shellyDeviceExternalId,
+            input.input,
+            input.visibleGatewayIds
+        ),
         lastSeenAt: primaryTransport.lastSeenAt,
         lastRssi: primaryTransport.lastRssi
     };

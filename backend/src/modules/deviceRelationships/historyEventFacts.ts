@@ -5,7 +5,9 @@ import {
     queryBluetoothProvenanceRows,
     visibleBluetoothProvenanceRows
 } from './bluetoothFacts';
+import {relationshipEndpointIsVisible} from './deviceLoadingCore';
 import {
+    filterAccessibleExternalIds,
     readRecord,
     requireOrganization,
     stringValue
@@ -33,8 +35,38 @@ export async function loadIncludedHistoryEventFacts(
     );
     return [
         ...visibleBluetoothRows.map(bluetoothProvenanceHistoryFact),
-        ...virtualRows.flatMap(virtualBindingHistoryFacts)
+        ...(await visibleVirtualBindingHistoryFacts(scopedInput, virtualRows))
     ];
+}
+
+export async function visibleVirtualBindingHistoryFacts(
+    input: OrganizationRelationshipLoadInput,
+    rows: readonly VirtualBindingEventRow[]
+): Promise<RelationshipHistoryEventFact[]> {
+    const visibleIds = await filterAccessibleExternalIds(
+        input,
+        rows.flatMap((row) =>
+            [
+                row.virtual_external_id,
+                readSourceRef(row.old_source_json)?.deviceExternalId,
+                readSourceRef(row.new_source_json)?.deviceExternalId
+            ].filter((id): id is string => typeof id === 'string')
+        )
+    );
+    return rows
+        .filter((row) =>
+            relationshipEndpointIsVisible(row.virtual_external_id, {
+                input,
+                visibleIds
+            })
+        )
+        .flatMap(virtualBindingHistoryFacts)
+        .filter((fact) =>
+            relationshipEndpointIsVisible(fact.targetExternalId, {
+                input,
+                visibleIds
+            })
+        );
 }
 
 function needsHistoryEvents(input: RelationshipLoadInput): boolean {

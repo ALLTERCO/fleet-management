@@ -99,7 +99,15 @@ export function useDeviceSelection(filterFn?: (device: any) => boolean) {
         }
     }
 
-    function selectAll() {
+    function selectAll(shellyIDs?: Iterable<string>) {
+        if (shellyIDs) {
+            for (const shellyID of shellyIDs) {
+                if (canSelectDevice(shellyID)) {
+                    selectedDevices.value.add(shellyID);
+                }
+            }
+            return;
+        }
         for (const device of executableDevices.value) {
             selectedDevices.value.add(device.shellyID);
         }

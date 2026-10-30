@@ -23,6 +23,10 @@ import {
 } from '@/constants';
 import {formatMac} from '@/helpers/device';
 import {domainErrorKind, toastRpcError} from '@/helpers/domainErrors';
+import {
+    allSelectionScopeSelected,
+    toggleSelectionScope
+} from '@/helpers/selectionScope';
 import {useAuthStore} from '@/stores/auth';
 import {useDevicesStore} from '@/stores/devices';
 import {createRefreshCoordinator} from '@/stores/refreshCoordinator';
@@ -304,16 +308,19 @@ export function useWaitingRoomList(mode: WaitingRoomMode) {
 
     // ── Selection ─────────────────────────────────────────────────────
     const selectedSet = computed(() => new Set(selected.value));
+    const filteredIds = computed(() =>
+        filteredEntries.value.map(([id]) => id)
+    );
 
     const allSelected = computed(
-        () =>
-            allEntries.value.length > 0 &&
-            selected.value.length === allEntries.value.length
+        () => allSelectionScopeSelected(selectedSet.value, filteredIds.value)
     );
 
     function toggleSelectAll() {
-        if (allSelected.value) selected.value = [];
-        else selected.value = allEntries.value.map(([id]) => id);
+        selected.value = toggleSelectionScope(
+            selected.value,
+            filteredIds.value
+        );
     }
 
     function clearSelection() {

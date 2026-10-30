@@ -324,6 +324,7 @@ import {
 import {formatBytes, formatDate} from '@/helpers/format';
 import {shellyIdsFromGroups} from '@/helpers/groupDevices';
 import {rpcErrorMessage} from '@/helpers/rpcError';
+import {allSelectionScopeSelected} from '@/helpers/selectionScope';
 import {useDevicesStore} from '@/stores/devices';
 import {type FirmwareDeviceInfo, useFirmwareStore} from '@/stores/firmware';
 import {useGroupsStore} from '@/stores/groups';
@@ -720,6 +721,9 @@ const filteredDevices = computed(() => {
         );
     });
 });
+const filteredDeviceIds = computed(() =>
+    filteredDevices.value.map((device) => device.shellyID as string)
+);
 
 // Committed devices' firmware info (for inline progress strip)
 const committedFirmwareInfo = computed(() => {
@@ -810,7 +814,7 @@ function toggleDevice(shellyID: string) {
 }
 
 function selectAll() {
-    firmwareStore.selectAll();
+    firmwareStore.selectAll(filteredDeviceIds.value);
 }
 
 function clearSelection() {
@@ -820,8 +824,10 @@ function clearSelection() {
 // Drives the SelectionBar's "Select all / Deselect all" toggle.
 const allSelected = computed(
     () =>
-        executableDevices.value.length > 0 &&
-        selectedCount.value >= executableDevices.value.length
+        allSelectionScopeSelected(
+            selectedDevices.value,
+            filteredDeviceIds.value
+        )
 );
 
 // Confirmed action helper — named object instead of 4 positional args

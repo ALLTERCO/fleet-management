@@ -399,6 +399,7 @@ import {
 } from '@/helpers/filter-sections';
 import {formatBytes, formatDate} from '@/helpers/format';
 import {rpcErrorMessage} from '@/helpers/rpcError';
+import {allSelectionScopeSelected} from '@/helpers/selectionScope';
 import {
     type BackupDeviceInfo,
     type BackupMetadata,
@@ -869,6 +870,9 @@ const filteredDevices = computed(() => {
         );
     });
 });
+const filteredDeviceIds = computed(() =>
+    filteredDevices.value.map((device) => device.shellyID as string)
+);
 function applyDeviceFilters(state: FilterState) {
     filterGroupIds.value = (state.group ?? []).map(Number);
     filterModels.value = state.models ?? [];
@@ -881,7 +885,7 @@ function toggleDevice(shellyID: string) {
 }
 
 function selectAll() {
-    backupsStore.selectAll();
+    backupsStore.selectAll(filteredDeviceIds.value);
     toastStore.success(`Selected ${selectedDevices.value.size} devices`);
 }
 
@@ -892,8 +896,10 @@ function clearSelection() {
 // Drives the SelectionBar's "Select all / Deselect all" toggle.
 const allSelected = computed(
     () =>
-        executableDevices.value.length > 0 &&
-        selectedCount.value >= executableDevices.value.length
+        allSelectionScopeSelected(
+            selectedDevices.value,
+            filteredDeviceIds.value
+        )
 );
 
 // ========================================================================

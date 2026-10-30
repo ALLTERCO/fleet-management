@@ -13,7 +13,7 @@
             <i class="fas fa-sync-alt" />
         </Button>
         <Button
-            v-if="state.allEntries.value.length > 0"
+            v-if="state.filteredEntries.value.length > 0"
             type="blue-hollow"
             size="sm"
             @click="state.toggleSelectAll"

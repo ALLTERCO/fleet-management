@@ -45,6 +45,7 @@ function didTopLevelKeysChange(
 }
 
 const DEVICE_LOADING_TIMEOUT_MS = 5_000;
+const MAX_SLEEP_TIMER_DELAY_MS = 2_147_483_647;
 
 // Both sides now share the backend union, so nothing needs dropping. It used
 // to match 'shelly', which nothing emits, so every physical device arrived
@@ -64,6 +65,10 @@ export const useDevicesStore = defineStore('devices', () => {
     }
     const devices = reactive<Record<string, shelly_device_t>>({});
     const loadingTimers = new Map<string, ReturnType<typeof setTimeout>>();
+    const sleepExpiryTimers = new Map<
+        string,
+        ReturnType<typeof setTimeout>
+    >();
     const initialLoadComplete = ref(false);
     const devicesVersion = ref(0);
     const onlineCount = ref(0);
@@ -130,6 +135,12 @@ export const useDevicesStore = defineStore('devices', () => {
         else if (was && !online) onlineCount.value--;
     }
 
+    function clearSleepExpiryTimer(shellyID: string) {
+        const timer = sleepExpiryTimers.get(shellyID);
+        if (timer !== undefined) clearTimeout(timer);
+        sleepExpiryTimers.delete(shellyID);
+    }
+
     /**
      * Check if a device is a sleeping/battery device and whether it's within
      * its expected wakeup window. Returns undefined for non-sleeping devices.
@@ -138,9 +149,13 @@ export const useDevicesStore = defineStore('devices', () => {
      *  - sys.sleep.wakeup_period in config (canonical — device explicitly sleeps)
      *  - devicepower with actual battery data (not just external/AC power)
      */
-    function isSleepingDeviceOnline(
+    function sleepingDeviceDeadlineMs(
         device: shelly_device_t
-    ): boolean | undefined {
+    ): number | undefined {
+        // Promoted BLU rows have backend-computed gateway/cadence health. Their
+        // projected battery readings must never opt into Shelly sleep timing.
+        if (device.source === 'bluetooth') return undefined;
+
         const status = device.status;
         const settings = device.settings;
 
@@ -159,8 +174,64 @@ export const useDevicesStore = defineStore('devices', () => {
 
         const lastTs = status?.ts ?? status?.sys?.unixtime ?? 0;
         const period = wakeupPeriod ?? 86400;
-        const now = Date.now() / 1000;
-        return lastTs + period > now;
+        return (lastTs + period) * 1000;
+    }
+
+    function isSleepingDeviceOnline(
+        device: shelly_device_t
+    ): boolean | undefined {
+        const deadlineMs = sleepingDeviceDeadlineMs(device);
+        if (deadlineMs === undefined) return undefined;
+        return deadlineMs > Date.now();
+    }
+
+    function scheduleSleepExpiry(device: shelly_device_t) {
+        clearSleepExpiryTimer(device.shellyID);
+        if (!device.sleeping) return;
+
+        const deadlineMs = sleepingDeviceDeadlineMs(device);
+        if (deadlineMs === undefined || deadlineMs <= Date.now()) return;
+
+        const timer = setTimeout(
+            () => {
+                if (sleepExpiryTimers.get(device.shellyID) !== timer) return;
+                sleepExpiryTimers.delete(device.shellyID);
+
+                const current = devices[device.shellyID];
+                if (!current || !current.sleeping) return;
+
+                const nextDeadlineMs = sleepingDeviceDeadlineMs(current);
+                if (
+                    nextDeadlineMs !== undefined &&
+                    nextDeadlineMs > Date.now()
+                ) {
+                    scheduleSleepExpiry(current);
+                    return;
+                }
+
+                current.sleeping = false;
+                setOnline(current, false);
+                bumpVersion();
+            },
+            Math.min(deadlineMs - Date.now(), MAX_SLEEP_TIMER_DELAY_MS)
+        );
+        sleepExpiryTimers.set(device.shellyID, timer);
+    }
+
+    function refreshSleepingDeviceLiveness(device: shelly_device_t) {
+        if (!device.sleeping) {
+            clearSleepExpiryTimer(device.shellyID);
+            return;
+        }
+
+        const sleepOnline = isSleepingDeviceOnline(device) === true;
+        const changed =
+            device.sleeping !== sleepOnline || device.online !== sleepOnline;
+        device.sleeping = sleepOnline;
+        setOnline(device, sleepOnline);
+        if (sleepOnline) scheduleSleepExpiry(device);
+        else clearSleepExpiryTimer(device.shellyID);
+        if (changed) bumpVersion();
     }
 
     interface DeviceData {
@@ -451,6 +522,8 @@ export const useDevicesStore = defineStore('devices', () => {
             d.sleeping = false;
             setOnline(d, shelly.presence === 'online');
         }
+        if (d.sleeping) scheduleSleepExpiry(d);
+        else clearSleepExpiryTimer(d.shellyID);
         d.loading = false;
     }
 
@@ -742,6 +815,7 @@ export const useDevicesStore = defineStore('devices', () => {
             const device = devices[shelly.shellyID];
             if (device) {
                 clearOverlayFor(shelly.shellyID);
+                clearSleepExpiryTimer(shelly.shellyID);
                 device.sleeping = false;
                 setOnline(device, true);
                 replaceDeviceData(device, shelly);
@@ -771,6 +845,8 @@ export const useDevicesStore = defineStore('devices', () => {
         if (sleepOnline !== undefined) {
             device.sleeping = sleepOnline;
             setOnline(device, sleepOnline);
+            if (device.sleeping) scheduleSleepExpiry(device);
+            else clearSleepExpiryTimer(shellyID);
             debug(
                 '[deviceDisconnected]',
                 shellyID,
@@ -782,6 +858,7 @@ export const useDevicesStore = defineStore('devices', () => {
         } else {
             device.sleeping = false;
             setOnline(device, false);
+            clearSleepExpiryTimer(shellyID);
         }
         bumpVersion();
     }
@@ -792,6 +869,7 @@ export const useDevicesStore = defineStore('devices', () => {
             clearTimeout(timer);
             loadingTimers.delete(shellyID);
         }
+        clearSleepExpiryTimer(shellyID);
 
         clearOverlayFor(shellyID);
         liveEventSeqByDevice.delete(shellyID);
@@ -849,6 +927,8 @@ export const useDevicesStore = defineStore('devices', () => {
     function patchStatus(shellyID: string, status: any, partial = false) {
         if (devices[shellyID]) markLiveDeviceEvent(shellyID);
         patchDeviceField(shellyID, 'status', status, partial);
+        const device = devices[shellyID];
+        if (device?.sleeping) refreshSleepingDeviceLiveness(device);
         // Clear overlay only on confirming echo; stale echoes are ignored.
         if (status && typeof status === 'object' && !Array.isArray(status)) {
             const bucket = optimisticOverlay[shellyID];
@@ -1053,6 +1133,8 @@ export const useDevicesStore = defineStore('devices', () => {
 
     function patchSettings(shellyID: string, settings: any) {
         patchDeviceField(shellyID, 'settings', settings);
+        const device = devices[shellyID];
+        if (device?.sleeping) refreshSleepingDeviceLiveness(device);
     }
 
     function patchPresence(shellyID: string, presence: presence) {
@@ -1061,12 +1143,15 @@ export const useDevicesStore = defineStore('devices', () => {
         markLiveDeviceEvent(shellyID);
 
         if (presence === 'online') {
+            clearSleepExpiryTimer(shellyID);
             device.sleeping = false;
             setOnline(device, true);
         } else {
             const sleepOnline = isSleepingDeviceOnline(device);
             device.sleeping = sleepOnline ?? false;
             setOnline(device, sleepOnline ?? false);
+            if (device.sleeping) scheduleSleepExpiry(device);
+            else clearSleepExpiryTimer(shellyID);
         }
         debug(
             '[patchPresence]',

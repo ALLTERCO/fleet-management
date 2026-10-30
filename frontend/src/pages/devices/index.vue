@@ -186,7 +186,12 @@ import {
 import {DeviceBoard} from '@/helpers/components';
 import {getDeviceName} from '@/helpers/device';
 import {deleteFleetDevice} from '@/helpers/deviceDeleteRpc';
-
+import {
+    type DeviceSortMode,
+    parseDeviceFilterState,
+    parseDeviceSortMode,
+    resolveLegacyGroupId
+} from '@/helpers/deviceFilterPersistence';
 import {deviceTypeOf} from '@/helpers/deviceTypeFilter';
 import {
     booleanSection,
@@ -242,7 +247,7 @@ interface GridSection {
 }
 type GridItem = GridDevice | GridSensor | GridSection;
 
-type SortMode = 'online-az' | 'az' | 'za' | 'offline-first';
+type SortMode = DeviceSortMode;
 
 const deviceStore = useDevicesStore();
 const groupsStore = useGroupsStore();
@@ -260,28 +265,54 @@ const STORAGE_KEY = 'fm-device-filters';
 
 function loadSavedState() {
     try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) return JSON.parse(raw);
+        return parseDeviceFilterState(localStorage.getItem(STORAGE_KEY));
     } catch {
-        /* corrupt JSON — ignore */
+        return parseDeviceFilterState(null);
     }
-    return null;
 }
 const saved = loadSavedState();
 
-const nameFilter = ref(String(route.query.search ?? saved?.nameFilter ?? ''));
+const querySearch =
+    typeof route.query.search === 'string' ? route.query.search : null;
+const nameFilter = ref(querySearch ?? saved.nameFilter);
 const addDeviceWizardVisible = ref(false);
 // The device kind picked in the add-device menu; seeds the wizard's first step.
 const pendingKind = ref<WizardKind>(null);
 const sortMode = ref<SortMode>(
-    (route.query.sort as SortMode) ?? saved?.sortMode ?? 'online-az'
+    parseDeviceSortMode(route.query.sort) ?? saved.sortMode
 );
-const statusFilter = ref<string[]>(saved?.statusFilter ?? []);
-const typeFilter = ref<string[]>(saved?.typeFilter ?? []);
-const groupFilter = ref<string[]>(saved?.groupFilter ?? []);
-const tagFilter = ref<string[]>(saved?.tagFilter ?? []);
-const sourceFilter = ref<string[]>(saved?.sourceFilter ?? []);
-const locationFilter = ref<string[]>(saved?.locationFilter ?? []);
+const statusFilter = ref<string[]>(saved.statusFilter);
+const typeFilter = ref<string[]>(saved.typeFilter);
+const groupFilter = ref<string[]>(saved.groupFilter);
+const tagFilter = ref<string[]>(saved.tagFilter);
+const sourceFilter = ref<string[]>(saved.sourceFilter);
+const locationFilter = ref<string[]>(saved.locationFilter);
+
+// v1.80 stored a group name under the same key. Resolve it only after the
+// group registry is available; names cannot safely be fed through Number().
+if (saved.legacyGroupName && groupFilter.value.length === 0) {
+    const legacyName = saved.legacyGroupName;
+    const resolveLegacyGroup = (): boolean => {
+        const id = resolveLegacyGroupId(
+            legacyName,
+            Object.values(groupsStore.groups)
+        );
+        if (!id) return false;
+        groupFilter.value = [id];
+        return true;
+    };
+
+    if (!resolveLegacyGroup() && groupsStore.loading) {
+        const stop = watch(
+            () => groupsStore.loading,
+            (loading) => {
+                if (loading) return;
+                resolveLegacyGroup();
+                stop();
+            }
+        );
+    }
+}
 
 watch(
     [

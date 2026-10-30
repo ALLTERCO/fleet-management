@@ -36,7 +36,6 @@
         "@codemirror/view": "^6.43.13",
         "@deck.gl/aggregation-layers": "9.4.0",
         "@deck.gl/core": "9.4.0",
-        "@deck.gl/geo-layers": "9.4.0",
         "@deck.gl/layers": "9.4.0",
         "@deck.gl/maplibre": "9.4.0",
         "@internationalized/date": "3.12.4",

@@ -1,5 +1,5 @@
 import type {Layer} from '@deck.gl/core';
-import {TripsLayer} from '@deck.gl/geo-layers';
+import {TripsLayer} from '@/helpers/map-trips-layer';
 
 export interface TripPath {
     id: string;

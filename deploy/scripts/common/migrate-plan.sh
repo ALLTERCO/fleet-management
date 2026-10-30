@@ -23,6 +23,22 @@ mp_running_image_tag() {
     printf '%s' "${image##*:}"
 }
 
+# Read one non-secret environment value from a running service container.
+# Callers must name the exact key they need; never print the full Env array.
+mp_running_container_env_value() {
+    local project="$1" service="$2" key="$3" id
+    id="$(compat_service_container_id "$project" "$service" 2>/dev/null || true)"
+    [ -n "$id" ] || return 0
+    docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$id" 2>/dev/null |
+        awk -v key="$key" '
+            index($0, key "=") == 1 {
+                sub("^" key "=", "")
+                print
+                exit
+            }
+        ' || true
+}
+
 # Classify how a (service, current_tag, target_tag) transitions.
 mp_classify() {
     local kind="$1" service="$2" current="$3" target="$4"
@@ -286,6 +302,27 @@ mp_emit_zitadel_topology_setup() {
     target_scheme="${ZITADEL_PUBLIC_SCHEME:-$(mp_scheme_from_external_secure "$target_secure")}"
     target_tls="${ZITADEL_TLS_MODE:-}"
     [ -n "$target_host" ] || return 0
+
+    # Saved deploy metadata describes the desired topology, not necessarily
+    # what the running container was created with. A stale Zitadel container
+    # can therefore look reconciled in DEPLOY_* while still serving a different
+    # issuer scheme/port. Inspect only the three non-secret Compose inputs that
+    # determine the live external origin and force setup when they drift.
+    local runtime_host runtime_port runtime_secure runtime_scheme
+    runtime_host="$(mp_running_container_env_value "${COMPOSE_PROJECT_NAME:-fm}" zitadel-api ZITADEL_EXTERNALDOMAIN)"
+    runtime_port="$(mp_running_container_env_value "${COMPOSE_PROJECT_NAME:-fm}" zitadel-api ZITADEL_EXTERNALPORT)"
+    runtime_secure="$(mp_running_container_env_value "${COMPOSE_PROJECT_NAME:-fm}" zitadel-api ZITADEL_EXTERNALSECURE)"
+    runtime_scheme="$(mp_scheme_from_external_secure "$runtime_secure")"
+    if [ -z "$runtime_host" ] \
+        || [ -z "$runtime_port" ] \
+        || [ -z "$runtime_secure" ] \
+        || [ "$runtime_host" != "$target_host" ] \
+        || [ "$runtime_port" != "$target_port" ] \
+        || [ "$runtime_scheme" != "$(mp_scheme_from_external_secure "$target_secure")" ]; then
+        printf 'zitadel_setup\tzitadel-api\t%s\t%s\treconcile running external URL config\n' \
+            "$current_zitadel" "$target_zitadel"
+        return 0
+    fi
 
     if [ -z "${DEPLOY_ZITADEL_HOSTNAME:-}${DEPLOY_ZITADEL_EXTERNALPORT:-}${DEPLOY_ZITADEL_EXTERNALSECURE:-}${DEPLOY_ZITADEL_PUBLIC_SCHEME:-}${DEPLOY_ZITADEL_TLS_MODE:-}" ]; then
         [ -n "${DEPLOY_ENV:-}${DEPLOY_LAST_COMMAND:-}" ] || return 0

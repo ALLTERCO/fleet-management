@@ -16,24 +16,40 @@ cmd_status() {
     info "Platform: ${OS}/${ARCH}${DISTRO:+ ($DISTRO)}"
     echo ""
 
-    compose_cmd ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+    local failed=0
+    if ! compose_cmd ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"; then
+        error "Could not read Docker Compose service status"
+        failed=1
+    fi
 
     echo ""
-    local svc_status svc
+    local svc_status svc container expected_container display_service
     while IFS= read -r svc; do
-        svc_status="$(container_health_status "$(container_name "$svc")" 2>/dev/null || echo "unknown")"
+        container="$(hc_container_name "$svc")"
+        expected_container="$(container_name "$svc")"
+        display_service="$svc"
+        if [ "$container" != "$expected_container" ]; then
+            if [ "$svc" = "zitadel-api" ]; then
+                display_service="$svc [shared: $container]"
+            else
+                display_service="$svc [$container]"
+            fi
+        fi
+        svc_status="$(container_health_status "$container" 2>/dev/null || echo "unknown")"
         if [ "$svc_status" = "healthy" ]; then
-            printf "  ${GREEN}✔${RESET}  %-18s %s\n" "$svc" "${GREEN}${svc_status}${RESET}"
+            printf "  ${GREEN}✔${RESET}  %-34s %s\n" "$display_service" "${GREEN}${svc_status}${RESET}"
         elif [ "$svc_status" = "running" ]; then
-            printf "  ${GREEN}✔${RESET}  %-18s %s\n" "$svc" "${svc_status}"
+            printf "  ${GREEN}✔${RESET}  %-34s %s\n" "$display_service" "${svc_status}"
         else
-            printf "  ${RED}✘${RESET}  %-18s %s\n" "$svc" "${RED}${svc_status}${RESET}"
+            printf "  ${RED}✘${RESET}  %-34s %s\n" "$display_service" "${RED}${svc_status}${RESET}"
+            failed=1
         fi
     done < <(_status_services)
 
     _status_show_deployed
-    _status_show_zitadel_actions
+    _status_show_zitadel_actions || failed=1
     echo ""
+    return "$failed"
 }
 
 # Containers whose health status prints, one per line.
@@ -52,36 +68,75 @@ _status_services() {
     fi
 }
 
-# Show what is actually deployed here — read straight from the deploy manifest.
+# Show what is actually deployed here. A live container is authoritative for
+# runtime image/start data; the manifest is retained as deployment metadata and
+# is called out explicitly if it disagrees with the running container.
 _status_show_deployed() {
-    local manifest_file
+    local manifest_file manifest_present=false
     manifest_file="$(manifest_path 2>/dev/null || printf '%s' "$STATE_DIR/contract/manifest.json")"
-    [ -f "$manifest_file" ] || return 0
+    [ -f "$manifest_file" ] && manifest_present=true
 
-    local image db_image commit digest env mode updated
-    image="$(manifest_get_field '.shared_services.fleet_manager.image')"
-    db_image="$(manifest_get_field '.shared_services.fleet_db.image')"
-    commit="$(manifest_get_field '.identity.build_commit')"
-    digest="$(manifest_get_field '.shared_services.fleet_manager.image_digest')"
-    env="$(manifest_get_field '.env')"
-    mode="$(manifest_get_field '.mode')"
-    updated="$(manifest_get_field '.shared_services.fleet_manager.last_updated_at')"
+    local manifest_image="" manifest_db_image="" commit="" digest="" env="" mode="" updated=""
+    if [ "$manifest_present" = true ]; then
+        manifest_image="$(manifest_get_field '.shared_services.fleet_manager.image' 2>/dev/null || true)"
+        manifest_db_image="$(manifest_get_field '.shared_services.fleet_db.image' 2>/dev/null || true)"
+        commit="$(manifest_get_field '.identity.build_commit' 2>/dev/null || true)"
+        digest="$(manifest_get_field '.shared_services.fleet_manager.image_digest' 2>/dev/null || true)"
+        env="$(manifest_get_field '.env' 2>/dev/null || true)"
+        mode="$(manifest_get_field '.mode' 2>/dev/null || true)"
+        updated="$(manifest_get_field '.shared_services.fleet_manager.last_updated_at' 2>/dev/null || true)"
+    fi
+
+    local fleet_container db_container live_image="" live_db_image="" live_started=""
+    fleet_container="$(hc_container_name fleet-manager 2>/dev/null || true)"
+    db_container="$(hc_container_name fleet-db 2>/dev/null || true)"
+    if [ -n "$fleet_container" ]; then
+        live_image="$(docker inspect -f '{{.Config.Image}}' "$fleet_container" 2>/dev/null || true)"
+        live_started="$(docker inspect -f '{{.State.StartedAt}}' "$fleet_container" 2>/dev/null || true)"
+    fi
+    if [ -n "$db_container" ]; then
+        live_db_image="$(docker inspect -f '{{.Config.Image}}' "$db_container" 2>/dev/null || true)"
+    fi
+
+    local image="${live_image:-$manifest_image}"
+    local db_image="${live_db_image:-$manifest_db_image}"
+    [ -n "$image$db_image$env$mode" ] || return 0
 
     echo ""
     step "Deployed"
-    [ -n "$image" ] && info "Fleet image  ${image}"
-    [ -n "$db_image" ] && info "DB image     ${db_image}"
-    [ -n "$commit" ] && [ "$commit" != "unknown" ] && info "Commit   ${commit}"
-    [ -n "$digest" ] && info "Digest   ${digest}"
+    if [ -n "$image" ]; then
+        if [ -n "$live_image" ]; then
+            info "Fleet image  ${image} (live: ${fleet_container})"
+        else
+            info "Fleet image  ${image} (manifest; no live container image available)"
+        fi
+    fi
+    if [ -n "$db_image" ]; then
+        if [ -n "$live_db_image" ]; then
+            info "DB image     ${db_image} (live: ${db_container})"
+        else
+            info "DB image     ${db_image} (manifest; no live container image available)"
+        fi
+    fi
+    if [ -n "$live_started" ] && [ "$live_started" != "0001-01-01T00:00:00Z" ]; then
+        info "Started      ${live_started}"
+    fi
     [ -n "$env" ] && info "Env      ${env}${mode:+ / $mode}"
-    [ -n "$updated" ] && info "Updated  ${updated}"
+
+    if [ -n "$live_image" ] && [ -n "$manifest_image" ] && [ "$live_image" != "$manifest_image" ]; then
+        warn "Manifest Fleet image ${manifest_image}${updated:+ recorded $updated} differs from the live container; live runtime shown above is authoritative"
+    else
+        [ -n "$commit" ] && [ "$commit" != "unknown" ] && info "Commit   ${commit}"
+        [ -n "$digest" ] && info "Digest   ${digest}"
+        [ -n "$updated" ] && info "Updated  ${updated}"
+    fi
     _status_show_db_runtime "$db_image"
 }
 
 _status_show_db_runtime() {
     local db_image="$1"
     local container db_user db_name pg_version ts_actual ts_expected ts_status
-    container="$(container_name fleet-db 2>/dev/null || true)"
+    container="$(hc_container_name fleet-db 2>/dev/null || true)"
     db_user="${POSTGRES_USER:-postgres}"
     db_name="${POSTGRES_DB:-fleet}"
     [ -n "$container" ] || return 0
@@ -121,7 +176,9 @@ _status_show_zitadel_actions() {
        FM_RUNTIME_ENV_FILE="$STATE_DIR/fm-runtime.env" \
          bash "$DEPLOY_DIR/scripts/common/check-zitadel-actions.sh"; then
         info "Status ok"
+        return 0
     else
         error "Status failed"
+        return 1
     fi
 }

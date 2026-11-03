@@ -1,3 +1,4 @@
+import {resolveKnownShellyExternalId} from '../../model/shellyExternalId';
 import type {WaitingAuthMethod} from '../../modules/redis/ports';
 import type {
     DeviceIngressProfileId,
@@ -147,7 +148,11 @@ function grandfatherEvaluation(
 ): HandshakeEvaluation | null {
     const reported = input.reportedExternalId?.trim();
     if (!reported) return null;
-    if (!deps.approvedDeviceOrg(reported)) return null;
+    const recognized = resolveKnownShellyExternalId(
+        reported,
+        (externalId) => deps.approvedDeviceOrg(externalId) !== undefined
+    );
+    if (!deps.approvedDeviceOrg(recognized)) return null;
     const transport = input.observedTransport;
     const reason = transportRejectionReason({
         securityModel: 'direct_token',

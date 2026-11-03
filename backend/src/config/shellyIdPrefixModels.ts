@@ -46,6 +46,8 @@ const SHELLY_ID_PREFIX_TO_MODEL: Readonly<Record<string, string>> = {
     // Gen 4
     shelly1g4: 'S4SW-001X8EU',
     shelly1pmg4: 'S4SW-001P8EU',
+    shelly1pmminig4: 'S4SW-001P8EU',
+    shellymini1pmg4: 'S4SW-001P8EU',
     shelly2pmg4: 'S4SW-002P16EU',
     shellyplugsg4: 'S4PL-00416EU',
     // BLU

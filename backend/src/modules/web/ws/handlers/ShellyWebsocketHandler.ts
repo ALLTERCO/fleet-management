@@ -3,6 +3,7 @@ import log4js from 'log4js';
 import type WebSocket from 'ws';
 import {tuning} from '../../../../config/tuning';
 import ShellyDeviceFactory from '../../../../model/ShellyDeviceFactory';
+import {resolveKnownShellyExternalId} from '../../../../model/shellyExternalId';
 import WebSocketTransport from '../../../../model/transport/WebsocketTransport';
 import * as AuditLogger from '../../../../modules/AuditLogger';
 import * as DeviceCollector from '../../../../modules/DeviceCollector';
@@ -35,6 +36,7 @@ import {
     type WaitingRoomProbeRegistration
 } from '../../../../modules/deviceIngress/waitingRoomProbeRegistry';
 import {enrichOpenWaitingRoomSnapshot} from '../../../../modules/deviceIngress/waitingRoomSnapshotEnrichment';
+import {getDeviceOrg} from '../../../../modules/EventDistributor';
 import * as Observability from '../../../../modules/Observability';
 import {
     keepWaitingEntryOnDisconnect,
@@ -839,7 +841,10 @@ export default class ShellyWebsocketHandler extends AbstractWebsocketHandler {
         session: SessionState,
         message: InitMessage
     ): Promise<void> {
-        const shellyID = message.src;
+        const shellyID = resolveKnownShellyExternalId(
+            message.src,
+            (externalId) => getDeviceOrg(externalId) !== undefined
+        );
         const initialStatus =
             message.method === 'NotifyFullStatus' ? message.params : null;
 

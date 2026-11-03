@@ -14,6 +14,7 @@ import type {LedStripCatalog, LedStripUiField} from '../types/api/ledstrip';
 import {deriveCapabilities} from './deviceCapabilities';
 import {buildEventCatalog, type DeviceEventCatalog} from './deviceEventCatalog';
 import ShellyDevice from './ShellyDevice';
+import {resolveAdmittedShellyExternalId} from './shellyExternalId';
 import type HttpTransport from './transport/HttpTransport';
 import type RpcTransport from './transport/RpcTransport';
 import type WebSocketTransport from './transport/WebsocketTransport';
@@ -352,21 +353,29 @@ export default class ShellyDeviceFactory {
         admission?: RegistrationAdmission
     ): Promise<ShellyDevice> {
         const timer = new StageTimer();
-        const rowId = await readRegistrationRowId(bundle.info.id, admission);
+        const shellyID = resolveAdmittedShellyExternalId(
+            bundle.info.id,
+            admission?.shellyID
+        );
+        const info =
+            shellyID === bundle.info.id
+                ? bundle.info
+                : {...bundle.info, id: shellyID};
+        const rowId = await readRegistrationRowId(shellyID, admission);
         timer.mark('db');
 
         const gatherTiming = bundle.gatherTiming ?? {totalMs: 0, stages: []};
         Observability.recordBuildTiming({
-            shellyID: bundle.info.id,
+            shellyID,
             totalMs: gatherTiming.totalMs + timer.totalMs(),
             componentPages: bundle.componentPages,
             stages: [...gatherTiming.stages, ...timer.stages()]
         });
         const device = new ShellyDevice(
-            bundle.info.id,
+            shellyID,
             transport,
             'online',
-            bundle.info,
+            info,
             bundle.status,
             bundle.config,
             false,

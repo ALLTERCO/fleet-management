@@ -50,7 +50,10 @@
                         <button type="button" class="route-tabs__btn" :class="{'route-tabs__btn--active': usersView === 'human'}" @click="usersView = 'human'">Users</button>
                         <button type="button" class="route-tabs__btn" :class="{'route-tabs__btn--active': usersView === 'service'}" @click="usersView = 'service'">Service</button>
                     </div>
-                    <div class="search-pill search-pill--buttons usr-search">
+                    <div
+                        class="search-pill usr-search"
+                        :class="{'search-pill--buttons': Boolean(userSearch)}"
+                    >
                         <i class="fas fa-search search-pill__icon" />
                         <input v-model.trim="userSearch" type="text" class="search-pill__input" :placeholder="usersView === 'human' ? 'Search users…' : 'Search service users…'" aria-label="Search" />
                         <button v-if="userSearch" type="button" class="search-pill__clear" @click="userSearch = ''"><i class="fas fa-xmark" /></button>
@@ -1532,11 +1535,26 @@ onMounted(() => {
     color: var(--color-text-tertiary);
     margin-top: var(--gap-xs);
 }
-@media (max-width: 640px) {
-}
-
 /* ── Users view toggle + search ── */
 .usr-search { max-width: 240px; min-width: 140px; }
+
+@media (max-width: 900px) {
+    .usr-panel__head {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: var(--gap-xs);
+    }
+    .usr-panel__head > .route-tabs {
+        flex: 1 1 100%;
+        width: 100%;
+        max-width: none;
+    }
+    .usr-search {
+        flex: 1 1 0;
+        min-width: 0;
+        max-width: none;
+    }
+}
 
 /* ── Service user / PAT ── */
 .svc-token-count { font-size: var(--type-body); font-weight: var(--font-bold); color: var(--color-text-secondary); font-family: var(--font-mono); }
